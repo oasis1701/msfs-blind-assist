@@ -20,6 +20,27 @@ internal sealed record FenixFcuKnob(string Name, string CounterVar, string Reado
         new("Vertical speed", "E_FCU_VS", "N_FCU_VS" + FenixA320Definition.ReadoutSuffix, 100, Wraps: false,
             DashedReadoutVar: "B_FCU_VERTICALSPEED_DASHED" + FenixA320Definition.ReadoutSuffix);
 
+    internal static IReadOnlyList<FenixFcuKnob> All => new[] { Heading, Speed, Altitude, VerticalSpeed };
+
+    /// <summary>The continuous original the twin reads (<c>N_FCU_ALTITUDE</c>), announced once a second.</summary>
+    internal string ValueVar => ReadoutVar[..^FenixA320Definition.ReadoutSuffix.Length];
+
+    /// <summary>The knob whose continuous original is <paramref name="varName"/>, or null.</summary>
+    internal static FenixFcuKnob? ForValueVar(string varName) => varName switch
+    {
+        "N_FCU_HEADING" => Heading,
+        "N_FCU_SPEED" => Speed,
+        "N_FCU_ALTITUDE" => Altitude,
+        "N_FCU_VS" => VerticalSpeed,
+        _ => null,
+    };
+
+    /// <summary>True when two readings are the same knob value: within half a unit, a heading modulo 360
+    /// (a typed 360 is the FCU's 000).</summary>
+    internal bool SameValue(double a, double b) => Wraps
+        ? (((int)Math.Round(a) - (int)Math.Round(b)) % 360 + 360) % 360 == 0
+        : Math.Abs(a - b) < 0.5;
+
     /// <summary>
     /// A value as the pilot hears it, invariant (never "0,78" or a U+2212 minus): a heading in three digits as
     /// the Shift+H readout says it, a speed below 100 as Mach (the speed window keeps Mach times 100), a V/S
@@ -102,6 +123,12 @@ internal static class FenixA320FcuKnobSet
     internal const int MaxSetMs = 30000;
     /// <summary>The time-out of one fresh read of a twin, which answers within a frame or two.</summary>
     internal const int ReadTimeoutMs = 1000;
+    /// <summary>After a miss, how long the knob's own once-a-second value announcement stays quiet, so the miss
+    /// sentence is the only thing heard: one delivery period and a margin.</summary>
+    internal const int QuietAfterMissMs = 1200;
+
+    /// <summary>"Already at vertical speed -1000": invariant, so a Swedish Windows never writes a U+2212 minus.</summary>
+    internal static string AlreadyAt(string what, int value) => FormattableString.Invariant($"Already at {what} {value}");
 
     /// <summary>The shortest heading change, -180 to +180: 340 to 20 is +40, 20 to 340 is -40.</summary>
     internal static int HeadingDelta(int currentHeading, int targetHeading)
@@ -207,15 +234,15 @@ internal static class FenixA320FcuKnobSet
             if (Multiplied(moved, write))
             {
                 // Acceleration after all (a stale "off", or a window longer than the settle): smaller and slower.
-                if (chunkLimit > AcceleratedChunkLimit)
+                int newChunk = chunkLimit > AcceleratedChunkLimit ? AcceleratedChunkLimit : Math.Max(1, chunkLimit / 2);
+                int newSettle = chunkLimit > AcceleratedChunkLimit ? AcceleratedSettleMs : Math.Min(settleMs * 2, MaxSettleMs);
+                if (newChunk != chunkLimit || newSettle != settleMs)
                 {
-                    chunkLimit = AcceleratedChunkLimit;
-                    settleMs = AcceleratedSettleMs;
-                }
-                else
-                {
-                    chunkLimit = Math.Max(1, chunkLimit / 2);
-                    settleMs = Math.Min(settleMs * 2, MaxSettleMs);
+                    // The overshoot is not a stall: the smaller, slower writes that correct it start a fresh count.
+                    chunkLimit = newChunk;
+                    settleMs = newSettle;
+                    best = int.MaxValue;
+                    sinceBest = 0;
                 }
             }
         }
@@ -244,23 +271,71 @@ internal static class FenixA320FcuKnobSet
     /// <summary>
     /// The sets in progress, one turn per knob: a newer set of a knob ends the older one before its next write,
     /// sets of other knobs carry on, and <see cref="Close"/> (the aircraft switch) ends them all. Also keeps each
-    /// knob's last write time, which the next set waits out. Locked, though the sets run on the UI thread.
+    /// knob's last write time, which the next set waits out, and decides which of the knob's own once-a-second
+    /// value announcements a set swallows (<see cref="Swallows"/>). Locked, though the sets run on the UI thread.
     /// </summary>
     internal sealed class Turns
     {
         private readonly object _gate = new();
         private readonly Dictionary<string, int> _latest = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (int Turn, double Target)> _running = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, long> _quietUntilMs = new(StringComparer.Ordinal);
         private readonly Dictionary<string, long> _lastWriteMs = new(StringComparer.Ordinal);
         private bool _closed;
 
-        internal int Begin(string counterVar)
+        /// <summary>Starts a set of <paramref name="knob"/> towards <paramref name="target"/>; any older set of the
+        /// knob stops before its next write.</summary>
+        internal int Begin(FenixFcuKnob knob, double target)
         {
-            lock (_gate) return _latest[counterVar] = _latest.GetValueOrDefault(counterVar) + 1;
+            lock (_gate)
+            {
+                int turn = _latest[knob.CounterVar] = _latest.GetValueOrDefault(knob.CounterVar) + 1;
+                _running[knob.CounterVar] = (turn, target);
+                _quietUntilMs.Remove(knob.CounterVar);
+                return turn;
+            }
         }
 
         internal bool IsLatest(string counterVar, int turn)
         {
             lock (_gate) return !_closed && _latest.GetValueOrDefault(counterVar) == turn;
+        }
+
+        /// <summary>True while a set of the knob has begun and not finished.</summary>
+        internal bool IsRunning(string counterVar)
+        {
+            lock (_gate) return !_closed && _running.ContainsKey(counterVar);
+        }
+
+        /// <summary>
+        /// Ends <paramref name="turn"/>'s set. A newer set of the knob keeps it running. After a miss or a window
+        /// still dashed, the knob's value announcements stay quiet for <see cref="QuietAfterMissMs"/> from
+        /// <paramref name="nowMs"/>, so the miss sentence is the only thing heard. Safe to call twice.
+        /// </summary>
+        internal void Finish(string counterVar, int turn, FenixFcuSetEnd end, long nowMs)
+        {
+            lock (_gate)
+            {
+                if (!_running.TryGetValue(counterVar, out var running) || running.Turn != turn) return;
+                _running.Remove(counterVar);
+                if (end is FenixFcuSetEnd.Missed or FenixFcuSetEnd.StillDashed)
+                    _quietUntilMs[counterVar] = nowMs + QuietAfterMissMs;
+            }
+        }
+
+        /// <summary>
+        /// Whether ProcessSimVarUpdate consumes a delivery of the knob's continuous value ([CORE-7]): while a set
+        /// runs, every value but its target (the steps it passes through); the target passes, so a landed set is
+        /// heard once as the FCU value, as before. After a miss, everything until the quiet ends.
+        /// </summary>
+        internal bool Swallows(FenixFcuKnob knob, double value, long nowMs)
+        {
+            lock (_gate)
+            {
+                if (_closed) return false;
+                if (_running.TryGetValue(knob.CounterVar, out var running)) return !knob.SameValue(value, running.Target);
+                return _quietUntilMs.TryGetValue(knob.CounterVar, out long until) && nowMs < until;
+            }
         }
 
         internal void Wrote(string counterVar, long nowMs)

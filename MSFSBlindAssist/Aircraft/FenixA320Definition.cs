@@ -12300,6 +12300,13 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         if (varName == "B_FCU_VERTICALSPEED_DASHED") _fcuVsDashed = value;
         if (varName == "N_FCU_VS" && FcuVsIsSilenced(_fcuVsDashed)) return true;
 
+        // ========== Suppress the steps of a typed FCU set ([FNX-20], [CORE-7]) ==========
+        // While a set turns the knob, the values it passes through are consumed and its target passes on to
+        // the generic announcement, so a landed set is heard once ("FCU ALTITUDE: 7000"), as before; after a
+        // miss the knob stays quiet for about a second, so the miss sentence is the only thing heard.
+        if (FenixFcuKnob.ForValueVar(varName) is { } setKnob && _fcuSetTurns.Swallows(setKnob, value, Environment.TickCount64))
+            return true;
+
         // ========== Suppress baro announcements during set operation ==========
         if (isSettingBaro && (varName == "N_FCU_EFIS1_BARO_HPA" || varName == "N_FCU_EFIS1_BARO_INCH" ||
             varName == "N_FCU_EFIS2_BARO_HPA" || varName == "N_FCU_EFIS2_BARO_INCH"))
@@ -13153,6 +13160,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     // The typed FCU sets in progress, one turn per knob ([FNX-20]); closed by OnSwitchedAway.
     private readonly FenixA320FcuKnobSet.Turns _fcuSetTurns = new();
 
+    /// <summary>For the tests: the typed FCU sets' turns, whose running sets ProcessSimVarUpdate filters by.</summary>
+    internal FenixA320FcuKnobSet.Turns FcuSetTurns => _fcuSetTurns;
+
     // The Fenix's Encoder Acceleration option, read once per short while for the typed FCU sets ([FNX-20]).
     private Services.FenixEncoderAcceleration? _encoderAcceleration;
 
@@ -13165,18 +13175,21 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// (<see cref="FenixA320FcuKnobSet.RunAsync"/>), at most 20 counts a write with the Fenix's encoder
     /// acceleration on or unread, one write of the whole difference with it off, each write read back before
     /// the next. A newer set of the same knob, an aircraft switch or a disconnect ends it silently. Success is
-    /// silent ([CORE-7]); a miss is said once ("Altitude set to 7100, not 7000."). Runs on the UI thread: the
-    /// awaits keep its context, so the writes stay there.
+    /// silent ([CORE-7]): while it runs, the knob's own value announcements of the steps it passes through are
+    /// consumed (<see cref="FenixA320FcuKnobSet.Turns.Swallows"/>), the target still speaks; a miss is said once
+    /// ("Altitude set to 7100, not 7000."), with the value announcements quiet for a second after it. Runs on
+    /// the UI thread: the awaits keep its context, so the writes stay there. Returns how the set ended, or
+    /// null when it failed.
     /// </summary>
-    private async Task SetFcuKnobAsync(FenixFcuKnob knob, double target,
+    private async Task<FenixFcuSetEnd?> SetFcuKnobAsync(FenixFcuKnob knob, double target,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
-        int turn = _fcuSetTurns.Begin(knob.CounterVar);
+        int turn = _fcuSetTurns.Begin(knob, target);
         bool StillWanted() => _fcuSetTurns.IsLatest(knob.CounterVar, turn) && simConnect.IsConnected;
         try
         {
             bool? acceleration = await EncoderAcceleration.ReadAsync();
-            if (!StillWanted()) return;
+            if (!StillWanted()) return FenixFcuSetEnd.Superseded;
 
             var io = new FenixFcuKnobIo
             {
@@ -13197,13 +13210,22 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             Log.Debug("Fenix", FormattableString.Invariant(
                 $"{knob.Name} set to {target}: {result.End}, read {result.Value?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "nothing"}, {result.Writes} writes in {result.ElapsedMs} ms, encoder acceleration {accelerationText}"));
 
-            if (!StillWanted()) return;
+            // Finished before the sentence, so the quiet after a miss covers the value's next delivery.
+            _fcuSetTurns.Finish(knob.CounterVar, turn, result.End, Environment.TickCount64);
+            if (!StillWanted()) return FenixFcuSetEnd.Superseded;
             string? text = FenixA320FcuKnobSet.Spoken(knob, result, target);
             if (text != null) announcer.AnnounceImmediate(text);
+            return result.End;
         }
         catch (Exception ex)
         {
             Log.Error("Fenix", $"{knob.Name} set failed: {ex.GetType().Name}: {ex.Message}", ex);
+            return null;
+        }
+        finally
+        {
+            // Ends the turn on every other way out (no-op when already finished or a newer set owns the knob).
+            _fcuSetTurns.Finish(knob.CounterVar, turn, FenixFcuSetEnd.Superseded, Environment.TickCount64);
         }
     }
 
@@ -13256,9 +13278,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         int currentHeading = (int)currentValue.Value;
         int delta = FenixA320FcuKnobSet.HeadingDelta(currentHeading, targetHeading);
 
-        if (delta == 0)
+        // The cache can show a step of a set still turning the knob: then the new set takes over and reads fresh.
+        if (delta == 0 && !_fcuSetTurns.IsRunning(FenixFcuKnob.Heading.CounterVar))
         {
-            announcer.AnnounceImmediate($"Already at heading {targetHeading}");
+            announcer.AnnounceImmediate(FenixA320FcuKnobSet.AlreadyAt("heading", targetHeading));
             return;
         }
 
@@ -13302,9 +13325,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         int currentAltitude = (int)currentValue.Value;
         int totalDelta = targetAltitude - currentAltitude;
 
-        if (totalDelta == 0)
+        // The cache can show a step of a set still turning the knob: then the new set takes over and reads fresh.
+        if (totalDelta == 0 && !_fcuSetTurns.IsRunning(FenixFcuKnob.Altitude.CounterVar))
         {
-            announcer.AnnounceImmediate($"Already at altitude {targetAltitude}");
+            announcer.AnnounceImmediate(FenixA320FcuKnobSet.AlreadyAt("altitude", targetAltitude));
             return;
         }
 
@@ -13316,10 +13340,12 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         await System.Threading.Tasks.Task.Delay(100);  // Wait for mode to activate
 
         // A closed loop from the knob's fresh value, one click = 100 ft in 100 ft mode ([FNX-20])
-        await SetFcuKnobAsync(FenixFcuKnob.Altitude, targetAltitude, simConnect, announcer);
+        FenixFcuSetEnd? end = await SetFcuKnobAsync(FenixFcuKnob.Altitude, targetAltitude, simConnect, announcer);
 
-        // Restore user's preferred mode
-        simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", userPreferredScaleMode);
+        // Restore user's preferred mode, unless a newer set, an aircraft switch or a disconnect took over: the
+        // newer set needs 100 ft mode, and the aircraft may not be the Fenix any more.
+        if (end != FenixFcuSetEnd.Superseded)
+            simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", userPreferredScaleMode);
     }
 
     /// <summary>
@@ -13347,9 +13373,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         int currentSpeed = (int)currentValue.Value;
         int delta = targetSpeed - currentSpeed;
 
-        if (delta == 0)
+        // The cache can show a step of a set still turning the knob: then the new set takes over and reads fresh.
+        if (delta == 0 && !_fcuSetTurns.IsRunning(FenixFcuKnob.Speed.CounterVar))
         {
-            announcer.AnnounceImmediate($"Already at speed {targetSpeed}");
+            announcer.AnnounceImmediate(FenixA320FcuKnobSet.AlreadyAt("speed", targetSpeed));
             return;
         }
 
@@ -13387,9 +13414,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         int currentVS = (int)currentValue.Value;
         int delta = targetVS - currentVS;
 
-        if (delta == 0)
+        // The cache can show a step of a set still turning the knob: then the new set takes over and reads fresh.
+        if (delta == 0 && !_fcuSetTurns.IsRunning(FenixFcuKnob.VerticalSpeed.CounterVar))
         {
-            announcer.AnnounceImmediate(FormattableString.Invariant($"Already at vertical speed {targetVS}"));
+            announcer.AnnounceImmediate(FenixA320FcuKnobSet.AlreadyAt("vertical speed", targetVS));
             return;
         }
 

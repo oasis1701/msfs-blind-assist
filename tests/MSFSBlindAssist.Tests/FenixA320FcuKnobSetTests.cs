@@ -324,7 +324,10 @@ public class FenixA320FcuKnobSetTests
         var result = await Run(fake, FenixFcuKnob.Altitude, 7000, acceleration: true);
 
         Assert.Equal(FenixFcuSetEnd.Missed, result.End);
-        Assert.InRange(fake.Writes.Count, 1, FenixA320FcuKnobSet.StallWrites + 1);
+        // Each wrong-way move backs off once (chunk 20, 10, 5, 2, 1: four changes, each a fresh count), then
+        // StallWrites writes that bring it no closer end the set.
+        Assert.InRange(fake.Writes.Count, 1, FenixA320FcuKnobSet.StallWrites + 4);
+        Assert.True(result.ElapsedMs < FenixA320FcuKnobSet.MaxSetMs);
     }
 
     [Fact]
@@ -472,11 +475,11 @@ public class FenixA320FcuKnobSetTests
     public void A_newer_set_of_the_same_knob_replaces_the_older_and_other_knobs_are_left_alone()
     {
         var turns = new FenixA320FcuKnobSet.Turns();
-        int first = turns.Begin("E_FCU_ALTITUDE");
-        int heading = turns.Begin("E_FCU_HEADING");
+        int first = turns.Begin(FenixFcuKnob.Altitude, 7000);
+        int heading = turns.Begin(FenixFcuKnob.Heading, 90);
         Assert.True(turns.IsLatest("E_FCU_ALTITUDE", first));
 
-        int second = turns.Begin("E_FCU_ALTITUDE");
+        int second = turns.Begin(FenixFcuKnob.Altitude, 9000);
         Assert.False(turns.IsLatest("E_FCU_ALTITUDE", first));
         Assert.True(turns.IsLatest("E_FCU_ALTITUDE", second));
         Assert.True(turns.IsLatest("E_FCU_HEADING", heading));
@@ -491,10 +494,165 @@ public class FenixA320FcuKnobSetTests
     public void An_aircraft_switch_ends_every_set()
     {
         var turns = new FenixA320FcuKnobSet.Turns();
-        int altitude = turns.Begin("E_FCU_ALTITUDE");
+        int altitude = turns.Begin(FenixFcuKnob.Altitude, 7000);
         turns.Close();
         Assert.False(turns.IsLatest("E_FCU_ALTITUDE", altitude));
-        Assert.False(turns.IsLatest("E_FCU_ALTITUDE", turns.Begin("E_FCU_ALTITUDE")));
+        Assert.False(turns.IsLatest("E_FCU_ALTITUDE", turns.Begin(FenixFcuKnob.Altitude, 7000)));
+        Assert.False(turns.IsRunning("E_FCU_ALTITUDE"));
+        Assert.False(turns.Swallows(FenixFcuKnob.Altitude, 13000, 0));
+    }
+
+    // ---- The steps a set passes through are not announced (CORE-7) -----------------------------------
+
+    [Fact]
+    public void A_running_set_swallows_every_value_but_its_target()
+    {
+        var turns = new FenixA320FcuKnobSet.Turns();
+        int turn = turns.Begin(FenixFcuKnob.Altitude, 7000);
+        Assert.True(turns.IsRunning("E_FCU_ALTITUDE"));
+
+        Assert.True(turns.Swallows(FenixFcuKnob.Altitude, 13000, 0));
+        Assert.True(turns.Swallows(FenixFcuKnob.Altitude, 7100, 0));
+        Assert.False(turns.Swallows(FenixFcuKnob.Altitude, 7000, 0));     // the target speaks, once, as before
+        Assert.False(turns.Swallows(FenixFcuKnob.Heading, 120, 0));       // another knob is untouched
+
+        turns.Finish("E_FCU_ALTITUDE", turn, FenixFcuSetEnd.Landed, 1000);
+        Assert.False(turns.IsRunning("E_FCU_ALTITUDE"));
+        Assert.False(turns.Swallows(FenixFcuKnob.Altitude, 9000, 1001));   // a later cockpit turn speaks
+    }
+
+    [Fact]
+    public void A_typed_heading_of_360_lets_north_through()
+    {
+        var turns = new FenixA320FcuKnobSet.Turns();
+        turns.Begin(FenixFcuKnob.Heading, 360);
+        Assert.False(turns.Swallows(FenixFcuKnob.Heading, 0, 0));
+        Assert.True(turns.Swallows(FenixFcuKnob.Heading, 350, 0));
+    }
+
+    [Theory] [InlineData("Missed")] [InlineData("StillDashed")]
+    public void After_a_miss_the_knob_stays_quiet_for_one_delivery_period(string end)
+    {
+        var turns = new FenixA320FcuKnobSet.Turns();
+        int turn = turns.Begin(FenixFcuKnob.Altitude, 7000);
+        turns.Finish("E_FCU_ALTITUDE", turn, Enum.Parse<FenixFcuSetEnd>(end), 5000);
+
+        Assert.True(turns.Swallows(FenixFcuKnob.Altitude, 7100, 5000 + FenixA320FcuKnobSet.QuietAfterMissMs - 1));
+        Assert.True(turns.Swallows(FenixFcuKnob.Altitude, 7000, 5500));    // the miss sentence alone
+        Assert.False(turns.Swallows(FenixFcuKnob.Altitude, 7100, 5000 + FenixA320FcuKnobSet.QuietAfterMissMs));
+        Assert.True(FenixA320FcuKnobSet.QuietAfterMissMs > 1000);          // past the 1 Hz delivery period
+    }
+
+    [Theory] [InlineData("Landed")] [InlineData("Superseded")] [InlineData("Unread")]
+    public void Only_a_miss_brings_the_quiet(string end)
+    {
+        var turns = new FenixA320FcuKnobSet.Turns();
+        int turn = turns.Begin(FenixFcuKnob.Altitude, 7000);
+        turns.Finish("E_FCU_ALTITUDE", turn, Enum.Parse<FenixFcuSetEnd>(end), 5000);
+        Assert.False(turns.Swallows(FenixFcuKnob.Altitude, 7100, 5001));
+    }
+
+    [Fact]
+    public void An_older_set_finishing_leaves_the_newer_running_and_a_new_set_ends_the_quiet()
+    {
+        var turns = new FenixA320FcuKnobSet.Turns();
+        int older = turns.Begin(FenixFcuKnob.Altitude, 7000);
+        int newer = turns.Begin(FenixFcuKnob.Altitude, 9000);
+        turns.Finish("E_FCU_ALTITUDE", older, FenixFcuSetEnd.Superseded, 0);
+        Assert.True(turns.IsRunning("E_FCU_ALTITUDE"));
+        Assert.True(turns.Swallows(FenixFcuKnob.Altitude, 7000, 0));       // the newer target is 9000
+        Assert.False(turns.Swallows(FenixFcuKnob.Altitude, 9000, 0));
+
+        turns.Finish("E_FCU_ALTITUDE", newer, FenixFcuSetEnd.Missed, 0);
+        turns.Finish("E_FCU_ALTITUDE", newer, FenixFcuSetEnd.Superseded, 0);   // the finally's second call
+        Assert.True(turns.Swallows(FenixFcuKnob.Altitude, 8000, 100));     // the quiet holds
+        turns.Begin(FenixFcuKnob.Altitude, 8000);
+        Assert.False(turns.Swallows(FenixFcuKnob.Altitude, 8000, 100));    // a new set's own target speaks
+    }
+
+    [Fact]
+    public void The_definition_consumes_the_steps_and_lets_the_target_through()
+    {
+        var def = new FenixA320Definition();
+        var speech = new SpeechCapture();
+        int turn = def.FcuSetTurns.Begin(FenixFcuKnob.Altitude, 7000);
+
+        Assert.True(def.ProcessSimVarUpdate("N_FCU_ALTITUDE", 13000, speech));    // consumed silently
+        Assert.True(def.ProcessSimVarUpdate("N_FCU_ALTITUDE", 9000, speech));
+        Assert.False(def.ProcessSimVarUpdate("N_FCU_ALTITUDE", 7000, speech));    // the generic announcement
+        Assert.False(def.ProcessSimVarUpdate("N_FCU_HEADING", 120, speech));      // no set of that knob
+        Assert.Empty(speech.All);
+
+        def.FcuSetTurns.Finish("E_FCU_ALTITUDE", turn, FenixFcuSetEnd.Landed, Environment.TickCount64);
+        Assert.False(def.ProcessSimVarUpdate("N_FCU_ALTITUDE", 9000, speech));    // a cockpit turn after the set
+    }
+
+    [Fact]
+    public void The_definition_keeps_the_knob_quiet_after_a_miss()
+    {
+        var def = new FenixA320Definition();
+        var speech = new SpeechCapture();
+        foreach (var knob in FenixFcuKnob.All)
+        {
+            int turn = def.FcuSetTurns.Begin(knob, 100);
+            def.FcuSetTurns.Finish(knob.CounterVar, turn, FenixFcuSetEnd.Missed, Environment.TickCount64);
+            Assert.True(def.ProcessSimVarUpdate(knob.ValueVar, 300, speech), knob.ValueVar);
+        }
+        Assert.Empty(speech.All);
+    }
+
+    // ---- A multiplied correction is not a stall ------------------------------------------------------
+
+    [Fact]
+    public async Task A_multiplied_correction_after_an_overshoot_still_lands()
+    {
+        // Factor 5 and a 900 ms window: the second write overshoots to 3000 and the first correction is
+        // multiplied too; the halved, slower writes that follow are a fresh count, not a stall. Before the
+        // reset this ended Missed at 9000 (the review's trace).
+        var fake = Altitude(15000);
+        fake.Factor = 5;
+        fake.QuickMs = 900;
+        var result = await Run(fake, FenixFcuKnob.Altitude, 11000, acceleration: true);
+
+        Assert.Equal(FenixFcuSetEnd.Landed, result.End);
+        Assert.Equal(11000, fake.Value);
+        Assert.Equal(new[] { -20, -20, 10 }, fake.Writes.Take(3).Select(w => w.Counts));   // the 10 went in as 50
+        Assert.All(fake.Writes.Skip(3), w => Assert.InRange(Math.Abs(w.Counts), 1, 5));
+        Assert.True(result.ElapsedMs < FenixA320FcuKnobSet.MaxSetMs);
+    }
+
+    // ---- "Already at" ---------------------------------------------------------------------------------
+
+    [Theory] [InlineData("sv-SE")] [InlineData("de-DE")] [InlineData("en-US")]
+    public void Already_at_is_written_invariant(string culture)
+    {
+        Assert.Equal("Already at vertical speed -1000", TestCulture.Run(culture, () => FenixA320FcuKnobSet.AlreadyAt("vertical speed", -1000)));
+        Assert.Equal("Already at altitude 7000", TestCulture.Run(culture, () => FenixA320FcuKnobSet.AlreadyAt("altitude", 7000)));
+        Assert.DoesNotContain('−', TestCulture.Run(culture, () => FenixA320FcuKnobSet.AlreadyAt("vertical speed", -500)));
+    }
+
+    [Theory]
+    [InlineData("SetFCUHeading", "Heading", "heading")]
+    [InlineData("SetFCUSpeed", "Speed", "speed")]
+    [InlineData("SetFCUAltitude", "Altitude", "altitude")]
+    [InlineData("SetFCUVS", "VerticalSpeed", "vertical speed")]
+    public void Already_at_is_skipped_while_a_set_of_that_knob_is_live(string method, string knob, string what)
+    {
+        // The 1 Hz cache can show a step of the set still running: "Already at 9000" while it turns on to 7000.
+        string body = FoFbwUnclaimedEventKeyTests.MethodBody(DefinitionPath, method);
+        Assert.Contains($"!_fcuSetTurns.IsRunning(FenixFcuKnob.{knob}.CounterVar)", body);
+        Assert.Contains($"FenixA320FcuKnobSet.AlreadyAt(\"{what}\",", body);
+        Assert.DoesNotContain("$\"Already at", body);
+    }
+
+    [Fact]
+    public void A_superseded_altitude_set_leaves_the_scale_to_the_newer_set()
+    {
+        string body = FoFbwUnclaimedEventKeyTests.MethodBody(DefinitionPath, "SetFCUAltitude");
+        int set = body.IndexOf("await SetFcuKnobAsync(FenixFcuKnob.Altitude", StringComparison.Ordinal);
+        int guard = body.IndexOf("if (end != FenixFcuSetEnd.Superseded)", StringComparison.Ordinal);
+        int restore = body.IndexOf("SetLVar(\"S_FCU_ALTITUDE_SCALE\", userPreferredScaleMode)", StringComparison.Ordinal);
+        Assert.True(set > 0 && guard > set && restore > guard, "the scale restore must follow the set, behind the superseded check");
     }
 
     // ---- Wiring --------------------------------------------------------------------------------------
