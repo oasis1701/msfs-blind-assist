@@ -82,7 +82,7 @@ public class FenixOptionCatalogTests
 
     [Fact] public void An_empty_value_label_counts_as_no_label()
     {
-        // The EFB's acp_type entry carries only an image, and the EFB shows the raw value for such a choice (R7).
+        // The EFB's acp_type entry carries only an image, and the EFB shows the raw value for such a choice.
         var acp = S("acp_type", "Classic", "Enum", possible: new[] { "Classic", "Modern" });
         Assert.Equal("Audio Control Panel (ACP): Classic", FenixOptionCatalog.RowText(acp));
         Assert.Contains("Choices: Classic, Modern.", FenixOptionCatalog.DetailLines(acp));

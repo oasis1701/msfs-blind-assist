@@ -1,4 +1,4 @@
-// Fenix v3 plan 01, task 4: which Fenix is loaded (A318/A319/A320/A321, CFM/IAE, extra tanks,
+// Fenix v3 variants: which Fenix is loaded (A318/A319/A320/A321, CFM/IAE, extra tanks,
 // equipment), read from eight config L:vars. The pure record is FenixVariant; the definition
 // registers the eight vars and shares one answer through FenixA320Definition.Variant.
 //
@@ -263,7 +263,7 @@ public class FenixVariantTests
     [Fact]
     public void Describe_changes_with_the_tank_count_and_not_with_the_equipment()
     {
-        // A later plan re-announces the loaded aircraft when Describe() changes, so it must change with
+        // The app re-announces the loaded aircraft when Describe() changes, so it must change with
         // the tank count and stay put when the ISIS, DCDU, NEO, GNADIRS or cargo heat readings change.
         var known = Complete();
         Assert.NotEqual(known.Describe(), (known with { ActCount = 3 }).Describe());
@@ -423,7 +423,7 @@ public class FenixVariantTests
         Assert.False(definition.Variant.HasIsis);
     }
 
-    // Ruling R14: SimConnect reads an L:var the Fenix has not written yet as 0, and 0 is a real value for
+    // SimConnect reads an L:var the Fenix has not written yet as 0, and 0 is a real value for
     // seven of the eight (CFM, ISIS, GNADIRS, no DCDU, CEO, no cargo heat, no extra tanks). An aircraft type
     // of 1-4 is the sign the Fenix has published its config; until then the variant stays Unknown.
 
@@ -521,7 +521,7 @@ public class FenixVariantTests
     [Fact]
     public void A_throwing_variant_subscriber_stops_neither_the_next_subscriber_nor_the_update()
     {
-        // Later plans subscribe; one that throws must not keep the others from the change, and the
+        // Other code subscribes; one that throws must not keep the others from the change, and the
         // reading must still be consumed (each config value is delivered once).
         var definition = new FenixA320Definition();
         var speech = new SpeechCapture();

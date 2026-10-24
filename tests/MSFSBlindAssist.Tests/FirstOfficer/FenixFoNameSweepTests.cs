@@ -99,13 +99,13 @@ public class FenixFoNameSweepTests
             + string.Concat(polledStrays.Select(f => $"{Environment.NewLine}  {f}  listed in OnRequestPollFields")));
     }
 
-    // FNX2PLD_: the 16 FenixQuartz L:vars, a discontinued third-party tool that v3 does not feed (spec 2.1).
-    // B_ELEC_BUS_POWER_DC_SERIVICE, I_OH_DOOR_VIDEO: renamed by Fenix (spec 1.1, 1.2).
-    // I_OH_ELEC_COMMERCIAL_U, S_HYD_GRAVITY_GEAR_EXTEND_ROTATION: removed by v3 (spec 1.3, 1.4).
+    // FNX2PLD_: the 16 FenixQuartz L:vars, a discontinued third-party tool that v3 does not feed.
+    // B_ELEC_BUS_POWER_DC_SERIVICE, I_OH_DOOR_VIDEO: renamed by Fenix.
+    // I_OH_ELEC_COMMERCIAL_U, S_HYD_GRAVITY_GEAR_EXTEND_ROTATION: removed by v3.
     // I_MIP_AUTOLAND_: the AUTOLAND lights, which v3 splits into _U/_L; the old names may be dead
-    // (spec 1.5, to be settled in the sim), so the FO reads none of them.
+    // (a real autoland lighting the unsplit names is unproven), so the FO reads none of them.
     // S_OH_ELEC_GEN1: the generator 1 button, which the definition once confused with its _LINE
-    // sibling, the EMER ELEC GEN 1 LINE button (spec 2.3). The substring covers both: the FO drives
+    // sibling, the EMER ELEC GEN 1 LINE button. The substring covers both: the FO drives
     // neither.
     private static readonly string[] RenamedRemovedOrDeadNames =
     {

@@ -1,4 +1,4 @@
-// The Fenix "Cabin" window (plan 08 Task 7): its entry in the "Fenix windows" list, its shape, and the
+// The Fenix "Cabin" window: its entry in the "Fenix windows" list, its shape, and the
 // source facts that keep it honest. The data service answers on a pool thread ([FNX-2]), so the form
 // may marshal only through its one try/catch SafeBeginInvoke ([A380C-6]); it writes only through the
 // bundle builders (FenixCabinWrites, FenixCabinPram), never a raw typed write; and the app-wide call
@@ -165,7 +165,7 @@ public class FenixCabinWindowTests
         Assert.IsType<MSFSBlindAssist.Controls.AccessibleTabControl>(tabs);
         Assert.Equal(new[] { "Status", "Audio", "Doors", "Temperature", "Water" },
             tabs.TabPages.Cast<TabPage>().Select(page => page.Text).ToArray());
-        // Ruling R12: a tab page, a check box and a button are named by their text alone.
+        // A tab page, a check box and a button are named by their text alone.
         Assert.All(tabs.TabPages.Cast<TabPage>(), page => Assert.Null(page.AccessibleName));
 
         TabPage status = tabs.TabPages[0];
@@ -259,7 +259,7 @@ public class FenixCabinWindowTests
     [Fact]
     public void Cabin_ready_refuses_and_restores_itself_until_the_Fenix_offers_it()
     {
-        // The Fenix down first (R13), then the FAP's greyed button unless cabin ready is available (D5);
+        // The Fenix down first, then the FAP's greyed button unless cabin ready is available;
         // unknown is not available. Every press is the pilot's; nothing is written (the data service is null).
         var speech = new SpeechCapture();
         using var form = new FenixCabinForm(Context(speech));
@@ -604,7 +604,7 @@ public class FenixCabinWindowTests
         using var form = new FenixCabinForm(Context(new SpeechCapture()));
         TabPage page = AudioPage(form);
 
-        // Lists and combos carry their label as AccessibleName; the other controls are read by their text (R12).
+        // Lists and combos carry their label as AccessibleName; the other controls are read by their text.
         Assert.Equal(Sorted(new[] { "Audio status", "Prerecorded announcements", "Announcement memo" }),
             Sorted(Descendants(page).OfType<ListBox>().Select(list => list.AccessibleName!)));
         Assert.IsType<DisplayListBox>(AnnouncementsList(form));
@@ -626,7 +626,7 @@ public class FenixCabinWindowTests
         Assert.Equal(Sorted(new[] { "Music &channel", "Announcement s&et" }),
             Sorted(Descendants(page).OfType<Label>().Select(label => label.Text)));
 
-        // R12: no AccessibleName on a check box, a button or a label.
+        // No AccessibleName on a check box, a button or a label.
         Control[] named = Descendants(page).Where(control => control is CheckBox or Button or Label).ToArray();
         Assert.All(named, control => Assert.Null(control.AccessibleName));
 
@@ -663,7 +663,7 @@ public class FenixCabinWindowTests
             Assert.Empty(MemoList(form).Items);
             Assert.False(setPanel.Visible);
 
-            // The state the live check expects (Task 8, Step 2): music off, one channel, volume 5.
+            // The state the live check expects: music off, one channel, volume 5.
             form.SetAudioState(Pram());
             form.Render();
             Assert.Equal(new[] { "Boarding music: off", "Music channel: Boarding Music, 1 of 1", "Volume: 5" },
@@ -771,7 +771,7 @@ public class FenixCabinWindowTests
     [Fact]
     public void Every_audio_press_says_the_Fenix_is_not_answering_first_and_sends_nothing()
     {
-        // The Fenix down (R13): the same reason from every control, whatever else is wrong; a control the
+        // The Fenix down: the same reason from every control, whatever else is wrong; a control the
         // pilot changed shows the Fenix's own value again. Volume 0, nothing selected, an empty memo and
         // nothing playing: the reasons that would otherwise be given ("Volume is already 0.", "Select an
         // announcement first.", "The memo is empty.", "Nothing is playing.") come after.
@@ -885,7 +885,7 @@ public class FenixCabinWindowTests
     [Fact]
     public void The_loudspeaker_volume_is_not_stepped_when_unknown_or_at_a_limit()
     {
-        // The Fenix answering without a loudspeaker volume: not stepped from the FAP's assumed 100 (R14).
+        // The Fenix answering without a loudspeaker volume: not stepped from the FAP's assumed 100.
         // The volume is its own data name, so no audio state is needed.
         using var rig = new AudioRig(null);
         Click(AudioButton(rig.Form, "FAP loudspeaker volume down"));
@@ -1128,7 +1128,7 @@ public class FenixCabinWindowTests
         Assert.Empty(rig.Speech.Interrupts);
     }
 
-    // ---- Doors, Temperature and Water pages (plan 08 Task 9) ------------------------------------
+    // ---- Doors, Temperature and Water pages ------------------------------------
 
     private static TabPage PageAt(Form form, int index) => form.Controls.OfType<TabControl>().Single().TabPages[index];
     private static TabPage DoorsPage(Form form) => PageAt(form, 2);
@@ -1212,7 +1212,7 @@ public class FenixCabinWindowTests
         }.ToString(Formatting.None);
 
     // The window over a fake gateway that accepts every write. Answering unless told not to; an answering
-    // Fenix stands on the ground (0 ft above it), where the EFB offers its door and cargo toggles (R16).
+    // Fenix stands on the ground (0 ft above it), where the EFB offers its door and cargo toggles.
     private sealed class ControlsRig : IDisposable
     {
         public SpeechCapture Speech { get; } = new();
@@ -1245,7 +1245,7 @@ public class FenixCabinWindowTests
 
     // Each press that was accepted leaves a read-back expectation in the window: its line, the press-time
     // text and state, how long to wait, whether to say "unchanged" and whether it waits for the line's state
-    // (R17) rather than its text. Read from the window's own read-back object. A snapshot taken while an
+    // rather than its text. Read from the window's own read-back object. A snapshot taken while an
     // accepted press is being recorded on another thread is retried by the caller.
     private static (string Key, string? PressText, string? PressState, TimeSpan Window, bool SpeakIfUnchanged, bool ByState)[] Expectations(FenixCabinForm form)
     {
@@ -1287,7 +1287,7 @@ public class FenixCabinWindowTests
     private static string? LineTextOf(FenixCabinForm form, string key)
         => FenixCabinLines.Build(form.Cache, null, DefaultLayout()).FirstOrDefault(line => line.Key == key)?.Text;
 
-    // The state of the line with this key (the part a press changes, R17), as the window builds it for the A320.
+    // The state of the line with this key (the part a press changes), as the window builds it for the A320.
     private static string? LineStateOf(FenixCabinForm form, string key)
         => FenixCabinLines.Build(form.Cache, null, DefaultLayout()).FirstOrDefault(line => line.Key == key)?.State;
 
@@ -1305,7 +1305,7 @@ public class FenixCabinWindowTests
         };
         foreach ((TabPage page, string listName, string[] buttonTexts) in pages)
         {
-            // A DisplayListBox with the label as its AccessibleName; the buttons are read by their text (R12).
+            // A DisplayListBox with the label as its AccessibleName; the buttons are read by their text.
             var list = Assert.Single(Descendants(page).OfType<ListBox>());
             Assert.IsType<DisplayListBox>(list);
             Assert.Equal(listName, list.AccessibleName);
@@ -1324,7 +1324,7 @@ public class FenixCabinWindowTests
             Assert.Equal(mnemonics.Length, mnemonics.Distinct().Count());
         }
         Assert.Empty(Descendants(DoorsPage(form)).OfType<CheckBox>());
-        // Nothing selected yet: no door to press, so no button in the tab order (F1).
+        // Nothing selected yet: no door to press, so no button in the tab order.
         Assert.False(DetachedDoorButton(form).Visible);
     }
 
@@ -1405,7 +1405,7 @@ public class FenixCabinWindowTests
         SelectDoorLine(form, layout, "door.d4r");
         Assert.Equal("&Close door 4 right", ButtonText());
 
-        // An overwing slide has no control to press: the button leaves the tab order (F1), on every render too.
+        // An overwing slide has no control to press: the button leaves the tab order, on every render too.
         SelectDoorLine(form, layout, "slide.owl");
         Assert.False(button.Visible);
         form.Render();
@@ -1492,7 +1492,7 @@ public class FenixCabinWindowTests
             Assert.Equal("&Close door 1 left", button.Text);
             SelectDoorLine(rig.Form, a320, "door.d2l");
 
-            // Hidden, so no key, click or mnemonic reaches it (F1). A press forced on it anyway says and sends nothing.
+            // Hidden, so no key, click or mnemonic reaches it. A press forced on it anyway says and sends nothing.
             Assert.False(button.Visible);
             Click(button);
             Assert.Empty(rig.Speech.All);
@@ -1540,7 +1540,7 @@ public class FenixCabinWindowTests
     [Fact]
     public void Every_press_on_the_new_pages_says_the_Fenix_is_not_answering_first_and_sends_nothing()
     {
-        // The Fenix down (R13): the same reason from every button, whatever else is wrong; the Doors list is
+        // The Fenix down: the same reason from every button, whatever else is wrong; the Doors list is
         // on a door whose height and control are not known either, which would otherwise say so.
         using var rig = new ControlsRig(answering: false);
         SelectDoorLine(rig.Form, DefaultLayout(), "door.d1l");
@@ -1640,7 +1640,7 @@ public class FenixCabinWindowTests
         using var rig = new ControlsRig();
         FenixCabinForm form = rig.Form;
 
-        // Answering without a preselect: not stepped from the FAP's assumed 100 (R14).
+        // Answering without a preselect: not stepped from the FAP's assumed 100.
         Click(WaterButton(form, PreselectDown));
         Click(WaterButton(form, PreselectUp));
         Assert.Equal(Enumerable.Repeat("Water preselect is not known.", 2).ToArray(), rig.Speech.Interrupts);
@@ -1673,7 +1673,7 @@ public class FenixCabinWindowTests
             Assert.Equal(expected, rig.Speech.Interrupts);
         }
 
-        // The Fenix answers without a control value for the door, or a state for the cargo door (R15).
+        // The Fenix answers without a control value for the door, or a state for the cargo door.
         Presses("door.d1l", "Door 1 left state is not known.");
         Presses("door.d4r", "Door 4 right state is not known.");
         Presses("cargo.forward", "The forward cargo door state is not known.");
@@ -1690,7 +1690,7 @@ public class FenixCabinWindowTests
         Set(form, (FenixCabinNames.CargoAft, FenixDataValue.Unknown));
         Presses("cargo.aft", "The aft cargo door state is not known.");
 
-        // An overwing slide and no selection at all: the button is hidden (F1), and a press forced on it anyway
+        // An overwing slide and no selection at all: the button is hidden, and a press forced on it anyway
         // says nothing.
         foreach (string line in new[] { "slide.owl", "slide.owr" })
         {
@@ -1713,7 +1713,7 @@ public class FenixCabinWindowTests
     [Fact]
     public void Door_and_cargo_presses_refuse_above_100_feet_or_with_the_height_unknown()
     {
-        // Ruling R16: the EFB shows its door and cargo toggles only while the height above ground is at most
+        // The EFB shows its door and cargo toggles only while the height above ground is at most
         // 100 ft. The check comes after the Fenix not answering and before an unknown or moving door.
         using var rig = new ControlsRig();
         FenixCabinForm form = rig.Form;
@@ -1727,7 +1727,7 @@ public class FenixCabinWindowTests
         void Presses(string line, string refusal)
         {
             SelectDoorLine(form, layout, line);
-            // In flight the button stays offered on a door or cargo line: the press says why it cannot act (F1).
+            // In flight the button stays offered on a door or cargo line: the press says why it cannot act.
             Assert.True(button.Visible, line);
             Click(button);
             expected.Add(refusal);
@@ -1747,7 +1747,7 @@ public class FenixCabinWindowTests
         SelectDoorLine(form, layout, "slide.owl");
         Assert.False(button.Visible);
 
-        // The Fenix answering without a height: not known (R14), not assumed on the ground.
+        // The Fenix answering without a height: not known, not assumed on the ground.
         Set(form, (FenixCabinNames.AltitudeAboveGround, FenixDataValue.Unknown));
         Presses("door.d1l", HeightNotKnown);
         Presses("cargo.forward", HeightNotKnown);
@@ -1770,8 +1770,8 @@ public class FenixCabinWindowTests
     [Fact]
     public void A_door_press_says_the_Fenix_is_not_answering_before_the_height()
     {
-        // Nothing answered, so the height is not known either: the not-answering reason comes first (R13). The
-        // button is offered all the same on a door or cargo line (F1), so the pilot hears why.
+        // Nothing answered, so the height is not known either: the not-answering reason comes first. The
+        // button is offered all the same on a door or cargo line, so the pilot hears why.
         using var rig = new ControlsRig(answering: false);
         Button button = DetachedDoorButton(rig.Form);
         SelectDoorLine(rig.Form, DefaultLayout(), "door.d1l");
@@ -1916,7 +1916,7 @@ public class FenixCabinWindowTests
     [Fact]
     public void A_door_press_marks_its_line_as_the_pilots_own_for_the_read_back_window()
     {
-        // R18: while a door or cargo press waits for its read-back, the app-wide door announcement leaves that
+        // While a door or cargo press waits for its read-back, the app-wide door announcement leaves that
         // door alone, so the change is said once. A press the Fenix refuses withdraws its mark at once.
         foreach (string line in new[] { "door.d1l", "cargo.forward" })
         {
@@ -1968,7 +1968,7 @@ public class FenixCabinWindowTests
             Assert.Same(FenixCabinOwnPresses.Shared, form.OwnPresses);
     }
 
-    // ---- The own-press hold follows the read-back (fix round 1: R18 corrected) --------------------------
+    // ---- The own-press hold follows the read-back --------------------------
 
     private static readonly DateTime T0 = new(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
 
@@ -2137,7 +2137,7 @@ public class FenixCabinWindowTests
     {
         // The read-back key and window of every press (and whether it says "unchanged"): 5 s and a spoken
         // "unchanged" for the numbers, 30 s and silence for a door. The reset waits on both zones. A door, a
-        // cargo door and a temperature wait for the part of the line they change (R17); the preselect for its text.
+        // cargo door and a temperature wait for the part of the line they change; the preselect for its text.
         var five = TimeSpan.FromSeconds(5);
         var thirty = TimeSpan.FromSeconds(30);
         FenixCabinLayout layout = DefaultLayout();

@@ -154,7 +154,7 @@ public class FenixFoLiveReadingsTests
     }
 
     // N2 is measured to arrive over the subscription ONCE and never again (a whole shutdown, 62.3 % to
-    // 5 %, sent one value; plan 05 follow-up, 2026-10-22), so it is polled; the other four stream.
+    // 5 %, sent one value; measured 2026-10-22), so it is polled; the other four stream.
     [Fact]
     public void The_streamed_and_the_polled_names_together_are_the_six()
     {

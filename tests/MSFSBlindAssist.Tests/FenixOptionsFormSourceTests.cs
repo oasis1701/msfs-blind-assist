@@ -1,4 +1,4 @@
-// Pins the Fenix options window's shape (plan 11, Task 4). The window is sim-facing; these source scans hold
+// Pins the Fenix options window's shape. The window is sim-facing; these source scans hold
 // the rules a screen-reader user depends on (CORE-12, CORE-18, VAT-13), the UI-thread awaits, and that no
 // file of the options window or its services logs an option's value (keys and counts only).
 namespace MSFSBlindAssist.Tests;
@@ -18,8 +18,8 @@ public class FenixOptionsFormSourceTests
     }
 
     // A value read out directly, or a whole FenixSetting interpolated: FenixSetting is a positional record, so
-    // its ToString() prints Value too (for a credential, the credential). The names are the ones this plan's
-    // code gives a FenixSetting (or a list of them, indexed).
+    // its ToString() prints Value too (for a credential, the credential). The names are the ones the options
+    // window's code gives a FenixSetting (or a list of them, indexed).
     const string ValueLeak = @"\.Value\b|RowText|FormatValue|DetailLines"
         + @"|\{\s*(?:option|now|before|landed|present|setting|settings|s|o|a|b|row)\s*(?:\[[^\]]*\])?\s*!?\s*(?:\.ToString\(\))?\s*[,:}]";
 

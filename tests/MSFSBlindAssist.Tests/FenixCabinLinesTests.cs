@@ -1,10 +1,8 @@
 // Characterization tests for FenixCabinData and FenixCabinLines: the value cache behind the Fenix Cabin
 // window, the labelled lines of its five tabs (one ListBox line per value), the FAP's water and waste
 // cautions, the door-pressure messages and the connection status. The rules are the FAP bundle's own
-// (plan 08 evidence sections "Lavatory flush name, water/waste cautions, lavatory designations",
-// "Door message", "Door / slide names and meanings", "Temperature store", "Temperature shown / greyed",
-// "FAP power-up screens" and "FAP Set-Up store"); "live" is the IAE A321 read of 2026-10-21 (plan 08
-// Evidence). An unknown value ("" from the data service) is never a state or a caution (FNX-1).
+// (its lavatory, water and waste cautions, door message, door and slide names, temperature store,
+// power-up screens and Set-Up store); "live" is the IAE A321 read of 2026-10-21. An unknown value ("" from the data service) is never a state or a caution (FNX-1).
 
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Aircraft;
@@ -24,7 +22,7 @@ public class FenixCabinLinesTests
     private static readonly FenixCabinLayout A320InPark =
         FenixCabinLayout.Resolve(FenixAircraftType.A320, "DoubleOverwing", "SingleClass", "SlideInPark");
 
-    // The Task 2 live pram state: music off, one channel, volume 5, nothing playing, memo empty.
+    // The live pram state: music off, one channel, volume 5, nothing playing, memo empty.
     private static readonly FenixCabinPramState LivePram = new(
         MusicOn: false,
         Channels: [new FenixCabinItem("f5957b3b-9ba4-4933-822f-806acf7f0cb7", "Boarding Music")],
@@ -45,8 +43,8 @@ public class FenixCabinLinesTests
         return data;
     }
 
-    // The live data read of 2026-10-21 (plan 08 Evidence), then the overrides in order. The loudspeaker
-    // volume 1 (= 100 percent) is the live value Task 3 records.
+    // The live data read of 2026-10-21, then the overrides in order. The loudspeaker
+    // volume 1 (= 100 percent) is the live value.
     private static FenixCabinData Live(params (string Name, JToken Value)[] overrides)
     {
         var values = new List<(string Name, JToken Value)>
@@ -323,7 +321,7 @@ public class FenixCabinLinesTests
         var withSets = FenixCabinLines.Build(Live(), LivePram with { MaxVariant = 2, PreferredVariant = 1 }, A321);
         Assert.Equal("Announcement set: 1 (0 to 2)", Line(withSets, "audio.set"));
 
-        // R2: the loudspeaker line comes from the data, so it stays when the pram state is missing.
+        // The loudspeaker line comes from the data, so it stays when the pram state is missing.
         var noPram = FenixCabinLines.Build(Live(), null, A321);
         Assert.Equal(new[] { "Audio: no data from the Fenix", "FAP loudspeaker volume: 100 percent" }, Texts(noPram, FenixCabinSection.Audio));
         Assert.Equal(new[] { "audio.unavailable", "audio.speakerVolume" }, Section(noPram, FenixCabinSection.Audio).Select(l => l.Key));
@@ -509,7 +507,7 @@ public class FenixCabinLinesTests
             Section(lines, FenixCabinSection.Doors).Where(l => l.Key.StartsWith("cargo.", StringComparison.Ordinal)).Select(l => l.Text));
     }
 
-    // ---- The part of a line a press changes (ruling R17) ------------------------------------------
+    // ---- The part of a line a press changes ------------------------------------------
 
     private static string? State(IReadOnlyList<FenixCabinLine> lines, string key) => Assert.Single(lines, l => l.Key == key).State;
 
@@ -637,7 +635,7 @@ public class FenixCabinLinesTests
     [Fact]
     public void Cautions_fire_on_what_known_values_prove_and_the_layout_lavatories()
     {
-        // R11: the FAP fires the vacuum caution on !powered || !generator, so one known false proves it.
+        // The FAP fires the vacuum caution on !powered || !generator, so one known false proves it.
         // That false is real data from the Fenix, not the FAP store's starting default
         // (vacuumSystemPowered:!1), which shows the caution before any data arrives.
         const string Vacuum = "Vacuum system disabled on ground";
@@ -762,7 +760,7 @@ public class FenixCabinLinesTests
     public void Unknown_values_inside_known_data_stay_unknown()
     {
         // Known data elsewhere, but every cabin name "" (FNX-1): still no state and no caution, and with
-        // no caution input known the cautions summary cannot say "none" either (R10).
+        // no caution input known the cautions summary cannot say "none" either.
         var data = Data((FenixCabinNames.FapOperational, true));
         foreach (string name in FenixCabinNames.All.Where(n => n != FenixCabinNames.FapOperational))
             data.Apply(name, FenixDataValue.FromJson(""));
@@ -776,7 +774,7 @@ public class FenixCabinLinesTests
         Assert.All(lines, l => Assert.Matches(new Regex("^[^:]+: (no data|no status|no data from the Fenix)$"), l.Text));
     }
 
-    // R10: "Cautions: none" needs one known caution input with nothing firing. Each row knows exactly one
+    // "Cautions: none" needs one known caution input with nothing firing. Each row knows exactly one
     // input (besides FapOperational, which no caution reads) at a value that fires nothing; the value is JSON.
     public static TheoryData<string, string> CautionInputs => new()
     {

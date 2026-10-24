@@ -1,4 +1,4 @@
-// Characterization tests for the registry of the pilot's own door presses (plan 08 sim-fix wave, ruling R18):
+// Characterization tests for the registry of the pilot's own door presses:
 // the Cabin window marks a door or cargo line when it sends that door's write, and the app-wide door
 // announcement leaves that door to the window's read-back while the mark lasts, so a change is said once.
 // Every test uses its own instance and its own clock; none touches FenixCabinOwnPresses.Shared.

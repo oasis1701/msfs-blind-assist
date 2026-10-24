@@ -1,9 +1,7 @@
 // Characterization tests for FenixCabinWrites, the data-name writes behind the Fenix Cabin window:
 // the cabin ready and lights writes, the FAP temperature steps and reset, the water preselect step,
 // the FAP Set-Up page's loudspeaker volume step, and the EFB's door toggles. The names, kinds and
-// limits are the FAP and EFB bundles' own (plan 08 evidence sections "Cabin ready write",
-// "Cabin lights write", "Temperature store", "Water preselect", "FAP Set-Up store", "EFB door enum",
-// "EFB door control names" and "EFB toggle writes"). The HTTP side runs against a fake
+// limits are the FAP and EFB bundles' own. The HTTP side runs against a fake
 // HttpMessageHandler, never the network.
 
 using System.Net;

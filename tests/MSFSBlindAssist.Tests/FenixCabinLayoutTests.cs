@@ -75,7 +75,7 @@ public class FenixCabinLayoutTests
         Assert.Contains(FenixCabinNames.FapSpeakerVolume, FenixCabinNames.All);
         Assert.Contains(FenixCabinNames.LavatoryFlush("E"), FenixCabinNames.All);
         Assert.Contains(FenixCabinNames.DoorControl("d4r"), FenixCabinNames.All);
-        // Ruling R16: the height the EFB guards its door and cargo toggles on.
+        // The height the EFB guards its door and cargo toggles on.
         Assert.Contains(FenixCabinNames.AltitudeAboveGround, FenixCabinNames.All);
     }
 

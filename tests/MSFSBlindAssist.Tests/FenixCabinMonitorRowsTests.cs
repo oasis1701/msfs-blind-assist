@@ -1,5 +1,5 @@
-// The Fenix Monitor Manager (Ctrl+M) rows of the app-wide cabin announcements (plan 08 sim-fix wave, F2;
-// owner's OK to edit FenixMonitorManagerForm, ruling R22): one row per kind, after the variable rows, like
+// The Fenix Monitor Manager (Ctrl+M) rows of the app-wide cabin announcements (the owner
+// OK'd editing FenixMonitorManagerForm for them): one row per kind, after the variable rows, like
 // the A380's synthetic ECAM memos row ([MON-9]). An unticked row puts its key in
 // FenixDisabledMonitorVariables, which FenixCabinReadyMonitor reads before it speaks that kind.
 

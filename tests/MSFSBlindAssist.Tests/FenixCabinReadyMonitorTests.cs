@@ -1,11 +1,11 @@
-// Characterization tests for the app-wide cabin-ready call (plan 08 Task 6): FenixCabinReadyEdge, the
+// Characterization tests for the app-wide cabin-ready call: FenixCabinReadyEdge, the
 // known false-to-true change after a silent baseline, and FenixCabinReadyMonitor, which speaks it once on
 // the UI thread. The monitor is built with fakes: a source that captures the value callback and counts its
 // disposal, and a SynchronizationContext that queues posts until RunAll(). No test builds a
 // FenixDataService or a FenixDataPoller (a live start would open a socket to 127.0.0.1:8083), so the
 // definition's wiring is checked by reading FenixA320Definition.Cabin.cs.
 //
-// Since the sim-fix wave (F2) the same monitor also says the doors, the slides and the cautions
+// The same monitor also says the doors, the slides and the cautions
 // (FenixCabinEvents), each kind mutable by its Ctrl+M row and the doors left to the Cabin window's read-back
 // while the pilot's own press is pending (FenixCabinOwnPresses). Those tests feed whole polls, every cabin
 // name in order as the poller hands them on, with a fake clock, a fake mute list and fake settings.
@@ -246,7 +246,7 @@ public class FenixCabinReadyMonitorTests
         Assert.Equal("Cabin ready", FenixCabinReadyMonitor.SpokenText);
     }
 
-    // ---- The background announcements (sim-fix wave F2) -----------------------------------------
+    // ---- The background announcements -----------------------------------------
 
     private static readonly DateTime T0 = new(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
 
@@ -277,7 +277,7 @@ public class FenixCabinReadyMonitorTests
         var ui = new QueueContext();
         var source = new FakeSource();
         var spoken = new Spoken();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,ui, spoken.Add);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, ui, spoken.Add);
 
         // The first poll is the silent baseline.
         SendPoll(source, With(Slides(True), new[]
@@ -316,7 +316,7 @@ public class FenixCabinReadyMonitorTests
         var source = new FakeSource();
         var spoken = new Spoken();
         var muted = new HashSet<string> { FenixCabinAnnouncements.DoorsKey, FenixCabinAnnouncements.CabinReadyKey };
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,ui, spoken.Add, isMuted: muted.Contains);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, ui, spoken.Add, isMuted: muted.Contains);
 
         SendPoll(source, With(Slides(True), new[] { (CabinReady, False), (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.WasteTankFull, False) }));
         SendPoll(source, With(Slides(False), new[] { (CabinReady, True), (FenixCabinNames.Door("d1l"), True), (FenixCabinNames.WasteTankFull, True) }));
@@ -343,7 +343,7 @@ public class FenixCabinReadyMonitorTests
         var spoken = new Spoken();
         var presses = new FenixCabinOwnPresses();
         var clock = new FakeClock();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,ui, spoken.Add,
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, ui, spoken.Add,
             ownPresses: presses, clock: () => clock.Now);
 
         (string, FenixDataValue)[] Doors(bool d1l, bool d4r, bool forward) => new[]
@@ -377,7 +377,7 @@ public class FenixCabinReadyMonitorTests
         var spoken = new Spoken();
         var presses = new FenixCabinOwnPresses();
         var clock = new FakeClock();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,ui, spoken.Add,
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, ui, spoken.Add,
             ownPresses: presses, clock: () => clock.Now);
         SendPoll(source, (FenixCabinNames.Door("d1l"), False));
 
@@ -394,7 +394,7 @@ public class FenixCabinReadyMonitorTests
     {
         var source = new FakeSource();
         var spoken = new Spoken();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,null, spoken.Add);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, null, spoken.Add);
 
         // Until the variant is known the cabin is the FAP's A320, which has no door 2.
         SendPoll(source, (FenixCabinNames.Door("d2l"), False));
@@ -408,7 +408,7 @@ public class FenixCabinReadyMonitorTests
         // A monitor started on an A321 has door 2 from the start.
         var a321Source = new FakeSource();
         var a321Spoken = new Spoken();
-        using var a321 = new FenixCabinReadyMonitor(a321Source.Subscribe,null, a321Spoken.Add, type: FenixAircraftType.A321);
+        using var a321 = new FenixCabinReadyMonitor(a321Source.Subscribe, null, a321Spoken.Add, type: FenixAircraftType.A321);
         SendPoll(a321Source, (FenixCabinNames.Door("d3r"), False));
         SendPoll(a321Source, (FenixCabinNames.Door("d3r"), True));
         Assert.Equal(["Door 3 right open"], a321Spoken.Texts);
@@ -426,7 +426,7 @@ public class FenixCabinReadyMonitorTests
             Interlocked.Increment(ref reads);
             return Task.FromResult(answer);
         }
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,null, spoken.Add, readSettings: ReadSettings);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, null, spoken.Add, readSettings: ReadSettings);
 
         // At start, before the Fenix answers: an empty answer keeps the A320's own layout.
         Assert.Equal(1, reads);
@@ -457,7 +457,7 @@ public class FenixCabinReadyMonitorTests
         Assert.Equal(["Door 2 left open", "Door 2 left closed"], spoken.Texts);
     }
 
-    // ---- A long outage: a new silent baseline (ruling R23) ----------------------------------------
+    // ---- A long outage: a new silent baseline ----------------------------------------
 
     private static (string, FenixDataValue)[] Cabin(bool ready, bool doorOpen, bool armed, bool panelOpen)
         => With(Slides(armed ? True : False), new[]
@@ -471,7 +471,7 @@ public class FenixCabinReadyMonitorTests
         var source = new FakeSource();
         var spoken = new Spoken();
         var clock = new FakeClock();
-        var monitor = new FenixCabinReadyMonitor(source.Subscribe,null, spoken.Add, clock: () => clock.Now);
+        var monitor = new FenixCabinReadyMonitor(source.Subscribe, null, spoken.Add, clock: () => clock.Now);
         return (monitor, source, spoken, clock);
     }
 
@@ -542,7 +542,7 @@ public class FenixCabinReadyMonitorTests
         var ui = new QueueContext();
         var source = new FakeSource();
         var spoken = new Spoken();
-        var monitor = new FenixCabinReadyMonitor(source.Subscribe,ui, spoken.Add);
+        var monitor = new FenixCabinReadyMonitor(source.Subscribe, ui, spoken.Add);
         SendPoll(source, (FenixCabinNames.Door("d1l"), False));
         SendPoll(source, (FenixCabinNames.Door("d1l"), True));
         Assert.Equal(1, ui.Pending);
@@ -561,7 +561,7 @@ public class FenixCabinReadyMonitorTests
     {
         var source = new FakeSource();
         var spoken = new Spoken();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,new ClosedContext(), spoken.Add);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, new ClosedContext(), spoken.Add);
         SendPoll(source, (FenixCabinNames.Door("d1l"), False));
 
         var thrown = Record.Exception(() => SendPoll(source, (FenixCabinNames.Door("d1l"), True)));
@@ -594,7 +594,7 @@ public class FenixCabinReadyMonitorTests
     {
         string start = MethodBody(AppFile("Services", "FenixCabinReadyMonitor.cs"), "public static FenixCabinReadyMonitor Start(");
 
-        // One poll for every kind (R3): every cabin name, through the data service's batched read.
+        // One poll for every kind: every cabin name, through the data service's batched read.
         Assert.Contains("new FenixDataPoller(FenixCabinNames.All, data.ReadManyAsync", start);
         // The Ctrl+M mute list, as current right after a toggle (SettingsManager.Save rebuilds the set).
         Assert.Contains("SettingsManager.Current.FenixDisabledMonitorVariablesSet.Contains(", start);

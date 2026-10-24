@@ -1,4 +1,4 @@
-// Pins Fenix v3 plan 06 (variants): the controls only some Fenix airframes have are registered and
+// Pins the Fenix v3 variant controls: the controls only some Fenix airframes have are registered and
 // placed once, and the panel placement keeps every touched panel's labels distinct.
 
 using MSFSBlindAssist.Aircraft;

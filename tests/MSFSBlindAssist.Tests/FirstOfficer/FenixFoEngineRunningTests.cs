@@ -42,7 +42,7 @@ public class FenixFoEngineRunningTests
     [Fact]
     public void Fresh_Fenix_N2_wins_over_stock()
     {
-        // IAE: stock reads idle while the Fenix engine is still starting (spec 3: stock 72.4 vs Fenix 62.3 at idle).
+        // IAE: stock reads idle while the Fenix engine is still starting (stock 72.4 vs Fenix 62.3 at idle).
         var (e, fenix) = Attached();
         fenix.Callback!(FenixFoLiveReadings.Engine1N2, Num(50.0));
         fenix.Callback!(FenixFoLiveReadings.Engine2N2, Num(62.3));
@@ -280,8 +280,8 @@ public class FenixFoEngineRunningTests
     }
 
     // ---- "Running" is the Fenix's own flag, N2 55 % the fallback ---------------------------------
-    // Measured live (plan 05 follow-up, 2026-10-22): the Fenix flags an engine running at its idle, 62.1 /
-    // 62.4 % N2 on the IAE (6-7 s after N2 passed 55 %), 59.2 % on the CFM (about 4 s after, plan 09), and
+    // Measured live (2026-10-22): the Fenix flags an engine running at its idle, 62.1 /
+    // 62.4 % N2 on the IAE (6-7 s after N2 passed 55 %), 59.2 % on the CFM (about 4 s after), and
     // drops the flag at once on a shutdown while its N2 takes about 20 s to fall. The A32NX First Officer
     // does the same with FlyByWire's own engine state (FO_ENGn_RUNNING). The flag streams through the
     // subscription, so these tests push it through the same fake callback.
@@ -376,7 +376,7 @@ public class FenixFoEngineRunningTests
     [Fact]
     public void Running_threshold_sits_between_starter_cut_out_and_both_measured_idles()
     {
-        const double StarterCutOut = 50.0, CfmIdleFenix = 59.3, IaeIdleFenix = 62.3; // manualslib p.22; spec 3; plan 05 read
+        const double StarterCutOut = 50.0, CfmIdleFenix = 59.3, IaeIdleFenix = 62.3; // manualslib p.22; idles read live
         Assert.InRange(FenixStateEvaluator.EngineRunningN2, StarterCutOut + 1, Math.Min(CfmIdleFenix, IaeIdleFenix) - 1);
     }
 }

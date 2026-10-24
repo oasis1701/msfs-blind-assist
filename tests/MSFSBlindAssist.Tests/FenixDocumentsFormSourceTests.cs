@@ -1,4 +1,4 @@
-// Source-scan tests for the Fenix documents window (plan 07, Task 5): the window cannot be driven without the
+// Source-scan tests for the Fenix documents window: the window cannot be driven without the
 // sim, so these pin what its source must and must never contain (CORE-12, CORE-18, VAT-13, the inert reader,
 // GETs only on the UI thread) and that the "Fenix windows" list offers it once.
 

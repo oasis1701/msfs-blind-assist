@@ -57,7 +57,7 @@ public class FenixV3FixNamesTests
     }
 
     // FenixQuartz is discontinued and v3 does not feed it. The First Officer reads the take-off speeds
-    // from N_MISC_PERF_TO_* (plan 05), so the last three FNX2PLD_ names are gone too.
+    // from N_MISC_PERF_TO_*, so the last three FNX2PLD_ names are gone too.
     [Fact]
     public void No_FenixQuartz_name_remains()
     {

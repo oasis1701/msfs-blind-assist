@@ -4,8 +4,8 @@
 // persist false), and a Yes/No first for the options that reshape the cockpit. Shift+F2 makes a change
 // permanent (persist true) and Ctrl+F2 resets an option to the Fenix default, each only after a Yes/No
 // that defaults to No, and only for a change of the pilot's own (the EFB's own overflow menu). Ctrl+F2 resets
-// a typed value too (ruling R24); F2 and Shift+F2 stay limited to on/off and choice options. A changed row
-// the screen reader reads by itself is not spoken again (ruling R25, CORE-7).
+// a typed value too; F2 and Shift+F2 stay limited to on/off and choice options. A changed row
+// the screen reader reads by itself is not spoken again (CORE-7).
 using System.Reflection;
 using System.Windows.Forms;
 using MSFSBlindAssist.Forms.Fenix;
@@ -380,7 +380,7 @@ public class FenixOptionEditsTests
         Assert.False(FenixOptionEdits.CanReset(S("charts_provider_type", "Navigraph", "Enum", "Connections", new[] { "Navigraph", "Simulator" }, "Session")));
     }
 
-    // Ruling R24 (replaces R15): Ctrl+F2 resets a typed value too, as the EFB's "Reset to default" does: it
+    // Ctrl+F2 resets a typed value too, as the EFB's "Reset to default" does: it
     // checks only that the value is not synthetic, so any type of option the pilot or the session changed.
     [Theory]
     [InlineData("registration", "System.String", "UserFile")] [InlineData("registration", "System.String", "Session")]
@@ -408,7 +408,7 @@ public class FenixOptionEditsTests
 
     [Fact] public void F2_and_Shift_F2_still_change_only_on_off_and_choice_options()
     {
-        // R24 widens Ctrl+F2 only: a typed option, even one the pilot overrode, is not offered a value to pick.
+        // Only Ctrl+F2 is widened: a typed option, even one the pilot overrode, is not offered a value to pick.
         Assert.False(FenixOptionEdits.CanChange(S("registration", "N1", "System.String", source: "UserFile")));
         Assert.False(FenixOptionEdits.CanChange(S("default_acceleration_altitude_ft", "3000", "System.Int32", source: "UserFile")));
         Assert.False(FenixOptionEdits.CanChange(S("printer_font_size", "10", "System.Single", "Printer", source: "Session")));
@@ -468,7 +468,7 @@ public class FenixOptionEditsTests
         Assert.False(FenixOptionEdits.CanWrite(S("charts_provider_type", "Navigraph", "Enum", "Connections", new[] { "Navigraph", "Simulator" })));
     }
 
-    // ---- Ruling R25: a changed row the screen reader reads by itself is not spoken a second time (CORE-7) ----
+    // ---- A changed row the screen reader reads by itself is not spoken a second time (CORE-7) ----
     // The re-read rewrites the focused tree row's text in place, which NVDA reads; speaking the same row again
     // made the pilot hear it twice. It is spoken only when the reader will not have said it.
 
@@ -674,7 +674,7 @@ public class FenixOptionEditsTests
 
     [Fact] public void Ctrl_F2_is_not_stopped_by_the_on_off_and_choice_guard()
     {
-        // R24: F2 and Shift+F2 are limited to an on/off or choice option (CanChange), Ctrl+F2 is not. The window
+        // F2 and Shift+F2 are limited to an on/off or choice option (CanChange), Ctrl+F2 is not. The window
         // asks FenixOptionEdits.RefusalText, which knows each key's guard, and never CanChange itself.
         string form = FormSource();
         Assert.DoesNotContain("CanChange(", form);
@@ -683,7 +683,7 @@ public class FenixOptionEditsTests
 
     [Fact] public void The_applied_read_back_is_spoken_only_through_the_one_screen_reader_check()
     {
-        // R25: both places that speak an applied option's row (the read after no answer, the read after an
+        // Both places that speak an applied option's row (the read after no answer, the read after an
         // accepted request) go through one helper that asks ScreenReaderReadsRow; nothing speaks a row directly.
         string form = FormSource();
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"FenixOptionEdits\.ScreenReaderReadsRow\("));

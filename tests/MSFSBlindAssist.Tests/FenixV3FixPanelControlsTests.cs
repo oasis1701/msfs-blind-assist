@@ -50,7 +50,7 @@ public class FenixV3FixPanelControlsTests : IDisposable
         Assert.Equal(expected, actual);
     }
 
-    // Decision 1: momentary buttons, with their light where one is registered (null where none is,
+    // Momentary buttons, with their light where one is registered (null where none is,
     // or where the Fenix never lights it on the ground: SVCE INT OVRD and AVIONICS COMPT).
     public static TheoryData<string, string, string?> MomentaryButtons => new()
     {

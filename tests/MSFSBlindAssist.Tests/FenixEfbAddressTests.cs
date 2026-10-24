@@ -1,4 +1,4 @@
-// Pins the Fenix v3 EFB window's address and status text (plan 03, Owner decisions 1-3). The window
+// Pins the Fenix v3 EFB window's address and status text. The window
 // loads the EFB's external target on 127.0.0.1: the gateway listens on IPv4 only, and by name Windows
 // tries ::1 first and spends about 2 s refusing it on every new connection ([A320-40]); the v3 page is
 // NOT accessible on its own, so the window adds the layer. The not-reachable text names the address it

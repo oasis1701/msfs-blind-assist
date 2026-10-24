@@ -1,5 +1,5 @@
-// Pins the Failures window's shape (plan 10, Task 4). The window is sim-facing; these source scans hold
-// the rules a screen-reader user depends on (CORE-12, D2, VAT-13, D1's No default) and the one write
+// Pins the Failures window's shape. The window is sim-facing; these source scans hold
+// the rules a screen-reader user depends on (CORE-12, no check boxes, VAT-13, a No default on every write) and the one write
 // path: a single POST, to saveManual, and nothing else that can change the pilot's flight.
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Forms.Fenix;

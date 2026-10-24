@@ -1,4 +1,4 @@
-// Characterization tests for the app-wide cabin announcements' pure logic (plan 08 sim-fix wave, F2):
+// Characterization tests for the app-wide cabin announcements' pure logic:
 // FenixCabinEvents turns each poll of the cabin values into what is said for the doors, the slides and the
 // cautions, after a silent baseline. Each test feeds whole polls (a FenixCabinData holding the values of
 // one read, Unknown for the rest), as FenixCabinReadyMonitor does once a second. No service, no socket.

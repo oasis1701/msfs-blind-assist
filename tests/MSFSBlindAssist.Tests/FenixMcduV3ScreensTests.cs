@@ -2,7 +2,7 @@
 // data service's aircraft.mcduN.display. Each fixture is decoded the way
 // FenixMCDUService.ParseDisplayXml does it: XDocument.Parse, then the title, the twelve lines and
 // the scratchpad, each through FenixMcduFormat.StripFormatCodes. A capture that reads off the
-// 24-column grid, or carries a glyph SpecialChars does not know, is a v3 misread (plan 04, Task 5).
+// 24-column grid, or carries a glyph SpecialChars does not know, is a v3 misread.
 
 using System.Xml.Linq;
 using MSFSBlindAssist.Services;

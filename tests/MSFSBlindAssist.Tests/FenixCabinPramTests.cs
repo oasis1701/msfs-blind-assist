@@ -1,9 +1,8 @@
 // Characterization tests for FenixCabinPram, the Fenix FAP's audio side (the PRAM: boarding music,
 // loudspeaker volume, prerecorded announcements and their memo, the announcement variant). The
-// expected GraphQL texts and variable names are the FAP bundle's own (docs/fenix-v3/evidence/gql-operations.txt,
-// plan 08 evidence sections "Audio GraphQL documents", "Audio store calls" and "Announcement store
-// calls"); the state shape is what the gateway answered on 2026-10-21. The HTTP side runs against a
-// fake HttpMessageHandler, never the network.
+// expected GraphQL texts and variable names are the FAP bundle's own (tools/fenix-gateway/fetch_gateway_bundles.py
+// fetches the bundle and lists its operation texts); the state shape is what the gateway answered on
+// 2026-10-21. The HTTP side runs against a fake HttpMessageHandler, never the network.
 
 using System.Net;
 using System.Text.RegularExpressions;

@@ -2,7 +2,7 @@
 // resulting line once when it changes, or "<line>, unchanged" for the numeric presses (volume,
 // temperature, preselect), and nothing else, so it never repeats what the screen reader already says
 // (CORE-7). The caller passes the clock; there are no timers. The texts are the ones FenixCabinLines
-// builds (plan 08 Task 4): "Volume: 5", "Door 1 left: closed, slide armed". In state mode (ruling R17)
+// builds: "Volume: 5", "Door 1 left: closed, slide armed". In state mode
 // the press waits for the line's State (the part the press changes) rather than its whole text.
 
 using MSFSBlindAssist.Services;
@@ -260,7 +260,7 @@ public class FenixCabinReadbackTests
         Assert.Empty(readback.Collect(Lines(), T0 + Seconds(60)));
     }
 
-    // ---- State mode (ruling R17): the press waits for the part of the line it changes -------------
+    // ---- State mode: the press waits for the part of the line it changes -------------
 
     private static FenixCabinLine Door1Left(string text, string? state) => new(FenixCabinSection.Doors, "door.d1l", text, state);
     private static FenixCabinLine Cargo(string text, string? state) => new(FenixCabinSection.Doors, "cargo.forward", text, state);
@@ -372,7 +372,7 @@ public class FenixCabinReadbackTests
         Assert.Throws<ArgumentNullException>(() => readback.CollectEnded(null!, T0));
     }
 
-    // ---- Which expectation ended, and how (sim-fix wave, fix round 1: the own-press mark follows it) -----
+    // ---- Which expectation ended, and how (the own-press mark follows it) -----
 
     [Fact]
     public void Each_ended_expectation_is_reported_with_what_it_said_or_null_when_it_ended_silently()

@@ -1,4 +1,4 @@
-// The Fenix altimeter window (Set Altimeter). Two defects found in plan 02's final re-review:
+// The Fenix altimeter window (Set Altimeter). Two defects found in review:
 // "Setting altimeter to 29,92" was spoken in the PC's culture, and the Mode combo (QNH / STD) sent a
 // knob step when the window was merely opened.
 

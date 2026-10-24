@@ -1,6 +1,6 @@
 // Set-up for the whole test assembly, run once before any test, whatever order the tests run in.
 //
-// FenixA320Definition starts its background seams (plan 08's cabin monitor, plan 09's engine data) from
+// FenixA320Definition starts its background seams (the cabin monitor, the engine data) from
 // the first ProcessSimVarUpdate a definition receives. Those subscribe and read over the Fenix data
 // service on 127.0.0.1:8083, and no test disposes them: every test that feeds an update to a new
 // definition would leave a socket loop retrying for the rest of the run, and on a PC with the Fenix

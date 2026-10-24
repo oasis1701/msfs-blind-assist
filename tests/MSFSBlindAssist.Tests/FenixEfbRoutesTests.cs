@@ -1,9 +1,9 @@
-// Pins how the Fenix v3 EFB window sorts the page it is on (plan 03, Owner decision 8). The EFB's MCDU
+// Pins how the Fenix v3 EFB window sorts the page it is on. The EFB's MCDU
 // and FAP pages cannot be read with a screen reader, so the window steps back to the EFB home and says
 // where the working windows are; every other page is left alone. Classification is by the fragment's
 // first segment, on the gateway's own origin only (http 127.0.0.1:8083), so a page that merely carries
 // "#/mcdu" on another host is not caught. The router may change the address twice on the way into a
-// dead end, so a second catch of the same one within 1.5 s does nothing (ruling R33). A source scan pins
+// dead end, so a second catch of the same one within 1.5 s does nothing. A source scan pins
 // the window's wiring, which a unit test cannot reach (CI runs xUnit only).
 
 using System.Text.RegularExpressions;

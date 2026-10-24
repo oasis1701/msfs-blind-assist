@@ -1,10 +1,10 @@
-// Plan 01 (Fenix v3 foundation) turns FenixA320Definition into a partial class with optional
-// `partial void` seams, so the later v3 plans each implement theirs in their own file without
-// editing the 13,000-line main file. With no implementation a partial void call compiles to
-// nothing: the definition must behave exactly as it did before the seams existed.
+// FenixA320Definition is a partial class with optional `partial void` seams, so the variant, cabin and
+// engine code each implement theirs in their own file without editing the 13,000-line main file. With
+// no implementation a partial void call compiles to nothing: the definition must behave exactly as it
+// did before the seams existed.
 //
-// The facts here survive plans 02 and 06 adding and removing definitions in parallel, so none of
-// them pins a total count.
+// The facts here survive other partials adding and removing definitions, so none of them pins a total
+// count.
 
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Services;
@@ -79,7 +79,7 @@ public class FenixDefinitionSeamTests
     [Fact]
     public void A_sim_update_starts_no_background_seam_in_the_tests()
     {
-        // FenixTestHost turns the seams off for the whole test assembly: plans 08 and 09 open a live
+        // FenixTestHost turns the seams off for the whole test assembly: the cabin and engine seams open a live
         // subscription to 127.0.0.1:8083 from them, and the pilot's sim may be answering there.
         Assert.False(FenixA320Definition.BackgroundSeamsEnabled, "FenixTestHost's module initializer did not run");
         var definition = new FenixA320Definition();

@@ -1,7 +1,7 @@
-// Plan 01 (Fenix v3 foundation) adds the "Fenix windows" list on Ctrl+Shift+F in input mode. Later
-// plans each register their windows into FenixWindowRegistry from their own partial file (engines,
-// cabin, failures, documents, options), so none of them edits another's. With no plan's partial
-// present the registry is empty, and these facts pass trivially; they keep the later plans honest.
+// The "Fenix windows" list on Ctrl+Shift+F in input mode. Each kind of window registers into
+// FenixWindowRegistry from its own partial file (engines, cabin, failures, documents, options), so none
+// of them edits another's. With no partial present the registry is empty, and these facts pass
+// trivially; they keep the windows honest.
 
 using MSFSBlindAssist.Forms.Fenix;
 

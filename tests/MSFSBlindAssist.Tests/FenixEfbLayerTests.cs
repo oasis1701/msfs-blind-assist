@@ -1,12 +1,12 @@
-// Guards the Fenix v3 EFB accessibility layer (plan 03, Owner decision 6 and Global Constraints): the
+// Guards the Fenix v3 EFB accessibility layer: the
 // script that stamps roles, names and Tab stops on the page's own elements. CI runs xUnit and does not
 // run Node, so these source scans pin what must hold without the jsdom tests: the script keeps its
 // guard, never makes a request, removes an element or writes a value, never fires an event, changes a
 // class or text, adds a node or stores anything (it only adds attributes and key handlers that call the
 // page's own click, and that click is its only one), moves the focus only through one helper called from
-// its key handler (the runway condition's arrows, ruling R47) and its "More options" menu rule (R58),
-// writes an id only as "msfsba-<n>" (rulings R46, R58), ships with the app, and is injected before the
-// first navigation, after the window's Escape listener, which leaves Escape to an open overlay (R58). How
+// its key handler (the runway condition's arrows) and its "More options" menu rule,
+// writes an id only as "msfsba-<n>", ships with the app, and is injected before the
+// first navigation, after the window's Escape listener, which leaves Escape to an open overlay. How
 // the layer behaves on the page is tested offline in tools/fenix-efb-test.
 
 using System.Text.RegularExpressions;
@@ -37,7 +37,7 @@ public class FenixEfbLayerTests
             ReadScript());
     }
 
-    // Owner decision 6: never press anything, never change behaviour. No request, no removed element,
+    // The owner's decision: never press anything, never change behaviour. No request, no removed element,
     // no written value. Scanned over the whole text, comments included, so a comment cannot hide a use.
     [Theory]
     [InlineData("fetch(")]
@@ -52,10 +52,10 @@ public class FenixEfbLayerTests
         Assert.DoesNotContain(banned, ReadScript());
     }
 
-    // Ruling R35: the layer only adds role, aria-*, tabindex and key handlers. It never fires an event of its own,
+    // The layer only adds role, aria-*, tabindex and key handlers. It never fires an event of its own,
     // changes the page's classes or text, ticks a box (it reads `checked`, never writes it), adds or moves a node, or
     // keeps anything in storage. Scanned over the whole text, comments included: a comment that needs one of these
-    // words is reworded. (Moving the focus is pinned to its one place below, ruling R49.)
+    // words is reworded. (Moving the focus is pinned to its one place below.)
     [Theory]
     [InlineData("dispatchEvent(")]
     [InlineData("classList.add")]
@@ -107,10 +107,10 @@ public class FenixEfbLayerTests
         Assert.Contains(".click(", KeyHandler(script));
     }
 
-    // Rulings R49 and R58: the layer moves the focus through one helper, moveFocus, which holds the script's only `.focus(`.
-    // It is called from two places only: the key handler (the runway condition's arrows, ruling R47, after pressing the
+    // The layer moves the focus through one helper, moveFocus, which holds the script's only `.focus(`.
+    // It is called from two places only: the key handler (the runway condition's arrows, after pressing the
     // code they move to) and the "More options" menu rule followMenu (into an opened menu, and back to its button when
-    // it closes and the focus is lost, ruling R58).
+    // it closes and the focus is lost).
     [Fact]
     public void The_script_moves_the_focus_only_through_its_one_helper_from_the_key_handler_and_the_menu_rule()
     {
@@ -138,7 +138,7 @@ public class FenixEfbLayerTests
             "the arrow moves the focus to the code it pressed, after pressing it");
     }
 
-    // Ruling R58: Escape closes an open CDK overlay (a "More options" menu, the Panel States pop-up) before the window. The
+    // Escape closes an open CDK overlay (a "More options" menu, the Panel States pop-up) before the window. The
     // window's injected capture-phase listener posts the close message only when no overlay pane with content is open;
     // otherwise Escape is the page's (CdkConnectedOverlay and MatDialog close on it).
     [Fact]
@@ -159,7 +159,7 @@ public class FenixEfbLayerTests
             @"window\.chrome\.webview\.postMessage\('msfsba-efb-close'\);\}\},true\);$"), listener);
     }
 
-    // Ruling R49: the only ids the layer writes are its own, for the results grid's aria-owns (ruling R46): every
+    // The only ids the layer writes are its own, for the results grid's aria-owns: every
     // setAttribute('id', ...) builds its value from the "msfsba-" prefix, no id property is assigned, and no helper is
     // handed the id attribute to write.
     [Fact]
