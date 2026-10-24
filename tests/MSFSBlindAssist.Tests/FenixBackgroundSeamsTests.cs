@@ -1,6 +1,6 @@
-// The Fenix definition's background seams (cabin monitor, engine data) start from the first sim update
-// and stop in OnSwitchedAway. FenixTestHost turns them off for the whole test assembly, so the facts
-// here that need them on (or need their shipped default) live apart from FenixDefinitionSeamTests.
+// The Fenix definition's background seam (the cabin monitor) starts from the first sim update
+// and stops in OnSwitchedAway. FenixTestHost turns it off for the whole test assembly, so the facts
+// here that need it on (or need its shipped default) live apart from FenixDefinitionSeamTests.
 
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Aircraft;
@@ -51,7 +51,7 @@ public class FenixBackgroundSeamsTests
     public void The_shipped_default_leaves_the_background_seams_on()
     {
         // FenixTestHost writes the flag false before any test runs, so the property cannot show the shipped
-        // default: read its initializer. Flipping that default would silently turn the cabin and engine
+        // default: read its initializer. Flipping that default would silently turn the cabin
         // background off in the app.
         string source = File.ReadAllText(Path.Combine(
             ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Aircraft", "FenixA320Definition.Hooks.cs"));

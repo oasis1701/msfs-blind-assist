@@ -260,7 +260,7 @@ public class FenixCabinReadbackTests
         Assert.Empty(readback.Collect(Lines(), T0 + Seconds(60)));
     }
 
-    // ---- State mode: the press waits for the part of the line it changes -------------
+    // ---- State mode: the press waits for the part of the line it changes ------------------------
 
     private static FenixCabinLine Door1Left(string text, string? state) => new(FenixCabinSection.Doors, "door.d1l", text, state);
     private static FenixCabinLine Cargo(string text, string? state) => new(FenixCabinSection.Doors, "cargo.forward", text, state);
@@ -372,7 +372,7 @@ public class FenixCabinReadbackTests
         Assert.Throws<ArgumentNullException>(() => readback.CollectEnded(null!, T0));
     }
 
-    // ---- Which expectation ended, and how (the own-press mark follows it) -----
+    // ---- Which expectation ended, and how (the own-press mark follows it) -----------------------
 
     [Fact]
     public void Each_ended_expectation_is_reported_with_what_it_said_or_null_when_it_ended_silently()

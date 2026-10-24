@@ -1128,7 +1128,7 @@ public class FenixCabinWindowTests
         Assert.Empty(rig.Speech.Interrupts);
     }
 
-    // ---- Doors, Temperature and Water pages ------------------------------------
+    // ---- Doors, Temperature and Water pages -----------------------------------------------------
 
     private static TabPage PageAt(Form form, int index) => form.Controls.OfType<TabControl>().Single().TabPages[index];
     private static TabPage DoorsPage(Form form) => PageAt(form, 2);
@@ -1968,7 +1968,7 @@ public class FenixCabinWindowTests
             Assert.Same(FenixCabinOwnPresses.Shared, form.OwnPresses);
     }
 
-    // ---- The own-press hold follows the read-back --------------------------
+    // ---- The own-press hold follows the read-back -----------------------------------------------
 
     private static readonly DateTime T0 = new(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
 

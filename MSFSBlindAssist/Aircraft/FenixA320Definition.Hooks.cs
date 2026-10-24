@@ -6,7 +6,8 @@ namespace MSFSBlindAssist.Aircraft;
 // with no implementation its call compiles to nothing, so the definition behaves as it did before.
 //   FenixA320Definition.Variants.cs  variant, panel, display and visibility seams, OnFenixSwitchedAway
 //   FenixA320Definition.Cabin.cs     cabin background seams
-//   FenixA320Definition.Engines.cs   engine background seams
+// The engine background seams (StartEngineBackground, StopEngineBackground) have no implementation: the Engines
+// window reads its own values while it is open.
 public partial class FenixA320Definition
 {
     // Variant seams (FenixA320Definition.Variants.cs)
@@ -25,7 +26,8 @@ public partial class FenixA320Definition
     // C# allows one implementation, so the variant file owns it.
     partial void OnFenixSwitchedAway();
 
-    // Background seams, one Start/Stop pair each (cabin, engine). Start runs once per definition instance,
+    // Background seams, one Start/Stop pair each (the cabin pair is implemented, the engine pair is not). Start
+    // runs once per definition instance,
     // on the UI thread, from the first ProcessSimVarUpdate that gets past the take-off IAS feed (that branch
     // returns first, so Start can come up to about a second after the instance's very first update); a sim
     // reconnect keeps the instance, so Start does not run again then. Stop runs in OnSwitchedAway, on an

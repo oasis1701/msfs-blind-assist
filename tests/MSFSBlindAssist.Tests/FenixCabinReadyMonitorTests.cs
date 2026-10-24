@@ -246,7 +246,7 @@ public class FenixCabinReadyMonitorTests
         Assert.Equal("Cabin ready", FenixCabinReadyMonitor.SpokenText);
     }
 
-    // ---- The background announcements -----------------------------------------
+    // ---- The background announcements -----------------------------------------------------------
 
     private static readonly DateTime T0 = new(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
 
@@ -457,7 +457,7 @@ public class FenixCabinReadyMonitorTests
         Assert.Equal(["Door 2 left open", "Door 2 left closed"], spoken.Texts);
     }
 
-    // ---- A long outage: a new silent baseline ----------------------------------------
+    // ---- A long outage: a new silent baseline ---------------------------------------------------
 
     private static (string, FenixDataValue)[] Cabin(bool ready, bool doorOpen, bool armed, bool panelOpen)
         => With(Slides(armed ? True : False), new[]

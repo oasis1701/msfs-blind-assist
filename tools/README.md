@@ -35,7 +35,7 @@ For the *methodology* of proving a control works (calculator-path write-stick te
 
 | Project | Job |
 |---|---|
-| [`fenix-gateway/`](fenix-gateway/README.md) | Read-only scripts against your own running **Fenix** v3 gateway (`127.0.0.1:8083`): `fetch_gateway_bundles.py` downloads its EFB/FAP web-app bundles, `option_labels.py` extracts the EFB's option labels (feeds `Services/FenixOptionLabels.cs`). |
+| [`fenix-gateway/`](fenix-gateway/README.md) | Python scripts for the **Fenix** v3 gateway's web apps: `fetch_gateway_bundles.py` reads (HTTP GET only) your own running Fenix at `127.0.0.1:8083` and saves its EFB/FAP bundles; `option_labels.py` reads a saved chunk file, not the gateway, and extracts the EFB's option labels (feeds `Services/FenixOptionLabels.cs`). |
 
 ## Reference catalogs (`*.md`)
 

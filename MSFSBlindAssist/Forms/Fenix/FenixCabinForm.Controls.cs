@@ -298,7 +298,7 @@ public sealed partial class FenixCabinForm
         _ = RunDoorWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.Key);
     }
 
-    // ---- The pilot's own door presses --------------------------------------------------
+    // ---- The pilot's own door presses -----------------------------------------------------------
     //
     // A door or cargo press marks its line in OwnPresses while this window can still say what the press did, so
     // the app-wide door announcement leaves that door to the read-back and the change is said once, and no

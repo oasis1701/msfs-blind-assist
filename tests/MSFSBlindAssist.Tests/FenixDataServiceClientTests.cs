@@ -4,7 +4,7 @@
 // only its pure message helpers are tested here, and no test calls Subscribe on a live service
 // (that would open a socket to whatever answers on 8083, the pilot's sim included).
 //
-// The contract the later Fenix plans build on: with the Fenix not loaded or the gateway down, every
+// The contract the Fenix windows and monitors build on: with the Fenix not loaded or the gateway down, every
 // read is Unknown (never 0, false or "off"), every write is false and nothing throws.
 
 using System.Net;

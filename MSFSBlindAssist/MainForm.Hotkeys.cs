@@ -290,8 +290,9 @@ public partial class MainForm
                 }
                 else if (currentAircraft?.AircraftCode == "FENIX_A320CEO")
                 {
-                    // The Fenix EFB web UI is already screen-reader accessible, so we
-                    // host the live site directly (no scraping/shim like the FBW flyPad).
+                    // The Fenix EFB web UI is not screen-reader accessible on its own, so we host
+                    // the live site directly and inject an accessibility layer into it (no
+                    // scraping/shim like the FBW flyPad).
                     ShowFenixEFBDialog();
                 }
                 break;

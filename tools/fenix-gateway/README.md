@@ -1,10 +1,11 @@
 # `tools/fenix-gateway/`: read the Fenix v3 gateway's own web apps
 
-Two Python scripts for checking what the Fenix A320 family v3 itself sends and shows. They only read from
-the pilot's own running Fenix at `http://127.0.0.1:8083` (the gateway listens on IPv4 only) and write nothing to
-the sim. The EFB and FAP bundles they handle are Fenix's code: save them in their own new, empty folder outside
-the repository and never commit them. Run each script with `python -I`, so a file in the current folder cannot
-be imported in its place.
+Two Python scripts for checking what the Fenix A320 family v3 itself sends and shows. `fetch_gateway_bundles.py`
+only reads from the pilot's own running Fenix at `http://127.0.0.1:8083` (the gateway listens on IPv4 only) and
+writes nothing to the sim; `option_labels.py` never touches the gateway, it reads a chunk file that script saved.
+The EFB and FAP bundles are Fenix's code: save them in their own new, empty folder outside the repository and
+never commit them. Run each script with `python -I`, so a file in the current folder cannot be imported in its
+place.
 
 ## `fetch_gateway_bundles.py`
 

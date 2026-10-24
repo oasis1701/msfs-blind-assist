@@ -316,7 +316,7 @@ test('Takeoff_results_keep_their_order_when_Calculate_changes_them_in_place', as
     await turns();
     assert.strictEqual(screen.getAttribute('aria-owns'), owns);
     assert.ok(['role', 'aria-label', 'aria-roledescription', 'data-msfsba'].every(a => !v1.hasAttribute(a)),
-      'the role, the label and the role description go together (R57)');
+      'the role, the label and the role description go together');
     assert.deepStrictEqual(reading(window).slice(0, 3), [TITLE, 'V1', '143']);
     // And the yellow boxes come back.
     v1.firstElementChild.textContent = '';
@@ -1007,7 +1007,7 @@ test('The_Landing_sub_page_has_a_Back_button_and_tick_boxes', async () => {
     assert.strictEqual(title.tabIndex, 0);
     assert.strictEqual(nameOf(title), 'Back, Electrical System');
     assert.ok(['role', 'tabindex', 'aria-label', 'data-msfsba'].every(a => !arrow.hasAttribute(a)), 'the arrow is not the button');
-    assert.strictEqual(arrow.querySelector('i').getAttribute('aria-hidden'), 'true', 'its glyph is hidden (R41)');
+    assert.strictEqual(arrow.querySelector('i').getAttribute('aria-hidden'), 'true', 'its icon-font glyph is hidden');
     // Enter and Space are the row's own click; that click is the one a mouse click makes, on the row's own handler.
     let clicks = 0;
     title.click = () => { clicks++; };
@@ -1282,7 +1282,7 @@ for (const fixture of ['depperf', 'arrperf', 'arrperf-electrical']) {
 // A second pass finds everything handled already: nothing changes, no element gets a second listener, and
 // the elements that took a key handler are exactly the ones that are not real buttons or inputs.
 const SECOND_PASS = {
-  depperf: { handled: 2 + 12 + 3 + 1, listeners: 2, note: 'home, chevron; six boxes and six drop-downs; the three "not computed" speeds; SYNC LIVE WX (R56)' },
+  depperf: { handled: 2 + 12 + 3 + 1, listeners: 2, note: 'home, chevron; six boxes and six drop-downs; the three "not computed" speeds; SYNC LIVE WX (named from its text, which holds a <br>)' },
   arrperf: { handled: 2 + 6 + 1 + 6 + 5 + 9, listeners: 2 + 6 + 5 + 9, note: 'home, chevron; six fields; the group and six radios; five options; nine procedures' },
   // The sub-page capture also holds the app switcher, closed, with its nine icons (as mass-balance does).
   'arrperf-electrical': { handled: 2 + 9 + 1 + 8, listeners: 2 + 9 + 1 + 8, note: 'home, chevron; the nine icons of the closed switcher; Back; eight tick boxes' }

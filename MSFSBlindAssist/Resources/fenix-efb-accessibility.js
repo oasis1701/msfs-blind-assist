@@ -585,8 +585,8 @@
     for (var i = 0; i < buttons.length; i++) { name(buttons[i], textOf(buttons[i])); }
   });
 
-  // Panel States: the pop-up has four buttons and no title (the owner chose the title the layer gives it). Other dialogs
-  // are not this rule's.
+  // Panel States: the pop-up has four buttons and no title (the owner chose the title the layer gives it).
+  // Other dialogs are not this rule's.
   RULES.push(function (root) {
     var dialogs = root.querySelectorAll('mat-dialog-container');
     for (var i = 0; i < dialogs.length; i++) {

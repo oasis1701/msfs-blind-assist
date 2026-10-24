@@ -2,7 +2,8 @@
 // window, the labelled lines of its five tabs (one ListBox line per value), the FAP's water and waste
 // cautions, the door-pressure messages and the connection status. The rules are the FAP bundle's own
 // (its lavatory, water and waste cautions, door message, door and slide names, temperature store,
-// power-up screens and Set-Up store); "live" is the IAE A321 read of 2026-10-21. An unknown value ("" from the data service) is never a state or a caution (FNX-1).
+// power-up screens and Set-Up store); "live" is the IAE A321 read of 2026-10-21. An unknown value ("" from
+// the data service) is never a state or a caution (FNX-1).
 
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Aircraft;
@@ -507,7 +508,7 @@ public class FenixCabinLinesTests
             Section(lines, FenixCabinSection.Doors).Where(l => l.Key.StartsWith("cargo.", StringComparison.Ordinal)).Select(l => l.Text));
     }
 
-    // ---- The part of a line a press changes ------------------------------------------
+    // ---- The part of a line a press changes -----------------------------------------------------
 
     private static string? State(IReadOnlyList<FenixCabinLine> lines, string key) => Assert.Single(lines, l => l.Key == key).State;
 

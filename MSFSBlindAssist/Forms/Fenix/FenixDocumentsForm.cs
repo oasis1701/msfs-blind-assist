@@ -22,8 +22,8 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// one checks IsDisposed before it touches a control: the window is disposed on an aircraft switch
 /// (DisposeTrackedWindows) while a request may still be in flight. A newer open or search wins; an older answer is
 /// dropped. Escape and the close button only hide the window, which keeps the open document; the pin watcher polls
-/// only while the window is shown. Speech is kept to what the screen reader cannot say (CORE-7); everything else is what NVDA reads
-/// from the focused control.
+/// only while the window is shown. Speech is kept to what the screen reader cannot say (CORE-7); everything
+/// else is what NVDA reads from the focused control.
 /// </remarks>
 public sealed class FenixDocumentsForm : Form
 {

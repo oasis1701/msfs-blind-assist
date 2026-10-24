@@ -254,7 +254,7 @@ test('The_background_and_the_top_bar_status_icons_are_hidden_from_a_screen_reade
     assert.deepStrictEqual(hiddenByLayer(bare, window), [
       'img#appBg', 'img.airplane-icon.top-icon-fade-out', 'img.signal-icon.top-icon-fade-in', 'img#linkedup', 'i.fas.fa-cog',
       'img.battery-none', 'img.lightning', ...Array(9).fill('img.app-img')
-    ], 'the top bar\'s battery pictures have no alt either (R51)');
+    ], 'the top bar\'s battery pictures have no alt either, so they are hidden too');
     // The quick settings button keeps the page's own name; its glyph is not part of it.
     assert.strictEqual(computeAccessibleName(window.document.querySelector('button.top-bar-settings-btn')), 'Open quick settings');
   } finally {
