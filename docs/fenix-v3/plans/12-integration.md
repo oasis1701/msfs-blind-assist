@@ -73,33 +73,33 @@ Each item: make the change, add or adjust its test, run the suite, commit per fi
 
 **Files:** `.claude/rules/fenix-data.md`, `docs/invariants/fenix-data.md`, `.claude/rules/first-officer-airbus.md`, `docs/invariants/first-officer-airbus.md`, `.claude/rules/ai-display.md`, `docs/invariants/ai-display.md`, `docs/invariants/a32nx-fenix.md` (A320-40 text), `CLAUDE.md`.
 
-- [ ] **Step 1:** Collect the proposed lines from each plan's handoff: FNX lines from plans 02 (4), 03 (2), 06 (3), 07 (4), 08 (3), 09 (2), 10 (3) and 11 (3, one of them only if options editing was built); FOA-13 to FOA-15 from plan 05; AI-10 from plan 04. Number the FNX lines FNX-4 upward in merge order; drop any whose mechanism a test with a self-explaining name already pins (the CLAUDE.md "one mechanism per ID" rule).
-- [ ] **Step 2:** Add each line and its `## ID` full text (from the plan's evidence and owner decisions, with dates and measurements).
-- [ ] **Step 3:** If `fenix-data.md` passes 8,000 characters, split by subject: keep data service, variant and EFB rules in `fenix-data.md`; move the window rules (engines, cabin, failures, options) to a new `.claude/rules/fenix-windows.md` with globs `MSFSBlindAssist/Forms/Fenix/**`, `MSFSBlindAssist/Services/FenixEngine*.cs`, `FenixCabin*.cs`, `FenixFailure*.cs`, `FenixOption*.cs` and their tests, a `docs/invariants/fenix-windows.md`, and the CLAUDE.md row. IDs never change.
-- [ ] **Step 3b:** [02 handoff 9] Mirror TKO-5 onto the Fenix definition and add the Fenix to its full text (take-off calls moved to the shared machine).
-- [ ] **Step 4:** [03 H1] In `docs/invariants/a32nx-fenix.md` A320-40, replace "Not covered by this rule: the Fenix EFB window (…)" with "The Fenix EFB window uses the same address (FNX rule)."
-- [ ] **Step 5:** Run `ClaudeContextBudgetTests` and the whole suite; follow any failure's message. Commit `docs(rules): Fenix v3 rules`.
+- [x] **Step 1:** Collect the proposed lines from each plan's handoff: FNX lines from plans 02 (4), 03 (2), 06 (3), 07 (4), 08 (3), 09 (2), 10 (3) and 11 (3, one of them only if options editing was built); FOA-13 to FOA-15 from plan 05; AI-10 from plan 04. Number the FNX lines FNX-4 upward in merge order; drop any whose mechanism a test with a self-explaining name already pins (the CLAUDE.md "one mechanism per ID" rule). (2026-10-24: 33 proposed; 19 added, 11 dropped as test-pinned, 3 merged; numbered FNX-4..19 in plan order, FOA-13..14, AI-10)
+- [x] **Step 2:** Add each line and its `## ID` full text (from the plan's evidence and owner decisions, with dates and measurements). (f6a0d1f1f)
+- [x] **Step 3:** If `fenix-data.md` passes 8,000 characters, split by subject: keep data service, variant and EFB rules in `fenix-data.md`; move the window rules (engines, cabin, failures, options) to a new `.claude/rules/fenix-windows.md` with globs `MSFSBlindAssist/Forms/Fenix/**`, `MSFSBlindAssist/Services/FenixEngine*.cs`, `FenixCabin*.cs`, `FenixFailure*.cs`, `FenixOption*.cs` and their tests, a `docs/invariants/fenix-windows.md`, and the CLAUDE.md row. IDs never change. (split by subject into fenix-windows.md; FNX-13/16/19 stay in fenix-data.md)
+- [x] **Step 3b:** [02 handoff 9] Mirror TKO-5 onto the Fenix definition and add the Fenix to its full text (take-off calls moved to the shared machine). (fenix-definition-call-sites.md)
+- [x] **Step 4:** [03 H1] In `docs/invariants/a32nx-fenix.md` A320-40, replace "Not covered by this rule: the Fenix EFB window (…)" with "The Fenix EFB window uses the same address (FNX rule)." (done, cites FNX-8)
+- [x] **Step 5:** Run `ClaudeContextBudgetTests` and the whole suite; follow any failure's message. Commit `docs(rules): Fenix v3 rules`. (green; then 7842abf03 and 9edf8e36c adjusted FNX-13/16 and the intros)
 
 ### Task 4: Developer docs
 
 **Files:** `docs/a32nx.md`, `docs/first-officer.md`, `docs/fenix-increment-decrement.md`, `docs/tooling.md`.
 
-- [ ] `docs/a32nx.md` Fenix sections, from the plans and their in-sim results: v3 data service (gateway, unknown name reads `""`, settings/FAP/failures APIs, names only from the bundles); the EFB window's accessibility layer, its captures and the MCDU/FAP dead ends (03 H3); variant detection and per-variant controls (06), with its Clock panel, headset, ISIS baro push and aft cargo knob (06 Task 5); gravity gear crank (02, about :71); TO CONFIG (02: the measured delay, `WatchAsync`; about :89-91); AI display reads on v3's cameras (04: the measured table, captain's PFD readable, about :647-700); MCDU key pulse (04 H7, only if its typing check changed it, about :96); Engines window (09); Cabin window and cabin-ready (08; music channels are per livery, not 15); Failures window and endpoints, AND/OR, `time`, Clear (10; the catalog is 549 on the A320 CFM, 555 on the A321 IAE); Fenix options window, labels regeneration (`option_labels.py`), M1-M4 results (11).
-- [ ] `docs/first-officer.md`: about :802, the APU AVAIL lamp is `_U` (plus plan 05's v3 re-read); about :76, engine running from the Fenix's own N2 with the stock fallback; about :95-96, the TO CONFIG timing; the A321 pack-flow skip and the cabin-ready live value.
-- [ ] `docs/fenix-increment-decrement.md`: drop the `E_PED_RMP*` encoder description the code no longer uses.
-- [ ] `docs/tooling.md`, the Node line: add `tools/fenix-efb-test/` to the jsdom harnesses (03 H4).
-- [ ] Commit `docs(fenix): v3 developer docs`.
+- [x] `docs/a32nx.md` Fenix sections, from the plans and their in-sim results: v3 data service (gateway, unknown name reads `""`, settings/FAP/failures APIs, names only from the bundles); the EFB window's accessibility layer, its captures and the MCDU/FAP dead ends (03 H3); variant detection and per-variant controls (06), with its Clock panel, headset, ISIS baro push and aft cargo knob (06 Task 5); gravity gear crank (02, about :71); TO CONFIG (02: the measured delay, `WatchAsync`; about :89-91); AI display reads on v3's cameras (04: the measured table, captain's PFD readable, about :647-700); MCDU key pulse (04 H7, only if its typing check changed it, about :96); Engines window (09); Cabin window and cabin-ready (08; music channels are per livery, not 15); Failures window and endpoints, AND/OR, `time`, Clear (10; the catalog is 549 on the A320 CFM, 555 on the A321 IAE); Fenix options window, labels regeneration (`option_labels.py`), M1-M4 results (11). (23617e60e, 65ddeedc8; M1-M4 results pending in the Fenix options section)
+- [x] `docs/first-officer.md`: about :802, the APU AVAIL lamp is `_U` (plus plan 05's v3 re-read); about :76, engine running from the Fenix's own N2 with the stock fallback; about :95-96, the TO CONFIG timing; the A321 pack-flow skip and the cabin-ready live value. (done)
+- [x] `docs/fenix-increment-decrement.md`: drop the `E_PED_RMP*` encoder description the code no longer uses. (rewritten around CounterStepCode; also QUICK-REFERENCE.md)
+- [x] `docs/tooling.md`, the Node line: add `tools/fenix-efb-test/` to the jsdom harnesses (03 H4). (done)
+- [x] Commit `docs(fenix): v3 developer docs`. (23617e60e)
 
 ### Task 5: Pilot's guide and hotkey list (CORE-19)
 
 **Files:** `guide/airbus-aircraft.md` (Fenix chapter), `guide/first-officer.md`, `guide/planning-your-flight.md`, the hotkey appendix, `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt`.
 
-- [ ] Fenix chapter, from each plan's "Pilot-facing changes": the EFB window on v3 (plan 03: what reads, Alt+Home, the MCDU and FAP pages, Charts pictures only); the "Fenix windows" key (input mode, Ctrl+Shift+F) and its Engines, Cabin, Failures, Fenix documents and Fenix options windows; the Flight Control Computers panel; gravity gear; TO CONFIG wording; Generator 1; the A321, extra-tank and IAE controls and "Not fitted on this aircraft."; Alt+P/N/E/S/I frame the right displays on v3 (04 H3, about :306; Alt+P stays the first officer's PFD, owner answer 4) and "These reads need Fenix v3: update the Fenix" (owner answer 3); a short note that Fenix v3 needs Navigraph connected in its EFB for current navdata.
-- [ ] `guide/first-officer.md`: plan 05's five pilot-facing lines.
-- [ ] `guide/planning-your-flight.md:491`: plan 03's EFB message text (03 H2).
-- [ ] `Fenix_A320_Hotkeys.txt` (about :33-38 for the reads, plus plan 01's Ctrl+Shift+F line) and the hotkey appendix.
-- [ ] Check: every key the guide names exists in `MSFSBlindAssist/Hotkeys/HotkeyManager.cs`; the guide builds (`tools/GuideBuilder`, as `user-guide-build.yml` does).
-- [ ] Commit `docs(guide): Fenix v3`.
+- [x] Fenix chapter, from each plan's "Pilot-facing changes": the EFB window on v3 (plan 03: what reads, Alt+Home, the MCDU and FAP pages, Charts pictures only); the "Fenix windows" key (input mode, Ctrl+Shift+F) and its Engines, Cabin, Failures, Fenix documents and Fenix options windows; the Flight Control Computers panel; gravity gear; TO CONFIG wording; Generator 1; the A321, extra-tank and IAE controls and "Not fitted on this aircraft."; Alt+P/N/E/S/I frame the right displays on v3 (04 H3, about :306; Alt+P stays the first officer's PFD, owner answer 4) and "These reads need Fenix v3: update the Fenix" (owner answer 3); a short note that Fenix v3 needs Navigraph connected in its EFB for current navdata. (0c978b9be, fad969a53, 272263956)
+- [x] `guide/first-officer.md`: plan 05's five pilot-facing lines. (done)
+- [x] `guide/planning-your-flight.md:491`: plan 03's EFB message text (03 H2). (done)
+- [x] `Fenix_A320_Hotkeys.txt` (about :33-38 for the reads, plus plan 01's Ctrl+Shift+F line) and the hotkey appendix. (done; EFB address now 127.0.0.1)
+- [x] Check: every key the guide names exists in `MSFSBlindAssist/Hotkeys/HotkeyManager.cs`; the guide builds (`tools/GuideBuilder`, as `user-guide-build.yml` does). (about 35 keys and 50 phrases checked against the code; GuideBuilder check passes)
+- [x] Commit `docs(guide): Fenix v3`. (0c978b9be)
 
 ### Task 6: One short owner-in-sim pass (after Tasks 1-5)
 
