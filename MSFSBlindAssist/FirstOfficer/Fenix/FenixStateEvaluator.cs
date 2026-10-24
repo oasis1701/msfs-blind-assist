@@ -307,9 +307,9 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     ///
     /// Why the flag and not N2 alone: the A32NX First Officer does the same with FlyByWire's own engine
     /// state (FbwA320StateEvaluator.RunningFrom), and the stock N2 the fallback uses is a generic engine
-    /// model that does not follow the Fenix. Measured live (plan 05 follow-up, 2026-10-22): the Fenix
+    /// model that does not follow the Fenix. Measured live (2026-10-22): the Fenix
     /// flags an engine running at its idle, 62.1 and 62.4 % N2 on the IAE A321 (6-7 s after N2 passed
-    /// 55 %) and 59.2 % on the CFM A320 (about 4 s after, plan 09); on a shutdown the flag drops at once
+    /// 55 %) and 59.2 % on the CFM A320 (about 4 s after); on a shutdown the flag drops at once
     /// while the Fenix's N2 takes about 20 s to fall below 20 %. "Stopped" (FO_ENGINES_OFF) stays on
     /// N2 below 20 %, so a shutdown reads not running at master-off and stopped once N2 has spun down.</summary>
     internal static double RunningValue(double fenixFlag, double resolvedN2)

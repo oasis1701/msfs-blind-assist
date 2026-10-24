@@ -32,9 +32,9 @@ using Step = Models.FlowStep<FenixStateEvaluator>;
 public static class FenixFlowDefinitions
 {
     /// <summary>How long each engine-start wait lets the engine spool before the flow stops. Sourced
-    /// (Airbus instructor notes, plan 05 O2): the IAE FADEC dry-cranks 30 s before ignition and fuel
+    /// (Airbus instructor notes): the IAE FADEC dry-cranks 30 s before ignition and fuel
     /// on every auto start, and the Fenix option iae_crank_type offers 30 or 50 s of it. Assumed: 180 s
-    /// is margin over that (120 s was the old wait). Measured (plan 05 follow-up, 2026-10-22, IAE A321
+    /// is margin over that (120 s was the old wait). Measured (2026-10-22, IAE A321
     /// with a 30 s crank): master ON to the Fenix running flag about 66 s per engine.</summary>
     internal const int EngineStartTimeoutSeconds = 180;
 

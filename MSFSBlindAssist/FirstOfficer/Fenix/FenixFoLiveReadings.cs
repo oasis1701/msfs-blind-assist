@@ -6,8 +6,8 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// The six values the Fenix First Officer reads from the Fenix's own data service rather than from
 /// L:vars: both engines' N2 and running flag, the cabin-ready signal and the total fuel in kilograms.
 /// The service's subscription pushes four of them (<see cref="SubscribedNames"/>) and the evaluator
-/// polls the other two, the N2s (<see cref="PolledNames"/>), once a second: measured live (plan 05
-/// follow-up, 2026-10-22), a subscription sends an engine's N2 ONCE, when it opens, and never again
+/// polls the other two, the N2s (<see cref="PolledNames"/>), once a second: measured live
+/// (2026-10-22), a subscription sends an engine's N2 ONCE, when it opens, and never again
 /// (one value through a whole shutdown, 62.3 % to 5 %), while a query answers a fresh N2 every time.
 /// Both arrive from a thread-pool thread (FNX-2), so they are stored here under one lock and read by
 /// the evaluator's synthetic fields; nothing in this class speaks.
