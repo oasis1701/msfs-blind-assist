@@ -91,12 +91,24 @@ public class FenixOptionGroupingTests
 
     [Fact] public void Untested_compares_booleans_not_their_spelling()
     {
-        FenixSetting[] Encoder(string value) => LiveEleven().Select(s => s.Key == "encoder_acceleration_enabled" ? s with { Value = value } : s).ToArray();
-        Assert.Empty(FenixOptionGrouping.Untested(Encoder("False")));
-        Assert.Empty(FenixOptionGrouping.Untested(Encoder("false")));
-        Assert.Equal(new[] { "Encoder Acceleration: On" }, FenixOptionGrouping.Untested(Encoder("True")));
+        FenixSetting[] FdLs(string value) => LiveEleven().Select(s => s.Key == "fd_ls_sync_enabled" ? s with { Value = value } : s).ToArray();
+        Assert.Empty(FenixOptionGrouping.Untested(FdLs("False")));
+        Assert.Empty(FenixOptionGrouping.Untested(FdLs("false")));
+        Assert.Equal(new[] { "EFIS Linking: FD/LS: On" }, FenixOptionGrouping.Untested(FdLs("True")));
         // Only the options the app was tested with a value for can be listed; the others carry no tested value.
         Assert.Empty(FenixOptionGrouping.Untested(LiveEleven().Select(s => s.Key == "weight_unit" ? s with { Value = "Kilograms" } : s).ToArray()));
+    }
+
+    [Fact] public void Encoder_acceleration_on_is_no_longer_a_warning()
+    {
+        // FNX-20 (2026-10-24): the typed FCU sets turn the knob in small checked steps, so they land either way.
+        var on = LiveEleven().Select(s => s.Key == "encoder_acceleration_enabled" ? s with { Value = "True" } : s).ToArray();
+        Assert.Empty(FenixOptionGrouping.Untested(on));
+        Assert.Null(FenixOptionNotes.TestedValue("encoder_acceleration_enabled"));
+        string note = FenixOptionNotes.AppNote("encoder_acceleration_enabled")!;
+        Assert.Contains("small checked steps", note);
+        Assert.Contains("altimeter entries are not affected", note);
+        Assert.DoesNotContain("tested with this off", note);
     }
 
     [Fact] public void Status_texts()
@@ -109,14 +121,15 @@ public class FenixOptionGroupingTests
             "efis_baro_linking_type" => s with { Value = "Linked" },
             _ => s,
         }).ToList();
+        // Encoder Acceleration on is in the list but no longer warned about (FNX-20).
         Assert.Equal("Fenix version unknown: 11 options. Read only: change options in the Fenix EFB. Not what MSFS Blind Assist is tested with: "
-            + "Encoder Acceleration: On; EFIS Linking: Baro: Linked Left+Right.", FenixOptionGrouping.StatusText(null, risky, false));
+            + "EFIS Linking: Baro: Linked Left+Right.", FenixOptionGrouping.StatusText(null, risky, false));
         Assert.Equal("Fenix 3.0.0.7426: 11 options. F2 changes an on/off or choice option for this simulator session. "
             + "Shift+F2 makes an option permanent. Ctrl+F2 resets your change to the Fenix default.",
             FenixOptionGrouping.StatusText("3.0.0.7426", LiveEleven(), true));
         Assert.Equal("Fenix version unknown: 11 options. F2 changes an on/off or choice option for this simulator session. "
             + "Shift+F2 makes an option permanent. Ctrl+F2 resets your change to the Fenix default. "
-            + "Not what MSFS Blind Assist is tested with: Encoder Acceleration: On; EFIS Linking: Baro: Linked Left+Right.",
+            + "Not what MSFS Blind Assist is tested with: EFIS Linking: Baro: Linked Left+Right.",
             FenixOptionGrouping.StatusText(null, risky, true));
         Assert.Equal("Refreshed, no changes.", FenixOptionGrouping.RefreshText(0));
         Assert.Equal("Refreshed, 1 option changed.", FenixOptionGrouping.RefreshText(1));

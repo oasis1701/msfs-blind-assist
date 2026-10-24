@@ -9,9 +9,10 @@ public static class FenixOptionNotes
     private static readonly Dictionary<string, (string Note, string? Tested)> Table =
         new(StringComparer.Ordinal)
         {
+            // FNX-20, measured 2026-10-24: the typed FCU sets now land either way; the baro knobs are not accelerated.
             [FenixOptionKeys.EncoderAcceleration] = (
-                "When on, the app's Set heading, speed, altitude, vertical speed and altimeter entries may stop on the wrong value: they turn the FCU knobs many clicks at once. The app is tested with this off.",
-                "false"),
+                "When on, the app's Set heading, speed, altitude and vertical speed entries turn the FCU knob in small checked steps, so they land on the value you typed, a little more slowly. The altimeter entries are not affected. Measured 2026-10-24.",
+                null),
             [FenixOptionKeys.EfisBaroLinking] = (
                 "The app sets the left and then the right altimeter. When linked, either knob moves both, so a set may land a step off. The app is tested with Independent.",
                 "Independent"),

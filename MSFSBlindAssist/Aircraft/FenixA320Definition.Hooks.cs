@@ -245,6 +245,8 @@ public partial class FenixA320Definition
     {
         try
         {
+            // A typed FCU set still turning a knob stops before its next write ([FNX-20]).
+            _fcuSetTurns.Close();
             RunSeam(nameof(OnFenixSwitchedAway), () => OnFenixSwitchedAway());
             RunSeam(nameof(StopCabinBackground), () => StopCabinBackground());
             RunSeam(nameof(StopEngineBackground), () => StopEngineBackground());

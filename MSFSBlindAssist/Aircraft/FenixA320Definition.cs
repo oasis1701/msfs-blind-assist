@@ -13127,7 +13127,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// <summary>
     /// Jumps a counter variable by the given number of steps in a single calculator write,
     /// instead of incrementing one-by-one with delays. The Fenix WASM module detects
-    /// the counter delta each sim frame and processes all steps at once.
+    /// the counter delta each sim frame and processes all steps at once. With the Fenix's encoder
+    /// acceleration on it multiplies a large or quick jump, so the typed FCU sets write through
+    /// <see cref="FenixA320FcuKnobSet.RunAsync"/>, never one unchecked jump ([FNX-20]).
     /// </summary>
     private void JumpCounter(string varName, int steps, SimConnect.SimConnectManager simConnect)
     {
@@ -13148,100 +13150,84 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         }
     }
 
+    // The typed FCU sets in progress, one turn per knob ([FNX-20]); closed by OnSwitchedAway.
+    private readonly FenixA320FcuKnobSet.Turns _fcuSetTurns = new();
+
+    // The Fenix's Encoder Acceleration option, read once per short while for the typed FCU sets ([FNX-20]).
+    private Services.FenixEncoderAcceleration? _encoderAcceleration;
+
+    private Services.FenixEncoderAcceleration EncoderAcceleration =>
+        _encoderAcceleration ??= new Services.FenixEncoderAcceleration(
+            ct => DataService.GetSettingsAsync(ct), () => Environment.TickCount64);
+
     /// <summary>
-    /// Attempts to set an FCU value using a single counter jump, then verifies and retries if needed.
-    /// Falls back to batched increments if the single jump doesn't work.
+    /// A typed FCU set ([FNX-20]): turns <paramref name="knob"/> to <paramref name="target"/> as a closed loop
+    /// (<see cref="FenixA320FcuKnobSet.RunAsync"/>), at most 20 counts a write with the Fenix's encoder
+    /// acceleration on or unread, one write of the whole difference with it off, each write read back before
+    /// the next. A newer set of the same knob, an aircraft switch or a disconnect ends it silently. Success is
+    /// silent ([CORE-7]); a miss is said once ("Altitude set to 7100, not 7000."). Runs on the UI thread: the
+    /// awaits keep its context, so the writes stay there.
     /// </summary>
-    private async System.Threading.Tasks.Task SetFCUValueWithVerification(
-        string counterVar,
-        string readbackVar,
-        int steps,
-        double targetValue,
-        double tolerance,
-        SimConnect.SimConnectManager simConnect,
-        string valueName)
+    private async Task SetFcuKnobAsync(FenixFcuKnob knob, double target,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
-        // Step 1: Try single counter jump
-        JumpCounter(counterVar, steps, simConnect);
-
-        // Step 2: Wait for WASM to process and monitoring to update, then verify
-        // Need enough time for: WASM to process delta + sim to update N_ variable + continuous monitoring to read it
-        await System.Threading.Tasks.Task.Delay(750);
-
-        double? actualValue = simConnect.GetCachedVariableValue(readbackVar);
-        if (actualValue != null && Math.Abs(actualValue.Value - targetValue) <= tolerance)
+        int turn = _fcuSetTurns.Begin(knob.CounterVar);
+        bool StillWanted() => _fcuSetTurns.IsLatest(knob.CounterVar, turn) && simConnect.IsConnected;
+        try
         {
-            Log.Debug("Fenix", $"{valueName} single jump succeeded: target={targetValue}, actual={actualValue.Value}");
-            return;
-        }
+            bool? acceleration = await EncoderAcceleration.ReadAsync();
+            if (!StillWanted()) return;
 
-        // Second check after additional delay — monitoring may not have refreshed yet
-        Log.Debug("Fenix", $"{valueName} first check: target={targetValue}, actual={actualValue?.ToString() ?? "null"}, waiting for second check");
-        await System.Threading.Tasks.Task.Delay(750);
-
-        actualValue = simConnect.GetCachedVariableValue(readbackVar);
-        if (actualValue != null && Math.Abs(actualValue.Value - targetValue) <= tolerance)
-        {
-            Log.Debug("Fenix", $"{valueName} single jump succeeded on second check: target={targetValue}, actual={actualValue.Value}");
-            return;
-        }
-
-        Log.Debug("Fenix", $"{valueName} single jump missed: target={targetValue}, actual={actualValue?.ToString() ?? "null"}, retrying with batched increments");
-
-        // Step 3: Calculate remaining delta and retry with batched increments
-        if (actualValue != null)
-        {
-            double remaining = targetValue - actualValue.Value;
-            int remainingSteps;
-
-            // Determine step size based on variable type
-            if (counterVar == "E_FCU_ALTITUDE" || counterVar == "E_FCU_VS")
-                remainingSteps = (int)(remaining / 100);
-            else if (counterVar == "E_FCU_HEADING")
-                remainingSteps = CalculateHeadingDelta((int)actualValue.Value, (int)targetValue);
-            else
-                remainingSteps = (int)remaining;
-
-            if (remainingSteps == 0)
-                return;
-
-            // Batched increments: send groups of 10 with frame-aligned delays
-            int batchSize = 10;
-            int totalRemaining = Math.Abs(remainingSteps);
-            int direction = remainingSteps > 0 ? 1 : -1;
-
-            while (totalRemaining > 0)
+            var io = new FenixFcuKnobIo
             {
-                int currentBatch = Math.Min(batchSize, totalRemaining);
-                JumpCounter(counterVar, currentBatch * direction, simConnect);
-                totalRemaining -= currentBatch;
+                Write = counts =>
+                {
+                    JumpCounter(knob.CounterVar, counts, simConnect);
+                    _fcuSetTurns.Wrote(knob.CounterVar, Environment.TickCount64);
+                },
+                Read = () => ReadFcuKnobAsync(knob, simConnect),
+                Delay = ms => Task.Delay(ms),
+                NowMs = () => Environment.TickCount64,
+                StillWanted = StillWanted,
+            };
+            FenixFcuSetResult result = await FenixA320FcuKnobSet.RunAsync(
+                knob, target, acceleration, _fcuSetTurns.LastWriteMs(knob.CounterVar), io);
 
-                if (totalRemaining > 0)
-                    await System.Threading.Tasks.Task.Delay(33);  // ~1 frame at 30fps
-            }
+            string accelerationText = acceleration switch { true => "on", false => "off", null => "unread" };
+            Log.Debug("Fenix", FormattableString.Invariant(
+                $"{knob.Name} set to {target}: {result.End}, read {result.Value?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "nothing"}, {result.Writes} writes in {result.ElapsedMs} ms, encoder acceleration {accelerationText}"));
 
-            // Final verification
-            await System.Threading.Tasks.Task.Delay(200);
-            actualValue = simConnect.GetCachedVariableValue(readbackVar);
-            Log.Debug("Fenix", $"{valueName} after batched retry: target={targetValue}, actual={actualValue?.ToString() ?? "null"}");
+            if (!StillWanted()) return;
+            string? text = FenixA320FcuKnobSet.Spoken(knob, result, target);
+            if (text != null) announcer.AnnounceImmediate(text);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Fenix", $"{knob.Name} set failed: {ex.GetType().Name}: {ex.Message}", ex);
         }
     }
 
     /// <summary>
-    /// Calculates the shortest heading delta accounting for wraparound (0-359 degrees).
-    /// Example: From 340 to 20 = +40 (not -320)
+    /// One fresh read of a knob through its on-request twin ([A320-41]), answered within a frame, never the
+    /// once-a-second original's cache, which can predate the last write. The V/S reads its dashes flag beside
+    /// it. A twin that answers no pending readout is consumed silently by ProcessSimVarUpdate.
     /// </summary>
-    private int CalculateHeadingDelta(int currentHeading, int targetHeading)
+    private static async Task<FenixFcuReading> ReadFcuKnobAsync(FenixFcuKnob knob, SimConnect.SimConnectManager simConnect)
     {
-        int delta = targetHeading - currentHeading;
+        async Task<double?> Fresh(string key)
+        {
+            try { return await simConnect.ReadFreshAsync(key, FenixA320FcuKnobSet.ReadTimeoutMs); }
+            catch (Exception ex)
+            {
+                Log.Debug("Fenix", $"Fresh read of {key} failed: {ex.Message}");
+                return null;
+            }
+        }
 
-        // Normalize to shortest path (-180 to +180)
-        if (delta > 180)
-            delta -= 360;
-        else if (delta < -180)
-            delta += 360;
-
-        return delta;
+        Task<double?> value = Fresh(knob.ReadoutVar);
+        if (knob.DashedReadoutVar is not string dashedKey) return new FenixFcuReading(await value);
+        Task<double?> dashed = Fresh(dashedKey);
+        return new FenixFcuReading(await value, FcuVsIsSilenced(await dashed));
     }
 
     /// <summary>
@@ -13268,7 +13254,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         }
 
         int currentHeading = (int)currentValue.Value;
-        int delta = CalculateHeadingDelta(currentHeading, targetHeading);
+        int delta = FenixA320FcuKnobSet.HeadingDelta(currentHeading, targetHeading);
 
         if (delta == 0)
         {
@@ -13278,8 +13264,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
         // No announcement - screen reader already announced the user's input
 
-        // Single counter jump with verification and fallback
-        await SetFCUValueWithVerification("E_FCU_HEADING", "N_FCU_HEADING", delta, targetHeading, 1, simConnect, "Heading");
+        // A closed loop from the knob's fresh value, the short way round ([FNX-20])
+        await SetFcuKnobAsync(FenixFcuKnob.Heading, targetHeading, simConnect, announcer);
     }
 
     /// <summary>
@@ -13329,11 +13315,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", 0);  // Force 100ft mode
         await System.Threading.Tasks.Task.Delay(100);  // Wait for mode to activate
 
-        // Calculate steps (each increment = 100ft in 100ft mode)
-        int steps = totalDelta / 100;
-
-        // Single counter jump with verification and fallback
-        await SetFCUValueWithVerification("E_FCU_ALTITUDE", "N_FCU_ALTITUDE", steps, targetAltitude, 100, simConnect, "Altitude");
+        // A closed loop from the knob's fresh value, one click = 100 ft in 100 ft mode ([FNX-20])
+        await SetFcuKnobAsync(FenixFcuKnob.Altitude, targetAltitude, simConnect, announcer);
 
         // Restore user's preferred mode
         simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", userPreferredScaleMode);
@@ -13372,8 +13355,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
         // No announcement - screen reader already announced the user's input
 
-        // Single counter jump with verification and fallback
-        await SetFCUValueWithVerification("E_FCU_SPEED", "N_FCU_SPEED", delta, targetSpeed, 1, simConnect, "Speed");
+        // A closed loop from the knob's fresh value, one click = 1 knot or Mach 0.01 ([FNX-20])
+        await SetFcuKnobAsync(FenixFcuKnob.Speed, targetSpeed, simConnect, announcer);
     }
 
     /// <summary>
@@ -13398,22 +13381,22 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             return;
         }
 
+        // The knob moves in 100 fpm clicks: a typed value off that grid goes to the click toward zero, as the
+        // old step count (delta / 100) did. While the window is dashed the cache holds the live V/S.
+        targetVS = targetVS / 100 * 100;
         int currentVS = (int)currentValue.Value;
         int delta = targetVS - currentVS;
 
         if (delta == 0)
         {
-            announcer.AnnounceImmediate($"Already at vertical speed {targetVS}");
+            announcer.AnnounceImmediate(FormattableString.Invariant($"Already at vertical speed {targetVS}"));
             return;
         }
 
         // No announcement - screen reader already announced the user's input
 
-        // Calculate steps (each increment is 100 fpm)
-        int steps = delta / 100;
-
-        // Single counter jump with verification and fallback
-        await SetFCUValueWithVerification("E_FCU_VS", "N_FCU_VS", steps, targetVS, 100, simConnect, "VS");
+        // A closed loop from the knob's fresh value; a dashed window is aimed from the live V/S once ([FNX-20])
+        await SetFcuKnobAsync(FenixFcuKnob.VerticalSpeed, targetVS, simConnect, announcer);
     }
 
     /// <summary>
