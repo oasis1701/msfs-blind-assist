@@ -38,17 +38,19 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     };
 
     // Taxi-turn leads (see IAircraftDefinition.TaxiTurnLeadSeconds / TaxiSharpTurnLeadSeconds /
-    // TaxiTurnLeadMaxDegrees). MEASURED 2026-10-23 on Fenix v3 (KBUR, KATL, KBNA, KCLE; 22 turn
-    // rollouts, all flown on the old constant 1.3 s, itself a proxy from the FBW A320). Gentle
-    // turns (route turn under 60 deg) settled at a median +0.6 deg: 1.3 s stays their lead. Sharp
-    // turns settled a median 10.5 deg LONG, up to 38 deg: the aircraft kept yawing at full rate
-    // ~1 s after the tone centred and took 2-3.5 s to stop. Those turns had already swept 40-138
-    // deg when the tone centred and peaked at 15-25 deg/s, past where a 30 deg ceiling stops any
-    // lead growing. A replay of all 22 put this ramp (1.3 s rising to 2.4 s between 30 and 60 deg
-    // turned, ceiling 45 deg) at gentle +0.6 / sharp -1.8 deg median; a constant 1.8 s with 45 deg
-    // left gentle turns 5.7 deg short. Re-measure from telemetry.
+    // TaxiTurnLeadMaxDegrees). MEASURED on Fenix v3 over two sets of taxis, as the lead each turn
+    // needed: heading swept after the tone centred / yaw rate then.
+    //  - 22 turns, 2026-10-22/23 (KBUR, KATL, KBNA, KCLE), on a constant 1.3 s (a proxy from the
+    //    FBW A320): gentle turns needed a median 1.28 s; sharp turns (route turn 60 deg or more)
+    //    1.75 s, with a tail to 3.1 s where the yaw kept building ~1 s after the tone centred.
+    //  - 2026-10-23 PM (KCLE, KEWR x2, KMIA), on 1.3 s ramping to 2.4 s: gentle 1.34 s, sharp
+    //    1.66 s. The pilot unwinds when the tone says so: the sharp turns that centred with
+    //    1.5-1.8 s in force ended within 6 deg, the two that centred at 2.1-2.4 s, 12-20 deg SHORT
+    //    (the tone fell quiet 33-43 deg before the heading). 2.4 s chased that tail; the median is
+    //    the target. 45 deg ceiling: those turns peak at 15-25 deg/s, and at 30 deg a 1.7 s lead
+    //    stops growing at 17.6 deg/s. Re-measure from telemetry.
     public override double TaxiTurnLeadSeconds => 1.3;
-    public override double TaxiSharpTurnLeadSeconds => 2.4;
+    public override double TaxiSharpTurnLeadSeconds => 1.7;
     public override double TaxiTurnLeadMaxDegrees => 45.0;
 
     // Private fields for FCU readout tracking

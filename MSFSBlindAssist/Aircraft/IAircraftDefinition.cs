@@ -552,8 +552,8 @@ public interface IAircraftDefinition
     /// <summary>
     /// Ceiling, degrees, on the heading the taxi-turn lead may anticipate
     /// (|yawRate × lead| is clamped to it). Per-aircraft because it binds only on an
-    /// airframe that taxis at high yaw rates with a long lead: at 30° a 2.4 s lead stops
-    /// growing above 12.5°/s. Base default 30.
+    /// airframe that taxis at high yaw rates with a long lead: at 30° a 1.7 s lead stops
+    /// growing above 17.6°/s. Base default 30.
     /// </summary>
     double TaxiTurnLeadMaxDegrees { get; }
 

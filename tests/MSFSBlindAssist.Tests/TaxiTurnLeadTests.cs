@@ -15,7 +15,7 @@ public class TaxiTurnLeadTests
     {
         var fenix = new FenixA320Definition();
         Assert.Equal(1.3, fenix.TaxiTurnLeadSeconds);
-        Assert.Equal(2.4, fenix.TaxiSharpTurnLeadSeconds);
+        Assert.Equal(1.7, fenix.TaxiSharpTurnLeadSeconds);
         Assert.Equal(45.0, fenix.TaxiTurnLeadMaxDegrees);
     }
 
@@ -50,12 +50,12 @@ public class TaxiTurnLeadTests
         double gentle = fenix.TaxiTurnLeadSeconds, sharp = fenix.TaxiSharpTurnLeadSeconds;
 
         Assert.Equal(1.3, GuidanceGeometry.TurnLeadSeconds(20.0, gentle, sharp), 3);
-        Assert.Equal(1.85, GuidanceGeometry.TurnLeadSeconds(45.0, gentle, sharp), 3);
-        Assert.Equal(2.4, GuidanceGeometry.TurnLeadSeconds(75.0, gentle, sharp), 3);
+        Assert.Equal(1.5, GuidanceGeometry.TurnLeadSeconds(45.0, gentle, sharp), 3);
+        Assert.Equal(1.7, GuidanceGeometry.TurnLeadSeconds(75.0, gentle, sharp), 3);
 
-        // 17.5 deg/s, the KATL 89-degree turn's rate when its tone centred: 2.4 s asks for 42 deg
-        // of anticipation. The base ceiling stops it at 30; the Fenix's 45 passes it whole.
-        Assert.Equal(-30.0, GuidanceGeometry.ProjectHeadingError(0.0, 17.5, sharp, 30.0), 0.01);
-        Assert.Equal(-42.0, GuidanceGeometry.ProjectHeadingError(0.0, 17.5, sharp, fenix.TaxiTurnLeadMaxDegrees), 0.01);
+        // 22 deg/s, the KATL 89-degree turn's peak: 1.7 s asks for 37.4 deg of anticipation.
+        // The base ceiling stops it at 30; the Fenix's 45 passes it whole.
+        Assert.Equal(-30.0, GuidanceGeometry.ProjectHeadingError(0.0, 22.0, sharp, 30.0), 0.01);
+        Assert.Equal(-37.4, GuidanceGeometry.ProjectHeadingError(0.0, 22.0, sharp, fenix.TaxiTurnLeadMaxDegrees), 0.01);
     }
 }
