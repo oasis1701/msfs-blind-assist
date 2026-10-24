@@ -263,8 +263,9 @@ public sealed class FenixOptionsForm : Form
     /// <summary>
     /// F2, Shift+F2, Ctrl+F2: change the selected on/off or choice option for this simulator session, make
     /// a change permanent, or (any option the pilot or the session changed) reset it to the Fenix default.
-    /// F2 and Shift+F2 pick the new value in a dialog; Shift+F2 and Ctrl+F2 always ask Yes or No first, and
-    /// F2 does for an option that reshapes the cockpit (No by default for all). Nothing is sent without a Yes.
+    /// F2 and Shift+F2 pick the new value in a dialog; Shift+F2 (after that dialog) and Ctrl+F2 always ask
+    /// Yes or No, and F2 does for an option that reshapes the cockpit (No by default for all). Nothing is
+    /// sent without a Yes.
     /// The request is sent as the EFB sends it, then the options are read again and what the Fenix reads back
     /// is spoken, never what was asked for (CORE-7). Awaited on the UI thread, never throws.
     /// </summary>
