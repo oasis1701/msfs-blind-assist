@@ -63,6 +63,28 @@ public class FenixA320DisplayReadsStandbyTests
         }
     }
 
+    // The definition's own table follows what it has read of the livery (B_CONFIG_STDBY: 0 ISIS, 1 round
+    // gauges, measured), so Alt+I names the standby once the config is published and asks the AI to
+    // identify it until then.
+    [Fact]
+    public void The_definition_follows_the_fitted_standby()
+    {
+        var definition = new FenixA320Definition();
+        Assert.Same(FenixA320DisplayReads.All, DisplayReadsOf(definition));
+
+        definition.TryApplyConfigValue(FenixConfigVars.AircraftType, 3);
+        definition.TryApplyConfigValue(FenixConfigVars.Standby, 1);
+        Assert.Equal(GeminiService.DisplayType.StandbyFenixAnalogue, StandbyRow(DisplayReadsOf(definition)).DisplayType);
+
+        definition.TryApplyConfigValue(FenixConfigVars.Standby, 0);
+        Assert.Equal(GeminiService.DisplayType.StandbyFenixIsis, StandbyRow(DisplayReadsOf(definition)).DisplayType);
+    }
+
+    private static IReadOnlyList<AiDisplayRead> DisplayReadsOf(FenixA320Definition definition) =>
+        (IReadOnlyList<AiDisplayRead>)typeof(FenixA320Definition)
+            .GetProperty("DisplayReads", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(definition)!;
+
     [Fact]
     public void The_isis_prompt_reads_one_digital_screen()
     {

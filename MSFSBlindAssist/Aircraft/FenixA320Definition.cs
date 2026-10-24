@@ -13456,10 +13456,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         }
     }
     /// <summary>
-    /// No camera move: this aircraft's instrument view indices are unmeasured, so every read
-    /// captures the current view (FenixA320DisplayReads).
+    /// The five AI display reads, on v3's measured instrument views; the standby prompt follows
+    /// the fitted standby (FenixA320DisplayReads).
     /// </summary>
-    protected override IReadOnlyList<AiDisplayRead> DisplayReads => FenixA320DisplayReads.All;
+    protected override IReadOnlyList<AiDisplayRead> DisplayReads => FenixA320DisplayReads.For(Variant);
 
 
     /// <summary>
@@ -13482,7 +13482,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         switch (action)
         {
             // Alt+P / Alt+N / Alt+E / Alt+S / Alt+I are dispatched from FenixA320DisplayReads by
-            // the base. No camera move: this aircraft's instrument view indices are unmeasured.
+            // the base, on measured views.
 
             // FCU knob push/pull actions (use atomic RPN, not button transitions)
             case HotkeyAction.FCUHeadingPush:
