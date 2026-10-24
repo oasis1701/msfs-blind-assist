@@ -108,7 +108,8 @@ public sealed record FenixVariant(
             FenixConfigVars.AircraftType => this with { Type = ReadType(value) },
             FenixConfigVars.EngineType => this with { Engine = ReadEngine(value) },
             FenixConfigVars.ActCount => this with { ActCount = ReadCount(value) },
-            // 0 = ISIS (measured). 1 is taken as the other standby fit, which has no ISIS.
+            // 0 = ISIS, 1 = the round standby gauges, no ISIS. Measured 2026-10-22: it read 1 on the
+            // round-gauge CFM A320 (C-FFWM, N_CONFIG_AIRCRAFT_TYPE 3) and 0 on the ISIS A321.
             FenixConfigVars.Standby => this with { HasIsis = ReadFlag(value, zeroMeans: true) },
             FenixConfigVars.Dcdu => this with { HasDcdu = ReadFlag(value, zeroMeans: false) },
             FenixConfigVars.IsNeo => this with { IsNeo = ReadFlag(value, zeroMeans: false) },
