@@ -2,6 +2,7 @@
 // and stop in OnSwitchedAway. FenixTestHost turns them off for the whole test assembly, so the facts
 // here that need them on (or need their shipped default) live apart from FenixDefinitionSeamTests.
 
+using System.Text.RegularExpressions;
 using MSFSBlindAssist.Aircraft;
 
 namespace MSFSBlindAssist.Tests;
@@ -44,5 +45,19 @@ public class FenixBackgroundSeamsTests
             // Stops anything the update did start, so a failing run leaves no poller behind.
             definition.OnSwitchedAway();
         }
+    }
+
+    [Fact]
+    public void The_shipped_default_leaves_the_background_seams_on()
+    {
+        // FenixTestHost writes the flag false before any test runs, so the property cannot show the shipped
+        // default: read its initializer. Flipping that default would silently turn the cabin and engine
+        // background off in the app.
+        string source = File.ReadAllText(Path.Combine(
+            ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Aircraft", "FenixA320Definition.Hooks.cs"));
+
+        Assert.Matches(
+            new Regex(@"static\s+bool\s+BackgroundSeamsEnabled\s*\{\s*get;\s*set;\s*\}\s*=\s*true\s*;"),
+            source);
     }
 }
