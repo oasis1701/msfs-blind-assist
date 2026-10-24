@@ -1,6 +1,6 @@
 # Fenix v3 Integration Implementation Plan (plan 12)
 
-**Claimed by:** nobody yet · **Status:** not started
+**Claimed by:** robin24 (Claude Code) · **Status:** in progress (2026-10-24: Tasks 1-5 first; plan 11's M1-M4, the FD/LS light reads and the A321 Econ Flow check in one owner sim session after them, then Task 6)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -33,9 +33,9 @@
 
 **Files:** none (read only).
 
-- [ ] **Step 1:** Pull `FenixV3`. Every plan file's **Status** line reads "done", and every plan's "Handoff to plan 12" section is filled in (in-sim results included).
-- [ ] **Step 2: No shared files.** `git log --format='%h %s' --name-only <base-sha>..FenixV3` shows each plan's commits touching only the files `00-index.md` gives that plan (`FirstOfficer/Fenix/FenixActionExecutor.cs` is plan 02's alone: its take-off config members are there and plan 05 did not edit the file).
-- [ ] **Step 3:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` and the full suite. Expected: green. (Every push to `FenixV3` has run the tests on GitHub since plan 01 landed; this local run with everything merged is the integration check, and the last push's run on GitHub must be green too.)
+- [x] **Step 1:** Pull `FenixV3`. Every plan file's **Status** line reads "done", and every plan's "Handoff to plan 12" section is filled in (in-sim results included). (2026-10-24 at 19012eb82: all done; open in-sim items are listed in each handoff.)
+- [x] **Step 2: No shared files.** (2026-10-24: files touched by more than one author since 80a857441 are only the owner-requested Cockpit Door commit a0a1609ae and plan 05's approved Task 13 on plan 09's engine files, both recorded in their plans' handoffs.) `git log --format='%h %s' --name-only <base-sha>..FenixV3` shows each plan's commits touching only the files `00-index.md` gives that plan (`FirstOfficer/Fenix/FenixActionExecutor.cs` is plan 02's alone: its take-off config members are there and plan 05 did not edit the file).
+- [x] **Step 3:** (2026-10-24: build 0 errors; 15,642 tests passing; GitHub's Tests run on 19012eb82 green.) `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` and the full suite. Expected: green. (Every push to `FenixV3` has run the tests on GitHub since plan 01 landed; this local run with everything merged is the integration check, and the last push's run on GitHub must be green too.)
 
 ### Task 2: Code handoffs, by file
 
