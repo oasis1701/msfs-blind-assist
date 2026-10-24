@@ -114,23 +114,20 @@ public static class FenixDocumentPins
 
     /// <summary>
     /// Re-reads the setting until the Fenix holds the wanted state of the path: its settings query lags the write by
-    /// up to about 2 s. Waits <paramref name="interval"/> between reads, at most <paramref name="attempts"/> reads.
-    /// Opposite when at least one read answered but never showed the wanted state; NoAnswer when none answered.
+    /// up to about 2 s (<see cref="FenixSettingReadBack"/>, which the options window waits with too). Waits
+    /// <paramref name="interval"/> between reads, at most <paramref name="attempts"/> reads, and goes on through a
+    /// read that got no answer. Opposite when at least one read answered but never showed the wanted state;
+    /// NoAnswer when none answered.
     /// </summary>
     public static async Task<FenixPinReadBack> AwaitStateAsync(
         Func<CancellationToken, Task<IReadOnlyList<FenixSetting>>> readSettings, string path, bool wantPinned,
         TimeSpan interval, int attempts, Func<TimeSpan, CancellationToken, Task> delay, CancellationToken ct)
     {
-        bool answered = false;
-        for (int i = 0; i < attempts; i++)
-        {
-            if (i > 0) await delay(interval, ct);
-            var pins = FromSettings(await readSettings(ct));
-            if (pins == null) continue;
-            answered = true;
-            if (pins.Any(p => string.Equals(p.Path, path, StringComparison.Ordinal)) == wantPinned) return FenixPinReadBack.Confirmed;
-        }
-        return answered ? FenixPinReadBack.Opposite : FenixPinReadBack.NoAnswer;
+        var result = await FenixSettingReadBack.AwaitAsync<IReadOnlyList<FenixPinnedDocument>>(
+            async t => FromSettings(await readSettings(t)),
+            pins => pins.Any(p => string.Equals(p.Path, path, StringComparison.Ordinal)) == wantPinned,
+            interval, attempts, delay, ct, stopOnNoAnswer: false);
+        return result.Landed ? FenixPinReadBack.Confirmed : result.Answered ? FenixPinReadBack.Opposite : FenixPinReadBack.NoAnswer;
     }
 
     /// <summary>The pins whose path is in the document list, in order; the EFB drops the others from its Pinned section.</summary>

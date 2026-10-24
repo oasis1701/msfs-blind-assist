@@ -24,10 +24,11 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// A change is sent only for an option <see cref="FenixOptionEdits.RefusalText"/> lets through (F2 and
 /// Shift+F2 an on/off or choice option, Ctrl+F2 any option the pilot or the session changed), with persist
 /// false unless it is the pilot's confirmed permanent change, and what is spoken afterwards is what the Fenix
-/// reads back, never what was asked for. All three keys share one flow, so the read-back exists once. The
-/// re-read rewrites the focused row's text in place, which the screen reader reads, so an applied change's
-/// row is spoken only when the reader will not have said it (<see cref="FenixOptionEdits.ScreenReaderReadsRow"/>,
-/// CORE-7).
+/// reads back, never what was asked for. All three keys share one flow, so the read-back exists once. It waits
+/// out the Fenix's lag after a write (FNX-13) with silent reads that leave the tree alone, then writes the last
+/// read to the tree once. That rewrite changes the focused row's text in place, which the screen reader reads,
+/// so an applied change's row is spoken only when the reader will not have said it
+/// (<see cref="FenixOptionEdits.ScreenReaderReadsRow"/>, CORE-7).
 /// Nothing here logs an option's value: keys and counts only.
 /// </remarks>
 public sealed class FenixOptionsForm : Form
@@ -43,9 +44,6 @@ public sealed class FenixOptionsForm : Form
 
     // Whether options can be changed from this window; the status box says which.
     private const bool ChangesAllowed = true;
-
-    // How long the Fenix gets to apply a change before it is read back a second time.
-    private const int ReadBackRetryMilliseconds = 500;
 
     // What F5 and the change keys say while a read or a change is running.
     private const string StillLoadingText = "Still loading.";
@@ -179,42 +177,58 @@ public sealed class FenixOptionsForm : Form
         await ReadAndApplyAsync(speak);
     }
 
+    // One read of the options, parsed and grouped, with the tree, the status and the screen reader untouched:
+    // what a read-back repeats while the Fenix catches up. Null when the Fenix did not answer. Everything an
+    // unexpected answer could make throw runs here, before the tree is touched, so a throw leaves the window
+    // as it was.
+    private async Task<OptionsRead?> FetchAsync(CancellationToken ct)
+    {
+        JObject? data = await _data.QueryAsync(FenixDataQueries.SettingsQuery, null, ct);
+        if (data == null) return null;
+
+        string? version = FenixDataQueries.ParseSoftwareVersion(data);
+        IReadOnlyList<FenixSetting> settings = FenixDataQueries.ParseSettings(data);
+        IReadOnlyList<FenixOptionGroup> groups = FenixOptionGrouping.Group(settings);
+        return new OptionsRead(settings, groups, FenixOptionGrouping.StatusText(version, settings, changesAllowed: ChangesAllowed));
+    }
+
+    private sealed record OptionsRead(IReadOnlyList<FenixSetting> Settings, IReadOnlyList<FenixOptionGroup> Groups, string Status);
+
     // The one read of the options and the one place the tree is written, for F5, the first show and the
     // read-back after a change. Returns the options it applied, or null when the Fenix did not answer, the
     // read failed or the window went away. Never throws.
-    private async Task<IReadOnlyList<FenixSetting>?> ReadAndApplyAsync(bool speak)
+    private Task<IReadOnlyList<FenixSetting>?> ReadAndApplyAsync(bool speak) => ReadAndApplyAsync(speak, FetchAsync);
+
+    // `fetch` gives the read to apply: a single read, or the wait after a change (ReadBackAsync), which hands
+    // over only its last read, so the tree is written once whatever it took to get there.
+    private async Task<IReadOnlyList<FenixSetting>?> ReadAndApplyAsync(bool speak, Func<CancellationToken, Task<OptionsRead?>> fetch)
     {
         if (IsDisposed || _tornDown || _loading) return null;
 
         _loading = true;
         try
         {
-            JObject? data = await _data.QueryAsync(FenixDataQueries.SettingsQuery, null, _cts.Token);
+            OptionsRead? read = await fetch(_cts.Token);
             if (IsDisposed || _tornDown) return null;
 
-            if (data == null)
+            if (read == null)
             {
                 Log.Debug(LogCategory, "The Fenix did not answer the settings read");
                 ReportNoAnswer(speak);
                 return null;
             }
 
-            // Everything an unexpected answer could make throw runs before the tree is touched, so a throw
-            // leaves the window as it was.
-            string? version = FenixDataQueries.ParseSoftwareVersion(data);
-            IReadOnlyList<FenixSetting> settings = FenixDataQueries.ParseSettings(data);
-            IReadOnlyList<FenixOptionGroup> groups = FenixOptionGrouping.Group(settings);
-            string status = FenixOptionGrouping.StatusText(version, settings, changesAllowed: ChangesAllowed);
+            IReadOnlyList<FenixSetting> settings = read.Settings;
             // No earlier read with options to count changes against (the Fenix did not answer on open, or
             // answered with none): F5 says the status.
             string? result = !speak ? null
-                : _settings is not { Count: > 0 } ? status
+                : _settings is not { Count: > 0 } ? read.Status
                 : FenixOptionGrouping.RefreshText(FenixOptionGrouping.CountChanged(_settings, settings));
 
-            bool rebuilt = Apply(groups);
+            bool rebuilt = Apply(read.Groups);
             _settings = settings;
-            SetStatus(status);
-            Log.Debug(LogCategory, $"Read {settings.Count} options in {groups.Count} groups ({(rebuilt ? "rebuilt" : "updated in place")})");
+            SetStatus(read.Status);
+            Log.Debug(LogCategory, $"Read {settings.Count} options in {read.Groups.Count} groups ({(rebuilt ? "rebuilt" : "updated in place")})");
             if (result != null) _announcer.AnnounceImmediate(result);
             return settings;
         }
@@ -348,10 +362,10 @@ public sealed class FenixOptionsForm : Form
     // Sends the request and, when the Fenix accepts it, reads the option back and speaks what the Fenix now
     // has, never what was asked for. `applied` says whether a read shows the request applied (the change's
     // value read, the value now the pilot's own, the option no longer as it was: FenixOptionEdits.Applied).
-    // The Fenix may take a moment, so a read that does not show it applied gets one more look after a short
-    // wait, and one that still does not is spoken as kept, not made permanent or not reset. A request with no
-    // answer at all (a time-out, the gateway gone, or GraphQL errors) may still have landed, so one silent
-    // read says which. Never throws.
+    // The Fenix's settings query lags a write by up to about 2 s (FNX-13), so a read that does not show it
+    // applied is read again (ReadBackAsync), and only one that still does not after the whole wait is spoken
+    // as kept, not made permanent or not reset. A request with no answer at all (a time-out, the gateway gone,
+    // or GraphQL errors) may still have landed, so the same silent wait says which. Never throws.
     private async Task SendAndReadBackAsync(string key, FenixChangeKind kind, string document, object variables,
         Func<JObject?, bool> accepted, Func<FenixSetting, bool> applied)
     {
@@ -366,7 +380,7 @@ public sealed class FenixOptionsForm : Form
             if (reply == null)
             {
                 Log.Debug(LogCategory, $"Setting {what} for {key} got no answer; reading it back");
-                IReadOnlyList<FenixSetting>? read = await ReadAndApplyAsync(speak: false);
+                IReadOnlyList<FenixSetting>? read = await ReadBackAsync(key, what, applied);
                 if (IsDisposed || _tornDown) return;
                 FenixSetting? landed = Find(read, key);
                 if (read == null)
@@ -398,15 +412,8 @@ public sealed class FenixOptionsForm : Form
                 return;
             }
 
-            FenixSetting? now = Find(await ReadAndApplyAsync(speak: false), key);
+            FenixSetting? now = Find(await ReadBackAsync(key, what, applied), key);
             if (IsDisposed || _tornDown) return;
-            if (now != null && !applied(now))
-            {
-                await Task.Delay(ReadBackRetryMilliseconds, _cts.Token);
-                if (IsDisposed || _tornDown) return;
-                now = Find(await ReadAndApplyAsync(speak: false), key);
-                if (IsDisposed || _tornDown) return;
-            }
 
             if (now == null)
             {
@@ -434,6 +441,25 @@ public sealed class FenixOptionsForm : Form
             ReportFailure(key, what, ex, NotReadBackText);
         }
     }
+
+    // The read after a request: reads the options every 250 ms, up to 16 reads (FenixSettingReadBack, the wait the
+    // documents window makes too), until `applied` shows the change, and applies only the last read, once.
+    // The reads in between touch neither the tree, the status nor the screen reader, so no row is rewritten
+    // for the reader to say twice (CORE-7) and nothing flickers; the one rewrite comes after the wait, so
+    // AnnounceAppliedRow still sees this write's row text before and after. A read with no answer ends the wait:
+    // each can take the data service's 10 s time-out. Returns the options it applied, or null when the last
+    // read had no answer. Never throws.
+    private Task<IReadOnlyList<FenixSetting>?> ReadBackAsync(string key, string what, Func<FenixSetting, bool> applied)
+        => ReadAndApplyAsync(speak: false, async ct =>
+        {
+            int reads = 0;
+            FenixReadBackResult<OptionsRead> wait = await FenixSettingReadBack.AwaitAsync<OptionsRead>(
+                async t => { reads++; return await FetchAsync(t); },
+                read => Find(read.Settings, key) is { } option && applied(option),
+                FenixSettingReadBack.Interval, FenixSettingReadBack.Attempts, Task.Delay, ct, stopOnNoAnswer: true);
+            Log.Debug(LogCategory, $"Setting {what} for {key}: {(wait.Landed ? "reads back as applied" : "does not read back as applied")} after {reads} reads");
+            return wait.Last;
+        });
 
     // The row the screen reader is on when a write is about to be sent: whether the selected node is the
     // option's own, and that node's text. The re-read rewrites that text in place, which NVDA reads.

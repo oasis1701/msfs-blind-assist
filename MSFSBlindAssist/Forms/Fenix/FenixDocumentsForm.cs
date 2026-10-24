@@ -890,7 +890,7 @@ public sealed class FenixDocumentsForm : Form
             int reads = 0;
             FenixPinReadBack outcome = await FenixDocumentPins.AwaitStateAsync(
                 async t => { reads++; return await _data.GetSettingsAsync(t); },
-                path, wantPinned, TimeSpan.FromMilliseconds(250), 16, Task.Delay, ct);
+                path, wantPinned, FenixSettingReadBack.Interval, FenixSettingReadBack.Attempts, Task.Delay, ct);
             if (_tornDown || IsDisposed) return;
             Log.Debug(LogCategory, $"pin {path}: wanted {wantPinned}, {outcome} after {reads} reads, {pins.Count} pins before");
             _announcer.AnnounceImmediate(outcome switch

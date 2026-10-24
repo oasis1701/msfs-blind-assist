@@ -665,11 +665,24 @@ public class FenixOptionEditsTests
     [Fact] public void All_three_keys_read_back_through_one_path_that_waits_until_the_change_has_applied()
     {
         string form = FormSource();
-        // One shared send-and-read-back, judged by FenixOptionEdits.Applied for every kind, with one wait and
-        // one retry: a second copy of the retry logic would drift from the first.
+        // One shared send-and-read-back, judged by FenixOptionEdits.Applied for every kind, with one wait (the
+        // FenixSettingReadBack the documents window uses too, FNX-13): a second copy of the wait would drift
+        // from the first, and the window keeps no delay or retry count of its own.
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"private async Task SendAndReadBackAsync\("));
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"Task\.Delay\("));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"FenixSettingReadBack\.AwaitAsync<"));
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(form, @"await ReadBackAsync\(key, what, applied\)").Count);
+        Assert.DoesNotContain("Task.Delay(", form);
+        Assert.DoesNotContain("ReadBackRetryMilliseconds", form);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"FenixOptionEdits\.Applied\("));
+    }
+
+    [Fact] public void The_reads_while_the_Fenix_catches_up_never_write_the_tree()
+    {
+        // The wait fetches the options and the tree is written once, after it: an intermediate write would
+        // rewrite the focused row's text, which the screen reader says (CORE-7), and flicker the tree.
+        string form = FormSource();
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"rebuilt = Apply\("));
+        Assert.DoesNotContain("ReadAndApplyAsync(speak: false);", form);
     }
 
     [Fact] public void Ctrl_F2_is_not_stopped_by_the_on_off_and_choice_guard()
