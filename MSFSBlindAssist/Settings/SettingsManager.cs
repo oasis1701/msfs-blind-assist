@@ -150,7 +150,8 @@ public static class SettingsManager
         /// FD_1_CTL/FD_2_CTL became the one FD light, the altitude increment moved to the FCU's own
         /// input, and the per-side baro-unit selectors moved to the EFIS-CP's BARO_IS_INHG inputs.
         /// The iFly 737 MAX's trim call-out moved from the shared degrees row (MON_ElevatorTrim) to
-        /// its own units field (2026-09-30). Idempotent without a flag because the OLD key leaves the list: left in place, it
+        /// its own units field (2026-09-30). Fenix v3 renamed two lamps (2026-10-21): the DC SERVICE bus
+        /// (a typo fixed) and the overhead cockpit-door VIDEO light. Idempotent without a flag because the OLD key leaves the list: left in place, it
         /// would re-mute the new row on every launch after the pilot un-ticked it, and no Ctrl+M row
         /// is left to clear it from. Returns whether anything moved (the caller saves).
         /// </summary>
@@ -158,6 +159,7 @@ public static class SettingsManager
         {
             bool moved = Carry(settings.A380DisabledMonitorVariables, A380RenamedMonitorKeys);
             moved |= Carry(settings.IFlyDisabledMonitorVariables, IFlyRenamedMonitorKeys);
+            moved |= Carry(settings.FenixDisabledMonitorVariables, FenixRenamedMonitorKeys);
             return moved;
 
             static bool Carry(List<string> muted, (string Old, string New)[] renamed)
@@ -190,6 +192,13 @@ public static class SettingsManager
         private static readonly (string Old, string New)[] IFlyRenamedMonitorKeys =
         {
             ("MON_ElevatorTrim", "Stabilizer_Trim_Pointer_Status"),
+        };
+
+        // Fenix v3 (3.0.0.7426) renamed two lamps; the new names are registered in FenixA320Definition.
+        private static readonly (string Old, string New)[] FenixRenamedMonitorKeys =
+        {
+            ("B_ELEC_BUS_POWER_DC_SERIVICE", "B_ELEC_BUS_POWER_DC_SERVICE"),
+            ("I_OH_DOOR_VIDEO", "I_OH_COCKPIT_DOOR_VIDEO"),
         };
 
         /// <summary>
