@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Controls;
