@@ -84,10 +84,10 @@ public partial class FenixBaroWindow : Form
         double? qnhValue = simConnect.GetCachedVariableValue("I_FCU_EFIS1_QNH");
         baroModeCombo.SelectedIndex = (qnhValue != null && qnhValue.Value > 0.5) ? 0 : 1;
 
-        // SelectionChangeCommitted fires only on the pilot's own pick. SelectedIndexChanged also fires
-        // on the assignment above and again when the handle is created (see MainForm.PanelBuilder.cs,
-        // where the same event sent phantom writes), so opening this window would step the knob: a
-        // pull to STD when the QNH light is unread and the combo defaults to STD.
+        // SelectionChangeCommitted fires only on the pilot's own pick. SelectedIndexChanged fires when the
+        // combo's handle is created, which happens after the initial mode above was assigned (see
+        // MainForm.PanelBuilder.cs, where the same event sent phantom writes), so opening this window
+        // would step the knob: a pull to STD when the QNH light is unread and the combo defaults to STD.
         baroModeCombo.SelectionChangeCommitted += BaroModeCombo_SelectionChangeCommitted;
 
         // Unit ComboBox

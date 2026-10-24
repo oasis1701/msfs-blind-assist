@@ -129,7 +129,7 @@ public class FenixSettingReadBackTests
         int n = 0;
         var result = await FenixSettingReadBack.AwaitAsync<IReadOnlyList<FenixSetting>>(
             _ => Task.FromResult(reads[Math.Min(n++, reads.Length - 1)]),
-            list => list.FirstOrDefault(s => s.Key == key) is { } now && FenixOptionEdits.Applied(kind, before, sent, now),
+            list => FenixOptionEdits.ReadBackSettled(list, key, now => FenixOptionEdits.Applied(kind, before, sent, now)),
             TimeSpan.Zero, FenixSettingReadBack.Attempts, (_, _) => Task.CompletedTask, CancellationToken.None, stopOnNoAnswer: true);
         return (result, n);
     }
@@ -174,11 +174,50 @@ public class FenixSettingReadBackTests
         Assert.Equal("false", result.Last!.First(s => s.Key == "sound_enabled").Value);
     }
 
-    [Fact] public async Task A_read_without_the_option_never_lands_and_the_wait_ends_after_sixteen()
+    [Fact] public async Task An_answered_read_without_the_option_ends_the_wait_at_once()
     {
+        // An answered read that lacks the option's key is not waited out (it was 16 reads, about 4 s, before the
+        // window said "not read back"): the wait ends on that read, whose Last has no such option, which is what
+        // the window speaks as "Change sent, but the Fenix did not read it back."
         FenixSetting before = Settings("false", "Internal")[0];
         var (result, reads) = await WaitForOption(new[] { Settings("true") }, FenixChangeKind.Session, "true", before, key: "gone");
-        Assert.False(result.Landed);
-        Assert.Equal(16, reads);
+        Assert.True(result.Landed);
+        Assert.True(result.Answered);
+        Assert.Equal(1, reads);
+        Assert.DoesNotContain(result.Last!, s => s.Key == "gone");
+    }
+
+    [Fact] public async Task An_option_that_goes_missing_after_old_reads_ends_the_wait_on_that_read()
+    {
+        FenixSetting before = Settings("false", "Internal")[0];
+        var (result, reads) = await WaitForOption(
+            new[] { Settings("false", "Internal"), Settings("false", "Internal"), new[] { Settings("true")[1] } },
+            FenixChangeKind.Session, "true", before);
+        Assert.True(result.Landed);
+        Assert.Equal(3, reads);
+        Assert.DoesNotContain(result.Last!, s => s.Key == "sound_enabled");
+    }
+
+    [Fact] public void The_settled_test_is_applied_or_missing_and_never_a_read_that_still_has_the_old_value()
+    {
+        FenixSetting before = Settings("false", "Internal")[0];
+        Func<FenixSetting, bool> applied = now => FenixOptionEdits.Applied(FenixChangeKind.Session, before, "true", now);
+        Assert.False(FenixOptionEdits.ReadBackSettled(Settings("false", "Internal"), "sound_enabled", applied));
+        Assert.True(FenixOptionEdits.ReadBackSettled(Settings("true"), "sound_enabled", applied));
+        Assert.True(FenixOptionEdits.ReadBackSettled(Settings("false", "Internal"), "gone", applied));
+        Assert.True(FenixOptionEdits.ReadBackSettled(Array.Empty<FenixSetting>(), "sound_enabled", applied));
+    }
+
+    [Fact] public async Task A_cancel_during_a_delay_that_ignores_the_token_never_starts_another_read()
+    {
+        using var cts = new CancellationTokenSource();
+        int reads = 0;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => FenixSettingReadBack.AwaitAsync<string>(
+                _ => { reads++; return Task.FromResult<string?>("old"); }, s => s == "new",
+                TimeSpan.Zero, FenixSettingReadBack.Attempts,
+                // The delay ignores its token and cancels the wait while it runs.
+                (_, _) => { cts.Cancel(); return Task.CompletedTask; }, cts.Token, stopOnNoAnswer: true));
+        Assert.Equal(1, reads);
     }
 }

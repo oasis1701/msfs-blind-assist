@@ -50,7 +50,7 @@ public class FenixOptionEditsTests
         Assert.True(FenixOptionEdits.NeedsConfirm(S("adirs_type", "Adirs", "Enum", possible: new[] { "Gnadirs", "Adirs" })));
         Assert.True(FenixOptionEdits.NeedsConfirm(S("dcdu_enabled", "false")));
         Assert.False(FenixOptionEdits.NeedsConfirm(S("encoder_acceleration_enabled", "false", category: "Realism")));
-        Assert.Equal("Change Air Data Inertial Reference System (ADIRS) to GNADIRS? This changes your cockpit panels until MSFS closes.",
+        Assert.Equal("Change Air Data Inertial Reference System (ADIRS) to GNADIRS? This changes your cockpit panels for this simulator session, until you change aircraft or livery.",
             FenixOptionEdits.ConfirmText("Air Data Inertial Reference System (ADIRS)", "GNADIRS"));
     }
 
@@ -297,7 +297,7 @@ public class FenixOptionEditsTests
     [Fact] public void F2_asks_only_before_a_change_that_reshapes_the_cockpit()
     {
         Assert.Null(Question(FenixChangeKind.Session, Encoder(), "Encoder Acceleration", "On"));
-        Assert.Equal($"Change {Adirs} to GNADIRS? This changes your cockpit panels until MSFS closes.",
+        Assert.Equal($"Change {Adirs} to GNADIRS? This changes your cockpit panels for this simulator session, until you change aircraft or livery.",
             Question(FenixChangeKind.Session, AdirsOption(), Adirs, "GNADIRS"));
     }
 
@@ -322,7 +322,7 @@ public class FenixOptionEditsTests
     public void Every_cockpit_reshaping_key_asks_for_every_kind_of_change(string key)
     {
         var option = S(key, "a", "Enum", possible: new[] { "a", "b" }, source: "UserFile");
-        Assert.EndsWith(" This changes your cockpit panels until MSFS closes.", Question(FenixChangeKind.Session, option, "X", "b"));
+        Assert.EndsWith(" This changes your cockpit panels for this simulator session, until you change aircraft or livery.", Question(FenixChangeKind.Session, option, "X", "b"));
         Assert.EndsWith(" This changes your cockpit panels.", Question(FenixChangeKind.Permanent, option, "X", "b"));
         Assert.EndsWith(" This changes your cockpit panels.", Question(FenixChangeKind.Reset, option, "X", ""));
     }
@@ -674,6 +674,9 @@ public class FenixOptionEditsTests
         Assert.DoesNotContain("Task.Delay(", form);
         Assert.DoesNotContain("ReadBackRetryMilliseconds", form);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"FenixOptionEdits\.Applied\("));
+        // The wait ends on a read that shows the change or lacks the option (tested in FenixSettingReadBackTests):
+        // the window judges it through the one helper, never a predicate of its own.
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"FenixOptionEdits\.ReadBackSettled\("));
     }
 
     [Fact] public void The_reads_while_the_Fenix_catches_up_never_write_the_tree()

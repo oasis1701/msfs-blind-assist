@@ -443,7 +443,9 @@ public sealed class FenixOptionsForm : Form
     }
 
     // The read after a request: reads the options every 250 ms, up to 16 reads (FenixSettingReadBack, the wait the
-    // documents window makes too), until `applied` shows the change, and applies only the last read, once.
+    // documents window makes too), until `applied` shows the change or an answered read lacks the option
+    // altogether (FenixOptionEdits.ReadBackSettled: "not read back" is spoken at once, not after 16 reads), and
+    // applies only the last read, once.
     // The reads in between touch neither the tree, the status nor the screen reader, so no row is rewritten
     // for the reader to say twice (CORE-7) and nothing flickers; the one rewrite comes after the wait, so
     // AnnounceAppliedRow still sees this write's row text before and after. A read with no answer ends the wait:
@@ -455,9 +457,12 @@ public sealed class FenixOptionsForm : Form
             int reads = 0;
             FenixReadBackResult<OptionsRead> wait = await FenixSettingReadBack.AwaitAsync<OptionsRead>(
                 async t => { reads++; return await FetchAsync(t); },
-                read => Find(read.Settings, key) is { } option && applied(option),
+                read => FenixOptionEdits.ReadBackSettled(read.Settings, key, applied),
                 FenixSettingReadBack.Interval, FenixSettingReadBack.Attempts, Task.Delay, ct, stopOnNoAnswer: true);
-            Log.Debug(LogCategory, $"Setting {what} for {key}: {(wait.Landed ? "reads back as applied" : "does not read back as applied")} after {reads} reads");
+            string ended = !wait.Landed ? "does not read back as applied"
+                : Find(wait.Last?.Settings, key) == null ? "reads back without the option"
+                : "reads back as applied";
+            Log.Debug(LogCategory, $"Setting {what} for {key}: {ended} after {reads} reads");
             return wait.Last;
         });
 

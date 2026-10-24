@@ -116,7 +116,7 @@ public static class FenixOptionEdits
 
     /// <summary>The question asked before a cockpit-reshaping change.</summary>
     public static string ConfirmText(string optionLabel, string choiceLabel)
-        => $"Change {optionLabel} to {choiceLabel}? This changes your cockpit panels until MSFS closes.";
+        => $"Change {optionLabel} to {choiceLabel}? This changes your cockpit panels for this simulator session, until you change aircraft or livery.";
 
     /// <summary>The question asked before a permanent change.</summary>
     public static string PermanentConfirmText(string optionLabel, string choiceLabel)
@@ -147,9 +147,9 @@ public static class FenixOptionEdits
     }
 
     /// <summary>
-    /// What the read-back says when the Fenix accepted a request but, after the retry, still reads the
-    /// option as not applied: the option as the Fenix now has it (<paramref name="rowText"/>, its row), said
-    /// as kept, not made permanent, or not reset.
+    /// What the read-back says when the Fenix accepted a request but, after the bounded wait
+    /// (<see cref="FenixSettingReadBack.AwaitAsync"/>), still reads the option as not applied: the option
+    /// as the Fenix now has it (<paramref name="rowText"/>, its row), said as kept, not made permanent, or not reset.
     /// </summary>
     public static string NotAppliedText(FenixChangeKind kind, string rowText) => kind switch
     {
@@ -175,6 +175,16 @@ public static class FenixOptionEdits
             _ => !SameOrBothMissing(now.Value, before.Value)
                  || FenixOptionCatalog.SourceKind(now.Source) != FenixOptionCatalog.SourceKind(before.Source),
         };
+
+    /// <summary>
+    /// Whether the options window's read-back wait is over for one answered read of the options: the read
+    /// shows the change (<paramref name="applied"/> on the option's row), or it lacks the option's key
+    /// altogether. A later read is not expected to bring a missing option back, so the window says "not read
+    /// back" at once instead of waiting out all 16 reads (about 4 s). A read the Fenix did not answer is
+    /// the wait's own concern, not judged here.
+    /// </summary>
+    internal static bool ReadBackSettled(IReadOnlyList<FenixSetting> read, string key, Func<FenixSetting, bool> applied)
+        => read.FirstOrDefault(s => string.Equals(s.Key, key, StringComparison.Ordinal)) is not { } option || applied(option);
 
     // Two values that are the same one, or that are both missing (SameValue says a missing value matches nothing).
     private static bool SameOrBothMissing(string? a, string? b) => (a is null && b is null) || FenixOptionCatalog.SameValue(a, b);

@@ -278,7 +278,8 @@ public sealed class FenixDataService : IDisposable
         try { _http.Dispose(); } catch (Exception) { }
     }
 
-    /// <summary>For the tests: Dispose has run, so every call answers its failure value without a request.</summary>
+    /// <summary>True once Dispose has run, so every call answers its failure value without a request. Read by
+    /// the definition's background start (<c>EnsureFenixBackground</c>) and by the tests.</summary>
     internal bool IsDisposed => _disposed;
 
     // ---- Socket message helpers (pure; internal for the tests) ----------------------------------

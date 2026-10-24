@@ -324,7 +324,7 @@ public sealed class FenixFailuresForm : Form
                 if (IsDisposed || _tornDown) return;
             }
 
-            // D1: every write asks, with No as the default button.
+            // Every write asks, with No as the default button.
             answer = MessageBox.Show(this,
                 FenixFailureText.Confirm(failure, action, condition, TimeZoneInfo.Local),
                 "Confirm failure change",

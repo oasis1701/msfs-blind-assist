@@ -24,8 +24,9 @@ public static class FenixSettingReadBack
     /// (through <paramref name="delay"/>) between reads, at most <paramref name="attempts"/> reads. A read is
     /// null when the Fenix did not answer it: with <paramref name="stopOnNoAnswer"/> the wait ends there (each
     /// such read can take the data service's 10 s time-out, so it is not repeated against a Fenix that is gone),
-    /// else the wait goes on. Throws <see cref="OperationCanceledException"/> as soon as <paramref name="ct"/>
-    /// is cancelled, whatever the delay does with it.
+    /// else the wait goes on. Throws <see cref="OperationCanceledException"/> when <paramref name="ct"/> is
+    /// cancelled: the token is checked right before every read, after its delay, so a cancel during a delay
+    /// that ignores the token still never starts another read.
     /// </summary>
     public static async Task<FenixReadBackResult<T>> AwaitAsync<T>(
         Func<CancellationToken, Task<T?>> read, Func<T, bool> landed, TimeSpan interval, int attempts,
@@ -35,8 +36,8 @@ public static class FenixSettingReadBack
         T? last = null;
         for (int i = 0; i < attempts; i++)
         {
-            ct.ThrowIfCancellationRequested();
             if (i > 0) await delay(interval, ct);
+            ct.ThrowIfCancellationRequested();
             last = await read(ct);
             if (last == null)
             {
