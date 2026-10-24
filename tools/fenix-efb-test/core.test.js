@@ -262,7 +262,7 @@ test('A_pages_own_label_is_kept', async () => {
   }
 });
 
-// R9: a label the layer wrote is the layer's to refresh; a label the page wrote is never touched.
+// A label the layer wrote is the layer's to refresh; a label the page wrote is never touched.
 test('A_label_the_layer_wrote_follows_the_pages_text', async () => {
   const window = await load('core');
   try {

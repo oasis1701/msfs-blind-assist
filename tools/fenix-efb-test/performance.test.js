@@ -2,9 +2,9 @@
 // The Takeoff (depperf) and Landing (arrperf, arrperf-electrical) calculators, checked against the LIVE captures
 // (fixtures/depperf.html, arrperf.html, arrperf-electrical.html; Fenix 3.0.0.7438, A320-232 IAE, kilograms and hPa):
 // the fields named by the page's own labels, the Takeoff results grid read label then value with every other child in
-// its place (rulings R46, R53), the Landing runway condition as a radio group with one Tab stop at its place in the
-// page's Tab order (R47, R54), the Landing options and procedures as buttons, a procedure's sub-page with its Back
-// button and tick boxes (R39), and the pictures with no alt hidden (R51).
+// its place, the Landing runway condition as a radio group with one Tab stop at its place in the
+// page's Tab order, the Landing options and procedures as buttons, a procedure's sub-page with its Back
+// button and tick boxes, and the pictures with no alt hidden.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -144,7 +144,7 @@ test('A_takeoff_label_that_goes_takes_the_name_with_it_and_puts_the_pages_value_
 // The first text the page gives a field without a label of its own: the header of its table column; else a
 // placeholder that has letters in it ("LANDING WT") with the unit written after the field ("LANDING WT, T"),
 // or the unit alone. A placeholder of only dashes, digits or punctuation ("----", "---/--") is never a name,
-// and a field with nothing else stays unnamed (ruling R31).
+// and a field with nothing else stays unnamed.
 test('A_field_without_its_own_label_takes_its_column_header_else_a_placeholder_with_letters_and_its_unit', async () => {
   const window = await load('depperf');
   try {
@@ -182,7 +182,7 @@ test('A_field_without_its_own_label_takes_its_column_header_else_a_placeholder_w
   }
 });
 
-// ---- The results grid (rulings R46 and R53, which replace R14) ----
+// ---- The results grid ----
 // The results are the MCDU's take-off page: a title, then rows that alternate, a row of small labels and under it a
 // row of values, then an output line. A screen reader reads the page in DOM order, so it met every label of a row
 // before any of its values. The grid's aria-owns lists every child of the grid in DOM order, with each label / value
@@ -277,7 +277,7 @@ test('Takeoff_results_read_each_label_right_before_its_value_and_every_other_chi
       bareAll.filter(el => el.hasAttribute('id')).map(el => el.id), 'the page\'s own ids are as they were');
 
     // No picture but the three empty speeds, nothing hidden, no other name: the labels and values are read as text. An
-    // empty speed is read as a value, not a graphic (R57: aria-roledescription "value").
+    // empty speed is read as a value, not a graphic (aria-roledescription "value").
     const pictures = all(window, '[role=img]');
     assert.deepStrictEqual(pictures, [1, 3, 5].map(r => cellsOf(rows[r])[0]), 'V1, VR and V2');
     assert.ok(pictures.every(p => p.getAttribute('aria-label') === 'not computed' && nameOf(p) === 'not computed'));
@@ -434,7 +434,7 @@ test('A_results_grid_the_page_orders_itself_is_left_to_the_page', async () => {
   }
 });
 
-// ---- The results grid keeps up with its rows (ruling R23, kept by R46 and R53) ----
+// ---- The results grid keeps up with its rows ----
 // A row that falls out of its label / value pair is let go of: its cells leave the list and lose what the layer wrote,
 // and the row itself is listed in its place. A pairing is trusted only while its two rows still sit together; a row
 // that turns up between them (or anywhere) never shifts the pairs below it or mixes the cells of two rows.
@@ -662,8 +662,8 @@ test('Runway_condition_is_a_radio_group_that_follows_the_page', async () => {
     assert.strictEqual(all(window, '[role=radiogroup]').length, 1);
     assert.strictEqual(all(window, '.section-item').length, 18, 'the capture has twelve other section-items: the six are not all of them');
 
-    // One Tab stop (R47): the checked radio, the others reached with the arrows. The stop keeps the code's own place
-    // in the page's Tab sequence, its own tabindex (R54: 6 DRY's is 30).
+    // One Tab stop: the checked radio, the others reached with the arrows. The stop keeps the code's own place
+    // in the page's Tab sequence, its own tabindex (6 DRY's is 30).
     assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['30', '-1', '-1', '-1', '-1', '-1']);
 
     // The page moves section-selected to "3 MED": aria-checked and the Tab stop follow (3 MED's own is 33).
@@ -699,7 +699,7 @@ test('The_radio_group_is_the_container_that_holds_exactly_the_six_codes_and_is_w
     const parent = last.parentElement;
 
     // The page drops a code: five items are not the runway condition, and the layer takes back what it wrote; each
-    // item has the page's own Tab stop again (R47).
+    // item has the page's own Tab stop again.
     parent.removeChild(last);
     await turns();
     assert.strictEqual(all(window, '[role=radio],[role=radiogroup]').length, 0);
@@ -732,7 +732,7 @@ test('The_radio_group_is_the_container_that_holds_exactly_the_six_codes_and_is_w
   }
 });
 
-// R47: the runway condition is one Tab stop; the arrows move through the codes as in any radio group, each move the
+// The runway condition is one Tab stop; the arrows move through the codes as in any radio group, each move the
 // code's own click (it picks that code, as the page's mouse click does) and then the focus on it, wrapping round.
 test('The_runway_condition_arrows_press_the_next_code_and_move_to_it_wrapping_round', async () => {
   const window = await load('arrperf');
@@ -861,7 +861,7 @@ test('A_runway_condition_tab_stop_the_page_changes_is_the_pages_when_the_group_i
   }
 });
 
-// R54: a stop whose code has no Tab stop of the page's own (no tabindex, or a negative one) takes 0.
+// A stop whose code has no Tab stop of the page's own (no tabindex, or a negative one) takes 0.
 test('A_runway_condition_stop_without_a_tab_stop_of_the_pages_takes_0', async () => {
   const window = await load('arrperf', { layer: false });
   try {
@@ -902,7 +902,7 @@ function tabOrder(window) {
   return [...positive, ...focusable.filter(el => el.tabIndex === 0)];
 }
 
-// R54: the Landing page orders its controls with positive tabindex values (ICAO CODE 10, RUNWAY 20, the codes 30 to 35,
+// The Landing page orders its controls with positive tabindex values (ICAO CODE 10, RUNWAY 20, the codes 30 to 35,
 // the wind, temperature and pressure boxes 70 to 90 ...), and a browser visits positive values first. The runway
 // condition's one stop keeps the code's own value, so the group is reached right after RUNWAY, as it was before.
 test('The_runway_condition_is_reached_right_after_RUNWAY_in_the_Landing_Tab_order', async () => {
@@ -985,7 +985,7 @@ test('Landing_options_and_procedures_are_buttons', async () => {
   }
 });
 
-// R39: a procedure ("Electrical System") opens a sub-page in place (the route stays #/efb/arrperf). Its only way back is
+// A procedure ("Electrical System") opens a sub-page in place (the route stays #/efb/arrperf). Its only way back is
 // the title row, whose arrow is an icon and whose click (the page's, on the row) returns to the main Landing page: it is
 // the button "Back, <title>". The sub-page's items are the procedure's conditions, each with a tick box the page marks
 // section-selected: check boxes named by their text.
@@ -1106,7 +1106,7 @@ test('Landing_fields_are_named_by_their_label_or_unit_and_the_weight_box_by_its_
     assert.strictEqual(fields.length, 6);
     // ICAO CODE and RUNWAY have a label of their own; wind, temperature and pressure only the unit written
     // after the box (their placeholders are dashes); the landing weight its placeholder "LANDING WT" and the
-    // unit "T" (R31; its FMS button is a button, not part of the name).
+    // unit "T" (its FMS button is a button, not part of the name).
     const NAMES = ['ICAO CODE', 'RUNWAY', 'KT', '°C', 'HPA', 'LANDING WT, T'];
     assert.deepStrictEqual(fields.map(f => f.getAttribute('aria-label')), NAMES);
     assert.deepStrictEqual(fields.map(nameOf), NAMES);
@@ -1123,7 +1123,7 @@ test('Landing_fields_are_named_by_their_label_or_unit_and_the_weight_box_by_its_
   }
 });
 
-// R51: the Landing page's pictures have no alt: the logo (a data: PNG), the FMS button's picture and the one-click
+// The Landing page's pictures have no alt: the logo (a data: PNG), the FMS button's picture and the one-click
 // options' pictures. They are hidden, and the buttons holding them keep their names. The arrperf capture has them
 // removed (the old snippet removed every <img>), so they are put back here as the live page has them; the sub-page
 // capture has the logo itself.
@@ -1164,10 +1164,10 @@ test('Unlabeled_Landing_pictures_are_hidden_and_the_buttons_holding_them_keep_th
   }
 });
 
-// R41 (finding D): "SYNC LIVE WX" holds an icon-font glyph before its text, which a screen reader met as an unlabeled
+// "SYNC LIVE WX" holds an icon-font glyph before its text, which a screen reader met as an unlabeled
 // line of its own. The glyph is hidden; the button keeps its text as its name. So is the intersection button's arrow.
 // Takeoff's button also breaks its content with a <br> after the glyph, so NVDA still showed it over two lines, the
-// first empty: it is named by its own text (R56, below). Landing's has no <br> and keeps the page's text as its name.
+// first empty: it is named by its own text (below). Landing's has no <br> and keeps the page's text as its name.
 for (const [fixture, selector, glyphs, label] of [
   ['depperf', 'button.btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-2x.fa-sync-alt', 'i.select-arrow.fas.fa-arrow-right'], 'SYNC LIVE WX'],
   ['arrperf', 'button.arrival-btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-sync-alt'], null]
@@ -1190,7 +1190,7 @@ for (const [fixture, selector, glyphs, label] of [
   });
 }
 
-// R56: a button whose own content holds a <br> is named by its own text, the <br> a space, so NVDA presents it as one
+// A button whose own content holds a <br> is named by its own text, the <br> a space, so NVDA presents it as one
 // item. The label is the layer's own: it follows the text, goes when the <br> or the text goes, and a label the page
 // gives is the page's.
 test('A_button_whose_content_holds_a_line_break_is_named_by_its_own_text', async () => {
@@ -1242,7 +1242,7 @@ test('Line_break_buttons_elsewhere_keep_the_names_they_had', async () => {
     assert.deepStrictEqual(buttons.map(nameOf), ['Reset All', 'Resend Loadsheet', 'Load Aircraft', 'SEND TO MCDU']);
     assert.deepStrictEqual(buttons.map(b => b.getAttribute('aria-label')), ['Reset All', 'Resend Loadsheet', 'Load Aircraft', 'SEND TO MCDU']);
     // The home tiles hold a <br> too and keep their titles; the switcher's icons hold one and no text, and keep the
-    // names R8 gives them.
+    // names the layer's tile-title list gives them.
     home = await load('home');
     assert.deepStrictEqual(all(home, '#appContainer > div.appIcon').map(nameOf),
       ['Fenix', 'Takeoff', 'Landing', 'Charts', 'Documents', 'Failures', 'Settings', 'MCDU', 'FAP']);

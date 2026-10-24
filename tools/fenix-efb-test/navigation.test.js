@@ -20,7 +20,7 @@ test('Home_tiles_are_named_buttons_and_the_quick_settings_button_keeps_its_own_n
     });
 
     // The home tiles hold the same pictures as the switcher, but the pictures are not buttons here. They have no alt,
-    // so they are hidden from a screen reader (R51); the tile is named by its title.
+    // so they are hidden from a screen reader; the tile is named by its title.
     for (const img of window.document.querySelectorAll('img.app-img')) {
       assert.strictEqual(img.getAttribute('role'), null);
       assert.strictEqual(img.hasAttribute('data-msfsba'), false);
@@ -72,7 +72,7 @@ test('Switcher_pictures_are_buttons_named_by_the_tile_titles_in_order', async ()
 });
 
 // The switcher's pictures carry no text, so the layer names them from a constant list of the tile titles in
-// home order (R8). That is right only while the switcher shows the home tiles' own pictures in home order: the
+// home order. That is right only while the switcher shows the home tiles' own pictures in home order: the
 // live check of 2026-10-22 found exactly that, and both captures keep each picture's path, so this pins it.
 // A Fenix update that reorders the switcher (or the tiles) fails here.
 test('Switcher_pictures_are_the_home_tiles_pictures_in_home_order_and_each_takes_its_own_tiles_title', async () => {
@@ -129,7 +129,7 @@ test('Home_button_is_a_button_named_Home_on_the_switcher', async () => {
   }
 });
 
-// R11: the top bar's chevron is the only way to open the switcher, and it is a bare div.
+// The top bar's chevron is the only way to open the switcher, and it is a bare div.
 for (const fixture of ['switcher', 'my-flight']) {
   test('The_top_bar_chevron_is_a_button_named_App_switcher_on_' + fixture, async () => {
     const window = await load(fixture);
@@ -236,11 +236,11 @@ test('Second_pass_changes_nothing_on_the_switcher', async () => {
   }
 });
 
-// ---- What a screen reader does not need (rulings R45, R48, R41) ----
+// ---- What a screen reader does not need ----
 
-// R45: the background picture is the first thing on every screen, and the top bar's status icons are pictures of a
+// The background picture is the first thing on every screen, and the top bar's status icons are pictures of a
 // state the pilot does not act on. None has an alt of its own; all are hidden from a screen reader. So is the glyph
-// of the quick settings cog (R41: an icon font's glyph inside a button), and so are the tiles' pictures (R51: a picture
+// of the quick settings cog (an icon font's glyph inside a button), and so are the tiles' pictures (a picture
 // with no alt). Nothing else on home is.
 test('The_background_and_the_top_bar_status_icons_are_hidden_from_a_screen_reader', async () => {
   const bare = await load('home', { layer: false });
@@ -278,7 +278,7 @@ test('A_hidden_state_the_page_set_on_a_top_bar_picture_is_kept', async () => {
   }
 });
 
-// R48: the page gives two plain wrappers a click handler of their own, so a screen reader says "clickable" on them: the
+// The page gives two plain wrappers a click handler of their own, so a screen reader says "clickable" on them: the
 // span around the top bar's status icons and quick settings button, and the div around every app's view (the empty
 // "clickable" between Home and the tiles). role="none" quiets them; it is the layer's own and goes when they go.
 test('The_clickable_wrappers_have_no_role_of_their_own', async () => {
@@ -326,7 +326,7 @@ test('A_role_the_page_gave_a_clickable_wrapper_is_kept', async () => {
   }
 });
 
-// R51: a picture with no alt attribute that is not itself a control says nothing to a screen reader but "graphic" (or
+// A picture with no alt attribute that is not itself a control says nothing to a screen reader but "graphic" (or
 // its file name): it is hidden, wherever it is. A picture with an alt (an empty one included: that is the page saying
 // it is decorative) is the page's to describe, and one that is itself a control is the control.
 test('A_picture_with_no_alt_is_hidden_and_the_control_holding_it_keeps_its_name', async () => {

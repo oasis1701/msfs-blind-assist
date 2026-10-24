@@ -40,7 +40,7 @@ test('Ground_services_switches_are_named_by_their_text', async () => {
       assert.ok(['true', 'false'].includes(sw.getAttribute('aria-checked')), 'the page\'s own aria-checked stays');
     }
 
-    // The pushback arrows are bare divs: buttons with the names the owner chose (decision 5).
+    // The pushback arrows are bare divs: buttons with the names the owner chose.
     const arrows = ['left-arrow', 'down-arrow', 'right-arrow'].map(cls => window.document.querySelector('div.' + cls));
     assert.ok(arrows.every(Boolean), 'the capture has the three arrows');
     assert.deepStrictEqual(arrows.map(nameOf), ['Pushback left', 'Pushback straight', 'Pushback right']);
@@ -130,7 +130,7 @@ test('Mass_and_balance_names_follow_the_pages_text', async () => {
   }
 });
 
-// R37: the W&B chart is a picture with labels laid over it: axis ticks (numbers only), the axis title "%MAC", line
+// The W&B chart is a picture with labels laid over it: axis ticks (numbers only), the axis title "%MAC", line
 // captions, and the three limits ("MZFW = 61,000KG"). Without the picture the ticks are a bare run of numbers and the
 // captions name lines no one can see: hidden. The limits are values a pilot uses: kept. A label is a text-only child of
 // the chart; the figures table under it (ZFW, GW and their %MAC, live values) is not a label and is left alone.
@@ -205,7 +205,7 @@ test('A_hidden_state_the_page_set_on_the_chart_is_kept', async () => {
   }
 });
 
-// R38: the seat map is a table of a few hundred seats the page clicks, each read as "clickable"; it shows occupancy,
+// The seat map is a table of a few hundred seats the page clicks, each read as "clickable"; it shows occupancy,
 // and the boarded counts are in the table beside it. Hidden from a screen reader, the seats themselves untouched.
 test('The_seat_map_is_hidden_from_a_screen_reader', async () => {
   const bare = await load('mass-balance', { layer: false });
@@ -218,8 +218,8 @@ test('The_seat_map_is_hidden_from_a_screen_reader', async () => {
     assert.ok(['role', 'aria-label', 'tabindex', 'data-msfsba'].every(a => !seats.hasAttribute(a)));
     assert.strictEqual(seats.querySelectorAll('[role],[aria-hidden],[aria-label],[data-msfsba]').length, 0, 'the seats are left as they are');
 
-    // On this screen the layer hides exactly: the top bar's pictures and glyphs, every other picture with no alt (R51:
-    // the closed switcher's icons, the battery pictures, the logos, the seat map's background), the chart's picture and
+    // On this screen the layer hides exactly: the top bar's pictures and glyphs, every other picture with no alt (the
+    // closed switcher's icons, the battery pictures, the logos, the seat map's background), the chart's picture and
     // labels but its limits, and the seat map.
     const hidden = hiddenByLayer(bare, window);
     assert.deepStrictEqual(hidden.filter(h => !/^div\.(line-with-text|text-numbers-)/.test(h)), [

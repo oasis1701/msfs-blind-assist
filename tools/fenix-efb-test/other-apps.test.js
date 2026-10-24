@@ -2,8 +2,8 @@
 // Settings, Failures, Documents, Charts and the quick settings, checked against the LIVE captures
 // (fixtures/settings.html, failures.html, documents.html, charts.html, quick-settings.html; Fenix 3.0.0.7438,
 // A320-232 IAE). A name is the page's own text wherever the page gives one; where it gives none the name is
-// one the rulings chose (R10 and R30 quick settings, R15 Charts, R21 Documents) or owner decision 5's; states
-// and failure words follow the page's own classes (R28, R29).
+// one chosen for the layer (quick settings, Charts, Documents) or the owner's; states
+// and failure words follow the page's own classes.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -55,7 +55,7 @@ test('Settings_options_say_name_and_choice_and_follow_the_page', async () => {
     }
 
     // The options say which one is chosen, from the page's own class; the name is the option's own label text, written
-    // as a label (R52: Chromium's tree showed them unnamed).
+    // as a label (Chromium's tree showed them unnamed).
     const options = all(window, 'button.option');
     assert.deepStrictEqual(options.map(nameOf), ['GNADIRS', 'ADIRS', 'Classic', 'Modern', 'hPa', 'inHg']);
     assert.deepStrictEqual(options.map(attr('aria-label')), options.map(o => squash(o.querySelector('.option-label').textContent)));
@@ -105,7 +105,7 @@ test('Settings_options_say_name_and_choice_and_follow_the_page', async () => {
   }
 });
 
-// R32: each article's choices sit in a container of the page's own; it becomes a group named by the setting, so a
+// Each article's choices sit in a container of the page's own; it becomes a group named by the setting, so a
 // Tab into "Classic" or "Modern" says which setting they choose. The choices keep their own names and states.
 test('Settings_choices_sit_in_a_group_named_by_their_setting', async () => {
   const window = await load('settings');
@@ -219,7 +219,7 @@ function settingOf(article) {
 }
 const togglesOf = window => all(window, 'label.toggle').filter(label => label.querySelector('input[type=checkbox]'));
 
-// R40: the page hides an on/off option's real checkbox (display: none) and shows a styled slider, so a screen reader met
+// The page hides an on/off option's real checkbox (display: none) and shows a styled slider, so a screen reader met
 // nothing (jsdom has no CSS, so the checkbox looked named here). The label that holds them is the control: a switch
 // named by its setting, checked while the checkbox is, with a Tab stop.
 for (const [fixture, count] of Object.entries(SETTINGS_SCREENS)) {
@@ -395,7 +395,7 @@ test('A_role_name_or_state_the_page_gave_a_settings_switch_is_kept_and_the_layer
   }
 });
 
-// ---- Settings: the "More options" menus (ruling R58) ----
+// ---- Settings: the "More options" menus ----
 // The three dots open a CDK overlay at the end of <body>: a transparent backdrop, then a pane holding div.overflow-menu
 // and its items. The focus stayed on the button, so the arrows and Tab moved on to the next setting and the menu seemed
 // empty. While a menu is open its button's container aria-owns the pane (the items are read right after the button),
@@ -494,7 +494,7 @@ test('Opening_a_More_options_menu_takes_the_focus_to_its_first_item_and_closing_
   }
 });
 
-// R60: Shift+Tab from the first item reaches the "Close menu" backdrop, and Enter there closes the menu. CDK takes the
+// Shift+Tab from the first item reaches the "Close menu" backdrop, and Enter there closes the menu. CDK takes the
 // pane away at once but keeps the backdrop in the page for its fade (up to 500 ms), with the focus still on it: that
 // focus is lost with the menu too, and goes back to the button. So does the focus when the backdrop goes as well.
 for (const backdropLingers of [true, false]) {
@@ -648,7 +648,7 @@ for (const [fixture, expected] of Object.entries(SETTINGS_BOXES)) {
   });
 }
 
-// R41: an icon font draws its glyph from a style sheet as a private-use character, and Chromium makes that character the
+// An icon font draws its glyph from a style sheet as a private-use character, and Chromium makes that character the
 // name of a button that has only a title ("Expanded view") or reads it as a stray line before the text. So a glyph
 // inside a control is hidden from a screen reader; the control keeps its own name (its text, title or label).
 test('Icon_glyphs_inside_a_control_are_hidden_and_the_control_keeps_its_own_name', async () => {
@@ -677,7 +677,7 @@ test('An_icon_that_is_itself_the_control_is_left_alone_and_one_outside_a_control
   const bare = await load('charts', { layer: false });
   const window = await load('charts');
   try {
-    // The zoom icons are the buttons themselves (R15): not hidden.
+    // The zoom icons are the buttons themselves: not hidden.
     for (const id of ['mapZoomInBtn', 'mapZoomOutBtn']) {
       const icon = window.document.getElementById(id);
       assert.strictEqual(icon.getAttribute('role'), 'button');
@@ -726,7 +726,7 @@ test('A_glyph_follows_its_control_and_a_hidden_state_the_page_set_on_a_glyph_is_
   }
 });
 
-// R42: a Settings choice can show a picture whose alt repeats the choice's own text ("GNADIRS"), so a screen reader read
+// A Settings choice can show a picture whose alt repeats the choice's own text ("GNADIRS"), so a screen reader read
 // each choice twice. The settings capture has the choices without their pictures (the old snippet removed every <img>),
 // so they are put back here as the live page has them, as the button's first child.
 // Loads the settings capture with each choice's picture put back, as the live page has it (the button's first child, its
@@ -759,7 +759,7 @@ test('Option_pictures_that_repeat_the_options_text_are_hidden', async () => {
     const pictures = options.map(o => o.querySelector('img.option-image'));
     assert.ok(pictures.every(p => p.getAttribute('aria-hidden') === 'true'));
     assert.deepStrictEqual(options.map(nameOf), ['GNADIRS', 'ADIRS', 'Classic', 'Modern', 'hPa', 'inHg'], 'each read once');
-    // A choice that is only a picture: its picture stays, and its alt is the choice's name (R52).
+    // A choice that is only a picture: its picture stays, and its alt is the choice's name.
     assert.strictEqual(lone.querySelector('img').hasAttribute('aria-hidden'), false);
     assert.strictEqual(lone.getAttribute('aria-label'), 'Picture only');
     assert.strictEqual(nameOf(lone), 'Picture only');
@@ -776,7 +776,7 @@ test('Option_pictures_that_repeat_the_options_text_are_hidden', async () => {
   }
 });
 
-// R52: a choice is named by its own label text as a label of the layer's, which follows the text; a label the page
+// A choice is named by its own label text as a label of the layer's, which follows the text; a label the page
 // gives is the page's.
 test('A_settings_choice_is_named_by_its_label_text_and_a_label_the_page_gives_it_is_kept', async () => {
   const window = await load('settings', { layer: false });
@@ -797,7 +797,7 @@ test('A_settings_choice_is_named_by_its_label_text_and_a_label_the_page_gives_it
   }
 });
 
-// R42's rule is its own: when it fails, the choices are still named and pressed, and the other rules ran.
+// The choice-picture rule is its own: when it fails, the choices are still named and pressed, and the other rules ran.
 test('A_failing_rule_does_not_skip_the_others_on_settings_when_img_option_image_fails', async () => {
   const { window, options } = await loadSettingsWithPictures();
   const proto = window.Element.prototype;
@@ -911,7 +911,7 @@ const CHAPTERS = [
   'ATA 31 - Indicating/Recording system', 'ATA 35 - Oxygen', 'ATA 46 - Information systems', 'ATA 52 - Doors',
   'ATA 70 - Power plant'
 ];
-// R28: the capture has ATA 34 marked manual-failure-ata--ata-failed (a failure is set in it), so its title says so.
+// The capture has ATA 34 marked manual-failure-ata--ata-failed (a failure is set in it), so its title says so.
 const CHAPTER_NAMES = CHAPTERS.map(c => c === 'ATA 34 - Navigation' ? c + ', has failures' : c);
 
 // The group title of a failure item, from the page: the title row of the item's own group.
@@ -996,7 +996,7 @@ test('Failure_chapters_follow_the_page_when_one_opens_and_another_closes', async
   }
 });
 
-// R28: the page shows a failure's state by colour only (spec 8): the item button gets manual-failure-failed or
+// The page shows a failure's state by colour only: the item button gets manual-failure-failed or
 // manual-failure-armed, its chapter manual-failure-ata--ata-failed or --ata-armed (the bundle's ngClass). The
 // layer says it in the name, and the name follows the class.
 test('Failure_states_are_spoken_in_the_name_and_follow_the_page', async () => {
@@ -1144,7 +1144,7 @@ test('Documents_folders_and_files_are_buttons', async () => {
     const files = all(window, 'div.file');
     assert.deepStrictEqual([qrh, ecam, guide].map(nameOf), ['QRH', 'ECAM', 'User Guide']);
     assert.deepStrictEqual(files.map(nameOf), ['Checklists', 'Delay Allocation Codes']);
-    // A row with no controls of its own is the button. "My Documents" holds two buttons and a box (R27), so its
+    // A row with no controls of its own is the button. "My Documents" holds two buttons and a box, so its
     // label is the button instead (see the next test).
     for (const el of [qrh, ecam, guide, ...files]) {
       assert.strictEqual(el.getAttribute('role'), 'button', nameOf(el));
@@ -1152,9 +1152,9 @@ test('Documents_folders_and_files_are_buttons', async () => {
     }
     assert.deepStrictEqual(layerStamp(mine), NO_STAMP);
 
-    // R29: a folder is open while its div.folder (the row's container) carries the page's `open` class (the
+    // A folder is open while its div.folder (the row's container) carries the page's `open` class (the
     // bundle's [class.open]); every folder in the capture is closed. The state sits on the folder's button: the
-    // row, or for My Documents its label (R27).
+    // row, or for My Documents its label.
     assert.ok(folders.every(f => f.parentElement.localName === 'div' && f.parentElement.classList.contains('folder')));
     assert.ok(folders.every(f => !f.parentElement.classList.contains('open')), 'every folder closed, as captured');
     assert.deepStrictEqual([qrh, ecam, guide].map(attr('aria-expanded')), ['false', 'false', 'false']);
@@ -1172,7 +1172,7 @@ test('Documents_folders_and_files_are_buttons', async () => {
   }
 });
 
-// R27: a row that holds controls of its own is not a button (a control inside a button cannot be reached); the
+// A row that holds controls of its own is not a button (a control inside a button cannot be reached); the
 // text of the row is.
 test('A_documents_row_with_controls_of_its_own_makes_its_label_the_button', async () => {
   const window = await load('documents');
@@ -1261,7 +1261,7 @@ test('A_documents_row_that_gains_or_loses_controls_hands_the_button_over_and_tak
   }
 });
 
-// R29: the folder's open state and the selected file follow the page's own classes, on whichever element is the
+// The folder's open state and the selected file follow the page's own classes, on whichever element is the
 // button; what the layer wrote is taken back when the class goes or the button moves, and a state the page set
 // is never touched.
 test('Documents_folder_and_file_states_follow_the_page', async () => {
@@ -1403,7 +1403,7 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
   try {
     charts = await load('charts');
     quick = await load('quick-settings');
-    // The sidebar's items (R34): each app-navigraph-sidebar-item's div is a button named by its text. The
+    // The sidebar's items: each app-navigraph-sidebar-item's div is a button named by its text. The
     // "My Flight" header above them carries the item class too, but it is a heading, not a button.
     const sidebar = all(charts, 'app-navigraph-sidebar-item div.navigraph-sidebar-item');
     assert.deepStrictEqual(sidebar.map(nameOf), ['Route', 'Sync SimBrief']);
@@ -1415,7 +1415,7 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
     assert.deepStrictEqual(layerStamp(header), NO_STAMP);
     assert.deepStrictEqual(pressed(charts, header), { caught: false, clicks: 0 });
 
-    // Quick settings (R30): the backdrop behind the pop-up closes it when clicked, as a mouse click outside does;
+    // Quick settings: the backdrop behind the pop-up closes it when clicked, as a mouse click outside does;
     // it is the keyboard's way out ("Close quick settings").
     const backdrop = one(quick, 'div.brightness-popup-backdrop');
     assert.strictEqual(backdrop.getAttribute('role'), 'button');
@@ -1429,7 +1429,7 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
     assert.ok(press(quick, backdrop, { key: 'Enter' }).defaultPrevented);
     assert.strictEqual(closes, 1);
 
-    // The zoom icons (R15 / owner decision 5): the ids sit on the icons and their parent holds both, so each
+    // The zoom icons (the names are the owner's): the ids sit on the icons and their parent holds both, so each
     // icon is the button (a capture cannot show where the page's listener is).
     const zoomIn = one(charts, '#mapZoomInBtn');
     const zoomOut = one(charts, '#mapZoomOutBtn');
@@ -1442,13 +1442,13 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
     assert.deepStrictEqual(layerStamp(zoomIn.parentElement), NO_STAMP);
     assert.deepStrictEqual(pressed(charts, zoomOut, ' '), { caught: true, clicks: 1 });
 
-    // The map controls are icon fonts (R15): named by the icon, the World Map item by its own text.
+    // The map controls are icon fonts: named by the icon, the World Map item by its own text.
     const controls = all(charts, 'div.map-control-item');
     assert.deepStrictEqual(controls.map(nameOf), ['Map settings', 'World Map', 'Dark map', 'Light map']);
     assert.deepStrictEqual(controls.map(c => c.querySelector('i') ? c.querySelector('i').className : ''),
       ['fas fa-cog', '', 'fas fa-moon', 'fas fa-sun']);
     assert.ok(controls.every(el => el.getAttribute('role') === 'button' && el.tabIndex === 0));
-    // aria-pressed follows the page's map-control-item-selected on the map mode and the two themes (R26). The
+    // aria-pressed follows the page's map-control-item-selected on the map mode and the two themes. The
     // settings cog opens the settings and is not a choice: it has none, whatever the page marks.
     assert.deepStrictEqual(controls.map(c => c.classList.contains('map-control-item-selected')), [false, true, false, false]);
     assert.deepStrictEqual(controls.map(attr('aria-pressed')), [null, 'true', 'false', 'false']);
@@ -1483,7 +1483,7 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
   }
 });
 
-// R51: the quick settings' airplane picture and the Charts sidebar's item icons have no alt: hidden from a screen
+// The quick settings' airplane picture and the Charts sidebar's item icons have no alt: hidden from a screen
 // reader, and the buttons holding them keep their names. The charts capture has the sidebar without its pictures (the old
 // snippet removed every <img>), so they are put back here as the live page has them, first in each item's left part.
 test('Unlabeled_pictures_on_Charts_and_quick_settings_are_hidden_and_their_buttons_keep_their_names', async () => {
@@ -1517,7 +1517,6 @@ test('Unlabeled_pictures_on_Charts_and_quick_settings_are_hidden_and_their_butto
   }
 });
 
-// R24 and R26.
 test('The_moving_map_is_named_without_a_role_or_a_Tab_stop_of_ours_and_the_chart_list_toggle_is_a_button', async () => {
   const window = await load('charts');
   try {
@@ -1579,7 +1578,7 @@ test('A_map_control_without_text_or_a_known_icon_and_an_airplane_button_without_
     own.setAttribute('aria-label', 'Flight mode');
     own.innerHTML = '<img class="quick-settings-btn-icon flight-mode-btn-icon" src="/assets/img/airplane.png">';
     toggles.appendChild(own);
-    // The picture is found by its class or by its file name (R10): either alone is enough.
+    // The picture is found by its class or by its file name: either alone is enough.
     const byClass = quick.document.createElement('button');
     byClass.className = 'quick-settings-btn';
     byClass.innerHTML = '<img class="quick-settings-btn-icon flight-mode-btn-icon" src="/assets/img/flight.png">';
@@ -1662,7 +1661,7 @@ const SETTINGS_PARTS = {
   'settings-misc': { switcher: 9, badges: 6, toggles: 4, dots: 6, groups: 2, options: 4, boxes: 1 },
   'settings-printer': { switcher: 9, badges: 8, toggles: 2, dots: 8, groups: 0, options: 0, boxes: 5 },
   'settings-realism': { switcher: 9, badges: 8, toggles: 3, dots: 8, groups: 5, options: 13, boxes: 0 },
-  // Aircraft with the first menu open: the menu's backdrop is the "Close menu" button (R58).
+  // Aircraft with the first menu open: the menu's backdrop is the "Close menu" button.
   'settings-overflow-open': { switcher: 9, badges: 8, toggles: 5, dots: 8, groups: 3, options: 6, boxes: 0, backdrop: 1 }
 };
 for (const [fixture, p] of Object.entries(SETTINGS_PARTS)) {
@@ -1713,13 +1712,13 @@ const ISOLATION = {
     ['article label.toggle', 'label.toggle[role=switch]', 5],
     ['span.settings-source', 'span.settings-source[aria-label]', 8]
   ],
-  // The open menu (R58): the menu rule asks for the open button through '.settings-overflow' and for the menu through
+  // The open menu: the menu rule asks for the open button through '.settings-overflow' and for the menu through
   // '.cdk-overlay-pane >', so the three-dot rule's needle is in its own query only.
   'settings-overflow-open': [
     ['.cdk-overlay-pane >', 'div.settings-overflow[aria-owns]', 1],
     ['button.overflow-button', 'button.overflow-button[aria-label]', 8]
   ],
-  // Audio has the boxes the box rule names (R50), next to one on/off option.
+  // Audio has the boxes the box rule names, next to one on/off option.
   'settings-audio': [
     ['input:not(', 'article input:not([type=checkbox])[aria-label]', 7],
     ['article input[type=checkbox]', 'input[type=checkbox][aria-label]', 1],
