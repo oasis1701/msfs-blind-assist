@@ -44,7 +44,7 @@ public static class FenixOptionEdits
     // The EFB hides this option (it has no row for it), so the app does not offer a change the EFB does not.
     private const string ChartsProviderKey = "charts_provider_type";
 
-    // The options that change the cockpit's panels, so the pilot is asked first (owner answer 5).
+    // The options that change the cockpit's panels, so the pilot is asked first (the owner's decision).
     private static readonly string[] CockpitReshaping = { "standby_type", "isis_type", "adirs_type", "acp_type", "dcdu_enabled" };
 
     /// <summary>
@@ -80,8 +80,8 @@ public static class FenixOptionEdits
     /// <summary>
     /// True when the pilot can reset the option to the Fenix default: it can be <see cref="CanWrite">written</see>
     /// and the EFB's own rule holds, that its value comes from the user or the session. Any type of option,
-    /// a typed value (Registration) as well as an on/off or choice one, as the EFB's "Reset to default" does
-    /// (ruling R24). A default, livery or unknown source has no change of the pilot's to reset.
+    /// a typed value (Registration) as well as an on/off or choice one, as the EFB's "Reset to default" does.
+    /// A default, livery or unknown source has no change of the pilot's to reset.
     /// </summary>
     public static bool CanReset(FenixSetting s)
         => CanWrite(s) && FenixOptionCatalog.SourceKind(s.Source) is "user" or "session";

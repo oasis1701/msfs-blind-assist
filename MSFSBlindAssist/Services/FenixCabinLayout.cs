@@ -14,27 +14,23 @@ public enum FenixExitsType
 
 /// <summary>
 /// Which doors, slides and lavatories the loaded airframe has, resolved from the Fenix's own settings
-/// (<c>emergency_exits_type</c>, <c>aircraft_variant</c> and <c>fap_slide_disarmed_message</c>; the first
-/// and last key names are in plan 08's evidence table) with the airframe type as the fallback for a
-/// setting that is missing or unknown. Pure: no data service, no state.
+/// (<c>emergency_exits_type</c>, <c>aircraft_variant</c> and <c>fap_slide_disarmed_message</c>) with the
+/// airframe type as the fallback for a setting that is missing or unknown. Pure: no data service, no state.
 /// <para>
-/// Evidence (Fenix 3.0.0.7426 FAP/EFB bundles, the plan 08 evidence file): the per-type defaults are the
+/// Evidence (Fenix 3.0.0.7426 FAP/EFB bundles): the per-type defaults are the
 /// FAP's <c>be={A319:{... emergencyExitsType:"SingleOverwing", aircraftVariant:"HighDensity"}, A320:{...
-/// "DoubleOverwing", "SingleClass"}, A321:{... "DoubleFullsize", "TwoClass"}}</c> (section "Exits-type
-/// defaults per type", offsets 60500..61300; the FAP starts from the A320 entry, so an unknown airframe
-/// is an A320). Doors and slides are the FAP's <c>mainDoors$</c> (<c>function P(B){switch(B){case
-/// "SingleOverwing": case "DoubleOverwing": return ["1L","1R","4L","4R"]; ...</c>) and <c>slides$</c>
-/// (<c>function T(B)</c>; the overwing exits add <c>"OWL","OWR"</c>), section "Main doors / slides per
-/// exits type", offsets 61500..62700. Lavatories are the FAP's <c>getLavatoryDesignations</c> (<c>case
-/// "SingleClass": return ["A","D","E"]; case "HighDensity": return ["A","D"]; case "TwoClass": return
-/// ["A","M","D","E"]</c>), section "Lavatory flush name, water/waste cautions, lavatory designations",
-/// offsets 83300..85700. "Slide In Park" is the FAP's <c>getDoorMessage</c> test <c>"SlideInPark"===l</c>,
-/// section "Door message", offsets 77700..78300. The ground-service doors are the EFB's per-type
+/// "DoubleOverwing", "SingleClass"}, A321:{... "DoubleFullsize", "TwoClass"}}</c> (the FAP starts from
+/// the A320 entry, so an unknown airframe is an A320). Doors and slides are the FAP's <c>mainDoors$</c>
+/// (<c>function P(B){switch(B){case "SingleOverwing": case "DoubleOverwing": return
+/// ["1L","1R","4L","4R"]; ...</c>) and <c>slides$</c> (<c>function T(B)</c>; the overwing exits add
+/// <c>"OWL","OWR"</c>). Lavatories are the FAP's <c>getLavatoryDesignations</c> (<c>case "SingleClass":
+/// return ["A","D","E"]; case "HighDensity": return ["A","D"]; case "TwoClass": return
+/// ["A","M","D","E"]</c>). "Slide In Park" is the FAP's <c>getDoorMessage</c> test
+/// <c>"SlideInPark"===l</c>. The ground-service doors are the EFB's per-type
 /// <c>groundServices</c> door entries: the A320 table lists <c>d1l, d1r, d4l, d4r</c> plus the forward,
-/// aft and bulk cargo (section "EFB A320 door table", offsets 28000..29500); the A319 table lists the
-/// same four doors and only the forward and aft cargo; the A321 table lists all eight doors and the
-/// bulk cargo (section "EFB A319 / A321 door tables", offsets 1000..6000). The EFB has no A318 table,
-/// so the A318 takes the A320 entry.
+/// aft and bulk cargo; the A319 table lists the same four doors and only the forward and aft cargo; the
+/// A321 table lists all eight doors and the bulk cargo. The EFB has no A318 table, so the A318 takes
+/// the A320 entry.
 /// </para>
 /// </summary>
 /// <param name="Type">The airframe the layout was resolved for.</param>
@@ -78,7 +74,7 @@ public sealed record FenixCabinLayout(
     /// The layout for the loaded airframe. A setting wins when it is spelled exactly (ordinal) as the
     /// Fenix spells it; a missing, empty or unknown one falls back to the airframe type.
     /// </summary>
-    /// <param name="type">The airframe from plan 01's variant.</param>
+    /// <param name="type">The airframe from the detected variant.</param>
     /// <param name="emergencyExitsType">The <c>emergency_exits_type</c> setting, if read.</param>
     /// <param name="aircraftVariant">The <c>aircraft_variant</c> setting, if read.</param>
     /// <param name="slideDisarmedMessage">The <c>fap_slide_disarmed_message</c> setting, if read.</param>

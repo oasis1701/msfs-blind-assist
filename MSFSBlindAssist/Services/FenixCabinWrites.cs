@@ -1,6 +1,6 @@
 namespace MSFSBlindAssist.Services;
 
-/// <summary>How a <see cref="FenixCabinWrite"/> is sent: plan 01's typed data-service write for each.</summary>
+/// <summary>How a <see cref="FenixCabinWrite"/> is sent: the data service's typed write for each.</summary>
 public enum FenixCabinWriteKind { Int, Bool, Float, String }
 
 /// <summary>A cabin temperature zone: the FAP's <c>fwd</c> and <c>aft</c> areas.</summary>
@@ -13,7 +13,7 @@ public enum FenixCargoDoor { Forward, Aft, Bulk }
 public enum FenixCabinLightLevel { Bright, Dim1, Dim2, Off }
 
 /// <summary>
-/// One data-name write: the kind says which of plan 01's typed writes sends it and <paramref name="Value"/>
+/// One data-name write: the kind says which of the data service's typed writes sends it and <paramref name="Value"/>
 /// is the matching .NET type (<c>int</c> for Int, <c>bool</c> for Bool, <c>double</c> for Float,
 /// <c>string</c> for String).
 /// </summary>
@@ -21,10 +21,10 @@ public sealed record FenixCabinWrite(FenixCabinWriteKind Kind, string Name, obje
 
 /// <summary>
 /// Every data-name write the Cabin window makes, built the way the Fenix's own FAP and EFB build them
-/// (Fenix 3.0.0.7426 bundles; plan 08 evidence sections "Cabin ready write", "Cabin lights write",
-/// "Temperature store", "Water preselect", "FAP Set-Up store", "EFB door enum", "EFB door control names"
-/// and "EFB toggle writes"). Pure functions: nothing here reads the sim or touches the network except
-/// <see cref="SendAsync"/>, which sends one write through plan 01's <see cref="FenixDataService"/>.
+/// (Fenix 3.0.0.7426 bundles: the FAP's cabin ready and cabin lights writes, temperature store, water
+/// preselect and Set-Up store, and the EFB's door enum, door control names and toggle writes). Pure
+/// functions: nothing here reads the sim or touches the network except <see cref="SendAsync"/>, which
+/// sends one write through the <see cref="FenixDataService"/>.
 /// <para>
 /// FAP limits, in words. The temperature store steps a zone's offset by half a degree between minus 2.5
 /// and plus 2.5; the temperature page greys the warmer button when the offset is at the top or the
@@ -229,7 +229,7 @@ public static class FenixCabinWrites
     // ---- Sending --------------------------------------------------------------------------------
 
     /// <summary>
-    /// Sends one write through plan 01's typed write for its kind and says whether the Fenix accepted it.
+    /// Sends one write through the data service's typed write for its kind and says whether the Fenix accepted it.
     /// False when the data service is down or refuses it, and for a write whose value is not the type its
     /// kind needs (nothing is sent then); nothing is thrown. A Float is sent with an invariant decimal point.
     /// </summary>

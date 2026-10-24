@@ -8,8 +8,8 @@ public enum FenixCabinSection { Status, Audio, Doors, Temperature, Water }
 /// <summary>
 /// One value as the pilot reads it: one ListBox line. <paramref name="Key"/> stays the same while the
 /// text changes (<c>door.d1l</c>, <c>audio.volume</c>), so the read-back and the forms find a line by it.
-/// <paramref name="State"/> is the part of the line a press changes, so a read-back can wait for it alone
-/// (ruling R17): a door's own <c>open</c> or <c>closed</c> (not its slide), a cargo door's <c>open</c> or
+/// <paramref name="State"/> is the part of the line a press changes, so a read-back can wait for it alone:
+/// a door's own <c>open</c> or <c>closed</c> (not its slide), a cargo door's <c>open</c> or
 /// <c>closed</c> (none while it moves), a zone's target and offset (<c>24.5|0.5</c>, invariant; not the
 /// measured air). Null when that part is not known, and on every other line.
 /// </summary>
@@ -81,23 +81,21 @@ public sealed class FenixCabinData
 /// closed, disarmed, off, 0 percent or a caution ([FNX-1]). Numbers are invariant (a comma-decimal PC
 /// still hears "24.5").
 /// <para>
-/// Evidence (Fenix 3.0.0.7426 FAP bundle, the plan 08 evidence file). Doors read <c>y?"open":"closed"</c>
-/// and slides <c>y?"armed":"disarmed"</c> ("Door / slide names and meanings", offsets 71000..72400).
+/// Evidence (Fenix 3.0.0.7426 FAP bundle). Doors read <c>y?"open":"closed"</c>
+/// and slides <c>y?"armed":"disarmed"</c>.
 /// The door message is <c>getDoorMessage</c>: slide pressure under 3000 first, then door pressure under
 /// 1000, then "Slide In Park" for a closed door with a disarmed slide when the setting is
-/// <c>SlideInPark</c> ("Door message", offsets 77700..78300); the FAP also warns on a missing pressure,
+/// <c>SlideInPark</c>; the FAP also warns on a missing pressure,
 /// which we do not. The water and waste cautions and their order are the water store's <c>d.showIf</c>
-/// calls, the lavatory one with the details <c>LAV ${K}</c> and the waste-level one at <c>B&gt;30</c>
-/// ("Lavatory flush name, water/waste cautions, lavatory designations", offsets 83300..85700); each
-/// fires here only on what known values prove (R11), where the FAP starts from
+/// calls, the lavatory one with the details <c>LAV ${K}</c> and the waste-level one at <c>B&gt;30</c>;
+/// each fires here only on what known values prove, where the FAP starts from
 /// <c>vacuumSystemPowered:false</c> and shows the vacuum caution before any data. "Cautions: none" needs
-/// a known caution input too (R10).
-/// A zone's target is <c>selectedTemperature+selectedOffset</c> ("Temperature shown / greyed", offsets
-/// 120700..123700), and temperature control is available only while the zone controller, the
-/// lavatory and galley extraction fan and the CIDS all run (<c>dataAvailable$</c>, "Temperature store",
-/// offsets 67600..69900). The connection status follows the FAP's power-up screens: off, FAP power-up,
-/// CIDS power-up ("FAP power-up screens", offsets 46200..47300). The loudspeaker volume is shown as the
-/// FAP Set-Up page shows it ("FAP Set-Up store", offsets 72700..76100, ruling R2).
+/// a known caution input too.
+/// A zone's target is <c>selectedTemperature+selectedOffset</c>, and temperature control is available only
+/// while the zone controller, the lavatory and galley extraction fan and the CIDS all run
+/// (<c>dataAvailable$</c>). The connection status follows the FAP's power-up screens: off, FAP power-up,
+/// CIDS power-up. The loudspeaker volume is shown as the FAP Set-Up page shows it, and comes from the
+/// data, not the pram state.
 /// </para>
 /// </summary>
 public static class FenixCabinLines
@@ -374,7 +372,7 @@ public static class FenixCabinLines
     /// <summary>
     /// What the Status page's "Cautions:" line lists, in its order: the water and waste cautions
     /// (<see cref="Cautions"/>), then each main door's pressure message ("Door 4 right: check slide pressure").
-    /// Empty only when nothing fires and at least one caution input is known (R10); null when no caution input
+    /// Empty only when nothing fires and at least one caution input is known; null when no caution input
     /// is known, which the line reads as "no data". The app-wide cabin cautions say the same items.
     /// </summary>
     public static IReadOnlyList<string>? StatusCautions(FenixCabinData data, FenixCabinLayout layout)
@@ -392,7 +390,7 @@ public static class FenixCabinLines
         return cautions.AsReadOnly();
     }
 
-    // "none" needs proof too (R10): nothing fires and at least one caution input is known; otherwise "no data".
+    // "none" needs proof too: nothing fires and at least one caution input is known; otherwise "no data".
     private static string CautionsSummary(FenixCabinData data, FenixCabinLayout layout)
         => StatusCautions(data, layout) switch
         {
@@ -401,7 +399,7 @@ public static class FenixCabinLines
             var cautions => "Cautions: " + string.Join("; ", cautions)
         };
 
-    // R10: a value some caution reads, known in its own kind: the water and waste tanks, waste tank full,
+    // A value some caution reads, known in its own kind: the water and waste tanks, waste tank full,
     // the vacuum system and generator, either service panel, a flush of the layout's lavatories, or a
     // listed main door's door or slide pressure.
     private static bool AnyCautionInputKnown(FenixCabinData data, FenixCabinLayout layout)
@@ -440,7 +438,7 @@ public static class FenixCabinLines
                 Add("audio.set", $"Announcement set: {pram.PreferredVariant.ToString(Inv)} (0 to {pram.MaxVariant.ToString(Inv)})");
         }
 
-        // R2: from the data, not the pram state, so it is there when the pram state is not.
+        // From the data, not the pram state, so it is there when the pram state is not.
         double? speaker = data.Number(FenixCabinNames.FapSpeakerVolume);
         Add("audio.speakerVolume", "FAP loudspeaker volume: "
             + (speaker is double fraction
@@ -489,7 +487,7 @@ public static class FenixCabinLines
     /// <summary>A main door's Doors line key by its FAP designation: <c>1L</c> is <c>door.d1l</c>.</summary>
     public static string DoorLineKey(string designation) => "door." + FenixCabinLayout.DataKey(designation);
 
-    // A main door's own word, the part of its line a door press changes (R17); null when unknown.
+    // A main door's own word, the part of its line a door press changes; null when unknown.
     private static string? DoorState(FenixCabinData data, string door)
         => data.Bool(FenixCabinNames.Door(FenixCabinLayout.DataKey(door))) switch
         {
@@ -604,7 +602,7 @@ public static class FenixCabinLines
             ZoneSetting(data, FenixCabinNames.TempAftSelected, FenixCabinNames.TempAftOffset));
     }
 
-    // The part of a zone's line a temperature press changes (R17): the target and the offset, invariant
+    // The part of a zone's line a temperature press changes: the target and the offset, invariant
     // ("24.5|0.5"), never the measured air temperature; null when either is unknown.
     private static string? ZoneSetting(FenixCabinData data, string selectedName, string offsetName)
         => data.Number(selectedName) is double selected && data.Number(offsetName) is double offset

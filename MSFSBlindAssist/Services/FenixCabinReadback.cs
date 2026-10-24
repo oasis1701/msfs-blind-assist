@@ -20,7 +20,7 @@ public sealed record FenixCabinReadbackEnd(string Key, string? Text);
 /// only.
 /// </para>
 /// <para>
-/// Two ways to tell a change (ruling R17). Text mode, the default: any change of the line's text. State
+/// Two ways to tell a change. Text mode, the default: any change of the line's text. State
 /// mode: a change of the line's <see cref="FenixCabinLine.State"/>, the part the press changes, so a door
 /// press is not answered by its slide disarming, a cargo press by "moving", or a temperature press by the
 /// measured air drifting. A null state is not settled yet (moving, unknown) and keeps the press waiting;

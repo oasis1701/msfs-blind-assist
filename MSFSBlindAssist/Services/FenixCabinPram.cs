@@ -42,17 +42,16 @@ public sealed record FenixCabinMutation(string Query, object? Variables, string 
 /// <summary>
 /// The FAP's audio side: boarding music, the PRAM volume, prerecorded announcements and their memo, and
 /// the announcement variant. Pure: it builds the GraphQL documents and reads the answers; the sending is
-/// <see cref="SendAsync"/> over plan 01's <see cref="FenixDataService"/>.
+/// <see cref="SendAsync"/> over the <see cref="FenixDataService"/>.
 /// <para>
-/// Evidence (Fenix 3.0.0.7426 FAP bundle, the plan 08 evidence file, and
-/// docs/fenix-v3/evidence/gql-operations.txt for the document texts): every mutation below is one of the
-/// bundle's own documents, operation name and variable names unchanged ("Audio GraphQL documents",
-/// offsets 87100..93400). Which store action sends which, and with what value, is "Audio store calls"
-/// (offsets 63900..65200: the music toggle sends the opposite of the current state, the volume buttons
-/// send the current volume plus or minus one, the channel combo sends the channel's index) and
-/// "Announcement store calls" (offsets 78100..80500: the memo and play actions; the memo is removed by
-/// index, an announcement is added and played by its id). The variant is "Announcement variant control"
-/// (offsets 8100..8700): increase sends <c>preferredVariant + 1</c> only below <c>maxVariant</c>,
+/// Evidence (Fenix 3.0.0.7426 FAP bundle; tools/fenix-gateway/fetch_gateway_bundles.py fetches it and
+/// lists the document texts in gql-operations.txt): every mutation below is one of the bundle's own
+/// documents, operation name and variable names unchanged.
+/// Which store action sends which, and with what value, is the bundle's audio store (the music toggle
+/// sends the opposite of the current state, the volume buttons send the current volume plus or minus
+/// one, the channel combo sends the channel's index) and its announcement store (the memo and play
+/// actions; the memo is removed by index, an announcement is added and played by its id). For the
+/// announcement variant, increase sends <c>preferredVariant + 1</c> only below <c>maxVariant</c>,
 /// decrease <c>preferredVariant - 1</c> only above 0. Those bounds are the caller's, as are the
 /// volume's: the bundle sends the volume unclamped, so <see cref="SetVolume"/> does too.
 /// </para>

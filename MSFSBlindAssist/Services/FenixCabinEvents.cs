@@ -26,11 +26,11 @@ public sealed record FenixCabinEvent(string Kind, string Text, string? LineKey =
 /// <para>Doors: each of the layout's passenger doors, on a known open or closed change of its own CIDS state,
 /// by the FAP's name ("Door 1 left open"); each cargo door (the bulk one only on an airframe that has one)
 /// once it settles in a state other than the last one it settled in, so a door that passes through
-/// "moving" is said once, when it stops. Slides (ruling R19): one summary over the passenger doors' slides
+/// "moving" is said once, when it stops. Slides: one summary over the passenger doors' slides
 /// only (the A320's overwing slides read armed at the gate with the doors disarmed, measured 2026-10-23):
 /// armed when all are known armed, disarmed when all are known disarmed, otherwise none; said when it
 /// becomes armed or disarmed from the other known summary, so mixed is silent. A new layout takes the
-/// summary its doors already had as its baseline. Cautions (ruling R21): the Status page's "Cautions:"
+/// summary its doors already had as its baseline. Cautions: the Status page's "Cautions:"
 /// items (<see cref="FenixCabinLines.StatusCautions"/>), each said once when it appears, nothing when it
 /// clears; a text that changes ("LAV A" to "LAV A, LAV D") is a new caution.</para>
 /// </remarks>

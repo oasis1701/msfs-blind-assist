@@ -72,7 +72,7 @@ public static class FenixDocumentPins
         return null;
     }
 
-    /// <summary>The Fenix EFB's own write of the setting (gql-operations.txt line 13); the one write of plan 07.
+    /// <summary>The Fenix EFB's own write of the setting; the one write the documents window makes.
     /// The same mutation the options window sends, so <see cref="FenixOptionEdits.SetSettingDocument"/> is its one text.</summary>
     public const string SetSettingDocument = FenixOptionEdits.SetSettingDocument;
 

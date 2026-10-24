@@ -2,13 +2,13 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// The door and cargo lines the pilot has just pressed in the Cabin window, so each change is said once
-/// (ruling R18, CORE-7): the window reads its own press back, and while that read-back waits the app-wide door
+/// (CORE-7): the window reads its own press back, and while that read-back waits the app-wide door
 /// announcement (<see cref="FenixCabinReadyMonitor"/>) leaves that door alone. A line is keyed as the Doors page
 /// keys it (<c>door.d1l</c>, <c>cargo.forward</c>, the <see cref="FenixCabinEvent.LineKey"/> of a door event).
 /// </summary>
 /// <remarks>
-/// <para>The mark lives exactly as long as the window's read-back can still speak (ruling R18 as corrected in
-/// fix round 1): the window marks a line as its write goes; once the read-back has spoken it holds the line
+/// <para>The mark lives exactly as long as the window's read-back can still speak:
+/// the window marks a line as its write goes; once the read-back has spoken it holds the line
 /// for a short grace only (the announcement's own poll can see the change a poll later than the window's, and
 /// would then say it again); a read-back that ends silently, a press the Fenix refuses, a send path that
 /// throws, or the window closing withdraws the mark at once, so the change, if any, is still said once.</para>

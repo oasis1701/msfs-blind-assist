@@ -4,7 +4,7 @@ namespace MSFSBlindAssist.Services;
 /// Turns the Fenix's own <c>running</c> flags into "Engine 1 running" / "Engine 1 stopped" lines, a
 /// background change the pilot did not directly trigger (CORE-7). The first known value per engine is
 /// a silent baseline, and an unknown value never changes what is remembered, so a data dropout does
-/// not re-speak. One removable piece: the window speaks whatever this returns (plan 09, Q1).
+/// not re-speak. One removable piece: the window speaks whatever this returns.
 /// </summary>
 public sealed class FenixEngineRunningWatch
 {

@@ -32,7 +32,7 @@ public sealed class FenixCabinReadyEdge
 /// The app-wide cabin announcements while the Fenix is loaded, anywhere in the app, not only with the Cabin
 /// window open. It speaks <see cref="SpokenText"/> once each time the Fenix cabin reports ready (in Fenix v3
 /// the virtual purser sets it, not the cockpit cabin call), and is the one place in the app that says it: the
-/// Cabin window and the First Officer only show the value. Since the sim-fix wave (owner, 2026-10-23) it also
+/// Cabin window and the First Officer only show the value. Since the owner's request of 2026-10-23 it also
 /// says a door opening or closing, the slides all armed or all disarmed, and a cabin caution appearing
 /// (<see cref="FenixCabinEvents"/>). Each of the four kinds has its own Fenix Monitor Manager (Ctrl+M) row
 /// (<see cref="FenixCabinAnnouncements"/>). <c>FenixA320Definition</c> starts one from its cabin background
@@ -51,11 +51,11 @@ public sealed class FenixCabinReadyEdge
 /// starts answering (no known value, then one), and on every variant change. An empty settings answer keeps
 /// what an earlier read found.</para>
 /// <para>A door or cargo door the pilot pressed in the Cabin window is left to the window's read-back while
-/// that can still speak (<see cref="FenixCabinOwnPresses"/>, ruling R18), so the change is said once. Its
+/// that can still speak (<see cref="FenixCabinOwnPresses"/>), so the change is said once. Its
 /// baseline still moves, so it is not said later either.</para>
 /// <para>After the Fenix has not answered for more than <see cref="OutageRebaseline"/> (every polled value
 /// unknown: the data service down, the Fenix reloading), the first values that answer again are a new silent
-/// baseline for all four kinds (ruling R23), so a second flight loaded in the same session is not read out as
+/// baseline for all four kinds, so a second flight loaded in the same session is not read out as
 /// a burst of changes. A shorter outage, or a value unknown on its own, keeps the baseline.</para>
 /// <para>Values arrive on a thread-pool thread ([FNX-2]). What to say is posted to the UI
 /// <see cref="SynchronizationContext"/> captured by <see cref="Start"/>, inside a try/catch: a UI thread that
@@ -72,14 +72,14 @@ public sealed class FenixCabinReadyMonitor : IDisposable
 
     private const string LogCategory = "FenixCabin";
 
-    /// <summary>How long the Fenix may not answer before its next answer is a new silent baseline (R23).</summary>
+    /// <summary>How long the Fenix may not answer before its next answer is a new silent baseline.</summary>
     internal static readonly TimeSpan OutageRebaseline = TimeSpan.FromSeconds(10);
 
     // The last name of each poll: when it has come, the poll is whole and the other kinds are judged.
     private static readonly string LastPolledName = FenixCabinNames.All[^1];
 
     private readonly object _gate = new();
-    // Both replaced, under _gate, after a long outage (R23).
+    // Both replaced, under _gate, after a long outage.
     private FenixCabinReadyEdge _edge = new();
     private FenixCabinEvents _events = new();
     // The values of the poll being handed on (Unknown included), under _gate.
@@ -280,7 +280,7 @@ public sealed class FenixCabinReadyMonitor : IDisposable
         if (startedAnswering) _ = ReadSettingsAsync();
     }
 
-    // Under _gate. R23: the Fenix answers again after more than OutageRebaseline without an answer, so what it
+    // Under _gate. The Fenix answers again after more than OutageRebaseline without an answer, so what it
     // says now is a new silent baseline for every kind: a fresh edge and fresh events. Once per outage: the
     // answer time is set here, so the rest of the same poll does not start it again.
     private void RebaselineAfterLongOutage(DateTime now)
@@ -291,7 +291,7 @@ public sealed class FenixCabinReadyMonitor : IDisposable
         _lastAnsweredAt = now;
     }
 
-    // A door the pilot pressed in the Cabin window is the window's read-back's to say (R18).
+    // A door the pilot pressed in the Cabin window is the window's read-back's to say.
     private IReadOnlyList<FenixCabinEvent> WithoutOwnPresses(IReadOnlyList<FenixCabinEvent> events, DateTime now)
     {
         if (events.Count == 0) return events;
