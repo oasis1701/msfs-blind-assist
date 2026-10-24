@@ -270,7 +270,7 @@ The Fenix has five sections. Some controls are only on some Fenix aircraft; the 
 - On the GNADIRS panel: the ADIRS keypad and the data and system display selectors. On the plain ADIRS panel: the IR pushbuttons.
 - On liveries with a DCDU: the DCDU controls. With the digital ISIS: the ISIS controls. With the round standby gauges: the standby attitude cage. With aft cargo heat: Aft Cargo Hot Air and Aft Cargo Temperature.
 
-A control your aircraft does not have is left out of its panel. A panel whose controls your aircraft has none of stays in the list, empty, for example DCDU Left on a livery without a DCDU. A panel you opened before BA knew which Fenix you are flying shows every control until you open it again, and pressing one your aircraft does not have says *"Not fitted on this aircraft."*
+A control your aircraft does not have is left out of its panel. A panel whose controls your aircraft has none of is not listed at all, for example DCDU Left on a livery without a DCDU, or ISIS with the round standby gauges. Until BA knows which Fenix you are flying, it shows everything: a section you opened before then lists every panel until you leave it and open it again, and a panel you opened before then shows every control until you open it again. Pressing a control your aircraft does not have says *"Not fitted on this aircraft."*
 
 A note on the seats: the height and distance controls are three-position switches, Down, Stop and Up (or Aft, Stop and Forward). Choose Up and the seat keeps moving until it reaches its limit, then the switch returns to Stop by itself. The combo follows that, but quietly; seat movement is not announced by default.
 
