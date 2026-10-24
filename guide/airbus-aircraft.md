@@ -215,7 +215,7 @@ Every one of these can be muted in the Monitor Manager (Output Ctrl+M).
 
 ## Fenix A320 CEO {#airbus-fenix}
 
-The Fenix A320 is a payware A320 (the older "CEO" model) with a very deep systems simulation. Fenix v3 also flies as the A319 and the A321, with CFM or IAE engines, and the "Fenix A320 CEO" profile covers them all. BA gives you access to more than 300 switches and knobs, monitors over 470 lights, gauges and switch states, and reads both MCDUs. Its own Fenix windows give you the Fenix's engine readings, the flight attendant panel, failures, documents and options. Because the Fenix draws its main displays in a way BA cannot read directly, the PFD, ND and ECAM screens are read with AI vision instead.
+The Fenix A320 is a payware A320 (the older "CEO" model) with a very deep systems simulation. Fenix v3 also flies as the A319 and the A321, with CFM or IAE engines, and the "Fenix A320 CEO" profile covers them all. BA gives you access to more than 300 switches and knobs, monitors over 470 lights, gauges and switch states, and reads both MCDUs. Its own Fenix windows (Input Ctrl+Shift+F) give you the Fenix's engine readings, the flight attendant panel, failures, documents and options. Because the Fenix draws its main displays in a way BA cannot read directly, the PFD, ND and ECAM screens are read with AI vision instead.
 
 ### Before you fly {#before-you-fly-2}
 
@@ -224,7 +224,7 @@ You need:
 - Fenix v3, loaded and running in the simulator. Older Fenix versions (2.x) are no longer supported, so update the Fenix if you have not. The MCDU, the EFB and the Fenix windows all talk to the Fenix's own data service, which only runs while the aircraft is loaded.
 - The MobiFlight WASM module in your Community folder. BA works the switches through it, and turns, pushes and pulls the FCU and baro knobs through it too.
 - For reading the PFD, ND and ECAM displays: an AI provider set up with your own API key. See [AI Display Reading and Scene Description](core-concepts.md#ai-display-reading).
-- For current navigation data: your Navigraph account connected in the Fenix's own EFB, on the Settings app's Connections page (see [EFB](#efb-2) below).
+- For current navigation data: either your Navigraph account connected in the Fenix's own EFB, on the Settings app's Connections page (see [EFB](#efb-2) below), or a navigation data file you import yourself on the MCDU's DATA, A/C STATUS page.
 
 About a second after the aircraft has loaded, BA says which Fenix it is, for example *"Fenix A321, IAE engines, 2 extra tanks"*. The panels then offer only the controls that aircraft has (see below).
 
@@ -256,7 +256,7 @@ The Fenix has five sections. Some controls are only on some Fenix aircraft; the 
 
 **Cockpit Door** holds everything about the door: **Cockpit Door** (Closed or Open; the door the First Officer closes before start and opens at shutdown), **Overhead Video** (the overhead VIDEO pushbutton) and **Pedestal Video** (the video button on the pedestal). As in the Fenix's own cockpit, the door does not open while the jumpseat is out, and the jumpseat does not deploy while the door is open: you hear *"Stow the jumpseat first."* or *"Close the cockpit door first."* The door says when it moves, whoever moves it, for example *"Cockpit Door: Open"*.
 
-**Gravity Gear Extension** (Cockpit Other) is one control, Stowed or Extended. Choose Extended and BA raises the handle and turns the crank three times, which takes about seven seconds, then says *"Gravity gear: cranked 3 turns."* Choose Stowed and it turns the crank back and stows the handle: *"Gravity gear: crank stowed."* The control keeps your choice while the crank turns; a second choice before it finishes is refused with *"Gravity gear: crank already turning."*
+**Gravity Gear Extension** (Cockpit Other) is one control, Stowed or Extended. Choose Extended and BA raises the handle and turns the crank three times, which takes about six seconds, then says *"Gravity gear: cranked 3 turns."* Choose Stowed and it turns the crank back and stows the handle: *"Gravity gear: crank stowed."* The control keeps your choice while the crank turns; a second choice before it finishes is refused with *"Gravity gear: crank already turning."*
 
 **Clock** (Main Instrument Panel): Chronometer Start/Stop, Chronometer Reset, Elapsed Time (Run, Stop, Reset), UTC Selector (GPS, Internal, Set) and Date. Its status display reads the chronometer on the "CLOCK CHRONO" line ("2 minutes 5 seconds") and the elapsed time on the "CLOCK ELAPSED" line ("1 hours 12 minutes"), each "Reset" when blank. Elapsed Time springs back from Reset to Stop by itself, about half a second after you choose Reset. The UTC Selector's Set position does nothing yet, because the clock's SET knob, which sets the time and date with it, is not in BA.
 
@@ -295,7 +295,7 @@ The Fenix has its own set of FCU windows, opened in Input mode:
 
 In each window, type the value and press Enter; in the altimeter window, only Enter in the value box applies it. The Fenix's FCU and baro knobs are rotary encoders, so BA turns them click by click towards your value, counting from where the knob really is, even after you have turned it in the cockpit. A big change can take a moment to finish. Altitudes are set in steps of 100 feet; if you type 4550, BA says *"Rounding to 4500 feet"*. If the knob is already where you asked, you hear for example *"Already at heading 270"*. If you press Enter in the altimeter window while the previous setting is still being dialed in, BA says *"Altimeter set in progress, press Enter again when it finishes"* and keeps the first value.
 
-The altimeter window sets both sides. A typed value always ends in QNH, and choosing QNH or STD in its Mode list pushes or pulls both baro knobs. When the setting is done, BA reads both sides back: *"Both altimeters set: 1015, 29.97."* when they agree, or each side by name when they do not, for example *"Captain altimeter 1015, 29.97. First officer altimeter still in STD."*
+The altimeter window sets both sides. A typed value always ends in QNH, and choosing QNH or STD in its Mode list pushes or pulls both baro knobs. When the setting is done, BA reads both sides back: *"Both altimeters set: 1015, 29.97."* when both are set to the same QNH, or each side by name otherwise (a side still in STD included), for example *"Captain altimeter 1015, 29.97. First officer altimeter still in STD."*
 
 The FCU and baro knobs and their push and pull all go through the MobiFlight WASM module, so they need it installed. The push and pull keys and the Output FCU readouts work as on the FlyByWire aircraft.
 
@@ -314,7 +314,7 @@ The Fenix tablet opens with Input Shift+T (in Output mode, Shift+T toggles trim 
 - **Getting around:** Alt+Home goes back to the EFB's home screen from anywhere, even from a text box. In an app, the "App switcher" button opens the list of apps.
 - **Takeoff and Landing:** each result reads its label right before its value, for example "V1" and then "142"; a result not worked out yet says "not computed". Landing's runway condition is one Tab stop where the arrow keys choose the code, and each system's page of faults has a "Back" button, with the faults as check boxes.
 - **Failures:** a failure says ", failed" or ", armed", and a chapter with an active failure says ", has failures".
-- **Settings:** every on/off option is a switch named by its setting. Each "More options" button opens its menu with the focus inside it, read right after the button; Escape or the "Close menu" button closes it. Your Navigraph account, which Fenix v3 needs for current navigation data, is connected on the Connections page.
+- **Settings:** every on/off option is a switch named by its setting. Each "More options" button opens its menu with the focus inside it, read right after the button; Escape or the "Close menu" button closes it. Your Navigraph account, one way for Fenix v3 to get current navigation data, is connected on the Connections page; the other is importing a navigation data file on the MCDU's DATA, A/C STATUS page.
 - **Quick settings** has a "Close quick settings" button.
 - **Escape** first closes an open menu, drop-down list or the Panel States pop-up; the next Escape closes the window.
 - **The MCDU and FAP pages** cannot be read with a screen reader. If you open one, BA takes you back to the home screen and tells you where to go instead: *"The EFB's MCDU can't be read with a screen reader. Use the MCDU window instead: input mode, then Shift+M."* or *"The EFB's FAP can't be read with a screen reader. Use the Fenix windows list instead: input mode, then Control+Shift+F."*
@@ -359,7 +359,7 @@ After a press, the window speaks only what your screen reader cannot: the new vo
 
 - **Search**: type part of a name and press Enter. BA says how many failures match and moves to the first.
 - **Show**: All failures, Armed, Failed, or Armed or failed.
-- **Fail now** (Alt+N), **Arm** (Alt+A, or Enter on a failure) and **Clear** (Alt+C) each ask Yes or No first, with No as the default. BA then says what the Fenix reports, for example *"CPC 1 failed."* The Arm dialog takes Above IAS, Above altitude AMSL, Below altitude AMSL, After event (None, V1, Take-off or Landing) and a number of seconds; it needs at least one (*"Enter at least one condition."*).
+- **Fail now** (Alt+N), **Arm** (Alt+A, or Enter on a failure) and **Clear** (Alt+C) each ask Yes or No before anything changes, with No as the default. BA then says what the Fenix reports, for example *"CPC 1 failed."* Arm asks for its condition first, in a dialog that takes Above IAS, Above altitude AMSL, Below altitude AMSL, After event (None, V1, Take-off or Landing) and a number of seconds; it needs at least one (*"Enter at least one condition."*).
 - **Refresh** (F5) reads the failures again.
 
 The status box shows your Fenix, how many failures are armed and failed, and the Fenix's automatic failure settings, which you change in the Fenix options window. While the window is open, a failure that triggers is spoken, for example *"Failure triggered: CPC 1."* Escape closes.
@@ -376,13 +376,13 @@ Your own Markdown documents go in the Fenix's documents folder (C:\ProgramData\F
 
 **Fenix options window.** Every option in the Fenix EFB's Settings, with its value in the Fenix's own words, as a tree in a window called "Fenix options". A row reads "Label: value". The first group, "Options that affect MSFS Blind Assist", holds the options that can change how BA works; each has a note, which Enter speaks and the details box shows. Then come the Fenix's own setting categories, in the EFB's order, and last "Other, not in the Fenix EFB". Your Hoppie, Navigraph, Pushover and SimBrief credentials read "set, hidden".
 
-- **F2** changes an on/off or choice option until MSFS closes, as the EFB's own switch does: choose the new value in the dialog. The five options that reshape the cockpit (Standby Instruments, ISIS, ADIRS, ACP and DCDU) ask Yes or No first.
+- **F2** changes an on/off or choice option for this simulator session, until you change aircraft or livery, as the EFB's own switch does: choose the new value in the dialog. The five options that reshape the cockpit (Standby Instruments, ISIS, ADIRS, ACP and DCDU) then ask Yes or No before anything changes.
 - **Shift+F2** makes an option your permanent setting, for every flight and livery: choose the value in the dialog.
 - **Ctrl+F2** resets your change to the Fenix default.
-- Shift+F2 and Ctrl+F2 always ask Yes or No first, with No as the default.
+- Shift+F2 (after you choose the value) and Ctrl+F2 always ask Yes or No before anything changes, with No as the default.
 - **F5** reads the options again, for example *"Refreshed, no changes."*
 
-After a change, BA waits for the Fenix to show it, which can take a few seconds, then updates the row, and your screen reader reads it. If the row reads the same as before, BA reads it to you. If the Fenix did not take the change, BA says so, for example *"Not made permanent:"* followed by the option as it now is. The status box gives the Fenix version, the three keys and any option set differently from what BA is tested with. Escape closes.
+After a change, BA waits for the Fenix to show it, which can take a few seconds, then updates the row, and your screen reader reads it. If the row's text did not change, for example when you make the current value permanent, your screen reader has nothing new to say, so BA reads you the row itself, the option's name and value. If the Fenix did not take the change, BA says so, for example *"Not made permanent:"* followed by the option as it now is. The status box gives the Fenix version, the three keys and a warning for any option that affects BA and is set in a way that may disturb it, for example Encoder Acceleration on, which can make BA's FCU entries stop on the wrong value; Enter on that option speaks its note. Escape closes.
 
 **First Officer: Output Shift+C.** Flows and checklists. See [The First Officer and Checklists](first-officer.md).
 

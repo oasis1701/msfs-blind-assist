@@ -320,7 +320,7 @@ Cabin (the flight attendant panel):
 Failures:
   Enter        In the search box: search. On a failure: Arm
   Alt+N        Fail now (asks Yes or No first)
-  Alt+A        Arm (asks Yes or No first)
+  Alt+A        Arm (asks for a condition, then Yes or No)
   Alt+C        Clear (asks Yes or No first)
   F5           Refresh
   Escape       Close
@@ -337,7 +337,7 @@ Fenix documents:
 Fenix options:
   Enter        Speak the selected option's details
   F2           Change an on/off or choice option for this simulator session
-  Shift+F2     Make an option permanent (asks Yes or No first)
+  Shift+F2     Make an option permanent (asks for the value, then Yes or No)
   Ctrl+F2      Reset your change to the Fenix default (asks Yes or No first)
   F5           Read the options again
   Escape       Close
