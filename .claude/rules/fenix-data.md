@@ -11,7 +11,7 @@ paths:
 ---
 # Fenix A320 rules: data service, definition, variants and EFB
 
-Loaded when Claude reads matching code. The cabin, documents and failures window rules are in fenix-windows.md; FNX-13 (settings lag), FNX-16 (engine readouts) and FNX-19 (settings secrets) stay here, since their never binds code outside the windows. Background: docs/a32nx.md. Full text of each rule: docs/invariants/fenix-data.md.
+Loaded when Claude reads matching code. The cabin, documents and failures window rules are in fenix-windows.md. FNX-13 (settings lag) and FNX-19 (settings secrets) bind code outside the windows, and FNX-16 (engine readouts) belongs with the data-service rules, so all three stay here. Background: docs/a32nx.md. Full text of each rule: docs/invariants/fenix-data.md.
 
 - [FNX-1] A Fenix data-service read of an unknown name returns `""`, not null (v3): `FenixDataValue.FromJson` maps it to `EmptyOrUnknown`, and no caller may treat that as 0, false, off or closed; a JSON null is unknown too. Full: docs/invariants/fenix-data.md#fnx-1
 - [FNX-2] `FenixDataService` subscription callbacks run on a thread-pool thread, never the UI thread: a form marshals to its own thread with BeginInvoke inside try/catch ([A380C-6]), and the service itself never speaks or touches a control. Full: docs/invariants/fenix-data.md#fnx-2

@@ -1,6 +1,6 @@
 # Fenix A320 data service, definition, variants and EFB rules — rules in full
 
-Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/fenix-data.md`, which Claude Code loads when it reads matching code. The cabin, documents and failures window rules are in [fenix-windows.md](fenix-windows.md); FNX-13 (settings lag), FNX-16 (engine readouts) and FNX-19 (settings secrets) stay here, since their never binds code outside the windows. Background: [a32nx.md](../a32nx.md).
+Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/fenix-data.md`, which Claude Code loads when it reads matching code. The cabin, documents and failures window rules are in [fenix-windows.md](fenix-windows.md). FNX-13 (settings lag) and FNX-19 (settings secrets) bind code outside the windows (the shared read-back wait, the settings query), and FNX-16 (engine readouts) belongs with the data-service rules, so all three stay here. Background: [a32nx.md](../a32nx.md).
 
 ## FNX-1
 

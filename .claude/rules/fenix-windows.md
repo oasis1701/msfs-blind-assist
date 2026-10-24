@@ -16,7 +16,7 @@ paths:
 
 Loaded when Claude reads the code of a Fenix window (cabin, documents, engines, failures, options), on top of fenix-data.md. Background: docs/a32nx.md. Full text of each rule: docs/invariants/fenix-windows.md.
 
-This file holds the cabin, documents and failures rules only; the rules whose never binds code outside the windows are in fenix-data.md: FNX-13 (settings lag), FNX-16 (engine readouts), FNX-19 (settings secrets).
+This file holds the cabin, documents and failures rules only. FNX-13 (settings lag) and FNX-19 (settings secrets) bind code outside the windows, and FNX-16 (engine readouts) belongs with the data-service rules, so all three are in fenix-data.md.
 
 - [FNX-12] Fenix documents are read with GETs only (`FenixDocumentEndpoints`: list, search, content); no Fenix code calls /fenix/documents/OpenDocumentsFolder or the upload POST to /fenix/documents, which act on the pilot's PC. The one write is the pinned_documents setting, in the EFB's own JSON (`FenixDocumentPins.Serialize`). Full: docs/invariants/fenix-windows.md#fnx-12
 - [FNX-14] Every Fenix cabin write is built by `FenixCabinWrites` (name, kind, value as the EFB and FAP write them) or `FenixCabinPram` (the FAP bundle's mutation text verbatim, its `success` checked); never `doors.control.*` 0 (Armed), which the EFB never writes, and never a door or cargo door above 100 ft or with that height unknown (the EFB's gate). Full: docs/invariants/fenix-windows.md#fnx-14

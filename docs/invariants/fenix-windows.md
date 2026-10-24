@@ -1,6 +1,6 @@
 # Fenix windows rules — rules in full
 
-Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/fenix-windows.md`, which Claude Code loads when it reads the code of a Fenix window (the Cabin, Fenix documents, Engines, Failures and Fenix options windows, opened from the Fenix windows list, and their services). It holds the cabin, documents and failures rules (FNX-12, 14, 15, 17, 18). FNX-13 (settings lag), FNX-16 (engine readouts) and FNX-19 (settings secrets) are in [fenix-data.md](fenix-data.md) with the data service, definition, variant and EFB rules, which load on this code too: their never binds code outside the windows. Background: [a32nx.md](../a32nx.md).
+Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/fenix-windows.md`, which Claude Code loads when it reads the code of a Fenix window (the Cabin, Fenix documents, Engines, Failures and Fenix options windows, opened from the Fenix windows list, and their services). It holds the cabin, documents and failures rules (FNX-12, 14, 15, 17, 18). FNX-13 (settings lag), FNX-16 (engine readouts) and FNX-19 (settings secrets) are in [fenix-data.md](fenix-data.md) with the data service, definition, variant and EFB rules, which load on this code too: FNX-13 and FNX-19 bind code outside the windows (the shared read-back wait, the settings query), and FNX-16 belongs with the data-service rules. Background: [a32nx.md](../a32nx.md).
 
 ## FNX-12
 
