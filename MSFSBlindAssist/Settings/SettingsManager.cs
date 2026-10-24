@@ -151,9 +151,10 @@ public static class SettingsManager
         /// input, and the per-side baro-unit selectors moved to the EFIS-CP's BARO_IS_INHG inputs.
         /// The iFly 737 MAX's trim call-out moved from the shared degrees row (MON_ElevatorTrim) to
         /// its own units field (2026-09-30). Fenix v3 renamed two lamps (2026-10-21): the DC SERVICE bus
-        /// (a typo fixed) and the overhead cockpit-door VIDEO light. Idempotent without a flag because the OLD key leaves the list: left in place, it
-        /// would re-mute the new row on every launch after the pilot un-ticked it, and no Ctrl+M row
-        /// is left to clear it from. Returns whether anything moved (the caller saves).
+        /// (a typo fixed) and the overhead cockpit-door VIDEO light. Idempotent without a flag because
+        /// the OLD key leaves the list: left in place, it would re-mute the new row on every launch
+        /// after the pilot un-ticked it, and no Ctrl+M row is left to clear it from. Returns whether
+        /// anything moved (the caller saves).
         /// </summary>
         internal static bool CarryRenamedMonitorMutes(UserSettings settings)
         {
