@@ -4,10 +4,9 @@
 // `value` is the option's own row, any other is a value label of the option above it.
 //
 // To regenerate after a Fenix update: fetch the EFB bundles from your own running Fenix with
-// docs/fenix-v3/tools/fetch_gateway_bundles.py, then run plan 11's Appendix A extractor
-// (option_labels.py) on the chunk holding name:"humanizeKey", and paste its rows (header dropped, tabs
-// turned into `|`) over the Table below. After plan 12 deletes docs/fenix-v3/, the recipe lives in
-// docs/a32nx.md (handoff R6). Update SourceVersion with it.
+// tools/fenix-gateway/fetch_gateway_bundles.py, then run tools/fenix-gateway/option_labels.py (command lines
+// in tools/fenix-gateway/README.md) on the chunk holding name:"humanizeKey", and paste its rows (header
+// dropped, tabs turned into `|`) over the Table below. Update SourceVersion with it.
 
 using System.Diagnostics.CodeAnalysis;
 

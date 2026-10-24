@@ -1,5 +1,5 @@
 """Download the Fenix v3 EFB and FAP web-app bundles from YOUR OWN running Fenix (gateway on 127.0.0.1:8083),
-so the data names, write calls and GraphQL operations the plans cite can be checked. The bundles are Fenix's code:
+so the data names, write calls and GraphQL operations the app uses can be checked. The bundles are Fenix's code:
 never commit them.
 
 Usage:  python -I fetch_gateway_bundles.py <output-folder>

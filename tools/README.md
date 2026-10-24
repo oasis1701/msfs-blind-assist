@@ -31,6 +31,12 @@ For the *methodology* of proving a control works (calculator-path write-stick te
 | [`flypad-shell-test/`](flypad-shell-test/) | Canonical keyed-DOM-reconcile spec for the flyPad WebView2 shell (jsdom; also run in CI). |
 | [`efb-dom-tool.js`](efb-dom-tool.js) | Node CDP scraper/clicker for the **A32NX** EFB. |
 
+## Standalone Python scripts
+
+| Project | Job |
+|---|---|
+| [`fenix-gateway/`](fenix-gateway/README.md) | Read-only scripts against your own running **Fenix** v3 gateway (`127.0.0.1:8083`): `fetch_gateway_bundles.py` downloads its EFB/FAP web-app bundles, `option_labels.py` extracts the EFB's option labels (feeds `Services/FenixOptionLabels.cs`). |
+
 ## Reference catalogs (`*.md`)
 
 Static research notes mined from FBW source (var names, page-index maps): `a380-simvars-catalog.md`, `a380-fcu-vars.md`, `a380-engine-start.md`, `a380-fault-status-vars.md`, `a380-sd-pages.md`, `fbw-a380-mfd-source-findings.md`, `ecam-display-readout-notes.md`, `a320-panel-structure.md`.
