@@ -500,6 +500,8 @@ The tone looks ahead along the route, so as you approach a turn it starts drifti
 
 During a turn, the tone allows for the way the aircraft keeps swinging after you ease off the tiller. It goes quiet slightly *before* your nose reaches the new heading. That is deliberate: when it goes quiet mid-turn, hold that rate of turn and start unwinding, and you will roll out on the line. If it swings to the other side, you are turning too far; unwind.
 
+How early it goes quiet depends on how fast you are turning: the faster the turn, the earlier. In the Fenix A320 family it also depends on how far you have already turned. A big turn, such as a 90-degree corner, goes quiet a little earlier than a small one, because the Fenix carries more swing out of a big turn. Unwind when you hear it go quiet.
+
 After a long turn, once the route ahead is straight, you may hear *"Straighten."* That is your cue to roll out now.
 
 ### On the runway: lineup precision {#on-the-runway-lineup-precision}

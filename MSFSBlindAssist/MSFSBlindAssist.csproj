@@ -216,6 +216,10 @@
     <None Update="Resources\coherent-ecl-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Fenix EFB accessibility layer (read by FenixEFBForm and injected into the EFB page) -->
+    <None Update="Resources\fenix-efb-accessibility.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="Resources\flypad-shell.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

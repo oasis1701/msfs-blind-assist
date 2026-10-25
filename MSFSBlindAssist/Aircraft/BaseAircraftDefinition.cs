@@ -951,6 +951,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
 
     public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
+    public virtual double TaxiSharpTurnLeadSeconds => TaxiTurnLeadSeconds;   // constant lead unless measured otherwise
+    public virtual double TaxiTurnLeadMaxDegrees => 30.0;
 
     public virtual bool HasOwnIcingAnnouncer => false;
 

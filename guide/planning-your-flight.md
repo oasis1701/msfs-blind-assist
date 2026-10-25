@@ -495,9 +495,9 @@ If BA cannot reach the tablet, F6 says, for example, *"flyPad not connected. Mak
 
 ### The Fenix and iFly EFBs {#the-fenix-and-ifly-efbs}
 
-The Fenix A320 and the iFly 737 MAX8 serve their tablets as real web sites on your own computer, and those sites already work with a screen reader. BA simply shows the live site in its window, so you read and use it exactly like a web page, with browse mode and quick keys.
+The Fenix A320 and the iFly 737 MAX8 serve their tablets as real web sites on your own computer. BA shows the live site in its window, so you read and use it exactly like a web page, with browse mode and quick keys. The iFly site already works with a screen reader; the Fenix v3 site does not on its own, so BA adds the names, states and keys it lacks.
 
-- **Fenix EFB:** opens the Fenix tablet site. If the Fenix A320 has not finished loading, the window shows a message instead: *"Fenix EFB is not reachable at http://localhost:8083. Make sure the Fenix A320 is fully loaded, then press Retry."* Press **Retry** once it has loaded. Press Escape to close the window.
+- **Fenix EFB:** opens the Fenix tablet site. Every app is a button you can Tab to, and Alt+Home goes back to the EFB's home screen from anywhere; the details are in [the Fenix chapter's EFB section](airbus-aircraft.md#efb-2). If the Fenix A320 has not finished loading, the window says so instead, in a message you can reach with Tab: *"Fenix EFB is not reachable at http://127.0.0.1:8083. Make sure the Fenix A320 is fully loaded, then press Retry."* Press **Retry** once it has loaded. Escape closes an open menu or pop-up on the page first, then the window.
 - **iFly 737 EFB:** opens the iFly SP1 tablet, with its Performance, Navigraph and SimBrief, Payload and Balance, Ground Services, Doors and other apps. BA says *"iFly EFB loaded."* when the page is ready. If the iFly EFB is not running yet, a message explains why and a **Retry** button is focused. Press Escape to close, F5 to reload, and Alt+Home to go back to the EFB's main page.
 
 Both windows hide rather than close, so when you reopen them you are back on the page you left.

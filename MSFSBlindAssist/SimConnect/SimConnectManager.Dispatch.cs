@@ -1510,8 +1510,10 @@ public partial class SimConnectManager
         // Filter out own aircraft: by its learned object id (a sweep never reports it as 0, the
         // SIMCONNECT_OBJECT_ID_USER alias). The callsign match is used ONLY until that id is learned
         // (after a connect or an aircraft load) and is ignored once it is. Independent of both, an
-        // entry on the ground at the own aircraft's own position is the own aircraft.
+        // entry on the ground at the own aircraft's own position is the own aircraft. An add-on's
+        // invisible helper objects (the Fenix's gear dummies) are "airplanes" to the sim, never traffic.
         if (_ownAircraft.IsOwnAircraft(data.dwObjectID, raw.AtcId, currentAircraftAtcId)) return;
+        if (OwnAircraftFilter.IsAddOnHelperObject(raw.AtcType, raw.AtcModel)) return;
         var own = lastKnownPosition;
         if (OwnAircraftFilter.SharesOwnPosition(raw.Latitude, raw.Longitude, raw.SimOnGround >= 0.5,
                 own?.Latitude, own?.Longitude, own is { SimOnGround: >= 0.5 })) return;

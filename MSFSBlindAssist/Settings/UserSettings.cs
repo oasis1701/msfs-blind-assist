@@ -144,7 +144,7 @@ public class UserSettings
         // error exceeds N degrees. Default 1 = silent when on track, only sounds
         // when you need to steer back — matches "silent on the deadband".
         public int TakeoffAssistHeadingToneThreshold { get; set; } = 1;
-        public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
+        public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable the 80kt and 100kt callouts (V1, Rotate and V2 come from the aircraft definitions)
 
         /// <summary>
         /// When true (default), a destination runway or a landing exit plan arms the landing assist's
@@ -483,8 +483,8 @@ public class UserSettings
         /// blind pilots monitoring taxi speed against the FAA / SOP caps (30 kt
         /// straight, 10 kt turns) and for the takeoff roll. Suggested values: 5 or
         /// 10 kt. Active during BOTH taxi guidance and takeoff assist phases — the
-        /// callouts complement each other (10/20/30 kt taxi → 80/100/V1/rotate
-        /// takeoff). Default 0 (off) so existing users see no behaviour change.
+        /// callouts complement each other (10/20/30 kt taxi → the 80 and 100 kt
+        /// takeoff calls). Default 0 (off) so existing users see no behaviour change.
         /// </summary>
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 

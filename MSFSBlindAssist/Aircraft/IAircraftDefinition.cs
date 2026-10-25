@@ -535,9 +535,27 @@ public interface IAircraftDefinition
     /// centres BEFORE the nose reaches the new heading (pilot reaction time +
     /// airframe yaw inertia). Per-aircraft because sim steering response
     /// differs sharply: FBW Airbuses overshoot chronically; PMDG Boeings
-    /// barely at all. 0 disables the projection.
+    /// barely at all. 0 disables the projection. On an aircraft that sets a different
+    /// <see cref="TaxiSharpTurnLeadSeconds"/>, this is the lead for gentle turns.
     /// </summary>
     double TaxiTurnLeadSeconds { get; }
+
+    /// <summary>
+    /// Taxi-turn lead, seconds, once a turn has swept past
+    /// <c>GuidanceGeometry.SHARP_TURN_RAMP_END_DEG</c> of heading; the lead ramps from
+    /// <see cref="TaxiTurnLeadSeconds"/> from <c>SHARP_TURN_RAMP_START_DEG</c>. For an airframe
+    /// that carries more swing out of a big turn than a small one. Base default: equal to
+    /// <see cref="TaxiTurnLeadSeconds"/>, a constant lead.
+    /// </summary>
+    double TaxiSharpTurnLeadSeconds { get; }
+
+    /// <summary>
+    /// Ceiling, degrees, on the heading the taxi-turn lead may anticipate
+    /// (|yawRate × lead| is clamped to it). Per-aircraft because it binds only on an
+    /// airframe that taxis at high yaw rates with a long lead: at 30° a 1.7 s lead stops
+    /// growing above 17.6°/s. Base default 30.
+    /// </summary>
+    double TaxiTurnLeadMaxDegrees { get; }
 
     /// <summary>
     /// True when this aircraft announces its own ice accretion (e.g. the FBW A380's

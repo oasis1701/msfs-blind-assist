@@ -156,7 +156,7 @@ Each time you open the Monitor Manager it starts fresh, with an empty search and
 
 <div class="callout tip" role="note" markdown="1">
 
-**Tip:** On the aircraft where BA calls the take-off speeds (the FlyByWire Airbuses, the iFly 737 MAX8 and the MD-11), V1, Rotate and V2 each have their own row (V1, VR, V2), so you can keep some and mute others. The FlyByWire aircraft also have a separate quick toggle for their ECAM call-outs, Output Ctrl+E. See your aircraft's chapter.
+**Tip:** On the aircraft where BA calls the take-off speeds (the FlyByWire Airbuses, the Fenix A320, the iFly 737 MAX8 and the MD-11), V1, Rotate and V2 each have their own row (V1, VR, V2; on the Fenix, "MCDU V1 Speed", "MCDU VR Speed" and "MCDU V2 Speed"), so you can keep some and mute others. The FlyByWire aircraft also have a separate quick toggle for their ECAM call-outs, Output Ctrl+E. See your aircraft's chapter.
 
 </div>
 

@@ -98,8 +98,7 @@ If you learnt the older Takeoff Assist where you steered away from the tone, you
 
 - **Centreline position**, as the distance from the centreline changes by about 10 feet, at most twice a second. The number is in steps of 10 feet and the word is the side you are on: *"2 left"* means you are about 20 feet left of the centreline, so steer right. *"center"* means you are within 25 feet of it. You can mute these and keep just the tone.
 - **Pitch**, whenever it changes by one degree, at most twice a second: *"level"*, *"+5"*, *"+14"*, or *"-1"* for nose down.
-- **Speeds**: *"80 knots"* and *"100 knots"*, on every aircraft.
-- **V1 and Rotate on the Fenix A320**: when the speeds are entered on the MCDU PERF page, Takeoff Assist also calls *"V1"* and *"rotate"*. On other aircraft the V-speed calls come from the aircraft itself or from BA's own V-speed callouts (see [Takeoff Speed Callouts](#takeoff-vspeed-callouts)).
+- **Speeds**: *"80 knots"* and *"100 knots"*, on every aircraft. The V-speed calls come from the aircraft itself or from BA's own V-speed callouts, whether or not Takeoff Assist is on (see [Takeoff Speed Callouts](#takeoff-vspeed-callouts)).
 - **Ground speed**, if you have turned it on (see Settings below), for example *"60 knots."*.
 
 ### The handover to Hand Fly at liftoff {#takeoff-assist-handover}
@@ -129,7 +128,7 @@ These are on the **Hand Fly** tab of the Settings window (see [The Settings Wind
 - **Hard-pan centerline tone (full left or full right; speaker-friendly)**: the tone jumps fully to one side instead of moving gradually. Useful on speakers, where a slightly off-centre tone is hard to tell from a centred one. Off by default.
 - **Play steering tone**: when the tone sounds. **Always** plays it all the time (centred when on track). **At 1 degree error** (the default) up to **At 5 degrees error** keep it silent until the correction needed reaches that size.
 - **Legacy takeoff assist mode (heading-based, no tone)**: see above. Off by default.
-- **Enable takeoff assistant call outs**: the 80 knots, 100 knots, and Fenix V1 and rotate calls. On by default.
+- **Enable takeoff assistant call outs**: the 80 knots and 100 knots calls. On by default.
 - **Auto-activate Takeoff Assist on lineup**: on by default. Takeoff Assist switches on when taxi guidance lines you up on your departure runway. This happens once per taxi route: if you switch Takeoff Assist off after it came on, it stays off until your next taxi route.
 - **Auto-activate Hand Fly on takeoff (deactivates Takeoff Assist)**: on by default. This is the liftoff handover described above.
 
@@ -156,7 +155,7 @@ Several aircraft get spoken *"V1"*, *"Rotate"* and *"V2"* calls on the takeoff r
 | FlyByWire A380 | BA | The PERF page |
 | iFly 737 MAX 8 | BA | The FMC |
 | TFDi MD-11 | BA, plus *"N1 70 percent"* | The FMS |
-| Fenix A320 | Takeoff Assist (*"V1"* and *"rotate"*) | The MCDU PERF page |
+| Fenix A320 | BA (the Fenix also calls *"V1"* itself, so you hear it twice) | The MCDU PERF TAKE OFF page |
 
 </div>
 
