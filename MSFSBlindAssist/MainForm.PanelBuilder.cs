@@ -76,16 +76,114 @@ public partial class MainForm
         panelsListBox.Items.Clear();
         currentPanel = "";
         
-        if (currentAircraft.GetPanelStructure().ContainsKey(currentSection))
+        // Once per section change: the Fenix rebuilds its structure on every call and checks every control's
+        // variant to hide its empty panels.
+        if (currentAircraft.GetPanelStructure().TryGetValue(currentSection, out var sectionPanels))
         {
-            foreach (var panel in currentAircraft.GetPanelStructure()[currentSection])
+            foreach (var panel in sectionPanels)
             {
                 panelsListBox.Items.Add(panel);
             }
         }
-        
+
         // Re-enable event
         panelsListBox.SelectedIndexChanged += PanelsListBox_SelectedIndexChanged;
+    }
+
+    // The Fenix reads its variant a few seconds into a flight, possibly after the pilot opened a section or a
+    // panel. Its panels list and the open panel's controls then follow the variant (FNX-11) without waiting
+    // for the pilot to change section. VariantChanged comes in bursts as the config values arrive one by one,
+    // so the refresh waits for a quiet second.
+    private const int PanelVariantRefreshQuietMs = 1000;
+    private FenixA320Definition? _panelVariantSource;
+    private System.Windows.Forms.Timer? _panelVariantTimer;
+
+    // The open panel's controls its last build left out as not fitted (IsPanelControlVisible).
+    private readonly HashSet<string> _panelHiddenKeys = new(StringComparer.Ordinal);
+
+    /// <summary>Follows the current aircraft's variant changes, if it has any: called whenever
+    /// <c>currentAircraft</c> is set.</summary>
+    private void WatchPanelVariant()
+    {
+        _panelVariantTimer?.Stop();
+        if (_panelVariantSource != null) _panelVariantSource.VariantChanged -= OnPanelVariantChanged;
+        _panelVariantSource = currentAircraft as FenixA320Definition;
+        if (_panelVariantSource != null) _panelVariantSource.VariantChanged += OnPanelVariantChanged;
+    }
+
+    // Raised on the UI thread (ProcessSimVarUpdate's).
+    private void OnPanelVariantChanged(object? sender, FenixVariant variant)
+    {
+        if (!ReferenceEquals(sender, currentAircraft)) return;
+        if (_panelVariantTimer == null)
+        {
+            _panelVariantTimer = new System.Windows.Forms.Timer { Interval = PanelVariantRefreshQuietMs };
+            _panelVariantTimer.Tick += (_, _) =>
+            {
+                _panelVariantTimer?.Stop();
+                RefreshPanelsForVariant();
+            };
+        }
+        _panelVariantTimer.Stop();
+        _panelVariantTimer.Start();
+    }
+
+    private void RefreshPanelsForVariant()
+    {
+        if (string.IsNullOrEmpty(currentSection)) return;
+
+        // The panels list, rebuilt only when it changed, keeping the selected panel. Events are off, so
+        // no panel load or debounce starts from here.
+        var panels = currentAircraft.GetPanelStructure().TryGetValue(currentSection, out var list)
+            ? list : new List<string>();
+        var shown = panelsListBox.Items.Cast<object>().Select(o => o.ToString() ?? "").ToList();
+        if (!panels.SequenceEqual(shown))
+        {
+            Log.Debug("MainForm", $"Fenix variant changed the '{currentSection}' panels list");
+            panelsListBox.SelectedIndexChanged -= PanelsListBox_SelectedIndexChanged;
+            try
+            {
+                panelsListBox.BeginUpdate();
+                panelsListBox.Items.Clear();
+                foreach (var panel in panels) panelsListBox.Items.Add(panel);
+                panelsListBox.EndUpdate();
+                if (!string.IsNullOrEmpty(currentPanel))
+                {
+                    int index = panels.IndexOf(currentPanel);
+                    if (index >= 0)
+                    {
+                        panelsListBox.SelectedIndex = index;
+                    }
+                    else
+                    {
+                        // The open panel is one the variant lacks: nothing of it stays on screen.
+                        currentPanel = "";
+                        _panelHiddenKeys.Clear();
+                        controlsContainer.Controls.Clear();
+                        currentControls.Clear();
+                        stateDependents.Clear();
+                        return;
+                    }
+                }
+            }
+            finally
+            {
+                panelsListBox.SelectedIndexChanged += PanelsListBox_SelectedIndexChanged;
+            }
+        }
+
+        // The open panel, rebuilt when the variant changed which of its controls are fitted. Not while the
+        // pilot is in it: clearing the controls would drop the focus, and a control the variant lacks
+        // already answers "Not fitted on this aircraft.". The next opening builds it right.
+        if (string.IsNullOrEmpty(currentPanel) || controlsContainer.ContainsFocus) return;
+        if (currentAircraft is not BaseAircraftDefinition baseDef) return;
+        if (!currentAircraft.GetPanelControls().TryGetValue(currentPanel, out var keys)) return;
+        var variables = currentAircraft.GetVariables();
+        var hidden = keys.Where(k => variables.ContainsKey(k) && !baseDef.IsPanelControlVisible(k, simConnectManager));
+        if (_panelHiddenKeys.SetEquals(hidden)) return;
+        Log.Debug("MainForm", $"Fenix variant changed the '{currentPanel}' panel's controls; rebuilding it");
+        _pendingPanelLoad = currentPanel;
+        PanelLoadTimer_Tick(null, EventArgs.Empty);
     }
 
     private void PanelsListBox_SelectedIndexChanged(object? sender, EventArgs e)
@@ -277,6 +375,7 @@ public partial class MainForm
             controlsContainer.Controls.Clear();
             currentControls.Clear();
             stateDependents.Clear();
+            _panelHiddenKeys.Clear();
 
             if (!currentAircraft.GetPanelControls().ContainsKey(currentPanel))
                 return;
@@ -315,7 +414,10 @@ public partial class MainForm
             // itself the next time the panel is opened.
             if (currentAircraft is BaseAircraftDefinition baseDef &&
                 !baseDef.IsPanelControlVisible(varKey, simConnectManager))
+            {
+                _panelHiddenKeys.Add(varKey);
                 continue;
+            }
 
             var varDef = currentAircraft.GetVariables()[varKey];
             

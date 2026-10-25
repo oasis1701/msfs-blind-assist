@@ -837,6 +837,7 @@ public partial class MainForm
 
         // Update the aircraft instance
         currentAircraft = newAircraft;
+        WatchPanelVariant();
 
         // A profile picked while a flight is still loading (AircraftLoaded fired, the new aircraft has not
         // published yet) would take the pre-publish values as its FCU callout baselines and then speak the

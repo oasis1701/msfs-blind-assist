@@ -51,22 +51,28 @@ public static class FenixA320GravityGear
     }
 }
 
+/// <param name="stillWanted">Asked before every write and before the result: false (an aircraft switch or a
+/// disconnect) stops the move where it is, silently, like the typed FCU sets' StillWanted. Null: always wanted.</param>
 public sealed class FenixA320GravityGearWalker(
-    Action<string, double> write, Func<string, Task<double?>> readFresh, Func<TimeSpan, Task> delay)
+    Action<string, double> write, Func<string, Task<double?>> readFresh, Func<TimeSpan, Task> delay,
+    Func<bool>? stillWanted = null)
 {
     public bool IsRunning { get; private set; }
 
+    private bool Wanted() => stillWanted?.Invoke() ?? true;
+
     /// <summary>
     /// Runs the whole sequence. Deliberately no ConfigureAwait(false): called on the UI thread, the
-    /// writes must stay there.
+    /// writes must stay there. Returns null when it stopped because it was no longer wanted: nothing to say.
     /// </summary>
-    public async Task<string> MoveAsync(bool extend)
+    public async Task<string?> MoveAsync(bool extend)
     {
         if (IsRunning) return "Gravity gear: crank already turning.";
         IsRunning = true;
         try
         {
             double? current = await readFresh(FenixA320GravityGear.CrankKey);
+            if (!Wanted()) return null;
             if (current is null || double.IsNaN(current.Value))
                 return "Gravity gear: no read-back, nothing moved.";
 
@@ -77,6 +83,7 @@ public sealed class FenixA320GravityGearWalker(
                 await delay(TimeSpan.FromMilliseconds(FenixA320GravityGear.HandleSettleMs));
                 foreach (var s in FenixA320GravityGear.CrankSteps(current.Value, FenixA320GravityGear.FullTurns))
                 {
+                    if (!Wanted()) return null;
                     write(FenixA320GravityGear.CrankKey, s);
                     await delay(interval);
                 }
@@ -85,13 +92,17 @@ public sealed class FenixA320GravityGearWalker(
             {
                 foreach (var s in FenixA320GravityGear.CrankSteps(current.Value, 0))
                 {
+                    if (!Wanted()) return null;
                     write(FenixA320GravityGear.CrankKey, s);
                     await delay(interval);
                 }
+                if (!Wanted()) return null;
                 write(FenixA320GravityGear.HandleKey, 0);
             }
 
-            return FenixA320GravityGear.Describe(await readFresh(FenixA320GravityGear.CrankKey));
+            double? end = await readFresh(FenixA320GravityGear.CrankKey);
+            if (!Wanted()) return null;
+            return FenixA320GravityGear.Describe(end);
         }
         finally { IsRunning = false; }
     }

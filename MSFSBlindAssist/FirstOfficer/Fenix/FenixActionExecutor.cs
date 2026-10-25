@@ -219,16 +219,31 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         if (sc is not { IsConnected: true }) return false;
         // ReadFreshAsync returns null on a timeout or disconnect; a throw is made null too, so the
         // watch (which has no try/catch around reads) always reaches a verdict.
+        using var cancelWatch = new CancellationTokenSource();
         var watch = FenixTakeoffConfigVerdict.WatchAsync(
             async k =>
             {
                 try { return await sc.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs); }
                 catch (Exception) { return null; }
             },
-            FenixTakeoffConfigVerdict.FirstOfficerPressWait);
-        bool pressed = await PulseAsync(FenixTakeoffConfigVerdict.ButtonKey, FenixTakeoffConfigVerdict.HoldMs);
-        // Not pressed: nothing to judge, so no wait of up to 30 s on the watch (its string is dropped).
-        if (!pressed) return false;
+            FenixTakeoffConfigVerdict.FirstOfficerPressWait, cancelWatch.Token);
+        bool pressed;
+        try
+        {
+            pressed = await PulseAsync(FenixTakeoffConfigVerdict.ButtonKey, FenixTakeoffConfigVerdict.HoldMs);
+        }
+        catch
+        {
+            cancelWatch.Cancel();
+            throw;
+        }
+        // Not pressed: nothing to judge. The watch stops at its next read instead of polling the button for
+        // up to 30 s, and a second test run cannot overlap it (its string is dropped).
+        if (!pressed)
+        {
+            cancelWatch.Cancel();
+            return false;
+        }
         string verdict = await watch;
         AnnounceTakeoffConfigResult(sc, verdict);
         return true;

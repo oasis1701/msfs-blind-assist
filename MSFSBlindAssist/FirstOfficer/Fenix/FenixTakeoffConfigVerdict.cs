@@ -44,15 +44,18 @@ public static class FenixTakeoffConfigVerdict
         return settled ? Text(0, 0) : Text(null, null);
     }
 
-    public static Task<string> WatchAsync(Func<string, Task<double?>> readFresh, TimeSpan pressWait)
+    /// <param name="cancel">Ends the watch at its next read with "no result" (the First Officer cancels it when
+    /// its press was never sent); never throws.</param>
+    public static Task<string> WatchAsync(Func<string, Task<double?>> readFresh, TimeSpan pressWait,
+        CancellationToken cancel = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         return WatchAsync(readFresh, pressWait, TimeSpan.FromMilliseconds(VerdictAfterMs),
-            () => sw.Elapsed, d => Task.Delay(d));
+            () => sw.Elapsed, d => Task.Delay(d), cancel);
     }
 
     internal static async Task<string> WatchAsync(Func<string, Task<double?>> readFresh, TimeSpan pressWait,
-        TimeSpan verdictAfter, Func<TimeSpan> clock, Func<TimeSpan, Task> delay)
+        TimeSpan verdictAfter, Func<TimeSpan> clock, Func<TimeSpan, Task> delay, CancellationToken cancel = default)
     {
         var poll = TimeSpan.FromMilliseconds(PollMs);
         var start = clock();
@@ -60,6 +63,7 @@ public static class FenixTakeoffConfigVerdict
         bool sawReleased = false;
         while (clock() - start < pressWait)
         {
+            if (cancel.IsCancellationRequested) return Text(null, null);
             var t = clock();
             double? b = await readFresh(ButtonFreshKey);
             if (b is double bv && !double.IsNaN(bv))
@@ -75,6 +79,7 @@ public static class FenixTakeoffConfigVerdict
         var cutoff = verdictAfter + TimeSpan.FromMilliseconds(4 * PollMs);
         while (true)
         {
+            if (cancel.IsCancellationRequested) return Text(null, null);
             var t = clock();
             double? w = await readFresh(MasterWarningFreshKey);
             double? c = await readFresh(MasterCautionFreshKey);

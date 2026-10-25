@@ -650,10 +650,24 @@ public class FenixA320FcuKnobSetTests
     {
         string body = FoFbwUnclaimedEventKeyTests.MethodBody(DefinitionPath, "SetFCUAltitude");
         int set = body.IndexOf("await SetFcuKnobAsync(FenixFcuKnob.Altitude", StringComparison.Ordinal);
-        int guard = body.IndexOf("if (end != FenixFcuSetEnd.Superseded)", StringComparison.Ordinal);
+        int guard = body.IndexOf("AltitudeScaleRestoreFor(_fcuSetTurns.IsRunning(FenixFcuKnob.Altitude.CounterVar)", StringComparison.Ordinal);
         int restore = body.IndexOf("SetLVar(\"S_FCU_ALTITUDE_SCALE\", userPreferredScaleMode)", StringComparison.Ordinal);
-        Assert.True(set > 0 && guard > set && restore > guard, "the scale restore must follow the set, behind the superseded check");
+        Assert.True(set > 0 && guard > set && restore > guard, "the scale restore must follow the set, behind the newer-set check");
     }
+
+    // A disconnect ends a set as Superseded too: only a newer set or a switch skips the restore, and a set the
+    // connection cut short restores after the reconnect instead of leaving the knob in 100 ft mode.
+    [Theory]
+    [InlineData(false, false, true, "Now")]
+    [InlineData(false, false, false, "AfterReconnect")]
+    [InlineData(true, false, true, "Skip")]
+    [InlineData(true, false, false, "Skip")]
+    [InlineData(false, true, true, "Skip")]
+    [InlineData(false, true, false, "Skip")]
+    public void The_altitude_scale_restore_follows_only_a_newer_set_or_a_switch(bool newerSetRunning, bool switchedAway,
+        bool connected, string expected)
+        => Assert.Equal(expected,
+            FenixA320Definition.AltitudeScaleRestoreFor(newerSetRunning, switchedAway, connected).ToString());
 
     // ---- Wiring --------------------------------------------------------------------------------------
 

@@ -123,6 +123,36 @@ public class FenixV3FixGravityGearTests
         Assert.False(walker.IsRunning);
     }
 
+    // An aircraft switch or a disconnect mid-crank stops the writes there and says nothing over the next aircraft.
+    [Fact]
+    public async Task A_move_no_longer_wanted_stops_writing_and_is_silent()
+    {
+        var writes = new List<(string, double)>();
+        bool wanted = true;
+        var walker = new FenixA320GravityGearWalker(
+            (k, v) => { writes.Add((k, v)); if (writes.Count == 10) wanted = false; },
+            _ => Task.FromResult<double?>(0),
+            _ => Task.CompletedTask,
+            () => wanted);
+
+        var result = await walker.MoveAsync(true);
+
+        Assert.Null(result);
+        Assert.Equal(10, writes.Count);
+        Assert.False(walker.IsRunning);
+    }
+
+    [Fact]
+    public async Task A_move_unwanted_before_it_starts_writes_nothing()
+    {
+        var writes = new List<(string, double)>();
+        var walker = new FenixA320GravityGearWalker(
+            (k, v) => writes.Add((k, v)), _ => Task.FromResult<double?>(0), _ => Task.CompletedTask, () => false);
+
+        Assert.Null(await walker.MoveAsync(true));
+        Assert.Empty(writes);
+    }
+
     [Fact]
     public void Partial_read_back_uses_a_point_under_sv_SE()
     {

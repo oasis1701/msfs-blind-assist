@@ -117,6 +117,23 @@ public class FenixTakeoffConfigVerdictTests
         Assert.True(rig.Now >= edge + VerdictAfter);
     }
 
+    // The First Officer cancels the watch when its press was never sent: it stops at the next read, no 30 s poll.
+    [Fact]
+    public async Task A_cancelled_watch_stops_at_its_next_read_with_no_result()
+    {
+        var rig = new Rig();
+        using var cancel = new CancellationTokenSource();
+        rig.Script = (_, _, n) =>
+        {
+            if (n == 2) cancel.Cancel();
+            return 0.0;
+        };
+        string verdict = await FenixTakeoffConfigVerdict.WatchAsync(rig.Read, PressWait, VerdictAfter,
+            () => rig.Now, d => { rig.Now += d; return Task.CompletedTask; }, cancel.Token);
+        Assert.Equal(NoResult, verdict);
+        Assert.Equal(3, rig.Reads.Count);
+    }
+
     [Fact]
     public async Task No_press_seen_is_no_result()
     {

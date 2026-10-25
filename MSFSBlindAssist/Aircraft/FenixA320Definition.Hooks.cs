@@ -242,10 +242,15 @@ public partial class FenixA320Definition
             list => list.ShowForm());
     }
 
+    // Set once by OnSwitchedAway: this definition is finished. The gravity gear crank stops before its next
+    // write, and a panel TO CONFIG verdict still being watched is not spoken over the next aircraft.
+    private volatile bool _switchedAway;
+
     public override void OnSwitchedAway()
     {
         try
         {
+            _switchedAway = true;
             // A typed FCU set still turning a knob stops before its next write ([FNX-20]).
             _fcuSetTurns.Close();
             RunSeam(nameof(OnFenixSwitchedAway), () => OnFenixSwitchedAway());

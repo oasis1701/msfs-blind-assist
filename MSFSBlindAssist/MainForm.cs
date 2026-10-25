@@ -520,6 +520,7 @@ public partial class MainForm : Form
         {
             sectionsListBox.Items.Add(section);
         }
+        WatchPanelVariant();
 
         // Sync menu items with the loaded aircraft (fixes first-launch menu mismatch)
         UpdateAircraftMenuItems();
