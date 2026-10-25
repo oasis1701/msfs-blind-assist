@@ -376,7 +376,7 @@ public class FenixVariantControlsTests
             Assert.Equal(FenixA320Definition.IsFitted(key, ceo), FenixA320Definition.IsFitted(key, neo));
     }
 
-    // ---- Panels the livery leaves without a control are not listed (plan 12, handoff H2; owner, 2026-10-24) ----
+    // ---- Panels the livery leaves without a control are not listed (owner's choice, 2026-10-24) ----
 
     // A definition that has read a Fenix's config L:vars, as the sim delivers them: the aircraft type gates the
     // rest (TryApplyConfigValue), so the type goes first. B_CONFIG_STDBY 1 is the round standby gauges, 0 the

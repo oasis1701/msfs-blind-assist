@@ -1,6 +1,6 @@
 # Fenix v3 Integration Implementation Plan (plan 12)
 
-**Claimed by:** robin24 (Claude Code) · **Status:** in progress (2026-10-24: Tasks 1-5 first; plan 11's M1-M4, the FD/LS light reads and the A321 Econ Flow check in one owner sim session after them, then Task 6)
+**Claimed by:** kn4iee (taken over from robin24, who did Tasks 1-5, on 2026-10-25) · **Status:** done (2026-10-25: Task 6 passed in the sim, in flight included; Tasks 7 and 8 close the branch)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -105,13 +105,15 @@ Each item: make the change, add or adjust its test, run the suite, commit per fi
 
 Aircraft: a Fenix v3 A320 or A321 at a gate, cold and dark with ground power available, then engines running. Each line: key, then the exact phrase.
 
-- [ ] 1. `[` then Ctrl+Shift+F: "Fenix windows" lists Engines, Cabin, Failures, Fenix options; each opens and Escape returns.
-- [ ] 2. Overhead: "Flight Control Computers" is listed; Electrical: Generator 1 Off then On with an engine running changes GEN 1 (not EMER GEN 1 LINE).
-- [ ] 3. A bad TO CONFIG (flaps up) from the panel key: "Takeoff config: check configuration."; set flaps 1: "Takeoff config normal." after the measured delay.
-- [ ] 4. Alt+P: the AI describes the first officer's PFD (airspeed, altitude, FMA), not the centre panel.
-- [ ] 5. With a pre-update Ctrl+M mute on "ELEC BUS POWER DC SERVICE STATUS" (or a test settings file), the row stays muted.
-- [ ] 6. Taxi the Fenix with ground traffic on: no "Stop, nose-FNX, Fenix very close" (or left-FNX, right-FNX) warning, and `grep -i fnx ground_traffic.log` finds nothing new. On the same taxi, follow the tone through a gentle turn (about 30-45°) and a 90° corner at a normal taxi speed, unwinding when it goes quiet: both roll out on the new taxiway, the 90° corner without the tone swinging to the other side and the gentle turn without it asking for more turn afterwards.
-- [ ] Record results in the PR description.
+- [x] 1. `[` then Ctrl+Shift+F: "Fenix windows" lists Engines, Cabin, Failures, Fenix options; each opens and Escape returns.
+- [x] 2. Overhead: "Flight Control Computers" is listed; Electrical: Generator 1 Off then On with an engine running changes GEN 1 (not EMER GEN 1 LINE).
+- [x] 3. A bad TO CONFIG (flaps up) from the panel key: "Takeoff config: check configuration."; set flaps 1: "Takeoff config normal." after the measured delay.
+- [x] 4. Alt+P: the AI describes the first officer's PFD (airspeed, altitude, FMA), not the centre panel.
+- [x] 5. With a pre-update Ctrl+M mute on "ELEC BUS POWER DC SERVICE STATUS" (or a test settings file), the row stays muted.
+- [x] 6. Taxi the Fenix with ground traffic on: no "Stop, nose-FNX, Fenix very close" (or left-FNX, right-FNX) warning, and `grep -i fnx ground_traffic.log` finds nothing new. On the same taxi, follow the tone through a gentle turn (about 30-45°) and a 90° corner at a normal taxi speed, unwinding when it goes quiet: both roll out on the new taxiway, the 90° corner without the tone swinging to the other side and the gentle turn without it asking for more turn afterwards.
+- [x] Record results in the PR description.
+
+**Results (kn4iee, 2026-10-25, build 5e28c2f15):** checks 1-6 passed, in flight included. Also passed in the same session and flight: the fixes made after the 2026-10-24 session (typed FCU heading, speed and altitude sets with Encoder Acceleration on land on target and are spoken once, the "Rounding to" and "Already at" sentences, the altimeter unaffected, and a set with it off; the EFIS FD and LS lamps named by their buttons and quiet after the pilot's own press, the other side still announced; Econ Flow and ACT Pump lights quiet after the pilot's own press), plans 05's and 08's listen-for lists, and the open items of plans 07 and 10.
 
 ### Task 7: Remove the working documents
 

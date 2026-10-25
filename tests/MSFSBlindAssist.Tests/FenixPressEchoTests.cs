@@ -109,7 +109,7 @@ public class FenixPressEchoTests
     {
         var optedIn = Vars.Where(kv => kv.Value.PressTogglesStateVariable).Select(kv => kv.Key).OrderBy(k => k).ToList();
         Assert.Equal(EfisButtons.Select(b => b.Button).OrderBy(k => k), optedIn);
-        // Bus Tie's double announcement stays by the owner's choice (plan 02).
+        // Bus Tie's double announcement (the reader's new label, then its OFF light) stays: the owner's choice, 2026-10-22.
         Assert.False(Vars["S_OH_ELEC_BUS_TIE"].PressTogglesStateVariable);
     }
 
