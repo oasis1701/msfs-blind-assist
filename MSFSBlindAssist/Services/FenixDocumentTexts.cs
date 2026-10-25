@@ -6,6 +6,8 @@ namespace MSFSBlindAssist.Services;
 public static class FenixDocumentTexts
 {
     public const string Loading = "Loading Fenix documents...";
+    /// <summary>F5 while a load runs: the Fenix options window's words.</summary>
+    public const string StillLoading = "Still loading.";
     public const string NoAnswer = "The Fenix did not answer. Load the Fenix in the simulator, then press F5.";
     public const string TooShort = "Type at least 3 characters to search.";
     /// <summary>The EFB's own words.</summary>

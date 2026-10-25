@@ -153,6 +153,16 @@ public class FenixV3FixGravityGearTests
         Assert.Empty(writes);
     }
 
+    // A stop is silent after an aircraft switch, but a dropped connection leaves the same Fenix part-cranked: said.
+    [Fact]
+    public void A_stopped_move_is_said_only_when_the_aircraft_was_not_switched_away()
+    {
+        string src = File.ReadAllText(Path.Combine(RepoRoot(), "MSFSBlindAssist", "Aircraft", "FenixA320Definition.cs"));
+        int start = src.IndexOf("private async Task MoveGravityGearAsync", StringComparison.Ordinal);
+        string body = src.Substring(start, src.IndexOf("/// <summary>", start, StringComparison.Ordinal) - start);
+        Assert.Contains("if (!_switchedAway) announcer?.AnnounceImmediate(FenixA320GravityGear.StoppedText);", body);
+    }
+
     [Fact]
     public void Partial_read_back_uses_a_point_under_sv_SE()
     {

@@ -132,12 +132,28 @@ public partial class MainForm
     {
         if (string.IsNullOrEmpty(currentSection)) return;
 
-        // The panels list, rebuilt only when it changed, keeping the selected panel. Events are off, so
-        // no panel load or debounce starts from here.
         var panels = currentAircraft.GetPanelStructure().TryGetValue(currentSection, out var list)
             ? list : new List<string>();
         var shown = panelsListBox.Items.Cast<object>().Select(o => o.ToString() ?? "").ToList();
-        if (!panels.SequenceEqual(shown))
+        bool listChanged = !panels.SequenceEqual(shown);
+        bool panelOpen = !string.IsNullOrEmpty(currentPanel);
+        bool panelGone = listChanged && panelOpen && !panels.Contains(currentPanel);
+        bool controlsChanged = panelOpen && !panelGone && OpenPanelFittedControlsChanged();
+        if (!listChanged && !controlsChanged) return;
+
+        // Never under the pilot's focus: rebuilding the list they are in loses their place, and clearing the
+        // controls they are in drops the focus to nothing. Tried again each second until the focus has moved
+        // on; meanwhile a control the variant lacks answers "Not fitted on this aircraft.".
+        if ((listChanged && panelsListBox.ContainsFocus)
+            || ((panelGone || controlsChanged) && controlsContainer.ContainsFocus))
+        {
+            _panelVariantTimer?.Start();
+            return;
+        }
+
+        // The panels list, keeping the selected panel. Events are off, so no panel load or debounce starts
+        // from here.
+        if (listChanged)
         {
             Log.Debug("MainForm", $"Fenix variant changed the '{currentSection}' panels list");
             panelsListBox.SelectedIndexChanged -= PanelsListBox_SelectedIndexChanged;
@@ -172,18 +188,21 @@ public partial class MainForm
             }
         }
 
-        // The open panel, rebuilt when the variant changed which of its controls are fitted. Not while the
-        // pilot is in it: clearing the controls would drop the focus, and a control the variant lacks
-        // already answers "Not fitted on this aircraft.". The next opening builds it right.
-        if (string.IsNullOrEmpty(currentPanel) || controlsContainer.ContainsFocus) return;
-        if (currentAircraft is not BaseAircraftDefinition baseDef) return;
-        if (!currentAircraft.GetPanelControls().TryGetValue(currentPanel, out var keys)) return;
-        var variables = currentAircraft.GetVariables();
-        var hidden = keys.Where(k => variables.ContainsKey(k) && !baseDef.IsPanelControlVisible(k, simConnectManager));
-        if (_panelHiddenKeys.SetEquals(hidden)) return;
+        // The open panel, rebuilt when the variant changed which of its controls are fitted.
+        if (!controlsChanged) return;
         Log.Debug("MainForm", $"Fenix variant changed the '{currentPanel}' panel's controls; rebuilding it");
         _pendingPanelLoad = currentPanel;
         PanelLoadTimer_Tick(null, EventArgs.Empty);
+    }
+
+    // True when the open panel's last build left out a different set of controls than the variant now hides.
+    private bool OpenPanelFittedControlsChanged()
+    {
+        if (currentAircraft is not BaseAircraftDefinition baseDef) return false;
+        if (!currentAircraft.GetPanelControls().TryGetValue(currentPanel, out var keys)) return false;
+        var variables = currentAircraft.GetVariables();
+        var hidden = keys.Where(k => variables.ContainsKey(k) && !baseDef.IsPanelControlVisible(k, simConnectManager));
+        return !_panelHiddenKeys.SetEquals(hidden);
     }
 
     private void PanelsListBox_SelectedIndexChanged(object? sender, EventArgs e)

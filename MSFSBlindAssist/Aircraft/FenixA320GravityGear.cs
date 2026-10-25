@@ -18,6 +18,7 @@ public static class FenixA320GravityGear
     public const int StepIntervalMs = 100;
     public const int HandleSettleMs = 300;
     public const int ReadTimeoutMs = 1000;
+    public const string StoppedText = "Gravity gear: crank stopped, sim connection lost.";
 
     /// <summary>Grid values after <paramref name="from"/> up to and including <paramref name="to"/>.</summary>
     public static IReadOnlyList<double> CrankSteps(double from, double to)

@@ -213,10 +213,15 @@ public sealed class FenixDocumentsForm : Form
 
     // ---- The list ---------------------------------------------------------------------------------
 
-    // GETs the list, then the pins, and builds the tree. One at a time: F5 while a load runs does nothing.
+    // GETs the list, then the pins, and builds the tree. One at a time: F5 while a load runs only says so, as in
+    // the Fenix options window.
     private async Task LoadAsync(bool speak)
     {
-        if (_loading) return;
+        if (_loading)
+        {
+            if (speak) _announcer.AnnounceImmediate(FenixDocumentTexts.StillLoading);
+            return;
+        }
         _loading = true;
         CancellationToken ct = _cts.Token;
         try
@@ -854,6 +859,10 @@ public sealed class FenixDocumentsForm : Form
             ? _openPath
             : (_tree.SelectedNode?.Tag as DocumentTag)?.Path;
         if (path == null) return;
+        // The list's own spelling of the path, which the pins use: a search result can name the same document
+        // with '\' where the list has '/', and pins match exactly.
+        if (_byPath != null && _byPath.TryGetValue(path.Replace('\\', '/'), out FenixDocumentItem? item))
+            path = item.Path;
         _ = TogglePinAsync(path);
     }
 

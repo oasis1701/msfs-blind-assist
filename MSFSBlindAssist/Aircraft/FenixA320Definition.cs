@@ -9341,7 +9341,13 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         try
         {
             string? result = await _gravityGearWalker.MoveAsync(extend);
-            if (result == null) return;
+            if (result == null)
+            {
+                // Stopped part-way. After a switch the aircraft is gone: nothing to say. After a dropped connection
+                // the same Fenix may hold a part-turned crank, so the pilot hears that it stopped.
+                if (!_switchedAway) announcer?.AnnounceImmediate(FenixA320GravityGear.StoppedText);
+                return;
+            }
             // Refusals and "no read-back" cut in; the completion read-back lands about 6 s after the pick.
             bool refused = result.Contains("already turning");
             if (refused || result.Contains("nothing moved"))
@@ -12979,13 +12985,20 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 simConnect, announcer, pressHoldMs: FenixTakeoffConfigVerdict.HoldMs);
             // ReadFreshAsync returns null on a timeout or disconnect; a throw is made null too, so
             // the watch (which has no try/catch around reads) always reaches a verdict.
+            // A switch away stops the watch at its next read: its verdict would not be spoken.
+            using var cancelWatch = new CancellationTokenSource();
             string verdict = await FenixTakeoffConfigVerdict.WatchAsync(
                 async k =>
                 {
+                    if (_switchedAway)
+                    {
+                        cancelWatch.Cancel();
+                        return null;
+                    }
                     try { return await simConnect.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs); }
                     catch (Exception) { return null; }
                 },
-                FenixTakeoffConfigVerdict.PanelPressWait);
+                FenixTakeoffConfigVerdict.PanelPressWait, cancelWatch.Token);
             // Not over the next aircraft: a switch during the 2-5 s watch drops the verdict.
             if (simConnect.IsConnected && !_switchedAway) announcer?.AnnounceImmediate(verdict);
         }
@@ -13355,50 +13368,16 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
         // ALWAYS use 100ft mode to avoid rounding issues with 1000ft mode
         // (In 1000ft mode, increments round to nearest thousand instead of adding 1000)
-        _pendingAltitudeScale = null;  // This set restores the scale itself
         simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", 0);  // Force 100ft mode
         await System.Threading.Tasks.Task.Delay(100);  // Wait for mode to activate
 
         // A closed loop from the knob's fresh value, one click = 100 ft in 100 ft mode ([FNX-20])
         FenixFcuSetEnd? end = await SetFcuKnobAsync(FenixFcuKnob.Altitude, targetAltitude, simConnect, announcer);
 
-        // Restore user's preferred mode, unless a newer set of the knob is running (it needs 100 ft mode and
-        // restores the scale itself) or the aircraft was switched away from. A disconnect also ends a set as
-        // Superseded, so the end alone never decides it: a set the connection cut short restores on the first
-        // batch after the reconnect (OnContinuousBatchDelivered).
-        switch (AltitudeScaleRestoreFor(_fcuSetTurns.IsRunning(FenixFcuKnob.Altitude.CounterVar), _switchedAway,
-                    simConnect.IsConnected))
-        {
-            case AltitudeScaleRestore.Now:
-                _pendingAltitudeScale = null;
-                simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", userPreferredScaleMode);
-                break;
-            case AltitudeScaleRestore.AfterReconnect:
-                _pendingAltitudeScale = (simConnect, userPreferredScaleMode);
-                break;
-        }
-    }
-
-    internal enum AltitudeScaleRestore { Skip, Now, AfterReconnect }
-
-    /// <summary>When a typed altitude set puts the pilot's FCU altitude scale back.</summary>
-    internal static AltitudeScaleRestore AltitudeScaleRestoreFor(bool newerSetRunning, bool switchedAway, bool connected)
-    {
-        if (newerSetRunning || switchedAway) return AltitudeScaleRestore.Skip;
-        return connected ? AltitudeScaleRestore.Now : AltitudeScaleRestore.AfterReconnect;
-    }
-
-    // The pilot's altitude scale a disconnect kept a typed set from restoring, written on the next batch.
-    private (SimConnect.SimConnectManager Sim, int Scale)? _pendingAltitudeScale;
-
-    public override void OnContinuousBatchDelivered(int batchNum)
-    {
-        base.OnContinuousBatchDelivered(batchNum);
-        if (_pendingAltitudeScale is not { } pending || _switchedAway || !pending.Sim.IsConnected) return;
-        _pendingAltitudeScale = null;
-        // A newer set started since owns the scale and restores it itself.
-        if (!_fcuSetTurns.IsRunning(FenixFcuKnob.Altitude.CounterVar))
-            pending.Sim.SetLVar("S_FCU_ALTITUDE_SCALE", pending.Scale);
+        // Restore user's preferred mode, unless a newer set, an aircraft switch or a disconnect took over: the
+        // newer set needs 100 ft mode, and the aircraft may not be the Fenix any more.
+        if (end != FenixFcuSetEnd.Superseded)
+            simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", userPreferredScaleMode);
     }
 
     /// <summary>

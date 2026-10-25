@@ -223,6 +223,13 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         var watch = FenixTakeoffConfigVerdict.WatchAsync(
             async k =>
             {
+                // Detached (an aircraft switch, the FO stopped) or disconnected: the verdict would be dropped,
+                // so the watch stops at its next read instead of polling for up to 30 s.
+                if (!sc.IsConnected || !StillAttached(sc))
+                {
+                    cancelWatch.Cancel();
+                    return null;
+                }
                 try { return await sc.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs); }
                 catch (Exception) { return null; }
             },
