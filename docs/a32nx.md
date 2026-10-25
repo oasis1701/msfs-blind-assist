@@ -398,6 +398,32 @@ The rest of the sweep found nothing to change on the A32NX: events, FMGC word la
 autothrust encodings and the MCDU agent's hooks are as they were at `1bbd304`, and the WIND page's
 request / uplink flow reads through the MCDU window.
 
+### The SD FUEL center transfer valves (FBW #10971, 2026-10-24)
+
+FBW #10971 (`acbfe58df`, 23 Oct 2026; the only commit of the sweep `76db0aef1..acbfe58df`, recorded
+in [a380x.md](a380x.md)) adds two triggers to the A32NX `flight_model.cfg`: when either inner tank
+falls below 1,651 gallons, both AUTO center transfer valves (`FUELSYSTEM VALVE OPEN:11` / `:12`) close,
+so with an empty center tank they no longer open. FBW calls it interim. The open trigger fires at
+1,651.5 gallons, half a gallon above the close, and what the pair does with fuel in the center tank
+depends on whether MSFS fires a trigger once, as its condition becomes true, or on every frame:
+**unmeasured, inferred from `flight_model.cfg` alone**. It may stop AUTO transfer once a high burn
+takes an inner tank below 1,651 gallons; measure the center tank over an AUTO climb before blaming
+either FBW or MSFSBA for center fuel left in the tank. Nothing MSFSBA read or sent changed: the CTR TK XFR buttons
+(`FUEL_PUMP_C1/C2`) are valve SWITCHES 9/10; FUEL MODE SEL's junctions 4/5 keep their options
+([A320-12]); MANUAL routing bypasses valves 11/12; the First Officer presses only the buttons.
+
+The SD FUEL box now reads the indication the SD draws from those valves (FBW `Fuel.tsx`,
+`CentreToInnerTransfer`), "Left / Right center transfer valve": the pair in series (auto valve,
+button valve) reads "closed" under 1 % open, else "open", and "open, Amber" when the button is off,
+or in AUTO (the MODE SEL L:var) while not fully open; a NaN input reads as unread. Only the auto
+valves and junctions are force-read with the rows: the buttons and MODE SEL ride the continuous
+batch. `FlyByWireCenterTransferValve` decodes it; `A32nxCenterTransferValveTests` pins it and each
+side's inputs. The rows replace a "Center pump" row that read only the left jet pump
+(`FUELSYSTEM PUMP ACTIVE:1`), which the SD does not draw. The page also gained "Left / Right outer
+transfer valve" (`FUELSYSTEM VALVE OPEN:4` / `:5`, open or closed), the arrow both SDs draw while an
+outer tank drains into its inner. The Headwind A330 inherits all four rows: its fuel system numbers
+the same valves, junctions and buttons, and its `sd.js` carries the same components.
+
 ### Cleared V-speeds are spoken "not set" (2026-09-25)
 
 FBW #10855 (`1bbd304`, 18 Aug 2026 — the A32NX half of an A380 commit, in `A32NX_FMCMainDisplay.ts`)
