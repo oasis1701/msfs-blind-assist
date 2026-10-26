@@ -4,7 +4,7 @@ title: "Taxi Guidance"
 
 <div class="guide-part" markdown="1">
 
-Chapter 2 of 4 in [Part 4: On the Ground](index.md#part-4-on-the-ground) of the MSFS Blind Assist user guide.
+Chapter 2 of 4 in [Part 5: On the Ground](index.md#part-4-on-the-ground) of the MSFS Blind Assist user guide.
 
 </div>
 
@@ -499,6 +499,8 @@ The steering tone follows the rules in [The Audio Language: What the Tones Mean]
 The tone looks ahead along the route, so as you approach a turn it starts drifting towards the new direction before you reach the junction, just as a pilot looking out of the window would start the turn a little early. Follow it into the turn.
 
 During a turn, the tone allows for the way the aircraft keeps swinging after you ease off the tiller. It goes quiet slightly *before* your nose reaches the new heading. That is deliberate: when it goes quiet mid-turn, hold that rate of turn and start unwinding, and you will roll out on the line. If it swings to the other side, you are turning too far; unwind.
+
+How early it goes quiet depends on how fast you are turning: the faster the turn, the earlier. In the Fenix A320 family it also depends on how far you have already turned. A big turn, such as a 90-degree corner, goes quiet a little earlier than a small one, because the Fenix carries more swing out of a big turn. Unwind when you hear it go quiet.
 
 After a long turn, once the route ahead is straight, you may hear *"Straighten."* That is your cue to roll out now.
 

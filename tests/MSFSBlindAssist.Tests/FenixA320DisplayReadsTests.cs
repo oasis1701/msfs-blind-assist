@@ -6,13 +6,14 @@ namespace MSFSBlindAssist.Tests;
 
 /// <summary>
 /// Which instrument camera view each Fenix A320 display read uses, MEASURED on the live aircraft
-/// (2026-09-21, MSFS 2024 1.8.16.0, FenixA320 IAE WF) by writing each index and capturing the
-/// frame — never read off cameras.cfg, which on this aircraft is wrong twice over.
+/// (2026-10-22, MSFS 2024, Fenix v3 CFM A320, 1920 x 1080) by writing each index and capturing the
+/// frame — never read off cameras.cfg.
 ///
-/// Instrument view 8 (index 7) frames the captain's ND, the standby instruments, the E/WD, the SD
-/// and the first officer's ND, with BOTH PFDs clipped to slivers at the frame edges. Instrument
-/// view 9 (index 8) frames the first officer's ND and PFD large, with the ECAM clipped at the
-/// left edge.
+/// Fenix v3 restored the "Main Panel (Left)" camera v2 lacked, so the live index is the file
+/// position again and v2's 7/8 are now 8/9. Instrument view 8 (index 7) frames the captain's PFD,
+/// ND and standby whole. Instrument view 9 (index 8), the centre, frames the E/WD, the SD and the
+/// standby whole but clips BOTH NDs. Instrument view 10 (index 9) frames the first officer's PFD
+/// and ND whole.
 /// </summary>
 public class FenixA320DisplayReadsTests
 {
@@ -26,11 +27,11 @@ public class FenixA320DisplayReadsTests
     }
 
     [Theory]
-    [InlineData(HotkeyAction.ReadDisplayPFD, GeminiService.DisplayType.PFD, "PFD", 8)]
+    [InlineData(HotkeyAction.ReadDisplayPFD, GeminiService.DisplayType.PFD, "PFD", 9)]
     [InlineData(HotkeyAction.ReadDisplayND, GeminiService.DisplayType.NDFenix, "ND", 7)]
-    [InlineData(HotkeyAction.ReadDisplayUpperECAM, GeminiService.DisplayType.UpperECAM, "E/WD", 7)]
-    [InlineData(HotkeyAction.ReadDisplayLowerECAM, GeminiService.DisplayType.LowerECAM, "SD", 7)]
-    [InlineData(HotkeyAction.ReadDisplayISIS, GeminiService.DisplayType.StandbyFenix, "Standby instruments", 7)]
+    [InlineData(HotkeyAction.ReadDisplayUpperECAM, GeminiService.DisplayType.UpperECAM, "E/WD", 8)]
+    [InlineData(HotkeyAction.ReadDisplayLowerECAM, GeminiService.DisplayType.LowerECAM, "SD", 8)]
+    [InlineData(HotkeyAction.ReadDisplayISIS, GeminiService.DisplayType.StandbyFenix, "Standby instruments", 8)]
     public void EachRead_HasItsPromptNameAndView(
         HotkeyAction action, GeminiService.DisplayType type, string name, int view)
     {
@@ -43,37 +44,40 @@ public class FenixA320DisplayReadsTests
     [Fact]
     public void TheViewConstants_AreTheMeasuredIndices()
     {
-        Assert.Equal(7, FenixA320DisplayReads.CenterPanelView);
-        Assert.Equal(8, FenixA320DisplayReads.FirstOfficerPanelView);
+        Assert.Equal(7, FenixA320DisplayReads.CaptainPanelView);
+        Assert.Equal(8, FenixA320DisplayReads.CenterPanelView);
+        Assert.Equal(9, FenixA320DisplayReads.FirstOfficerPanelView);
     }
 
     [Fact]
-    public void ThePfdIsTheOnlyReadThatLeavesTheCentreView()
+    public void OnlyThePfdAndNdLeaveTheCentreView_EachOnItsOwnSide()
     {
-        // The captain's own main-panel camera is defined in cameras.cfg ("Main Panel (Left)") but
-        // is NOT in the live instrument list, so no frame holds the captain's PFD. The first
-        // officer's is the only one framed, and the two PFDs differ only in baro and side-specific
-        // FD/AP annunciation.
+        // v3 lists the captain's view (index 7); Alt+N reads the captain's ND there (owner,
+        // 2026-10-22), because the centre view clips both NDs on v3. Alt+P keeps the first
+        // officer's PFD (2026-10-21): the two PFDs differ only in baro and side-specific FD/AP
+        // annunciation.
         var elsewhere = FenixA320DisplayReads.All
             .Where(r => r.InstrumentViewIndex != FenixA320DisplayReads.CenterPanelView)
-            .ToArray();
+            .ToDictionary(r => r.Action, r => r.InstrumentViewIndex);
 
-        Assert.Single(elsewhere);
-        Assert.Equal(HotkeyAction.ReadDisplayPFD, elsewhere[0].Action);
+        Assert.Equal(2, elsewhere.Count);
+        Assert.Equal(FenixA320DisplayReads.FirstOfficerPanelView, elsewhere[HotkeyAction.ReadDisplayPFD]);
+        Assert.Equal(FenixA320DisplayReads.CaptainPanelView, elsewhere[HotkeyAction.ReadDisplayND]);
     }
 
     [Fact]
-    public void TheNdPromptNamesWhichOfTheTwoToRead()
+    public void TheNdPromptNamesTheRightHandDisplay()
     {
-        // The centre view frames BOTH NDs. The shared DisplayType.ND prompt says only "ONLY
-        // describe the Navigation Display", which is ambiguous with two of them side by side, so
-        // the Fenix has its own prompt naming the captain's — the left-hand one, and the one whose
-        // range and mode the pilot sets on EFIS1.
+        // The captain's view frames the captain's PFD on the left and ND on the right. The shared
+        // DisplayType.ND prompt says only "ONLY describe the Navigation Display", so the Fenix has
+        // its own, naming the ND as the right-hand display: "left-hand" would send the AI to the PFD.
         string nd = GeminiService.GetPromptForDisplay(GeminiService.DisplayType.NDFenix);
 
-        Assert.Contains("two navigation displays", nd, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("left", nd, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("right-hand", nd, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("captain", nd, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("primary flight display", nd, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("left-hand", nd, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("two navigation displays", nd, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

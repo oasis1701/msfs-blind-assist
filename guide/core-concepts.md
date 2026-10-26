@@ -36,7 +36,7 @@ You start the simulator with the aircraft parked at a stand. BA announces *"Conn
 
 You plan first. If you use SimBrief, Output Shift+B opens the SimBrief briefing, and the [SimBrief](planning-your-flight.md#simbrief) section explains how to load your plan and hear an AI route briefing. The [Flight Planning Window](planning-your-flight.md#flight-planning-efb) (Output Shift+E) lets you look at your route, SID, STAR and approach, and look up runways and frequencies. You check the weather with the METAR report (Output Shift+M) and the [Weather Radar](weather.md#weather-radar) (Output Shift+R).
 
-Then you set up the aircraft: its panels in the main window, its flight computer (Input Shift+M opens the MCDU, CDU or FMC on every aircraft), and its own tablet through [Aircraft EFBs](planning-your-flight.md#aircraft-efb) (Input Shift+T on most aircraft) for fuel, payload and takeoff performance. The [First Officer](planning-your-flight.md#checklists) (Output Shift+C on most aircraft) runs the flows with you and keeps you from missing a step on the checklists. If you use GSX for ground services, the accessible GSX window is covered in [Gates, GSX and Docking](gates-gsx-and-docking.md).
+Then you set up the aircraft: its panels in the main window, its flight computer (Input Shift+M opens the MCDU, CDU or FMC on every aircraft), and its own tablet through [Aircraft EFBs](planning-your-flight.md#aircraft-efb) (Input Shift+T on most aircraft) for fuel, payload and takeoff performance. The [First Officer](first-officer.md) (Output Shift+C on most aircraft) runs the flows with you and keeps you from missing a step on the checklists. If you use GSX for ground services, the accessible GSX window is covered in [Gates, GSX and Docking](gates-gsx-and-docking.md).
 
 ### Pushback and taxi out {#pushback-and-taxi-out}
 
@@ -156,7 +156,7 @@ Each time you open the Monitor Manager it starts fresh, with an empty search and
 
 <div class="callout tip" role="note" markdown="1">
 
-**Tip:** On the aircraft where BA calls the take-off speeds (the FlyByWire Airbuses, the iFly 737 MAX8 and the MD-11), V1, Rotate and V2 each have their own row (V1, VR, V2), so you can keep some and mute others. The FlyByWire aircraft also have a separate quick toggle for their ECAM call-outs, Output Ctrl+E. See your aircraft's chapter.
+**Tip:** On the aircraft where BA calls the take-off speeds (the FlyByWire Airbuses, the Fenix A320, the iFly 737 MAX8 and the MD-11), V1, Rotate and V2 each have their own row (V1, VR, V2; on the Fenix, "MCDU V1 Speed", "MCDU VR Speed" and "MCDU V2 Speed"), so you can keep some and mute others. The FlyByWire aircraft also have a separate quick toggle for their ECAM call-outs, Output Ctrl+E. See your aircraft's chapter.
 
 </div>
 
@@ -468,7 +468,7 @@ The ranges are capped at 310 miles (500 kilometres), and the Coast Range at 1,00
 <nav class="guide-nav" aria-label="Guide chapters" markdown="1">
 
 - [Previous chapter: Getting Started](getting-started.md)
-- [Next chapter: Planning Your Flight](planning-your-flight.md)
+- [Next chapter: The First Officer and Checklists](first-officer.md)
 - [Guide contents](index.md)
 
 </nav>

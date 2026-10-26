@@ -430,6 +430,25 @@ public class GuidanceGeometryTests
         Assert.Equal(-30.0, GuidanceGeometry.ProjectHeadingError(0.0, 100.0, 1.5, 30.0), 0.01);
     }
 
+    // --- TurnLeadSeconds (gentle-to-sharp ramp) ------------------------------
+
+    [Theory]
+    [InlineData(0.0, 1.0)]
+    [InlineData(30.0, 1.0)]     // ramp start: still the gentle lead
+    [InlineData(45.0, 1.5)]     // halfway
+    [InlineData(60.0, 2.0)]     // ramp end: the sharp lead
+    [InlineData(170.0, 2.0)]
+    [InlineData(-45.0, 1.5)]    // a left turn's swept heading is negative; the ramp reads its size
+    public void TurnLeadSeconds_ramps_from_the_gentle_to_the_sharp_lead(double turnedDeg, double expected)
+        => Assert.Equal(expected, GuidanceGeometry.TurnLeadSeconds(turnedDeg, 1.0, 2.0), 3);
+
+    [Fact]
+    public void TurnLeadSeconds_is_constant_when_both_leads_are_equal()
+    {
+        foreach (double turned in new[] { 0.0, 45.0, 120.0 })
+            Assert.Equal(1.6, GuidanceGeometry.TurnLeadSeconds(turned, 1.6, 1.6), 3);
+    }
+
     // --- Far behind the route start (YPPH 21 → C11, 2026-09-18) --------------
 
     // The C11 handoff route's opening stub: 5 m due SOUTH, then the exit arc. The

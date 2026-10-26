@@ -982,6 +982,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         WaypointFlightDirectorProfile.ForAircraftCode(AircraftCode);
 
     public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
+    public virtual double TaxiSharpTurnLeadSeconds => TaxiTurnLeadSeconds;   // constant lead unless measured otherwise
+    public virtual double TaxiTurnLeadMaxDegrees => 30.0;
 
     public virtual bool HasOwnIcingAnnouncer => false;
 
