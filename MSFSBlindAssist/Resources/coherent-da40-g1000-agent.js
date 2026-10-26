@@ -3474,6 +3474,21 @@
         } catch (e) { return "error " + e; }
     };
 
+    /// ⚠️ THE NAME BESIDE THIS INPUT, NOT THE FIRST ONE ON THE DISPLAY. A WaypointInput draws
+    /// its input, name and city inside one .wpt-entry (PFD.js WaypointInput), and the PFD can
+    /// show another .wpt-entry at the same time: typing ESGG into Select Approach read back
+    /// "ESGG, Trollhattan-Vanersborg", ESGT's name from the other box, while the dialog itself
+    /// said Goteborg Landvetter (2026-10-26). The display-wide first match stays only as the
+    /// fallback for an input drawn without a .wpt-entry of its own.
+    A.M.entryText = function (ic, sel) {
+        var entry = null;
+        try {
+            var box = ic && ic.textBoxRef && ic.textBoxRef.instance;
+            if (box && box.closest) entry = box.closest(".wpt-entry");
+        } catch (e) { }
+        return text(entry ? entry.querySelector(sel) : firstVisible(sel));
+    };
+
     /// What the aeroplane made of what was typed, after its own debounced database search
     /// has had time to run. The ident that comes back is the AUTOCOMPLETED one, so a pilot
     /// who typed three letters hears the whole ident and the facility it belongs to.
@@ -3482,8 +3497,8 @@
         var bits = [];
         if (ic) { try { bits.push(ic.getRawText()); } catch (e) { } }
 
-        var name = text(firstVisible(".wpt-entry-name"));
-        var city = text(firstVisible(".wpt-entry-location"));
+        var name = A.M.entryText(ic, ".wpt-entry-name");
+        var city = A.M.entryText(ic, ".wpt-entry-location");
         if (name) bits.push(name);
         if (city) bits.push(city);
 
@@ -4174,7 +4189,7 @@
                 var cs = A.M.charSay();
                 var who = "";
                 if (f.kind === "waypoint" || f.kind === "input") {
-                    who = text(firstVisible(".wpt-entry-name")) || "";
+                    who = A.M.entryText(A.M.input(), ".wpt-entry-name") || "";
                 }
 
                 // ⚠️ ONLY A FIELD BEING SPELT EARNS THE SHORT FORM, AND DROPPING THAT TEST
@@ -4206,7 +4221,6 @@
                     // letters are in, and a sighted pilot sees both appear - so a pilot
                     // turning the knob one letter at a time is told which aerodrome they
                     // have landed on the moment the aircraft knows.
-                    var who = text(firstVisible(".wpt-entry-name"));
                     if (who) s += ", " + who;
                 }
             }
