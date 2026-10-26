@@ -4,6 +4,7 @@ using System.Linq;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Fenix;
 using MSFSBlindAssist.FirstOfficer.Models;
+using MSFSBlindAssist.Services;
 using MSFSBlindAssist.SimConnect;
 using Xunit;
 
@@ -121,11 +122,12 @@ public class FenixReadbackTests
         var items = FenixChecklistDefinitions.Build().SelectMany(g => g.Items).ToDictionary(i => i.Id);
         foreach (var id in new[] { "CPC_FUEL", "CPC_BARO", "BSC_PARKBRK", "BSC_TOSPEEDS", "ASC_ANTIICE",
                                    "TXC_FLAPS", "TXC_ENGMODE", "LUC_TCAS", "LUC_PACKS", "APC_BARO",
-                                   "APC_AUTOBRAKE", "APC_ENGMODE", "LDC_MEMO_FLAPS", "PKC_PARKBRK" })
+                                   "APC_AUTOBRAKE", "APC_ENGMODE", "LDC_MEMO_FLAPS", "PKC_PARKBRK",
+                                   "LUC_CABIN", "LDC_MEMO_CABIN" })
             Assert.NotNull(items[id].LiveValue);
         foreach (var id in new[] { "CPC_PINS", "BSC_WINDOWS", "ASC_ECAMSTS", "ASC_PITCH", "ASC_RUDDER",
-                                   "TXC_FCTEST", "LUC_CABIN", "TXC_MEMO_TOCFG", "LUC_RUNWAY",
-                                   "APC_MINIMUM", "LDC_MEMO_CABIN", "SCC_EFBS" })
+                                   "TXC_FCTEST", "TXC_MEMO_TOCFG", "LUC_RUNWAY",
+                                   "APC_MINIMUM", "SCC_EFBS" })
             Assert.False(items[id].IsAutoDetectable, id);
     }
 
@@ -215,9 +217,9 @@ public class FenixReadbackTests
         var polled = new FenixStateEvaluator().OnRequestPollFields;
         foreach (var f in new[]
                  {
-                     "FUEL TOTAL QUANTITY WEIGHT", "S_OH_GPWS_LDG_FLAP3", "S_FCU_EFIS1_BARO_STD",
+                     "FUEL TOTAL QUANTITY WEIGHT", "S_OH_GPWS_LDG_FLAP3", "I_FCU_EFIS1_QNH",
                      "S_FCU_EFIS1_BARO_MODE", "N_FCU_EFIS1_BARO_HPA", "N_FCU_EFIS1_BARO_INCH",
-                     "FNX2PLD_speedV1", "FNX2PLD_speedVR", "FNX2PLD_speedV2", "N_MISC_PERF_TO_FLEX",
+                     "N_MISC_PERF_TO_V1", "N_MISC_PERF_TO_VR", "N_MISC_PERF_TO_V2", "N_MISC_PERF_TO_FLEX",
                      "I_MIP_AUTOBRAKE_LO_L", "I_MIP_AUTOBRAKE_MED_L", "I_MIP_AUTOBRAKE_MAX_L",
                      "S_MIP_PARKING_BRAKE", "S_FC_FLAPS", "S_ENG_MODE", "S_XPDR_MODE",
                      "S_OH_PNEUMATIC_PACK_1", "S_OH_PNEUMATIC_PACK_2",
@@ -259,9 +261,10 @@ public class FenixReadbackValueTests
         => f => values.TryGetValue(f, out double v) ? v : double.NaN;
 
     [Theory, MemberData(nameof(Cultures))]
-    public void Baro_reads_standard_when_the_STD_flag_is_set(string culture)
+    public void Baro_reads_standard_when_the_QNH_light_is_off(string culture)
     {
-        var read = Reader(new() { ["S_FCU_EFIS1_BARO_STD"] = 1 });
+        // I_FCU_EFIS1_QNH: 1 = QNH, 0 = STD.
+        var read = Reader(new() { ["I_FCU_EFIS1_QNH"] = 0 });
         Assert.Equal("standard", InCulture(culture, () => FenixStateEvaluator.BaroText(read)));
     }
 
@@ -271,7 +274,7 @@ public class FenixReadbackValueTests
         // S_FCU_EFIS1_BARO_MODE 0 = inHg; N_FCU_EFIS1_BARO_INCH is the value in inHg (29.92, not 2992).
         var read = Reader(new()
         {
-            ["S_FCU_EFIS1_BARO_STD"] = 0, ["S_FCU_EFIS1_BARO_MODE"] = 0,
+            ["I_FCU_EFIS1_QNH"] = 1, ["S_FCU_EFIS1_BARO_MODE"] = 0,
             ["N_FCU_EFIS1_BARO_INCH"] = 29.921, ["N_FCU_EFIS1_BARO_HPA"] = 1013.2,
         });
         Assert.Equal("QNH 29.92", InCulture(culture, () => FenixStateEvaluator.BaroText(read)));
@@ -282,7 +285,7 @@ public class FenixReadbackValueTests
     {
         var read = Reader(new()
         {
-            ["S_FCU_EFIS1_BARO_STD"] = 0, ["S_FCU_EFIS1_BARO_MODE"] = 1,
+            ["I_FCU_EFIS1_QNH"] = 1, ["S_FCU_EFIS1_BARO_MODE"] = 1,
             ["N_FCU_EFIS1_BARO_INCH"] = 29.921, ["N_FCU_EFIS1_BARO_HPA"] = 1013.2,
         });
         Assert.Equal("QNH 1013", InCulture(culture, () => FenixStateEvaluator.BaroText(read)));
@@ -292,11 +295,11 @@ public class FenixReadbackValueTests
     public void Baro_is_null_whenever_an_input_is_unknown()
     {
         Assert.Null(FenixStateEvaluator.BaroText(Reader(new())));                                  // nothing read
-        Assert.Null(FenixStateEvaluator.BaroText(Reader(new() { ["S_FCU_EFIS1_BARO_STD"] = 0 }))); // unit unknown
+        Assert.Null(FenixStateEvaluator.BaroText(Reader(new() { ["I_FCU_EFIS1_QNH"] = 1 })));      // unit unknown
         Assert.Null(FenixStateEvaluator.BaroText(Reader(new()
-            { ["S_FCU_EFIS1_BARO_STD"] = 0, ["S_FCU_EFIS1_BARO_MODE"] = 1 })));                    // value unknown
+            { ["I_FCU_EFIS1_QNH"] = 1, ["S_FCU_EFIS1_BARO_MODE"] = 1 })));                         // value unknown
         Assert.Null(FenixStateEvaluator.BaroText(Reader(new()
-            { ["S_FCU_EFIS1_BARO_STD"] = 0, ["S_FCU_EFIS1_BARO_MODE"] = 0, ["N_FCU_EFIS1_BARO_HPA"] = 1013 })));
+            { ["I_FCU_EFIS1_QNH"] = 1, ["S_FCU_EFIS1_BARO_MODE"] = 0, ["N_FCU_EFIS1_BARO_HPA"] = 1013 })));
     }
 
     [Theory, MemberData(nameof(Cultures))]
@@ -305,6 +308,40 @@ public class FenixReadbackValueTests
         // 27,000 lb = 12,247 kg -> 12,200; the thousands separator is the invariant comma.
         var read = Reader(new() { ["FUEL TOTAL QUANTITY WEIGHT"] = 27000 });
         Assert.Equal("12,200 kilograms", InCulture(culture, () => FenixStateEvaluator.FuelText(read)));
+    }
+
+    [Theory, MemberData(nameof(Cultures))]
+    public void Fuel_prefers_the_Fenixs_own_total(string culture)
+    {
+        // The Fenix total counts the extra centre tanks (capacity 23,342 kg on the ACT A321).
+        var read = Reader(new() { [FenixStateEvaluator.FuelTotalKgField] = 12_247, ["FUEL TOTAL QUANTITY WEIGHT"] = 99_999 });
+        Assert.Equal("12,200 kilograms", InCulture(culture, () => FenixStateEvaluator.FuelText(read)));
+    }
+
+    // A fake data-service subscription: remembers the callback the evaluator registered.
+    private sealed class FakeSubscription : System.IDisposable
+    {
+        public System.Action<string, FenixDataValue>? Callback;
+        public System.IDisposable Subscribe(IReadOnlyList<string> names, System.Action<string, FenixDataValue> callback)
+        {
+            Callback = callback;
+            return this;
+        }
+        public void Dispose() { }
+    }
+
+    [Theory, MemberData(nameof(Cultures))]
+    public void Fuel_line_reads_the_Fenix_total_pushed_by_its_data_service(string culture)
+    {
+        // The value arrives on a pool thread through the callback the fake subscription captured (FNX-2);
+        // the instance line reads it through the synthetic field, not only the static helper.
+        var fenix = new FakeSubscription();
+        var e = new FenixStateEvaluator();
+        e.AttachFenix(new object(), () => FenixVariant.Unknown, fenix.Subscribe);
+        fenix.Callback!(FenixFoLiveReadings.FuelTotalKgName,
+            new FenixDataValue(FenixValueKind.Number, 12_247, false, null, "12247"));
+
+        Assert.Equal("12,200 kilograms", InCulture(culture, () => e.FuelText()));
     }
 
     [Fact]

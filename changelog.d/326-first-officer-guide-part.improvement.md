@@ -1,0 +1,1 @@
+The user guide gives the First Officer a part of its own, Part 3: The First Officer, right after Core Concepts, so pressing 2 to move by part finds it, and Your First Ten Minutes now includes opening it. The guide's contents page also lists every chapter's sections, on the website and in Help, User Guide, so you can go straight to the one you want.

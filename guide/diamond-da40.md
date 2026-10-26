@@ -4,7 +4,7 @@ title: "COWS Diamond DA40"
 
 <div class="guide-part" markdown="1">
 
-Chapter 3 of 3 in [Part 7: Aircraft Guides](index.md#part-7-aircraft-guides) of the MSFS Blind Assist user guide.
+Chapter 3 of 3 in [Part 8: Aircraft Guides](index.md#part-7-aircraft-guides) of the MSFS Blind Assist user guide.
 
 </div>
 
@@ -157,7 +157,7 @@ Shift+F does not match the MFD's fuel totalizer, and is not meant to: the totali
 
 ### What it is {#da40-fo-what}
 
-Output **Shift+C** opens the DA40's [First Officer](planning-your-flight.md#checklists), named for your model, "DA40-NG First Officer" or "DA40-XLS First Officer". Its flows follow the aircraft's own COWS checklist pages, in their order: Before Engine Start, Engine Start, After Engine Start, Taxi, Before Take-off, Line Up, Climb, Cruise, Descent, Approach, Final, After Landing and Shutdown. The XLS has two more starts, the page's other procedures: Flooded or Hot Engine Start, and Engine Start, Reprime.
+Output **Shift+C** opens the DA40's [First Officer](first-officer.md), named for your model, "DA40-NG First Officer" or "DA40-XLS First Officer". Its flows follow the aircraft's own COWS checklist pages, in their order: Before Engine Start, Engine Start, After Engine Start, Taxi, Before Take-off, Line Up, Climb, Cruise, Descent, Approach, Final, After Landing and Shutdown. The XLS has two more starts, the page's other procedures: Flooded or Hot Engine Start, and Engine Start, Reprime.
 
 Its checklists are those same COWS pages, read from the installed aircraft in COWS's own words, beside each flow's own list. The Weights/Speeds and Tips and help pages are there too, to read: Tips and help is where COWS writes down its operating advice (warm-up times, power settings for the circuit, how to reset failures). The pages follow the aircraft through COWS updates.
 

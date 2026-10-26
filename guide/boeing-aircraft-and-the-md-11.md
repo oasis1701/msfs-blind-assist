@@ -4,7 +4,7 @@ title: "Boeing Aircraft and the MD-11"
 
 <div class="guide-part" markdown="1">
 
-Chapter 2 of 3 in [Part 7: Aircraft Guides](index.md#part-7-aircraft-guides) of the MSFS Blind Assist user guide.
+Chapter 2 of 3 in [Part 8: Aircraft Guides](index.md#part-7-aircraft-guides) of the MSFS Blind Assist user guide.
 
 </div>
 
@@ -20,7 +20,7 @@ Chapter 2 of 3 in [Part 7: Aircraft Guides](index.md#part-7-aircraft-guides) of 
 
 </nav>
 
-This chapter covers the PMDG 737 (NG3 family), the PMDG 777, the HorizonSim 787-9, the iFly 737 MAX8 and the TFDi Design MD-11, describing only what differs on each. The complete key list for every aircraft is in the [Hotkey Reference](hotkey-reference.md), and the shared autopilot window behaviour is in [Autopilot Windows](takeoff-climb-and-cruise.md#autopilot-windows). All but the HorizonSim 787-9 have a [First Officer](planning-your-flight.md#checklists) on Output Shift+C.
+This chapter covers the PMDG 737 (NG3 family), the PMDG 777, the HorizonSim 787-9, the iFly 737 MAX8 and the TFDi Design MD-11, describing only what differs on each. The complete key list for every aircraft is in the [Hotkey Reference](hotkey-reference.md), and the shared autopilot window behaviour is in [Autopilot Windows](takeoff-climb-and-cruise.md#autopilot-windows). All but the HorizonSim 787-9 have a [First Officer](first-officer.md) on Output Shift+C.
 
 ## PMDG 737 (NG3) {#boeing-pmdg737}
 

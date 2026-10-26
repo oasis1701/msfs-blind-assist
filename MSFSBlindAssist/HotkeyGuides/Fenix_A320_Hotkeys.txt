@@ -30,12 +30,15 @@ AI Features:
   From an outside or drone view it says "Switch to a cockpit view first" and
   does nothing.
 
-  Two things about this aircraft are worth knowing. Alt+N reads the CAPTAIN'S
-  navigation display - the one whose range and mode you set on the left EFIS
-  panel. Alt+P reads the FIRST OFFICER'S PFD, because no camera view on the
-  Fenix frames the captain's without cutting it off at the edge; the two PFDs
-  differ only in the altimeter setting and in which side's autopilot and
-  flight director are annunciated.
+  These reads need Fenix v3: on an older Fenix the camera frames the wrong
+  displays, so update the Fenix.
+
+  Three things about this aircraft are worth knowing. Alt+N reads the
+  CAPTAIN'S navigation display - the one whose range and mode you set on the
+  left EFIS panel. Alt+P reads the FIRST OFFICER'S PFD; the two PFDs differ
+  only in the altimeter setting and in which side's autopilot and flight
+  director are annunciated. Alt+I knows whether your Fenix has the digital
+  ISIS or the three round standby gauges.
 
 FCU Controls:
   Shift+H    Read FCU Heading
@@ -195,9 +198,17 @@ INPUT MODE - Press [ to activate
 
 EFB / Tablet:
   Shift+T    Open Fenix EFB (tablet) window. Hosts the Fenix EFB website
-             (http://localhost:8083); the Fenix A320 must be loaded in the
-             sim. (Note: in OUTPUT mode, Shift+T toggles trim announcements —
+             (http://127.0.0.1:8083), with the names, states and keys a
+             screen reader needs added; the Fenix A320 must be loaded in the
+             sim. In the window, Alt+Home goes back to the EFB's home screen.
+             (Note: in OUTPUT mode, Shift+T toggles trim announcements —
              this Shift+T is the INPUT-mode EFB window.)
+
+Fenix windows:
+  Ctrl+Shift+F  Fenix windows list: Engines, Cabin, Failures, Fenix documents
+                and Fenix options. Enter opens the selected window, Escape
+                closes the list. (Keys inside each window: see the end of
+                this list.)
 
 Teleport:
   Shift+R    Runway Teleport
@@ -294,3 +305,39 @@ Alt+Arrow Navigation:
 MCDU Side:
   Ctrl+Shift+L  Left MCDU (Captain)
   Ctrl+Shift+R  Right MCDU (First Officer)
+
+FENIX WINDOWS (open with [ then Ctrl+Shift+F, choose a window, Enter):
+
+Engines:
+  Arrow keys   Read the Fenix's own engine values (they update every second)
+  F5           Read them again ("Engines refreshed")
+  Escape       Close
+
+Cabin (the flight attendant panel):
+  Ctrl+Tab     Next tab: Status, Audio, Doors, Temperature, Water
+  Escape       Close
+
+Failures:
+  Enter        In the search box: search. On a failure: Arm
+  Alt+N        Fail now (asks Yes or No first)
+  Alt+A        Arm (asks for a condition, then Yes or No)
+  Alt+C        Clear (asks Yes or No first)
+  F5           Refresh
+  Escape       Close
+
+Fenix documents:
+  Enter        Open the selected document
+  Ctrl+F       Search box (at least 3 characters, then Enter)
+  Ctrl+P       Open the pinned ECAM procedure (again: the next pinned document)
+  Ctrl+D       Pin or unpin the selected or open document
+  F6           Next pane: document, list, search box (Shift+F6 goes back)
+  F5           Reload
+  Escape       Hide the window (the open document is kept)
+
+Fenix options:
+  Enter        Speak the selected option's details
+  F2           Change an on/off or choice option for this simulator session
+  Shift+F2     Make an option permanent (asks for the value, then Yes or No)
+  Ctrl+F2      Reset your change to the Fenix default (asks Yes or No first)
+  F5           Read the options again
+  Escape       Close

@@ -4,7 +4,7 @@ title: "Planning Your Flight"
 
 <div class="guide-part" markdown="1">
 
-Chapter 1 of 2 in [Part 3: Planning and Preflight](index.md#part-3-planning-and-preflight) of the MSFS Blind Assist user guide.
+Chapter 1 of 2 in [Part 4: Planning and Preflight](index.md#part-3-planning-and-preflight) of the MSFS Blind Assist user guide.
 
 </div>
 
@@ -17,7 +17,7 @@ Chapter 1 of 2 in [Part 3: Planning and Preflight](index.md#part-3-planning-and-
 - [The Flight Planning Window](#flight-planning-efb)
 - [The AI Route Briefing](#planning-route-briefing)
 - [Aircraft EFBs](#aircraft-efb)
-- [The First Officer and Checklists](#checklists)
+- [Flows and Checklists](#checklists)
 - [Tracking Waypoints](#fix-tracking)
 - [NAV Radios](#planning-nav-radios)
 - [FMC Settings](#planning-fmc-settings)
@@ -285,14 +285,23 @@ This tab sets the arrival airport and runway at the end of the plan. It works li
 
 ### The Airport Lookup tab {#the-airport-lookup-tab}
 
-This tab is a reference page for any airport in your navigation database.
+This tab is a reference page for any airport in your navigation database. You can find an airport by its ICAO code, or by part of its name or city.
 
-1. In **Airport Lookup ICAO**, type the airport's code. As soon as the fourth letter is in, the **Airport Information** box fills in, the **Airport Lookup Runways** list fills with the runways, and the first runway's details appear in the **Runway Information** box.
-2. Arrow through the runway list. The Runway Information box updates for each runway as you move.
-3. Tab to either information box and read it line by line with the arrow keys. Both boxes are read-only.
-4. The **Load** button reloads both boxes; you only need it if you want to refresh them.
+1. In **Airport Lookup ICAO**, type the airport's code. As soon as the fourth letter is in, the **Airport Information** box fills in, the **Airport Lookup Runways** list fills with the runways, and the first runway's details appear in the **Runway Information** box. Nothing is spoken: press Tab, and the first line of the Airport Information box gives the airport's code and name, for example "KATL, Hartsfield - Jackson Atlanta I". A code with no airport reads "Airport ROME not found in database."
+2. To search, type a code or part of an airport's name or city, and press Enter. Case, accents and apostrophes don't matter: "Zürich" finds "Zurich" and "ohare" finds "Chicago-O'Hare". With several words, each must appear somewhere in the code, name or city. Letters in the middle of a word count too, so "LAX" finds KLAX.
+   - When what you typed is an airport's exact code, or only one airport matches, it loads at once and its code and name are spoken. KATL loads, even though other airports' names contain those letters. A code with no runway, usually a helipad's, loads at once only when nothing else matches: "MCO" on MSFS 2024 is a helipad named Orlando International Airport, so it opens the list, where you also find Orlando's KMCO.
+   - Otherwise a list opens, best match first, and its title says how many airports match. Arrow to an airport and press Enter to load it, or press Escape to close the list; either way you are back in the field. The list shows at most 50 airports, and its title says when more matched: "50 of 70 airports match LONDON". An exact code also opens the list when another airport is named exactly what you typed, or a town is: "LIMA" lists Turin-Aeritalia, whose code it is, then the airports of Lima, Peru.
+   - When nothing matches, you hear "No airports match" and what you typed.
+3. The tab order is the field, Airport Information, the runway list, then Runway Information. Arrow through the runway list: the Runway Information box updates for each runway as you move.
+4. Read either information box line by line with the arrow keys. Both boxes are read-only.
 
-The **Airport Information** box is grouped under headings: basic information (ident and name), location (coordinates, elevation and magnetic variation), frequencies (Tower, ATIS, AWOS, ASOS and UNICOM), status (closed, military, add-on scenery), fuel, a count of facilities (gates, ramps, runways, approaches and so on), a runway summary, parking, the tower position, the transition altitude and level where the navigation data has them, and the scenery file the airport comes from.
+**Towns.** With the offline location data installed (see [Getting the location data](core-concepts.md#getting-the-location-data)), a town's name finds the airports around it, so "Gothenburg" lists Landvetter and Säve, each "11 nm from Gothenburg, Västra Götaland, Sweden". Each town adds up to 10 airfields within 30 nm, open ones and the longest runways first. A helipad is never added for a town; you find it by its own name or code. A town with no airfield within 30 nm lists its 3 nearest within 100 nm. When several towns share a name, the most populous comes first: "London" lists London, England, then London, Ontario, and so on. Only towns of 500 people or more are searched, and only by their whole name.
+
+**On MSFS 2024**, the navigation data has no city names, so a city is found only through an airport's own name ("Atlanta" finds Hartsfield - Jackson Atlanta) or through the location data. Without the location data installed, a search that finds nothing tells you: "Searching by city on MSFS 2024 needs the location data."
+
+**Distance from you.** When connected to the simulator, each line of the list, the spoken airport and the Airport Information box say how far the airport is from you and in which direction, for example "212 nm southwest". With the simulator closed they leave it out.
+
+The **Airport Information** box starts with the airport's code and name, then is grouped under headings: basic information (ident and name), from aircraft (the distance and direction, when connected), location (coordinates, elevation and magnetic variation), frequencies (Tower, ATIS, AWOS, ASOS and UNICOM), status (closed, military, add-on scenery), fuel, a count of facilities (gates, ramps, runways, approaches and so on), a runway summary, parking, the tower position, the transition altitude and level where the navigation data has them, and the scenery file the airport comes from.
 
 The **Runway Information** box starts with the ILS, if the runway has one (ident, frequency, localizer heading and width, glideslope angle and DME), then gives the dimensions, surface, true and magnetic heading, threshold position, displaced threshold, blast pad and overrun, pattern altitude and runway elevation, lighting, markings, whether the runway is used for take-off and landing, and any VASI or PAPI.
 
@@ -486,133 +495,16 @@ If BA cannot reach the tablet, F6 says, for example, *"flyPad not connected. Mak
 
 ### The Fenix and iFly EFBs {#the-fenix-and-ifly-efbs}
 
-The Fenix A320 and the iFly 737 MAX8 serve their tablets as real web sites on your own computer, and those sites already work with a screen reader. BA simply shows the live site in its window, so you read and use it exactly like a web page, with browse mode and quick keys.
+The Fenix A320 and the iFly 737 MAX8 serve their tablets as real web sites on your own computer. BA shows the live site in its window, so you read and use it exactly like a web page, with browse mode and quick keys. The iFly site already works with a screen reader; the Fenix v3 site does not on its own, so BA adds the names, states and keys it lacks.
 
-- **Fenix EFB:** opens the Fenix tablet site. If the Fenix A320 has not finished loading, the window shows a message instead: *"Fenix EFB is not reachable at http://localhost:8083. Make sure the Fenix A320 is fully loaded, then press Retry."* Press **Retry** once it has loaded. Press Escape to close the window.
+- **Fenix EFB:** opens the Fenix tablet site. Every app is a button you can Tab to, and Alt+Home goes back to the EFB's home screen from anywhere; the details are in [the Fenix chapter's EFB section](airbus-aircraft.md#efb-2). If the Fenix A320 has not finished loading, the window says so instead, in a message you can reach with Tab: *"Fenix EFB is not reachable at http://127.0.0.1:8083. Make sure the Fenix A320 is fully loaded, then press Retry."* Press **Retry** once it has loaded. Escape closes an open menu or pop-up on the page first, then the window.
 - **iFly 737 EFB:** opens the iFly SP1 tablet, with its Performance, Navigraph and SimBrief, Payload and Balance, Ground Services, Doors and other apps. BA says *"iFly EFB loaded."* when the page is ready. If the iFly EFB is not running yet, a message explains why and a **Retry** button is focused. Press Escape to close, F5 to reload, and Alt+Home to go back to the EFB's main page.
 
 Both windows hide rather than close, so when you reopen them you are back on the page you left.
 
-## The First Officer and Checklists {#checklists}
+## Flows and Checklists {#checklists}
 
-### What it is {#what-it-is-13}
-
-Output Shift+C opens the **First Officer**, a crew member who works the flows and checklists with you. Its window has two tabs:
-
-- **Flows** runs each phase's procedure for you, from powering up the aircraft to securing it. The First Officer sets its own switches, checks that each one really moved, and reminds you of the Captain's items.
-- **Checklists** holds the aircraft's normal checklists. A line ticks itself once the aircraft is in that state, and ticking a line yourself has the First Officer do it.
-
-The First Officer is on the PMDG 777 and 737, the iFly 737 MAX8, the Fenix A320, the FlyByWire A32NX and A380X, the Headwind A330-900neo, the TFDi MD-11, and the COWS Diamond DA40-NG and DA40-XLS. You can also open it from the File menu, where the **First Officer** item is named after your aircraft, for example "Fenix A320 First Officer". On any other aircraft the item is not there, and Output Shift+C says *"No checklist for this aircraft."* and opens nothing.
-
-The First Officer never programs the MCDU, CDU, FMC or the G1000: you still enter the flight plan and performance yourself. Items only the Captain can judge, such as the landing autobrake setting, are spoken as reminders and left to you.
-
-<div class="callout note" role="note" markdown="1">
-
-**Note:** The A380X also has a live Electronic Checklist, read from the aircraft's own display and ticked by the aircraft's own sensing, on Output Ctrl+Shift+C. See [Airbus Aircraft](airbus-aircraft.md).
-
-</div>
-
-### When to use it {#fo-when-to-use}
-
-Open it at the start of each flight, before you power up the aircraft. Once opened, it keeps working for the rest of the flight, even with its window closed: it switches the landing lights at 10,000 feet and sets the altimeters at the transition (see [Settings](#fo-settings)). Run each flow at its point in the flight, then read the matching checklist. If you would rather set everything yourself, skip the flows and use the checklists to check your work.
-
-If you first open it in flight, it marks the checklists up to After Takeoff complete and says *"In flight: checklists through After Takeoff marked complete."*
-
-### How to use it {#how-to-use-it-7}
-
-1. Press Output Shift+C. The first time, the window opens on its tab strip; after that it returns to the control you left.
-2. Press Ctrl+Tab to switch between the **Checklists** and **Flows** tabs, or use the arrow keys on the tab strip.
-3. Press Escape to close the window. You go back to where you were, usually the simulator. Your ticks are kept, and a running flow carries on.
-
-The window opens before BA has connected to the simulator; its checklists come to life once it connects. Loading a new flight in the simulator stops a running flow and unticks every checklist.
-
-### The Flows tab {#fo-flows-tab}
-
-The Flows tab has:
-
-- **Available flows:** this aircraft's flows, in flight order. On the Fenix A320, for example: Electrical Power Up, Preflight, Before Start, Engine Start, After Start, Taxi, Line-up, After Takeoff, Descent, Approach, Landing, After Landing, Shutdown and Securing.
-- **Flow steps:** the steps of the selected flow. A Captain's item starts with "[CAPTAIN]". During and after a run, each step is marked with a check mark (done), an arrow (skipped) or a cross (failed).
-- **Current step** and **Flow status:** read-only lines saying what is happening, for example "Step 3: Beacon: ON" and "Running: Before Start".
-- The buttons **Start Flow**, **Pause / Resume**, **Stop Flow** and **Load SimBrief**.
-
-To run a flow, select it in Available flows and press Enter, or Tab to Start Flow and press it. The First Officer works through the steps about two seconds apart. Pause / Resume holds the flow and continues it; Stop Flow ends it after the current step. Only one flow runs at a time.
-
-Before it switches anything that could stop an engine, a flow checks that it is safe. The power-up flows that check the engine controls (Electrical Power Up on the Fenix A320, A32NX, Headwind A330 and 777, Cockpit Preparation on the A380X and 777, and Power Up on the MD-11) and the 737 Preflights stop if an engine is running or the aircraft is in the air, and the shutdown, parking and securing flows stop unless the aircraft is on the ground. The securing flows also stop if an engine is still turning. A shutdown or parking flow cuts the engines first, then waits up to two minutes for them to spin down (*"Waiting for: Engines stopped"* when flow progress is spoken) before it switches the fuel pumps off. Either way you hear why.
-
-### The Checklists tab {#fo-checklists-tab}
-
-The checklists are a tree. Each checklist is named with its progress, for example "Before Start — Not started", "Before Start — 3 of 7 complete" or "Before Start — Complete". Press Right Arrow to open one and Up and Down Arrow to read its lines; opening one closes the others.
-
-- A line ticks itself once the aircraft is in that state, so as you read down a checklist you hear what is already done.
-- Press Space to tick a line yourself. If it is a switch the First Officer can set, it sets it, and BA adds the value it reads, such as the flap setting. If the switch never moves, the line unticks itself and you hear *"Unable to complete:"* followed by the line.
-- If the aircraft's state makes a line unsafe to do, the tick is refused and BA says why. A line that switches the fuel pumps, a hydraulic pump, the IRS or a battery off is done only on the ground with the engines stopped, and a packs-off line only on the ground. Until BA has read the aircraft, it refuses too. For example: *"Fuel pumps left on: not read on the ground, or the engines are not read stopped."*
-- A line the First Officer cannot set, such as a read-back item, only records that you checked it.
-- A checklist you finished, by hand or with its flow, stays complete for the rest of the flight, even when later flows move the same switches.
-- The **Checklist status** line below the tree shows the selected line with its live value and whether it is complete, without ticking it.
-
-The buttons below the tree:
-
-- **Run Related Flow** switches to the Flows tab and runs the flow that belongs to the selected checklist.
-- **Reset Section** unticks the selected checklist (*"Before Start checklist reset"*), and **Reset All** unticks them all (*"All checklists reset"*).
-- **Load SimBrief** is the same as on the Flows tab.
-
-### Loading SimBrief {#fo-simbrief}
-
-**Load SimBrief** fetches your latest [SimBrief](#simbrief) plan, so set your SimBrief username first. The First Officer uses the plan's transition altitude and level for the altimeters, its takeoff flaps in the flows, and on the PMDG 737 and iFly 737 MAX8 its cruise altitude and destination elevation for the pressurization panel. You hear one announcement, for example *"SimBrief flight plan loaded. Transition altitude 5000 feet, transition level 6000 feet. Takeoff flaps 5. Pressurization plan: flight altitude 36000 feet, landing altitude 400 feet."*
-
-With your username set, the plan loads by itself whenever you open the window with no plan loaded. A plan belongs to one flight: it is forgotten after you land or load a new flight. If SimBrief still has the flight you have just flown, you hear *"SimBrief still has the flight just flown. Generate the next flight plan, then press Load SimBrief."* Without a plan, a step that needs one, such as setting the takeoff flaps, becomes a Captain reminder.
-
-### What you will hear {#fo-what-you-will-hear}
-
-While a flow runs:
-
-- *"Before Start flow started"* when it begins and *"Before Start flow complete"* when it ends.
-- Each step as the First Officer does it, for example *"Beacon: ON"*.
-- *"Already set:"* and the step, when the aircraft is already that way, and *"Waiting for:"* or *"Waiting 30 seconds:"* and the step while it waits.
-- *"Captain action required:"* and the item, for something you must do yourself.
-- *"Skipping:"* and the step when a switch did not move, or *"Timed out waiting for:"* when a wait ran out. The flow carries on with the next step.
-- *"Before Start flow stopped. Unable to complete:"* and the step, when a step the rest of the flow depends on fails.
-- *"Before Start paused"*, *"Before Start resumed"*, *"Stopping after the current step:"* and *"Before Start flow cancelled"* for your own presses.
-
-These lines wait their turn and do not cut off your screen reader. To hear fewer of them, untick **Speak flow progress** in [Settings](#fo-settings).
-
-With the window closed, the First Officer still speaks what it does, for example *"Above ten thousand. Landing lights off."*, *"Transition altitude. Altimeters set to standard."* and, at the transition level, *"Transition level. Set local altimeter pressure now."* The exact words vary a little by aircraft.
-
-### Settings {#fo-settings}
-
-The **First Officer** tab of Settings (File menu, Settings) has these options:
-
-<div class="table-wrap" markdown="1">
-
-| Setting | What it does | Default |
-|---|---|---|
-| Auto-raise gear on positive rate (climb) | Raises the gear after a takeoff BA watched from the ground: *"Positive rate. Gear up."* | Off |
-| Auto-lower gear at 2000 ft AGL (descent) | Lowers the gear on a real descent below 2,000 feet above the ground, at 250 knots or less: *"Gear down."* | Off |
-| Auto-manage flaps (FBW A380, A32NX, Headwind A330) | Extends and retracts the flaps by the speed tape, on those three aircraft only. | Off |
-| Auto-engage autopilot on climbout | Engages the autopilot climbing through the height below, after a takeoff BA watched, for example *"350 feet. Autopilot engaged."* | Off |
-| Autopilot engagement altitude (feet AGL) | The height for the setting above, 100 to 3,000 feet. An aircraft with a higher minimum uses its own, such as 400 feet on the PMDG 737. | 350 |
-| Automatically switch landing lights at 10,000 feet | Landing lights off climbing through 10,000 feet and on descending through it. | On |
-| Automatically set altimeters at transition altitude and level | Standard climbing through the SimBrief transition altitude, local pressure descending through the transition level. When off, the First Officer only reminds you. | On |
-| Auto seat belt signs | Disabled; At 10,000 feet; or Top of climb and top of descent. | Disabled |
-| GPWS test type (PMDG 737) | Which GPWS self-test the 737's Preflight flow and checklist run: Short test or Long test. | Short test |
-| Auto-manage center fuel pumps (PMDG 737/777 and iFly MAX8) | Center tank pumps on during ground setup when the center tank has fuel, and off when it runs dry. | Off |
-| Speak flow progress | Speaks each step as a flow runs. When off, a flow speaks only "flow started", Captain actions, skipped or failed steps and "flow complete". | On |
-
-</div>
-
-The gear and autopilot options work on every aircraft, including the HorizonSim 787, whether or not the First Officer window has been opened. The landing lights, altimeters, seat belts, flaps and center pumps work once you have opened the First Officer window, and keep working with it closed until you change aircraft.
-
-### If something goes wrong {#fo-if-something-goes-wrong}
-
-- **"No checklist for this aircraft."** This aircraft has no First Officer.
-- **"A flow is already running. Stop it first."** Only one flow runs at a time. Press Stop Flow, or wait for the flow to finish.
-- **"The last flow is still stopping. Start again when it has stopped."** The flow you stopped is finishing a step that cannot be interrupted, such as the weather radar test. Wait for *"… flow cancelled"*.
-- **"… flow stopped. Unable to complete: Engines stopped"** You ran a power-up flow with an engine turning. Choose the flow for this point in the flight. A shutdown or securing flow run in the air stops the same way, on *"On the ground"*. A securing flow run with an engine turning, or a shutdown whose engines take more than two minutes to spin down, stops on *"Engines stopped"*: check the engines are shut down, then run it again.
-- **"Transition altitude. Set both altimeters to standard."** (or *"Transition level. Set both altimeters to QNH and set local pressure."*) On the FlyByWire A380, BA had not yet worked out whether you are flying MSFS 2020 or MSFS 2024, whose FlyByWire builds use different altimeter controls, so it set nothing. Set the altimeters yourself. The same reason makes an A380 or A32NX flow skip its flight director, baro unit, navigation display or ECAM page step. On the A380X in MSFS 2024 a flight director step is also skipped when one flight director is on and the other off, because the aircraft's single FD button cannot set them both. Set them yourself.
-- **"Skipping: …"** The switch did not move, or the aircraft did not show it in time. Set it yourself from BA's panels and carry on; its checklist line stays unticked until the aircraft shows it.
-- **"No related flow found for this section"** That checklist has no flow; work it by hand.
-- **"SimBrief username not set. Configure it in Settings."** Enter your SimBrief username, as described in [SimBrief](#simbrief).
-- **"Failed to fetch SimBrief data: …"** Check your internet connection and your SimBrief username, then press Load SimBrief again.
+Before you push back, the First Officer (Output Shift+C) works the aircraft's flows and checklists with you. It has its own chapter: [The First Officer and Checklists](first-officer.md).
 
 ## Tracking Waypoints {#fix-tracking}
 
@@ -677,7 +569,7 @@ Press OK to save. BA says *"FMC settings saved"*, and the change takes effect at
 
 <nav class="guide-nav" aria-label="Guide chapters" markdown="1">
 
-- [Previous chapter: Core Concepts](core-concepts.md)
+- [Previous chapter: The First Officer and Checklists](first-officer.md)
 - [Next chapter: Weather](weather.md)
 - [Guide contents](index.md)
 

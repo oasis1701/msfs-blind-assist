@@ -494,7 +494,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             Location = new Point(20, 830),
             Size = new Size(450, 25),
             AccessibleName = "Enable takeoff assistant call outs",
-            AccessibleDescription = "When enabled, announces speed callouts during takeoff roll: 80 knots, 100 knots, V1, and rotate."
+            AccessibleDescription = "When enabled, announces 80 knots and 100 knots during the takeoff roll. V1, Rotate and V2 are separate; mute them in the Monitor Manager."
         };
 
         // Auto-Activate on Lineup Checkbox

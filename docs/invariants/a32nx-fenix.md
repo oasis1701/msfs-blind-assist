@@ -14,10 +14,12 @@ The text is verbatim from CLAUDE.md as of `1f37801a` (A320-30: PR #160's widened
 ## A320-3
 
 - Every Fenix panel pushbutton must go through a full PRESS-RELEASE pulse (0→1→0), never press-only — a press-only pulse leaves the button held down for the whole session (root cause of the stuck TO CONFIG / stuck ECAM STATUS bug that re-fired the takeoff-config test after touchdown). → [a32nx.md](../a32nx.md)
+- Re-measured on Fenix v3 (3.0.0.7426, 2026-10-21, an A320-214 CFM on the ground with ground power, every value restored): the ECAM DOOR page button `S_ECAM_DOOR` pulsed 0, 1, 0 with holds of 200, 100 and 50 ms flipped `I_ECAM_DOOR` every time, and a 20 ms hold (about one frame) was missed. So a press-release pulse registers with holds of 50 to 200 ms, and the app's 200 ms (`ButtonPressHoldMs`) stands on v3. A held 1 with no release flips the function once, whatever its state ([FNX-6]).
 
 ## A320-4
 
 - Do not revert `ExecuteButtonTransition` to the press-only form — the release is safe/correct for all ~150 Fenix buttons (systems latch on the 0→1 rising edge into a separate indicator var; the release never loses state). → [a32nx.md](../a32nx.md)
+- Fenix v3 (3.0.0.7426, measured 2026-10-21): the release is still safe, and the pulse length still right: a press-release pulse registers with holds of 50 to 200 ms and is missed at 20 ms (about one frame), so the 200 ms `ButtonPressHoldMs` stands. v3's momentary template counts the press and the release ([FNX-6]).
 
 ## A320-6
 
@@ -127,13 +129,13 @@ Corrected 2026-10-09: "two separate calc calls" was not enough; two calls issued
 
 - Address the Fenix data service (`FenixMCDUService`: the MCDU subscription and the key writes) as `127.0.0.1`, never `localhost`. The service listens on IPv4 only. `localhost` resolves to `::1` first, and Windows spends about 2 s refusing `::1` before it falls back to `127.0.0.1`, on every NEW connection. The key writes' `HttpClient` loses its pooled connection between 55 and 65 s idle, so the first MCDU key press after about a minute idle stalled 2-3 s (the pilot's report, 2026-10-11).
 - Measured 2026-10-11 (.NET 10.0.12, Fenix in flight), one long-lived `HttpClient`, one read after each idle gap, `localhost` / `127.0.0.1`: first request 2014 / 47 ms; after 30 s 1 / 0 ms; after 55 s 1 / 1 ms; after 65 s 2005 / 1 ms; after 125 s 2006 / 1 ms; after 140 s 2005 / 2 ms. The display WebSocket never dropped all day, so the stall was the key writes, plus every side switch, which used to reconnect.
-- `FenixDataServiceAddressTests` fails on any `ws://localhost` or `http://localhost` in `FenixMCDUService.cs`. Not covered by this rule: the Fenix EFB window (`FenixEFBForm`, a WebView2 page; browsers try both addresses almost at once), `ActiveSkyClient` and the iFly EFB window. → [a32nx.md](../a32nx.md)
+- `FenixDataServiceAddressTests` fails on any `ws://localhost` or `http://localhost` in `FenixMCDUService.cs`. The Fenix EFB window uses the same address ([FNX-8]). Not covered by this rule: `ActiveSkyClient` and the iFly EFB window. → [a32nx.md](../a32nx.md)
 
 ## A320-41
 
 - Fenix hotkey readouts (output mode Shift+H/S/A/V for the FCU, B for the altimeter) force-read the on-request `_READOUT` twins listed in `FenixA320Definition.FcuReadoutVariables`, never the continuous originals. Each original is Continuous + IsAnnounced + ExcludeFromBatch, so it streams on its own PERIOD.SECOND subscription, and `FreshReadPolicy.RouteRequest` answers a forced read of one with `AwaitNextDelivery`: nothing is requested, and the readout waits for the next 1 Hz delivery, 0-1 s (the pilot's "about half a second on the Shift keys, not the plain ones", 2026-10-11). A twin is the same L:var, OnRequest, so its forced read is a PERIOD.ONCE on its own definition, answered within a frame, as the plain keys' requests are.
 - History: `f500915db` (2026-06-03) set ExcludeFromBatch on the originals so the readouts kept an individual definition after the SimConnect-ceiling work (a batch-covered var's forced read then did nothing, and the readouts went silent). `c5c624a84` (2026-09-05) stopped `RequestVariable` issuing a PERIOD.ONCE on an own subscription's request id, which replaced the subscription and froze the var for the session, and made it wait for the next delivery instead. Both stay; the twins step around them.
-- The originals keep their subscriptions: their changes reach the generic announce path (their Ctrl+M rows), and `SetFCUValueWithVerification` reads them from the cache. A readout no longer swallows one of their deliveries. Cost: ten definitions (the Fenix registers about 490 of the ~1000 allowed).
+- The originals keep their subscriptions: their changes reach the generic announce path (their Ctrl+M rows), and the FCU set windows' entry checks ("Already at …") read them from the cache. The typed FCU sets themselves read the heading, speed, altitude and V/S twins fresh after every write ([FNX-20]; a twin answering no pending readout is consumed silently). A readout no longer swallows one of their deliveries. Cost: ten definitions (the Fenix registers about 490 of the ~1000 allowed).
 - Pinned by `FenixFcuReadoutTests`. Also seen, not changed: the FBW A320's FCU readouts force-read its managed flags (`A32NX_FCU_AFS_DISPLAY_*_MANAGED`), which are the same kind, so they likely wait too. → [a32nx.md](../a32nx.md)
 
 ## A380-8
