@@ -102,8 +102,20 @@ public partial class CowsDA40Definition
         AddOptionSwitch(v, "DA40_OPT_REALISTIC_PARK_BRAKE", "REALISTIC_PARKING_BRAKE",
             "Realistic Parking Brake", "Simplified", "Realistic");
 
-        AddOptionSwitch(v, "DA40_OPT_WHEEL_ASSIST", "INPUT_WHEEL_ASSIST",
-            "Nosewheel Steering Assist", "Off", "On");
+        // ⚠️ THREE MODES, NOT A SWITCH, on both airframes. The gear lever (GEAR_TOGGLE)
+        // cycles 0, 1, 2 and back to 0 (NG Inputs 1221, XLS 1385). 1 brakes the inside wheel
+        // past half rudder (NG Inputs 686-711); 2 swaps the castering nosewheel for a
+        // steerable one (NG Logic 5317, XLS 5210). As Off/On, mode 2 was spoken as a raw
+        // "2,0". The names are the PFD advisory each press flashes (panel.xml): STEER REAL,
+        // STEER AUTOBRAKE, STEER NWS.
+        AddOptionEnum(v, "DA40_OPT_WHEEL_ASSIST", "INPUT_WHEEL_ASSIST",
+            "Nosewheel Steering Assist",
+            new Dictionary<double, string>
+            {
+                [0] = "Real",
+                [1] = "Autobrake",
+                [2] = "NWS"
+            });
 
         AddOptionSwitch(v, "DA40_OPT_SLOW_PROPS", "SLOW_PROPS",
             "Slow Propeller Animation", "Off", "On");
