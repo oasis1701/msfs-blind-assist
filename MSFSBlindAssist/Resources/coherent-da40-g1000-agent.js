@@ -3621,6 +3621,22 @@
         return null;
     };
 
+    /// Which digit an altitude being edited in a list cell is on, ", digit 4 of 5", or "" when
+    /// the cell is not being edited. The flight plan's ALT editor draws one span per digit and
+    /// marks the live one highlight-select; read without it, every step between digits
+    /// re-read "NEGIL ALT: 01000 FT" with nothing to say which one the knob would change
+    /// (ESGG, 2026-10-26). Same words as A.M.digitOf.
+    A.M.editPlaceOf = function (cell) {
+        var spans = cell.querySelectorAll("span");
+        var digits = [], at = -1;
+        for (var i = 0; i < spans.length; i++) {
+            if (spans[i].children.length || !/^\d$/.test(text(spans[i]).replace(/\s+/g, ""))) continue;
+            if (classList(spans[i]).indexOf("highlight-select") >= 0) at = digits.length;
+            digits.push(spans[i]);
+        }
+        return at < 0 ? "" : ", digit " + (at + 1) + " of " + digits.length;
+    };
+
     /// The title of the box an element is drawn in ("Frequency"), from the instrument's own
     /// groupbox + groupbox-title pairing, or "" when it sits in none.
     A.M.boxTitleOf = function (el) {
@@ -3658,7 +3674,8 @@
             var col = A.M.columnOf(el2, leg);
             if (col) {
                 var ident = spacedText(leg.querySelector(".fix-name"));
-                return (ident ? ident + " " : "") + col.name + ": " + (spacedText(col.cell) || "blank");
+                return (ident ? ident + " " : "") + col.name + ": " + (spacedText(col.cell) || "blank") +
+                    A.M.editPlaceOf(col.cell);
             }
             var legLine = A.fieldsOf(leg);
             if (legLine && legLine.replace(/blank|[\s,_]/g, "")) return legLine;
@@ -4921,8 +4938,14 @@
         // which reads as the dialog having changed rather than the cursor having moved.
         // Reported from the cockpit as exactly that.
         //
-        // ", selected" is the word this display already uses for the focused item of a
-        // softkey row and a choice list, so a dialog now answers the same way.
+        // "selected" is the word this display already uses for the focused item of a
+        // softkey row and a choice list, so a dialog answers the same way.
+        //
+        // ⚠️ "OK selected", NOT "OK, selected". A knob step drops the lead-in it shares with
+        // the last read-back (CowsDA40DisplayForm.DropRepeatedLead, split at ", "), and with
+        // the comma the button's name was part of that lead: moving onto OK read "selected,
+        // CANCEL", which sounds like CANCEL (Navigraph SimBrief dialog, 2026-10-26). One
+        // segment per button keeps the name with its mark.
         var buttons = box.querySelectorAll(".action-button");
         var labels = [];
         for (var i = 0; i < buttons.length; i++) {
@@ -4930,7 +4953,7 @@
             var label = text(buttons[i]);
             if (!label) continue;
             labels.push(label +
-                (classList(buttons[i]).indexOf("highlight-select") >= 0 ? ", selected" : ""));
+                (classList(buttons[i]).indexOf("highlight-select") >= 0 ? " selected" : ""));
         }
         var parts = [];
         if (question) parts.push(question);
