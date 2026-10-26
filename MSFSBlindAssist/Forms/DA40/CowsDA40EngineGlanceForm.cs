@@ -81,7 +81,7 @@ public sealed class CowsDA40EngineGlanceForm : Form
         catch { return; }   // a read that throws must not kill the window
 
         if (rows.Count == 0) rows.Add("Engine readings not available yet");
-        DisplayList.UpdateInPlace(_list, rows);
+        DisplayList.UpdateInPlace(_list, rows, selectFirstOnPopulate: true);
     }
 
     protected override void Dispose(bool disposing)

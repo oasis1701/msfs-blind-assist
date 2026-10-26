@@ -43,7 +43,7 @@ public class DisplayListUpdateInPlaceTests
     public void First_populate_adds_all_lines_in_order()
     {
         var lb = new ListBox();
-        DisplayList.UpdateInPlace(lb, new[] { "one", "two", "three" });
+        DisplayList.UpdateInPlace(lb, new[] { "one", "two", "three" }, selectFirstOnPopulate: true);
 
         Assert.Equal(3, lb.Items.Count);
         Assert.Equal("one", lb.Items[0]);
@@ -189,7 +189,7 @@ public class DisplayListUpdateInPlaceTests
         // -1. So a live-updating list re-announced "List, nothing selected, 0 of 2" on every
         // redraw at a pilot who had touched nothing (five times in one live dump).
         using var lb = new ListBox();
-        DisplayList.UpdateInPlace(lb, new[] { "one", "two" });
+        DisplayList.UpdateInPlace(lb, new[] { "one", "two" }, selectFirstOnPopulate: true);
 
         Assert.Equal(2, lb.Items.Count);
         Assert.Equal(0, lb.SelectedIndex);
@@ -204,7 +204,7 @@ public class DisplayListUpdateInPlaceTests
         // test exists so the two are read together rather than one being "fixed" over the
         // other.
         using var lb = new ListBox();
-        DisplayList.UpdateInPlace(lb, new[] { "one", "two" });
+        DisplayList.UpdateInPlace(lb, new[] { "one", "two" }, selectFirstOnPopulate: true);
         lb.SelectedIndex = -1;
 
         DisplayList.UpdateInPlace(lb, new[] { "one", "changed" });
@@ -218,7 +218,7 @@ public class DisplayListUpdateInPlaceTests
         // The floor only fires when there is genuinely NO selection - it must never drag a
         // reader back to the top of a list they are working down.
         using var lb = new ListBox();
-        DisplayList.UpdateInPlace(lb, new[] { "one", "two", "three" });
+        DisplayList.UpdateInPlace(lb, new[] { "one", "two", "three" }, selectFirstOnPopulate: true);
         lb.SelectedIndex = 2;
 
         DisplayList.UpdateInPlace(lb, new[] { "one", "two", "three", "four" });
@@ -227,10 +227,20 @@ public class DisplayListUpdateInPlaceTests
     }
 
     [Fact]
+    public void WithoutTheOptInAFreshListStaysUnselected()
+    {
+        // A list whose selection a button acts on (the Fenix cabin window's announcements and
+        // memo) refuses with no selection: picking row 0 for the pilot would play it.
+        using var lb = new ListBox();
+        DisplayList.UpdateInPlace(lb, new[] { "one", "two" });
+        Assert.Equal(-1, lb.SelectedIndex);
+    }
+
+    [Fact]
     public void AnEmptyListIsLeftAloneRatherThanForcedToSelect()
     {
         using var lb = new ListBox();
-        DisplayList.UpdateInPlace(lb, System.Array.Empty<string>());
+        DisplayList.UpdateInPlace(lb, System.Array.Empty<string>(), selectFirstOnPopulate: true);
         Assert.Equal(-1, lb.SelectedIndex);
     }
 }

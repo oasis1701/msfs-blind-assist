@@ -88,6 +88,7 @@ public sealed class CowsDA40DisplayForm : Form
         _text = new DisplayListBox
         {
             Dock = DockStyle.Fill,
+            SelectFirstOnPopulate = true,
             Font = new Font("Consolas", 11, FontStyle.Regular),
             TabIndex = 0,
             AccessibleName = title,

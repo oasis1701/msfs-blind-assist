@@ -1581,7 +1581,9 @@ public partial class MainForm
             var lines = new List<string>();
             foreach (var v in values)
                 lines.AddRange((v ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));
-            Forms.DisplayList.UpdateInPlace(displayBox, lines);
+            // Read-only, so its first fill selects row 0: at -1 every live redraw read as
+            // "nothing selected" (DisplayList.SelectFirstIfNothingSelected).
+            Forms.DisplayList.UpdateInPlace(displayBox, lines, selectFirstOnPopulate: true);
         }
     }
 

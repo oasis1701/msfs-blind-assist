@@ -185,6 +185,18 @@ These guides do not teach you to fly the aircraft itself. For engine starts, flo
    - [iFly 737 MAX8](boeing-aircraft-and-the-md-11.md#boeing-ifly737)
    - [TFDi MD-11](boeing-aircraft-and-the-md-11.md#boeing-md11)
 3. [COWS Diamond DA40](diamond-da40.md)
+   - [Before you fly](diamond-da40.md#da40-before)
+   - [How the panels are organised](diamond-da40.md#da40-panels)
+   - [The Status Display](diamond-da40.md#da40-status)
+   - [The G1000 windows](diamond-da40.md#da40-g1000)
+   - [Radios, transponder and altimeters](diamond-da40.md#da40-radios)
+   - [The GFC 700 autopilot](diamond-da40.md#da40-autopilot)
+   - [Reading the engine and the aeroplane](diamond-da40.md#da40-readouts)
+   - [The DA40-NG](diamond-da40.md#da40-ng)
+   - [The DA40-XLS](diamond-da40.md#da40-xls)
+   - [The First Officer and checklists](diamond-da40.md#da40-checklists)
+   - [Failures and simulation](diamond-da40.md#da40-simulation)
+   - [Things worth knowing](diamond-da40.md#da40-quirks)
 
 ## Part 9: General Flying Concepts {#part-8-general-flying-concepts}
 
@@ -228,3 +240,4 @@ These guides do not teach you to fly the aircraft itself. For engine starts, flo
    - [HorizonSim 787-9](hotkey-reference.md#hk-hs787)
    - [iFly 737 MAX8](hotkey-reference.md#hk-ifly)
    - [TFDi MD-11](hotkey-reference.md#hk-md11)
+   - [COWS Diamond DA40](hotkey-reference.md#hk-da40)

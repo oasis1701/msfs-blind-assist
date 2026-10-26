@@ -24,8 +24,12 @@ namespace MSFSBlindAssist.Forms
         /// <summary>
         /// Reconcile <paramref name="lb"/>'s items to <paramref name="lines"/> in place. No-ops when
         /// the content is identical (no flicker, no re-read). Safe on a disposed control.
+        /// <paramref name="selectFirstOnPopulate"/> selects row 0 when the list fills for the first
+        /// time with nothing selected: for READ-ONLY status lists only, never a list whose
+        /// selection a button acts on (the Fenix cabin window's announcements and memo refuse with
+        /// no selection, and a row picked for the pilot would be played).
         /// </summary>
-        public static void UpdateInPlace(ListBox lb, IReadOnlyList<string> lines)
+        public static void UpdateInPlace(ListBox lb, IReadOnlyList<string> lines, bool selectFirstOnPopulate = false)
         {
             if (lb == null || lb.IsDisposed || lines == null) return;
             int n = lines.Count;
@@ -57,7 +61,7 @@ namespace MSFSBlindAssist.Forms
                 lb.BeginUpdate();
                 try { for (int i = 0; i < n; i++) lb.Items.Add(lines[i]); }
                 finally { lb.EndUpdate(); }
-                SelectFirstIfNothingSelected(lb);
+                if (selectFirstOnPopulate) SelectFirstIfNothingSelected(lb);
                 return;
             }
 
@@ -151,6 +155,11 @@ namespace MSFSBlindAssist.Forms
         /// introducing one there would move focus in a list somebody may have deliberately
         /// tabbed away from. A list that has never been populated has no such position to
         /// respect, and at -1 its first Enter or Space does nothing at all.
+        ///
+        /// ⚠️ OPT-IN (selectFirstOnPopulate), READ-ONLY LISTS ONLY. On a list whose selection a
+        /// button acts on, no selection is a state the pilot is told about: the Fenix cabin
+        /// window's Play now and Add to memo refuse with "Select an announcement first.", and
+        /// a row 0 picked here would have been played without the pilot choosing it.
         /// </summary>
         private static void SelectFirstIfNothingSelected(ListBox lb)
         {
