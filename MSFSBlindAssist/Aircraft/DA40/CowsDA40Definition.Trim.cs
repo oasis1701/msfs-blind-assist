@@ -279,7 +279,7 @@ public partial class CowsDA40Definition
 
         displayText = Math.Abs(value) < 0.005
             ? "centred"
-            : $"{Math.Abs(value):0.00} degrees {(value > 0 ? "nose up" : "nose down")}";
+            : FormattableString.Invariant($"{Math.Abs(value):0.00} degrees {(value > 0 ? "nose up" : "nose down")}");
         return true;
     }
 
@@ -379,6 +379,6 @@ public partial class CowsDA40Definition
         if (Math.Abs(pct) < 0.5) return "centred";
 
         string direction = pct > 0 ? "nose up" : "nose down";
-        return $"{Math.Abs(pct):0} percent {direction}, {degrees:0.0} degrees";
+        return FormattableString.Invariant($"{Math.Abs(pct):0} percent {direction}, {degrees:0.0} degrees");
     }
 }

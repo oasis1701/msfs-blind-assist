@@ -617,7 +617,7 @@ public partial class CowsDA40Definition
                 return true;
 
             case "DA40_XLS_PROP_PRIME":
-                displayText = value >= PropPrimedAt ? "Primed" : $"Not primed, {value:F1} of 5";
+                displayText = value >= PropPrimedAt ? "Primed" : FormattableString.Invariant($"Not primed, {value:F1} of 5");
                 return true;
 
             case "DA40_XLS_AUTOMIXTURE":

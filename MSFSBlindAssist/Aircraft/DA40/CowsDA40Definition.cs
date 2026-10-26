@@ -1,3 +1,4 @@
+using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 
 namespace MSFSBlindAssist.Aircraft.DA40;
@@ -940,7 +941,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             // from the RAW value and only the figure spoken beside it changes.
             if (!TryUnitText(def.Units, value, def.Format, out string withUnits))
             {
-                string number = value.ToString(def.Format);
+                string number = value.ToString(def.Format, CultureInfo.InvariantCulture);
                 withUnits = string.IsNullOrWhiteSpace(def.Units) ? number : $"{number} {def.Units}";
             }
 
@@ -979,7 +980,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 // TrimEnd, because a unitless quantity must not leave a trailing space for
                 // the screen reader to pause on.
                 displayText =
-                    $"{value.ToString(readout.Format)} {SpokenUnit(readout.Units)}".TrimEnd();
+                    $"{value.ToString(readout.Format, CultureInfo.InvariantCulture)} {SpokenUnit(readout.Units)}".TrimEnd();
             }
             return true;
         }

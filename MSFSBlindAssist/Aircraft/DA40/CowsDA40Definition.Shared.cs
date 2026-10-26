@@ -123,7 +123,9 @@ public partial class CowsDA40Definition
             Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            Format = "F0"
+            Format = "F0",
+            // The announcement ignores Format and fell to "2000,0" on a Swedish PC.
+            SpokenNumberFormat = "0000"
         },
 
         ["DA40_XPDR_MODE"] = new SimVarDefinition

@@ -213,7 +213,7 @@ public partial class CowsDA40Definition
         displayText = "";
         if (varKey != "DA40_RADIO_COM1_ACTIVE" && varKey != "DA40_RADIO_COM2_ACTIVE") return false;
 
-        displayText = $"{value:0.000} MHz";
+        displayText = FormattableString.Invariant($"{value:0.000} MHz");
         return true;
     }
 

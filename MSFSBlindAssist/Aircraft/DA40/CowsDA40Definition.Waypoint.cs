@@ -52,7 +52,7 @@ public partial class CowsDA40Definition
         if (DisplayUnitDistance == "metric")
         {
             double km = nm * 1.852;
-            return km < 10 ? $"{km:0.0} kilometres" : $"{km:0} kilometres";
+            return km < 10 ? FormattableString.Invariant($"{km:0.0} kilometres") : $"{km:0} kilometres";
         }
         return G1000Waypoints.NauticalMilesText(nm);
     }

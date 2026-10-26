@@ -170,7 +170,7 @@ public partial class CowsDA40Definition
     /// and a both-altimeter set can never drift into two renderings of one number.
     /// </summary>
     internal static string BaroBothUnits(double inHg) =>
-        $"{inHg * 33.8639:0} hectopascals, {inHg:0.00} inches";
+        FormattableString.Invariant($"{inHg * 33.8639:0} hectopascals, {inHg:0.00} inches");
 
     internal static string BaroSetPhrase(double mainInHg, double stbyInHg)
     {
@@ -245,7 +245,7 @@ public partial class CowsDA40Definition
 
             long hz = (long)Math.Round(mhz * 1_000_000.0);
             simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{hz} (>K:NAV{radio}_STBY_SET_HZ)"));
-            set.Add($"NAV {radio} standby {mhz:0.00}");
+            set.Add(FormattableString.Invariant($"NAV {radio} standby {mhz:0.00}"));
         }
 
         announcer.AnnounceImmediate(set.Count == 0 ? "No frequency set" : string.Join(", ", set));
@@ -281,7 +281,7 @@ public partial class CowsDA40Definition
 
         string text = TryGetDisplayOverride(varKey, value.Value, out string rendered)
             ? rendered
-            : value.Value.ToString("0.#");
+            : value.Value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
 
         bits.Add(label.Length > 0 ? label + " " + text : text);
     }
@@ -390,13 +390,13 @@ public partial class CowsDA40Definition
                 // quotes both and the aeroplane is fuelled in either - because a pilot who
                 // has explicitly chosen litres has already said which one they want.
                 string totalText = TryUnitText("gallons", total, "0.0", out string tt)
-                    ? tt : $"{total:0.0} gallons";
+                    ? tt : FormattableString.Invariant($"{total:0.0} gallons");
                 string second = DisplayUnitFuel == "gallons"
                     ? $", {total * LitresPerGallon:0} litres" : "";
                 string leftText = TryUnitText("gallons", left, "0.0", out string lt)
-                    ? lt : $"{left:0.0} gallons";
+                    ? lt : FormattableString.Invariant($"{left:0.0} gallons");
                 string rightText = TryUnitText("gallons", right, "0.0", out string rt)
-                    ? rt : $"{right:0.0} gallons";
+                    ? rt : FormattableString.Invariant($"{right:0.0} gallons");
 
                 announcer.AnnounceImmediate(
                     $"Fuel {totalText}{second}. {a} {leftText}, {b} {rightText}.");
@@ -433,7 +433,7 @@ public partial class CowsDA40Definition
 
                 double flow = flowOpt ?? 0;
                 fuelBits.Add(TryUnitText("gallons per hour", flow, "0.0", out string ft)
-                    ? "Flow " + ft : $"Flow {flow:0.0} gallons per hour");
+                    ? "Flow " + ft : FormattableString.Invariant($"Flow {flow:0.0} gallons per hour"));
 
                 if (flow >= 0.1)
                 {
@@ -452,7 +452,7 @@ public partial class CowsDA40Definition
                 // fuel moves by itself - burnt from the main, returned through the aux - so
                 // it drifts without the pilot doing anything.
                 double diff = Math.Abs(mainOpt.Value - auxOpt.Value);
-                fuelBits.Add($"Tank difference {diff:0.0} of {FuelMaxTankDifferenceGal:0} gallons allowed" +
+                fuelBits.Add(FormattableString.Invariant($"Tank difference {diff:0.0} of {FuelMaxTankDifferenceGal:0} gallons allowed") +
                              (diff > FuelMaxTankDifferenceGal ? ", OVER the limit" : ""));
 
                 announcer.AnnounceImmediate(string.Join(". ", fuelBits) + ".");
@@ -802,7 +802,7 @@ public partial class CowsDA40Definition
         if (inHg is null) return "not available yet";
 
         string hpa = $"{inHg.Value * 33.8639:0} hectopascals";
-        string inches = $"{inHg.Value:0.00} inches";
+        string inches = FormattableString.Invariant($"{inHg.Value:0.00} inches");
         return PressureInHectopascals ? $"{hpa}, {inches}" : $"{inches}, {hpa}";
     }
 

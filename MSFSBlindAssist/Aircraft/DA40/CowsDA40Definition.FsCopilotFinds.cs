@@ -134,7 +134,7 @@ public partial class CowsDA40Definition
 
             case "DA40_FUEL_TOTALISER_REM":
             case "DA40_FUEL_TOTALISER_USED":
-                text = $"{value:0.0} gallons";
+                text = FormattableString.Invariant($"{value:0.0} gallons");
                 return true;
 
             case "DA40_PITOT_TEMP":

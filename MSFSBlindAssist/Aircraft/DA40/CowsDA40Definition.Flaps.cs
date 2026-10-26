@@ -240,7 +240,7 @@ public partial class CowsDA40Definition
             {
                 double split = Math.Abs(_flapLeftPct - _flapRightPct);
                 displayText = split > FlapAsymmetryWarnPct
-                    ? $"SPLIT — {split:0.0} percent apart"
+                    ? FormattableString.Invariant($"SPLIT — {split:0.0} percent apart")
                     : "Even";
                 return true;
             }

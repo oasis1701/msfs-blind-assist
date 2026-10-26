@@ -240,7 +240,7 @@ public static class GpsWaypointSequencer
     }
 
     private static string DefaultDistance(double nm) =>
-        nm < 10 ? $"{nm:0.0} miles" : $"{nm:0} miles";
+        nm < 10 ? FormattableString.Invariant($"{nm:0.0} miles") : $"{nm:0} miles";
 
     /// <summary>
     /// A waypoint ident is SPELT, letter by letter, exactly as a pilot reads one back to a

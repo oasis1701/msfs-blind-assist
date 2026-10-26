@@ -258,7 +258,7 @@ public partial class CowsDA40Definition
             case "DA40_XLS_FUEL_LEFT_IND":
             case "DA40_XLS_FUEL_RIGHT_IND":
             {
-                if (!TryUnitText("gallons", value, "0.0", out string quantity)) quantity = $"{value:0.0} gallons";
+                if (!TryUnitText("gallons", value, "0.0", out string quantity)) quantity = FormattableString.Invariant($"{value:0.0} gallons");
                 displayText = value < XlsLowFuelGal ? quantity + ", low fuel" : quantity;
 
                 // On the flat spot the gauge has stopped measuring: the probe is pinned at
@@ -267,7 +267,7 @@ public partial class CowsDA40Definition
                 double actual = varKey == "DA40_XLS_FUEL_LEFT_IND" ? _xlsFuelLeftGal : _xlsFuelRightGal;
                 if (Math.Abs(value - XlsGaugeFlatSpotGal) < 0.05 && actual > XlsGaugeFlatSpotGal + 0.2)
                 {
-                    displayText += $", on the gauge's flat spot - between {XlsGaugeFlatSpotGal:0} and {XlsGaugeFlatSpotTopGal:0.#}, measured {actual:0.0}";
+                    displayText += FormattableString.Invariant($", on the gauge's flat spot - between {XlsGaugeFlatSpotGal:0} and {XlsGaugeFlatSpotTopGal:0.#}, measured {actual:0.0}");
                 }
                 return true;
             }
@@ -276,14 +276,14 @@ public partial class CowsDA40Definition
             {
                 double diff = Math.Abs(_xlsFuelLeftGal - _xlsFuelRightGal);
                 displayText = diff > XlsMaxTankDifferenceGal
-                    ? $"{diff:0.0} gallons, OVER the {XlsMaxTankDifferenceGal:0} gallon limit"
-                    : $"{diff:0.0} gallons, limit {XlsMaxTankDifferenceGal:0}";
+                    ? FormattableString.Invariant($"{diff:0.0} gallons, OVER the {XlsMaxTankDifferenceGal:0} gallon limit")
+                    : FormattableString.Invariant($"{diff:0.0} gallons, limit {XlsMaxTankDifferenceGal:0}");
                 return true;
             }
 
             case "DA40_XLS_FUEL_FEED":
                 displayText = value <= 0.005 ? "Nothing - selector off or tank empty"
-                    : (TryUnitText("gallons", value, "0.0", out string feed) ? feed : $"{value:0.0} gallons");
+                    : (TryUnitText("gallons", value, "0.0", out string feed) ? feed : FormattableString.Invariant($"{value:0.0} gallons"));
                 return true;
 
             case "DA40_XLS_FUEL_PRESSURE":

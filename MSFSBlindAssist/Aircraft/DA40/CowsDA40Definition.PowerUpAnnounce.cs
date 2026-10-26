@@ -186,9 +186,9 @@ public partial class CowsDA40Definition
         if (!on) return "";
 
         var parts = new System.Collections.Generic.List<string>();
-        if (main is not null) parts.Add($"main bus {main.Value:0.0} volts");
-        if (ess is not null) parts.Add($"essential {ess.Value:0.0}");
-        if (batt is not null) parts.Add($"battery {batt.Value:0.0}");
+        if (main is not null) parts.Add(FormattableString.Invariant($"main bus {main.Value:0.0} volts"));
+        if (ess is not null) parts.Add(FormattableString.Invariant($"essential {ess.Value:0.0}"));
+        if (batt is not null) parts.Add(FormattableString.Invariant($"battery {batt.Value:0.0}"));
 
         // Nothing cached yet - the first master-on of a session can land before the batch has
         // delivered a single voltage. Silence beats inventing a reading.

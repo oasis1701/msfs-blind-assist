@@ -197,7 +197,7 @@ public partial class CowsDA40Definition
                 return false;
         }
 
-        text = converted.ToString(format, CultureInfo.CurrentCulture) + " " + spoken;
+        text = converted.ToString(format, CultureInfo.InvariantCulture) + " " + spoken;
         return true;
     }
 
@@ -211,7 +211,7 @@ public partial class CowsDA40Definition
     {
         bool celsius = _unitTemperature != "fahrenheit";
         double converted = celsius ? deltaF * 5.0 / 9.0 : deltaF;
-        return converted.ToString("F0", CultureInfo.CurrentCulture)
+        return converted.ToString("F0", CultureInfo.InvariantCulture)
             + (celsius ? " degrees celsius" : " degrees fahrenheit");
     }
 

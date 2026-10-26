@@ -260,7 +260,7 @@ public partial class CowsDA40Definition
             // inHg; multiplying it again read 447 inHg on a running engine.
             case "DA40_XLS_MAP":
                 // "inches", as both altimeters say it: a screen reader spells "inHg" out.
-                displayText = $"{value:F1} inches";
+                displayText = FormattableString.Invariant($"{value:F1} inches");
                 return true;
 
             // ⚠️ THESE THREE NAME THEIR OWN UNIT BECAUSE THEIR SOURCE NO LONGER CARRIES ONE.
@@ -285,12 +285,12 @@ public partial class CowsDA40Definition
 
             case "DA40_XLS_FUEL_FLOW":
                 displayText = DA40InstrumentBands.Annotate(
-                    varKey, value, $"{value:F1} gallons per hour");
+                    varKey, value, FormattableString.Invariant($"{value:F1} gallons per hour"));
                 return true;
 
 
             case "DA40_XLS_AFR":
-                displayText = $"{value:F1} to 1";
+                displayText = FormattableString.Invariant($"{value:F1} to 1");
                 return true;
         }
 

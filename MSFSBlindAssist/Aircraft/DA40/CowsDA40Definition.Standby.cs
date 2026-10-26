@@ -365,7 +365,7 @@ public partial class CowsDA40Definition
                 // exact value back, and it is the one announcement CLAUDE.md explicitly
                 // asks for. In BOTH units, since either could have been typed.
                 announcer.AnnounceImmediate(
-                    $"Standby altimeter {inHg * 33.8639:0} hectopascals, {inHg:0.00} inches");
+                    FormattableString.Invariant($"Standby altimeter {inHg * 33.8639:0} hectopascals, {inHg:0.00} inches"));
                 return true;
             }
 
@@ -391,7 +391,7 @@ public partial class CowsDA40Definition
                     FormattableString.Invariant($"{mb * 16:0.###} (>K:KOHLSMAN_SET)"));
                 MarkBaroSetByUs();
                 announcer.AnnounceImmediate(
-                    $"Altimeter {mb:0} hectopascals, {inHg:0.00} inches");
+                    FormattableString.Invariant($"Altimeter {mb:0} hectopascals, {inHg:0.00} inches"));
                 return true;
             }
 

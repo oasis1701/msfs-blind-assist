@@ -440,7 +440,7 @@ public partial class CowsDA40Definition
         // Read back in the pilot's own fuel unit - a pilot who set the G1000 to litres
         // asked to work in litres, and a refuelling figure is exactly where that matters.
         string Quantity(double gal)
-            => TryUnitText("gallons", gal, "0.0", out string t) ? t : $"{gal:0.0} gallons";
+            => TryUnitText("gallons", gal, "0.0", out string t) ? t : FormattableString.Invariant($"{gal:0.0} gallons");
     }
 
     private bool HandleFuelSet(string varKey, double value, SimConnectManager simConnect,
@@ -564,7 +564,7 @@ public partial class CowsDA40Definition
                 // units, so it is annotated from the raw gallons; only the figure changes.
                 if (!TryUnitText("gallons", value, "0.0", out string quantity))
                 {
-                    quantity = $"{value:0.0} gallons";
+                    quantity = FormattableString.Invariant($"{value:0.0} gallons");
                 }
 
                 string band = DA40InstrumentBands.Annotate(varKey, value, quantity);
@@ -590,8 +590,8 @@ public partial class CowsDA40Definition
             {
                 double diff = Math.Abs(_fuelMainGal - _fuelAuxGal);
                 displayText = diff > FuelMaxTankDifferenceGal
-                    ? $"{diff:0.0} gallons, OVER the {FuelMaxTankDifferenceGal:0} gallon limit"
-                    : $"{diff:0.0} gallons, limit {FuelMaxTankDifferenceGal:0}";
+                    ? FormattableString.Invariant($"{diff:0.0} gallons, OVER the {FuelMaxTankDifferenceGal:0} gallon limit")
+                    : FormattableString.Invariant($"{diff:0.0} gallons, limit {FuelMaxTankDifferenceGal:0}");
                 return true;
             }
         }
@@ -615,7 +615,7 @@ public partial class CowsDA40Definition
         if (valve is null) return "Not available yet";
         if (Math.Abs(valve.Value - 1) > 0.5) return "Not transferring";
 
-        string text = $"{ratePerSecond * 60:0.0} gallons per minute, aux to main";
+        string text = FormattableString.Invariant($"{ratePerSecond * 60:0.0} gallons per minute, aux to main");
         if (mainGal >= FuelMainCapacityGal - 0.05)
         {
             text += ". Main tank full, the transfer is going overboard";
@@ -628,5 +628,5 @@ public partial class CowsDA40Definition
     /// and the aeroplane is fuelled in whichever the field uses.
     /// </summary>
     private static string DualUnitFuel(double gallons)
-        => $"{gallons:0.0} gallons, {gallons * LitresPerGallon:0} litres";
+        => FormattableString.Invariant($"{gallons:0.0} gallons, {gallons * LitresPerGallon:0} litres");
 }
