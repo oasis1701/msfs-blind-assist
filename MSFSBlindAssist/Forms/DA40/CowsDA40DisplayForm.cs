@@ -1528,6 +1528,7 @@ public sealed class CowsDA40DisplayForm : Form
         // The codebase's own invariant already says every valueless calc write goes
         // through the unique form; this call was the exception that proved it.
         _simConnect.ExecuteCalculatorCodeUnique($"1 (>H:AS1000_{_side}_SOFTKEYS_{key})");
+        if (_side == "PFD") _owner?.NotePfdSoftkeyPress();
 
         // A press can replace the whole row, so read it back promptly rather than waiting
         // for the next poll - the pilot needs to know what the keys became.

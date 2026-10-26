@@ -30,6 +30,9 @@ public interface IG1000DisplayOwner
 
     /// <summary>A radio the window just tuned, so the aircraft's own settle announcer does not say it again.</summary>
     void MarkRadioTunedByWindow(string varKey);
+
+    /// <summary>A PFD softkey the window just pressed, so the watcher does not repeat what its read-back says.</summary>
+    void NotePfdSoftkeyPress();
 }
 
 /// <summary>
@@ -83,7 +86,16 @@ internal sealed class G1000CasWatcher
     /// <summary>The clock the clear debounce reads; the suite steps it past the hold.</summary>
     internal Func<DateTime> Now = () => DateTime.UtcNow;
     private string _lastFma = "";
+    private string _lastNavSource = "";
+    private DateTime _softkeyPressAt = DateTime.MinValue;
     private bool _baselined;
+
+    /// <summary>
+    /// How long after a PFD window softkey press a navigation source change is the press's own.
+    /// The window reads it back 300 ms after the last press of a burst; this outlasts that plus
+    /// a 1.5 s poll.
+    /// </summary>
+    internal const int SoftkeyQuietMs = 3000;
 
     // What the last scrape showed, for Alt+E (DescribeCurrentMessages): in the display's order,
     // which the known SET does not keep, and replaced whole so the UI thread reads a finished list.
@@ -121,6 +133,13 @@ internal sealed class G1000CasWatcher
     /// message seen through the window is not announced again when the monitor resumes.
     /// </summary>
     public void ProcessRows(List<string> rows) => OnRows(rows);
+
+    /// <summary>
+    /// The PFD window pressed a softkey. CDI steps the navigation source and the window's
+    /// read-back already says the new one (CORE-7), so a change inside <see cref="SoftkeyQuietMs"/>
+    /// is recorded without speaking.
+    /// </summary>
+    public void NoteSoftkeyPress() => _softkeyPressAt = Now();
 
     public void Start(ScreenReaderAnnouncer announcer)
     {
@@ -166,6 +185,7 @@ internal sealed class G1000CasWatcher
         _baselined = false;
         _debounce.Baseline(Array.Empty<string>());
         _lastFma = "";
+        _lastNavSource = "";
         _current = Array.Empty<string>();
         _currentRead = false;
         _currentDark = false;
@@ -295,6 +315,21 @@ internal sealed class G1000CasWatcher
     /// </summary>
     internal const string DisplayDarkRow = "Display power: off";
 
+    /// <summary>
+    /// The CDI's source from the agent's "Navigation source: GPS, TERM" row, without the
+    /// sensitivity or SUSPENDED; "" when not shown. Pure so the suite can pin it.
+    /// </summary>
+    internal static string NavSourceOf(IEnumerable<string> rows)
+    {
+        const string prefix = "Navigation source: ";
+        string? row = rows.FirstOrDefault(r => r.StartsWith(prefix, StringComparison.Ordinal));
+        if (row == null) return "";
+        string value = row.Substring(prefix.Length);
+        int comma = value.IndexOf(", ", StringComparison.Ordinal);
+        string source = (comma >= 0 ? value.Substring(0, comma) : value).Trim();
+        return source == "not shown" ? "" : source;
+    }
+
     /// <summary>Whether a scrape is of an unpowered screen. Pure so the suite can pin it.</summary>
     internal static bool IsDisplayDark(IEnumerable<string> rows) =>
         rows.Any(r => r.Equals(DisplayDarkRow, StringComparison.Ordinal));
@@ -355,6 +390,7 @@ internal sealed class G1000CasWatcher
             _baselined = true;
             _debounce.Baseline(Array.Empty<string>());
             _lastFma = "";
+            _lastNavSource = "";
             _current = Array.Empty<string>();
             _currentDark = true;
             _currentRead = true;
@@ -377,6 +413,7 @@ internal sealed class G1000CasWatcher
         {
             if (row.StartsWith("Autopilot: ", StringComparison.Ordinal)) fma = FmaModes(row.Substring(11));
         }
+        string nav = NavSourceOf(rows);
 
         // First pass after a connect is the baseline and is never spoken — and so is every
         // pass in the quiet period after a flight load, when the G1000 restarts and raises its
@@ -388,6 +425,7 @@ internal sealed class G1000CasWatcher
             _baselined = true;
             _debounce.Baseline(cas);
             _lastFma = fma;
+            if (nav.Length > 0) _lastNavSource = nav;
             return;
         }
 
@@ -402,7 +440,19 @@ internal sealed class G1000CasWatcher
             FmaChanges++;
         }
 
-        var (immediate, queued) = ComposeCasSpeech(appeared, cleared, fmaChange);
+        // ⚠️ THE G1000 SWITCHES THE CDI BY ITSELF. Approaching the final fix of an ILS it moves
+        // the source from GPS to LOC, which drops GPS mode to ROL; ESGG 2026-10-26 said only
+        // "Course 202" and "Autopilot ROL", and the pilot lost the route without knowing why.
+        // A source that drops out ("not shown") and comes back is not a change.
+        string? navChange = null;
+        if (nav.Length > 0 && nav != _lastNavSource)
+        {
+            if (_lastNavSource.Length > 0 && (Now() - _softkeyPressAt).TotalMilliseconds >= SoftkeyQuietMs)
+                navChange = "Navigation source " + nav;
+            _lastNavSource = nav;
+        }
+
+        var (immediate, queued) = ComposeCasSpeech(appeared, cleared, fmaChange, navChange);
         if (immediate.Length > 0) _announcer.AnnounceImmediate(immediate);
         foreach (string line in queued) _announcer.Announce(line);
     }
@@ -468,12 +518,15 @@ internal sealed class G1000CasWatcher
     /// pilot learns that what they just did worked, and it must not cut off a new one.
     /// "off" is the autopilot's resting state and announcing it on every disconnect would be
     /// noise; the modes themselves are the news. <paramref name="fmaChange"/> is already worded
-    /// (<see cref="DescribeFmaChange"/>), or null when the FMA did not change.
+    /// (<see cref="DescribeFmaChange"/>), or null when the FMA did not change. A navigation source
+    /// change comes before the mode change, which it usually caused.
     /// </summary>
     internal static (string Immediate, List<string> Queued) ComposeCasSpeech(
-        IReadOnlyList<string> appeared, IReadOnlyList<string> cleared, string? fmaChange)
+        IReadOnlyList<string> appeared, IReadOnlyList<string> cleared, string? fmaChange,
+        string? navChange = null)
     {
         var parts = new List<string>(appeared);
+        if (!string.IsNullOrEmpty(navChange)) parts.Add(navChange);
         if (!string.IsNullOrEmpty(fmaChange)) parts.Add(fmaChange);
 
         var queued = new List<string>();

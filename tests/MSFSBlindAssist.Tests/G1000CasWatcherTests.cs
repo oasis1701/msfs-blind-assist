@@ -203,6 +203,86 @@ public class G1000CasWatcherTests
         Assert.Equal("1 CAS message. WARNING: LOW VOLTS.", watcher.DescribeCurrentMessages());
     }
 
+    private static List<string> Nav(string source, string modes) => new()
+    {
+        "CAS messages: none", "Autopilot: " + modes, "Navigation source: " + source,
+    };
+
+    // ⚠️ THE G1000 SWITCHES THE CDI BY ITSELF (ESGG ILS Y 21, 2026-10-26): GPS to LOC1 before
+    // the final fix dropped GPS mode to ROL, and only "Autopilot ROL" was said.
+    [Fact]
+    public void The_g1000_switching_the_source_is_said_before_the_mode_it_dropped()
+    {
+        var (watcher, said) = Armed();
+
+        watcher.ProcessRows(Nav("GPS, TERM", "AP, GPS, FLC, ALTS armed"));   // the baseline
+        watcher.ProcessRows(Nav("LOC1", "AP, ROL, FLC, ALTS armed"));
+
+        Assert.Equal(new[] { "Navigation source LOC1. Autopilot ROL, FLC, ALTS armed." }, said.All);
+    }
+
+    [Fact]
+    public void Sensitivity_and_suspend_are_not_a_source_change()
+    {
+        var (watcher, said) = Armed();
+
+        watcher.ProcessRows(Nav("GPS, TERM", "off"));
+        watcher.ProcessRows(Nav("GPS, APR", "off"));
+        watcher.ProcessRows(Nav("GPS, APR, SUSPENDED", "off"));
+
+        Assert.Empty(said.All);
+    }
+
+    [Fact]
+    public void A_source_that_drops_out_and_comes_back_is_not_a_change()
+    {
+        var (watcher, said) = Armed();
+
+        watcher.ProcessRows(Nav("GPS, ENR", "off"));
+        watcher.ProcessRows(Nav("not shown", "off"));
+        watcher.ProcessRows(Nav("GPS, ENR", "off"));
+
+        Assert.Empty(said.All);
+    }
+
+    [Fact]
+    public void Powering_up_does_not_announce_the_source()
+    {
+        var (watcher, said) = Armed();
+
+        watcher.ProcessRows(Dark);
+        watcher.ProcessRows(Nav("GPS, ENR", "off"));
+
+        Assert.Empty(said.All);
+    }
+
+    [Fact]
+    public void The_pilots_own_cdi_press_is_left_to_the_windows_read_back()
+    {
+        var (watcher, said) = Armed();
+        var now = new DateTime(2026, 10, 26, 12, 0, 0, DateTimeKind.Utc);
+        watcher.Now = () => now;
+
+        watcher.ProcessRows(Nav("GPS, ENR", "off"));
+        watcher.NoteSoftkeyPress();
+        now = now.AddMilliseconds(1500);
+        watcher.ProcessRows(Nav("LOC1", "off"));
+        Assert.Empty(said.All);
+
+        now = now.AddMilliseconds(G1000CasWatcher.SoftkeyQuietMs);
+        watcher.ProcessRows(Nav("GPS, TERM", "off"));
+        Assert.Equal(new[] { "Navigation source GPS." }, said.All);
+    }
+
+    [Fact]
+    public void The_agent_writes_the_navigation_source_row_the_watcher_reads()
+    {
+        string agent = File.ReadAllText(Path.Combine(RepoRoot(),
+            "MSFSBlindAssist", "Resources", "coherent-da40-g1000-agent.js"));
+
+        Assert.Contains("rows.push(\"Navigation source: \" + (n.source || \"not shown\")", agent);
+    }
+
     [Fact]
     public void The_agent_writes_the_row_the_watcher_reads()
     {

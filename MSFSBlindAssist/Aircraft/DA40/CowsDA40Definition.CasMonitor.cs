@@ -69,4 +69,6 @@ public partial class CowsDA40Definition : IG1000DisplayOwner
         Cas.Suspend(suspended, invokeWhileSuspended);
 
     void IG1000DisplayOwner.MarkRadioTunedByWindow(string varKey) => MarkRadioTunedByWindow(varKey);
+
+    void IG1000DisplayOwner.NotePfdSoftkeyPress() => Cas.NoteSoftkeyPress();
 }
