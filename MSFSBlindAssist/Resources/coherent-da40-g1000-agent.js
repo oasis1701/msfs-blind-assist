@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 33;
+    A.VERSION = 34;
 
     function visible(el) {
         if (!el) return false;
@@ -698,7 +698,8 @@
             if (listed.length) out.push("Speed bugs shown: " + listed.join(", "));
         }
 
-        var xpdr = shown(".xpdr-content");
+        // 2024's WTG1000v2 names the box .xpdr-content; the 2020 G1000 NXi .xpdr-container.
+        var xpdr = shown(".xpdr-content") || shown(".xpdr-container");
         if (xpdr) {
             var parts = A.fieldsOf(xpdr).split(", ");
             var bits = [];
