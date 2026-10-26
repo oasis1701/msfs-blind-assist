@@ -2991,8 +2991,12 @@
     /// comes here, so no page that reads today changes. A rule, not a list: the departure and
     /// arrival dialogs pair the same way (A.procChoiceLines).
     A.M.siblingLabelOf = function (host) {
+        // Six levels, not three: the minimums value is a digit editor nested inside its
+        // -value cell, and three levels never reached the cell (ESGG, 2026-10-26). A box or
+        // a list is the edge of the field's own row, so the search stops there.
         var cell = host;
-        for (var up = 0; up < 3 && cell; up++) {
+        for (var up = 0; up < 6 && cell && cell.nodeType === 1; up++) {
+            if (hasClassContaining(cell, "groupbox") || hasClassContaining(cell, "-list")) break;
             for (var sib = cell.previousElementSibling; sib; sib = sib.previousElementSibling) {
                 if (sib.tagName === "HR") break;
                 if (!hasClassContaining(sib, "-label") || !visible(sib)) continue;
@@ -3291,7 +3295,12 @@
             var digit = kind === "field" ? A.M.digitOf(c) : null;
             if (digit) value = digit.whole + ", " + digit.place;
             var label = kind === "button" ? "" : A.M.labelOf(c, digit ? digit.whole : value);
-            if (label.indexOf("@unit:") === 0) { value = value + " " + label.substring(6); label = ""; }
+            // A bare unit is the value's, and the field may still have a -label before it
+            // (Select Approach's minimums: "FT" beside the value, "MINS" before it).
+            if (label.indexOf("@unit:") === 0) {
+                value = value + " " + label.substring(6);
+                label = A.M.siblingLabelOf(A.M.hostOf(c));
+            }
             // A BUTTON is boxed only by a real groupbox. The second, title-hunting pass named
             // the Direct-To dialog's "Activate?" after the neighbouring field title, "BRG"
             // (2026-10-12).

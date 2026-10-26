@@ -1099,7 +1099,13 @@ public sealed class CowsDA40DisplayForm : Form
             toSay = DropRepeatedLead(_leadBaseline, summary);
         }
 
-        if (cursorChangedHere)
+        // ⚠️ AND A CURSOR PUSH THE G1000 IGNORES STILL SAYS THE STATE. Some views have no
+        // cursor toggle at all: the PFD's Select Approach dialog never handles the upper
+        // knob push, its cursor is simply always on (PFD.js PFDSelectApproachView, 2020
+        // G1000 1.4.1). The push then only re-read the field, which sounds exactly like a
+        // push that worked, and the pilot had no way to learn the cursor was already live
+        // (ESGG, 2026-10-26).
+        if (cursorChangedHere || cursorPush)
         {
             toSay = (cursorOn ? "Cursor on. " : "Cursor off. ") + toSay;
         }
