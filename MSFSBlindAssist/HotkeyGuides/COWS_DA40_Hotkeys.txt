@@ -319,9 +319,8 @@ The G1000 windows (Alt+P and Alt+M):
   its typed entry for when you already know the frequency.
 
 Autopilot (GFC 700):
-  The GFC 700 has NO absolute altitude set - the altitude preselect only moves in
-  steps (1000 ft coarse, 100 ft fine), so altitude is entered by stepping rather
-  than by typing a value. There is no autothrottle on either variant.
+  Ctrl+A (input mode)  Type the selected altitude, rounded to the nearest 100 ft
+  No autothrottle on either variant.
 
 DA40-specific notes:
 

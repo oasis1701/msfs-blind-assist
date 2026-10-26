@@ -103,7 +103,7 @@ Input **Ctrl+B** opens both altimeter settings, the G1000's and the standby's, e
 
 - The **GFC 700** panel has every mode button, the selected values, the course and heading bug, the go-around button and the pre-flight test's state.
 - Input **Ctrl+P** opens the autopilot buttons window: Autopilot, Flight Director and every mode, each showing its state.
-- Input **Ctrl+A**, **Ctrl+S**, **Ctrl+H** and **Ctrl+V** open a value window for the selected altitude, airspeed, heading bug and vertical speed, with the modes that use that value beside it.
+- Input **Ctrl+A**, **Ctrl+S**, **Ctrl+H** and **Ctrl+V** open a value window for the selected altitude, airspeed, heading bug and vertical speed, with the modes that use that value beside it. A typed altitude is rounded to the nearest 100 feet.
 - Output **Shift+A**, **Shift+S**, **Shift+H** and **Shift+V** read the selected values; plain A, S, H and V read where the aircraft is.
 
 There is no autothrottle. The autopilot's pre-flight test runs when the avionics come on and is announced, with its result. If the autopilot refuses a mode you pressed, you hear the control's name and *"no change"*, so a refused press is never silent. The GFC 700 trims for itself while engaged, silently.
@@ -128,7 +128,7 @@ The table lists the DA40's own output keys and what each reads.
 | B | Both altimeter settings. |
 | L | Flaps: UP, T/O or LDG. |
 | Shift+G | "Fixed gear". |
-| W, Shift+W | Weight and centre of gravity. |
+| W, Shift+W | Gross weight and centre of gravity, with the maximum: W in pounds, Shift+W in kilograms. |
 | Shift+2 to Shift+6 | The AFM's speeds: rotate and climb, approach and glide, the flap limits, manoeuvring and never-exceed. |
 | Ctrl+W | The waypoint you are flying to: ident, distance, bearing and time. |
 | D, Shift+D | Distance and time to the destination, and to the top of descent. |
