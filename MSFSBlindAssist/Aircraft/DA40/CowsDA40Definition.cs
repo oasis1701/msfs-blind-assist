@@ -595,7 +595,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         "DA40_MAG_STARTER",
 
         // The Hobbs meter, which a pilot writes down before and after every flight.
-        "DA40_HOBBS"
+        "DA40_HOBBS",
+
+        // W and Shift+W, the centre of gravity beside the gross weight.
+        "DA40_PAYLOAD_CG"
     };
 
     /// <summary>

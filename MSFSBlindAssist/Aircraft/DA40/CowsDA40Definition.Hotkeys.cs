@@ -718,23 +718,17 @@ public partial class CowsDA40Definition
                 announcer.AnnounceImmediate(ComposeWaypointReadout());
                 return true;
 
-            case HotkeyAction.ReadGrossWeightKg:
-            {
-                double? lbOpt = ReadNow(simConnect, "DA40_GROSS_WEIGHT");
-                if (lbOpt is null)
-                {
-                    announcer.AnnounceImmediate("Gross weight not available yet");
-                    return true;
-                }
-
-                double lb = lbOpt.Value;
-                double maxLb = IsNG ? 2888 : 2646;
-
-                announcer.AnnounceImmediate(
-                    $"Gross weight {lb * 0.45359237:0} kilograms, {lb:0} pounds. " +
-                    $"Maximum {maxLb * 0.45359237:0} kilograms.");
+            // W in pounds and Shift+W in kilograms, each with the centre of gravity: the
+            // convention every other aircraft keeps on these two keys.
+            case HotkeyAction.ReadWaypointInfo:
+                announcer.AnnounceImmediate(GrossWeightReadout(ReadNow(simConnect, "DA40_GROSS_WEIGHT"),
+                    ReadNow(simConnect, "DA40_PAYLOAD_CG"), IsNG ? 2888 : 2646, kilograms: false));
                 return true;
-            }
+
+            case HotkeyAction.ReadGrossWeightKg:
+                announcer.AnnounceImmediate(GrossWeightReadout(ReadNow(simConnect, "DA40_GROSS_WEIGHT"),
+                    ReadNow(simConnect, "DA40_PAYLOAD_CG"), IsNG ? 2888 : 2646, kilograms: true));
+                return true;
 
             // ---------- Characteristic speeds ----------
             // The Airbus set (green dot / S / F / VLS) does not exist on a DA40, so these
@@ -833,6 +827,22 @@ public partial class CowsDA40Definition
 
         return label + " " + Math.Round(value.Value).ToString("N0",
             System.Globalization.CultureInfo.InvariantCulture) + " " + unit + ".";
+    }
+
+    /// <summary>
+    /// W and Shift+W: the gross weight and the maximum in one unit, with the centre of
+    /// gravity. A CG the cache does not have yet is left out, never spoken as zero.
+    /// </summary>
+    internal static string GrossWeightReadout(double? lb, double? cgPercent, double maxLb, bool kilograms)
+    {
+        if (lb is null) return "Gross weight not available yet";
+
+        double factor = kilograms ? KgPerLb : 1.0;
+        string unit = kilograms ? "kilograms" : "pounds";
+        string cg = cgPercent is null ? "" : CgMacPhrase(cgPercent.Value);
+
+        return FormattableString.Invariant(
+            $"Gross weight {lb.Value * factor:0} {unit}{cg}. Maximum {maxLb * factor:0} {unit}.");
     }
 
     /// <summary>

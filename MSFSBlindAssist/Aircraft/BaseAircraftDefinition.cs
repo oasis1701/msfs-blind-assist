@@ -1301,7 +1301,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // breaks or says "CG 0". Takes the cached %MAC value as a parameter since each
     // aircraft caches its own _gwCgMac field.
     protected static string CgMacPhrase(double gwCgMac) =>
-        (gwCgMac > 5 && gwCgMac < 60) ? $", center of gravity {gwCgMac:0.0} percent MAC" : "";
+        (gwCgMac > 5 && gwCgMac < 60) ? FormattableString.Invariant($", center of gravity {gwCgMac:0.0} percent MAC") : "";
 
     // Set the FCU altitude increment (100 or 1000 ft) — FBW A320/A380 parity. Kept as an
     // instance method (not static) because it's invoked externally via an aircraft-typed
