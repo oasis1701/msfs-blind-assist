@@ -2979,6 +2979,30 @@
             if (!strip.length && whole.length > 0 && whole.length <= 48) return whole;
             e2 = e2.parentElement;
         }
+        return A.M.siblingLabelOf(host);
+    };
+
+    /// ⚠️ A LABEL-THEN-CONTROL ROW KEEPS THE LABEL IN AN EARLIER SIBLING. Select Approach draws
+    /// "APR", its selector, "TRANS", its selector, "MINS", the toggle and the value as siblings
+    /// of one container, each label classed -label (PFD.js slct-appr-*), so labelOf's climb
+    /// found no name and the fields read bare: "ILS Y 03", "VECTORS", "Off", "blank" (ESGG,
+    /// 2026-10-26). The nearest -label before the field's cell names it, which also gives the
+    /// minimums value, after its toggle, the MINS label. Only a field the climb left unnamed
+    /// comes here, so no page that reads today changes. A rule, not a list: the departure and
+    /// arrival dialogs pair the same way (A.procChoiceLines).
+    A.M.siblingLabelOf = function (host) {
+        var cell = host;
+        for (var up = 0; up < 3 && cell; up++) {
+            for (var sib = cell.previousElementSibling; sib; sib = sib.previousElementSibling) {
+                if (sib.tagName === "HR") break;
+                if (!hasClassContaining(sib, "-label") || !visible(sib)) continue;
+                if (sib.querySelector(".highlight-select")) break;
+                var st = spacedText(sib);
+                if (st && st.length <= 48 && /[A-Za-z]/.test(st)) return st;
+                break;
+            }
+            cell = cell.parentElement;
+        }
         return "";
     };
 
@@ -3550,6 +3574,29 @@
         return null;
     };
 
+    /// The column a cursor stop inside a list row sits in, named by the list's own header:
+    /// a cell classed `<key>-value` (or `mfd-<key>-value`) sits under the header element whose
+    /// id is `<key>`, the pairing the flight plan draws ("DTK", "DIS", "ALT" over
+    /// dtk-value, dis-value, alt-value). Null for a stop in no such cell, or with no header
+    /// to name it, so the row is read as before.
+    A.M.columnOf = function (el, row) {
+        for (var e = el; e && e.nodeType === 1 && e !== row; e = e.parentElement) {
+            var tokens = classList(e);
+            for (var t = 0; t < tokens.length; t++) {
+                var m = /^(?:[a-z]+-)?([a-z]+)-value$/.exec(tokens[t]);
+                if (!m) continue;
+                for (var box = row.parentElement; box && box.nodeType === 1; box = box.parentElement) {
+                    var head = box.querySelector("#" + m[1]);
+                    if (head && !row.contains(head)) {
+                        var name = text(head);
+                        return name ? { name: name, cell: e } : null;
+                    }
+                }
+            }
+        }
+        return null;
+    };
+
     /// The title of the box an element is drawn in ("Frequency"), from the instrument's own
     /// groupbox + groupbox-title pairing, or "" when it sits in none.
     A.M.boxTitleOf = function (el) {
@@ -3581,6 +3628,14 @@
         // Same reader as flightPlanRows, so the two can never disagree.
         var leg = el2.closest ? el2.closest(".fix-container") : null;
         if (leg) {
+            // ⚠️ A LEG HAS TWO CURSOR STOPS, THE WAYPOINT AND ITS ALTITUDE, and both read the
+            // whole row, so stepping down a plan sounded like every waypoint listed twice
+            // (ESGG, 2026-10-26). The second stop says which column it is on.
+            var col = A.M.columnOf(el2, leg);
+            if (col) {
+                var ident = spacedText(leg.querySelector(".fix-name"));
+                return (ident ? ident + " " : "") + col.name + ": " + (spacedText(col.cell) || "blank");
+            }
             var legLine = A.fieldsOf(leg);
             if (legLine && legLine.replace(/blank|[\s,_]/g, "")) return legLine;
         }
