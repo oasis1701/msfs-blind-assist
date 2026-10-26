@@ -186,8 +186,15 @@ public partial class CowsDA40Definition
         // The TRUE attitude, so the drift above is visible rather than implied. A sighted
         // pilot spots a leaning standby horizon by comparing it against the PFD; this is
         // that comparison, in numbers.
-        AddTrueAttitude(v, "DA40_STBY_TRUE_PITCH", "ATTITUDE INDICATOR PITCH DEGREES", "Actual Pitch");
-        AddTrueAttitude(v, "DA40_STBY_TRUE_BANK", "ATTITUDE INDICATOR BANK DEGREES", "Actual Bank");
+        // ⚠️ THE AEROPLANE, NOT AN INSTRUMENT. These read ATTITUDE INDICATOR PITCH/BANK
+        // DEGREES, the stock attitude instrument, which sits at -20 / +29 with no power
+        // (measured parked at ESGT, 2026-10-26, against a level aeroplane). And in the
+        // standby horizon's own sign, so each pair compares like for like: the model writes
+        // ATT_GYRO_REL_PITCH as the plane's pitch negated (nose up positive) and
+        // ATT_GYRO_REL_BANK with the plane's bank sign (NG IN.xml 382-383, 431-432; XLS the
+        // same), so the pitch is negated in TryGetStandbyDisplayOverride and the bank is not.
+        AddTrueAttitude(v, "DA40_STBY_TRUE_PITCH", "PLANE PITCH DEGREES", "Actual Pitch");
+        AddTrueAttitude(v, "DA40_STBY_TRUE_BANK", "PLANE BANK DEGREES", "Actual Bank");
 
         // Rotor speed as a percentage. The model spins it 0 to 1 from the EMERGENCY bus
         // (ELEC_BUS_EMER_VOLT / 30), which is why the standby horizon keeps working when
@@ -340,8 +347,25 @@ public partial class CowsDA40Definition
             return true;
         }
 
+        if (varKey is "DA40_STBY_TRUE_PITCH" or "DA40_STBY_TRUE_BANK")
+        {
+            text = TrueAttitudeText(varKey, value);
+            return true;
+        }
+
         text = "";
         return false;
+    }
+
+    /// <summary>
+    /// The Actual Pitch and Bank rows in the standby horizon's own sign: the sim's pitch is
+    /// nose-down positive, so it is negated; the bank keeps the sim's sign, as the horizon's
+    /// does. Rounded before the sign is settled, so level reads "0.0", never "-0.0".
+    /// </summary>
+    internal static string TrueAttitudeText(string varKey, double simDegrees)
+    {
+        double shown = varKey == "DA40_STBY_TRUE_PITCH" ? -simDegrees : simDegrees;
+        return FormattableString.Invariant($"{Math.Round(shown, 1) + 0.0:0.0} degrees");
     }
 
     /// <summary>
