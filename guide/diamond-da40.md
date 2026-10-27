@@ -76,7 +76,7 @@ The PFD and MFD windows are not summaries: they are the displays themselves, rea
 - **Ctrl+Up** and **Ctrl+Down** turn the small FMS knob: change the field you are on (or open its list), or step the page with the cursor off.
 - **Ctrl+Enter** is ENT. **Ctrl+D** Direct-To, **Ctrl+F** Flight Plan, **Ctrl+P** Procedures, **Ctrl+E** Menu, **Ctrl+L** Clear.
 - **Ctrl+G** lists every page and opens the one you pick. On the PFD it lists its windows, five of which have no bezel button at all.
-- **Ctrl+T** types an ident straight into the waypoint box under the cursor; the aircraft completes it and BA reads back the facility it found.
+- **Ctrl+T** types an ident straight into the waypoint box under the cursor; the aircraft completes it and BA reads back the facility it found. A blank flight plan row has no box until you press **Ctrl+Down**, which opens one, as the small knob does in the aircraft.
 - **Ctrl+Shift+L** closes a window that has opened over the page, such as a waypoint information window or a duplicate-ident list. While one is open the bezel buttons under it do nothing, and CLR does not close it.
 - **Ctrl+Page Up** and **Ctrl+Page Down** change the map range. **F5** refreshes, **Escape** closes.
 
@@ -84,7 +84,7 @@ To load a SimBrief plan, use the G1000's own Flight Plan Catalog on the MFD, as 
 
 ### What you will hear {#da40-g1000-hear}
 
-The CAS messages (warnings, cautions and advisories) are spoken as they appear, whether or not a window is open, and Output **Alt+E** reads the ones showing now. Mode changes on the flight mode annunciator are spoken as they happen, naming the autopilot's modes when it is engaged and the flight director's when it is not. When the flight plan sequences you hear the waypoint, for example *"Passing SOXOM. Next VEKIN, 14 miles."*; BA never makes the radio call for you.
+The CAS messages (warnings, cautions and advisories) are spoken as they appear, whether or not a window is open, and Output **Alt+E** reads the ones showing now. Mode changes on the flight mode annunciator are spoken as they happen, naming the autopilot's modes when it is engaged and the flight director's when it is not. When the G1000 changes the course source by itself, as it does from GPS to LOC on an ILS, you hear the new source before the mode change it causes, for example *"Navigation source LOC1"*. When the flight plan sequences you hear the waypoint, for example *"Passing SOXOM. Next VEKIN, 14 miles."*; BA never makes the radio call for you.
 
 ## Radios, transponder and altimeters {#da40-radios}
 
@@ -177,12 +177,13 @@ Before Engine Start stops at once unless the engine reads stopped and you are on
 
 ## Failures and simulation {#da40-simulation}
 
-The **Simulation** section holds the aircraft's whole failure set, grouped as COWS groups it, with every failure the random picker can raise, the breaker trips, engine damage and its reset, and the COWS options (also on the MFD's Engine page menu). A failure graded from 0 to 100 is spoken when it starts and when it gets worse. Engine damage survives a reload, as in the aircraft; the reset is in the same section.
+The **Simulation** section holds the aircraft's whole failure set, grouped as COWS groups it, with every failure the random picker can raise, the breaker trips, engine damage and its reset, and the two force-feedback options. The other COWS options, such as random failures, state saving and the steering mode, are on the menu of the MFD's Engine page: open the Engine page with its softkey, then press **Ctrl+E**. A failure graded from 0 to 100 is spoken when it starts and when it gets worse. Engine damage survives a reload, as in the aircraft; the reset is in the same section.
 
 ## Things worth knowing {#da40-quirks}
 
 - **Held controls.** The ECU test, the standby horizon cage and the fuel valve's safety wire are held, not clicked, and BA holds them for the right time. Press once and let it run.
 - **Silent switches.** BA's panel controls make no cockpit sound. Confirm a change by reading it back.
+- **Steering assist.** The gear is fixed, so your toggle-landing-gear key switches the nosewheel steering assist instead, as COWS designed it, and BA says the mode: Real, Autobrake or NWS.
 - **Take-off trim.** Press Centre Trim on the Elevator Trim panel: centred is the take-off position on this aeroplane, and the AFM gives no number to calculate.
 - **Refuelling.** There is no fuel panel in the cockpit, so the Fuel System panel offers the transaction: type the gallons for each tank, or Fill Both Tanks. On the ground with the engine stopped only. With GSX, its own refuelling is the more realistic way.
 
