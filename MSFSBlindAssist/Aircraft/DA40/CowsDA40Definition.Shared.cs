@@ -393,7 +393,7 @@ public partial class CowsDA40Definition
             _trimOwnWriteUntil = TrimQuietAfterApChange(_apEngaged, value >= 0.5, DateTime.UtcNow, _trimOwnWriteUntil);
             _apEngaged = value >= 0.5;
         }
-        NoteApRowForPress(varName, value);
+        NoteApRowForPress(varName, value, announcer);
 
         // A GFC 700 mode the FMA already says (ApModeIsSpokenByFma). Handled so the generic
         // announcer stays out; the combo still refreshes (RefreshControlWhenDefHandled).

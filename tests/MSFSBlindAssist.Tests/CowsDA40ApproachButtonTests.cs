@@ -102,25 +102,45 @@ public class CowsDA40ApproachButtonTests
     public void ARefusedPressSaysNoChangeEvenWhenTheFmaMoved()
     {
         // The flight director came on with the refused press: the FMA moved, the flag did not.
-        Assert.Equal("Approach Mode: no change",
-            CowsDA40Definition.ApproachPressAnswer(0, 0, "", "", rowsFresh: true));
+        Assert.Equal("Approach Mode: no change", CowsDA40Definition.ApproachPressAnswer(0, 0));
     }
+
+    // A press that moved the flag leaves the saying to the flag's own announcement, which also
+    // covers a press on a hardware panel, which BA never sees (owner, 2026-10-27).
+    [Fact]
+    public void APressThatMovedTheFlagLeavesItToTheFlag()
+        => Assert.Null(CowsDA40Definition.ApproachPressAnswer(1, 0));
+
+    [Fact]
+    public void AFlagNotYetReadSaysNothing()
+        => Assert.Null(CowsDA40Definition.ApproachPressAnswer(null, 1));
 
     [Fact]
     public void ClearingAStuckFlagIsSpokenBecauseTheFmaShowsNothing()
         => Assert.Equal("Approach Mode: Off",
-            CowsDA40Definition.ApproachPressAnswer(1, 0, "", "", rowsFresh: true));
+            CowsDA40Definition.ApproachFlagNews(on: false, "", "", rowsFresh: true));
 
     [Fact]
     public void AnArmTheFmaShowsIsLeftToTheFma()
-        => Assert.Null(CowsDA40Definition.ApproachPressAnswer(0, 1, "", "LOC armed, GS armed", rowsFresh: true));
+        => Assert.Null(CowsDA40Definition.ApproachFlagNews(on: true, "", "LOC armed, GS armed", rowsFresh: true));
 
     [Fact]
     public void WithoutFreshRowsTheFlagIsTheAnswer()
         => Assert.Equal("Approach Mode: On",
-            CowsDA40Definition.ApproachPressAnswer(0, 1, "", "", rowsFresh: false));
+            CowsDA40Definition.ApproachFlagNews(on: true, "", "", rowsFresh: false));
 
+    // The real AP and FD keys are GFC 700 keys like the modes. The panel had the master as a combo,
+    // which kept showing "On" over a refused engage, and the director on a panel of its own
+    // (owner, 2026-10-27). Moved, never copied (DA40A-4).
     [Fact]
-    public void AFlagNotYetReadSaysNothing()
-        => Assert.Null(CowsDA40Definition.ApproachPressAnswer(null, 1, "", "", rowsFresh: true));
+    public void TheMasterAndFlightDirectorAreButtonsOnTheGfc700Panel()
+    {
+        var def = new CowsDA40Definition(DA40Variant.NG);
+        var vars = def.GetVariables();
+        Assert.True(vars["DA40_AP_MASTER"].RenderAsButton);
+        Assert.True(vars["DA40_AP_FD"].RenderAsButton);
+        var panels = def.GetPanelControls();
+        Assert.Contains("DA40_AP_FD", panels["GFC 700"]);
+        Assert.DoesNotContain("DA40_AP_FD", panels["Flight Director"]);
+    }
 }

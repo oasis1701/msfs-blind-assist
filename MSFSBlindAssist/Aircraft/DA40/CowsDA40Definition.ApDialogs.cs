@@ -38,17 +38,15 @@ public partial class CowsDA40Definition
         => (sc.GetCachedVariableValue(key) ?? 0) > 0.5 ? "On" : "Off";
 
     /// <summary>
-    /// One autopilot mode button. Goes through HandleAutopilotSet so the distinct ON/OFF
-    /// event rule and the uniquifying calc wrapper apply here exactly as on the panel - a
-    /// second writer would be a second place for both of those to be forgotten.
+    /// One GFC 700 key in the autopilot window. A press goes through HandleAutopilotSet exactly as
+    /// the panel's button does, which turns the key the other way from the state BA reads, with
+    /// the uniquifying calc wrapper - a second writer would be a second place for both to be
+    /// forgotten.
     /// </summary>
     private ToggleButtonDef ModeToggle(string label, string key,
         SimConnectManager sc, ScreenReaderAnnouncer ann)
-        => new(label, () => ApModeIsPress(key) ? ModeLabelState(key) : ModeState(sc, key), () =>
-        {
-            bool on = (sc.GetCachedVariableValue(key) ?? 0) > 0.5;
-            HandleAutopilotSet(key, on ? 0 : 1, sc, ann);
-        })
+        => new(label, () => ApModeIsPress(key) ? ModeLabelState(key) : ModeState(sc, key),
+            () => HandleAutopilotSet(key, 1, sc, ann))
         {
             // A press is confirmed by the FMA, and a refusal by the press check: the window's own
             // 1.2 s read-back said it a second time (CORE-7, 2026-10-27). The master and flight

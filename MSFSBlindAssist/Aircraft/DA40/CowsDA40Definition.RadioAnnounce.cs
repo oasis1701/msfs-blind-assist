@@ -373,9 +373,13 @@ public partial class CowsDA40Definition
         // A target the autopilot moved itself as a mode engaged (VS syncs to the current
         // vertical speed, FLC to the current airspeed) keeps its name: a bare "0" right after
         // VS engaged said nothing a pilot could place (2026-10-12).
+        // A sync is queued instead (SettledValueInterrupts): it follows the read-back of the press
+        // that caused it rather than cutting it off.
         bool modeSync = (DateTime.UtcNow - _apModeChangedAt).TotalMilliseconds < ApModeSyncMs;
         string said = ComposeSettled(pending, keepNames: modeSync);
-        if (said.Length > 0) _radioAnnouncer.AnnounceImmediate(said);
+        if (said.Length == 0) return;
+        if (SettledValueInterrupts(modeSync)) _radioAnnouncer.AnnounceImmediate(said);
+        else _radioAnnouncer.Announce(said);
     }
 
     /// <summary>
@@ -387,6 +391,14 @@ public partial class CowsDA40Definition
         int d = ((int)Math.Round(degrees) % 360 + 360) % 360;
         return (d == 0 ? 360 : d).ToString("000", System.Globalization.CultureInfo.InvariantCulture);
     }
+
+    /// <summary>
+    /// Whether a settled value interrupts (DA40A-9). A knob at rest does: the pilot is waiting for
+    /// it. A value a mode or the CDI moved by itself (<see cref="ApModeSyncMs"/>) waits its turn:
+    /// switching the CDI to LOC1 with the PFD softkey, "Course 206" cut off the window's own
+    /// "Navigation source LOC1" (MSFS 2024, 2026-10-27). Pure so the suite can pin it.
+    /// </summary>
+    internal static bool SettledValueInterrupts(bool modeSync) => !modeSync;
 
     /// <summary>How long after a GFC 700 mode change a target that moves is that mode's sync.</summary>
     private const int ApModeSyncMs = 2000;

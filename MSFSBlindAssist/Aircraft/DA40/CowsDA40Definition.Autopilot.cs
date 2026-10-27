@@ -265,7 +265,9 @@ public partial class CowsDA40Definition
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
             // On is said by the FMA (its modes appear); Off is said here, like the master's.
-            RefreshControlWhenDefHandled = _ => true
+            RefreshControlWhenDefHandled = _ => true,
+            // The FD key, on the GFC 700 panel beside AP (ApSwitchIsPress).
+            RenderAsButton = true
         };
 
         // The command attitude the bars are showing. A sighted pilot flies the bars by
@@ -317,17 +319,25 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>
-    /// The GFC 700 mode keys, which are push buttons (DA40A-28). The autopilot master and the
-    /// flight director stay switches: BA reads the same state the sim keeps for them.
+    /// The GFC 700 mode keys, which send the real key's plain event (DA40A-28). The autopilot
+    /// master and the flight director are panel buttons too (<see cref="ApSwitchIsPress"/>), but
+    /// keep their ON/OFF events: BA reads the same state the sim keeps for them.
     /// </summary>
     internal static bool ApModeIsPress(string key) => Array.IndexOf(ApPressKeys, key) >= 0;
+
+    /// <summary>
+    /// The AP and FD keys, which a press turns the other way from the state BA reads. They were a
+    /// combo and a switch on a panel of their own; the combo kept showing "On" over a refused
+    /// engage, since nothing moved to correct it (owner, 2026-10-27).
+    /// </summary>
+    internal static bool ApSwitchIsPress(string key) => key is "DA40_AP_MASTER" or "DA40_AP_FD";
 
     private static readonly string[] ApPressKeys =
     {
         "DA40_AP_HDG", "DA40_AP_NAV", "DA40_AP_APR", "DA40_AP_BC", "DA40_AP_ALT", "DA40_AP_VS", "DA40_AP_FLC"
     };
 
-    /// <summary>An autopilot mode: a two-state row backed by a stock SimVar; a mode key renders as a button.</summary>
+    /// <summary>An autopilot mode or the master: a two-state row backed by a stock SimVar, rendered as a button.</summary>
     private static void AddApMode(Dictionary<string, SimVarDefinition> v, string key,
         string simvar, string display, SimVarType type = SimVarType.SimVar, string units = "bool")
     {
@@ -340,8 +350,8 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
-            // The mode buttons speak through the FMA (ApModeIsSpokenByFma), so their combos
-            // are def-handled - and must still follow the aeroplane in an open panel.
+            // The mode buttons speak through the FMA (ApModeIsSpokenByFma), so their rows are
+            // def-handled - and their labels must still follow the aeroplane in an open panel.
             RefreshControlWhenDefHandled = _ => true,
             ExcludeFromMonitorManager = key != "DA40_AP_MASTER",
             // Per frame, like the selected values (AddApValue): the mode change and the target
@@ -349,7 +359,7 @@ public partial class CowsDA40Definition
             // same frame, so the target's settle knows a mode engaged (ApModeSyncMs).
             ExcludeFromBatch = true,
             HighFrequency = true,
-            RenderAsButton = ApModeIsPress(key)
+            RenderAsButton = true
         };
     }
 
@@ -408,7 +418,8 @@ public partial class CowsDA40Definition
     internal const int ApPressRecheckMs = 1500;
 
     /// <summary>The flight director is answered by its own state, which reaches BA about once a
-    /// second (measured up to ~1 s), after a refused press's FMA flicker of ~0.4 s.</summary>
+    /// second (measured up to ~1 s), after a refused press's FMA flicker of ~0.4 s. The GFC 700
+    /// refuses FD off while the autopilot flies, on MSFS 2020 and 2024 (2026-10-27).</summary>
     internal const int ApFdCheckMs = 1500;
 
     /// <summary>
@@ -432,24 +443,26 @@ public partial class CowsDA40Definition
     internal static string ApPressNoChangeText(string control) => control + ": no change";
 
     /// <summary>
-    /// What an Approach press says once <see cref="ApPressCheckMs"/> has passed, or null for
-    /// nothing (DA40A-28). Its answer is the G1000's own flag, never the FMA counter: a
-    /// refused press that also turned the flight director on moved the FMA and said nothing,
-    /// and the same press again said "no change" (2026-10-27). The flag compared by VALUE at
-    /// the press and now, not by edges. A flag that changed is spoken only when the FMA's
-    /// approach modes did not show it on fresh rows: clearing a stuck flag moves nothing on
-    /// the FMA, and without fresh rows the flag is the only answer there is. Pure so the
-    /// suite can pin it.
+    /// What an Approach press says once <see cref="ApPressCheckMs"/> has passed: "no change" when
+    /// the G1000's own flag did not move, else nothing (DA40A-28). Its answer is the flag, never
+    /// the FMA counter: a refused press that also turned the flight director on moved the FMA and
+    /// said nothing, and the same press again said "no change" (2026-10-27). The flag compared by
+    /// VALUE at the press and now, not by edges. A flag that moved is said by
+    /// <see cref="ApproachFlagNews"/>, whoever pressed. Pure so the suite can pin it.
     /// </summary>
-    internal static string? ApproachPressAnswer(double? flagBefore, double? flagNow,
-        string approachBefore, string approachNow, bool rowsFresh)
-    {
-        if (flagBefore is not double b || flagNow is not double n) return null;
-        bool was = b >= 0.5, on = n >= 0.5;
-        if (was == on) return ApPressNoChangeText("Approach Mode");
-        if (rowsFresh && approachBefore != approachNow) return null;
-        return "Approach Mode: " + (on ? "On" : "Off");
-    }
+    internal static string? ApproachPressAnswer(double? flagBefore, double? flagNow)
+        => flagBefore is double b && flagNow is double n && (b >= 0.5) == (n >= 0.5)
+            ? ApPressNoChangeText("Approach Mode") : null;
+
+    /// <summary>
+    /// What the approach flag moving says, or null for nothing (DA40A-28). Spoken only when the
+    /// FMA's approach modes did not show it on rows read since: clearing a stuck flag moves
+    /// nothing on the FMA, and without fresh rows the flag is the only answer there is. Whoever
+    /// pressed APR, BA or a hardware panel BA never sees, hears it (owner, 2026-10-27). Pure so
+    /// the suite can pin it.
+    /// </summary>
+    internal static string? ApproachFlagNews(bool on, string approachBefore, string approachNow, bool rowsFresh)
+        => rowsFresh && approachBefore != approachNow ? null : "Approach Mode: " + (on ? "On" : "Off");
 
     /// <summary>
     /// The approach modes on an FMA string ("ROL, LOC armed, PIT, ALTS armed, GS armed" gives
@@ -580,16 +593,64 @@ public partial class CowsDA40Definition
         "DA40_AP_ALT", "DA40_AP_VS", "DA40_AP_FLC"
     };
 
-    private void NoteApRowForPress(string varKey, double value)
+    private void NoteApRowForPress(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
         if (!ApModeRows.Contains(varKey)) return;
         bool on = value >= 0.5;
         if (_apRowState.TryGetValue(varKey, out bool was) && was != on)
         {
             _apRowMoves[varKey] = _apRowMoves.GetValueOrDefault(varKey) + 1;
-            if (varKey == "DA40_AP_APR") _apFlagMovedAt = Cas.Now();
+            if (varKey == "DA40_AP_APR")
+            {
+                _apFlagMovedAt = Cas.Now();
+                WatchApproachFlag(on, announcer);
+            }
         }
         _apRowState[varKey] = on;
+    }
+
+    // The approach flag's check in progress: the flag moving again supersedes it.
+    private System.Windows.Forms.Timer? _apFlagTimer;
+
+    /// <summary>
+    /// The approach flag moved, whoever pressed APR: BA's buttons, or a hardware panel BA never
+    /// sees. Read the PFD at <see cref="ApPressCheckMs"/> and say the flag if the FMA does not
+    /// show it (<see cref="ApproachFlagNews"/>), read again at <see cref="ApPressRecheckMs"/>
+    /// first, as a press is. Clearing a stuck flag moves nothing on the FMA, so a hardware press
+    /// that cleared it was silent (owner, 2026-10-27).
+    /// </summary>
+    private void WatchApproachFlag(bool on, ScreenReaderAnnouncer announcer)
+    {
+        DateTime movedAt = Cas.Now();
+        string approachBefore = ApproachModesOnFma(Cas.CurrentFma);
+        try { _apFlagTimer?.Stop(); _apFlagTimer?.Dispose(); } catch { }
+        var timer = new System.Windows.Forms.Timer { Interval = ApPressCheckMs };
+        _apFlagTimer = timer;
+        int generation = _apPressGeneration;
+        bool Current() => _apPressGeneration == generation && ReferenceEquals(_apFlagTimer, timer);
+        timer.Tick += async (_, _) =>
+        {
+            timer.Stop();
+            if (!await Cas.ReadNowAsync() || !RowsReadSince(Cas.LastRowsAt, movedAt))
+                await Task.Delay(ApPressFallbackMs);
+            if (!Current()) return;
+
+            string? say = News();
+            if (say != null)
+            {
+                TimeSpan wait = movedAt.AddMilliseconds(ApPressRecheckMs) - Cas.Now();
+                if (wait > TimeSpan.Zero) await Task.Delay(wait);
+                await Cas.ReadNowAsync();
+                if (!Current()) return;
+                say = News();
+            }
+            // A flight load re-sets the flag with everything else: recorded, never spoken (DA40-14).
+            if (say != null) UnderLoadSettle(announcer, () => announcer.AnnounceImmediate(say));
+
+            string? News() => ApproachFlagNews(on, approachBefore, ApproachModesOnFma(Cas.CurrentFma),
+                RowsReadSince(Cas.LastRowsAt, movedAt));
+        };
+        timer.Start();
     }
 
     private void WatchApPress(string varKey, ScreenReaderAnnouncer announcer)
@@ -599,7 +660,6 @@ public partial class CowsDA40Definition
         int rowBefore = _apRowMoves.GetValueOrDefault(varKey);
         DateTime pressedAt = Cas.Now();
         double? flagBefore = _apRowState.TryGetValue(varKey, out bool st) ? (st ? 1 : 0) : null;
-        string approachBefore = ApproachModesOnFma(Cas.CurrentFma);
 
         if (_apPressTimers.Remove(varKey, out var old)) { old.Stop(); old.Dispose(); }
         bool fd = varKey == "DA40_AP_FD";
@@ -647,11 +707,8 @@ public partial class CowsDA40Definition
             string? Answer()
             {
                 if (varKey == "DA40_AP_APR")
-                {
-                    double? flagNow = _apRowState.TryGetValue(varKey, out bool now) ? (now ? 1 : 0) : null;
-                    return ApproachPressAnswer(flagBefore, flagNow, approachBefore,
-                        ApproachModesOnFma(Cas.CurrentFma), RowsReadSince(Cas.LastRowsAt, pressedAt));
-                }
+                    return ApproachPressAnswer(flagBefore,
+                        _apRowState.TryGetValue(varKey, out bool now) ? (now ? 1 : 0) : null);
                 bool rowMoved = _apRowMoves.GetValueOrDefault(varKey) != rowBefore;
                 return ApPressUnanswered(before, Cas.FmaChanges, Cas.LastRowsAt, pressedAt, rowMoved)
                     ? ApPressNoChangeText(def.DisplayName) : null;
@@ -669,6 +726,8 @@ public partial class CowsDA40Definition
         foreach (var t in _apPressTimers.Values)
             try { t.Stop(); t.Dispose(); } catch { }
         _apPressTimers.Clear();
+        try { _apFlagTimer?.Stop(); _apFlagTimer?.Dispose(); } catch { }
+        _apFlagTimer = null;
     }
 
     /// <summary>
@@ -797,6 +856,9 @@ public partial class CowsDA40Definition
     {
         "DA40_AP_TOGA",
         "DA40_AP_MASTER",
+        // The FD key is a GFC 700 key beside AP, so it moved here from the Flight Director
+        // panel, which keeps the command bars (DA40A-4: moved, never copied).
+        "DA40_AP_FD",
         "DA40_AP_HDG",
         "DA40_AP_NAV",
         "DA40_AP_APR",
@@ -837,7 +899,9 @@ public partial class CowsDA40Definition
     // the panel no longer registers a display entry at all - see CowsDA40Definition.cs.
     private static readonly List<string> AutopilotDisplay = new();
 
-    private static readonly List<string> FlightDirectorControls = new() { "DA40_AP_FD" };
+    // Empty, but registered: a display-only panel needs its controls entry or it renders nothing
+    // (HS-5). The FD key is on the GFC 700 panel.
+    private static readonly List<string> FlightDirectorControls = new();
 
     private static readonly List<string> FlightDirectorDisplay = new()
     {
@@ -904,6 +968,11 @@ public partial class CowsDA40Definition
         ScreenReaderAnnouncer announcer)
     {
         bool on = value >= 0.5;
+        // A press turns the key the other way from where its row stands, whatever the value: a
+        // panel button always presses with 1. That picks AP's and FD's ON or OFF, and VS's and
+        // FLC's target sync (DA40A-24).
+        if (ApModeIsPress(varKey) || ApSwitchIsPress(varKey))
+            on = !(simConnect.GetCachedVariableValue(varKey) is double row && row >= 0.5);
 
         string? onOff = varKey switch
         {
@@ -924,10 +993,6 @@ public partial class CowsDA40Definition
             "DA40_AP_FLC" => "FLIGHT_LEVEL_CHANGE",
             _ => null
         };
-        // A press turns the mode the other way from where its row stands (for VS and FLC's
-        // target sync, DA40A-24).
-        if (ApModeIsPress(varKey))
-            on = !(simConnect.GetCachedVariableValue(varKey) is double row && row >= 0.5);
 
         // ---------- TO/GA ----------
         //
@@ -970,7 +1035,8 @@ public partial class CowsDA40Definition
                 simConnect.ExecuteCalculatorCodeUnique(
                     FormattableString.Invariant($"(A:AUTOPILOT FLIGHT DIRECTOR ACTIVE:1, Bool) {(on ? 0 : 1)} == if{{ 1 (>K:TOGGLE_FLIGHT_DIRECTOR) }}"));
                 // The GFC 700 keeps the director on while the autopilot flies and refuses the
-                // press silently (2026-10-27): the press check says "no change".
+                // press silently, on MSFS 2020 and 2024 (2026-10-27): the press check says
+                // "no change".
                 WatchApPress(varKey, announcer);
                 return true;
 
