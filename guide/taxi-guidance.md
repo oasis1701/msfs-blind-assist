@@ -736,7 +736,6 @@ Open Settings from the File menu and choose the **Taxi Guidance** tab.
 - **Announce crossing taxiways (e.g., "Crossing taxiway Link 53")** — on by default. Untick for quieter taxiing.
 - **Announce ground speed every:** and **During takeoff assist, announce ground speed every:** — see [Ground speed](knowing-where-you-are.md#where-ground-speed).
 - **Use feet for distances (default: metres)** — every taxi distance in feet instead of metres. This covers turns, hold short countdowns, stands, runway exits and the status readouts.
-- **Use Fahrenheit for outside temperature (default: Celsius)** — Output O reads the outside air temperature in Fahrenheit on every aircraft. Unticked by default. See [Outside Temperature](weather.md#wx-temperature).
 - **Show ground traffic distances in metres (default: feet)** — a separate setting for the ground traffic callouts only. See [Ground Traffic](ground-traffic.md).
 - **Auto-select arrival gate in GSX on route calculation** — see [Gates, GSX and Docking](gates-gsx-and-docking.md).
 - **Docking guidance** settings — see [Docking Guidance](gates-gsx-and-docking.md#docking).
