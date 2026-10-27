@@ -29,6 +29,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
     private Label takeoffGsAnnounceLabel = null!;
     private ComboBox takeoffGsAnnounceCombo = null!;
     private CheckBox useFeetForDistancesCheckBox = null!;
+    private CheckBox useFahrenheitForOutsideTemperatureCheckBox = null!;
     private CheckBox useMetresCheckBox = null!;
     private CheckBox gsxAutoSelectGateCheckBox = null!;
 
@@ -274,11 +275,20 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             AccessibleDescription = "When enabled, all ground distances (taxi guidance, runway exits, parking) are announced in feet. Default is metres."
         };
 
+        useFahrenheitForOutsideTemperatureCheckBox = new CheckBox
+        {
+            Text = "Use Fahrenheit for outside temperature (default: Celsius)",
+            Location = new Point(20, 390),
+            Size = new Size(450, 25),
+            AccessibleName = "Use Fahrenheit for outside temperature",
+            AccessibleDescription = "When enabled, Output O announces the outside air temperature in degrees Fahrenheit on every aircraft. Unchecked uses Celsius. Applies after saving settings."
+        };
+
         // Ground traffic distance unit: metres or feet (INDEPENDENT of the app-wide Distance units setting)
         useMetresCheckBox = new CheckBox
         {
             Text = "Show ground traffic distances in metres (default: feet)",
-            Location = new Point(20, 390),
+            Location = new Point(20, 425),
             Size = new Size(450, 25),
             AccessibleName = "Show ground traffic distances in metres",
             AccessibleDescription = "When enabled, proximity alert distances (e.g. 'Traffic ahead, 100 metres') are in metres. Default is feet, which matches aviation conventions. Independent of the app-wide distance units setting."
@@ -290,7 +300,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         gsxAutoSelectGateCheckBox = new CheckBox
         {
             Text = "Auto-select arrival gate in GSX on route calculation",
-            Location = new Point(20, 420),
+            Location = new Point(20, 455),
             Size = new Size(450, 25),
             AccessibleName = "Auto-select arrival gate in GSX on route calculation",
             AccessibleDescription = "When checked, calculating a taxi route to a gate also drives the GSX menu to select that gate so the marshaller and VDGS arm there automatically. Only fires when GSX is running."
@@ -300,7 +310,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         dockingGroup = new GroupBox
         {
             Text = "Docking guidance",
-            Location = new Point(20, 455),
+            Location = new Point(20, 490),
             Size = new Size(450, 245),
             AccessibleName = "Docking guidance"
         };
@@ -414,7 +424,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         refreshTaxiwayNamesButton = new Button
         {
             Text = "Refresh Taxiway Names",
-            Location = new Point(20, 715),
+            Location = new Point(20, 750),
             Size = new Size(200, 35),
             Enabled = _onRefreshTaxiwayNames != null,
             AccessibleName = "Refresh Taxiway Names",
@@ -426,7 +436,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         taxiAugmentEnabledCheckBox = new CheckBox
         {
             Text = "Online taxiway, gate and airport building names (OpenStreetMap + X-Plane)",
-            Location = new Point(20, 755),
+            Location = new Point(20, 790),
             Size = new Size(450, 25),
             AccessibleName = "Online taxiway, gate and airport building names",
             AccessibleDescription = "When enabled, fetches real-world taxiway and gate names, and airport buildings such as terminals, hangars, the tower and fuel, from OpenStreetMap and the X-Plane Scenery Gateway for the departure and destination. Disable to use navdata only with no online requests. Applies immediately."
@@ -436,7 +446,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         taxiAugmentAttributionLabel = new Label
         {
             Text = "Online names: © OpenStreetMap contributors (ODbL) + X-Plane Scenery Gateway.",
-            Location = new Point(20, 782),
+            Location = new Point(20, 817),
             Size = new Size(450, 30),
             AccessibleName = "Online taxiway name data attribution"
         };
@@ -448,7 +458,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sceneryIndexEnabledCheckBox = new CheckBox
         {
             Text = "Read installed scenery for airport buildings (offline)",
-            Location = new Point(20, 815),
+            Location = new Point(20, 850),
             Size = new Size(450, 40),
             AccessibleName = "Read installed scenery for airport buildings (offline)",
             AccessibleDescription = "When enabled, reads the add-on airport package on disk for named "
@@ -461,7 +471,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         // Read-only TextBox, not a Label, so a screen-reader user can tab to it.
         sceneryIndexStatusTextBox = new TextBox
         {
-            Location = new Point(20, 858),
+            Location = new Point(20, 893),
             Size = new Size(450, 44),
             ReadOnly = true,
             Multiline = true,
@@ -475,7 +485,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         surroundingsCalloutsCheckBox = new CheckBox
         {
             Text = "Announce airport buildings as you taxi past them",
-            Location = new Point(20, 905),
+            Location = new Point(20, 940),
             Size = new Size(450, 40),
             AccessibleName = "Announce airport buildings as you taxi past them",
             AccessibleDescription = "When enabled, says for example Passing Concourse B, on the left, as a terminal, hangar, tower, fuel or cargo area comes abeam while taxiing. Queued behind taxi guidance, never during takeoff, landing rollout or docking. Applies immediately."
@@ -483,12 +493,12 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
 
         // Its own switch: leaving the taxiway is a safety callout and must survive someone turning
         // the chatty passing callouts off. Deliberately not silenced on takeoff or rollout.
-        // It spans y 950-990 and the SayIntentions heading below starts at 995:
+        // It spans y 985-1025 and the SayIntentions heading below starts at 1030:
         // TaxiGuidancePanelLayoutTests measures that no two controls on this tab overlap.
         surfaceChangeCalloutsCheckBox = new CheckBox
         {
             Text = "Tell me when I leave the paved surface",
-            Location = new Point(20, 950),
+            Location = new Point(20, 985),
             Size = new Size(450, 40),
             AccessibleName = "Tell me when I leave the paved surface",
             AccessibleDescription = "When enabled, says Off the pavement, on grass, if the wheels leave the paved surface while taxiing, and Back on pavement when they regain it. Ignores changes between paved surfaces such as asphalt to concrete. Still speaks during takeoff roll and landing rollout. Applies immediately."
@@ -500,7 +510,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sayIntentionsHeadingLabel = new Label
         {
             Text = "SayIntentions",
-            Location = new Point(20, 995),
+            Location = new Point(20, 1030),
             Size = new Size(450, 20),
             AccessibleName = "SayIntentions section"
         };
@@ -514,7 +524,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sayIntentionsAutoStartCheckBox = new CheckBox
         {
             Text = "SayIntentions import starts taxi &guidance immediately",
-            Location = new Point(20, 1020),
+            Location = new Point(20, 1055),
             Size = new Size(450, 40),
             AccessibleName = "SayIntentions import starts taxi guidance immediately",
             AccessibleDescription = "When checked, a SayIntentions import starts guidance immediately "
@@ -532,6 +542,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             gsAnnounceLabel, gsAnnounceCombo,
             takeoffGsAnnounceLabel, takeoffGsAnnounceCombo,
             useFeetForDistancesCheckBox,
+            useFahrenheitForOutsideTemperatureCheckBox,
             useMetresCheckBox,
             gsxAutoSelectGateCheckBox,
             dockingGroup,
@@ -557,6 +568,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         gsAnnounceCombo.TabIndex = tabIdx++;
         takeoffGsAnnounceCombo.TabIndex = tabIdx++;
         useFeetForDistancesCheckBox.TabIndex = tabIdx++;
+        useFahrenheitForOutsideTemperatureCheckBox.TabIndex = tabIdx++;
         useMetresCheckBox.TabIndex = tabIdx++;
         gsxAutoSelectGateCheckBox.TabIndex = tabIdx++;
         dockingGroup.TabIndex = tabIdx++;
@@ -718,6 +730,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         };
 
         useFeetForDistancesCheckBox.Checked = settings.GroundDistanceUnit == DistanceUnit.Feet;
+        useFahrenheitForOutsideTemperatureCheckBox.Checked = settings.UseFahrenheitForOutsideTemperature;
         useMetresCheckBox.Checked = settings.GroundTrafficUseMetres;
         gsxAutoSelectGateCheckBox.Checked = settings.GsxAutoSelectGateOnRoute;
 
@@ -781,6 +794,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         };
 
         settings.GroundDistanceUnit = useFeetForDistancesCheckBox.Checked ? DistanceUnit.Feet : DistanceUnit.Metres;
+        settings.UseFahrenheitForOutsideTemperature = useFahrenheitForOutsideTemperatureCheckBox.Checked;
         settings.GroundTrafficUseMetres = useMetresCheckBox.Checked;
         settings.GsxAutoSelectGateOnRoute = gsxAutoSelectGateCheckBox.Checked;
 

@@ -433,7 +433,7 @@ Open the Settings window from the **File** menu, **Settings…**. It holds nearl
 | AI | Your AI provider (Gemini or Claude), its key and model, for reading cockpit displays and describing scenery and routes. |
 | Audio | Which sound device BA's guidance tones play through. |
 | Hand Fly | Hand-flying feedback, visual guidance tones, Takeoff Assist and the rollout centreline tone. |
-| Taxi Guidance | The taxi steering tone, taxi callouts, distance units, docking guidance, online taxiway names, airport buildings, and SayIntentions taxi import. |
+| Taxi Guidance | The taxi steering tone, taxi callouts, distance units, the outside-temperature unit, docking guidance, online taxiway names, airport buildings, and SayIntentions taxi import. |
 | First Officer | The [First Officer](first-officer.md#fo-settings)'s automation (gear, flaps, autopilot, landing lights, altimeters, seat belt signs, center fuel pumps), the PMDG 737 GPWS test type, and whether flows speak each step. |
 | Updates | Release or preview builds, automatic update checks, the startup data check, and the version you are running. |
 

@@ -253,6 +253,9 @@ public class UserSettings
         /// </summary>
         public DistanceUnit GroundDistanceUnit { get; set; } = DistanceUnit.Metres;
 
+        /// <summary>Use Fahrenheit for the Output O outside-temperature readout. Default is Celsius.</summary>
+        public bool UseFahrenheitForOutsideTemperature { get; set; } = false;
+
         // Independent of GroundDistanceUnit: ground-traffic proximity alerts have their own
         // metres/feet toggle (default feet). Not governed by the app-wide distance-units setting.
         public bool GroundTrafficUseMetres { get; set; } = false;

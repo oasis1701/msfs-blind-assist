@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace MSFSBlindAssist.Utils;
 
 /// <summary>
@@ -10,6 +12,14 @@ namespace MSFSBlindAssist.Utils;
 public static class ReadoutFormat
 {
     public const string PlaceholderUnit = "number";
+
+    /// <summary>Format the outside-temperature readout in whole degrees, converting only the spoken value.</summary>
+    public static string OutsideTemperature(double celsius, bool useFahrenheit)
+    {
+        double temperature = useFahrenheit ? celsius * 9.0 / 5.0 + 32.0 : celsius;
+        string unit = useFahrenheit ? "Fahrenheit" : "Celsius";
+        return $"{temperature.ToString("0", CultureInfo.InvariantCulture)} degrees {unit}";
+    }
 
     public static string WithUnit(string value, string? units)
     {

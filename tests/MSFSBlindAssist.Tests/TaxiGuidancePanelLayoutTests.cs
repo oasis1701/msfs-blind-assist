@@ -1,5 +1,6 @@
 using System.Windows.Forms;
 using MSFSBlindAssist.Forms.Settings;
+using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -18,6 +19,36 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class TaxiGuidancePanelLayoutTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OutsideTemperatureToggle_LoadsAndApplies_BesideDistanceUnits(bool useFahrenheit)
+    {
+        var settings = new UserSettings
+        {
+            UseFahrenheitForOutsideTemperature = useFahrenheit,
+            GroundDistanceUnit = DistanceUnit.Feet,
+            GroundTrafficUseMetres = true
+        };
+        using var panel = new TaxiGuidancePanel(refreshTaxiwayNames: null);
+        panel.LoadFrom(settings);
+
+        var temperature = Assert.Single(panel.Controls.OfType<CheckBox>(),
+            c => c.AccessibleName == "Use Fahrenheit for outside temperature");
+        var distance = Assert.Single(panel.Controls.OfType<CheckBox>(),
+            c => c.AccessibleName == "Use feet for distances");
+        Assert.Equal(useFahrenheit, temperature.Checked);
+        Assert.Equal(distance.TabIndex + 1, temperature.TabIndex);
+        Assert.True(temperature.Top >= distance.Bottom);
+
+        temperature.Checked = !useFahrenheit;
+        Assert.Equal(useFahrenheit, settings.UseFahrenheitForOutsideTemperature);
+        panel.ApplyTo(settings);
+        Assert.Equal(!useFahrenheit, settings.UseFahrenheitForOutsideTemperature);
+        Assert.Equal(DistanceUnit.Feet, settings.GroundDistanceUnit);
+        Assert.True(settings.GroundTrafficUseMetres);
+    }
+
     [Fact]
     public void No_two_controls_in_one_container_overlap()
     {
