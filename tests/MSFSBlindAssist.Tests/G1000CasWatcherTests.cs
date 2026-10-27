@@ -218,7 +218,7 @@ public class G1000CasWatcherTests
         watcher.ProcessRows(Nav("GPS, TERM", "AP, GPS, FLC, ALTS armed"));   // the baseline
         watcher.ProcessRows(Nav("LOC1", "AP, ROL, FLC, ALTS armed"));
 
-        Assert.Equal(new[] { "Navigation source LOC1. Autopilot ROL, FLC, ALTS armed." }, said.All);
+        Assert.Equal(new[] { "Navigation source LOC1. Autopilot ROL." }, said.All);
     }
 
     [Fact]

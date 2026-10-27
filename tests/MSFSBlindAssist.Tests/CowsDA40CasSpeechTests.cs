@@ -26,8 +26,36 @@ public class CowsDA40CasSpeechTests
         var (now, _) = G1000CasWatcher.ComposeCasSpeech(new[] { "Caution: LOW FUEL" }, Array.Empty<string>(),
             G1000CasWatcher.DescribeFmaChange("AP, GPS, ALT", "AP, HDG, ALT"));
 
-        Assert.Equal("Caution: LOW FUEL. Autopilot HDG, ALT.", now);
+        Assert.Equal("Caution: LOW FUEL. Autopilot HDG.", now);
     }
+
+    // ⚠️ Arming the approach, a CDI change and the press read-back came seconds apart, and each
+    // one cut off the one before (2026-10-27): a mode change alone is queued (DA40G-35).
+    [Fact]
+    public void AModeChangeAloneIsQueuedNotInterrupting()
+    {
+        var (now, queued) = G1000CasWatcher.ComposeCasSpeech(Array.Empty<string>(), Array.Empty<string>(),
+            "Autopilot GS", "Navigation source LOC1");
+
+        Assert.Equal("", now);
+        Assert.Equal(new[] { "Navigation source LOC1. Autopilot GS." }, queued);
+    }
+
+    [Theory]
+    // Arming the approach read the whole strip, then read the rest of it again (2026-10-27).
+    [InlineData("ROL, PIT", "ROL, LOC armed, PIT, ALTS armed, GS armed", "Flight director LOC armed, ALTS armed, GS armed")]
+    [InlineData("AP, ROL, LOC armed, PIT, GS armed", "AP, LOC, PIT, GS armed", "Autopilot LOC")]
+    [InlineData("AP, LOC, PIT, GS armed", "AP, LOC, GS", "Autopilot GS")]
+    [InlineData("AP, ROL, LOC armed, PIT, GS armed", "AP, ROL, PIT", "Autopilot LOC, GS disarmed")]
+    [InlineData("AP, GPS armed, ROL, PIT", "AP, LOC armed, ROL, PIT", "Autopilot LOC armed, GPS disarmed")]
+    // ALTS captures as ALTS and then ALT: neither is "ALTS disarmed".
+    [InlineData("AP, GPS, FLC, ALTS armed", "AP, GPS, ALTS", "Autopilot ALTS")]
+    [InlineData("AP, GPS, ALTS", "AP, GPS, ALT", "Autopilot ALT")]
+    [InlineData("AP, GPS, FLC, ALTS armed", "AP, GPS, ALT", "Autopilot ALT")]
+    [InlineData("AP, YD, GPS, ALT", "AP, GPS, ALT", "Autopilot YD off")]
+    [InlineData("AP, HDG, ALT", "AP, HDG, ALT", "")]
+    public void TheSameOwnerSaysOnlyWhatChanged(string previous, string current, string said)
+        => Assert.Equal(said, G1000CasWatcher.DescribeFmaChange(previous, current));
 
     [Fact]
     public void AutopilotOffIsNotNews()

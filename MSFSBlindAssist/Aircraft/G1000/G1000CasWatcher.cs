@@ -553,10 +553,16 @@ internal sealed class G1000CasWatcher
         string? navChange = null)
     {
         var parts = new List<string>(appeared);
-        if (!string.IsNullOrEmpty(navChange)) parts.Add(navChange);
-        if (!string.IsNullOrEmpty(fmaChange)) parts.Add(fmaChange);
+        var modes = new List<string>();
+        if (!string.IsNullOrEmpty(navChange)) modes.Add(navChange);
+        if (!string.IsNullOrEmpty(fmaChange)) modes.Add(fmaChange);
 
+        // ⚠️ A MODE CHANGE ALONE IS QUEUED, NEVER INTERRUPTING (DA40G-35). Arming the approach,
+        // a CDI change and the press read-back came seconds apart, and each one cut off the one
+        // before (2026-10-27). With a new CAS message it still joins that one sentence.
         var queued = new List<string>();
+        if (appeared.Count > 0) parts.AddRange(modes);
+        else if (modes.Count > 0) queued.Add(string.Join(". ", modes.Select(p => p.TrimEnd('.'))) + ".");
         foreach (string known in cleared)
             queued.Add(known.Replace("Caution: ", "").Replace("WARNING: ", "")
                             .Replace("Advisory: ", "").Replace("Status: ", "")
@@ -588,18 +594,53 @@ internal sealed class G1000CasWatcher
     /// the autopilot master row already says "Autopilot: Off" (DA40A-22), and "Autopilot off,
     /// flight director ..." here said it twice. A plain disconnect to "off" stays silent: that
     /// is the resting state, and the disconnect tone is the aeroplane's own.
+    ///
+    /// ⚠️ ONLY WHAT CHANGED (DA40G-35). Arming the approach read the whole strip, "Flight director
+    /// ROL, LOC armed, PIT, ALTS armed, GS armed", and disarming it read the rest of it again
+    /// (2026-10-27); every other aircraft says only the mode that moved. While the owner stays
+    /// the same, the new modes are said ("LOC armed, GS armed", "GS" on capture, "HDG"), and armed
+    /// modes that went without being captured are "disarmed": a dropped approach is never silent.
+    /// A mode that only gave way to a new one in its column is not said; one that went with
+    /// nothing in its place is "off". A new owner (the director
+    /// coming up, the autopilot engaging or letting go) still reads the whole strip.
     /// </summary>
     internal static string DescribeFmaChange(string previous, string current)
     {
         static bool HasAp(string f) =>
             f == "AP" || f.StartsWith("AP, ", StringComparison.Ordinal);
+        static bool IsOff(string f) => f.Length == 0 || f == "off";
 
-        if (current.Length == 0 || current == "off") return "";
-        if (HasAp(current))
+        if (IsOff(current)) return "";
+        string owner = HasAp(current) ? "Autopilot" : "Flight director";
+        string[] Modes(string f) => f.Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(t => t != "AP").ToArray();
+        var now = Modes(current);
+
+        if (IsOff(previous) || HasAp(previous) != HasAp(current))
+            return now.Length > 0 ? owner + " " + string.Join(", ", now) : "Autopilot on";
+
+        var before = Modes(previous);
+        var added = now.Where(t => !before.Contains(t)).ToList();
+        static bool IsArmed(string t) => t.EndsWith(" armed", StringComparison.Ordinal);
+        // An armed mode is captured when its active form appears. ALTS captures as ALTS (the
+        // capture) and then ALT, so either one is a capture, never "ALTS disarmed".
+        bool Captured(string armed)
         {
-            string modes = current == "AP" ? "" : current.Substring(4).Trim();
-            return modes.Length > 0 ? "Autopilot " + modes : "Autopilot on";
+            string b = armed[..^6];
+            return now.Contains(b) || (b == "ALTS" && now.Contains("ALT"));
         }
-        return "Flight director " + current;
+        var disarmed = before
+            .Where(t => IsArmed(t) && !now.Contains(t) && !Captured(t))
+            .Select(t => t[..^6]).ToList();
+        // An active mode that went with no new active mode in its place (YD) is "off"; one that
+        // gave way to another (ROL to HDG) is covered by saying the new one.
+        var off = added.Any(t => !IsArmed(t))
+            ? new List<string>()
+            : before.Where(t => !IsArmed(t) && !now.Contains(t)).ToList();
+
+        var parts = new List<string>(added);
+        if (disarmed.Count > 0) parts.Add(string.Join(", ", disarmed) + " disarmed");
+        if (off.Count > 0) parts.Add(string.Join(", ", off) + " off");
+        return parts.Count > 0 ? owner + " " + string.Join(", ", parts) : "";
     }
 }
