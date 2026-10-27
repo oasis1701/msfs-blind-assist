@@ -35,7 +35,7 @@ public partial class CowsDA40Definition
 {
     /// <summary>Reads a mode's engaged state for a toggle's label.</summary>
     private static string ModeState(SimConnectManager sc, string key)
-        => (sc.GetCachedVariableValue(key) ?? 0) > 0.5 ? "Engaged" : "Off";
+        => (sc.GetCachedVariableValue(key) ?? 0) > 0.5 ? "On" : "Off";
 
     /// <summary>
     /// One autopilot mode button. Goes through HandleAutopilotSet so the distinct ON/OFF
@@ -48,7 +48,12 @@ public partial class CowsDA40Definition
         {
             bool on = (sc.GetCachedVariableValue(key) ?? 0) > 0.5;
             HandleAutopilotSet(key, on ? 0 : 1, sc, ann);
-        });
+        })
+        {
+            // A mode key's press is confirmed by the FMA, and a refusal by the press check: the
+            // window's own 1.2 s read-back said it a second time (CORE-7, 2026-10-27).
+            SuppressStateAnnounce = ApModeIsPress(key) ? () => true : null
+        };
 
     /// <summary>
     /// The Approach button: a press, like the real key (DA40A-28), labelled with what the G1000

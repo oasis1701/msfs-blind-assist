@@ -22,8 +22,8 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// so the G1000 decides what the press means against its own approach flag, and it reads
 /// that flag back. AP_APR_HOLD_ON was refused while the G1000's flag was stuck on after the
 /// CDI left the localiser, and nothing BA read showed it (2026-10-26 in flight, reproduced
-/// on the ground 2026-10-27). The other modes still send their _ON/_OFF events until they
-/// are converted the same way.
+/// on the ground 2026-10-27). The other mode keys press the same way; the autopilot
+/// master and flight director stay switches.
 ///
 /// THE HEADING BUG AND COURSE MOVED HERE from the Radios panel. They are physically PFD
 /// bezel knobs, which is why they started out beside the radio knobs, but functionally
@@ -91,7 +91,6 @@ public partial class CowsDA40Definition
         // refused with nothing to show why. A push button: the press is AP_APR_HOLD.
         AddApMode(v, "DA40_AP_APR", "WTAP_Garmin_Approach_Mode_On", "Approach Mode",
             SimVarType.LVar, "number");
-        v["DA40_AP_APR"].RenderAsButton = true;
         AddApMode(v, "DA40_AP_BC", "AUTOPILOT BACKCOURSE HOLD", "Backcourse Mode");
 
         // ---------- Vertical modes ----------
@@ -317,7 +316,14 @@ public partial class CowsDA40Definition
         return magnitude + " degrees " + (v > 0 ? "right" : "left");
     }
 
-    /// <summary>An autopilot mode: a two-state combo backed by a stock SimVar.</summary>
+    /// <summary>
+    /// The GFC 700 mode keys, which are push buttons (DA40A-28). The autopilot master and the
+    /// flight director stay switches: BA reads the same state the sim keeps for them.
+    /// </summary>
+    internal static bool ApModeIsPress(string key) => key is "DA40_AP_HDG" or "DA40_AP_NAV"
+        or "DA40_AP_APR" or "DA40_AP_BC" or "DA40_AP_ALT" or "DA40_AP_VS" or "DA40_AP_FLC";
+
+    /// <summary>An autopilot mode: a two-state row backed by a stock SimVar; a mode key renders as a button.</summary>
     private static void AddApMode(Dictionary<string, SimVarDefinition> v, string key,
         string simvar, string display, SimVarType type = SimVarType.SimVar, string units = "bool")
     {
@@ -338,7 +344,8 @@ public partial class CowsDA40Definition
             // it syncs (VS to the current rate, FLC to the current speed) then arrive in the
             // same frame, so the target's settle knows a mode engaged (ApModeSyncMs).
             ExcludeFromBatch = true,
-            HighFrequency = true
+            HighFrequency = true,
+            RenderAsButton = ApModeIsPress(key)
         };
     }
 
@@ -760,20 +767,26 @@ public partial class CowsDA40Definition
         string? onOff = varKey switch
         {
             "DA40_AP_MASTER" => on ? "AUTOPILOT_ON" : "AUTOPILOT_OFF",
-            "DA40_AP_HDG" => on ? "AP_HDG_HOLD_ON" : "AP_HDG_HOLD_OFF",
-            "DA40_AP_NAV" => on ? "AP_NAV1_HOLD_ON" : "AP_NAV1_HOLD_OFF",
-            // A press, whatever the value: the G1000 toggles against its own flag (DA40A-28).
+            // ⚠️ THE MODE KEYS ARE PRESSES, whatever the value (DA40A-28): the plain event,
+            // which the G1000 toggles against its OWN state, exactly like the real key. The
+            // _ON event was refused while that state disagreed with what BA read.
+            "DA40_AP_HDG" => "AP_HDG_HOLD",
+            "DA40_AP_NAV" => "AP_NAV1_HOLD",
             "DA40_AP_APR" => "AP_APR_HOLD",
-            "DA40_AP_BC" => on ? "AP_BC_HOLD_ON" : "AP_BC_HOLD_OFF",
-            "DA40_AP_ALT" => on ? "AP_ALT_HOLD_ON" : "AP_ALT_HOLD_OFF",
-            // ⚠️ AP_VS_ON / AP_VS_OFF, NOT AP_VS_HOLD_ON / _OFF: the Working Title GFC 700's
-            // state manager intercepts AP_VS_ON/OFF (and AP_PANEL_VS_ON/OFF) and has no case for
-            // the _HOLD_ pair, so those left the autopilot in pitch hold (measured live on the
-            // XLS, 2026-10-05). Every other event here is in its intercept list.
-            "DA40_AP_VS" => on ? "AP_VS_ON" : "AP_VS_OFF",
-            "DA40_AP_FLC" => on ? "FLIGHT_LEVEL_CHANGE_ON" : "FLIGHT_LEVEL_CHANGE_OFF",
+            "DA40_AP_BC" => "AP_BC_HOLD",
+            "DA40_AP_ALT" => "AP_ALT_HOLD",
+            // ⚠️ AP_VS_HOLD, NEVER AP_VS_HOLD_ON / _OFF: the Working Title GFC 700's state
+            // manager has no case for the _HOLD_ pair, which left the autopilot in pitch hold
+            // (measured live on the XLS, 2026-10-05). The plain AP_VS_HOLD is in its intercept
+            // list (garminsdk.js:11731, 11861), like every other event here.
+            "DA40_AP_VS" => "AP_VS_HOLD",
+            "DA40_AP_FLC" => "FLIGHT_LEVEL_CHANGE",
             _ => null
         };
+        // A press turns the mode the other way from where its row stands (for VS and FLC's
+        // target sync, DA40A-24).
+        if (ApModeIsPress(varKey))
+            on = !(simConnect.GetCachedVariableValue(varKey) is double row && row >= 0.5);
 
         // ---------- TO/GA ----------
         //

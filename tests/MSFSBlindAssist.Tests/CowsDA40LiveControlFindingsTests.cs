@@ -75,11 +75,12 @@ public class CowsDA40LiveControlFindingsTests
     [Fact]
     public void VerticalSpeedUsesTheEventsTheGfc700Intercepts()
     {
-        // The Working Title GFC 700 state manager handles AP_VS_ON/OFF and has no case for
-        // AP_VS_HOLD_ON/OFF, which left the autopilot in pitch hold.
+        // The Working Title GFC 700 state manager has no case for AP_VS_HOLD_ON/OFF, which left
+        // the autopilot in pitch hold. The key is a press (DA40A-28): the plain AP_VS_HOLD, which
+        // it intercepts.
         string src = File.ReadAllText(Path.Combine(RepoRoot(),
             "MSFSBlindAssist", "Aircraft", "DA40", "CowsDA40Definition.Autopilot.cs"));
-        Assert.Contains("\"AP_VS_ON\" : \"AP_VS_OFF\"", src);
+        Assert.Contains("\"DA40_AP_VS\" => \"AP_VS_HOLD\"", src);
         Assert.DoesNotContain("\"AP_VS_HOLD_ON\"", src);
     }
 }
