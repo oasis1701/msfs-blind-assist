@@ -320,8 +320,12 @@ public partial class CowsDA40Definition
     /// The GFC 700 mode keys, which are push buttons (DA40A-28). The autopilot master and the
     /// flight director stay switches: BA reads the same state the sim keeps for them.
     /// </summary>
-    internal static bool ApModeIsPress(string key) => key is "DA40_AP_HDG" or "DA40_AP_NAV"
-        or "DA40_AP_APR" or "DA40_AP_BC" or "DA40_AP_ALT" or "DA40_AP_VS" or "DA40_AP_FLC";
+    internal static bool ApModeIsPress(string key) => Array.IndexOf(ApPressKeys, key) >= 0;
+
+    private static readonly string[] ApPressKeys =
+    {
+        "DA40_AP_HDG", "DA40_AP_NAV", "DA40_AP_APR", "DA40_AP_BC", "DA40_AP_ALT", "DA40_AP_VS", "DA40_AP_FLC"
+    };
 
     /// <summary>An autopilot mode: a two-state row backed by a stock SimVar; a mode key renders as a button.</summary>
     private static void AddApMode(Dictionary<string, SimVarDefinition> v, string key,
@@ -396,6 +400,13 @@ public partial class CowsDA40Definition
     /// watcher's own poll before giving up: two of its 1.5 s polls, the old check.</summary>
     internal const int ApPressFallbackMs = 3000;
 
+    /// <summary>When a press the first read would answer with words is read again, and only then
+    /// spoken. ⚠️ A MODE KEY IS A TOGGLE (DA40A-28): a "no change" said over a press the G1000 was
+    /// still drawing invites the second press that cancels it. The 500 ms read was measured only
+    /// parked on MSFS 2020, and NAV arming a localizer has no row of its own to answer for it
+    /// (`AUTOPILOT NAV1 LOCK` stays 0 with LOC armed). A refusal is said 1.5 s after the press.</summary>
+    internal const int ApPressRecheckMs = 1500;
+
     /// <summary>The flight director is answered by its own state, which reaches BA about once a
     /// second (measured up to ~1 s), after a refused press's FMA flicker of ~0.4 s.</summary>
     internal const int ApFdCheckMs = 1500;
@@ -447,11 +458,9 @@ public partial class CowsDA40Definition
     /// </summary>
     internal static string ApproachModesOnFma(string fma)
     {
-        static string Base(string t) => t.EndsWith(" armed", StringComparison.Ordinal) ? t[..^6] : t;
-        var tokens = G1000.G1000CasWatcher.FmaModes(fma)
-            .Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        bool gp = tokens.Any(t => Base(t) == "GP");
-        return string.Join(", ", tokens.Where(t => Base(t) switch
+        var tokens = FmaTokens(fma);
+        bool gp = tokens.Any(t => ModeBase(t) == "GP");
+        return string.Join(", ", tokens.Where(t => ModeBase(t) switch
         {
             "LOC" or "BC" or "VAPP" or "GS" or "GP" => true,
             "GPS" => gp,
@@ -459,17 +468,30 @@ public partial class CowsDA40Definition
         }));
     }
 
+    private static string[] FmaTokens(string fma) => G1000.G1000CasWatcher.FmaModes(fma)
+        .Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>An FMA mode without its " armed" ("GS armed" gives "GS").</summary>
+    private static string ModeBase(string token)
+        => token.EndsWith(" armed", StringComparison.Ordinal) ? token[..^6] : token;
+
     /// <summary>
     /// The Approach button's state in the autopilot window: the flag, and while it is on the
     /// approach modes the FMA shows ("LOC armed, GS armed"), or "On, nothing armed" when the
     /// flag is on and the FMA shows none. An FMA not read lately says plain "On", never a false
-    /// "nothing armed". Pure so the suite can pin it.
+    /// "nothing armed". ⚠️ AN FMA READ BEFORE THE FLAG MOVED KEEPS THE LABEL IT HAD
+    /// (<paramref name="shownBefore"/>, else "On"): the flag moves within a frame of the press,
+    /// the FMA only when the PFD is next read, and the label computed in between said "On,
+    /// nothing armed" over an approach being armed (review, 2026-10-27). The flag going off is
+    /// "Off" at once. Pure so the suite can pin it.
     /// </summary>
-    internal static string DescribeApproachState(double? flag, string fma, bool fmaFresh)
+    internal static string DescribeApproachState(double? flag, string fma, bool fmaFresh,
+        bool fmaPredatesFlag = false, string? shownBefore = null)
     {
         if (flag is not double f) return "";
         if (f < 0.5) return "Off";
         if (!fmaFresh) return "On";
+        if (fmaPredatesFlag) return string.IsNullOrEmpty(shownBefore) ? "On" : shownBefore;
         string modes = ApproachModesOnFma(fma);
         return modes.Length > 0 ? modes : "On, nothing armed";
     }
@@ -478,27 +500,27 @@ public partial class CowsDA40Definition
     /// A mode key's state as the FMA shows it ("GPS armed", "GPS", "Off"), for its button label.
     /// ⚠️ NOT THE STOCK ROW: `AUTOPILOT NAV1 LOCK` read 0 with LOC/BC armed and 1 with GPS armed
     /// (2026-10-27), so the button said Off for one armed state and On for the other. NAV owns
-    /// GPS, VOR, LOC and BC unless the approach flag is on (then LOC is Approach's). An FMA not
-    /// read lately falls back to the row's On/Off. Approach has its own (DescribeApproachState).
-    /// Pure so the suite can pin it.
+    /// GPS, VOR, LOC and BC, less whatever the approach is using while the approach flag is on
+    /// (<see cref="ApproachModesOnFma"/>): GPS flying with LOC and GS armed for an ILS is NAV's,
+    /// and said "Navigation mode: Off" when the flag took all four (review, 2026-10-27); GPS
+    /// beside GP is the RNAV approach's. An FMA not read lately falls back to the row's On/Off.
+    /// Approach has its own (DescribeApproachState). Pure so the suite can pin it.
     /// </summary>
     internal static string DescribeModeState(string key, bool? rowOn, string fma, bool fmaFresh, bool approachOn)
     {
         if (!fmaFresh) return rowOn is bool on ? (on ? "On" : "Off") : "";
+        var approachModes = approachOn ? FmaTokens(ApproachModesOnFma(fma)).Select(ModeBase).ToHashSet() : new HashSet<string>();
         string[] mine = key switch
         {
             "DA40_AP_HDG" => new[] { "HDG" },
-            "DA40_AP_NAV" => approachOn ? Array.Empty<string>() : new[] { "GPS", "VOR", "LOC", "BC" },
+            "DA40_AP_NAV" => new[] { "GPS", "VOR", "LOC", "BC" }.Where(m => !approachModes.Contains(m)).ToArray(),
             "DA40_AP_BC" => new[] { "BC" },
             "DA40_AP_ALT" => new[] { "ALT" },
             "DA40_AP_VS" => new[] { "VS" },
             "DA40_AP_FLC" => new[] { "FLC" },
             _ => Array.Empty<string>()
         };
-        var shown = G1000.G1000CasWatcher.FmaModes(fma)
-            .Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(t => mine.Contains(t.EndsWith(" armed", StringComparison.Ordinal) ? t[..^6] : t));
-        string s = string.Join(", ", shown);
+        string s = string.Join(", ", FmaTokens(fma).Where(t => mine.Contains(ModeBase(t))));
         return s.Length > 0 ? s : "Off";
     }
 
@@ -507,11 +529,32 @@ public partial class CowsDA40Definition
     {
         bool fresh = FmaIsFresh();
         if (key == "DA40_AP_APR")
-            return DescribeApproachState(_apRowState.TryGetValue(key, out bool f) ? (f ? 1 : 0) : null,
-                Cas.CurrentFma, fresh);
+        {
+            _approachLabel = DescribeApproachState(_apRowState.TryGetValue(key, out bool f) ? (f ? 1 : 0) : null,
+                Cas.CurrentFma, fresh, fmaPredatesFlag: Cas.LastRowsAt < _apFlagMovedAt, shownBefore: _approachLabel);
+            return _approachLabel;
+        }
         bool? row = _apRowState.TryGetValue(key, out bool r) ? r : null;
         bool apr = _apRowState.TryGetValue("DA40_AP_APR", out bool a) && a;
         return DescribeModeState(key, row, Cas.CurrentFma, fresh, apr);
+    }
+
+    /// <summary>When the approach flag last moved, and the Approach label last given: held while
+    /// the FMA predates the flag (<see cref="DescribeApproachState"/>).</summary>
+    private DateTime _apFlagMovedAt = DateTime.MinValue;
+    private string? _approachLabel;
+
+    /// <summary>
+    /// Every PFD read relabels the panel's mode buttons (<see cref="RelabelControl"/>): they are
+    /// labelled from the FMA, and a press's own row arrives about 70 ms after it, before the FMA
+    /// is next read, so the relabel the row triggers used the FMA from before the press and kept
+    /// it ("Heading Mode: Off" with HDG flying; review, 2026-10-27). The autopilot window polls
+    /// its labels itself.
+    /// </summary>
+    private void RelabelApModeButtons()
+    {
+        if (RelabelControl is not { } relabel) return;
+        foreach (string key in ApPressKeys) relabel(key);
     }
 
     /// <summary>The panel's mode buttons are labelled the same way as the autopilot window's.</summary>
@@ -542,7 +585,10 @@ public partial class CowsDA40Definition
         if (!ApModeRows.Contains(varKey)) return;
         bool on = value >= 0.5;
         if (_apRowState.TryGetValue(varKey, out bool was) && was != on)
+        {
             _apRowMoves[varKey] = _apRowMoves.GetValueOrDefault(varKey) + 1;
+            if (varKey == "DA40_AP_APR") _apFlagMovedAt = Cas.Now();
+        }
         _apRowState[varKey] = on;
     }
 
@@ -585,18 +631,31 @@ public partial class CowsDA40Definition
                 await Task.Delay(ApPressFallbackMs);
             if (!Current()) return;
 
-            if (varKey == "DA40_AP_APR")
+            // ⚠️ READ AGAIN BEFORE SPEAKING (ApPressRecheckMs): a press is a toggle, and a "no
+            // change" over a press still being drawn invites the press that cancels it.
+            string? say = Answer();
+            if (say != null)
             {
-                double? flagNow = _apRowState.TryGetValue(varKey, out bool now) ? (now ? 1 : 0) : null;
-                string? say = ApproachPressAnswer(flagBefore, flagNow, approachBefore,
-                    ApproachModesOnFma(Cas.CurrentFma), RowsReadSince(Cas.LastRowsAt, pressedAt));
-                if (say != null) announcer.AnnounceImmediate(say);
-                return;
+                TimeSpan wait = pressedAt.AddMilliseconds(ApPressRecheckMs) - Cas.Now();
+                if (wait > TimeSpan.Zero) await Task.Delay(wait);
+                await Cas.ReadNowAsync();
+                if (!Current()) return;
+                say = Answer();
             }
+            if (say != null) announcer.AnnounceImmediate(say);
 
-            bool rowMoved = _apRowMoves.GetValueOrDefault(varKey) != rowBefore;
-            if (ApPressUnanswered(before, Cas.FmaChanges, Cas.LastRowsAt, pressedAt, rowMoved))
-                announcer.AnnounceImmediate(ApPressNoChangeText(def.DisplayName));
+            string? Answer()
+            {
+                if (varKey == "DA40_AP_APR")
+                {
+                    double? flagNow = _apRowState.TryGetValue(varKey, out bool now) ? (now ? 1 : 0) : null;
+                    return ApproachPressAnswer(flagBefore, flagNow, approachBefore,
+                        ApproachModesOnFma(Cas.CurrentFma), RowsReadSince(Cas.LastRowsAt, pressedAt));
+                }
+                bool rowMoved = _apRowMoves.GetValueOrDefault(varKey) != rowBefore;
+                return ApPressUnanswered(before, Cas.FmaChanges, Cas.LastRowsAt, pressedAt, rowMoved)
+                    ? ApPressNoChangeText(def.DisplayName) : null;
+            }
         };
         timer.Start();
     }
@@ -786,10 +845,6 @@ public partial class CowsDA40Definition
         "DA40_AP_FD_BANK"
     };
 
-    /// <summary>
-    /// Every mode takes its own ON and OFF event, so a combo set lands where the pilot
-    /// asked regardless of what MSFSBA believed the state was.
-    /// </summary>
     // The CDI source as last delivered. Null until both have arrived: assuming GPS before the
     // first batch dropped a NAV 2 course change turned on hardware right after a connect.
     private bool? _cdiOnGps;

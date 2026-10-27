@@ -63,6 +63,34 @@ public class CowsDA40ApproachButtonTests
     public void TheModeButtonsSayWhatTheFmaShows(string key, bool row, string fma, bool approachOn, string expected)
         => Assert.Equal(expected, CowsDA40Definition.DescribeModeState(key, row, fma, fmaFresh: true, approachOn));
 
+    // Navigation keeps the lateral modes the approach is not using: GPS flying with LOC and GS
+    // armed for an ILS said "Navigation mode: Off" (review, 2026-10-27).
+    [Theory]
+    [InlineData("AP, GPS, LOC armed, ALT, GS armed", "GPS")]
+    [InlineData("AP, GPS, ALT", "GPS")]                  // the flag left on with nothing armed
+    [InlineData("AP, GPS, ALT, GP armed", "Off")]         // an RNAV approach: its GPS is the approach's
+    [InlineData("AP, BC, ALT", "Off")]                    // a back course approach
+    public void WithTheApproachOnNavigationKeepsWhatTheApproachIsNotUsing(string fma, string expected)
+        => Assert.Equal(expected, CowsDA40Definition.DescribeModeState("DA40_AP_NAV", true, fma,
+            fmaFresh: true, approachOn: true));
+
+    // The flag moves within a frame of the press, the FMA only when it is next read: in between,
+    // the label said "On, nothing armed" over an approach being armed (review, 2026-10-27).
+    [Fact]
+    public void AnFmaOlderThanTheFlagKeepsTheLabelItHad()
+        => Assert.Equal("Off", CowsDA40Definition.DescribeApproachState(1, "ROL, PIT", fmaFresh: true,
+            fmaPredatesFlag: true, shownBefore: "Off"));
+
+    [Fact]
+    public void AnFmaOlderThanTheFlagWithNoLabelYetSaysOn()
+        => Assert.Equal("On", CowsDA40Definition.DescribeApproachState(1, "ROL, PIT", fmaFresh: true,
+            fmaPredatesFlag: true, shownBefore: null));
+
+    [Fact]
+    public void TheFlagGoingOffIsOffAtOnce()
+        => Assert.Equal("Off", CowsDA40Definition.DescribeApproachState(0, "ROL, LOC armed, PIT, GS armed",
+            fmaFresh: true, fmaPredatesFlag: true, shownBefore: "LOC armed, GS armed"));
+
     [Fact]
     public void AModeButtonWithoutAFreshFmaFallsBackToItsRow()
     {

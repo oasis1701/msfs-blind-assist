@@ -57,6 +57,17 @@ public class CowsDA40ApPressReadBackTests
         => Assert.True(CowsDA40Definition.ApPressUnanswered(4, 4,
             T0.AddMilliseconds(CowsDA40Definition.ApPressCheckMs), T0, rowMoved: false));
 
+    // ⚠️ A mode key is a toggle now (DA40A-28): a false "no change" invites the second press that
+    // cancels the mode. The 500 ms read was measured only parked on MSFS 2020 (FMA drawn in
+    // 112-198 ms), and NAV arming a localizer has no row to answer for it, so a press the first
+    // read finds unanswered is read again before anything is said.
+    [Fact]
+    public void ARefusalIsReadAgainBeforeItIsSaid()
+    {
+        Assert.True(CowsDA40Definition.ApPressRecheckMs > CowsDA40Definition.ApPressCheckMs);
+        Assert.True(CowsDA40Definition.ApPressRecheckMs >= 1500);
+    }
+
     [Fact]
     public void AModeRowThatMovedIsAnAnswerEvenWhileTheFmaHolds()
         // AP OFF on the ground: the G1000 keeps "AP" flashing on the FMA for seconds after a

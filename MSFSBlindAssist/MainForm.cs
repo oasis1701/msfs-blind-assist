@@ -576,6 +576,7 @@ public partial class MainForm : Form
             da40Cas.AttachLampWatch(simConnectManager);
             da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
             da40Cas.UiEchoMark = SuppressUiEcho;
+            da40Cas.RelabelControl = RefreshDescribedState;
         }
 
         // The roll speed calls for the aircraft the app opens with (Vr on the DA40, 80 and

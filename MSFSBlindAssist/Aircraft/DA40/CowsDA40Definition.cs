@@ -57,6 +57,14 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     /// </summary>
     internal Action<string, double>? UiEchoMark { get; set; }
 
+    /// <summary>
+    /// MainForm's panel relabel (<c>RefreshDescribedState</c>), handed over with <see cref="UiEchoMark"/>:
+    /// the GFC 700 mode buttons are labelled from the FMA, which moves without any variable of
+    /// theirs moving, so every PFD read relabels them (<c>RelabelApModeButtons</c>, DA40A-28).
+    /// Null until MainForm has attached it.
+    /// </summary>
+    internal Action<string>? RelabelControl { get; set; }
+
     public override string AircraftName =>
         IsNG ? "COWS Diamond DA40-NG" : "COWS Diamond DA40-XLS";
 

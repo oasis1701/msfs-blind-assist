@@ -129,6 +129,13 @@ internal sealed class G1000CasWatcher
 
     /// <summary>The FMA as last read ("" before the first read and on a dark screen).</summary>
     public string CurrentFma => _lastFma;
+
+    /// <summary>
+    /// Raised after every read, once <see cref="CurrentFma"/> and <see cref="LastRowsAt"/> are its
+    /// own: the DA40's GFC 700 panel relabels its mode buttons from the FMA here, since a press's
+    /// own row arrives before the FMA is next read. UI thread, as the rows are.
+    /// </summary>
+    public event Action? RowsRead;
     public DateTime LastRowsAt { get; private set; } = DateTime.MinValue;
 
     /// <summary>
@@ -401,7 +408,13 @@ internal sealed class G1000CasWatcher
         // still be picked up on a scrape that arrives before the monitor has one.
         _onRows?.Invoke(rows);
 
-        if (_announcer == null) return;
+        if (_announcer is not { } announcer) return;
+        ReadRows(rows, announcer);
+        RowsRead?.Invoke();
+    }
+
+    private void ReadRows(List<string> rows, ScreenReaderAnnouncer announcer)
+    {
         LastRowsAt = Now();
 
         if (!_sawRows)
@@ -480,8 +493,8 @@ internal sealed class G1000CasWatcher
         }
 
         var (immediate, queued) = ComposeCasSpeech(appeared, cleared, fmaChange, navChange);
-        if (immediate.Length > 0) _announcer.AnnounceImmediate(immediate);
-        foreach (string line in queued) _announcer.Announce(line);
+        if (immediate.Length > 0) announcer.AnnounceImmediate(immediate);
+        foreach (string line in queued) announcer.Announce(line);
     }
 
     /// <summary>

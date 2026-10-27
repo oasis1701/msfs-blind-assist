@@ -14,8 +14,14 @@ public partial class CowsDA40Definition : IG1000DisplayOwner
 {
     private G1000CasWatcher? _casWatcher;
 
-    private G1000CasWatcher Cas => _casWatcher ??=
-        new G1000CasWatcher("DA40", () => _loadSettle.Settling, rows => NoteDisplayUnits(rows));
+    private G1000CasWatcher Cas => _casWatcher ??= NewCasWatcher();
+
+    private G1000CasWatcher NewCasWatcher()
+    {
+        var watcher = new G1000CasWatcher("DA40", () => _loadSettle.Settling, rows => NoteDisplayUnits(rows));
+        watcher.RowsRead += RelabelApModeButtons;
+        return watcher;
+    }
 
     /// <summary>
     /// The PFD window's own rows, fed in while it holds the socket. Same detector, so a

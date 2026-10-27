@@ -1227,6 +1227,7 @@ public partial class MainForm
             da40Cas.AttachLampWatch(simConnectManager);
             da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
             da40Cas.UiEchoMark = SuppressUiEcho;
+            da40Cas.RelabelControl = RefreshDescribedState;
         }
 
         // Every switch, not only onto the DA40: its single "Rotate" call must be taken back

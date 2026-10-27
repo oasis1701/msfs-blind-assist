@@ -221,6 +221,22 @@ public class G1000CasWatcherTests
         Assert.Equal(new[] { "Navigation source LOC1. Autopilot ROL." }, said.All);
     }
 
+    // The DA40's GFC 700 panel labels its mode buttons from the FMA, and a press's own row arrives
+    // before the FMA is next read, so the label was computed from the FMA before the press and
+    // stayed that way (review, 2026-10-27). Each read now says so, with its FMA already current.
+    [Fact]
+    public void Each_read_is_announced_with_its_fma_already_current()
+    {
+        var (watcher, _) = Armed();
+        var fmaAtEachRead = new List<string>();
+        watcher.RowsRead += () => fmaAtEachRead.Add(watcher.CurrentFma);
+
+        watcher.ProcessRows(Nav("GPS, TERM", "AP, GPS, ALT"));   // the baseline
+        watcher.ProcessRows(Nav("GPS, TERM", "AP, HDG, ALT"));
+
+        Assert.Equal(new[] { "AP, GPS, ALT", "AP, HDG, ALT" }, fmaAtEachRead);
+    }
+
     [Fact]
     public void Sensitivity_and_suspend_are_not_a_source_change()
     {
