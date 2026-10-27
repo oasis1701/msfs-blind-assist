@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 34;
+    A.VERSION = 35;
 
     function visible(el) {
         if (!el) return false;
@@ -2731,7 +2731,8 @@
     // all of its controls live in the other framework, so a control count said zero and the
     // page read as dead when it was working perfectly. The CURSOR flag stays on the scroll
     // controller for both - which is exactly why that, and not the control count, is what
-    // gets asked here.
+    // gets asked here. The one exception is Airport Information, whose cursor is its current
+    // sub-page's focus (A.M.cursor).
     A.M = {};
 
     A.M.el = function () {
@@ -2759,7 +2760,17 @@
     A.M.cursor = function () {
         var view = A.M.view();
         if (!view || !view.scrollController) return null;
-        try { return !!view.scrollController.getIsScrollEnabled(); } catch (e) { return null; }
+        try {
+            if (view.scrollController.getIsScrollEnabled()) return true;
+
+            // ⚠️ AIRPORT INFORMATION KEEPS ITS CURSOR ON A SUB-PAGE. Its own processHEvent
+            // answers UPPER_PUSH by focusing or blurring `currentPage` (Info, DP, STAR, APR or
+            // WX) and never enables the view's scroll controller, so this answered "off" with
+            // the cursor on and every Shift+Enter there said "Cursor off" (2024 G1000, DA40,
+            // 2026-10-26). It is the only view on the 2024 MFD with a currentPage.
+            var sub = A.M.get(view.currentPage);
+            return !!(sub && sub.isFocused === true);
+        } catch (e) { return null; }
     };
 
     A.M.isGroup = function (c) { return !!(c && c.scrollController); };
@@ -3576,8 +3587,10 @@
         } catch (e) { }
 
         // `frequencyEl`: the Nearest VOR page's frequency box, a control that keeps its one
-        // readable node under that name.
-        var names = ["itemRef", "el", "rootRef", "activeRef", "containerRef", "frequencyEl"];
+        // readable node under that name. `nameEl`: the runway box's RunwaySelector (Airport
+        // Information, and Nearest Airports' RNWY), which read as "nothing under the cursor"
+        // without it (DA40, 2026-10-26).
+        var names = ["itemRef", "el", "rootRef", "activeRef", "containerRef", "frequencyEl", "nameEl"];
         for (var i = 0; i < names.length; i++) {
             try {
                 var v = c[names[i]];
@@ -3597,6 +3610,22 @@
             }
         } catch (e) { }
         return null;
+    };
+
+    /// The runway box under the cursor: the runway the knob cycles, then the rest of its box,
+    /// "Runway 03L-21R, HARD SURFACE, 3753 FT x 144 FT". The bare name said nothing about which
+    /// runway is long enough. "" for any element that is not the runway selector's name.
+    A.M.runwayLine = function (el) {
+        if (!el || el.nodeType !== 1 || !hasClassContaining(el, "runways-name")) return "";
+        var parts = ["Runway " + spacedText(el)];
+        var box = el.closest ? el.closest(".mfd-nearest-airport-runways") : null;
+        var kids = box ? box.children : [];
+        for (var i = 0; i < kids.length; i++) {
+            if (kids[i].contains(el)) continue;
+            var t = spacedText(kids[i]);
+            if (t) parts.push(t);
+        }
+        return parts.join(", ");
     };
 
     /// The column a cursor stop inside a list row sits in, named by the list's own header:
@@ -3740,6 +3769,9 @@
                 if (ownText && ownText.length <= 60) { t2 = ownText; t2El = own; }
             }
             if (!t2) continue;
+
+            var rwy = A.M.runwayLine(t2El);
+            if (rwy) t2 = rwy;
 
             // A CHECKLIST ROW SAYS WHETHER IT IS TICKED, and a condition says it is one, the
             // same as the window's rows do - walking a checklist with the knob otherwise gave

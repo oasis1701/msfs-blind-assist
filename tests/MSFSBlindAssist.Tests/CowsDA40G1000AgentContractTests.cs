@@ -159,6 +159,32 @@ public class CowsDA40G1000AgentContractTests
     }
 
     [Fact]
+    public void ASubPagedViewsCursorIsItsCurrentPagesFocus()
+    {
+        // ⚠️ AIRPORT INFORMATION NEVER ENABLES ITS SCROLL CONTROLLER. On the 2024 G1000 the
+        // page holds sub-pages (Info, DP, STAR, APR, WX) and its own processHEvent answers the
+        // cursor push by focusing or blurring `currentPage`, so getIsScrollEnabled stayed false
+        // and every Shift+Enter said "Cursor off" with the cursor on (DA40, 2026-10-26).
+        var body = Regex.Match(Agent(), @"A\.M\.cursor = function \(\) \{(.*?)\n    \};",
+            RegexOptions.Singleline);
+        Assert.True(body.Success, "A.M.cursor not found");
+        Assert.Contains("currentPage", body.Groups[1].Value, StringComparison.Ordinal);
+        Assert.Contains("getIsScrollEnabled", body.Groups[1].Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheRunwaySelectorIsReadFromItsNameElement()
+    {
+        // The runway box on Airport Information and on Nearest Airports' RNWY is a
+        // RunwaySelector that keeps its one node in `nameEl`. With no such name in the
+        // element search it read as "nothing under the cursor" (DA40, 2026-10-26).
+        var names = Regex.Match(Agent(), @"A\.M\.f2Element = function[\s\S]*?var names = \[([^\]]*)\]");
+        Assert.True(names.Success, "f2Element's element names not found");
+        Assert.Contains("\"nameEl\"", names.Groups[1].Value, StringComparison.Ordinal);
+        Assert.Contains("A.M.runwayLine = function", Agent(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BothControlFrameworksAreRead()
     {
         string agent = Agent();
