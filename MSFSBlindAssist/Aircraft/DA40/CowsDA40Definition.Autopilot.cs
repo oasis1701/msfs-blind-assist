@@ -519,7 +519,7 @@ public partial class CowsDA40Definition
 
     private static readonly HashSet<string> ApModeRows = new(StringComparer.Ordinal)
     {
-        "DA40_AP_MASTER", "DA40_AP_HDG", "DA40_AP_NAV", "DA40_AP_APR", "DA40_AP_BC",
+        "DA40_AP_MASTER", "DA40_AP_FD", "DA40_AP_HDG", "DA40_AP_NAV", "DA40_AP_APR", "DA40_AP_BC",
         "DA40_AP_ALT", "DA40_AP_VS", "DA40_AP_FLC"
     };
 
@@ -556,6 +556,17 @@ public partial class CowsDA40Definition
                 string? say = ApproachPressAnswer(flagBefore, flagNow, approachBefore,
                     ApproachModesOnFma(Cas.CurrentFma), Cas.LastRowsAt >= pressedAt.AddSeconds(1));
                 if (say != null) announcer.AnnounceImmediate(say);
+                return;
+            }
+
+            // The director is answered by its own state, by VALUE: a refused Off flickered the FMA
+            // for one poll, which the counter took for an answer (2026-10-27). A change is said
+            // by NVDA reading the button's new label and by the FMA, so nothing more here.
+            if (varKey == "DA40_AP_FD")
+            {
+                if (flagBefore is double fb && _apRowState.TryGetValue(varKey, out bool fdNow)
+                    && (fb >= 0.5) == fdNow)
+                    announcer.AnnounceImmediate(ApPressNoChangeText(def.DisplayName));
                 return;
             }
 
@@ -875,6 +886,9 @@ public partial class CowsDA40Definition
             case "DA40_AP_FD":
                 simConnect.ExecuteCalculatorCodeUnique(
                     FormattableString.Invariant($"(A:AUTOPILOT FLIGHT DIRECTOR ACTIVE:1, Bool) {(on ? 0 : 1)} == if{{ 1 (>K:TOGGLE_FLIGHT_DIRECTOR) }}"));
+                // The GFC 700 keeps the director on while the autopilot flies and refuses the
+                // press silently (2026-10-27): the press check says "no change".
+                WatchApPress(varKey, announcer);
                 return true;
 
             case "DA40_AP_ALT_SET":

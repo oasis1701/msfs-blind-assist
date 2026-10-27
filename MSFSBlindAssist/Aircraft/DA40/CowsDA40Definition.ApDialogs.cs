@@ -50,9 +50,11 @@ public partial class CowsDA40Definition
             HandleAutopilotSet(key, on ? 0 : 1, sc, ann);
         })
         {
-            // A mode key's press is confirmed by the FMA, and a refusal by the press check: the
-            // window's own 1.2 s read-back said it a second time (CORE-7, 2026-10-27).
-            SuppressStateAnnounce = ApModeIsPress(key) ? () => true : null
+            // A press is confirmed by the FMA, and a refusal by the press check: the window's own
+            // 1.2 s read-back said it a second time (CORE-7, 2026-10-27). The master and flight
+            // director too: NVDA reads the focused button's new label itself ("Autopilot: Off"),
+            // and the read-back repeated it ("Autopilot Off", measured 2026-10-27).
+            SuppressStateAnnounce = () => true
         };
 
     /// <summary>
