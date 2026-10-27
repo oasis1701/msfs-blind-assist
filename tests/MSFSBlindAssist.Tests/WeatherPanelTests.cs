@@ -15,6 +15,72 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class WeatherPanelTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OutsideTemperatureToggle_LoadsAndApplies_OnlyAfterSaving(bool useFahrenheit)
+    {
+        var settings = new UserSettings { UseFahrenheitForOutsideTemperature = useFahrenheit };
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(settings);
+        var temperature = (CheckBox)FindByAccessibleName(panel, "Use Fahrenheit for outside temperature");
+        Assert.Equal(useFahrenheit, temperature.Checked);
+
+        temperature.Checked = !useFahrenheit;
+        Assert.Equal(useFahrenheit, settings.UseFahrenheitForOutsideTemperature);
+        panel.ApplyTo(settings);
+        Assert.Equal(!useFahrenheit, settings.UseFahrenheitForOutsideTemperature);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void OutsideTemperatureToggle_IsAvailable_RegardlessOfWeatherIntegration(bool activeSky, bool autoAnnounce)
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings { ActiveSkyEnabled = activeSky, WeatherAutoAnnounceEnabled = autoAnnounce });
+        var temperature = FindByAccessibleName(panel, "Use Fahrenheit for outside temperature");
+        Assert.True(temperature.Visible);
+        Assert.True(temperature.Enabled);
+        Assert.True(temperature.TabStop);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SavingOtherTabs_DoesNotOverwriteTheWeatherTemperatureChoice(bool useFahrenheit)
+    {
+        var settings = new UserSettings { UseFahrenheitForOutsideTemperature = !useFahrenheit };
+        using var weather = new WeatherPanel();
+        using var taxi = new TaxiGuidancePanel(refreshTaxiwayNames: null);
+        weather.LoadFrom(settings);
+        taxi.LoadFrom(settings);
+        ((CheckBox)FindByAccessibleName(weather, "Use Fahrenheit for outside temperature")).Checked = useFahrenheit;
+
+        // SettingsForm saves Weather before Taxi Guidance; only Weather owns this preference.
+        weather.ApplyTo(settings);
+        taxi.ApplyTo(settings);
+        Assert.Equal(useFahrenheit, settings.UseFahrenheitForOutsideTemperature);
+        Assert.Null(FindByAccessibleName(taxi, "Use Fahrenheit for outside temperature"));
+    }
+
+    [Fact]
+    public void TemperatureUnits_AreFirstInTabOrder_AndWeatherGroupsDoNotOverlap()
+    {
+        using var panel = new WeatherPanel();
+        var temperature = FindByAccessibleName(panel, "Use Fahrenheit for outside temperature");
+        var groups = panel.Controls.OfType<GroupBox>().OrderBy(g => g.Top).ToArray();
+        Assert.Same(groups[0], temperature.Parent);
+        Assert.True(groups[0].ClientRectangle.Contains(temperature.Bounds));
+        for (int i = 1; i < groups.Length; i++)
+        {
+            Assert.True(groups[i - 1].Bottom <= groups[i].Top);
+            Assert.True(groups[i - 1].TabIndex < groups[i].TabIndex);
+        }
+    }
+
     [Fact]
     public void RoundTrip_PreservesAllWeatherSettings()
     {

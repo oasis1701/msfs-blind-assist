@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Tests;
@@ -10,6 +11,27 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class UserSettingsCloneTests
 {
+    [Fact]
+    public void OutsideTemperature_DefaultsToCelsius_ForNewAndExistingSettings()
+    {
+        Assert.False(new UserSettings().UseFahrenheitForOutsideTemperature);
+        var existing = JsonSerializer.Deserialize<UserSettings>("{}", SettingsManager.JsonOptions)!;
+        Assert.False(existing.UseFahrenheitForOutsideTemperature);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OutsideTemperatureUnit_SurvivesCloneAndJsonRoundTrip(bool useFahrenheit)
+    {
+        var settings = new UserSettings { UseFahrenheitForOutsideTemperature = useFahrenheit };
+        Assert.Equal(useFahrenheit, settings.Clone().UseFahrenheitForOutsideTemperature);
+
+        string json = JsonSerializer.Serialize(settings, SettingsManager.JsonOptions);
+        var reloaded = JsonSerializer.Deserialize<UserSettings>(json, SettingsManager.JsonOptions)!;
+        Assert.Equal(useFahrenheit, reloaded.UseFahrenheitForOutsideTemperature);
+    }
+
     [Fact]
     public void CloneCopiesTheMd11MuteListAndLearnedPolarity_AsFreshLists()
     {

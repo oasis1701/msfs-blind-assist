@@ -426,7 +426,7 @@ Open the Settings window from the **File** menu, **Settings…**. It holds nearl
 | Tab | What it covers |
 |---|---|
 | Announcements | Whether BA speaks through your screen reader or through Windows speech, and general announcement options: the nearest-city auto-announce, seconds in time readouts, GSX tooltips, 1,000-foot crossings. |
-| Weather | ActiveSky integration, and the automatic weather, turbulence, icing and SIGMET/AIRMET announcements. |
+| Weather | Outside-temperature units, ActiveSky integration, and the automatic weather, turbulence, icing and SIGMET/AIRMET announcements. |
 | VATSIM | Announcing VATSIM activity from vPilot. |
 | GeoNames | Downloading the offline location data used by Output C and Location Info, and the distance ranges and units it uses. |
 | SimBrief | Your SimBrief username, for loading flight plans. |
