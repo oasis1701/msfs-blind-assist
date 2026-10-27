@@ -46,9 +46,16 @@ public class CowsDA40ApPressReadBackTests
     {
         // The watcher not reading (no G1000 page, socket elsewhere): silence is honest, a
         // "no change" would be invented.
-        Assert.False(CowsDA40Definition.ApPressUnanswered(4, 4, T0.AddMilliseconds(500), T0, rowMoved: false));
+        // Rows read before the G1000 could have drawn the press (it takes up to ~200 ms) say nothing.
+        Assert.False(CowsDA40Definition.ApPressUnanswered(4, 4, T0.AddMilliseconds(300), T0, rowMoved: false));
         Assert.False(CowsDA40Definition.ApPressUnanswered(4, 4, System.DateTime.MinValue, T0, rowMoved: false));
     }
+
+    [Fact]
+    public void TheReadOnDemandHalfASecondAfterThePressIsFresh()
+        // The FMA showed HDG, VS, ALT and FLC 112-198 ms after the press (2026-10-27).
+        => Assert.True(CowsDA40Definition.ApPressUnanswered(4, 4,
+            T0.AddMilliseconds(CowsDA40Definition.ApPressCheckMs), T0, rowMoved: false));
 
     [Fact]
     public void AModeRowThatMovedIsAnAnswerEvenWhileTheFmaHolds()

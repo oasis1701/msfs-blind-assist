@@ -138,6 +138,30 @@ internal sealed class G1000CasWatcher
     public void ProcessRows(List<string> rows) => OnRows(rows);
 
     /// <summary>
+    /// Read the PFD once now, over whichever socket is live (<see cref="InvokeAsync"/>), and
+    /// process the rows as a poll's. For a press check that must not wait for the next 1.5 s
+    /// poll: one read costs ~2 ms in the page and ~12 ms round trip (measured 2026-10-27).
+    /// False when nothing could be read. Call it on the UI thread, as the poll's rows are.
+    /// </summary>
+    public async Task<bool> ReadNowAsync()
+    {
+        string raw = await InvokeAsync("window.__MSFSBA_DISP ? __MSFSBA_DISP.scrape() : ''");
+        if (string.IsNullOrEmpty(raw)) return false;
+        List<string>? rows;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("ok", out var ok) || !ok.GetBoolean()
+                || !root.TryGetProperty("rows", out var list)) return false;
+            rows = list.EnumerateArray().Select(r => r.GetString() ?? "").ToList();
+        }
+        catch { return false; }
+        OnRows(rows);
+        return true;
+    }
+
+    /// <summary>
     /// The PFD window pressed a softkey. CDI steps the navigation source and the window's
     /// read-back already says the new one (CORE-7), so a change inside <see cref="SoftkeyQuietMs"/>
     /// is recorded without speaking.

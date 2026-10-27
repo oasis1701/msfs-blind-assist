@@ -386,13 +386,23 @@ public partial class CowsDA40Definition
     private readonly Dictionary<string, double> _afcsPending = new(StringComparer.Ordinal);
     private readonly Dictionary<string, double> _afcsSpoken = new(StringComparer.Ordinal);
 
-    /// <summary>How long after a mode press the FMA is asked whether it moved: two of the
-    /// watcher's 1.5 s polls, so the change has had a scrape to land in.</summary>
-    internal const int ApPressCheckMs = 3500;
+    /// <summary>How long after a mode press the PFD is read (<c>G1000CasWatcher.ReadNowAsync</c>)
+    /// and the FMA asked whether it moved. Measured 2026-10-27 (NG on the ground, 2020): the
+    /// FMA showed HDG, VS, ALT and FLC 112-198 ms after the press, so 500 ms is 2.5 times the
+    /// slowest. It was 3500 ms, two of the watcher's 1.5 s polls, before the read on demand.</summary>
+    internal const int ApPressCheckMs = 500;
+
+    /// <summary>If the read on demand got nothing (no socket), how much longer to wait for the
+    /// watcher's own poll before giving up: two of its 1.5 s polls, the old check.</summary>
+    internal const int ApPressFallbackMs = 3000;
+
+    /// <summary>The flight director is answered by its own state, which reaches BA about once a
+    /// second (measured up to ~1 s), after a refused press's FMA flicker of ~0.4 s.</summary>
+    internal const int ApFdCheckMs = 1500;
 
     /// <summary>
-    /// Whether a mode press went unanswered: the FMA did not move, and the watcher has read
-    /// the PFD since (at least a second after the press). ⚠️ THE GFC 700 REFUSES PRESSES
+    /// Whether a mode press went unanswered: the FMA did not move, and the PFD has been read
+    /// since (at least <see cref="ApPressCheckMs"/> after the press). ⚠️ THE GFC 700 REFUSES PRESSES
     /// SILENTLY - APR from HDG after a go-around, NAV and APR in a quick run, AP while in GA
     /// (MTL/VCRI, 2026-10-19) - and the pilot heard nothing at all, the same as a press that
     /// worked and was still being drawn. Without fresh rows nothing is known, so nothing is said.
@@ -402,7 +412,11 @@ public partial class CowsDA40Definition
     /// </summary>
     internal static bool ApPressUnanswered(int changesBefore, int changesNow, DateTime lastRowsAt,
         DateTime pressedAt, bool rowMoved)
-        => !rowMoved && changesNow == changesBefore && lastRowsAt >= pressedAt.AddSeconds(1);
+        => !rowMoved && changesNow == changesBefore && RowsReadSince(lastRowsAt, pressedAt);
+
+    /// <summary>Whether rows were read late enough after a press to show it.</summary>
+    internal static bool RowsReadSince(DateTime lastRowsAt, DateTime pressedAt)
+        => lastRowsAt >= pressedAt.AddMilliseconds(ApPressCheckMs);
 
     internal static string ApPressNoChangeText(string control) => control + ": no change";
 
@@ -542,31 +556,41 @@ public partial class CowsDA40Definition
         string approachBefore = ApproachModesOnFma(Cas.CurrentFma);
 
         if (_apPressTimers.Remove(varKey, out var old)) { old.Stop(); old.Dispose(); }
-        var timer = new System.Windows.Forms.Timer { Interval = ApPressCheckMs };
+        bool fd = varKey == "DA40_AP_FD";
+        var timer = new System.Windows.Forms.Timer { Interval = fd ? ApFdCheckMs : ApPressCheckMs };
         _apPressTimers[varKey] = timer;
-        timer.Tick += (_, _) =>
+        int generation = _apPressGeneration;
+        // Only the last press in a quick run is answered, and none after the watch is stopped.
+        bool Current() => _apPressGeneration == generation && !_apPressTimers.ContainsKey(varKey);
+        timer.Tick += async (_, _) =>
         {
             timer.Stop();
             if (_apPressTimers.TryGetValue(varKey, out var mine) && mine == timer) _apPressTimers.Remove(varKey);
             timer.Dispose();
 
-            if (varKey == "DA40_AP_APR")
-            {
-                double? flagNow = _apRowState.TryGetValue(varKey, out bool now) ? (now ? 1 : 0) : null;
-                string? say = ApproachPressAnswer(flagBefore, flagNow, approachBefore,
-                    ApproachModesOnFma(Cas.CurrentFma), Cas.LastRowsAt >= pressedAt.AddSeconds(1));
-                if (say != null) announcer.AnnounceImmediate(say);
-                return;
-            }
-
             // The director is answered by its own state, by VALUE: a refused Off flickered the FMA
             // for one poll, which the counter took for an answer (2026-10-27). A change is said
             // by NVDA reading the button's new label and by the FMA, so nothing more here.
-            if (varKey == "DA40_AP_FD")
+            if (fd)
             {
                 if (flagBefore is double fb && _apRowState.TryGetValue(varKey, out bool fdNow)
                     && (fb >= 0.5) == fdNow)
                     announcer.AnnounceImmediate(ApPressNoChangeText(def.DisplayName));
+                return;
+            }
+
+            // Read the PFD now rather than wait for the next poll; with no socket, give the
+            // watcher's own poll the old time to land.
+            if (!await Cas.ReadNowAsync() || !RowsReadSince(Cas.LastRowsAt, pressedAt))
+                await Task.Delay(ApPressFallbackMs);
+            if (!Current()) return;
+
+            if (varKey == "DA40_AP_APR")
+            {
+                double? flagNow = _apRowState.TryGetValue(varKey, out bool now) ? (now ? 1 : 0) : null;
+                string? say = ApproachPressAnswer(flagBefore, flagNow, approachBefore,
+                    ApproachModesOnFma(Cas.CurrentFma), RowsReadSince(Cas.LastRowsAt, pressedAt));
+                if (say != null) announcer.AnnounceImmediate(say);
                 return;
             }
 
@@ -577,8 +601,12 @@ public partial class CowsDA40Definition
         timer.Start();
     }
 
+    // Bumped when the watch stops, so a check still waiting on a read says nothing afterwards.
+    private int _apPressGeneration;
+
     private void StopApPressWatch()
     {
+        _apPressGeneration++;
         foreach (var t in _apPressTimers.Values)
             try { t.Stop(); t.Dispose(); } catch { }
         _apPressTimers.Clear();
