@@ -46,12 +46,15 @@ public class CowsDA40CasSpeechTests
     [InlineData("ROL, PIT", "ROL, LOC armed, PIT, ALTS armed, GS armed", "Flight director LOC armed, ALTS armed, GS armed")]
     [InlineData("AP, ROL, LOC armed, PIT, GS armed", "AP, LOC, PIT, GS armed", "Autopilot LOC")]
     [InlineData("AP, LOC, PIT, GS armed", "AP, LOC, GS", "Autopilot GS")]
-    [InlineData("AP, ROL, LOC armed, PIT, GS armed", "AP, ROL, PIT", "Autopilot LOC, GS disarmed")]
+    [InlineData("AP, ROL, LOC armed, PIT, GS armed", "AP, ROL, PIT", "Autopilot LOC disarmed, GS disarmed")]
+    // LOC captured and GS dropped must not sound like both dropped.
+    [InlineData("AP, ROL, LOC armed, PIT, GS armed", "AP, LOC, PIT", "Autopilot LOC, GS disarmed")]
     [InlineData("AP, GPS armed, ROL, PIT", "AP, LOC armed, ROL, PIT", "Autopilot LOC armed, GPS disarmed")]
     // ALTS captures as ALTS and then ALT: neither is "ALTS disarmed".
     [InlineData("AP, GPS, FLC, ALTS armed", "AP, GPS, ALTS", "Autopilot ALTS")]
     [InlineData("AP, GPS, ALTS", "AP, GPS, ALT", "Autopilot ALT")]
     [InlineData("AP, GPS, FLC, ALTS armed", "AP, GPS, ALT", "Autopilot ALT")]
+    [InlineData("AP, GPS, VPTH, ALTV armed", "AP, GPS, ALT", "Autopilot ALT")]
     [InlineData("AP, YD, GPS, ALT", "AP, GPS, ALT", "Autopilot YD off")]
     [InlineData("AP, HDG, ALT", "AP, HDG, ALT", "")]
     public void TheSameOwnerSaysOnlyWhatChanged(string previous, string current, string said)

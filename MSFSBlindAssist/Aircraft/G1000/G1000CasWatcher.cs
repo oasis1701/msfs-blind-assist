@@ -622,16 +622,18 @@ internal sealed class G1000CasWatcher
         var before = Modes(previous);
         var added = now.Where(t => !before.Contains(t)).ToList();
         static bool IsArmed(string t) => t.EndsWith(" armed", StringComparison.Ordinal);
-        // An armed mode is captured when its active form appears. ALTS captures as ALTS (the
-        // capture) and then ALT, so either one is a capture, never "ALTS disarmed".
+        // An armed mode is captured when its active form appears. ALTS and ALTV capture as
+        // themselves and then ALT, and a poll can miss the first step, so ALT is a capture too.
         bool Captured(string armed)
         {
             string b = armed[..^6];
-            return now.Contains(b) || (b == "ALTS" && now.Contains("ALT"));
+            return now.Contains(b) || (b.StartsWith("ALT", StringComparison.Ordinal) && now.Contains("ALT"));
         }
+        // Each one carries its own "disarmed": "LOC, GS disarmed" after a new mode read as LOC
+        // captured when both had dropped.
         var disarmed = before
             .Where(t => IsArmed(t) && !now.Contains(t) && !Captured(t))
-            .Select(t => t[..^6]).ToList();
+            .Select(t => t[..^6] + " disarmed").ToList();
         // An active mode that went with no new active mode in its place (YD) is "off"; one that
         // gave way to another (ROL to HDG) is covered by saying the new one.
         var off = added.Any(t => !IsArmed(t))
@@ -639,8 +641,8 @@ internal sealed class G1000CasWatcher
             : before.Where(t => !IsArmed(t) && !now.Contains(t)).ToList();
 
         var parts = new List<string>(added);
-        if (disarmed.Count > 0) parts.Add(string.Join(", ", disarmed) + " disarmed");
-        if (off.Count > 0) parts.Add(string.Join(", ", off) + " off");
+        parts.AddRange(disarmed);
+        parts.AddRange(off.Select(t => t + " off"));
         return parts.Count > 0 ? owner + " " + string.Join(", ", parts) : "";
     }
 }
