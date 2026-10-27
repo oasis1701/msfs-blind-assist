@@ -126,6 +126,9 @@ internal sealed class G1000CasWatcher
     /// count across its press, and trusts the answer only while rows are fresh.
     /// </summary>
     public int FmaChanges { get; private set; }
+
+    /// <summary>The FMA as last read ("" before the first read and on a dark screen).</summary>
+    public string CurrentFma => _lastFma;
     public DateTime LastRowsAt { get; private set; } = DateTime.MinValue;
 
     /// <summary>

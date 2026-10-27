@@ -50,6 +50,20 @@ public partial class CowsDA40Definition
             HandleAutopilotSet(key, on ? 0 : 1, sc, ann);
         });
 
+    /// <summary>
+    /// The Approach button: a press, like the real key (DA40A-28), labelled with what the G1000
+    /// has armed or flying ("LOC armed, GS armed"), not "Engaged" over a mode only armed. Its
+    /// post-press announce is suppressed: the FMA speaks the change, and the press check speaks
+    /// a refusal or a change the FMA does not show (one confirmation, CORE-7).
+    /// </summary>
+    private ToggleButtonDef ApproachButton(SimConnectManager sc, ScreenReaderAnnouncer ann)
+        => new("A&pproach mode",
+            () => DescribeApproachState(sc.GetCachedVariableValue("DA40_AP_APR"), Cas.CurrentFma, FmaIsFresh()),
+            () => HandleAutopilotSet("DA40_AP_APR", 1, sc, ann))
+        {
+            SuppressStateAnnounce = () => true
+        };
+
     private bool ShowApValueDialog(HotkeyAction action, SimConnectManager sc,
         ScreenReaderAnnouncer ann, Form parent, HotkeyManager hotkeys)
     {
@@ -149,7 +163,7 @@ public partial class CowsDA40Definition
             ModeToggle("Flight &director", "DA40_AP_FD", sc, ann),
             ModeToggle("&Heading mode", "DA40_AP_HDG", sc, ann),
             ModeToggle("&Navigation mode", "DA40_AP_NAV", sc, ann),
-            ModeToggle("A&pproach mode", "DA40_AP_APR", sc, ann),
+            ApproachButton(sc, ann),
             ModeToggle("&Backcourse mode", "DA40_AP_BC", sc, ann),
             ModeToggle("Hold current a&ltitude", "DA40_AP_ALT", sc, ann),
             ModeToggle("&Vertical speed mode", "DA40_AP_VS", sc, ann),

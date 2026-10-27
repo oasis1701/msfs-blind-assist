@@ -18,10 +18,12 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// from. What the autopilot is DOING still belongs to the display (the FMA, read by the
 /// PFD window as "Autopilot: ..."), and is not repeated here.
 ///
-/// ON/OFF EVENTS, NEVER TOGGLES. Every mode takes a distinct _ON and _OFF event rather
-/// than a toggle, so a combo set is deterministic: a toggle fired against a state MSFSBA
-/// misread would put the mode the other way round, and on an autopilot that is the kind of
-/// error a blind pilot cannot see and would only discover from the aeroplane's behaviour.
+/// APPROACH IS A PUSH BUTTON, LIKE THE REAL KEY (DA40A-28). It sends the plain AP_APR_HOLD,
+/// so the G1000 decides what the press means against its own approach flag, and it reads
+/// that flag back. AP_APR_HOLD_ON was refused while the G1000's flag was stuck on after the
+/// CDI left the localiser, and nothing BA read showed it (2026-10-26 in flight, reproduced
+/// on the ground 2026-10-27). The other modes still send their _ON/_OFF events until they
+/// are converted the same way.
 ///
 /// THE HEADING BUG AND COURSE MOVED HERE from the Radios panel. They are physically PFD
 /// bezel knobs, which is why they started out beside the radio knobs, but functionally
@@ -84,7 +86,12 @@ public partial class CowsDA40Definition
         // ---------- Lateral modes ----------
         AddApMode(v, "DA40_AP_HDG", "AUTOPILOT HEADING LOCK", "Heading Mode");
         AddApMode(v, "DA40_AP_NAV", "AUTOPILOT NAV1 LOCK", "Navigation Mode");
-        AddApMode(v, "DA40_AP_APR", "AUTOPILOT APPROACH HOLD", "Approach Mode");
+        // ⚠️ THE G1000'S OWN APPROACH FLAG, NOT AUTOPILOT APPROACH HOLD (DA40A-28). The stock
+        // var dropped to 0 while the G1000 still had approach mode on, and every press was
+        // refused with nothing to show why. A push button: the press is AP_APR_HOLD.
+        AddApMode(v, "DA40_AP_APR", "WTAP_Garmin_Approach_Mode_On", "Approach Mode",
+            SimVarType.LVar, "number");
+        v["DA40_AP_APR"].RenderAsButton = true;
         AddApMode(v, "DA40_AP_BC", "AUTOPILOT BACKCOURSE HOLD", "Backcourse Mode");
 
         // ---------- Vertical modes ----------
@@ -312,14 +319,14 @@ public partial class CowsDA40Definition
 
     /// <summary>An autopilot mode: a two-state combo backed by a stock SimVar.</summary>
     private static void AddApMode(Dictionary<string, SimVarDefinition> v, string key,
-        string simvar, string display)
+        string simvar, string display, SimVarType type = SimVarType.SimVar, string units = "bool")
     {
         v[key] = new SimVarDefinition
         {
             Name = simvar,
             DisplayName = display,
-            Type = SimVarType.SimVar,
-            Units = "bool",
+            Type = type,
+            Units = units,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
@@ -392,7 +399,65 @@ public partial class CowsDA40Definition
 
     internal static string ApPressNoChangeText(string control) => control + ": no change";
 
-    private System.Windows.Forms.Timer? _apPressTimer;
+    /// <summary>
+    /// What an Approach press says once <see cref="ApPressCheckMs"/> has passed, or null for
+    /// nothing (DA40A-28). Its answer is the G1000's own flag, never the FMA counter: a
+    /// refused press that also turned the flight director on moved the FMA and said nothing,
+    /// and the same press again said "no change" (2026-10-27). The flag compared by VALUE at
+    /// the press and now, not by edges. A flag that changed is spoken only when the FMA's
+    /// approach modes did not show it on fresh rows: clearing a stuck flag moves nothing on
+    /// the FMA, and without fresh rows the flag is the only answer there is. Pure so the
+    /// suite can pin it.
+    /// </summary>
+    internal static string? ApproachPressAnswer(double? flagBefore, double? flagNow,
+        string approachBefore, string approachNow, bool rowsFresh)
+    {
+        if (flagBefore is not double b || flagNow is not double n) return null;
+        bool was = b >= 0.5, on = n >= 0.5;
+        if (was == on) return ApPressNoChangeText("Approach Mode");
+        if (rowsFresh && approachBefore != approachNow) return null;
+        return "Approach Mode: " + (on ? "On" : "Off");
+    }
+
+    /// <summary>
+    /// The approach modes on an FMA string ("ROL, LOC armed, PIT, ALTS armed, GS armed" gives
+    /// "LOC armed, GS armed"): LOC, BC, VAPP, GS and GP, and GPS only beside GP, since GPS
+    /// alone is the ordinary lateral mode. Pure so the suite can pin it.
+    /// </summary>
+    internal static string ApproachModesOnFma(string fma)
+    {
+        static string Base(string t) => t.EndsWith(" armed", StringComparison.Ordinal) ? t[..^6] : t;
+        var tokens = G1000.G1000CasWatcher.FmaModes(fma)
+            .Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        bool gp = tokens.Any(t => Base(t) == "GP");
+        return string.Join(", ", tokens.Where(t => Base(t) switch
+        {
+            "LOC" or "BC" or "VAPP" or "GS" or "GP" => true,
+            "GPS" => gp,
+            _ => false
+        }));
+    }
+
+    /// <summary>
+    /// The Approach button's state in the autopilot window: the flag, and while it is on the
+    /// approach modes the FMA shows ("LOC armed, GS armed"), or "On, nothing armed" when the
+    /// flag is on and the FMA shows none. An FMA not read lately says plain "On", never a false
+    /// "nothing armed". Pure so the suite can pin it.
+    /// </summary>
+    internal static string DescribeApproachState(double? flag, string fma, bool fmaFresh)
+    {
+        if (flag is not double f) return "";
+        if (f < 0.5) return "Off";
+        if (!fmaFresh) return "On";
+        string modes = ApproachModesOnFma(fma);
+        return modes.Length > 0 ? modes : "On, nothing armed";
+    }
+
+    /// <summary>Whether the FMA was read recently enough to describe (two of the watcher's polls).</summary>
+    private bool FmaIsFresh() => Cas.LastRowsAt >= Cas.Now().AddSeconds(-4);
+
+    // One per key: a press of another mode inside the check must not cancel this one's answer.
+    private readonly Dictionary<string, System.Windows.Forms.Timer> _apPressTimers = new(StringComparer.Ordinal);
 
     /// <summary>Each GFC 700 mode row's last state and how often it has moved, for the press check.</summary>
     private readonly Dictionary<string, bool> _apRowState = new(StringComparer.Ordinal);
@@ -419,23 +484,39 @@ public partial class CowsDA40Definition
         int before = Cas.FmaChanges;
         int rowBefore = _apRowMoves.GetValueOrDefault(varKey);
         DateTime pressedAt = Cas.Now();
-        _apPressTimer?.Stop();
-        _apPressTimer?.Dispose();
-        _apPressTimer = new System.Windows.Forms.Timer { Interval = ApPressCheckMs };
-        _apPressTimer.Tick += (_, _) =>
+        double? flagBefore = _apRowState.TryGetValue(varKey, out bool st) ? (st ? 1 : 0) : null;
+        string approachBefore = ApproachModesOnFma(Cas.CurrentFma);
+
+        if (_apPressTimers.Remove(varKey, out var old)) { old.Stop(); old.Dispose(); }
+        var timer = new System.Windows.Forms.Timer { Interval = ApPressCheckMs };
+        _apPressTimers[varKey] = timer;
+        timer.Tick += (_, _) =>
         {
-            _apPressTimer?.Stop();
+            timer.Stop();
+            if (_apPressTimers.TryGetValue(varKey, out var mine) && mine == timer) _apPressTimers.Remove(varKey);
+            timer.Dispose();
+
+            if (varKey == "DA40_AP_APR")
+            {
+                double? flagNow = _apRowState.TryGetValue(varKey, out bool now) ? (now ? 1 : 0) : null;
+                string? say = ApproachPressAnswer(flagBefore, flagNow, approachBefore,
+                    ApproachModesOnFma(Cas.CurrentFma), Cas.LastRowsAt >= pressedAt.AddSeconds(1));
+                if (say != null) announcer.AnnounceImmediate(say);
+                return;
+            }
+
             bool rowMoved = _apRowMoves.GetValueOrDefault(varKey) != rowBefore;
             if (ApPressUnanswered(before, Cas.FmaChanges, Cas.LastRowsAt, pressedAt, rowMoved))
                 announcer.AnnounceImmediate(ApPressNoChangeText(def.DisplayName));
         };
-        _apPressTimer.Start();
+        timer.Start();
     }
 
     private void StopApPressWatch()
     {
-        try { _apPressTimer?.Stop(); _apPressTimer?.Dispose(); } catch { }
-        _apPressTimer = null;
+        foreach (var t in _apPressTimers.Values)
+            try { t.Stop(); t.Dispose(); } catch { }
+        _apPressTimers.Clear();
     }
 
     /// <summary>
@@ -681,7 +762,8 @@ public partial class CowsDA40Definition
             "DA40_AP_MASTER" => on ? "AUTOPILOT_ON" : "AUTOPILOT_OFF",
             "DA40_AP_HDG" => on ? "AP_HDG_HOLD_ON" : "AP_HDG_HOLD_OFF",
             "DA40_AP_NAV" => on ? "AP_NAV1_HOLD_ON" : "AP_NAV1_HOLD_OFF",
-            "DA40_AP_APR" => on ? "AP_APR_HOLD_ON" : "AP_APR_HOLD_OFF",
+            // A press, whatever the value: the G1000 toggles against its own flag (DA40A-28).
+            "DA40_AP_APR" => "AP_APR_HOLD",
             "DA40_AP_BC" => on ? "AP_BC_HOLD_ON" : "AP_BC_HOLD_OFF",
             "DA40_AP_ALT" => on ? "AP_ALT_HOLD_ON" : "AP_ALT_HOLD_OFF",
             // ⚠️ AP_VS_ON / AP_VS_OFF, NOT AP_VS_HOLD_ON / _OFF: the Working Title GFC 700's

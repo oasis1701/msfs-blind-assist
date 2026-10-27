@@ -35,6 +35,7 @@ public class CowsDA40PackagePresenceTests
     {
         ["XMLVAR_CabinAir"] = "ASOBO_PASSENGER_Lever_Cabin_Air_Template, a stock sim template",
         ["XMLVAR_CabinHeat"] = "ASOBO_PASSENGER_Lever_Cabin_Heat_Template, a stock sim template",
+        ["WTAP_Garmin_Approach_Mode_On"] = "the Working Title G1000's own approach flag (garminsdk), not the COWS package's",
     };
 
     internal static string? PackageRoot()

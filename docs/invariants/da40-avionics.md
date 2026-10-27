@@ -15,7 +15,7 @@ The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bull
 
 - **The DA40 GFC 700 autopilot has NO airframe variables — do not go hunting for one.** Nothing in the COWS package writes an `L:AP_*`, there is no `STATE_` mirror for a mode and no vendor event for a button; the model XML and the vendor `DA40 LVAR bindings.txt` are both empty on it. The GFC 700 is integrated into the G1000, and this package ships the STOCK Working Title instrument, so the whole autopilot is stock K: events and stock SimVars. → [da40.md](../da40.md)
 
-- **Every DA40 autopilot mode writes the DISTINCT ON or OFF event, NEVER the stock `_TOGGLE`** (`AUTOPILOT_ON`/`AUTOPILOT_OFF`, `AP_HDG_HOLD_ON`/`AP_HDG_HOLD_OFF`, …). A combo asks for a STATE and a toggle can only ask for a CHANGE, so one disagreement between panel and aeroplane — a mode armed from a yoke button, a mode the G1000 dropped on its own — sends the autopilot to the OPPOSITE of what the pilot just selected, silently. Every write still goes through `ExecuteCalculatorCodeUnique`: ON pressed twice running is two byte-identical calc strings. → [da40.md](../da40.md)
+- *(Removed 2026-10-27: "every DA40 autopilot mode writes the distinct ON or OFF event, never the toggle". A combo asks for a state, but the GFC 700's keys are push buttons the G1000 interprets against its own state, and the ON event did nothing while that state disagreed with what BA read: the approach lock, DA40A-28. Buttons now press like the cockpit's key and read the result back, starting with Approach. Writes still go through `ExecuteCalculatorCodeUnique`: the same key pressed twice is two byte-identical calc strings.)*
 
 ## DA40A-4
 
@@ -120,7 +120,7 @@ The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bull
 - NAV and APR pressed in a quick run after a reposition;
 - AP pressed while the vertical mode was GA.
 
-Each refusal left the FMA exactly as it was, and the pilot heard nothing at all, the same silence as a press that worked and had not been drawn yet. `AUTOPILOT APPROACH HOLD` cannot stand in: it dropped 1→0 within 230 ms while LOC was captured and GS armed. Only the FMA tells.
+Each refusal left the FMA exactly as it was, and the pilot heard nothing at all, the same silence as a press that worked and had not been drawn yet. `AUTOPILOT APPROACH HOLD` cannot stand in: it dropped 1→0 within 230 ms while LOC was captured and GS armed. Only the FMA tells. (Approach no longer needs it: since DA40A-28 it reads the G1000's own flag, which stays on as long as the G1000 has approach mode, and is answered by that.)
 
 `WatchApPress` records `G1000CasWatcher.FmaChanges` at the press. `ApPressCheckMs` later (two of the watcher's 1.5 s polls), if the count has not moved and rows have arrived at least a second after the press, it says "<control>: no change" ("Approach Mode: no change"). That reports the aeroplane and decides nothing. Without fresh rows (no watcher, socket elsewhere) nothing is known and nothing is said. Only the last press in a quick run is checked.
 
@@ -129,3 +129,13 @@ Each refusal left the FMA exactly as it was, and the pilot heard nothing at all,
 ## DA40A-27
 
 **"Not started" is a power loss, not a result.** The AFCS self test (`AFCS_TEST`) and pre-flight test (`AFCS_PFT`) return to 0 only when the AFCS loses power or resets. At the VCRI shutdown (2026-10-19), switching the avionics master off said "Autopilot Self Test: not started. Autopilot Pre-flight Test: not started", which reads like two test outcomes over something the pilot had just done. `AfcsStatusIsNews` never speaks a move TO 0 for those two keys. The power-up's "running" and its outcome still speak (DA40A-5), and the Autopilot Failed flag keeps both edges.
+
+## DA40A-28
+
+**Approach is a push button that reads the G1000's own approach flag.** The Working Title G1000 keeps an internal approach flag, published as `L:WTAP_Garmin_Approach_Mode_On` (workingtitle-instruments-g1000 1.4.1, garminsdk.js:221, :12002). `AP_APR_HOLD_ON` asks for "on" and is ignored when the flag is already on (`approachPressed`, :12171-12175); the plain `AP_APR_HOLD` carries no value, so the G1000 toggles against its own flag, exactly like the real APR key (:11803-11804).
+
+Measured on the ground, 2026-10-27 (NG at ESGT, MSFS 2020, ILS 33 on 111.90, CDI LOC1, flight director on): APR armed LOC and GS (flag 1). The CDI to GPS dropped LOC and GS from the FMA, `AUTOPILOT APPROACH HOLD` and `AUTOPILOT GLIDESLOPE ARM` went to 0, and the flag stayed 1. Back on LOC1, `AP_APR_HOLD_ON` was refused ("Approach Mode: no change"), the in-flight lock of 2026-10-26. `AP_APR_HOLD` cleared the flag on one press (the FMA did not move) and armed LOC and GS on the next; pressed while armed it disarmed. Also measured: `AUTOPILOT GLIDESLOPE HOLD` reads 1 while GS is only ARMED, so the stock vars cannot tell armed from captured; the FMA can.
+
+So `DA40_AP_APR` reads the flag and renders as a button; a press sends `AP_APR_HOLD` whatever the value. A press is answered by the flag (`ApproachPressAnswer`), compared by value at the press and `ApPressCheckMs` later, never by the FMA counter: a refused press that turned the flight director on moved the FMA and had said nothing. Flag unchanged: "Approach Mode: no change". Flag changed and the FMA's approach modes (`ApproachModesOnFma`) show it on rows read since the press: the FMA's own speech is the answer. Flag changed and they do not (clearing a stuck flag, or no fresh rows): "Approach Mode: On" or "Off". The autopilot window's Approach button says what the G1000 has armed (`DescribeApproachState`: "LOC armed, GS armed", "On, nothing armed" for a stuck flag, plain "On" when the FMA is not fresh) and suppresses its own post-press announce. Each mode has its own press-check timer, so another press inside the check does not cancel Approach's answer.
+
+A press while the approach is captured disarms it, as the real key does. Not checked on MSFS 2024 (WTG1000v2): the flag is in garminsdk's `GarminAPEvents.ts` in the public msfs-avionics-mirror, so likely the same there.
