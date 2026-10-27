@@ -45,6 +45,31 @@ public class CowsDA40ApproachButtonTests
     public void TheButtonSaysWhatTheG1000HasArmed(double? flag, string fma, bool fresh, string expected)
         => Assert.Equal(expected, CowsDA40Definition.DescribeApproachState(flag, fma, fresh));
 
+    // The mode buttons are labelled from the FMA, never the stock row: AUTOPILOT NAV1 LOCK read 0
+    // with LOC/BC armed and 1 with GPS armed (2026-10-27).
+    [Theory]
+    [InlineData("DA40_AP_NAV", false, "AP, HDG, BC armed, PIT, ALTS armed", false, "BC armed")]
+    [InlineData("DA40_AP_NAV", true, "AP, HDG, GPS armed, PIT, ALTS armed", false, "GPS armed")]
+    [InlineData("DA40_AP_NAV", true, "AP, GPS, PIT", false, "GPS")]
+    // With the approach flag on, LOC is Approach's, not NAV's.
+    [InlineData("DA40_AP_NAV", false, "ROL, LOC armed, PIT, GS armed", true, "Off")]
+    [InlineData("DA40_AP_HDG", true, "AP, HDG, PIT", false, "HDG")]
+    [InlineData("DA40_AP_HDG", false, "AP, ROL, PIT", false, "Off")]
+    [InlineData("DA40_AP_BC", false, "HDG, BC armed, PIT", false, "BC armed")]
+    [InlineData("DA40_AP_ALT", true, "ROL, ALT", false, "ALT")]
+    [InlineData("DA40_AP_VS", true, "ROL, VS, ALTS armed, target -500 FPM", false, "VS")]
+    [InlineData("DA40_AP_FLC", false, "ROL, PIT, ALTS armed", false, "Off")]
+    [InlineData("DA40_AP_FLC", true, "off", false, "Off")]
+    public void TheModeButtonsSayWhatTheFmaShows(string key, bool row, string fma, bool approachOn, string expected)
+        => Assert.Equal(expected, CowsDA40Definition.DescribeModeState(key, row, fma, fmaFresh: true, approachOn));
+
+    [Fact]
+    public void AModeButtonWithoutAFreshFmaFallsBackToItsRow()
+    {
+        Assert.Equal("On", CowsDA40Definition.DescribeModeState("DA40_AP_HDG", true, "", false, false));
+        Assert.Equal("", CowsDA40Definition.DescribeModeState("DA40_AP_HDG", null, "", false, false));
+    }
+
     [Fact]
     public void ARefusedPressSaysNoChangeEvenWhenTheFmaMoved()
     {

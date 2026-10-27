@@ -44,7 +44,7 @@ public partial class CowsDA40Definition
     /// </summary>
     private ToggleButtonDef ModeToggle(string label, string key,
         SimConnectManager sc, ScreenReaderAnnouncer ann)
-        => new(label, () => ModeState(sc, key), () =>
+        => new(label, () => ApModeIsPress(key) ? ModeLabelState(key) : ModeState(sc, key), () =>
         {
             bool on = (sc.GetCachedVariableValue(key) ?? 0) > 0.5;
             HandleAutopilotSet(key, on ? 0 : 1, sc, ann);
@@ -63,7 +63,7 @@ public partial class CowsDA40Definition
     /// </summary>
     private ToggleButtonDef ApproachButton(SimConnectManager sc, ScreenReaderAnnouncer ann)
         => new("A&pproach mode",
-            () => DescribeApproachState(sc.GetCachedVariableValue("DA40_AP_APR"), Cas.CurrentFma, FmaIsFresh()),
+            () => ModeLabelState("DA40_AP_APR"),
             () => HandleAutopilotSet("DA40_AP_APR", 1, sc, ann))
         {
             SuppressStateAnnounce = () => true
@@ -175,13 +175,15 @@ public partial class CowsDA40Definition
             ModeToggle("&Flight level change", "DA40_AP_FLC", sc, ann)
         };
 
-        // The validator refuses everything: there is no value to type here, and a field that
-        // silently accepts input it will never use is worse than one that says so.
-        var dialog = new ValueInputForm("Autopilot", "nothing", "use the buttons", ann,
+        // Buttons only: the value box is hidden (ShowValueField), since there is nothing to type.
+        // It read "nothing value, edit, Enter nothing value and press Enter to set" (2026-10-27).
+        // The validator still refuses everything, should Enter ever reach the hidden box.
+        var dialog = new ValueInputForm("Autopilot", "autopilot", "", ann,
             _ => (false, "This window has no value to set. Use the buttons."),
             toggles, null);
 
         dialog.ShowCancelButton = false;
+        dialog.ShowValueField = false;
         dialog.Show(parent);
         return true;
     }

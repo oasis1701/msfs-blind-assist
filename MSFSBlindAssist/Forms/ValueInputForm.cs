@@ -49,6 +49,15 @@ public partial class ValueInputForm : Form
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool ShowCancelButton { get; set; } = true;
 
+        /// <summary>
+        /// False for a window of buttons only, with nothing to type: the value box and the range
+        /// line are hidden and focus starts on the first button. The DA40's Ctrl+P window read
+        /// "nothing value, edit, Enter nothing value and press Enter to set" (2026-10-27).
+        /// Default true, so every other window is unchanged.
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool ShowValueField { get; set; } = true;
+
         private readonly ScreenReaderAnnouncer announcer;
         private readonly string parameterType;
         private readonly Func<string, (bool isValid, string message)> validator;
@@ -431,6 +440,13 @@ public partial class ValueInputForm : Form
                 Activate();
                 TopMost = true;
                 TopMost = false;
+                if (!ShowValueField)
+                {
+                    valueTextBox.Visible = false;
+                    rangeLabel.Visible = false;
+                    if (_toggleButtons.Count > 0) _toggleButtons[0].Focus();
+                    return;
+                }
                 if (!string.IsNullOrEmpty(InitialValue))
                 {
                     valueTextBox.Text = InitialValue;

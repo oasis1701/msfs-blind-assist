@@ -460,6 +460,53 @@ public partial class CowsDA40Definition
         return modes.Length > 0 ? modes : "On, nothing armed";
     }
 
+    /// <summary>
+    /// A mode key's state as the FMA shows it ("GPS armed", "GPS", "Off"), for its button label.
+    /// ⚠️ NOT THE STOCK ROW: `AUTOPILOT NAV1 LOCK` read 0 with LOC/BC armed and 1 with GPS armed
+    /// (2026-10-27), so the button said Off for one armed state and On for the other. NAV owns
+    /// GPS, VOR, LOC and BC unless the approach flag is on (then LOC is Approach's). An FMA not
+    /// read lately falls back to the row's On/Off. Approach has its own (DescribeApproachState).
+    /// Pure so the suite can pin it.
+    /// </summary>
+    internal static string DescribeModeState(string key, bool? rowOn, string fma, bool fmaFresh, bool approachOn)
+    {
+        if (!fmaFresh) return rowOn is bool on ? (on ? "On" : "Off") : "";
+        string[] mine = key switch
+        {
+            "DA40_AP_HDG" => new[] { "HDG" },
+            "DA40_AP_NAV" => approachOn ? Array.Empty<string>() : new[] { "GPS", "VOR", "LOC", "BC" },
+            "DA40_AP_BC" => new[] { "BC" },
+            "DA40_AP_ALT" => new[] { "ALT" },
+            "DA40_AP_VS" => new[] { "VS" },
+            "DA40_AP_FLC" => new[] { "FLC" },
+            _ => Array.Empty<string>()
+        };
+        var shown = G1000.G1000CasWatcher.FmaModes(fma)
+            .Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(t => mine.Contains(t.EndsWith(" armed", StringComparison.Ordinal) ? t[..^6] : t));
+        string s = string.Join(", ", shown);
+        return s.Length > 0 ? s : "Off";
+    }
+
+    /// <summary>A mode key's label state now, from the FMA (Approach from its flag and the FMA).</summary>
+    private string ModeLabelState(string key)
+    {
+        bool fresh = FmaIsFresh();
+        if (key == "DA40_AP_APR")
+            return DescribeApproachState(_apRowState.TryGetValue(key, out bool f) ? (f ? 1 : 0) : null,
+                Cas.CurrentFma, fresh);
+        bool? row = _apRowState.TryGetValue(key, out bool r) ? r : null;
+        bool apr = _apRowState.TryGetValue("DA40_AP_APR", out bool a) && a;
+        return DescribeModeState(key, row, Cas.CurrentFma, fresh, apr);
+    }
+
+    /// <summary>The panel's mode buttons are labelled the same way as the autopilot window's.</summary>
+    public override bool TryDescribeControlState(string varKey, out string stateText)
+    {
+        stateText = ApModeIsPress(varKey) ? ModeLabelState(varKey) : "";
+        return stateText.Length > 0;
+    }
+
     /// <summary>Whether the FMA was read recently enough to describe (two of the watcher's polls).</summary>
     private bool FmaIsFresh() => Cas.LastRowsAt >= Cas.Now().AddSeconds(-4);
 
