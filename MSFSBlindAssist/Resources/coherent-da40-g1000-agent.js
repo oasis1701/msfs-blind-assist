@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 35;
+    A.VERSION = 36;
 
     function visible(el) {
         if (!el) return false;
@@ -2542,8 +2542,9 @@
         // already leads with its own question). Only the first: a title on every field of
         // a page is the "Cursor on" fourteen times over again.
         if (A._saidView !== undefined && key !== A._saidView && key !== "MessageDialog") {
+            // A window over a page leads with the window's name, not the page behind it.
             var title = "";
-            try { title = A.pageTitle(); } catch (e) { title = ""; }
+            try { title = A.M.windowName(key) || A.pageTitle(); } catch (e) { title = ""; }
             if (title && summary.indexOf(title) < 0) summary = title + (summary ? ", " + summary : "");
         }
         A._saidView = key;
@@ -3922,6 +3923,30 @@
         ["HoldAt", "Hold At"]
     ];
 
+    /// The MFD's own windows that the PFD table does not name.
+    A.M.MFD_WINDOWS = [
+        ["WptDup", "Duplicate Waypoints"],
+        ["MapSettings", "Map Settings"],
+        ["FlightPlanCatalog", "Flight Plan Catalog"]
+    ];
+
+    /// ⚠️ THE NAME OF A WINDOW OPEN OVER AN MFD PAGE, NOT THE PAGE'S. The bar at the top of the
+    /// screen keeps the page's title under a window and Direct-To draws no title of its own, so
+    /// Direct-To over the Engine page read "Page: EIS – Engine" and its arrival spoke the
+    /// Engine page (DA40, 2026-10-26). "" for a page, for the PFD (its windows are its
+    /// pages, read as they always were), and for a window named another way: a question
+    /// dialog, the page selector, a page menu.
+    A.M.windowName = function (key) {
+        if (!key || A.side() === "PFD" || key === A.M.pageKey()) return "";
+        var lists = [A.M.PFD_WINDOWS, A.M.MFD_WINDOWS];
+        for (var l = 0; l < lists.length; l++) {
+            for (var i = 0; i < lists[l].length; i++) {
+                if (lists[l][i][0] === key) return lists[l][i][1];
+            }
+        }
+        return "";
+    };
+
     A.M.pageMap = function () {
         if (A._pageMap) return A._pageMap;
 
@@ -4650,7 +4675,10 @@
             return rows;
         }
 
-        rows.push("Page: " + (A.pageTitle() || "not shown"));
+        var win = "";
+        try { win = A.M.windowName(A.M.viewKey()); } catch (e) { win = ""; }
+        rows.push(win ? "Window: " + win + ", over " + (A.pageTitle() || "the page")
+                      : "Page: " + (A.pageTitle() || "not shown"));
 
         A.pushUnits(rows);
         A.pushDialog(rows);

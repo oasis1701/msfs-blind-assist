@@ -173,6 +173,27 @@ public class CowsDA40G1000AgentContractTests
     }
 
     [Fact]
+    public void AWindowOverAPageIsNamedAsTheWindow()
+    {
+        // ⚠️ DIRECT-TO OVER THE ENGINE PAGE READ "Page: EIS – Engine". The bar at the top of
+        // the screen keeps the page's title under a window and Direct-To draws no title of its
+        // own, so the window's first line and the spoken arrival both named the page behind
+        // it (DA40, 2026-10-26). The Garmin names come from the window table.
+        string agent = Agent();
+        Assert.Contains("A.M.windowName = function", agent, StringComparison.Ordinal);
+
+        var rows = Regex.Match(agent, @"A\.mfdRows = function \(\) \{(.*?)\n    \};",
+            RegexOptions.Singleline);
+        Assert.True(rows.Success, "A.mfdRows not found");
+        Assert.Contains("A.M.windowName(", rows.Groups[1].Value, StringComparison.Ordinal);
+
+        var state = Regex.Match(agent, @"A\.state = function \(\) \{(.*?)\n    \};",
+            RegexOptions.Singleline);
+        Assert.True(state.Success, "A.state not found");
+        Assert.Contains("A.M.windowName(", state.Groups[1].Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheRunwaySelectorIsReadFromItsNameElement()
     {
         // The runway box on Airport Information and on Nearest Airports' RNWY is a
