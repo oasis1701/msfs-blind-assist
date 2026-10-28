@@ -74,9 +74,9 @@ public class FbwEfbForm : Form
     private List<EFBElement> _elements = new();
     private string _currentPage = "";
     private string _previousAnnouncedPage = "";
-    // Last alert/confirmation card text we spoke, so a popped-up alert announces once (not every poll);
-    // cleared when no alert is present so re-showing the same alert announces again.
-    private string _lastAnnouncedAlert = "";
+    // The alerts/confirmation cards spoken and still on screen (key, or text when keyless), so a
+    // popped-up alert announces once (not every poll) and again only after it has gone and returned.
+    private HashSet<string> _announcedAlerts = new();
 
     // Browser mode = WebView2 semantic document; otherwise the native list.
     private bool _useBrowser = true;
@@ -367,13 +367,19 @@ public class FbwEfbForm : Form
         // updated.") the moment it appears. The agent flags it kind 'alert'; the browser/list render
         // still SHOWS it (+ its OK button stays clickable), but a screen reader won't reliably speak
         // a dynamically-injected alert, so we announce it app-side — immediate (it interrupts), once
-        // per appearance. Cleared when the alert is gone so re-showing it speaks again.
-        var alert = _elements.FirstOrDefault(e => e.Kind == "alert" && !string.IsNullOrWhiteSpace(e.Text));
-        if (alert != null)
+        // per appearance. Forgotten when the alert is gone so re-showing it speaks again. The flyPad
+        // can list several at once (its error notices), each under its own key, so a repeat of the
+        // same error text under a new key speaks again; an alert without a key goes by its text.
+        var present = new HashSet<string>();
+        var fresh = new List<string>();
+        foreach (var e in _elements)
         {
-            if (alert.Text != _lastAnnouncedAlert) { _announcer.AnnounceImmediate(alert.Text); _lastAnnouncedAlert = alert.Text; }
+            if (e.Kind != "alert" || string.IsNullOrWhiteSpace(e.Text)) continue;
+            string id = string.IsNullOrEmpty(e.Key) ? e.Text : e.Key;
+            if (present.Add(id) && !_announcedAlerts.Contains(id)) fresh.Add(e.Text);
         }
-        else { _lastAnnouncedAlert = ""; }
+        _announcedAlerts = present;
+        if (fresh.Count > 0) _announcer.AnnounceImmediate(string.Join(". ", fresh));
 
         if (_useBrowser && !_webViewFailed)
         {
@@ -1155,6 +1161,7 @@ public class FbwEfbForm : Form
     if (page !== renderedPage) { list.innerHTML = ''; renderedPage = page; }   // page change → clean rebuild
 
     var els = payload.items || [];
+    var before = Array.prototype.slice.call(list.children);   // pre-render order, for focus rescue below
     var existing = {};
     for (var j = 0; j < list.children.length; j++) { var ck = list.children[j].getAttribute('data-key'); if (ck) existing[ck] = list.children[j]; }
 
@@ -1171,7 +1178,27 @@ public class FbwEfbForm : Form
       if (node !== ref) list.insertBefore(node, ref);    // move only if out of place
       prev = node;
     }
-    for (var gone in existing) { if (!used[gone]) list.removeChild(existing[gone]); }
+    // A removed node that held focus (a flyPad notice's Dismiss button the pilot just pressed, a
+    // notice that expired under the cursor) would drop focus to <body>, and the screen reader to
+    // an arbitrary place: move it to the first control now standing where it stood, else the page
+    // heading. Where it stood is just after the last node that came before it and survived
+    // (pre-render order: the loop above has already moved survivors), so a control rebuilt in its
+    // place (an unkeyed label change) takes the focus, not the control after it.
+    var lostFocus = null, holder = null;
+    for (var gone in existing) { if (!used[gone] && existing[gone].contains(document.activeElement)) { holder = existing[gone]; break; } }
+    if (holder) {
+      lostFocus = document.getElementById('pgttl');
+      var anchor = null;
+      for (var b = before.indexOf(holder) - 1; b >= 0; b--) { if (used[before[b].getAttribute('data-key')]) { anchor = before[b]; break; } }
+      for (var c = anchor ? anchor.nextSibling : list.firstChild; c; c = c.nextSibling) {
+        var gk = c.getAttribute('data-key');
+        if (existing[gk] && !used[gk]) continue;          // also leaving
+        var bc = c.matches('button, a, input, select') ? c : c.querySelector('button, a, input, select');
+        if (bc && !bc.disabled) { lostFocus = bc; break; }
+      }
+    }
+    for (var gone2 in existing) { if (!used[gone2]) list.removeChild(existing[gone2]); }
+    if (lostFocus) lostFocus.focus();
   };
 
   document.addEventListener('keydown', function (e) {
