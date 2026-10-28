@@ -2499,7 +2499,7 @@
         return st;
     };
 
-    /// The display's state as ONE string: "ok|<cursor 0 or 1>|<summary>".
+    /// The display's state as ONE string: "ok|<cursor 0 or 1>|<view>|<focus>|<editing 0 or 1>|<summary>".
     ///
     /// The cursor flag is reported SEPARATELY rather than sniffed out of the summary text,
     /// because the caller has to tell "the cursor just came on" from "the summary happens
@@ -2554,12 +2554,23 @@
         // of a page, so a pilot at the bottom of a setup page heard the same field read
         // back a dozen times with nothing to say it was the last one.
         var focus = "";
+        // AND WHETHER THAT FIELD IS OPEN FOR EDITING. Inside an open number the large knob
+        // moves between its DIGITS and the focus stays put, so without this every digit
+        // move read as the knob stopping at the page's end: "0400.0, editing, end of the
+        // page" on the ADF frequency (2026-10-26). The same two sources the readback's
+        // ", editing" comes from: the model's field, else the DOM cursor's highlight.
+        var editing = "0";
         try {
             var f = A.M.fields();
-            for (var i = 0; i < f.length; i++) if (f[i].focused) { focus = String(i); break; }
+            for (var i = 0; i < f.length; i++) {
+                if (f[i].focused) { focus = String(i); if (f[i].active) editing = "1"; break; }
+            }
         } catch (e) { focus = ""; }
+        if (editing === "0") {
+            try { if (/, editing$/.test(A.cursorField())) editing = "1"; } catch (e) { }
+        }
 
-        return "ok|" + cursor + "|" + key + "|" + focus + "|" + summary;
+        return "ok|" + cursor + "|" + key + "|" + focus + "|" + editing + "|" + summary;
     };
 
     /// Type an ident into whatever text field the cursor is on.
@@ -4223,7 +4234,7 @@
         // walk below takes over and lands on whatever control it can find on the page
         // UNDERNEATH - which on the system-setup page is a field whose value is the word
         // "NONE". So a pilot changing pages heard, in full, "none": measured live as
-        // A.press("AS1000_MFD_FMS_Upper_INC") answering "ok|1|PageSelect||NONE".
+        // A.press("AS1000_MFD_FMS_Upper_INC") answering "ok|1|PageSelect||NONE" (before the editing flag).
         //
         // The selector's own DOM carries its active tab and highlighted entry whether or not
         // the list component is ready - that is the same reading pageTitle() already falls

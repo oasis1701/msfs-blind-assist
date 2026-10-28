@@ -97,14 +97,16 @@ public class CowsDA40G1000AgentContractTests
     }
 
     [Fact]
-    public void TheStateAnswerCarriesFiveFields()
+    public void TheStateAnswerCarriesSixFields()
     {
-        // "ok|cursor|view|focus|summary". The window splits on '|' and reads index 2 as the
-        // view, 3 as the focused field and 4 onwards as the summary, so the agent growing
-        // or losing a field silently shifts every one of them. It has grown once already.
-        Assert.Contains("\"ok|\" + cursor + \"|\" + key + \"|\" + focus + \"|\" + summary",
+        // "ok|cursor|view|focus|editing|summary". The window splits on '|' and reads index 2
+        // as the view, 3 as the focused field, 4 as the editing flag and 5 onwards as the
+        // summary, so the agent growing or losing a field silently shifts every one of them.
+        // It has grown twice already.
+        Assert.Contains(
+            "\"ok|\" + cursor + \"|\" + key + \"|\" + focus + \"|\" + editing + \"|\" + summary",
             Agent(), StringComparison.Ordinal);
-        Assert.Contains("if (parts.Length < 5", Form(), StringComparison.Ordinal);
+        Assert.Contains("if (parts.Length < 6", Form(), StringComparison.Ordinal);
 
         // And ONE parser reads it: the page jump kept its own four-field split after the
         // answer grew, and spoke the focus index in front of every page name.
