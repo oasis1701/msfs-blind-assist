@@ -492,6 +492,30 @@ public partial class MainForm
             announcer.AnnounceImmediate("cancelled");
     }
 
+    /// <summary>A bound controller button runs its command as the keyboard chord would. An
+    /// unbound button is silent: a yoke has many buttons the pilot uses in the sim itself.</summary>
+    private void OnControllerButtonPressed(object? sender, ControllerButtonPressedEventArgs e)
+    {
+        foreach (var binding in SettingsManager.Current.ControllerBindings)
+        {
+            if (binding.Matches(e.VendorId, e.ProductId, e.Button) && binding.TryGetAction(out var action))
+            {
+                hotkeyManager.TriggerFromController(action);
+                return;
+            }
+        }
+    }
+
+    /// <summary>Reads the controllers only while a button is bound, so a pilot who never
+    /// assigns one has no polling thread at all. Called at startup and after the Settings dialog.</summary>
+    private void ApplyControllerBindings()
+    {
+        if (SettingsManager.Current.ControllerBindings.Count > 0)
+            controllerMonitor.Start();
+        else
+            controllerMonitor.Stop();
+    }
+
     private void ToggleTakeoffAssist()
     {
         if (!simConnectManager.IsConnected)
