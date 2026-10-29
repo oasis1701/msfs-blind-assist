@@ -3353,8 +3353,9 @@ public partial class TaxiGuidanceManager
     /// turnoff that is already behind the wing ("Retargeting taxiway Y, 50 feet ahead" with the tone
     /// panning back at it). When the planned list has nothing left, the graph is asked before any "Missed
     /// last exit": that list comes from GetLandingExits, built for the planner DIALOG, which keeps one
-    /// entry per taxiway name and no unmarked junction at all once the runway has one hold-short marker,
-    /// so a marked crossing near the threshold can hide every rapid exit behind it (CYYZ 23, 2026-08-23:
+    /// entry per taxiway name and leaves a name's later turnoff out wherever another listed exit stands
+    /// within 1,400 ft of it. It once kept no unmarked junction at all once the runway had one hold-short
+    /// marker, so a marked crossing near the threshold hid every rapid exit behind it (CYYZ 23, 2026-08-23:
     /// six exits ending at the missed one, with 5,400 ft of runway and three turnoffs ahead). Either
     /// verdict is logged with what was considered. Null when nothing is ahead.
     /// </summary>

@@ -8,19 +8,23 @@
 //   "OVERSHOOT no downfield exit -> EnterRunwayEndCountdown"  (allExits.Count=6)
 //
 // The overshoot handler only ever looks at the list GetLandingExits returned. That list is
-// built for the PLANNER DIALOG, and it is lossy by design in two ways that matter here:
+// built for the PLANNER DIALOG, and it was lossy by design in two ways that mattered here:
 //
-//   1. `hasHoldShortOnRunway` — the moment ONE node in the runway corridor carries a
-//      hold-short marker with a forward exit, the geometric fallback is switched off for the
-//      WHOLE runway. Turnoffs the scenery did not mark with a hold-short bar then do not
-//      exist as far as the rollout is concerned. Rapid-exit taxiways are routinely modelled
-//      that way — they are one-way turnoffs, so there is no hold-short line on the runway.
-//   2. the per-name dedup keeps one entry per taxiway name.
+//   1. `hasHoldShortOnRunway` — the moment ONE node in the runway corridor carried a
+//      hold-short marker with a forward exit, the geometric fallback was switched off for the
+//      WHOLE runway, and turnoffs the scenery did not mark with a hold-short bar did not exist
+//      as far as the rollout was concerned. Rapid-exit taxiways are routinely modelled that
+//      way — they are one-way turnoffs, so there is no hold-short line on the runway. Since the
+//      KJFK 13L report (the planner offered one exit), hold-short mode ADDS the turnoffs its
+//      markers never drew, so this shape now reaches the list (the first test below).
+//   2. the per-name dedup keeps one entry per taxiway name, and a name's later turnoff stays
+//      out wherever another listed exit stands within 1,400 ft of it. That loss remains.
 //
-// Neither is wrong for the dialog. Both are wrong as the sole answer to "is there any way off
-// this runway ahead of me?", which is a safety question, asked at 92 kt, whose fallback answer
-// is a backtrack. So the rescue scan asks the GRAPH directly, and only when the normal list
-// has already come up empty.
+// The second is still wrong as the sole answer to "is there any way off this runway ahead of
+// me?", which is a safety question, asked at 92 kt, whose fallback answer is a backtrack. So
+// the rescue scan asks the GRAPH directly, and only when the normal list has already come up
+// empty. It brings such a turnoff back when the exit beside it has another name; beside one
+// of its own name RolloutExitGate.MergeRescueExits drops it too.
 
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -85,17 +89,17 @@ public class LandingExitDownfieldRescanTests
             new List<StartPosition>());
 
     // ---------------------------------------------------------------------------------
-    // Characterization: this is the state of the world the rescue scan exists to survive.
+    // Characterization: the CYYZ shape no longer needs the rescue scan to be offered.
     // ---------------------------------------------------------------------------------
 
     [Fact]
-    public void One_hold_short_marker_hides_every_unmarked_turnoff_from_the_planner_list()
+    public void One_hold_short_marker_no_longer_hides_the_unmarked_turnoffs_from_the_planner_list()
     {
         var exits = BuildMarkedCrossingPlusUnmarkedTurnoffs().GetLandingExits(Runway09());
 
-        // Only the marked crossing survives. H2, H4 and J2 are real turnoffs off the same
-        // runway and none of them is offered.
-        Assert.Equal(new[] { "B" }, exits.Select(e => e.TaxiwayName).ToArray());
+        // Only the crossing is marked; H2, H4 and J2 are real turnoffs off the same runway,
+        // and the list offers them beside it (it offered B alone before the KJFK 13L fix).
+        Assert.Equal(new[] { "B", "H2", "H4", "J2" }, exits.Select(e => e.TaxiwayName).ToArray());
     }
 
     // ---------------------------------------------------------------------------------
@@ -103,7 +107,7 @@ public class LandingExitDownfieldRescanTests
     // ---------------------------------------------------------------------------------
 
     [Fact]
-    public void Rescue_scan_finds_turnoffs_the_planner_list_dropped()
+    public void Rescue_scan_finds_the_turnoffs_past_a_missed_exit()
     {
         var graph = BuildMarkedCrossingPlusUnmarkedTurnoffs();
 
