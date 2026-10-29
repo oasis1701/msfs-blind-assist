@@ -68,6 +68,56 @@ public class LandingExitSparseHoldShortTests
         Assert.Equal("Right", forwardM.ExitSide);
     }
 
+    [Fact]
+    public void An_added_turnoff_never_covers_away_a_marked_exit_the_gap_fill_gives_back()
+    {
+        // G is marked twice, both rapid exits: the high-speed dedup keeps the first and the coverage gap fill gives
+        // the second back, 2,684 ft on. The unmarked H 497 ft before it must not count as that stretch's coverage,
+        // or the marked rapid exit disappears behind a 90-degree turnoff.
+        var exits = Exits09(
+            Turnoff("G", 1813, 45, startType: "HS"),
+            Turnoff("G", 4497, 45, startType: "HS"),
+            Turnoff("H", 4000, 180));
+
+        Assert.Contains(exits, e => e.TaxiwayName == "H");
+        var g = exits.Where(e => e.TaxiwayName == "G").ToList();
+        Assert.Equal(2, g.Count);
+        Assert.InRange(g[1].DistanceFromThresholdFeet, 4450.0, 4550.0);
+        Assert.Equal("High-speed", g[1].ExitType);
+    }
+
+    [Fact]
+    public void The_gap_fill_gives_back_the_arm_the_50_ft_window_kept()
+    {
+        // D's two arms 47 ft apart: left at 4,039 ft turning 75 degrees, right at 4,086 ft turning 55. The window
+        // keeps the right arm; the earlier D at 2,000 ft then takes the name, and the gap fill gives a D back past
+        // 4,000 ft - the right arm, never the left one, which merely comes first.
+        var exits = Exits09(
+            Turnoff("B", 1700, 45, startType: "HS"),
+            Turnoff("D", 2000, 0),
+            Turnoff("D", 4039, 15),
+            Turnoff("D", 4086, 145));
+
+        var late = Assert.Single(exits, e => e.TaxiwayName == "D" && e.DistanceFromThresholdFeet > 4000.0);
+        Assert.InRange(late.DistanceFromThresholdFeet, 4070.0, 4100.0);
+        Assert.Equal("Right", late.ExitSide);
+    }
+
+    [Fact]
+    public void The_50_ft_window_picks_the_arm_before_the_name_test_does()
+    {
+        // Marked D at 5,450 ft; unmarked D arms at 4,039 ft (75 degrees, left) and 4,086 ft (55, right). The window
+        // keeps the right arm, 1,364 ft from the marked D, so that junction is taken for the marked D's own. Testing
+        // names first let the left arm, 1,411 ft away, through instead of the arm the window keeps.
+        var exits = Exits09(
+            Turnoff("D", 5450, 45, startType: "HS"),
+            Turnoff("D", 4039, 15),
+            Turnoff("D", 4086, 145));
+
+        var d = Assert.Single(exits, e => e.TaxiwayName == "D");
+        Assert.InRange(d.DistanceFromThresholdFeet, 5400.0, 5500.0);
+    }
+
     private static List<LandingExit> Exits13L()
         => KjfkRunway13LFixture.BuildGraph().GetLandingExits(KjfkRunway13LFixture.Runway13L());
 

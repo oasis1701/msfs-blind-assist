@@ -1409,6 +1409,24 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void Before_calling_no_exit_comfortable_the_graph_is_asked_for_exits_the_list_left_out()
+    {
+        // C (4,921 ft) and U's first turnoff (3,281 ft) are both too early for a 737. U's second turnoff (5,906 ft) is
+        // comfortable, but the list keeps one U, and C stands 985 ft before the second, so the list leaves it out. With
+        // nothing comfortable the graph is asked from the aim point, and the rescue brings it back.
+        var bundle = AirportWithUnmarkedExit(1500, unmarkedExitEastMetres: 1800, namesakeEastMetres: 1000);
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "09")!;
+        var listed = bundle.Graph.GetLandingExits(rwy);
+        Assert.DoesNotContain(listed, e => e.TaxiwayName == "U" && e.DistanceFromThresholdFeet > 5000.0);   // preconditions:
+        Assert.DoesNotContain(listed, e => BriefingExitPicker.IsComfortablyReachable(e, B738.TouchdownSpeedKts)); // lossy, none comfortable
+
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738), bundle);
+        Assert.Equal("U", leg.Exit!.Exit.TaxiwayName);
+        Assert.InRange(leg.Exit.Exit.DistanceFromThresholdFeet, 5856.0, 5956.0);   // 1,800 m
+        Assert.True(leg.Exit.ComfortablyReachable);
+    }
+
+    [Fact]
     public void Before_saying_no_exit_follows_the_briefed_one_the_graph_is_asked_too()
     {
         // U's first turnoff (4,265 ft, too early for a 737) takes its name in the list, and its second, 656 ft past C,

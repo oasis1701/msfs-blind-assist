@@ -17,13 +17,14 @@
 //      way — they are one-way turnoffs, so there is no hold-short line on the runway. Since the
 //      KJFK 13L report (the planner offered one exit), hold-short mode ADDS the turnoffs its
 //      markers never drew, so this shape now reaches the list (the first test below).
-//   2. the per-name dedup keeps one entry per taxiway name, and a turnoff within 1,400 ft of a
-//      listed exit of its own name is taken for that exit's own turnoff. That loss remains.
+//   2. the per-name dedup keeps one entry per taxiway name, and a name's later turnoff stays
+//      out wherever another listed exit stands within 1,400 ft of it. That loss remains.
 //
 // The second is still wrong as the sole answer to "is there any way off this runway ahead of
 // me?", which is a safety question, asked at 92 kt, whose fallback answer is a backtrack. So
 // the rescue scan asks the GRAPH directly, and only when the normal list has already come up
-// empty.
+// empty. It brings such a turnoff back when the exit beside it has another name; beside one
+// of its own name RolloutExitGate.MergeRescueExits drops it too.
 
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -106,7 +107,7 @@ public class LandingExitDownfieldRescanTests
     // ---------------------------------------------------------------------------------
 
     [Fact]
-    public void Rescue_scan_finds_turnoffs_the_planner_list_dropped()
+    public void Rescue_scan_finds_the_turnoffs_past_a_missed_exit()
     {
         var graph = BuildMarkedCrossingPlusUnmarkedTurnoffs();
 
