@@ -60,6 +60,60 @@ public class Md11FuelUnitsTests
         => Assert.Equal("Tank 1 11884, Tank 2 11884, Tank 3 11884, Auxiliary 0, Tail 0, Total 35652 kilograms",
             Md11FuelUnits.Describe(Readings(26200, 26200, 26200, 0, 0), 5, null, kilograms: true));
 
+    /// <summary>The spoken total is the sum of the spoken tanks, never a separately rounded figure.</summary>
+    [Fact]
+    public void Converted_TotalIsTheSumOfTheSpokenTanks()
+        => Assert.Equal("Tank 1 26345, Tank 2 26345, Tank 3 26345, Auxiliary 0, Tail 0, Total 79035 pounds",
+            Md11FuelUnits.Describe(Readings(11950, 11950, 11950, 0, 0), 4, null, kilograms: false));   // 79036 unrounded
+
+    /// <summary>
+    /// The sim's own fuel weight confirms the bit: the measured pairs (GE N821TD, 2026-10-23) agree
+    /// with their option, so the sentences are the ones the bit alone gives.
+    /// </summary>
+    [Fact]
+    public void TheSimWeight_ConfirmsTheMeasuredUnits()
+    {
+        Assert.Equal("Tank 1 26235, Tank 2 26235, Tank 3 26235, Auxiliary 0, Tail 0, Total 78705 pounds",
+            Md11FuelUnits.Describe(Readings(11900, 11900, 11900, 0, 0), 4, 78729, kilograms: false));
+        Assert.Equal("Tank 1 26200, Tank 2 26200, Tank 3 26200, Auxiliary 0, Tail 0, Total 78600 pounds",
+            Md11FuelUnits.Describe(Readings(26200, 26200, 26200, 0, 0), 5, 78639, kilograms: false));
+        Assert.False(Md11FuelUnits.TankUnit(new double?[] { 11900, 11900, 11900, 0, 0 }, 4, 78729));
+        Assert.True(Md11FuelUnits.TankUnit(new double?[] { 26200, 26200, 26200, 0, 0 }, 5, 78639));
+    }
+
+    /// <summary>
+    /// An option still at its unwritten 0 (or renamed by TFDi, which reads 0 for good) says Metric,
+    /// but an Imperial pilot's pounds match the sim's pounds: no unit, never "Total 173283 pounds".
+    /// </summary>
+    [Fact]
+    public void TheBit_ContradictedByTheSimWeight_IsNoUnit()
+    {
+        Assert.Equal(Md11FuelUnits.UnitUnknown, Md11FuelUnits.Describe(Readings(26200, 26200, 26200, 0, 0), 0, 78639, kilograms: false));
+        Assert.Equal(Md11FuelUnits.UnitUnknown, Md11FuelUnits.Describe(Readings(26200, 26200, 26200, 0, 0), 0, 78639, kilograms: true));
+        Assert.Equal(Md11FuelUnits.UnitUnknown, Md11FuelUnits.Describe(Readings(11900, 11900, 11900, 0, 0), 5, 78729, kilograms: false));
+    }
+
+    /// <summary>A total between the two units names neither, whatever the bit says.</summary>
+    [Theory]
+    [InlineData(4.0)]
+    [InlineData(5.0)]
+    public void ATotalBetweenTheUnits_IsNoUnit(double options)
+        => Assert.Null(Md11FuelUnits.TankUnit(new double?[] { 26200, 26200, 26200, 0, 0 }, options, 110000));   // 0.71
+
+    /// <summary>No evidence (sim weight unknown, under the line, or every tank at 0): the bit stands alone.</summary>
+    [Fact]
+    public void WithNoEvidence_TheBitStandsAlone()
+    {
+        Assert.False(Md11FuelUnits.TankUnit(new double?[] { 26200, 26200, 26200, 0, 0 }, 0, null));
+        Assert.True(Md11FuelUnits.TankUnit(new double?[] { 400, 0, 0, 0, 0 }, 5, 999));
+        Assert.True(Md11FuelUnits.TankUnit(new double?[] { 0, 0, 0, 0, 0 }, 5, 142579));
+        Assert.Null(Md11FuelUnits.TankUnit(new double?[] { 26200, 26200, 26200, 0, 0 }, null, 78639));
+    }
+
+    [Fact]
+    public void Tanks_CannotBeChangedByACaller()
+        => Assert.True(((ICollection<(string, string, string)>)Md11FuelUnits.Tanks).IsReadOnly);
+
     [Fact]
     public void UnknownUnit_ReadsNoNumber()
     {

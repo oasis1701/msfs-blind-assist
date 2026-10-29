@@ -168,7 +168,9 @@ Aircraft state:
   F          Read fuel, tank by tank, with a total (pounds). Includes the auxiliary and tail
              trim tanks, which the sim's own fuel readout has no place for. Pounds whichever
              weight unit the EFB is set to; until the aircraft has reported that unit it says
-             "Fuel quantity unavailable, the aircraft has not reported its weight unit"
+             "Fuel quantity unavailable, the aircraft has not reported its weight unit". For
+             about 20 seconds after a flight loads, while the aircraft sets its fuel, it says
+             "Fuel quantity unavailable".
   Shift+F    Read the same in kilograms
   Shift+G    Read gear lever position
   B          Read the captain's altimeter in both units, "Altimeter: 1013, 29.92", or

@@ -502,7 +502,7 @@ With an AI provider set up, these output mode keys read the screens by AI vision
 ### Aircraft-specific hotkeys and callouts {#boeing-md11-hotkeys}
 
 - **Output Shift+1** reads the slat retraction speed (VSR) and **Shift+2** the flap retraction speed (VFR). V1, VR and V2 have no key; read them in Read-outs, V-Speeds.
-- **Output F / Shift+F** read fuel tank by tank with a total, including the auxiliary and tail tanks, F in pounds and Shift+F in kilograms whichever weight unit the EFB is set to (until the aircraft has reported that unit you hear *"Fuel quantity unavailable, the aircraft has not reported its weight unit"*); **B** the captain's altimeter, *"Altimeter: 1013, 29.92"*; **Shift+G** the gear lever.
+- **Output F / Shift+F** read fuel tank by tank with a total, including the auxiliary and tail tanks, F in pounds and Shift+F in kilograms whichever weight unit the EFB is set to (until the aircraft has reported that unit you hear *"Fuel quantity unavailable, the aircraft has not reported its weight unit"*, and for about 20 seconds after a flight loads, while the aircraft sets its fuel, *"Fuel quantity unavailable"*); **B** the captain's altimeter, *"Altimeter: 1013, 29.92"*; **Shift+G** the gear lever.
 - Input Shift+1 and Ctrl+1 push and pull the heading knob, Shift+2 and Ctrl+2 the altitude knob, and Shift+3 and Ctrl+3 the speed knob.
 - **Output Ctrl+M** opens the monitor manager.
 

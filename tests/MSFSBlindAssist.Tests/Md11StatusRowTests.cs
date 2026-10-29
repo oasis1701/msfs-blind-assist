@@ -101,6 +101,10 @@ public class Md11StatusRowTests
         Assert.Equal("0 kilograms", Md11StatusRow.Readout("MD11_OVHD_TANK_TAIL_VAL", 0, Metric));
         static double? Garbled(string k) => k == Md11FuelUnits.OptionsKey ? 4.5 : null;
         Assert.Equal("11900", Md11StatusRow.Readout("MD11_OVHD_TANK_3_VAL", 11900, Garbled));   // no unit word, never a guess
+        // An unwritten option (0, Metric) while the tanks match the sim's pounds: no unit word either.
+        static double? Unwritten(string k) => k == Md11FuelUnits.OptionsKey ? 0 : k == Md11FuelUnits.SimFuelKey ? 78639
+            : k is "MD11_OVHD_TANK_1_VAL" or "MD11_OVHD_TANK_2_VAL" or "MD11_OVHD_TANK_3_VAL" ? 26200 : 0;
+        Assert.Equal("26200", Md11StatusRow.Readout("MD11_OVHD_TANK_1_VAL", 26200, Unwritten));
     }
 
     /// <summary>Every tank at 0 while the sim carries fuel: the aircraft has not published them yet.</summary>
@@ -109,7 +113,8 @@ public class Md11StatusRowTests
     {
         static double? Loading(string k) => k == Md11FuelUnits.SimFuelKey ? 142579 : k == Md11FuelUnits.OptionsKey ? 5 : k.StartsWith("MD11_OVHD_TANK_") ? 0 : null;
         static double? Empty(string k) => k == Md11FuelUnits.SimFuelKey ? 0 : k == Md11FuelUnits.OptionsKey ? 5 : k.StartsWith("MD11_OVHD_TANK_") ? 0 : null;
-        static double? AuxOnly(string k) => k == "MD11_OVHD_TANK_1_VAL" ? 26500 : Loading(k);
+        // Tank 1 published, and the sim weight with it (the weight also confirms the unit).
+        static double? AuxOnly(string k) => k == "MD11_OVHD_TANK_1_VAL" ? 26500 : k == Md11FuelUnits.SimFuelKey ? 26540 : Loading(k);
         Assert.Equal("not available", Md11StatusRow.Readout("MD11_OVHD_TANK_1_VAL", 0, Loading));
         Assert.Equal("0 pounds", Md11StatusRow.Readout("MD11_OVHD_TANK_1_VAL", 0, Empty));
         Assert.Equal("0 pounds", Md11StatusRow.Readout("MD11_OVHD_TANK_AUX_VAL", 0, AuxOnly));   // tank 1 has fuel: an empty aux is real

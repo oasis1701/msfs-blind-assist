@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace MSFSBlindAssist.Aircraft.MD11;
 
 /// <summary>
@@ -17,7 +19,9 @@ namespace MSFSBlindAssist.Aircraft.MD11;
 /// 26,200 each against 78,639 lb.
 ///
 /// An unreadable option (never delivered, or not a small whole bitmask) is NOT taken for either
-/// unit: the read-outs say the unit is unknown rather than guess.
+/// unit: the read-outs say the unit is unknown rather than guess. Nor is a readable one taken on
+/// trust: 0 is also what the option reads before the EFB writes it (an unwritten L:var reads 0),
+/// so the sim's own fuel weight confirms the bit wherever it can (<see cref="TankUnit"/>).
 /// </summary>
 public static class Md11FuelUnits
 {
@@ -36,8 +40,9 @@ public static class Md11FuelUnits
     public const double KilogramsPerPound = 0.45359237;
 
     /// <summary>
-    /// True when the tanks read pounds, false when they read kilograms, null when the option has
-    /// not been delivered or is not a value the EFB writes.
+    /// The option's bit 0: true for pounds, false for kilograms, null when the option has not been
+    /// delivered or is not a value the EFB writes. Read through <see cref="TankUnit"/>, which
+    /// confirms it: a flat 0 is also the option before the EFB writes it.
     /// </summary>
     public static bool? TanksInPounds(double? options)
     {
@@ -46,22 +51,27 @@ public static class Md11FuelUnits
         return ((int)Math.Round(o) & PoundsBit) != 0;
     }
 
-    /// <summary>The five tanks the fuel keys read, in the order they are spoken.</summary>
-    public static readonly (string Key, string Name)[] Tanks =
+    /// <summary>
+    /// The five tanks, in the order the fuel keys speak them: the key, the name the keys speak and
+    /// the Status Display row's name. The one list of tank keys: the exports and the Fuel Quantity
+    /// rows are built from it too. Read-only, so no caller can change what the others read.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Key, string Name, string RowName)> Tanks = Array.AsReadOnly(new[]
     {
-        ("MD11_OVHD_TANK_1_VAL", "Tank 1"),
-        ("MD11_OVHD_TANK_2_VAL", "Tank 2"),
-        ("MD11_OVHD_TANK_3_VAL", "Tank 3"),
-        ("MD11_OVHD_TANK_AUX_VAL", "Auxiliary"),
-        ("MD11_OVHD_TANK_TAIL_VAL", "Tail"),
-    };
+        ("MD11_OVHD_TANK_1_VAL", "Tank 1", "Tank 1"),
+        ("MD11_OVHD_TANK_2_VAL", "Tank 2", "Tank 2"),
+        ("MD11_OVHD_TANK_3_VAL", "Tank 3", "Tank 3"),
+        ("MD11_OVHD_TANK_AUX_VAL", "Auxiliary", "Auxiliary tank"),
+        ("MD11_OVHD_TANK_TAIL_VAL", "Tail", "Tail tank"),
+    });
 
     public const string Unavailable = "Fuel quantity unavailable";
     public const string UnitUnknown = "Fuel quantity unavailable, the aircraft has not reported its weight unit";
 
     /// <summary>
     /// The sim's own fuel weight, in pounds: cache key. Read only to tell tanks the aircraft has not
-    /// published yet from empty ones (<see cref="TanksUnpublished"/>), never spoken.
+    /// published yet from empty ones (<see cref="TanksUnpublished"/>) and to confirm the unit they
+    /// read in (<see cref="TankUnit"/>), never spoken.
     /// </summary>
     public const string SimFuelKey = "MD11_SIM_FUEL_TOTAL_POUNDS";
     public const string SimFuelVar = "FUEL TOTAL QUANTITY WEIGHT";
@@ -88,28 +98,60 @@ public static class Md11FuelUnits
     }
 
     /// <summary>
+    /// The tank total over the sim's fuel weight in pounds: above <see cref="PoundsRatioMin"/> the
+    /// tanks read pounds, below <see cref="KilogramsRatioMax"/> kilograms. MEASURED LIVE
+    /// (2026-10-23, GE N821TD): 78,600 over 78,639 lb on Imperial (1.00), 35,700 over 78,729 lb on
+    /// Metric (0.45). The units are a factor of 2.2 apart, so the band between never names either.
+    /// </summary>
+    private const double PoundsRatioMin = 0.8;
+    private const double KilogramsRatioMax = 0.6;
+
+    /// <summary>
+    /// The unit the tanks read in: true for pounds, false for kilograms, null for no unit. The
+    /// option's bit (<see cref="TanksInPounds"/>) decides only where the sim's own fuel weight agrees:
+    /// a flat 0 is a real setting (Metric, every other option off) but also what the option reads
+    /// before the EFB writes it, or for good should TFDi rename it, and the bit alone would then call
+    /// an Imperial pilot's pounds kilograms. A total between the units, or one naming the other unit
+    /// than the bit, is no unit. With the sim weight unknown or under
+    /// <see cref="UnpublishedMinSimPounds"/>, or every tank at 0, there is no evidence and the bit
+    /// stands alone.
+    /// </summary>
+    public static bool? TankUnit(IEnumerable<double?> tanks, double? options, double? simPounds)
+    {
+        if (TanksInPounds(options) is not { } pounds) return null;
+        if (simPounds is not { } sim || !double.IsFinite(sim) || sim < UnpublishedMinSimPounds) return pounds;
+        double total = tanks.Sum(t => t ?? 0);
+        if (total <= 0) return pounds;
+        double ratio = total / sim;
+        bool agrees = pounds ? ratio > PoundsRatioMin : ratio < KilogramsRatioMax;
+        return agrees ? pounds : null;
+    }
+
+    /// <summary>
     /// The fuel keys' sentence: each tank read, then the total with its unit, all converted from
     /// the unit the tanks read in to the one asked for. A tank never delivered is left out; with
     /// none delivered, the tanks not yet published, or the unit unknown, the sentence says so and
-    /// reads no number.
+    /// reads no number. The total is the sum of the tanks as spoken, so it always adds up by ear.
     /// </summary>
     public static string Describe(IReadOnlyList<(string Name, double? Value)> tanks, double? options, double? simPounds, bool kilograms)
     {
         if (!tanks.Any(t => t.Value != null)) return Unavailable;
-        if (TanksUnpublished(tanks.Select(t => t.Value), simPounds)) return Unavailable;
-        if (TanksInPounds(options) is not { } tanksInPounds) return UnitUnknown;
+        var values = tanks.Select(t => t.Value).ToList();
+        if (TanksUnpublished(values, simPounds)) return Unavailable;
+        if (TankUnit(values, options, simPounds) is not { } tanksInPounds) return UnitUnknown;
 
         var parts = new List<string>(tanks.Count + 1);
         double total = 0;
         foreach (var (name, value) in tanks)
         {
             if (value is not { } v) continue;
-            total += v;
+            double spoken = Math.Round(Convert(v, tanksInPounds, kilograms), MidpointRounding.AwayFromZero);
+            total += spoken;
             // An empty aux/tail tank is normal on this aircraft, not a fault — say zero rather than
             // omitting it, so the pilot can tell "empty" from "not reported".
-            parts.Add($"{name} {Whole(Convert(v, tanksInPounds, kilograms))}");
+            parts.Add($"{name} {Whole(spoken)}");
         }
-        parts.Add($"Total {Whole(Convert(total, tanksInPounds, kilograms))} {UnitWord(kilograms)}");
+        parts.Add($"Total {Whole(total)} {UnitWord(kilograms)}");
         return string.Join(", ", parts);
     }
 
@@ -122,7 +164,7 @@ public static class Md11FuelUnits
 
     private static string UnitWord(bool kilograms) => kilograms ? "kilograms" : "pounds";
 
-    private static string Whole(double v) => Md11StatusRow.Whole(v);
+    private static string Whole(double v) => v.ToString("0", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// A Status Display tank row: the number the overhead shows, with the unit it shows it in.
