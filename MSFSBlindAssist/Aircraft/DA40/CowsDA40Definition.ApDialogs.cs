@@ -130,44 +130,27 @@ public partial class CowsDA40Definition
                 return false;
         }
 
-        ShowApWindow("DA40_AP_" + action, () =>
-        {
-            var dialog = new ValueInputForm(title, kind, range, ann,
-                input =>
-                {
-                    if (double.TryParse(input, System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture, out double v)
-                        && v >= lo && v <= hi)
-                        return (true, "");
-                    return (false, $"Enter a value between {lo:0} and {hi:0}");
-                },
-                toggles,
-                input =>
-                {
-                    if (double.TryParse(input, System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture, out double v))
-                        HandleAutopilotSet(setKey, v, sc, ann);
-                });
-            dialog.ShowCancelButton = false;
-            return dialog;
-        }, parent);
+        var dialog = new ValueInputForm(title, kind, range, ann,
+            input =>
+            {
+                if (double.TryParse(input, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double v)
+                    && v >= lo && v <= hi)
+                    return (true, "");
+                return (false, $"Enter a value between {lo:0} and {hi:0}");
+            },
+            toggles,
+            input =>
+            {
+                if (double.TryParse(input, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double v))
+                    HandleAutopilotSet(setKey, v, sc, ann);
+            });
+
+        dialog.ShowCancelButton = false;
+        dialog.Show(parent);
         return true;
     }
-
-    /// <summary>
-    /// One window per key, like the FBW's FCU windows: pressing the key again while its window
-    /// is open brings that window back to the front instead of stacking a second one behind it.
-    /// Tracked, so an aircraft switch closes it (DisposeTrackedWindows).
-    /// </summary>
-    private void ShowApWindow(string key, Func<ValueInputForm> factory, Form parent)
-        => ShowTrackedWindow(key, factory, w =>
-        {
-            if (!w.Visible) { w.Show(parent); return; }
-            w.BringToFront();
-            w.Activate();
-            w.TopMost = true;
-            w.TopMost = false;
-        });
 
     /// <summary>
     /// Ctrl+P - every GFC 700 button in one place, with no value box. The mode buttons are
@@ -179,7 +162,10 @@ public partial class CowsDA40Definition
         if (!sc.IsConnected) { ann.AnnounceImmediate("Not connected to simulator."); return true; }
         hotkeys.ExitInputHotkeyMode();
 
-        ShowApWindow("DA40_AP_BUTTONS", () =>
+        // One window: a second Ctrl+P brings the open one back to the front, as on the FBW
+        // A320/A380, PMDG 737/777, iFly, HS787 and MD-11. Tracked, so an aircraft switch
+        // closes it. Ctrl+A/S/H/V open a new window per press, as on most aircraft.
+        ShowTrackedWindow("DA40_AP_BUTTONS", () =>
         {
             var toggles = new List<ToggleButtonDef>
             {
@@ -204,7 +190,14 @@ public partial class CowsDA40Definition
             dialog.ShowCancelButton = false;
             dialog.ShowValueField = false;
             return dialog;
-        }, parent);
+        }, w =>
+        {
+            if (!w.Visible) { w.Show(parent); return; }
+            w.BringToFront();
+            w.Activate();
+            w.TopMost = true;
+            w.TopMost = false;
+        });
         return true;
     }
 }
