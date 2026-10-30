@@ -259,10 +259,13 @@ public partial class CowsDA40Definition
         // A swap says "NAV 1 swapped" and the radio's own change speaks the new active
         // frequency, as from the panel; the window's 1.2 s read-back would be a third (CORE-7).
         // No state in the label for the same reason: NVDA reads a focused label's change.
-        Forms.ToggleButtonDef Swap(string label, string swapKey) =>
+        // Each swap sits beside its own radio's box and Set (Field), so tune-then-flip is one
+        // Tab: NAV 1 box, Set, Swap NAV 1, then NAV 2's three, then Set all.
+        Forms.ToggleButtonDef Swap(string label, string swapKey, int field) =>
             new(label, () => "", () => HandleRadioSet(swapKey, 1, simConnect, announcer))
             {
-                SuppressStateAnnounce = () => true
+                SuppressStateAnnounce = () => true,
+                Field = field
             };
 
         ShowTrackedWindow("DA40_NAV_RADIOS", () =>
@@ -276,8 +279,8 @@ public partial class CowsDA40Definition
                 ValidateNavFrequency,
                 new List<Forms.ToggleButtonDef>
                 {
-                    Swap("Swap NAV &1", "DA40_RADIO_NAV1_SWAP"),
-                    Swap("Swap NAV &2", "DA40_RADIO_NAV2_SWAP")
+                    Swap("Swap NAV &1", "DA40_RADIO_NAV1_SWAP", 0),
+                    Swap("Swap NAV &2", "DA40_RADIO_NAV2_SWAP", 1)
                 },
                 _ =>
                 {
