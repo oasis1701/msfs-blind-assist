@@ -3916,6 +3916,14 @@
     /// have no bezel button and live behind softkeys a pilot has to find first. They are
     /// all registered views, so the same list serves them, and the same open call reaches
     /// them. These names are the Garmin ones, because the view keys are not English.
+    ///
+    /// ⚠️ ONLY WHAT A KEY OR SOFTKEY ON THE PFD OPENS. This list is a shortcut to the PFD's
+    /// own buttons, so it offers nothing the real G1000 does not let a pilot open directly.
+    /// Set Runway, the Select dialogs, Hold At, Select Airway and Waypoint Information are
+    /// opened only from inside another window, and listing them let a pilot do what the
+    /// G1000 never allows: Set Runway came up with no airport and read back only its own
+    /// name, "setrunway" (ESGT, 2026-10-30). They stay in A.M.DIALOGS, which names them
+    /// and opens nothing.
     A.M.PFD_WINDOWS = [
         ["Nearest", "Nearest Airports"],
         ["TimerRef", "Timer and References"],
@@ -3924,7 +3932,11 @@
         ["PFDSetup", "PFD Setup and Backlighting"],
         ["DirectTo", "Direct To"],
         ["FPL", "Active Flight Plan"],
-        ["PROC", "Procedures"],
+        ["PROC", "Procedures"]
+    ];
+
+    /// Dialogs another window opens, for their names only. Never offered to open.
+    A.M.DIALOGS = [
         ["WptInfo", "Waypoint Information"],
         ["SetRunway", "Select Runway"],
         ["SelectDeparture", "Select Departure"],
@@ -3949,7 +3961,7 @@
     /// dialog, the page selector, a page menu.
     A.M.windowName = function (key) {
         if (!key || A.side() === "PFD" || key === A.M.pageKey()) return "";
-        var lists = [A.M.PFD_WINDOWS, A.M.MFD_WINDOWS];
+        var lists = [A.M.PFD_WINDOWS, A.M.DIALOGS, A.M.MFD_WINDOWS];
         for (var l = 0; l < lists.length; l++) {
             for (var i = 0; i < lists[l].length; i++) {
                 if (lists[l][i][0] === key) return lists[l][i][1];
