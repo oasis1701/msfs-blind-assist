@@ -120,8 +120,23 @@ public partial class MainForm
             refreshTaxiwayNames: refreshCallback,
             vatsimStatus: () => vatsimService?.GetStatus(),
             sceneryIndexStatus: () => sceneryIndexer.LastStatus,
-            locationDataDownloader: locationDataDownloader);
-        if (dlg.ShowDialog(this) == DialogResult.OK)
+            locationDataDownloader: locationDataDownloader,
+            speak: message => announcer.AnnounceImmediate(message));
+
+        // The Controller Buttons tab reads the controllers itself to capture a press; the live
+        // bindings must not run a command for that same press. Restarted on every close path,
+        // from the saved bindings (the dialog's own if OK, the unchanged ones if Cancel).
+        controllerMonitor.Stop();
+        DialogResult result;
+        try
+        {
+            result = dlg.ShowDialog(this);
+        }
+        finally
+        {
+            ApplyControllerBindings();
+        }
+        if (result == DialogResult.OK)
         {
             ApplyRuntimeSettings();
             statusLabel.Text = "Settings saved";

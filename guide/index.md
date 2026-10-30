@@ -23,6 +23,7 @@ If you would rather read straight through or search the whole guide at once, [th
    - [Choosing Your Aircraft](getting-started.md#gs-aircraft)
    - [The Main Window](getting-started.md#main-window)
    - [Output Mode and Input Mode](getting-started.md#hotkey-modes)
+   - [Controller Buttons](getting-started.md#gs-controller-buttons)
    - [The Hotkey List](getting-started.md#gs-hotkey-list)
    - [The Menus](getting-started.md#gs-menus)
    - [The Settings Window](getting-started.md#settings-overview)

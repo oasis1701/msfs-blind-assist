@@ -407,6 +407,11 @@ public class UserSettings
         // first walk of each control, so a control pays for its calibration once, ever.
         public List<string> Md11InvertedStepControls { get; set; } = new List<string>();
 
+        // Controller buttons (yoke, joystick, throttle) bound to hotkey commands, edited in
+        // Settings > Controller Buttons. Empty by default: no controller is read until the
+        // pilot assigns a button.
+        public List<Hotkeys.ControllerBinding> ControllerBindings { get; set; } = new List<Hotkeys.ControllerBinding>();
+
         // Announce each 1,000-foot crossing while airborne ("5,000 feet", …). Default on.
         public bool AltitudeCalloutsEnabled { get; set; } = true;
 

@@ -16,7 +16,8 @@ public class SettingsForm : Form
     internal SettingsForm(Func<Task>? refreshTaxiwayNames = null,
                         Func<Services.VPilot.VatsimStatus?>? vatsimStatus = null,
                         Func<string>? sceneryIndexStatus = null,
-                        Services.Geography.LocationDataDownloader? locationDataDownloader = null)
+                        Services.Geography.LocationDataDownloader? locationDataDownloader = null,
+                        Action<string>? speak = null)
     {
         Text = "Settings";
         StartPosition = FormStartPosition.CenterParent;
@@ -32,7 +33,7 @@ public class SettingsForm : Form
 
         // Panels are added here in FINAL TAB ORDER:
         // Announcements, Weather, VATSIM, GeoNames, SimBrief, Gemini, Audio, HandFly,
-        // TaxiGuidance, FirstOfficer, Updates.
+        // TaxiGuidance, FirstOfficer, Controller Buttons, Updates.
         AddPanel(new AnnouncementsPanel());
         AddPanel(new WeatherPanel());
         AddPanel(new VatsimPanel(vatsimStatus));
@@ -43,6 +44,7 @@ public class SettingsForm : Form
         AddPanel(new HandFlyPanel());
         AddPanel(new TaxiGuidancePanel(refreshTaxiwayNames, sceneryIndexStatus));
         AddPanel(new FirstOfficerPanel());
+        AddPanel(new ControllerButtonsPanel(speak));
         AddPanel(new UpdatesPanel());
 
         var ok = new Button { Text = "OK", AccessibleName = "OK", AutoSize = true };
