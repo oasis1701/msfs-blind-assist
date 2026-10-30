@@ -84,7 +84,7 @@ To load a SimBrief plan, use the G1000's own Flight Plan Catalog on the MFD, as 
 
 ### What you will hear {#da40-g1000-hear}
 
-The CAS messages (warnings, cautions and advisories) are spoken as they appear, whether or not a window is open, and Output **Alt+E** reads the ones showing now. Mode changes on the flight mode annunciator are spoken as they happen, naming the autopilot's modes when it is engaged and the flight director's when it is not. When the autopilot engages or disconnects, or the flight director comes on, you hear all the modes. After that you hear only what changed, for example *"Flight director LOC armed, GS armed"* when you arm the approach, *"Autopilot GS"* when the glideslope captures, or *"Autopilot LOC disarmed, GS disarmed"* when armed modes go without capturing. Mode changes wait for whatever is being said to finish; a new warning or caution is still spoken at once. When the G1000 changes the course source by itself, as it does from GPS to LOC on an ILS, you hear the new source before the mode change it causes, for example *"Navigation source LOC1"*. When you switch the CDI with its softkey, the new course is said after the new source, never over it. When the flight plan sequences you hear the waypoint, for example *"Passing SOXOM. Next VEKIN, 14 miles."*; BA never makes the radio call for you.
+The CAS messages (warnings, cautions and advisories) are spoken as they appear, whether or not a window is open, and Output **Alt+E** reads the ones showing now. Mode changes on the flight mode annunciator are spoken as they happen, naming the autopilot's modes when it is engaged and the flight director's when it is not. When the autopilot engages or disconnects, or the flight director comes on, you hear all the modes. After that you hear only what changed, for example *"Flight director LOC armed, GS armed"* when you arm the approach, *"Autopilot GS"* when the glideslope captures, or *"Autopilot LOC disarmed, GS disarmed"* when armed modes go without capturing. Mode changes wait for whatever is being said to finish; a new warning or caution is still spoken at once. When the G1000 changes the course source by itself, as it does from GPS to LOC on an ILS, you hear the new source before the mode change it causes, for example *"Navigation source LOC1"*. When you switch the CDI with its softkey, the new course is said after the new source, never over it. When the flight plan sequences you hear the waypoint, for example *"Passing SOXOM. Next VEKIN, 14 miles."*; BA never makes the radio call for you. Untick **Waypoint Passing Call** in the Monitor Manager to silence it; Output **Ctrl+W** still reads the active waypoint.
 
 ## Radios, transponder and altimeters {#da40-radios}
 
@@ -118,20 +118,20 @@ The table lists the DA40's own output keys and what each reads.
 
 | Key | What it reads |
 |---|---|
-| Alt+S | The engine at a glance: every engine gauge with its arc, plus volts and amps. |
+| Alt+S | Opens the engine window: every engine gauge with its arc, plus volts and amps, kept up to date. |
 | Alt+I | The standby instruments: airspeed, altitude, compass and attitude, with a warning if the gyro is caged or has toppled. |
 | P | RPM (the NG also says what the governor is targeting when it differs). |
 | E | Power: NG load, RPM and power lever; XLS manifold pressure, RPM, throttle and mixture; both with fuel flow. |
 | Shift+P | Engine temperatures: NG oil, coolant and gearbox; XLS oil, hottest cylinder head and hottest exhaust. |
-| F | Fuel in each tank and the total. |
-| Shift+F | Fuel flow, endurance, and the difference between the tanks against the AFM limit. |
+| F | Fuel in each tank and the total, in the units set on the MFD's Aux System Setup page; while that is gallons, litres are given too. |
+| Shift+F | Fuel flow, endurance at that flow, and the difference between the tanks against the AFM limit: 9 gallons on the NG, 10 on the XLS. |
 | B | Both altimeter settings. |
 | L | Flaps: UP, T/O or LDG. |
 | Shift+G | "Fixed gear". |
 | W, Shift+W | Gross weight and centre of gravity, with the maximum: W in pounds, Shift+W in kilograms. |
-| Shift+2 to Shift+6 | The AFM's speeds: rotate and climb, approach and glide, the flap limits, manoeuvring and never-exceed. |
+| Shift+1 to Shift+6 | The AFM's speeds: Shift+1 best glide, Shift+2 manoeuvring and never-exceed, Shift+3 both flap limits, Shift+4 approach and glide, Shift+5 rotate and climb, Shift+6 the limit for the flaps you have set. |
 | Ctrl+W | The waypoint you are flying to: ident, distance, bearing and time. |
-| D, Shift+D | Distance and time to the destination, and to the top of descent. |
+| D, Shift+D | Distance and time to the destination, and distance to the top of descent. D needs the aircraft moving and says "not computed" when it is stopped; Shift+D says "no vertical path computed" when no descent is programmed. |
 
 </div>
 
@@ -183,9 +183,10 @@ The **Simulation** section holds the aircraft's whole failure set, grouped as CO
 
 - **Held controls.** The ECU test, the standby horizon cage and the fuel valve's safety wire are held, not clicked, and BA holds them for the right time. Press once and let it run.
 - **Silent switches.** BA's panel controls make no cockpit sound. Confirm a change by reading it back.
+- **Guards.** The engine master and emergency battery guards open and close, but in the simulator they do not block their switches, and the aircraft opens the engine master guard by itself when that switch is moved.
 - **Steering assist.** The gear is fixed, so your toggle-landing-gear key switches the nosewheel steering assist instead, as COWS designed it, and BA says the mode: Real, Autobrake or NWS.
 - **Take-off trim.** Press Centre Trim on the Elevator Trim panel: centred is the take-off position on this aeroplane, and the AFM gives no number to calculate.
-- **Refuelling.** There is no fuel panel in the cockpit, so the Fuel System panel offers the transaction: type the gallons for each tank, or Fill Both Tanks. On the ground with the engine stopped only. With GSX, its own refuelling is the more realistic way.
+- **Refuelling.** There is no fuel panel in the cockpit, so the Fuel System panel offers the transaction: type the gallons for each tank, or Fill Both Tanks (19.5 gallons each, 39 in all). It reads back in the G1000's fuel units. On the ground with the engine stopped only. With GSX, its own refuelling is the more realistic way.
 
 <nav class="guide-nav" aria-label="Guide chapters" markdown="1">
 

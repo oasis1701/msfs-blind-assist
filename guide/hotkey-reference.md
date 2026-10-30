@@ -552,11 +552,11 @@ Full explanations: [COWS Diamond DA40](diamond-da40.md). The keys are the same o
 - **Output Alt+P** — Open the G1000 PFD window.
 - **Output Alt+M**, **Alt+N** — Open the G1000 MFD window.
 - **Output Alt+E** — Read the CAS messages showing now.
-- **Output Alt+S** — The engine at a glance, every gauge with its arc.
+- **Output Alt+S** — Open the engine window, every gauge with its arc.
 - **Output Alt+I** — The standby instruments, with a caged or toppled gyro warning.
 - **Output P** — RPM. **Output E** — Power. **Output Shift+P** — Engine temperatures.
 - **Output Shift+A**, **Shift+S**, **Shift+H**, **Shift+V** — The autopilot's selected altitude, airspeed, heading bug and vertical speed.
-- **Output Shift+2** to **Shift+6** — The AFM's speeds: Shift+5 the take-off set, Shift+4 the landing set, Shift+6 the limit for the flaps you have, Shift+3 both flap limits, Shift+2 manoeuvring and never-exceed.
+- **Output Shift+1** to **Shift+6** — The AFM's speeds: Shift+1 best glide, Shift+5 the take-off set, Shift+4 the landing set, Shift+6 the limit for the flaps you have, Shift+3 both flap limits, Shift+2 manoeuvring and never-exceed.
 - **Output Ctrl+W** — The waypoint you are flying to.
 
 B reads both altimeters, L reads UP, T/O or LDG, Shift+G says "Fixed gear", F and Shift+F read the tanks, the flow and the endurance.
@@ -566,7 +566,7 @@ B reads both altimeters, L reads UP, T/O or LDG, Shift+G says "Fixed gear", F an
 - **Input Shift+M** — Open the G1000 MFD window (the airliners' MCDU key).
 - **Input Ctrl+P** — The autopilot buttons window.
 - **Input Ctrl+A**, **Ctrl+S**, **Ctrl+H**, **Ctrl+V** — Set the selected altitude, airspeed, heading bug or vertical speed.
-- **Input Ctrl+B** — Set both altimeters from one entry.
+- **Input Ctrl+B** — Set the main and standby altimeters, together or one at a time.
 - **Input Ctrl+N** — Set both NAV standby frequencies.
 
 ### G1000 windows (Output Alt+P and Alt+M) {#g1000-windows-da40}
@@ -586,6 +586,8 @@ B reads both altimeters, L reads UP, T/O or LDG, Shift+G says "Fixed gear", F an
 
 - There is no FCU, MCDU or autothrottle: the airliners' FCU keys answer for the GFC 700 as listed above.
 - **Output Shift+G** reads "Fixed gear".
+- **Output Ctrl+0** does nothing.
+- **Input Shift+A, Shift+P, Ctrl+J, Ctrl+L, Ctrl+O** and **Shift+1** to **Shift+4**, **Ctrl+1** to **Ctrl+4** do nothing; use the Ctrl+P window.
 
 <nav class="guide-nav" aria-label="Guide chapters" markdown="1">
 
