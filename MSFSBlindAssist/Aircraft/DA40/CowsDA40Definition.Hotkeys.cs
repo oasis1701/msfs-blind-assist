@@ -205,12 +205,33 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>
+    /// What Ctrl+N writes: the radio and frequency of each box the pilot asked to set, in
+    /// radio order. <paramref name="setFieldIndex"/> is the dialog's: -1 Set all, 0 NAV 1,
+    /// 1 NAV 2. A box that does not read as a NAV frequency is left out. Pure so the suite
+    /// can pin it, like <see cref="PlanBaroSet"/>.
+    /// </summary>
+    internal static List<(int Radio, double Mhz)> PlanNavSet(int setFieldIndex, string? nav1, string? nav2)
+    {
+        var plan = new List<(int, double)>();
+        void Add(int radio, string? text)
+        {
+            if (Utils.NumberParsing.TryParseTyped(text, out double mhz) && mhz is >= 108.00 and <= 117.95)
+                plan.Add((radio, mhz));
+        }
+        if (setFieldIndex is -1 or 0) Add(1, nav1);
+        if (setFieldIndex is -1 or 1) Add(2, nav2);
+        return plan;
+    }
+
+    /// <summary>
     /// Input mode + N: set the NAV standby frequencies.
     ///
     /// On the aeroplane these are tuned with the G1000's NAV knob, and that stays true —
     /// this is the same convenience Ctrl+B is for the altimeters, not a replacement for
-    /// the bezel. Both radios are offered in one pass because a pilot tuning an approach
-    /// sets the ILS and the missed-approach aid together; either prompt can be cancelled.
+    /// the bezel. Both radios are in ONE window, the Ctrl+B shape: a box per radio, seeded
+    /// with its current standby, Enter or that box's Set writes that radio alone, and
+    /// Set all writes both. It was two windows in a row, NAV 1 then NAV 2, while the guide
+    /// already said one; the PMDG 737 and iFly set both NAV radios in one window too.
     ///
     /// The event is NAV1_STBY_SET_HZ in RAW HERTZ. Verified live, including the two
     /// spellings that do not work: NAV1_STBY_SET with a BCD-ish 11030 left the value at
@@ -225,37 +246,44 @@ public partial class CowsDA40Definition
             return true;
         }
 
-        var set = new List<string>();
+        string SeedOf(string key) =>
+            ReadNow(simConnect, key) is double v && v > 0
+                ? v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
+                : "";
 
-        foreach (int radio in new[] { 1, 2 })
-        {
-            var dialog = new Forms.ValueInputForm(
-                $"Set NAV {radio} Standby",
-                $"NAV {radio} standby frequency",
-                "108.00 to 117.95 megahertz",
-                announcer,
-                ValidateNavFrequency);
-
-            if (dialog.ShowDialog(parentForm) != DialogResult.OK || !dialog.IsValidInput) continue;
-            if (!double.TryParse(dialog.InputValue, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out double mhz))
+        var dialog = new Forms.ValueInputForm(
+            "Set NAV Standby",
+            "NAV 1 standby frequency",
+            "108.00 to 117.95 megahertz",
+            announcer,
+            ValidateNavFrequency,
+            new List<Forms.ValueInputForm.ExtraFieldDef>
             {
-                continue;
-            }
+                new()
+                {
+                    Label = "NAV 2 standby frequency",
+                    InitialValue = SeedOf("DA40_RADIO_NAV2_SET"),
+                    Validator = ValidateNavFrequency
+                }
+            });
 
-            long hz = (long)Math.Round(mhz * 1_000_000.0);
-            simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{hz} (>K:NAV{radio}_STBY_SET_HZ)"));
-            set.Add(FormattableString.Invariant($"NAV {radio} standby {mhz:0.00}"));
-        }
+        dialog.InitialValue = SeedOf("DA40_RADIO_NAV1_SET");
 
-        announcer.AnnounceImmediate(set.Count == 0 ? "No frequency set" : string.Join(", ", set));
+        if (dialog.ShowDialog(parentForm) != DialogResult.OK || !dialog.IsValidInput) return true;
+
+        var plan = PlanNavSet(dialog.SetFieldIndex, dialog.InputValue,
+            dialog.ExtraValues.Count > 0 ? dialog.ExtraValues[0] : null);
+        if (plan.Count == 0) return true;
+
+        foreach (var (radio, mhz) in plan) WriteNavStandby(simConnect, radio, mhz);
+        announcer.AnnounceImmediate(string.Join(", ",
+            plan.Select(p => FormattableString.Invariant($"NAV {p.Radio} standby {p.Mhz:0.00}"))));
         return true;
     }
 
     private static (bool isValid, string message) ValidateNavFrequency(string text)
     {
-        if (!double.TryParse(text, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double mhz))
+        if (!Utils.NumberParsing.TryParseTyped(text, out double mhz))
         {
             return (false, "Enter a frequency in megahertz.");
         }
