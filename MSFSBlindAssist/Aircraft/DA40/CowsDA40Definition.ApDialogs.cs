@@ -130,27 +130,44 @@ public partial class CowsDA40Definition
                 return false;
         }
 
-        var dialog = new ValueInputForm(title, kind, range, ann,
-            input =>
-            {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double v)
-                    && v >= lo && v <= hi)
-                    return (true, "");
-                return (false, $"Enter a value between {lo:0} and {hi:0}");
-            },
-            toggles,
-            input =>
-            {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double v))
-                    HandleAutopilotSet(setKey, v, sc, ann);
-            });
-
-        dialog.ShowCancelButton = false;
-        dialog.Show(parent);
+        ShowApWindow("DA40_AP_" + action, () =>
+        {
+            var dialog = new ValueInputForm(title, kind, range, ann,
+                input =>
+                {
+                    if (double.TryParse(input, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double v)
+                        && v >= lo && v <= hi)
+                        return (true, "");
+                    return (false, $"Enter a value between {lo:0} and {hi:0}");
+                },
+                toggles,
+                input =>
+                {
+                    if (double.TryParse(input, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double v))
+                        HandleAutopilotSet(setKey, v, sc, ann);
+                });
+            dialog.ShowCancelButton = false;
+            return dialog;
+        }, parent);
         return true;
     }
+
+    /// <summary>
+    /// One window per key, like the FBW's FCU windows: pressing the key again while its window
+    /// is open brings that window back to the front instead of stacking a second one behind it.
+    /// Tracked, so an aircraft switch closes it (DisposeTrackedWindows).
+    /// </summary>
+    private void ShowApWindow(string key, Func<ValueInputForm> factory, Form parent)
+        => ShowTrackedWindow(key, factory, w =>
+        {
+            if (!w.Visible) { w.Show(parent); return; }
+            w.BringToFront();
+            w.Activate();
+            w.TopMost = true;
+            w.TopMost = false;
+        });
 
     /// <summary>
     /// Ctrl+P - every GFC 700 button in one place, with no value box. The mode buttons are
@@ -162,29 +179,32 @@ public partial class CowsDA40Definition
         if (!sc.IsConnected) { ann.AnnounceImmediate("Not connected to simulator."); return true; }
         hotkeys.ExitInputHotkeyMode();
 
-        var toggles = new List<ToggleButtonDef>
+        ShowApWindow("DA40_AP_BUTTONS", () =>
         {
-            ModeToggle("&Autopilot", "DA40_AP_MASTER", sc, ann),
-            ModeToggle("Flight &director", "DA40_AP_FD", sc, ann),
-            ModeToggle("&Heading mode", "DA40_AP_HDG", sc, ann),
-            ModeToggle("&Navigation mode", "DA40_AP_NAV", sc, ann),
-            ApproachButton(sc, ann),
-            ModeToggle("&Backcourse mode", "DA40_AP_BC", sc, ann),
-            ModeToggle("Hold current a&ltitude", "DA40_AP_ALT", sc, ann),
-            ModeToggle("&Vertical speed mode", "DA40_AP_VS", sc, ann),
-            ModeToggle("&Flight level change", "DA40_AP_FLC", sc, ann)
-        };
+            var toggles = new List<ToggleButtonDef>
+            {
+                ModeToggle("&Autopilot", "DA40_AP_MASTER", sc, ann),
+                ModeToggle("Flight &director", "DA40_AP_FD", sc, ann),
+                ModeToggle("&Heading mode", "DA40_AP_HDG", sc, ann),
+                ModeToggle("&Navigation mode", "DA40_AP_NAV", sc, ann),
+                ApproachButton(sc, ann),
+                ModeToggle("&Backcourse mode", "DA40_AP_BC", sc, ann),
+                ModeToggle("Hold current a&ltitude", "DA40_AP_ALT", sc, ann),
+                ModeToggle("&Vertical speed mode", "DA40_AP_VS", sc, ann),
+                ModeToggle("&Flight level change", "DA40_AP_FLC", sc, ann)
+            };
 
-        // Buttons only: the value box is hidden (ShowValueField), since there is nothing to type.
-        // It read "nothing value, edit, Enter nothing value and press Enter to set" (2026-10-27).
-        // The validator still refuses everything, should Enter ever reach the hidden box.
-        var dialog = new ValueInputForm("Autopilot", "autopilot", "", ann,
-            _ => (false, "This window has no value to set. Use the buttons."),
-            toggles, null);
+            // Buttons only: the value box is hidden (ShowValueField), since there is nothing to type.
+            // It read "nothing value, edit, Enter nothing value and press Enter to set" (2026-10-27).
+            // The validator still refuses everything, should Enter ever reach the hidden box.
+            var dialog = new ValueInputForm("Autopilot", "autopilot", "", ann,
+                _ => (false, "This window has no value to set. Use the buttons."),
+                toggles, null);
 
-        dialog.ShowCancelButton = false;
-        dialog.ShowValueField = false;
-        dialog.Show(parent);
+            dialog.ShowCancelButton = false;
+            dialog.ShowValueField = false;
+            return dialog;
+        }, parent);
         return true;
     }
 }

@@ -606,7 +606,7 @@ public partial class CowsDA40Definition
                 // keeps up with the engine rather than freezing what it said on opening.
                 if (parentForm != null)
                 {
-                    ShowEngineGlance(parentForm, simConnect);
+                    ShowEngineGlance(simConnect);
                     return true;
                 }
 
@@ -851,19 +851,16 @@ public partial class CowsDA40Definition
     /// </summary>
     private CowsDA40EngineGlanceForm? _engineGlance;
 
-    private void ShowEngineGlance(Form parentForm, SimConnectManager simConnect)
+    private void ShowEngineGlance(SimConnectManager simConnect)
     {
         if (_engineGlance == null || _engineGlance.IsDisposed)
         {
             _engineGlance = new CowsDA40EngineGlanceForm(() => EngineGlanceRows(simConnect));
             _engineGlance.FormClosed += (_, _) => _engineGlance = null;
-            _engineGlance.Show(parentForm);
-            return;
         }
 
-        if (_engineGlance.WindowState == FormWindowState.Minimized)
-            _engineGlance.WindowState = FormWindowState.Normal;
-        _engineGlance.Activate();
+        // Not owned by BA's main window: owned, it came up over BA rather than over the sim.
+        _engineGlance.ShowForm();
     }
 
     /// <summary>

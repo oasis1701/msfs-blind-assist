@@ -54,7 +54,9 @@ public sealed class CowsDA40DisplayForm : Form
 
     private readonly CoherentDisplayClient _client;
     private readonly DisplayListBox _text;
-    private readonly IntPtr _previousWindow;
+    // Set again on every ShowForm, so closing goes back to where the pilot pressed the key
+    // THIS time, not where they were when the window was first built.
+    private IntPtr _previousWindow;
     private readonly SimConnectManager _simConnect;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly string _side;
@@ -185,9 +187,6 @@ public sealed class CowsDA40DisplayForm : Form
 
         Load += (s, e) =>
         {
-            BringToFront();
-            Activate();
-            _text.Focus();
             // ONE INSPECTOR SOCKET PER VIEW. The background CAS watcher holds AS1000_PFD,
             // so it has to let go before this window can read the same screen - and the
             // window wins, because a pilot who deliberately opened the display is already
@@ -212,6 +211,24 @@ public sealed class CowsDA40DisplayForm : Form
             if (_side == "PFD") _owner?.SuspendCasMonitor(false);
             if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
         };
+    }
+
+    /// <summary>
+    /// Opens the window, or brings it back to the front when it is already open, the way the
+    /// FBW and Fenix MCDU windows do. A plain Show() on an open window left it behind the sim:
+    /// the key did nothing the pilot could hear.
+    /// </summary>
+    public void ShowForm()
+    {
+        IntPtr foreground = GetForegroundWindow();
+        if (!IsHandleCreated || foreground != Handle) _previousWindow = foreground;
+        Show();
+        BringToFront();
+        Activate();
+        TopMost = true;
+        TopMost = false;
+        ActiveControl = _text;
+        _text.Focus();
     }
 
     private void OnClientError(string message)
