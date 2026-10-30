@@ -95,7 +95,7 @@ The G1000 tunes on the PFD, so the radio keys work in the PFD window:
 - **Alt+Shift+Enter** swaps the COM standby into active, **Ctrl+Alt+Shift+Enter** the NAV. Tuning changes only the standby frequency: without the swap you are still on the old one.
 - **Ctrl+Shift+Up/Down** turns the baro knob one step.
 
-The frequency speaks itself when the knob comes to rest. The **Radios** panel keeps a typed entry for when you already know the frequency, and Input **Ctrl+N** opens both NAV standby frequencies in one window, each filled in with its current value. Enter, or the Set button beside a box, sets that radio alone; **Set all** sets both.
+The frequency speaks itself when the knob comes to rest. The **Radios** panel keeps a typed entry for when you already know the frequency, and Input **Ctrl+N** opens both NAV standby frequencies in one window, each filled in with its current value. Enter, or the Set button beside a box, sets that radio alone; **Set all** sets both. The window stays open, and **Swap NAV 1** and **Swap NAV 2** make the standby active.
 
 Input **Ctrl+B** opens both altimeter settings, the G1000's and the standby's, each filled in with its current value; type hectopascals or inches. Enter, or the Set button beside a box, sets that altimeter alone; **Set all** sets both. Output **B** reads both. The transponder is set with the PFD's XPDR softkeys; Output **X** reads the code and mode.
 
