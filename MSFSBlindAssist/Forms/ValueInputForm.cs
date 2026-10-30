@@ -553,6 +553,17 @@ public partial class ValueInputForm : Form
             InputValue = valueTextBox.Text.Trim();
             _extraValues.Clear();
             for (int i = 0; i < _extraBoxes.Count; i++) _extraValues.Add(_extraBoxes[i].Text.Trim());
+
+            if (onValueSet != null)
+            {
+                // Callback mode, as in SetValue: the caller reads SetFieldIndex and the values,
+                // and the window stays open (the DA40's Ctrl+N, set a standby, then swap it).
+                onValueSet(InputValue);
+                box.SelectAll();
+                box.Focus();
+                return;
+            }
+
             DialogResult = DialogResult.OK;
             Close();
         }

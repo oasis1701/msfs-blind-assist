@@ -233,6 +233,11 @@ public partial class CowsDA40Definition
     /// Set all writes both. It was two windows in a row, NAV 1 then NAV 2, while the guide
     /// already said one; the PMDG 737 and iFly set both NAV radios in one window too.
     ///
+    /// The window stays open after a Set and carries Swap NAV 1 and Swap NAV 2, the Radios
+    /// panel's own swaps, so a standby can be set and made active without leaving it: tune,
+    /// then flip, as the G1000 is flown. One window, brought back to the front on a second
+    /// Ctrl+N, like Ctrl+P.
+    ///
     /// The event is NAV1_STBY_SET_HZ in RAW HERTZ. Verified live, including the two
     /// spellings that do not work: NAV1_STBY_SET with a BCD-ish 11030 left the value at
     /// its previous 113.90, and NAV1_STBY_SET_HZ with a "MHz" unit hint set it to ZERO.
@@ -251,33 +256,59 @@ public partial class CowsDA40Definition
                 ? v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
                 : "";
 
-        var dialog = new Forms.ValueInputForm(
-            "Set NAV Standby",
-            "NAV 1 standby frequency",
-            "108.00 to 117.95 megahertz",
-            announcer,
-            ValidateNavFrequency,
-            new List<Forms.ValueInputForm.ExtraFieldDef>
+        // A swap says "NAV 1 swapped" and the radio's own change speaks the new active
+        // frequency, as from the panel; the window's 1.2 s read-back would be a third (CORE-7).
+        // No state in the label for the same reason: NVDA reads a focused label's change.
+        Forms.ToggleButtonDef Swap(string label, string swapKey) =>
+            new(label, () => "", () => HandleRadioSet(swapKey, 1, simConnect, announcer))
             {
-                new()
+                SuppressStateAnnounce = () => true
+            };
+
+        ShowTrackedWindow("DA40_NAV_RADIOS", () =>
+        {
+            Forms.ValueInputForm? dialog = null;
+            dialog = new Forms.ValueInputForm(
+                "Set NAV Standby",
+                "NAV 1 standby frequency",
+                "108.00 to 117.95 megahertz",
+                announcer,
+                ValidateNavFrequency,
+                new List<Forms.ToggleButtonDef>
                 {
-                    Label = "NAV 2 standby frequency",
-                    InitialValue = SeedOf("DA40_RADIO_NAV2_SET"),
-                    Validator = ValidateNavFrequency
-                }
-            });
-
-        dialog.InitialValue = SeedOf("DA40_RADIO_NAV1_SET");
-
-        if (dialog.ShowDialog(parentForm) != DialogResult.OK || !dialog.IsValidInput) return true;
-
-        var plan = PlanNavSet(dialog.SetFieldIndex, dialog.InputValue,
-            dialog.ExtraValues.Count > 0 ? dialog.ExtraValues[0] : null);
-        if (plan.Count == 0) return true;
-
-        foreach (var (radio, mhz) in plan) WriteNavStandby(simConnect, radio, mhz);
-        announcer.AnnounceImmediate(string.Join(", ",
-            plan.Select(p => FormattableString.Invariant($"NAV {p.Radio} standby {p.Mhz:0.00}"))));
+                    Swap("Swap NAV &1", "DA40_RADIO_NAV1_SWAP"),
+                    Swap("Swap NAV &2", "DA40_RADIO_NAV2_SWAP")
+                },
+                _ =>
+                {
+                    var plan = PlanNavSet(dialog!.SetFieldIndex, dialog.InputValue,
+                        dialog.ExtraValues.Count > 0 ? dialog.ExtraValues[0] : null);
+                    if (plan.Count == 0) return;
+                    foreach (var (radio, mhz) in plan) WriteNavStandby(simConnect, radio, mhz);
+                    announcer.AnnounceImmediate(string.Join(", ",
+                        plan.Select(p => FormattableString.Invariant($"NAV {p.Radio} standby {p.Mhz:0.00}"))));
+                },
+                null,
+                new List<Forms.ValueInputForm.ExtraFieldDef>
+                {
+                    new()
+                    {
+                        Label = "NAV 2 standby frequency",
+                        InitialValue = SeedOf("DA40_RADIO_NAV2_SET"),
+                        Validator = ValidateNavFrequency
+                    }
+                });
+            dialog.InitialValue = SeedOf("DA40_RADIO_NAV1_SET");
+            dialog.ShowCancelButton = false;
+            return dialog;
+        }, w =>
+        {
+            if (!w.Visible) { w.Show(parentForm); return; }
+            w.BringToFront();
+            w.Activate();
+            w.TopMost = true;
+            w.TopMost = false;
+        });
         return true;
     }
 
