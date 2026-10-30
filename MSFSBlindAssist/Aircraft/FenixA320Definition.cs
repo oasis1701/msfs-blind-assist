@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.FirstOfficer.Fenix;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
@@ -8,7 +9,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// Aircraft definition for Fenix A320 CEO.
 /// Fenix uses increment/decrement controls for FCU instead of direct value input.
 /// </summary>
-public class FenixA320Definition : BaseAircraftDefinition
+public partial class FenixA320Definition : BaseAircraftDefinition
 {
     public override string AircraftName => "Fenix A320 CEO";
     public override string AircraftCode => "FENIX_A320CEO";
@@ -36,8 +37,21 @@ public class FenixA320Definition : BaseAircraftDefinition
         FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
     };
 
-    // Same airframe class as the FBW A320 — its measured 1.3 s used as proxy.
+    // Taxi-turn leads (see IAircraftDefinition.TaxiTurnLeadSeconds / TaxiSharpTurnLeadSeconds /
+    // TaxiTurnLeadMaxDegrees). MEASURED on Fenix v3 over two sets of taxis, as the lead each turn
+    // needed: heading swept after the tone centred / yaw rate then.
+    //  - 22 turns, 2026-10-22/23 (KBUR, KATL, KBNA, KCLE), on a constant 1.3 s (a proxy from the
+    //    FBW A320): gentle turns needed a median 1.28 s; sharp turns (route turn 60 deg or more)
+    //    1.75 s, with a tail to 3.1 s where the yaw kept building ~1 s after the tone centred.
+    //  - 2026-10-23 PM (KCLE, KEWR x2, KMIA), on 1.3 s ramping to 2.4 s: gentle 1.34 s, sharp
+    //    1.66 s. The pilot unwinds when the tone says so: the sharp turns that centred with
+    //    1.5-1.8 s in force ended within 6 deg, the two that centred at 2.1-2.4 s, 12-20 deg SHORT
+    //    (the tone fell quiet 33-43 deg before the heading). 2.4 s chased that tail; the median is
+    //    the target. 45 deg ceiling: those turns peak at 15-25 deg/s, and at 30 deg a 1.7 s lead
+    //    stops growing at 17.6 deg/s. Re-measure from telemetry.
     public override double TaxiTurnLeadSeconds => 1.3;
+    public override double TaxiSharpTurnLeadSeconds => 1.7;
+    public override double TaxiTurnLeadMaxDegrees => 45.0;
 
     // Private fields for FCU readout tracking
     private double? pendingHeadingValue = null;
@@ -92,6 +106,10 @@ public class FenixA320Definition : BaseAircraftDefinition
         BaroHpaReadout, BaroInchReadout,
     };
 
+    /// <summary>The TO CONFIG watch's on-request twins (the button and both captain master lights),
+    /// read fresh by <see cref="FenixTakeoffConfigVerdict.WatchAsync"/>.</summary>
+    internal static readonly IReadOnlyList<string> TakeoffConfigReadoutVariables = FenixTakeoffConfigVerdict.FreshKeys;
+
     // ACP reception knobs ([VAR-1]): each knob's latch and its light are labelled from ONE
     // constant, the light with AcpLightSuffix, so the two never drift apart. Each latch also
     // names its light as UiEchoVariable: the light follows the pick the screen reader just spoke.
@@ -111,6 +129,17 @@ public class FenixA320Definition : BaseAircraftDefinition
     private const string AcpAdf2Receive = "ACP ADF 2 Receive";
     private const string AcpPaReceive = "ACP PA Receive";
 
+    // The EFIS FD and LS buttons and their lamps ([VAR-1]'s pair rule: one constant for both). The lamp is the
+    // button's own "on" light, never a fault (measured 2026-10-24: at power-up both FD lamps read 1; one Left FD
+    // press set the Left lamp and left the Right one), so it is named as the button the pilot presses and
+    // says what the button reads: "EFIS Left LS: On". The lamps are announced variables, not panel controls
+    // ([VAR-6]). Each button opts in to PressTogglesStateVariable, so the lamp stays quiet after the pilot's
+    // own panel press (the reader reads the button's new label) and speaks any other change ([CORE-7]).
+    private const string EfisLeftFdName = "EFIS Left FD";
+    private const string EfisLeftLsName = "EFIS Left LS";
+    private const string EfisRightFdName = "EFIS Right FD";
+    private const string EfisRightLsName = "EFIS Right LS";
+
     // Shared ValueDescriptions dictionaries for the two exactly-identical patterns that
     // recur hundreds of times across this aircraft's ~500 switch/knob definitions below.
     // Safe to share a single instance: nothing in the codebase mutates a SimVarDefinition's
@@ -118,6 +147,8 @@ public class FenixA320Definition : BaseAircraftDefinition
     // sites anywhere), it is only ever read. Definitions whose wording varies even slightly
     // (e.g. "Off"/"Activated", "Closed"/"Open") are left as their own inline dictionaries.
     private static readonly Dictionary<double, string> OffOn = new Dictionary<double, string> { [0] = "Off", [1] = "On" };
+    // An OFF-legend lamp spoken as its system: dark is On, lit is Off (the ADR and IR lower legends, measured 2026-10-22)
+    private static readonly Dictionary<double, string> OffLegendOnOff = new Dictionary<double, string> { [0] = "On", [1] = "Off", [2] = "Off" };
     private static readonly Dictionary<double, string> PercentSteps5 = new Dictionary<double, string>
     {
         [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
@@ -139,11 +170,11 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR3_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR3_SWITCH_L",
-                DisplayName = "ADIRS IR 3 Lower",
+                DisplayName = "IR 3",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_IR3_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
@@ -157,11 +188,11 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR2_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR2_SWITCH_L",
-                DisplayName = "ADIRS IR 2 Lower",
+                DisplayName = "IR 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_IR2_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
@@ -175,11 +206,11 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR1_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR1_SWITCH_L",
-                DisplayName = "ADIRS IR 1 Lower",
+                DisplayName = "IR 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_IR1_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
@@ -193,11 +224,11 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR1_L",
-                DisplayName = "OH ADIRS ADR1 Lower",
+                DisplayName = "ADR 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_ADR1_U"] = new SimConnect.SimVarDefinition
             {
@@ -211,11 +242,11 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR2_L",
-                DisplayName = "OH ADIRS ADR2 Lower",
+                DisplayName = "ADR 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_ADR2_U"] = new SimConnect.SimVarDefinition
             {
@@ -229,11 +260,11 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR3_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR3_L",
-                DisplayName = "OH ADIRS ADR3 Lower",
+                DisplayName = "ADR 3",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_ADR3_U"] = new SimConnect.SimVarDefinition
             {
@@ -659,6 +690,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                SpokenNumberFormat = "+0;-0;0",   // "+300", as the FBW A320's V/S (owner, 2026-10-22)
             },
             ["B_FCU_SPEED_DASHED"] = new SimConnect.SimVarDefinition
             {
@@ -1114,7 +1146,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "DCDU Brightness",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "DIM", [1] = "Mid", [2] = "BRT"}
+                // Spring-loaded both ways: a pick of Dim or Bright is one step, then back to Mid (PulseSpringSwitch).
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Mid", [2] = "Bright"}
             },
             ["S_DCDU1_LSK1L"] = new SimConnect.SimVarDefinition
             {
@@ -1258,7 +1291,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_EFIS2_LS"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EFIS2_LS",
-                DisplayName = "EFIS 2 LS Fault",
+                DisplayName = EfisRightLsName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1267,7 +1300,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_EFIS2_FD"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EFIS2_FD",
-                DisplayName = "EFIS 2 FD Fault",
+                DisplayName = EfisRightFdName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1321,7 +1354,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_EFIS1_LS"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EFIS1_LS",
-                DisplayName = "EFIS 1 LS Fault",
+                DisplayName = EfisLeftLsName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1330,7 +1363,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_EFIS1_FD"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EFIS1_FD",
-                DisplayName = "EFIS 1 FD Fault",
+                DisplayName = EfisLeftFdName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1519,15 +1552,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
-            ["I_OH_ELEC_COMMERCIAL_U"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_OH_ELEC_COMMERCIAL_U",
-                DisplayName = "Electrical Commercial Upper",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = OffOn
-            },
             ["I_OH_ELEC_COMMERCIAL_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_COMMERCIAL_L",
@@ -1544,7 +1568,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                // The OFF legend, as S_OH_ELEC_BUS_TIE's state: spoken as the bus tie, not the lamp
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Auto", [1] = "Off", [2] = "Off"}
             },
             ["I_OH_ELEC_BAT2_U"] = new SimConnect.SimVarDefinition
             {
@@ -1640,7 +1665,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             // Button Controls (write-only - execute RPN operations)
             ["S_OH_ELEC_GEN1"] = new SimConnect.SimVarDefinition
             {
-                Name = "S_OH_ELEC_GEN1_LINE",  // Note: Uses GEN1_LINE internally
+                Name = "S_OH_ELEC_GEN1",
                 DisplayName = "Generator 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
@@ -1671,13 +1696,18 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
             },
+            // Momentary (v3 Button_Momentary): each press flips the bus tie, shown in its light.
             ["S_OH_ELEC_BUS_TIE"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_ELEC_BUSTIE",
                 DisplayName = "Bus Tie",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                RenderAsButton = true,
+                // Its one light is the OFF legend, dark at AUTO (Cockpit_Behavior.xml: one annunciator node)
+                StateVariable = "I_OH_ELEC_BUSTIE_L",
+                StateLitText = "Off",
+                StateDarkText = "Auto"
             },
             ["S_OH_ELEC_AC_ESS_FEED"] = new SimConnect.SimVarDefinition
             {
@@ -1806,7 +1836,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Nav", [2] = "Att"}
             },
 
-            // ADR Buttons
+            // ADR Buttons. The lower light is the OFF legend, the upper FAULT (measured 2026-10-22:
+            // a press lit _L and switched ADR 1 off; _U lit during the self-test), so a lit _L is Off.
             ["S_OH_NAV_ADR1"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_NAV_ADR1",
@@ -1814,7 +1845,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_ADR1_L"
+                StateVariable = "I_OH_NAV_ADR1_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
             ["S_OH_NAV_ADR2"] = new SimConnect.SimVarDefinition
             {
@@ -1823,7 +1856,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_ADR2_L"
+                StateVariable = "I_OH_NAV_ADR2_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
             ["S_OH_NAV_ADR3"] = new SimConnect.SimVarDefinition
             {
@@ -1832,10 +1867,12 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_ADR3_L"
+                StateVariable = "I_OH_NAV_ADR3_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
 
-            // IR Push Buttons
+            // IR Push Buttons. As the ADRs: _L is the OFF legend (measured on IR 1, 2026-10-22).
             ["S_OH_NAV_IR1_SWITCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_NAV_IR1_SWITCH",
@@ -1843,7 +1880,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_IR1_SWITCH_L"
+                StateVariable = "I_OH_NAV_IR1_SWITCH_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
             ["S_OH_NAV_IR2_SWITCH"] = new SimConnect.SimVarDefinition
             {
@@ -1852,7 +1891,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_IR2_SWITCH_L"
+                StateVariable = "I_OH_NAV_IR2_SWITCH_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
             ["S_OH_NAV_IR3_SWITCH"] = new SimConnect.SimVarDefinition
             {
@@ -1861,7 +1902,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_IR3_SWITCH_L"
+                StateVariable = "I_OH_NAV_IR3_SWITCH_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
 
             // Display Selectors
@@ -1879,7 +1922,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "System Display",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "IR 1", [1] = "IR 2", [2] = "IR 3", [3] = "ADR 1", [4] = "ADR 2", [5] = "ADR 3"}
+                // v3 model Knob_Increment 0..3, in the real SYS DISP selector's order (OFF, 1, 3, 2).
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "IR 1", [2] = "IR 3", [3] = "IR 2"}
             },
 
             // Keypad Buttons
@@ -2498,7 +2542,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "INT", [1] = "OFF", [2] = "RAD"}
             },
 
-            // Transmit Buttons (8 buttons - 7 momentary buttons + 1 combo box)
+            // Transmit Buttons (8 momentary buttons)
             ["S_ASP_VHF_1_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VHF_1_SEND",
@@ -2742,7 +2786,10 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "10", [1] = "20", [2] = "40", [3] = "80", [4] = "160", [5] = "320"}
             },
 
-            // Baro STD Button
+            // Baro STD: a push/pull counter (v3 Knob_PushPullButton). Any increase selects STD, any
+            // decrease QNH, so the panel offers a pull (+1) and a push (-1) stepped from the sim's own
+            // count; the result is heard from I_FCU_EFIS1_QNH. The STD definition stays registered
+            // (the First Officer's evaluator reads it) but is no panel control.
             ["S_FCU_EFIS1_BARO_STD"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS1_BARO_STD",
@@ -2750,6 +2797,22 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
+            },
+            ["S_FCU_EFIS1_BARO_PULL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_BARO_STD",
+                DisplayName = "EFIS Left Baro Pull (STD)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true
+            },
+            ["S_FCU_EFIS1_BARO_PUSH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_BARO_STD",
+                DisplayName = "EFIS Left Baro Push (QNH)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true
             },
 
             // Baro Knob Inc/Dec (Counter pattern)
@@ -2839,20 +2902,22 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["S_FCU_EFIS1_FD_PRESS"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS1_FD_PRESS",
-                DisplayName = "EFIS Left FD",
+                DisplayName = EfisLeftFdName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_FD"
+                StateVariable = "I_FCU_EFIS1_FD",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS1_LS_PRESS"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS1_LS_PRESS",
-                DisplayName = "EFIS Left LS",
+                DisplayName = EfisLeftLsName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_LS"
+                StateVariable = "I_FCU_EFIS1_LS",
+                PressTogglesStateVariable = true
             },
 
             // ========== EFIS RIGHT (16 variables) ==========
@@ -2877,7 +2942,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "10", [1] = "20", [2] = "40", [3] = "80", [4] = "160", [5] = "320"}
             },
 
-            // Baro STD Button
+            // Baro STD: a push/pull counter, as on the left (pull +1 = STD, push -1 = QNH; heard from
+            // I_FCU_EFIS2_QNH). The STD definition stays registered but is no panel control.
             ["S_FCU_EFIS2_BARO_STD"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS2_BARO_STD",
@@ -2885,6 +2951,22 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
+            },
+            ["S_FCU_EFIS2_BARO_PULL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_BARO_STD",
+                DisplayName = "EFIS Right Baro Pull (STD)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true
+            },
+            ["S_FCU_EFIS2_BARO_PUSH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_BARO_STD",
+                DisplayName = "EFIS Right Baro Push (QNH)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true
             },
 
             // Baro Knob Inc/Dec (Counter pattern)
@@ -2974,20 +3056,22 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["S_FCU_EFIS2_FD_PRESS"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS2_FD_PRESS",
-                DisplayName = "EFIS Right FD",
+                DisplayName = EfisRightFdName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_FD"
+                StateVariable = "I_FCU_EFIS2_FD",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS2_LS_PRESS"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS2_LS_PRESS",
-                DisplayName = "EFIS Right LS",
+                DisplayName = EfisRightLsName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_LS"
+                StateVariable = "I_FCU_EFIS2_LS",
+                PressTogglesStateVariable = true
             },
 
             // ========== FCU (23 variables) ==========
@@ -3315,7 +3399,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Manual Vertical Speed",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Up", [1] = "Mid", [2] = "Down"}
+                // Measured 2026-10-21 in MAN: 0 closes the outflow valve (DOWN), 2 opens it (UP).
+                // Held, not sprung back: the valve moves while the switch is held.
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Mid", [2] = "Up"}
             },
 
             // Ventilation Buttons
@@ -4549,13 +4635,14 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
 
             // ========== CALLS PANEL ==========
+            // MECH, ALL, FWD and AFT are momentary pushbuttons (press and release); no light is registered.
             ["S_OH_CALLS_MECH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_CALLS_MECH",
                 DisplayName = "Calls Mechanic",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                RenderAsButton = true
             },
             ["S_OH_CALLS_ALL"] = new SimConnect.SimVarDefinition
             {
@@ -4563,7 +4650,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Calls All",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                RenderAsButton = true
             },
             ["S_OH_CALLS_FWD"] = new SimConnect.SimVarDefinition
             {
@@ -4571,7 +4658,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Calls Forward",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                RenderAsButton = true
             },
             ["S_OH_CALLS_AFT"] = new SimConnect.SimVarDefinition
             {
@@ -4579,7 +4666,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Calls Aft",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                RenderAsButton = true
             },
             ["S_OH_CALLS_EMER"] = new SimConnect.SimVarDefinition
             {
@@ -4641,13 +4728,15 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
             },
+            // Spring-loaded 3-position switches (v3 Switch_3Position_Hold), positions from the model's
+            // tooltips: an end is written, then the switch returns to Rest (PulseSpringSwitch).
             ["S_OH_CARGO_DISC_1_OLD_LAYOUT"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_CARGO_DISC_1_OLD_LAYOUT",
                 DisplayName = "Cargo Discharge 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Agent 2", [1] = "Rest", [2] = "Agent 1"}
             },
             ["S_OH_CARGO_DISC_2_OLD_LAYOUT"] = new SimConnect.SimVarDefinition
             {
@@ -4655,7 +4744,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Cargo Discharge 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Agent 2", [1] = "Rest", [2] = "Agent 1"}
             },
 
             // ========== GPWS PANEL ==========
@@ -4717,10 +4806,12 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
             },
+            // Registered once each, here (a second, Continuous entry further down used to override
+            // these). The labels are the ones pilots heard from it.
             ["S_OH_ENG_N1_MODE_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_ENG_N1_MODE_1",
-                DisplayName = "Engine 1 N1 Mode",
+                DisplayName = "Engine N1 Mode 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
@@ -4728,7 +4819,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["S_OH_ENG_N1_MODE_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_ENG_N1_MODE_2",
-                DisplayName = "Engine 2 N1 Mode",
+                DisplayName = "Engine N1 Mode 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
@@ -4783,13 +4874,15 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
             },
+            // Momentary pushbuttons. No StateVariable: measured 2026-10-21, their lights
+            // (I_OH_SVCE_INT_OVRD, I_OH_LIGHTING_AVIONICS_COMPT) stay 0 on the ground whatever the press.
             ["S_OH_SVCE_INT_OVRD"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_SVCE_INT_OVRD",
                 DisplayName = "Service Interphone Override",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                RenderAsButton = true
             },
             ["S_OH_LIGHTING_AVIONICS_COMPT"] = new SimConnect.SimVarDefinition
             {
@@ -4797,7 +4890,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Avionics Compartment Light",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                RenderAsButton = true
             },
 
             // ========== PEDESTAL - ENGINES PANEL (3 variables) ==========
@@ -4847,14 +4940,14 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "1", [1] = "Off", [2] = "2"}
             },
 
-            // GCS Switch (Combo box)
+            // GCS pushbutton (momentary; no light registered)
             ["S_WR_GCS"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_WR_GCS",
                 DisplayName = "GCS (Ground Clutter Suppression)",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                RenderAsButton = true
             },
 
             // Multiscan Switch (Combo box)
@@ -4899,18 +4992,14 @@ public class FenixA320Definition : BaseAircraftDefinition
                 }
             },
 
-            // Image Selector Knob (Combo box with 11 positions: 0.0 to 1.0)
+            // Image Selector Knob (v3 model 0..3 in whole steps, in the real selector's order)
             ["S_WR_MODE"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_WR_MODE",
                 DisplayName = "Image Selector",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0.0] = "0", [0.1] = "1", [0.2] = "2", [0.3] = "3", [0.4] = "4",
-                    [0.5] = "5", [0.6] = "6", [0.7] = "7", [0.8] = "8", [0.9] = "9", [1.0] = "10"
-                }
+                ValueDescriptions = new Dictionary<double, string> {[0] = "WX", [1] = "WX+T", [2] = "TURB", [3] = "MAP"}
             },
 
             // ========== COCKPIT — seats, comfort, standby, gravity gear, DCDU2 brightness ==========
@@ -4940,12 +5029,11 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["S_STANDBY_ATTITUDE_CAGE"] = new SimConnect.SimVarDefinition { Name = "S_STANDBY_ATTITUDE_CAGE", DisplayName = "Standby Attitude Cage", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Caged"} },
             ["S_JUMPSEAT"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT", DisplayName = "Jumpseat", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Deployed"} },
             ["S_JUMPSEAT_HEADREST"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT_HEADREST", DisplayName = "Jumpseat Headrest", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Up"} },
-            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Cockpit Door Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = OffOn },
+            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Pedestal Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, RenderAsButton = true },   // no light of its own: I_OH_COCKPIT_DOOR_VIDEO is the overhead VIDEO pb's (measured 2026-10-22)
             ["S_OXYGEN_MASK_COVER_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_CAPT", DisplayName = "Captain Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             ["S_OXYGEN_MASK_COVER_FO"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_FO", DisplayName = "First Officer Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             // NOTE: S_OH_CALLS_EMER_Cover ("Calls Emergency Cover") is already defined+paneled in the overhead Calls panel — not re-added here.
-            ["S_HYD_GRAVITY_GEAR_EXTEND"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND", DisplayName = "Gravity Gear Extension", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Extended"} },
-            ["S_HYD_GRAVITY_GEAR_EXTEND_ROTATION"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION", DisplayName = "Gravity Gear Crank", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = OffOn },
+            ["S_HYD_GRAVITY_GEAR_EXTEND"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND", DisplayName = "Gravity Gear Extension", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [3] = "Extended"}, ValueToDescriptionKey = FenixA320GravityGear.DescriptionKey },
             ["S_DCDU2_DIM_BRT"] = new SimConnect.SimVarDefinition { Name = "S_DCDU2_DIM_BRT", DisplayName = "First Officer DCDU Brightness", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Mid", [2] = "Bright"} },
 
             // ========== PEDESTAL - ECAM PANEL (20 variables) ==========
@@ -5631,11 +5719,24 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
 
             // ========== COCKPIT DOOR PANEL ==========
-            // VIDEO
+            // The door itself, as the First Officer closes it before start and opens it at shutdown
+            // (FenixActionExecutor.SetCockpitDoor; a model L:var, 0 closed / 1 open, a write holds: measured
+            // 2026-10-23). It says itself when it moves (the First Officer's write, a click in the cockpit);
+            // a panel set is the combo's own echo (CORE-8). The two lights that only mirror it stay silent.
+            ["S_COCKPIT_DOOR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_COCKPIT_DOOR",
+                DisplayName = "Cockpit Door",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            // The overhead VIDEO pushbutton
             ["S_OH_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_COCKPIT_DOOR_VIDEO",
-                DisplayName = "VIDEO",
+                DisplayName = "Overhead Video",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
@@ -5711,9 +5812,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
-            ["B_ELEC_BUS_POWER_DC_SERIVICE"] = new SimConnect.SimVarDefinition
+            ["B_ELEC_BUS_POWER_DC_SERVICE"] = new SimConnect.SimVarDefinition
             {
-                Name = "B_ELEC_BUS_POWER_DC_SERIVICE",
+                Name = "B_ELEC_BUS_POWER_DC_SERVICE",
                 DisplayName = "ELEC BUS POWER DC SERVICE STATUS",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -5757,25 +5858,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
 
-            // ========== ENGINES (8 variables) ==========
-            ["S_OH_ENG_N1_MODE_2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_OH_ENG_N1_MODE_2",
-                DisplayName = "Engine N1 Mode 2",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = OffOn
-            },
-            ["S_OH_ENG_N1_MODE_1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_OH_ENG_N1_MODE_1",
-                DisplayName = "Engine N1 Mode 1",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = OffOn
-            },
+            // ========== ENGINES (6 variables; N1 MODE is registered with the overhead Engine panel) ==========
             ["I_OH_ENG_MANSTART_2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ENG_MANSTART_2_L",
@@ -5840,138 +5923,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Up", [1] = "1", [2] = "2", [3] = "3", [4] = "Full"}
-            },
-            // ========== FLIGHT INSTRUMENTATION (20 variables) ==========
-            ["FNX2PLD_speedV1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_speedV1",
-                DisplayName = "FNX320+FENIXQUARTZ TO-SPEEDS V1",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "knots",
-            },
-            ["FNX2PLD_speedVR"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_speedVR",
-                DisplayName = "FNX320+FENIXQUARTZ TO-SPEEDS VR",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "knots",
-            },
-            ["FNX2PLD_speedV2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_speedV2",
-                DisplayName = "FNX320+FENIXQUARTZ TO-SPEEDS V2",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "knots",
-            },
-            ["FNX2PLD_fcuSpd"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuSpd",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT TARGET AIRSPEED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "knots",
-            },
-            ["FNX2PLD_fcuHdg"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuHdg",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT TARGET HEADING",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "degrees",
-            },
-            ["FNX2PLD_fcuAlt"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuAlt",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT TARGET ALTITUDE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "feet",
-            },
-            ["FNX2PLD_fcuVs"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuVs",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT TARGET VERTICAL SPEED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "feet per minute",
-            },
-            ["FNX2PLD_isVsActive"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_isVsActive",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT VERTICAL SPEED ACTIVE LED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = OffOn
-            },
-            ["FNX2PLD_fcuSpdDashed"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuSpdDashed",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT SPEED Dashed LED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Displayed", [1] = "Dashed"}
-            },
-            ["FNX2PLD_fcuHdgDashed"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuHdgDashed",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT HDG Dashed LED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Displayed", [1] = "Dashed"}
-            },
-            ["FNX2PLD_fcuVsDashed"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuVsDashed",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT AUTOPILOT VS Dashed LED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Displayed", [1] = "Dashed"}
-            },
-            ["FNX2PLD_bat1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_bat1",
-                DisplayName = "FNX320+FENIXQUARTZ BAT 1 VOLTAGE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["FNX2PLD_bat2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_bat2",
-                DisplayName = "FNX320+FENIXQUARTZ BAT 2 VOLTAGE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["FNX2PLD_clockChr"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_clockChr",
-                DisplayName = "FNX320+FENIXQUARTZ CLOCK CHR",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["FNX2PLD_clockEt"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_clockEt",
-                DisplayName = "FNX320+FENIXQUARTZ CLOCK ET",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
             },
 
             // ========== FUEL (16 variables) ==========
@@ -6367,16 +6318,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = OffOn
             },
 
-            // ========== ISIS (1 variables) ==========
-            ["FNX2PLD_isisBaro"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_isisBaro",
-                DisplayName = "FNX320+FENIXQUARTZ ISIS BARO",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-
             // ========== LIGHTS (2 variables) ==========
             // A_MIP_LIGHTING_FLOOD_MAIN is not here: it is the Main Instrument Lights panel knob
             // (OnRequest, 0-100 %), defined once above. A second entry here silently replaced it.
@@ -6552,6 +6493,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                Units = "knots",
+                NotSetBelow = 1,   // a cleared speed reads 0: "not set", never "0"
             },
             ["N_MISC_PERF_TO_V2"] = new SimConnect.SimVarDefinition
             {
@@ -6560,6 +6503,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                Units = "knots",
+                NotSetBelow = 1,
             },
             ["N_MISC_PERF_TO_VR"] = new SimConnect.SimVarDefinition
             {
@@ -6568,6 +6513,23 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                Units = "knots",
+                NotSetBelow = 1,
+            },
+            // Take-off roll "V1" / "Rotate" / "V2" as those speeds are reached (FenixTakeoffCallouts),
+            // the A320 pattern: indicated airspeed per SIM_FRAME (ExcludeFromBatch + HighFrequency),
+            // consumed, never spoken, hidden from Ctrl+M; each call is muted by its speed's row above.
+            [FenixTakeoffCallouts.IasKey] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIRSPEED INDICATED",
+                DisplayName = "Take-off callout airspeed",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "knots",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
+                HighFrequency = true,
+                ExcludeFromMonitorManager = true,
             },
             ["N_MISC_PERF_TO_FLEX"] = new SimConnect.SimVarDefinition
             {
@@ -6714,14 +6676,16 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
-            ["I_OH_DOOR_VIDEO"] = new SimConnect.SimVarDefinition
+            ["I_OH_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition
             {
-                Name = "I_OH_DOOR_VIDEO",
+                Name = "I_OH_COCKPIT_DOOR_VIDEO",
                 DisplayName = "OverheadMisc Cockpit Door Video",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                // The overhead VIDEO pb's OFF legend (S_OH_COCKPIT_DOOR_VIDEO 0 lights it, measured
+                // 2026-10-22): spoken as the video, not the lamp
+                ValueDescriptions = new Dictionary<double, string> {[0] = "On", [1] = "Off", [2] = "Off"}
             },
             ["I_OH_HYD_BLUE_PUMP_OVERRIDE_L"] = new SimConnect.SimVarDefinition
             {
@@ -6759,13 +6723,13 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
+            // Lit while the cockpit door is open (measured 2026-10-23), so silent: S_COCKPIT_DOOR says the door.
             ["I_OH_DOOR_CTL_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_DOOR_CTL_U",
                 DisplayName = "OverheadMisc Cockpit Door CTL Upper",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
             },
             ["I_OH_DOOR_CTL_L"] = new SimConnect.SimVarDefinition
@@ -6828,19 +6792,20 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
             },
+            // The pedestal OPEN light: lit while the cockpit door is open (measured 2026-10-23), so silent:
+            // S_COCKPIT_DOOR says the door.
             ["I_PED_COCKPIT_DOOR_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_PED_COCKPIT_DOOR_U",
                 DisplayName = "PedestalMisc Cockpit Door Open (V2)",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
             },
             ["I_PED_COCKPIT_DOOR_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_PED_COCKPIT_DOOR_L",
-                DisplayName = "PedestalMisc Cockpit Door Fault (V2)",
+                DisplayName = "Cockpit Door Fault",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8285,6 +8250,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
+            // A lit master warning reads 2 on v3 (measured 2026-10-21, both sides): its own Off/On/On,
+            // never the shared OffOn. The cautions read 1 when lit.
             ["I_MIP_MASTER_WARNING_FO"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_WARNING_FO",
@@ -8292,7 +8259,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On", [2] = "On"}
             },
             ["I_MIP_MASTER_WARNING_CAPT_L"] = new SimConnect.SimVarDefinition
             {
@@ -8310,7 +8277,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On", [2] = "On"}   // lit = 2 on v3
             },
             ["I_MIP_MASTER_CAUTION_FO_L"] = new SimConnect.SimVarDefinition
             {
@@ -8484,7 +8451,7 @@ public class FenixA320Definition : BaseAircraftDefinition
 
         // The readout twins ([A320-41]), copied from their originals so the two can never disagree
         // on the L:var or its units. An original that is missing fails here, at load.
-        foreach (string readoutKey in FcuReadoutVariables)
+        foreach (string readoutKey in FcuReadoutVariables.Concat(TakeoffConfigReadoutVariables))
         {
             var original = variables[readoutKey[..^ReadoutSuffix.Length]];
             variables[readoutKey] = new SimConnect.SimVarDefinition
@@ -8499,12 +8466,14 @@ public class FenixA320Definition : BaseAircraftDefinition
             };
         }
 
+        AddConfigVariables(variables);
+        AddVariantVariables(variables);
         return variables;
     }
 
     public override Dictionary<string, List<string>> GetPanelStructure()
     {
-        return new Dictionary<string, List<string>>
+        var structure = new Dictionary<string, List<string>>
         {
             ["Overhead"] = new List<string>
             {
@@ -8519,13 +8488,13 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Exterior Lights",
                 "Interior Lights",
                 "Voice Recorder",
-                "Cockpit Door",
                 "Oxygen",
                 "Evacuation",
                 "Calls",
                 "Wipers",
                 "Cargo Smoke",
                 "GPWS",
+                "Flight Control Computers",
                 "Engine",
                 "Maintenance"
             },
@@ -8565,6 +8534,7 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["Cockpit"] = new List<string>
             {
+                "Cockpit Door",
                 "Captain Seat",
                 "First Officer Seat",
                 "Windows and Shades",
@@ -8572,11 +8542,13 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Cockpit Other"
             }
         };
+        AddVariantPanelStructure(structure);
+        return structure;
     }
 
     protected override Dictionary<string, List<string>> BuildPanelControls()
     {
-        return new Dictionary<string, List<string>>
+        var panels = new Dictionary<string, List<string>>
         {
             ["Electrical"] = new List<string>
             {
@@ -8788,7 +8760,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "A_OH_LIGHTING_OVD"
             },
 
-            ["Flight Controls"] = new List<string>
+            ["Flight Control Computers"] = new List<string>
             {
                 // Flight Control Computers (7 controls)
                 "S_OH_FLT_CTL_ELAC_1",
@@ -8810,8 +8782,10 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["Cockpit Door"] = new List<string>
             {
-                // Cockpit Door Controls (1 control)
-                "S_OH_COCKPIT_DOOR_VIDEO"
+                // The door, the overhead VIDEO pushbutton and the pedestal video button (3 controls)
+                "S_COCKPIT_DOOR",
+                "S_OH_COCKPIT_DOOR_VIDEO",
+                "S_PED_COCKPIT_DOOR_VIDEO"
             },
 
             ["Signs"] = new List<string>
@@ -8933,7 +8907,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["First Officer Seat"] = new List<string> { "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO", "S_ARMREST_LEFT_FO", "S_ARMREST_RIGHT_FO" },
             ["Windows and Shades"] = new List<string> { "S_SUNSHADE_CAPT", "S_SUNSHADE_FO", "S_WINDOW_BLINDS_CAPT", "S_WINDOW_BLINDS_FO", "S_WINDOW_BLINDS_REAR_CAPT", "S_WINDOW_BLINDS_REAR_FO" },
             ["Standby Instruments"] = new List<string> { "S_STANDBY_COMPASS", "S_STANDBY_ATTITUDE_CAGE" },
-            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_PED_COCKPIT_DOOR_VIDEO", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_HYD_GRAVITY_GEAR_EXTEND", "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION", "S_DCDU2_DIM_BRT" },
+            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_HYD_GRAVITY_GEAR_EXTEND", "S_DCDU2_DIM_BRT" },
 
             ["ECAM"] = new List<string>
             {
@@ -9135,7 +9109,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_FCU_EFIS1_ND_ZOOM",
 
                 // Barometric Reference
-                "S_FCU_EFIS1_BARO_STD",
+                "S_FCU_EFIS1_BARO_PULL",
+                "S_FCU_EFIS1_BARO_PUSH",
                 "S_FCU_EFIS1_BARO_MODE",
                 "E_FCU_EFIS1_BARO_INC",
                 "E_FCU_EFIS1_BARO_DEC",
@@ -9163,7 +9138,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_FCU_EFIS2_ND_ZOOM",
 
                 // Barometric Reference
-                "S_FCU_EFIS2_BARO_STD",
+                "S_FCU_EFIS2_BARO_PULL",
+                "S_FCU_EFIS2_BARO_PUSH",
                 "S_FCU_EFIS2_BARO_MODE",
                 "E_FCU_EFIS2_BARO_INC",
                 "E_FCU_EFIS2_BARO_DEC",
@@ -9324,14 +9300,18 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_DISPLAY_PFDND_XFER_FO"
             }
         };
+        AddVariantPanelControls(panels);
+        return panels;
     }
 
     public override Dictionary<string, List<string>> GetPanelDisplayVariables()
     {
-        return new Dictionary<string, List<string>>
+        var displayVariables = new Dictionary<string, List<string>>
         {
             // Display-only variables can be added here as needed
         };
+        AddVariantPanelDisplayVariables(displayVariables);
+        return displayVariables;
     }
 
     public override Dictionary<string, string> GetButtonStateMapping()
@@ -9340,6 +9320,49 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             // Button-to-state mappings will be added here
         };
+    }
+
+    private FenixA320GravityGearWalker? _gravityGearWalker;
+    private SimConnect.SimConnectManager? _gravityGearSim;
+
+    /// <summary>Test seam: puts a walker with fake delegates into the definition.</summary>
+    internal void SetGravityGearWalkerForTests(FenixA320GravityGearWalker walker) => _gravityGearWalker = walker;
+
+    private async Task MoveGravityGearAsync(bool extend, SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer? announcer)
+    {
+        _gravityGearSim = simConnect;
+        // An aircraft switch or a disconnect stops the crank before its next write, as for the typed FCU sets.
+        _gravityGearWalker ??= new FenixA320GravityGearWalker(
+            (k, v) => _gravityGearSim!.SetLVar(k, v),
+            k => _gravityGearSim!.ReadFreshAsync(k, FenixA320GravityGear.ReadTimeoutMs),
+            t => Task.Delay(t),
+            () => !_switchedAway && _gravityGearSim is { IsConnected: true });
+        try
+        {
+            string? result = await _gravityGearWalker.MoveAsync(extend);
+            if (result == null)
+            {
+                // Stopped part-way. After a switch the aircraft is gone: nothing to say. After a dropped connection
+                // the same Fenix may hold a part-turned crank, so the pilot hears that it stopped.
+                if (!_switchedAway) announcer?.AnnounceImmediate(FenixA320GravityGear.StoppedText);
+                return;
+            }
+            // Refusals and "no read-back" cut in; the completion read-back lands about 6 s after the pick.
+            bool refused = result.Contains("already turning");
+            if (refused || result.Contains("nothing moved"))
+                announcer?.AnnounceImmediate(result);
+            else
+                announcer?.Announce(result);
+            // The move that ran re-syncs the combo once to where the crank really is ([MD11-27]). A
+            // refusal does not: the move still running does its own end-read.
+            if (!refused && simConnect.IsConnected)
+                simConnect.RequestVariable(FenixA320GravityGear.CrankKey, forceUpdate: true);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Fenix", $"Gravity gear move failed: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -9352,10 +9375,28 @@ public class FenixA320Definition : BaseAircraftDefinition
     {
         try
         {
-            // ========== COCKPIT (seats, comfort, standby, gravity gear, DCDU2 brightness) ==========
+            bool handled = false;
+            HandleVariantUIVariableSet(varKey, value, varDef, simConnect, announcer, ref handled);
+            if (handled) return true;
+
+            // Opening the cockpit door and deploying the jumpseat block each other, as in the cockpit
+            // (FenixA320CockpitDoor): the other one is read first, then written or refused. Every pick is
+            // counted first, closing and stowing too, so a write still waiting for its read yields to a newer one.
+            if (FenixA320CockpitDoor.IsInterlocked(varKey))
+            {
+                int pick = _cockpitDoorPicks.Next(varKey);
+                if (FenixA320CockpitDoor.BlockingKey(varKey, value) is string blockingKey)
+                {
+                    _ = WriteUnlessBlockedAsync(varKey, value, pick, blockingKey, simConnect, announcer);
+                    return true;
+                }
+            }
+
+            // ========== COCKPIT (seats, comfort, standby) ==========
             // All hold their written value; SetLVar routes through the MobiFlight calc path.
             // Seats are 3-position direction switches (Down/Stop/Up, Aft/Stop/Forward) that hold —
             // pick Up/Down to start moving, Stop to halt (the model auto-centers at the travel limit).
+            // The cockpit door video button and the DCDU2 brightness switch spring back: see below.
             switch (varKey)
             {
                 case "S_SEAT_HEIGHT_CAPT":
@@ -9376,14 +9417,39 @@ public class FenixA320Definition : BaseAircraftDefinition
                 case "S_STANDBY_ATTITUDE_CAGE":
                 case "S_JUMPSEAT":
                 case "S_JUMPSEAT_HEADREST":
-                case "S_PED_COCKPIT_DOOR_VIDEO":
                 case "S_OXYGEN_MASK_COVER_CAPT":
                 case "S_OXYGEN_MASK_COVER_FO":
-                case "S_HYD_GRAVITY_GEAR_EXTEND":
-                case "S_HYD_GRAVITY_GEAR_EXTEND_ROTATION":
-                case "S_DCDU2_DIM_BRT":
                     simConnect.SetLVar(varKey, value);
                     return true;
+            }
+
+            // Cockpit door video (pedestal): a momentary pushbutton (press and release) with no light
+            // to read back (Cockpit_Behavior.xml gives it no annunciator; a press left the overhead
+            // VIDEO pb's light unchanged, 2026-10-22), so the press confirms itself (CORE-7).
+            if (varKey == "S_PED_COCKPIT_DOOR_VIDEO" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_COCKPIT_DOOR_VIDEO", varDef.DisplayName, simConnect, announcer, confirmPress: true);
+                return true;
+            }
+
+            // DCDU brightness: spring-loaded both ways, one step per pick, then back to Mid.
+            if (varKey == "S_DCDU1_DIM_BRT")
+            {
+                PulseSpringSwitch("S_DCDU1_DIM_BRT", value, simConnect);
+                return true;
+            }
+
+            if (varKey == "S_DCDU2_DIM_BRT")
+            {
+                PulseSpringSwitch("S_DCDU2_DIM_BRT", value, simConnect);
+                return true;
+            }
+
+            // Gravity gear: one pick raises the handle and cranks 3 turns (or cranks back and stows).
+            if (varKey == FenixA320GravityGear.CrankKey)
+            {
+                _ = MoveGravityGearAsync(value >= FenixA320GravityGear.FullTurns / 2, simConnect, announcer);
+                return true;
             }
 
             // ========== COM RADIO FREQUENCIES (standard SimConnect) ==========
@@ -9420,11 +9486,11 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             // ========== ELECTRICAL PANEL CONTROLS ==========
             // These work like batteries - combo boxes with Off (0) / On (1) states
-            // External Power is the only button (uses ExecuteButtonTransition)
+            // External Power and Bus Tie are buttons (use ExecuteButtonTransition)
 
             if (varKey == "S_OH_ELEC_GEN1")
             {
-                simConnect.SetLVar("S_OH_ELEC_GEN1_LINE", value);
+                simConnect.SetLVar("S_OH_ELEC_GEN1", value);
                 return true;
             }
 
@@ -9446,9 +9512,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            if (varKey == "S_OH_ELEC_BUS_TIE")
+            if (varKey == "S_OH_ELEC_BUS_TIE" && value == 1)
             {
-                simConnect.SetLVar("S_OH_ELEC_BUSTIE", value);
+                ExecuteButtonTransition("S_OH_ELEC_BUSTIE", "Bus Tie", simConnect, announcer);
                 return true;
             }
 
@@ -10528,6 +10594,13 @@ public class FenixA320Definition : BaseAircraftDefinition
             }
 
             // ========== COCKPIT DOOR PANEL CONTROLS ==========
+            // The door: the same write as the First Officer's (FenixActionExecutor.SetCockpitDoor)
+            if (varKey == "S_COCKPIT_DOOR")
+            {
+                simConnect.SetLVar("S_COCKPIT_DOOR", value);
+                return true;
+            }
+
             // VIDEO
             if (varKey == "S_OH_COCKPIT_DOOR_VIDEO")
             {
@@ -10625,28 +10698,30 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // ========== CALLS PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
-            if (varKey == "S_OH_CALLS_MECH")
+            // ========== CALLS PANEL CONTROLS ==========
+            // MECH, ALL, FWD and AFT are momentary pushbuttons (use ExecuteButtonTransition); with no
+            // light registered, each confirms its press (CORE-7). EMER and its cover are combo boxes (use SetLVar).
+            if (varKey == "S_OH_CALLS_MECH" && value == 1)
             {
-                simConnect.SetLVar("S_OH_CALLS_MECH", value);
+                ExecuteButtonTransition("S_OH_CALLS_MECH", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
-            if (varKey == "S_OH_CALLS_ALL")
+            if (varKey == "S_OH_CALLS_ALL" && value == 1)
             {
-                simConnect.SetLVar("S_OH_CALLS_ALL", value);
+                ExecuteButtonTransition("S_OH_CALLS_ALL", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
-            if (varKey == "S_OH_CALLS_FWD")
+            if (varKey == "S_OH_CALLS_FWD" && value == 1)
             {
-                simConnect.SetLVar("S_OH_CALLS_FWD", value);
+                ExecuteButtonTransition("S_OH_CALLS_FWD", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
-            if (varKey == "S_OH_CALLS_AFT")
+            if (varKey == "S_OH_CALLS_AFT" && value == 1)
             {
-                simConnect.SetLVar("S_OH_CALLS_AFT", value);
+                ExecuteButtonTransition("S_OH_CALLS_AFT", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
@@ -10687,22 +10762,23 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // ========== CARGO SMOKE PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            // ========== CARGO SMOKE PANEL CONTROLS (Combo Boxes) ==========
             if (varKey == "S_OH_CARGO_SMOKE_TEST")
             {
                 simConnect.SetLVar("S_OH_CARGO_SMOKE_TEST", value);
                 return true;
             }
 
+            // The discharge switches are spring-loaded: the picked agent fires, then the switch rests.
             if (varKey == "S_OH_CARGO_DISC_1_OLD_LAYOUT")
             {
-                simConnect.SetLVar("S_OH_CARGO_DISC_1_OLD_LAYOUT", value);
+                PulseSpringSwitch("S_OH_CARGO_DISC_1_OLD_LAYOUT", value, simConnect);
                 return true;
             }
 
             if (varKey == "S_OH_CARGO_DISC_2_OLD_LAYOUT")
             {
-                simConnect.SetLVar("S_OH_CARGO_DISC_2_OLD_LAYOUT", value);
+                PulseSpringSwitch("S_OH_CARGO_DISC_2_OLD_LAYOUT", value, simConnect);
                 return true;
             }
 
@@ -10799,15 +10875,17 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            if (varKey == "S_OH_SVCE_INT_OVRD")
+            // Momentary pushbuttons (use ExecuteButtonTransition). Their lights stay dark on the ground,
+            // so no state is read and each confirms its press (CORE-7).
+            if (varKey == "S_OH_SVCE_INT_OVRD" && value == 1)
             {
-                simConnect.SetLVar("S_OH_SVCE_INT_OVRD", value);
+                ExecuteButtonTransition("S_OH_SVCE_INT_OVRD", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
-            if (varKey == "S_OH_LIGHTING_AVIONICS_COMPT")
+            if (varKey == "S_OH_LIGHTING_AVIONICS_COMPT" && value == 1)
             {
-                simConnect.SetLVar("S_OH_LIGHTING_AVIONICS_COMPT", value);
+                ExecuteButtonTransition("S_OH_LIGHTING_AVIONICS_COMPT", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
@@ -10845,10 +10923,10 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // GCS Switch (Combo Box - use SetLVar)
-            if (varKey == "S_WR_GCS")
+            // GCS pushbutton (momentary - use ExecuteButtonTransition); no light, so it confirms its press (CORE-7)
+            if (varKey == "S_WR_GCS" && value == 1)
             {
-                simConnect.SetLVar("S_WR_GCS", value);
+                ExecuteButtonTransition("S_WR_GCS", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
@@ -10873,7 +10951,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Image Selector (Combo Box - use SetLVar)
+            // Image Selector (Combo Box of whole positions 0..3 - use SetLVar)
             if (varKey == "S_WR_MODE")
             {
                 simConnect.SetLVar("S_WR_MODE", value);
@@ -10993,13 +11071,10 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_ECAM_TO" && value == 1)
             {
-                // TO CONFIG is a level-triggered test: hold longer so the FWC evaluates the config,
-                // announce the result (blind-pilot equivalent of the sighted "TO CONFIG NORMAL"),
-                // then RELEASE. Leaving it held was the stuck-at-1 bug that re-fired the takeoff-
-                // config check after landing (FWC phase 9) → the spurious CONFIG warning on rollout.
-                ExecuteButtonTransition("S_ECAM_TO", "ECAM TO CONFIG", simConnect, announcer,
-                    pressHoldMs: TakeoffConfigTestHoldMs,
-                    onHeld: () => AnnounceTakeoffConfigResult(simConnect, announcer));
+                // TO CONFIG is a level-triggered test, then RELEASED (leaving it held was the
+                // stuck-at-1 bug that re-fired the check after landing). The verdict is a watch of
+                // fresh reads from the observed press: v3 delays the master warning.
+                _ = RunTakeoffConfigTestAsync(simConnect, announcer);
                 return true;
             }
 
@@ -11478,7 +11553,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Transmit Buttons (7 momentary buttons + 1 combo box)
+            // Transmit Buttons (8 momentary buttons)
             // Momentary Buttons (use ExecuteButtonTransition)
             if (varKey == "S_ASP_VHF_1_SEND" && value == 1)
             {
@@ -11522,10 +11597,10 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // PA Transmit (Combo Box - use SetLVar)
-            if (varKey == "S_ASP_PA_SEND")
+            // PA Transmit: momentary like the others (a held 1 kept PA transmitting for good)
+            if (varKey == "S_ASP_PA_SEND" && value == 1)
             {
-                simConnect.SetLVar("S_ASP_PA_SEND", value);
+                ExecuteButtonTransition("S_ASP_PA_SEND", "PA Transmit", simConnect, announcer);
                 return true;
             }
 
@@ -11621,10 +11696,19 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Baro STD (Combo Box - use SetLVar)
-            if (varKey == "S_FCU_EFIS1_BARO_STD")
+            // Baro STD push/pull counter: pull +1 selects STD, push -1 selects QNH, from the sim's own
+            // count (an absolute write could be a decrease after cockpit pulls, and select QNH).
+            if (varKey == "S_FCU_EFIS1_BARO_PULL" && value == 1)
             {
-                simConnect.SetLVar("S_FCU_EFIS1_BARO_STD", value);
+                if (simConnect.IsConnected)
+                    simConnect.ExecuteCalculatorCodeUnique(CounterStepCode("S_FCU_EFIS1_BARO_STD", 1));
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS1_BARO_PUSH" && value == 1)
+            {
+                if (simConnect.IsConnected)
+                    simConnect.ExecuteCalculatorCodeUnique(CounterStepCode("S_FCU_EFIS1_BARO_STD", -1));
                 return true;
             }
 
@@ -11695,13 +11779,13 @@ public class FenixA320Definition : BaseAircraftDefinition
             // Flight Director & ILS Buttons (ExecuteButtonTransition)
             if (varKey == "S_FCU_EFIS1_FD_PRESS" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_EFIS1_FD", "EFIS Left FD", simConnect, announcer);
+                ExecuteButtonTransition("S_FCU_EFIS1_FD", EfisLeftFdName, simConnect, announcer);
                 return true;
             }
 
             if (varKey == "S_FCU_EFIS1_LS_PRESS" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_EFIS1_LS", "EFIS Left LS", simConnect, announcer);
+                ExecuteButtonTransition("S_FCU_EFIS1_LS", EfisLeftLsName, simConnect, announcer);
                 return true;
             }
 
@@ -11721,10 +11805,18 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Baro STD (Combo Box - use SetLVar)
-            if (varKey == "S_FCU_EFIS2_BARO_STD")
+            // Baro STD push/pull counter (see EFIS Left)
+            if (varKey == "S_FCU_EFIS2_BARO_PULL" && value == 1)
             {
-                simConnect.SetLVar("S_FCU_EFIS2_BARO_STD", value);
+                if (simConnect.IsConnected)
+                    simConnect.ExecuteCalculatorCodeUnique(CounterStepCode("S_FCU_EFIS2_BARO_STD", 1));
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS2_BARO_PUSH" && value == 1)
+            {
+                if (simConnect.IsConnected)
+                    simConnect.ExecuteCalculatorCodeUnique(CounterStepCode("S_FCU_EFIS2_BARO_STD", -1));
                 return true;
             }
 
@@ -11795,13 +11887,13 @@ public class FenixA320Definition : BaseAircraftDefinition
             // Flight Director & ILS Buttons (ExecuteButtonTransition)
             if (varKey == "S_FCU_EFIS2_FD_PRESS" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_EFIS2_FD", "EFIS Right FD", simConnect, announcer);
+                ExecuteButtonTransition("S_FCU_EFIS2_FD", EfisRightFdName, simConnect, announcer);
                 return true;
             }
 
             if (varKey == "S_FCU_EFIS2_LS_PRESS" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_EFIS2_LS", "EFIS Right LS", simConnect, announcer);
+                ExecuteButtonTransition("S_FCU_EFIS2_LS", EfisRightLsName, simConnect, announcer);
                 return true;
             }
 
@@ -11910,13 +12002,12 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // S_FCU_HEADING push/pull: atomic RPN read-modify-write, NOT the app-side
-            // rmpCounters Increment/DecrementCounter. FenixActionExecutor.PushFcuManaged (the
-            // First Officer) writes this same L:var independently via its own atomic RPN
-            // write; two independent absolute-counter writers on one relative-encoder var
-            // desync (a stale counter write can swallow or double the FO's push). See
-            // AdjustFcuPushPullCounter / AdjustBaroCounter for the same fix applied earlier
-            // to the baro knobs.
+            // S_FCU_HEADING push/pull: atomic RPN read-modify-write, never an absolute write of
+            // an app-side count. FenixActionExecutor.PushFcuManaged (the First Officer) writes
+            // this same L:var independently via its own atomic RPN write; two independent
+            // absolute-counter writers on one relative-encoder var desync (a stale counter write
+            // can swallow or double the FO's push). See AdjustFcuPushPullCounter /
+            // AdjustBaroCounter, and CounterStepCode for the knobs.
             if (varKey == "S_FCU_HEADING_PUSH" && value == 1)
             {
                 AdjustFcuPushPullCounter("S_FCU_HEADING", -1, simConnect);
@@ -12094,14 +12185,108 @@ public class FenixA320Definition : BaseAircraftDefinition
         return false;
     }
 
+    // ---- Take-off roll "V1" / "Rotate" / "V2" (FenixTakeoffCallouts, on the shared
+    // TakeoffVSpeedCallouts machine, TKO-5). Its ARM is dropped on every context reset and on a
+    // reconnect, never the speeds, as every user of the machine does.
+    private readonly TakeoffVSpeedCallouts _takeoffCallouts = new();
+    // The last SIM_ON_GROUND sample. Starts true: a ramp start is the norm, and an airborne start is
+    // harmless, because the machine arms only on a sample below 40 kt, which the air never delivers.
+    private bool _calloutOnGround = true;
+
+    /// <summary>Last B_FCU_VERTICALSPEED_DASHED seen; null until read (and after a cache clear, which
+    /// re-delivers it).</summary>
+    private double? _fcuVsDashed;
+
+    /// <summary>
+    /// v3 sends the LIVE vertical speed on N_FCU_VS while the V/S window is dashed (managed climb or
+    /// descent), so it is not spoken then. Only an exact 1 silences it; unread, 0 and NaN do not.
+    /// </summary>
+    internal static bool FcuVsIsSilenced(double? dashed) => dashed == 1;
+
+    /// <inheritdoc />
+    public override string? TakeoffCalloutFeedKey => FenixTakeoffCallouts.IasKey;
+
+    /// <inheritdoc />
+    public override bool TakeoffCalloutFeedNeeded => _takeoffCallouts.NeedsSamples(_calloutOnGround);
+
+    /// <summary>
+    /// The take-off airspeed feed speaks V1, Rotate and V2, whose Ctrl+M rows are the V-speeds', so it
+    /// is kept out of MainForm's mute wrap and checks each call's row itself (VAR-8).
+    /// </summary>
+    public override bool IsMuteWrapExempt(string varName) => varName == FenixTakeoffCallouts.IasKey;
+
+    /// <inheritdoc />
+    public override void OnSimContextReset()
+    {
+        // A flight load delivers the per-frame airspeed ahead of the 1 Hz SIM_ON_GROUND, so an arm
+        // kept from a parked aircraft would call V1, Rotate and V2 at the loaded cruise.
+        _takeoffCallouts.Reset();
+        base.OnSimContextReset();
+    }
+
+    /// <inheritdoc />
+    public override void ResetAnnouncementBaselines()
+    {
+        // Nothing armed before a drop may fire on a later landing rollout. The speeds are kept.
+        _takeoffCallouts.Reset();
+        base.ResetAnnouncementBaselines();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>The dashed flag mirrors a state, so it is forgotten only here, where every var
+    /// re-fires and re-seeds it. Never in <see cref="OnSimContextReset"/> (a flight load clears no
+    /// cache) or <see cref="ResetAnnouncementBaselines"/> (it runs after the reconnect's first batch):
+    /// an unchanged flag is not delivered again, so the V/S would speak for a whole managed climb.</remarks>
+    public override void OnVariableCacheCleared()
+    {
+        _fcuVsDashed = null;
+        base.OnVariableCacheCleared();
+    }
+
     /// <summary>
     /// Processes SimConnect variable updates, combining the FCU and altimeter readout twins' two legs for the hotkey readouts ([A320-41]).
     /// </summary>
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // Gravity gear walk ([MD11-8]): the walker's own reads of the crank are consumed silently while
+        // it runs, so none reaches MainForm's combo refresh and snaps the pick back mid-walk. The
+        // fresh-read waiter is completed in SimConnectManager before this runs.
+        if (varName == FenixA320GravityGear.CrankKey && _gravityGearWalker is { IsRunning: true })
+            return true;
+
+        // Take-off roll V-speed callouts, fed per SIM_FRAME (hot path, first branch). The contract is
+        // TakeoffVSpeedCallouts': arms on the ground below 40 kt with V1 and VR set, upward crossings
+        // only, once per roll, a rejected take-off re-arms. AnnounceImmediate, deliberately: "V1" and
+        // "Rotate" are action cues whose value IS the timing. It interrupts, so the calls one sample
+        // crosses go out as ONE utterance (Compose). AnnounceImmediate bypasses both MainForm's
+        // Suppressed wrap and the Ctrl+M mute, so both are applied here, per speed, keyed on the
+        // V1 / VR / V2 rows (FenixTakeoffCallouts.Keys), as the A320 does.
+        if (varName == FenixTakeoffCallouts.IasKey)
+        {
+            var callouts = _takeoffCallouts.ProcessSample(value, _calloutOnGround);
+            if (callouts.Count > 0 && !announcer.Suppressed)
+            {
+                var muted = Settings.SettingsManager.Current.FenixDisabledMonitorVariablesSet;
+                string? sentence = TakeoffVSpeedCallouts.Compose(callouts, callout => FenixTakeoffCallouts.Keys.IsMuted(callout, muted));
+                if (sentence != null) announcer.AnnounceImmediate(sentence);   // "V1, Rotate": one utterance, never two
+            }
+            return true;
+        }
+        // Air/ground and the MCDU V-speeds that arm the callouts are PEEKED, never consumed:
+        // SIM_ON_GROUND still reaches the base's "On ground"/"Airborne", and the monitor still speaks
+        // "MCDU V1 Speed: 140 knots" as the pilot enters a speed.
+        if (varName == "SIM_ON_GROUND") _calloutOnGround = value >= 0.5;
+        else if (FenixTakeoffCallouts.Keys.IsVSpeedKey(varName)) FenixTakeoffCallouts.Keys.Feed(_takeoffCallouts, varName, value);
+
         // Only process if we have the announcer saved
         if (lastAnnouncer == null)
             lastAnnouncer = announcer;
+
+        EnsureFenixBackground(announcer);
+        if (TryApplyConfigValue(varName, value)) return true;
+        bool handled = false;
+        OnVariantSimVarUpdate(varName, value, announcer, ref handled);
+        if (handled) return true;
 
         // ========== FCU and Altimeter Readouts ==========
         // Each readout is two legs, a value and its status, answered by the on-request twins.
@@ -12128,7 +12313,23 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return ReadoutLeg(ref isRequestingBaro, ref pendingBaroHpa, ref pendingBaroInch,
                     varName == BaroHpaReadout, value,
                     static (hpa, inch) => FormattableString.Invariant($"Altimeter: {hpa:0}, {inch:0.00}"));
+            // The TO CONFIG watch's fresh-read waiter already has the value; nothing is spoken.
+            case FenixTakeoffConfigVerdict.ButtonFreshKey
+                or FenixTakeoffConfigVerdict.MasterWarningFreshKey
+                or FenixTakeoffConfigVerdict.MasterCautionFreshKey:
+                return true;
         }
+
+        // The dashed flag is only peeked, so "FCU VERTICAL SPEED DISPLAY: Dashed" is still heard.
+        if (varName == "B_FCU_VERTICALSPEED_DASHED") _fcuVsDashed = value;
+        if (varName == "N_FCU_VS" && FcuVsIsSilenced(_fcuVsDashed)) return true;
+
+        // ========== Suppress the steps of a typed FCU set ([FNX-20], [CORE-7]) ==========
+        // While a set turns the knob, the values it passes through are consumed and its target passes on to
+        // the generic announcement, so a landed set is heard once ("FCU ALTITUDE: 7000"), as before; after a
+        // miss the knob stays quiet for about a second, so the miss sentence is the only thing heard.
+        if (FenixFcuKnob.ForValueVar(varName) is { } setKnob && _fcuSetTurns.Swallows(setKnob, value, Environment.TickCount64))
+            return true;
 
         // ========== Suppress baro announcements during set operation ==========
         if (isSettingBaro && (varName == "N_FCU_EFIS1_BARO_HPA" || varName == "N_FCU_EFIS1_BARO_INCH" ||
@@ -12145,14 +12346,9 @@ public class FenixA320Definition : BaseAircraftDefinition
             varName == "N_PED_RMP3_ACTIVE" || varName == "N_PED_RMP3_STDBY")
         {
             _lastAnnouncedValues.TryGetValue(varName, out double lastValue);
-            double freqMHz = value / 1000.0;
 
             if (lastValue > 0 && Math.Abs(value - lastValue) > 0.5)
-            {
-                string rmpNum = varName.Contains("RMP1") ? "RMP1" : varName.Contains("RMP2") ? "RMP2" : "RMP3";
-                string type = varName.Contains("ACTIVE") ? "active" : "standby";
-                announcer.Announce($"{rmpNum} {type} {freqMHz:F3}");
-            }
+                announcer.Announce(RmpFrequencyAnnouncement(varName, value));
             _lastAnnouncedValues[varName] = value;
             return true;
         }
@@ -12174,6 +12370,17 @@ public class FenixA320Definition : BaseAircraftDefinition
 
         // Call base implementation to handle common variables (e.g., altitude thousand-foot crossings)
         return base.ProcessSimVarUpdate(varName, value, announcer);
+    }
+
+    /// <summary>
+    /// "RMP1 active 132.475": a Fenix RMP frequency (<paramref name="kHz"/>, as the L:var stores it) as
+    /// MHz with three decimals. Invariant, so a comma-decimal Windows never speaks "132,475".
+    /// </summary>
+    internal static string RmpFrequencyAnnouncement(string varName, double kHz)
+    {
+        string rmpNum = varName.Contains("RMP1") ? "RMP1" : varName.Contains("RMP2") ? "RMP2" : "RMP3";
+        string type = varName.Contains("ACTIVE") ? "active" : "standby";
+        return FormattableString.Invariant($"{rmpNum} {type} {kHz / 1000.0:F3}");
     }
 
     /// <summary>
@@ -12311,11 +12518,13 @@ public class FenixA320Definition : BaseAircraftDefinition
             string[] efisIds = { "1", "2" };
             foreach (var efis in efisIds)
             {
-                // Switch from STD to QNH if needed
+                // Switch from STD to QNH if needed: one push step from the sim's own count (the
+                // STD knob is a push/pull counter, any decrease selects QNH). An absolute 0 was no
+                // change when the count already read 0, and the side stayed in STD.
                 double? qnhStatus = simConnect.GetCachedVariableValue($"I_FCU_EFIS{efis}_QNH");
                 if (qnhStatus != null && qnhStatus.Value < 0.5)
                 {
-                    simConnect.SetLVar($"S_FCU_EFIS{efis}_BARO_STD", 0);
+                    simConnect.ExecuteCalculatorCodeUnique(CounterStepCode($"S_FCU_EFIS{efis}_BARO_STD", -1));
                     await System.Threading.Tasks.Task.Delay(750);
                 }
 
@@ -12387,16 +12596,24 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             }
 
-            // Announce final value
+            // Announce final value, both sides, from their NEXT deliveries: these are 1 Hz vars, so a
+            // plain request reads nothing new and the cache can predate the last correction step (as
+            // in the verify above), which would claim a side missed when it did not.
             await System.Threading.Tasks.Task.Delay(500);
-            simConnect.RequestVariable("N_FCU_EFIS1_BARO_HPA");
-            simConnect.RequestVariable("N_FCU_EFIS1_BARO_INCH");
-            await System.Threading.Tasks.Task.Delay(300);
-            double? finalHpa = simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_HPA");
-            double? finalInch = simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_INCH");
-            if (finalHpa != null && finalInch != null)
+            string[] finalKeys =
             {
-                announcer.AnnounceImmediate(FormattableString.Invariant($"Altimeter set: {finalHpa.Value:0}, {finalInch.Value:0.00}"));
+                "N_FCU_EFIS1_BARO_HPA", "N_FCU_EFIS1_BARO_INCH", "I_FCU_EFIS1_QNH",
+                "N_FCU_EFIS2_BARO_HPA", "N_FCU_EFIS2_BARO_INCH", "I_FCU_EFIS2_QNH",
+            };
+            var finalReads = finalKeys.Select(k => simConnect.ReadFreshAsync(k, timeoutMs: 1500)).ToArray();
+            await System.Threading.Tasks.Task.WhenAll(finalReads);
+            double? Final(int i) => finalReads[i].Result ?? simConnect.GetCachedVariableValue(finalKeys[i]);
+            string? setText = AltimeterSetText(
+                Final(0), Final(1), IsStdLight(Final(2)),
+                Final(3), Final(4), IsStdLight(Final(5)));
+            if (setText != null)
+            {
+                announcer.AnnounceImmediate(setText);
             }
         }
         finally
@@ -12404,6 +12621,29 @@ public class FenixA320Definition : BaseAircraftDefinition
             isSettingBaro = false;
         }
     }
+
+    /// <summary>
+    /// The read-back after <see cref="SetFCUBaro"/>, which sets both sides: one sentence when both
+    /// read alike as spoken ("Both altimeters set: 1015, 29.97."), else each side named, so a side
+    /// that missed the setting is heard, a side whose push out of STD did not take included (owner,
+    /// 2026-10-22: keep both units, say both sides). Null when neither side read.
+    /// </summary>
+    internal static string? AltimeterSetText(double? captHpa, double? captInch, bool captStd,
+                                             double? foHpa, double? foInch, bool foStd)
+    {
+        string? capt = AltimeterSide(captHpa, captInch, captStd);
+        string? fo = AltimeterSide(foHpa, foInch, foStd);
+        if (capt == null && fo == null) return null;
+        if (capt == fo && !captStd) return $"Both altimeters set: {capt}.";
+        return $"Captain altimeter {capt ?? "not read"}. First officer altimeter {fo ?? "not read"}.";
+    }
+
+    private static string? AltimeterSide(double? hpa, double? inch, bool std) =>
+        std ? "still in STD"
+            : hpa != null && inch != null ? FormattableString.Invariant($"{hpa.Value:0}, {inch.Value:0.00}") : null;
+
+    /// <summary>I_FCU_EFISn_QNH reads 1 in QNH and 0 in STD; unread is not STD.</summary>
+    private static bool IsStdLight(double? qnhLight) => qnhLight is < 0.5;
 
     private void ShowFenixBaroWindow(
         SimConnect.SimConnectManager simConnect,
@@ -12422,16 +12662,15 @@ public class FenixA320Definition : BaseAircraftDefinition
 
     /// <summary>
     /// Adjusts the baro counter by the given delta using atomic RPN read-modify-write.
-    /// This avoids rmpCounters desync after aircraft reload by always reading the
-    /// actual sim counter value before modifying.
+    /// This avoids an app-side count desyncing after aircraft reload by always reading the
+    /// actual sim counter value before modifying. Uniquified (SIM-17): the ±1 verify correction
+    /// is the same string as a ±1 set, and MobiFlight drops an identical repeat.
     /// </summary>
     private void AdjustBaroCounter(string counterVar, int delta, SimConnect.SimConnectManager simConnect)
     {
         if (delta == 0) return;
 
-        string op = delta > 0 ? $"{delta} +" : $"{Math.Abs(delta)} -";
-        string rpn = $"(L:{counterVar}) {op} (>L:{counterVar})";
-        simConnect.ExecuteCalculatorCode(rpn);
+        simConnect.ExecuteCalculatorCodeUnique(CounterStepCode(counterVar, delta));
 
         Log.Debug("Fenix", $"AdjustBaroCounter: {counterVar} delta={delta}");
     }
@@ -12440,8 +12679,8 @@ public class FenixA320Definition : BaseAircraftDefinition
     /// Adjusts an FCU push/pull knob (S_FCU_SPEED / S_FCU_HEADING / S_FCU_ALTITUDE) by +/-1 using an atomic
     /// RPN read-modify-write, same reasoning as AdjustBaroCounter: the First Officer
     /// (FenixActionExecutor.PushFcuManaged) writes these same L:vars independently of this
-    /// panel's rmpCounters, so two absolute-counter writers would desync (a stale app-side
-    /// counter overwrites the FO's push, producing a swallowed or doubled delta). Reading
+    /// panel, so two absolute-counter writers would desync (a stale app-side counter
+    /// overwrites the FO's push, producing a swallowed or doubled delta). Reading
     /// the live sim value on every call keeps both writers coherent.
     ///
     /// Sent through <see cref="SimConnect.SimConnectManager.ExecuteCalculatorCodeUnique"/> (SIM-17):
@@ -12606,13 +12845,6 @@ public class FenixA320Definition : BaseAircraftDefinition
     /// </summary>
     private const int ButtonPressHoldMs = 200;
 
-    /// <summary>
-    /// Hold time (ms) for the TO CONFIG test button. Longer than the default because this test is
-    /// level-triggered (active only while held): the button must stay pressed long enough for the
-    /// FWC to evaluate the config and drive the master warning before we read the result and release.
-    /// </summary>
-    private const int TakeoffConfigTestHoldMs = 1500;
-
     // =========================================================================
     // Universal auto-AP engage (UniversalAutomationService)
     // =========================================================================
@@ -12658,14 +12890,15 @@ public class FenixA320Definition : BaseAircraftDefinition
     /// TO CONFIG TEST). Edge-triggered buttons keep their latched state after the release; the
     /// release is a no-op for pure momentary actions (ECAM page, keypad, master-warning cancel…).
     /// </summary>
-    /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. Use a longer
-    /// value for level-triggered tests whose result must be observed while held (e.g. TO CONFIG).</param>
-    /// <param name="onHeld">Optional callback invoked while the button is still held at 1, just
-    /// before the release — lets a caller read the resulting state (e.g. the master-warning outcome
-    /// of the TO CONFIG test) before the button is released and the level-triggered effect clears.</param>
+    /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. A level-triggered
+    /// test may need a longer hold than the default (TO CONFIG holds
+    /// <see cref="FenixTakeoffConfigVerdict.HoldMs"/>).</param>
+    /// <param name="confirmPress">Speak "<paramref name="displayName"/> pressed" once as the press is
+    /// sent (CORE-7). Only for a button with no readable state: one with a light stays silent, the
+    /// light speaks. Pass the panel's DisplayName, the name the reader just spoke.</param>
     private void ExecuteButtonTransition(string varName, string displayName,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer? announcer,
-        int pressHoldMs = ButtonPressHoldMs, Action? onHeld = null)
+        int pressHoldMs = ButtonPressHoldMs, bool confirmPress = false)
     {
         try
         {
@@ -12692,6 +12925,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                     {
                         Log.Debug("Fenix", $"Setting {varName} = 1 (Press)");
                         simConnect.SetLVar(varName, 1);
+                        if (confirmPress) announcer?.Announce($"{displayName} pressed");
                     }
 
                     // Phase 3: release (1 → 0) after the hold, so the button does not stay latched down.
@@ -12707,11 +12941,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                         {
                             if (simConnect != null && simConnect.IsConnected)
                             {
-                                // Read the resulting state while the button is still held (e.g. TO CONFIG
-                                // result). Gated on IsConnected so a disconnect mid-hold can't fire a
-                                // reassuring "Takeoff config normal." off a stale/zero cache.
-                                onHeld?.Invoke();
-
                                 Log.Debug("Fenix", $"Setting {varName} = 0 (Release after hold)");
                                 simConnect.SetLVar(varName, 0);
                                 Log.Debug("Fenix", $"ExecuteButtonTransition COMPLETE: {displayName}");
@@ -12739,66 +12968,173 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
-    /// Reads the master-warning outcome of a TO CONFIG test (while the test button is still held)
-    /// and announces it, so a blind pilot gets the same feedback a sighted pilot reads as
-    /// "TO CONFIG NORMAL". A good config is otherwise completely silent. On a bad config the
-    /// master warning is also flagged by the generic annunciator monitor; this adds the takeoff-
-    /// config context. Reads the cached I_MIP_MASTER_WARNING_CAPT and I_MIP_MASTER_CAUTION_CAPT
-    /// (Continuous + IsAnnounced).
+    /// The panel's ECAM TO CONFIG test: presses the button (held <c>HoldMs</c>, then released), and
+    /// speaks the shared <see cref="FenixTakeoffConfigVerdict"/> watch's verdict,
+    /// the same words the First Officer says. The watch reads fresh on-request twins of the button
+    /// and the two captain master lights, because v3 delays the master warning after the press and
+    /// a cached read said "normal" over a bad config. The button's 0 is written at once, so the
+    /// watch's first read sees it released before the press lands 200 ms later. Fail-safe: any lit
+    /// master light is "check", an unread one never "normal".
     /// </summary>
-    private void AnnounceTakeoffConfigResult(SimConnect.SimConnectManager simConnect,
-        Accessibility.ScreenReaderAnnouncer announcer)
+    private async Task RunTakeoffConfigTestAsync(SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer? announcer)
     {
         try
         {
-            // Deliberately reads the SHARED master-warning latch, not a config-specific memo. Live
-            // L-var search (2026-07) confirmed the Fenix exposes NO TO-CONFIG-only indicator — every
-            // warning I_* var is a discrete system fault (fire/GPWS/master warn+caut/evac), so the
-            // master warning is the only available signal, and it IS driven by the test: press
-            // S_ECAM_TO=1 on a bad config raised I_MIP_MASTER_WARNING_CAPT 0->1, release cleared it.
-            // The fail-safe direction also matters: an already-active (unrelated) warning yields a
-            // conservative "check configuration" (never harmful), whereas disambiguating via a
-            // pre-press baseline delta would mask a genuinely-bad config behind a pre-existing
-            // warning as a DANGEROUS false "normal". The words (the master caution's amber faults,
-            // and never "normal" on an unread light) are the First Officer's too:
-            // FenixTakeoffConfigVerdict.
-            announcer?.AnnounceImmediate(MSFSBlindAssist.FirstOfficer.Fenix.FenixTakeoffConfigVerdict.Text(
-                simConnect?.GetCachedVariableValue(MSFSBlindAssist.FirstOfficer.Fenix.FenixTakeoffConfigVerdict.MasterWarningKey),
-                simConnect?.GetCachedVariableValue(MSFSBlindAssist.FirstOfficer.Fenix.FenixTakeoffConfigVerdict.MasterCautionKey)));
+            ExecuteButtonTransition(FenixTakeoffConfigVerdict.ButtonKey, "ECAM TO CONFIG",
+                simConnect, announcer, pressHoldMs: FenixTakeoffConfigVerdict.HoldMs);
+            // ReadFreshAsync returns null on a timeout or disconnect; a throw is made null too, so
+            // the watch (which has no try/catch around reads) always reaches a verdict.
+            // A switch away stops the watch at its next read: its verdict would not be spoken.
+            using var cancelWatch = new CancellationTokenSource();
+            string verdict = await FenixTakeoffConfigVerdict.WatchAsync(
+                async k =>
+                {
+                    if (_switchedAway)
+                    {
+                        cancelWatch.Cancel();
+                        return null;
+                    }
+                    try { return await simConnect.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs); }
+                    catch (Exception) { return null; }
+                },
+                FenixTakeoffConfigVerdict.PanelPressWait, cancelWatch.Token);
+            // Not over the next aircraft: a switch during the 2-5 s watch drops the verdict.
+            if (simConnect.IsConnected && !_switchedAway) announcer?.AnnounceImmediate(verdict);
         }
         catch (Exception ex)
         {
-            Log.Debug("Fenix", $"AnnounceTakeoffConfigResult error: {ex.Message}");
+            Log.Debug("Fenix", $"RunTakeoffConfigTestAsync error: {ex.Message}");
         }
     }
 
-    // Counter tracking for RMP frequency knobs
-    private Dictionary<string, int> rmpCounters = new Dictionary<string, int>();
+    /// <summary>
+    /// Moves a spring-loaded three-position switch (v3 model <c>Switch_3Position_Hold</c>: a written
+    /// end stays held) to <paramref name="position"/>, then back to the middle (1) after
+    /// <see cref="ButtonPressHoldMs"/>, as the real switch springs back when let go. Picking the
+    /// middle writes it and nothing more. After the return, one forced read re-syncs the open combo
+    /// to the middle ([MD11-27] pattern): WinForms ignores a same-index pick, so a combo left on the
+    /// picked end committed nothing on a second step the same way. <paramref name="lvar"/> is also the
+    /// panel's var key (every caller's key is its L:var name). Writes only while connected, through
+    /// the same one-shot WinForms timer idiom as <see cref="ExecuteButtonTransition"/>.
+    /// </summary>
+    private void PulseSpringSwitch(string lvar, double position, SimConnect.SimConnectManager simConnect)
+    {
+        try
+        {
+            if (simConnect == null || !simConnect.IsConnected) return;
+
+            Log.Debug("Fenix", $"PulseSpringSwitch: {lvar} = {position.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+            simConnect.SetLVar(lvar, position);
+            if (position == 1) return;
+
+            // Return to the middle after the hold
+            var returnTimer = new System.Windows.Forms.Timer();
+            returnTimer.Interval = ButtonPressHoldMs;
+            returnTimer.Tick += async (sender, e) =>
+            {
+                returnTimer.Stop();
+                returnTimer.Dispose();
+
+                try
+                {
+                    if (simConnect != null && simConnect.IsConnected)
+                    {
+                        Log.Debug("Fenix", $"PulseSpringSwitch: {lvar} = 1 (return to middle)");
+                        simConnect.SetLVar(lvar, 1);
+                        // Read after a gap, so the read is not answered before the write lands.
+                        await Task.Delay(ButtonReleaseGapMs);
+                        if (simConnect.IsConnected) simConnect.RequestVariable(lvar, forceUpdate: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Debug("Fenix", $"Error in {lvar} spring switch (return phase): {ex.Message}");
+                }
+            };
+            returnTimer.Start();
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Fenix", $"Error in {lvar} spring switch (first phase): {ex.Message}");
+        }
+    }
+
+    // How long the cockpit door / jumpseat interlock waits for a fresh read of the other control.
+    private const int CockpitDoorInterlockReadTimeoutMs = 1000;
+
+    // The pilot's picks of the door and the jumpseat (UI thread only), see WriteUnlessBlockedAsync.
+    private readonly FenixA320CockpitDoor.Picks _cockpitDoorPicks = new();
 
     /// <summary>
-    /// Increments a counter variable for RMP frequency controls.
-    /// These variables act as counters - incrementing the value increases frequency.
+    /// Writes the cockpit door or the jumpseat unless the other one blocks it (<see cref="FenixA320CockpitDoor"/>).
+    /// The other is read where that is quick: the jumpseat (on request) answers a fresh read within a frame;
+    /// the door rides the 1 s batch, so its cache (at most a batch old) is read rather than waiting for the
+    /// next batch; an unread value never refuses. A newer pick of the same control made while this one waited
+    /// wins: this write and its refusal are dropped. A refusal speaks why (a validation message, CORE-7) and
+    /// forces a read of the refused control so its open combo goes back to what the sim shows; that read-back
+    /// is not spoken (the door's monitor sees an unchanged value; the on-request jumpseat is never announced).
+    /// Runs on the UI thread: every await resumes
+    /// there (no ConfigureAwait(false)).
+    /// </summary>
+    private async Task WriteUnlessBlockedAsync(string varKey, double value, int pick, string blockingKey,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        try
+        {
+            if (simConnect == null || !simConnect.IsConnected) return;
+
+            double? blocking = null;
+            if (simConnect.SupportsFreshReads(blockingKey))
+            {
+                try { blocking = await simConnect.ReadFreshAsync(blockingKey, CockpitDoorInterlockReadTimeoutMs); }
+                catch (Exception ex) { Log.Debug("Fenix", $"Interlock read of {blockingKey} failed: {ex.Message}"); }
+            }
+            blocking ??= simConnect.GetCachedVariableValue(blockingKey);
+
+            if (!_cockpitDoorPicks.IsLatest(varKey, pick)) return;   // the pilot has picked again meanwhile
+
+            string? refusal = FenixA320CockpitDoor.Refusal(varKey, value, blocking);
+            if (refusal == null)
+            {
+                if (simConnect.IsConnected) simConnect.SetLVar(varKey, value);
+                return;
+            }
+
+            Log.Debug("Fenix", $"{varKey} refused: {blockingKey} is set");
+            announcer.AnnounceImmediate(refusal);
+            if (simConnect.IsConnected) simConnect.RequestVariable(varKey, forceUpdate: true);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Fenix", $"Error setting {varKey}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The RPN that steps a Fenix knob or push/pull counter by <paramref name="steps"/> from the
+    /// sim's OWN value: <c>(L:lvar) n + (>L:lvar)</c>, or <c>n -</c> for a negative step. The cockpit
+    /// counts every click on the same L:var (measured 2026-10-21: <c>E_FCU_SPEED</c> at 3 after three
+    /// clicks), and the Fenix acts on the difference, so an app-side count written as an absolute
+    /// value moved the knob by the wrong amount after any cockpit click or app restart. Send it with
+    /// <see cref="SimConnect.SimConnectManager.ExecuteCalculatorCodeUnique"/> (SIM-17): a repeated
+    /// step is the same string. Invariant digits (VAR-5): sv-SE writes a minus as U+2212.
+    /// </summary>
+    internal static string CounterStepCode(string lvar, int steps) =>
+        FormattableString.Invariant($"(L:{lvar}) {Math.Abs(steps)} {(steps < 0 ? "-" : "+")} (>L:{lvar})");
+
+    /// <summary>
+    /// Steps a knob counter (FCU, EFIS baro, ISIS baro) up one click, from the sim's own value.
     /// </summary>
     private void IncrementCounter(string varName, SimConnect.SimConnectManager simConnect)
     {
         try
         {
-            // Get or initialize counter for this variable
-            if (!rmpCounters.ContainsKey(varName))
-            {
-                rmpCounters[varName] = 0;
-            }
+            Log.Debug("Fenix", $"IncrementCounter: {varName} +1");
 
-            // Increment counter
-            rmpCounters[varName]++;
-            int newValue = rmpCounters[varName];
-
-            Log.Debug("Fenix", $"IncrementCounter: {varName} -> {newValue}");
-
-            // Set the LVar to the new counter value
             if (simConnect != null && simConnect.IsConnected)
             {
-                simConnect.SetLVar(varName, newValue);
+                simConnect.ExecuteCalculatorCodeUnique(CounterStepCode(varName, 1));
             }
         }
         catch (Exception ex)
@@ -12808,29 +13144,17 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
-    /// Decrements a counter variable for RMP frequency controls.
-    /// These variables act as counters - decrementing the value decreases frequency.
+    /// Steps a knob counter (FCU, EFIS baro, ISIS baro) down one click, from the sim's own value.
     /// </summary>
     private void DecrementCounter(string varName, SimConnect.SimConnectManager simConnect)
     {
         try
         {
-            // Get or initialize counter for this variable
-            if (!rmpCounters.ContainsKey(varName))
-            {
-                rmpCounters[varName] = 0;
-            }
+            Log.Debug("Fenix", $"DecrementCounter: {varName} -1");
 
-            // Decrement counter
-            rmpCounters[varName]--;
-            int newValue = rmpCounters[varName];
-
-            Log.Debug("Fenix", $"DecrementCounter: {varName} -> {newValue}");
-
-            // Set the LVar to the new counter value
             if (simConnect != null && simConnect.IsConnected)
             {
-                simConnect.SetLVar(varName, newValue);
+                simConnect.ExecuteCalculatorCodeUnique(CounterStepCode(varName, -1));
             }
         }
         catch (Exception ex)
@@ -12840,27 +13164,23 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
-    /// Jumps a counter variable by the given number of steps in a single SetLVar call,
+    /// Jumps a counter variable by the given number of steps in a single calculator write,
     /// instead of incrementing one-by-one with delays. The Fenix WASM module detects
-    /// the counter delta each sim frame and processes all steps at once.
+    /// the counter delta each sim frame and processes all steps at once. With the Fenix's encoder
+    /// acceleration on it multiplies a large or quick jump, so the typed FCU sets write through
+    /// <see cref="FenixA320FcuKnobSet.RunAsync"/>, never one unchecked jump ([FNX-20]).
     /// </summary>
     private void JumpCounter(string varName, int steps, SimConnect.SimConnectManager simConnect)
     {
+        if (steps == 0) return;
+
         try
         {
-            if (!rmpCounters.ContainsKey(varName))
-            {
-                rmpCounters[varName] = 0;
-            }
-
-            rmpCounters[varName] += steps;
-            int newValue = rmpCounters[varName];
-
-            Log.Debug("Fenix", $"JumpCounter: {varName} += {steps} -> {newValue}");
+            Log.Debug("Fenix", $"JumpCounter: {varName} by {steps}");
 
             if (simConnect != null && simConnect.IsConnected)
             {
-                simConnect.SetLVar(varName, newValue);
+                simConnect.ExecuteCalculatorCodeUnique(CounterStepCode(varName, steps));
             }
         }
         catch (Exception ex)
@@ -12869,100 +13189,99 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
     }
 
+    // The typed FCU sets in progress, one turn per knob ([FNX-20]); closed by OnSwitchedAway.
+    private readonly FenixA320FcuKnobSet.Turns _fcuSetTurns = new();
+
+    /// <summary>For the tests: the typed FCU sets' turns, whose running sets ProcessSimVarUpdate filters by.</summary>
+    internal FenixA320FcuKnobSet.Turns FcuSetTurns => _fcuSetTurns;
+
+    // The Fenix's Encoder Acceleration option, read once per short while for the typed FCU sets ([FNX-20]).
+    private Services.FenixEncoderAcceleration? _encoderAcceleration;
+
+    private Services.FenixEncoderAcceleration EncoderAcceleration =>
+        _encoderAcceleration ??= new Services.FenixEncoderAcceleration(
+            ct => DataService.GetSettingsAsync(ct), () => Environment.TickCount64);
+
     /// <summary>
-    /// Attempts to set an FCU value using a single counter jump, then verifies and retries if needed.
-    /// Falls back to batched increments if the single jump doesn't work.
+    /// A typed FCU set ([FNX-20]): turns <paramref name="knob"/> to <paramref name="target"/> as a closed loop
+    /// (<see cref="FenixA320FcuKnobSet.RunAsync"/>), at most 20 counts a write with the Fenix's encoder
+    /// acceleration on or unread, one write of the whole difference with it off, each write read back before
+    /// the next. A newer set of the same knob, an aircraft switch or a disconnect ends it silently. Success is
+    /// silent ([CORE-7]): while it runs, the knob's own value announcements of the steps it passes through are
+    /// consumed (<see cref="FenixA320FcuKnobSet.Turns.Swallows"/>), the target still speaks; a miss is said once
+    /// ("Altitude set to 7100, not 7000."), with the value announcements quiet for a second after it. Runs on
+    /// the UI thread: the awaits keep its context, so the writes stay there. Returns how the set ended, or
+    /// null when it failed.
     /// </summary>
-    private async System.Threading.Tasks.Task SetFCUValueWithVerification(
-        string counterVar,
-        string readbackVar,
-        int steps,
-        double targetValue,
-        double tolerance,
-        SimConnect.SimConnectManager simConnect,
-        string valueName)
+    private async Task<FenixFcuSetEnd?> SetFcuKnobAsync(FenixFcuKnob knob, double target,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
-        // Step 1: Try single counter jump
-        JumpCounter(counterVar, steps, simConnect);
-
-        // Step 2: Wait for WASM to process and monitoring to update, then verify
-        // Need enough time for: WASM to process delta + sim to update N_ variable + continuous monitoring to read it
-        await System.Threading.Tasks.Task.Delay(750);
-
-        double? actualValue = simConnect.GetCachedVariableValue(readbackVar);
-        if (actualValue != null && Math.Abs(actualValue.Value - targetValue) <= tolerance)
+        int turn = _fcuSetTurns.Begin(knob, target);
+        bool StillWanted() => _fcuSetTurns.IsLatest(knob.CounterVar, turn) && simConnect.IsConnected;
+        try
         {
-            Log.Debug("Fenix", $"{valueName} single jump succeeded: target={targetValue}, actual={actualValue.Value}");
-            return;
-        }
+            bool? acceleration = await EncoderAcceleration.ReadAsync();
+            if (!StillWanted()) return FenixFcuSetEnd.Superseded;
 
-        // Second check after additional delay — monitoring may not have refreshed yet
-        Log.Debug("Fenix", $"{valueName} first check: target={targetValue}, actual={actualValue?.ToString() ?? "null"}, waiting for second check");
-        await System.Threading.Tasks.Task.Delay(750);
-
-        actualValue = simConnect.GetCachedVariableValue(readbackVar);
-        if (actualValue != null && Math.Abs(actualValue.Value - targetValue) <= tolerance)
-        {
-            Log.Debug("Fenix", $"{valueName} single jump succeeded on second check: target={targetValue}, actual={actualValue.Value}");
-            return;
-        }
-
-        Log.Debug("Fenix", $"{valueName} single jump missed: target={targetValue}, actual={actualValue?.ToString() ?? "null"}, retrying with batched increments");
-
-        // Step 3: Calculate remaining delta and retry with batched increments
-        if (actualValue != null)
-        {
-            double remaining = targetValue - actualValue.Value;
-            int remainingSteps;
-
-            // Determine step size based on variable type
-            if (counterVar == "E_FCU_ALTITUDE" || counterVar == "E_FCU_VS")
-                remainingSteps = (int)(remaining / 100);
-            else if (counterVar == "E_FCU_HEADING")
-                remainingSteps = CalculateHeadingDelta((int)actualValue.Value, (int)targetValue);
-            else
-                remainingSteps = (int)remaining;
-
-            if (remainingSteps == 0)
-                return;
-
-            // Batched increments: send groups of 10 with frame-aligned delays
-            int batchSize = 10;
-            int totalRemaining = Math.Abs(remainingSteps);
-            int direction = remainingSteps > 0 ? 1 : -1;
-
-            while (totalRemaining > 0)
+            var io = new FenixFcuKnobIo
             {
-                int currentBatch = Math.Min(batchSize, totalRemaining);
-                JumpCounter(counterVar, currentBatch * direction, simConnect);
-                totalRemaining -= currentBatch;
+                Write = counts =>
+                {
+                    JumpCounter(knob.CounterVar, counts, simConnect);
+                    _fcuSetTurns.Wrote(knob.CounterVar, Environment.TickCount64);
+                },
+                Read = () => ReadFcuKnobAsync(knob, simConnect),
+                Delay = ms => Task.Delay(ms),
+                NowMs = () => Environment.TickCount64,
+                StillWanted = StillWanted,
+            };
+            FenixFcuSetResult result = await FenixA320FcuKnobSet.RunAsync(
+                knob, target, acceleration, _fcuSetTurns.LastWriteMs(knob.CounterVar), io);
 
-                if (totalRemaining > 0)
-                    await System.Threading.Tasks.Task.Delay(33);  // ~1 frame at 30fps
-            }
+            string accelerationText = acceleration switch { true => "on", false => "off", null => "unread" };
+            Log.Debug("Fenix", FormattableString.Invariant(
+                $"{knob.Name} set to {target}: {result.End}, read {result.Value?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "nothing"}, {result.Writes} writes in {result.ElapsedMs} ms, encoder acceleration {accelerationText}"));
 
-            // Final verification
-            await System.Threading.Tasks.Task.Delay(200);
-            actualValue = simConnect.GetCachedVariableValue(readbackVar);
-            Log.Debug("Fenix", $"{valueName} after batched retry: target={targetValue}, actual={actualValue?.ToString() ?? "null"}");
+            // Finished before the sentence, so the quiet after a miss covers the value's next delivery.
+            _fcuSetTurns.Finish(knob.CounterVar, turn, result.End, Environment.TickCount64);
+            if (!StillWanted()) return FenixFcuSetEnd.Superseded;
+            string? text = FenixA320FcuKnobSet.Spoken(knob, result, target);
+            if (text != null) announcer.AnnounceImmediate(text);
+            return result.End;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Fenix", $"{knob.Name} set failed: {ex.GetType().Name}: {ex.Message}", ex);
+            return null;
+        }
+        finally
+        {
+            // Ends the turn on every other way out (no-op when already finished or a newer set owns the knob).
+            _fcuSetTurns.Finish(knob.CounterVar, turn, FenixFcuSetEnd.Superseded, Environment.TickCount64);
         }
     }
 
     /// <summary>
-    /// Calculates the shortest heading delta accounting for wraparound (0-359 degrees).
-    /// Example: From 340 to 20 = +40 (not -320)
+    /// One fresh read of a knob through its on-request twin ([A320-41]), answered within a frame, never the
+    /// once-a-second original's cache, which can predate the last write. The V/S reads its dashes flag beside
+    /// it. A twin that answers no pending readout is consumed silently by ProcessSimVarUpdate.
     /// </summary>
-    private int CalculateHeadingDelta(int currentHeading, int targetHeading)
+    private static async Task<FenixFcuReading> ReadFcuKnobAsync(FenixFcuKnob knob, SimConnect.SimConnectManager simConnect)
     {
-        int delta = targetHeading - currentHeading;
+        async Task<double?> Fresh(string key)
+        {
+            try { return await simConnect.ReadFreshAsync(key, FenixA320FcuKnobSet.ReadTimeoutMs); }
+            catch (Exception ex)
+            {
+                Log.Debug("Fenix", $"Fresh read of {key} failed: {ex.Message}");
+                return null;
+            }
+        }
 
-        // Normalize to shortest path (-180 to +180)
-        if (delta > 180)
-            delta -= 360;
-        else if (delta < -180)
-            delta += 360;
-
-        return delta;
+        Task<double?> value = Fresh(knob.ReadoutVar);
+        if (knob.DashedReadoutVar is not string dashedKey) return new FenixFcuReading(await value);
+        Task<double?> dashed = Fresh(dashedKey);
+        return new FenixFcuReading(await value, FcuVsIsSilenced(await dashed));
     }
 
     /// <summary>
@@ -12989,18 +13308,19 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
 
         int currentHeading = (int)currentValue.Value;
-        int delta = CalculateHeadingDelta(currentHeading, targetHeading);
+        int delta = FenixA320FcuKnobSet.HeadingDelta(currentHeading, targetHeading);
 
-        if (delta == 0)
+        // The cache can show a step of a set still turning the knob: then the new set takes over and reads fresh.
+        if (delta == 0 && !_fcuSetTurns.IsRunning(FenixFcuKnob.Heading.CounterVar))
         {
-            announcer.AnnounceImmediate($"Already at heading {targetHeading}");
+            announcer.AnnounceImmediate(FenixA320FcuKnobSet.AlreadyAt("heading", targetHeading));
             return;
         }
 
         // No announcement - screen reader already announced the user's input
 
-        // Single counter jump with verification and fallback
-        await SetFCUValueWithVerification("E_FCU_HEADING", "N_FCU_HEADING", delta, targetHeading, 1, simConnect, "Heading");
+        // A closed loop from the knob's fresh value, the short way round ([FNX-20])
+        await SetFcuKnobAsync(FenixFcuKnob.Heading, targetHeading, simConnect, announcer);
     }
 
     /// <summary>
@@ -13037,9 +13357,10 @@ public class FenixA320Definition : BaseAircraftDefinition
         int currentAltitude = (int)currentValue.Value;
         int totalDelta = targetAltitude - currentAltitude;
 
-        if (totalDelta == 0)
+        // The cache can show a step of a set still turning the knob: then the new set takes over and reads fresh.
+        if (totalDelta == 0 && !_fcuSetTurns.IsRunning(FenixFcuKnob.Altitude.CounterVar))
         {
-            announcer.AnnounceImmediate($"Already at altitude {targetAltitude}");
+            announcer.AnnounceImmediate(FenixA320FcuKnobSet.AlreadyAt("altitude", targetAltitude));
             return;
         }
 
@@ -13050,14 +13371,13 @@ public class FenixA320Definition : BaseAircraftDefinition
         simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", 0);  // Force 100ft mode
         await System.Threading.Tasks.Task.Delay(100);  // Wait for mode to activate
 
-        // Calculate steps (each increment = 100ft in 100ft mode)
-        int steps = totalDelta / 100;
+        // A closed loop from the knob's fresh value, one click = 100 ft in 100 ft mode ([FNX-20])
+        FenixFcuSetEnd? end = await SetFcuKnobAsync(FenixFcuKnob.Altitude, targetAltitude, simConnect, announcer);
 
-        // Single counter jump with verification and fallback
-        await SetFCUValueWithVerification("E_FCU_ALTITUDE", "N_FCU_ALTITUDE", steps, targetAltitude, 100, simConnect, "Altitude");
-
-        // Restore user's preferred mode
-        simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", userPreferredScaleMode);
+        // Restore user's preferred mode, unless a newer set, an aircraft switch or a disconnect took over: the
+        // newer set needs 100 ft mode, and the aircraft may not be the Fenix any more.
+        if (end != FenixFcuSetEnd.Superseded)
+            simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", userPreferredScaleMode);
     }
 
     /// <summary>
@@ -13085,16 +13405,17 @@ public class FenixA320Definition : BaseAircraftDefinition
         int currentSpeed = (int)currentValue.Value;
         int delta = targetSpeed - currentSpeed;
 
-        if (delta == 0)
+        // The cache can show a step of a set still turning the knob: then the new set takes over and reads fresh.
+        if (delta == 0 && !_fcuSetTurns.IsRunning(FenixFcuKnob.Speed.CounterVar))
         {
-            announcer.AnnounceImmediate($"Already at speed {targetSpeed}");
+            announcer.AnnounceImmediate(FenixA320FcuKnobSet.AlreadyAt("speed", targetSpeed));
             return;
         }
 
         // No announcement - screen reader already announced the user's input
 
-        // Single counter jump with verification and fallback
-        await SetFCUValueWithVerification("E_FCU_SPEED", "N_FCU_SPEED", delta, targetSpeed, 1, simConnect, "Speed");
+        // A closed loop from the knob's fresh value, one click = 1 knot or Mach 0.01 ([FNX-20])
+        await SetFcuKnobAsync(FenixFcuKnob.Speed, targetSpeed, simConnect, announcer);
     }
 
     /// <summary>
@@ -13119,22 +13440,23 @@ public class FenixA320Definition : BaseAircraftDefinition
             return;
         }
 
+        // The knob moves in 100 fpm clicks: a typed value off that grid goes to the click toward zero, as the
+        // old step count (delta / 100) did. While the window is dashed the cache holds the live V/S.
+        targetVS = targetVS / 100 * 100;
         int currentVS = (int)currentValue.Value;
         int delta = targetVS - currentVS;
 
-        if (delta == 0)
+        // The cache can show a step of a set still turning the knob: then the new set takes over and reads fresh.
+        if (delta == 0 && !_fcuSetTurns.IsRunning(FenixFcuKnob.VerticalSpeed.CounterVar))
         {
-            announcer.AnnounceImmediate($"Already at vertical speed {targetVS}");
+            announcer.AnnounceImmediate(FenixA320FcuKnobSet.AlreadyAt("vertical speed", targetVS));
             return;
         }
 
         // No announcement - screen reader already announced the user's input
 
-        // Calculate steps (each increment is 100 fpm)
-        int steps = delta / 100;
-
-        // Single counter jump with verification and fallback
-        await SetFCUValueWithVerification("E_FCU_VS", "N_FCU_VS", steps, targetVS, 100, simConnect, "VS");
+        // A closed loop from the knob's fresh value; a dashed window is aimed from the live V/S once ([FNX-20])
+        await SetFcuKnobAsync(FenixFcuKnob.VerticalSpeed, targetVS, simConnect, announcer);
     }
 
     /// <summary>
@@ -13183,10 +13505,10 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
     }
     /// <summary>
-    /// No camera move: this aircraft's instrument view indices are unmeasured, so every read
-    /// captures the current view (FenixA320DisplayReads).
+    /// The five AI display reads, on v3's measured instrument views; the standby prompt follows
+    /// the fitted standby (FenixA320DisplayReads).
     /// </summary>
-    protected override IReadOnlyList<AiDisplayRead> DisplayReads => FenixA320DisplayReads.All;
+    protected override IReadOnlyList<AiDisplayRead> DisplayReads => FenixA320DisplayReads.For(Variant);
 
 
     /// <summary>
@@ -13198,11 +13520,18 @@ public class FenixA320Definition : BaseAircraftDefinition
                                            System.Windows.Forms.Form parentForm,
                                            HotkeyManager hotkeyManager)
     {
+        // Ctrl+Shift+F (input mode): the Fenix windows list (FenixA320Definition.Hooks.cs).
+        if (action == HotkeyAction.ShowAircraftWindows)
+        {
+            ShowFenixWindows(simConnect, announcer, parentForm, hotkeyManager);
+            return true;
+        }
+
         // Handle display reading actions
         switch (action)
         {
             // Alt+P / Alt+N / Alt+E / Alt+S / Alt+I are dispatched from FenixA320DisplayReads by
-            // the base. No camera move: this aircraft's instrument view indices are unmeasured.
+            // the base, on measured views.
 
             // FCU knob push/pull actions (use atomic RPN, not button transitions)
             case HotkeyAction.FCUHeadingPush:

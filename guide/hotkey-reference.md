@@ -270,20 +270,21 @@ Full explanations: [Fenix A320 CEO](airbus-aircraft.md#airbus-fenix).
 
 ### Output keys {#output-keys-2}
 
-All need an AI provider.
+All need an AI provider and Fenix v3.
 
-- **Output Alt+P** — Read the PFD (the first officer's, the only one the camera frames whole).
+- **Output Alt+P** — Read the first officer's PFD.
 - **Output Alt+N** — Read the captain's navigation display.
 - **Output Alt+E** — Read the E/WD.
 - **Output Alt+S** — Read the System Display.
-- **Output Alt+I** — Read the standby instruments.
+- **Output Alt+I** — Read the standby instruments: the digital ISIS or the three round gauges, whichever your Fenix has.
 
 ### Input keys {#input-keys-2}
 
 - **Input Shift+1** to **Shift+4** — Push the heading, altitude, speed and vertical speed knobs.
 - **Input Ctrl+1** to **Ctrl+4** — Pull the heading, altitude, speed and vertical speed knobs.
+- **Input Ctrl+Shift+F** — Open the Fenix windows list: Engines, Cabin, Failures, Fenix documents and Fenix options. On any other aircraft you hear *"This aircraft has no extra windows."*
 
-Ctrl+P opens the autopilot window: AP1, AP2, ATHR, APPR, LOC, EXPED and the disconnect buttons for each side. Input Shift+T opens the Fenix's own EFB web page.
+Ctrl+P opens the autopilot window: AP1, AP2, ATHR, APPR, LOC, EXPED and the disconnect buttons for each side. Input Shift+T opens the Fenix's own EFB web page, where **Alt+Home** goes back to the EFB's home screen.
 
 ### MCDU window (Input Shift+M) {#mcdu-window-input-shift-m-2}
 
@@ -294,6 +295,15 @@ Ctrl+P opens the autopilot window: AP1, AP2, ATHR, APPR, LOC, EXPED and the disc
 - **Backspace** — Clear the scratchpad.
 - **Ctrl+Shift+L**, **Ctrl+Shift+R** — Left (captain's) or right (first officer's) MCDU.
 - **Alt+I** INIT, **Alt+D** DIR, **Alt+P** PROG, **Alt+F** F-PLN, **Alt+E** PERF, **Alt+R** RAD NAV, **Alt+Shift+F** SEC F-PLN, **Alt+U** FUEL PRED, **Alt+K** ATC COM, **Alt+M** MCDU MENU, **Alt+A** AIRPORT, **Alt+T** DATA, **Alt+O** OVFLY.
+
+### Fenix windows (Input Ctrl+Shift+F) {#fenix-windows-input-ctrl-shift-f}
+
+- **The list**: **Enter** opens the selected window, **Escape** closes the list.
+- **Engines**: arrow keys read the values, **F5** reads them again, **Escape** closes.
+- **Cabin**: **Ctrl+Tab** moves between the Status, Audio, Doors, Temperature and Water tabs, **Escape** closes.
+- **Failures**: **Enter** in the search box searches; **Alt+N** Fail now, **Alt+A** (or **Enter** on a failure) Arm, **Alt+C** Clear, each after a Yes or No; **F5** refreshes, **Escape** closes.
+- **Fenix documents**: **Enter** opens a document, **Ctrl+F** the search box, **Ctrl+P** the pinned ECAM procedure, **Ctrl+D** pins or unpins, **F6** and **Shift+F6** move between the document, the list and the search box, **F5** reloads, **Escape** hides the window.
+- **Fenix options**: **Enter** speaks the selected option's details; **F2** changes an on/off or choice option for this simulator session, **Shift+F2** makes an option permanent, **Ctrl+F2** resets your change to the Fenix default; **F5** reads the options again, **Escape** closes.
 
 ### General keys that differ or don't work here {#general-keys-that-differ-or-don-t-work-here-2}
 

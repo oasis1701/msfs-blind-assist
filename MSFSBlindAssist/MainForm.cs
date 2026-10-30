@@ -520,6 +520,7 @@ public partial class MainForm : Form
         {
             sectionsListBox.Items.Add(section);
         }
+        WatchPanelVariant();
 
         // Sync menu items with the loaded aircraft (fixes first-launch menu mismatch)
         UpdateAircraftMenuItems();
@@ -974,9 +975,11 @@ public partial class MainForm : Form
             PrepareRunwayProbeWarmUp = taxiGuidanceManager.PrepareRunwayShapeWarmUp,
         };
 
-        // Per-aircraft rollout-anticipation lead for the taxi steering tone
-        // (see IAircraftDefinition.TaxiTurnLeadSeconds).
+        // Per-aircraft rollout-anticipation leads for the taxi steering tone, and their ceiling
+        // (see IAircraftDefinition.TaxiTurnLeadSeconds / TaxiSharpTurnLeadSeconds / TaxiTurnLeadMaxDegrees).
         taxiGuidanceManager.TurnLeadSeconds = currentAircraft.TaxiTurnLeadSeconds;
+        taxiGuidanceManager.SharpTurnLeadSeconds = currentAircraft.TaxiSharpTurnLeadSeconds;
+        taxiGuidanceManager.TurnLeadMaxDegrees = currentAircraft.TaxiTurnLeadMaxDegrees;
 
         // Read the raw navdata provider into a LOCAL, not the field: the field is assigned exactly
         // once below, through WithTaxiAugmentation — see its doc comment and ProviderWrapGuardTests.
@@ -1279,6 +1282,21 @@ public partial class MainForm : Form
         if (currentAircraft.GetVariables().TryGetValue(varName, out var def)
             && !string.IsNullOrEmpty(def.UiEchoVariable))
             _uiSetEcho[def.UiEchoVariable] = (value, now);
+    }
+
+    /// <summary>
+    /// A panel press of a button that flips its own state light (SimVarDefinition.PressTogglesStateVariable:
+    /// the Fenix EFIS FD and LS buttons): marks the light with the value the press should leave, so the light's
+    /// change is not spoken after the screen reader read the button's new label (CORE-7). It rides the same
+    /// value-matched gate as a combo pick (CORE-8, CORE-9), so a change the pilot did not cause with this press
+    /// still speaks. Nothing is marked while disconnected (no press is sent) or while the light is unread.
+    /// </summary>
+    private void MarkStateLightEchoForPress(SimVarDefinition buttonDef)
+    {
+        if (simConnectManager is not { IsConnected: true } || string.IsNullOrEmpty(buttonDef.StateVariable)) return;
+        double? cached = currentSimVarValues.TryGetValue(buttonDef.StateVariable, out double lit) ? lit : null;
+        if (buttonDef.StateVariableAfterPress(cached) is double expected)
+            MarkUiSet(buttonDef.StateVariable, expected);
     }
 
     /// <summary>

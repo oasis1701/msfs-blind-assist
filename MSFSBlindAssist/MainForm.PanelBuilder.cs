@@ -76,16 +76,133 @@ public partial class MainForm
         panelsListBox.Items.Clear();
         currentPanel = "";
         
-        if (currentAircraft.GetPanelStructure().ContainsKey(currentSection))
+        // Once per section change: the Fenix rebuilds its structure on every call and checks every control's
+        // variant to hide its empty panels.
+        if (currentAircraft.GetPanelStructure().TryGetValue(currentSection, out var sectionPanels))
         {
-            foreach (var panel in currentAircraft.GetPanelStructure()[currentSection])
+            foreach (var panel in sectionPanels)
             {
                 panelsListBox.Items.Add(panel);
             }
         }
-        
+
         // Re-enable event
         panelsListBox.SelectedIndexChanged += PanelsListBox_SelectedIndexChanged;
+    }
+
+    // The Fenix reads its variant a few seconds into a flight, possibly after the pilot opened a section or a
+    // panel. Its panels list and the open panel's controls then follow the variant (FNX-11) without waiting
+    // for the pilot to change section. VariantChanged comes in bursts as the config values arrive one by one,
+    // so the refresh waits for a quiet second.
+    private const int PanelVariantRefreshQuietMs = 1000;
+    private FenixA320Definition? _panelVariantSource;
+    private System.Windows.Forms.Timer? _panelVariantTimer;
+
+    // The open panel's controls its last build left out as not fitted (IsPanelControlVisible).
+    private readonly HashSet<string> _panelHiddenKeys = new(StringComparer.Ordinal);
+
+    /// <summary>Follows the current aircraft's variant changes, if it has any: called whenever
+    /// <c>currentAircraft</c> is set.</summary>
+    private void WatchPanelVariant()
+    {
+        _panelVariantTimer?.Stop();
+        if (_panelVariantSource != null) _panelVariantSource.VariantChanged -= OnPanelVariantChanged;
+        _panelVariantSource = currentAircraft as FenixA320Definition;
+        if (_panelVariantSource != null) _panelVariantSource.VariantChanged += OnPanelVariantChanged;
+    }
+
+    // Raised on the UI thread (ProcessSimVarUpdate's).
+    private void OnPanelVariantChanged(object? sender, FenixVariant variant)
+    {
+        if (!ReferenceEquals(sender, currentAircraft)) return;
+        if (_panelVariantTimer == null)
+        {
+            _panelVariantTimer = new System.Windows.Forms.Timer { Interval = PanelVariantRefreshQuietMs };
+            _panelVariantTimer.Tick += (_, _) =>
+            {
+                _panelVariantTimer?.Stop();
+                RefreshPanelsForVariant();
+            };
+        }
+        _panelVariantTimer.Stop();
+        _panelVariantTimer.Start();
+    }
+
+    private void RefreshPanelsForVariant()
+    {
+        if (string.IsNullOrEmpty(currentSection)) return;
+
+        var panels = currentAircraft.GetPanelStructure().TryGetValue(currentSection, out var list)
+            ? list : new List<string>();
+        var shown = panelsListBox.Items.Cast<object>().Select(o => o.ToString() ?? "").ToList();
+        bool listChanged = !panels.SequenceEqual(shown);
+        bool panelOpen = !string.IsNullOrEmpty(currentPanel);
+        bool panelGone = listChanged && panelOpen && !panels.Contains(currentPanel);
+        bool controlsChanged = panelOpen && !panelGone && OpenPanelFittedControlsChanged();
+        if (!listChanged && !controlsChanged) return;
+
+        // Never under the pilot's focus: rebuilding the list they are in loses their place, and clearing the
+        // controls they are in drops the focus to nothing. Tried again each second until the focus has moved
+        // on; meanwhile a control the variant lacks answers "Not fitted on this aircraft.".
+        if ((listChanged && panelsListBox.ContainsFocus)
+            || ((panelGone || controlsChanged) && controlsContainer.ContainsFocus))
+        {
+            _panelVariantTimer?.Start();
+            return;
+        }
+
+        // The panels list, keeping the selected panel. Events are off, so no panel load or debounce starts
+        // from here.
+        if (listChanged)
+        {
+            Log.Debug("MainForm", $"Fenix variant changed the '{currentSection}' panels list");
+            panelsListBox.SelectedIndexChanged -= PanelsListBox_SelectedIndexChanged;
+            try
+            {
+                panelsListBox.BeginUpdate();
+                panelsListBox.Items.Clear();
+                foreach (var panel in panels) panelsListBox.Items.Add(panel);
+                panelsListBox.EndUpdate();
+                if (!string.IsNullOrEmpty(currentPanel))
+                {
+                    int index = panels.IndexOf(currentPanel);
+                    if (index >= 0)
+                    {
+                        panelsListBox.SelectedIndex = index;
+                    }
+                    else
+                    {
+                        // The open panel is one the variant lacks: nothing of it stays on screen.
+                        currentPanel = "";
+                        _panelHiddenKeys.Clear();
+                        controlsContainer.Controls.Clear();
+                        currentControls.Clear();
+                        stateDependents.Clear();
+                        return;
+                    }
+                }
+            }
+            finally
+            {
+                panelsListBox.SelectedIndexChanged += PanelsListBox_SelectedIndexChanged;
+            }
+        }
+
+        // The open panel, rebuilt when the variant changed which of its controls are fitted.
+        if (!controlsChanged) return;
+        Log.Debug("MainForm", $"Fenix variant changed the '{currentPanel}' panel's controls; rebuilding it");
+        _pendingPanelLoad = currentPanel;
+        PanelLoadTimer_Tick(null, EventArgs.Empty);
+    }
+
+    // True when the open panel's last build left out a different set of controls than the variant now hides.
+    private bool OpenPanelFittedControlsChanged()
+    {
+        if (currentAircraft is not BaseAircraftDefinition baseDef) return false;
+        if (!currentAircraft.GetPanelControls().TryGetValue(currentPanel, out var keys)) return false;
+        var variables = currentAircraft.GetVariables();
+        var hidden = keys.Where(k => variables.ContainsKey(k) && !baseDef.IsPanelControlVisible(k, simConnectManager));
+        return !_panelHiddenKeys.SetEquals(hidden);
     }
 
     private void PanelsListBox_SelectedIndexChanged(object? sender, EventArgs e)
@@ -277,6 +394,7 @@ public partial class MainForm
             controlsContainer.Controls.Clear();
             currentControls.Clear();
             stateDependents.Clear();
+            _panelHiddenKeys.Clear();
 
             if (!currentAircraft.GetPanelControls().ContainsKey(currentPanel))
                 return;
@@ -315,7 +433,10 @@ public partial class MainForm
             // itself the next time the panel is opened.
             if (currentAircraft is BaseAircraftDefinition baseDef &&
                 !baseDef.IsPanelControlVisible(varKey, simConnectManager))
+            {
+                _panelHiddenKeys.Add(varKey);
                 continue;
+            }
 
             var varDef = currentAircraft.GetVariables()[varKey];
             
@@ -383,7 +504,7 @@ public partial class MainForm
                 else if (!string.IsNullOrEmpty(varDef.StateVariable) && currentSimVarValues.ContainsKey(varDef.StateVariable))
                 {
                     double stateVal = currentSimVarValues[varDef.StateVariable];
-                    buttonText = $"{varDef.DisplayName}: {(stateVal != 0 ? "On" : "Off")}";
+                    buttonText = $"{varDef.DisplayName}: {varDef.DescribeStateLight(stateVal)}";
                 }
                 else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2 && currentSimVarValues.ContainsKey(varKey))
                 {
@@ -410,6 +531,9 @@ public partial class MainForm
 
                 controlButton.Click += (s2, e2) =>
                 {
+                    // A button that flips its own light (the Fenix FD and LS): the reader says the new label,
+                    // so the light is marked before the press goes out and does not repeat it (CORE-7).
+                    MarkStateLightEchoForPress(varDef);
                     bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager!, announcer);
                     if (!handled)
                     {

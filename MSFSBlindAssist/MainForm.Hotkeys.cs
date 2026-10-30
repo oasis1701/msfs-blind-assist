@@ -45,7 +45,10 @@ public partial class MainForm
             HotkeyAction.ToggleVatsimAnnouncements,
             // The Volanta window reads Volanta's web map and opens from Extras whether or not the
             // sim is connected; its hotkey must too.
-            HotkeyAction.ShowVolanta
+            HotkeyAction.ShowVolanta,
+            // The aircraft's window list opens before the sim connects, like the MCDU and EFB windows.
+            // An aircraft without one must still say so rather than "Not connected to simulator".
+            HotkeyAction.ShowAircraftWindows
         };
 
         // Guard clause: Block SimConnect-dependent actions if not fully connected
@@ -287,8 +290,9 @@ public partial class MainForm
                 }
                 else if (currentAircraft?.AircraftCode == "FENIX_A320CEO")
                 {
-                    // The Fenix EFB web UI is already screen-reader accessible, so we
-                    // host the live site directly (no scraping/shim like the FBW flyPad).
+                    // The Fenix EFB web UI is not screen-reader accessible on its own, so we host
+                    // the live site directly and inject an accessibility layer into it (no
+                    // scraping/shim like the FBW flyPad).
                     ShowFenixEFBDialog();
                 }
                 break;
@@ -320,6 +324,11 @@ public partial class MainForm
                 {
                     announcer.AnnounceImmediate("The DCDU window is only available on the A32NX and the Headwind A330.");
                 }
+                break;
+            case HotkeyAction.ShowAircraftWindows:
+                // Reached only when the aircraft did not handle the key (today the Fenix A320 is the one
+                // aircraft with a window list). Say so: a silent key reads as a broken one.
+                announcer.AnnounceImmediate("This aircraft has no extra windows.");
                 break;
             case HotkeyAction.ShowOANS:
                 if (currentAircraft?.AircraftCode == "FBW_A380")
@@ -517,20 +526,6 @@ public partial class MainForm
 
             // Start monitoring position, pitch, and IAS for takeoff assist
             simConnectManager.StartTakeoffAssistMonitoring();
-
-            // If Fenix aircraft, read V1/VR speeds from MCDU performance data (already continuously monitored)
-            if (currentAircraft.AircraftCode == "FENIX_A320CEO")
-            {
-                // Use N_MISC_PERF_TO_V1/VR (MCDU performance data), not FNX2PLD_speedV1/VR (display variables)
-                bool foundV1 = currentSimVarValues.TryGetValue("N_MISC_PERF_TO_V1", out double v1Val);
-                bool foundVR = currentSimVarValues.TryGetValue("N_MISC_PERF_TO_VR", out double vrVal);
-
-                double? v1 = foundV1 ? v1Val : null;
-                double? vr = foundVR ? vrVal : null;
-                takeoffAssistManager.SetFenixVSpeeds(v1, vr);
-
-                Log.Debug("MainForm", $"Fenix V-speeds from MCDU: V1={v1Val}, VR={vrVal}");
-            }
         }
         else
         {
@@ -547,9 +542,6 @@ public partial class MainForm
 
             // Stop monitoring
             simConnectManager.StopTakeoffAssistMonitoring();
-
-            // Clear Fenix V-speeds on deactivation
-            takeoffAssistManager.ClearFenixVSpeeds();
         }
     }
 
