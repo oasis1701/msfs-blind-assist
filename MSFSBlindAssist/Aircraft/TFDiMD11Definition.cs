@@ -206,6 +206,23 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
 
     public override double TaxiTurnLeadSeconds => 0.6;   // long-wheelbase trijet
 
+    // Waypoint Flight Director: heavy three-engine widebody. WFD-3: it states its profile like
+    // every other definition rather than take the A320 baseline the base class returns. The
+    // same unmeasured heavy-widebody class values as the 787 and the A330 (the 777's and A380's
+    // were measured and differ), so a class default: never tune BankRateLeadSec from the
+    // 0.6 s taxi lead above, and calibrate in-sim against the AFS's own HDG SEL turns.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        KRollDegPerDegTrack = 0.9,
+        MaxBankDeg          = 25.0,
+        MaxPitchDeg         = 10.0,
+        CaptureRadiusNm     = 0.8,
+        LowSpeedFloorKts    = 60.0,
+        BankRateLeadSec     = 1.4,
+        TypicalApproachAoaDeg = 5.0,   // agrees with this airframe's visual-guidance profile above
+        TonePitchRangeDeg   = 10.0     // == MaxPitchDeg (WFD-2)
+    };
+
     /// <summary>Captures the SimConnect handle and spins up the CEVENT pump.</summary>
     public void Attach(SimConnectManager sim)
     {

@@ -146,6 +146,7 @@ Part 5 is about the airport, from the gate to the runway and back: knowing where
    - [Takeoff Speed Callouts](takeoff-climb-and-cruise.md#takeoff-vspeed-callouts)
    - [Autopilot Windows](takeoff-climb-and-cruise.md#autopilot-windows)
    - [Hand Fly Mode](takeoff-climb-and-cruise.md#hand-fly)
+   - [Waypoint Flight Director](takeoff-climb-and-cruise.md#waypoint-fd)
    - [Altitude Callouts](takeoff-climb-and-cruise.md#flying-altitude-callouts)
    - [Other Automatic Callouts in Flight](takeoff-climb-and-cruise.md#flying-auto-callouts)
    - [TCAS Traffic](takeoff-climb-and-cruise.md#tcas)

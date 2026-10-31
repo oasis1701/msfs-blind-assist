@@ -773,6 +773,7 @@ public class ClaudeContextBudgetTests
             "FOA-1 FlyByWireA320Definition.ApplyUIVariable",
             "FOA-8 ChecklistItem.LiveValue", "FOA-9 LiveValue", "FOB-1 IsReady", "FOB-2 PmdgSpeedBrakeLever.B777",
             "FOB-6 MOUSE_FLAG_LEFTSINGLE", "FOB-17 IFly737MAXDefinition.ApplyUIVariable",
+            "WFD-8 AnnounceImmediate", "WFD-9 CalculateMagneticBearing",
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
         {
@@ -780,6 +781,7 @@ public class ClaudeContextBudgetTests
             "P777-14 RequestVariable", "STR-17 Runway.StartLat", "STR-17 StartLon", "SUR-4 GetNearbyAirportICAOs",
             "SUR-24 GetTaxiPaths", "SUR-1 TaxiGraph.Build", "SI-27 TaxiGraph",
             "FO-4 AnnounceImmediate", "FOB-2 FCTL_Speedbrake_Lever", "FOB-17 BARO_STD_Status",
+            "WFD-14 AltitudeRestriction",
         },
         ["named as the model the rule's code copies, or as a reader its change would break"] = new[]
         {
@@ -794,6 +796,7 @@ public class ClaudeContextBudgetTests
             "EXG-5 ExitBearingTrue", "EXG-7 TurnPointOffsetFeet", "EXG-8 ApronNodeId", "STR-19 TaxiRoute.RunwayEntryStub",
             "FOB-3 ELEC_annunExtPowr_ON", "FOB-5 MAIN_GearLever",
             "FOB-6 MAIN_annunSPEEDBRAKE_ARMED", "FOB-6 MAIN_annunSPEEDBRAKE_DO_NOT_ARM", "FOB-7 XPDR_ModeSel",
+            "WFD-14 WaypointFix.AltDescriptor",
         },
         ["a setting the rule's code reads or writes"] = new[]
         {
