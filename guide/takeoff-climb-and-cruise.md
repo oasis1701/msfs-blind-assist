@@ -396,6 +396,10 @@ BA announces stabiliser trim as it changes. On most aircraft it is spoken in deg
 
 On every aircraft, press Output Shift+T to turn trim announcements on or off; you hear *"Trim announcements on"* or *"Trim announcements off"*. Trim announcements can also be muted from the Monitor Manager.
 
+### Unusual attitude alert {#flying-unusual-attitude}
+
+On every aircraft, in the air, BA interrupts when the aircraft reaches an attitude that a sighted pilot would notice at once: more than 45 degrees of bank, more than 25 degrees nose up or more than 10 degrees nose down. These are the limits the FAA uses to define an upset. You hear the direction first, then the number: *"Bank right 50 degrees"*, *"Pitch down 12 degrees"*. If it gets 20 degrees worse, or the nose swings from up to down, you hear it again. You also hear the recovery, so you know you are back inside normal flight: *"Wings level"* once the bank is below 20 degrees, and *"Pitch normal"* once the nose is between 5 down and 15 up. Nothing is said on the ground.
+
 ### Thrust lever detents {#flying-thrust-detents}
 
 On the FlyByWire A380, BA tells you when the thrust levers reach a detent: Idle, Climb, Flex MCT, TOGA or Reverse. This is a background announcement: if you pick a detent from the Thrust Levers control yourself, your screen reader reads your choice and BA then tells you once the levers actually arrive. On the FlyByWire A320 and Headwind A330, picking a detent from the Thrust Levers control is not repeated back, because your screen reader has already read it.

@@ -734,6 +734,7 @@ public class ClaudeContextBudgetTests
             "MSFSBlindAssist/Forms/PMDG/", "MSFSBlindAssist/Forms/CduScratchpadAnnouncer.cs", "MSFSBlindAssist/Forms/FbwEwdWindow.cs",
             "MSFSBlindAssist/Forms/NavRadiosForm.cs", "MSFSBlindAssist/Forms/FMCSettingsForm.cs",
             "MSFSBlindAssist/Services/NdWaypointReadout.cs", "MSFSBlindAssist/Services/RelativeDirection.cs",
+            "MSFSBlindAssist/Services/McduWindowRouting.cs",
             "MSFSBlindAssist/Navigation/NavigationCalculator.cs", "MSFSBlindAssist/Navigation/RunwayCenterlineTracker.cs",
         },
         ["a feature with no rules or doc of its own yet (TCAS display, SimBrief planner, waypoint tracking, "
@@ -770,9 +771,15 @@ public class ClaudeContextBudgetTests
             "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
             "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
             "DCK-19 UpdateHeadingErrorWithThresholds", "RTE-32 StartGuidance", "EXG-8 RefineForPlanner",
+            "DA40-14 OwnerMute", "DA40-23 SetLVar", "DA40-9 _uiSetEcho", "DA40A-3 ExecuteCalculatorCodeUnique",
+            "DA40A-9 AnnounceImmediate", "DA40A-16 BaseAircraftDefinition", "DA40F-3 ExecuteCalculatorCodeUnique",
+            "DA40F-4 ExecuteCalculatorCodeUnique", "DA40G-2 ExecuteCalculatorCodeUnique",
+            "DA40A-22 RefreshControlWhenDefHandled",
             "FOA-1 FlyByWireA320Definition.ApplyUIVariable",
             "FOA-8 ChecklistItem.LiveValue", "FOA-9 LiveValue", "FOB-1 IsReady", "FOB-2 PmdgSpeedBrakeLever.B777",
             "FOB-6 MOUSE_FLAG_LEFTSINGLE", "FOB-17 IFly737MAXDefinition.ApplyUIVariable",
+            "FOD-1 CowsDA40Definition.HandleUIVariableSet", "FOD-1 SetLVar", "FOD-2 ScreenReaderAnnouncer.OwnerMute",
+            "FOD-2 CowsDA40Definition.UiEchoMark", "FOD-4 NativeChecklistReader.LoadPages", "FOD-7 HeldPresses",
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
         {
@@ -792,6 +799,7 @@ public class ClaudeContextBudgetTests
             "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "ROL-41 ApronNodeId", "ROL-41 ExitBearingTrue",
             "ROL-42 ExitBearingTrue", "EXG-1 ExitBearingTrue", "EXG-1 ApronNodeId", "EXG-4 ExitSide",
             "EXG-5 ExitBearingTrue", "EXG-7 TurnPointOffsetFeet", "EXG-8 ApronNodeId", "STR-19 TaxiRoute.RunwayEntryStub",
+            "ROL-43 VisualGuidanceProfile", "ROL-43 FlareTriggerWheelHeightFt",
             "FOB-3 ELEC_annunExtPowr_ON", "FOB-5 MAIN_GearLever",
             "FOB-6 MAIN_annunSPEEDBRAKE_ARMED", "FOB-6 MAIN_annunSPEEDBRAKE_DO_NOT_ARM", "FOB-7 XPDR_ModeSel",
         },
@@ -799,6 +807,7 @@ public class ClaudeContextBudgetTests
         {
             "A320-9 A32NXDisabledMonitorVariablesSet", "A320-37 A380DisabledMonitorVariablesSet",
             "MD11-18 Md11DisabledMonitorVariablesSet", "AI-4 UserSettings.GeminiModel", "MON-3 SettingsManager.Save",
+            "DA40A-11 DA40DisabledMonitorVariablesSet",
             "FOB-9 FOGpws737LongTest",
         },
         ["a SimVarDefinition field the aircraft definitions set: the rule loads on the definitions"] = new[]
@@ -807,6 +816,8 @@ public class ClaudeContextBudgetTests
             "A380F-12 ExcludeFromBatch", "ARINC-2 ValueDescriptions", "MD11-11 ExcludeFromMonitorManager",
             "MD11-22 SimVarDefinition.ValueToDescriptionKey", "FOA-6 IsAnnounced",
             "FNX-7 StateVariable", "FNX-7 StateLitText",
+            "DA40-7 HelpText", "DA40-9 IsAnnounced", "DA40-23 SimVarType.LVar", "DA40S-3 SimVarDefinition.Scale",
+            "DA40S-6 HelpText", "DA40S-6 RenderAsSlider",
         },
         ["a MainForm field declared in MainForm.cs and used by the partial the rule loads on"] = new[]
         {

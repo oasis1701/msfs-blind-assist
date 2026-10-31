@@ -145,6 +145,29 @@ public static class LandingGuidanceLaws
         => -((gearAglFt / tauSeconds) * 60.0 + touchdownBiasFpm);
 
     /// <summary>
+    /// The flare law held at the approach sink the aircraft engaged with
+    /// (<c>VisualGuidanceProfile.FlareHoldsEntrySink</c>): never asks for more sink than
+    /// <paramref name="entrySinkFpm"/> (positive = descending), so the round-out begins where the
+    /// exponential falls below it, (entrySink − bias)·τ/60 ft. A non-positive entry sink (the
+    /// aircraft was not descending) leaves the plain law.
+    /// </summary>
+    public static double FlareTargetVsFpm(double gearAglFt, double tauSeconds, double touchdownBiasFpm,
+        double entrySinkFpm)
+    {
+        double law = FlareTargetVsFpm(gearAglFt, tauSeconds, touchdownBiasFpm);
+        return entrySinkFpm > 0.0 ? Math.Max(law, -Math.Max(entrySinkFpm, touchdownBiasFpm)) : law;
+    }
+
+    /// <summary>
+    /// Whether the spoken "Flare" is due: the gear reaches <paramref name="flareHeightFt"/> within
+    /// <paramref name="leadSeconds"/> at the current sink rate, so the word lands at the height
+    /// rather than one speech latency below it. Never while climbing or level.
+    /// </summary>
+    public static bool FlareCalloutDue(double gearAglFt, double flareHeightFt, double verticalSpeedFpm,
+        double leadSeconds)
+        => SecondsToFlareGate(gearAglFt, flareHeightFt, verticalSpeedFpm) <= leadSeconds;
+
+    /// <summary>
     /// Lateral centerline command for the AIRBORNE phases (approach + flare), in degrees.
     ///
     /// POLARITY: <b>positive = steer RIGHT</b>, fed by cross-track in the codebase's canonical

@@ -44,3 +44,23 @@ Corrected 2026-10-08: the one-line form now carries the write half of this rule 
 - A var that `ProcessSimVarUpdate` consumes SILENTLY (a cache for hotkey readouts or dialog fields, never spoken) must ALSO set `ExcludeFromMonitorManager = true` (HS787: add it to `CacheOnlyVariables`) - otherwise it earns a Ctrl+M checkbox that mutes nothing
 
 Moved word for word from CLAUDE.md's Quick Reference ("Adding Background Monitoring", step 4) as of `6ba751ec`; docs/QUICK-REFERENCE.md keeps the same words in its walkthrough.
+
+## DA40S-3
+
+- **An L:var must be registered `Units = "number"`, never a converting unit** - it holds a RAW NUMBER, so a data definition asking for `inHg`/`percent`/a velocity makes SimConnect convert from its own base unit. The DA40 standby subscale asked in `inHg` and read ZERO while set correctly ("Standby 0 hectopascals, 0.01 inches"); where a scale IS wanted, use `SimVarDefinition.Scale` and leave the unit `number`. Same trap as the A380 TCAS vertical-speed L:vars. -> [da40.md](../da40.md)
+
+Moved here from da40-shared-code.md on 2026-10-11, when main was merged into PR #242: it governs every aircraft definition, the DA40's included, and homed in da40-shared-code.md with a mirror here it loaded twice on the DA40.
+
+## DA40S-4
+
+- `ABS_AMBIENT_TEMPERATURE` is KELVIN and the L:var's Units field is a LABEL, not a conversion — use the `AMBIENT TEMPERATURE` SimVar. → [da40.md](../da40.md)
+
+Moved here from da40-shared-code.md on 2026-10-11, when main was merged into PR #242: it governs every aircraft definition, the DA40's included, and homed in da40-shared-code.md with a mirror here it loaded twice on the DA40.
+
+## DA40S-6
+
+- A non-percentage numeric control must NOT set `RenderAsSlider` — MainForm's `TrackBar` is hardcoded 0-100 and maps the value as a percentage of that range; a key ending `_SET` renders as a typed entry instead. → [da40.md](../da40.md)
+
+- **`SimVarDefinition.HelpText` reaches the pilot on BUTTONS and nowhere else** — `MainForm.PanelBuilder` sets `AccessibleDescription` at exactly one of its eleven control sites, so a combo, typed entry, slider, readout or status row discards it. ⚠️ That was briefly "fixed" by wiring all eleven, and the fix was REVERTED on the pilot's ruling: the DA40's help text was then deleted outright and the rest of the app's fifteen lines are all on buttons, where they already worked. So the one-site render is CORRECT and must stay — do not re-wire the other ten to "rescue" a help line. If a fact cannot be carried by a control's NAME, it belongs in the aircraft's doc, not in a description the pilot has to hunt for. → [da40.md](../da40.md)
+
+Moved here from da40-shared-code.md on 2026-10-11, when main was merged into PR #242: it governs every aircraft definition, the DA40's included, and homed in da40-shared-code.md with a mirror here it loaded twice on the DA40.

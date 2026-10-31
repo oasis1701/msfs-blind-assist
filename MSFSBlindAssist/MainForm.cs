@@ -90,6 +90,7 @@ public partial class MainForm : Form
     private Forms.FlyByWireA320.FlyByWireA320MonitorManagerForm? fbwA320MonitorManagerForm;
 
     private Forms.HS787.HS787MonitorManagerForm? hs787MonitorManagerForm;
+    private Forms.DA40.CowsDA40MonitorManagerForm? cowsDA40MonitorManagerForm;
 
     private PMDGAnnouncementMonitorForm? pmdgAnnouncementMonitorForm;
 
@@ -415,6 +416,14 @@ public partial class MainForm : Form
 
     private readonly MSFSBlindAssist.Services.IceAccretionTracker _iceAccretionTracker = new();
 
+    /// <summary>
+    /// ⚠️ THE ALERT THAT DID NOT EXIST WHEN AN AEROPLANE WAS LOST TO A SPIRAL DIVE. Every
+    /// attitude channel in this app is a QUERY - the hand fly bank tone, the B readout - and a
+    /// query is useless for the attitude nobody noticed. State is carried here rather than in
+    /// the monitor so the monitor stays pure and testable.
+    /// </summary>
+    private MSFSBlindAssist.Services.UnusualAttitudeMonitor.State _attitudeState;
+
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
 
     private bool _prevVisLow = false;         // was visibility below 1500m last check
@@ -472,6 +481,10 @@ public partial class MainForm : Form
     private bool _buildingPanel = false;
 
     private Dictionary<string, double> displayValues = new Dictionary<string, double>();  // Store display values
+
+    // The status list's GotFocus repaints from the cache and refreshes (SIM-23). This tells it
+    // the repaint was just done: Ctrl+3 repaints BEFORE focusing, so NVDA's first read is current.
+    private bool _displayListPaintedForFocus;
 
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
 
@@ -543,6 +556,32 @@ public partial class MainForm : Form
         // countdown, so start it here.
         if (currentAircraft?.AircraftCode == "HS_787")
             StartHS787IrsMonitor();
+
+        // ⚠️ THE DA40's CAS WATCHER HAD TO BE HERE TOO, and its absence is why cautions
+        // never auto-announced. SwitchAircraft starts it — but SwitchAircraft runs ONLY
+        // when the pilot picks an aircraft from the menu. The startup path sets
+        // currentAircraft directly from the saved setting (see the constructor), so a
+        // session that opens with the DA40 already selected — which is every session for a
+        // DA40 pilot — never called it. Measured from the log: the aircraft registered, the
+        // display window worked, and "CAS monitor: started" was never written once.
+        //
+        // The A380 and HS787 monitors two blocks up exist for exactly this reason. This is
+        // the third, and the pattern is now: a background monitor must be started in BOTH
+        // places or it does not run for the aircraft the app opens with. Every G1000 aircraft
+        // has one (the DA40 and the Cessna 172, G1000CasWatcher).
+        if (currentAircraft is Aircraft.G1000.IG1000DisplayOwner g1000Cas)
+            g1000Cas.StartCasMonitor(announcer);
+        if (currentAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
+        {
+            da40Cas.AttachLampWatch(simConnectManager);
+            da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
+            da40Cas.UiEchoMark = SuppressUiEcho;
+            da40Cas.RelabelControl = RefreshDescribedState;
+        }
+
+        // The roll speed calls for the aircraft the app opens with (Vr on the DA40, 80 and
+        // 100 knots elsewhere) — SwitchAircraft and the Settings rebuild apply the same rule.
+        Services.TakeoffRollCallouts.Apply(takeoffAssistManager, currentAircraft);
 
         // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
         // it works whenever the sim + iFly plugin are running). Generic announcements
@@ -715,6 +754,7 @@ public partial class MainForm : Form
         };
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
+        simConnectManager.FlightAttitudeReceived += OnFlightAttitude;
         simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
 
         // The universal (all-aircraft) auto-gear/AP service and its 1 Hz feed: MainForm.UniversalAutomation.cs.
@@ -882,7 +922,7 @@ public partial class MainForm : Form
         // ProcessSlowSample gate). Delegates read live state so aircraft swaps and
         // guidance-mode changes after arming are always honored.
         flareAssistManager = new LandingFlareAssistManager(announcer,
-            () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
+            () => currentAircraft?.GetVisualGuidanceProfile(),
             () => visualGuidanceManager.IsActive,
             // The rollout cue and exit guidance share the tone: no speed end during a landing rollout, and
             // silence while exit guidance owns the tone for the exit itself. One lock per frame.

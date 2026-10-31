@@ -1,0 +1,1 @@
+The status display (Ctrl+3) now shows current values the moment you land on it, on every aircraft. It used to stop refreshing while you were on a selector in the same panel, so it could read values from several seconds earlier.

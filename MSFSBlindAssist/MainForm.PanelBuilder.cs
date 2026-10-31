@@ -88,6 +88,18 @@ public partial class MainForm
 
         // Re-enable event
         panelsListBox.SelectedIndexChanged += PanelsListBox_SelectedIndexChanged;
+
+        // ⚠️ AND TEAR DOWN THE OLD SECTION'S CONTROLS, OR THEY READ AS THIS SECTION'S.
+        // Changing section clears currentPanel and repopulates the panel list but used to
+        // leave the previous panel's widgets on screen - so selecting Cabin, with no panel
+        // chosen in it yet, still showed the Autopilot section's status display and
+        // announced "Commanded Bank: wings level" under a Cabin heading. A blind pilot has
+        // nothing else telling them which panel those rows belong to.
+        //
+        // Same teardown a panel load does first; the next panel selection rebuilds.
+        controlsContainer.Controls.Clear();
+        currentControls.Clear();
+        displayValues.Clear();
     }
 
     // The Fenix reads its variant a few seconds into a flight, possibly after the pilot opened a section or a
@@ -1386,10 +1398,18 @@ public partial class MainForm
 
             // When the user moves focus TO the list, pull current content. The live auto-refresh
             // timer keeps it current while focused too (updating only the changed rows, so the
-            // cursor stays put), but it skips while a SELECTOR COMBO is focused so it can't fight
-            // the combo's announcement — so this GotFocus pull is what brings the list current the
-            // instant the user moves from the page combo onto it to read.
-            displayList.GotFocus += (s2, e2) => RebuildDisplaySnapshot("GotFocus");
+            // cursor stays put), but it holds back the focused combo's own var so it can't fight
+            // the combo's announcement — so this GotFocus pull is what brings the list current
+            // the instant the user moves from the page combo onto it to read.
+            displayList.GotFocus += (s2, e2) =>
+            {
+                // Repaint from the cache at once (Tab arrives here without Ctrl+3's pre-focus
+                // repaint), then rebuild the snapshot and force-read the rows the cache does not
+                // stream, so they follow within one round trip instead of the next tick (SIM-23).
+                if (_displayListPaintedForFocus) _displayListPaintedForFocus = false;
+                else if (displayList.Items.Count > 0) UpdateDisplayText(displayList);
+                RefreshDisplayNow(displayList, "GotFocus");
+            };
 
             displayPanel.Controls.Add(displayList);
             layout.Controls.Add(displayPanel, 1, displayRow);
@@ -1488,9 +1508,11 @@ public partial class MainForm
     /// reads the cache first ([SIM-15]), and for a row the cache never holds (the iFly's
     /// SDK-fed rows) the stored value is the only one there is. Focus never moves. Returns false,
     /// doing nothing, while <paramref name="displayList"/> is not the shown panel's list yet.
-    /// On the UI thread.
+    /// <paramref name="skipVarKey"/> is a focused combo's own var, which the tick must not
+    /// re-read under it ([SIM-23]). On the UI thread.
     /// </summary>
-    private bool RefreshDisplayNow(ListBox displayList, string reason, bool rebuildSnapshot = true)
+    private bool RefreshDisplayNow(ListBox displayList, string reason, bool rebuildSnapshot = true,
+        string? skipVarKey = null)
     {
         // The panel selection moves currentPanel at once; the debounced load still shows the
         // previous panel's list, which must not be filled with the next panel's rows.
@@ -1511,7 +1533,7 @@ public partial class MainForm
         {
             var allVars = currentAircraft.GetVariables();
             foreach (var varKey in displayVars)
-                if (allVars.ContainsKey(varKey))
+                if (varKey != skipVarKey && allVars.ContainsKey(varKey))
                     simConnectManager.RequestVariable(varKey, forceUpdate: true);
         }
 
@@ -1562,19 +1584,33 @@ public partial class MainForm
             // screen-reader cursor stays on the row being read; a stable value is never
             // re-touched (so it never re-announces).
 
-            // Skip ONLY while the user is on a SELECTOR COMBO in this panel (e.g. the SD page
-            // picker). The refresh re-requests the page var — UpdateControlFromSimVar can then
-            // re-set the combo's SelectedIndex to a lagging value, fighting the user's arrowing —
-            // which steps on NVDA's page-selection announcement. The list is brought current when
-            // the user moves focus TO it (the list's GotFocus refresh).
+            // While the user is on a SELECTOR COMBO in this panel (e.g. the SD page picker), the
+            // refresh must not re-request that combo's var: UpdateControlFromSimVar can then re-set
+            // its SelectedIndex to a lagging value, fighting the user's arrowing and stepping on
+            // NVDA's page-selection announcement.
+            // ⚠️ ONLY THE COMBO'S OWN PART PAUSES. This used to return outright, which froze the
+            // whole list while ANY combo had focus - and on the DA40 nearly every control is a
+            // combo, so a pilot working a panel and pressing Ctrl+3 read values from whenever
+            // they last left the list. What fights the combo is (a), which re-pushes a page
+            // var, and a force-read of the combo's own var; the rest of the rows are free to move.
+            // An aircraft whose status box is a page snapshot behind a page combo (it overrides
+            // OnDisplayPanelShown: the A320 family's and A380's SD page, the PMDG 777's System
+            // Display) keeps the whole pause, which is what that combo was measured against.
+            string? focusedComboKey = null;
             foreach (var kv in currentControls)
                 if (kv.Value is ComboBox cb && cb.IsHandleCreated && cb.Focused)
-                    return;
+                { focusedComboKey = kv.Key; break; }
+            if (focusedComboKey != null &&
+                (currentAircraft is not BaseAircraftDefinition baseDef || baseDef.StatusRefreshPausesWhileComboFocused))
+                return;
 
             // Rebuild any snapshot SD-page content (FOB, engine, fuel, control surfaces, …) and
             // force-read the panel's display vars, all silent: the list updates its changed rows
-            // in place within ~one read round-trip.
-            RefreshDisplayNow(displayList, "auto-refresh");
+            // in place within ~one read round-trip. With a combo focused (only reached when the
+            // aircraft does not pause the whole refresh) the snapshot waits and the combo's own
+            // var is not re-read; every other row moves (SIM-23).
+            RefreshDisplayNow(displayList, "auto-refresh",
+                rebuildSnapshot: focusedComboKey == null, skipVarKey: focusedComboKey);
         }
         catch { /* best-effort live refresh; never let a tick crash the UI */ }
     }

@@ -4,7 +4,7 @@ title: "Boeing Aircraft and the MD-11"
 
 <div class="guide-part" markdown="1">
 
-Chapter 2 of 2 in [Part 8: Aircraft Guides](index.md#part-7-aircraft-guides) of the MSFS Blind Assist user guide.
+Chapter 2 of 3 in [Part 8: Aircraft Guides](index.md#part-7-aircraft-guides) of the MSFS Blind Assist user guide.
 
 </div>
 
@@ -525,7 +525,7 @@ Also announced as they change: autopilot and autothrottle engagement, the captai
 <nav class="guide-nav" aria-label="Guide chapters" markdown="1">
 
 - [Previous chapter: Airbus Aircraft](airbus-aircraft.md)
-- [Next chapter: General Flying Concepts](general-flying-concepts.md)
+- [Next chapter: COWS Diamond DA40](diamond-da40.md)
 - [Guide contents](index.md)
 
 </nav>

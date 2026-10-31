@@ -335,7 +335,7 @@ You choose between two AI services: **Google Gemini** or **Anthropic Claude**. Y
 ### What it can read {#what-it-can-read}
 
 - **Alt+D, scene description:** on every aircraft, Output Alt+D describes the outside scene: what the simulator window is showing.
-- **Cockpit displays:** on the aircraft whose screens cannot be read as text, Output Alt+P, Alt+N, Alt+E, Alt+S and Alt+I read the PFD, the navigation display, the engine/warning display, the lower or system display, and the standby instruments. Which keys exist depends on the aircraft: the Fenix A320, PMDG 737 and 777, iFly 737 MAX, HorizonSim 787 and TFDi MD-11 have AI display reads. The FlyByWire aircraft read their displays as text instead, from the Panels list, and need no AI. See your aircraft's chapter for exactly what each key reads.
+- **Cockpit displays:** on the aircraft whose screens cannot be read as text, Output Alt+P, Alt+N, Alt+E, Alt+S and Alt+I read the PFD, the navigation display, the engine/warning display, the lower or system display, and the standby instruments. Which keys exist depends on the aircraft: the Fenix A320, PMDG 737 and 777, iFly 737 MAX, HorizonSim 787 and TFDi MD-11 have AI display reads. The FlyByWire aircraft read their displays as text instead, from the Panels list, and need no AI, and the COWS DA40 opens its G1000 PFD and MFD as windows you read and operate (see [COWS Diamond DA40](diamond-da40.md#da40-g1000)). See your aircraft's chapter for exactly what each key reads.
 
 The AI is also used for the route briefing in the flight planning window; see [The Flight Planning Window](planning-your-flight.md#flight-planning-efb).
 
