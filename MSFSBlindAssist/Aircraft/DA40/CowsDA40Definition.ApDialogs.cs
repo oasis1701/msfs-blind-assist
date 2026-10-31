@@ -162,29 +162,42 @@ public partial class CowsDA40Definition
         if (!sc.IsConnected) { ann.AnnounceImmediate("Not connected to simulator."); return true; }
         hotkeys.ExitInputHotkeyMode();
 
-        var toggles = new List<ToggleButtonDef>
+        // One window: a second Ctrl+P brings the open one back to the front, as on the FBW
+        // A320/A380, PMDG 737/777, iFly, HS787 and MD-11. Tracked, so an aircraft switch
+        // closes it. Ctrl+A/S/H/V open a new window per press, as on most aircraft.
+        ShowTrackedWindow("DA40_AP_BUTTONS", () =>
         {
-            ModeToggle("&Autopilot", "DA40_AP_MASTER", sc, ann),
-            ModeToggle("Flight &director", "DA40_AP_FD", sc, ann),
-            ModeToggle("&Heading mode", "DA40_AP_HDG", sc, ann),
-            ModeToggle("&Navigation mode", "DA40_AP_NAV", sc, ann),
-            ApproachButton(sc, ann),
-            ModeToggle("&Backcourse mode", "DA40_AP_BC", sc, ann),
-            ModeToggle("Hold current a&ltitude", "DA40_AP_ALT", sc, ann),
-            ModeToggle("&Vertical speed mode", "DA40_AP_VS", sc, ann),
-            ModeToggle("&Flight level change", "DA40_AP_FLC", sc, ann)
-        };
+            var toggles = new List<ToggleButtonDef>
+            {
+                ModeToggle("&Autopilot", "DA40_AP_MASTER", sc, ann),
+                ModeToggle("Flight &director", "DA40_AP_FD", sc, ann),
+                ModeToggle("&Heading mode", "DA40_AP_HDG", sc, ann),
+                ModeToggle("&Navigation mode", "DA40_AP_NAV", sc, ann),
+                ApproachButton(sc, ann),
+                ModeToggle("&Backcourse mode", "DA40_AP_BC", sc, ann),
+                ModeToggle("Hold current a&ltitude", "DA40_AP_ALT", sc, ann),
+                ModeToggle("&Vertical speed mode", "DA40_AP_VS", sc, ann),
+                ModeToggle("&Flight level change", "DA40_AP_FLC", sc, ann)
+            };
 
-        // Buttons only: the value box is hidden (ShowValueField), since there is nothing to type.
-        // It read "nothing value, edit, Enter nothing value and press Enter to set" (2026-10-27).
-        // The validator still refuses everything, should Enter ever reach the hidden box.
-        var dialog = new ValueInputForm("Autopilot", "autopilot", "", ann,
-            _ => (false, "This window has no value to set. Use the buttons."),
-            toggles, null);
+            // Buttons only: the value box is hidden (ShowValueField), since there is nothing to type.
+            // It read "nothing value, edit, Enter nothing value and press Enter to set" (2026-10-27).
+            // The validator still refuses everything, should Enter ever reach the hidden box.
+            var dialog = new ValueInputForm("Autopilot", "autopilot", "", ann,
+                _ => (false, "This window has no value to set. Use the buttons."),
+                toggles, null);
 
-        dialog.ShowCancelButton = false;
-        dialog.ShowValueField = false;
-        dialog.Show(parent);
+            dialog.ShowCancelButton = false;
+            dialog.ShowValueField = false;
+            return dialog;
+        }, w =>
+        {
+            if (!w.Visible) { w.Show(parent); return; }
+            w.BringToFront();
+            w.Activate();
+            w.TopMost = true;
+            w.TopMost = false;
+        });
         return true;
     }
 }

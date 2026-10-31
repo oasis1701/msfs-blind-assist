@@ -28,6 +28,14 @@ public record ToggleButtonDef(
     /// Null, the default, announces exactly as before.
     /// </summary>
     public Func<bool>? SuppressStateAnnounce { get; init; }
+
+    /// <summary>
+    /// Optional: the field this button belongs to (0 the main box, 1.. an extra field), for a
+    /// window with extra fields. It sits on that field's row after its Set button, and comes
+    /// straight after that Set in the tab order: the DA40's Ctrl+N puts Swap NAV 1 beside the
+    /// NAV 1 box. Null, the default, keeps the button in the block above the main box.
+    /// </summary>
+    public int? Field { get; init; }
 }
 
 public partial class ValueInputForm : Form
@@ -165,10 +173,14 @@ public partial class ValueInputForm : Form
 
         private void InitializeComponent(string title, string rangeText)
         {
-            int toggleOffset = _toggleDefs.Count * 35;
+            // Only the block above the main box takes rows; a field's own button sits on that
+            // field's row and widens the window instead.
+            int toggleOffset = _toggleDefs.Count(d => d.Field == null) * 35;
+            int fieldButtonColumns = _toggleDefs.Where(d => d.Field != null)
+                .GroupBy(d => d.Field).Select(g => g.Count()).DefaultIfEmpty(0).Max();
 
             Text = title;
-            Size = new Size(350, 200 + toggleOffset + _extraDefs.Count * 48);
+            Size = new Size(350 + fieldButtonColumns * FieldButtonStep, 200 + toggleOffset + _extraDefs.Count * 48);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -284,7 +296,7 @@ public partial class ValueInputForm : Form
                 };
 
                 _toggleButtons.Add(btn);
-                toggleY += 35;
+                if (def.Field == null) toggleY += 35;   // a field's button is placed with its field below
             }
 
             // Each extra field is a label above its box, stacked under the main one. The
@@ -368,6 +380,8 @@ public partial class ValueInputForm : Form
                 TabIndex = tabIdx++
             };
 
+            if (fieldButtonColumns > 0) PlaceFieldButtons();
+
             Controls.Add(titleLabel);
             Controls.Add(rangeLabel);
             foreach (var btn in _toggleButtons)
@@ -381,6 +395,51 @@ public partial class ValueInputForm : Form
             Controls.Add(cancelButton);
 
             CancelButton = cancelButton;
+        }
+
+        /// <summary>Horizontal room one field button takes beside a Set button.</summary>
+        private const int FieldButtonStep = 125;
+
+        /// <summary>
+        /// Puts each button with a <see cref="ToggleButtonDef.Field"/> on its field's row, after
+        /// that field's Set button, and renumbers the tab order to match the screen: each box,
+        /// its Set, its own buttons; then the block buttons, then Set all and Cancel. Runs only
+        /// when such a button exists, so every other window keeps its layout and order.
+        /// </summary>
+        private void PlaceFieldButtons()
+        {
+            var setButtons = new List<Button?> { mainSetButton };
+            setButtons.AddRange(_extraButtons);
+
+            List<Button> ButtonsOf(int field)
+            {
+                var mine = new List<Button>();
+                for (int j = 0; j < _toggleDefs.Count; j++)
+                    if (_toggleDefs[j].Field == field) mine.Add(_toggleButtons[j]);
+                return mine;
+            }
+
+            var order = new List<Control>();
+            for (int field = 0; field < setButtons.Count; field++)
+            {
+                var set = setButtons[field];
+                order.Add(field == 0 ? valueTextBox : _extraBoxes[field - 1]);
+                if (set == null) continue;
+                order.Add(set);
+                var mine = ButtonsOf(field);
+                for (int k = 0; k < mine.Count; k++)
+                {
+                    mine[k].Location = new Point(set.Right + 10 + k * FieldButtonStep, set.Top);
+                    mine[k].Size = new Size(FieldButtonStep - 10, set.Height);
+                    order.Add(mine[k]);
+                }
+            }
+            for (int j = 0; j < _toggleDefs.Count; j++)
+                if (!order.Contains(_toggleButtons[j])) order.Add(_toggleButtons[j]);
+            if (okButton != null) order.Add(okButton);
+            order.Add(cancelButton);
+
+            for (int i = 0; i < order.Count; i++) order[i].TabIndex = i;
         }
 
         // Idempotent: only mutates control state when the gate flips. Safe to
@@ -553,6 +612,17 @@ public partial class ValueInputForm : Form
             InputValue = valueTextBox.Text.Trim();
             _extraValues.Clear();
             for (int i = 0; i < _extraBoxes.Count; i++) _extraValues.Add(_extraBoxes[i].Text.Trim());
+
+            if (onValueSet != null)
+            {
+                // Callback mode, as in SetValue: the caller reads SetFieldIndex and the values,
+                // and the window stays open (the DA40's Ctrl+N, set a standby, then swap it).
+                onValueSet(InputValue);
+                box.SelectAll();
+                box.Focus();
+                return;
+            }
+
             DialogResult = DialogResult.OK;
             Close();
         }

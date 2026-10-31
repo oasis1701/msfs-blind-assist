@@ -54,7 +54,9 @@ public sealed class CowsDA40DisplayForm : Form
 
     private readonly CoherentDisplayClient _client;
     private readonly DisplayListBox _text;
-    private readonly IntPtr _previousWindow;
+    // Set again on every ShowForm, so closing goes back to where the pilot pressed the key
+    // THIS time, not where they were when the window was first built.
+    private IntPtr _previousWindow;
     private readonly SimConnectManager _simConnect;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly string _side;
@@ -185,9 +187,6 @@ public sealed class CowsDA40DisplayForm : Form
 
         Load += (s, e) =>
         {
-            BringToFront();
-            Activate();
-            _text.Focus();
             // ONE INSPECTOR SOCKET PER VIEW. The background CAS watcher holds AS1000_PFD,
             // so it has to let go before this window can read the same screen - and the
             // window wins, because a pilot who deliberately opened the display is already
@@ -212,6 +211,24 @@ public sealed class CowsDA40DisplayForm : Form
             if (_side == "PFD") _owner?.SuspendCasMonitor(false);
             if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
         };
+    }
+
+    /// <summary>
+    /// Opens the window, or brings it back to the front when it is already open, the way the
+    /// FBW and Fenix MCDU windows do. A plain Show() on an open window left it behind the sim:
+    /// the key did nothing the pilot could hear.
+    /// </summary>
+    public void ShowForm()
+    {
+        IntPtr foreground = GetForegroundWindow();
+        if (!IsHandleCreated || foreground != Handle) _previousWindow = foreground;
+        Show();
+        BringToFront();
+        Activate();
+        TopMost = true;
+        TopMost = false;
+        ActiveControl = _text;
+        _text.Focus();
     }
 
     private void OnClientError(string message)
@@ -858,7 +875,7 @@ public sealed class CowsDA40DisplayForm : Form
             try { before = await _client.InvokeAsync(Expr); } catch { before = ""; }
             if (_disposed) return;
 
-            var (_, _, _, _, accepted) = await FireAndRead($"AS1000_{_side}_{eventSuffix}");
+            var (_, _, _, _, _, accepted) = await FireAndRead($"AS1000_{_side}_{eventSuffix}");
             if (_disposed || !accepted) return;
 
             // Same bounded retry the turns use, and for the same reason: read in the same
@@ -1028,7 +1045,7 @@ public sealed class CowsDA40DisplayForm : Form
         // ONE round trip: fire the key and get the read-back together. This was four -
         // summary before, key, wait, summary again, scrape - and each is a full socket
         // exchange with the Coherent debugger.
-        var (cursorOn, view, focus, summary, accepted) = await FireAndRead(name);
+        var (cursorOn, view, focus, editing, summary, accepted) = await FireAndRead(name);
         if (_disposed || !accepted) return;
 
         // THE DISPLAY NEEDS A FRAME, and reading before it has had one is what made this
@@ -1053,7 +1070,7 @@ public sealed class CowsDA40DisplayForm : Form
             await Task.Delay(selector ? PageSelectSettleMs : cursorPush ? CursorArmMs : BezelSettleMs);
             if (_disposed) return;
 
-            (cursorOn, view, focus, summary, accepted) = await FireAndRead(null);
+            (cursorOn, view, focus, editing, summary, accepted) = await FireAndRead(null);
             if (_disposed || !accepted) return;
         }
 
@@ -1115,7 +1132,10 @@ public sealed class CowsDA40DisplayForm : Form
         // why - reported from the cockpit as "Minimum Length" fifteen times running. If
         // the cursor is on, the focused field did not move and the key was a knob turn,
         // say which end of the page it is. Same view only, for the same reason as above.
-        else if (view == _lastView && cursorOn && focus.Length > 0 && focus == _lastFocus &&
+        // ⚠️ NOT WHILE THE FIELD IS OPEN. There the large knob moves between the field's
+        // digits and the focus never changes, so every digit move said "end of the page"
+        // (the PFD's ADF frequency, 2026-10-26).
+        else if (view == _lastView && cursorOn && !editing && focus.Length > 0 && focus == _lastFocus &&
                  KnobDirection(eventSuffix) is int direction)
         {
             // ⚠️ AND THE SECOND PRESS AT THE EDGE MUST NOT RE-READ THE ROW. Adding the
@@ -1164,26 +1184,26 @@ public sealed class CowsDA40DisplayForm : Form
 
     /// <summary>
     /// Fires a bezel key (or just re-reads, when <paramref name="name"/> is null) and
-    /// unpacks the agent's "ok|cursor|view|focus|summary" answer.
+    /// unpacks the agent's "ok|cursor|view|focus|editing|summary" answer.
     /// </summary>
-    private async Task<(bool CursorOn, string View, string Focus, string Summary, bool Accepted)> FireAndRead(string? name)
+    private async Task<(bool CursorOn, string View, string Focus, bool Editing, string Summary, bool Accepted)> FireAndRead(string? name)
     {
         string call = name is null
             ? "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.state()"
             : $"window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.press('{name}')";
 
         string result = await _client.InvokeAsync(call);
-        if (_disposed) return (false, "", "", "", false);
+        if (_disposed) return (false, "", "", false, "", false);
 
         // A.key answers "no instrument" when the view has no G1000 element to drive, which
         // is the one failure a pilot could otherwise mistake for a dead key.
         if (result.IndexOf("no instrument", StringComparison.Ordinal) >= 0)
         {
             SayOther("The display did not accept that key.");
-            return (false, "", "", "", false);
+            return (false, "", "", false, "", false);
         }
 
-        // "ok|cursor|view|focus|summary".
+        // "ok|cursor|view|focus|editing|summary".
         //
         // The VIEW key decides how long to wait: only the page SELECTOR holds its choice
         // for about a second before committing, and paying that wait on every key is what
@@ -1192,22 +1212,26 @@ public sealed class CowsDA40DisplayForm : Form
         // The FOCUS index is which field the cursor is on. The G1000's knob does NOT wrap
         // at the end of a page, so without it a pilot at the bottom of a setup page heard
         // the same field read back a dozen times with nothing to say it was the last one.
+        //
+        // EDITING says the focused field is open, where the large knob moves between digits
+        // rather than fields, so a focus that stays put is not the end of the page.
         var state = ParseAgentState(result);
-        if (state is null) return (false, "", "", "", true);
-        return (state.Value.Cursor, state.Value.View, state.Value.Focus, state.Value.Summary, true);
+        if (state is null) return (false, "", "", false, "", true);
+        return (state.Value.Cursor, state.Value.View, state.Value.Focus, state.Value.Editing,
+            state.Value.Summary, true);
     }
 
     /// <summary>
-    /// The agent's state answer, "ok|cursor|view|focus|summary", or null when it is not one.
-    /// ONE parser for every caller: the page jump had its own, still counting the four fields
-    /// the answer had before the focus index was added, and spoke "0|Aux - System Setup 1".
+    /// The agent's state answer, "ok|cursor|view|focus|editing|summary", or null when it is
+    /// not one. ONE parser for every caller: the page jump had its own, still counting the four
+    /// fields the answer had before the focus index was added, and spoke "0|Aux - System Setup 1".
     /// </summary>
-    internal static (bool Cursor, string View, string Focus, string Summary)? ParseAgentState(string result)
+    internal static (bool Cursor, string View, string Focus, bool Editing, string Summary)? ParseAgentState(string result)
     {
         var parts = result.Split('|');
-        if (parts.Length < 5 || parts[0] != "ok") return null;
-        return (parts[1] == "1", parts[2].Trim(), parts[3].Trim(),
-            string.Join("|", parts, 4, parts.Length - 4).Trim());
+        if (parts.Length < 6 || parts[0] != "ok") return null;
+        return (parts[1] == "1", parts[2].Trim(), parts[3].Trim(), parts[4] == "1",
+            string.Join("|", parts, 5, parts.Length - 5).Trim());
     }
 
     /// <summary>
@@ -1380,7 +1404,7 @@ public sealed class CowsDA40DisplayForm : Form
         }
 
         // Which page we are on, so the list opens where the pilot already is.
-        var (_, current, _, _, _) = await FireAndRead(null);
+        var (_, current, _, _, _, _) = await FireAndRead(null);
         if (_disposed) return;
 
         using var picker = new CowsDA40PageJumpForm(entries, _announcer, current);

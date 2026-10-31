@@ -204,6 +204,18 @@ public partial class CowsDA40Definition
         return (d1 << 12) | (d2 << 8) | (d3 << 4) | d4;
     }
 
+    /// <summary>
+    /// Writes one NAV standby and marks it as ours, so the radio's own change is not spoken
+    /// over the setter's confirmation. The Radios panel and Ctrl+N both write through here:
+    /// Ctrl+N wrote the event itself and never marked it.
+    /// </summary>
+    private void WriteNavStandby(SimConnectManager simConnect, int radio, double mhz)
+    {
+        long hz = (long)Math.Round(mhz * 1_000_000.0);
+        simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{hz} (>K:NAV{radio}_STBY_SET_HZ)"));
+        MarkRadioSetByUs(radio == 2 ? "DA40_RADIO_NAV2_SET" : "DA40_RADIO_NAV1_SET");
+    }
+
     private void AnnounceSwap(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
         string swapEvent, string standbyKey, string radio, string format)
     {
@@ -263,9 +275,7 @@ public partial class CowsDA40Definition
                 int radio = varKey.Contains('2') ? 2 : 1;
                 if (OutOfRange(announcer, value, 108.0, 117.95, "0.00", "the NAV band")) return true;
                 double mhz = value;
-                long hz = (long)Math.Round(mhz * 1_000_000.0);
-                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{hz} (>K:NAV{radio}_STBY_SET_HZ)"));
-                MarkRadioSetByUs(varKey);   // the case falls through NAV1/NAV2
+                WriteNavStandby(simConnect, radio, mhz);
                 announcer.AnnounceImmediate(FormattableString.Invariant($"NAV {radio} standby {mhz:0.00}"));
                 return true;
             }

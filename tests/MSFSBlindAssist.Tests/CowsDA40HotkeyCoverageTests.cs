@@ -109,14 +109,24 @@ public class CowsDA40HotkeyCoverageTests
         // Shift+5 is rotate speed - and a key nobody can find is a key that does not exist.
         string guide = Guide();
 
-        foreach (string key in new[] { "Shift+2", "Shift+3", "Shift+4", "Shift+5", "Shift+6" })
+        foreach (string key in new[] { "Shift+1", "Shift+2", "Shift+3", "Shift+4", "Shift+5", "Shift+6" })
         {
             Assert.Contains(key, guide, StringComparison.Ordinal);
         }
 
-        // And the question that kept being asked: what trim do I set for take-off?
-        Assert.Contains("Centre Trim", guide, StringComparison.Ordinal);
-        Assert.Contains("no number to calculate", guide, StringComparison.Ordinal);
+        // And the question that kept being asked: what trim do I set for take-off? The hotkey
+        // list holds keys only, so the answer lives in the user guide's DA40 chapter.
+        string chapter = Source(Path.Combine("guide", "diamond-da40.md"));
+        Assert.Contains("Centre Trim", chapter, StringComparison.Ordinal);
+        Assert.Contains("no number to calculate", chapter, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheGuideHasAnInputModeSection()
+    {
+        // The Hotkey List window files every category after an "INPUT MODE" line under Input;
+        // without one, its Input filter showed nothing and the autopilot keys read as output.
+        Assert.Contains("\nINPUT MODE", Guide(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -128,6 +138,6 @@ public class CowsDA40HotkeyCoverageTests
         string guide = Guide();
 
         Assert.Contains("Shift+P    Engine temperatures", guide, StringComparison.Ordinal);
-        Assert.Contains("Engine (single values", guide, StringComparison.Ordinal);
+        Assert.Contains("\nEngine:", guide, StringComparison.Ordinal);
     }
 }

@@ -2499,7 +2499,7 @@
         return st;
     };
 
-    /// The display's state as ONE string: "ok|<cursor 0 or 1>|<summary>".
+    /// The display's state as ONE string: "ok|<cursor 0 or 1>|<view>|<focus>|<editing 0 or 1>|<summary>".
     ///
     /// The cursor flag is reported SEPARATELY rather than sniffed out of the summary text,
     /// because the caller has to tell "the cursor just came on" from "the summary happens
@@ -2554,12 +2554,23 @@
         // of a page, so a pilot at the bottom of a setup page heard the same field read
         // back a dozen times with nothing to say it was the last one.
         var focus = "";
+        // AND WHETHER THAT FIELD IS OPEN FOR EDITING. Inside an open number the large knob
+        // moves between its DIGITS and the focus stays put, so without this every digit
+        // move read as the knob stopping at the page's end: "0400.0, editing, end of the
+        // page" on the ADF frequency (2026-10-26). The same two sources the readback's
+        // ", editing" comes from: the model's field, else the DOM cursor's highlight.
+        var editing = "0";
         try {
             var f = A.M.fields();
-            for (var i = 0; i < f.length; i++) if (f[i].focused) { focus = String(i); break; }
+            for (var i = 0; i < f.length; i++) {
+                if (f[i].focused) { focus = String(i); if (f[i].active) editing = "1"; break; }
+            }
         } catch (e) { focus = ""; }
+        if (editing === "0") {
+            try { if (/, editing$/.test(A.cursorField())) editing = "1"; } catch (e) { }
+        }
 
-        return "ok|" + cursor + "|" + key + "|" + focus + "|" + summary;
+        return "ok|" + cursor + "|" + key + "|" + focus + "|" + editing + "|" + summary;
     };
 
     /// Type an ident into whatever text field the cursor is on.
@@ -3905,6 +3916,14 @@
     /// have no bezel button and live behind softkeys a pilot has to find first. They are
     /// all registered views, so the same list serves them, and the same open call reaches
     /// them. These names are the Garmin ones, because the view keys are not English.
+    ///
+    /// ⚠️ ONLY WHAT A KEY OR SOFTKEY ON THE PFD OPENS. This list is a shortcut to the PFD's
+    /// own buttons, so it offers nothing the real G1000 does not let a pilot open directly.
+    /// Set Runway, the Select dialogs, Hold At, Select Airway and Waypoint Information are
+    /// opened only from inside another window, and listing them let a pilot do what the
+    /// G1000 never allows: Set Runway came up with no airport and read back only its own
+    /// name, "setrunway" (ESGT, 2026-10-30). They stay in A.M.DIALOGS, which names them
+    /// and opens nothing.
     A.M.PFD_WINDOWS = [
         ["Nearest", "Nearest Airports"],
         ["TimerRef", "Timer and References"],
@@ -3913,7 +3932,11 @@
         ["PFDSetup", "PFD Setup and Backlighting"],
         ["DirectTo", "Direct To"],
         ["FPL", "Active Flight Plan"],
-        ["PROC", "Procedures"],
+        ["PROC", "Procedures"]
+    ];
+
+    /// Dialogs another window opens, for their names only. Never offered to open.
+    A.M.DIALOGS = [
         ["WptInfo", "Waypoint Information"],
         ["SetRunway", "Select Runway"],
         ["SelectDeparture", "Select Departure"],
@@ -3938,7 +3961,7 @@
     /// dialog, the page selector, a page menu.
     A.M.windowName = function (key) {
         if (!key || A.side() === "PFD" || key === A.M.pageKey()) return "";
-        var lists = [A.M.PFD_WINDOWS, A.M.MFD_WINDOWS];
+        var lists = [A.M.PFD_WINDOWS, A.M.DIALOGS, A.M.MFD_WINDOWS];
         for (var l = 0; l < lists.length; l++) {
             for (var i = 0; i < lists[l].length; i++) {
                 if (lists[l][i][0] === key) return lists[l][i][1];
@@ -4223,7 +4246,7 @@
         // walk below takes over and lands on whatever control it can find on the page
         // UNDERNEATH - which on the system-setup page is a field whose value is the word
         // "NONE". So a pilot changing pages heard, in full, "none": measured live as
-        // A.press("AS1000_MFD_FMS_Upper_INC") answering "ok|1|PageSelect||NONE".
+        // A.press("AS1000_MFD_FMS_Upper_INC") answering "ok|1|PageSelect||NONE" (before the editing flag).
         //
         // The selector's own DOM carries its active tab and highlighted entry whether or not
         // the list component is ready - that is the same reading pageTitle() already falls

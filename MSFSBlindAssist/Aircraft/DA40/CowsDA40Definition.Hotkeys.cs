@@ -205,12 +205,38 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>
+    /// What Ctrl+N writes: the radio and frequency of each box the pilot asked to set, in
+    /// radio order. <paramref name="setFieldIndex"/> is the dialog's: -1 Set all, 0 NAV 1,
+    /// 1 NAV 2. A box that does not read as a NAV frequency is left out. Pure so the suite
+    /// can pin it, like <see cref="PlanBaroSet"/>.
+    /// </summary>
+    internal static List<(int Radio, double Mhz)> PlanNavSet(int setFieldIndex, string? nav1, string? nav2)
+    {
+        var plan = new List<(int, double)>();
+        void Add(int radio, string? text)
+        {
+            if (Utils.NumberParsing.TryParseTyped(text, out double mhz) && mhz is >= 108.00 and <= 117.95)
+                plan.Add((radio, mhz));
+        }
+        if (setFieldIndex is -1 or 0) Add(1, nav1);
+        if (setFieldIndex is -1 or 1) Add(2, nav2);
+        return plan;
+    }
+
+    /// <summary>
     /// Input mode + N: set the NAV standby frequencies.
     ///
     /// On the aeroplane these are tuned with the G1000's NAV knob, and that stays true —
     /// this is the same convenience Ctrl+B is for the altimeters, not a replacement for
-    /// the bezel. Both radios are offered in one pass because a pilot tuning an approach
-    /// sets the ILS and the missed-approach aid together; either prompt can be cancelled.
+    /// the bezel. Both radios are in ONE window, the Ctrl+B shape: a box per radio, seeded
+    /// with its current standby, Enter or that box's Set writes that radio alone, and
+    /// Set all writes both. It was two windows in a row, NAV 1 then NAV 2, while the guide
+    /// already said one; the PMDG 737 and iFly set both NAV radios in one window too.
+    ///
+    /// The window stays open after a Set and carries Swap NAV 1 and Swap NAV 2, the Radios
+    /// panel's own swaps, so a standby can be set and made active without leaving it: tune,
+    /// then flip, as the G1000 is flown. One window, brought back to the front on a second
+    /// Ctrl+N, like Ctrl+P.
     ///
     /// The event is NAV1_STBY_SET_HZ in RAW HERTZ. Verified live, including the two
     /// spellings that do not work: NAV1_STBY_SET with a BCD-ish 11030 left the value at
@@ -225,37 +251,73 @@ public partial class CowsDA40Definition
             return true;
         }
 
-        var set = new List<string>();
+        string SeedOf(string key) =>
+            ReadNow(simConnect, key) is double v && v > 0
+                ? v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
+                : "";
 
-        foreach (int radio in new[] { 1, 2 })
+        // A swap says "NAV 1 swapped" and the radio's own change speaks the new active
+        // frequency, as from the panel; the window's 1.2 s read-back would be a third (CORE-7).
+        // No state in the label for the same reason: NVDA reads a focused label's change.
+        // Each swap sits beside its own radio's box and Set (Field), so tune-then-flip is one
+        // Tab: NAV 1 box, Set, Swap NAV 1, then NAV 2's three, then Set all.
+        Forms.ToggleButtonDef Swap(string label, string swapKey, int field) =>
+            new(label, () => "", () => HandleRadioSet(swapKey, 1, simConnect, announcer))
+            {
+                SuppressStateAnnounce = () => true,
+                Field = field
+            };
+
+        ShowTrackedWindow("DA40_NAV_RADIOS", () =>
         {
-            var dialog = new Forms.ValueInputForm(
-                $"Set NAV {radio} Standby",
-                $"NAV {radio} standby frequency",
+            Forms.ValueInputForm? dialog = null;
+            dialog = new Forms.ValueInputForm(
+                "Set NAV Standby",
+                "NAV 1 standby frequency",
                 "108.00 to 117.95 megahertz",
                 announcer,
-                ValidateNavFrequency);
-
-            if (dialog.ShowDialog(parentForm) != DialogResult.OK || !dialog.IsValidInput) continue;
-            if (!double.TryParse(dialog.InputValue, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out double mhz))
-            {
-                continue;
-            }
-
-            long hz = (long)Math.Round(mhz * 1_000_000.0);
-            simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{hz} (>K:NAV{radio}_STBY_SET_HZ)"));
-            set.Add(FormattableString.Invariant($"NAV {radio} standby {mhz:0.00}"));
-        }
-
-        announcer.AnnounceImmediate(set.Count == 0 ? "No frequency set" : string.Join(", ", set));
+                ValidateNavFrequency,
+                new List<Forms.ToggleButtonDef>
+                {
+                    Swap("Swap NAV &1", "DA40_RADIO_NAV1_SWAP", 0),
+                    Swap("Swap NAV &2", "DA40_RADIO_NAV2_SWAP", 1)
+                },
+                _ =>
+                {
+                    var plan = PlanNavSet(dialog!.SetFieldIndex, dialog.InputValue,
+                        dialog.ExtraValues.Count > 0 ? dialog.ExtraValues[0] : null);
+                    if (plan.Count == 0) return;
+                    foreach (var (radio, mhz) in plan) WriteNavStandby(simConnect, radio, mhz);
+                    announcer.AnnounceImmediate(string.Join(", ",
+                        plan.Select(p => FormattableString.Invariant($"NAV {p.Radio} standby {p.Mhz:0.00}"))));
+                },
+                null,
+                new List<Forms.ValueInputForm.ExtraFieldDef>
+                {
+                    new()
+                    {
+                        Label = "NAV 2 standby frequency",
+                        InitialValue = SeedOf("DA40_RADIO_NAV2_SET"),
+                        Validator = ValidateNavFrequency
+                    }
+                });
+            dialog.InitialValue = SeedOf("DA40_RADIO_NAV1_SET");
+            dialog.ShowCancelButton = false;
+            return dialog;
+        }, w =>
+        {
+            if (!w.Visible) { w.Show(parentForm); return; }
+            w.BringToFront();
+            w.Activate();
+            w.TopMost = true;
+            w.TopMost = false;
+        });
         return true;
     }
 
     private static (bool isValid, string message) ValidateNavFrequency(string text)
     {
-        if (!double.TryParse(text, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double mhz))
+        if (!Utils.NumberParsing.TryParseTyped(text, out double mhz))
         {
             return (false, "Enter a frequency in megahertz.");
         }
@@ -606,7 +668,7 @@ public partial class CowsDA40Definition
                 // keeps up with the engine rather than freezing what it said on opening.
                 if (parentForm != null)
                 {
-                    ShowEngineGlance(parentForm, simConnect);
+                    ShowEngineGlance(simConnect);
                     return true;
                 }
 
@@ -851,19 +913,16 @@ public partial class CowsDA40Definition
     /// </summary>
     private CowsDA40EngineGlanceForm? _engineGlance;
 
-    private void ShowEngineGlance(Form parentForm, SimConnectManager simConnect)
+    private void ShowEngineGlance(SimConnectManager simConnect)
     {
         if (_engineGlance == null || _engineGlance.IsDisposed)
         {
             _engineGlance = new CowsDA40EngineGlanceForm(() => EngineGlanceRows(simConnect));
             _engineGlance.FormClosed += (_, _) => _engineGlance = null;
-            _engineGlance.Show(parentForm);
-            return;
         }
 
-        if (_engineGlance.WindowState == FormWindowState.Minimized)
-            _engineGlance.WindowState = FormWindowState.Normal;
-        _engineGlance.Activate();
+        // Not owned by BA's main window: owned, it came up over BA rather than over the sim.
+        _engineGlance.ShowForm();
     }
 
     /// <summary>

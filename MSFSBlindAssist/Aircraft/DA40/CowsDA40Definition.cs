@@ -861,7 +861,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             ShowTrackedWindow("DA40_PFD",
                 () => new Forms.DA40.CowsDA40DisplayForm(
                     "G1000 PFD", "AS1000_PFD", "PFD", simConnect, announcer, this),
-                w => w.Show());
+                w => w.ShowForm());
             return true;
         }
 
@@ -878,7 +878,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             ShowTrackedWindow("DA40_MFD",
                 () => new Forms.DA40.CowsDA40DisplayForm(
                     "G1000 MFD", "AS1000_MFD", "MFD", simConnect, announcer, this),
-                w => w.Show());
+                w => w.ShowForm());
             return true;
         }
 
