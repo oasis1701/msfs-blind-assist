@@ -48,13 +48,14 @@ public class WeatherPanelTests
     }
 
     [Fact]
-    public void TemperatureUnits_AreFirstInTabOrder_AndWeatherGroupsDoNotOverlap()
+    public void TemperatureUnits_AreLastInTabOrder_AndWeatherGroupsDoNotOverlap()
     {
         using var panel = new WeatherPanel();
         var temperature = FindByAccessibleName(panel, "Use Fahrenheit for outside temperature");
         var groups = panel.Controls.OfType<GroupBox>().OrderBy(g => g.Top).ToArray();
-        Assert.Same(groups[0], temperature.Parent);
-        Assert.True(groups[0].ClientRectangle.Contains(temperature.Bounds));
+        Assert.Same(groups[^1], temperature.Parent);
+        Assert.Same(groups[^1], panel.Controls[panel.Controls.Count - 1]);
+        Assert.True(groups[^1].ClientRectangle.Contains(temperature.Bounds));
         for (int i = 1; i < groups.Length; i++)
         {
             Assert.True(groups[i - 1].Bottom <= groups[i].Top);

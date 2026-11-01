@@ -2,9 +2,9 @@ using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Forms.Settings;
 
-/// <summary>Weather section of the unified Settings dialog: outside-temperature units, the ActiveSky master switch
+/// <summary>Weather section of the unified Settings dialog: the ActiveSky master switch
 /// plus the weather auto-announcement toggles (moved here from AnnouncementsPanel so all
-/// weather behavior lives on one tab). The ActiveSky switch is the ONLY control that
+/// weather behavior lives on one tab), then the outside-temperature units, last. The ActiveSky switch is the ONLY control that
 /// enables AS integration — default off; when off, ActiveSkyClient.IsRunningAsync
 /// short-circuits and no AS probing runs anywhere (see [WX-7]).</summary>
 public class WeatherPanel : UserControl, ISettingsPanel
@@ -38,18 +38,19 @@ public class WeatherPanel : UserControl, ISettingsPanel
     {
         AutoScroll = true;
 
-        var temperatureGroup = BuildTemperatureGroup();
-        temperatureGroup.TabIndex = 0;
         var activeSkyGroup = BuildActiveSkyGroup();
-        activeSkyGroup.Location = new System.Drawing.Point(12, temperatureGroup.Bottom + 12);
-        activeSkyGroup.TabIndex = 1;
+        activeSkyGroup.TabIndex = 0;
         var announceGroup = BuildAnnouncementsGroup();
         announceGroup.Location = new System.Drawing.Point(12, activeSkyGroup.Bottom + 12);
-        announceGroup.TabIndex = 2;
+        announceGroup.TabIndex = 1;
+        // Last on the tab, after the announcement settings, on screen and in the tab order.
+        var temperatureGroup = BuildTemperatureGroup();
+        temperatureGroup.Location = new System.Drawing.Point(12, announceGroup.Bottom + 12);
+        temperatureGroup.TabIndex = 2;
 
-        Controls.Add(temperatureGroup);
         Controls.Add(activeSkyGroup);
         Controls.Add(announceGroup);
+        Controls.Add(temperatureGroup);
 
         // The announcement interval throttles the ActiveSky decoded-weather monitor,
         // and nothing else — WeatherAutoAnnounceIntervalMinutes is read in exactly one
@@ -101,7 +102,6 @@ public class WeatherPanel : UserControl, ISettingsPanel
         var group = new GroupBox
         {
             Text = "Temperature units",
-            Location = new System.Drawing.Point(12, 12),
             Size = new System.Drawing.Size(460, 84),
             AccessibleName = "Temperature units"
         };
