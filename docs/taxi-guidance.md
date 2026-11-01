@@ -3396,6 +3396,14 @@ Many runways in real-world navdatareader DBs have **zero** hold-short or ILS-hol
 
 If both the HS/IHS sweep and the geometric fallback return nothing, the announcement distinguishes a genuine data gap (tell the user) from a UI bug (no silent failures).
 
+### Runways with only some exits marked (KJFK 13L)
+
+**Why.** One hold-short node with a forward exit puts a runway into hold-short mode, and that used to switch the geometric pass off for the whole runway. KJFK 13L/31R carries one marker in its corridor, on V: for 13L it turns off forward, so the planner offered V alone, while 31R (which reads the same node as a turnaround and never enters hold-short mode) offered thirteen exits on the same pavement. In the fs2024 database, 291 runway directions offered exactly one usable exit this way while their geometry held more.
+
+**What.** Hold-short mode keeps its own list exactly as built, its own coverage gap fill included, and only then ADDS the turnoffs its markers never drew (EXIT-19). The geometric pass runs on every hold-short-mode runway (merged in, as before, only for `hsOnlyEnds` / `hsYieldedNothing`). The geometric exits go through the 50 ft window first, as on a runway without markers. A windowed exit then counts as already listed when an exit of its own taxiway name stands within `EXIT_COVERAGE_GAP_FT` (1,400 ft) — the marked node and the centreline junction of one crossing sit apart along the runway (13L V: 352 ft, on opposite banks) — unless that listed exit is a turnaround and the geometric one is forward. The rest go through the other rules the same pass gets on a runway without markers: one exit per name with forward exits first, and the coverage gap fill.
+
+**Measured** with `tools/LandingExitSweep` against main over the whole fs2024 database (1,654 exits added to 584 runway directions) and the whole fs2020 database (1,948 added to 653), each with none removed, moved, re-typed, re-angled or flipped to the other side. The sweep reads navdata names only; with online names the added exits can differ, but the marked list is kept as it was for any graph. Merging the geometric exits into the marked list instead, as `hsOnlyEnds` does (strict one-per-name pass and all), would have moved 393 exits and dropped 89. KJFK 13L now lists V (marked) plus W, D, DB, ZA (high-speed), E, Y and YA. Pinned by `LandingExitSparseHoldShortTests` on a real-data fixture (`KjfkRunway13LFixture`). Known residual: 16 added exits stand within 50 ft of a listed exit on the same side under another name (VABB 27: E at N5's own node), as on a runway without markers, whose 50 ft window merges only one name.
+
 ### Exits measured by branch (KMEM 36L, 2026-09-26)
 
 **Why.** An exit used to be judged by the one short segment that carried its taxiway name. At KMEM
@@ -3407,7 +3415,8 @@ called M5, a 73° exit, "High-speed 14°", because its curved fillet starts with
 
 **Where.** `TaxiGraph.RefineExitByBranch` (`Navigation/TaxiGraph.ExitRefinement.cs`) runs
 `Navigation/ExitBranch` on every candidate of all three producers: `GetLandingExits`' main pass, its
-geometric second pass (`hsOnlyEnds` / `hsYieldedNothing`), and the rescue scan `FindDownfieldExits`.
+geometric second pass (every hold-short-mode runway: merged on `hsOnlyEnds` / `hsYieldedNothing`,
+added for the unmarked turnoffs otherwise), and the rescue scan `FindDownfieldExits`.
 The frame is `RunwayAxis.For(runway)` — the same projection and half-width rule (75 ft when the
 width is missing) as `GetLandingExits`; lateral is positive to the RIGHT of the landing direction.
 

@@ -263,10 +263,12 @@ public static partial class TaxiBriefingPlanner
                 }, aim);
         var choice = PickExit();
 
-        // GetLandingExits is lossy on purpose — one entry per name, and one marked hold short switches its geometric
-        // fallback off for the whole runway — so before the block says no exit is comfortable, or that none follows the
-        // briefed one, the graph is asked, as the rollout asks it before "Missed last exit" (FindDownfieldExits, merged
-        // by RolloutExitGate.MergeRescueExits). KCOS: the list ended at 821 ft with 10,172 ft and taxiway H still ahead.
+        // GetLandingExits is lossy on purpose — one entry per name, and a name's later turnoff stays out wherever another
+        // listed exit stands within 1,400 ft of it — so before the block says no exit is comfortable, or that none follows
+        // the briefed one, the graph is asked, as the rollout asks it before "Missed last exit" (FindDownfieldExits, merged
+        // by RolloutExitGate.MergeRescueExits, which brings such a turnoff back when the exit beside it has another name,
+        // never beside one of its own). KCOS: the list ended at 821 ft with 10,172 ft and taxiway H still ahead, back when
+        // one marked hold short switched the list's geometric fallback off for the whole runway.
         double? rescueFrom = choice == null || !choice.ComfortablyReachable ? aim
                            : choice.NextExit == null ? choice.Exit.DistanceFromThresholdFeet : null;
         if (rescueFrom is double from)
