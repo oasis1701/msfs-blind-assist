@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Unicode;
 using static MSFSBlindAssist.Services.FenixChannelFields;
 
 namespace MSFSBlindAssist.Services;
@@ -11,17 +12,21 @@ namespace MSFSBlindAssist.Services;
 /// <see cref="FenixChannelFields"/> names.
 /// </summary>
 /// <remarks>
-/// <para>Nothing throws, whatever the bytes are: a string decodes with <see cref="Encoding.UTF8"/>, which
-/// replaces what it cannot read. A message is malformed when any reader of it hit bytes that are not valid
-/// protobuf. A nested part is read with a reader of its own, whose <see cref="FenixChannelWire.IsMalformed"/>
-/// never reaches the reader of the message around it, so every reader created here is checked: a part cut
-/// short inside itself makes the whole message malformed even though the message around it read cleanly.
-/// A malformed message is the frame's <c>MalformedFrame</c>, with no value from it, since a value read out of
-/// damaged bytes might be wrong and the app never speaks a guess.</para>
+/// <para>Nothing throws, whatever the bytes are. A message is malformed when any reader of it hit bytes that
+/// are not valid protobuf. A nested part is read with a reader of its own, whose
+/// <see cref="FenixChannelWire.IsMalformed"/> never reaches the reader of the message around it, so every
+/// reader created here is checked: a part cut short inside itself makes the whole message malformed even
+/// though the message around it read cleanly. A malformed message is the frame's <c>MalformedFrame</c>,
+/// with no value from it, since a value read out of damaged bytes might be wrong and the app never speaks
+/// a guess.</para>
 /// <para>A field in another wire shape than the contract gives it is recorded by its path ("110" for
 /// field 110, "110.5" for field 5 inside it), skipped by the wire type it really has, and left at its
-/// default; every other field still decodes. A field left out reads as its protobuf default, a field of
-/// a number the app does not know is skipped, and a repeated field accumulates in the order it came.
+/// default; every other field still decodes. A string whose bytes are not valid UTF-8 is a wrong shape
+/// too, recorded and left at its default the same way: protobuf-net writes only valid UTF-8, so such bytes
+/// can only come from a reshaped field (a string, bytes and a message share wire type 2) or a framing
+/// fault, and a string with replacement characters in it would pass for text. A field left out reads as
+/// its protobuf default, a field of a number the app does not know is skipped, and a repeated field
+/// accumulates in the order it came.
 /// An element with no field 1 reads as "". An FMA with a slot count other than 16 is a wrong shape for
 /// field 111. A field that is not repeated takes the last value if it is sent twice, and its nested part
 /// is merged, as protobuf reads them.</para>
@@ -294,7 +299,8 @@ internal static class FenixChannelDecoder
     // draft that the values and the wrong shapes go to. The typed reads take the wire type of the field
     // just read from Next and check it against the shape the caller asks for: a read of that shape stores
     // the value and returns true; a field of another shape is recorded, skipped by its real wire type and
-    // leaves the target as it was, also true; false only when the bytes are malformed.
+    // leaves the target as it was, also true (a string that is not valid UTF-8 is recorded the same way, its
+    // bytes already read); false only when the bytes are malformed.
     private ref struct Walker
     {
         private FenixChannelWire _wire;
@@ -352,10 +358,20 @@ internal static class FenixChannelDecoder
             return true;
         }
 
+        // A string is valid UTF-8 or a wrong shape. protobuf-net writes only valid UTF-8, so bytes that will
+        // not decode can only be a reshaped field (a string, bytes and a message share wire type 2) or a
+        // framing fault, and a string with replacement characters in it would pass for text. The bytes are
+        // already consumed, so this records the path without a skip and is true, like any other wrong shape.
         public bool Text(ref string target)
         {
             if (_type != FenixWireType.LengthDelimited) return WrongShape();
             if (!_wire.TryReadLengthDelimited(out ReadOnlySpan<byte> bytes)) return false;
+
+            if (!Utf8.IsValid(bytes))
+            {
+                _draft.WrongShape(FieldPath());
+                return true;
+            }
 
             target = Encoding.UTF8.GetString(bytes);
             return true;

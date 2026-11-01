@@ -222,10 +222,11 @@ public class FenixChannelDecoderTests
     [Fact]
     public void Keeps_text_exactly_as_sent()
     {
-        // The braille spacer, runs of spaces and the format letters are the display's own. The decoder
-        // trims, folds and strips nothing.
+        // The braille spacer, runs of spaces and the format letters are the display's own, and valid UTF-8 of
+        // every length passes: two bytes (a degree sign) and four (an emoji) as well as the spacer's three.
+        // The decoder trims, folds and strips nothing.
         string fob = $"  wFOB:{Spacer}{Spacer}  g2940 cs KG  ";
-        string right = $" g{Spacer}PARK BRK ";
+        string right = $" g{Spacer}PARK BRK {(char)0x00B0}{char.ConvertFromUtf32(0x1F600)} ";
 
         FenixChannelFrame frame = Decode(Remote()
             .String(153, fob)
@@ -235,14 +236,89 @@ public class FenixChannelDecoderTests
         Assert.Equal(new[] { right }, frame.UpperEcamRight);
     }
 
-    [Fact]
-    public void A_string_with_invalid_utf8_decodes_without_throwing()
+    [Theory]
+    [InlineData(new byte[] { 0xFF, 0xFE })]              // not UTF-8 at all
+    [InlineData(new byte[] { 0x80 })]                    // a continuation byte with no start
+    [InlineData(new byte[] { 0xE2, 0xA0 })]              // the braille spacer cut after two of its three bytes
+    [InlineData(new byte[] { 0xC0, 0xAF })]              // an overlong "/"
+    [InlineData(new byte[] { 0xED, 0xA0, 0x80 })]        // a surrogate half
+    [InlineData(new byte[] { 0xF4, 0x90, 0x80, 0x80 })]  // past U+10FFFF
+    public void A_string_that_is_not_valid_utf8_is_a_wrong_shape(byte[] bytes)
     {
-        // A string of two bytes that are not UTF-8 at all.
-        FenixChannelFrame frame = Decode(Remote().Tag(153, 2).Raw(2, 0xFF, 0xFE));
+        // protobuf-net writes only valid UTF-8, so such bytes are a reshaped field (a string, bytes and a
+        // message share wire type 2) or a framing fault: never a string with replacement characters in it.
+        var remote = Remote();
+        RawString(remote, 153, bytes);
 
-        Assert.Equal(new string((char)0xFFFD, 2), frame.FobText);   // U+FFFD for each byte that is not UTF-8
-        Assert.True(frame.ShapesOk);
+        FenixChannelFrame frame = Decode(remote);
+
+        Assert.Equal(new[] { "153" }, frame.WrongShapeFields);
+        Assert.Equal("", frame.FobText);   // the field took its default
+        Assert.False(frame.ShapesOk);
+        Assert.False(frame.Malformed);
+        Assert.True(frame.HasData);
+    }
+
+    [Fact]
+    public void An_fma_text_that_is_not_valid_utf8_is_a_wrong_shape()
+    {
+        // Fifteen empty slots and one whose Text is not UTF-8 but whose ChangeBox is fine.
+        var remote = new FenixChannelProtoWriter();
+        for (int slot = 0; slot < 15; slot++)
+        {
+            remote.Message(111, new FenixChannelProtoWriter());
+        }
+        remote.Message(111, RawString(new FenixChannelProtoWriter(), 1, 0xFF, 0xFE).Bool(2, true));
+
+        FenixChannelFrame frame = Decode(remote);
+
+        Assert.Equal(new[] { "111.1" }, frame.WrongShapeFields);
+        Assert.Equal(16, frame.Fma.Count);
+        Assert.Equal(new FenixFmaSlot("", true), frame.Fma[15]);   // empty text, the change box as sent
+    }
+
+    [Theory]
+    [InlineData(173)]
+    [InlineData(174)]
+    public void A_column_element_that_is_not_valid_utf8_is_a_wrong_shape(int column)
+    {
+        FenixChannelFrame frame = Decode(Remote()
+            .Message(column, RawString(new FenixChannelProtoWriter(), 1, 0xFF, 0xFE)));
+
+        Assert.Equal(new[] { $"{column}.1" }, frame.WrongShapeFields);
+        IReadOnlyList<string> lines = column == 173 ? frame.UpperEcamLeft : frame.UpperEcamRight;
+        Assert.Equal(new[] { "" }, lines);   // the element keeps its place, as an empty string
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void An_ecam_string_that_is_not_valid_utf8_is_a_wrong_shape(int badField)
+    {
+        // An entry of Ata "A", Name "N" and Title "T", with one of the three replaced by bytes that are not UTF-8.
+        string[] text = ["A", "N", "T"];
+        var entry = new FenixChannelProtoWriter();
+        for (int field = 1; field <= 3; field++)
+        {
+            if (field == badField)
+            {
+                RawString(entry, field, 0xFF, 0xFE);
+            }
+            else
+            {
+                entry.String(field, text[field - 1]);
+            }
+        }
+        byte[] message = new FenixChannelProtoWriter().Message(1, entry).ToArray();
+
+        FenixEcamEntries entries = FenixChannelDecoder.DecodeEcamEntries(message);
+
+        text[badField - 1] = "";   // the bad one took its default; the other two are as sent
+        Assert.Equal(new[] { $"1.{badField}" }, entries.WrongShapeFields);
+        Assert.Equal(new[] { new FenixEcamEntry(text[0], text[1], text[2], false) }, entries.Entries);
+        Assert.False(entries.ShapesOk);
+        Assert.False(entries.Malformed);
     }
 
     [Fact]
@@ -742,6 +818,11 @@ public class FenixChannelDecoderTests
     // The RemoteData part as field 1 of an AircraftDataPush, decoded.
     private static FenixChannelFrame Decode(FenixChannelProtoWriter remote)
         => FenixChannelDecoder.DecodeDisplayData(new FenixChannelProtoWriter().Message(1, remote).ToArray());
+
+    // A string field written from the bytes given. The writer's String takes a string, which can only hold
+    // text that is valid, so bytes that are not UTF-8 go in through Tag and Raw. Returns the writer it got.
+    private static FenixChannelProtoWriter RawString(FenixChannelProtoWriter writer, int field, params byte[] bytes)
+        => writer.Tag(field, 2).Raw((byte)bytes.Length).Raw(bytes);
 
     // The contents of a nested part cut short inside itself, for the part with this field number: the
     // part's own length (written by Message) is right, but its first value is not all there.
