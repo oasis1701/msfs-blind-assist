@@ -520,7 +520,7 @@ public class WasmModuleSessionTests
     }
 
     [Fact]
-    public void A_build_whose_engine_recipe_failed_still_serves_the_fma()
+    public void A_build_whose_engine_layout_failed_still_serves_the_fma()
     {
         var log = new List<string>();
         var a = Analyse(new[] { "fma" }, f => Found(Real, f), log);
@@ -591,7 +591,7 @@ public class WasmModuleSessionTests
     private static Pmdg737NavDisplayLayout NdLayout => GoldenLayouts.NavDisplay with { SourceFile = "nd" };
 
     [Fact]
-    public void A_build_whose_nd_recipe_failed_still_serves_the_fma_and_engine_displays()
+    public void A_build_whose_nd_layout_failed_still_serves_the_fma_and_engine_displays()
     {
         var log = new List<string>();
         var a = Analyse(new[] { "fma", "engine" }, f => Found(f == "fma" ? Real : EngineFile, f), log);
@@ -638,7 +638,7 @@ public class WasmModuleSessionTests
     private static Pmdg737PfdLayout PfdLayout => GoldenLayouts.Pfd with { SourceFile = "pfd" };
 
     [Fact]
-    public void A_build_whose_pfd_recipe_failed_still_serves_the_other_three()
+    public void A_build_whose_pfd_layout_failed_still_serves_the_other_three()
     {
         var log = new List<string>();
         var a = Analyse(new[] { "fma", "engine", "nd" }, f => Found(f switch { "fma" => Real, "engine" => EngineFile, _ => NdFile }, f), log);
@@ -653,7 +653,7 @@ public class WasmModuleSessionTests
     }
 
     [Fact]
-    public void A_build_whose_other_recipes_failed_is_located_by_the_pfd_anchor()
+    public void A_build_whose_other_layouts_failed_is_located_by_the_pfd_anchor()
     {
         var log = new List<string>();
         var a = Analyse(new[] { "pfd" }, f => Found(PfdFile, f), log);
