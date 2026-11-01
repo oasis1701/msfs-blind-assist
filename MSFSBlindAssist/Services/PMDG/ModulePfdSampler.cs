@@ -124,6 +124,8 @@ public sealed class ModulePfdSampler : IPfdSampler
             PfdCaptainUnit? shown = null;
             foreach (var c in u.CaptainUnits)
             {
+                if (c.Unit < 0 || c.Unit >= pages.Length)
+                    throw new Corrupt(Invariant($"the Captain's PFD units: unit {c.Unit} is not one of the {pages.Length} units"));
                 if (c.Page != u.PfdPage || pages[c.Unit] != u.PfdPage || (c.WhenSelector is { } when && when != selector)) continue;
                 shown = c;
                 break;

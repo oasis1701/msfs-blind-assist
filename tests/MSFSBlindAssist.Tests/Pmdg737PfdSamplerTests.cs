@@ -111,6 +111,15 @@ public class Pmdg737PfdSamplerTests
     }
 
     [Fact]
+    public void A_captain_unit_outside_the_units_is_corrupt_not_a_crash()
+    {
+        var m = new M();
+        var u = L.Units;
+        var layout = L with { Units = u with { CaptainUnits = new[] { u.CaptainUnits[0] with { Unit = u.UnitCount } } } };
+        Assert.Contains("not one of the", Corrupt(m, layout));
+    }
+
+    [Fact]
     public void A_light_reading_reads_only_the_units_panel_checks_and_messages()
     {
         var m = new M();
