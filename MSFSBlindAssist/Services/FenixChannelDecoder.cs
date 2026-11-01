@@ -25,17 +25,28 @@ namespace MSFSBlindAssist.Services;
 /// An element with no field 1 reads as "". An FMA with a slot count other than 16 is a wrong shape for
 /// field 111. A field that is not repeated takes the last value if it is sent twice, and its nested part
 /// is merged, as protobuf reads them.</para>
+/// <para>A push with no display data, that is with no RemoteData or an empty one, is
+/// <see cref="FenixChannelFrame.NoData"/>: it is neither damaged nor reshaped, so it records no wrong shape
+/// (not "111" for an FMA it never had) and the gate skips it. A field 1 in another wire shape than a part
+/// is still a wrong shape, "1", and a RemoteData that is not empty is judged as always.</para>
 /// </remarks>
 internal static class FenixChannelDecoder
 {
     private static readonly FenixEcamEntries MalformedEntries =
         new(true, Array.Empty<string>(), Array.Empty<FenixEcamEntry>(), false);
 
-    /// <summary>Decodes one AircraftDataPush, the message of the display data call.</summary>
+    /// <summary>
+    /// Decodes one AircraftDataPush, the message of the display data call. A push with no display data (no
+    /// PrimaryData, or an empty one) is <see cref="FenixChannelFrame.NoData"/>.
+    /// </summary>
     public static FenixChannelFrame DecodeDisplayData(ReadOnlySpan<byte> message)
     {
         var draft = new Draft();
         if (!ReadPush(message, string.Empty, draft)) return FenixChannelFrame.MalformedFrame;
+
+        // Nothing to read is not a wrong shape. A field 1 in a wrong shape is the one finding that can already
+        // be in the list when no RemoteData was read, and it is judged below as always.
+        if (!draft.HasRemoteData && draft.Wrong.Count == 0) return FenixChannelFrame.NoData;
 
         // The FMA is 16 slots; any other count is not the shape the app was checked against.
         if (draft.Fma.Count != FmaEntry.SlotCount) draft.WrongShape(Number(Remote.Fma));
@@ -87,6 +98,9 @@ internal static class FenixChannelDecoder
     // the path of field 1 of the push that it is given.
     private static bool ReadRemote(ReadOnlySpan<byte> part, string pushFieldPath, Draft d)
     {
+        // An empty RemoteData holds no display data (see DecodeDisplayData), and has no field to read.
+        d.HasRemoteData |= !part.IsEmpty;
+
         var w = new Walker(part, string.Empty, d);
         while (w.Next(out int field))
         {
@@ -253,6 +267,9 @@ internal static class FenixChannelDecoder
     private sealed class Draft
     {
         public readonly List<string> Wrong = [];
+
+        // True once a RemoteData part of at least one byte has been read: without one the push has no display data.
+        public bool HasRemoteData;
 
         public double Pitch, Fpa, Roll, Yawbar;
         public bool FdOnCapt, FdOnFo, TrkFpa, RollGuidance, FdFlash, FdInhibit, InhibitRoll, InhibitPitch;

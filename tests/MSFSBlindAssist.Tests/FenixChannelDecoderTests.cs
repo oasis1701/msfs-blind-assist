@@ -9,7 +9,8 @@
 // data into confident values. Bytes that are not valid protobuf anywhere in a message, a nested part
 // included, make the whole message Malformed with no value in it; a field in another wire shape is
 // recorded by its path ("110", "110.5") and the rest still decodes; a field left out reads as its
-// protobuf default.
+// protobuf default. A push with nothing in it to read (no PrimaryData, or an empty one) is NoData:
+// neither damaged nor reshaped, so it records no wrong shape and the gate skips it.
 
 using MSFSBlindAssist.Services;
 
@@ -122,7 +123,8 @@ public class FenixChannelDecoderTests
     [InlineData(17)]
     public void An_fma_without_sixteen_slots_is_a_wrong_shape(int slots)
     {
-        var remote = new FenixChannelProtoWriter();
+        // The altitude keeps RemoteData from being empty at zero slots: an empty one is no data at all.
+        var remote = new FenixChannelProtoWriter().Double(197, 1000.0);
         for (int slot = 0; slot < slots; slot++)
         {
             remote.Message(111, new FenixChannelProtoWriter());
@@ -135,6 +137,7 @@ public class FenixChannelDecoderTests
         Assert.Equal(slots, frame.Fma.Count);
         Assert.False(frame.ShapesOk);
         Assert.False(frame.Malformed);
+        Assert.True(frame.HasData);
     }
 
     [Fact]
@@ -323,7 +326,9 @@ public class FenixChannelDecoderTests
 
         FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(push);
 
-        Assert.Contains("1", frame.WrongShapeFields);
+        // A finding, not "no data": the first path is "1", and the gate must not skip the push.
+        Assert.Equal("1", frame.WrongShapeFields[0]);
+        Assert.True(frame.HasData);
         Assert.False(frame.Malformed);
         Assert.False(frame.ShapesOk);
     }
@@ -341,6 +346,110 @@ public class FenixChannelDecoderTests
 
         Assert.True(frame.ShapesOk);
         Assert.True(frame.Fd.FdOnCapt);
+    }
+
+    // ---- A push with no display data ------------------------------------------------------------
+
+    [Fact]
+    public void An_empty_message_is_no_data_not_a_wrong_shape()
+    {
+        FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(ReadOnlySpan<byte>.Empty);
+
+        Assert.Same(FenixChannelFrame.NoData, frame);
+        Assert.False(frame.HasData);
+        Assert.True(frame.ShapesOk);
+        Assert.False(frame.Malformed);
+        Assert.Empty(frame.WrongShapeFields);
+    }
+
+    [Fact]
+    public void A_push_whose_first_field_is_an_empty_message_is_no_data()
+    {
+        byte[] push = new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter()).ToArray();
+
+        FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(push);
+
+        Assert.Same(FenixChannelFrame.NoData, frame);
+        Assert.False(frame.HasData);
+        Assert.True(frame.ShapesOk);
+        Assert.False(frame.Malformed);
+    }
+
+    [Fact]
+    public void A_push_without_a_first_field_is_no_data_whatever_else_it_carries()
+    {
+        // Fields of numbers the app does not know, and no field 1.
+        byte[] push = new FenixChannelProtoWriter().Varint(2, 1).String(7, "x").ToArray();
+
+        FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(push);
+
+        Assert.Same(FenixChannelFrame.NoData, frame);
+        Assert.True(frame.ShapesOk);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_empty_part_beside_a_full_one_does_not_hide_the_data(bool emptyFirst)
+    {
+        var empty = new FenixChannelProtoWriter();
+        var full = Remote().Double(197, 1000.0);
+        var push = new FenixChannelProtoWriter();
+        if (emptyFirst)
+        {
+            push.Message(1, empty).Message(1, full);
+        }
+        else
+        {
+            push.Message(1, full).Message(1, empty);
+        }
+
+        FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(push.ToArray());
+
+        Assert.True(frame.HasData);
+        Assert.Equal(1000.0, frame.Altitude);
+        Assert.True(frame.ShapesOk);
+    }
+
+    [Fact]
+    public void The_no_data_frame_has_every_value_at_its_default()
+    {
+        FenixChannelFrame frame = FenixChannelFrame.NoData;
+
+        Assert.False(frame.HasData);
+        Assert.False(frame.Malformed);
+        Assert.True(frame.ShapesOk);
+        Assert.Empty(frame.WrongShapeFields);
+        Assert.Equal(FenixFdState.Default, frame.Fd);
+        Assert.Empty(frame.Fma);
+        Assert.Empty(frame.UpperEcamLeft);
+        Assert.Empty(frame.UpperEcamRight);
+        Assert.Equal(0, frame.FwcPage);
+        Assert.Equal(0, frame.FwcPhase);
+        Assert.Equal(0.0, frame.Altitude);
+        Assert.Equal(0.0, frame.MagHeading);
+        Assert.Equal("", frame.FobText);
+    }
+
+    [Fact]
+    public void Every_other_frame_says_it_has_data()
+    {
+        // A good push, a malformed one, one whose field 1 has the wrong wire type and a RemoteData with no
+        // FMA: each is data or a finding, never "nothing to read", so the gate must not skip any of them.
+        byte[][] pushes =
+        [
+            FenixChannelProtoWriter.GoodPush(),
+            FenixChannelProtoWriter.GoodPush()[..20],
+            new FenixChannelProtoWriter().Varint(1, 5).ToArray(),
+            new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().Double(197, 1000.0)).ToArray()
+        ];
+
+        foreach (byte[] push in pushes)
+        {
+            Assert.True(FenixChannelDecoder.DecodeDisplayData(push).HasData);
+        }
+        Assert.True(FenixChannelFrame.MalformedFrame.HasData);
+        Assert.True(new FenixChannelFrame(false, [], FenixFdState.Default, [], [], [], 0, 0, 0, 0, "").HasData);
     }
 
     // ---- Malformed messages ---------------------------------------------------------------------
@@ -444,6 +553,7 @@ public class FenixChannelDecoderTests
         FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(FenixChannelProtoWriter.GoodPush());
 
         Assert.True(frame.ShapesOk);
+        Assert.True(frame.HasData);
         Assert.Equal(16, frame.Fma.Count);
         Assert.Equal(1000.0, frame.Altitude);
         Assert.Equal(90.0, frame.MagHeading);
@@ -574,29 +684,45 @@ public class FenixChannelDecoderTests
     [Fact]
     public void Never_throws_on_any_input()
     {
-        var random = new Random(1234);
-        byte[] good = FenixChannelProtoWriter.GoodPush(upperEcamLeft: ["g    SIGNS ON"]);
-
         Exception? thrown = Record.Exception(() =>
         {
-            for (int i = 0; i < 2000; i++)
+            // Each message goes to both decoders: either one may be handed the other's.
+            foreach (byte[] message in RandomInputs())
             {
-                byte[] noise = new byte[random.Next(0, 129)];
-                random.NextBytes(noise);
-
-                byte[] changed = (byte[])good.Clone();
-                changed[random.Next(changed.Length)] = (byte)random.Next(256);
-
-                // Each message goes to both decoders: either one may be handed the other's.
-                foreach (byte[] message in new[] { noise, changed, RandomShapes(random, 0), RandomShapes(random, 0) })
-                {
-                    FenixChannelDecoder.DecodeDisplayData(message);
-                    FenixChannelDecoder.DecodeEcamEntries(message);
-                }
+                FenixChannelDecoder.DecodeDisplayData(message);
+                FenixChannelDecoder.DecodeEcamEntries(message);
             }
         });
 
         Assert.Null(thrown);
+    }
+
+    [Fact]
+    public void A_frame_without_data_or_a_malformed_one_is_always_the_shared_empty_frame()
+    {
+        // So no value rides on a frame that says "nothing to read" or "damaged", and every other frame has data.
+        var broken = new List<string>();
+        foreach (byte[] message in RandomInputs())
+        {
+            FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(message);
+            if (!frame.HasData && !ReferenceEquals(frame, FenixChannelFrame.NoData))
+            {
+                broken.Add($"no data, but not NoData: {Convert.ToHexString(message)}");
+            }
+            if (frame.Malformed && !(ReferenceEquals(frame, FenixChannelFrame.MalformedFrame) && frame.HasData))
+            {
+                broken.Add($"malformed, but not MalformedFrame with data: {Convert.ToHexString(message)}");
+            }
+
+            FenixEcamEntries entries = FenixChannelDecoder.DecodeEcamEntries(message);
+            bool carriesValues = entries.Entries.Count != 0 || entries.Heartbeat || entries.WrongShapeFields.Count != 0;
+            if (entries.Malformed && carriesValues)
+            {
+                broken.Add($"malformed ECAM entries that carry values: {Convert.ToHexString(message)}");
+            }
+        }
+
+        Assert.Empty(broken);
     }
 
     // ---- Helpers --------------------------------------------------------------------------------
@@ -622,6 +748,28 @@ public class FenixChannelDecoderTests
     private static FenixChannelProtoWriter CutShort(int field) => field is 110 or 194
         ? new FenixChannelProtoWriter().Tag(1, 1).Raw(0, 0)       // a double with 2 of its 8 bytes
         : new FenixChannelProtoWriter().Tag(1, 2).Raw(5, 0x41);   // a string of 5 with 1 byte
+
+    // 2,000 rounds of messages from a fixed seed: random bytes, a good push with one byte changed, and the
+    // real field numbers in random wire shapes (twice).
+    private static IEnumerable<byte[]> RandomInputs()
+    {
+        var random = new Random(1234);
+        byte[] good = FenixChannelProtoWriter.GoodPush(upperEcamLeft: ["g    SIGNS ON"]);
+
+        for (int round = 0; round < 2000; round++)
+        {
+            byte[] noise = new byte[random.Next(0, 129)];
+            random.NextBytes(noise);
+            yield return noise;
+
+            byte[] changed = (byte[])good.Clone();
+            changed[random.Next(changed.Length)] = (byte)random.Next(256);
+            yield return changed;
+
+            yield return RandomShapes(random, 0);
+            yield return RandomShapes(random, 0);
+        }
+    }
 
     // The real field numbers sent in random wire shapes, nested up to three deep: it reaches the
     // wrong-shape and nested-part paths that raw random bytes almost never do.

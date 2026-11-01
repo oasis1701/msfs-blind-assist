@@ -36,10 +36,29 @@ internal sealed record FenixChannelFrame(bool Malformed, IReadOnlyList<string> W
     /// <summary>True when the message was valid protobuf and every field it carried had its contract's shape.</summary>
     public bool ShapesOk => !Malformed && WrongShapeFields.Count == 0;
 
+    /// <summary>
+    /// False only for a push with no display data: no PrimaryData, or an empty one. Such a push is neither
+    /// damaged nor reshaped, there is just nothing in it to read, so the trust gate and the monitor skip
+    /// it. True for every other frame, a malformed or wrong-shaped one included. An init property rather
+    /// than a constructor parameter, so a frame built positionally has data.
+    /// </summary>
+    public bool HasData { get; init; } = true;
+
     /// <summary>The frame of a malformed message: <see cref="Malformed"/> and every value its default.</summary>
     public static readonly FenixChannelFrame MalformedFrame = new(
         true, Array.Empty<string>(), FenixFdState.Default, Array.Empty<FenixFmaSlot>(),
         Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, 0, "");
+
+    /// <summary>
+    /// The frame of a push with no display data: every value its default, not malformed, no wrong shape,
+    /// and <see cref="HasData"/> false.
+    /// </summary>
+    public static readonly FenixChannelFrame NoData = new(
+        false, Array.Empty<string>(), FenixFdState.Default, Array.Empty<FenixFmaSlot>(),
+        Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, 0, "")
+    {
+        HasData = false
+    };
 }
 
 /// <summary>One entry of the ECAM list, text exactly as sent.</summary>
