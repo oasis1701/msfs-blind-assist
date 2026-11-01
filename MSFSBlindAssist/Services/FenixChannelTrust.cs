@@ -39,16 +39,21 @@ internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDe
 /// latches the whole channel until <see cref="OnConnected"/>: a wrong shape on a checked build means the check
 /// itself cannot be trusted. The latch keeps its first cause. A push with no display data
 /// (<see cref="FenixChannelFrame.HasData"/> false) is not a message at all and changes nothing.</para>
-/// <para>A cross-check compares a value of the channel with SimConnect's on every data message. Agreement marks
-/// it passed, and a display whose check has never passed is not trusted. A value that is missing makes the
-/// check wait: SimConnect has not delivered it, an FD light reads neither 0 nor 1, a channel value is not
-/// finite, or the FOB text does not parse. Waiting neither passes nor fails, it ends a pending disagreement,
-/// and a check that has passed before still counts as passed. A disagreement untrusts its display while it
-/// lasts, and once it has lasted <see cref="MismatchHoldMs"/> without a break it latches until reconnect. A
-/// waiting value is a break, and so is a stall of the stream: a data message that comes more than
-/// <see cref="StreamStaleMs"/> after the one before it ends every pending disagreement (a check that passed
-/// stays passed, a latch stays latched). An unknown text code untrusts a display too but never latches: it is
-/// an exact condition, not a noisy one.</para>
+/// <para>A cross-check compares a value of the channel with SimConnect's on every data message. SimConnect
+/// delivers about once a second, so the channel's value is the one it showed when SimConnect's arrived (the
+/// kept message nearest that arrival, for <see cref="ComparisonWindowMs"/>), not the one it shows now: a turn
+/// or a climb moves both, and the newest message would make that lag a disagreement. A SimConnect value older
+/// than the window has not changed, since an unchanged value is not delivered again, and is compared with the
+/// channel's value now. Agreement marks the check passed, and a display whose check has never passed is not
+/// trusted.</para>
+/// <para>A disagreement untrusts its display, and stays in force until a message agrees or the channel
+/// reconnects. A value that is missing makes the check wait: SimConnect has not delivered it, an FD light reads
+/// neither 0 nor 1, a channel value is not finite, or the FOB text is not a whole number of KG or LBS. Waiting
+/// neither passes nor fails and does not end a disagreement, and a check that passed before with none in force
+/// still counts as passed. Once a disagreement has lasted <see cref="MismatchHoldMs"/> without a break it
+/// latches until reconnect. A waiting value is a break, and so is a stall of the stream (a data message more
+/// than <see cref="StreamStaleMs"/> after the one before it): either one only restarts that count. An unknown
+/// text code untrusts a display too but never latches: it is an exact condition, not a noisy one.</para>
 /// <para>Not thread-safe: the monitor locks around every call.</para>
 /// </remarks>
 internal sealed class FenixChannelTrust
@@ -57,10 +62,17 @@ internal sealed class FenixChannelTrust
     public const long StreamStaleMs = 2_000;
 
     /// <summary>
-    /// How long a disagreement must last, without a break (a waiting value or a stall of the stream is one), to
-    /// latch its display until reconnect.
+    /// How long a disagreement must last, without a break, to latch its display until reconnect. A waiting
+    /// value or a stall of the stream is a break: it restarts the count, and the disagreement stays in force.
     /// </summary>
     public const long MismatchHoldMs = 3_000;
+
+    /// <summary>
+    /// How far from a data message SimConnect's value may have arrived to be compared with the channel as it
+    /// was then. SimConnect's batch comes about once a second, so a value up to a second old is the normal
+    /// case. A value older than this has not changed: it is compared with the channel now.
+    /// </summary>
+    public const long ComparisonWindowMs = 1_500;
 
     // The starting tolerances, pinned only after the in-sim measurements. A Fenix update never loosens one to
     // make a build pass (FNX-23).
@@ -83,9 +95,11 @@ internal sealed class FenixChannelTrust
     private const string TrustedReason = "trusted";
 
     // The amount and unit of the FOB line, run over the line's text with its format codes taken out, as in
-    // "FOB:   2940  KG".
+    // "FOB:   2940  KG". The amount is whole digits only: a decimal point or a grouping separator ("12,340",
+    // "12 340") does not match, so a FOB of ten tonnes or more written with one reads as missing and never as
+    // a wrong value (a lone comma would read as a decimal: 12.34).
     private static readonly Regex FobPattern =
-        new(@"FOB:\s*([0-9]+(?:[.,][0-9]+)?)\s*(KG|LBS)", RegexOptions.CultureInvariant);
+        new(@"FOB:\s*([0-9]+)\s*(KG|LBS)", RegexOptions.CultureInvariant);
 
     // The checks of each display, in the order they are judged. The SD has none in this set.
     private static readonly FenixComparison[] PfdChecks =
@@ -99,9 +113,11 @@ internal sealed class FenixChannelTrust
 
     private readonly IReadOnlySet<string> _verifiedBuilds;
 
-    // SimConnect's side of each comparison, indexed by FenixComparison; NaN is missing. A reconnect keeps them,
-    // since SimConnect keeps delivering through it.
+    // SimConnect's side of each comparison and when it arrived, indexed by FenixComparison; NaN is missing. A
+    // reconnect keeps both, since SimConnect keeps delivering through it (and does not repeat a value that has
+    // not changed).
     private readonly double[] _sim = Missing();
+    private readonly long[] _simAtMs = new long[ComparisonCount];
 
     // Everything below belongs to one connection: OnConnected replaces it.
     private bool _connected;
@@ -157,9 +173,9 @@ internal sealed class FenixChannelTrust
     /// <summary>
     /// One decoded data message, received at <paramref name="nowMs"/>: refreshes the stream, latches a bad
     /// shape, and runs each cross-check against SimConnect's latest values. A message that comes more than
-    /// <see cref="StreamStaleMs"/> after the one before it first ends every pending disagreement. A frame that
-    /// is not <see cref="FenixChannelFrame.ShapesOk"/> gives no values: the latch already holds every display,
-    /// and the defaults it carries would only disagree.
+    /// <see cref="StreamStaleMs"/> after the one before it first restarts every hold clock (a disagreement
+    /// stays in force). A frame that is not <see cref="FenixChannelFrame.ShapesOk"/> gives no values: the latch
+    /// already holds every display, and the defaults it carries would only disagree.
     /// </summary>
     public void OnFrame(FenixChannelFrame frame, long nowMs)
     {
@@ -167,15 +183,15 @@ internal sealed class FenixChannelTrust
         // and no cross-check, so five seconds of them leave a trusted gate stalled but never latched.
         if (!frame.HasData) return;
 
-        // A stall is a break in what the gate has seen, as a waiting value is: a disagreement that began before
-        // the gap does not count toward MismatchHoldMs, which counts only what was seen without one. The same
-        // limit as the verdict's "stream stalled". Only the pending clocks end: a check that passed stays
-        // passed and a latch stays latched.
+        // A stall is a break in what the gate has seen, as a waiting value is: the run a disagreement has built
+        // toward MismatchHoldMs counts only what was seen without a gap, so it starts again. The same limit as
+        // the verdict's "stream stalled". Only the hold clocks restart: a disagreement stays in force until a
+        // message agrees, a check that passed stays passed and a latch stays latched.
         if (_haveFrame && nowMs - _lastFrameMs > StreamStaleMs)
         {
             foreach (Check check in _checks)
             {
-                check.DisagreeSinceMs = null;
+                check.HoldStartMs = null;
             }
         }
 
@@ -188,7 +204,7 @@ internal sealed class FenixChannelTrust
             return;
         }
 
-        ReadFrame(frame);
+        ReadFrame(frame, nowMs);
         for (int i = 0; i < ComparisonCount; i++)
         {
             Evaluate((FenixComparison)i, nowMs);
@@ -210,15 +226,17 @@ internal sealed class FenixChannelTrust
     }
 
     /// <summary>
-    /// SimConnect's latest value for one comparison; NaN means it has none. The gate runs the checks on the
-    /// next data message. Kept across reconnects.
+    /// SimConnect's latest value for one comparison, which arrived at <paramref name="nowMs"/>; NaN means it
+    /// has none. The gate runs the checks on the next data message, against the channel as it was when this
+    /// arrived (<see cref="ComparisonWindowMs"/>). Kept, with its arrival time, across reconnects.
     /// </summary>
-    public void OnComparison(FenixComparison kind, double value)
+    public void OnComparison(FenixComparison kind, double value, long nowMs)
     {
         int index = (int)kind;
         if ((uint)index < (uint)_sim.Length)
         {
             _sim[index] = value;
+            _simAtMs[index] = nowMs;
         }
     }
 
@@ -234,7 +252,8 @@ internal sealed class FenixChannelTrust
 
     /// <summary>
     /// One line for each comparison, in the invariant culture, with the channel's latest value beside
-    /// SimConnect's: "altitude: channel 1,023 ft, sim 1,020 ft". A value that is missing reads "missing".
+    /// SimConnect's latest, as both stand now (not aligned in time, as the checks compare them):
+    /// "altitude: channel 1,023 ft, sim 1,020 ft". A value that is missing reads "missing".
     /// </summary>
     public IReadOnlyList<string> DescribeComparisons()
     {
@@ -289,13 +308,14 @@ internal sealed class FenixChannelTrust
                 return "not a display of the channel";
         }
 
-        // The first check that is not OK gives the reason, whatever kind of fault it is: latched, else
-        // disagreeing now, else never passed. A check that passed and is waiting now is still OK.
+        // The first check that is not OK gives the reason, whatever kind of fault it is: latched, else a
+        // disagreement in force, else never passed. A check that passed with no disagreement in force is OK,
+        // waiting or not.
         foreach (FenixComparison kind in checks)
         {
             Check check = _checks[(int)kind];
             if (check.Latched) return $"{NameOf(kind)} latched until reconnect: {check.Pair}";
-            if (check.DisagreeSinceMs is not null) return $"{NameOf(kind)} disagrees: {check.Pair}";
+            if (check.Disagreeing) return $"{NameOf(kind)} disagrees: {check.Pair}";
             if (!check.Passed) return $"{NameOf(kind)} not checked yet";
         }
 
@@ -308,8 +328,8 @@ internal sealed class FenixChannelTrust
     private void Latch(string reason) => _shapeReason ??= reason;
 
     // Takes the channel's side of every comparison, and the first unknown code of each display's lines, from a
-    // frame that has its shapes.
-    private void ReadFrame(FenixChannelFrame frame)
+    // frame that has its shapes, and keeps each comparison's value for ComparisonWindowMs.
+    private void ReadFrame(FenixChannelFrame frame, long nowMs)
     {
         FenixTextLine fob = FenixChannelText.Parse(frame.FobText);
 
@@ -319,39 +339,86 @@ internal sealed class FenixChannelTrust
         _channel[(int)FenixComparison.MagHeadingDeg] = frame.MagHeading;
         _channel[(int)FenixComparison.FuelKg] = FuelKgOf(fob);
 
+        for (int i = 0; i < ComparisonCount; i++)
+        {
+            Keep(_checks[i], nowMs, _channel[i]);
+        }
+
         _fmaUnknownCode = FirstUnknownCode(frame.Fma.Select(slot => slot.Text), "FMA");
         _ewdUnknownCode = FirstUnknownCode(frame.UpperEcamLeft.Concat(frame.UpperEcamRight), "upper ECAM")
             ?? UnknownCodeIn(fob, "FOB line");
     }
 
-    // One check, on one data message: waiting, agreeing or disagreeing.
+    // One check, on one data message: waiting, agreeing or disagreeing. A disagreement is a state of its own
+    // (Disagreeing) that only an agreeing message ends. The hold clock is what a waiting message or a stall
+    // restarts: it counts how long the disagreeing messages have run unbroken.
     private void Evaluate(FenixComparison kind, long nowMs)
     {
         Check check = _checks[(int)kind];
         if (check.Latched) return;   // until reconnect: nothing that follows changes it, not even the values its reason names
 
-        double channel = _channel[(int)kind];
         double sim = _sim[(int)kind];
+        double channel = ChannelAt(check, _channel[(int)kind], _simAtMs[(int)kind], nowMs);
 
         if (IsWaiting(kind, channel, sim))
         {
-            check.DisagreeSinceMs = null;
+            check.HoldStartMs = null;   // a break in the run; a disagreement in force stays in force
             return;
         }
 
         if (Agrees(kind, channel, sim))
         {
             check.Passed = true;
-            check.DisagreeSinceMs = null;
+            check.Disagreeing = false;
+            check.HoldStartMs = null;
             return;
         }
 
+        check.Disagreeing = true;
         check.Pair = Pair(kind, channel, sim);
-        check.DisagreeSinceMs ??= nowMs;
-        if (nowMs - check.DisagreeSinceMs.Value >= MismatchHoldMs)
+        check.HoldStartMs ??= nowMs;
+        if (nowMs - check.HoldStartMs.Value >= MismatchHoldMs)
         {
             check.Latched = true;
         }
+    }
+
+    // The channel's value to compare with SimConnect's latest one, arrived at simAtMs. SimConnect delivers about
+    // once a second, so when that arrived within ComparisonWindowMs of this message it is what the channel showed
+    // in the kept message nearest its arrival (the later one on a tie), not what it shows now: a turn or a climb
+    // moves both. An older SimConnect value has not changed, since an unchanged value is not delivered again, and
+    // the channel's value now is the one to compare. The kept values include this message's own.
+    private static double ChannelAt(Check check, double current, long simAtMs, long nowMs)
+    {
+        if (nowMs - simAtMs > ComparisonWindowMs) return current;
+
+        double nearest = current;
+        long nearestGapMs = long.MaxValue;
+        foreach ((long ms, double value) in check.Recent)
+        {
+            long gapMs = Math.Abs(ms - simAtMs);
+            if (gapMs <= nearestGapMs)
+            {
+                nearestGapMs = gapMs;
+                nearest = value;
+            }
+        }
+
+        return nearest;
+    }
+
+    // Keeps the channel's value from this message for ComparisonWindowMs, and drops what is older.
+    private static void Keep(Check check, long nowMs, double value)
+    {
+        check.Recent.Add((nowMs, value));
+
+        int stale = 0;
+        while (stale < check.Recent.Count && check.Recent[stale].Ms < nowMs - ComparisonWindowMs)
+        {
+            stale++;
+        }
+
+        check.Recent.RemoveRange(0, stale);
     }
 
     // Either value is missing (SimConnect has not delivered it, or a value is not finite), or an FD light reads
@@ -474,13 +541,22 @@ internal sealed class FenixChannelTrust
         /// <summary>The values have agreed at least once.</summary>
         public bool Passed;
 
-        /// <summary>When the disagreement now pending began; null when none is.</summary>
-        public long? DisagreeSinceMs;
+        /// <summary>A disagreement is in force: until a message agrees, whatever else the messages say.</summary>
+        public bool Disagreeing;
+
+        /// <summary>
+        /// When the run of disagreeing messages now counting toward <see cref="MismatchHoldMs"/> began; null when
+        /// none is running. A waiting message or a stall of the stream ends the run, not the disagreement.
+        /// </summary>
+        public long? HoldStartMs;
 
         /// <summary>A disagreement lasted <see cref="MismatchHoldMs"/>: not trusted until reconnect.</summary>
         public bool Latched;
 
-        /// <summary>"channel 1,023 ft, sim 2,050 ft": the values of the disagreement pending or that latched it.</summary>
+        /// <summary>"channel 1,023 ft, sim 2,050 ft": the values last compared in the disagreement, or that latched it.</summary>
         public string Pair = "";
+
+        /// <summary>The channel's value in each message of the last <see cref="ComparisonWindowMs"/>, with its time.</summary>
+        public readonly List<(long Ms, double Value)> Recent = new();
     }
 }
