@@ -44,9 +44,11 @@ internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDe
 /// check wait: SimConnect has not delivered it, an FD light reads neither 0 nor 1, a channel value is not
 /// finite, or the FOB text does not parse. Waiting neither passes nor fails, it ends a pending disagreement,
 /// and a check that has passed before still counts as passed. A disagreement untrusts its display while it
-/// lasts, and once it has lasted <see cref="MismatchHoldMs"/> without a break it latches until reconnect. An
-/// unknown text code untrusts a display too but never latches: it is an exact condition, not a noisy
-/// one.</para>
+/// lasts, and once it has lasted <see cref="MismatchHoldMs"/> without a break it latches until reconnect. A
+/// waiting value is a break, and so is a stall of the stream: a data message that comes more than
+/// <see cref="StreamStaleMs"/> after the one before it ends every pending disagreement (a check that passed
+/// stays passed, a latch stays latched). An unknown text code untrusts a display too but never latches: it is
+/// an exact condition, not a noisy one.</para>
 /// <para>Not thread-safe: the monitor locks around every call.</para>
 /// </remarks>
 internal sealed class FenixChannelTrust
@@ -54,7 +56,10 @@ internal sealed class FenixChannelTrust
     /// <summary>How long after the last data message the stream counts as stalled.</summary>
     public const long StreamStaleMs = 2_000;
 
-    /// <summary>How long a disagreement must last, without a break, to latch its display until reconnect.</summary>
+    /// <summary>
+    /// How long a disagreement must last, without a break (a waiting value or a stall of the stream is one), to
+    /// latch its display until reconnect.
+    /// </summary>
     public const long MismatchHoldMs = 3_000;
 
     // The starting tolerances, pinned only after the in-sim measurements. A Fenix update never loosens one to
@@ -151,15 +156,28 @@ internal sealed class FenixChannelTrust
 
     /// <summary>
     /// One decoded data message, received at <paramref name="nowMs"/>: refreshes the stream, latches a bad
-    /// shape, and runs each cross-check against SimConnect's latest values. A frame that is not
-    /// <see cref="FenixChannelFrame.ShapesOk"/> gives no values: the latch already holds every display, and
-    /// the defaults it carries would only disagree.
+    /// shape, and runs each cross-check against SimConnect's latest values. A message that comes more than
+    /// <see cref="StreamStaleMs"/> after the one before it first ends every pending disagreement. A frame that
+    /// is not <see cref="FenixChannelFrame.ShapesOk"/> gives no values: the latch already holds every display,
+    /// and the defaults it carries would only disagree.
     /// </summary>
     public void OnFrame(FenixChannelFrame frame, long nowMs)
     {
         // A push with nothing in it is neither damaged nor a sign of life: no shape check, no stream refresh
         // and no cross-check, so five seconds of them leave a trusted gate stalled but never latched.
         if (!frame.HasData) return;
+
+        // A stall is a break in what the gate has seen, as a waiting value is: a disagreement that began before
+        // the gap does not count toward MismatchHoldMs, which counts only what was seen without one. The same
+        // limit as the verdict's "stream stalled". Only the pending clocks end: a check that passed stays
+        // passed and a latch stays latched.
+        if (_haveFrame && nowMs - _lastFrameMs > StreamStaleMs)
+        {
+            foreach (Check check in _checks)
+            {
+                check.DisagreeSinceMs = null;
+            }
+        }
 
         _haveFrame = true;
         _lastFrameMs = nowMs;
@@ -405,8 +423,9 @@ internal sealed class FenixChannelTrust
     private static string Pair(FenixComparison kind, double channel, double sim) =>
         $"channel {Format(kind, channel)}, sim {Format(kind, sim)}";
 
-    // One value in the invariant culture, never the PC's: altitude and fuel whole with their unit, heading to
-    // a tenth, a flight director as on or off. A light that reads neither 0 nor 1 shows its raw value.
+    // One value in the invariant culture, never the PC's: altitude (ft) and fuel (kg) whole, heading (deg) to a
+    // tenth, each with its unit, a flight director as on or off. A light that reads neither 0 nor 1 shows its
+    // raw value.
     private static string Format(FenixComparison kind, double value)
     {
         if (!double.IsFinite(value)) return "missing";
@@ -421,7 +440,7 @@ internal sealed class FenixChannelTrust
             case FenixComparison.AltitudeFt:
                 return value.ToString("N0", CultureInfo.InvariantCulture) + " ft";
             case FenixComparison.MagHeadingDeg:
-                return value.ToString("0.0", CultureInfo.InvariantCulture);
+                return value.ToString("0.0", CultureInfo.InvariantCulture) + " deg";
             case FenixComparison.FuelKg:
                 return value.ToString("N0", CultureInfo.InvariantCulture) + " kg";
             default:

@@ -423,6 +423,85 @@ public class FenixChannelTrustTests
         Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 5_600));
     }
 
+    [Fact]
+    public void A_stall_breaks_a_pending_disagreement()
+    {
+        FenixChannelTrust gate = TrustedGate();
+        gate.OnComparison(FenixComparison.AltitudeFt, 5000);
+        Feed(gate, 0, 2_000, Frame());   // disagreeing for 2,000 ms, then the stream goes quiet
+
+        AssertAll(gate, 4_001, Untrusted("stream stalled"));
+
+        // It resumes, still disagreeing. A stall is a break, as a waiting value is: the run counts from the
+        // first frame after it (t=5000), not from t=0, so the 3,000 ms are not already over.
+        Feed(gate, 5_000, 7_900, Frame());
+
+        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 7_900));
+
+        gate.OnFrame(Frame(), 8_000);   // 3,000 ms after the first frame after the stall
+
+        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 8_000));
+    }
+
+    [Fact]
+    public void Pushes_with_no_data_do_not_hide_a_stall_from_a_pending_disagreement()
+    {
+        FenixChannelTrust gate = TrustedGate();
+        gate.OnComparison(FenixComparison.AltitudeFt, 5000);
+        Feed(gate, 0, 2_000, Frame());   // disagreeing for 2,000 ms
+
+        // Pushes with no data are not messages, so they are not the frame "seen before": the stream is still
+        // stalled when the next push with data comes, and the run counts from that one.
+        Feed(gate, 2_100, 4_900, FenixChannelFrame.NoData);
+        Feed(gate, 5_000, 7_900, Frame());
+
+        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 7_900));
+
+        gate.OnFrame(Frame(), 8_000);
+
+        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 8_000));
+    }
+
+    [Theory]
+    [InlineData(3_000, "altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft")]   // 2,000 ms of silence: not a stall
+    [InlineData(3_001, "altitude disagrees: channel 1,000 ft, sim 5,000 ft")]   // 2,001 ms: a stall
+    public void A_stall_breaks_a_pending_disagreement_only_past_the_stale_limit(long nextFrameMs, string reason)
+    {
+        FenixChannelTrust gate = TrustedGate();
+        gate.OnComparison(FenixComparison.AltitudeFt, 5000);
+        Feed(gate, 0, 1_000, Frame());   // disagreeing since t=0
+
+        gate.OnFrame(Frame(), nextFrameMs);
+
+        Assert.Equal(Untrusted(reason), Pfd(gate, nextFrameMs));
+    }
+
+    [Fact]
+    public void A_stall_does_not_clear_a_passed_check()
+    {
+        FenixChannelTrust gate = TrustedGate();   // every check has passed
+
+        // Ten seconds of silence, then a frame whose altitude cannot be read: the check had passed, and a
+        // stall is not a reconnect.
+        gate.OnFrame(Frame(altitude: double.NaN), 10_000);
+
+        Assert.Equal(Trusted, Pfd(gate, 10_000));
+    }
+
+    [Fact]
+    public void A_stall_does_not_lift_a_latch()
+    {
+        FenixChannelTrust gate = TrustedGate();
+        gate.OnComparison(FenixComparison.AltitudeFt, 5000);
+        Feed(gate, 100, 3_100, Frame());   // latched
+
+        // Ten seconds of silence, then a frame that agrees.
+        gate.OnComparison(FenixComparison.AltitudeFt, 1000);
+        gate.OnFrame(Frame(), 13_100);
+
+        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 13_100));
+    }
+
     [Theory]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
@@ -540,9 +619,9 @@ public class FenixChannelTrustTests
     [InlineData(1.0, 359.0, null)]
     [InlineData(360.0, 0.0, null)]
     [InlineData(4.0, 1.0, null)]   // exactly 3 degrees: within the tolerance
-    [InlineData(355.0, 1.0, "heading disagrees: channel 355.0, sim 1.0")]   // 6 apart across north
-    [InlineData(4.5, 1.0, "heading disagrees: channel 4.5, sim 1.0")]
-    [InlineData(0.0, 180.0, "heading disagrees: channel 0.0, sim 180.0")]
+    [InlineData(355.0, 1.0, "heading disagrees: channel 355.0 deg, sim 1.0 deg")]   // 6 apart across north
+    [InlineData(4.5, 1.0, "heading disagrees: channel 4.5 deg, sim 1.0 deg")]
+    [InlineData(0.0, 180.0, "heading disagrees: channel 0.0 deg, sim 180.0 deg")]
     public void Heading_is_compared_across_north(double channelHeading, double simHeading, string? reason)
     {
         FenixChannelTrust gate = ConnectedGate();
@@ -793,7 +872,7 @@ public class FenixChannelTrustTests
             FenixChannelTrust heading = ConnectedGate();
             Compare(heading, heading: 1.5);
             heading.OnFrame(Frame(heading: 355.5), 0);
-            Assert.Equal(Untrusted("heading disagrees: channel 355.5, sim 1.5"), Pfd(heading, 0));
+            Assert.Equal(Untrusted("heading disagrees: channel 355.5 deg, sim 1.5 deg"), Pfd(heading, 0));
 
             FenixChannelTrust fuel = ConnectedGate();
             Compare(fuel, fuelKg: 2700.4);
@@ -833,7 +912,7 @@ public class FenixChannelTrustTests
                 "FD captain: channel on, sim on",
                 "FD first officer: channel off, sim off",
                 "altitude: channel 1,023 ft, sim 1,020 ft",
-                "heading: channel 90.5, sim 90.0",
+                "heading: channel 90.5 deg, sim 90.0 deg",
                 "fuel: channel 2,939 kg, sim 2,938 kg"
             }, gate.DescribeComparisons());
         });
@@ -864,7 +943,7 @@ public class FenixChannelTrustTests
             "FD captain: channel on, sim missing",
             "FD first officer: channel on, sim missing",
             "altitude: channel missing, sim 1,020 ft",
-            "heading: channel 90.0, sim missing",
+            "heading: channel 90.0 deg, sim missing",
             "fuel: channel missing, sim missing"
         }, gate.DescribeComparisons());
     }
