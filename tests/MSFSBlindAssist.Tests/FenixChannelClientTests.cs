@@ -4,8 +4,9 @@
 //
 // The contract the monitor builds on: the client sends one kind of request, to the path of the call it was
 // started for, and hands each message to its callback in order; it reports a state once, not again until it
-// changes; a failure, a broken stream or an end reconnects quietly and nothing throws at the caller; a refusal
-// (grpc-status 7 or 16) ends the call for good; and Dispose drops the stream at once.
+// changes; a failure, a broken stream or an end reconnects quietly and nothing throws at the caller, with a
+// wait that grows until a call delivers a message; a refusal (grpc-status 7 or 16, or HTTP 401 or 403) ends
+// the call for good; no redirect is followed; and Dispose drops the stream at once.
 //
 // Timing: every wait for something to happen is a signal (a TaskCompletionSource) with a 5 s timeout. The
 // two short pauses (Quiet) only prove that nothing MORE happens, so a slow machine can make them pass
@@ -317,6 +318,29 @@ public class FenixChannelClientTests
     }
 
     [Theory]
+    [InlineData(401, "Unauthorized")]
+    [InlineData(403, "Forbidden")]
+    public async Task An_http_refusal_stops_the_channel(int code, string name)
+    {
+        // gRPC maps HTTP 401 and 403 to grpc-status 16 and 7: the Fenix saying no is a refusal however it says it.
+        var server = new FenixChannelFakeServer();
+        server.Enqueue(() => new HttpResponseMessage((HttpStatusCode)code));
+        var events = new Events();
+        using var client = NewClient(server);
+
+        client.Start(FenixChannelCall.DisplayData, events.OnMessage, events.OnState);
+        await events.WhenStates(1);
+        await Task.Delay(Quiet);
+
+        var (state, text) = events.States[0];
+        Assert.Equal(FenixChannelState.Refused, state);
+        Assert.Contains($"HTTP {code}", text);
+        Assert.Contains(name, text);
+        Assert.Single(events.States);
+        Assert.Single(server.Requests);
+    }
+
+    [Theory]
     [InlineData(16, "grpc-status 16")]
     [InlineData(7, "grpc-status 7")]
     public async Task A_refusal_after_the_messages_ends_the_call_too(int status, string expectedText)
@@ -388,6 +412,29 @@ public class FenixChannelClientTests
     }
 
     [Fact]
+    public async Task A_redirect_is_not_followed_and_is_reported_as_an_http_status()
+    {
+        // Following a redirect could open a path no FenixChannelCall names. The client asks again, to its own
+        // path, and the 3xx answer reads like any other status that is not 200.
+        var server = new FenixChannelFakeServer();
+        server.Enqueue(() =>
+        {
+            var redirect = new HttpResponseMessage(HttpStatusCode.TemporaryRedirect);
+            redirect.Headers.Location = new Uri("/Other.Service/Method", UriKind.Relative);
+            return redirect;
+        });
+        var events = new Events();
+        using var client = NewClient(server);
+
+        client.Start(FenixChannelCall.DisplayData, events.OnMessage, events.OnState);
+        await events.WhenStates(2);   // the 307, then Connected on the second request
+
+        Assert.Equal((FenixChannelState.NotAnswering, "HTTP 307"), events.States[0]);
+        Assert.Equal(2, server.Requests.Count);
+        Assert.All(server.Requests, request => Assert.Equal("http://127.0.0.1:18083" + DisplayDataPath, request.Uri));
+    }
+
+    [Fact]
     public async Task Another_grpc_status_is_reported_and_retried()
     {
         var server = new FenixChannelFakeServer();
@@ -406,13 +453,13 @@ public class FenixChannelClientTests
     }
 
     [Fact]
-    public async Task The_attempt_count_goes_up_with_each_failure_and_starts_over_after_a_connection()
+    public async Task The_attempt_count_goes_up_with_each_failure_and_starts_over_after_a_message()
     {
         var server = new FenixChannelFakeServer();
         server.Throw(new HttpRequestException("refused"));
         server.Throw(new HttpRequestException("refused"));
         server.Throw(new HttpRequestException("refused"));
-        server.Enqueue(() => FenixChannelFakeServer.Stream(Frames([1])));   // connects, delivers, ends
+        server.Enqueue(() => FenixChannelFakeServer.Stream(Frames([1])));   // connects, delivers a message, ends
         var events = new Events();
         var delays = new DelayLog();
         using var client = NewClient(server, delays.Delay);
@@ -421,6 +468,47 @@ public class FenixChannelClientTests
         await server.WaitForRequestsAsync(5);   // the fifth follows the stream that ended
 
         Assert.Equal(new[] { (0, false), (1, false), (2, false), (0, false) }, delays.Asked);
+    }
+
+    [Fact]
+    public async Task A_stream_that_ends_without_a_message_does_not_reset_the_backoff()
+    {
+        // The answer is 200 and the body ends with no message, again and again: the call opens but does not
+        // work, so each wait is longer than the last, as after a refused connection.
+        var server = new FenixChannelFakeServer();
+        for (int i = 0; i < 4; i++)
+        {
+            server.Enqueue(() => FenixChannelFakeServer.Stream([], trailerStatus: 0));
+        }
+
+        var events = new Events();
+        var delays = new DelayLog();
+        using var client = NewClient(server, delays.Delay);
+
+        client.Start(FenixChannelCall.DisplayData, events.OnMessage, events.OnState);
+        await server.WaitForRequestsAsync(5);   // the fifth follows the fourth empty stream
+
+        Assert.Equal(new[] { (0, false), (1, false), (2, false), (3, false) }, delays.Asked);
+    }
+
+    [Fact]
+    public async Task A_stream_that_delivers_a_message_resets_the_backoff()
+    {
+        // Two empty streams (the count goes up to 2), then one that delivers a message (the count starts over
+        // at 0), then another empty one (1 again).
+        var server = new FenixChannelFakeServer();
+        server.Enqueue(() => FenixChannelFakeServer.Stream([], trailerStatus: 0));
+        server.Enqueue(() => FenixChannelFakeServer.Stream([], trailerStatus: 0));
+        server.Enqueue(() => FenixChannelFakeServer.Stream(Frames([1]), trailerStatus: 0));
+        server.Enqueue(() => FenixChannelFakeServer.Stream([], trailerStatus: 0));
+        var events = new Events();
+        var delays = new DelayLog();
+        using var client = NewClient(server, delays.Delay);
+
+        client.Start(FenixChannelCall.DisplayData, events.OnMessage, events.OnState);
+        await server.WaitForRequestsAsync(5);
+
+        Assert.Equal(new[] { (0, false), (1, false), (0, false), (1, false) }, delays.Asked);
     }
 
     [Fact]
@@ -579,6 +667,23 @@ public class FenixChannelClientTests
         Assert.Equal([FenixChannelState.Connected], ecam.States.Select(s => s.State));
     }
 
+    [Fact]
+    public async Task A_stream_that_stays_silent_backs_off()
+    {
+        // Every answer is an endless stream that never carries a byte, so each is dropped for silence. A call
+        // that has not delivered a message has not shown it works: the wait grows (3, 6, 12, then 30 s), not
+        // the same 3 s each time.
+        var server = new FenixChannelFakeServer();
+        var delays = new DelayLog();
+        var events = new Events();
+        using var client = NewClient(server, delays.Delay, silence: TimeSpan.FromMilliseconds(100));
+
+        client.Start(FenixChannelCall.DisplayData, events.OnMessage, events.OnState);
+        await server.WaitForRequestsAsync(5);
+
+        Assert.Equal(new[] { (0, false), (1, false), (2, false), (3, false) }, delays.Asked.Take(4));
+    }
+
     // ---- The schedule ---------------------------------------------------------------------------
 
     [Fact]
@@ -587,6 +692,17 @@ public class FenixChannelClientTests
         Assert.Equal(new[] { 3000, 6000, 12000, 30000 }, FenixChannelClient.ReconnectDelaysMs);
         Assert.Equal(30000, FenixChannelClient.CallNotFoundDelayMs);
         Assert.Equal(TimeSpan.FromSeconds(10), FenixChannelClient.DisplayDataSilence);
+    }
+
+    [Fact]
+    public void The_default_handler_follows_no_redirect()
+    {
+        // The tests give the client a fake, so the handler it builds for itself is checked here. It follows no
+        // redirect: one could open a path no FenixChannelCall names, and the client opens only those two calls.
+        using var handler = FenixChannelClient.CreateDefaultHandler();
+
+        Assert.False(handler.AllowAutoRedirect);
+        Assert.Equal(TimeSpan.FromSeconds(5), handler.ConnectTimeout);
     }
 
     [Theory]

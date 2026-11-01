@@ -20,8 +20,9 @@ internal enum FenixChannelState
     NotAnswering,
 
     /// <summary>
-    /// The Fenix refused the client (grpc-status 7 or 16). The client ends that call for the session and never
-    /// tries to get past the refusal: if the Fenix adds a key, that is the Fenix's decision.
+    /// The Fenix refused the client (grpc-status 7 or 16, or HTTP 401 or 403, which gRPC maps to them). The client
+    /// ends that call for the session and never tries to get past the refusal: if the Fenix adds a key, that is
+    /// the Fenix's decision.
     /// </summary>
     Refused
 }
@@ -43,7 +44,10 @@ internal enum FenixChannelState
 /// </remarks>
 internal sealed class FenixChannelClient : IDisposable
 {
-    /// <summary>How long to wait before asking again, by attempt: 3, 6 and 12 s, then every 30 s.</summary>
+    /// <summary>
+    /// How long to wait before asking again, by attempt: 3, 6 and 12 s, then every 30 s. The attempt starts over at 0
+    /// when a call delivers its first message, not when it opens.
+    /// </summary>
     public static readonly int[] ReconnectDelaysMs = { 3000, 6000, 12000, 30000 };
 
     /// <summary>How long to wait before asking again for a call the Fenix says it does not offer (grpc-status 12).</summary>
@@ -80,7 +84,7 @@ internal sealed class FenixChannelClient : IDisposable
         TimeSpan? displayDataSilence = null)
     {
         _http = new HttpClient(
-            handler ?? new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5) },
+            handler ?? CreateDefaultHandler(),
             disposeHandler: handler == null)
         {
             // A stream has no end to time out: the data call's silence limit and Dispose are what end one.
@@ -89,6 +93,18 @@ internal sealed class FenixChannelClient : IDisposable
         _retryDelay = retryDelay ?? DefaultRetryDelay;
         _displayDataSilence = displayDataSilence ?? DisplayDataSilence;
     }
+
+    /// <summary>
+    /// The handler the client builds when a test gives it none: HTTP/2 over a socket, a 5 s connect timeout, and
+    /// no redirects. A followed redirect could open a path <see cref="FenixChannelFields.PathOf"/> never gave, and
+    /// the client opens only the two calls, so a 3xx answer is a failure like any other status that is not 200.
+    /// </summary>
+    internal static SocketsHttpHandler CreateDefaultHandler()
+        => new()
+        {
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            AllowAutoRedirect = false
+        };
 
     /// <summary>
     /// The wait before asking again when no test has chosen one: the schedule of <see cref="ReconnectDelaysMs"/>
@@ -223,8 +239,13 @@ internal sealed class FenixChannelClient : IDisposable
 
                 if (response.StatusCode != HttpStatusCode.OK)
                 {
-                    return Outcome.Reconnect(string.Create(
-                        CultureInfo.InvariantCulture, $"HTTP {(int)response.StatusCode}"));
+                    int code = (int)response.StatusCode;
+
+                    // gRPC maps HTTP 401 and 403 to grpc-status 16 and 7: the Fenix saying no is a refusal however
+                    // it says it, and the client never tries to get past one.
+                    if (code is 401 or 403) return Outcome.Refuse(HttpRefusalText(code));
+
+                    return Outcome.Reconnect(string.Create(CultureInfo.InvariantCulture, $"HTTP {code}"));
                 }
 
                 // An answer that carries no message (an error) is one block of headers with its status in it. A
@@ -232,7 +253,6 @@ internal sealed class FenixChannelClient : IDisposable
                 var (headerStatus, headerMessage) = FenixChannelFraming.ReadStatus(response);
                 if (headerStatus is int status && status != 0) return FromStatus(status, headerMessage);
 
-                _attempt = 0;
                 Report(FenixChannelState.Connected, "");
                 return await ReadStreamAsync(response).ConfigureAwait(false);
             }
@@ -252,6 +272,7 @@ internal sealed class FenixChannelClient : IDisposable
             await using Stream body = await response.Content.ReadAsStreamAsync(_lifetime).ConfigureAwait(false);
             var reader = new FenixChannelMessageReader();
             byte[] chunk = new byte[ReadChunkBytes];
+            bool firstMessageSeen = false;
 
             while (true)
             {
@@ -283,6 +304,16 @@ internal sealed class FenixChannelClient : IDisposable
                 while (reader.TryTake(out byte[] message))
                 {
                     if (_lifetime.IsCancellationRequested) return Outcome.Stopped;
+
+                    // A message shows the call works, which response headers do not: only now does the wait before
+                    // the next reconnect start over. A call that opens and stays silent, or ends with nothing to
+                    // say, backs off like a refused connection instead of asking again every few seconds.
+                    if (!firstMessageSeen)
+                    {
+                        firstMessageSeen = true;
+                        _attempt = 0;
+                    }
+
                     Deliver(message);
                 }
 
@@ -321,6 +352,14 @@ internal sealed class FenixChannelClient : IDisposable
             return string.Create(
                 CultureInfo.InvariantCulture,
                 $"the Fenix refused {_path} (grpc-status {status}, {name}{why}); the call stays off for the session");
+        }
+
+        private string HttpRefusalText(int code)
+        {
+            string name = code == 401 ? "Unauthorized" : "Forbidden";
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"the Fenix refused {_path} (HTTP {code}, {name}); the call stays off for the session");
         }
 
         private HttpRequestMessage BuildRequest()
