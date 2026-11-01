@@ -1200,6 +1200,9 @@ public partial class MainForm
         // Starting the SDK bridge is a no-op unless the new aircraft is the iFly.
         StartIFlySdkBridge();
 
+        // Likewise the PMDG 737 display readers unless it is the PMDG 737 (a reader already running restarts).
+        StartPmdg737Displays();
+
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
         {

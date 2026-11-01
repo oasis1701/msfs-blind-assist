@@ -1,0 +1,744 @@
+{
+  "formatVersion": 1,
+  "module": "pmdg737",
+  "generatorVersion": 1,
+  "codeHash": "c5511d3895e6dadfb989694d3c495f47d7c406bdba85e34c7b5121d2106152a4",
+  "dataRanges": [
+    {
+      "address": 20480,
+      "length": 24
+    },
+    {
+      "address": 20544,
+      "length": 20
+    },
+    {
+      "address": 20608,
+      "length": 12
+    },
+    {
+      "address": 20672,
+      "length": 24
+    },
+    {
+      "address": 20736,
+      "length": 16
+    },
+    {
+      "address": 20800,
+      "length": 16
+    },
+    {
+      "address": 20864,
+      "length": 16
+    },
+    {
+      "address": 20928,
+      "length": 20
+    },
+    {
+      "address": 20992,
+      "length": 48
+    },
+    {
+      "address": 21056,
+      "length": 44
+    },
+    {
+      "address": 21120,
+      "length": 32
+    },
+    {
+      "address": 21184,
+      "length": 16
+    },
+    {
+      "address": 21248,
+      "length": 24
+    },
+    {
+      "address": 21312,
+      "length": 28
+    },
+    {
+      "address": 21376,
+      "length": 16
+    },
+    {
+      "address": 21440,
+      "length": 16
+    },
+    {
+      "address": 21504,
+      "length": 16
+    },
+    {
+      "address": 21568,
+      "length": 20
+    },
+    {
+      "address": 21632,
+      "length": 48
+    },
+    {
+      "address": 21696,
+      "length": 32
+    },
+    {
+      "address": 21760,
+      "length": 40
+    },
+    {
+      "address": 21824,
+      "length": 48
+    },
+    {
+      "address": 21888,
+      "length": 16
+    },
+    {
+      "address": 21952,
+      "length": 20
+    },
+    {
+      "address": 22016,
+      "length": 20
+    },
+    {
+      "address": 22080,
+      "length": 12
+    },
+    {
+      "address": 22144,
+      "length": 24
+    },
+    {
+      "address": 22208,
+      "length": 16
+    },
+    {
+      "address": 22272,
+      "length": 16
+    },
+    {
+      "address": 22336,
+      "length": 20
+    },
+    {
+      "address": 22400,
+      "length": 20
+    },
+    {
+      "address": 22464,
+      "length": 28
+    },
+    {
+      "address": 22528,
+      "length": 20
+    },
+    {
+      "address": 22592,
+      "length": 12
+    },
+    {
+      "address": 22656,
+      "length": 12
+    },
+    {
+      "address": 24576,
+      "length": 12
+    },
+    {
+      "address": 24608,
+      "length": 20
+    },
+    {
+      "address": 24640,
+      "length": 20
+    },
+    {
+      "address": 24672,
+      "length": 20
+    },
+    {
+      "address": 24704,
+      "length": 16
+    },
+    {
+      "address": 24736,
+      "length": 24
+    },
+    {
+      "address": 24768,
+      "length": 24
+    },
+    {
+      "address": 24800,
+      "length": 16
+    },
+    {
+      "address": 24832,
+      "length": 16
+    },
+    {
+      "address": 24864,
+      "length": 16
+    },
+    {
+      "address": 24896,
+      "length": 20
+    },
+    {
+      "address": 24928,
+      "length": 28
+    },
+    {
+      "address": 24960,
+      "length": 28
+    },
+    {
+      "address": 24992,
+      "length": 20
+    },
+    {
+      "address": 25024,
+      "length": 24
+    },
+    {
+      "address": 930048,
+      "length": 60
+    },
+    {
+      "address": 942080,
+      "length": 96
+    }
+  ],
+  "dataHash": "6fc051bcb955bea679b66e5a55a5bfc57aa64110aa982661ca581e0ec77a8edd",
+  "searches": [
+    {
+      "pattern": "QUZTAEFmdGVyVE9UaW1lcgBBRlMAQWZ0ZXJMTkRUaW1lcgBBRlMARkQxAA==",
+      "hits": []
+    },
+    {
+      "pattern": "UwAAAFQAAABBAAAAUgAAAFQAAAAgAAAAVgAAAEEAAABMAAAAVgAAAEUAAAAAAAAATwAAAFAAAABFAAAATgAAAAAAAAA=",
+      "hits": [
+        942080
+      ]
+    }
+  ],
+  "readers": {
+    "fma": {
+      "failure": "Anchor: the AFS key run (AfterTOTimer, AfterLNDTimer, FD1) found 0 times, expected 1."
+    },
+    "engineDisplays": {
+      "layout": {
+        "sourceFile": "",
+        "anchorAddress": 942080,
+        "anchor": "UwAAAFQAAABBAAAAUgAAAFQAAAAgAAAAVgAAAEEAAABMAAAAVgAAAEUAAAAAAAAATwAAAFAAAABFAAAATgAAAAAAAABPAAAASQAAAEwAAAAgAAAARgAAAEkAAABMAAAA",
+        "engine": {
+          "global": 2609908,
+          "size": 5704
+        },
+        "glass": {
+          "global": 2609864,
+          "size": 11744
+        },
+        "gauges": {
+          "tat": {
+            "offset": 64,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "n1": {
+            "offset": 136,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "n1Reference": {
+            "offset": 320,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "n1RedLine": {
+            "offset": 200,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "egt": {
+            "offset": 640,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "egtRedLine": {
+            "offset": 728,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "egtMaxContinuous": {
+            "offset": 760,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "n2": {
+            "offset": 896,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "n2Max": {
+            "offset": 960,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "fuelFlow": {
+            "offset": 1056,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "fuelUsed": {
+            "offset": 1120,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "showFuelUsed": {
+            "offset": 1040,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "oilPressure": {
+            "offset": 1208,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "oilPressureRed": {
+            "offset": 1320,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "oilPressureAmber": {
+            "offset": 1352,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "oilTemperature": {
+            "offset": 1416,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "oilTemperatureRed": {
+            "offset": 1504,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "oilTemperatureAmber": {
+            "offset": 1536,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "oilQuantity": {
+            "offset": 1568,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "oilQuantityLow": {
+            "offset": 1632,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "vibration": {
+            "offset": 1776,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "vibrationLimit": {
+            "offset": 1840,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "running": {
+            "offset": 1296,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "thrustMode": {
+            "offset": 304,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "assumedTempShown": {
+            "offset": 108,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "assumedTemperature": {
+            "offset": 120,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "n1SetSelector": {
+            "offset": 548,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "thrustWords": [
+            "TO",
+            "TO 1",
+            "TO 2",
+            "TO B",
+            "CLB",
+            "CLB 1",
+            "CLB 2",
+            "CRZ",
+            "CON",
+            "G/A",
+            "D-TO",
+            "D-TO 1",
+            "D-TO 2",
+            "R-TO",
+            "R-CLB"
+          ],
+          "thrustRules": {
+            "n1SetAuto": 2,
+            "noMode": -1,
+            "modeLimit": 10,
+            "derateOption": {
+              "offset": 33,
+              "stride": 0,
+              "kind": "Bool"
+            },
+            "choices": [
+              0,
+              13,
+              13,
+              3,
+              4,
+              14,
+              14,
+              7,
+              8,
+              9,
+              13,
+              13,
+              13,
+              3,
+              4,
+              14,
+              14,
+              7,
+              8,
+              9,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          "n1RedLatch": {
+            "offset": 232,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "egtRedLatch": {
+            "offset": 848,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "n2RedLatch": {
+            "offset": 992,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "vibrationShownAbove": -999999
+        },
+        "alerts": {
+          "startValve": {
+            "offset": 2616,
+            "stride": 16,
+            "kind": "Int"
+          },
+          "oilFilterBypass": {
+            "offset": 2648,
+            "stride": 16,
+            "kind": "Int"
+          },
+          "lowOilPressure": {
+            "offset": 2680,
+            "stride": 16,
+            "kind": "Int"
+          },
+          "fuelQuantity": {
+            "offset": 1872,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "fuelWarning": {
+            "offset": 2128,
+            "stride": 16,
+            "kind": "Int"
+          },
+          "fuelLowValue": 1,
+          "fuelConfigValue": 2,
+          "fuelImbalanceValue": 3,
+          "reverserShown": {
+            "offset": 256,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "reverserSecond": {
+            "offset": 280,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "taiOn": {
+            "offset": 588,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "taiAmber": {
+            "offset": 612,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "engineFail": {
+            "offset": 872,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "crossBleedStart": {
+            "offset": 1016,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "autothrottleLimit": {
+            "offset": 96,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "autolandAdvisory": {
+            "offset": 2176,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "noLand3Value": 1,
+          "noAutolandValue": 0,
+          "atcMemo": {
+            "offset": 9144,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "commMemo": {
+            "offset": 9156,
+            "stride": 0,
+            "kind": "Bool"
+          }
+        },
+        "pages": {
+          "efis": {
+            "global": 2604552,
+            "size": 127840
+          },
+          "unitCount": 6,
+          "unitStride": 608,
+          "pageOffset": 564,
+          "indexOffset": 568,
+          "upperUnit": 2,
+          "lowerUnit": 3,
+          "pages": {
+            "0": "Off",
+            "1": "Blank",
+            "2": "Pfd",
+            "3": "Nd",
+            "4": "EngineSideBySide",
+            "5": "EnginePrimary",
+            "6": "EngineSecondary",
+            "7": "EngineCompact",
+            "8": "Map",
+            "9": "Map",
+            "10": "Map",
+            "11": "Map",
+            "12": "Map",
+            "13": "Sys"
+          },
+          "manualN1": {
+            "offset": 127320,
+            "stride": 8,
+            "kind": "Double"
+          }
+        },
+        "sys": {
+          "hydQuantity": {
+            "offset": 8480,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "hydPressure": {
+            "offset": 8544,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "refill": {
+            "offset": 8608,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "aileronLeft": {
+            "offset": 8760,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "spoilerLeft": {
+            "offset": 8792,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "elevator": {
+            "offset": 8824,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "spoilerRight": {
+            "offset": 8856,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "aileronRight": {
+            "offset": 8888,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "rudder": {
+            "offset": 8920,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "brakeTemperature": {
+            "offset": 8952,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "brakeStatus": {
+            "offset": 9080,
+            "stride": 16,
+            "kind": "Int"
+          },
+          "hydPressureShownAbove": -999999
+        },
+        "options": {
+          "options": {
+            "global": 2594688,
+            "size": 11336
+          },
+          "fuelInKg": {
+            "offset": 255,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "oilInPercent": {
+            "offset": 44,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "oilInLitres": {
+            "offset": 255,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "percentMultiplier": 100,
+          "litresMultiplier": 18.2173,
+          "quartsMultiplier": 19.25,
+          "oilLowIndication": {
+            "offset": 37,
+            "stride": 0,
+            "kind": "Bool"
+          }
+        },
+        "aircraft": {
+          "aircraft": {
+            "global": 2544520,
+            "size": 504
+          },
+          "initialised": {
+            "offset": 0,
+            "stride": 0,
+            "kind": "Bool"
+          }
+        },
+        "pageItems": {
+          "EngineSideBySide": [
+            "ThrustMode",
+            "Tat",
+            "N1",
+            "Egt",
+            "N2",
+            "FuelFlow",
+            "Alerts",
+            "OilPressure",
+            "OilTemperature",
+            "OilQuantity",
+            "Vibration",
+            "Fuel",
+            "HydraulicPressure",
+            "HydraulicQuantity"
+          ],
+          "EnginePrimary": [
+            "Tat",
+            "ThrustMode",
+            "N1",
+            "Egt",
+            "FuelFlow",
+            "Alerts",
+            "Fuel"
+          ],
+          "EngineSecondary": [
+            "N2",
+            "FuelFlow",
+            "OilPressure",
+            "OilTemperature",
+            "OilQuantity",
+            "Vibration"
+          ],
+          "EngineCompact": [
+            "Tat",
+            "ThrustMode",
+            "N1",
+            "Egt",
+            "N2",
+            "FuelFlow",
+            "OilPressure",
+            "OilTemperature",
+            "OilQuantity",
+            "Vibration",
+            "Alerts",
+            "Fuel"
+          ],
+          "Sys": [
+            "SysHydraulics",
+            "SysFlightControls",
+            "SysBrakeTemperature"
+          ]
+        }
+      }
+    },
+    "navDisplay": {
+      "failure": "Function CFMS::instance() not found exactly once."
+    },
+    "pfd": {
+      "failure": "Function CSimInterface::instance() not found exactly once."
+    }
+  }
+}
