@@ -1,6 +1,7 @@
 // Test helper for the Fenix display channel tests: builds protobuf bytes, and the gRPC frame around
 // them, one field at a time. It writes only what a test asks for and knows nothing about Fenix's own
 // messages: every test names its field numbers and values itself, so no test depends on a capture.
+// The one exception is GoodPush, a whole display push.
 
 using System.Buffers.Binary;
 using System.Text;
@@ -76,6 +77,31 @@ internal sealed class FenixChannelProtoWriter
         BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(1, 4), (uint)message.Length);
         message.CopyTo(frame, 5);
         return frame;
+    }
+
+    // A whole AircraftDataPush that passes every check of the trust gate: the 16 FMA slots (empty), both
+    // flight director lights as given, an altitude, a magnetic heading, the FOB line, and the left upper
+    // ECAM column when a test passes one. The field numbers are written out here on purpose, not read
+    // from FenixChannelFields: a wrong number in the app's table must fail a test, not be copied into
+    // the helper that builds the test's input.
+    public static byte[] GoodPush(double altitude = 1000, double magHeading = 90, string fob = "wFOB:   g2940 cs KG",
+        bool fdOnCapt = true, bool fdOnFo = true, string[]? upperEcamLeft = null)
+    {
+        var remote = new FenixChannelProtoWriter()
+            .Message(110, new FenixChannelProtoWriter().Bool(5, fdOnCapt).Bool(6, fdOnFo));
+        for (int slot = 0; slot < 16; slot++)
+        {
+            remote.Message(111, new FenixChannelProtoWriter());
+        }
+        remote.String(153, fob);
+        foreach (string line in upperEcamLeft ?? [])
+        {
+            remote.Message(173, new FenixChannelProtoWriter().String(1, line));
+        }
+        remote.Message(194, new FenixChannelProtoWriter().Double(1, magHeading));
+        remote.Double(197, altitude);
+
+        return new FenixChannelProtoWriter().Message(1, remote).ToArray();
     }
 
     private FenixChannelProtoWriter LengthDelimited(int field, byte[] body)
