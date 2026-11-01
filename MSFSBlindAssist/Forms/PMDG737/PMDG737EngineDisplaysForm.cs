@@ -200,7 +200,8 @@ public sealed class PMDG737EngineDisplaysForm : Form
             if (index >= 0 && index < combo.Items.Count && combo.SelectedIndex != index) combo.SelectedIndex = index;
         }
 
-        if (_manualN1.Visible)
+        // Never disable the field the pilot is in: focus would jump.
+        if (_manualN1.Visible && !_manualN1.Focused)
         {
             bool available;
             try { available = _controls.ManualN1Available(); } catch (Exception) { available = false; }
