@@ -21,6 +21,12 @@ public class ReadoutFormatTests
     [InlineData(15, true, "59 degrees Fahrenheit")]
     [InlineData(20.4, false, "20 degrees Celsius")]
     [InlineData(20.4, true, "69 degrees Fahrenheit")]
+    // A value that rounds to zero reads "0", never "-0": -0.3 °C, and -17.9 °C (-0.22 °F).
+    [InlineData(-0.3, false, "0 degrees Celsius")]
+    [InlineData(-17.9, true, "0 degrees Fahrenheit")]
+    // Halves round away from zero, as the readout always has.
+    [InlineData(2.5, false, "3 degrees Celsius")]
+    [InlineData(-2.5, false, "-3 degrees Celsius")]
     public void OutsideTemperature_ConvertsBeforeRounding_AndNamesTheUnit(
         double celsius, bool useFahrenheit, string expected)
     {
