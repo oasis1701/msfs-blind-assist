@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist;
 
@@ -35,5 +36,17 @@ public partial class MainForm
         pmdg.EngineDisplays.Start(new Services.PMDG.Pmdg737EngineDisplayEnvironment(simConnectManager, announcer, pmdg.AircraftCode, session, filesNotice));
         pmdg.NavDisplay.Start(new Services.PMDG.Pmdg737NavDisplayEnvironment(simConnectManager, announcer, pmdg.AircraftCode, session, filesNotice));
         pmdg.Pfd.Start(new Services.PMDG.Pmdg737PfdEnvironment(simConnectManager, announcer, pmdg.AircraftCode, session, filesNotice));
+    }
+
+    /// <summary>A flight loaded in another simulator than the one the readers analysed PMDG's files for (MSFS 2020
+    /// closed, 2024 started, the app left running): the readers start again on a new session, so they analyse that
+    /// simulator's own files. The version is detected when the connection opens, before any AircraftLoaded.</summary>
+    private void RestartPmdg737DisplaysIfSimulatorChanged()
+    {
+        if (currentAircraft is not PMDG737Definition pmdg) return;
+        string simulator = simConnectManager.DetectedSimulatorVersion;
+        if (pmdg.ModuleSession?.AnalysedForOtherSimulator(simulator) != true) return;
+        Log.Info("PMDG737", $"display readers: simulator is now {simulator}; starting them again on its files");
+        StartPmdg737Displays();
     }
 }

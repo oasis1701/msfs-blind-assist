@@ -98,6 +98,7 @@ public sealed class ModuleSession : IDisposable
     private readonly string _jobName; // the background threads' name prefix, such as "PMDG737"
     private readonly object _gate = new();
     private Task<ModuleAnalysis>? _analysis;
+    private string? _analysedSimulator; // the simulator version _analysis found its files for
     private Task<ModuleLocation>? _search; // the current search, in flight or completed; its location holds the session's lease
     private long _searchStartMs;
     private bool _disposed;
@@ -161,6 +162,18 @@ public sealed class ModuleSession : IDisposable
         }
     }
 
+    /// <summary>True when the installed files were analysed for a simulator other than <paramref name="simulator"/> (MSFS
+    /// 2020 and 2024 each install their own copy of the module, which can be another build): the readers keep layouts
+    /// derived from the old files, so they start again on a new session. An empty or unknown version never counts.</summary>
+    public bool AnalysedForOtherSimulator(string? simulator)
+    {
+        if (string.IsNullOrEmpty(simulator) || simulator == "Unknown") return false;
+        lock (_gate)
+        {
+            return !_disposed && _analysis is not null && _analysedSimulator != simulator;
+        }
+    }
+
     /// <summary>Releases the session's lease; readers' leases keep the handle open until they are disposed.</summary>
     public void Dispose()
     {
@@ -177,6 +190,7 @@ public sealed class ModuleSession : IDisposable
     {
         if (_analysis is not null) return _analysis;
         string simulator = _host.SimulatorVersion; // read here, on the caller's thread
+        _analysedSimulator = simulator;
         var host = _host;
         var layouts = _layouts;
         return _analysis = host.RunInBackground($"{_jobName} file analysis",

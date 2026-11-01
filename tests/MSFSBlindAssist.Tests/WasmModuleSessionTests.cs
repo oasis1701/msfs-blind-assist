@@ -405,6 +405,31 @@ public class WasmModuleSessionTests
     }
 
     [Fact]
+    public void A_session_knows_when_its_files_were_analysed_for_another_simulator()
+    {
+        var host = new FakeHost { SimulatorVersion = "FS2020" };
+        using var session = NewSession(host);
+        // Nothing analysed yet: nothing to start again.
+        Assert.False(session.AnalysedForOtherSimulator("FS2024"));
+
+        Done(session.AnalyseAsync());
+        Assert.False(session.AnalysedForOtherSimulator("FS2020"));
+        Assert.True(session.AnalysedForOtherSimulator("FS2024"));
+        // A version not detected never counts.
+        Assert.False(session.AnalysedForOtherSimulator("Unknown"));
+        Assert.False(session.AnalysedForOtherSimulator(""));
+        Assert.False(session.AnalysedForOtherSimulator(null));
+
+        // Invalidate keeps a good analysis, and with it the simulator it was for.
+        host.SimulatorVersion = "FS2024";
+        session.Invalidate();
+        Assert.True(session.AnalysedForOtherSimulator("FS2024"));
+
+        session.Dispose();
+        Assert.False(session.AnalysedForOtherSimulator("FS2024"));
+    }
+
+    [Fact]
     public void The_handle_closes_after_the_last_reader_lease_and_the_session_released_it()
     {
         var host = new FakeHost();
@@ -734,7 +759,7 @@ public class WasmModuleSessionTests
         private readonly Queue<Action> _pending = new();
 
         public long NowMs { get; set; }
-        public string SimulatorVersion => "FS2024";
+        public string SimulatorVersion { get; set; } = "FS2024";
         public IReadOnlyList<string> Files { get; set; } = new[] { "real" };
         public bool OpenEmpty { get; init; }
         public bool ThrowOnFirstOpen { get; init; }

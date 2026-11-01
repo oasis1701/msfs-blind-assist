@@ -201,6 +201,7 @@ public partial class MainForm
         }
         _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
+        RestartPmdg737DisplaysIfSimulatorChanged();
         // The First Officer window outlives a flight load (only an aircraft switch disposes it):
         // the last flight's SimBrief plan and phase latches are dropped here, and so are the
         // universal automation's legs (a flight loaded in the air is no takeoff it watched).

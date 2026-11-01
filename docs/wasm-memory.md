@@ -255,7 +255,10 @@ module's description, so the PMDG 777 can later use it with a reader list of its
   (`file analysis: …`) with each optional part that was not recognised, "same layout as", or why each
   reader, or the whole file, was not recognised. A reader whose result is a failure costs only that reader.
   It starts once per session and returns the same task afterwards; `Invalidate` forgets an analysis that
-  failed.
+  failed. A good analysis belongs to the simulator it found its files for (MSFS 2020 and 2024 install the
+  module apart): when a flight loads in another one with the app left running, `AnalysedForOtherSimulator`
+  is true and MainForm starts the readers again on a new session (`RestartPmdg737DisplaysIfSimulatorChanged`,
+  from `OnAircraftLoaded`), since each reader also keeps the layouts it derived.
 - **`LocateAsync`** opens the simulator read-only and runs `FindLinearBase` once per distinct anchor
   (each build's anchors in the module's reader order, so a build whose FMA layout failed
   is still found by another). Every build found gets one `LocatedModule` on one shared handle whose
