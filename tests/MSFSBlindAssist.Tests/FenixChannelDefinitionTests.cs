@@ -87,10 +87,12 @@ public class FenixChannelDefinitionTests
         // [SIM-7]: the gate treats the last value SimConnect delivered as its current one, so a tolerance wider
         // than a second's drift would leave a slowly moving heading, fuel or altitude undelivered, and the gate
         // would read the stale value against the channel's live one: a false disagreement, which latches. They
-        // also stay on the 1 Hz batches, whose lag the gate absorbs by comparing time-aligned. The light switch and
-        // the FD lamps it explains come in separate batch messages each second, in an order and with a gap nothing
-        // pins (in practice milliseconds apart); a frame between them can start an "FD ... disagrees" that never
-        // latches while that gap stays under MismatchHoldMs.
+        // also stay on the 1 Hz batches, whose lag the gate absorbs by comparing time-aligned. Today the light switch
+        // and the FD lamps it explains fall in separate batches (adding variables can move them), in an order nothing
+        // pins; both are 1 Hz requests read by the same message loop, so the gap between them stays under one period
+        // plus any UI stall. A frame inside it can start an "FD ... disagrees" at the start of a test (the lamps lit
+        // before the switch reads Test) or at its end (the switch back before the lamps go dark); neither latches
+        // while the gap stays under MismatchHoldMs.
         SimVarDefinition def = new FenixA320Definition().GetVariables()[key];
 
         Assert.Null(def.ChangeTolerance);
