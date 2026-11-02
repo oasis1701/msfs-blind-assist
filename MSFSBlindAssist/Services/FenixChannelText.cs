@@ -14,9 +14,13 @@ internal enum FenixTextSize { Normal, Small, Large }
 
 /// <summary>
 /// One stretch of a line drawn one way. <paramref name="Text"/> has its spacers as spaces and no code in it.
-/// <paramref name="Color"/> is null for text that comes before any color code.
+/// <paramref name="Color"/> is null for text that comes before any color code. <paramref name="Boxed"/> and
+/// <paramref name="Flashing"/> are attributes like <paramref name="Underlined"/>, never colors: <c>b</c> draws a box
+/// around a stretch (the FMA's MAN at take-off) and <c>f</c> makes it flash (the FMA's LVR MCT, the upper ECAM's
+/// SHUT DOWN).
 /// </summary>
-internal readonly record struct FenixTextRun(string Text, FenixTextColor? Color, bool Underlined, FenixTextSize Size);
+internal readonly record struct FenixTextRun(string Text, FenixTextColor? Color, bool Underlined, FenixTextSize Size,
+    bool Boxed, bool Flashing);
 
 /// <summary>
 /// One parsed line of channel text: its runs in order, and the letters it used as codes that the parser does
@@ -31,8 +35,8 @@ internal readonly record struct FenixTextRun(string Text, FenixTextColor? Color,
 internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnlyList<char> UnknownCodes)
 {
     /// <summary>
-    /// The runs' text joined, with the colors, underline and size left out. For parsing a number out of the
-    /// line and for the log, never for speech: a read of channel text says each color (FNX-24).
+    /// The runs' text joined, with the colors, underline, box, flashing and size left out. For parsing a number out
+    /// of the line and for the log, never for speech: a read of channel text says each color (FNX-24).
     /// </summary>
     public string JoinedText => string.Concat(Runs.Select(run => run.Text));
 }
@@ -40,19 +44,20 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 /// <summary>
 /// Parses one line of the Fenix display channel's text (an FMA slot, an upper ECAM line, the FOB text) into
 /// runs that keep their colors. A lowercase letter before a run is a format code, not text: the color
-/// letters <c>w g c a m y r</c> (white, green, cyan, amber, magenta, yellow, red), <c>u</c> to toggle
-/// underline and <c>s</c> or <c>l</c> for a small or large size. Display text is uppercase, so an uppercase
-/// letter is never a code.
+/// letters <c>w g c a m y r</c> (white, green, cyan, amber, magenta, yellow, red), <c>u</c>, <c>b</c> and
+/// <c>f</c> to toggle underline, a box and flashing, and <c>s</c> or <c>l</c> for a small or large size.
+/// Display text is uppercase, so an uppercase letter is never a code.
 /// </summary>
 /// <remarks>
 /// <para>The colors are the meaning, so the codes are parsed into data and never stripped: a read that speaks
 /// channel text says each run's color, and <see cref="FenixTextLine.JoinedText"/> is only for parsing a
 /// number and for the log (FNX-24). This is not <see cref="FenixMcduFormat"/>, which turns the MCDU's markup
 /// into plain text for a screen reader; the two share no code.</para>
-/// <para>A line starts with no color, no underline and the normal size. Each code then changes one of the
-/// three and holds until another code changes it, so text before any color code has no color. The run being
-/// built closes whenever a code changes the color, underline or size (<c>u</c> always does, as it toggles),
-/// so a code that restates what the line is already in does not split it, and no run is empty.</para>
+/// <para>A line starts with no color, no underline, no box, no flashing and the normal size. Each code then
+/// changes one of them and holds until another code changes it, so text before any color code has no color. The
+/// run being built closes whenever a code changes the color, underline, box, flashing or size (<c>u</c>, <c>b</c>
+/// and <c>f</c> always do, as they toggle), so a code that restates what the line is already in does not split it,
+/// and no run is empty.</para>
 /// <para>U+2800, the blank braille cell the display uses as a spacer, becomes a space. Any other lowercase
 /// ASCII letter is a code the app does not know: it goes into <see cref="FenixTextLine.UnknownCodes"/>, once
 /// and in order, and is dropped from the text. A lowercase letter outside a to z is text, not a code.</para>
@@ -78,6 +83,8 @@ internal static class FenixChannelText
 
         FenixTextColor? color = null;
         bool underlined = false;
+        bool boxed = false;
+        bool flashing = false;
         FenixTextSize size = FenixTextSize.Normal;
 
         foreach (char c in raw)
@@ -101,6 +108,14 @@ internal static class FenixChannelText
                 case 'u':
                     CloseRun();
                     underlined = !underlined;
+                    break;
+                case 'b':
+                    CloseRun();
+                    boxed = !boxed;
+                    break;
+                case 'f':
+                    CloseRun();
+                    flashing = !flashing;
                     break;
                 case 's': SetSize(FenixTextSize.Small); break;
                 case 'l': SetSize(FenixTextSize.Large); break;
@@ -135,7 +150,7 @@ internal static class FenixChannelText
         void CloseRun()
         {
             if (text.Length == 0) return;
-            runs.Add(new FenixTextRun(text.ToString(), color, underlined, size));
+            runs.Add(new FenixTextRun(text.ToString(), color, underlined, size, boxed, flashing));
             text.Clear();
         }
     }

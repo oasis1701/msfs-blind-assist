@@ -3,10 +3,10 @@
 // read from Fenix's own capture.
 //
 // The contract the trust gate and the readouts build on: a lowercase letter before a run sets its color,
-// underline or size and is never kept as text, and the colors stay on the runs as data, because the color
-// is the meaning (a warning, a memo, an action) and is never stripped for speech. A letter the app does not
-// know is listed on the line, once and in the order it came, so the gate can distrust the display that
-// drew it. Display text is uppercase, so an uppercase letter is never a code.
+// underline, box, flashing or size and is never kept as text, and the colors stay on the runs as data,
+// because the color is the meaning (a warning, a memo, an action) and is never stripped for speech. A letter
+// the app does not know is listed on the line, once and in the order it came, so the gate can distrust the
+// display that drew it. Display text is uppercase, so an uppercase letter is never a code.
 
 using MSFSBlindAssist.Services;
 
@@ -17,7 +17,7 @@ public class FenixChannelTextTests
     // U+2800, the blank braille cell the display uses as a spacer. Named because it cannot be seen in source.
     private const char Spacer = (char)0x2800;
 
-    // ---- Colors, underline and size -------------------------------------------------------------
+    // ---- Colors, underline, box, flashing and size ----------------------------------------------
 
     [Theory]
     [InlineData('w', nameof(FenixTextColor.White))]
@@ -53,6 +53,21 @@ public class FenixChannelTextTests
         {
             Run("T.O", FenixTextColor.Green, underlined: true),
             Run(" AUTO BRK", FenixTextColor.Green)
+        }, line.Runs);
+        Assert.Empty(line.UnknownCodes);
+    }
+
+    [Fact]
+    public void B_and_f_toggle_a_box_and_flashing_like_underline_and_keep_the_color()
+    {
+        // Each letter flips its attribute, as u does, and closes the run before it; neither changes the color in force.
+        FenixTextLine line = FenixChannelText.Parse("cbAfBbfC");
+
+        Assert.Equal(new[]
+        {
+            Run("A", FenixTextColor.Cyan, boxed: true),
+            Run("B", FenixTextColor.Cyan, boxed: true, flashing: true),
+            Run("C", FenixTextColor.Cyan)
         }, line.Runs);
         Assert.Empty(line.UnknownCodes);
     }
@@ -181,6 +196,30 @@ public class FenixChannelTextTests
     }
 
     [Fact]
+    public void The_box_and_flash_lines_measured_in_flight_parse()
+    {
+        // In flight on 3.0.0.7613 (an A321, 2026-11-02): the take-off FMA's MAN, which the real FMA shows boxed; LVR
+        // MCT after an engine failure, which it flashes; and the upper ECAM after an engine shutdown, where f opens
+        // and closes a stretch as u does. Each letter was unknown then, and untrusted its display while it showed.
+        FenixTextLine man = FenixChannelText.Parse("wbMAN");
+        FenixTextLine lever = FenixChannelText.Parse("wfLVR MCT");
+        FenixTextLine shutDown = FenixChannelText.Parse("uaENG 1u afSHUT DOWNf");
+
+        Assert.Equal(new[] { Run("MAN", FenixTextColor.White, boxed: true) }, man.Runs);
+        Assert.Equal(new[] { Run("LVR MCT", FenixTextColor.White, flashing: true) }, lever.Runs);
+        Assert.Equal(new[]
+        {
+            Run("ENG 1", FenixTextColor.Amber, underlined: true),
+            Run(" ", FenixTextColor.Amber),
+            Run("SHUT DOWN", FenixTextColor.Amber, flashing: true)
+        }, shutDown.Runs);
+        Assert.Equal("ENG 1 SHUT DOWN", shutDown.JoinedText);
+        Assert.Empty(man.UnknownCodes);
+        Assert.Empty(lever.UnknownCodes);
+        Assert.Empty(shutDown.UnknownCodes);
+    }
+
+    [Fact]
     public void The_findings_memo_line_parses()
     {
         FenixTextLine line = FenixChannelText.Parse("g    CABINc......CHECK");
@@ -208,5 +247,6 @@ public class FenixChannelTextTests
     // ---- Helpers --------------------------------------------------------------------------------
 
     private static FenixTextRun Run(string text, FenixTextColor? color, bool underlined = false,
-        FenixTextSize size = FenixTextSize.Normal) => new(text, color, underlined, size);
+        FenixTextSize size = FenixTextSize.Normal, bool boxed = false, bool flashing = false) =>
+        new(text, color, underlined, size, boxed, flashing);
 }
