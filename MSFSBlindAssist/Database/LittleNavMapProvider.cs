@@ -145,9 +145,15 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
                     ils_primary.frequency as primary_ils_freq,
                     ils_primary.loc_heading as primary_ils_heading,
                     ils_primary.gs_pitch as primary_ils_gs_pitch,
+                    ils_primary.gs_range as primary_ils_gs_range,
+                    ils_primary.type as primary_ils_type,
+                    ils_primary.mag_var as primary_ils_mag_var,
                     ils_secondary.frequency as secondary_ils_freq,
                     ils_secondary.loc_heading as secondary_ils_heading,
-                    ils_secondary.gs_pitch as secondary_ils_gs_pitch
+                    ils_secondary.gs_pitch as secondary_ils_gs_pitch,
+                    ils_secondary.gs_range as secondary_ils_gs_range,
+                    ils_secondary.type as secondary_ils_type,
+                    ils_secondary.mag_var as secondary_ils_mag_var
                 FROM runway r
                 JOIN runway_end re_primary ON r.primary_end_id = re_primary.runway_end_id
                 JOIN runway_end re_secondary ON r.secondary_end_id = re_secondary.runway_end_id
@@ -179,6 +185,12 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
                 // the same two result sets instead of re-issuing identical queries.
                 var orphanIls = new OrphanIlsLookup(connection, airportId);
 
+                // The airport's approach legs, for each localizer's published course. Read on
+                // the first end that has a localizer and shared by the rest, so an airport with
+                // none (and the taxi callers' runways there) never pays for the query.
+                var approachLegs = new Lazy<List<PublishedLocalizerCourse.Leg>>(
+                    () => PublishedLocalizerCourse.ReadAirport(connection, airportId));
+
                 using (var reader = command.ExecuteReader())
                 {
                     while (reader.Read())
@@ -186,11 +198,11 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
                         double magVar = Convert.ToDouble(reader["mag_var"] ?? 0.0);
 
                         // Create runway for primary end
-                        var primaryRunway = CreateRunwayFromReader(reader, icao, true, magVar, orphanIls);
+                        var primaryRunway = CreateRunwayFromReader(reader, icao, true, magVar, orphanIls, approachLegs);
                         runways.Add(primaryRunway);
 
                         // Create runway for secondary end
-                        var secondaryRunway = CreateRunwayFromReader(reader, icao, false, magVar, orphanIls);
+                        var secondaryRunway = CreateRunwayFromReader(reader, icao, false, magVar, orphanIls, approachLegs);
                         runways.Add(secondaryRunway);
                     }
                 }
@@ -222,8 +234,8 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
     {
         // Fast path: direct join via loc_airport_ident + loc_runway_name. Works
         // for fs2020 (every ILS row populated) and the majority of fs2024 rows.
-        var sql = @"SELECT ident, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
-                          lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude
+        var sql = @"SELECT ident, type, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
+                          lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude, mag_var
                    FROM ils
                    WHERE UPPER(loc_airport_ident) = UPPER(@ICAO)
                      AND UPPER(loc_runway_name) = UPPER(@RunwayName)
@@ -391,8 +403,8 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             var candidates = new List<ILSData>();
 
             using var cmd = new SqliteCommand(@"
-                SELECT ident, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
-                       lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude
+                SELECT ident, type, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
+                       lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude, mag_var
                 FROM ils
                 WHERE (loc_airport_ident IS NULL OR loc_airport_ident = '')
                   AND lonx BETWEEN @MinLon AND @MaxLon
@@ -426,7 +438,12 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             AntennaAltitude = Convert.ToInt32(reader["altitude"] ?? 0),
             GlideslopeLatitude = reader["gs_laty"] != DBNull.Value ? Convert.ToDouble(reader["gs_laty"]) : null,
             GlideslopeLongitude = reader["gs_lonx"] != DBNull.Value ? Convert.ToDouble(reader["gs_lonx"]) : null,
-            GlideslopeAltitude = reader["gs_altitude"] != DBNull.Value ? Convert.ToInt32(reader["gs_altitude"]) : null
+            GlideslopeAltitude = reader["gs_altitude"] != DBNull.Value ? Convert.ToInt32(reader["gs_altitude"]) : null,
+            // From the RAW columns: GlideslopePitch above defaults a NULL to 3.0.
+            HasGlideslope = LandingAidText.HasGlideslope(
+                SafeReadDouble(reader, "gs_range", 0.0), SafeReadDouble(reader, "gs_pitch", 0.0)),
+            Type = SafeReadText(reader, "type"),
+            MagVar = SafeReadNullableDouble(reader, "mag_var")
         };
     }
 
@@ -818,7 +835,8 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
         return result != null ? Convert.ToInt32(result) : -1;
     }
 
-    private Runway CreateRunwayFromReader(SqliteDataReader reader, string icao, bool isPrimary, double magVar, OrphanIlsLookup orphanIls)
+    private Runway CreateRunwayFromReader(SqliteDataReader reader, string icao, bool isPrimary, double magVar,
+        OrphanIlsLookup orphanIls, Lazy<List<PublishedLocalizerCourse.Leg>> approachLegs)
     {
         string prefix = isPrimary ? "primary" : "secondary";
         string oppositePrefix = isPrimary ? "secondary" : "primary";
@@ -843,6 +861,10 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
         double ilsFreq = SafeReadDouble(reader, $"{prefix}_ils_freq", 0.0) / 1000.0;
         double ilsHeading = SafeReadDouble(reader, $"{prefix}_ils_heading", 0.0);
         double ilsGsPitch = SafeReadDouble(reader, $"{prefix}_ils_gs_pitch", 0.0);  // Published glideslope angle (deg); 0 = unknown, caller falls back to 3°
+        bool ilsHasGs = LandingAidText.HasGlideslope(
+            SafeReadDouble(reader, $"{prefix}_ils_gs_range", 0.0), ilsGsPitch);
+        string ilsType = SafeReadText(reader, $"{prefix}_ils_type");
+        double? ilsMagVar = SafeReadNullableDouble(reader, $"{prefix}_ils_mag_var");
 
         if (ilsFreq <= 0.0)
         {
@@ -863,7 +885,12 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             {
                 ilsFreq = fallback.Frequency;
                 ilsHeading = fallback.LocalizerHeading;
-                ilsGsPitch = fallback.GlideslopePitch;
+                // ReadILSFromReader defaults a NULL gs_pitch to 3.0 for the guidance; a
+                // localizer-only runway keeps 0 here, as the joined path gives it.
+                ilsGsPitch = fallback.HasGlideslope ? fallback.GlideslopePitch : 0.0;
+                ilsHasGs = fallback.HasGlideslope;
+                ilsType = fallback.Type;
+                ilsMagVar = fallback.MagVar;
                 ilsIdent = fallback.Ident;
             }
         }
@@ -889,6 +916,14 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             Surface = MapSurfaceType(reader["surface"]?.ToString()),
             ILSFreq = ilsFreq,
             ILSHeading = ilsHeading,
+            ILSHasGlideslope = ilsFreq > 0.0 && ilsHasGs,
+            ILSType = ilsFreq > 0.0 ? ilsType : string.Empty,
+            // The approach chart's course; worked out from the localizer's own variation (the
+            // airport's only when it has none) only when no procedure flies it.
+            ILSCourseMag = ilsFreq > 0.0
+                ? PublishedLocalizerCourse.Select(approachLegs.Value, runwayId, ilsIdent)
+                    ?? LandingAidText.MagneticCourse(ilsHeading, ilsMagVar ?? magVar)
+                : 0,
             ThresholdOffset = thresholdOffset,
             ThresholdElevation = altitude,
             GlideslopeAngleDeg = ilsGsPitch,
@@ -941,6 +976,36 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
         catch
         {
             return defaultValue;
+        }
+    }
+
+    /// <summary>A double column, or null when it is absent or NULL.</summary>
+    private static double? SafeReadNullableDouble(SqliteDataReader reader, string columnName)
+    {
+        try
+        {
+            int ord = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ord)) return null;
+            return Convert.ToDouble(reader.GetValue(ord), System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A text column as a trimmed string; "" when absent or NULL.</summary>
+    private static string SafeReadText(SqliteDataReader reader, string columnName)
+    {
+        try
+        {
+            int ord = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ord)) return string.Empty;
+            return Convert.ToString(reader.GetValue(ord), System.Globalization.CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
         }
     }
 

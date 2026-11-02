@@ -133,6 +133,16 @@ public class SimBriefOFP
     // ── TLR (Takeoff and Landing Report) raw text ─────────────────────────────
     public string TlrText         { get; set; } = "";
 
+    // ── TLR structured values (OFP/tlr), in feet ──────────────────────────────
+    // Runway identifier → TORA (takeoff) or LDA (landing).
+    public Dictionary<string, string> TlrTakeoffToraFt { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> TlrLandingLdaFt  { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    // Landing distances at the planned landing weight.
+    public string TlrLdgActualDryFt   { get; set; } = "";
+    public string TlrLdgActualWetFt   { get; set; } = "";
+    public string TlrLdgFactoredDryFt { get; set; } = "";
+    public string TlrLdgFactoredWetFt { get; set; } = "";
+
     // ── Nav Log ───────────────────────────────────────────────────────────────
     public List<SimBriefNavFix> NavLog { get; set; } = new();
 
