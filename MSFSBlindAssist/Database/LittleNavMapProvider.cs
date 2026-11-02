@@ -232,8 +232,10 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
     /// </summary>
     public ILSData? GetILSForRunway(SqliteConnection connection, string icao, string runwayName)
     {
-        // Fast path: direct join via loc_airport_ident + loc_runway_name. Works
-        // for fs2020 (every ILS row populated) and the majority of fs2024 rows.
+        // Fast path: direct join via loc_airport_ident + loc_runway_name. Only a minority
+        // of rows carry loc_runway_name: an fs2020 build of 2026-10-30 (Navdatareader
+        // 1.2.4, Navigraph update) had it NULL on 4,117 of 4,515 rows whose
+        // loc_airport_ident is set, so the runway-end path below does most of the work.
         var sql = @"SELECT ident, type, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
                           lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude, mag_var
                    FROM ils
@@ -255,6 +257,34 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             }
         }
 
+        // Runway-end path: the runway end's own ils_ident, scoped to this airport
+        // (EFB-9: never an ident alone, shared idents exist across airports). The same
+        // predicate GetRunways' ILS join uses, so guidance and the runway lists agree on
+        // the rows the fast path misses (ESOH 18 "IHF": loc_runway_name NULL).
+        int airportId = GetAirportId(connection, icao);
+        if (airportId != -1)
+        {
+            const string endSql = @"SELECT i.ident, i.type, i.frequency, i.range, i.gs_range, i.gs_pitch,
+                          i.loc_heading, i.loc_width, i.lonx, i.laty, i.altitude,
+                          i.gs_lonx, i.gs_laty, i.gs_altitude, i.mag_var
+                   FROM runway r
+                   JOIN runway_end re ON re.runway_end_id IN (r.primary_end_id, r.secondary_end_id)
+                   JOIN airport a ON a.airport_id = r.airport_id
+                   JOIN ils i ON i.ident = re.ils_ident AND i.loc_airport_ident = a.ident
+                   WHERE r.airport_id = @AirportId
+                     AND UPPER(re.name) = UPPER(@RunwayName)
+                     AND re.ils_ident IS NOT NULL AND re.ils_ident <> ''
+                   LIMIT 1";
+
+            using var endCommand = new SqliteCommand(endSql, connection);
+            endCommand.Parameters.AddWithValue("@AirportId", airportId);
+            endCommand.Parameters.AddWithValue("@RunwayName", runwayName);
+
+            using var endReader = endCommand.ExecuteReader();
+            if (endReader.Read())
+                return ReadILSFromReader(endReader);
+        }
+
         // Fallback: geometric match against ILS rows where loc_airport_ident
         // / loc_runway_name / loc_runway_end_id are all NULL (KATL, KPHX, KORD and
         // others) — the ILS rows are correct (right ident, frequency, location,
@@ -273,7 +303,7 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
         // mis-assigned 46 of 230 runway ends across fs2024, KATL 08L among them: 08L's
         // own localizer is 3,027 m from its threshold and runway 09R's is 3,011 m, so
         // a sixteen-metre margin gave 08L, 08R and 09L all the same 108.90 MHz.
-        return GetILSForRunwayFallback(connection, icao, runwayName);
+        return GetILSForRunwayFallback(connection, airportId, runwayName);
     }
 
     /// <summary>
@@ -281,8 +311,8 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
     /// context and <see cref="OrphanIlsMatcher"/> for the selection rule itself. Returns
     /// null when no orphan serves this runway, which the caller renders as "no ILS".
     /// </summary>
-    private ILSData? GetILSForRunwayFallback(SqliteConnection connection, string icao, string runwayName)
-        => new OrphanIlsLookup(connection, GetAirportId(connection, icao)).Find(runwayName);
+    private ILSData? GetILSForRunwayFallback(SqliteConnection connection, int airportId, string runwayName)
+        => new OrphanIlsLookup(connection, airportId).Find(runwayName);
 
     /// <summary>
     /// The orphan-ILS inputs for ONE airport, read at most once and reused for every

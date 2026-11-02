@@ -182,9 +182,10 @@ CREATE TABLE approach_leg (
     /// An airport-scoped ils row. The DME and glideslope blocks of the runway page show only
     /// when <paramref name="dmeRange"/> or <paramref name="gsRange"/> is above 0; their
     /// altitude and position then take <paramref name="altitude"/>, <paramref name="lonx"/> and
-    /// <paramref name="laty"/>, the localizer's own.
+    /// <paramref name="laty"/>, the localizer's own. A NULL <paramref name="locRunwayName"/> is the
+    /// common navdatareader shape: airport set, runway not (ESOH 18 "IHF").
     /// </summary>
-    public void InsertIls(string ident, string locAirportIdent, string locRunwayName, double locHeading = 0,
+    public void InsertIls(string ident, string locAirportIdent, string? locRunwayName, double locHeading = 0,
         double frequency = 111100, double locWidth = 3.0, double range = 18,
         double lonx = 0, double laty = 0, double altitude = 0, double gsPitch = 0,
         double dmeRange = 0, double gsRange = 0, string type = "ILS", string? name = null,
