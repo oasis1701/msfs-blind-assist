@@ -7,6 +7,8 @@ public static class Pmdg737Module
 {
     public const string Fma = "fma", EngineDisplays = "engineDisplays", NavDisplay = "navDisplay", Pfd = "pfd";
 
+    /// <summary>MSFS 2024's package keeps the file under each airplane's attachments; MSFS 2020's in each airplane's own
+    /// panel folder (SimObjects\Airplanes\PMDG 737-800\panel, and the -800's BBJ2, BCF and BDSF beside it).</summary>
     public static ModuleDescription Description { get; } = new(
         "pmdg737",
         "737NG3.wasm",
@@ -27,7 +29,10 @@ public static class Pmdg737Module
                 l => new ModuleAnchor(l.AnchorAddress, l.Anchor), (l, s) => l with { SourceFile = s },
                 Pmdg737LayoutDescriptions.Describe,
                 l => l.Optional.Failures.Select(f => (f.Part, f.Reason)).ToList()),
-        });
+        })
+    {
+        OtherPathsInPackage = new[] { new[] { "SimObjects", "Airplanes", "*", "panel" } },
+    };
 
     private static IReadOnlyList<(string Part, string Reason)> NavFailures(Pmdg737NavDisplayLayout l)
     {

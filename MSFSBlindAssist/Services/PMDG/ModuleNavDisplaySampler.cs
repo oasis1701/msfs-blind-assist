@@ -277,8 +277,9 @@ public sealed class ModuleNavDisplaySampler : INavDisplaySampler
             {
                 uint station = sim + (uint)(tu.Stations + k * tu.Stride);
                 radial = Double(station + (uint)f.StationRadial);
-                if (tuned[k].Position is not null)
-                    radial = Wrap360(radial + Double(station + (uint)f.StationCorrection) - Double(station + (uint)(tu.Position + position.MagneticVariationDeg)));
+                // No correction in the layout (the MSFS 2020 file): PMDG prints the radial as the simulator gives it.
+                if (tuned[k].Position is not null && f.StationCorrection is { } correction)
+                    radial = Wrap360(radial + Double(station + (uint)correction) - Double(station + (uint)(tu.Position + position.MagneticVariationDeg)));
                 if (!double.IsFinite(radial)) throw new Corrupt(Invariant($"POS: VOR {k + 1}'s radial is not a number"));
             }
             if (p.AdfReceiving(receivers[k], pointers[k].AdfPowered))

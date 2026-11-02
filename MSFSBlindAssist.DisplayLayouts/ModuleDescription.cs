@@ -58,6 +58,13 @@ public sealed class LayoutReader<T> : LayoutReader where T : class
 public sealed record ModuleDescription(string Id, string WasmFileName, string PackageNamePattern,
     IReadOnlyList<string> PathInPackage, IReadOnlyList<LayoutReader> Readers)
 {
+    /// <summary>Other folder paths the file can sit at, in the same form as <see cref="PathInPackage"/>, for a package
+    /// laid out another way (the PMDG 737's MSFS 2020 package keeps it in the airplane's panel folder).</summary>
+    public IReadOnlyList<IReadOnlyList<string>> OtherPathsInPackage { get; init; } = Array.Empty<IReadOnlyList<string>>();
+
+    /// <summary><see cref="PathInPackage"/>, then each of <see cref="OtherPathsInPackage"/>.</summary>
+    public IEnumerable<IReadOnlyList<string>> PathsInPackage => OtherPathsInPackage.Prepend(PathInPackage);
+
     /// <summary>The reader with this id; KeyNotFoundException when there is none.</summary>
     public LayoutReader Reader(string id) =>
         Readers.FirstOrDefault(r => r.Id == id) ?? throw new KeyNotFoundException($"module {Id} has no reader '{id}'");

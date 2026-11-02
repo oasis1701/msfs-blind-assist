@@ -106,7 +106,7 @@ nothing in the app:
 
 | File | Role |
 | --- | --- |
-| `ModuleDescription.cs` | `ModuleDescription`: where a WASM module's file lives (a package name pattern, the folders inside the package, the file name), its id and its readers. Each `LayoutReader` gives a reader's id, log name, layout type, anchor, layout dump and failed parts. |
+| `ModuleDescription.cs` | `ModuleDescription`: where a WASM module's file lives (a package name pattern, the folders inside the package, with `OtherPathsInPackage` for a package laid out another way, the file name), its id and its readers. Each `LayoutReader` gives a reader's id, log name, layout type, anchor, layout dump and failed parts. |
 | `ModuleCatalog.cs`, `Pmdg737/Pmdg737Module.cs` | Every module the app knows. So far one: `pmdg737`, the `737NG3.wasm` of the `pmdg-aircraft-73[6-9]` packages, with the readers `fma`, `engineDisplays`, `navDisplay` and `pfd` in that order. |
 | `LayoutFile.cs`, `LayoutFileFormat.cs`, `ReaderResult.cs` | The layout file: its records, and the writer and reader of its text ([WASM-21]). |
 | `WasmFileImage.cs`, `LayoutFit.cs` | The fingerprint: a `.wasm` file's code hash, data segments and searches, and whether a layout file fits it ([the fingerprint](#the-fingerprint)). |
@@ -122,7 +122,7 @@ nothing in the app:
 | `SimProcess.cs` | The Win32 implementation: opens the simulator with `PROCESS_QUERY_LIMITED_INFORMATION \| PROCESS_VM_READ` only ([WASM-1]), walks regions with `VirtualQueryEx`, reads with `ReadProcessMemory`. |
 | `WasmMemoryLocator.cs` | `FindLinearBase`: the one committed, `MEM_PRIVATE`, readable allocation whose bytes at the anchor's address equal the anchor ([WASM-3]). |
 | `ModuleMemory.cs` | Reads i32 and u8 at wasm addresses (`base + address`), each read bounds-checked by `IsInsideModule` ([WASM-4]); inside a `RememberRegions` scope (one ND reading) each region is asked about once ([WASM-15]). |
-| `ModuleFiles.cs` | `FindInstalled`: every installed copy of a module's file, in the packages matching its pattern under Community or an Official folder. |
+| `ModuleFiles.cs` | `FindInstalled`: every installed copy of a module's file, in the packages matching its pattern under Community or an Official folder, at any of the module's paths (`ModuleDescription.PathsInPackage`). The 737's MSFS 2024 package keeps the file under each airplane's `attachments\pmdg\Function_Interior_*\panel`, its MSFS 2020 package in each airplane's own `panel` folder (one copy each for the -800, BBJ2, BCF and BDSF, identical, so one build). |
 | `LayoutStore.cs` | Each installed file's build, from its layout file, running the generator when there is none ([WASM-26]; [the layout store](#the-layout-store)). |
 | `ILayoutGenerator.cs`, `ProcessLayoutGenerator.cs` | The generator as the store sees it, and `LayoutGenerator.exe` run as a child process with no window. |
 | `KillOnCloseJob.cs` | The Windows job object every generator process joins, which ends it when the app ends ([WASM-30]). |
@@ -606,6 +606,22 @@ Recorded in the build's ledger, each a ruling the in-sim test checks:
 - **POS shows one IRS position**, the side's IRU, as PMDG draws it (the plan expected IRS L and R).
 - **A VOR line's direction is the station's place on the map**; PMDG draws it toward a screen point it
   stores for that station (not read).
+
+### MSFS 2020
+
+The MSFS 2020 `737NG3.wasm` is an older build of PMDG's code, with its own layout file. Two things differ for
+the ND there:
+
+- **POS prints the VOR radial uncorrected.** PMDG's 2020 code copies each receiver's radial as the simulator
+  gives it, without the station's variation correction the 2024 code applies. Its layout says so with a null
+  `NdPosFields.StationCorrection`, and `ModuleNavDisplaySampler` then leaves the radial as it is. A 2024
+  layout always has the correction, so its reading is unchanged.
+- **The VDEV row also waits for the perf info's path byte**, which PMDG's 2020 VDEV doesn't test (its phase test
+  is the same as 2024's, made in `updateVars`). Where they differ, the row is missing, never wrong.
+
+The 2020 layout file holds `"stationCorrection": null`, which an app without the nullable field refuses. So the
+public change has to be in public main before that file goes on the layouts branch, or the next preview build
+stops at bundling the display layouts.
 
 ### Seen live, and not yet
 

@@ -29,7 +29,8 @@ public sealed record NdPointerFields(
 /// line from the aircraft toward each tuned VOR (the pointers' tuned flag, whatever the switch; only while the
 /// readout is valid), labelled in the full format with <see cref="RadialFormat"/> of the radial (the receiver's
 /// simulator interface <see cref="StationRadial"/>, plus <see cref="StationCorrection"/> minus the station's variation
-/// while its position is valid; 0 printed as <see cref="RadialZeroAs"/>), otherwise with <see cref="VorLabels"/>;
+/// while its position is valid; no correction when <see cref="StationCorrection"/> is null, as the MSFS 2020 file
+/// prints the radial; 0 printed as <see cref="RadialZeroAs"/>), otherwise with <see cref="VorLabels"/>;
 /// a line toward each ADF while the pointers' ADF flag is set (the ADF bearing), labelled <see cref="AdfLabels"/>;
 /// the side's IRS position (IRU + <see cref="IruPosition"/>) and the GPS position (the IRS object's pointer at
 /// <see cref="GpsArray"/> + side × <see cref="GpsStride"/> + <see cref="GpsPosition"/>), each while valid.
@@ -38,7 +39,7 @@ public sealed record NdPosFields(
     string RadialFormat,
     int RadialZeroAs,
     int StationRadial,
-    int StationCorrection,
+    int? StationCorrection,
     NdLabelPair VorLabels,
     NdLabelPair AdfLabels,
     int IruPosition,

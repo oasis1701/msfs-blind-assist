@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "module": "pmdg737",
-  "generatorVersion": 1,
+  "generatorVersion": 2,
   "codeHash": "e3e8d4327738012d2b97b296a036eae794e36601f5671057351b12688b93ed63",
   "dataRanges": [
     {
