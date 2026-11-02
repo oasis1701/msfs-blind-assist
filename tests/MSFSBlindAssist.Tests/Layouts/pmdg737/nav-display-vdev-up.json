@@ -1,0 +1,4365 @@
+{
+  "formatVersion": 1,
+  "module": "pmdg737",
+  "generatorVersion": 1,
+  "codeHash": "4667195959b878658f15301a12cc3290d7bc76485951d74b4ea08a8705e1c63b",
+  "dataRanges": [
+    {
+      "address": 20480,
+      "length": 20
+    },
+    {
+      "address": 20544,
+      "length": 16
+    },
+    {
+      "address": 20608,
+      "length": 16
+    },
+    {
+      "address": 20672,
+      "length": 16
+    },
+    {
+      "address": 20736,
+      "length": 8
+    },
+    {
+      "address": 20800,
+      "length": 8
+    },
+    {
+      "address": 20864,
+      "length": 8
+    },
+    {
+      "address": 20928,
+      "length": 8
+    },
+    {
+      "address": 20992,
+      "length": 8
+    },
+    {
+      "address": 28672,
+      "length": 9
+    },
+    {
+      "address": 28736,
+      "length": 12
+    },
+    {
+      "address": 28800,
+      "length": 9
+    },
+    {
+      "address": 28864,
+      "length": 14
+    },
+    {
+      "address": 28928,
+      "length": 9
+    },
+    {
+      "address": 28992,
+      "length": 9
+    },
+    {
+      "address": 29056,
+      "length": 9
+    },
+    {
+      "address": 29120,
+      "length": 9
+    },
+    {
+      "address": 29184,
+      "length": 10
+    },
+    {
+      "address": 29248,
+      "length": 10
+    },
+    {
+      "address": 29312,
+      "length": 9
+    },
+    {
+      "address": 29376,
+      "length": 10
+    },
+    {
+      "address": 29440,
+      "length": 9
+    },
+    {
+      "address": 29504,
+      "length": 8
+    },
+    {
+      "address": 29568,
+      "length": 12
+    },
+    {
+      "address": 29632,
+      "length": 13
+    },
+    {
+      "address": 29696,
+      "length": 11
+    },
+    {
+      "address": 29760,
+      "length": 12
+    },
+    {
+      "address": 29824,
+      "length": 3
+    },
+    {
+      "address": 29888,
+      "length": 13
+    },
+    {
+      "address": 36864,
+      "length": 12
+    },
+    {
+      "address": 36928,
+      "length": 16
+    },
+    {
+      "address": 36992,
+      "length": 32
+    },
+    {
+      "address": 37056,
+      "length": 12
+    },
+    {
+      "address": 37120,
+      "length": 36
+    },
+    {
+      "address": 37184,
+      "length": 28
+    },
+    {
+      "address": 37248,
+      "length": 24
+    },
+    {
+      "address": 37312,
+      "length": 16
+    },
+    {
+      "address": 37376,
+      "length": 28
+    },
+    {
+      "address": 37440,
+      "length": 20
+    },
+    {
+      "address": 40960,
+      "length": 12
+    },
+    {
+      "address": 41024,
+      "length": 16
+    },
+    {
+      "address": 41088,
+      "length": 12
+    },
+    {
+      "address": 41152,
+      "length": 16
+    },
+    {
+      "address": 41216,
+      "length": 20
+    },
+    {
+      "address": 41280,
+      "length": 16
+    },
+    {
+      "address": 45056,
+      "length": 32
+    },
+    {
+      "address": 45120,
+      "length": 40
+    },
+    {
+      "address": 45184,
+      "length": 20
+    },
+    {
+      "address": 45248,
+      "length": 20
+    },
+    {
+      "address": 45312,
+      "length": 16
+    },
+    {
+      "address": 45376,
+      "length": 20
+    },
+    {
+      "address": 45440,
+      "length": 16
+    },
+    {
+      "address": 45504,
+      "length": 32
+    },
+    {
+      "address": 45568,
+      "length": 32
+    },
+    {
+      "address": 45632,
+      "length": 36
+    },
+    {
+      "address": 45696,
+      "length": 16
+    },
+    {
+      "address": 45760,
+      "length": 8
+    },
+    {
+      "address": 45824,
+      "length": 8
+    },
+    {
+      "address": 45888,
+      "length": 8
+    },
+    {
+      "address": 45952,
+      "length": 16
+    },
+    {
+      "address": 46016,
+      "length": 16
+    },
+    {
+      "address": 46080,
+      "length": 20
+    },
+    {
+      "address": 46144,
+      "length": 20
+    },
+    {
+      "address": 46208,
+      "length": 16
+    },
+    {
+      "address": 46272,
+      "length": 16
+    },
+    {
+      "address": 46336,
+      "length": 16
+    },
+    {
+      "address": 46400,
+      "length": 24
+    },
+    {
+      "address": 46464,
+      "length": 16
+    },
+    {
+      "address": 46528,
+      "length": 12
+    },
+    {
+      "address": 46592,
+      "length": 24
+    },
+    {
+      "address": 46656,
+      "length": 24
+    },
+    {
+      "address": 46720,
+      "length": 20
+    },
+    {
+      "address": 46784,
+      "length": 16
+    },
+    {
+      "address": 46848,
+      "length": 36
+    },
+    {
+      "address": 46912,
+      "length": 36
+    },
+    {
+      "address": 46976,
+      "length": 24
+    },
+    {
+      "address": 47040,
+      "length": 16
+    },
+    {
+      "address": 47104,
+      "length": 16
+    },
+    {
+      "address": 47168,
+      "length": 20
+    },
+    {
+      "address": 47232,
+      "length": 20
+    },
+    {
+      "address": 47296,
+      "length": 20
+    },
+    {
+      "address": 49152,
+      "length": 12
+    },
+    {
+      "address": 49216,
+      "length": 24
+    },
+    {
+      "address": 49280,
+      "length": 16
+    },
+    {
+      "address": 49344,
+      "length": 20
+    },
+    {
+      "address": 49408,
+      "length": 28
+    },
+    {
+      "address": 53248,
+      "length": 12
+    },
+    {
+      "address": 53312,
+      "length": 28
+    },
+    {
+      "address": 53376,
+      "length": 16
+    },
+    {
+      "address": 53440,
+      "length": 20
+    },
+    {
+      "address": 53504,
+      "length": 16
+    },
+    {
+      "address": 53568,
+      "length": 24
+    },
+    {
+      "address": 53632,
+      "length": 16
+    },
+    {
+      "address": 53696,
+      "length": 20
+    },
+    {
+      "address": 53760,
+      "length": 12
+    },
+    {
+      "address": 53824,
+      "length": 20
+    },
+    {
+      "address": 53888,
+      "length": 24
+    },
+    {
+      "address": 53952,
+      "length": 24
+    },
+    {
+      "address": 54016,
+      "length": 24
+    },
+    {
+      "address": 54080,
+      "length": 24
+    },
+    {
+      "address": 54144,
+      "length": 24
+    },
+    {
+      "address": 54208,
+      "length": 24
+    },
+    {
+      "address": 54272,
+      "length": 24
+    },
+    {
+      "address": 54336,
+      "length": 24
+    },
+    {
+      "address": 54400,
+      "length": 8
+    },
+    {
+      "address": 54464,
+      "length": 8
+    },
+    {
+      "address": 54528,
+      "length": 8
+    },
+    {
+      "address": 54592,
+      "length": 16
+    },
+    {
+      "address": 54656,
+      "length": 16
+    },
+    {
+      "address": 54720,
+      "length": 24
+    },
+    {
+      "address": 54784,
+      "length": 24
+    },
+    {
+      "address": 54848,
+      "length": 112
+    },
+    {
+      "address": 55296,
+      "length": 12
+    },
+    {
+      "address": 55552,
+      "length": 24
+    },
+    {
+      "address": 511207,
+      "length": 9
+    },
+    {
+      "address": 511216,
+      "length": 4
+    },
+    {
+      "address": 681743,
+      "length": 7
+    },
+    {
+      "address": 681755,
+      "length": 3
+    },
+    {
+      "address": 681772,
+      "length": 7
+    },
+    {
+      "address": 681783,
+      "length": 4
+    },
+    {
+      "address": 932956,
+      "length": 20
+    },
+    {
+      "address": 932976,
+      "length": 16
+    },
+    {
+      "address": 932992,
+      "length": 8
+    },
+    {
+      "address": 933000,
+      "length": 12
+    },
+    {
+      "address": 933012,
+      "length": 12
+    },
+    {
+      "address": 933024,
+      "length": 12
+    },
+    {
+      "address": 933036,
+      "length": 12
+    },
+    {
+      "address": 933048,
+      "length": 16
+    },
+    {
+      "address": 933064,
+      "length": 16
+    },
+    {
+      "address": 933088,
+      "length": 36
+    },
+    {
+      "address": 933284,
+      "length": 36
+    },
+    {
+      "address": 933340,
+      "length": 12
+    },
+    {
+      "address": 933520,
+      "length": 20
+    },
+    {
+      "address": 933540,
+      "length": 20
+    },
+    {
+      "address": 935188,
+      "length": 6
+    },
+    {
+      "address": 935194,
+      "length": 4
+    },
+    {
+      "address": 935198,
+      "length": 4
+    },
+    {
+      "address": 935202,
+      "length": 4
+    },
+    {
+      "address": 935206,
+      "length": 4
+    },
+    {
+      "address": 935210,
+      "length": 4
+    },
+    {
+      "address": 935216,
+      "length": 148
+    },
+    {
+      "address": 935364,
+      "length": 24
+    }
+  ],
+  "dataHash": "93a8f2528c23f81be64e881ce8c0d8545fa1e3336472a161530b6488550c85a9",
+  "searches": [
+    {
+      "pattern": "QUZTAEFmdGVyVE9UaW1lcgBBRlMAQWZ0ZXJMTkRUaW1lcgBBRlMARkQxAA==",
+      "hits": []
+    },
+    {
+      "pattern": "RQAAAFgAAABDAAAARQAAAFMAAABTAAAAIAAAAEQAAABBAAAAVAAAAEEAAAA=",
+      "hits": [
+        935216
+      ]
+    }
+  ],
+  "readers": {
+    "fma": {
+      "failure": "Anchor: the AFS key run (AfterTOTimer, AfterLNDTimer, FD1) found 0 times, expected 1."
+    },
+    "engineDisplays": {
+      "failure": "Function CSymbolGenerator_Engine::instance() not found exactly once."
+    },
+    "navDisplay": {
+      "layout": {
+        "sourceFile": "",
+        "anchorAddress": 935216,
+        "anchor": "RQAAAFgAAABDAAAARQAAAFMAAABTAAAAIAAAAEQAAABBAAAAVAAAAEEAAAAAAAAAUgAAAC0AAAAlAAAAMAAAADMAAABkAAAAAAAAAFYAAAAxAAAAAAAAAFYAAAAyAAAA",
+        "objects": {
+          "efis": {
+            "global": 2604552,
+            "size": 127840
+          },
+          "fms": {
+            "global": 974708,
+            "size": 6562456
+          },
+          "glass": {
+            "global": 2609864,
+            "size": 11744
+          },
+          "sim": {
+            "global": 2594696,
+            "size": 144704
+          },
+          "tcas": {
+            "global": 2605044,
+            "size": 39816
+          },
+          "gpws": {
+            "global": 2604704,
+            "size": 25584
+          },
+          "weather": {
+            "global": 2605392,
+            "size": 32432
+          },
+          "isdu": {
+            "global": 2604732,
+            "size": 40312
+          },
+          "options": {
+            "global": 2594688,
+            "size": 11336
+          },
+          "misc": {
+            "global": 2604964,
+            "size": 20160
+          }
+        },
+        "panel": {
+          "panelBase": 3656,
+          "panelStride": 40240,
+          "panelIndexOffset": 127116,
+          "mode": {
+            "offset": 10644,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "range": {
+            "offset": 10648,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "vorAdfLeft": {
+            "offset": 10636,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "vorAdfRight": {
+            "offset": 10640,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "centered": {
+            "offset": 593,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "showTfc": {
+            "offset": 594,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "showWxr": {
+            "offset": 595,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "showSta": {
+            "offset": 596,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "showWpt": {
+            "offset": 597,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "showArpt": {
+            "offset": 598,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "showData": {
+            "offset": 599,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "showPos": {
+            "offset": 600,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "showTerr": {
+            "offset": 601,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "showVsd": {
+            "offset": 602,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "powered": {
+            "offset": 38888,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "rangeLabels": [
+            "1.25",
+            "2.5",
+            "5",
+            "10",
+            "20",
+            "40",
+            "80",
+            "160",
+            "320"
+          ],
+          "expandedLabelShift": 1,
+          "centredLabelShift": 0
+        },
+        "units": {
+          "unitCount": 6,
+          "unitStride": 608,
+          "pageOffset": 564,
+          "indexOffset": 568,
+          "fullNdPages": [
+            3
+          ],
+          "mapPages": [
+            9,
+            11
+          ],
+          "darkPages": [
+            0,
+            1
+          ],
+          "captainUnits": [
+            {
+              "unit": 0,
+              "page": 3,
+              "whenSelector": null
+            },
+            {
+              "unit": 0,
+              "page": 9,
+              "whenSelector": null
+            },
+            {
+              "unit": 0,
+              "page": 11,
+              "whenSelector": null
+            },
+            {
+              "unit": 1,
+              "page": 3,
+              "whenSelector": null
+            },
+            {
+              "unit": 1,
+              "page": 9,
+              "whenSelector": null
+            },
+            {
+              "unit": 1,
+              "page": 11,
+              "whenSelector": null
+            },
+            {
+              "unit": 2,
+              "page": 3,
+              "whenSelector": null
+            },
+            {
+              "unit": 2,
+              "page": 9,
+              "whenSelector": null
+            },
+            {
+              "unit": 2,
+              "page": 11,
+              "whenSelector": null
+            },
+            {
+              "unit": 3,
+              "page": 3,
+              "whenSelector": 2
+            }
+          ],
+          "lowerSelector": {
+            "offset": 95608,
+            "stride": 17320,
+            "kind": "Int"
+          },
+          "selectorSide": 0,
+          "deu": 572
+        },
+        "orientation": {
+          "heading": {
+            "offset": 3600,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "track": {
+            "offset": 3664,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "trackInvalidAtOrBelow": -999999,
+          "magnetic": {
+            "offset": 127130,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "magneticVariation": {
+            "offset": 248,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "iruIndex": {
+            "offset": 92440,
+            "stride": 4,
+            "kind": "Int"
+          },
+          "iruPointers": {
+            "offset": 4,
+            "stride": 4,
+            "kind": "Int"
+          },
+          "iruSize": 768,
+          "iruCondition": {
+            "offset": 760,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "degradedIruCondition": 7,
+          "trackUpOption": {
+            "offset": 21,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "trackUpMode": 2,
+          "trackLabel": "TRK",
+          "headingLabel": "HDG",
+          "readoutValid": {
+            "offset": 2360,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "readoutFailed": {
+            "offset": 3744,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "trueLabel": "TRU",
+          "magneticLabel": "MAG",
+          "mapMagneticLabel": "M",
+          "planCompass": {
+            "north": "N",
+            "east": "E",
+            "south": "S",
+            "west": "W",
+            "ringLabelShifts": [
+              0,
+              1
+            ]
+          }
+        },
+        "route": {
+          "refRoute": 4995104,
+          "planBase": 8192,
+          "planStride": 712416,
+          "planActive": 253,
+          "modOffset": 2,
+          "alsoDrawnPlans": [
+            4,
+            6
+          ],
+          "toNodePlan": 4,
+          "keyNodes": 328,
+          "firstNodeSlot": 0,
+          "toNodeSlot": 4,
+          "pseudoPrefix": 64,
+          "nodeSize": 1240,
+          "nodeName": 0,
+          "nodeNameLength": 24,
+          "nodeMapName": 24,
+          "nodeNext": 620,
+          "nodeType": 636,
+          "noDataLegType": 11,
+          "nodeDistance": 904,
+          "nodeEta": 1224,
+          "clock": {
+            "valid": 0,
+            "hours": 4,
+            "minutes": 8,
+            "seconds": 12,
+            "tenthsAtMost": 9
+          },
+          "nodePosition": 72,
+          "position": {
+            "latitudeRad": 40,
+            "longitudeRad": 48,
+            "magneticVariationDeg": 64,
+            "valid": 72
+          },
+          "validity": {
+            "hidden": 396,
+            "conditional": 1207,
+            "conditionalShown": 890,
+            "kind": 388,
+            "undrawnKind": 1,
+            "startSkip": 1206,
+            "undrawnUnlessTo": 398,
+            "hold": 936,
+            "holdSkip": 745
+          },
+          "fmsPosition": 6656,
+          "vnavDeviation": 5010992,
+          "vnavInvalidAtOrBelow": -999999,
+          "vnavPhase": 6628,
+          "vnavPhaseBelow": 4,
+          "perfInfo": 693688,
+          "perfPath": 98,
+          "plnCentre": {
+            "editedRoute": 4995108,
+            "editedRouteStride": 4,
+            "routeInfo": 40,
+            "centreSlot": 204,
+            "centreSlotStride": 4
+          },
+          "markers": {
+            "lateralPath": 408,
+            "array": 691912,
+            "stride": 80,
+            "firstIndex": 5,
+            "lastIndex": 12,
+            "labels": {
+              "7": "DECEL",
+              "8": "T/C",
+              "9": "S/C",
+              "10": "T/D",
+              "11": "T/D",
+              "12": "E/D"
+            }
+          },
+          "dataText": {
+            "constraintType": 152,
+            "windowType": "W",
+            "atType": "-",
+            "aboveType": "A",
+            "belowType": "B",
+            "atAltitude": 156,
+            "upperAltitude": 160,
+            "lowerAltitude": 164,
+            "invalidAtOrBelow": -999999,
+            "phase": 280,
+            "climbPhasesBelow": 2,
+            "performance": 5010688,
+            "transitionAltitude": 4,
+            "transitionLevel": 8,
+            "flightLevelFormat": "FL%03d%c",
+            "altitudeFormat": "% 5d%c",
+            "thirdLine": 732,
+            "thirdLineFormat": "%d",
+            "etaHidden": 631,
+            "noDataPlanBits": 12,
+            "activeOption": {
+              "offset": 30,
+              "stride": 0,
+              "kind": "Bool"
+            },
+            "activeSlot": 28
+          },
+          "airports": {
+            "departure": 24,
+            "departureRunway": 28,
+            "arrival": 56,
+            "arrivalRunway": 60,
+            "airportName": 0,
+            "airportPosition": 24,
+            "runwayName": 0,
+            "runwayPosition": 24,
+            "runwayUpToRange": 3,
+            "runwayHeading": 120,
+            "runwayLength": 124,
+            "feetPerNm": 6076,
+            "centrelineNm": 14.2
+          },
+          "lateralPath": {
+            "invalid": 692952,
+            "count": 4,
+            "points": 8,
+            "pointStride": 664,
+            "inUse": 4,
+            "arc": 8,
+            "arcZeroSpan": 152,
+            "firstLine": 168,
+            "secondLine": 368,
+            "lineStart": 8,
+            "lineEnd": 88,
+            "lineLength": 184,
+            "lineMinLength": 0.001,
+            "toward": 568
+          },
+          "maxNodes": 512
+        },
+        "mapValidity": {
+          "fmcIndex": {
+            "offset": 92456,
+            "stride": 4,
+            "kind": "Int"
+          },
+          "masterFmc": 92464,
+          "noFmc": -1,
+          "fmcValid": 6624
+        },
+        "geometry": {
+          "screenSize": 1000,
+          "expanded": {
+            "centreX": 500,
+            "centreY": 800,
+            "compassRadius": 700,
+            "rangeFactor": 1,
+            "clip": "ArcAndBottom",
+            "clipRadius": 635,
+            "arcStartDeg": 203,
+            "arcSweepDeg": 157,
+            "bottomY": 1005,
+            "bottomFromX": 1005,
+            "bottomToX": -5,
+            "rectangles": []
+          },
+          "centred": {
+            "centreX": 500,
+            "centreY": 530,
+            "compassRadius": 350,
+            "rangeFactor": 0.5,
+            "clip": "Rectangles",
+            "clipRadius": 0,
+            "arcStartDeg": 0,
+            "arcSweepDeg": 0,
+            "bottomY": 0,
+            "bottomFromX": 0,
+            "bottomToX": 0,
+            "rectangles": [
+              {
+                "x": 0,
+                "y": 130,
+                "width": 370,
+                "height": 870
+              },
+              {
+                "x": 368,
+                "y": 150,
+                "width": 264,
+                "height": 850
+              },
+              {
+                "x": 630,
+                "y": 130,
+                "width": 370,
+                "height": 870
+              }
+            ]
+          },
+          "plan": {
+            "centreX": 500,
+            "centreY": 510,
+            "compassRadius": 410,
+            "rangeFactor": 0.5,
+            "clip": "Circle",
+            "clipRadius": 400,
+            "arcStartDeg": 0,
+            "arcSweepDeg": 0,
+            "bottomY": 0,
+            "bottomFromX": 0,
+            "bottomToX": 0,
+            "rectangles": []
+          },
+          "modes": {
+            "app": 0,
+            "vor": 1,
+            "map": 2,
+            "plan": 3
+          },
+          "selectedRangesNm": [
+            5,
+            10,
+            20,
+            40,
+            80,
+            160,
+            320,
+            640
+          ],
+          "cull": {
+            "halfWidth": 510,
+            "halfWidthHalfFormat": 310,
+            "topMargin": 10,
+            "bottomLimit": 1010,
+            "centredRadiusFactor": 2
+          }
+        },
+        "corners": {
+          "groundSpeed": {
+            "offset": 2152,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "groundSpeedNavCondition": 6,
+          "trueAirspeed": {
+            "offset": 16,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "tasShownFrom": 100,
+          "windDirection": {
+            "offset": 3728,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "windSpeed": {
+            "offset": 3712,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "windTasAbove": 101,
+          "windShownAbove": 6,
+          "windHiddenBelow": 4,
+          "windDashes": "---°/---",
+          "windSeparator": "°/"
+        },
+        "messages": {
+          "messages": [
+            {
+              "text": "TERRAIN",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2604704,
+                        "size": 25584
+                      },
+                      "field": {
+                        "offset": 3,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2604704,
+                        "size": 25584
+                      },
+                      "field": {
+                        "offset": 2,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2604704,
+                        "size": 25584
+                      },
+                      "field": {
+                        "offset": 3,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "WINDSHEAR",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2605392,
+                        "size": 32432
+                      },
+                      "field": {
+                        "offset": 637,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2605392,
+                        "size": 32432
+                      },
+                      "field": {
+                        "offset": 636,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2605392,
+                        "size": 32432
+                      },
+                      "field": {
+                        "offset": 637,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "TCAS FAIL",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8432,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 594,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8432,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 594,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 1
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8432,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 594,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "TCAS OFF",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8432,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 594,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 1
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 1
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "TCAS TEST",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8432,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 594,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 1
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 1
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "TFC",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 594,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8432,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 594,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 1
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8432,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 594,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8432,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "TA ONLY",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8456,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8432,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8456,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 594,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8456,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 1
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8456,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 1
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8456,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8456,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 593,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8444,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  },
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 8468,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "MAP",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "MapValid",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": true
+                  }
+                ]
+              ]
+            }
+          ],
+          "mapOptionLabels": [
+            {
+              "text": "ARPT",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 598,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "MapValid",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "WPT",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 597,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "MapValid",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "STA",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 596,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "MapValid",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "TERR FAIL",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2604704,
+                        "size": 25584
+                      },
+                      "field": {
+                        "offset": 5,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "MapValid",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "TERR",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Object",
+                      "owner": {
+                        "global": 2604704,
+                        "size": 25584
+                      },
+                      "field": {
+                        "offset": 4,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "MapValid",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ],
+                [
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 601,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "MapValid",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ]
+              ]
+            },
+            {
+              "text": "WXR",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Panel",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 595,
+                        "stride": 0,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "MapValid",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ]
+              ]
+            }
+          ],
+          "excessData": "EXCESS DATA",
+          "traffic": "TRAFFIC",
+          "offscale": "OFFSCALE",
+          "rnp": {
+            "option": {
+              "offset": 31,
+              "stride": 0,
+              "kind": "Bool"
+            },
+            "posData": 7648,
+            "rnp": 264,
+            "anp": 272,
+            "invalidAtOrBelow": -999999,
+            "format": "%4.2f",
+            "dashes": "---",
+            "rnpLabel": "RNP",
+            "anpLabel": "ANP"
+          },
+          "vdev": {
+            "numberFrom": 30,
+            "scaleLimit": 400,
+            "pointerDownWhenPositive": false,
+            "drawnWhile": [
+              {
+                "source": {
+                  "kind": "ByFmc",
+                  "owner": {
+                    "global": 2609864,
+                    "size": 11744
+                  },
+                  "field": {
+                    "offset": 7248,
+                    "stride": 12,
+                    "kind": "Bool"
+                  },
+                  "mode": 0
+                },
+                "compareOpcode": 0,
+                "constant": null,
+                "negated": true
+              }
+            ],
+            "flag": {
+              "text": "VTK",
+              "anyOf": [
+                [
+                  {
+                    "source": {
+                      "kind": "Mode",
+                      "owner": {
+                        "global": 0,
+                        "size": 0
+                      },
+                      "field": {
+                        "offset": 0,
+                        "stride": 0,
+                        "kind": "Double"
+                      },
+                      "mode": 2
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  },
+                  {
+                    "source": {
+                      "kind": "ByFmc",
+                      "owner": {
+                        "global": 2609864,
+                        "size": 11744
+                      },
+                      "field": {
+                        "offset": 7248,
+                        "stride": 12,
+                        "kind": "Bool"
+                      },
+                      "mode": 0
+                    },
+                    "compareOpcode": 0,
+                    "constant": null,
+                    "negated": false
+                  }
+                ]
+              ]
+            },
+            "flagBoxed": true,
+            "verticalRnp": {
+              "rnp": 304,
+              "anp": 312,
+              "invalidAtOrBelow": -999999,
+              "format": "%d",
+              "rnpDashes": "---",
+              "anpDashes": "-.--",
+              "rnpLabel": "RNP",
+              "anpLabel": "ANP"
+            }
+          },
+          "dropped": [
+            {
+              "text": "TRAFFIC",
+              "reason": "CSymbolGenerator_ND::drawTCASMessages(): tested by a variable the code computes"
+            },
+            {
+              "text": "OFFSCALE",
+              "reason": "CSymbolGenerator_ND::drawTCASMessages(): tested by the generator's own field this+486"
+            },
+            {
+              "text": "EFIS MODE/NAV FREQ DISAGREE",
+              "reason": "CSymbolGenerator_ND::drawFailureFlags(): tested by the result of scNAVData::frequencyIsILS()"
+            },
+            {
+              "text": "EXCESS DATA",
+              "reason": "CSymbolGenerator_ND::drawExcessDataWarning(): tested by the generator's own field this+483"
+            },
+            {
+              "text": "WXR FAIL",
+              "reason": "CSymbolGenerator_ND::drawMapOptions(): tested by the result of CWeatherRadar::isFailed_Sys()"
+            },
+            {
+              "text": "WXR",
+              "reason": "CSymbolGenerator_ND::drawMapOptions(): tested by a value the reader does not read"
+            },
+            {
+              "text": "VAR",
+              "reason": "CSymbolGenerator_ND::drawMapOptions(): tested by a value the reader does not read"
+            },
+            {
+              "text": "VAR/",
+              "reason": "CSymbolGenerator_ND::drawMapOptions(): tested by a value the reader does not read"
+            }
+          ],
+          "fmcLabel": {
+            "whenZero": "FMC L",
+            "otherwise": "FMC R"
+          },
+          "wxr": {
+            "label": "WXR",
+            "tilt": {
+              "offset": 584,
+              "stride": 4,
+              "kind": "Int"
+            },
+            "tiltFormat": "%+d%c",
+            "zeroFormat": "0%c",
+            "auto": {
+              "offset": 580,
+              "stride": 0,
+              "kind": "Bool"
+            },
+            "autoLetter": "A",
+            "manualLetter": "M",
+            "variable": {
+              "offset": 581,
+              "stride": 1,
+              "kind": "Bool"
+            },
+            "varWhileSet": false,
+            "varFull": "VAR",
+            "varHalf": "VAR/"
+          },
+          "terrain": {
+            "label": "TERR",
+            "option": {
+              "offset": 189,
+              "stride": 0,
+              "kind": "Bool"
+            },
+            "gpwsTest": {
+              "offset": 4,
+              "stride": 0,
+              "kind": "Bool"
+            },
+            "generator": {
+              "global": 2609912,
+              "size": 4328
+            },
+            "slotByUnitIndex": [
+              0,
+              0,
+              2,
+              2,
+              1,
+              1
+            ],
+            "highest": {
+              "offset": 4084,
+              "stride": 48,
+              "kind": "Int"
+            },
+            "highestColour": {
+              "offset": 4092,
+              "stride": 48,
+              "kind": "Int"
+            },
+            "lowest": {
+              "offset": 4076,
+              "stride": 48,
+              "kind": "Int"
+            },
+            "lowestColour": {
+              "offset": 4088,
+              "stride": 48,
+              "kind": "Int"
+            },
+            "invalidAtOrBelow": -999999,
+            "scale": 0.01,
+            "format": "%03d",
+            "redCode": 3,
+            "amberCode": 2
+          }
+        },
+        "xtk": {
+          "keySlot": 8,
+          "pathInvalid": 692972,
+          "value": 693000,
+          "nodeFlag": 936,
+          "nodeCount": 948,
+          "nodeCountBelow": 13,
+          "shownBelow": 99.95,
+          "closeAtMost": 1,
+          "closeFormat": "%4.2f %c",
+          "farFormat": "%3.1f %c",
+          "closeZero": "0.00",
+          "farZero": "0.0",
+          "closeZeroBelow": 0.005,
+          "farZeroBelow": 0.05,
+          "right": "R",
+          "left": "L"
+        },
+        "lists": {
+          "navaidVector": 127140,
+          "fixVector": 127152,
+          "airportVector": 127164,
+          "vectorBegin": 0,
+          "vectorEnd": 4,
+          "elementSize": 16,
+          "objectPointer": 0,
+          "objectName": 0,
+          "objectPosition": 24,
+          "stationFlags": 116,
+          "vorFlag": 2,
+          "dmeFlag": 8,
+          "testedFlags": 11,
+          "drawnFlagValues": 1284,
+          "stationClass": 120,
+          "highClass": 1,
+          "highClassAbove": 40,
+          "fixesUpTo": 40,
+          "maxElements": 40
+        },
+        "tuned": {
+          "stations": 2368,
+          "stride": 448,
+          "count": 2,
+          "ident": 0,
+          "position": 168,
+          "state": 80,
+          "tunedState": 2,
+          "notVorState": 1,
+          "dmeDistance": 440,
+          "course": {
+            "offset": 4224,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "courseOption": {
+            "offset": 22,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "powered": {
+            "offset": 20,
+            "stride": 1,
+            "kind": "Bool"
+          }
+        },
+        "receivers": {
+          "switch": {
+            "offset": 3832,
+            "stride": 32,
+            "kind": "Int"
+          },
+          "switchSideStride": 16,
+          "vorPosition": 0,
+          "adfPosition": 2,
+          "vorFrequencyText": 40,
+          "adfStations": 3264,
+          "adfStride": 56,
+          "adfIdent": 0,
+          "adfFrequencyText": 10,
+          "adfValid": 44,
+          "dme": {
+            "offset": 4024,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "dmeTenthsBelow": 100,
+          "vorFailed": {
+            "offset": 4392,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "dmeFailed": {
+            "offset": 4368,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "adfFailed": {
+            "offset": 4416,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "powered": {
+            "offset": 20,
+            "stride": 1,
+            "kind": "Bool"
+          },
+          "vorShownStates": [
+            1,
+            2
+          ],
+          "vorFailedBoxed": true,
+          "dmeFailedBoxed": true,
+          "adfFailedBoxed": true
+        },
+        "traffic": {
+          "list": 39680,
+          "listShown": 20,
+          "powered": {
+            "offset": 39532,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "selfTest": {
+            "offset": 39534,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "selfTestShown": {
+            "offset": 39535,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "count": 48,
+          "targets": 52,
+          "relativeAltitude": 0,
+          "range": 8,
+          "bearing": 12,
+          "threatAndTrend": 6,
+          "threatShift": 4,
+          "present": 7,
+          "showAllTraffic": {
+            "offset": 193,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "filterRange": {
+            "offset": 196,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "filterSeparation": {
+            "offset": 200,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "tfcThreatsUpTo": 1,
+          "taOnly": {
+            "offset": 39672,
+            "stride": 0,
+            "kind": "Bool"
+          },
+          "testField": 24,
+          "testValue": 8,
+          "testPositions": [
+            {
+              "rangeNm": 3.6,
+              "bearingRad": -0.59
+            },
+            {
+              "rangeNm": 3.6,
+              "bearingRad": 0.59
+            },
+            {
+              "rangeNm": 2,
+              "bearingRad": -1.57
+            },
+            {
+              "rangeNm": 2,
+              "bearingRad": 1.57
+            }
+          ],
+          "offscaleBeyond": 0.9,
+          "offscaleWhenCulled": true,
+          "hundredsLimit": 99,
+          "maxTargets": 64,
+          "centredMode": 2
+        },
+        "symbols": {
+          "selectedHeading": {
+            "offset": 3728,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "mcpAltitude": {
+            "offset": 7424,
+            "stride": 0,
+            "kind": "Int"
+          },
+          "altitude": {
+            "offset": 7336,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "verticalSpeed": {
+            "offset": 96,
+            "stride": 0,
+            "kind": "Double"
+          },
+          "arcVsAbove": 100,
+          "minutesPerHour": 60,
+          "arcWithinRadius": 0.9,
+          "planAircraftLatitudeLimit": 82,
+          "headingLine": {
+            "hiddenCentredIn": [
+              0,
+              1
+            ],
+            "option": {
+              "offset": 4,
+              "stride": 0,
+              "kind": "Bool"
+            },
+            "rollMode": {
+              "offset": 2944,
+              "stride": 0,
+              "kind": "Int"
+            },
+            "timedRollModes": [
+              4,
+              5
+            ],
+            "shownForSeconds": 10,
+            "simTime": {
+              "offset": 2280,
+              "stride": 0,
+              "kind": "Double"
+            },
+            "generator": {
+              "global": 2609912,
+              "size": 4328
+            },
+            "changedAt": {
+              "offset": 208,
+              "stride": 0,
+              "kind": "Double"
+            }
+          }
+        },
+        "fixPage": {
+          "cduGlobal": 2598868,
+          "cduSize": 147824,
+          "pages": 580,
+          "fixPage": 19,
+          "entries": 52,
+          "entryCount": 6,
+          "fixPointer": 0,
+          "rings": 40,
+          "ringCount": 3,
+          "radials": 8,
+          "radialCount": 3,
+          "invalidAtOrBelow": -999999,
+          "objectType": 108,
+          "fixType": 8,
+          "airportType": 1,
+          "navaidType": 4,
+          "objectPosition": 24,
+          "abeam": 552
+        },
+        "approach": {
+          "vorFlag": 97,
+          "appFlag": 98,
+          "block": {
+            "navIndex": {
+              "offset": 92448,
+              "stride": 4,
+              "kind": "Int"
+            },
+            "fmcIndex": {
+              "offset": 92456,
+              "stride": 4,
+              "kind": "Int"
+            },
+            "fmcSources": [
+              {
+                "offset": 4472,
+                "stride": 16,
+                "kind": "Int"
+              },
+              {
+                "offset": 4504,
+                "stride": 16,
+                "kind": "Int"
+              }
+            ],
+            "fmcSourceValue": 2,
+            "stations": 2368,
+            "stationStride": 448,
+            "ident": 0,
+            "frequencyText": 40,
+            "frequency": 72,
+            "ilsFrequencies": [
+              10810,
+              10815,
+              10830,
+              10835,
+              10850,
+              10855,
+              10870,
+              10875,
+              10890,
+              10895,
+              10910,
+              10915,
+              10930,
+              10935,
+              10950,
+              10955,
+              10970,
+              10975,
+              10990,
+              10995,
+              11010,
+              11015,
+              11030,
+              11035,
+              11050,
+              11055,
+              11070,
+              11075,
+              11090,
+              11095,
+              11110,
+              11115,
+              11130,
+              11135,
+              11150,
+              11155,
+              11170,
+              11175,
+              11190,
+              11195
+            ],
+            "approachIdents": 4560,
+            "approachIdentStride": 772,
+            "dashes": "------",
+            "courseLabel": "CRS",
+            "course": {
+              "offset": 4224,
+              "stride": 32,
+              "kind": "Double"
+            },
+            "dmeLabel": "DME",
+            "dme": {
+              "offset": 4024,
+              "stride": 32,
+              "kind": "Double"
+            },
+            "dmeShownFrom": 0,
+            "dmeTenthsBelow": 100,
+            "dmeDashes": " ---",
+            "dmeFailed": {
+              "offset": 4368,
+              "stride": 12,
+              "kind": "Bool"
+            },
+            "dmeFailedLabels": {
+              "whenZero": "DME 1",
+              "otherwise": "DME 2"
+            },
+            "dmeFailedHalfLabel": "DME",
+            "dmeFailedBoxed": true,
+            "vorFailed": {
+              "offset": 4392,
+              "stride": 12,
+              "kind": "Bool"
+            },
+            "toFrom": {
+              "offset": 4192,
+              "stride": 16,
+              "kind": "Int"
+            },
+            "toValue": 1,
+            "toLabel": "TO",
+            "fromValue": 2,
+            "fromLabel": "FROM",
+            "vorLabels": {
+              "whenZero": "VOR 1",
+              "otherwise": "VOR 2"
+            },
+            "fmcLabels": {
+              "whenZero": "FMC L",
+              "otherwise": "FMC R"
+            },
+            "ilsLabels": {
+              "whenZero": "ILS 1",
+              "otherwise": "ILS 2"
+            }
+          },
+          "cdi": {
+            "pointerCourse": {
+              "offset": 4224,
+              "stride": 32,
+              "kind": "Double"
+            },
+            "fmcSource": {
+              "offset": 4472,
+              "stride": 16,
+              "kind": "Int"
+            },
+            "receiverState": {
+              "offset": 4288,
+              "stride": 16,
+              "kind": "Int"
+            },
+            "receiverStateFrom": 2,
+            "approachDeviation": {
+              "offset": 6216,
+              "stride": 32,
+              "kind": "Double"
+            },
+            "vorDeviation": {
+              "offset": 4128,
+              "stride": 32,
+              "kind": "Double"
+            },
+            "fullScale": 1.25,
+            "dotsPerUnit": 2,
+            "filledBelow": 1.18
+          },
+          "glideslope": {
+            "deviation": {
+              "offset": 6376,
+              "stride": 32,
+              "kind": "Double"
+            },
+            "fullScale": 1.25,
+            "dotsPerUnit": 2,
+            "pointerState": 5,
+            "failed": {
+              "offset": 4344,
+              "stride": 12,
+              "kind": "Bool"
+            },
+            "fmcSource": {
+              "offset": 4504,
+              "stride": 16,
+              "kind": "Int"
+            },
+            "flagText": "G/S",
+            "flagBoxed": true
+          },
+          "messages": {
+            "vorFlag": {
+              "mode": 1,
+              "failed": {
+                "offset": 4392,
+                "stride": 12,
+                "kind": "Bool"
+              },
+              "fullLabels": {
+                "whenZero": "VOR 1",
+                "otherwise": "VOR 2"
+              },
+              "halfLabel": "VOR"
+            },
+            "locFlag": {
+              "mode": 0,
+              "failed": {
+                "offset": 4320,
+                "stride": 12,
+                "kind": "Bool"
+              },
+              "fullLabels": {
+                "whenZero": "LOC 1",
+                "otherwise": "LOC 2"
+              },
+              "halfLabel": "LOC"
+            },
+            "disagree": "EFIS MODE/NAV FREQ DISAGREE",
+            "disagreeInVorWhenIls": true,
+            "disagreeInAppWhenIls": false,
+            "traffic": true
+          }
+        },
+        "approachFailure": null,
+        "pointers": {
+          "count": 2,
+          "vorPosition": 0,
+          "adfPosition": 2,
+          "vorPower": {
+            "offset": 20,
+            "stride": 1,
+            "kind": "Bool"
+          },
+          "tunedState": 2,
+          "vorValid": {
+            "offset": 2360,
+            "stride": 12,
+            "kind": "Bool"
+          },
+          "vorBearing": {
+            "offset": 3896,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "adfPower": {
+            "offset": 24,
+            "stride": 1,
+            "kind": "Bool"
+          },
+          "adfSignal": 44,
+          "adfBearing": {
+            "offset": 3960,
+            "stride": 32,
+            "kind": "Double"
+          },
+          "pos": {
+            "radialFormat": "R-%03d",
+            "radialZeroAs": 360,
+            "stationRadial": 336,
+            "stationCorrection": 344,
+            "vorLabels": {
+              "whenZero": "V1",
+              "otherwise": "V2"
+            },
+            "adfLabels": {
+              "whenZero": "A1",
+              "otherwise": "A2"
+            },
+            "iruPosition": 72,
+            "gpsArray": 432,
+            "gpsStride": 192,
+            "gpsPosition": 8
+          }
+        },
+        "pointersFailure": null,
+        "details": {
+          "tcasRing": {
+            "radiusNm": 3,
+            "listValues": [
+              0,
+              2
+            ],
+            "upToRangeNm": 80,
+            "option": {
+              "offset": 29,
+              "stride": 0,
+              "kind": "Bool"
+            }
+          },
+          "trendVector": {
+            "groundSpeedAbove": 80,
+            "segmentsByRange": [
+              1,
+              1,
+              2,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "turnFrom": 0.03,
+            "turnRate": {
+              "offset": 4696,
+              "stride": 0,
+              "kind": "Double"
+            },
+            "radiansPerDegree": 0.017453292519943295,
+            "rightWhenPositive": true,
+            "drawnSeconds": 22,
+            "gapSeconds": 8,
+            "secondsPerHour": 3600
+          },
+          "trackLine": {
+            "pointerCentredIn": [
+              0,
+              1
+            ],
+            "markFractions": [
+              0.25,
+              0.5,
+              0.75
+            ],
+            "rangeArcsOption": {
+              "offset": 28,
+              "stride": 0,
+              "kind": "Bool"
+            }
+          },
+          "hold": {
+            "record": 944,
+            "turn": 37,
+            "turnChar": "L",
+            "inbound": 40,
+            "legTime": 1000,
+            "legTimeFormat": "%03.1f",
+            "legDistance": 1008,
+            "legDistanceFormat": "% 4.1f",
+            "legInvalidAtOrBelow": -999999
+          },
+          "failures": []
+        }
+      }
+    },
+    "pfd": {
+      "failure": "display pages: no page draws the classic EFIS attitude indicator"
+    }
+  }
+}

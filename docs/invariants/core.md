@@ -28,11 +28,13 @@ Corrected 2026-10-09: the rule said `-r win-x64` writes a separate `win-x64\` tr
 
 ## CORE-4
 
-- `dotnet build MSFSBlindAssist.sln` builds only three of the `tools/` projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder` and `tools/GuideBuilder` (added 2026-10-19 with the user guide, docs/user-guide.md). The other 12 `tools/*` projects build on their own, never as part of the solution: `CDUTest`, `DistanceUnitsProbe`, `DockingProbe`, `GsxAirplaneProbe`, `GsxOffsetProbe`, `GsxProfileProbe`, `IFlySdkProbe`, `LandingExitSweep`, `ProgressiveTaxiProbe`, `StandBridgeSweep`, `TaxiAugmentProbe` and `TaxiGuidanceProbe`. docs/development.md ("Build output and traps") names what each does.
+- `dotnet build MSFSBlindAssist.sln` builds only four of the `tools/` projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder`, `tools/GuideBuilder` (added 2026-10-19 with the user guide, docs/user-guide.md) and `tools/LayoutBundle` (added 2026-10-31; it copies the layout files into a build). The other 14 `tools/*` projects build on their own, never as part of the solution: `CDUTest`, `DistanceUnitsProbe`, `DockingProbe`, `ExitConsistencySweep`, `GsxAirplaneProbe`, `GsxOffsetProbe`, `GsxProfileProbe`, `IFlySdkProbe`, `LandingExitSweep`, `ProgressiveTaxiProbe`, `StandBridgeSweep`, `TaxiAugmentProbe`, `TaxiGuidanceProbe` and `VirtualPilot`. docs/development.md ("Build output and traps") names what each does.
 
-Why it matters. Eleven of the twelve link production sources from `MSFSBlindAssist/` with `<Compile Include>` (`CDUTest` links none; it copies the main app's `SimConnect.dll`). A solution build never compiles them, so a change to a linked source can break one without any solution build showing it. Build the probe you rely on, after a change to a source it links.
+Why it matters. Thirteen of the fourteen link production sources from `MSFSBlindAssist/` with `<Compile Include>`, or reference the app project (`ExitConsistencySweep`, `VirtualPilot`); `CDUTest` links none and copies the main app's `SimConnect.dll`. A solution build never compiles them, so a change to a linked source can break one without any solution build showing it. Build the probe you rely on, after a change to a source it links.
 
-Corrected 2026-10-09: the rule named only `tools/CDUTest` and probes "of its style", and CLAUDE.md listed four; 12 projects build on their own. Evidence: `ls tools/*/*.csproj` (14 projects) against the project list in `MSFSBlindAssist.sln`, which holds only `PMDGDispatchTester` and `ChangelogBuilder` from `tools/`.
+Corrected 2026-10-09: the rule named only `tools/CDUTest` and probes "of its style", and CLAUDE.md listed four; 12 projects built on their own. Evidence: `ls tools/*/*.csproj` (14 projects) against the project list in `MSFSBlindAssist.sln`, which held only `PMDGDispatchTester` and `ChangelogBuilder` from `tools/`.
+
+Corrected 2026-10-31: the count of 12 omitted `ExitConsistencySweep` and `VirtualPilot`, and the solution gained two projects, `MSFSBlindAssist.DisplayLayouts` and `tools/LayoutBundle`, nine in all. Evidence: `git ls-files 'tools/*/*.csproj'` lists 18 projects, 4 of them in `MSFSBlindAssist.sln`, so 14 build on their own; a scan of their project files finds an app `<Compile Include>` or project reference in every one but `CDUTest`.
 
 ## CORE-5
 
