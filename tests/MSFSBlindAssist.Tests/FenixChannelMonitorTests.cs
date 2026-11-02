@@ -611,11 +611,11 @@ public class FenixChannelMonitorTests
         monitor.OnDataState(FenixChannelState.Connected, "");
         await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
 
-        monitor.OnDataMessage(FenixChannelProtoWriter.GoodPush(upperEcamLeft: ["rENG 1 FIRE"]));
+        monitor.OnDataMessage(FenixChannelProtoWriter.GoodPush(upperEcamLeft: ["xENG 1 FIRE"]));
         var (doubted, doubtedFrame) = monitor.Snapshot(FenixChannelDisplay.Ewd);
 
-        Assert.Equal(new FenixDisplayVerdict(false, "unknown code 'r' in the upper ECAM"), doubted);
-        Assert.Equal(new[] { "rENG 1 FIRE" }, doubtedFrame?.UpperEcamLeft);
+        Assert.Equal(new FenixDisplayVerdict(false, "unknown code 'x' in the upper ECAM"), doubted);
+        Assert.Equal(new[] { "xENG 1 FIRE" }, doubtedFrame?.UpperEcamLeft);
 
         monitor.OnDataMessage(GoodPush());
         var (trusted, trustedFrame) = monitor.Snapshot(FenixChannelDisplay.Ewd);

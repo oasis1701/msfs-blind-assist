@@ -4,10 +4,10 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// The color a format code gives a run of channel text: the six letters <see cref="FenixMcduFormat"/> also
-/// handles for the Fenix MCDU markup. The color is the meaning (a warning, a memo, an action), so it stays
-/// on the run as data.
+/// handles for the Fenix MCDU markup, and red, whose letter <c>r</c> was measured on the channel (a TO CONFIG
+/// warning, 2026-11-02). The color is the meaning (a warning, a memo, an action), so it stays on the run as data.
 /// </summary>
-internal enum FenixTextColor { White, Green, Cyan, Amber, Magenta, Yellow }
+internal enum FenixTextColor { White, Green, Cyan, Amber, Magenta, Yellow, Red }
 
 /// <summary>The size a format code gives a run: <c>s</c> small, <c>l</c> large, and Normal until one of them.</summary>
 internal enum FenixTextSize { Normal, Small, Large }
@@ -40,9 +40,9 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 /// <summary>
 /// Parses one line of the Fenix display channel's text (an FMA slot, an upper ECAM line, the FOB text) into
 /// runs that keep their colors. A lowercase letter before a run is a format code, not text: the color
-/// letters <c>w g c a m y</c> (white, green, cyan, amber, magenta, yellow), <c>u</c> to toggle underline and
-/// <c>s</c> or <c>l</c> for a small or large size. Display text is uppercase, so an uppercase letter is
-/// never a code.
+/// letters <c>w g c a m y r</c> (white, green, cyan, amber, magenta, yellow, red), <c>u</c> to toggle
+/// underline and <c>s</c> or <c>l</c> for a small or large size. Display text is uppercase, so an uppercase
+/// letter is never a code.
 /// </summary>
 /// <remarks>
 /// <para>The colors are the meaning, so the codes are parsed into data and never stripped: a read that speaks
@@ -97,6 +97,7 @@ internal static class FenixChannelText
                 case 'a': SetColor(FenixTextColor.Amber); break;
                 case 'm': SetColor(FenixTextColor.Magenta); break;
                 case 'y': SetColor(FenixTextColor.Yellow); break;
+                case 'r': SetColor(FenixTextColor.Red); break;
                 case 'u':
                     CloseRun();
                     underlined = !underlined;

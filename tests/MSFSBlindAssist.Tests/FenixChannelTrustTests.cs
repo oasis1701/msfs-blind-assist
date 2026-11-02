@@ -1294,9 +1294,9 @@ public class FenixChannelTrustTests
         FenixChannelTrust gate = TrustedGate();
 
         // Ten seconds, long enough for any latch: it is an exact condition, not a noisy one.
-        Feed(gate, 100, 10_000, Frame(upperLeft: new[] { "rENG 1 FIRE" }));
+        Feed(gate, 100, 10_000, Frame(upperLeft: new[] { "xENG 1 FIRE" }));
 
-        Assert.Equal(Untrusted("unknown code 'r' in the upper ECAM"), Ewd(gate, 10_000));
+        Assert.Equal(Untrusted("unknown code 'x' in the upper ECAM"), Ewd(gate, 10_000));
         Assert.Equal(Trusted, Pfd(gate, 10_000));
         Assert.Equal(Trusted, Sd(gate, 10_000));
 
@@ -1341,9 +1341,24 @@ public class FenixChannelTrustTests
         FenixChannelTrust gate = TrustedGate();
 
         // The left column comes before the right one, and within a line the first letter wins.
-        gate.OnFrame(Frame(upperLeft: new[] { "wOK", "dFAULTx" }, upperRight: new[] { "rBAD" }), 100);
+        gate.OnFrame(Frame(upperLeft: new[] { "wOK", "dFAULTx" }, upperRight: new[] { "qBAD" }), 100);
 
         Assert.Equal(Untrusted("unknown code 'd' in the upper ECAM"), Ewd(gate, 100));
+    }
+
+    [Fact]
+    public void The_red_lines_of_a_takeoff_config_warning_keep_the_ewd_trusted()
+    {
+        // The TO CONFIG test with the flaps up on 3.0.0.7613 (2026-11-02) read "unknown code 'r' in the upper ECAM"
+        // while red's letter was unknown. Red is r, so those lines hold no unknown code.
+        FenixChannelTrust gate = TrustedGate();
+
+        gate.OnFrame(Frame(upperLeft: new[]
+        {
+            "urCONFIGu ", "rSLATS NOT IN T.O CONFIG", "urCONFIGu ", "rFLAPS NOT IN T.O CONFIG"
+        }), 100);
+
+        Assert.Equal(Trusted, Ewd(gate, 100));
     }
 
     [Fact]
