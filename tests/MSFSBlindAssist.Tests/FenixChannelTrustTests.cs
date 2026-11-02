@@ -7,10 +7,10 @@
 // every condition holds, and the verdict is the first one that fails, in this order: the channel is
 // connected; a data message has come since it connected; the stream has not stalled; the build is known;
 // the build is one the app has checked; no message was malformed and no field had the wrong shape since it
-// connected (a latch). Then the display's own conditions: each cross-check with SimConnect has agreed at
-// least once and has no disagreement in force (a disagreement stays in force until a message agrees, and one
-// that lasts three seconds without a break latches until the channel reconnects), and no line the display
-// covers holds a text code the app does not know.
+// connected (a latch). Then the display's own conditions: a powered display unit shows it (else "display off");
+// each cross-check with SimConnect has agreed at least once and has no disagreement in force (a disagreement
+// stays in force until a message agrees, and one that lasts three seconds without a break latches until the
+// channel reconnects); and no line the display covers holds a text code the app does not know.
 //
 // SimConnect's batch comes about once a second, so a value of its is compared with the channel as the channel
 // was when the value arrived, not as it is now.
@@ -325,6 +325,154 @@ public class FenixChannelTrustTests
         gate.OnFrame(Frame(), 5_100);
 
         AssertAll(gate, 5_100, Trusted);
+    }
+
+    // ---- A display no powered unit shows ----------------------------------------------------------
+
+    [Fact]
+    public void A_dark_display_is_not_trusted()
+    {
+        // Cold and dark the channel still sends the sim's altitude and heading, which agree with SimConnect, so the
+        // PFD and the SD read trusted while dark (3.0.0.7613, 2026-11-02): a read would have spoken what no display
+        // shows. Being live is each display's first condition of its own, the SD's included.
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate, fdCapt: 0, fdFo: 0);
+
+        Feed(gate, 0, 5_000, ColdAndDark());
+
+        AssertAll(gate, 5_000, Untrusted("display off"));
+    }
+
+    [Fact]
+    public void A_display_is_trusted_once_it_is_live_and_checked()
+    {
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate);
+        Feed(gate, 0, 1_000, Dark());   // every check passes while the displays are dark
+
+        AssertAll(gate, 1_000, Untrusted("display off"));
+
+        gate.OnFrame(Frame(), 1_100);   // power-up: a powered unit shows each display
+
+        AssertAll(gate, 1_100, Trusted);
+
+        gate.OnFrame(Dark(), 1_200);   // and dark again
+
+        AssertAll(gate, 1_200, Untrusted("display off"));
+    }
+
+    [Fact]
+    public void Each_display_is_live_on_its_own()
+    {
+        FenixChannelTrust gate = TrustedGate();
+
+        gate.OnFrame(Frame(ewdLive: false, sdLive: false), 100);
+
+        Assert.Equal(Trusted, Pfd(gate, 100));
+        Assert.Equal(Untrusted("display off"), Ewd(gate, 100));
+        Assert.Equal(Untrusted("display off"), Sd(gate, 100));
+
+        gate.OnFrame(Frame(pfdLive: false, sdLive: false), 200);
+
+        Assert.Equal(Untrusted("display off"), Pfd(gate, 200));
+        Assert.Equal(Trusted, Ewd(gate, 200));
+        Assert.Equal(Untrusted("display off"), Sd(gate, 200));
+
+        gate.OnFrame(Frame(pfdLive: false, ewdLive: false), 300);
+
+        Assert.Equal(Untrusted("display off"), Pfd(gate, 300));
+        Assert.Equal(Untrusted("display off"), Ewd(gate, 300));
+        Assert.Equal(Trusted, Sd(gate, 300));
+    }
+
+    [Fact]
+    public void Display_off_comes_before_a_disagreement()
+    {
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate, altitude: 5000);   // the altitude disagrees from the first frame
+
+        gate.OnFrame(Frame(pfdLive: false), 0);
+
+        Assert.Equal(Untrusted("display off"), Pfd(gate, 0));
+
+        gate.OnFrame(Frame(), 100);
+
+        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 100));
+    }
+
+    [Fact]
+    public void Display_off_comes_before_the_displays_other_conditions()
+    {
+        // No SimConnect value yet (every check not checked yet), no FMA and an unknown code in the upper ECAM: a dark
+        // display reads "display off" before any of them, and each shows once the display is live.
+        FenixChannelTrust gate = ConnectedGate();
+        FenixFmaSlot[] noFma = Array.Empty<FenixFmaSlot>();
+        string[] unknown = { "xFAULT" };
+
+        gate.OnFrame(Frame(fma: noFma, upperLeft: unknown, pfdLive: false, ewdLive: false, sdLive: false), 0);
+
+        AssertAll(gate, 0, Untrusted("display off"));
+
+        gate.OnFrame(Frame(fma: noFma, upperLeft: unknown), 100);
+
+        Assert.Equal(Untrusted("FD captain not checked yet"), Pfd(gate, 100));
+        Assert.Equal(Untrusted("fuel not checked yet"), Ewd(gate, 100));
+        Assert.Equal(Trusted, Sd(gate, 100));   // the SD's one condition is being live
+
+        Compare(gate, atMs: 200);
+        gate.OnFrame(Frame(fma: noFma, upperLeft: unknown), 200);
+
+        Assert.Equal(Untrusted("no FMA"), Pfd(gate, 200));
+        Assert.Equal(Untrusted("unknown code 'x' in the upper ECAM"), Ewd(gate, 200));
+    }
+
+    [Fact]
+    public void A_disagreement_held_while_its_display_is_off_shows_once_it_is_live()
+    {
+        // The cross-checks run on every frame, live or not: a disagreement that lasts MismatchHoldMs while the PFD is
+        // dark latches, and the PFD reads the latch from its first live frame.
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate, altitude: 5000);
+        Feed(gate, 0, 3_000, Frame(pfdLive: false));
+
+        Assert.Equal(Untrusted("display off"), Pfd(gate, 3_000));
+
+        gate.OnFrame(Frame(), 3_100);
+
+        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 3_100));
+    }
+
+    [Fact]
+    public void The_channel_wide_conditions_come_before_display_off()
+    {
+        var gate = new FenixChannelTrust(new HashSet<string> { CheckedBuild });
+        gate.OnConnected(0);
+        Compare(gate);
+        gate.OnFrame(Dark(), 0);
+
+        AssertAll(gate, 0, Untrusted("build unknown"));
+
+        gate.OnBuild(CheckedBuild);
+
+        AssertAll(gate, 0, Untrusted("display off"));
+
+        gate.OnFrame(FenixChannelFrame.MalformedFrame, 100);
+
+        AssertAll(gate, 100, Untrusted("malformed message"));
+    }
+
+    [Fact]
+    public void A_frame_of_defaults_trusts_no_display()
+    {
+        // A RemoteData holding only fields the app does not read decodes to a frame of defaults. Its empty FOB text
+        // only makes the fuel check wait, so it read trusted on an E/WD whose fuel check had passed, and on the SD,
+        // which has no cross-check: with no duData, every display is off.
+        FenixChannelTrust gate = TrustedGate();
+
+        gate.OnFrame(new FenixChannelFrame(false, Array.Empty<string>(), FenixFdState.Default,
+            Array.Empty<FenixFmaSlot>(), Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, 0, ""), 100);
+
+        AssertAll(gate, 100, Untrusted("display off"));
     }
 
     // ---- The cross-checks: waiting, disagreeing and latched -----------------------------------------
@@ -1481,17 +1629,32 @@ public class FenixChannelTrustTests
         return gate;
     }
 
-    // A frame that passes every check against Compare()'s defaults: 16 empty FMA slots, both flight directors
-    // on, altitude 1000, heading 90, and the FOB line of a real push.
+    // A frame that passes every check against Compare()'s defaults: every display live (a powered unit shows each
+    // of the three; a test about another condition never repeats the flags), 16 empty FMA slots, both flight
+    // directors on, altitude 1000, heading 90, and the FOB line of a real push.
     private static FenixChannelFrame Frame(bool fdCapt = true, bool fdFo = true, double altitude = 1000,
         double heading = 90, string fob = "wFOB:   g2940 cs KG", IReadOnlyList<FenixFmaSlot>? fma = null,
         IReadOnlyList<string>? upperLeft = null, IReadOnlyList<string>? upperRight = null,
-        IReadOnlyList<string>? wrongShape = null) =>
+        IReadOnlyList<string>? wrongShape = null, bool pfdLive = true, bool ewdLive = true, bool sdLive = true) =>
         new(Malformed: false, WrongShapeFields: wrongShape ?? Array.Empty<string>(),
             Fd: FenixFdState.Default with { FdOnCapt = fdCapt, FdOnFo = fdFo },
             Fma: fma ?? EmptyFma(), UpperEcamLeft: upperLeft ?? Array.Empty<string>(),
             UpperEcamRight: upperRight ?? Array.Empty<string>(), FwcPage: 0, FwcPhase: 0,
-            Altitude: altitude, MagHeading: heading, FobText: fob);
+            Altitude: altitude, MagHeading: heading, FobText: fob)
+        {
+            PfdLive = pfdLive,
+            EwdLive = ewdLive,
+            SdLive = sdLive
+        };
+
+    // A frame as 3.0.0.7613 sent it cold and dark (2026-11-02): no display live, the 16 FMA slots empty, both flight
+    // directors off and the FOB amount amber crosses, while the altitude and heading go on tracking the sim's (here
+    // Compare()'s defaults), so they agree.
+    private static FenixChannelFrame ColdAndDark() =>
+        Frame(fdCapt: false, fdFo: false, fob: "wFOB:    aXXX cs KG", pfdLive: false, ewdLive: false, sdLive: false);
+
+    // A frame with every display off and nothing else wrong.
+    private static FenixChannelFrame Dark() => Frame(pfdLive: false, ewdLive: false, sdLive: false);
 
     private static FenixFmaSlot[] EmptyFma() => Enumerable.Repeat(new FenixFmaSlot("", false), 16).ToArray();
 

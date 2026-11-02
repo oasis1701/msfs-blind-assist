@@ -66,6 +66,7 @@ internal static class FenixChannelFields
     {
         public const int FwcPage = 10;              // fwcPage: varint (enum), the lower ECAM page shown
         public const int FwcPhase = 11;             // fwcPhase: varint (int32), the flight warning phase
+        public const int DuData = 12;               // duData: nested DUData, the display units' power and content
         public const int FdData = 110;              // fdData: nested FdData, the flight director
         public const int Fma = 111;                 // fma: repeated nested FmaEntry, one per slot
         public const int FobString = 153;           // fobString: string, the E/WD's FOB line
@@ -73,6 +74,27 @@ internal static class FenixChannelFields
         public const int UpperEcamRight = 174;      // upperEcamRight: repeated nested NullWrapped string, E/WD right
         public const int Heading = 194;             // heading: nested HeadingData
         public const int Altitude = 197;            // altitude: fixed64 (double)
+    }
+
+    /// <summary>
+    /// DUData, the display units: entry i of each list is unit i. The Fenix sends both lists unpacked, one varint
+    /// field per entry; protobuf's packed form of the same lists reads the same.
+    /// </summary>
+    public static class DuData
+    {
+        public const int Power = 1;                 // Power: repeated varint (bool), one per unit
+        public const int Content = 2;               // Content: repeated varint (DisplayTypeEnum), one per unit
+    }
+
+    /// <summary>
+    /// DisplayTypeEnum, what a display unit shows: the values the app reads (DisplayTypeEnum values, measured on
+    /// 3.0.0.7613, 2026-11-02). A display shown only on another unit type, such as PFDFO or EcamOnND, counts as off.
+    /// </summary>
+    public static class DisplayContent
+    {
+        public const int PfdCapt = 0;               // PFDCapt: the captain's PFD
+        public const int EcamUpper = 4;             // ECAMUpper: the upper ECAM, the E/WD
+        public const int EcamLower = 5;             // ECAMLower: the lower ECAM, the SD
     }
 
     /// <summary>FdData, the flight director.</summary>

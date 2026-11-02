@@ -50,6 +50,13 @@ internal ref struct FenixChannelWire
     public bool IsMalformed { get; private set; }
 
     /// <summary>
+    /// True when every byte of the data has been read: the normal end. A packed list (varints back to back in one
+    /// length-delimited value, with no tags) is walked with a reader of its own until this is true. A malformed
+    /// reader is never at the end, so a caller stops at the read that returned false.
+    /// </summary>
+    public bool IsAtEnd => !IsMalformed && _pos >= _data.Length;
+
+    /// <summary>
     /// Reads the next field's number and wire type. False at the end of the data (<see cref="IsMalformed"/>
     /// stays false), and false with <see cref="IsMalformed"/> true for a malformed tag or a reader that
     /// already was. The caller reads or skips the value before asking for the next tag.

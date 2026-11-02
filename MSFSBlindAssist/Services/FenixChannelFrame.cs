@@ -45,6 +45,26 @@ internal sealed record FenixChannelFrame(bool Malformed, IReadOnlyList<string> W
     /// </summary>
     public bool HasData { get; init; } = true;
 
+    /// <summary>
+    /// True while a powered display unit shows the captain's PFD (duData: a unit whose Power is on and whose Content
+    /// is PFDCapt). False when none does: the PFD is dark, the push has no duData, or the PFD is shown only on another
+    /// unit (the first officer's), which counts as off. Like <see cref="EwdLive"/> and <see cref="SdLive"/>, an init
+    /// property that is false unless set, so a frame built positionally shows no display.
+    /// </summary>
+    public bool PfdLive { get; init; }
+
+    /// <summary>
+    /// True while a powered display unit shows the upper ECAM, the E/WD (Content ECAMUpper); false otherwise, an ECAM
+    /// shown only on an ND included, as for <see cref="PfdLive"/>.
+    /// </summary>
+    public bool EwdLive { get; init; }
+
+    /// <summary>
+    /// True while a powered display unit shows the lower ECAM, the SD (Content ECAMLower); false otherwise, an ECAM
+    /// shown only on an ND included, as for <see cref="PfdLive"/>.
+    /// </summary>
+    public bool SdLive { get; init; }
+
     /// <summary>The frame of a malformed message: <see cref="Malformed"/> and every value its default.</summary>
     public static readonly FenixChannelFrame MalformedFrame = new(
         true, Array.Empty<string>(), FenixFdState.Default, Array.Empty<FenixFmaSlot>(),

@@ -1,9 +1,9 @@
 // Characterization tests for FenixChannelDecoder, which turns one message of the Fenix display channel
-// (the gRPC service on 127.0.0.1:18083) into a frame: the flight director, the FMA, the upper ECAM
-// columns and the fields the trust gate cross-checks, or an ECAM entry list. Pure logic: every message is
-// built here with FenixChannelProtoWriter, with the field numbers written as plain numbers (never read
-// from FenixChannelFields, so a wrong number in the app's table fails a test), and never read from
-// Fenix's own capture.
+// (the gRPC service on 127.0.0.1:18083) into a frame: which displays a powered unit shows, the flight
+// director, the FMA, the upper ECAM columns and the fields the trust gate cross-checks, or an ECAM entry
+// list. Pure logic: every message is built here with FenixChannelProtoWriter, with the field numbers
+// written as plain numbers (never read from FenixChannelFields, so a wrong number in the app's table
+// fails a test), and never read from Fenix's own capture.
 //
 // The contract the trust gate builds on: the decoder never throws and never turns damaged or reshaped
 // data into confident values. Bytes that are not valid protobuf anywhere in a message, a nested part
@@ -172,6 +172,173 @@ public class FenixChannelDecoderTests
         Assert.Equal(new[] { "111.1", "111.2" }, frame.WrongShapeFields);
         Assert.Equal(16, frame.Fma.Count);
         Assert.Equal(new FenixFmaSlot("", false), frame.Fma[15]);
+    }
+
+    // ---- The display units: which display is live ------------------------------------------------
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_measured_powered_display_units_make_all_three_displays_live(bool packed)
+    {
+        // 3.0.0.7613 powered (2026-11-02): all eleven units on, showing the captain's PFD, the two NDs, the first
+        // officer's PFD, the upper and lower ECAM, the DCDUs and the DRAIMS. The Fenix sends Power and Content
+        // unpacked, one varint per unit; the packed form encodes the same contract, so it reads the same.
+        FenixChannelFrame frame = Decode(Remote().Message(12, FenixChannelProtoWriter.DuData(
+            Enumerable.Repeat(true, 11).ToArray(), FenixChannelProtoWriter.PoweredContent, packed,
+            Enumerable.Repeat(255.0, 13).ToArray())));
+
+        Assert.True(frame.PfdLive);
+        Assert.True(frame.EwdLive);
+        Assert.True(frame.SdLive);
+        Assert.True(frame.ShapesOk);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_measured_cold_and_dark_display_units_leave_every_display_off(bool packed)
+    {
+        // Cold and dark: no unit powered, the six main units on the diagonal line, and thirteen brightness levels.
+        // Nothing powered is not a wrong shape.
+        FenixChannelFrame frame = Decode(Remote().Message(12, FenixChannelProtoWriter.DuData(
+            new bool[11], FenixChannelProtoWriter.ColdContent, packed,
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 128])));
+
+        Assert.False(frame.PfdLive);
+        Assert.False(frame.EwdLive);
+        Assert.False(frame.SdLive);
+        Assert.True(frame.ShapesOk);
+    }
+
+    [Fact]
+    public void A_frame_without_display_units_has_every_display_off()
+    {
+        // No field 12: every display off, and never a wrong shape.
+        FenixChannelFrame frame = Decode(Remote().Double(197, 352.2));
+
+        Assert.False(frame.PfdLive);
+        Assert.False(frame.EwdLive);
+        Assert.False(frame.SdLive);
+        Assert.True(frame.ShapesOk);
+        Assert.Empty(frame.WrongShapeFields);
+    }
+
+    [Theory]
+    [InlineData(0, true, false, false)]    // PFDCapt: the PFD
+    [InlineData(4, false, true, false)]    // ECAMUpper: the E/WD
+    [InlineData(5, false, false, true)]    // ECAMLower: the SD
+    [InlineData(1, false, false, false)]   // PFDFO: a PFD shown only on the first officer's side counts as off
+    [InlineData(8, false, false, false)]   // EcamOnND: an ECAM page shown only on an ND counts as off
+    [InlineData(2, false, false, false)]   // NDCapt
+    [InlineData(6, false, false, false)]   // DiagonalLine
+    [InlineData(7, false, false, false)]   // SelfTest
+    public void A_display_is_live_only_on_a_powered_unit_that_shows_it(int content, bool pfd, bool ewd, bool sd)
+    {
+        FenixChannelFrame frame = Decode(Remote().Message(12, FenixChannelProtoWriter.DuData([true], [content])));
+
+        Assert.Equal((pfd, ewd, sd), (frame.PfdLive, frame.EwdLive, frame.SdLive));
+    }
+
+    [Fact]
+    public void A_unit_that_is_not_powered_shows_nothing()
+    {
+        FenixChannelFrame frame = Decode(Remote().Message(12, FenixChannelProtoWriter.DuData(
+            [false, true, true], [0, 4, 5])));
+
+        Assert.False(frame.PfdLive);   // its unit says PFDCapt, but it is dark
+        Assert.True(frame.EwdLive);
+        Assert.True(frame.SdLive);
+    }
+
+    [Fact]
+    public void Any_power_value_but_zero_is_on()
+    {
+        // As protobuf reads a bool.
+        FenixChannelFrame frame = Decode(Remote().Message(12, new FenixChannelProtoWriter().Varint(1, 2).Varint(2, 0)));
+
+        Assert.True(frame.PfdLive);
+        Assert.True(frame.ShapesOk);
+    }
+
+    [Theory]
+    [InlineData(new[] { true, true }, new[] { 0, 4, 5 })]          // the third unit's content has no power
+    [InlineData(new[] { true, true, true }, new[] { 0, 4 })]       // the third unit's power has no content
+    public void Power_and_content_pair_up_to_the_shorter_list(bool[] power, int[] content)
+    {
+        // Unit i is Power[i] with Content[i]; a unit past the shorter list is left out, and lists of two lengths are
+        // not a wrong shape.
+        FenixChannelFrame frame = Decode(Remote().Message(12, FenixChannelProtoWriter.DuData(power, content)));
+
+        Assert.True(frame.PfdLive);
+        Assert.True(frame.EwdLive);
+        Assert.False(frame.SdLive);
+        Assert.True(frame.ShapesOk);
+    }
+
+    [Fact]
+    public void Packed_and_unpacked_entries_of_one_list_are_read_in_order()
+    {
+        // protobuf accepts both forms for the same field, and the entries add up in the order they came.
+        FenixChannelFrame frame = Decode(Remote().Message(12, new FenixChannelProtoWriter()
+            .Bool(1, false).PackedVarints(1, 1, 1)
+            .PackedVarints(2, 0, 4).Varint(2, 5)));
+
+        Assert.False(frame.PfdLive);   // unit 0: unpowered PFDCapt
+        Assert.True(frame.EwdLive);
+        Assert.True(frame.SdLive);
+        Assert.True(frame.ShapesOk);
+    }
+
+    [Fact]
+    public void Power_or_content_in_another_wire_type_is_a_wrong_shape()
+    {
+        // A repeated varint is unpacked (varint) or packed (length-delimited); a fixed64 or fixed32 is neither.
+        FenixChannelFrame power = Decode(Remote().Message(12, new FenixChannelProtoWriter().Double(1, 1.0).Varint(2, 0)));
+        FenixChannelFrame content = Decode(Remote().Message(12, new FenixChannelProtoWriter().Varint(1, 1).Float(2, 4f)));
+
+        Assert.Equal(new[] { "12.1" }, power.WrongShapeFields);
+        Assert.Equal(new[] { "12.2" }, content.WrongShapeFields);
+        Assert.False(power.Malformed);
+        Assert.False(content.Malformed);
+        Assert.False(power.PfdLive);     // the field took its default: no unit is powered
+        Assert.False(content.PfdLive);   // and no unit shows anything
+    }
+
+    [Fact]
+    public void Display_units_that_are_not_a_part_are_a_wrong_shape()
+    {
+        FenixChannelFrame frame = Decode(Remote().Varint(12, 1).Double(197, 352.2));
+
+        Assert.Equal(new[] { "12" }, frame.WrongShapeFields);
+        Assert.Equal(352.2, frame.Altitude);   // the rest still decodes
+        Assert.False(frame.Malformed);
+        Assert.True(frame.HasData);
+    }
+
+    [Fact]
+    public void Brightness_and_unknown_display_unit_fields_are_skipped()
+    {
+        // Brightness (3) in each wire shape it could come in, and fields the app does not know.
+        var units = FenixChannelProtoWriter.DuData([true], [0], brightness: [255])
+            .PackedVarints(3, 255).Float(3, 1f).String(9, "x").Varint(10, 3).Double(11, 2.5);
+
+        FenixChannelFrame frame = Decode(Remote().Message(12, units));
+
+        Assert.True(frame.PfdLive);
+        Assert.True(frame.ShapesOk);
+    }
+
+    [Fact]
+    public void A_packed_list_cut_short_inside_itself_makes_the_whole_message_malformed()
+    {
+        // The packed value's own length is right, but its last varint has its continuation bit set: the bytes are
+        // cut, so nothing of the message is read, the field after it included.
+        var units = new FenixChannelProtoWriter().Tag(1, 2).Raw(2, 0x01, 0x80);
+
+        FenixChannelFrame frame = Decode(Remote().Message(12, units).Double(197, 352.2));
+
+        Assert.Same(FenixChannelFrame.MalformedFrame, frame);
     }
 
     // ---- The upper ECAM columns, the numbers and the text ---------------------------------------
@@ -350,6 +517,9 @@ public class FenixChannelDecoderTests
         Assert.Empty(frame.UpperEcamRight);
         Assert.Equal(0, frame.FwcPage);
         Assert.Equal(0, frame.FwcPhase);
+        Assert.False(frame.PfdLive);
+        Assert.False(frame.EwdLive);
+        Assert.False(frame.SdLive);
         Assert.True(frame.ShapesOk);
     }
 
@@ -520,6 +690,9 @@ public class FenixChannelDecoderTests
         Assert.Equal(0.0, frame.Altitude);
         Assert.Equal(0.0, frame.MagHeading);
         Assert.Equal("", frame.FobText);
+        Assert.False(frame.PfdLive);
+        Assert.False(frame.EwdLive);
+        Assert.False(frame.SdLive);
     }
 
     [Fact]
@@ -558,6 +731,9 @@ public class FenixChannelDecoderTests
         Assert.Empty(frame.Fma);
         Assert.Equal(0.0, frame.Altitude);
         Assert.Equal("", frame.FobText);
+        Assert.False(frame.PfdLive);
+        Assert.False(frame.EwdLive);
+        Assert.False(frame.SdLive);
     }
 
     [Fact]
@@ -588,6 +764,7 @@ public class FenixChannelDecoderTests
     }
 
     [Theory]
+    [InlineData(12)]    // DUData
     [InlineData(110)]   // FdData
     [InlineData(111)]   // an FMA entry
     [InlineData(173)]   // an element of the left column
@@ -606,6 +783,7 @@ public class FenixChannelDecoderTests
     }
 
     [Theory]
+    [InlineData(12)]
     [InlineData(110)]
     [InlineData(111)]
     [InlineData(173)]
@@ -652,13 +830,16 @@ public class FenixChannelDecoderTests
         Assert.True(frame.Fd.FdOnCapt);
         Assert.True(frame.Fd.FdOnFo);
         Assert.Empty(frame.UpperEcamLeft);
+        Assert.True(frame.PfdLive);
+        Assert.True(frame.EwdLive);
+        Assert.True(frame.SdLive);
     }
 
     [Fact]
     public void GoodPush_carries_the_values_it_is_given()
     {
         byte[] push = FenixChannelProtoWriter.GoodPush(altitude: 2500, magHeading: 270.5, fob: "wFOB:   g6480 cs LBS",
-            fdOnCapt: false, fdOnFo: true, upperEcamLeft: ["g    SIGNS ON", "gPARK BRK"]);
+            fdOnCapt: false, fdOnFo: true, upperEcamLeft: ["g    SIGNS ON", "gPARK BRK"], displaysOn: false);
 
         FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(push);
 
@@ -669,6 +850,9 @@ public class FenixChannelDecoderTests
         Assert.False(frame.Fd.FdOnCapt);
         Assert.True(frame.Fd.FdOnFo);
         Assert.Equal(new[] { "g    SIGNS ON", "gPARK BRK" }, frame.UpperEcamLeft);
+        Assert.False(frame.PfdLive);
+        Assert.False(frame.EwdLive);
+        Assert.False(frame.SdLive);
     }
 
     // ---- ECAM entries ---------------------------------------------------------------------------
@@ -871,7 +1055,7 @@ public class FenixChannelDecoderTests
     // wrong-shape and nested-part paths that raw random bytes almost never do.
     private static byte[] RandomShapes(Random random, int depth)
     {
-        int[] fields = [1, 2, 3, 4, 5, 10, 11, 110, 111, 153, 173, 174, 194, 197];
+        int[] fields = [1, 2, 3, 4, 5, 10, 11, 12, 110, 111, 153, 173, 174, 194, 197];
         var writer = new FenixChannelProtoWriter();
         for (int count = random.Next(0, 9); count > 0; count--)
         {

@@ -31,6 +31,12 @@ namespace MSFSBlindAssist.Services;
 /// field 111; one with no slot is not, since protobuf-net leaves out an empty or null array (an unpowered PFD
 /// may have no FMA to send), and the gate judges that for the PFD alone. A field that is not repeated takes
 /// the last value if it is sent twice, and its nested part is merged, as protobuf reads them.</para>
+/// <para>The display units (field 12) say which display is live: the PFD, the E/WD or the SD while a powered unit
+/// shows it (<see cref="FenixChannelFrame.PfdLive"/>, <see cref="FenixChannelFrame.EwdLive"/>,
+/// <see cref="FenixChannelFrame.SdLive"/>). Their Power and Content lists are repeated varints, read in protobuf's
+/// unpacked form (the Fenix's) or its packed form, both the same contract; any other wire type is a wrong shape
+/// ("12.1", "12.2"). Unit i is Power[i] with Content[i], up to the shorter list. No field 12, or no unit powered,
+/// leaves every display off, and is never a wrong shape.</para>
 /// <para>A push with no display data, that is with no RemoteData or an empty one, is
 /// <see cref="FenixChannelFrame.NoData"/>: it is neither damaged nor reshaped, so it records no wrong shape
 /// (not "111" for an FMA it never had) and the gate skips it. A field 1 in another wire shape than a part
@@ -72,7 +78,12 @@ internal static class FenixChannelDecoder
             FwcPhase: draft.FwcPhase,
             Altitude: draft.Altitude,
             MagHeading: draft.MagHeading,
-            FobText: draft.FobText);
+            FobText: draft.FobText)
+        {
+            PfdLive = draft.Shows(DisplayContent.PfdCapt),
+            EwdLive = draft.Shows(DisplayContent.EcamUpper),
+            SdLive = draft.Shows(DisplayContent.EcamLower)
+        };
     }
 
     /// <summary>Decodes one EcamUpdate, the message of the ECAM entries call.</summary>
@@ -116,6 +127,7 @@ internal static class FenixChannelDecoder
             {
                 Remote.FwcPage => w.Int(ref d.FwcPage),
                 Remote.FwcPhase => w.Int(ref d.FwcPhase),
+                Remote.DuData => w.Part(ReadDisplayUnits),
                 Remote.FdData => w.Part(ReadFd),
                 Remote.Fma => w.Part(ReadFmaEntry),
                 Remote.FobString => w.Text(ref d.FobText),
@@ -123,6 +135,25 @@ internal static class FenixChannelDecoder
                 Remote.UpperEcamRight => w.Part(ReadUpperEcamRight),
                 Remote.Heading => w.Part(ReadHeading),
                 Remote.Altitude => w.Double(ref d.Altitude),
+                _ => w.Skip()
+            };
+            if (!ok) return false;
+        }
+
+        return !w.IsMalformed;
+    }
+
+    // The display units: entry i of Power and of Content is unit i, each a repeated varint, unpacked or packed.
+    // Brightness and fields the app does not know are skipped.
+    private static bool ReadDisplayUnits(ReadOnlySpan<byte> part, string path, Draft d)
+    {
+        var w = new Walker(part, path, d);
+        while (w.Next(out int field))
+        {
+            bool ok = field switch
+            {
+                DuData.Power => w.Varints(d.UnitPower),
+                DuData.Content => w.Varints(d.UnitContent),
                 _ => w.Skip()
             };
             if (!ok) return false;
@@ -279,6 +310,10 @@ internal static class FenixChannelDecoder
         // True once a RemoteData part of at least one byte has been read: without one the push has no display data.
         public bool HasRemoteData;
 
+        // The display units' Power and Content, entry i of each being unit i.
+        public readonly List<ulong> UnitPower = [];
+        public readonly List<ulong> UnitContent = [];
+
         public double Pitch, Fpa, Roll, Yawbar;
         public bool FdOnCapt, FdOnFo, TrkFpa, RollGuidance, FdFlash, FdInhibit, InhibitRoll, InhibitPitch;
         public readonly List<FenixFmaSlot> Fma = new(FmaEntry.SlotCount);
@@ -295,6 +330,19 @@ internal static class FenixChannelDecoder
         public void WrongShape(string path)
         {
             if (!Wrong.Contains(path)) Wrong.Add(path);
+        }
+
+        // Whether a powered unit shows this DisplayTypeEnum value. Unit i is Power[i] with Content[i], up to the
+        // shorter list; any Power but 0 is on, as protobuf reads a bool, and Content is an enum, its low 32 bits.
+        public bool Shows(int content)
+        {
+            int units = Math.Min(UnitPower.Count, UnitContent.Count);
+            for (int i = 0; i < units; i++)
+            {
+                if (UnitPower[i] != 0 && unchecked((int)UnitContent[i]) == content) return true;
+            }
+
+            return false;
         }
     }
 
@@ -358,6 +406,35 @@ internal static class FenixChannelDecoder
             if (!_wire.TryReadVarint(out ulong value)) return false;
 
             target = unchecked((int)value);
+            return true;
+        }
+
+        // A repeated varint (a bool or an enum list), in either form protobuf gives it: unpacked, one varint field per
+        // entry, as the Fenix sends it, or packed, every entry back to back in one length-delimited value. Both encode
+        // the same contract, so both are its shape; a fixed64 or fixed32 is not. Each entry is added in the order it
+        // came. A packed list is walked with a reader of its own to its end, and bytes in it that are not whole
+        // varints make the message malformed.
+        public bool Varints(List<ulong> target)
+        {
+            if (_type == FenixWireType.Varint)
+            {
+                if (!_wire.TryReadVarint(out ulong value)) return false;
+
+                target.Add(value);
+                return true;
+            }
+
+            if (_type != FenixWireType.LengthDelimited) return WrongShape();
+            if (!_wire.TryReadLengthDelimited(out ReadOnlySpan<byte> packed)) return false;
+
+            var list = new FenixChannelWire(packed);
+            while (!list.IsAtEnd)
+            {
+                if (!list.TryReadVarint(out ulong value)) return false;
+
+                target.Add(value);
+            }
+
             return true;
         }
 

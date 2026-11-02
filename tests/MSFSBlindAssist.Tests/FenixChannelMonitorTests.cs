@@ -461,6 +461,26 @@ public class FenixChannelMonitorTests
     }
 
     [Fact]
+    public async Task A_push_with_the_displays_dark_trusts_no_display()
+    {
+        // The display units the decoder reads reach the gate: cold and dark no powered unit shows a display, and
+        // every display reads "display off" though every value agrees; powered up, all three are trusted.
+        var lines = new Lines();
+        using var monitor = NewIdleMonitor(lines);
+        AgreeWithGoodPush(monitor);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
+
+        monitor.OnDataMessage(FenixChannelProtoWriter.GoodPush(displaysOn: false));
+
+        AssertEveryDisplay(monitor, new FenixDisplayVerdict(false, "display off"));
+
+        monitor.OnDataMessage(GoodPush());
+
+        AssertEveryDisplay(monitor, new FenixDisplayVerdict(true, "trusted"));
+    }
+
+    [Fact]
     public async Task The_ecam_entries_call_feeds_the_gate()
     {
         // A wrong-shaped ECAM entries message latches the whole channel, whichever call gets there first: one

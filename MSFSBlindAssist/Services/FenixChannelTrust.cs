@@ -33,8 +33,14 @@ internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDe
 /// <para>A display is trusted only when every channel-wide condition and every condition of its own holds, and
 /// <see cref="VerdictFor"/> gives the first one that fails, in this order: not connected; no data message since
 /// the connection opened; the stream stalled; the build unknown; the build not one the app has checked; a
-/// shape latch; the display's cross-checks, in their order; for the PFD, a frame with no FMA; a text code the
-/// app does not know in a line the display covers.</para>
+/// shape latch; the display off (no powered display unit shows it); the display's cross-checks, in their order;
+/// for the PFD, a frame with no FMA; a text code the app does not know in a line the display covers.</para>
+/// <para>A display is live while a powered unit shows it (<see cref="FenixChannelFrame.PfdLive"/> and the others,
+/// from the latest frame with its shapes); one shown only on another unit (the first officer's PFD, an ECAM on an
+/// ND) counts as off. A dark display reads "display off" whatever its values say: cold and dark the channel still
+/// sends the sim's altitude and heading, which agree. The SD has no other condition of its own. The cross-checks
+/// run on every frame, live or not, so a disagreement or a latch built while a display was off shows as soon as it
+/// is live.</para>
 /// <para>A frame with no FMA slot at all is not a wrong shape: protobuf-net leaves out an empty or null array, so
 /// an unpowered PFD can send none. The PFD alone reads "no FMA" until a frame brings its slots again; it never
 /// latches, and the E/WD and the SD are not touched by it.</para>
@@ -98,6 +104,8 @@ internal sealed class FenixChannelTrust
 
     private const string TrustedReason = "trusted";
 
+    private const string DisplayOffReason = "display off";
+
     private const string NoFmaReason = "no FMA";
 
     // The amount and unit of the FOB line, run over the line's text with its format codes taken out, as in
@@ -114,6 +122,8 @@ internal sealed class FenixChannelTrust
     };
 
     private static readonly FenixComparison[] EwdChecks = { FenixComparison.FuelKg };
+
+    private static readonly FenixComparison[] SdChecks = Array.Empty<FenixComparison>();
 
     private static readonly int ComparisonCount = Enum.GetValues<FenixComparison>().Length;
 
@@ -137,6 +147,9 @@ internal sealed class FenixChannelTrust
     private long _lastFrameMs;
     private string? _shapeReason;
     private double[] _channel = Missing();   // the channel's side of each comparison, from the latest good frame
+    private bool _pfdLive;                   // a powered unit shows the PFD, in the latest good frame
+    private bool _ewdLive;                   // the same for the E/WD
+    private bool _sdLive;                    // and for the SD
     private bool _noFma;                     // the latest good frame had no FMA slot: the PFD has nothing to read
     private string? _fmaUnknownCode;         // the reason for the first unknown code in the latest good frame's FMA
     private string? _ewdUnknownCode;         // the same for the lines the E/WD covers
@@ -153,9 +166,9 @@ internal sealed class FenixChannelTrust
     }
 
     /// <summary>
-    /// The data call is open. Starts the connection fresh: the build unknown, no data message yet, no latch and
-    /// no check passed. SimConnect's values stay. <paramref name="nowMs"/> goes unused: "no data yet" is judged
-    /// by whether a message has come, not by how long ago the call opened.
+    /// The data call is open. Starts the connection fresh: the build unknown, no data message yet, no display live,
+    /// no latch and no check passed. SimConnect's values stay. <paramref name="nowMs"/> goes unused: "no data yet"
+    /// is judged by whether a message has come, not by how long ago the call opened.
     /// </summary>
     public void OnConnected(long nowMs)
     {
@@ -166,6 +179,9 @@ internal sealed class FenixChannelTrust
         _lastFrameMs = 0;
         _shapeReason = null;
         _channel = Missing();
+        _pfdLive = false;
+        _ewdLive = false;
+        _sdLive = false;
         _noFma = false;
         _fmaUnknownCode = null;
         _ewdUnknownCode = null;
@@ -310,27 +326,39 @@ internal sealed class FenixChannelTrust
     // The first of the display's own conditions that fails, or null when they all hold.
     private string? DisplayReason(FenixChannelDisplay display)
     {
+        bool live;
         FenixComparison[] checks;
         string? nothingToRead;
         string? unknownCode;
         switch (display)
         {
             case FenixChannelDisplay.Pfd:
+                live = _pfdLive;
                 checks = PfdChecks;
                 nothingToRead = _noFma ? NoFmaReason : null;
                 unknownCode = _fmaUnknownCode;
                 break;
             case FenixChannelDisplay.Ewd:
+                live = _ewdLive;
                 checks = EwdChecks;
                 nothingToRead = null;
                 unknownCode = _ewdUnknownCode;
                 break;
             case FenixChannelDisplay.Sd:
-                // Nothing in this set to cross-check and no text to read: the channel-wide conditions decide.
-                return null;
+                // Nothing in this set to cross-check and no text to read: being live is its one condition.
+                live = _sdLive;
+                checks = SdChecks;
+                nothingToRead = null;
+                unknownCode = null;
+                break;
             default:
                 return "not a display of the channel";
         }
+
+        // First: a display no powered unit shows has nothing a pilot could hear, whatever its values say (cold and
+        // dark, the channel still sends the sim's altitude and heading). Its checks have run all the same, so what
+        // they found shows from its first live frame.
+        if (!live) return DisplayOffReason;
 
         // The first check that is not OK gives the reason, whatever kind of fault it is: latched, else a
         // disagreement in force, else never passed. A check that passed with no disagreement in force is OK,
@@ -352,10 +380,14 @@ internal sealed class FenixChannelTrust
     // The first cause stays: a later fault does not replace it.
     private void Latch(string reason) => _shapeReason ??= reason;
 
-    // Takes the channel's side of every comparison, and the first unknown code of each display's lines, from a
-    // frame that has its shapes, and keeps each comparison's value for ComparisonWindowMs.
+    // Takes which displays are live, the channel's side of every comparison, and the first unknown code of each
+    // display's lines, from a frame that has its shapes, and keeps each comparison's value for ComparisonWindowMs.
     private void ReadFrame(FenixChannelFrame frame, long nowMs)
     {
+        _pfdLive = frame.PfdLive;
+        _ewdLive = frame.EwdLive;
+        _sdLive = frame.SdLive;
+
         FenixTextLine fob = FenixChannelText.Parse(frame.FobText);
 
         _channel[(int)FenixComparison.FdLightCapt] = frame.Fd.FdOnCapt ? 1 : 0;

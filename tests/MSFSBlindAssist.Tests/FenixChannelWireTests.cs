@@ -156,6 +156,61 @@ public class FenixChannelWireTests
 
         Assert.False(wire.TryReadTag(out _, out _));
         Assert.False(wire.IsMalformed);
+        Assert.True(wire.IsAtEnd);
+    }
+
+    [Fact]
+    public void Reads_a_packed_list_until_its_end()
+    {
+        // A packed repeated varint is one length-delimited value holding the varints back to back, with no tags: a
+        // reader of its own walks it until IsAtEnd, the normal end, not malformed.
+        byte[] bytes = new FenixChannelProtoWriter().PackedVarints(2, 0, 300, 5).ToArray();
+        var outer = new FenixChannelWire(bytes);
+        Assert.True(outer.TryReadTag(out int field, out var type));
+        Assert.Equal(2, field);
+        Assert.Equal(FenixWireType.LengthDelimited, type);
+        Assert.True(outer.TryReadLengthDelimited(out ReadOnlySpan<byte> packed));
+
+        var list = new FenixChannelWire(packed);
+        var values = new List<ulong>();
+        while (!list.IsAtEnd)
+        {
+            Assert.True(list.TryReadVarint(out ulong value));
+            values.Add(value);
+        }
+
+        Assert.Equal(new ulong[] { 0, 300, 5 }, values);
+        Assert.False(list.IsMalformed);
+        Assert.True(outer.IsAtEnd);
+    }
+
+    [Fact]
+    public void Is_at_the_end_only_once_no_byte_is_left()
+    {
+        var wire = new FenixChannelWire(new byte[] { 0x08, 0x01 });
+
+        Assert.False(wire.IsAtEnd);
+        Assert.True(wire.TryReadTag(out _, out _));
+        Assert.False(wire.IsAtEnd);   // the value is still to come
+        Assert.True(wire.TryReadVarint(out _));
+        Assert.True(wire.IsAtEnd);
+    }
+
+    [Fact]
+    public void A_malformed_reader_is_never_at_the_end()
+    {
+        // A tag of field 0 is malformed though its byte was read, so the reader stands past its last byte; that is no
+        // normal end. A packed list cut inside its last varint fails the read, and is not at its end either.
+        var fieldZero = new FenixChannelWire(new byte[] { 0x00 });
+        Assert.False(fieldZero.TryReadTag(out _, out _));
+        Assert.True(fieldZero.IsMalformed);
+        Assert.False(fieldZero.IsAtEnd);
+
+        var cut = new FenixChannelWire(new byte[] { 0x05, 0x80 });
+        Assert.True(cut.TryReadVarint(out _));
+        Assert.False(cut.TryReadVarint(out _));
+        Assert.True(cut.IsMalformed);
+        Assert.False(cut.IsAtEnd);
     }
 
     // ---- Malformed input ------------------------------------------------------------------------
