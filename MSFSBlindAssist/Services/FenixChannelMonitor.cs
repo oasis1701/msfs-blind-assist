@@ -27,15 +27,20 @@ namespace MSFSBlindAssist.Services;
 /// <para>The log. A line is written for each change of a call's state, for each build, for each change of a
 /// display's verdict (its Trusted, or the headline of its reason: the text before the first colon, so the
 /// numbers of a disagreement moving every second are one line), and, every 30th tick of a connection, for the
-/// comparison pairs. A data call that opens and says nothing is dropped and asked again for hours, so "connected"
-/// is written with the first message and not with the response headers, and a failure is written only when it
-/// differs from the last one written since a message arrived: otherwise each try would write two lines. The ECAM
-/// entries call has no such cycle (nothing limits its silence), so its "connected" is written with its headers,
-/// but its failures follow the same rule. This class formats no number itself: the pairs come from the gate in
-/// the invariant culture.</para>
+/// comparison pairs. Dispose writes one more, "channel stopped", the last line the log ever gets (the in-sim
+/// check that an aircraft switch ended the channel reads it). A data call that opens and says nothing is dropped
+/// and asked again for hours, so "connected" is written with the first message and not with the response
+/// headers, and a failure is written only when it differs from the last one written since a message arrived:
+/// otherwise each try would write two lines. The ECAM entries call has no such cycle (nothing limits its
+/// silence), so its "connected" is written with its headers, but its failures follow the same rule. This class
+/// formats no number itself: the pairs come from the gate in the invariant culture.</para>
 /// <para>After <see cref="Dispose"/> every callback of the client is ignored (it may deliver one that was
 /// already under way): no gate call, no log line, no change to <see cref="Latest"/>. Dispose takes no lock and
-/// waits for nothing, so it is safe on the UI thread.</para>
+/// waits for nothing, so it is safe on the UI thread; the one line it writes is the log's own non-blocking
+/// write. That line, "channel stopped", comes last: after the flag that quiets the callbacks is set and the
+/// tick, the build loop and both calls are stopped, and <c>Write</c> drops every line after it, so the log ends
+/// with it. (A line a callback had already handed to the log at that instant is the one thing this cannot
+/// recall.)</para>
 /// </remarks>
 internal sealed class FenixChannelMonitor : IDisposable
 {
@@ -57,6 +62,7 @@ internal sealed class FenixChannelMonitor : IDisposable
     private const string AltitudeKey = "INDICATED_ALTITUDE";
 
     private const string LogChannelName = "fenix_channel";
+    private const string StoppedLine = "channel stopped";
     private const int MaxRememberedProblems = 32;
 
     // In the order the log writes them.
@@ -193,8 +199,9 @@ internal sealed class FenixChannelMonitor : IDisposable
     }
 
     /// <summary>
-    /// Ends everything at once: the tick, the build loop and both calls (the client drops its streams). Never
-    /// throws, takes no lock and waits for nothing; a second call does nothing.
+    /// Ends everything at once: the tick, the build loop and both calls (the client drops its streams), and then
+    /// writes "channel stopped", the last line of the log. Never throws, takes no lock and waits for nothing; a
+    /// second call does nothing and writes nothing.
     /// </summary>
     public void Dispose()
     {
@@ -203,6 +210,10 @@ internal sealed class FenixChannelMonitor : IDisposable
         try { _timer.Dispose(); } catch (Exception) { }
         Cancel(Interlocked.Exchange(ref _buildLoop, null));
         try { _client.Dispose(); } catch (Exception) { }
+
+        // Last, with the callbacks quiet and everything stopped: Write drops every line from here on, so this is
+        // the one the log ends with.
+        WriteToLog(StoppedLine);
     }
 
     /// <summary>
@@ -547,8 +558,17 @@ internal sealed class FenixChannelMonitor : IDisposable
         Write(problem);
     }
 
-    // A log that throws must not take a callback, the tick or the build loop down with it.
+    // A log that throws must not take a callback, the tick or the build loop down with it. After Dispose nothing
+    // is written: the log's last line is Dispose's own, "channel stopped".
     private void Write(string line)
+    {
+        if (IsDisposed) return;
+
+        WriteToLog(line);
+    }
+
+    // The call to the log itself, which never throws. Dispose uses it directly for the one line Write would drop.
+    private void WriteToLog(string line)
     {
         try
         {

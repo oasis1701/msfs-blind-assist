@@ -13,10 +13,10 @@
 //
 // The rules the monitor keeps: each connection of the data call starts the gate fresh, then gives it the last
 // ECAM entries message again, then asks for the build, and a build answer belongs to its connection only; an
-// empty push does not replace the latest frame; after Dispose every callback is ignored; "display data:
-// connected" is written with the first message, not the headers, and a failure that repeats is written once
-// until a message arrives; a verdict is written when its Trusted or its headline (the text before the first
-// colon) changes.
+// empty push does not replace the latest frame; after Dispose every callback is ignored, and Dispose itself
+// writes "channel stopped" once, as the last line of the log; "display data: connected" is written with the
+// first message, not the headers, and a failure that repeats is written once until a message arrives; a
+// verdict is written when its Trusted or its headline (the text before the first colon) changes.
 //
 // Timing: every wait for something to happen is a poll with a 5 s limit. The short pauses (Quiet) only prove that
 // nothing MORE happens, so a slow machine can make them pass trivially but never fail.
@@ -879,8 +879,84 @@ public class FenixChannelMonitorTests
         await Task.Delay(Quiet);
 
         Assert.Same(latest, monitor.Latest);
-        Assert.Equal(linesBefore, lines.All.Length);
+        Assert.Equal(linesBefore + 1, lines.All.Length);   // the one new line is Dispose's own: "channel stopped"
         monitor.Dispose();   // and a second Dispose does nothing
+        Assert.Equal(linesBefore + 1, lines.All.Length);
+    }
+
+    [Fact]
+    public async Task Dispose_writes_channel_stopped_once_as_the_last_line()
+    {
+        // The in-sim check that an aircraft switch or a quit ended the channel reads this line in fenix_channel.log:
+        // one line, written by Dispose after everything else the monitor said. A running channel has not said it.
+        var server = new ChannelServer();
+        server.Data.Enqueue(() => FenixChannelFakeServer.StreamThenHold(Frames(GoodPush())));
+        var lines = new Lines();
+        var monitor = NewMonitor(server, lines);
+        monitor.Start();
+        await WaitUntil(() => lines.All.Contains("SD trusted"), "SD trusted to be logged", lines);
+        Assert.DoesNotContain("channel stopped", lines.All);
+
+        monitor.Dispose();
+
+        string[] atDispose = lines.All;
+        Assert.Equal("channel stopped", atDispose[^1]);
+        Assert.Single(atDispose, line => line == "channel stopped");
+    }
+
+    [Fact]
+    public void A_second_Dispose_writes_nothing_more()
+    {
+        // An idle monitor has said nothing, so its log is exactly the stop line; another Dispose, however many,
+        // adds none.
+        var lines = new Lines();
+        var monitor = NewIdleMonitor(lines);
+
+        monitor.Dispose();
+        Assert.Equal(new[] { "channel stopped" }, lines.All);
+
+        monitor.Dispose();
+        monitor.Dispose();
+        Assert.Equal(new[] { "channel stopped" }, lines.All);
+    }
+
+    [Fact]
+    public async Task Nothing_is_written_after_channel_stopped()
+    {
+        // Whatever still arrives after Dispose finds the log closed: the callbacks of both calls, the tick,
+        // SimConnect's values, a late build answer, a late frame and the end of the stream. The monitor runs (its
+        // own tick and both calls), so those have to stay quiet too.
+        var server = new ChannelServer();
+        var stream = new OpenStream();
+        server.Data.Enqueue(() => stream.Response);
+        var lines = new Lines();
+        var queries = new BuildQueries();
+        var monitor = NewMonitor(server, lines, queries.Read);
+        monitor.Start();
+        await stream.SendAsync(GoodPush());
+        await WaitUntil(() => queries.Asked == 1, "the build query", lines);
+        await WaitUntil(() => lines.All.Contains("display data: connected"), "the data call to connect", lines);
+
+        monitor.Dispose();
+        string[] atDispose = lines.All;
+
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        monitor.OnDataMessage(GoodPush(9000));
+        monitor.OnDataState(FenixChannelState.NotAnswering, "late");
+        monitor.OnDataState(FenixChannelState.Refused, "late");
+        monitor.OnEcamState(FenixChannelState.Connected, "");
+        monitor.OnEcamMessage(WrongShapedEntries());
+        monitor.OnEcamState(FenixChannelState.NotAnswering, "late");
+        monitor.OnComparison(FenixComparison.AltitudeFt, 1);
+        monitor.Tick();
+        queries.Answer(0, CheckedBuild);
+        await stream.Response.Disposed.WaitAsync(Generous);
+        await stream.SendAsync(GoodPush(7777));
+        stream.End();
+        await Task.Delay(Quiet);
+
+        Assert.Equal("channel stopped", atDispose[^1]);
+        Assert.Equal(atDispose, lines.All);
     }
 
     [Fact]
@@ -917,8 +993,8 @@ public class FenixChannelMonitorTests
         monitor.OnDataMessage(GoodPush(1000));
         await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
         FenixChannelFrame? latest = monitor.Latest;
-        int linesBefore = lines.All.Length;
         monitor.Dispose();
+        int linesAtDispose = lines.All.Length;   // Dispose's own line, "channel stopped", is in it
 
         monitor.OnDataState(FenixChannelState.Connected, "");
         monitor.OnDataMessage(GoodPush(9000));
@@ -932,7 +1008,7 @@ public class FenixChannelMonitorTests
         await Task.Delay(Quiet);
 
         Assert.Same(latest, monitor.Latest);
-        Assert.Equal(linesBefore, lines.All.Length);
+        Assert.Equal(linesAtDispose, lines.All.Length);
         Assert.Equal(1, Volatile.Read(ref asked));   // a connection after Dispose asked for no build
     }
 
