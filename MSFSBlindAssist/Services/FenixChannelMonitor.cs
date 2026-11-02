@@ -3,33 +3,75 @@ using MSFSBlindAssist.Utils.Logging;
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
+/// What <see cref="FenixChannelMonitor.Snapshot"/> hands a reader of the Fenix display channel: everything it needs for
+/// one display, taken under the monitor's one lock at the same instant, so the parts always belong together. A feature
+/// takes its verdict and its data from one snapshot, never from two reads ([FNX-22]).
+/// </summary>
+/// <param name="Verdict">Whether the display may be read to the pilot now, and the first reason it may not.</param>
+/// <param name="Frame">
+/// The latest display frame, the one the gate judged in giving <paramref name="Verdict"/>; null before the first good
+/// frame of a connection.
+/// </param>
+/// <param name="Push">
+/// The RemoteData message that <paramref name="Frame"/> was decoded from, for a feature to decode its own fields from.
+/// It is replaced and cleared with the frame, so the two belong together; null when the frame is.
+/// </param>
+/// <param name="Entries">
+/// The latest ECAM entries message that is not a bare heartbeat (the heartbeat set and no entries), null before the
+/// first. A connection of the data call does not clear it. A feature looks at its
+/// <see cref="FenixEcamEntries.ShapesOk"/> before it reads the entries.
+/// </param>
+/// <param name="AtMs">
+/// The monitor's clock when the snapshot was taken (<see cref="Environment.TickCount64"/>): the instant the verdict was
+/// judged at.
+/// </param>
+/// <param name="Connection">
+/// The number of the data call's connection: 0 before the first connect, and one more with each. A reader that sees a
+/// number other than the one it saw last has a new connection, and takes its next good reading silently, without
+/// depending on how long the client waited before it reconnected.
+/// </param>
+internal readonly record struct FenixChannelSnapshot(
+    FenixDisplayVerdict Verdict, FenixChannelFrame? Frame, FenixChannelPush? Push, FenixEcamEntries? Entries,
+    long AtMs, int Connection);
+
+/// <summary>
 /// The owner of one session of the Fenix display channel: it runs the client's two calls, decodes each message,
-/// feeds the trust gate under one lock, keeps the latest display frame, asks for the Fenix build on each
-/// connection of the data call, and writes the channel's log (fenix_channel.log). A reader asks it for a snapshot:
-/// a display's verdict and the latest frame, taken together. The Fenix aircraft definition owns one monitor and
-/// disposes it when the pilot switches away.
+/// feeds the trust gate under one lock, keeps the latest display frame with the RemoteData message it was decoded
+/// from and the latest ECAM entries, asks for the Fenix build on each connection of the data call, and writes the
+/// channel's log (fenix_channel.log). A reader asks it for a snapshot: a display's verdict, the latest frame, that
+/// frame's message, the latest ECAM entries, the clock and the connection number, taken together. The Fenix aircraft
+/// definition owns one monitor and disposes it when the pilot switches away.
 /// </summary>
 /// <remarks>
 /// <para>Threads. A call's messages and states arrive on the client's pool threads, comparison values, the light
 /// switch and reads on the UI thread, and the tick on a pool thread. One lock guards the gate and every field that
 /// decides what the log says, so a verdict is always read from one whole state, and the log's lines come out in the
 /// order the gate saw its events. Nothing under the lock waits for anything. A message is decoded before the lock
-/// is taken and fed under it. The latest frame is swapped in whole, and a snapshot reads it under the same lock as
-/// the verdict, so a reader never sees half of a frame, nor a frame beside a verdict the gate gave on another one.
+/// is taken and fed under it. The latest frame is swapped in whole with the RemoteData message it was decoded from,
+/// and a snapshot reads both under the same lock as the verdict, so a reader never sees half of a frame, a frame
+/// beside the message of another push, nor a frame beside a verdict the gate gave on another one.
 /// Nothing here throws at a caller, speaks or touches a control, as with <see cref="FenixDataService"/>; every
 /// clock reading is <see cref="Environment.TickCount64"/>, so the gate compares times from one source.</para>
 /// <para>Each connection of the data call does three things, in this order, under the lock. The gate starts fresh,
-/// and the latest frame is cleared with it, so no frame of an earlier connection is read.
-/// Then it is given the last ECAM entries message again: that stream sends only when its list changes, so a
+/// the connection number goes up, and the latest frame is cleared with its message, so no frame or message of an
+/// earlier connection is read.
+/// Then the gate is given the last ECAM entries message again: that stream sends only when its list changes, so a
 /// wrong-shaped message that arrived before this connection is the last thing it said, and the gate's fresh start
 /// would otherwise erase the latch that message set. Then a build loop starts, which asks for the build until it
 /// is answered. A loop belongs to the connection that started it (its generation): a newer connection, a
 /// disconnect and Dispose all end it, and an answer that still comes back from an ended one is dropped, never
 /// given to the gate.</para>
+/// <para>The ECAM entries are kept twice, for two readers. The last message of any kind is what the gate is given
+/// again at each connection. The list a snapshot hands out is the last message that is not a bare heartbeat (the
+/// heartbeat set and no entries): the stream sends a heartbeat to say it is alive and a list when its list changes,
+/// so a heartbeat taken for a list would empty it at every beat, and every alert would seem to clear. A connection of
+/// the data call does not clear that list either: that stream sends only when its list changes.</para>
 /// <para>The log. A line is written for each change of a call's state, for each build, for each change of a
 /// display's verdict (its Trusted, or the headline of its reason: the text before the first colon, so the
 /// numbers of a disagreement moving every second are one line), and, every 30th tick of a connection, for the
-/// comparison pairs and SimConnect's deliveries since the line before. Dispose writes one more, "channel stopped",
+/// comparison pairs and SimConnect's deliveries since the line before. A feature that cannot decode a section of
+/// a push reports why with <see cref="ReportFeatureProblem"/>, and the line "&lt;feature&gt;: &lt;problem&gt;" is written
+/// once for each distinct problem. Dispose writes one more, "channel stopped",
 /// the last line the log ever gets (the in-sim check that an aircraft switch ended the channel reads it). A data
 /// call that opens and says nothing is dropped and asked again for hours, so "connected" is written with the first
 /// message and not with the response headers, and a call that is not answering is written only when its reason
@@ -106,9 +148,15 @@ internal sealed class FenixChannelMonitor : IDisposable
     private readonly System.Threading.Timer _timer;
 
     // The gate, the log's memory and the connection's bookkeeping: all guarded by _lock. The latest frame is also
-    // read without it, through Volatile.
+    // read without it, through Volatile. _latestMessage is the RemoteData message _latest was decoded from, replaced
+    // and cleared with it. Of the ECAM entries messages, _lastEntries is the last of any kind, which the gate is given
+    // again at each connection of the data call, and _ecamList the last that is not a bare heartbeat, which a snapshot
+    // hands out. _connection counts the connections of the data call.
     private FenixChannelFrame? _latest;
+    private FenixChannelPush? _latestMessage;
     private FenixEcamEntries? _lastEntries;
+    private FenixEcamEntries? _ecamList;
+    private int _connection;
     private bool _dataConnected;
     private bool _dataMessageSeen;
     private string? _lastDataFailure;
@@ -202,21 +250,24 @@ internal sealed class FenixChannelMonitor : IDisposable
     }
 
     /// <summary>
-    /// Whether <paramref name="display"/> may be read to the pilot now (and the first reason it may not), with the
-    /// latest frame, both taken under the one lock at the same instant: the frame is the one the gate judged in
-    /// giving the verdict, never an older frame beside a newer verdict or the reverse. A read composes from this
-    /// frame only when this verdict trusts it (<see cref="FenixChannelReads.Choose"/>). The frame is null before
-    /// the first of a connection. A monitor that has been disposed trusts nothing ("channel stopped"): its frames
-    /// have stopped, and the gate would take 2 s to notice.
+    /// Everything a reader needs for <paramref name="display"/>, taken under the one lock at the same instant (see
+    /// <see cref="FenixChannelSnapshot"/>): whether it may be read to the pilot now and the first reason it may not,
+    /// the latest frame the gate judged in giving that verdict, the RemoteData message that frame was decoded from,
+    /// the latest ECAM entries, the monitor's clock and the connection number. The verdict is judged at the clock
+    /// the snapshot carries. A reader takes all of it from one snapshot and never in two steps, or its parts would not
+    /// belong together: an older frame beside a newer verdict or the reverse, or a frame beside another push's
+    /// message. The frame and its message are null before the first of a connection. A monitor that has been disposed
+    /// trusts nothing ("channel stopped"): its frames have stopped, and the gate would take 2 s to notice.
     /// </summary>
-    public (FenixDisplayVerdict Verdict, FenixChannelFrame? Frame) Snapshot(FenixChannelDisplay display)
+    public FenixChannelSnapshot Snapshot(FenixChannelDisplay display)
     {
         lock (_lock)
         {
+            long now = Now;
             FenixDisplayVerdict verdict = IsDisposed
                 ? new FenixDisplayVerdict(false, "channel stopped")
-                : _trust.VerdictFor(display, Now);
-            return (verdict, _latest);
+                : _trust.VerdictFor(display, now);
+            return new FenixChannelSnapshot(verdict, _latest, _latestMessage, _ecamList, now, _connection);
         }
     }
 
@@ -255,6 +306,14 @@ internal sealed class FenixChannelMonitor : IDisposable
             _trust.OnLightTest(position == LightTestPosition);
         }
     }
+
+    /// <summary>
+    /// A feature that cannot decode a section of a push reports why: the log gets "&lt;feature&gt;: &lt;problem&gt;" once
+    /// for each distinct line, with the size limit the monitor's own problems have, so a decoder that finds the same
+    /// fault in each of 17 pushes a second writes one line, not 17. Callable from any thread; never throws; after
+    /// <see cref="Dispose"/> it writes nothing.
+    /// </summary>
+    public void ReportFeatureProblem(string feature, string problem) => LogProblem($"{feature}: {problem}");
 
     /// <summary>
     /// Ends everything at once: the tick, the build loop and both calls (the client drops its streams), and then
@@ -337,10 +396,12 @@ internal sealed class FenixChannelMonitor : IDisposable
                     _connectedTicks = 0;
 
                     // The order matters: see the remarks. No line is written yet: the headers say the call
-                    // opened, not that it works. The gate starts fresh, and so does the latest frame: a frame of
-                    // the connection before is never read.
+                    // opened, not that it works. The gate starts fresh, and so does the latest frame with its
+                    // message: a frame or a message of the connection before is never read. The ECAM list stays.
                     _trust.OnConnected(Now);
                     Volatile.Write(ref _latest, null);
+                    _latestMessage = null;
+                    _connection++;
                     if (_lastEntries is not null) _trust.OnEcamEntries(_lastEntries);
                     ended = StartBuildLoop();
                     break;
@@ -361,12 +422,16 @@ internal sealed class FenixChannelMonitor : IDisposable
         if (refused) StopClient();
     }
 
-    /// <summary>One message of the data call: decoded outside the lock, fed to the gate under it.</summary>
+    /// <summary>
+    /// One message of the data call: decoded outside the lock, fed to the gate under it. Its RemoteData message is
+    /// taken outside the lock too, beside the decoder, and kept under the lock only with the frame.
+    /// </summary>
     internal void OnDataMessage(byte[] message)
     {
         if (IsStopped) return;
 
         FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(message);
+        FenixChannelPush? remote = RemoteDataOf(message);
         lock (_lock)
         {
             if (IsStopped) return;
@@ -383,9 +448,28 @@ internal sealed class FenixChannelMonitor : IDisposable
             _trust.OnFrame(frame, Now);
 
             // The latest frame is the one the gate took values from: it skips an empty push (no data), and takes
-            // none from a malformed or wrong-shaped frame, which latches it instead.
-            if (frame.HasData && frame.ShapesOk) Volatile.Write(ref _latest, frame);
+            // none from a malformed or wrong-shaped frame, which latches it instead. The message is kept with the
+            // frame, in the same place and by the same test, so it is replaced exactly when the frame is. (A push
+            // with field 1 twice would give the frame the merged values of both parts, and the message only the
+            // last part; protobuf-net never sends one.)
+            if (frame.HasData && frame.ShapesOk)
+            {
+                Volatile.Write(ref _latest, frame);
+                _latestMessage = remote;
+            }
         }
+    }
+
+    // The RemoteData message of a display push: the part in field 1, read as a message of its own. Null when the push
+    // is not valid protobuf, has no such part, or the part is not a message. The push holds the bytes without copying
+    // them: the client hands every message over in an array of its own (FenixChannelMessageReader.TryTake slices with
+    // ToArray), which nothing writes to again.
+    private static FenixChannelPush? RemoteDataOf(byte[] message)
+    {
+        FenixChannelPush? push = FenixChannelPush.From(message);
+        return push is not null && push.TryGet(FenixChannelFields.Push.PrimaryData, out FenixChannelField part)
+            ? part.AsMessage()
+            : null;
     }
 
     /// <summary>
@@ -423,7 +507,8 @@ internal sealed class FenixChannelMonitor : IDisposable
 
     /// <summary>
     /// One message of the ECAM entries call: decoded outside the lock, then kept (the gate is given it again on
-    /// each connection of the data call) and fed to the gate, which looks only at its shape.
+    /// each connection of the data call) and fed to the gate, which looks only at its shape. A message that is not
+    /// a bare heartbeat is also kept as the list a snapshot hands out.
     /// </summary>
     internal void OnEcamMessage(byte[] message)
     {
@@ -436,9 +521,14 @@ internal sealed class FenixChannelMonitor : IDisposable
 
             _lastEcamFailure = null;
             _lastEntries = entries;
+            if (!IsBareHeartbeat(entries)) _ecamList = entries;
             _trust.OnEcamEntries(entries);
         }
     }
+
+    // A heartbeat with no entries in it. The stream sends a heartbeat to say it is alive and a list when its list
+    // changes, so a bare heartbeat is not a list that emptied (plan 09 measures what a heartbeat carries).
+    private static bool IsBareHeartbeat(FenixEcamEntries entries) => entries.Heartbeat && entries.Entries.Count == 0;
 
     // ---- The tick -------------------------------------------------------------------------------
 

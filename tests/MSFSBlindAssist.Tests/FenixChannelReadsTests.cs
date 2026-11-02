@@ -67,7 +67,7 @@ public class FenixChannelReadsTests
         string? text = FenixChannelReads.Choose(HotkeyAction.ReadDisplayUpperECAM, empty, _ =>
         {
             taken++;
-            return (Trusted, Frame());
+            return Taken(Trusted, Frame());
         });
 
         Assert.Null(text);
@@ -123,7 +123,7 @@ public class FenixChannelReadsTests
         });
 
         string? text = FenixChannelReads.Choose(HotkeyAction.ReadDisplayUpperECAM, reads,
-            _ => (new FenixDisplayVerdict(false, "stream stalled"), Frame()));
+            _ => Taken(new FenixDisplayVerdict(false, "stream stalled"), Frame()));
 
         Assert.Null(text);
         // A read composes only from a display the gate trusts: a frame whose verdict is not trusted is never even
@@ -137,10 +137,10 @@ public class FenixChannelReadsTests
         // A fuel mismatch untrusts the E/WD and leaves the PFD and the SD trusted (the gate's rule). Each key
         // follows the verdict of its own display: the other two still speak, the E/WD key falls back.
         FenixChannelFrame frame = Frame();
-        (FenixDisplayVerdict, FenixChannelFrame?) Snapshot(FenixChannelDisplay display) =>
+        FenixChannelSnapshot Snapshot(FenixChannelDisplay display) =>
             display == FenixChannelDisplay.Ewd
-                ? (new FenixDisplayVerdict(false, "fuel disagrees: channel 2,940 kg, sim 5,100 kg"), frame)
-                : (Trusted, frame);
+                ? Taken(new FenixDisplayVerdict(false, "fuel disagrees: channel 2,940 kg, sim 5,100 kg"), frame)
+                : Taken(Trusted, frame);
 
         Assert.Equal(PfdText, FenixChannelReads.Choose(HotkeyAction.ReadDisplayPFD, StandIn, Snapshot));
         Assert.Null(FenixChannelReads.Choose(HotkeyAction.ReadDisplayUpperECAM, StandIn, Snapshot));
@@ -189,7 +189,7 @@ public class FenixChannelReadsTests
         FenixChannelReads.Choose(action, StandIn, requested =>
         {
             asked.Add(requested);
-            return (Trusted, Frame());
+            return Taken(Trusted, Frame());
         });
 
         // Once, and for the read's own display only.
@@ -212,7 +212,7 @@ public class FenixChannelReadsTests
     [Fact]
     public void A_snapshot_that_throws_uses_the_ai_read()
     {
-        Func<FenixChannelDisplay, (FenixDisplayVerdict, FenixChannelFrame?)> broken =
+        Func<FenixChannelDisplay, FenixChannelSnapshot> broken =
             _ => throw new InvalidOperationException("gate failed");
 
         Assert.Null(FenixChannelReads.Choose(HotkeyAction.ReadDisplayUpperECAM, StandIn, broken));
@@ -226,9 +226,12 @@ public class FenixChannelReadsTests
         => new(false, [], FenixFdState.Default, [], [], [], 0, 0, 0, 0, "");
 
     // A snapshot that trusts every display, and gives this frame (null: no frame yet) with each verdict.
-    private static Func<FenixChannelDisplay, (FenixDisplayVerdict, FenixChannelFrame?)> TrustedWith(
-        FenixChannelFrame? frame)
-        => _ => (Trusted, frame);
+    private static Func<FenixChannelDisplay, FenixChannelSnapshot> TrustedWith(FenixChannelFrame? frame)
+        => _ => Taken(Trusted, frame);
+
+    // A snapshot as the monitor hands it out, reduced to what the choice reads: the verdict and the frame.
+    private static FenixChannelSnapshot Taken(FenixDisplayVerdict verdict, FenixChannelFrame? frame)
+        => new(verdict, frame, null, null, 0, 0);
 
     private static IReadOnlyDictionary<HotkeyAction, FenixChannelRead> TableWith(
         HotkeyAction action, FenixChannelDisplay display, Func<FenixChannelFrame, string?> compose)

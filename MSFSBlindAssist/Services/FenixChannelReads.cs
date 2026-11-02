@@ -51,20 +51,20 @@ internal static class FenixChannelReads
     /// <param name="reads">The table of reads: the app passes <see cref="All"/>, a test a stand-in of its own.</param>
     /// <param name="snapshot">
     /// The trust gate's verdict for a display and the latest frame (null before the first), taken together, as
-    /// <see cref="FenixChannelMonitor.Snapshot"/> gives them. It is asked once, and only for the display of the
-    /// read the key has.
+    /// <see cref="FenixChannelMonitor.Snapshot"/> gives them (with the rest of what it holds, which this choice does
+    /// not use). It is asked once, and only for the display of the read the key has.
     /// </param>
     public static string? Choose(HotkeyAction action, IReadOnlyDictionary<HotkeyAction, FenixChannelRead> reads,
-        Func<FenixChannelDisplay, (FenixDisplayVerdict Verdict, FenixChannelFrame? Frame)> snapshot)
+        Func<FenixChannelDisplay, FenixChannelSnapshot> snapshot)
     {
         try
         {
             if (!reads.TryGetValue(action, out FenixChannelRead? read)) return null;
 
-            var (verdict, frame) = snapshot(read.Display);
-            if (!verdict.Trusted || frame is null) return null;
+            FenixChannelSnapshot taken = snapshot(read.Display);
+            if (!taken.Verdict.Trusted || taken.Frame is null) return null;
 
-            string? text = read.Compose(frame);
+            string? text = read.Compose(taken.Frame);
             return string.IsNullOrWhiteSpace(text) ? null : text;
         }
         catch (Exception)
