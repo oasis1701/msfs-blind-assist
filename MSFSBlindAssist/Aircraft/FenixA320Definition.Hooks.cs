@@ -4,8 +4,10 @@ namespace MSFSBlindAssist.Aircraft;
 
 // Seams the Fenix v3 work fills in from its own partial files. Each `partial void` is optional:
 // with no implementation its call compiles to nothing, so the definition behaves as it did before.
-//   FenixA320Definition.Variants.cs  variant, panel, display and visibility seams, OnFenixSwitchedAway
-//   FenixA320Definition.Cabin.cs     cabin background seams
+//   FenixA320Definition.Variants.cs        variant, panel, display and visibility seams, OnFenixSwitchedAway
+//   FenixA320Definition.Cabin.cs           cabin background seams
+//   FenixA320Definition.DisplayChannel.cs  display channel seams: its background pair, the two SimConnect keys
+//                                          its gate checks against, the value peek and the display-key switch
 // The engine background seams (StartEngineBackground, StopEngineBackground) have no implementation: the Engines
 // window reads its own values while it is open.
 public partial class FenixA320Definition
@@ -27,8 +29,8 @@ public partial class FenixA320Definition
     // C# allows one implementation, so the variant file owns it.
     partial void OnFenixSwitchedAway();
 
-    // Background seams, one Start/Stop pair each (the cabin pair is implemented, the engine pair is not). Start
-    // runs once per definition instance,
+    // Background seams, one Start/Stop pair each (the cabin and display channel pairs are implemented, the
+    // engine pair is not). Start runs once per definition instance,
     // on the UI thread, from the first ProcessSimVarUpdate that gets past the take-off IAS feed (that branch
     // returns first, so Start can come up to about a second after the instance's very first update); a sim
     // reconnect keeps the instance, so Start does not run again then. Stop runs in OnSwitchedAway, on an
@@ -38,6 +40,18 @@ public partial class FenixA320Definition
     partial void StopCabinBackground();
     partial void StartEngineBackground(Accessibility.ScreenReaderAnnouncer announcer);
     partial void StopEngineBackground();
+    partial void StartDisplayChannelBackground(Accessibility.ScreenReaderAnnouncer announcer);
+    partial void StopDisplayChannelBackground();
+
+    // The display channel's other seams (FenixA320Definition.DisplayChannel.cs). AddDisplayChannelVariables
+    // registers the two SimConnect keys the channel's gate checks against. PeekDisplayChannelValue hands each
+    // comparison value to the monitor from ProcessSimVarUpdate and sets handled for the two keys that are the
+    // channel's own, so they are consumed there. TryChannelDisplayRead is HandleHotkeyAction's first look at
+    // any action; it sets handled only when the channel speaks that key's read, which no key has yet.
+    partial void AddDisplayChannelVariables(Dictionary<string, SimConnect.SimVarDefinition> variables);
+    partial void PeekDisplayChannelValue(string varName, double value, ref bool handled);
+    partial void TryChannelDisplayRead(Hotkeys.HotkeyAction action, Accessibility.ScreenReaderAnnouncer announcer,
+        ref bool handled);
 
     private bool _backgroundStarted;
 
@@ -202,6 +216,7 @@ public partial class FenixA320Definition
         _backgroundStarted = true;
         RunSeam(nameof(StartCabinBackground), () => StartCabinBackground(announcer));
         RunSeam(nameof(StartEngineBackground), () => StartEngineBackground(announcer));
+        RunSeam(nameof(StartDisplayChannelBackground), () => StartDisplayChannelBackground(announcer));
     }
 
     public override bool IsPanelControlVisible(string varKey, SimConnect.SimConnectManager? simConnect)
@@ -256,6 +271,7 @@ public partial class FenixA320Definition
             RunSeam(nameof(OnFenixSwitchedAway), () => OnFenixSwitchedAway());
             RunSeam(nameof(StopCabinBackground), () => StopCabinBackground());
             RunSeam(nameof(StopEngineBackground), () => StopEngineBackground());
+            RunSeam(nameof(StopDisplayChannelBackground), () => StopDisplayChannelBackground());
             _backgroundStarted = false;
         }
         finally

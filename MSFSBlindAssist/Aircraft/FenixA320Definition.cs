@@ -8468,6 +8468,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
         AddConfigVariables(variables);
         AddVariantVariables(variables);
+        AddDisplayChannelVariables(variables);
         return variables;
     }
 
@@ -12283,6 +12284,11 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             lastAnnouncer = announcer;
 
         EnsureFenixBackground(announcer);
+        // The display channel's comparison values (FenixA320Definition.DisplayChannel.cs): the flight director
+        // lights and the altitude are only peeked and carry on below; the channel's own two keys stop here.
+        bool channelHandled = false;
+        PeekDisplayChannelValue(varName, value, ref channelHandled);
+        if (channelHandled) return true;
         if (TryApplyConfigValue(varName, value)) return true;
         bool handled = false;
         OnVariantSimVarUpdate(varName, value, announcer, ref handled);
@@ -13526,6 +13532,12 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ShowFenixWindows(simConnect, announcer, parentForm, hotkeyManager);
             return true;
         }
+
+        // The Fenix display channel's fallback switch, asked first for any key (FenixA320Definition.DisplayChannel.cs):
+        // with no channel read for the key, or its display not trusted, the key carries on to the AI read as before.
+        bool channelRead = false;
+        TryChannelDisplayRead(action, announcer, ref channelRead);
+        if (channelRead) return true;
 
         // Handle display reading actions
         switch (action)
