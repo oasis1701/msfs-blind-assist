@@ -1,6 +1,7 @@
 // IlsGuidanceText: the wording of output Ctrl+I. One course per report, the chart's (the
 // runway's ILSCourseMag); a localizer, LDA or IGS ends with its course, not "Runway
-// heading", and says "No glideslope." when it has none; the far side of the threshold gives
+// heading", with no glideslope words when it has none (only an IGS says "No glideslope.");
+// the far side of the threshold gives
 // distance, range and fitting advice; every number reads with a dot under a comma-decimal
 // Windows format.
 
@@ -87,11 +88,11 @@ public class IlsGuidanceTextTests
     [Fact]
     public void A_localizer_says_no_glideslope_and_its_course_once()
     {
-        // The same shape as an ILS report: "No glideslope." where the deviation would be, the
-        // course where the runway heading would be, and no opening line repeating it.
+        // The same shape as an ILS report: the course where the runway heading would be, said
+        // once; "Localizer" already means no glideslope, so nothing says so again.
         string text = IlsGuidanceText.OnCenterline(Localizer(), 152, 6.2, glideslopeDeviationFeet: 140);
 
-        Assert.Equal("6.2 nautical miles from threshold, on centerline. No glideslope. Localizer course 152.", text);
+        Assert.Equal("6.2 nautical miles from threshold, on centerline. Localizer course 152.", text);
     }
 
     [Fact]
@@ -100,7 +101,7 @@ public class IlsGuidanceTextTests
         string text = IlsGuidanceText.OffCenterline(Localizer(), 152, 12.5, 1.5, 4, left: true, null, 100, 115, 130);
 
         Assert.Equal("12.5 nautical miles from threshold, 1.5 nautical miles left of centerline, 4 degrees left of centerline. " +
-                     "No glideslope. Fly heading 100 for 60 degree intercept, 115 for 45 degree intercept, or 130 for 30 degree intercept.", text);
+                     "Fly heading 100 for 60 degree intercept, 115 for 45 degree intercept, or 130 for 30 degree intercept.", text);
     }
 
     [Fact]
@@ -108,7 +109,18 @@ public class IlsGuidanceTextTests
     {
         string text = IlsGuidanceText.OnCenterline(Lda(), 147, 5.0, glideslopeDeviationFeet: null);
 
-        Assert.Equal("5.0 nautical miles from threshold, on centerline. No glideslope. LDA course 147.", text);
+        Assert.Equal("5.0 nautical miles from threshold, on centerline. LDA course 147.", text);
+    }
+
+    [Fact]
+    public void An_igs_without_a_glideslope_says_so_since_an_igs_normally_has_one()
+    {
+        var igs = Igs();
+        igs.HasGlideslope = false;
+
+        string text = IlsGuidanceText.OnCenterline(igs, 89, 5.0, glideslopeDeviationFeet: null);
+
+        Assert.Equal("5.0 nautical miles from threshold, on centerline. No glideslope. IGS course 89.", text);
     }
 
     [Fact]
@@ -178,7 +190,7 @@ public class IlsGuidanceTextTests
                 Assert.DoesNotMatch(@"\d,\d", text);
             Assert.Contains("12.3 nautical miles from threshold, 0.4 nautical miles right of centerline", texts[2]);
             Assert.Equal("Warning: Localizer signal range is 18 nautical miles. " +
-                         "24.5 nautical miles from threshold, on centerline. No glideslope. Localizer course 152.", texts[1]);
+                         "24.5 nautical miles from threshold, on centerline. Localizer course 152.", texts[1]);
             Assert.Contains("31.4 nautical miles from threshold. Threshold bearing 008.", texts[4]);
         });
     }

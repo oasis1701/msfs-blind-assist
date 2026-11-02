@@ -15,14 +15,17 @@ namespace MSFSBlindAssist.Navigation;
 /// heading" an ILS report ends with and the extension heading are that course too; before
 /// 2026-11-02 they came from the sim's live variation and could differ from it.</para>
 ///
-/// <para>Every report has the same shape; only two slots differ by aid. Where an ILS says how
-/// far above or below the glideslope it is, an aid without one says "No glideslope." (ESST 16
-/// used to get a deviation off a default 3 degree slope). Where an ILS ends "Runway heading
-/// 171.", a localizer, LDA or IGS ends "Localizer course 152.", named by
+/// <para>Every report has the same shape. Where an ILS ends "Runway heading 171.", a
+/// localizer, LDA or IGS ends "Localizer course 152.", named by
 /// <see cref="LandingAidText.Name"/> as the EFB names it (EFB-13): an LDA or IGS course is not
-/// the runway's. The course is said once. An opening "Localizer 108.70, course 152." line was
-/// tried on 2026-11-02 and dropped the same day at the owner's word: it broke the shape and
-/// said the course twice. The frequency is Output N's and the EFB's to give.</para>
+/// the runway's. An aid without a glideslope gets no deviation (ESST 16 used to get one off a
+/// default 3 degree slope) and no "no glideslope" either, by the EFB's no-redundancy rule:
+/// "Localizer" already means none, and an LDA normally has none. Only an IGS, which normally
+/// has one, says "No glideslope." when it hasn't, as <see cref="LandingAidText.Describe"/>
+/// does. The course is said once. Tried and dropped on 2026-11-02 at the owner's word: an
+/// opening "Localizer 108.70, course 152." line (broke the shape, said the course twice) and
+/// "No glideslope." on every localizer ("we sorta know that"). The frequency is Output N's
+/// and the EFB's to give.</para>
 ///
 /// <para>On the far side of the threshold the report gives the distance and the range
 /// warning too. Inside the aid's published range it says the heading to extend outbound;
@@ -64,12 +67,12 @@ public static class IlsGuidanceText
             ? $"Warning: {PlainName(ils)} signal range is {ils.Range.ToString(Inv)} nautical miles. "
             : "";
 
-    /// <summary>" No glideslope." for an aid without one; " 120 feet below glideslope." when it
-    /// has one and a deviation was worked out (within 25 NM); else "".</summary>
+    /// <summary>" 120 feet below glideslope." when the aid has a glideslope and a deviation was
+    /// worked out (within 25 NM); " No glideslope." for an IGS without one; else "".</summary>
     public static string Glideslope(ILSData ils, double? deviationFeet)
     {
         if (!ils.HasGlideslope)
-            return " No glideslope.";
+            return LandingAidText.OffsetFacility(ils.Type) == "IGS" ? " No glideslope." : "";
         if (deviationFeet is not double dev)
             return "";
         string direction = dev > 0 ? "above" : "below";
