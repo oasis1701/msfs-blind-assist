@@ -27,9 +27,10 @@ namespace MSFSBlindAssist.Services;
 /// fault, and a string with replacement characters in it would pass for text. A field left out reads as
 /// its protobuf default, a field of a number the app does not know is skipped, and a repeated field
 /// accumulates in the order it came.
-/// An element with no field 1 reads as "". An FMA with a slot count other than 16 is a wrong shape for
-/// field 111. A field that is not repeated takes the last value if it is sent twice, and its nested part
-/// is merged, as protobuf reads them.</para>
+/// An element with no field 1 reads as "". An FMA of 1 to 15 or of 17 or more slots is a wrong shape for
+/// field 111; one with no slot is not, since protobuf-net leaves out an empty or null array (an unpowered PFD
+/// may have no FMA to send), and the gate judges that for the PFD alone. A field that is not repeated takes
+/// the last value if it is sent twice, and its nested part is merged, as protobuf reads them.</para>
 /// <para>A push with no display data, that is with no RemoteData or an empty one, is
 /// <see cref="FenixChannelFrame.NoData"/>: it is neither damaged nor reshaped, so it records no wrong shape
 /// (not "111" for an FMA it never had) and the gate skips it. A field 1 in another wire shape than a part
@@ -53,8 +54,10 @@ internal static class FenixChannelDecoder
         // be in the list when no RemoteData was read, and it is judged below as always.
         if (!draft.HasRemoteData && draft.Wrong.Count == 0) return FenixChannelFrame.NoData;
 
-        // The FMA is 16 slots; any other count is not the shape the app was checked against.
-        if (draft.Fma.Count != FmaEntry.SlotCount) draft.WrongShape(Number(Remote.Fma));
+        // The FMA is 16 slots; any other count is not the shape the app was checked against, except none at all:
+        // protobuf-net leaves out an empty or null array, so a PFD with no FMA to draw (unpowered) can send no
+        // slot. Nothing is reshaped then, and the gate judges it for the PFD alone ("no FMA").
+        if (draft.Fma.Count != 0 && draft.Fma.Count != FmaEntry.SlotCount) draft.WrongShape(Number(Remote.Fma));
 
         return new FenixChannelFrame(
             Malformed: false,

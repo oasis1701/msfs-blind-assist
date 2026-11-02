@@ -28,7 +28,7 @@ internal readonly record struct FenixFmaSlot(string Text, bool ChangeBox);
 /// The path of each field that arrived in another shape than the contract gives it, by wire type or, for a
 /// string, because its bytes are not valid UTF-8 ("110", "110.5", "173.1"), each once, in the order they
 /// were found; the field took its default and the others still decoded. "111" is also here when the FMA
-/// has a slot count other than 16.
+/// has 1 to 15 or 17 or more slots; an FMA with none is not a wrong shape (see <see cref="FenixChannelDecoder"/>).
 /// </param>
 internal sealed record FenixChannelFrame(bool Malformed, IReadOnlyList<string> WrongShapeFields, FenixFdState Fd,
     IReadOnlyList<FenixFmaSlot> Fma, IReadOnlyList<string> UpperEcamLeft, IReadOnlyList<string> UpperEcamRight,

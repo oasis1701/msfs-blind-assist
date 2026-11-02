@@ -99,7 +99,8 @@ internal static class FenixChannelFields
         public const int ChangeBox = 2;             // ChangeBox: varint (bool)
 
         /// <summary>
-        /// The FMA is 16 slots. A push with another count is not the shape the app was checked against.
+        /// The FMA is 16 slots. A push with another count is not the shape the app was checked against, except
+        /// a push with none, which is how protobuf-net sends an empty or null array (see FenixChannelDecoder).
         /// </summary>
         public const int SlotCount = 16;
     }

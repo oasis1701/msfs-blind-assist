@@ -118,12 +118,11 @@ public class FenixChannelDecoderTests
     }
 
     [Theory]
-    [InlineData(0)]
+    [InlineData(1)]
     [InlineData(15)]
     [InlineData(17)]
     public void An_fma_without_sixteen_slots_is_a_wrong_shape(int slots)
     {
-        // The altitude keeps RemoteData from being empty at zero slots: an empty one is no data at all.
         var remote = new FenixChannelProtoWriter().Double(197, 1000.0);
         for (int slot = 0; slot < slots; slot++)
         {
@@ -136,6 +135,22 @@ public class FenixChannelDecoderTests
         Assert.Equal(new[] { "111" }, frame.WrongShapeFields);
         Assert.Equal(slots, frame.Fma.Count);
         Assert.False(frame.ShapesOk);
+        Assert.False(frame.Malformed);
+        Assert.True(frame.HasData);
+    }
+
+    [Fact]
+    public void An_fma_with_no_slots_is_not_a_wrong_shape()
+    {
+        // protobuf-net leaves out an empty or null array, so a PFD with no FMA to draw (unpowered) can send no slot
+        // at all: nothing reshaped, so no "111", and the gate judges it for the PFD alone ("no FMA"). The altitude
+        // keeps RemoteData from being empty: an empty one is no data at all.
+        FenixChannelFrame frame = Decode(new FenixChannelProtoWriter().Double(197, 1000.0));
+
+        Assert.Empty(frame.WrongShapeFields);
+        Assert.True(frame.ShapesOk);
+        Assert.Empty(frame.Fma);
+        Assert.Equal(1000.0, frame.Altitude);
         Assert.False(frame.Malformed);
         Assert.True(frame.HasData);
     }

@@ -1111,6 +1111,46 @@ public class FenixChannelTrustTests
         Assert.Equal(Untrusted("unknown code 'd' in the FMA"), Pfd(gate, 100));
     }
 
+    // ---- A frame with no FMA ----------------------------------------------------------------------
+
+    [Fact]
+    public void A_frame_with_no_fma_untrusts_only_the_pfd_and_never_latches()
+    {
+        // protobuf-net leaves out an empty or null array, so an unpowered PFD can send no FMA slot at all. That is
+        // not a reshaped field (the decoder records no "111"): the PFD has nothing to read, and the E/WD and the SD
+        // keep their verdicts.
+        FenixChannelTrust gate = TrustedGate();
+
+        // Ten seconds of them, long enough for any latch.
+        Feed(gate, 100, 10_000, Frame(fma: Array.Empty<FenixFmaSlot>()));
+
+        Assert.Equal(Untrusted("no FMA"), Pfd(gate, 10_000));
+        Assert.Equal(Trusted, Ewd(gate, 10_000));
+        Assert.Equal(Trusted, Sd(gate, 10_000));
+
+        // The next frame with its 16 slots trusts the PFD again: nothing latched.
+        gate.OnFrame(Frame(), 10_100);
+
+        AssertAll(gate, 10_100, Trusted);
+    }
+
+    [Fact]
+    public void No_fma_is_judged_after_the_cross_checks()
+    {
+        FenixChannelTrust gate = ConnectedGate();
+        gate.OnComparison(FenixComparison.FdLightCapt, 1, 0);
+        gate.OnComparison(FenixComparison.FdLightFo, 1, 0);
+        gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 0);   // no altitude yet
+        gate.OnFrame(Frame(fma: Array.Empty<FenixFmaSlot>()), 0);
+
+        Assert.Equal(Untrusted("altitude not checked yet"), Pfd(gate, 0));
+
+        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 100);
+        gate.OnFrame(Frame(fma: Array.Empty<FenixFmaSlot>()), 100);
+
+        Assert.Equal(Untrusted("no FMA"), Pfd(gate, 100));
+    }
+
     // ---- A reconnect starts fresh -----------------------------------------------------------------
 
     [Fact]

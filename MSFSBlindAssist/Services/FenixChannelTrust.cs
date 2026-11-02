@@ -33,8 +33,11 @@ internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDe
 /// <para>A display is trusted only when every channel-wide condition and every condition of its own holds, and
 /// <see cref="VerdictFor"/> gives the first one that fails, in this order: not connected; no data message since
 /// the connection opened; the stream stalled; the build unknown; the build not one the app has checked; a
-/// shape latch; the display's cross-checks, in their order; a text code the app does not know in a line the
-/// display covers.</para>
+/// shape latch; the display's cross-checks, in their order; for the PFD, a frame with no FMA; a text code the
+/// app does not know in a line the display covers.</para>
+/// <para>A frame with no FMA slot at all is not a wrong shape: protobuf-net leaves out an empty or null array, so
+/// an unpowered PFD can send none. The PFD alone reads "no FMA" until a frame brings its slots again; it never
+/// latches, and the E/WD and the SD are not touched by it.</para>
 /// <para>A malformed message, or a field in the wrong shape, in a data message or an ECAM entries message
 /// latches the whole channel until <see cref="OnConnected"/>: a wrong shape on a checked build means the check
 /// itself cannot be trusted. The latch keeps its first cause. A push with no display data
@@ -94,6 +97,8 @@ internal sealed class FenixChannelTrust
 
     private const string TrustedReason = "trusted";
 
+    private const string NoFmaReason = "no FMA";
+
     // The amount and unit of the FOB line, run over the line's text with its format codes taken out, as in
     // "FOB:   2940  KG". The amount is whole digits only: a decimal point or a grouping separator ("12,340",
     // "12 340") does not match, so a FOB of ten tonnes or more written with one reads as missing and never as
@@ -127,6 +132,7 @@ internal sealed class FenixChannelTrust
     private long _lastFrameMs;
     private string? _shapeReason;
     private double[] _channel = Missing();   // the channel's side of each comparison, from the latest good frame
+    private bool _noFma;                     // the latest good frame had no FMA slot: the PFD has nothing to read
     private string? _fmaUnknownCode;         // the reason for the first unknown code in the latest good frame's FMA
     private string? _ewdUnknownCode;         // the same for the lines the E/WD covers
     private Check[] _checks = NewChecks();
@@ -155,6 +161,7 @@ internal sealed class FenixChannelTrust
         _lastFrameMs = 0;
         _shapeReason = null;
         _channel = Missing();
+        _noFma = false;
         _fmaUnknownCode = null;
         _ewdUnknownCode = null;
         _checks = NewChecks();
@@ -290,15 +297,18 @@ internal sealed class FenixChannelTrust
     private string? DisplayReason(FenixChannelDisplay display)
     {
         FenixComparison[] checks;
+        string? nothingToRead;
         string? unknownCode;
         switch (display)
         {
             case FenixChannelDisplay.Pfd:
                 checks = PfdChecks;
+                nothingToRead = _noFma ? NoFmaReason : null;
                 unknownCode = _fmaUnknownCode;
                 break;
             case FenixChannelDisplay.Ewd:
                 checks = EwdChecks;
+                nothingToRead = null;
                 unknownCode = _ewdUnknownCode;
                 break;
             case FenixChannelDisplay.Sd:
@@ -319,7 +329,8 @@ internal sealed class FenixChannelTrust
             if (!check.Passed) return $"{NameOf(kind)} not checked yet";
         }
 
-        return unknownCode;
+        // After the cross-checks and before the text codes: a PFD frame with no FMA has no text to look at.
+        return nothingToRead ?? unknownCode;
     }
 
     // ---- The checks -----------------------------------------------------------------------------
@@ -344,6 +355,7 @@ internal sealed class FenixChannelTrust
             Keep(_checks[i], nowMs, _channel[i]);
         }
 
+        _noFma = frame.Fma.Count == 0;
         _fmaUnknownCode = FirstUnknownCode(frame.Fma.Select(slot => slot.Text), "FMA");
         _ewdUnknownCode = FirstUnknownCode(frame.UpperEcamLeft.Concat(frame.UpperEcamRight), "upper ECAM")
             ?? UnknownCodeIn(fob, "FOB line");
