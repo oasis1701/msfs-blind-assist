@@ -15,6 +15,54 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class WeatherPanelTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OutsideTemperatureToggle_LoadsAndApplies_OnlyAfterSaving(bool useFahrenheit)
+    {
+        var settings = new UserSettings { UseFahrenheitForOutsideTemperature = useFahrenheit };
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(settings);
+        var temperature = (CheckBox)FindByAccessibleName(panel, "Use Fahrenheit for outside temperature");
+        Assert.Equal(useFahrenheit, temperature.Checked);
+
+        temperature.Checked = !useFahrenheit;
+        Assert.Equal(useFahrenheit, settings.UseFahrenheitForOutsideTemperature);
+        panel.ApplyTo(settings);
+        Assert.Equal(!useFahrenheit, settings.UseFahrenheitForOutsideTemperature);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void OutsideTemperatureToggle_IsAvailable_RegardlessOfWeatherIntegration(bool activeSky, bool autoAnnounce)
+    {
+        using var panel = new WeatherPanel();
+        panel.LoadFrom(new UserSettings { ActiveSkyEnabled = activeSky, WeatherAutoAnnounceEnabled = autoAnnounce });
+        var temperature = FindByAccessibleName(panel, "Use Fahrenheit for outside temperature");
+        Assert.True(temperature.Visible);
+        Assert.True(temperature.Enabled);
+        Assert.True(temperature.TabStop);
+    }
+
+    [Fact]
+    public void TemperatureUnits_AreLastInTabOrder_AndWeatherGroupsDoNotOverlap()
+    {
+        using var panel = new WeatherPanel();
+        var temperature = FindByAccessibleName(panel, "Use Fahrenheit for outside temperature");
+        var groups = panel.Controls.OfType<GroupBox>().OrderBy(g => g.Top).ToArray();
+        Assert.Same(groups[^1], temperature.Parent);
+        Assert.Same(groups[^1], panel.Controls[panel.Controls.Count - 1]);
+        Assert.True(groups[^1].ClientRectangle.Contains(temperature.Bounds));
+        for (int i = 1; i < groups.Length; i++)
+        {
+            Assert.True(groups[i - 1].Bottom <= groups[i].Top);
+            Assert.True(groups[i - 1].TabIndex < groups[i].TabIndex);
+        }
+    }
+
     [Fact]
     public void RoundTrip_PreservesAllWeatherSettings()
     {
