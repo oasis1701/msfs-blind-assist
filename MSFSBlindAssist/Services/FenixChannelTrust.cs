@@ -139,6 +139,12 @@ internal sealed class FenixChannelTrust
     // reason: a switch that stays at Test is not delivered again.
     private bool _lightTest;
 
+    // SimConnect's deliveries since DescribeSimDeliveries last ran: how many came, when the latest came, and the
+    // longest interval between two in a row. Not reset by a reconnect: they are SimConnect's, not the channel's.
+    private int _deliveries;
+    private long _lastDeliveryMs;
+    private long _longestDeliveryGapMs;
+
     // Everything below belongs to one connection: OnConnected replaces it.
     private bool _connected;
     private string? _disconnectReason;
@@ -256,7 +262,8 @@ internal sealed class FenixChannelTrust
     /// <summary>
     /// SimConnect's latest value for one comparison, which arrived at <paramref name="nowMs"/>; NaN means it
     /// has none. The gate runs the checks on the next data message, against the channel as it was when this
-    /// arrived (<see cref="ComparisonWindowMs"/>). Kept, with its arrival time, across reconnects.
+    /// arrived (<see cref="ComparisonWindowMs"/>). Kept, with its arrival time, across reconnects. Each arrival is
+    /// counted for <see cref="DescribeSimDeliveries"/>.
     /// </summary>
     public void OnComparison(FenixComparison kind, double value, long nowMs)
     {
@@ -265,6 +272,10 @@ internal sealed class FenixChannelTrust
         {
             _sim[index] = value;
             _simAtMs[index] = nowMs;
+
+            if (_deliveries > 0) _longestDeliveryGapMs = Math.Max(_longestDeliveryGapMs, nowMs - _lastDeliveryMs);
+            _lastDeliveryMs = nowMs;
+            _deliveries++;
         }
     }
 
@@ -302,6 +313,30 @@ internal sealed class FenixChannelTrust
         }
 
         return lines;
+    }
+
+    /// <summary>
+    /// SimConnect's deliveries since the last call, for the comparisons line: "SimConnect: 42 values, longest gap
+    /// 1.1 s". The count is every arrival of the five comparisons (<see cref="OnComparison"/>), and the gap the
+    /// longest interval between two arrivals in a row within the period, in seconds to a tenth, in the invariant
+    /// culture; with fewer than two arrivals, "SimConnect: 1 value, no gap" or "SimConnect: 0 values, no gap". The
+    /// gate treats an old SimConnect value as unchanged, so a long gap (a UI stall in a turn) could become a false
+    /// disagreement: this is how a flight measures it. Side effect: each call starts a new period, so the next call
+    /// counts only what arrives after this one.
+    /// </summary>
+    public string DescribeSimDeliveries()
+    {
+        string description = _deliveries switch
+        {
+            0 => "SimConnect: 0 values, no gap",
+            1 => "SimConnect: 1 value, no gap",
+            _ => "SimConnect: " + _deliveries.ToString(CultureInfo.InvariantCulture) + " values, longest gap "
+                 + (_longestDeliveryGapMs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " s"
+        };
+
+        _deliveries = 0;
+        _longestDeliveryGapMs = 0;
+        return description;
     }
 
     // ---- The verdict ----------------------------------------------------------------------------

@@ -1466,12 +1466,13 @@ public class FenixChannelTrustTests
     [Fact]
     public void A_comparison_the_gate_does_not_know_is_ignored()
     {
-        FenixChannelTrust gate = TrustedGate();
+        FenixChannelTrust gate = TrustedGate();   // SimConnect delivered the five comparisons at t=0
 
         Exception? thrown = Record.Exception(() => gate.OnComparison((FenixComparison)99, 1, 0));
 
         Assert.Null(thrown);
         AssertAll(gate, 0, Trusted);
+        Assert.Equal("SimConnect: 5 values, longest gap 0.0 s", gate.DescribeSimDeliveries());   // and not counted
     }
 
     // ---- Culture: reasons, descriptions and the FOB number never follow the PC's -------------------
@@ -1597,6 +1598,63 @@ public class FenixChannelTrustTests
         IReadOnlyList<string> lines = gate.DescribeComparisons();
         Assert.Equal("FD captain: channel on, sim 2", lines[0]);
         Assert.Equal("FD first officer: channel on, sim 0.5", lines[1]);
+    }
+
+    // ---- SimConnect's deliveries, for the comparisons line ------------------------------------------
+    // The gate treats an old SimConnect value as unchanged, so a long gap in SimConnect's deliveries (a UI stall in
+    // a turn) could become a false disagreement: the log counts the deliveries and their longest gap.
+
+    [Fact]
+    public void Describes_the_simconnect_deliveries_since_the_last_call()
+    {
+        var gate = new FenixChannelTrust(new HashSet<string>());
+        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 0);
+        gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 1_000);
+        gate.OnComparison(FenixComparison.FdLightCapt, 1, 3_500);
+
+        Assert.Equal("SimConnect: 3 values, longest gap 2.5 s", gate.DescribeSimDeliveries());
+
+        // Each call starts a new period: the next one counts only what arrives after it.
+        Assert.Equal("SimConnect: 0 values, no gap", gate.DescribeSimDeliveries());
+    }
+
+    [Fact]
+    public void A_gap_is_measured_between_two_deliveries_of_one_period()
+    {
+        var gate = new FenixChannelTrust(new HashSet<string>());
+        gate.OnComparison(FenixComparison.FuelKg, 2938, 0);
+
+        Assert.Equal("SimConnect: 1 value, no gap", gate.DescribeSimDeliveries());
+
+        // The first delivery of this period comes 10 s after the last of the one before: a period of one delivery
+        // has no gap of its own.
+        gate.OnComparison(FenixComparison.FuelKg, 2937, 10_000);
+
+        Assert.Equal("SimConnect: 1 value, no gap", gate.DescribeSimDeliveries());
+
+        // Deliveries of all five comparisons count together, and the longest interval between two in a row is the gap.
+        gate.OnComparison(FenixComparison.FuelKg, 2936, 20_000);
+        gate.OnComparison(FenixComparison.FdLightFo, 1, 20_000);
+        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 21_200);
+        gate.OnComparison(FenixComparison.FdLightCapt, 1, 21_300);
+
+        Assert.Equal("SimConnect: 4 values, longest gap 1.2 s", gate.DescribeSimDeliveries());
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void Describes_the_simconnect_deliveries_in_the_invariant_culture(string culture)
+    {
+        InCulture(culture, () =>
+        {
+            var gate = new FenixChannelTrust(new HashSet<string>());
+            gate.OnComparison(FenixComparison.AltitudeFt, 1000, 0);
+            gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 1_000);
+            gate.OnComparison(FenixComparison.FdLightCapt, 1, 3_500);
+
+            Assert.Equal("SimConnect: 3 values, longest gap 2.5 s", gate.DescribeSimDeliveries());   // a dot, never a comma
+        });
     }
 
     [Fact]

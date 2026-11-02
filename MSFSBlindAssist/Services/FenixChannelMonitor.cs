@@ -29,14 +29,14 @@ namespace MSFSBlindAssist.Services;
 /// <para>The log. A line is written for each change of a call's state, for each build, for each change of a
 /// display's verdict (its Trusted, or the headline of its reason: the text before the first colon, so the
 /// numbers of a disagreement moving every second are one line), and, every 30th tick of a connection, for the
-/// comparison pairs. Dispose writes one more, "channel stopped", the last line the log ever gets (the in-sim
-/// check that an aircraft switch ended the channel reads it). A data call that opens and says nothing is dropped
-/// and asked again for hours, so "connected" is written with the first message and not with the response
-/// headers, and a call that is not answering is written only when its reason differs from the last one written
-/// since a message arrived: otherwise each try would write two lines. The ECAM entries call has no such cycle
-/// (nothing limits its silence), so its "connected" is written with its headers, but its failures to answer follow
-/// the same rule. A refusal is written once, since it ends the channel (below). This class formats no number
-/// itself: the pairs come from the gate in the invariant culture.</para>
+/// comparison pairs and SimConnect's deliveries since the line before. Dispose writes one more, "channel stopped",
+/// the last line the log ever gets (the in-sim check that an aircraft switch ended the channel reads it). A data
+/// call that opens and says nothing is dropped and asked again for hours, so "connected" is written with the first
+/// message and not with the response headers, and a call that is not answering is written only when its reason
+/// differs from the last one written since a message arrived: otherwise each try would write two lines. The ECAM
+/// entries call has no such cycle (nothing limits its silence), so its "connected" is written with its headers, but
+/// its failures to answer follow the same rule. A refusal is written once, since it ends the channel (below). This
+/// class formats no number itself: the pairs and the deliveries come from the gate in the invariant culture.</para>
 /// <para>A refusal of either call (grpc-status 7 or 16, or HTTP 401 or 403, which the client reports as
 /// <see cref="FenixChannelState.Refused"/>) ends the channel for the session ([FNX-21]), not only the call refused:
 /// the gate is told the channel is not answering, with the refusal as the reason, so every display reads "channel
@@ -445,7 +445,8 @@ internal sealed class FenixChannelMonitor : IDisposable
     /// <summary>
     /// One tick of the timer: writes each display's verdict when its Trusted or the headline of its reason has
     /// changed since it was last written (the first tick writes all three), and, while the data call is connected,
-    /// every 30th tick of the connection the comparison pairs.
+    /// every 30th tick of the connection the comparison pairs, followed by SimConnect's deliveries since the last
+    /// such line (how many, and the longest gap between two).
     /// </summary>
     internal void Tick()
     {
@@ -465,7 +466,8 @@ internal sealed class FenixChannelMonitor : IDisposable
 
                 if (_dataConnected && ++_connectedTicks % ComparisonLogEveryTicks == 0)
                 {
-                    Write("comparisons: " + string.Join("; ", _trust.DescribeComparisons()));
+                    Write("comparisons: " + string.Join("; ", _trust.DescribeComparisons()) + "; "
+                        + _trust.DescribeSimDeliveries());
                 }
             }
         }

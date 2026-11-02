@@ -953,7 +953,7 @@ public class FenixChannelMonitorTests
         Assert.Equal(
             "comparisons: FD captain: channel missing, sim missing; FD first officer: channel missing, sim missing; "
             + "altitude: channel missing, sim missing; heading: channel missing, sim missing; "
-            + "fuel: channel missing, sim missing",
+            + "fuel: channel missing, sim missing; SimConnect: 0 values, no gap",
             Assert.Single(lines.Comparisons()));
 
         for (int tick = 0; tick < 30; tick++) monitor.Tick();
@@ -962,6 +962,27 @@ public class FenixChannelMonitorTests
         monitor.OnDataState(FenixChannelState.NotAnswering, "gone");
         for (int tick = 0; tick < 60; tick++) monitor.Tick();
         Assert.Equal(2, lines.Comparisons().Length);
+    }
+
+    [Fact]
+    public void The_comparisons_line_ends_with_the_simconnect_deliveries_since_the_line_before()
+    {
+        // After the five pairs: how many values SimConnect delivered since the last comparisons line, and the longest
+        // gap between two of them (the monitor's clock is real, so the gap's digits are not pinned here; the gate's
+        // tests pin the wording with a fake clock).
+        var lines = new Lines();
+        using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        AgreeWithGoodPush(monitor);   // five values
+
+        for (int tick = 0; tick < 30; tick++) monitor.Tick();
+
+        Assert.Matches(@"; fuel: channel missing, sim 2,940 kg; SimConnect: 5 values, longest gap \d+\.\d s$",
+            Assert.Single(lines.Comparisons()));
+
+        for (int tick = 0; tick < 30; tick++) monitor.Tick();
+
+        Assert.EndsWith("; SimConnect: 0 values, no gap", lines.Comparisons()[1], StringComparison.Ordinal);
     }
 
     [Fact]
