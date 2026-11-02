@@ -85,8 +85,9 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
 - Content:
   - PFD: the FMA by column (2.7); speed (airspeed, target, managed or selected, trend); the speed tape top to bottom
     (VMAX, VFE next, F, S, green dot, VLS, alpha prot or VSW; V1, VR and V2 while shown); Mach as displayed; altitude
-    with its baro reference ("STD" or "QNH 1029"); vertical speed; pitch and bank; heading and track; radio altitude,
-    minimums and the ILS lines when shown; flags and messages.
+    with its baro reference ("STD" or "QNH 1029"); vertical speed; pitch and bank; the flight director bars while
+    drawn, with "flashing" while they flash (no row when none is drawn, as for every other row); heading and track;
+    radio altitude, minimums and the ILS lines when shown; flags and messages.
   - ND: mode and range; ground speed, true airspeed and wind; track; the next-waypoint line; the ND's messages.
   - E/WD: the engine block for the fitted engine family (N1 or EPR, EGT, N2, fuel flow); the thrust limit line ("CLB
     1.618"); fuel on board; flaps and slats; the warning lines (left) and memos (right).
@@ -121,8 +122,9 @@ only at 30 knots or more, as `FormatEtaFromDistance` does).
 Every channel text read in a window or an announcement goes through one speech function (plan 01): a one-color line ends
 with its color ("ENG 1 FIRE, red"); a mixed line names each stretch's color after its words ("MAN FLX white, +56
 cyan"); adjacent stretches of the same color merge; an empty stretch is skipped. Colors: amber, cyan, green, magenta,
-white, red; yellow is spoken only once a capture confirms it. Sizes, box and flash are never spoken. `!` is a space. A
-line with an unknown letter is never spoken: its display is untrusted.
+white, red; yellow is spoken only once a capture confirms it. Sizes, box and flash are never spoken (the flight
+director bars' flash is a flag, not text: plan 02's row says "flashing"). `!` is a space. A line with an unknown
+letter is never spoken: its display is untrusted.
 
 ### 2.7 Announcements (answers 3, 4, 8)
 
@@ -205,6 +207,11 @@ format letters, fuel, the FMA's take-off and engine-failure lines, the negative 
   vertical speed amber. Meanings to measure before any is spoken.
 - FMA (111): measured lines include "wbMAN", "FLX c+56", "gSRS", "cCLB", "cNAV", "w1   2", "cA/THR", "wfLVR CLB",
   "wfLVR MCT", "aLVR ASYM", "CHECK SPEED MODE", "gALT!CRZ", "gTHR CLB".
+- 110 flight director (nested; the gate already decodes it into the frame as `FenixFdState` and checks its shape): 1
+  pitch bar, 2 flight path angle, 3 roll bar, 4 yaw bar (doubles; every bar was NaN, not drawn, at power-up with no
+  mode engaged), 5/6 FD on, captain and first officer (the gate's cross-check), 7 TRK/FPA, 8 roll guidance, 9 flash, 10
+  inhibit, 11/12 inhibit roll and inhibit pitch (varint bools). The bars' unit and signs, the yaw bar, TRK/FPA and what
+  each flag does to the bars: to measure (plan 02).
 
 ### 3.3 ND (plans 03 and 10)
 
@@ -329,7 +336,7 @@ Rows 14-45 are the questions the plans raised, answered on 2026-11-03 ("Accept a
 | 15 | 04-06 | A value a display draws as crosses | "XX" | As recommended |
 | 16 | 02 | The FMA's FD row, sent as "1   2" | "1 FD 2" once a capture confirms it | As recommended |
 | 17 | 02, 07 | Airspeed under the speed tape's floor | "Airspeed below 30 knots" | As recommended |
-| 18 | 02 | Alpha max, the selected altitude and heading, the FD bars | left out | As recommended |
+| 18 | 02 | Alpha max, the selected altitude and heading, the FD bars | left out | As recommended, except the FD bars: changed on 2026-11-02, after the "Accept all", by Hadi with Robin's agreement, to shown in the PFD window while drawn, with "flashing" while they flash, no row when none is |
 | 19 | 03 | Ctrl+W in ROSE LS and ROSE VOR | the waypoint the ND sends | As recommended |
 | 20 | 03 | A Ctrl+W part shown as dashes | left out | As recommended |
 | 21 | 03 | ND lines with no words of their own | app labels, as the PMDG 737's ND window | As recommended |
@@ -363,7 +370,7 @@ Rows 14-45 are the questions the plans raised, answered on 2026-11-03 ("Accept a
 | Check | Plan |
 | --- | --- |
 | The FMA slot layout (row x 5 + column), slot 15, and the colors of armed and managed modes | 08 (02 shows the rows) |
-| When V1, VR, V2, F, S and VFE next are drawn; the vertical speed unit; which PFD flags mean what | 02 |
+| When V1, VR, V2, F, S and VFE next are drawn; the vertical speed unit; which PFD flags mean what; the flight director bars' unit, signs and flags | 02 |
 | The `d` letter in the ground speed text; the EFIS mode numbering; ND message sides | 03 |
 | The engine family field and the order of the engine block per family | 04 |
 | SD pages 0 and 13; per-page content and enum values | 05, 06 |

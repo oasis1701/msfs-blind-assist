@@ -10,16 +10,18 @@ to Shift+6 speak the speed tape's speeds, each only while the PFD is trusted and
 **Architecture:** `FenixChannelPfd` decodes the PFD's own fields from the snapshot's RemoteData message (the captain's
 air data and availability flags, speed limits, speeds, FCU speed target, trend, texts and EFIS baro), checking each
 shape and the content it needs. `FenixChannelPfdRows` turns one snapshot into the window's rows, the FMA from the
-frame's slots by column and each instrument replaced by its flag while the PFD shows that flag; the speed keys read its
-tape. `ChannelPfdKey` opens the window through `OpenChannelWindow` and speaks the keys; `AddChannelPfdWindows` lists
-the window. Tasks 2 and 3 measure in the sim every meaning the rows depend on, before any row is coded.
+frame's slots by column, the flight director bars from the frame's `Fd` while the captain's PFD draws them, and each
+instrument replaced by its flag while the PFD shows that flag; the speed keys read its tape. `ChannelPfdKey` opens the
+window through `OpenChannelWindow` and speaks the keys; `AddChannelPfdWindows` lists the window. Tasks 2 and 3 measure
+in the sim every meaning the rows depend on, before any row is coded.
 
 **Tech Stack:** C# 13 / .NET 10, Windows Forms, xUnit; plan 01's `FenixChannelPush`, `FenixChannelSpeech`,
 `FenixChannelDisplayForm`; `FenixChannelProtoWriter` and `SpeechCapture` (tests).
 
 **Spec:** `docs/fenix-channel/spec.md` sections 2.2, 2.4 (the window, the PFD's content), 2.5 (Shift+1 to Shift+6), 2.6,
 3.1, 3.2, 4 and 6 (plan 02's checks: when V1, VR, V2, F, S and VFE next are drawn, the vertical speed unit, which PFD
-flags mean what); answers 1, 2, 5, 12.
+flags mean what, the flight director bars' unit, signs and flags); answers 1, 2, 5, 12, and 18 as changed (the FD bars
+are shown while drawn).
 
 ## Global Constraints
 
@@ -35,6 +37,15 @@ flags mean what); answers 1, 2, 5, 12.
 - The trusted display is the captain's PFD (duData PFDCapt), so every field read is the captain's side (28, 46, 74, 82,
   100, 107, 125, the first EFIS entry). Heading and track come from field 194, the value the gate cross-checks. The
   qnhCapt text (105) is never read: in flight at QNH it carries `x`, a letter `FenixChannelText` does not know.
+- The flight director is field 110, the gate's own: the frame decodes it (`FenixChannelFrame.Fd`, a `FenixFdState`) and
+  the gate checks its shape, so this plan adds no constant for it and never decodes it again. The field has one set of
+  bars and an on flag per side (5 captain, 6 first officer); the window shows bars only while `FdOnCapt`. A bar not
+  drawn arrives as NaN (every bar, at power-up with no mode engaged); an absent bar is 0 (protobuf-net leaves 0 out),
+  a centered bar, never a missing one; a push without field 110 is `FenixFdState.Default`, both FDs off.
+- When no bar is drawn the flight director row disappears, as every other row does, never "not available" (Hadi's
+  ruling of 2026-11-02, with Robin's agreement, changing spec row 18). While the bars flash, the row ends ", flashing"
+  (Hadi's ruling, the same day): the bars' flash is shown, unlike flashing text (spec 2.6), once Task 3 has seen when
+  the Fenix sets it.
 - A flag is shown only once Task 2 or 3 measured what the PFD draws for it; an unmeasured flag is left out, never named
   by analogy with the real A320.
 - Nothing speaks until its in-sim checks pass. Task 8 is the switch commit (the index's "Shared conventions"): the
@@ -58,7 +69,13 @@ flags mean what); answers 1, 2, 5, 12.
 - A speed not drawn, NaN or absent (protobuf-net leaves 0 out), is "<name> not available", never "0 knots"; Shift+5
   turns to VSW only while VSW is a number (Task 5 `A_speed_not_drawn_is_not_available`,
   `Shift_5_reads_vsw_in_alternate_law_and_alpha_prot_otherwise`).
-- Comma-decimal PCs: pitch, inHg, deviation dots and rounding read the same under de-DE and sv-SE (Task 4
+- The flight director bars: a bar is spoken only while it is a number, the captain's FD is on (`FdOnCapt`), the
+  attitude is shown and no inhibit flag that covers it is set. NaN is never read as a position, an absent bar (0) reads
+  "centered", the flash adds ", flashing" only once Task 3 saw it set, and with no bar to speak there is no row at all,
+  flashing or not (Task 4 `The_flight_director_bars_read_where_they_are_drawn`, `Bars_that_are_not_drawn_leave_no_row`,
+  `The_flight_director_flash_reads_flashing`).
+- Comma-decimal PCs: pitch, inHg, deviation dots, the flight director bars and rounding read the same under de-DE and
+  sv-SE (Task 4
   `Rows_are_the_same_in_every_culture`, Task 5 `Speed_keys_are_the_same_in_every_culture`).
 
 ---
@@ -176,6 +193,13 @@ controls (press and release, [FNX-6]). Record each value, with the date and the 
   is blank exactly while the PFD draws nothing there, and the LS information and scales show only with LS on (Task 4
   gates them on `Ls` either way). A letter outside `FenixChannelText`'s list is recorded: it makes the window one status
   row.
+- [ ] **Step 5: Flight director.** "EFIS Left FD" and "EFIS Right FD" both off; Left on; Right on with Left off; both
+  on: at each, every member of field 110 beside a capture of the captain's attitude display. Then lined up on a runway
+  with its ILS tuned (MCDU RAD NAV) and both FDs on, and on a runway without one: 110.1, 110.3 and 110.4 beside a
+  capture. Expected: 110.5 and 110.6 follow the buttons, every bar is NaN while no mode is engaged (as at power-up), and
+  the captain's PFD draws no bar while 110.5 is false. Record whether a yaw bar is drawn on the runway and what 110.4
+  reads then and without it. A bar drawn while NaN, or none drawn while a number, is an outcome B: the owner rules
+  before Task 4.
 
 ### Task 3 [in flight]: Measure the PFD in flight
 
@@ -199,6 +223,23 @@ the raw fields, a capture at each point.
 - [ ] **Step 6: The other flags.** Every member of fields 93, 94, 96, 114, 115, 118, 120 and 122 seen set during the
   flight, with a capture of what the PFD draws while it is set. Each one measured joins the window in Task 4; the
   handoff lists the ones not measured.
+- [ ] **Step 7: Flight director.** Both FDs on throughout. The autopilot flies the FD's commands, so each bar is read
+  beside the attitude change the autopilot then makes: with AP1 on, a heading change of 30 degrees or more (HDG), 110.3
+  when the new heading is selected beside the change of PLANE BANK DEGREES that follows; the rotation in SRS and a
+  level-off (ALT*), 110.1 beside the change of PLANE PITCH DEGREES. A capture of the bars at each point. They set
+  `FdUnitWord` ("degrees" when the bar's value matches the attitude change in degrees), `FdPitchPositiveIsUp` (the
+  pitch bar above the aircraft symbol) and `FdRollPositiveIsRight` (the roll bar right of it). On the ILS approach
+  through FLARE to ROLL OUT: 110.1, 110.3 and 110.4 with captures; if a yaw bar is drawn on the roll-out, its side sets
+  `FdYawPositiveIsRight`. In cruise with AP1 on, "EFIS Left FD" off for a few seconds and on again: 110.5 and a capture
+  (expected: no bar on the captain's PFD while 110.5 is false). "FCU HDG/VS TRK/FPA" pressed to TRK/FPA for a minute
+  and back: 110.1 to 110.3, 110.7 and a capture of what the PFD draws in place of the bars. For the flash, which no
+  measurement has seen set yet: in OP CLB with AP1 on, an FCU altitude below the aircraft's selected (on the real A320
+  a reversion to V/S), then a level-off: 110.9 through the change, how long it stays set, and captures of the bars
+  while it is. Every member of 110.8 to 110.12 seen set during the flight, with a capture of what the bars do while it
+  is set. Outcome A: each bar's value
+  matches the attitude change in degrees, each sign holds through the flight, and each bar is NaN exactly while the PFD
+  does not draw it. B (another unit, a sign that flips, a bar drawn while NaN): the owner rules before Task 4, and until
+  then the row stays out of the window.
 
 ### Task 4: The PFD window's rows
 
@@ -209,14 +250,16 @@ the raw fields, a capture at each point.
 **Interfaces:**
 - Consumes: Task 1's `FenixChannelPfd`, `FenixPfdBaro`; `FenixChannelSnapshot`, `FenixChannelRows`,
   `FenixChannelSpeech.Line`, `FenixChannelFmaLayout.NameOf`, `.ColumnPhrase` and `.IsMessage`, `FenixFmaColumn`,
-  `FenixFmaSlot`, `FenixChannelFrame.Fma`; Tasks 2 and 3's evidence.
+  `FenixFmaSlot`, `FenixChannelFrame.Fma`, `FenixChannelFrame.Fd`, `FenixFdState`; Tasks 2 and 3's evidence.
 - Produces: `internal static class FenixChannelPfdRows` with `public const string Feature = "PFD"` (what
   `ReportFeatureProblem` logs under); `FenixChannelRows Compose(FenixChannelSnapshot snapshot, Action<string> reportProblem)`;
   `IReadOnlyList<string> FmaRows(IReadOnlyList<FenixFmaSlot> fma)`;
   `IReadOnlyList<(string Name, double Knots)> TapeSpeeds(FenixChannelPfd pfd)`;
   `string SpeedWords(string name, double knots)`; `string? BaroReference(FenixPfdBaro baro)`;
-  `string? Compass(double degrees)`; the measured constants `TapeFloorKnots`, `TrendShownKnots`, `VerticalSpeedToFeetPerMinute`,
-  `BankPositiveIsRight`, `LocDotsPositiveIsRight`, `GsDotsPositiveIsAbove`, `MetricStepMeters`; the flag rows
+  `string? Compass(double degrees)`; `string? FlightDirectorRow(FenixFdState fd, bool attitudeShown)`; the measured
+  constants `TapeFloorKnots`, `TrendShownKnots`, `VerticalSpeedToFeetPerMinute`, `BankPositiveIsRight`,
+  `LocDotsPositiveIsRight`, `GsDotsPositiveIsAbove`, `MetricStepMeters`, `FdUnitWord`, `FdPitchPositiveIsUp`,
+  `FdRollPositiveIsRight`, `FdYawPositiveIsRight`; the flag rows
   `SpeedFlag`, `AltitudeFlag`, `AttitudeFlag`, `HeadingFlag`, `VerticalSpeedFlag`, in Task 2's words, never a color (a
   row the app builds speaks none; expected "SPD flag", "ALT flag", "ATT flag", "HDG flag", "V/S flag"); a flag Task 2
   did not see is null, and its instrument's rows are then simply left out while its member reads false.
@@ -254,11 +297,23 @@ the raw fields, a capture at each point.
   7. While `AttitudeShown` (else `AttitudeFlag`): "Pitch 3.1 degrees up" (or "down", one place; "Pitch 0 degrees"),
      then ", wings level" (bank rounds to 0) or ", bank 25 degrees right" (or "left"; whole degrees; "1 degree" for 1).
      Plan 07's ISIS window words its attitude, airspeed, altitude and localizer rows the same way.
-  8. While `HeadingShown` (else `HeadingFlag`): "Heading 313, track 318", the frame's MagHeading and MagneticTrack
+  8. `FlightDirectorRow(frame.Fd, AttitudeShown)`: "Flight director: " and the bars drawn, joined by ", ": "pitch bar
+     2.5 degrees up" (or "down"), "roll bar 4 degrees left" (or "right"), then "yaw bar 1 degree left" (or "right")
+     only if Tasks 2 and 3 saw the yaw bar drawn exactly while 110.4 is a number. Each to one place as the pitch row
+     words it ("1 degree" for 1), "centered" when it rounds to 0, the unit word and sides from Task 3 Step 7's
+     constants. A bar is drawn while it is a number, `FdOnCapt` is set, `attitudeShown` is true (the bars sit on the
+     attitude display, which the ATT flag replaces) and no inhibit flag covers it: `FdInhibit` covers every bar,
+     `InhibitPitch` the pitch bar, `InhibitRoll` the roll bar, unless Task 3 measured another effect, which then
+     applies. While `FdFlash` is set the row ends ", flashing", only if Task 3 saw it set while the bars flashed (else
+     it is not read, and the handoff lists it); `RollGuidance` is not read unless Task 3 shows it decides whether the
+     roll bar is drawn. While `TrkFpa` is set the row follows Task 3 Step 7's capture:
+     what the PFD draws instead, in its words, or no row. Null, so no row, when no bar is drawn (the Global
+     Constraints' ruling), or under Task 3's outcome B until the owner rules.
+  9. While `HeadingShown` (else `HeadingFlag`): "Heading 313, track 318", the frame's MagHeading and MagneticTrack
      through `Compass` (whole degrees 001 to 360, three digits, north as 360, as plan 03's ND: 5.2 "005", 359.6 "360";
      null when not a number: the heading then reads "Heading not available", and the track's part is left out).
-  9. "Radio altitude " and the radio altitude text's speech, when not blank; "Minimums 200 feet" while minimums is set.
-  10. While `Ls`: "LS information: " and the ident, frequency and DME texts' speech joined by "; ", "Localizer 0.4 dots
+  10. "Radio altitude " and the radio altitude text's speech, when not blank; "Minimums 200 feet" while minimums is set.
+  11. While `Ls`: "LS information: " and the ident, frequency and DME texts' speech joined by "; ", "Localizer 0.4 dots
       right" (or "left"; "Localizer centered" at 0.0) and "Glideslope 0.5 dots above" (or "below"; "centered"), one
       place, the side the diamond is drawn on. Then "Approach labels: " and the three labels' speech joined by "; ",
       "Marker beacon: " and its speech, "LS flag: " and its speech.
@@ -266,7 +321,8 @@ the raw fields, a capture at each point.
   while it is set, in the PFD's own words with no color, right after the rows of the instrument it belongs to; its
   field joins `FenixChannelFields.Pfd.cs` and `FenixChannelPfd` here, checked as in Task 1 Step 6. A flag not measured
   is never shown (Global Constraints) and is listed in the handoff.
-  Tests: `A_cruise_pfd_reads_top_to_bottom` (Task 1's cruise with an empty FMA: "Airspeed 268 knots", "Speed target 268
+  Tests: `A_cruise_pfd_reads_top_to_bottom` (Task 1's cruise with an empty FMA and no field 110, so `Fd` is
+  `FenixFdState.Default` and there is no flight director row: "Airspeed 268 knots", "Speed target 268
   knots, managed", "VMAX 284 knots", "Green dot 237 knots", "VLS 232 knots", "Alpha prot 197 knots", "Mach .775,
   green", "Altitude 34011 feet, STD", "Vertical speed 0 feet per minute", "Pitch 3.1 degrees up, wings level", "Heading
   313, track 318"), `The_fma_reads_by_column` (plan 01's layout: slots 0 "gMACH", 1 "gALT!CRZ", 2 "gNAV", 4 "wAP1", 10
@@ -283,11 +339,21 @@ the raw fields, a capture at each point.
   with QnhInch 29.92 gives "QNH 29.92"; inHg with field 1.15 absent gives ", baro not read"; QFE gives ", baro not
   read"),
   `A_negative_heading_near_north_reads_as_a_compass_heading` (-1.44 gives "Heading 359", 359.6 "360", track -0.4
-  "360", 5.2 "005"), `Ils_lines_show_only_with_ls_on` (the same texts and dots with `Ls` false: no LS information or
+  "360", 5.2 "005"), `The_flight_director_bars_read_where_they_are_drawn` (with Task 3's signs: pitch 2.46 and roll
+  -4.04 with `FdOnCapt` give "Flight director: pitch bar 2.5 degrees up, roll bar 4 degrees left", written for
+  positive up and right and flipped to match Task 3; pitch 0, the field absent, gives "pitch bar centered"; the row
+  sits right after the attitude row), `Bars_that_are_not_drawn_leave_no_row` (both bars NaN with both FDs on; numbers
+  with `FdOnCapt` false and `FdOnFo` true; `FenixFdState.Default`; `attitudeShown` false, where the ATT flag row stays
+  as before; `FdInhibit` set: no flight director row in each; `InhibitPitch` set leaves only the roll bar's part,
+  `InhibitRoll` only the pitch bar's), `The_flight_director_flash_reads_flashing` (`FdFlash` set gives the row
+  ending ", flashing", cleared the same row without it, set with no bar drawn no row; if Task 3 never saw 110.9 set,
+  this is `The_flight_director_flash_is_not_read` instead: set and cleared give the same row),
+  `Ils_lines_show_only_with_ls_on` (the same texts and dots with `Ls` false: no LS information or
   deviation rows), `A_text_with_an_unknown_letter_is_one_status_row_and_is_reported` ("k.775" in 107),
   `A_wrong_shape_is_one_status_row_and_is_reported` ("field 28.5 has the wrong shape"),
   `Rows_are_the_same_in_every_culture` (de-DE and sv-SE: "Pitch 3.1 degrees up", "QNH 29.92", "Localizer 0.4 dots
-  right", "Altitude 34011 feet"). Commit: `feat(fenix-channel): the PFD window's rows`.
+  right", "Altitude 34011 feet", "Flight director: pitch bar 2.5 degrees up, roll bar 4 degrees left"). Commit:
+  `feat(fenix-channel): the PFD window's rows`.
 
 ### Task 5: The speed keys
 
@@ -348,7 +414,8 @@ the raw fields, a capture at each point.
 - [ ] **Step 1.** Under "PFD window and speed keys", in a few paragraphs: Alt+P opens the window only while the PFD's
   verdict is trusted (else the AI read, no words first), the "PFD" entry in the Fenix windows list, the rows and their
   fields (the captain's side, the FMA from the frame by column, heading and track from 194), the flag rule and why (an
-  ADR or IR failure leaves the gate trusted), the baro rule and why (never 105; an absent Qnh is 1013), the speed keys
+  ADR or IR failure leaves the gate trusted), the baro rule and why (never 105; an absent Qnh is 1013), the flight
+  director row (field 110 from the frame, when a bar counts as drawn, no row when none is), the speed keys
   and their words, the facts Tasks 2 and 3 measured, written out here (plan 12 deletes `docs/fenix-channel/`, so never a
   link to it), and the flags left out as unmeasured.
 - [ ] **Step 2.** Fill in "Handoff to plan 12" from the drafts below with what Tasks 2 and 3 found. Commit:
@@ -361,8 +428,8 @@ the raw fields, a capture at each point.
 
 **Interfaces:**
 - Produces: `static partial void AddChannelPfdWindows(List<FenixWindowEntry> entries)`: one entry, "PFD", "The
-  captain's PFD from the Fenix's own display data: FMA, speeds, altitude, attitude and heading", opening
-  `ctx.Definition.ShowChannelWindow(ctx.Announcer, "PFD", m => new FenixChannelPfdForm(m))`; and `ChannelPfdKey`, which
+  captain's PFD from the Fenix's own display data: FMA, speeds, altitude, attitude, flight director and heading",
+  opening `ctx.Definition.ShowChannelWindow(ctx.Announcer, "PFD", m => new FenixChannelPfdForm(m))`; and `ChannelPfdKey`, which
   sets `handled` to `AnswerChannelPfdKey(action, ctx)`. Nothing else is in this commit.
 
 - [ ] **Steps 1-5.** Tests: `The_pfd_window_is_listed_once_as_PFD` (`FenixWindowRegistry.Build()`),
@@ -387,6 +454,10 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
 - [ ] [in flight] The vertical speed row within 100 ft/min of SimConnect's in a climb and a descent; "bank ... right" in
   a right turn; "selected" in the target row after "FCU Speed Pull"; Shift+2, Shift+3 and Shift+6 matching their rows
   with flaps 1 to 3; the ILS rows' sides as Task 3's captures; the radio altitude row below 2,500 ft.
+- [ ] [in flight] The flight director row: with both FDs on and a mode engaged, its sides match a capture in a climb
+  and in a turn; "EFIS Left FD" off removes the row within 2 s and on brings it back; with both FDs off, and on the
+  ground with no mode engaged, there is no flight director row. If Task 3 saw the flash: the reversion it used makes
+  the row end ", flashing" while the bars flash, and the word goes when they stop.
 - [ ] Last, power down (external power and batteries off) with the window open: one row "PFD: not available, display
   off"; output Alt+P gives the AI read with no words first; Shift+1 says "Green dot not available".
 - [ ] Through the whole session `fenix_channel.log` holds no line starting "PFD: ".
@@ -409,7 +480,8 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
   Read PFD: a live window of the captain's PFD when the display channel can read it, else the AI read", and output
   "Shift+1 Green dot", "Shift+2 S speed", "Shift+3 F speed", "Shift+4 VLS", "Shift+5 Alpha prot or VSW", "Shift+6 VFE
   next". Changelog, `feature`: "Fenix A320: Alt+P opens a live window of the captain's PFD, read from the Fenix's own
-  display data, and Shift+1 to Shift+6 read the speed tape: green dot, S, F, VLS, alpha prot or VSW, and VFE next."
+  display data, flight director bars included, and Shift+1 to Shift+6 read the speed tape: green dot, S, F, VLS,
+  alpha prot or VSW, and VFE next."
 - **Proposed rules** (`.claude/rules/fenix-channel.md`):
   - `- [FNX-?] The Fenix PFD window and Shift+1-6 show a value only while the captain's PFD draws it: an instrument whose availability member (field 46) reads false shows its flag instead (the gate stays trusted then, since 194 and 197 still agree), and a speed that is NaN or absent is "not available", never 0. Full: docs/invariants/fenix-channel.md#fnx-?`
     Full text: Task 2 Step 3's ADR and IR measurements; protobuf-net leaves a 0 out, and 0 is no speed.
@@ -417,8 +489,12 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
     Full text: Task 2 Step 1's comparison with the Fenix's own baro L:vars and KOHLSMAN, and QnhInch for inches.
   - `- [FNX-?] A PFD flag joins the Fenix PFD window (FenixChannelPfdRows' flag rows) only after a capture in the sim showed what the PFD draws for it; an unmeasured flag is left out, never named by analogy with the real A320. Full: docs/invariants/fenix-channel.md#fnx-?`
     Full text: the flags measured and those left out (Task 3 Step 6).
-- **Flags not measured:** each member of fields 93, 94, 96, 114, 115, 118, 120 and 122 that Tasks 2 and 3 did not
-  measure, so the window never shows it; plan 12 lists them as follow-ups.
+  - `- [FNX-?] The Fenix PFD window's flight director row (FenixChannelPfdRows.FlightDirectorRow, field 110 from the frame) speaks a bar only while it is a number, FdOnCapt is set, the attitude is shown and no inhibit flag covers it; NaN is a bar not drawn, an absent bar (0) is centered, with no bar drawn there is no row, and FdFlash adds "flashing". Full: docs/invariants/fenix-channel.md#fnx-?`
+    Full text: Task 2 Step 5's and Task 3 Step 7's measurements (the unit, the signs, the yaw bar, TRK/FPA, each flag's
+    effect, when the flash is set); the row and its "flashing" were added on 2026-11-02 by Hadi, with Robin's
+    agreement.
+- **Flags not measured:** each member of fields 93, 94, 96, 114, 115, 118, 120 and 122, and of 110.8 to 110.12, that
+  Tasks 2 and 3 did not measure, so the window never shows it; plan 12 lists them as follow-ups.
 - **Requests for frozen files:** none.
 - **Also seen on:** none.
 
