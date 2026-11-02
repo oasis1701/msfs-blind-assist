@@ -22,7 +22,7 @@ internal enum FenixChannelState
     /// <summary>
     /// The Fenix refused the client (grpc-status 7 or 16, or HTTP 401 or 403, which gRPC maps to them). The client
     /// ends that call for the session and never tries to get past the refusal: if the Fenix adds a key, that is
-    /// the Fenix's decision.
+    /// the Fenix's decision. The monitor then stops the other call too: a refusal ends the channel ([FNX-21]).
     /// </summary>
     Refused
 }

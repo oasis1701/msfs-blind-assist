@@ -14,10 +14,12 @@
 // The rules the monitor keeps: each connection of the data call starts the gate fresh, then gives it the last
 // ECAM entries message again, then asks for the build, and a build answer belongs to its connection only; each
 // connection clears the latest frame, and neither an empty push nor a damaged one replaces it; a snapshot gives a
-// display's verdict and the latest frame from one instant; after Dispose every callback is ignored, and Dispose itself
-// writes "channel stopped" once, as the last line of the log; "display data: connected" is written with the
-// first message, not the headers, and a failure that repeats is written once until a message arrives; a
-// verdict is written when its Trusted or its headline (the text before the first colon) changes.
+// display's verdict and the latest frame from one instant; a refusal of either call ends the channel (both calls
+// stop, every display reads the refusal, and every later callback is ignored); after Dispose every callback is
+// ignored, and Dispose itself writes "channel stopped" once, as the last line of the log; "display data:
+// connected" is written with the first message, not the headers, and a failure that repeats is written once until
+// a message arrives; a verdict is written when its Trusted or its headline (the text before the first colon)
+// changes.
 //
 // Timing: every wait for something to happen is a poll with a 5 s limit. The short pauses (Quiet) only prove that
 // nothing MORE happens, so a slow machine can make them pass trivially but never fail.
@@ -114,6 +116,29 @@ internal static class MonitorTestKit
            && monitor.VerdictFor(FenixChannelDisplay.Ewd).Trusted
            && monitor.VerdictFor(FenixChannelDisplay.Sd).Trusted;
 
+    /// <summary>Asserts every display's verdict.</summary>
+    public static void AssertEveryDisplay(FenixChannelMonitor monitor, FenixDisplayVerdict expected)
+    {
+        var displays = new[] { FenixChannelDisplay.Pfd, FenixChannelDisplay.Ewd, FenixChannelDisplay.Sd };
+        foreach (FenixChannelDisplay display in displays)
+        {
+            Assert.Equal(expected, monitor.VerdictFor(display));
+        }
+    }
+
+    /// <summary>
+    /// The reason in the one refused line of <paramref name="call"/> ("display data" or "ECAM entries"),
+    /// "&lt;call&gt;: refused (&lt;reason&gt;); stopped for this session".
+    /// </summary>
+    public static string RefusalIn(Lines lines, string call)
+    {
+        string prefix = call + ": refused (";
+        const string Suffix = "); stopped for this session";
+        string line = Assert.Single(lines.Starting(prefix));
+        Assert.EndsWith(Suffix, line, StringComparison.Ordinal);
+        return line[prefix.Length..^Suffix.Length];
+    }
+
     /// <summary>SimConnect's side of the five comparisons, agreeing with <see cref="GoodPush"/> at that altitude.</summary>
     public static void AgreeWithGoodPush(FenixChannelMonitor monitor, double altitude = 1000)
     {
@@ -207,9 +232,10 @@ internal static class MonitorTestKit
     }
 
     /// <summary>
-    /// An answer of the data call that the test feeds by hand: <see cref="SendAsync"/> adds messages to the open
-    /// stream whenever it likes and <see cref="End"/> ends it with no trailers, as a cut connection does. The
-    /// fake's own streams give all their frames at once, so they cannot send one after something else happened.
+    /// An answer of either call that the test feeds by hand: <see cref="SendAsync"/> adds messages to the open
+    /// stream whenever it likes and <see cref="End"/> ends it, with no trailers, as a cut connection does, or with
+    /// a grpc-status in them, as the service ends a call. The fake's own streams give all their frames at once, so
+    /// they cannot send one after something else happened.
     /// </summary>
     internal sealed class OpenStream
     {
@@ -233,7 +259,21 @@ internal static class MonitorTestKit
             }
         }
 
-        public void End() => _pipe.Writer.Complete();
+        /// <summary>
+        /// Ends the stream. With <paramref name="grpcStatus"/>, the trailers carry it, as they do behind a call's
+        /// last message (16 or 7 is a refusal); without it there are none, as on a cut connection.
+        /// </summary>
+        public void End(int? grpcStatus = null)
+        {
+            // Before the end: the client reads the trailers only once the body has ended.
+            if (grpcStatus is int status)
+            {
+                Response.TrailingHeaders.TryAddWithoutValidation(
+                    "grpc-status", status.ToString(CultureInfo.InvariantCulture));
+            }
+
+            _pipe.Writer.Complete();
+        }
     }
 
     /// <summary>
@@ -973,6 +1013,100 @@ public class FenixChannelMonitorTests
                 "ECAM entries: refused (the Fenix refused it); stopped for this session"
             },
             lines.Starting("ECAM entries:"));
+    }
+
+    // ---- A refusal ends the channel -------------------------------------------------------------
+
+    [Fact]
+    public async Task A_refusal_of_the_data_call_stops_the_ecam_entries_call_too()
+    {
+        // A refusal ends the channel for the session ([FNX-21]), not only the call refused: the monitor stops the
+        // client, so the other call is dropped too, neither asks again, and every display reads the refusal.
+        var server = new ChannelServer();
+        var data = new OpenStream();
+        var ecam = new OpenStream();
+        server.Data.Enqueue(() => data.Response);
+        server.Ecam.Enqueue(() => ecam.Response);
+        var lines = new Lines();
+        using var monitor = NewMonitor(server, lines);
+        monitor.Start();
+        await data.SendAsync(GoodPush());
+        await WaitUntil(() => lines.All.Contains("display data: connected"), "the data call to connect", lines);
+        await WaitUntil(() => lines.All.Contains("ECAM entries: connected"), "the ECAM entries call to connect", lines);
+
+        data.End(grpcStatus: 16);   // the refusal, in the trailers behind the messages
+
+        await ecam.Response.Disposed.WaitAsync(Generous);   // the call that was not refused is dropped
+        await Task.Delay(Quiet);                             // and neither call asks again
+        Assert.Single(server.Data.Requests);
+        Assert.Single(server.Ecam.Requests);
+
+        string refusal = RefusalIn(lines, "display data");
+        Assert.Contains("grpc-status 16", refusal);
+        Assert.Empty(lines.Starting("ECAM entries: refused"));
+        AssertEveryDisplay(monitor, new FenixDisplayVerdict(false, $"channel not answering: {refusal}"));
+    }
+
+    [Fact]
+    public async Task A_refusal_of_the_ecam_entries_call_stops_the_data_call_too()
+    {
+        // The other way round: no verdict depends on the ECAM entries call, but its refusal is the Fenix saying no
+        // to the client, and the channel ends with it, the streaming data call included.
+        var server = new ChannelServer();
+        var data = new OpenStream();
+        var ecam = new OpenStream();
+        server.Data.Enqueue(() => data.Response);
+        server.Ecam.Enqueue(() => ecam.Response);
+        var lines = new Lines();
+        using var monitor = NewMonitor(server, lines);
+        monitor.Start();
+        await data.SendAsync(GoodPush());
+        await WaitUntil(() => lines.All.Contains("display data: connected"), "the data call to connect", lines);
+        await WaitUntil(() => lines.All.Contains("ECAM entries: connected"), "the ECAM entries call to connect", lines);
+
+        ecam.End(grpcStatus: 7);
+
+        await data.Response.Disposed.WaitAsync(Generous);
+        await Task.Delay(Quiet);
+        Assert.Single(server.Data.Requests);
+        Assert.Single(server.Ecam.Requests);
+
+        string refusal = RefusalIn(lines, "ECAM entries");
+        Assert.Contains("grpc-status 7", refusal);
+        Assert.Empty(lines.Starting("display data: refused"));
+        AssertEveryDisplay(monitor, new FenixDisplayVerdict(false, $"channel not answering: {refusal}"));
+    }
+
+    [Fact]
+    public async Task After_a_refusal_every_callback_of_the_client_is_ignored()
+    {
+        // A callback already under way when the client stopped may still arrive: none may reach the gate, the
+        // log, the latest frame or the build query. A late "connected" would otherwise start the gate fresh.
+        var lines = new Lines();
+        var queries = new BuildQueries();
+        using var monitor = NewIdleMonitor(lines, queries.Read);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        monitor.OnDataMessage(GoodPush(1000));
+        await WaitUntil(() => queries.Asked == 1, "the build query", lines);
+
+        monitor.OnEcamState(FenixChannelState.Refused, "no key");
+
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        monitor.OnDataMessage(GoodPush(2000));
+        monitor.OnDataState(FenixChannelState.NotAnswering, "late");
+        monitor.OnDataState(FenixChannelState.Refused, "again");
+        monitor.OnEcamState(FenixChannelState.Connected, "");
+        monitor.OnEcamMessage(WrongShapedEntries());
+        monitor.OnEcamState(FenixChannelState.Refused, "again");
+        queries.Answer(0, CheckedBuild);   // the build loop of the connection the refusal ended
+        await Task.Delay(Quiet);
+
+        Assert.Equal(
+            new[] { "display data: connected", "ECAM entries: refused (no key); stopped for this session" },
+            lines.All);
+        AssertEveryDisplay(monitor, new FenixDisplayVerdict(false, "channel not answering: no key"));
+        Assert.Equal(1000, monitor.Latest?.Altitude);
+        Assert.Equal(1, queries.Asked);
     }
 
     // ---- Start and Dispose ----------------------------------------------------------------------

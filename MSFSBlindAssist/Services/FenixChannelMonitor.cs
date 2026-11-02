@@ -32,10 +32,18 @@ namespace MSFSBlindAssist.Services;
 /// comparison pairs. Dispose writes one more, "channel stopped", the last line the log ever gets (the in-sim
 /// check that an aircraft switch ended the channel reads it). A data call that opens and says nothing is dropped
 /// and asked again for hours, so "connected" is written with the first message and not with the response
-/// headers, and a failure is written only when it differs from the last one written since a message arrived:
-/// otherwise each try would write two lines. The ECAM entries call has no such cycle (nothing limits its
-/// silence), so its "connected" is written with its headers, but its failures follow the same rule. This class
-/// formats no number itself: the pairs come from the gate in the invariant culture.</para>
+/// headers, and a call that is not answering is written only when its reason differs from the last one written
+/// since a message arrived: otherwise each try would write two lines. The ECAM entries call has no such cycle
+/// (nothing limits its silence), so its "connected" is written with its headers, but its failures to answer follow
+/// the same rule. A refusal is written once, since it ends the channel (below). This class formats no number
+/// itself: the pairs come from the gate in the invariant culture.</para>
+/// <para>A refusal of either call (grpc-status 7 or 16, or HTTP 401 or 403, which the client reports as
+/// <see cref="FenixChannelState.Refused"/>) ends the channel for the session ([FNX-21]), not only the call refused:
+/// the gate is told the channel is not answering, with the refusal as the reason, so every display reads "channel
+/// not answering: &lt;the refusal&gt;" and falls back to the AI read; the build loop ends; "&lt;call&gt;: refused
+/// (&lt;reason&gt;); stopped for this session" is written once; and the client is disposed, so the other call stops
+/// too and neither asks again. Every callback of the client after it is ignored, as after Dispose. The tick goes
+/// on, so the log still gets the verdicts' change, and Dispose still writes "channel stopped" last.</para>
 /// <para>After <see cref="Dispose"/> every callback of the client is ignored (it may deliver one that was
 /// already under way): no gate call, no log line, no change to <see cref="Latest"/>. Dispose takes no lock and
 /// waits for nothing, so it is safe on the UI thread; the one line it writes is the log's own non-blocking
@@ -101,6 +109,7 @@ internal sealed class FenixChannelMonitor : IDisposable
     private readonly HashSet<string> _problems = new(StringComparer.Ordinal);
 
     private int _started;
+    private int _refused;   // 1 once either call was refused: the channel is over for the session ([FNX-21])
     private int _disposed;
 
     /// <param name="readBuild">Asks the Fenix for its build, for example <c>FenixDataService.GetSoftwareVersionAsync</c>:
@@ -143,6 +152,9 @@ internal sealed class FenixChannelMonitor : IDisposable
     private static long Now => Environment.TickCount64;
 
     private bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+    // True once no callback of the client is heard any more: after a refusal of either call, and after Dispose.
+    private bool IsStopped => IsDisposed || Volatile.Read(ref _refused) != 0;
 
     /// <summary>
     /// The latest display frame the gate took values from, swapped in whole; null before the first frame of a
@@ -271,17 +283,18 @@ internal sealed class FenixChannelMonitor : IDisposable
 
     // ---- The client's callbacks -----------------------------------------------------------------
     // Internal rather than private so a test can deliver a state or a message at an exact moment, twice in a
-    // row, or after Dispose, which a real stream will not do.
+    // row, or after a refusal or Dispose, which a real stream will not do. After either, each one returns at once.
 
     /// <summary>The data call changed state. The client reports each change once, on a pool thread.</summary>
     internal void OnDataState(FenixChannelState state, string text)
     {
-        if (IsDisposed) return;
+        if (IsStopped) return;
 
         CancellationTokenSource? ended = null;
+        bool refused = false;
         lock (_lock)
         {
-            if (IsDisposed) return;
+            if (IsStopped) return;
 
             switch (state)
             {
@@ -305,24 +318,25 @@ internal sealed class FenixChannelMonitor : IDisposable
                     break;
 
                 case FenixChannelState.Refused:
-                    ended = DataCallDown(text);
-                    WriteFailure(ref _lastDataFailure, $"display data: refused ({text}); stopped for this session");
+                    ended = Refuse("display data", text);
+                    refused = true;
                     break;
             }
         }
 
         Cancel(ended);
+        if (refused) StopClient();
     }
 
     /// <summary>One message of the data call: decoded outside the lock, fed to the gate under it.</summary>
     internal void OnDataMessage(byte[] message)
     {
-        if (IsDisposed) return;
+        if (IsStopped) return;
 
         FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(message);
         lock (_lock)
         {
-            if (IsDisposed) return;
+            if (IsStopped) return;
 
             // A message shows the call works, which the headers do not: only now is "connected" news, and a
             // failure that follows is news again even if it reads like the last one.
@@ -342,16 +356,18 @@ internal sealed class FenixChannelMonitor : IDisposable
     }
 
     /// <summary>
-    /// The ECAM entries call changed state. Only the log hears of it: no verdict depends on this call being
-    /// connected until a read uses it.
+    /// The ECAM entries call changed state. Only the log hears of its connection: no verdict depends on this call
+    /// being connected until a read uses it. Its refusal ends the whole channel, as one of the data call does.
     /// </summary>
     internal void OnEcamState(FenixChannelState state, string text)
     {
-        if (IsDisposed) return;
+        if (IsStopped) return;
 
+        CancellationTokenSource? ended = null;
+        bool refused = false;
         lock (_lock)
         {
-            if (IsDisposed) return;
+            if (IsStopped) return;
 
             switch (state)
             {
@@ -362,10 +378,14 @@ internal sealed class FenixChannelMonitor : IDisposable
                     WriteFailure(ref _lastEcamFailure, $"ECAM entries: not answering ({text})");
                     break;
                 case FenixChannelState.Refused:
-                    WriteFailure(ref _lastEcamFailure, $"ECAM entries: refused ({text}); stopped for this session");
+                    ended = Refuse("ECAM entries", text);
+                    refused = true;
                     break;
             }
         }
+
+        Cancel(ended);
+        if (refused) StopClient();
     }
 
     /// <summary>
@@ -374,12 +394,12 @@ internal sealed class FenixChannelMonitor : IDisposable
     /// </summary>
     internal void OnEcamMessage(byte[] message)
     {
-        if (IsDisposed) return;
+        if (IsStopped) return;
 
         FenixEcamEntries entries = FenixChannelDecoder.DecodeEcamEntries(message);
         lock (_lock)
         {
-            if (IsDisposed) return;
+            if (IsStopped) return;
 
             _lastEcamFailure = null;
             _lastEntries = entries;
@@ -452,6 +472,29 @@ internal sealed class FenixChannelMonitor : IDisposable
         _ => display.ToString()
     };
 
+    // ---- A refusal ------------------------------------------------------------------------------
+
+    // A refusal of either call ends the channel for the session ([FNX-21]): from here on no callback of the client
+    // is heard; the gate is told the channel is not answering, with the refusal as the reason, so every display
+    // reads "channel not answering: <the refusal>"; the build loop ends; and the refusal is written once, the last
+    // line either call gives the log. The caller then stops the client (StopClient) once the lock is released, so
+    // the other call stops too. Called with the lock held; returns the build loop to cancel.
+    private CancellationTokenSource? Refuse(string call, string text)
+    {
+        Volatile.Write(ref _refused, 1);
+        _dataConnected = false;
+        _trust.OnDisconnected(text);
+        Write($"{call}: refused ({text}); stopped for this session");
+        return EndBuildLoop();
+    }
+
+    // Ends both calls at once: the client drops its streams and asks again for neither. Its Dispose never throws,
+    // takes no lock and waits for nothing; the monitor's own Dispose calls it again later, which does nothing.
+    private void StopClient()
+    {
+        try { _client.Dispose(); } catch (Exception) { }
+    }
+
     // ---- The build ------------------------------------------------------------------------------
 
     // The data call is down: no display is trusted until it connects again, and the build loop of the connection
@@ -511,8 +554,8 @@ internal sealed class FenixChannelMonitor : IDisposable
         }
         catch (Exception) when (ct.IsCancellationRequested)
         {
-            // Ended by a newer connection, a disconnect or Dispose: whatever the query threw on its way out is of
-            // no interest.
+            // Ended by a newer connection, a disconnect, a refusal or Dispose: whatever the query threw on its way
+            // out is of no interest.
         }
         catch (Exception ex)
         {
@@ -539,9 +582,10 @@ internal sealed class FenixChannelMonitor : IDisposable
     {
         lock (_lock)
         {
-            // An answer belongs to the connection that asked: after a newer connection, a disconnect or Dispose it
-            // is no news, and must not reach the gate, where it would stand for a build the channel no longer runs.
-            if (IsDisposed || generation != _generation) return;
+            // An answer belongs to the connection that asked: after a newer connection, a disconnect, a refusal or
+            // Dispose it is no news, and must not reach the gate, where it would stand for a build the channel no
+            // longer runs.
+            if (IsStopped || generation != _generation) return;
 
             _trust.OnBuild(build);
             Write(_verifiedBuilds.Contains(build)
