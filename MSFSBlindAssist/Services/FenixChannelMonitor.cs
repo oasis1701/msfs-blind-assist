@@ -13,9 +13,9 @@ namespace MSFSBlindAssist.Services;
 /// <para>Threads. A call's messages and states arrive on the client's pool threads, comparison values, the light
 /// switch and reads on the UI thread, and the tick on a pool thread. One lock guards the gate and every field that
 /// decides what the log says, so a verdict is always read from one whole state, and the log's lines come out in the
-/// order the gate saw its events. Nothing under the lock waits for anything. A message is decoded before the lock is taken and fed
-/// under it. The latest frame is swapped in whole, and a snapshot reads it under the same lock as the verdict, so a
-/// reader never sees half of a frame, nor a frame beside a verdict the gate gave on another one.
+/// order the gate saw its events. Nothing under the lock waits for anything. A message is decoded before the lock
+/// is taken and fed under it. The latest frame is swapped in whole, and a snapshot reads it under the same lock as
+/// the verdict, so a reader never sees half of a frame, nor a frame beside a verdict the gate gave on another one.
 /// Nothing here throws at a caller, speaks or touches a control, as with <see cref="FenixDataService"/>; every
 /// clock reading is <see cref="Environment.TickCount64"/>, so the gate compares times from one source.</para>
 /// <para>Each connection of the data call does three things, in this order, under the lock. The gate starts fresh,
