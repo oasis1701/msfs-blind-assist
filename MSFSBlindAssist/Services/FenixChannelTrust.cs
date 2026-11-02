@@ -330,8 +330,10 @@ internal sealed class FenixChannelTrust
     /// spans a call shows in the next line ("SimConnect: 1 value, longest gap 6.0 s"). "no gap" when the period has
     /// no arrival ("SimConnect: 0 values, no gap"), or its only arrival is the first ever ("SimConnect: 1 value, no
     /// gap"). The gate treats an old SimConnect value as unchanged, so a long gap (a UI stall in a turn) could become
-    /// a false disagreement: this is how a flight measures it. Side effect: each call starts a new period, so the next
-    /// call counts only what arrives after this one; the time of the last arrival carries over.
+    /// a false disagreement: this is how a flight measures it. A value is delivered only when it changes ([SIM-7]),
+    /// so a long gap is a stall only while a compared value is moving (the heading in a turn, the fuel with the
+    /// engines running); parked, or cold and dark, long gaps are normal. Side effect: each call starts a new period,
+    /// so the next call counts only what arrives after this one; the time of the last arrival carries over.
     /// </summary>
     public string DescribeSimDeliveries()
     {

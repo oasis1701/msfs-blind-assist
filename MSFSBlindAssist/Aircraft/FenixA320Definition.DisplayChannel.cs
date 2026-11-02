@@ -61,7 +61,12 @@ public partial class FenixA320Definition
     // 2 Test). The light test lights both FD lamps whatever the FD buttons say (they read exactly 1 with both FDs
     // off, measured 2026-11-02), while the channel's FD flags follow the buttons, so the gate keeps both FD checks
     // waiting while the switch reads Test. The Fenix's own key for the switch (the Lighting panel's control) is on
-    // request, so this is the only batched copy of the name ([VAR-7]), and it rides the same batch as the lamps.
+    // request, so this is the only batched copy of the name ([VAR-7]). The batch is sorted by name, 300 vars to a
+    // batch, so the lamps and the switch come in separate batch messages each second, in an order and with a gap
+    // nothing pins (in practice milliseconds apart, read by the same message loop). A frame between the lamps and
+    // the switch can start an "FD ... disagrees" that stays in force through the test, and it never latches while
+    // that gap stays under MismatchHoldMs. There is no grace period (ruled 2026-11-02; the in-sim re-test of that
+    // day logged no line at all during a 35 s test).
     //
     // All four keep the DEFAULT ChangeTolerance, never a wider one ([SIM-7]): the gate treats the last value
     // SimConnect delivered as the current one, so a tolerance wider than a second's drift would leave a slowly

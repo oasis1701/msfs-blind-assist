@@ -411,9 +411,12 @@ internal static class FenixChannelDecoder
 
         // A repeated varint (a bool or an enum list), in either form protobuf gives it: unpacked, one varint field per
         // entry, as the Fenix sends it, or packed, every entry back to back in one length-delimited value. Both encode
-        // the same contract, so both are its shape; a fixed64 or fixed32 is not. Each entry is added in the order it
-        // came. A packed list is walked with a reader of its own to its end, and bytes in it that are not whole
-        // varints make the message malformed.
+        // the same contract, so both are its shape; a fixed64 or fixed32 is not, and only such a reshape is caught
+        // here: a string, bytes or message shares wire type 2 with the packed form, so a field reshaped into one of
+        // them can read as packed varints. The build check (FNX-23) covers that, and such a misread can only make a
+        // display read live, never weaken another check. Each entry is added in the order it came. A packed list is
+        // walked with a reader of its own to its end, and bytes in it that are not whole varints make the message
+        // malformed.
         public bool Varints(List<ulong> target)
         {
             if (_type == FenixWireType.Varint)
