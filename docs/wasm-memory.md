@@ -612,12 +612,16 @@ Recorded in the build's ledger, each a ruling the in-sim test checks:
 The MSFS 2020 `737NG3.wasm` is an older build of PMDG's code, with its own layout file. Two things differ for
 the ND there:
 
-- **The VOR/ADF pointers and POS are not read.** PMDG's 2020 code copies each receiver's radial without
-  correcting it by the station's variation, and `NdPosFields` has no way to say "no correction"
-  (`ModuleNavDisplaySampler` always applies it). Their row says "Pointers and POS: not read: PMDG file not
-  recognised".
+- **POS prints the VOR radial uncorrected.** PMDG's 2020 code copies each receiver's radial as the simulator
+  gives it, without the station's variation correction the 2024 code applies. Its layout says so with a null
+  `NdPosFields.StationCorrection`, and `ModuleNavDisplaySampler` then leaves the radial as it is. A 2024
+  layout always has the correction, so its reading is unchanged.
 - **The VDEV row also waits for the perf info's path byte**, which PMDG's 2020 VDEV doesn't test (its phase test
   is the same as 2024's, made in `updateVars`). Where they differ, the row is missing, never wrong.
+
+The 2020 layout file holds `"stationCorrection": null`, which an app without the nullable field refuses. So the
+public change has to be in public main before that file goes on the layouts branch, or the next preview build
+stops at bundling the display layouts.
 
 ### Seen live, and not yet
 

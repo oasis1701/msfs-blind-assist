@@ -217,6 +217,20 @@ public class Pmdg737NavDisplayPointerTests
     }
 
     [Fact]
+    public void A_vor_line_s_radial_is_not_corrected_when_the_layout_has_no_correction()
+    {
+        // The MSFS 2020 file prints the simulator's radial as it is: its layout has no correction field.
+        var m = PosOn();
+        uint vor = M.Sim + (uint)L.Tuned.Stations;
+        m.D(vor + (uint)P.Pos.StationCorrection!.Value, 2.5);
+        var at = M.Destination(M.AircraftLatitude, M.AircraftLongitude, 5, 107.9);
+        m.Position(vor + (uint)L.Tuned.Position, at.LatitudeDeg, at.LongitudeDeg, variationDeg: -3);
+        var uncorrected = L with { Pointers = P with { Pos = P.Pos with { StationCorrection = null } } };
+        var rows = T.Lines(m.Read(uncorrected), uncorrected).Where(r => r.Contains(" line", StringComparison.Ordinal)).ToList();
+        Assert.Contains("Map: VOR 1 line toward CAS, R-090, 30° right", rows);
+    }
+
+    [Fact]
     public void A_vor_line_is_labelled_by_its_receiver_on_the_inboard_map()
     {
         var m = PosOn();
