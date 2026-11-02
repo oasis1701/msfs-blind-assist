@@ -51,12 +51,13 @@ internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDe
 /// trusted.</para>
 /// <para>A disagreement untrusts its display, and stays in force until a message agrees or the channel
 /// reconnects. A value that is missing makes the check wait: SimConnect has not delivered it, an FD light reads
-/// neither 0 nor 1, a channel value is not finite, or the FOB text is not a whole number of KG or LBS. Waiting
-/// neither passes nor fails and does not end a disagreement, and a check that passed before with none in force
-/// still counts as passed. Once a disagreement has lasted <see cref="MismatchHoldMs"/> without a break it
-/// latches until reconnect. A waiting value is a break, and so is a stall of the stream (a data message more
-/// than <see cref="StreamStaleMs"/> after the one before it): either one only restarts that count. An unknown
-/// text code untrusts a display too but never latches: it is an exact condition, not a noisy one.</para>
+/// neither 0 nor 1 or the annunciator light test is on (<see cref="OnLightTest"/>), a channel value is not finite,
+/// or the FOB text is not a whole number of KG or LBS. Waiting neither passes nor fails and does not end a
+/// disagreement, and a check that passed before with none in force still counts as passed. Once a disagreement
+/// has lasted <see cref="MismatchHoldMs"/> without a break it latches until reconnect. A waiting value is a break,
+/// and so is a stall of the stream (a data message more than <see cref="StreamStaleMs"/> after the one before it):
+/// either one only restarts that count. An unknown text code untrusts a display too but never latches: it is an
+/// exact condition, not a noisy one.</para>
 /// <para>Not thread-safe: the monitor locks around every call.</para>
 /// </remarks>
 internal sealed class FenixChannelTrust
@@ -123,6 +124,10 @@ internal sealed class FenixChannelTrust
     // not changed).
     private readonly double[] _sim = Missing();
     private readonly long[] _simAtMs = new long[ComparisonCount];
+
+    // SimConnect's too: whether the annunciator light test is on (OnLightTest). Kept across reconnects for the same
+    // reason: a switch that stays at Test is not delivered again.
+    private bool _lightTest;
 
     // Everything below belongs to one connection: OnConnected replaces it.
     private bool _connected;
@@ -246,6 +251,15 @@ internal sealed class FenixChannelTrust
             _simAtMs[index] = nowMs;
         }
     }
+
+    /// <summary>
+    /// Whether the annunciator light test is on, from SimConnect's light switch. The test lights both FD lamps
+    /// whatever the FD buttons say, while the channel's FD flags follow the buttons, so while it is on both FD checks
+    /// wait: the test's lamp is never a disagreement, a check that passed stays passed, and, as for any waiting
+    /// value, a disagreement already in force stays in force and its hold clock restarts. No other check is touched.
+    /// Kept across reconnects, as SimConnect's values are.
+    /// </summary>
+    public void OnLightTest(bool testing) => _lightTest = testing;
 
     /// <summary>
     /// Whether <paramref name="display"/> may be read at <paramref name="nowMs"/>, and the first reason it
@@ -433,11 +447,12 @@ internal sealed class FenixChannelTrust
         check.Recent.RemoveRange(0, stale);
     }
 
-    // Either value is missing (SimConnect has not delivered it, or a value is not finite), or an FD light reads
-    // anything but exactly 0 or 1 (the annunciator light test, for one).
-    private static bool IsWaiting(FenixComparison kind, double channel, double sim) =>
+    // Either value is missing (SimConnect has not delivered it, or a value is not finite), or an FD light says
+    // nothing about its flight director: it reads anything but exactly 0 or 1, or the annunciator light test is on,
+    // which lights both lamps whatever the FD buttons say.
+    private bool IsWaiting(FenixComparison kind, double channel, double sim) =>
         !double.IsFinite(channel) || !double.IsFinite(sim)
-        || (kind is FenixComparison.FdLightCapt or FenixComparison.FdLightFo && sim != 0 && sim != 1);
+        || (kind is FenixComparison.FdLightCapt or FenixComparison.FdLightFo && (_lightTest || (sim != 0 && sim != 1)));
 
     // Both values present, and within the tolerance.
     private static bool Agrees(FenixComparison kind, double channel, double sim) => kind switch

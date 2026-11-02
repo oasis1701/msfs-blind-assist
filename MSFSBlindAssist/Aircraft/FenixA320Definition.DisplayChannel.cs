@@ -4,8 +4,9 @@ namespace MSFSBlindAssist.Aircraft;
 // The channel is the Fenix's local display feed on 127.0.0.1:18083, read only. Services/FenixChannelMonitor.cs
 // owns one session of it: it decodes what comes and decides, display by display, whether that can be trusted. It
 // never speaks and never touches a control. This partial gives the monitor its home and its inputs: Start and
-// Stop beside the cabin's, the three SimConnect values its cross-checks need, the peek that hands it the five
-// comparison values as they arrive, and the first look at a display key (the fallback switch, FenixChannelReads).
+// Stop beside the cabin's, the three SimConnect values its cross-checks need and the annunciator light switch that
+// pauses its FD checks, the peek that hands it the five comparison values and the light switch as they arrive, and
+// the first look at a display key (the fallback switch, FenixChannelReads).
 // Nothing a pilot hears changes: FenixChannelReads.All is empty, so every display key still gives its AI read.
 public partial class FenixA320Definition
 {
@@ -56,7 +57,13 @@ public partial class FenixA320Definition
     // At power-up that was 1013 against an actual 1028.8 hPa, and the indicated altitude fell from 364 to -65 ft:
     // compared with it, a normal power-up latched the PFD (2026-11-02), and so would STD in flight.
     //
-    // All three keep the DEFAULT ChangeTolerance, never a wider one ([SIM-7]): the gate treats the last value
+    // A fourth key is no comparison: the annunciator light switch, the L:var S_OH_IN_LT_ANN_LT (0 Dim, 1 Bright,
+    // 2 Test). The light test lights both FD lamps whatever the FD buttons say (they read exactly 1 with both FDs
+    // off, measured 2026-11-02), while the channel's FD flags follow the buttons, so the gate keeps both FD checks
+    // waiting while the switch reads Test. The Fenix's own key for the switch (the Lighting panel's control) is on
+    // request, so this is the only batched copy of the name ([VAR-7]), and it rides the same batch as the lamps.
+    //
+    // All four keep the DEFAULT ChangeTolerance, never a wider one ([SIM-7]): the gate treats the last value
     // SimConnect delivered as the current one, so a tolerance wider than a second's drift would leave a slowly
     // moving value undelivered, and the gate would read the stale value against the channel's live one as a false
     // disagreement, which latches until the channel reconnects. They stay on the 1 Hz batch too (no
@@ -64,12 +71,13 @@ public partial class FenixA320Definition
     // Registered with Add, never the indexer, so a second registration of a key fails at load.
     partial void AddDisplayChannelVariables(Dictionary<string, SimConnect.SimVarDefinition> variables)
     {
-        void Register(string key, string name, string displayName, string units) => variables.Add(key,
+        void Register(string key, string name, string displayName, string units,
+            SimConnect.SimVarType type = SimConnect.SimVarType.SimVar) => variables.Add(key,
             new SimConnect.SimVarDefinition
             {
                 Name = name,
                 DisplayName = displayName,
-                Type = SimConnect.SimVarType.SimVar,
+                Type = type,
                 Units = units,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -82,15 +90,25 @@ public partial class FenixA320Definition
             "Fenix display channel: fuel check", "pounds");
         Register(Services.FenixChannelMonitor.AltitudeKey, "PLANE ALTITUDE",
             "Fenix display channel: altitude check", "feet");
+        Register(Services.FenixChannelMonitor.LightTestKey, "S_OH_IN_LT_ANN_LT",
+            "Fenix display channel: light test check", "number", SimConnect.SimVarType.LVar);
     }
 
-    // Called by ProcessSimVarUpdate for every update, once the background has started. A key that is one of the
-    // five comparison values (the two flight director lights, and the channel's own heading, fuel and altitude)
-    // goes to the monitor when there is one. The channel's own three keys are then consumed here, with a monitor
-    // or without one (a test, or the moment before Start), so none ever reaches MainForm's generic announcement.
-    // The lights are only peeked: handled stays false and they carry on to their own handling.
+    // Called by ProcessSimVarUpdate for every update, once the background has started. The light switch goes to the
+    // monitor's OnLightTestSwitch. A key that is one of the five comparison values (the two flight director lights,
+    // and the channel's own heading, fuel and altitude) goes to the monitor's OnComparison. Each goes there only when
+    // there is a monitor. The channel's own four keys are then consumed here, with a monitor or without one (a test,
+    // or the moment before Start), so none ever reaches MainForm's generic announcement. The lights are only peeked:
+    // handled stays false and they carry on to their own handling.
     partial void PeekDisplayChannelValue(string varName, double value, ref bool handled)
     {
+        if (varName == Services.FenixChannelMonitor.LightTestKey)
+        {
+            _displayChannelMonitor?.OnLightTestSwitch(value);
+            handled = true;
+            return;
+        }
+
         if (!Services.FenixChannelMonitor.TryMapComparison(
                 varName, value, out var kind, out double converted, out bool consume))
             return;

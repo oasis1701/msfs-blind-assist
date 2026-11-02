@@ -10,10 +10,10 @@ namespace MSFSBlindAssist.Services;
 /// disposes it when the pilot switches away.
 /// </summary>
 /// <remarks>
-/// <para>Threads. A call's messages and states arrive on the client's pool threads, comparison values and reads on
-/// the UI thread, and the tick on a pool thread. One lock guards the gate and every field that decides what the
-/// log says, so a verdict is always read from one whole state, and the log's lines come out in the order the gate
-/// saw its events. Nothing under the lock waits for anything. A message is decoded before the lock is taken and fed
+/// <para>Threads. A call's messages and states arrive on the client's pool threads, comparison values, the light
+/// switch and reads on the UI thread, and the tick on a pool thread. One lock guards the gate and every field that
+/// decides what the log says, so a verdict is always read from one whole state, and the log's lines come out in the
+/// order the gate saw its events. Nothing under the lock waits for anything. A message is decoded before the lock is taken and fed
 /// under it. The latest frame is swapped in whole, and a snapshot reads it under the same lock as the verdict, so a
 /// reader never sees half of a frame, nor a frame beside a verdict the gate gave on another one.
 /// Nothing here throws at a caller, speaks or touches a control, as with <see cref="FenixDataService"/>; every
@@ -68,6 +68,13 @@ internal sealed class FenixChannelMonitor : IDisposable
     public const string AltitudeKey = "FENIX_CHANNEL_ALTITUDE";
 
     /// <summary>
+    /// The var key of the annunciator light switch the channel asks SimConnect for (S_OH_IN_LT_ANN_LT: 0 Dim, 1 Bright,
+    /// 2 Test). No comparison: the light test lights both FD lamps whatever the FD buttons say, so the gate keeps both
+    /// FD checks waiting while the switch reads Test (<see cref="OnLightTestSwitch"/>).
+    /// </summary>
+    public const string LightTestKey = "FENIX_CHANNEL_ANN_LT";
+
+    /// <summary>
     /// How many ticks of a connection pass between two comparisons lines: 30 of the default one-second tick,
     /// so the log shows each comparison pair every 30 s while the channel is connected.
     /// </summary>
@@ -76,6 +83,9 @@ internal sealed class FenixChannelMonitor : IDisposable
     // The var keys the Fenix definition already has: the flight director lights.
     private const string FdCaptainKey = "I_FCU_EFIS1_FD";
     private const string FdFirstOfficerKey = "I_FCU_EFIS2_FD";
+
+    // The light switch's Test position (S_OH_IN_LT_ANN_LT: 0 Dim, 1 Bright, 2 Test).
+    private const double LightTestPosition = 2;
 
     private const string LogChannelName = "fenix_channel";
     private const string StoppedLine = "channel stopped";
@@ -228,6 +238,21 @@ internal sealed class FenixChannelMonitor : IDisposable
         {
             if (IsDisposed) return;
             _trust.OnComparison(kind, value, Now);
+        }
+    }
+
+    /// <summary>
+    /// SimConnect's latest position of the annunciator light switch (<see cref="LightTestKey"/>). Exactly 2 is the
+    /// light test, which lights both FD lamps whatever the FD buttons say, so the gate keeps both FD checks waiting
+    /// while it lasts; any other position, one the switch does not have and NaN included, is not the test. Called
+    /// from the UI thread as the values arrive.
+    /// </summary>
+    public void OnLightTestSwitch(double position)
+    {
+        lock (_lock)
+        {
+            if (IsDisposed) return;
+            _trust.OnLightTest(position == LightTestPosition);
         }
     }
 

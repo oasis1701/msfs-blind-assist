@@ -914,6 +914,110 @@ public class FenixChannelTrustTests
         Assert.Equal(Untrusted("FD captain not checked yet"), Pfd(gate, 10_000));
     }
 
+    // ---- The annunciator light test -----------------------------------------------------------------
+
+    [Fact]
+    public void The_light_test_never_reads_as_an_fd_disagreement()
+    {
+        // The annunciator light test lights both FD lamps: they read exactly 1 with both flight directors off, while
+        // the channel's FD flags follow the pushbuttons and stay off (measured on 3.0.0.7613, 2026-11-02, where it
+        // latched the FD captain check 3 s into the test). While the test is on, both FD checks wait.
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate, fdCapt: 0, fdFo: 0);
+        gate.OnFrame(Frame(fdCapt: false, fdFo: false), 0);
+        Assert.Equal(Trusted, Pfd(gate, 0));
+
+        gate.OnLightTest(true);
+        gate.OnComparison(FenixComparison.FdLightCapt, 1, 100);
+        gate.OnComparison(FenixComparison.FdLightFo, 1, 100);
+
+        // Five seconds of frames, longer than the hold: neither check disagrees, so neither latches.
+        for (long t = 100; t <= 5_100; t += 100)
+        {
+            gate.OnFrame(Frame(fdCapt: false, fdFo: false), t);
+
+            Assert.Equal(Trusted, Pfd(gate, t));
+        }
+    }
+
+    [Fact]
+    public void After_the_light_test_a_real_fd_disagreement_still_latches()
+    {
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate, fdCapt: 0, fdFo: 0);
+        gate.OnFrame(Frame(fdCapt: false, fdFo: false), 0);   // both FD checks pass, off and off
+        gate.OnLightTest(true);
+        gate.OnComparison(FenixComparison.FdLightCapt, 1, 100);
+        gate.OnComparison(FenixComparison.FdLightFo, 1, 100);
+        Feed(gate, 100, 5_000, Frame(fdCapt: false, fdFo: false));
+
+        // The test ends, and the first officer's lamp goes out, but the captain's goes on reading 1 with the flight
+        // director off: a real disagreement, which counts as any other does from the first frame without the test.
+        gate.OnLightTest(false);
+        gate.OnComparison(FenixComparison.FdLightFo, 0, 5_100);
+        Feed(gate, 5_100, 8_000, Frame(fdCapt: false, fdFo: false));
+
+        Assert.Equal(Untrusted("FD captain disagrees: channel off, sim on"), Pfd(gate, 8_000));
+
+        gate.OnFrame(Frame(fdCapt: false, fdFo: false), 8_100);   // MismatchHoldMs after t=5100
+
+        Assert.Equal(Untrusted("FD captain latched until reconnect: channel off, sim on"), Pfd(gate, 8_100));
+    }
+
+    [Fact]
+    public void The_light_test_skips_only_the_fd_checks()
+    {
+        FenixChannelTrust gate = TrustedGate();
+        gate.OnLightTest(true);
+        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 100);
+
+        Feed(gate, 100, 3_100, Frame());
+
+        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 3_100));
+    }
+
+    [Fact]
+    public void A_light_test_leaves_an_fd_disagreement_in_force_without_latching_it()
+    {
+        // As for any waiting value: a disagreement already in force when the test begins stays in force, and each
+        // frame of the test restarts its hold clock, so it never latches. The FD checks wait through the test even
+        // when the lamp would agree. A frame that agrees after the test ends the disagreement.
+        FenixChannelTrust gate = TrustedGate();   // both flight directors on, and both lamps say so
+        gate.OnComparison(FenixComparison.FdLightCapt, 0, 100);
+        Feed(gate, 100, 2_000, Frame());   // the lamp reads 0 with the flight director on: 1,900 ms of disagreement
+
+        gate.OnLightTest(true);
+        gate.OnComparison(FenixComparison.FdLightCapt, 1, 2_100);
+        Feed(gate, 2_100, 12_000, Frame());
+
+        Assert.Equal(Untrusted("FD captain disagrees: channel on, sim off"), Pfd(gate, 12_000));
+
+        gate.OnLightTest(false);
+        gate.OnFrame(Frame(), 12_100);   // the lamp reads 1, the flight director is on: it agrees
+
+        Assert.Equal(Trusted, Pfd(gate, 12_100));
+    }
+
+    [Fact]
+    public void The_light_test_outlasts_a_reconnect()
+    {
+        // The switch is SimConnect's value, as the lamps are, and SimConnect does not deliver it again while it stays
+        // at Test: a reconnect in the middle of the test must not forget it.
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate, fdCapt: 0, fdFo: 0);
+        gate.OnFrame(Frame(fdCapt: false, fdFo: false), 0);
+        gate.OnLightTest(true);
+        gate.OnComparison(FenixComparison.FdLightCapt, 1, 100);
+        gate.OnComparison(FenixComparison.FdLightFo, 1, 100);
+
+        gate.OnConnected(1_000);
+        gate.OnBuild(CheckedBuild);
+        Feed(gate, 1_000, 6_000, Frame(fdCapt: false, fdFo: false));
+
+        // Started fresh, the FD checks have not passed, and while they wait they never disagree or latch.
+        Assert.Equal(Untrusted("FD captain not checked yet"), Pfd(gate, 6_000));
+    }
+
     [Theory]
     [InlineData(1100.0, null)]   // exactly 100 ft apart: within the tolerance
     [InlineData(900.0, null)]

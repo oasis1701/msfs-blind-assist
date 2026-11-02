@@ -352,11 +352,51 @@ public class FenixChannelMonitorTests
     [InlineData("SIM_ON_GROUND", 1.0)]
     [InlineData("i_fcu_efis1_fd", 1.0)]   // a var key is exact: the definition's keys are upper case
     [InlineData("INDICATED_ALTITUDE", 1023.0)]   // the altitude the Fenix's baro moves ([FNX-25])
+    [InlineData(FenixChannelMonitor.LightTestKey, 2.0)]   // the light switch is no comparison (OnLightTestSwitch)
     [InlineData("", 0.0)]
     public void Maps_no_other_key(string key, double value)
     {
         Assert.False(FenixChannelMonitor.TryMapComparison(key, value, out _, out _, out bool consume));
         Assert.False(consume);   // a key that is not the channel's is never consumed
+    }
+
+    // ---- The annunciator light test -------------------------------------------------------------
+
+    [Theory]
+    [InlineData(2.0, true)]           // Test
+    [InlineData(0.0, false)]          // Dim
+    [InlineData(1.0, false)]          // Bright
+    [InlineData(3.0, false)]          // a position the switch does not have
+    [InlineData(1.5, false)]
+    [InlineData(double.NaN, false)]
+    public async Task The_light_switch_makes_the_fd_checks_wait_at_test_only(double position, bool testing)
+    {
+        // The light test lights both FD lamps with both flight directors off. The switch's value reaches the gate
+        // through the monitor, and only exactly 2 is the test: any other position, one the switch does not have
+        // included, leaves the FD checks as they are, and the lit lamp is a disagreement.
+        var lines = new Lines();
+        using var monitor = NewIdleMonitor(lines);
+        monitor.OnComparison(FenixComparison.FdLightCapt, 0);
+        monitor.OnComparison(FenixComparison.FdLightFo, 0);
+        monitor.OnComparison(FenixComparison.AltitudeFt, 1000);
+        monitor.OnComparison(FenixComparison.MagHeadingDeg, 90);
+        monitor.OnComparison(FenixComparison.FuelKg, 2940);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
+        byte[] fdOff = FenixChannelProtoWriter.GoodPush(fdOnCapt: false, fdOnFo: false);
+        monitor.OnDataMessage(fdOff);
+        Assert.Equal(new FenixDisplayVerdict(true, "trusted"), monitor.VerdictFor(FenixChannelDisplay.Pfd));
+
+        monitor.OnLightTestSwitch(position);
+        monitor.OnComparison(FenixComparison.FdLightCapt, 1);
+        monitor.OnComparison(FenixComparison.FdLightFo, 1);
+        monitor.OnDataMessage(fdOff);
+
+        Assert.Equal(
+            testing
+                ? new FenixDisplayVerdict(true, "trusted")
+                : new FenixDisplayVerdict(false, "FD captain disagrees: channel off, sim on"),
+            monitor.VerdictFor(FenixChannelDisplay.Pfd));
     }
 
     // ---- The data flow --------------------------------------------------------------------------
@@ -1243,6 +1283,7 @@ public class FenixChannelMonitorTests
         monitor.OnEcamMessage(WrongShapedEntries());
         monitor.OnEcamState(FenixChannelState.NotAnswering, "late");
         monitor.OnComparison(FenixComparison.AltitudeFt, 1);
+        monitor.OnLightTestSwitch(2);
         monitor.Tick();
         queries.Answer(0, CheckedBuild);
         await stream.Response.Disposed.WaitAsync(Generous);
@@ -1299,6 +1340,7 @@ public class FenixChannelMonitorTests
         monitor.OnEcamMessage(WrongShapedEntries());
         monitor.OnEcamState(FenixChannelState.NotAnswering, "late");
         monitor.OnComparison(FenixComparison.AltitudeFt, 1);
+        monitor.OnLightTestSwitch(2);
         monitor.Tick();
         await Task.Delay(Quiet);
 
