@@ -106,7 +106,7 @@ nothing in the app:
 
 | File | Role |
 | --- | --- |
-| `ModuleDescription.cs` | `ModuleDescription`: where a WASM module's file lives (a package name pattern, the folders inside the package, the file name), its id and its readers. Each `LayoutReader` gives a reader's id, log name, layout type, anchor, layout dump and failed parts. |
+| `ModuleDescription.cs` | `ModuleDescription`: where a WASM module's file lives (a package name pattern, the folders inside the package, with `OtherPathsInPackage` for a package laid out another way, the file name), its id and its readers. Each `LayoutReader` gives a reader's id, log name, layout type, anchor, layout dump and failed parts. |
 | `ModuleCatalog.cs`, `Pmdg737/Pmdg737Module.cs` | Every module the app knows. So far one: `pmdg737`, the `737NG3.wasm` of the `pmdg-aircraft-73[6-9]` packages, with the readers `fma`, `engineDisplays`, `navDisplay` and `pfd` in that order. |
 | `LayoutFile.cs`, `LayoutFileFormat.cs`, `ReaderResult.cs` | The layout file: its records, and the writer and reader of its text ([WASM-21]). |
 | `WasmFileImage.cs`, `LayoutFit.cs` | The fingerprint: a `.wasm` file's code hash, data segments and searches, and whether a layout file fits it ([the fingerprint](#the-fingerprint)). |
@@ -122,7 +122,7 @@ nothing in the app:
 | `SimProcess.cs` | The Win32 implementation: opens the simulator with `PROCESS_QUERY_LIMITED_INFORMATION \| PROCESS_VM_READ` only ([WASM-1]), walks regions with `VirtualQueryEx`, reads with `ReadProcessMemory`. |
 | `WasmMemoryLocator.cs` | `FindLinearBase`: the one committed, `MEM_PRIVATE`, readable allocation whose bytes at the anchor's address equal the anchor ([WASM-3]). |
 | `ModuleMemory.cs` | Reads i32 and u8 at wasm addresses (`base + address`), each read bounds-checked by `IsInsideModule` ([WASM-4]); inside a `RememberRegions` scope (one ND reading) each region is asked about once ([WASM-15]). |
-| `ModuleFiles.cs` | `FindInstalled`: every installed copy of a module's file, in the packages matching its pattern under Community or an Official folder. |
+| `ModuleFiles.cs` | `FindInstalled`: every installed copy of a module's file, in the packages matching its pattern under Community or an Official folder, at any of the module's paths (`ModuleDescription.PathsInPackage`). The 737's MSFS 2024 package keeps the file under each airplane's `attachments\pmdg\Function_Interior_*\panel`, its MSFS 2020 package in each airplane's own `panel` folder (one copy each for the -800, BBJ2, BCF and BDSF, identical, so one build). |
 | `LayoutStore.cs` | Each installed file's build, from its layout file, running the generator when there is none ([WASM-26]; [the layout store](#the-layout-store)). |
 | `ILayoutGenerator.cs`, `ProcessLayoutGenerator.cs` | The generator as the store sees it, and `LayoutGenerator.exe` run as a child process with no window. |
 | `KillOnCloseJob.cs` | The Windows job object every generator process joins, which ends it when the app ends ([WASM-30]). |

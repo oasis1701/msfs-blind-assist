@@ -262,7 +262,8 @@ public sealed record PfdFmaStripFields(IReadOnlyList<PfdMessage> Extras, IReadOn
 }
 
 /// <summary>One text an FMA column draws, in draw order, and when: a <see cref="Literal"/>, or the word of PMDG's table at
-/// <see cref="Index"/> (the table's <see cref="Words"/> read from the file, as many as the draw's own range test allows).
+/// <see cref="Index"/> (the table's <see cref="Words"/> read from the file, as many as the draw's own range test allows, or
+/// to the table's last word where the draw has none, as in the MSFS 2020 file; a value past them is no word).
 /// Equality compares the words by content.</summary>
 public sealed record PfdFmaDraw(PfdExpr Shown, string? Literal, PfdExpr? Index, IReadOnlyList<string> Words)
 {

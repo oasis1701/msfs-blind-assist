@@ -19,9 +19,9 @@ public static class ModuleFiles
 
     /// <summary>
     /// For each folder directly under <paramref name="packagesRoot"/> whose name starts with Community or
-    /// Official: the packages at depth 1 or 2 whose name matches the module's pattern, then the module's
-    /// PathInPackage folders and its file. Sorted ordinal; a missing root gives an empty list, and a folder
-    /// that cannot be listed is skipped.
+    /// Official: the packages at depth 1 or 2 whose name matches the module's pattern, then the folders of each
+    /// of the module's PathsInPackage and its file. Sorted ordinal, each file once; a missing root gives an empty
+    /// list, and a folder that cannot be listed is skipped.
     /// </summary>
     public static IReadOnlyList<string> FindInstalled(string packagesRoot, ModuleDescription module)
     {
@@ -44,28 +44,30 @@ public static class ModuleFiles
             }
         }
 
-        found.Sort(StringComparer.Ordinal);
-        return found;
+        return found.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal).ToList();
     }
 
     private static void AddFiles(string package, ModuleDescription module, List<string> found)
     {
-        var folders = new List<string> { package };
-        foreach (string segment in module.PathInPackage)
+        foreach (var path in module.PathsInPackage)
         {
-            var next = new List<string>();
+            var folders = new List<string> { package };
+            foreach (string segment in path)
+            {
+                var next = new List<string>();
+                foreach (var folder in folders)
+                {
+                    if (segment.Contains('*')) next.AddRange(Directories(folder, segment));
+                    else next.Add(Path.Combine(folder, segment));
+                }
+                folders = next;
+            }
+
             foreach (var folder in folders)
             {
-                if (segment.Contains('*')) next.AddRange(Directories(folder, segment));
-                else next.Add(Path.Combine(folder, segment));
+                string wasm = Path.Combine(folder, module.WasmFileName);
+                if (File.Exists(wasm)) found.Add(wasm); // File.Exists never throws: an unreadable path is false
             }
-            folders = next;
-        }
-
-        foreach (var folder in folders)
-        {
-            string wasm = Path.Combine(folder, module.WasmFileName);
-            if (File.Exists(wasm)) found.Add(wasm); // File.Exists never throws: an unreadable path is false
         }
     }
 
