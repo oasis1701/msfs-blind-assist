@@ -94,7 +94,9 @@ If you are off to one side, BA gives you the offset and three headings to choose
 Other things you may hear:
 
 - The glideslope part is only given within 25 nautical miles of the runway.
-- *"Localizer 108.70, course 152."* at the start of the report means the runway has a localizer but no glideslope, so the report has no glideslope part: you get the centreline guidance only. An offset approach starts the same way with its own name, LDA or IGS. A plain ILS has no such opening.
+- *"Localizer 108.70, course 152."* at the start of the report means the runway has a localizer but no glideslope. The report then has no glideslope part, and ends with *"Localizer course 152."* instead of the runway heading. A plain ILS has no such opening.
+- An offset approach, whose course is not the runway's, starts the same way with its own name and ends with its course, for example *"LDA 111.35, course 147."* and *"LDA course 147."*. An LDA or IGS that has a glideslope still gets the glideslope part.
+- The course and the runway heading are the approach chart's course, the same number the runway lists and the flight bag give.
 - *"Warning: ILS signal range is 18 nautical miles."* at the start of the report means you are farther out than the ILS is published to reach. The numbers are still calculated, but your aircraft's own ILS receiver may not have a signal yet. For a localizer it says *"Localizer signal range"*.
 - *"Opposite side of runway 27, 3.2 nautical miles from threshold. Fly heading 093 to extend outbound."* You are on the wrong side of the airport. Fly that heading to get out onto the approach side, then turn back.
 - *"Warning: ILS signal range is 18 nautical miles. Opposite side of runway 27, 31.4 nautical miles from threshold. Threshold bearing 245."* The same, but you are beyond the ILS's published range, so BA gives the bearing to the runway threshold instead. Press Output Ctrl+I again closer in.

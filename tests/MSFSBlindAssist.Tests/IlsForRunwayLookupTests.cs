@@ -49,7 +49,7 @@ public class IlsForRunwayLookupTests
     }
 
     [Fact]
-    public void A_runway_end_without_an_ils_ident_still_has_no_ils()
+    public void A_runway_end_with_no_ils_at_all_has_none()
     {
         using var db = EsohDb(d => d.InsertIls("IHF", "ESOH", null, frequency: 110100));
 
@@ -57,16 +57,27 @@ public class IlsForRunwayLookupTests
     }
 
     [Fact]
-    public void A_row_carrying_the_runway_name_still_wins()
+    public void The_runway_ends_ident_wins_as_in_the_runway_lists()
     {
-        // Where both are filled and disagree (DNBE 05, OOMA 17 in the fs2020 build), the
-        // loc_runway_name match answers, as before.
+        // Where both answer and disagree (KVTA 09 in the fs2020 build, "IRXK" against "RXK"),
+        // the runway end's ident answers, the localizer GetRunways gives the Shift+D list.
         using var db = EsohDb(d =>
         {
             d.InsertIls("IHF", "ESOH", null, frequency: 110100);
             d.InsertIls("IXX", "ESOH", "18", frequency: 111300);
         });
 
-        Assert.Equal("IXX", Lookup(db, "ESOH", "18")!.Ident);
+        Assert.Equal("IHF", Lookup(db, "ESOH", "18")!.Ident);
+        Assert.Equal(110.10, new LittleNavMapProvider(db.DbPath, "FS2020")
+            .GetRunways("ESOH").Single(r => r.RunwayID == "18").ILSFreq, 3);
+    }
+
+    [Fact]
+    public void A_runway_end_without_an_ident_is_still_found_by_the_runway_name()
+    {
+        // 66 runway ends in the fs2020 build have only the loc_runway_name link.
+        using var db = EsohDb(d => d.InsertIls("ISS", "ESOH", "36", frequency: 109900));
+
+        Assert.Equal("ISS", Lookup(db, "ESOH", "36")!.Ident);
     }
 }

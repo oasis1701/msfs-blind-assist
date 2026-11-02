@@ -232,10 +232,44 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
     /// </summary>
     public ILSData? GetILSForRunway(SqliteConnection connection, string icao, string runwayName)
     {
-        // Fast path: direct join via loc_airport_ident + loc_runway_name. Only a minority
-        // of rows carry loc_runway_name: an fs2020 build of 2026-10-30 (Navdatareader
-        // 1.2.4, Navigraph update) had it NULL on 4,117 of 4,515 rows whose
-        // loc_airport_ident is set, so the runway-end path below does most of the work.
+        // 1. The runway end's own ils_ident, scoped to this airport (EFB-9: never an ident
+        // alone, shared idents exist across airports). The SAME predicate and row choice as
+        // GetRunways' ILS join (correlated subquery, `loc_airport_ident = @ICAO`, LIMIT 1), so
+        // ILS guidance (output Ctrl+I) speaks the localizer the runway lists show: where this
+        // and the loc_runway_name match below both answer and disagree (one end in an fs2020
+        // build, KVTA 09: "IRXK" here, "RXK" there), this answers. Most rows have loc_runway_name NULL (4,117 of 4,515 with an airport,
+        // fs2020 build of 2026-10-30, Navdatareader 1.2.4, Navigraph update): ESOH 18 "IHF".
+        // No check against a loc_runway_name naming another runway: the one such row in that
+        // build, EIDL 21 "IFN" labelled 20, is a renumbered runway whose ident is right.
+        int airportId = GetAirportId(connection, icao);
+        if (airportId != -1)
+        {
+            const string endSql = @"SELECT i.ident, i.type, i.frequency, i.range, i.gs_range, i.gs_pitch,
+                          i.loc_heading, i.loc_width, i.lonx, i.laty, i.altitude,
+                          i.gs_lonx, i.gs_laty, i.gs_altitude, i.mag_var
+                   FROM runway r
+                   JOIN runway_end re ON re.runway_end_id IN (r.primary_end_id, r.secondary_end_id)
+                   JOIN ils i ON i.ils_id = (
+                        SELECT i2.ils_id FROM ils i2
+                        WHERE i2.ident = re.ils_ident AND i2.loc_airport_ident = @ICAO
+                        LIMIT 1)
+                   WHERE r.airport_id = @AirportId
+                     AND UPPER(re.name) = UPPER(@RunwayName)
+                     AND re.ils_ident IS NOT NULL AND re.ils_ident <> ''
+                   LIMIT 1";
+
+            using var endCommand = new SqliteCommand(endSql, connection);
+            endCommand.Parameters.AddWithValue("@AirportId", airportId);
+            endCommand.Parameters.AddWithValue("@ICAO", icao);
+            endCommand.Parameters.AddWithValue("@RunwayName", runwayName);
+
+            using var endReader = endCommand.ExecuteReader();
+            if (endReader.Read())
+                return ReadILSFromReader(endReader);
+        }
+
+        // 2. loc_airport_ident + loc_runway_name: the runway ends whose runway_end.ils_ident
+        // is empty or has no scoped row (66 in that fs2020 build).
         var sql = @"SELECT ident, type, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
                           lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude, mag_var
                    FROM ils
@@ -255,34 +289,6 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
                     return ReadILSFromReader(reader);
                 }
             }
-        }
-
-        // Runway-end path: the runway end's own ils_ident, scoped to this airport
-        // (EFB-9: never an ident alone, shared idents exist across airports). The same
-        // predicate GetRunways' ILS join uses, so guidance and the runway lists agree on
-        // the rows the fast path misses (ESOH 18 "IHF": loc_runway_name NULL).
-        int airportId = GetAirportId(connection, icao);
-        if (airportId != -1)
-        {
-            const string endSql = @"SELECT i.ident, i.type, i.frequency, i.range, i.gs_range, i.gs_pitch,
-                          i.loc_heading, i.loc_width, i.lonx, i.laty, i.altitude,
-                          i.gs_lonx, i.gs_laty, i.gs_altitude, i.mag_var
-                   FROM runway r
-                   JOIN runway_end re ON re.runway_end_id IN (r.primary_end_id, r.secondary_end_id)
-                   JOIN airport a ON a.airport_id = r.airport_id
-                   JOIN ils i ON i.ident = re.ils_ident AND i.loc_airport_ident = a.ident
-                   WHERE r.airport_id = @AirportId
-                     AND UPPER(re.name) = UPPER(@RunwayName)
-                     AND re.ils_ident IS NOT NULL AND re.ils_ident <> ''
-                   LIMIT 1";
-
-            using var endCommand = new SqliteCommand(endSql, connection);
-            endCommand.Parameters.AddWithValue("@AirportId", airportId);
-            endCommand.Parameters.AddWithValue("@RunwayName", runwayName);
-
-            using var endReader = endCommand.ExecuteReader();
-            if (endReader.Read())
-                return ReadILSFromReader(endReader);
         }
 
         // Fallback: geometric match against ILS rows where loc_airport_ident

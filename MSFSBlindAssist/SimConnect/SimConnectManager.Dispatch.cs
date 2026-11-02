@@ -1045,6 +1045,9 @@ public partial class SimConnectManager
                 data.Latitude, data.Longitude,
                 runway.StartLat, runway.StartLon);
 
+            // The one course the report speaks: the runway's chart course (EFB-14).
+            int courseMag = IlsGuidanceText.CourseFor(ilsData, runway, data.MagneticVariation);
+
             // Check if approaching from behind (wrong direction). Inside the aid's range the
             // reply is the heading to extend outbound; beyond it, the threshold's bearing
             // (IlsGuidanceText.Behind).
@@ -1058,17 +1061,12 @@ public partial class SimConnectManager
 
             if (fromBehind)
             {
-                // Calculate extension heading to fly away from runway
-                double extensionHeading = NavigationCalculator.CalculateExtensionHeading(
-                    ilsData.LocalizerHeading,
-                    data.MagneticVariation);
-
                 double thresholdBearingMag = (NavigationCalculator.CalculateBearing(
                     data.Latitude, data.Longitude, runway.StartLat, runway.StartLon)
                     - data.MagneticVariation + 360) % 360;
 
-                string behind = IlsGuidanceText.Behind(ilsData, data.MagneticVariation, runway.RunwayID,
-                    distanceToThreshold, extensionHeading, thresholdBearingMag);
+                string behind = IlsGuidanceText.Behind(ilsData, courseMag, runway.RunwayID,
+                    distanceToThreshold, thresholdBearingMag);
 
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1120,9 +1118,8 @@ public partial class SimConnectManager
             if (onCenterline)
             {
                 // On centerline - just track it
-                double localizerMagneticHeading = (ilsData.LocalizerHeading - data.MagneticVariation + 360) % 360;
-                announcement = IlsGuidanceText.OnCenterline(ilsData, data.MagneticVariation,
-                    distanceToThreshold, gsDeviation, localizerMagneticHeading);
+                announcement = IlsGuidanceText.OnCenterline(ilsData, courseMag,
+                    distanceToThreshold, gsDeviation);
             }
             else
             {
@@ -1140,7 +1137,7 @@ public partial class SimConnectManager
                 double angularDeviationDeg = NavigationCalculator.AngularDeviationFromCenterlineDeg(
                     distanceToLocalizer, distanceToThreshold);
 
-                announcement = IlsGuidanceText.OffCenterline(ilsData, data.MagneticVariation,
+                announcement = IlsGuidanceText.OffCenterline(ilsData, courseMag,
                     distanceToThreshold, distanceToLocalizer, angularDeviationDeg,
                     left: crossTrackError < 0, gsDeviation,
                     directHeading, mediumHeading, shallowHeading);

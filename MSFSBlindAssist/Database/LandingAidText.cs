@@ -112,15 +112,17 @@ public static class LandingAidText
 
     /// <summary>The aid's name alone, as <see cref="Describe"/> opens with it: "LDA" or "IGS"
     /// for an offset facility, "Localizer" without a glideslope, else "ILS" or "ILS CAT II"/"ILS
-    /// CAT III". ILS guidance (output Ctrl+I) names the aid with this.</summary>
-    public static string Name(bool hasGlideslope, string? ilsType)
+    /// CAT III". ILS guidance (output Ctrl+I) names the aid with this, without the category
+    /// (<paramref name="withCategory"/> false) where it is beside the point, as in its range
+    /// warning: the category is for planning an autoland, not for how far the signal reaches.</summary>
+    public static string Name(bool hasGlideslope, string? ilsType, bool withCategory = true)
     {
         string? offsetFacility = OffsetFacility(ilsType);
         if (offsetFacility != null)
             return offsetFacility;
         if (!hasGlideslope)
             return "Localizer";
-        string? category = Category(ilsType);
+        string? category = withCategory ? Category(ilsType) : null;
         return category == null ? "ILS" : $"ILS {category}";
     }
 
