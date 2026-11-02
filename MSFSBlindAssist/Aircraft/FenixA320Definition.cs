@@ -12284,8 +12284,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             lastAnnouncer = announcer;
 
         EnsureFenixBackground(announcer);
-        // The display channel's comparison values (FenixA320Definition.DisplayChannel.cs): the flight director
-        // lights and the altitude are only peeked and carry on below; the channel's own two keys stop here.
+        // The display channel's values (FenixA320Definition.DisplayChannel.cs): the flight director lights are
+        // only peeked and carry on below; the channel's own keys stop here.
         bool channelHandled = false;
         PeekDisplayChannelValue(varName, value, ref channelHandled);
         if (channelHandled) return true;

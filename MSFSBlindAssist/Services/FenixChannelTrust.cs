@@ -18,8 +18,8 @@ internal readonly record struct FenixDisplayVerdict(bool Trusted, string Reason)
 
 /// <summary>
 /// The values the channel gives that SimConnect also knows, which the gate compares: the two flight director
-/// lights (SimConnect's raw value, 0 or 1), the indicated altitude in feet, the magnetic heading in degrees
-/// and the total fuel in kilograms.
+/// lights (SimConnect's raw value, 0 or 1), the true altitude in feet (PLANE ALTITUDE, never the indicated altitude,
+/// FNX-25), the magnetic heading in degrees and the total fuel in kilograms.
 /// </summary>
 internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDeg, FuelKg }
 

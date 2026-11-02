@@ -314,14 +314,14 @@ public class FenixChannelMonitorTests
     [Theory]
     [InlineData("I_FCU_EFIS1_FD", 1.0, "FdLightCapt", 1.0, false)]
     [InlineData("I_FCU_EFIS2_FD", 0.0, "FdLightFo", 0.0, false)]
-    [InlineData("INDICATED_ALTITUDE", 1023.0, "AltitudeFt", 1023.0, false)]
+    [InlineData(FenixChannelMonitor.AltitudeKey, 1023.0, "AltitudeFt", 1023.0, true)]
     [InlineData(FenixChannelMonitor.HeadingKey, 271.5, "MagHeadingDeg", 271.5, true)]
     [InlineData(FenixChannelMonitor.FuelKey, 6480.0, "FuelKg", 2939.3, true)]
     public void Maps_the_five_comparison_keys(
         string key, double value, string expectedKind, double expectedValue, bool expectedConsume)
     {
-        // The flight director lights and the altitude are peeked: they carry on to their own handling. The two
-        // channel keys are consumed. Fuel comes in pounds and goes to the gate in kilograms.
+        // The flight director lights are peeked: they carry on to their own handling. The three channel keys are
+        // consumed. Fuel comes in pounds and goes to the gate in kilograms.
         Assert.True(FenixChannelMonitor.TryMapComparison(
             key, value, out FenixComparison kind, out double converted, out bool consume));
 
@@ -330,9 +330,28 @@ public class FenixChannelMonitorTests
         Assert.Equal(expectedConsume, consume);
     }
 
+    [Fact]
+    public void The_altitude_check_reads_the_true_altitude_never_the_indicated_one()
+    {
+        // [FNX-25]: the channel's altitude field is the true altitude, and the Fenix writes its own baro into the
+        // sim's altimeter, so the indicated altitude follows whatever QNH it has set (1013 at power-up against an
+        // actual 1028.8 hPa latched the PFD in the sim on 2026-11-02). The channel's own key carries PLANE ALTITUDE
+        // in feet, which goes to the gate as it came; INDICATED_ALTITUDE feeds the gate no more.
+        Assert.True(FenixChannelMonitor.TryMapComparison(
+            FenixChannelMonitor.AltitudeKey, 352.2, out FenixComparison kind, out double converted, out bool consume));
+        Assert.Equal(FenixComparison.AltitudeFt, kind);
+        Assert.Equal(352.2, converted);
+        Assert.True(consume);
+
+        Assert.False(FenixChannelMonitor.TryMapComparison(
+            "INDICATED_ALTITUDE", -65.0, out _, out _, out bool consumeIndicated));
+        Assert.False(consumeIndicated);   // it carries on to its own handling, the 1,000 ft callouts among it
+    }
+
     [Theory]
     [InlineData("SIM_ON_GROUND", 1.0)]
     [InlineData("i_fcu_efis1_fd", 1.0)]   // a var key is exact: the definition's keys are upper case
+    [InlineData("INDICATED_ALTITUDE", 1023.0)]   // the altitude the Fenix's baro moves ([FNX-25])
     [InlineData("", 0.0)]
     public void Maps_no_other_key(string key, double value)
     {

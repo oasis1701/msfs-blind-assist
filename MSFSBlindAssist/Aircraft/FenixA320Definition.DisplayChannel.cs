@@ -4,7 +4,7 @@ namespace MSFSBlindAssist.Aircraft;
 // The channel is the Fenix's local display feed on 127.0.0.1:18083, read only. Services/FenixChannelMonitor.cs
 // owns one session of it: it decodes what comes and decides, display by display, whether that can be trusted. It
 // never speaks and never touches a control. This partial gives the monitor its home and its inputs: Start and
-// Stop beside the cabin's, the two SimConnect values its cross-checks need, the peek that hands it the five
+// Stop beside the cabin's, the three SimConnect values its cross-checks need, the peek that hands it the five
 // comparison values as they arrive, and the first look at a display key (the fallback switch, FenixChannelReads).
 // Nothing a pilot hears changes: FenixChannelReads.All is empty, so every display key still gives its AI read.
 public partial class FenixA320Definition
@@ -39,17 +39,24 @@ public partial class FenixA320Definition
         monitor?.Dispose();
     }
 
-    // The two SimConnect values the gate cross-checks the channel against: the magnetic heading and the total
-    // fuel. The Fenix's own keys for them are on request (PLANE_HEADING_DEGREES_MAGNETIC, in radians, for take-off
-    // assist, and "FUEL TOTAL QUANTITY WEIGHT" for the First Officer's fuel read), and a background seam has no
-    // SimConnectManager to request them with, so the channel registers two keys of its own. Each is Continuous and
-    // announced only so it rides the 1 Hz continuous batch (ContinuousBatchLayout.RidesBatch), is consumed
-    // silently by PeekDisplayChannelValue, and is hidden from Ctrl+M with ExcludeFromMonitorManager ([VAR-9]).
-    // Each is the only batched key with its SimConnect name ([VAR-7]): the Fenix's own heading and fuel keys stay
-    // on request. The heading asks for degrees and the monitor compares degrees, so nothing converts it on
-    // receipt ([DCK-34]); the Fenix's own heading key asks for radians and is a different key.
+    // The three SimConnect values the gate cross-checks the channel against: the magnetic heading, the total fuel
+    // and the true altitude. The Fenix's own keys for the first two are on request (PLANE_HEADING_DEGREES_MAGNETIC,
+    // in radians, for take-off assist, and "FUEL TOTAL QUANTITY WEIGHT" for the First Officer's fuel read), and a
+    // background seam has no SimConnectManager to request them with, so the channel registers keys of its own. Each
+    // is Continuous and announced only so it rides the 1 Hz continuous batch (ContinuousBatchLayout.RidesBatch), is
+    // consumed silently by PeekDisplayChannelValue, and is hidden from Ctrl+M with ExcludeFromMonitorManager
+    // ([VAR-9]). Each is the only batched key with its SimConnect name ([VAR-7]): the Fenix's own heading and fuel
+    // keys stay on request, and nothing else asks for PLANE ALTITUDE as a variable. The heading asks for degrees and
+    // the monitor compares degrees, so nothing converts it on receipt ([DCK-34]); the Fenix's own heading key asks
+    // for radians and is a different key.
     //
-    // Both keep the DEFAULT ChangeTolerance, never a wider one ([SIM-7]): the gate treats the last value
+    // The altitude is the TRUE altitude, PLANE ALTITUDE, never INDICATED_ALTITUDE ([FNX-25]): the channel's
+    // altitude field is the true altitude (measured on 3.0.0.7613: 352.2 ft at QNH 1013, 1045 and 1029), while the
+    // Fenix writes its own baro into the sim's altimeter, so the indicated altitude follows whatever QNH it has set.
+    // At power-up that was 1013 against an actual 1028.8 hPa, and the indicated altitude fell from 364 to -65 ft:
+    // compared with it, a normal power-up latched the PFD (2026-11-02), and so would STD in flight.
+    //
+    // All three keep the DEFAULT ChangeTolerance, never a wider one ([SIM-7]): the gate treats the last value
     // SimConnect delivered as the current one, so a tolerance wider than a second's drift would leave a slowly
     // moving value undelivered, and the gate would read the stale value against the channel's live one as a false
     // disagreement, which latches until the channel reconnects. They stay on the 1 Hz batch too (no
@@ -73,14 +80,15 @@ public partial class FenixA320Definition
             "Fenix display channel: heading check", "degrees");
         Register(Services.FenixChannelMonitor.FuelKey, "FUEL TOTAL QUANTITY WEIGHT",
             "Fenix display channel: fuel check", "pounds");
+        Register(Services.FenixChannelMonitor.AltitudeKey, "PLANE ALTITUDE",
+            "Fenix display channel: altitude check", "feet");
     }
 
     // Called by ProcessSimVarUpdate for every update, once the background has started. A key that is one of the
-    // five comparison values (the two flight director lights, the altitude, and the channel's own heading and
-    // fuel) goes to the monitor when there is one. The channel's own two keys are then consumed here, with a
-    // monitor or without one (a test, or the moment before Start), so neither ever reaches MainForm's generic
-    // announcement. The lights and the altitude are only peeked: handled stays false and they carry on to their
-    // own handling.
+    // five comparison values (the two flight director lights, and the channel's own heading, fuel and altitude)
+    // goes to the monitor when there is one. The channel's own three keys are then consumed here, with a monitor
+    // or without one (a test, or the moment before Start), so none ever reaches MainForm's generic announcement.
+    // The lights are only peeked: handled stays false and they carry on to their own handling.
     partial void PeekDisplayChannelValue(string varName, double value, ref bool handled)
     {
         if (!Services.FenixChannelMonitor.TryMapComparison(

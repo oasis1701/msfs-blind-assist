@@ -61,15 +61,21 @@ internal sealed class FenixChannelMonitor : IDisposable
     public const string FuelKey = "FENIX_CHANNEL_FUEL";
 
     /// <summary>
+    /// The var key of the true altitude the channel asks SimConnect for, PLANE ALTITUDE, in feet: the channel's
+    /// altitude field is the true altitude too. Never the indicated altitude, which follows the baro setting the
+    /// Fenix writes into the sim's altimeter ([FNX-25]).
+    /// </summary>
+    public const string AltitudeKey = "FENIX_CHANNEL_ALTITUDE";
+
+    /// <summary>
     /// How many ticks of a connection pass between two comparisons lines: 30 of the default one-second tick,
     /// so the log shows each comparison pair every 30 s while the channel is connected.
     /// </summary>
     public const int ComparisonLogEveryTicks = 30;
 
-    // The var keys the Fenix definition already has: the flight director lights and the base class's altitude.
+    // The var keys the Fenix definition already has: the flight director lights.
     private const string FdCaptainKey = "I_FCU_EFIS1_FD";
     private const string FdFirstOfficerKey = "I_FCU_EFIS2_FD";
-    private const string AltitudeKey = "INDICATED_ALTITUDE";
 
     private const string LogChannelName = "fenix_channel";
     private const string StoppedLine = "channel stopped";
@@ -212,8 +218,8 @@ internal sealed class FenixChannelMonitor : IDisposable
     public FenixDisplayVerdict VerdictFor(FenixChannelDisplay display) => Snapshot(display).Verdict;
 
     /// <summary>
-    /// SimConnect's latest value for one comparison (the flight director lights as 0 or 1, the altitude in feet, the
-    /// magnetic heading in degrees, the fuel in kilograms; see <see cref="TryMapComparison"/>), stamped now. Called
+    /// SimConnect's latest value for one comparison (the flight director lights as 0 or 1, the true altitude in feet,
+    /// the magnetic heading in degrees, the fuel in kilograms; see <see cref="TryMapComparison"/>), stamped now. Called
     /// from the UI thread as the values arrive.
     /// </summary>
     public void OnComparison(FenixComparison kind, double value)
@@ -244,10 +250,11 @@ internal sealed class FenixChannelMonitor : IDisposable
     }
 
     /// <summary>
-    /// Maps a SimConnect var key to the comparison it feeds. The flight director lights and the altitude are only
-    /// peeked (<paramref name="consume"/> is false, so they carry on to their own handling); the two keys of the
-    /// channel's own, the heading and the fuel, are consumed. The fuel arrives in pounds and leaves in kilograms.
-    /// A key that is none of the five gives false and is never consumed.
+    /// Maps a SimConnect var key to the comparison it feeds. The flight director lights are only peeked
+    /// (<paramref name="consume"/> is false, so they carry on to their own handling); the three keys of the channel's
+    /// own, the heading, the fuel and the true altitude, are consumed. The fuel arrives in pounds and leaves in
+    /// kilograms. A key that is none of the five gives false and is never consumed: INDICATED_ALTITUDE among them,
+    /// since the Fenix's baro setting moves it ([FNX-25]).
     /// </summary>
     public static bool TryMapComparison(
         string varKey, double value, out FenixComparison kind, out double converted, out bool consume)
@@ -264,6 +271,7 @@ internal sealed class FenixChannelMonitor : IDisposable
                 return true;
             case AltitudeKey:
                 kind = FenixComparison.AltitudeFt;
+                consume = true;
                 return true;
             case HeadingKey:
                 kind = FenixComparison.MagHeadingDeg;

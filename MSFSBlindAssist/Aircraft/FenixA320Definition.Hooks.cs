@@ -6,8 +6,8 @@ namespace MSFSBlindAssist.Aircraft;
 // with no implementation its call compiles to nothing, so the definition behaves as it did before.
 //   FenixA320Definition.Variants.cs        variant, panel, display and visibility seams, OnFenixSwitchedAway
 //   FenixA320Definition.Cabin.cs           cabin background seams
-//   FenixA320Definition.DisplayChannel.cs  display channel seams: its background pair, the two SimConnect keys
-//                                          its gate checks against, the value peek and the display-key switch
+//   FenixA320Definition.DisplayChannel.cs  display channel seams: its background pair, the SimConnect keys of
+//                                          its own that its gate reads, the value peek and the display-key switch
 // The engine background seams (StartEngineBackground, StopEngineBackground) have no implementation: the Engines
 // window reads its own values while it is open.
 public partial class FenixA320Definition
@@ -44,8 +44,8 @@ public partial class FenixA320Definition
     partial void StopDisplayChannelBackground();
 
     // The display channel's other seams (FenixA320Definition.DisplayChannel.cs). AddDisplayChannelVariables
-    // registers the two SimConnect keys the channel's gate checks against. PeekDisplayChannelValue hands each
-    // comparison value to the monitor from ProcessSimVarUpdate and sets handled for the two keys that are the
+    // registers the SimConnect keys of the channel's own that its gate reads. PeekDisplayChannelValue hands each
+    // value the gate reads to the monitor from ProcessSimVarUpdate and sets handled for the keys that are the
     // channel's own, so they are consumed there. TryChannelDisplayRead is HandleHotkeyAction's first look at
     // any action; it sets handled only when the channel speaks that key's read, which no key has yet.
     partial void AddDisplayChannelVariables(Dictionary<string, SimConnect.SimVarDefinition> variables);
