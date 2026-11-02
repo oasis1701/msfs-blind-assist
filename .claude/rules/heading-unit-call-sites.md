@@ -4,6 +4,7 @@ paths:
   - "MSFSBlindAssist/Services/GroundTrafficMonitor.cs"
   - "MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs"
   - "MSFSBlindAssist/Aircraft/FenixA320Definition.cs"
+  - "MSFSBlindAssist/Aircraft/FenixA320Definition.DisplayChannel.cs"
   - "MSFSBlindAssist/Aircraft/FlyByWireA320Definition.cs"
   - "MSFSBlindAssist/Aircraft/FlyByWireA380Definition.cs"
   - "MSFSBlindAssist/Aircraft/FlyByWireA380Definition.Displays.cs"
