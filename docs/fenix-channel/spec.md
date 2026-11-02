@@ -144,7 +144,7 @@ Shared behavior:
 FMA (plan 08): the FMA is three rows of five columns (slot = row x 5 + column; columns Thrust, Vertical, Lateral,
 Approach, and column 5 for AP, FD and A/THR engagement), to be confirmed in the sim. A change counts after it has held
 300 ms. Spoken: "FMA: " and each changed column among Thrust, Vertical, Lateral and Approach, with its non-empty rows in
-order and colors after each stretch, columns joined by "; " ("FMA: Thrust: THR CLB green; Vertical: CLB green"). Row 3
+order and colors after each stretch, columns joined by "; " ("FMA: Thrust: THR CLB, green; Vertical: CLB, green"). Row 3
 is spoken as "FMA message: <text>". Column 5 is never announced (the FCU lights already are). An armed mode becoming
 active is heard once, as its column's new row 1.
 
@@ -319,6 +319,44 @@ message sample yet (needs a CPDLC uplink). Keys and brightness: the existing "DC
 | 11 | all | How is the work split? | groundwork first, parallel plans, integration last (12 plans) | As recommended |
 | 12 | 01 | Which cross-checks? | add airspeed, engine and temperature checks | Fewer: only the existing ones |
 | 13 | all | Windows and keys, announcements and the DCDU, team process | as presented | Approved |
+
+Rows 14-45 are the questions the plans raised, answered on 2026-11-03 ("Accept all"). Each plan follows them; a plan's
+"(owner question)" mark is settled here.
+
+| # | Plan | Question | Recommendation | Answer |
+| --- | --- | --- | --- | --- |
+| 14 | all | A comma before the color of a one-color line? | yes, as 2.6 ("THR CLB, green") | As recommended; 2.7's example corrected |
+| 15 | 04-06 | A value a display draws as crosses | "XX" | As recommended |
+| 16 | 02 | The FMA's FD row, sent as "1   2" | "1 FD 2" once a capture confirms it | As recommended |
+| 17 | 02, 07 | Airspeed under the speed tape's floor | "Airspeed below 30 knots" | As recommended |
+| 18 | 02 | Alpha max, the selected altitude and heading, the FD bars | left out | As recommended |
+| 19 | 03 | Ctrl+W in ROSE LS and ROSE VOR | the waypoint the ND sends | As recommended |
+| 20 | 03 | A Ctrl+W part shown as dashes | left out | As recommended |
+| 21 | 03 | ND lines with no words of their own | app labels, as the PMDG 737's ND window | As recommended |
+| 22 | 03 | An unknown letter in any ND line | the whole ND not available, Ctrl+W included | As recommended |
+| 23 | 03 | Map options, option flags, status flags, VOR and LS blocks | left out | As recommended |
+| 24 | 03 | Ctrl+W's order against the FBW A32NX's | keep answer 6; the FBW's for its own issue | As recommended |
+| 25 | 04 | The LEAP and PW GTF engine block | the A320neo's, N1 first | As recommended |
+| 26 | 05, 06 | SD symbols and state words | plain words; the FBW A32NX SD rows' state words | As recommended |
+| 27 | 05, 06 | Values drawn only as a gauge | spoken as numbers | As recommended |
+| 28 | 05, 06 | The bottom line's time; door names | "UTC"; the cabin window's names | As recommended |
+| 29 | 06 | WHEEL's green and amber labels | without the color, for now | As recommended |
+| 30 | 05, 06 | A wrong shape on one SD page | that page's rows only; page name and bottom line stay | As recommended |
+| 31 | 07 | The ISIS entry on a round-gauge Fenix | "This Fenix has no ISIS." | As recommended |
+| 32 | 07 | Controls in the ISIS window | none | As recommended |
+| 33 | 02, 08 | Two rows of one FMA column | one line, each row with its color | As recommended |
+| 34 | 08 | An FMA column or message that goes blank | nothing spoken | As recommended |
+| 35 | 08 | DH, MDA or NO DH in the approach column's row 3 | part of the approach column, confirmed in flight | As recommended |
+| 36 | 09 | A title wrapped onto two lines, or in the other column | matched for its color | As recommended |
+| 37 | 09 | A failure the E/WD is not showing | heard unless both the warning and caution rows are muted | As recommended |
+| 38 | 09 | A memo that goes | never "cleared" | As recommended |
+| 39 | 10 | The D and Shift+D tolerance | 1 NM + 0.5 % (T/D: + 0.5 NM per leg) | As recommended |
+| 40 | 10 | Shift+D once the T/D marker is gone | "Top of descent not available", unless a passed sign is found | As recommended |
+| 41 | 10 | Route data short of the destination | the plan stops for the owner's ruling | As recommended |
+| 42 | 11 | Soft-key rows | as the A32NX window ("1 <STBY", "2 RECALL>") | As recommended |
+| 43 | 11 | Ctrl+Shift+D on an unreadable DCDU | the window, with its status row | As recommended |
+| 44 | 11 | A new DCDU message | new header and first line, held 300 ms; quiet 3 s after the pilot's own page or message key | As recommended |
+| 45 | 11 | The status word in the new-message call | left out | As recommended |
 
 ## 6. Open checks (each owned by the plan named)
 
