@@ -516,7 +516,7 @@ internal sealed class FenixChannelMonitor : IDisposable
 
         if (IsDisposed)
         {
-            // Dispose ran in between, and cancelled only what it found before this loop was installed.
+            // Dispose ran in between, and canceled only what it found before this loop was installed.
             Cancel(loop);
             return superseded;
         }
