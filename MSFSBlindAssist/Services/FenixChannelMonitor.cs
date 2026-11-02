@@ -446,7 +446,8 @@ internal sealed class FenixChannelMonitor : IDisposable
     /// One tick of the timer: writes each display's verdict when its Trusted or the headline of its reason has
     /// changed since it was last written (the first tick writes all three), and, while the data call is connected,
     /// every 30th tick of the connection the comparison pairs, followed by SimConnect's deliveries since the last
-    /// such line (how many, and the longest gap between two).
+    /// such line (how many, and the longest gap between two in a row, a gap that spans a line counting in the next;
+    /// see <see cref="FenixChannelTrust.DescribeSimDeliveries"/>).
     /// </summary>
     internal void Tick()
     {

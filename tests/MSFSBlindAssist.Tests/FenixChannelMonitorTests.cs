@@ -968,8 +968,8 @@ public class FenixChannelMonitorTests
     public void The_comparisons_line_ends_with_the_simconnect_deliveries_since_the_line_before()
     {
         // After the five pairs: how many values SimConnect delivered since the last comparisons line, and the longest
-        // gap between two of them (the monitor's clock is real, so the gap's digits are not pinned here; the gate's
-        // tests pin the wording with a fake clock).
+        // gap between two deliveries in a row (the monitor's clock is real, so the gap's digits are not pinned here;
+        // the gate's tests pin the wording, and a gap that spans a line, with a fake clock).
         var lines = new Lines();
         using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
         monitor.OnDataState(FenixChannelState.Connected, "");

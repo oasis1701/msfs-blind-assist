@@ -139,11 +139,13 @@ internal sealed class FenixChannelTrust
     // reason: a switch that stays at Test is not delivered again.
     private bool _lightTest;
 
-    // SimConnect's deliveries since DescribeSimDeliveries last ran: how many came, when the latest came, and the
-    // longest interval between two in a row. Not reset by a reconnect: they are SimConnect's, not the channel's.
+    // SimConnect's deliveries since DescribeSimDeliveries last ran: how many came, and the longest interval between
+    // one of them and the delivery before it (null while no gap has been measured). The time of the latest delivery
+    // ever (null before the first) carries over those calls, so a gap that spans one counts in the next period. Not
+    // reset by a reconnect: they are SimConnect's, not the channel's.
     private int _deliveries;
-    private long _lastDeliveryMs;
-    private long _longestDeliveryGapMs;
+    private long? _longestDeliveryGapMs;
+    private long? _lastDeliveryMs;
 
     // Everything below belongs to one connection: OnConnected replaces it.
     private bool _connected;
@@ -273,7 +275,12 @@ internal sealed class FenixChannelTrust
             _sim[index] = value;
             _simAtMs[index] = nowMs;
 
-            if (_deliveries > 0) _longestDeliveryGapMs = Math.Max(_longestDeliveryGapMs, nowMs - _lastDeliveryMs);
+            if (_lastDeliveryMs is long lastMs)
+            {
+                long gapMs = Math.Max(0, nowMs - lastMs);
+                _longestDeliveryGapMs = Math.Max(_longestDeliveryGapMs ?? 0, gapMs);
+            }
+
             _lastDeliveryMs = nowMs;
             _deliveries++;
         }
@@ -317,26 +324,27 @@ internal sealed class FenixChannelTrust
 
     /// <summary>
     /// SimConnect's deliveries since the last call, for the comparisons line: "SimConnect: 42 values, longest gap
-    /// 1.1 s". The count is every arrival of the five comparisons (<see cref="OnComparison"/>), and the gap the
-    /// longest interval between two arrivals in a row within the period, in seconds to a tenth, in the invariant
-    /// culture; with fewer than two arrivals, "SimConnect: 1 value, no gap" or "SimConnect: 0 values, no gap". The
-    /// gate treats an old SimConnect value as unchanged, so a long gap (a UI stall in a turn) could become a false
-    /// disagreement: this is how a flight measures it. Side effect: each call starts a new period, so the next call
-    /// counts only what arrives after this one.
+    /// 1.1 s". The count is every arrival of the five comparisons (<see cref="OnComparison"/>) in the period. The gap
+    /// is the longest interval between an arrival of the period and the arrival before it, in seconds to a tenth, in
+    /// the invariant culture. The arrival before the period's first is the previous period's last, so a stall that
+    /// spans a call shows in the next line ("SimConnect: 1 value, longest gap 6.0 s"). "no gap" when the period has
+    /// no arrival ("SimConnect: 0 values, no gap"), or its only arrival is the first ever ("SimConnect: 1 value, no
+    /// gap"). The gate treats an old SimConnect value as unchanged, so a long gap (a UI stall in a turn) could become
+    /// a false disagreement: this is how a flight measures it. Side effect: each call starts a new period, so the next
+    /// call counts only what arrives after this one; the time of the last arrival carries over.
     /// </summary>
     public string DescribeSimDeliveries()
     {
-        string description = _deliveries switch
-        {
-            0 => "SimConnect: 0 values, no gap",
-            1 => "SimConnect: 1 value, no gap",
-            _ => "SimConnect: " + _deliveries.ToString(CultureInfo.InvariantCulture) + " values, longest gap "
-                 + (_longestDeliveryGapMs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " s"
-        };
+        string count = _deliveries == 1
+            ? "1 value"
+            : _deliveries.ToString(CultureInfo.InvariantCulture) + " values";
+        string gap = _longestDeliveryGapMs is long gapMs
+            ? "longest gap " + (gapMs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " s"
+            : "no gap";
 
         _deliveries = 0;
-        _longestDeliveryGapMs = 0;
-        return description;
+        _longestDeliveryGapMs = null;
+        return "SimConnect: " + count + ", " + gap;
     }
 
     // ---- The verdict ----------------------------------------------------------------------------

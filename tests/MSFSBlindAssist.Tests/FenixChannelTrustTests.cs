@@ -1619,24 +1619,51 @@ public class FenixChannelTrustTests
     }
 
     [Fact]
-    public void A_gap_is_measured_between_two_deliveries_of_one_period()
+    public void A_gap_that_spans_a_comparisons_line_counts_in_the_next_one()
+    {
+        var gate = new FenixChannelTrust(new HashSet<string>());
+        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 28_000);
+
+        // The line written at 30 s: the first delivery ever has no gap before it.
+        Assert.Equal("SimConnect: 1 value, no gap", gate.DescribeSimDeliveries());
+
+        // The next delivery comes 6 s after that one. The stall spans the line, so neither period holds both ends of
+        // it, and the next line counts it from the last delivery of the period before.
+        gate.OnComparison(FenixComparison.AltitudeFt, 1010, 34_000);
+
+        Assert.Equal("SimConnect: 1 value, longest gap 6.0 s", gate.DescribeSimDeliveries());
+    }
+
+    [Fact]
+    public void A_period_without_deliveries_leaves_the_gap_to_the_next_line()
+    {
+        var gate = new FenixChannelTrust(new HashSet<string>());
+        gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 0);
+
+        Assert.Equal("SimConnect: 1 value, no gap", gate.DescribeSimDeliveries());
+
+        // Nothing arrives for a whole period: that line has no delivery, so no gap of its own.
+        Assert.Equal("SimConnect: 0 values, no gap", gate.DescribeSimDeliveries());
+
+        // The next delivery comes 70 s after the last one: the line it falls in reports the whole stall.
+        gate.OnComparison(FenixComparison.MagHeadingDeg, 95, 70_000);
+
+        Assert.Equal("SimConnect: 1 value, longest gap 70.0 s", gate.DescribeSimDeliveries());
+    }
+
+    [Fact]
+    public void The_longest_gap_is_between_two_deliveries_in_a_row_of_any_comparison()
     {
         var gate = new FenixChannelTrust(new HashSet<string>());
         gate.OnComparison(FenixComparison.FuelKg, 2938, 0);
+        gate.DescribeSimDeliveries();
 
-        Assert.Equal("SimConnect: 1 value, no gap", gate.DescribeSimDeliveries());
-
-        // The first delivery of this period comes 10 s after the last of the one before: a period of one delivery
-        // has no gap of its own.
-        gate.OnComparison(FenixComparison.FuelKg, 2937, 10_000);
-
-        Assert.Equal("SimConnect: 1 value, no gap", gate.DescribeSimDeliveries());
-
-        // Deliveries of all five comparisons count together, and the longest interval between two in a row is the gap.
-        gate.OnComparison(FenixComparison.FuelKg, 2936, 20_000);
-        gate.OnComparison(FenixComparison.FdLightFo, 1, 20_000);
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 21_200);
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 21_300);
+        // Deliveries of all five comparisons count together. The gaps are 500 ms (from the delivery at t=0, in the
+        // period before), 0, 1,200 and 100 ms: the longest is the gap.
+        gate.OnComparison(FenixComparison.FuelKg, 2936, 500);
+        gate.OnComparison(FenixComparison.FdLightFo, 1, 500);
+        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 1_700);
+        gate.OnComparison(FenixComparison.FdLightCapt, 1, 1_800);
 
         Assert.Equal("SimConnect: 4 values, longest gap 1.2 s", gate.DescribeSimDeliveries());
     }
