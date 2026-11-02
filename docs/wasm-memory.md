@@ -607,6 +607,18 @@ Recorded in the build's ledger, each a ruling the in-sim test checks:
 - **A VOR line's direction is the station's place on the map**; PMDG draws it toward a screen point it
   stores for that station (not read).
 
+### MSFS 2020
+
+The MSFS 2020 `737NG3.wasm` is an older build of PMDG's code, with its own layout file. Two things differ for
+the ND there:
+
+- **The VOR/ADF pointers and POS are not read.** PMDG's 2020 code copies each receiver's radial without
+  correcting it by the station's variation, and `NdPosFields` has no way to say "no correction"
+  (`ModuleNavDisplaySampler` always applies it). Their row says "Pointers and POS: not read: PMDG file not
+  recognised".
+- **The VDEV row also waits for the perf info's path byte**, which PMDG's 2020 VDEV doesn't test (its phase test
+  is the same as 2024's, made in `updateVars`). Where they differ, the row is missing, never wrong.
+
 ### Seen live, and not yet
 
 Checked on the ground at KATL on the -800 (2026-10-25), every row against a capture of the real ND: the
