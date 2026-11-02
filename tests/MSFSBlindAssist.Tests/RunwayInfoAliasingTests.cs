@@ -160,7 +160,10 @@ public class RunwayInfoAliasingTests
         {
             string result = ElectronicFlightBagForm.GetRunwayDetailedInfoCore(fixture.DbPath, "FS2020", Icao, "21");
 
-            Assert.Contains("ILS Frequency:        108.50 MHz", result);
+            Assert.Contains("Frequency:            108.50 MHz", result);
+            // 206.0 true less 5.4 east variation: course 201 magnetic.
+            // A 3.0 degree glideslope is not said: the whole line is just this.
+            Assert.Contains("ILS 108.50, course 201", result.Split('\n').Select(l => l.Trim()));
             Assert.Contains("Loc Heading:          206.0° true", result);
             Assert.Contains("Loc Width:            3.4°", result);
             Assert.Contains("DME Altitude:         506 ft", result);
@@ -171,7 +174,8 @@ public class RunwayInfoAliasingTests
             Assert.Contains("Magnetic Heading:     200.6°", result);
             Assert.Contains("Length:               10803 ft", result);
             Assert.Contains("Altitude (MSL):       510 ft", result);
-            Assert.DoesNotContain(",", result);
+            // The localizer summary line is comma-separated text, so look for a decimal comma.
+            Assert.DoesNotMatch(@"\d,\d", result);
         });
     }
 
@@ -193,11 +197,12 @@ public class RunwayInfoAliasingTests
         {
             string result = ElectronicFlightBagForm.GetRunwayDetailedInfoCore(fixture.DbPath, "FS2024", Icao, "09L");
 
-            Assert.Contains("ILS Ident:            ITST", result);
-            Assert.Contains("ILS Frequency:        110.30 MHz", result);
+            Assert.Contains("ILS 110.30, course 90", result.Split('\n').Select(l => l.Trim()));
+            Assert.Contains("Ident:                ITST", result);
+            Assert.Contains("Frequency:            110.30 MHz", result);
             Assert.Contains("Loc Heading:          90.0° true", result);
             Assert.Contains("Loc Width:            3.0°", result);
-            Assert.DoesNotContain(",", result);
+            Assert.DoesNotMatch(@"\d,\d", result);
         });
     }
 }

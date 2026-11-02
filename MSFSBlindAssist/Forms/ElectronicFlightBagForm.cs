@@ -2560,8 +2560,25 @@ public partial class ElectronicFlightBagForm : Form
                         //     (join columns left NULL, e.g. KPHX 07R) and VALIDATES them against this
                         //     runway's threshold position and heading. Covers empty, orphaned, and
                         //     stale runway_end.ils_ident alike.
-                        //  3. "No ILS available".
-                        sb.AppendLine("ILS INFORMATION:");
+                        //  3. "No localizer".
+                        //
+                        // The block opens with LandingAidText's one-line summary ("ILS 110.10,
+                        // course 171" or "Localizer 108.70, course 152"), the same words as the
+                        // runway description. A localizer with
+                        // no glideslope is never labelled ILS: ESST's two localizers read as ILS
+                        // here while the G1000 rightly offered only LOC approaches.
+                        sb.AppendLine("LOCALIZER AND GLIDESLOPE:");
+                        double airportMagVar = reader["mag_var"] is object mv && mv != DBNull.Value
+                            ? Convert.ToDouble(mv, inv) : 0.0;
+                        // The course is the approach chart's (PublishedLocalizerCourse), as in the
+                        // runway lists; worked out from the localizer's heading only when no
+                        // procedure flies it.
+                        List<PublishedLocalizerCourse.Leg>? approachLegs = null;
+                        int LocalizerCourse(string ident, double locHeadingTrue, double localizerMagVar)
+                            => PublishedLocalizerCourse.Select(
+                                   approachLegs ??= PublishedLocalizerCourse.ReadAirport(connection, airportId),
+                                   runwayId, ident)
+                               ?? LandingAidText.MagneticCourse(locHeadingTrue, localizerMagVar);
                         var ilsIdent = reader["ils_ident"]?.ToString();
                         bool ilsRendered = false;
                         if (!string.IsNullOrEmpty(ilsIdent))
@@ -2580,13 +2597,28 @@ public partial class ElectronicFlightBagForm : Form
                                 {
                                     if (ilsReader.Read())
                                     {
-                                        sb.AppendLine($"  ILS Ident:            {ilsIdent}");
                                         var freq = ilsReader["frequency"];
+                                        double? gsRangeRaw = ilsReader["gs_range"] is object gr && gr != DBNull.Value ? Convert.ToDouble(gr, inv) : null;
+                                        double? gsPitchRaw = ilsReader["gs_pitch"] is object gp && gp != DBNull.Value ? Convert.ToDouble(gp, inv) : null;
+                                        double locHeading = ilsReader["loc_heading"] is object lh && lh != DBNull.Value ? Convert.ToDouble(lh, inv) : 0.0;
+                                        string? ilsType = ilsReader["type"] is object ty && ty != DBNull.Value ? Convert.ToString(ty, inv) : null;
+                                        // The localizer's own variation, the airport's only when it has none
+                                        // (LandingAidText.MagneticCourse: the airport's is 38° out at BGTL).
+                                        double ilsMagVar = ilsReader["mag_var"] is object ilsMv && ilsMv != DBNull.Value
+                                            ? Convert.ToDouble(ilsMv, inv) : airportMagVar;
                                         // ils.frequency is kHz in both the MSFS 2020 and 2024 builds.
-                                        sb.AppendLine($"  ILS Frequency:        {(freq != DBNull.Value ? FormatIlsFrequency(Convert.ToDouble(freq, inv) / 1000.0) : "N/A")}");
-                                        sb.AppendLine($"  ILS Name:             {FormatAirportText(ilsReader["name"])}");
-                                        sb.AppendLine($"  ILS Region:           {FormatAirportText(ilsReader["region"])}");
-                                        sb.AppendLine($"  ILS Type:             {FormatAirportText(ilsReader["type"])}");
+                                        if (freq != DBNull.Value)
+                                        {
+                                            sb.AppendLine("  " + LandingAidText.Describe(
+                                                LandingAidText.HasGlideslope(gsRangeRaw, gsPitchRaw), ilsType,
+                                                Convert.ToDouble(freq, inv) / 1000.0,
+                                                LocalizerCourse(ilsIdent, locHeading, ilsMagVar),
+                                                gsPitchRaw ?? 0.0));
+                                        }
+                                        sb.AppendLine($"  Ident:                {ilsIdent}");
+                                        sb.AppendLine($"  Frequency:            {(freq != DBNull.Value ? FormatIlsFrequency(Convert.ToDouble(freq, inv) / 1000.0) : "N/A")}");
+                                        sb.AppendLine($"  Name:                 {FormatAirportText(ilsReader["name"])}");
+                                        sb.AppendLine($"  Region:               {FormatAirportText(ilsReader["region"])}");
                                         sb.AppendLine($"  Loc Heading:          {FormatAirportDegrees(ilsReader["loc_heading"], trueHeading: true)}");
                                         sb.AppendLine($"  Loc Width:            {FormatAirportDegrees(ilsReader["loc_width"])}");
                                         sb.AppendLine($"  Range:                {ilsReader["range"]} NM");
@@ -2638,8 +2670,12 @@ public partial class ElectronicFlightBagForm : Form
                                 .GetILSForRunway(connection, icao, runwayId);
                             if (recoveredIls != null)
                             {
-                                sb.AppendLine($"  ILS Ident:            {recoveredIls.Ident}");
-                                sb.AppendLine($"  ILS Frequency:        {FormatIlsFrequency(recoveredIls.Frequency)}");
+                                sb.AppendLine("  " + LandingAidText.Describe(
+                                    recoveredIls.HasGlideslope, recoveredIls.Type, recoveredIls.Frequency,
+                                    LocalizerCourse(recoveredIls.Ident, recoveredIls.LocalizerHeading, recoveredIls.MagVar ?? airportMagVar),
+                                    recoveredIls.HasGlideslope ? recoveredIls.GlideslopePitch : 0.0));
+                                sb.AppendLine($"  Ident:                {recoveredIls.Ident}");
+                                sb.AppendLine($"  Frequency:            {FormatIlsFrequency(recoveredIls.Frequency)}");
                                 sb.AppendLine($"  Loc Heading:          {FormatAirportDegrees(recoveredIls.LocalizerHeading, trueHeading: true)}");
                                 sb.AppendLine($"  Loc Width:            {FormatAirportDegrees(recoveredIls.LocalizerWidth)}");
                                 if (recoveredIls.Range > 0)
@@ -2654,7 +2690,7 @@ public partial class ElectronicFlightBagForm : Form
                         }
                         if (!ilsRendered)
                         {
-                            sb.AppendLine("  No ILS available");
+                            sb.AppendLine("  " + LandingAidText.NoLocalizer);
                         }
                         sb.AppendLine();
 
