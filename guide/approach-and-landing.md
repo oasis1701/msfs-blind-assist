@@ -94,8 +94,10 @@ If you are off to one side, BA gives you the offset and three headings to choose
 Other things you may hear:
 
 - The glideslope part is only given within 25 nautical miles of the runway.
-- *"Warning: ILS signal range is 18 nautical miles."* at the start of the report means you are farther out than the ILS is published to reach. The numbers are still calculated, but your aircraft's own ILS receiver may not have a signal yet.
-- *"Approaching from opposite direction. Fly heading 093 to extend outbound."* You are on the wrong side of the airport. Fly that heading to get out onto the approach side, then turn back.
+- *"Localizer 108.70, course 152."* at the start of the report means the runway has a localizer but no glideslope, so the report has no glideslope part: you get the centreline guidance only. An offset approach starts the same way with its own name, LDA or IGS. A plain ILS has no such opening.
+- *"Warning: ILS signal range is 18 nautical miles."* at the start of the report means you are farther out than the ILS is published to reach. The numbers are still calculated, but your aircraft's own ILS receiver may not have a signal yet. For a localizer it says *"Localizer signal range"*.
+- *"Opposite side of runway 27, 3.2 nautical miles from threshold. Fly heading 093 to extend outbound."* You are on the wrong side of the airport. Fly that heading to get out onto the approach side, then turn back.
+- *"Warning: ILS signal range is 18 nautical miles. Opposite side of runway 27, 31.4 nautical miles from threshold. Threshold bearing 245."* The same, but you are beyond the ILS's published range, so BA gives the bearing to the runway threshold instead. Press Output Ctrl+I again closer in.
 - *"No ILS available for runway 27L at EGLL."* The database has no ILS for that runway. Use Visual Guidance or Output Ctrl+D instead.
 
 Separately from this report, BA says *"Glideslope alive"* on its own when your NAV 1 receiver starts picking up a glideslope signal, and *"Glideslope lost"* when the signal goes away. Hearing "Glideslope alive" after tuning an ILS tells you the receiver has the signal; it does not mean the autopilot has captured it. You can mute it in the Monitor Manager (Output Ctrl+M), where it is listed as Glideslope.
