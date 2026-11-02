@@ -1426,7 +1426,8 @@ public class FenixChannelMonitorTests
     public void A_monitor_built_with_only_a_build_reader_trusts_nothing()
     {
         // The defaults are the shipped ones: the real handler (no connection is made until Start), the real log
-        // channel, the empty set of checked builds, a one-second tick. Never started, so no socket is opened.
+        // channel, the shipped set of checked builds, a one-second tick. Never started, so no socket is opened, and
+        // a monitor that is not connected trusts nothing whatever the set holds.
         var monitor = new FenixChannelMonitor(_ => Task.FromResult<string?>(null));
 
         Assert.Null(monitor.Latest);

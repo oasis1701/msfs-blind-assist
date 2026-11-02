@@ -49,11 +49,14 @@ internal static class FenixChannelFields
 
     /// <summary>
     /// The Fenix builds the channel has been checked against in the sim, spelled as
-    /// <c>FenixDataService.GetSoftwareVersionAsync</c> gives them (for example "3.0.0.7613"). The trust gate
-    /// trusts no display on a build outside this set. Empty until a build is confirmed in the sim
-    /// ([FNX-23]), so until then nothing is trusted.
+    /// <c>FenixDataService.GetSoftwareVersionAsync</c> gives them, and matched exactly. The trust gate trusts no
+    /// display on a build outside this set. 3.0.0.7613 is the first, confirmed by the owner on 2026-11-02 after that
+    /// day's in-sim run: the field numbers here were checked against it ([FNX-23]).
     /// </summary>
-    public static readonly IReadOnlySet<string> VerifiedBuilds = new HashSet<string>(StringComparer.Ordinal);
+    public static readonly IReadOnlySet<string> VerifiedBuilds = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "3.0.0.7613"
+    };
 
     /// <summary>AircraftDataPush, the message of the display data call.</summary>
     public static class Push

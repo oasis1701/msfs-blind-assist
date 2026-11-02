@@ -48,12 +48,13 @@ public class FenixChannelReadOnlyTests
     }
 
     [Fact]
-    public void No_build_is_checked_before_someone_confirms_one()
+    public void The_first_checked_build_is_the_one_Robin_confirmed()
     {
-        // The trust gate trusts a display only on a build in this set, so an empty set trusts none. A build
-        // is added after the in-sim checks pass on it, and that change replaces this test with one that
-        // names the build.
-        Assert.Empty(FenixChannelFields.VerifiedBuilds);
+        // The trust gate trusts a display only on a build in this set ([FNX-23]). A build is run in the sim with
+        // it added in the working copy only, and committed only on the owner's confirmation: Robin (the
+        // repository owner) confirmed 3.0.0.7613 on 2026-11-02, after that day's in-sim run. A build joins
+        // this list only the same way, with this test changed to name it.
+        Assert.Equal(new[] { "3.0.0.7613" }, FenixChannelFields.VerifiedBuilds);
     }
 
     [Fact]
