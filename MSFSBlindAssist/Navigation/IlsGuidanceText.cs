@@ -15,12 +15,14 @@ namespace MSFSBlindAssist.Navigation;
 /// heading" an ILS report ends with and the extension heading are that course too; before
 /// 2026-11-02 they came from the sim's live variation and could differ from it.</para>
 ///
-/// <para>A localizer without a glideslope, an LDA or an IGS opens with its own line,
-/// "Localizer 108.70, course 152.", named by <see cref="LandingAidText"/> as the EFB names it
-/// (EFB-13), and ends with "Localizer course 152." rather than "Runway heading": an LDA or
-/// IGS course is not the runway's. A localizer gets no glideslope deviation, there is none
-/// to be above or below (ESST 16 used to get one, off a default 3 degree slope). A plain ILS
-/// opens straight with the distance, as before.</para>
+/// <para>Every report has the same shape; only two slots differ by aid. Where an ILS says how
+/// far above or below the glideslope it is, an aid without one says "No glideslope." (ESST 16
+/// used to get a deviation off a default 3 degree slope). Where an ILS ends "Runway heading
+/// 171.", a localizer, LDA or IGS ends "Localizer course 152.", named by
+/// <see cref="LandingAidText.Name"/> as the EFB names it (EFB-13): an LDA or IGS course is not
+/// the runway's. The course is said once. An opening "Localizer 108.70, course 152." line was
+/// tried on 2026-11-02 and dropped the same day at the owner's word: it broke the shape and
+/// said the course twice. The frequency is Output N's and the EFB's to give.</para>
 ///
 /// <para>On the far side of the threshold the report gives the distance and the range
 /// warning too. Inside the aid's published range it says the heading to extend outbound;
@@ -46,16 +48,10 @@ public static class IlsGuidanceText
         return LandingAidText.MagneticCourse(ils.LocalizerHeading, ils.MagVar ?? fallbackMagVar);
     }
 
-    /// <summary>True when the aid is anything but a plain ILS: a localizer, LDA or IGS.</summary>
-    public static bool NeedsOpening(ILSData ils)
+    /// <summary>True when the aid is anything but a plain ILS: a localizer, LDA or IGS, which
+    /// ends with its own course rather than the runway heading.</summary>
+    public static bool NamesItsCourse(ILSData ils)
         => !ils.HasGlideslope || LandingAidText.OffsetFacility(ils.Type) != null;
-
-    /// <summary>"Localizer 108.70, course 152. " for an aid that is not a plain ILS, else "".</summary>
-    public static string Opening(ILSData ils, int courseMag)
-        => NeedsOpening(ils)
-            ? LandingAidText.Describe(ils.HasGlideslope, ils.Type, ils.Frequency, courseMag,
-                ils.HasGlideslope ? ils.GlideslopePitch : 0.0) + ". "
-            : "";
 
     /// <summary>True when the aid has a published range and the aircraft is beyond it.</summary>
     public static bool IsBeyondRange(ILSData ils, double distanceToThresholdNm)
@@ -68,11 +64,13 @@ public static class IlsGuidanceText
             ? $"Warning: {PlainName(ils)} signal range is {ils.Range.ToString(Inv)} nautical miles. "
             : "";
 
-    /// <summary>" 120 feet below glideslope." when the aid has a glideslope and a deviation was
-    /// worked out, else "".</summary>
+    /// <summary>" No glideslope." for an aid without one; " 120 feet below glideslope." when it
+    /// has one and a deviation was worked out (within 25 NM); else "".</summary>
     public static string Glideslope(ILSData ils, double? deviationFeet)
     {
-        if (!ils.HasGlideslope || deviationFeet is not double dev)
+        if (!ils.HasGlideslope)
+            return " No glideslope.";
+        if (deviationFeet is not double dev)
             return "";
         string direction = dev > 0 ? "above" : "below";
         return $" {Math.Abs(dev).ToString("F0", Inv)} feet {direction} glideslope.";
@@ -87,7 +85,7 @@ public static class IlsGuidanceText
         string advice = IsBeyondRange(ils, distanceToThresholdNm)
             ? $"Threshold bearing {Heading(thresholdBearingMag)}."
             : $"Fly heading {Heading(LandingAidText.WholeCourse(courseMag + 180))} to extend outbound.";
-        return $"{Opening(ils, courseMag)}{RangeWarning(ils, distanceToThresholdNm)}" +
+        return $"{RangeWarning(ils, distanceToThresholdNm)}" +
                $"Opposite side of runway {runwayId}, {Nm(distanceToThresholdNm)} nautical miles from threshold. {advice}";
     }
 
@@ -95,7 +93,7 @@ public static class IlsGuidanceText
     /// ILS; a localizer, LDA or IGS ends "Localizer course 152.".</summary>
     public static string OnCenterline(ILSData ils, int courseMag, double distanceToThresholdNm,
         double? glideslopeDeviationFeet)
-        => $"{Opening(ils, courseMag)}{RangeWarning(ils, distanceToThresholdNm)}" +
+        => $"{RangeWarning(ils, distanceToThresholdNm)}" +
            $"{Nm(distanceToThresholdNm)} nautical miles from threshold, on centerline." +
            $"{Glideslope(ils, glideslopeDeviationFeet)} {Closing(ils, courseMag)}";
 
@@ -105,7 +103,7 @@ public static class IlsGuidanceText
         double heading60, double heading45, double heading30)
     {
         string side = left ? "left" : "right";
-        return $"{Opening(ils, courseMag)}{RangeWarning(ils, distanceToThresholdNm)}" +
+        return $"{RangeWarning(ils, distanceToThresholdNm)}" +
                $"{Nm(distanceToThresholdNm)} nautical miles from threshold, " +
                $"{Nm(distanceToCenterlineNm)} nautical miles {side} of centerline, " +
                $"{angularDeviationDeg.ToString("F0", Inv)} degrees {side} of centerline." +
@@ -116,7 +114,7 @@ public static class IlsGuidanceText
     }
 
     private static string Closing(ILSData ils, int courseMag)
-        => NeedsOpening(ils)
+        => NamesItsCourse(ils)
             ? $"{PlainName(ils)} course {courseMag.ToString(Inv)}."
             : $"Runway heading {Heading(courseMag)}.";
 
