@@ -94,16 +94,15 @@ public partial class FenixA320Definition
     // HandleHotkeyAction's first look at any action, before its own switch. FenixChannelReads decides: it gives
     // the channel's own text only when the key has a read and that read's display is trusted, and null otherwise,
     // which is the AI read the key reaches exactly as before (handled stays false). The table is empty in this
-    // work, so nothing is spoken here yet. The latest frame is passed as an argument, so it is read before the
-    // verdict is asked (see FenixChannelReads.Choose).
+    // work, so nothing is spoken here yet. Choose takes the monitor's Snapshot, which gives a display's verdict and
+    // the latest frame from one locked instant, so a read composes only the frame its verdict judged.
     partial void TryChannelDisplayRead(Hotkeys.HotkeyAction action, Accessibility.ScreenReaderAnnouncer announcer,
         ref bool handled)
     {
         Services.FenixChannelMonitor? monitor = _displayChannelMonitor;
         if (monitor is null) return;
 
-        string? text = Services.FenixChannelReads.Choose(
-            action, Services.FenixChannelReads.All, monitor.VerdictFor, monitor.Latest);
+        string? text = Services.FenixChannelReads.Choose(action, Services.FenixChannelReads.All, monitor.Snapshot);
         if (text is null) return;
 
         announcer.Announce(text);

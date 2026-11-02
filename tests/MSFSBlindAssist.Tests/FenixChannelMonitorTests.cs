@@ -12,8 +12,9 @@
 // started, which also makes them instant.
 //
 // The rules the monitor keeps: each connection of the data call starts the gate fresh, then gives it the last
-// ECAM entries message again, then asks for the build, and a build answer belongs to its connection only; an
-// empty push does not replace the latest frame; after Dispose every callback is ignored, and Dispose itself
+// ECAM entries message again, then asks for the build, and a build answer belongs to its connection only; each
+// connection clears the latest frame, and neither an empty push nor a damaged one replaces it; a snapshot gives a
+// display's verdict and the latest frame from one instant; after Dispose every callback is ignored, and Dispose itself
 // writes "channel stopped" once, as the last line of the log; "display data: connected" is written with the
 // first message, not the headers, and a failure that repeats is written once until a message arrives; a
 // verdict is written when its Trusted or its headline (the text before the first colon) changes.
@@ -57,6 +58,22 @@ internal static class MonitorTestKit
     /// <summary>An ECAM entries message whose entries arrive as a number instead of a nested message: a wrong shape.</summary>
     public static byte[] WrongShapedEntries() => new FenixChannelProtoWriter().Varint(1, 5).ToArray();
 
+    /// <summary>
+    /// A display push with its 16 FMA slots whose flight director arrives as a number instead of a nested
+    /// message: a wrong shape ("110"), with data in it.
+    /// </summary>
+    public static byte[] WrongShapedPush(double altitude = 1000)
+    {
+        var remote = new FenixChannelProtoWriter().Varint(110, 1);
+        for (int slot = 0; slot < 16; slot++)
+        {
+            remote.Message(111, new FenixChannelProtoWriter());
+        }
+
+        remote.Double(197, altitude);
+        return new FenixChannelProtoWriter().Message(1, remote).ToArray();
+    }
+
     /// <summary>An ECAM entries message that has the shape the contract gives it: just a heartbeat.</summary>
     public static byte[] GoodEntries() => new FenixChannelProtoWriter().Bool(2, true).ToArray();
 
@@ -96,6 +113,16 @@ internal static class MonitorTestKit
         => monitor.VerdictFor(FenixChannelDisplay.Pfd).Trusted
            && monitor.VerdictFor(FenixChannelDisplay.Ewd).Trusted
            && monitor.VerdictFor(FenixChannelDisplay.Sd).Trusted;
+
+    /// <summary>SimConnect's side of the five comparisons, agreeing with <see cref="GoodPush"/> at that altitude.</summary>
+    public static void AgreeWithGoodPush(FenixChannelMonitor monitor, double altitude = 1000)
+    {
+        monitor.OnComparison(FenixComparison.FdLightCapt, 1);
+        monitor.OnComparison(FenixComparison.FdLightFo, 1);
+        monitor.OnComparison(FenixComparison.AltitudeFt, altitude);
+        monitor.OnComparison(FenixComparison.MagHeadingDeg, 90);
+        monitor.OnComparison(FenixComparison.FuelKg, 2940);   // the FOB line of GoodPush
+    }
 
     /// <summary>Sends <paramref name="message"/> into an open stream every 20 ms until <paramref name="stop"/>.</summary>
     public static Task Feed(OpenStream stream, byte[] message, CancellationToken stop)
@@ -404,6 +431,121 @@ public class FenixChannelMonitorTests
         Assert.Equal(
             new FenixDisplayVerdict(false, "ECAM entries field 1 has the wrong shape"),
             monitor.VerdictFor(FenixChannelDisplay.Sd));
+    }
+
+    // ---- The snapshot: a verdict and the frame it judged, together ------------------------------
+
+    [Fact]
+    public async Task A_snapshot_takes_the_verdict_and_the_frame_from_one_instant()
+    {
+        // The log is written under the monitor's lock, in the order the gate saw its events, so a log that waits
+        // holds a frame's delivery inside the lock: here the connection's first frame, stopped at its "connected"
+        // line, before the gate has judged it and before it is the latest. A snapshot asked meanwhile waits for the
+        // lock and gets the verdict and the frame as they stand after that frame. A reader that took the latest
+        // frame first and the verdict after it, two steps, would get the verdict on the new frame beside no frame.
+        // The pause before the release lets the snapshot reach the lock; on a slow machine it may not, and the test
+        // then passes without proving anything, but it never fails.
+        using var held = new ManualResetEventSlim(false);
+        using var release = new ManualResetEventSlim(false);
+        int holdTheNextConnectedLine = 0;
+        var lines = new Lines();
+        void Log(string line)
+        {
+            lines.Write(line);
+            if (line == "display data: connected" && Interlocked.Exchange(ref holdTheNextConnectedLine, 0) == 1)
+            {
+                held.Set();
+                release.Wait(Generous);
+            }
+        }
+
+        using var monitor = new FenixChannelMonitor(
+            AnswersTheCheckedBuild, Checked, new ChannelServer(), Log, TickEvery, BuildRetry, (_, _) => TimeSpan.Zero);
+        AgreeWithGoodPush(monitor, altitude: 2000);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
+
+        Volatile.Write(ref holdTheNextConnectedLine, 1);
+        Task delivery = Task.Run(() => monitor.OnDataMessage(GoodPush(2000)));
+        Assert.True(held.Wait(Generous), "the frame never reached its log line");
+        Task<(FenixDisplayVerdict Verdict, FenixChannelFrame? Frame)> snapshot =
+            Task.Run(() => monitor.Snapshot(FenixChannelDisplay.Pfd));
+        await Task.Delay(Quiet);
+        release.Set();
+        await delivery.WaitAsync(Generous);
+        var (verdict, frame) = await snapshot.WaitAsync(Generous);
+
+        Assert.Equal(new FenixDisplayVerdict(true, "trusted"), verdict);
+        Assert.NotNull(frame);
+        Assert.Equal(2000, frame.Altitude);
+        Assert.Same(monitor.Latest, frame);
+    }
+
+    [Fact]
+    public async Task A_snapshot_gives_each_verdict_with_the_frame_it_judged()
+    {
+        // A frame with a text code the app does not know untrusts the E/WD, and the next one, without it, trusts it
+        // again: each snapshot pairs the verdict with the frame that gave it.
+        var lines = new Lines();
+        using var monitor = NewIdleMonitor(lines);
+        AgreeWithGoodPush(monitor);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
+
+        monitor.OnDataMessage(FenixChannelProtoWriter.GoodPush(upperEcamLeft: ["rENG 1 FIRE"]));
+        var (doubted, doubtedFrame) = monitor.Snapshot(FenixChannelDisplay.Ewd);
+
+        Assert.Equal(new FenixDisplayVerdict(false, "unknown code 'r' in the upper ECAM"), doubted);
+        Assert.Equal(new[] { "rENG 1 FIRE" }, doubtedFrame?.UpperEcamLeft);
+
+        monitor.OnDataMessage(GoodPush());
+        var (trusted, trustedFrame) = monitor.Snapshot(FenixChannelDisplay.Ewd);
+
+        Assert.Equal(new FenixDisplayVerdict(true, "trusted"), trusted);
+        Assert.NotNull(trustedFrame);
+        Assert.Empty(trustedFrame.UpperEcamLeft);
+    }
+
+    [Fact]
+    public void Each_connection_of_the_data_call_clears_the_latest_frame()
+    {
+        // A frame from an earlier connection is never read: after a reconnect the latest frame is the new
+        // connection's first good one, and until it comes there is none.
+        var lines = new Lines();
+        using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        monitor.OnDataMessage(GoodPush(1000));
+        Assert.Equal(1000, monitor.Latest?.Altitude);
+
+        monitor.OnDataState(FenixChannelState.NotAnswering, "the stream ended");
+        monitor.OnDataState(FenixChannelState.Connected, "");
+
+        Assert.Null(monitor.Latest);
+        Assert.Null(monitor.Snapshot(FenixChannelDisplay.Sd).Frame);
+
+        monitor.OnDataMessage(GoodPush(2000));
+        Assert.Equal(2000, monitor.Latest?.Altitude);
+    }
+
+    [Fact]
+    public void A_damaged_frame_never_becomes_the_latest()
+    {
+        // The gate takes no values from a malformed or wrong-shaped frame (it latches instead), and the latest frame
+        // is the one a read composes, so it skips them too: as the connection's first message, and after a good one.
+        var lines = new Lines();
+        using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+
+        monitor.OnDataMessage(GoodPush()[..20]);   // malformed: cut short
+        Assert.Null(monitor.Latest);
+
+        monitor.OnDataMessage(GoodPush(1000));
+        FenixChannelFrame? good = monitor.Latest;
+        Assert.Equal(1000, good?.Altitude);
+
+        monitor.OnDataMessage(GoodPush(2000)[..20]);
+        monitor.OnDataMessage(WrongShapedPush(altitude: 3000));
+        Assert.Same(good, monitor.Latest);
     }
 
     // ---- The build ------------------------------------------------------------------------------

@@ -5,19 +5,21 @@ namespace MSFSBlindAssist.Services;
 /// <summary>
 /// The owner of one session of the Fenix display channel: it runs the client's two calls, decodes each message,
 /// feeds the trust gate under one lock, keeps the latest display frame, asks for the Fenix build on each
-/// connection of the data call, and writes the channel's log (fenix_channel.log). A reader asks it for a verdict
-/// per display and for the latest frame. The Fenix aircraft definition owns one monitor and disposes it when
-/// the pilot switches away.
+/// connection of the data call, and writes the channel's log (fenix_channel.log). A reader asks it for a snapshot:
+/// a display's verdict and the latest frame, taken together. The Fenix aircraft definition owns one monitor and
+/// disposes it when the pilot switches away.
 /// </summary>
 /// <remarks>
 /// <para>Threads. A call's messages and states arrive on the client's pool threads, comparison values and reads on
 /// the UI thread, and the tick on a pool thread. One lock guards the gate and every field that decides what the
 /// log says, so a verdict is always read from one whole state, and the log's lines come out in the order the gate
 /// saw its events. Nothing under the lock waits for anything. A message is decoded before the lock is taken and fed
-/// under it, and the latest frame is swapped in whole, so a reader on another thread never sees half of one.
+/// under it. The latest frame is swapped in whole, and a snapshot reads it under the same lock as the verdict, so a
+/// reader never sees half of a frame, nor a frame beside a verdict the gate gave on another one.
 /// Nothing here throws at a caller, speaks or touches a control, as with <see cref="FenixDataService"/>; every
 /// clock reading is <see cref="Environment.TickCount64"/>, so the gate compares times from one source.</para>
-/// <para>Each connection of the data call does three things, in this order, under the lock. The gate starts fresh.
+/// <para>Each connection of the data call does three things, in this order, under the lock. The gate starts fresh,
+/// and the latest frame is cleared with it, so no frame of an earlier connection is read.
 /// Then it is given the last ECAM entries message again: that stream sends only when its list changes, so a
 /// wrong-shaped message that arrived before this connection is the last thing it said, and the gate's fresh start
 /// would otherwise erase the latch that message set. Then a build loop starts, which asks for the build until it
@@ -143,9 +145,11 @@ internal sealed class FenixChannelMonitor : IDisposable
     private bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
     /// <summary>
-    /// The latest display frame, swapped in whole as each message is decoded; null before the first. A push with
-    /// no display data (<see cref="FenixChannelFrame.HasData"/> false) never replaces it. It may be stale or
-    /// untrustworthy: ask <see cref="VerdictFor"/> before reading a value from it.
+    /// The latest display frame the gate took values from, swapped in whole; null before the first frame of a
+    /// connection. Each connection of the data call clears it, and only a frame with data
+    /// (<see cref="FenixChannelFrame.HasData"/>) and every shape right (<see cref="FenixChannelFrame.ShapesOk"/>)
+    /// replaces it: the gate takes no values from the others. For the tests: a read takes its frame from
+    /// <see cref="Snapshot"/>, with the verdict that judged it, never from here.
     /// </summary>
     public FenixChannelFrame? Latest => Volatile.Read(ref _latest);
 
@@ -170,19 +174,30 @@ internal sealed class FenixChannelMonitor : IDisposable
     }
 
     /// <summary>
-    /// Whether <paramref name="display"/> may be read to the pilot now, and the first reason it may not. A
-    /// monitor that has been disposed trusts nothing: its frames have stopped, and the gate would take 2 s to
-    /// notice.
+    /// Whether <paramref name="display"/> may be read to the pilot now (and the first reason it may not), with the
+    /// latest frame, both taken under the one lock at the same instant: the frame is the one the gate judged in
+    /// giving the verdict, never an older frame beside a newer verdict or the reverse. A read composes from this
+    /// frame only when this verdict trusts it (<see cref="FenixChannelReads.Choose"/>). The frame is null before
+    /// the first of a connection. A monitor that has been disposed trusts nothing ("channel stopped"): its frames
+    /// have stopped, and the gate would take 2 s to notice.
     /// </summary>
-    public FenixDisplayVerdict VerdictFor(FenixChannelDisplay display)
+    public (FenixDisplayVerdict Verdict, FenixChannelFrame? Frame) Snapshot(FenixChannelDisplay display)
     {
         lock (_lock)
         {
-            return IsDisposed
+            FenixDisplayVerdict verdict = IsDisposed
                 ? new FenixDisplayVerdict(false, "channel stopped")
                 : _trust.VerdictFor(display, Now);
+            return (verdict, _latest);
         }
     }
+
+    /// <summary>
+    /// The verdict of <see cref="Snapshot"/> alone: whether <paramref name="display"/> may be read to the pilot
+    /// now, and the first reason it may not. For the tests: a read takes the whole snapshot, so that its frame and
+    /// its verdict come together.
+    /// </summary>
+    public FenixDisplayVerdict VerdictFor(FenixChannelDisplay display) => Snapshot(display).Verdict;
 
     /// <summary>
     /// SimConnect's latest value for one comparison (the flight director lights as 0 or 1, the altitude in feet, the
@@ -276,8 +291,10 @@ internal sealed class FenixChannelMonitor : IDisposable
                     _connectedTicks = 0;
 
                     // The order matters: see the remarks. No line is written yet: the headers say the call
-                    // opened, not that it works.
+                    // opened, not that it works. The gate starts fresh, and so does the latest frame: a frame of
+                    // the connection before is never read.
                     _trust.OnConnected(Now);
+                    Volatile.Write(ref _latest, null);
                     if (_lastEntries is not null) _trust.OnEcamEntries(_lastEntries);
                     ended = StartBuildLoop();
                     break;
@@ -318,8 +335,9 @@ internal sealed class FenixChannelMonitor : IDisposable
 
             _trust.OnFrame(frame, Now);
 
-            // An empty push is no data: the gate skips it, and so does the latest frame.
-            if (frame.HasData) Volatile.Write(ref _latest, frame);
+            // The latest frame is the one the gate took values from: it skips an empty push (no data), and takes
+            // none from a malformed or wrong-shaped frame, which latches it instead.
+            if (frame.HasData && frame.ShapesOk) Volatile.Write(ref _latest, frame);
         }
     }
 

@@ -12,8 +12,8 @@ namespace MSFSBlindAssist.Services;
 /// </param>
 /// <param name="Compose">
 /// The text to speak from a frame, or null when the frame gives none. Called only for a display the gate
-/// trusts, and with the latest frame. Whatever it throws, or leaves null, empty or blank, is answered with the
-/// AI read.
+/// trusts, and with the frame the gate judged in giving that verdict. Whatever it throws, or leaves null, empty
+/// or blank, is answered with the AI read.
 /// </param>
 internal sealed record FenixChannelRead(FenixChannelDisplay Display, Func<FenixChannelFrame, string?> Compose);
 
@@ -35,43 +35,41 @@ internal static class FenixChannelReads
 
     /// <summary>
     /// The answer to a display key: the text to speak, or null for "use the AI read". The text is spoken only
-    /// when all of these hold: <paramref name="reads"/> has a read for <paramref name="action"/>, a frame has
-    /// come, <paramref name="verdictFor"/> trusts the read's own display, and the read composes text from the
-    /// frame. Every other case answers null: no read for the key, no frame yet, the display not trusted, and a
-    /// read that gives null, empty or blank text. Nothing throws out of it: a read or a verdict that throws is
-    /// a read that did not come, and answers null too.
+    /// when all of these hold: <paramref name="reads"/> has a read for <paramref name="action"/>, the snapshot
+    /// of the read's own display trusts it and holds a frame, and the read composes text from that frame. Every
+    /// other case answers null: no read for the key, the display not trusted, no frame yet, and a read that
+    /// gives null, empty or blank text. Nothing throws out of it: a read or a snapshot that throws is a read
+    /// that did not come, and answers null too.
     /// </summary>
     /// <remarks>
     /// Pure: no state, no I/O and no log, so a caller that wants a line in the log decides what to write and
-    /// when. A read is composed only for a display the gate trusts, so it never sees a frame whose display the
-    /// gate refused.
+    /// when. The verdict and the frame come from one snapshot, which the monitor takes at one locked instant, so
+    /// the frame a read composes is the very frame the gate judged in giving that verdict: never an older frame
+    /// beside a newer verdict, nor a newer frame beside an older one.
     /// </remarks>
     /// <param name="action">The display key that was pressed.</param>
     /// <param name="reads">The table of reads: the app passes <see cref="All"/>, a test a stand-in of its own.</param>
-    /// <param name="verdictFor">
-    /// The trust gate's answer for a display, as <see cref="FenixChannelMonitor.VerdictFor"/> gives it. It is
-    /// asked once, and only for the display of the read the key has.
-    /// </param>
-    /// <param name="latest">
-    /// The monitor's latest frame, null before the first. It is an argument, not a function, so the caller has
-    /// read it before the verdict is asked: a frame that latches the gate in between is then answered "not
-    /// trusted", and never read as one the gate trusted.
+    /// <param name="snapshot">
+    /// The trust gate's verdict for a display and the latest frame (null before the first), taken together, as
+    /// <see cref="FenixChannelMonitor.Snapshot"/> gives them. It is asked once, and only for the display of the
+    /// read the key has.
     /// </param>
     public static string? Choose(HotkeyAction action, IReadOnlyDictionary<HotkeyAction, FenixChannelRead> reads,
-        Func<FenixChannelDisplay, FenixDisplayVerdict> verdictFor, FenixChannelFrame? latest)
+        Func<FenixChannelDisplay, (FenixDisplayVerdict Verdict, FenixChannelFrame? Frame)> snapshot)
     {
         try
         {
             if (!reads.TryGetValue(action, out FenixChannelRead? read)) return null;
-            if (latest is null) return null;
-            if (!verdictFor(read.Display).Trusted) return null;
 
-            string? text = read.Compose(latest);
+            var (verdict, frame) = snapshot(read.Display);
+            if (!verdict.Trusted || frame is null) return null;
+
+            string? text = read.Compose(frame);
             return string.IsNullOrWhiteSpace(text) ? null : text;
         }
         catch (Exception)
         {
-            // A read or a verdict that throws is one that did not come: the key keeps its AI read, as it does
+            // A read or a snapshot that throws is one that did not come: the key keeps its AI read, as it does
             // for every failure of the channel. Choose writes no log, so nothing here records the throw; the
             // tests of each read are what keep it from throwing.
             return null;
