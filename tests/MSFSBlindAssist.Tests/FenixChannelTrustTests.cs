@@ -1422,9 +1422,9 @@ public class FenixChannelTrustTests
     {
         FenixChannelTrust gate = TrustedGate();
 
-        gate.OnFrame(Frame(fma: FmaWith(slot, "dX")), 100);
+        gate.OnFrame(Frame(fma: FmaWith(slot, "kX")), 100);
 
-        Assert.Equal(Untrusted("unknown code 'd' in the FMA"), Pfd(gate, 100));
+        Assert.Equal(Untrusted("unknown code 'k' in the FMA"), Pfd(gate, 100));
         Assert.Equal(Trusted, Ewd(gate, 100));
         Assert.Equal(Trusted, Sd(gate, 100));
         Assert.Equal(Trusted, Nd(gate, 100));
@@ -1454,9 +1454,9 @@ public class FenixChannelTrustTests
         FenixChannelTrust gate = TrustedGate();
 
         // The left column comes before the right one, and within a line the first letter wins.
-        gate.OnFrame(Frame(upperLeft: new[] { "wOK", "dFAULTx" }, upperRight: new[] { "qBAD" }), 100);
+        gate.OnFrame(Frame(upperLeft: new[] { "wOK", "kFAULTx" }, upperRight: new[] { "qBAD" }), 100);
 
-        Assert.Equal(Untrusted("unknown code 'd' in the upper ECAM"), Ewd(gate, 100));
+        Assert.Equal(Untrusted("unknown code 'k' in the upper ECAM"), Ewd(gate, 100));
     }
 
     [Fact]
@@ -1481,14 +1481,14 @@ public class FenixChannelTrustTests
         gate.OnComparison(FenixComparison.FdLightCapt, 1, 0);
         gate.OnComparison(FenixComparison.FdLightFo, 1, 0);
         gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 0);   // no altitude yet
-        gate.OnFrame(Frame(fma: FmaWith(0, "dX")), 0);
+        gate.OnFrame(Frame(fma: FmaWith(0, "kX")), 0);
 
         Assert.Equal(Untrusted("altitude not checked yet"), Pfd(gate, 0));
 
         gate.OnComparison(FenixComparison.AltitudeFt, 1000, 100);
-        gate.OnFrame(Frame(fma: FmaWith(0, "dX")), 100);
+        gate.OnFrame(Frame(fma: FmaWith(0, "kX")), 100);
 
-        Assert.Equal(Untrusted("unknown code 'd' in the FMA"), Pfd(gate, 100));
+        Assert.Equal(Untrusted("unknown code 'k' in the FMA"), Pfd(gate, 100));
     }
 
     // ---- A frame with no FMA ----------------------------------------------------------------------
