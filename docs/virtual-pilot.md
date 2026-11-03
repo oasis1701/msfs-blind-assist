@@ -45,6 +45,7 @@ tools/VirtualPilot/bin/x64/Release/net10.0-windows/VirtualPilot.exe <mode> [opti
 | `wrongturn` | follows a gate → runway route, then deliberately turns into a branch that leads to a runway hold line not on the route; the app must say "off route" first |
 | `all` | landings + taxi |
 | `departures` | per runway end: named (OSM) holding-point departures (`HP`, flown free and on a clearance), intersection departures (`IX`), full-length backtracks where the runway list would say "(backtrack required)" (`BT`); per airport: gate → gate taxis across the field (`G2G`) and ATC clearances with explicit "hold short of runway X" instructions (`HSCLR`) — each also voiced as a written and a spoken-NATO clearance and fed to the SayIntentions import's own parser (`CLR_*`) |
+| `approach` | visual guidance (Output Ctrl+V): 147 simulated approaches through the real `VisualGuidanceManager`, flown by a pilot who follows the two tones and the bank callouts, on two synthetic runways (no navdata database needed). See [Approaches](#approaches-visual-guidance) |
 | `fetchosm` | downloads the raw Overpass answer for each airport into `runs/_osm/ICAO.json` (one polite request at a time — Overpass rate-limits hard, expect ~1 airport a minute). Every mode then builds the app's OWN OSM-augmented graph from that snapshot (names, holding points); `VP_NOOSM=1` flies plain navdata, `VP_OSMDIR` points elsewhere. The snapshot pins the data so a before/after run measures the code, not OSM churn |
 
 Options: `--airports N` (busiest by taxi-path count, default 100), `--icao A,B`, `--shard i/n`
@@ -119,6 +120,159 @@ decelerating speed (Normal/End exits 18 kt at the junction, High-speed 35 kt).
 | `HP_HELD_AWAY_FROM_POINT` / `HP_HOLD_NOT_NAMED` / `HP_ROUTE_MISSES_POINT[_WARNED]` | a named-holding-point departure held > 30 m from the painted line picked / held there without naming it / the route never passes it (`_WARNED`: the app said so) | medium — hold placement stays navdata-authoritative by design, and a painted line BEYOND the navdata hold is correctly never reached |
 | `CLR_{WRITTEN,SPOKEN}_{TAXIWAYS,HOLDS,RUNWAY}_WRONG` | the voiced clearance parsed to different taxiways / hold shorts / runway | high for spellable names; navdata names ATC would never say ("N-North") are noise |
 | `LINEUP_LEAVES_MAPPED_PAVEMENT`, `LINEUP_NEVER_ALIGNED` | the lineup intercept leaves every mapped edge; never "Lined up" in 400 m | **low** — many sceneries stop the entry taxiway at the hold line (KIAH SA), so the ground between hold line and runway is unmapped |
+
+## Approaches (visual guidance)
+
+The `approach` mode flies visual guidance the way the other modes fly taxi guidance: through the
+real `VisualGuidanceManager`, with simulated time and no audio, steered only by what a blind pilot
+gets. It was built on 2026-11-02 as the first stage of the visual guidance redesign, to record how
+today's guidance behaves before any of it changes. Its files are in `tools/VirtualPilot/Approach/`.
+
+### Hooks
+
+All of them are inert in the app (VP-1):
+
+- `VisualGuidanceManager.HeadlessForHarness`, an instance `init` flag: `Initialize` builds no tones
+  and `ProcessUpdate` runs the guidance without them.
+- `DesiredPitchForHarness` and `DesiredBankForHarness`: the pitch (nose up positive) and bank
+  (right positive) commanded on the last update, before the tones saturate. `PhaseForHarness` names
+  the guidance phase.
+- `PitchDegreesFromSimConnect`, `BankDegreesFromSimConnect` and `AoaDegreesFromSimConnect`, which
+  MainForm's `VISUAL_GUIDANCE_*` handlers also call, so the harness converts SimConnect's attitude
+  exactly as the app does.
+- Every clock read in `VisualGuidanceManager` goes through `SimClock.UtcNow`;
+  `VisualGuidanceHarnessHookTests` pins it, and pins left and right on two runways.
+
+### The runways, the aircraft and the pilot
+
+Two synthetic runways replace the navdata database. Both have a 3° glide path and are 2 nm long.
+
+| runway | threshold | true course | variation | magnetic course | elevation |
+|---|---|---|---|---|---|
+| A | 47.0 N, 8.0 E | 004 | 9° E | 355 (wraps through north) | 1,400 ft |
+| B | 40.0 N, 74.0 W | 268 | 13° W | 281 | 20 ft |
+
+The aircraft is a point mass. Bank sets the turn rate (g·tan φ / V), and wings level flies a great
+circle. The flight path follows the pitch minus a fixed trim angle of attack through a first-order
+lag. Speed is held, as autothrust would hold it, the wind is constant, and the terrain is flat at
+the threshold's elevation. There is no ground effect.
+
+| kind | TAS | trim angle of attack | flight-path lag | pilot roll rate | pilot pitch rate |
+|---|---|---|---|---|---|
+| Jet | 140 kt | 5° | 2.5 s | 5°/s | 2°/s |
+| Light | 65 kt | 4° | 1.5 s | 10°/s | 4°/s |
+
+The pilot (`TonePilot`) hears the two tones, each pinned at the profile's range (±5° of bank,
+±6° of pitch by default). Inside the range the pilot flies the commanded value. Past it, both pans
+pin and sound alike, so for bank the pilot uses the latest callout from the last 2 s ("3 right",
+"matched"); with none, they roll until the current tone pins too, then hold. The pilot acts after
+a reaction delay of 0.5 or 1.0 s, cannot hear a difference under 0.5° of bank or 0.1° of pitch,
+and closes the rest with a time constant of 0.5 s (bank) and 0.7 s (pitch), capped at the roll
+and pitch rates above.
+
+Each frame the harness feeds visual guidance in MainForm's order (AGL last, which calls
+`ProcessUpdate`), records the aircraft state with the command it produced, then steps the pilot
+and the aircraft.
+
+### Scenarios
+
+Headings are relative to the centreline's direction where the aircraft starts. "Cross" is positive
+right of the extended centreline, facing the runway. A start on the course is already descending
+on the 3° path; the others start level. Unless a row says otherwise, the frame rate is 30 a second
+and the reaction delay 0.5 and 1.0 s.
+
+| family | name pattern | start | count |
+|---|---|---|---|
+| Final | `FINAL-{A,B}-{JET,LIGHT}-x{0,0.2R,0.2L}-h{0,+200,-200}-d{0.5,1.0}` | jet 8 nm out, light 4 nm; on the course, offset sideways and above or below the path | 72 |
+| Intercept | `INT-{A,B}-{JET,LIGHT}-{L,R}{30,45,90}-d{…}` | jet 12 nm out and 3 nm to the side, light 6 nm and 1.5 nm; cutting toward the line at the angle given; at the path's height | 48 |
+| Downwind | `DW-{A,B}-{JET,LIGHT}-{L,R}-d{…}` | abeam the threshold, jet 3 nm to the side and 2,000 ft above the field, light 1.5 nm and 1,000 ft; flying the reciprocal | 16 |
+| Wind | `WIND-XW-A-JET-d0.5`, `WIND-TW-A-JET-d0.5` | a jet final with 15 kt from the right; a jet on a 90° base from the right with the same wind behind it | 2 |
+| Frame rate | `FPS-A-JET-f{20,30,60}` | the jet final on the centreline and the path, at 20, 30 and 60 frames a second | 3 |
+| Step | `STEP-A-{JET,LIGHT}` | 6 nm out on the path; at 40 s the pilot holds 1° below their pitch for 10 s | 2 |
+| Speed | `SPEED-A-{JET160,LIGHT90}-{R45,x0.2R-h+200}-d0.5` | the 45° intercept and an offset final at 160 kt (jet) and 90 kt (light) | 4 |
+
+A run ends at touchdown (`touchdown` within 0.3 nm before the threshold or anywhere past it,
+otherwise `landedShort`), when visual guidance switches itself off (`vgOff`), after 900 simulated
+seconds (`timeout`), or 10 s after a step (`stepDone`).
+
+### Measures
+
+Each scenario writes one line to `<out>.results.txt`: `VG|<name>|key=value|...`, numbers in invariant
+culture, `NA` where a measure does not apply.
+
+| key | meaning |
+|---|---|
+| `endReason`, `durationS` | how and when the run ended |
+| `touchdownAlongFt`, `touchdownXteFt` | the touchdown point: feet before the threshold (negative = past it), and feet right of the centreline |
+| `established`, `timeToEstablishS` | whether, and when, the aircraft had been within 0.1 nm of the line and 5° of the course for 3 s |
+| `overshootFt` | for starts more than 0.15 nm off the line: the farthest past it, after first crossing, before established |
+| `finalXteRmsFt`, `finalXteMaxFt` | cross-track on the final segment (jet 5.0 to 0.5 nm, light 3.0 to 0.3 nm), counted once established |
+| `pathRmsFt`, `pathMaxHighFt`, `pathMaxLowFt` | height against the 3° path (with the profile's glidepath bias) on the same segment |
+| `pitchJitterDeg`, `bankJitterDeg` | RMS of the frame-to-frame change in the commanded pitch and bank on that segment |
+| `maxDescentFpm` | the largest descent rate of the run |
+| `bankCalloutsPerMin`, `centrelineCalloutsPerMin`, `otherCallouts` | spoken lines by kind |
+| `cutOffCallouts` | lines followed by an interrupting line before their estimated end (words / 2.5 + 0.2 s; a measure only, never an app timing, VG-1) |
+| `selfFeedback3s`, `selfFeedback10s` | step runs only: how far the command moved, 3 and 10 s after the step, per degree the pilot pitched, against its mean over the 2 s before. Positive means the command followed the pilot down; negative means it moved the other way |
+
+### Running and comparing
+
+```
+VirtualPilot.exe approach --selftest
+VirtualPilot.exe approach [--scenario TEXT] [--out file]
+VirtualPilot.exe approach --trace NAME
+```
+
+`--selftest` runs 18 checks of the harness itself: turn rate and direction, the 3° descent rate,
+wind drift, the SimConnect signs, the north wrap, the runway geometry, great-circle flight, the
+pilot's delay, roll rate, deadband and saturation, speech timestamps, the frame-rate runs, results
+under a Swedish culture, the matrix size and the step measures. `--scenario` runs every scenario
+whose name contains the text. `--trace` prints one scenario every half simulated second (phase,
+position, path error, commanded and actual bank and pitch) with each spoken line.
+
+`python tools/VirtualPilot/compare_approach.py BEFORE.results.txt AFTER.results.txt` compares two
+runs scenario by scenario and prints `BETTER` and `WORSE` counts with up to six examples each. A
+change counts as worse when `established` goes from True to False, `endReason` leaves `touchdown`,
+`finalXteRmsFt` or `pathRmsFt` rises by more than 10 % and 15 ft, `overshootFt` by 100 ft,
+`maxDescentFpm` by 200, `pitchJitterDeg` or `bankCalloutsPerMin` by 20 %, `|selfFeedback10s|` by
+0.1, or `selfFeedback10s` changes sign. Better is the mirror of each, except that a sign change
+is always worse. The harness is deterministic: two runs of one build compare as `BETTER {}` and
+`WORSE {}`.
+
+### Baseline: today's visual guidance (2026-11-02)
+
+Measured at f90f36267, before any change to the guidance. Later stages of the redesign re-run it by
+building the harness at the commit that adds this section, then compare their own run against it.
+
+- Final tracking, jet: 0 ft RMS from a start on the centreline, about 21 ft from a start 0.2 nm off
+  (24 runs). The median over every jet run with a final segment is 21.0 ft.
+- Final tracking, light aircraft: median 368 ft. From 0.2 nm (1,215 ft) off at 4 nm, today's arc
+  capture asks for about 3° of intercept near the line and is still about 590 ft off at 3 nm. It
+  counts as established anyway, because 0.1 nm is 608 ft, so `established` is not a tracking
+  result on its own.
+- Jet intercepts: established after about 172 s, no overshoot, final cross-track median 70 ft
+  because the capture is still closing at 5 nm.
+- Path: median `pathRmsFt` 10.0 ft over 130 runs (jet 5.5 ft, light 10.3 ft).
+- Self-feedback: the jet's command moved 0.67° the other way per degree the pilot pitched after 3 s
+  and 1.52° after 10 s (`selfFeedback` −0.671 and −1.524); the light aircraft's −0.415 and −0.741.
+  The calculation from the code predicted about −1.2 and −0.6.
+- Frame rate: `pitchJitterDeg` 0.0076, 0.0092 and 0.0127 at 20, 30 and 60 frames a second. A
+  smooth command changes less per frame as the frame rate rises; this one changes more.
+- Speech: median 12.5 bank callouts a minute (jet 26, light 11) and a median of 76 lines per run cut
+  off by the next.
+- End reasons: 107 touchdowns, 38 timeouts, 2 step runs. All 38 timeouts are light aircraft. The
+  flare commands a fixed 6° of pitch against a 4° trim angle of attack, so the aircraft climbs out of
+  the flare, falls back to final and repeats. Whether it lands at all depends on reaction timing: 34
+  of the timeouts are the 0.5 s pilot, 4 the 1.0 s one.
+- Touchdown: the jets that reached final touched down 1,249 to 1,810 ft past the threshold. The 8
+  jet downwinds were never established: they descended at up to 1,661 fpm and touched down 2.3 to
+  2.7 nm past the threshold, beyond the runway's far end, 900 to 2,400 ft to the side.
+- Two quirks in the traces: "5 miles" is spoken on activation when guidance starts inside 5 nm, and
+  the activation sentence is cut off by "On commanded path" in the same frame.
+
+The model is simpler than the sim: a point mass, speed held, a fixed trim angle of attack, no ground
+effect, flat terrain, a constant wind, and no turbulence or sensor noise. A real light aircraft at
+6° of pitch with the power off would slow down and sink, so the float is larger here than in the
+sim. It is still the finding it is: the fixed-pitch flare is what the redesign replaces.
 
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
