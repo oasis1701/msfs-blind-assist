@@ -98,18 +98,7 @@ public static class LandingAidText
         string course = magneticCourse.ToString(inv);
 
         string? offsetFacility = OffsetFacility(ilsType);
-        string name;
-        if (offsetFacility != null)
-            name = offsetFacility;
-        else if (!hasGlideslope)
-            return $"Localizer {freq}, course {course}";
-        else
-        {
-            string? category = Category(ilsType);
-            name = category == null ? "ILS" : $"ILS {category}";
-        }
-
-        string text = $"{name} {freq}, course {course}";
+        string text = $"{Name(hasGlideslope, ilsType)} {freq}, course {course}";
 
         double angle = Math.Round(glideslopePitch, 1, MidpointRounding.AwayFromZero);
         if (hasGlideslope && angle > 0 && angle != StandardGlideslopeDeg)
@@ -119,6 +108,22 @@ public static class LandingAidText
         else if (offsetFacility == "IGS" && !hasGlideslope)
             text += ", no glideslope";
         return text;
+    }
+
+    /// <summary>The aid's name alone, as <see cref="Describe"/> opens with it: "LDA" or "IGS"
+    /// for an offset facility, "Localizer" without a glideslope, else "ILS" or "ILS CAT II"/"ILS
+    /// CAT III". ILS guidance (output Ctrl+I) names the aid with this, without the category
+    /// (<paramref name="withCategory"/> false) where it is beside the point, as in its range
+    /// warning: the category is for planning an autoland, not for how far the signal reaches.</summary>
+    public static string Name(bool hasGlideslope, string? ilsType, bool withCategory = true)
+    {
+        string? offsetFacility = OffsetFacility(ilsType);
+        if (offsetFacility != null)
+            return offsetFacility;
+        if (!hasGlideslope)
+            return "Localizer";
+        string? category = withCategory ? Category(ilsType) : null;
+        return category == null ? "ILS" : $"ILS {category}";
     }
 
     /// <summary>The usual glideslope angle, which is not said.</summary>
