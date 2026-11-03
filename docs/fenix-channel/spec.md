@@ -89,7 +89,8 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
 
 ### 2.4 Windows (answer 1)
 
-- A display key opens its window only when that display is trusted at the press; otherwise it gives the AI read, with
+- A display key opens its window when that display is trusted at the press, or when the verdict is "display off" (the
+  window's one status row: a dark screen has nothing for the AI to read, row 57); otherwise it gives the AI read, with
   no extra words (the PMDG 737's silent fallback, WASM-29). Pressing the key again brings the window to the front.
 - The window is one live list named "<Display> display", refreshed in place every second (the selection is kept),
   then any controls. Rows go top to bottom, left to right, in the display's own words ([FNX-24]; keep cockpit words as
@@ -456,6 +457,7 @@ Hadi claimed that day. They change sections 1, 2.1, 2.2, 2.4, 2.6, 2.7, 3.3 and 
 | 54 | 03 | Plan 01's frozen files plan 03 needs | changed by plan 03, additively, under the index's exemption for a landed plan: the two map calls in `FenixChannelFields.cs` and `FenixChannelClient.cs`, their request method in `FenixChannelMonitor.cs`, the paths in `FenixChannelReadOnlyTests`, the sixth row in `FenixChannelAnnouncementRows.cs` and `FenixChannelMonitorRowsTests`, the `SampleChannelNd` seam in `FenixA320Definition.Hooks.cs` and its line in `FenixA320Definition.DisplayChannel.cs`'s sampler list | As recommended; recorded in plan 03's execution record |
 | 55 | 03 | Two rows the PMDG 737's ND window has that its ND does not draw: "Captain ND: <mode>, range <n>" and "Messages: none" | keep both, as the 737 | Dropped (Hadi, 2026-11-03): the Fenix ND window lists only what the ND draws; the mode and range are in its controls |
 | 56 | 03 | The route's markers, and a gap the route line leaves (a discontinuity) | markers where each lies along the route; the line's ends at the gap described | Both as recommended (Hadi, 2026-11-03): "Map: route line ends at BRAVO", "Map: route line starts again at CHARLIE", once session 2 confirms the Fenix draws the gap so; the PMDG 737's window does neither (its markers after its waypoints, nothing across a gap), a question for its own issue |
+| 57 | 04 | A display key while its display is off | the AI read, as for any other reason (2.4) | Changed (Robin, 2026-11-03, hearing plan 04's in-sim checks): while the verdict is "display off", every display key (Alt+P, Alt+N, Alt+E, Alt+S, Alt+I) opens the window on its one status row, as its Fenix windows list entry does: a dark screen has nothing for the AI to read. Every other reason a display is not trusted (the channel stopped, refused or silent, a build not checked, a check latched, an unknown letter) keeps the AI read with no extra words, because the screen is live. It lands in the shared `OpenChannelWindow`, so it reaches plans 02 and 05 (landed) and 03 and 07 (open); a plan's text or check that says otherwise yields to this row |
 
 ## 6. Open checks (each owned by the plan named)
 
