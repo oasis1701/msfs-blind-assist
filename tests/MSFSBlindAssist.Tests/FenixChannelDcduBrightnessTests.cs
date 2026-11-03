@@ -3,8 +3,8 @@
 // lights the captain's DCDU). Pure logic.
 //
 // The contract: the L:var is the Fenix's own count (0 to 510) over 1023, and is said as a percentage of that count to the
-// nearest ten, "Brightness 60 percent", clamped to 0 to 100; a value that was not read (null, or not a number) is
-// "Brightness not available". Measured on build 3.0.0.7613 (2026-11-03): each 200 ms press of S_DCDU1_DIM_BRT moves the count
+// nearest ten, "Brightness 60 percent", clamped to 0 to 100, except that a lit DCDU (any count above 0) is never 0 percent: it
+// is at least 10; a value that was not read (null, or not a number) is "Brightness not available". Measured on build 3.0.0.7613 (2026-11-03): each 200 ms press of S_DCDU1_DIM_BRT moves the count
 // about 50; from 0 on Bright it read 60, 110, 160, 210, 260, 310, 360, 410, 470, 510, and it stops at 510; at the moment the
 // Fenix's own value was 510 the L:var read 0.49853372434017595, which is 510 / 1023. The words are the app's own, so the PC's
 // culture changes none of them.
@@ -77,9 +77,25 @@ public class FenixChannelDcduBrightnessTests
         Assert.Equal(30, FenixChannelDcduBrightness.Percent(Level(127.5)));
         Assert.Equal(20, FenixChannelDcduBrightness.Percent(Level(127.4)));
         Assert.Equal(10, FenixChannelDcduBrightness.Percent(Level(25.5)));
-        Assert.Equal(0, FenixChannelDcduBrightness.Percent(Level(25.4)));
         Assert.Equal(100, FenixChannelDcduBrightness.Percent(Level(484.5)));
         Assert.Equal(90, FenixChannelDcduBrightness.Percent(Level(484.4)));
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 10)]
+    [InlineData(20, 10)]
+    [InlineData(25.4, 10)]
+    [InlineData(60, 10)]
+    [InlineData(510, 100)]
+    public void A_lit_dcdu_never_says_zero_percent_and_only_a_true_zero_does(double count, int percent)
+    {
+        // The level steps down to 20 of 510 before it reaches 0 (measured 2026-11-03), and the DCDU is still lit at 20: rounding
+        // 20 to the nearest ten gave 0, and "Brightness 0 percent" was said over a lit screen. Any count above 0 is at least 10.
+        double value = Level(count);
+
+        Assert.Equal(percent, FenixChannelDcduBrightness.Percent(value));
+        Assert.Equal($"Brightness {percent} percent", FenixChannelDcduBrightness.Spoken(value));
     }
 
     [Fact]
@@ -111,7 +127,7 @@ public class FenixChannelDcduBrightnessTests
         {
             InCulture(culture, () =>
             {
-                foreach ((double count, int percent) in new[] { (0.0, 0), (60.0, 10), (310.0, 60), (470.0, 90), (510.0, 100) })
+                foreach ((double count, int percent) in new[] { (0.0, 0), (20.0, 10), (60.0, 10), (310.0, 60), (470.0, 90), (510.0, 100) })
                     Assert.Equal($"Brightness {percent.ToString(CultureInfo.InvariantCulture)} percent", FenixChannelDcduBrightness.Spoken(Level(count)));
 
                 Assert.Equal("Brightness 60 percent", FenixChannelDcduBrightness.Spoken(Level(310)));

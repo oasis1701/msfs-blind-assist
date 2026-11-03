@@ -16,8 +16,8 @@
 // auto-repeat too, and an answer key is pressed once for WILCO and again for SEND, so a held Ctrl+1 must not answer and
 // send. Two buttons after the list, Bright and then Dim, step the brightness switch once each; when the switch has gone
 // back and the value has moved the window reads N_DCDU1_BRIGHTNESS and says it ("Brightness 60 percent"), once for quick
-// presses, never over a closed window. The window reads the value itself every 2 s while it is open, so that a dark DCDU
-// with nothing drawn says so.
+// presses, never over a closed window; a throw in that read-back is logged and says nothing more. A DCDU turned all the way
+// down still takes a message (measured 2026-11-03), so the window reads the brightness for nothing else.
 //
 // What is built here is never shown (the DCDU window needs a sim and a screen); the SimConnect manager is never connected,
 // so a press the window sends writes nothing and the brightness is read through a stand-in. The rest, the key behaviour in
@@ -26,6 +26,7 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Forms.Fenix;
@@ -634,84 +635,65 @@ public class FenixChannelDcduWindowTests : IDisposable
         }
     }
 
-    // ---- The brightness the window reads for itself -----------------------------------------
+    // ---- A read-back that goes wrong -----------------------------------------------------------
 
-    // A trusted snapshot of the measured empty DCDU: nothing drawn at all.
-    private static FenixChannelSnapshot EmptyDcduSnapshot()
+    // An announcer whose first interrupting call throws, as an announcer can after the read-back's await.
+    private sealed class ThrowOnceAnnouncer : ScreenReaderAnnouncer
     {
-        var empty = new FenixChannelProtoWriter().Bool(1, true);
-        foreach (int field in Enumerable.Range(2, 14))
-            empty.String(field, field is 10 or 11 ? "              " : "");
+        public ThrowOnceAnnouncer() : base(IntPtr.Zero) { }
 
-        FenixChannelPush push = FenixChannelPush.From(new FenixChannelProtoWriter().Message(186, empty).ToArray());
-        return new FenixChannelSnapshot(new FenixDisplayVerdict(true, "trusted"), null, push, null, 0, 1);
-    }
+        public int Attempts { get; private set; }
 
-    [Fact]
-    public async Task A_dark_dcdu_with_nothing_drawn_says_so_from_the_brightness_the_window_read()
-    {
-        using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out _);
-        using (monitor)
+        public List<string> Spoken { get; } = new();
+
+        public override void AnnounceImmediate(string message)
         {
-            FenixChannelSnapshot snapshot = EmptyDcduSnapshot();
+            Attempts++;
+            if (Attempts == 1) throw new InvalidOperationException("the announcer went away");
 
-            // Not read yet: nothing says it is dark.
-            Assert.Null(form.Brightness);
-            Assert.Equal(new[] { FenixChannelDcduRows.NoMessageRow }, form.ComposeNow(snapshot).Rows!.ToArray());
-
-            form.ReadFresh = (key, _) =>
-            {
-                Assert.Equal(FenixChannelDcduBrightness.LevelKey, key);
-                return Task.FromResult<double?>(0);
-            };
-            await form.ReadLevelAsync();
-            Assert.Equal(0, form.Brightness);
-            Assert.Equal(new[] { FenixChannelDcduRows.DarkRow }, form.ComposeNow(snapshot).Rows!.ToArray());
-
-            // A read that fails keeps the last value.
-            form.ReadFresh = (_, _) => Task.FromResult<double?>(null);
-            await form.ReadLevelAsync();
-            Assert.Equal(0, form.Brightness);
-            Assert.Equal(new[] { FenixChannelDcduRows.DarkRow }, form.ComposeNow(snapshot).Rows!.ToArray());
-
-            // Bright pressed: the level moved, and the rows are the empty DCDU's again.
-            form.ReadFresh = (_, _) => Task.FromResult<double?>(Level(60));
-            await form.ReadLevelAsync();
-            Assert.Equal(Level(60), form.Brightness);
-            Assert.Equal(new[] { FenixChannelDcduRows.NoMessageRow }, form.ComposeNow(snapshot).Rows!.ToArray());
+            Spoken.Add(message);
         }
     }
 
     [Fact]
-    public async Task The_read_back_of_a_press_keeps_the_brightness_it_read()
+    public async Task A_throw_after_the_read_is_caught_and_leaves_the_window_working()
     {
-        using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out _);
-        using (monitor)
-        {
-            form.ReadFresh = (_, _) => Task.FromResult<double?>(Level(110));
-            form.PressBrightness(2);
-            await form.ReadBackDueAsync();
+        // The timer starts the read-back and forgets it, so a throw after its await would be an unobserved task exception and
+        // nothing else: it is caught inside, logged, and the window reads back the next press as before.
+        var announcer = new ThrowOnceAnnouncer();
+        using FenixChannelMonitor monitor = MonitorTestKit.NewIdleMonitor(new MonitorTestKit.Lines());
+        using var form = new FenixChannelDcduForm(monitor, new FenixA320Definition(), new SimConnectManager(IntPtr.Zero), announcer);
+        form.ReadFresh = (_, _) => Task.FromResult<double?>(Level(310));
 
-            Assert.Equal(Level(110), form.Brightness);
-        }
+        form.PressBrightness(2);
+        await form.ReadBackDueAsync();
+        Assert.Equal(1, announcer.Attempts);
+        Assert.Empty(announcer.Spoken);
+
+        form.PressBrightness(2);
+        await form.ReadBackDueAsync();
+        Assert.Equal(new[] { "Brightness 60 percent" }, announcer.Spoken);
     }
 
     [Fact]
-    public void The_window_reads_the_brightness_on_its_own_two_second_timer_and_the_composer_does_no_io()
+    public void The_window_reads_the_brightness_only_for_a_read_back_and_logs_what_the_read_back_cannot_say()
     {
-        // The composer is the rows class and only given the last value; the timer is the window's, started when the window shows.
         string code = CodeOf(FormPath);
-        Assert.Contains("BrightnessRefreshMs = 2000;", code);
-        Assert.Matches(@"_levelTimer\s*=\s*new\s+System\.Windows\.Forms\.Timer\s*\{\s*Interval\s*=\s*BrightnessRefreshMs\s*\}", code);
-        Assert.Matches(@"FenixChannelDcduRows\.Compose\([^;]*level\.Value\s*\)", code);
 
-        string compose = BodyOf(FormPath, "ComposeRows");
-        Assert.DoesNotContain("ReadFresh", compose);
-        Assert.DoesNotContain("await", compose);
-
-        // The wait for a press and the timer read the same way: through the one seam, which is the manager's ReadFreshAsync.
+        // The read-back's read goes through the one seam, which is the manager's ReadFreshAsync, and its answer is the speech.
         Assert.Contains("simConnect.ReadFreshAsync(", code);
         Assert.Contains("AnnounceImmediate(FenixChannelDcduBrightness.Spoken(", code);
+
+        // A DCDU at brightness 0 still takes a message (measured 2026-11-03): nothing reads the level for the rows.
+        Assert.DoesNotContain("_levelTimer", code);
+        Assert.DoesNotContain("ReadLevelAsync", code);
+        Assert.DoesNotContain("BrightnessLevel", code);
+        Assert.DoesNotContain("DarkRow", code);
+
+        // The read-back is started and forgotten by the timer, so a throw in it is caught and logged, not left unobserved.
+        string readBack = BodyOf(FormPath, "ReadBackDueAsync");
+        Assert.Contains("catch (Exception", readBack);
+        Assert.Contains("Log.Debug(", readBack);
     }
 
     [Fact]

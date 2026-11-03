@@ -1,14 +1,15 @@
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// How bright the captain's DCDU is, in words: what the DCDU window says after the pilot presses Bright or Dim, and what the
-/// rows know about a dark DCDU. The value is <c>N_DCDU1_BRIGHTNESS</c>, the L:var the cockpit file (<c>Cockpit_Behavior.xml</c>)
-/// names as what lights the captain's DCDU. Pure logic: nothing here reads the sim.
+/// How bright the captain's DCDU is, in words: what the DCDU window says after the pilot presses Bright or Dim. The value is
+/// <c>N_DCDU1_BRIGHTNESS</c>, the L:var the cockpit file (<c>Cockpit_Behavior.xml</c>) names as what lights the captain's DCDU.
+/// Pure logic: nothing here reads the sim.
 /// </summary>
 /// <remarks>
 /// Measured on build 3.0.0.7613 (2026-11-03): each 200 ms press of <c>S_DCDU1_DIM_BRT</c> moves the Fenix's own count about 50,
 /// and from 0 on Bright it read 60, 110, 160, 210, 260, 310, 360, 410, 470 and 510, where it stops. So a count of 510 is full
-/// brightness, and the ten steps are said as 10, 20 and on to 100 percent. The L:var is that count over 1023, not the count
+/// brightness, and the ten steps are said as 10, 20 and on to 100 percent; going down, the level reaches 20 before 0 and the
+/// DCDU is still lit there, so only a true 0 is said as 0 percent. The L:var is that count over 1023, not the count
 /// itself. The figure is written with the invariant culture, though a whole number from 0 to 100 reads the same in every
 /// culture; a value that was not read is not guessed at.
 /// </remarks>
@@ -33,7 +34,9 @@ internal static class FenixChannelDcduBrightness
     /// <summary>
     /// <paramref name="value"/>, the L:var as read, as a percentage of <see cref="FullCount"/> in its count (the value times
     /// <see cref="CountRange"/>) to the nearest ten (a half goes up), between 0 and 100: a count of 60 is 10, 310 is 60, 470 is
-    /// 90, 510 is 100 and 0 is 0. A value below 0 is 0 and above the scale is 100; a value that is not a number is 0.
+    /// 90, 510 is 100 and 0 is 0. A lit DCDU is never 0: any count above 0 is at least 10, since the level steps down to 20 before
+    /// it reaches 0 and the DCDU is still lit there. A value below 0 is 0 and above the scale is 100; a value that is not a
+    /// number is 0.
     /// </summary>
     internal static int Percent(double value)
     {
@@ -42,6 +45,7 @@ internal static class FenixChannelDcduBrightness
         // The count first, then the tens (count * 10 / 510, exact for a half), then clamped, then back to a percentage.
         double count = value * CountRange;
         double tens = Math.Round(count * 10 / FullCount, MidpointRounding.AwayFromZero);
+        if (count > 0) tens = Math.Max(tens, 1);
         return (int)Math.Clamp(tens, 0, 10) * 10;
     }
 

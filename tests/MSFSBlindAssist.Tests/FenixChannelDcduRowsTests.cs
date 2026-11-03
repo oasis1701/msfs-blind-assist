@@ -294,67 +294,12 @@ public class FenixChannelDcduRowsTests
         Assert.Equal(new[] { FenixChannelDcduRows.NoMessageRow }, RowsOf().ToArray());
     }
 
-    // The measured empty DCDU: field 1 true, fields 2 to 15 all present, 2 to 9 and 12 to 15 empty, Info2 and Info3 14 spaces.
-    private static (int, string)[] EmptyDcdu()
-        => Enumerable.Range(2, 14).Select(field => (field, field is 10 or 11 ? Spaces14 : "")).ToArray();
-
-    // A trusted snapshot of the given lines composed with the brightness the window last read (null when it has not).
-    private static IReadOnlyList<string> RowsAt(double? brightness, params (int Field, string Text)[] lines)
-    {
-        FenixChannelRows rows = FenixChannelDcduRows.Compose(Snapshot(true, "trusted", Content(lines)), null, brightness);
-
-        Assert.Null(rows.Problem);
-        return rows.Rows!;
-    }
-
     [Fact]
-    public void A_dark_dcdu_with_nothing_drawn_says_so()
-    {
-        // A DCDU turned all the way down draws nothing, and "no message displayed" would mislead: a message may be waiting.
-        Assert.Equal("(DCDU is dark, press Bright)", FenixChannelDcduRows.DarkRow);
-        Assert.Equal(new[] { FenixChannelDcduRows.DarkRow }, RowsAt(0, EmptyDcdu()).ToArray());
-
-        // Nothing sent at all but the print frame is the same screen.
-        Assert.Equal(new[] { FenixChannelDcduRows.DarkRow }, RowsAt(0).ToArray());
-    }
-
-    [Fact]
-    public void An_unread_brightness_keeps_the_no_message_row()
-    {
-        // The window has not read the brightness yet, or could not: nothing says the DCDU is dark.
-        Assert.Equal(new[] { FenixChannelDcduRows.NoMessageRow }, RowsAt(null, EmptyDcdu()).ToArray());
-        Assert.Equal(new[] { FenixChannelDcduRows.NoMessageRow }, RowsOf(EmptyDcdu()).ToArray());
-    }
-
-    [Fact]
-    public void Any_brightness_above_nothing_keeps_the_no_message_row()
-    {
-        // Exactly 0 only: the L:var is the Fenix's count over 1023, and the first step of the switch measured a count of 60 and
-        // the top 510.
-        foreach (double brightness in new[] { 0.5 / 1023, 1.0 / 1023, 60.0 / 1023, 255.0 / 1023, 510.0 / 1023 })
-        {
-            Assert.Equal(new[] { FenixChannelDcduRows.NoMessageRow }, RowsAt(brightness, EmptyDcdu()).ToArray());
-        }
-    }
-
-    [Fact]
-    public void Rows_on_a_screen_with_content_are_the_same_at_any_brightness()
-    {
-        // A message already delivered stays on field 186 at brightness 0 (measured 2026-11-03): its rows are its rows.
-        string[] expected = RowsOf(DepartRequestPage1).ToArray();
-
-        foreach (double? brightness in new double?[] { null, 0, 60.0 / 1023, 510.0 / 1023 })
-        {
-            Assert.Equal(expected, RowsAt(brightness, DepartRequestPage1).ToArray());
-        }
-    }
-
-    [Fact]
-    public void A_screen_that_cannot_be_read_stays_the_one_problem_row_at_any_brightness()
+    public void A_screen_that_cannot_be_read_stays_the_one_problem_row()
     {
         var reported = new List<string>();
 
-        FenixChannelRows off = FenixChannelDcduRows.Compose(Snapshot(false, "display off", null), reported.Add, 0);
+        FenixChannelRows off = FenixChannelDcduRows.Compose(Snapshot(false, "display off", null), reported.Add);
 
         Assert.Equal("display off", off.Problem);
         Assert.Equal(new[] { "display off" }, reported.ToArray());

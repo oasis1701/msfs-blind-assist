@@ -29,9 +29,8 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// press, when the switch has gone back and the value has moved, the window reads <c>N_DCDU1_BRIGHTNESS</c> and says it
 /// ("Brightness 60 percent"): the spoken value is the press's confirmation ([CORE-7]), as an interrupting call like a refusal.
 /// Presses in quick succession restart the wait, so only the last is read back; a read that fails or times out says "Brightness
-/// not available"; and a window that is gone says nothing. The window reads the value on its own every 2 s while it is open and
-/// keeps the last one, so that a DCDU with nothing drawn and a brightness of exactly 0 reads "(DCDU is dark, press Bright)" and
-/// not "no message displayed": the composer is only given that value and does no I/O.</para>
+/// not available"; and a window that is gone says nothing. A DCDU turned all the way down still receives a message (measured
+/// 2026-11-03), so the window never reads the brightness for the rows: a screen with nothing drawn reads the same at any level.</para>
 /// <para>This window sends nothing itself: every press goes through the definition's handler, and the window never opens the
 /// channel ([FNX-21]). It reads one L:var, on request, through the manager.</para>
 /// </remarks>
@@ -45,27 +44,18 @@ internal sealed class FenixChannelDcduForm : FenixChannelDisplayForm
     private const int DimPosition = 0;
     private const int BrightPosition = 2;
 
-    // How long a read of the brightness waits for the sim, and how often the open window reads it.
+    // How long a read of the brightness waits for the sim.
     private const int BrightnessReadTimeoutMs = 1500;
-    private const int BrightnessRefreshMs = 2000;
 
     private const string LogCategory = "Fenix";
-
-    /// <summary>The brightness the window last read, shared with the composer the base calls (which cannot reach the form).</summary>
-    internal sealed class BrightnessLevel
-    {
-        public double? Value;
-    }
 
     private readonly FenixChannelMonitor _monitor;
     private readonly FenixA320Definition _definition;
     private readonly SimConnectManager _simConnect;
     private readonly ScreenReaderAnnouncer _announcer;
-    private readonly BrightnessLevel _level;
     private readonly Button _bright;
     private readonly Button _dim;
     private readonly System.Windows.Forms.Timer _readBackTimer;
-    private readonly System.Windows.Forms.Timer _levelTimer;
 
     // Whether the key message being processed is an auto-repeat: set by ProcessCmdKey just before the base asks the window.
     private bool _autoRepeat;
@@ -74,28 +64,14 @@ internal sealed class FenixChannelDcduForm : FenixChannelDisplayForm
     // replaces it.
     private long _press;
 
-    // A read of the brightness for the timer is out.
-    private bool _readingLevel;
-
     public FenixChannelDcduForm(
         FenixChannelMonitor monitor,
         FenixA320Definition definition,
         SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
-        : this(monitor, definition, simConnect, announcer, new BrightnessLevel())
-    {
-    }
-
-    // The base takes the composer in its constructor call, where the form itself is out of reach, so the last brightness is held
-    // by an object the composer and the form share.
-    private FenixChannelDcduForm(
-        FenixChannelMonitor monitor,
-        FenixA320Definition definition,
-        SimConnectManager simConnect,
-        ScreenReaderAnnouncer announcer,
-        BrightnessLevel level)
         : base(FenixChannelDcdu.DisplayName, FenixChannelDisplay.Dcdu, monitor,
-            snapshot => ComposeRows(snapshot, monitor, level))
+            snapshot => FenixChannelDcduRows.Compose(
+                snapshot, problem => monitor.ReportFeatureProblem(FenixChannelDcdu.DisplayName, problem)))
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(simConnect);
@@ -105,7 +81,6 @@ internal sealed class FenixChannelDcduForm : FenixChannelDisplayForm
         _definition = definition;
         _simConnect = simConnect;
         _announcer = announcer;
-        _level = level;
         ReadFresh = (key, timeoutMs) => simConnect.ReadFreshAsync(key, timeoutMs);
 
         // Two plain buttons, read by their Text alone: Bright first, then Dim, after the list.
@@ -123,32 +98,13 @@ internal sealed class FenixChannelDcduForm : FenixChannelDisplayForm
             _readBackTimer.Stop();
             _ = ReadBackDueAsync();
         };
-
-        _levelTimer = new System.Windows.Forms.Timer { Interval = BrightnessRefreshMs };
-        _levelTimer.Tick += (_, _) => _ = ReadLevelAsync();
     }
-
-    /// <summary>
-    /// The window's rows for a snapshot: <see cref="FenixChannelDcduRows.Compose"/> with the last brightness read. Only given
-    /// that value and does no I/O.
-    /// </summary>
-    internal static FenixChannelRows ComposeRows(FenixChannelSnapshot snapshot, FenixChannelMonitor monitor, BrightnessLevel level)
-    {
-        return FenixChannelDcduRows.Compose(
-            snapshot, problem => monitor.ReportFeatureProblem(FenixChannelDcdu.DisplayName, problem), level.Value);
-    }
-
-    /// <summary>The window's rows for a snapshot, as its refresh composes them now (for the tests).</summary>
-    internal FenixChannelRows ComposeNow(FenixChannelSnapshot snapshot) => ComposeRows(snapshot, _monitor, _level);
 
     /// <summary>
     /// How the window reads an L:var, fresh and on request: the manager's <see cref="SimConnectManager.ReadFreshAsync"/>, which
     /// gives null on a timeout, a disconnect or a key it cannot deliver. A seam for the tests, which have no sim.
     /// </summary>
     internal Func<string, int, Task<double?>> ReadFresh;
-
-    /// <summary>The brightness the window last read; null until it has read one.</summary>
-    internal double? Brightness => _level.Value;
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
@@ -193,39 +149,24 @@ internal sealed class FenixChannelDcduForm : FenixChannelDisplayForm
     /// <summary>
     /// The wait after a press is over: reads the brightness and says it ("Brightness 60 percent", or "Brightness not
     /// available" when it was not read). Says nothing when the window is gone, or when a newer press came while the read was
-    /// out, whose own wait will say it. The timer's tick, on the UI thread, where the read resumes.
+    /// out, whose own wait will say it. The timer's tick, on the UI thread, where the read resumes. Fire-and-forget, so
+    /// nothing may escape it: a throw after the await is logged and says nothing more.
     /// </summary>
     internal async Task ReadBackDueAsync()
     {
-        long press = _press;
-        double? value = await ReadBrightnessAsync();
-
-        if (IsDisposed || Disposing) return;
-        KeepLevel(value);
-        if (press != _press) return;
-
-        _announcer.AnnounceImmediate(FenixChannelDcduBrightness.Spoken(value));
-    }
-
-    /// <summary>
-    /// Reads the brightness for the composer's sake: the timer's tick while the window is open. A value read is kept; one that
-    /// could not be read leaves the last. Says nothing.
-    /// </summary>
-    internal async Task ReadLevelAsync()
-    {
-        if (_readingLevel || IsDisposed || Disposing) return;
-
-        _readingLevel = true;
         try
         {
+            long press = _press;
             double? value = await ReadBrightnessAsync();
-            if (IsDisposed || Disposing) return;
 
-            KeepLevel(value);
+            if (IsDisposed || Disposing) return;
+            if (press != _press) return;
+
+            _announcer.AnnounceImmediate(FenixChannelDcduBrightness.Spoken(value));
         }
-        finally
+        catch (Exception ex)
         {
-            _readingLevel = false;
+            Log.Debug(LogCategory, $"DCDU brightness read-back failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -243,42 +184,10 @@ internal sealed class FenixChannelDcduForm : FenixChannelDisplayForm
         }
     }
 
-    // A value that was read is the one to compose with from now on; a failed read keeps the last. The rows are composed again at
-    // once when the value moved, so that a dark DCDU says so as the window opens and not a refresh later.
-    private void KeepLevel(double? value)
-    {
-        if (value is not { } level || !double.IsFinite(level)) return;
-
-        bool moved = _level.Value != level;
-        _level.Value = level;
-        if (moved) RefreshNow();
-    }
-
-    protected override void OnVisibleChanged(EventArgs e)
-    {
-        base.OnVisibleChanged(e);
-
-        // Read while the window is open: at once, so the first look is right, then every two seconds.
-        if (Visible)
-        {
-            _levelTimer.Start();
-            _ = ReadLevelAsync();
-        }
-        else
-        {
-            _levelTimer.Stop();
-        }
-    }
-
     protected override void Dispose(bool disposing)
     {
-        // The base first: disposing a window that is showing can raise VisibleChanged, which stops the timer.
         base.Dispose(disposing);
 
-        if (disposing)
-        {
-            _readBackTimer.Dispose();
-            _levelTimer.Dispose();
-        }
+        if (disposing) _readBackTimer.Dispose();
     }
 }

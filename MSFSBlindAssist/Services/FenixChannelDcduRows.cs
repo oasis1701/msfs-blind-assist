@@ -20,35 +20,26 @@ namespace MSFSBlindAssist.Services;
 /// row with no label on either side makes no row, so a key alone on a side still reads under its own number ([A320-16]).</para>
 /// <para>A row that cannot hold both of its parts on the 24 columns is not clipped: its parts are joined by one space, so no
 /// word is ever lost to the grid.</para>
-/// <para>A screen with no row at all reads <see cref="NoMessageRow"/>, the A32NX window's words, unless the DCDU is known to be
-/// dark: a brightness of exactly 0 reads <see cref="DarkRow"/> instead, since a message may be waiting behind a screen that
-/// draws nothing (a message already delivered stays on the DCDU's content at brightness 0, measured 2026-11-03, so a screen with
-/// rows reads them at any brightness). The brightness is given, never read here: no I/O in a composer. The only figure the app
-/// writes is a key row's number, 1 or 2, so no row depends on the PC's culture.</para>
+/// <para>A screen with no row at all reads <see cref="NoMessageRow"/>, the A32NX window's words, at any brightness: a DCDU
+/// turned all the way down still receives a message (measured 2026-11-03), so darkness says nothing about what is waiting. The
+/// only figure the app writes is a key row's number, 1 or 2, so no row depends on the PC's culture.</para>
 /// </remarks>
 internal static class FenixChannelDcduRows
 {
     /// <summary>The one row of a DCDU that draws nothing, in the A32NX DCDU window's words.</summary>
     public const string NoMessageRow = "(no CPDLC message displayed)";
 
-    /// <summary>The one row of a DCDU that draws nothing while its brightness is turned all the way down.</summary>
-    public const string DarkRow = "(DCDU is dark, press Bright)";
-
     // The width of every line of the DCDU, and of the A32NX DCDU window.
     private const int Columns = 24;
 
     /// <summary>
-    /// The window's rows for <paramref name="s"/>: <see cref="RowsOf"/> of the captain's DCDU, or when it draws nothing
-    /// <see cref="DarkRow"/> if <paramref name="brightness"/> is exactly 0 and <see cref="NoMessageRow"/> otherwise (also
-    /// when the brightness was not read, null). When the DCDU cannot be read the one status row, the section's problem,
-    /// which also goes to <paramref name="reportProblem"/>.
+    /// The window's rows for <paramref name="s"/>: <see cref="RowsOf"/> of the captain's DCDU, or <see cref="NoMessageRow"/>
+    /// when it draws nothing. When the DCDU cannot be read the one status row, the section's problem, which also goes to
+    /// <paramref name="reportProblem"/>.
     /// </summary>
     /// <param name="s">The snapshot to compose.</param>
     /// <param name="reportProblem">Where a problem the DCDU cannot be read for goes.</param>
-    /// <param name="brightness">The window's last read of the DCDU's brightness (<c>N_DCDU1_BRIGHTNESS</c>, as read: 0 is
-    /// dark); null when it has none.</param>
-    public static FenixChannelRows Compose(
-        FenixChannelSnapshot s, Action<string>? reportProblem = null, double? brightness = null)
+    public static FenixChannelRows Compose(FenixChannelSnapshot s, Action<string>? reportProblem = null)
     {
         FenixChannelSection<FenixDcduScreen> section = FenixChannelDcdu.Read(s);
         if (!section.IsOk)
@@ -59,7 +50,7 @@ internal static class FenixChannelDcduRows
         }
 
         IReadOnlyList<string> rows = RowsOf(section.Value!);
-        return FenixChannelRows.Of(rows.Count == 0 ? [brightness == 0 ? DarkRow : NoMessageRow] : rows);
+        return FenixChannelRows.Of(rows.Count == 0 ? [NoMessageRow] : rows);
     }
 
     /// <summary>
