@@ -13,7 +13,8 @@
 // the rows are the page's name, the page's own rows (or one row "<PAGE>: not available, <problem>", or none), and the
 // bottom line: TAT, SAT, UTC and GW, each element spoken with its colors and an empty one "not available", the UTC row
 // one coded line of its hour and minute, "not available" unless it has both, GW in KG while 154 is set and LBS
-// otherwise. The reader
+// otherwise. The STATUS page's rows are the lines of its text, 175 then 176, each spoken with its colors and a blank
+// one skipped; none at all is "no STATUS text", a page problem. The reader
 // gives a field left out as its default, and the first problem it finds, named by the field's path, is kept for every
 // reader it hands out; a valve value outside the enum reads "not available" and is reported without stopping the page.
 // Numbers are written in the invariant culture, rounded away from zero, never "-0", and "XX" when not a number.
@@ -252,6 +253,102 @@ public class FenixChannelSdWindowTests
 
         Assert.True(bottom.IsOk);
         Assert.Equal(new[] { "g+15", "g+15", "", "", "15", "06", "c--", "", "" }, bottom.Value);
+    }
+
+    // ---- The STATUS page ------------------------------------------------------------------------
+
+    [Fact]
+    public void The_status_page_reads_the_left_column_then_the_right()
+    {
+        // Page 14. The empty first line and the spaces before NORMAL's color letter say nothing; every line of 175 comes
+        // before every line of 176, each with its color.
+        SdPush push = new() { Page = 14, StatusLeft = ["", "            gNORMAL"], StatusRight = ["aGEN 1"] };
+
+        Assert.Equal(new[] { "STATUS", "NORMAL, green", "GEN 1, amber" }.Concat(BottomRows), RowsOf(push));
+    }
+
+    [Fact]
+    public void Blank_status_lines_are_skipped()
+    {
+        // An empty string, an element with no string at all (a null the contract wraps), spaces, and a color letter with
+        // nothing after it but a space: none is a row, and the others keep their order, 175 then 176.
+        SdPush push = new()
+        {
+            Page = 14,
+            StatusLeft = ["wL1", null, "", "   ", "gL2"],
+            StatusRight = ["", "cR1", "w "]
+        };
+
+        Assert.Equal(new[] { "STATUS", "L1, white", "L2, green", "R1, cyan" }.Concat(BottomRows), RowsOf(push));
+    }
+
+    [Fact]
+    public void An_unknown_letter_in_the_status_text_untrusts_the_window()
+    {
+        // The STATUS text is read on the STATUS page, so a letter the app does not know in either column is the whole
+        // result there ([FNX-24]), reported once; the page's rows are never built.
+        SdPush left = new() { Page = 14, StatusLeft = ["wSTATUS", "kX"] };
+        SdPush right = new() { Page = 14, StatusLeft = ["wSTATUS"], StatusRight = ["jX"] };
+
+        Assert.Equal("unknown code 'k' in the STATUS text", ProblemOf(left));
+        Assert.Equal("unknown code 'j' in the STATUS text", ProblemOf(right));
+    }
+
+    [Fact]
+    public void The_status_text_is_not_checked_on_other_pages()
+    {
+        // Page 13 draws no STATUS text, so a letter in it decides nothing: the page's name, then the bottom line.
+        SdPush push = new() { Page = 13, StatusLeft = ["kX"] };
+
+        Assert.Equal(new[] { "page 13" }.Concat(BottomRows), RowsOf(push));
+    }
+
+    [Fact]
+    public void A_status_page_with_no_text_is_one_row_and_is_reported()
+    {
+        // No STATUS text is no content, not a wrong shape: the page is one row, its name and the bottom line stay, and
+        // the window reports it once, under the page's name.
+        SdPush push = new() { Page = 14, StatusLeft = ["", "   "], StatusRight = [null] };
+        var reported = new List<string>();
+
+        FenixChannelRows rows = push.Rows(reported.Add);
+
+        Assert.Null(rows.Problem);
+        Assert.Equal(
+            new[] { "STATUS", "STATUS: not available, no STATUS text" }.Concat(BottomRows),
+            rows.Rows);
+        Assert.Equal(new[] { "STATUS: no STATUS text" }, reported);
+    }
+
+    [Fact]
+    public void A_status_text_of_another_shape_stops_the_page_only()
+    {
+        // 176 arrives as a varint: the page's one row names the field, the page's name and the bottom line stay, and the
+        // problem is reported once, under the page's name.
+        SdPush push = new() { Page = 14, StatusLeft = ["gNORMAL"] };
+        push.With(remote => remote.Varint(176, 1));
+        var reported = new List<string>();
+
+        FenixChannelRows rows = push.Rows(reported.Add);
+
+        Assert.Null(rows.Problem);
+        Assert.Equal(
+            new[] { "STATUS", "STATUS: not available, field 176 has the wrong shape" }.Concat(BottomRows),
+            rows.Rows);
+        Assert.Equal(new[] { "STATUS: field 176 has the wrong shape" }, reported);
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void Status_speech_is_the_same_in_every_culture(string culture)
+    {
+        // Channel text is words and digits as the SD draws them: a decimal comma in it stays, and a decimal point stays.
+        SdPush push = new() { Page = 14, StatusLeft = ["gNORMAL 1.5", "a12,5 HZ"], StatusRight = ["w-4"] };
+
+        Assert.Equal(
+            new[] { "STATUS", "NORMAL 1.5, green", "12,5 HZ, amber", "-4, white" }.Concat(BottomRows),
+            TestCulture.Run(culture, () => RowsOf(push)));
     }
 
     // ---- The reader -----------------------------------------------------------------------------
