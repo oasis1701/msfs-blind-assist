@@ -111,8 +111,8 @@ internal static class FenixChannelFmaLayout
         return FenixChannelSpeech.Line(SlotsOf(column).Select(slot => TextAt(slots, slot)).ToList());
     }
 
-    // The slots a column speaks, in row order: those of 0 to 14 that Of puts in it and that are not messages. Of alone says
-    // where a slot sits, so a change there moves this with IsMessage, and the window and the announcement stay in step.
+    // The slots a column speaks, in row order: those of 0 to 14 that Of puts in it and that are not messages. Of alone
+    // says where a slot sits, so a change there moves this with IsMessage, and window and announcement stay in step.
     private static IEnumerable<int> SlotsOf(FenixFmaColumn column) =>
         Enumerable.Range(0, Rows * ColumnsPerRow)
             .Where(slot => Of(slot).Column == column && !IsMessage(slot))

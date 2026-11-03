@@ -11,9 +11,9 @@
 // keeps it ticked at the next start, on a fresh install and on a file written before the seed existed alike.
 //
 // The first class is pure. The second reaches SettingsManager (the seed saves; IsMuted reads Current), so it is in the
-// "SettingsManagerGlobalState" collection and every test of it takes a SettingsRedirect (FenixChannelTestSettings.cs, which
-// also keeps the whole test process away from a real settings file): a scratch folder of its own and no current settings,
-// so each test starts as a first start does.
+// "SettingsManagerGlobalState" collection and every test of it takes a SettingsRedirect (FenixChannelTestSettings.cs,
+// which also keeps the whole test process away from a real settings file): a scratch folder of its own and no current
+// settings, so each test starts as a first start does.
 
 using System.Text.Json;
 using MSFSBlindAssist.Aircraft;

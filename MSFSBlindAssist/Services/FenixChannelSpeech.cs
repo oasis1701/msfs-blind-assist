@@ -28,9 +28,9 @@ namespace MSFSBlindAssist.Services;
 /// the installed build 3.0.0.7613, 2026-11-03). So a part that holds a color letter speaks its leading colorless text
 /// as white: "FLX c+56" is "FLX white, +56 cyan", and after a "wbMAN" part, "MAN FLX white, +56 cyan". Only the leading
 /// text: a colorless run after a colored one, which only a line built by hand can have, stays colorless ("A green, B").
-/// A part with no color letter at all, such as an ECAM entry's title, stays colorless too: nothing in its text says what
-/// the display draws it in, and no color is ever guessed. A part holds a color letter when a run of the parsed part has
-/// a color. A letter with no text after it leaves no such run, so "FLXc" stays colorless, which is the safe
+/// A part with no color letter at all, such as an ECAM entry's title, stays colorless too: nothing in its text says
+/// what the display draws it in, and no color is ever guessed. A part holds a color letter when a run of the parsed
+/// part has a color. A letter with no text after it leaves no such run, so "FLXc" stays colorless, which is the safe
 /// direction.</para>
 /// </remarks>
 internal static class FenixChannelSpeech

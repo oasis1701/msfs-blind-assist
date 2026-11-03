@@ -8,11 +8,11 @@
 // and says so. Plan 08 confirms the layout in the sim and may change the file, and these tests with it.
 //
 // The contract: slots 0-14 are three rows of five, row 1 first, the columns running Thrust, Vertical, Lateral,
-// Approach, Engagement. Row 3 of the first three columns is the FMA's message and not part of its column. A column's rows
-// are the slots Of puts in it, never worked out from the grid a second time. A column is spoken as one line from its rows
-// through FenixChannelSpeech, except the Engagement column, whose rows are separate statuses and are joined by "; ". A
-// slot past the end of the list counts as blank, the Unknown column has no phrase, and a row with a letter the app does
-// not know is never spoken: it spoils a column's one line, and it is left out of the Engagement column.
+// Approach, Engagement. Row 3 of the first three columns is the FMA's message and not part of its column. A column's
+// rows are the slots Of puts in it, never worked out from the grid a second time. A column is spoken as one line from
+// its rows through FenixChannelSpeech, except the Engagement column, whose rows are separate statuses and are joined by
+// "; ". A slot past the end of the list counts as blank, the Unknown column has no phrase, and a row with a letter the
+// app does not know is never spoken: it spoils a column's one line, and it is left out of the Engagement column.
 
 using System.Globalization;
 using MSFSBlindAssist.Services;
@@ -186,10 +186,10 @@ public class FenixChannelFmaLayoutTests
     [Fact]
     public void A_column_phrase_follows_where_Of_puts_each_slot()
     {
-        // Of alone says where a slot sits, and plan 08 may change it after measuring. A phrase that worked the grid out for
-        // itself would go on reading the old slot, and the window and the announcement this layout keeps in step would
-        // part. So this asks Of, not the grid: each slot, alone in a frame, is heard in the column Of puts it in, unless it
-        // is a message, and in no other.
+        // Of alone says where a slot sits, and plan 08 may change it after measuring. A phrase that worked the grid out
+        // for itself would go on reading the old slot, and the window and the announcement this layout keeps in step
+        // would part. So this asks Of, not the grid: each slot, alone in a frame, is heard in the column Of puts it in,
+        // unless it is a message, and in no other.
         for (int slot = 0; slot < 15; slot++)
         {
             FenixFmaSlot[] frame = Fma((slot, "gTEXT"));

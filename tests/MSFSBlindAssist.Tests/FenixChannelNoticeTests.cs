@@ -23,11 +23,11 @@
 // and keeps it even if the Fenix stops being ready; while it has never been ready the clock cannot run out. The
 // unchecked-build and refused paths do not wait for ready, since an answer on the channel proves a Fenix is there.
 //
-// The contract of the definition's sampler: while the announcer is suppressed it does not ask, so the notice stays due and
-// speaks on the next free tick, never spent unheard. The Fenix is ready once its variant is known, so a silent channel with
-// the variant unknown, 70 s on, says nothing, and the minute runs from the variant becoming known. What the notice returns
-// goes out once: one Announce, nothing through AnnounceImmediate, and one "session notice: <text>" line in the channel's
-// log; the next tick does nothing.
+// The contract of the definition's sampler: while the announcer is suppressed it does not ask, so the notice stays due
+// and speaks on the next free tick, never spent unheard. The Fenix is ready once its variant is known, so a silent
+// channel with the variant unknown, 70 s on, says nothing, and the minute runs from the variant becoming known. What
+// the notice returns goes out once: one Announce, nothing through AnnounceImmediate, and one "session notice: <text>"
+// line in the channel's log; the next tick does nothing.
 //
 // The contract of Session: the build is the latest the build query answered; it survives a reconnect (the gate forgets
 // it, the session does not), and a stale answer from a loop that ended never reaches it. BuildChecked is whether the
@@ -371,8 +371,8 @@ public class FenixChannelNoticeTests
 
     // ---- The definition's sampler ---------------------------------------------------------------
 
-    // What the sampler works with on a tick: a definition, whose variant says whether the Fenix is ready, the load's one
-    // notice, and a capturing announcer. The monitor is the test's.
+    // What the sampler works with on a tick: a definition, whose variant says whether the Fenix is ready, the load's
+    // one notice, and a capturing announcer. The monitor is the test's.
     private sealed class Sampler(FenixChannelMonitor monitor)
     {
         private readonly FenixChannelNotice _notice = new();
@@ -397,8 +397,8 @@ public class FenixChannelNoticeTests
     [Fact]
     public async Task The_sampler_says_an_unchecked_build_once_without_interrupting_and_logs_it()
     {
-        // The notice is background news: it goes through Announce and never cuts off what the pilot is listening to. The
-        // same text goes to the channel's log, so that a check in the sim can measure that it spoke without needing ears.
+        // The notice is background news: it goes through Announce and never cuts off what the pilot is listening to.
+        // The same text goes to the channel's log, so that a check in the sim can measure that it spoke without ears.
         var lines = new Lines();
         using FenixChannelMonitor monitor = await MonitorOnAnUncheckedBuild(lines);
         var sampler = new Sampler(monitor);
@@ -419,9 +419,9 @@ public class FenixChannelNoticeTests
     [Fact]
     public async Task The_sampler_waits_while_the_announcer_is_suppressed()
     {
-        // A real announcer drops the line while it is suppressed, and the notice is spent when it hands its text out, so
-        // asking now would spend the load's one notice unheard. SpeechCapture records whatever Announce is given, so a
-        // sampler that spoke into the suppression shows here. The notice stays due and speaks on the next free tick.
+        // A real announcer drops the line while it is suppressed, and the notice is spent when it hands its text out,
+        // so asking now would spend the load's one notice unheard. SpeechCapture records whatever Announce is given, so
+        // a sampler that spoke into the suppression shows here. The notice stays due and speaks on the next free tick.
         var lines = new Lines();
         using FenixChannelMonitor monitor = await MonitorOnAnUncheckedBuild(lines);
         var sampler = new Sampler(monitor);
@@ -444,7 +444,7 @@ public class FenixChannelNoticeTests
     public void The_sampler_says_nothing_with_no_data_while_the_variant_is_unknown()
     {
         // The sim's main menu: the monitor has started with the first sim update, nothing answers, and no Fenix has
-        // published its config. 70 s of that is no news: a notice now would be false, and would spend the one the load has.
+        // published its config. 70 s of that is no news: a notice now would be false, and would spend the load's one.
         var lines = new Lines();
         using FenixChannelMonitor monitor = NewIdleMonitor(lines);
         var sampler = new Sampler(monitor);
@@ -460,8 +460,8 @@ public class FenixChannelNoticeTests
     [Fact]
     public void The_sampler_counts_the_minute_from_the_variant_becoming_known()
     {
-        // The Fenix being ready is the definition's own word on it: the config reading that makes its variant known. The
-        // channel then has a minute to send data, down to the last millisecond, and a silent one is told.
+        // The Fenix being ready is the definition's own word on it: the config reading that makes its variant known.
+        // The channel then has a minute to send data, down to the last millisecond, and a silent one is told.
         var lines = new Lines();
         using FenixChannelMonitor monitor = NewIdleMonitor(lines);
         var sampler = new Sampler(monitor);

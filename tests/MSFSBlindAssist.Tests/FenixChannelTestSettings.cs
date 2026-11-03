@@ -2,19 +2,19 @@
 // folder a test takes on top of that when it needs a first start of its own.
 //
 // SettingsManager's paths are private static readonly fields, made from %APPDATA%, and its Load calls
-// SeedFenixChannelMonitorDefaults, which saves whenever FenixChannelMonitorDefaultsSeeded is false: that is every settings
-// file on a developer's machine, until they run an app that has the flag. Any test that reaches SettingsManager.Current runs
-// that Load (SpeechCapture is a ScreenReaderAnnouncer, whose constructor reads Current, and dozens of test files build one
-// or call Save). So the first "dotnet test" after pulling the seed would rewrite the real settings of whoever runs it, in
-// the shape of the test build, which loses every key that build does not know.
+// SeedFenixChannelMonitorDefaults, which saves whenever FenixChannelMonitorDefaultsSeeded is false: that is every
+// settings file on a developer's machine, until they run an app that has the flag. Any test that reaches
+// SettingsManager.Current runs that Load (SpeechCapture is a ScreenReaderAnnouncer, whose constructor reads Current,
+// and dozens of test files build one or call Save). So the first "dotnet test" after pulling the seed would rewrite the
+// real settings of whoever runs it, in the shape of the test build, which loses every key that build does not know.
 //
-// So before any test runs, whatever order they run in, a module initializer (FenixTestHost is the precedent, and an assembly
-// may have several) points the three paths at a scratch folder for the whole test process. The folder is this process's
-// own, because two worktrees can test at the same time. The legacy path goes with the other two, or a Load with no settings
-// file would copy the machine's old FBWBA file into the folder and read it back. The current settings are not touched:
-// nothing has loaded yet, and the first Current loads from the folder as a first start does. So every test on every machine
-// reads the defaults, as it always has on CI, which has no real file. The folder is deleted when the process exits, if it
-// can be; a leftover one is harmless.
+// So before any test runs, whatever order they run in, a module initializer (FenixTestHost is the precedent, and an
+// assembly may have several) points the three paths at a scratch folder for the whole test process. The folder is this
+// process's own, because two worktrees can test at the same time. The legacy path goes with the other two, or a Load
+// with no settings file would copy the machine's old FBWBA file into the folder and read it back. The current settings
+// are not touched: nothing has loaded yet, and the first Current loads from the folder as a first start does. So every
+// test on every machine reads the defaults, as it always has on CI, which has no real file. The folder is deleted when
+// the process exits, if it can be; a leftover one is harmless.
 
 using System.Reflection;
 using System.Reflection.Emit;
@@ -39,8 +39,8 @@ public class FenixChannelTestSettingsTests
     [Fact]
     public void No_test_can_reach_a_real_settings_file()
     {
-        // The module initializer is all that stands between this process and the settings file of whoever runs the tests,
-        // and without this test nothing would miss it: every other test still passes, CI has no real file, and a
+        // The module initializer is all that stands between this process and the settings file of whoever runs the
+        // tests, and without this test nothing would miss it: every other test still passes, CI has no real file, and a
         // developer's is rewritten in silence. A redirect another test holds at this moment is under the temp folder as
         // well, so this holds whatever runs beside it.
         string temp = Path.GetTempPath();
@@ -64,17 +64,17 @@ public class FenixChannelTestSettingsTests
 
 /// <summary>
 /// Points SettingsManager at a scratch folder of its own for as long as it lives, on top of the folder the whole test
-/// process already uses, and starts it with no current settings, so the first Current loads from the scratch folder as a
-/// first start does. Dispose puts back what it found and deletes the folder. The class that holds one is in the
+/// process already uses, and starts it with no current settings, so the first Current loads from the scratch folder as
+/// a first start does. Dispose puts back what it found and deletes the folder. The class that holds one is in the
 /// "SettingsManagerGlobalState" collection: the redirect is process-wide, so no other test that reaches SettingsManager
 /// may run beside it.
 /// </summary>
 /// <remarks>
 /// The redirect SettingsSeedTests makes, by the same means: the paths are <c>static readonly</c>, which reflection will
-/// not set once the type has run its initializer, so a tiny dynamic method stores them (<c>stsfld</c>); that class's own
-/// helper is private to it, so the pattern is repeated here. One path more is redirected: the legacy FBWBA file. A Load with
-/// no settings file would otherwise copy whatever file is at that path into the scratch folder and read it back as a fresh
-/// install.
+/// not set once the type has run its initializer, so a tiny dynamic method stores them (<c>stsfld</c>); that class's
+/// own helper is private to it, so the pattern is repeated here. One path more is redirected: the legacy FBWBA file. A
+/// Load with no settings file would otherwise copy whatever file is at that path into the scratch folder and read it
+/// back as a fresh install.
 /// </remarks>
 internal sealed class SettingsRedirect : IDisposable
 {
@@ -115,7 +115,7 @@ internal sealed class SettingsRedirect : IDisposable
     internal static string NewScratchFolder()
         => Path.Combine(Path.GetTempPath(), "MSFSBlindAssistTests_" + Guid.NewGuid().ToString("N"));
 
-    /// <summary>Points SettingsManager's three paths into <paramref name="folder"/>, and returns the settings file.</summary>
+    /// <summary>Points SettingsManager's three paths into <paramref name="folder"/>; gives the settings file.</summary>
     internal static string PointSettingsManagerAt(string folder)
     {
         string settingsFile = Path.Combine(folder, "settings.json");
@@ -140,8 +140,9 @@ internal sealed class SettingsRedirect : IDisposable
     internal static FieldInfo SettingsManagerField(string name)
         => typeof(SettingsManager).GetField(name, BindingFlags.NonPublic | BindingFlags.Static)!;
 
-    // FieldInfo.SetValue refuses a static readonly field once the declaring type has run its initializer; a hand-emitted
-    // stsfld against the same field is accepted by the runtime, which is how SettingsSeedTests redirects these too.
+    // FieldInfo.SetValue refuses a static readonly field once the declaring type has run its initializer; a
+    // hand-emitted stsfld against the same field is accepted by the runtime, which is how SettingsSeedTests redirects
+    // these too.
     private static void SetStaticField(FieldInfo field, object? value)
     {
         var method = new DynamicMethod(
