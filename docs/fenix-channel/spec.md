@@ -13,15 +13,17 @@ In scope:
 
 - **Windows** for the five displays the Fenix reads through the AI today: PFD (Alt+P), ND (Alt+N), E/WD (Alt+E), SD
   (Alt+S) and ISIS (Alt+I), all in output mode. Each opens a live window when the channel can read that display, and
-  gives the AI read otherwise.
+  gives the AI read otherwise. The ND window lists the captain's whole ND, its map included, with the captain's EFIS
+  controls under the list (2.4; the team's decision of 2026-11-03, section 5 rows 46-54).
 - **Announcements**, each with its own row in the Announcement Monitor (Ctrl+M): FMA changes, E/WD warnings, E/WD
-  cautions, E/WD memos and new DCDU messages.
+  cautions, E/WD memos, new DCDU messages and ND messages.
 - **Keys**: the speed tape on output Shift+1 to Shift+6, the next waypoint on Ctrl+W, distance to destination on D and
   distance to top of descent on Shift+D.
 - **The DCDU**: the "DCDU Left" panel is removed and replaced by a DCDU window on input Ctrl+Shift+D.
 
-Out of scope: the MCDU (it keeps its 8083 window), any write on the channel ([FNX-21]), an ND map list (the channel
-draws none; a later plan may compute one from the route legs), and every aircraft other than the Fenix.
+Out of scope: the MCDU (it keeps its 8083 window), any write on the channel ([FNX-21]), the first officer's ND, the
+weather radar and terrain images (the channel sends them as pictures: the ND says only whether each is on), and every
+aircraft other than the Fenix.
 
 ## 2. Decisions
 
@@ -39,6 +41,11 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
   available", its announcer stays silent, and the monitor's log names the field once.
 - **Announcements are polled** by one UI-thread timer every 100 ms (the PMDG 737 model), never driven from the channel's
   pool thread. Each announcer looks at the latest snapshot and compares it with what it saw last.
+- **The ND's map points** (navaids, fixes, airports, NDBs) are not in the push: they come from a third read-only call,
+  `GetMapData`, with `GetMapDataVersion` (plan 03). A background timer asks for the version every couple of seconds and
+  fetches the points only when it changes (the rate is measured); the reply is kept with the time it came. Plan 03 adds
+  the two to the channel's allowed calls, so [FNX-21] still allows only what that list names: reads, never a write,
+  action or credential call.
 
 ### 2.2 Trust
 
@@ -51,9 +58,15 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
 - Cross-checks (answer 12, "fewer"): only the existing ones. PFD: both FD lights, true altitude, heading. E/WD: fuel. ND:
   the existing heading check, reused. SD, ISIS and DCDU have none: their display-live condition, the shape checks and the
   build check decide.
-- Features use their display's verdict: the PFD window and the speed keys use the PFD; the ND window, Ctrl+W, D and
-  Shift+D use the ND; the E/WD window and the E/WD alert announcer use the E/WD; the SD window uses the SD; the ISIS
-  window uses the ISIS; the DCDU window and its announcer use the DCDU. The FMA announcer uses the PFD.
+- Features use their display's verdict: the PFD window and the speed keys use the PFD; the ND window, Ctrl+W, D,
+  Shift+D and the ND messages announcer use the ND; the E/WD window and the E/WD alert announcer use the E/WD; the SD
+  window uses the SD; the ISIS window uses the ISIS; the DCDU window and its announcer use the DCDU. The FMA announcer
+  uses the PFD.
+- The ND's map points have a check of their own, because they come from outside the snapshot: a `GetMapData` reply is
+  used only while its own mode, range, map option and centre agree with the snapshot's EFIS settings and ND position
+  (the tolerance is measured) and while it is fresh. Otherwise the map points' place in the ND window is one status row,
+  "Map points: not available, <reason>", and the rest of the ND stays. A failed call (refused, timed out, a wrong
+  shape) is logged once and tried again only after a wait.
 
 ### 2.3 Safety work that lands before anything speaks (plan 01)
 
@@ -66,7 +79,8 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
 - **Format letters**: a letter `FenixChannelText` does not know keeps its display untrusted ([FNX-24]). Box (`b`) and
   flash (`f`) are attributes that are never spoken until a capture confirms what they draw; `y` and `l` likewise. The
   FMA's `!` (as in "gALT!CRZ") is spoken as a space. The `d` letter (in the ND's ground speed text) is measured by plan
-  03 before any read uses that field.
+  03 before any read uses that field; plan 02 made `d` and `p` known on 2026-11-03 (the owner's ruling: they draw
+  nothing), and plan 03 still captures the ND's line.
 - **Session notice** (answer 10): one line per session, spoken when the Fenix loads and the build is not checked, the
   channel refuses, or no data arrives within 60 s of the Fenix being ready: "Fenix display channel not available for
   Fenix build <build>: displays use AI reading; FMA and E/WD announcements are off." Short gaps in a session stay
@@ -88,7 +102,31 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
     with its baro reference ("STD" or "QNH 1029"); vertical speed; pitch and bank; the flight director bars while
     drawn, with "flashing" while they flash (no row when none is drawn, as for every other row); heading and track;
     radio altitude, minimums and the ILS lines when shown; flags and messages.
-  - ND: mode and range; ground speed, true airspeed and wind; track; the next-waypoint line; the ND's messages.
+  - ND (plan 03; rows 46-54): the captain's whole ND, so that a pilot can fly with it and also learn what the glass
+    shows. Each row starts with its place on the screen, as the PMDG 737's ND window's do ("Top left:", "Map:",
+    "Centre:"), and says the item as drawn: its symbol and color in words (2.6) and the label the ND prints. In screen
+    order:
+    - Header: "Captain ND: <mode>, range <n>"; top left, the ground speed, TAS and wind lines; top centre, the compass,
+      with the heading and where the track diamond sits; top right, the next-waypoint lines, or in ROSE LS and ROSE VOR
+      the LS or VOR block (ident, frequency, course, DME).
+    - The map: the route's waypoints in route order, each with its distance, its degrees off the top of the screen and
+      its constraint; the markers (T/C, T/D, DECEL and the others) in route order; holds after their fix; where the
+      route leaves the screen, and a discontinuity; the temporary flight plan while it is pending; the heading bug; the
+      range rings; the FIX INFO rings and radials; navaids, fixes, airports and NDBs nearest first, as the option
+      buttons select them; traffic nearest first, with its relative altitude and whether it climbs or descends. In PLAN
+      a place is the distance and compass point from the centre waypoint ("5.0 NM north-west of VAKSU").
+    - ROSE LS and ROSE VOR: the course pointer, the deviation in dots, the glideslope, TO or FROM.
+    - Bottom: the VOR and ADF corners and the bearing pointers; then "Message: <text>" for each message, or "Messages:
+      none".
+    - Only what the ND draws at that mode, range and option is listed: what the edges cut off and what the ND hides
+      when cluttered are measured against captures.
+    - The ND is read in layers: the header, the route, the map points, the ROSE LS and VOR content, and traffic. A
+      wrong shape or missing content in one layer gives that layer one status row ("Traffic: not available, field 5.2
+      has the wrong shape") and leaves the other layers, as a wrong shape on one SD page does (row 30). A letter
+      `FenixChannelText` does not know, in any line the ND reads, still stops the whole ND, Ctrl+W included (row 22).
+    - Under the list: Mode and Range combos, and the CSTR, WPT, VOR.D, NDB, ARPT and LS buttons showing their state,
+      each writing through its panel control's existing write path (a full press-release for a button, [FNX-6]).
+    - What an item means is not in the window: the user guide's chapter on the Fenix ND says it (row 51).
   - E/WD: the engine block for the fitted engine family (N1 or EPR, EGT, N2, fuel flow); the thrust limit line ("CLB
     1.618"); fuel on board; flaps and slats; the warning lines (left) and memos (right).
   - SD: the page name, that page's content, the STATUS text on the STATUS page, and the bottom line (TAT, SAT, UTC,
@@ -126,6 +164,12 @@ white, red; yellow is spoken only once a capture confirms it. Sizes, box and fla
 director bars' flash is a flag, not text: plan 02's row says "flashing"). `!` is a space. A line with an unknown
 letter is never spoken: its display is untrusted.
 
+On the ND (row 52), most of what is drawn reaches the app as values and positions, not text. A map row the app builds
+from them speaks a color in two cases only: the channel sends it (a map marker's color field, a label's color letters),
+or the captures show the ND always draws that item in that color (plan 03's evidence names each such rule, for example
+the active leg in white and the rest of the route in green). A color neither gives is never spoken. Everywhere else a
+row the app builds from values speaks no color, as before.
+
 ### 2.7 Announcements (answers 3, 4, 8)
 
 Shared behavior:
@@ -133,7 +177,8 @@ Shared behavior:
 - Each announcer checks its own Ctrl+M row before speaking and keeps tracking while muted (unmuting replays nothing).
 - It is silent while the display it relies on is not trusted. Its first good reading after a start, a reconnect or a
   trust gap is taken silently as the baseline.
-- Ctrl+M rows (all declared by plan 01, keys never owned by a SimConnect variable, the cabin rows' precedent):
+- Ctrl+M rows (the first five declared by plan 01, the sixth added by plan 03; keys never owned by a SimConnect
+  variable, the cabin rows' precedent):
 
   | Row | Default | Owner |
   | --- | --- | --- |
@@ -142,6 +187,7 @@ Shared behavior:
   | Cautions | on | plan 09 |
   | Memos | off | plan 09 |
   | DCDU messages | on | plan 11 |
+  | ND messages | on | plan 03 |
 
 FMA (plan 08): the FMA is three rows of five columns (slot = row x 5 + column; columns Thrust, Vertical, Lateral,
 Approach, and column 5 for AP, FD and A/THR engagement), to be confirmed in the sim. A change counts after it has held
@@ -158,6 +204,12 @@ guessed one. A cleared title: "<title> cleared". Memos, when their row is on: "<
 column (174). Action lines are never announced.
 
 DCDU messages (plan 11): a new message is announced "DCDU: <header>, <first message line>".
+
+ND messages (plan 03; row 50), as the PMDG 737's ND announcements, never interrupting: a message that appears on the
+captain's ND (its centre, windshear, TCAS and message lines) is "ND message: <text>", one that goes is "ND message gone:
+<text>" (several at once in one line, the prefix once), each spoken through the speech function (2.6). A change of the
+active waypoint (field 68's first line) is "ND: <ident>, <distance> NM", the figures as the ND draws them; PPOS is "ND:
+no active waypoint".
 
 ### 2.8 The DCDU window (answers 7, 8)
 
@@ -218,19 +270,36 @@ format letters, fuel, the FMA's take-off and engine-failure lines, the negative 
 - 68/69 next-waypoint lines (captain, first officer): 1 ident and bearing ("VAKSU g318c"), 2 distance ("g84 csNM"), 3
   ETA ("g17:29"); "PPOS" with no flight plan. Measured in cruise against the MCDU's F-PLN.
 - 194 heading: 1 magnetic heading (goes negative near north: -1.44 measured), 2 magnetic track, 3 magnetic variation;
-  193 true track; 56/57 ND position (1 latitude, 2 longitude).
-- 163/164 ground speed and wind text: 1 ground speed and TAS (`wsGSlgd456wsdTASlgd448`, with the unknown `d`), 2 wind
-  ("g213w / g37").
-- 1 EFIS (repeated, captain then first officer): 1 mode (enum; declared order ILS, VOR, NAV, ARC, PLN, to confirm), 3
-  range, 4-9 option flags, 10 QNH-STD, 14-16 QNH values.
-- 103/104 ND messages (repeated strings; "GPS PRIMARY" seen on the first officer's side only); 62-67, 87, 88, 102 TCAS and
-  flag texts (unseen).
-- Route (plan 10): 2/3 route data: 4 active route, 5 modified, 6 secondary, 7 alternate, 8 modified alternate, 9 offset
-  base, 10 debug (repeated legs), 11 active leg, 12 map markers. Leg: 1 latitude, 2 longitude, 3 varint, 6 ident, 8
-  turn side, 9 double, 10/11 courses in and out (meanings of 3 and 9-11 inferred). Map marker: 1 latitude, 2 longitude,
-  3 label, 4 type (enum: TOD first, then TOC, EOD, SOC, Decel, ETP; the cruise marker had no type, so 0 = TOD is
-  inferred), 5 color, 6 go-around, 7 remove on declutter. The MCDU's F-PLN shows "DEST UTC DIST EFOB" (the reference for
-  plan 10's check).
+  193 true track; 192 true position; 165 true reference; 56/57 ND position (1 latitude, 2 longitude, 3 MrpValid, 4
+  MrpTrack, 5 MrpDist); 84/85 the PLAN centre (cduCenter); 113.2 the selected heading (the heading bug).
+- 163/164 ground speed and wind text: 1 ground speed and TAS (`wsGSlgd456wsdTASlgd448`; `d` is known since plan 02:
+  it moves the drawing position and draws nothing), 2 wind ("g213w / g37").
+- 1 EFIS (repeated, captain then first officer): 1 mode (enum; declared order ILS, VOR, NAV, ARC, PLN, to confirm), 2
+  map option (EfisMapOption), 3 range, 4-9 option flags, 10 QNH-STD, 14-16 QNH values.
+- 103/104 ND messages (repeated strings; "GPS PRIMARY" and "TA ONLY" seen, "GPS PRIMARY" on the first officer's side
+  only); 62-67 the centre, windshear and TCAS messages per side; 102 flag labels; 58-61 ND status and flags; 87 TCAS
+  RA, 88 TCAS fail, 158 TCAS range visible (all unseen).
+- 70-77 the VOR and LS blocks and the navaid information (NavaidBlockData: 1 name, 2 code, 3 DME); 78-83 the navaid
+  headings (the bearing pointers). 50 front course, 52 crosstrack, 55 energy circle, 86 closest runway: meanings to
+  measure (plan 03).
+- 5 traffic (tcasDAta): a scrambled type, not decoded yet (plan 03).
+- 53/54 terrain on the ND, 191 weather radar data: on and off only; the images are not sent.
+- Route (plans 03 and 10; plan 03 decodes it, 2026-11-03): 2/3 route data: 1 runways, 2 secondary runways, 3 alternate
+  runways (a scrambled runway type); 4 active route, 5 modified, 6 secondary, 7 alternate, 8 modified alternate, 9
+  offset base, 10 debug (repeated legs), 11 active leg, 12 map markers, 13 fix radials. Leg: 1 latitude, 2 longitude, 3
+  varint, 6 ident, 8 turn side, 9 double, 10/11 courses in and out (meanings of 3 and 9-11 inferred); where the
+  constraints, overfly, discontinuities and holds live is to be found (plan 03). Map marker: 1 latitude, 2 longitude, 3
+  label, 4 type (MapMarkerEnum, in declared order TOD, TOC, EOD, SOC, Decel, AltCstr, Cstr, Cross, SpeedLimit,
+  TimeMarker, Debug, ETP: probably 0 to 11, to confirm; the cruise marker had no type, so 0 = TOD is inferred), 5 color
+  (FMCColorEnum: White, Amber, Green, Cyan, Compound, Yellow, Magenta, Red), 6 go-around, 7 remove on declutter. Fix
+  radial (the MCDU FIX INFO page): 1 fix, 2 magnetic variation, 3 radials, 4 radius (repeated doubles).
+  RouteOptionsData: 1 GoAroundVisible, 2 AlternateVisible. The MCDU's F-PLN shows "DEST UTC DIST EFOB" (the reference
+  for plan 10's check).
+- Map points (plan 03): `GetMapDataVersion` and `GetMapData` on the service `ProsimRemoting.GrpcAircraftDataSource`
+  (the push's own), both with a MapDataRequest (1 ForCaptain). MapData: 1 airports, 2 navaids, 3 fixes, 4 NDBs (each
+  repeated, a scrambled point type whose fields are to decode), 5/6 centre latitude and longitude, 7 true track, 8
+  range, 9 mode (EfisModeEnum), 10 version, 11 partial data, 12 map option (nullable EfisMapOption). Never called yet.
+  A RemoteMapDataRequest (1 captain, 2 EFIS mode, 3 map option, 4 range) also exists; where it is used is not known.
 
 ### 3.4 E/WD (plans 04 and 09)
 
@@ -341,7 +410,7 @@ Rows 14-45 are the questions the plans raised, answered on 2026-11-03 ("Accept a
 | 20 | 03 | A Ctrl+W part shown as dashes | left out | As recommended |
 | 21 | 03 | ND lines with no words of their own | app labels, as the PMDG 737's ND window | As recommended |
 | 22 | 03 | An unknown letter in any ND line | the whole ND not available, Ctrl+W included | As recommended |
-| 23 | 03 | Map options, option flags, status flags, VOR and LS blocks | left out | As recommended |
+| 23 | 03 | Map options, option flags, status flags, VOR and LS blocks | left out | As recommended; superseded on 2026-11-03 by row 46: all of them are read |
 | 24 | 03 | Ctrl+W's order against the FBW A32NX's | keep answer 6; the FBW's for its own issue | As recommended |
 | 25 | 04 | The LEAP and PW GTF engine block | the A320neo's, N1 first | As recommended |
 | 26 | 05, 06 | SD symbols and state words | plain words; the FBW A32NX SD rows' state words | As recommended |
@@ -365,15 +434,30 @@ Rows 14-45 are the questions the plans raised, answered on 2026-11-03 ("Accept a
 | 44 | 11 | A new DCDU message | new header and first line, held 300 ms; quiet 3 s after the pilot's own page or message key | As recommended |
 | 45 | 11 | The status word in the new-message call | left out | As recommended |
 
+Rows 46-54 are the team's decision of 2026-11-03 (Hadi, Robin and the team) to read the whole ND in plan 03, which
+Hadi claimed that day. They change sections 1, 2.1, 2.2, 2.4, 2.6, 2.7, 3.3 and 6 as stated there.
+
+| # | Plan | Question | Recommendation | Answer |
+| --- | --- | --- | --- | --- |
+| 46 | 03 | How much of the ND is read? | everything the captain's ND draws whose data the channel carries | The whole ND, its map included; the weather radar and terrain images stay out (pictures: only on or off is said); the first officer's ND is not read |
+| 47 | 03 | How does plan 03 ship? | in parts, each with its switch commit | All at once: one switch commit at the end (the branch reaches pilots only when every plan is done) |
+| 48 | 03, 10 | Who decodes the route? | plan 03 | Plan 03, its route decoder first so plan 10 can start soon; plan 10 builds D and Shift+D on it |
+| 49 | 03 | The EFIS controls in the ND window | Mode and Range combos, the CSTR, WPT, VOR.D, NDB, ARPT and LS buttons with their state | As recommended |
+| 50 | 03 | ND announcements | one Ctrl+M row, "ND messages": messages and active-waypoint changes, as the PMDG 737's | As recommended |
+| 51 | 03 | Explaining what an item means | a key in the window | Rows only: the user guide's chapter on the Fenix ND says what each item means (plan 12) |
+| 52 | 03 | Colors on the ND map | from the channel (color fields, color letters) or a color the captures show is always used | As recommended (2.6) |
+| 53 | 03 | How plan 03 learns the ND | layer by layer: one sim session per layer before its code; captures and EFIS changes by Claude; the program's code only where a capture cannot decide | As recommended |
+| 54 | 03 | Plan 01's frozen files plan 03 needs | changed by plan 03, additively, under the index's exemption for a landed plan: the two map calls in `FenixChannelFields.cs` and `FenixChannelClient.cs`, the paths in `FenixChannelReadOnlyTests`, the sixth row in `FenixChannelAnnouncementRows.cs` | As recommended; recorded in plan 03's execution record |
+
 ## 6. Open checks (each owned by the plan named)
 
 | Check | Plan |
 | --- | --- |
 | The FMA slot layout (row x 5 + column), slot 15, and the colors of armed and managed modes | 08 (02 shows the rows) |
 | When V1, VR, V2, F, S and VFE next are drawn; the vertical speed unit; which PFD flags mean what; the flight director bars' unit, signs and flags | 02 |
-| The `d` letter in the ground speed text; the EFIS mode numbering; ND message sides | 03 |
+| The `d` letter in the ground speed text; the EFIS mode numbering; ND message sides; the route's leg fields, constraints, holds, discontinuities and the temporary flight plan; the map marker types and colors; what `GetMapData` returns and how often it changes; the ND's projection, edges and declutter in each mode; the LS and VOR blocks and the bearing pointers; traffic (field 5); the colors the ND always uses for an item | 03 |
 | The engine family field and the order of the engine block per family | 04 |
 | SD pages 0 and 13; per-page content and enum values | 05, 06 |
-| Leg fields 3 and 9-11; the top-of-descent marker type; the along-route distance against the MCDU | 10 |
+| The along-route distance against the MCDU; what shows a passed top of descent (the leg fields and the marker types are 03's) | 10 |
 | A real DCDU message: layout, colors, the soft-key labels, how MSG and PGE move it | 11 |
 | A whole flight with every feature on, from cold and dark | 12 |
