@@ -123,3 +123,14 @@ Task 8 is done. From Task 9, the mute (no call while unticked, no replay, the ne
   - 21:41:18.178: HeaderRight `ciWILCO`, Lsk1L `c*CANCEL`, Lsk2R `cSEND*`, Lsk1R and Lsk2L empty: the answer is chosen and waits for SEND on the same slot, about 1.2 s after the press.
 
   `FenixChannelText` does not know `i`, so as designed the DCDU went "not available, unknown code 'i' in the DCDU header" (`fenix_channel.log`, 21:41:17 and 21:41:18) and its soft keys refused, leaving the pilot unable to send or cancel from the window. An outcome the plan names. The letter must be known before the DCDU can be answered at all.
+- **A dark DCDU delivers nothing** (2026-11-03, after an aircraft reload): a second PDC request left field 186 empty until the DCDU was lit: Dim 22:24:06, Bright 22:24:09, both messages on the field at 22:24:12.835. The app read "(no CPDLC message displayed)" meanwhile. `duData` (field 12) sends a brightness per display unit (`Brightness`, 12.3); the DCDU's unit read 255 afterward; its dark value is not measured yet.
+- **On the new build, by ear (Robin):** the new layout "perfect"; WILCO read back "WILCO"; SEND read back "SENDING".
+- **SEND** (`S_DCDU1_LSK2R`, 22:30:08.790, the keys then `*CANCEL` and `SEND*`):
+  - 22:30:09.045: Lsk2R `ciSEND*` (the press shown), and at 22:30:09.525 `cSEND*` again.
+  - 22:30:10.005: HeaderRight `giWILCO`, the message re-wrapped in green with a new first line (`gCLRD TO EGSS. OBOK2E`, `gDEPARTURE. MNTN 4000.`, `gSQUAWK 2443. EXPCT RWY`, `g07C.`), Info1 `SENDING`, keys only `cCLOSE*` on Lsk2R.
+  - 22:30:12.045: Info1 `RECEIVD BY ATC`; 22:30:17.085: Info1 blank.
+
+  Two things follow. The ATC's receipt comes 3.3 s after the press, past the read-back's one change and its 3 s, so it went unheard. And an answered message's first line changes, which the announcer's identity sees as a new message, since a soft key sets no quiet.
+- **CLOSE** (`S_DCDU1_LSK2R`, 22:32:20.402): 22:32:20.643 Lsk2R `ciCLOSE*`; 22:32:21.603 the answered message gone and the status message back, HeaderRight `cOPEN`, Info2 `           PGE`, Info3 `           1/2`: with one message left, the message counter and its label go and the page counter keeps its column. The total's fall was silent, and the read-back said "OPEN", which Robin finds right: it is the status of the message now showing.
+- **Brightness** (2026-11-03, `system.numerical.N_DCDU1_BRIGHTNESS`, the value the cockpit file names for the DCDU's emissive): 0 after eleven Dim presses, with a delivered message still on field 186, so 0 hides nothing already there. `duData`'s brightness list stayed 255 throughout: it does not follow this. Each 200 ms Bright press added about 50 (0, 60, 110, 160, 210, 260, 310, 22:40:14 to 22:40:30).
+  Pressed on, it stops at 510 (22:42:44), so the app can speak a percentage in about ten steps.
