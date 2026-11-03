@@ -351,39 +351,35 @@ the evidence file.
 
 ## Handoff to plan 12
 
-(Filled in while working. Expected:)
-
-- **For a pilot:** `guide/airbus-aircraft.md`, "Fenix A320 CEO" (`#airbus-fenix`): a "DCDU window" part (input
-  Ctrl+Shift+D or "DCDU" in the Fenix windows list; the rows and the "1 <" and ">" key lines; the keys; DCDU Brightness;
-  "No action on that key."; "This Fenix has no DCDU."; the "DCDU messages" row and its call), and the "DCDU Left" lines
-  go (the Pedestal list, the variant list, "DCDU Left on a livery without a DCDU", "The DCDU screen cannot be read on
-  the Fenix"). `guide/hotkey-reference.md` (`#hk-fenix`) and `Fenix_A320_Hotkeys.txt`: "Input Ctrl+Shift+D: open the
-  DCDU window", and its keys. Changelog `improvement`: "Fenix: the DCDU has its own window (input Ctrl+Shift+D, or DCDU
-  in the Fenix windows list) that reads datalink messages from the Fenix's own screen, presses its keys and announces
-  each new message. It replaces the DCDU Left panel." (without "and announces each new message" if the call waits).
+- **For a pilot:** `guide/airbus-aircraft.md`, "Fenix A320 CEO" (`#airbus-fenix`): a "DCDU window" part: input Ctrl+Shift+D or "DCDU" in the
+  Fenix windows list; the rows, plain and spaced like the MCDU, the key rows on one line; the keys, with Ctrl+PageDown forward; the Bright and Dim
+  buttons and the spoken level; "No action on that key."; "This Fenix has no DCDU."; what is spoken (a new message, "DCDU: 3 messages", every info
+  line, the status after an answer key) and the "DCDU messages" row; answering is two presses on one key, WILCO then SEND, and CLOSE clears it; a PDC
+  needs the callsign in FLT NBR and comes back on the DCDU as two messages, a status and the clearance. The "DCDU Left" lines go (lines 245, 277 and
+  415 on this branch's guide: the Pedestal list, the variant list, "DCDU Left on a livery without a DCDU", "The DCDU screen cannot be read on the
+  Fenix"), and line 255's First Officer's DCDU brightness goes from "Cockpit Other". `guide/hotkey-reference.md` (`#hk-fenix`) and
+  `Fenix_A320_Hotkeys.txt`: "Input Ctrl+Shift+D: open the DCDU window", and its keys. Changelog `improvement`: "Fenix: the DCDU has its own window (input
+  Ctrl+Shift+D, or DCDU in the Fenix windows list) that reads datalink messages from the Fenix's own screen, presses its keys and announces each new
+  message, so a clearance can be read and answered. It replaces the DCDU Left panel."
 - **Proposed rules** (`.claude/rules/fenix-channel.md`, one line each):
 
   ```text
-  - [FNX-?] A Fenix DCDU window press goes through `PressDcdu` (the definition's S_DCDU1_* handler branches, a full press-release); `FenixChannelDcduKeys.Decide` judges a soft key on a snapshot taken at the press: a blank label, or a soft key on an untrusted DCDU, sends nothing and says so; no press speaks its key's name ([CORE-7]). Full: docs/invariants/fenix-channel.md#fnx-?
-  - [FNX-?] A Fenix DCDU message is new only when `FenixChannelDcduAnnouncer.IdentityOf` (header-left text and first message line) is unseen since the silent baseline and has held 300 ms; a status change is never new, and the pilot's page or message key quiets the next 3 s, so paging, stepping and answering are heard in the list, never as a call. Full: docs/invariants/fenix-channel.md#fnx-?
+  - [FNX-?] A Fenix DCDU window press goes through `PressDcdu` (the definition's S_DCDU1_* handler branches, a full press-release), once per press of a key (a held key presses again otherwise, and WILCO then SEND is two presses on one slot); `FenixChannelDcduKeys.Decide` judges a soft key on a snapshot taken at the press, and a blank label or an untrusted DCDU sends nothing and says so. Full: docs/invariants/fenix-channel.md#fnx-?
+  - [FNX-?] A Fenix DCDU message is new only when `FenixChannelDcduAnnouncer.IdentityOf` is unseen since the silent baseline, has held 300 ms and no own press set the 3 s quiet (a sent answer re-wraps with a new first line); a message behind another never reaches the screen, so the counter's total rising is its only sign ("DCDU: 3 messages"), spoken inside the quiet too. Full: docs/invariants/fenix-channel.md#fnx-?
+  - [FNX-?] Fenix Ctrl+PageDown presses `S_DCDU1_MSGDWN`, never MSGUP: the DCDU's message counter rises with MSGDWN though its cockpit part is named Minus, so swapping them to match the names breaks DOWN-goes-forward ([A320-17]). Full: docs/invariants/fenix-channel.md#fnx-?
   ```
 
-  Full text: Task 1's measurements (the header's fields, the letters, the direction tooltips, how an inactive key is
-  drawn), why the status is left out of the identity, the 300 ms settle (the FMA's), the 3 s quiet (the cabin window's
-  own-press rule), and why the key opens the window whatever the verdict (no AI read to fall back to).
-- **Frozen files:** (1) `MainForm.Hotkeys.cs`, `case HotkeyAction.ShowDCDU`: "The DCDU window is only available on the
-  A32NX, the Headwind A330 and the Fenix." (the Fenix has one now and never reaches the line); plan 01 lists it too, and
-  plan 12 applies it once. (2)
-  `.claude/rules/a32nx-fenix.md` and its full text: [A320-15] names "the A32NX DCDU display" and [A320-18] FBW's
-  `POEMINUS`/`POEPLUS`; the Fenix window follows both (page keys `S_DCDU1_PGUP`/`PGDN`), so plan 12 may word them for
-  both; [A320-19] and [A320-20] stay FBW's. (3) `docs/a32nx.md` outside this plan's sub-heading: the variants
-  paragraph's "today that is 'DCDU Left' without a DCDU and 'ISIS'" becomes ISIS alone. (4) `FenixChannelText.cs`: any
-  DCDU letter Task 1 finds unknown. (5) If the sampler seam is not pushed by landing, plan 01's "DCDU messages" row
-  mutes nothing until it is: plan 12 rules whether the row stays. (6) `docs/invariants/fenix-data.md`, line 89 ("DCDU Left
-  without a DCDU"), which plan 12's list does not name yet: ISIS alone.
-- **Also seen on:** the FBW A32NX DCDU window speaks a soft key's label after each press
-  (`FlyByWireDcduForm.SendSoftKey`), which spec 2.8 rules out here under [CORE-7]: its own issue. The same window has no
-  auto-repeat guard (`FlyByWireDcduForm.OnFormKeyDown`), so a held soft key presses again: its own issue.
+  Full text: the measured fields in `docs/fenix-channel/evidence/11-dcdu.md` (before plan 12 deletes the folder), why the status is left out of the identity, the 300 ms settle (the FMA's), the 3 s quiet (the cabin window's own-press rule), and why the key opens the window whatever the verdict (no AI read to fall back to).
+- **Frozen files:**
+  1. `MainForm.Hotkeys.cs`, `case HotkeyAction.ShowDCDU`: "The DCDU window is only available on the A32NX, the Headwind A330 and the Fenix." (the Fenix has one now and never reaches the line); plan 01 lists it too, and plan 12 applies it once.
+  2. `.claude/rules/a32nx-fenix.md` and its full text: [A320-15] names "the A32NX DCDU display" and [A320-18] FBW's `POEMINUS`/`POEPLUS`; the Fenix window follows both (page keys `S_DCDU1_PGUP`/`PGDN`), so plan 12 may word them for both; [A320-19] and [A320-20] stay FBW's.
+  3. `docs/a32nx.md` outside this plan's sub-heading: the variants paragraph's "today that is 'DCDU Left' without a DCDU and 'ISIS'" becomes ISIS alone.
+  4. `FenixChannelText.cs`: the letter `i` (measured on the DCDU: a pressed key and a chosen answer's status; never spoken), as `p` and `d` are. `FenixChannelDcdu.Decode` holds it locally until then and gives it up then. The parser's summary and `JoinedText`'s ("never for a window or an announcement") need the DCDU's exception below.
+  5. **[FNX-24], `.claude/rules/fenix-channel.md` and its full text:** the owner's ruling of 2026-11-03: the DCDU window and its announcement speak no color names, as the MCDU window does, since the DCDU mostly carries text. Spec 2.6 reads the same way. Unknown letters still make the display not available.
+  6. **[CORE-7], CLAUDE.md's "Today's cases" and its full text:** add the DCDU's read-back (the status after an answer key, an info line after a press) and the Bright and Dim level.
+  7. `docs/invariants/fenix-data.md`, line 89 ("DCDU Left without a DCDU"), which plan 12's list does not name yet: ISIS alone.
+- **Also seen on:** the FBW A32NX DCDU window speaks a soft key's label after each press (`FlyByWireDcduForm.SendSoftKey`), where this one reads back what the DCDU changed: its own issue. The same window has no auto-repeat guard (`FlyByWireDcduForm.OnFormKeyDown`), so a held soft key presses again: its own issue.
+- **For plan 12's flight:** a real uplink from a center, not a PDC: a controller's message with UNABLE, AFFIRM or a free-text uplink, which may bring another letter. A new message inside 3 s of a key press is remembered and not called, by the owner's ruling on the quiet, and the total still speaks; listen for it.
 
 ## Execution record
 
@@ -395,23 +391,24 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Started:** 2026-11-03, from 4dee8fe38 (the branch head, which holds plan 01's recorded base 1d29a73ee)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:** 0, 1 step 2 and 2-6 done (2-6 inert, each reviewed, pushed); 1 step 1 read on an airframe with no DCDU, to repeat; 7
-  written, reviewed and kept local on `fc-p11-dcdu`; the whole-plan review done, its fixes kept local with 7. 8-10 next.
-- **Waiting on the owner:** a Fenix with the DCDU option on for Task 1 step 1 and Task 8; a CPDLC connection for Task 1 step 3
-  and Task 9. Two rulings before the switch commit is pushed, with those measurements in hand (the whole-plan review's Important
-  findings, which question spec 2.8 and the Review Focus, not the code): (1) a press that goes ahead is silent unless the cursor's row
-  changes, and silence invites the second press, which sends: is a read-back wanted? (2) `Decide` refuses only a blank label, so a
-  slot relabeled by a new message is pressed unheard: should a press be refused when the screen differs from what the list last
-  showed? Outcome C of Task 1 step 3 would shrink (2) to the pilot's own stepping. One to hear: whether the refreshed row cuts the
-  call off (Task 9).
-- **In-sim results:** `docs/fenix-channel/evidence/11-dcdu.md`.
+- **Tasks:** all done.
+- **Waiting on the owner:** nothing.
+- **In-sim results:** `docs/fenix-channel/evidence/11-dcdu.md`. Tasks 8 and 9 passed on 2026-11-03 on Robin's real PDCs under SayIntentions, by ear plus raw field reads. What only exercises the app's logic was marked from the code, the tests and the logs, at Robin's word. The final polish (no dark row, a lit DCDU never says 0 percent) has its tests but was not flown.
 - **Changed from the plan:**
-  - The cockpit file holds no tooltips (Task 1 step 2), so the model's part names settle which key is which. They agree with
-    today's labels: Task 4's table stands and Task 7 relabels nothing.
+  - The cockpit file holds no tooltips (Task 1 step 2), so the model's part names name each key, and they agree with today's labels. They do not say which way is forward: the counter rises with `S_DCDU1_MSGDWN` (measured), so Ctrl+PageDown presses it and Ctrl+PageUp `S_DCDU1_MSGUP`, against Task 4's table.
   - `Decode` and `Read` call `Missing("DCDU content")`: the factory adds the "no ", so the text is the plan's "no DCDU content".
   - `DcduContent` is `partial`, as every feature's message classes are.
-  - New in the window (Task 6): a held key presses once (`A_held_key_presses_once`). New in the sampler (Task 7): silent on an
-    airframe with no DCDU.
+  - A held key presses once. The call is silent on an airframe with no DCDU.
+  - Outcome C was measured: a message behind another never reaches the screen, so `FenixChannelDcduAnnouncer` also calls a rising total ("DCDU: 3 messages").
+  - New: `FenixChannelDcduReadback` (the status after an answer key, every new info line) and `FenixChannelDcduBrightness`; `FenixChannelDcdu.Plain`; the letter `i`, known locally.
+  - The "DCDU Brightness" combo became Bright and Dim buttons, with the level from the L:var `N_DCDU1_BRIGHTNESS`; `S_DCDU2_DIM_BRT` left the definition.
+  - The rows are plain and laid out on the 24-column grid. The quiet follows every own press, not only page and message keys.
+- **Rulings by the owner** (Robin, 2026-11-03, by ear on real messages; they override the plan and the spec where they differ):
+  - The window is formatted like the MCDU, the key rows on one line, left and right apart by whitespace, and the window and its announcement speak no color names, since the DCDU mostly carries text (over spec 2.6 and [FNX-24], for this display).
+  - A message behind another: announce the total when it rises. After his own press: speak what the DCDU changed, never the key's name. A slot relabeled by a new message: no refusal, since a new message waits behind the one on screen (measured), so a key changes only when he steps.
+  - Every new info line is spoken ("SENDING", "RECEIVD BY ATC"). "OPEN" after CLOSE is right: it is the status of the message now showing.
+  - Bright and Dim buttons that speak the level, in place of the combo or a slider; the First Officer's DCDU brightness goes.
+  - The false call after SEND goes (the quiet on every press). The dark row goes: a DCDU at brightness 0 still receives.
 - **Rulings made while working** (each Claude's, 2026-11-03, for the owner to overturn):
   - A held key presses once. The base asks `HandleWindowKey` on auto-repeat, `ExecuteButtonTransition` has no guard, and an answer
     key is pressed once for WILCO and again for SEND, so a held Ctrl+1 could answer and send.

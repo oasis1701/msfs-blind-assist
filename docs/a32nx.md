@@ -282,7 +282,21 @@ The lower ECAM is read from the channel as rows a screen reader can follow. **Al
 
 #### DCDU window
 
-(Plan 11 writes this section.)
+Input Ctrl+Shift+D, or "DCDU" in the Fenix windows list, opens "Fenix DCDU" (`FenixChannelDcduForm`), which reads the captain's DCDU from field 186 under the DCDU's trust verdict and presses its keys through the `S_DCDU1_*` handler branches of `HandleUIVariableSet`. A Fenix with no DCDU says "This Fenix has no DCDU." (`TryRefuseNoDcdu`, input mode stays on), because the channel reads the DCDU trusted on an airframe that has none. The "DCDU Left" panel is gone; its `S_DCDU1_*` variables stay for the window, and `S_DCDU2_DIM_BRT` is gone.
+
+**The rows** (`FenixChannelDcduRows`) are formatted like the MCDU and speak no color names (the owner's ruling for this display, 2026-11-03, over [FNX-24]'s "says each color"): the header on one line, the message and info lines with the Fenix's own spacing, then a row for each key row on the 24-column grid, `1 <*UNABLE        STBY*>`, `2                WILCO*>`. A line with a letter the app does not know still makes the window "not available" and stops the soft keys. `i` is known: the Fenix draws it on a pressed key and on a chosen answer's status (`ciWILCO`), and it is never spoken. `FenixChannelDcdu.Plain` is the one place a coded line becomes plain text.
+
+**The keys** (`FenixChannelDcduKeys`): Ctrl+1, Ctrl+2, Alt+1 and Alt+2, or F1, F2, F7 and F8 with the alternate keys on, by slot; a blank label says "No action on that key." and an untrusted DCDU "DCDU not available", judged on a snapshot taken at the press. PageDown and PageUp are `S_DCDU1_PGDN` and `S_DCDU1_PGUP`; Ctrl+PageDown is `S_DCDU1_MSGDWN` and Ctrl+PageUp is `S_DCDU1_MSGUP`, because the counter rises with MSGDWN though the cockpit's part names call it Minus ([A320-17]). Ctrl+P prints. A held key presses once: an answer key is pressed once for WILCO and again for SEND. Bright and Dim buttons step `S_DCDU1_DIM_BRT` and speak the new level. The level is the L:var `N_DCDU1_BRIGHTNESS`, a count over 1023, about 50 a press, stopping at 510; a count above 0 is said as at least 10 percent.
+
+**What is spoken** (`FenixChannelDcduAnnouncer`, `FenixChannelDcduReadback`, both from `SampleChannelDcdu` on the announcer host's tick):
+
+- A new message: "DCDU: <header-left>, <first message line>", once it has held 300 ms. A message is new when its header-left and first line are unseen since the last silent baseline; the status is no part of it.
+- A message waiting behind another: a new message never replaces the one on screen, so the identity cannot see it. The total comes from the counter (`MSG` at the start of Info2 over `x/N` at the start of Info3; with no counter, 1 while a message shows). A total that rises and holds 300 ms is "DCDU: 3 messages", or is added to a new message's call that falls due with it. A fall is silent.
+- The pilot's own press sets a 3 s quiet, for every key: paging and stepping change the first line, and an answered message re-wraps with a new first line ("CLRD TO EGSS. OBOK2E"), which was announced as new before the quiet covered soft keys.
+- Every new info line as it appears ("SENDING", "RECEIVD BY ATC", "NO MORE MSG"). After a soft key, also the status's first change, once within 3 s ("WILCO", or "OPEN" when CLOSE brings another message up).
+- "DCDU messages" in Ctrl+M mutes the calls and the info lines, tracking them so nothing replays, except an info line within 3 s of the pilot's own press. The row is also treated as muted on an airframe with no DCDU.
+
+**Measured on a real PDC under SayIntentions, 3.0.0.7613, 2026-11-03** (the raw lines are in the plan's evidence): the reply is two messages at once, a status and the clearance, each on one header; the clearance is reached by stepping. WILCO then SEND are two presses on one slot. The status turns `ciWILCO` about 1.2 s after the first and `giWILCO` about 1.2 s after the second, when the message re-wraps in green and Info1 says `SENDING`; `RECEIVD BY ATC` comes about 3.3 s after the press and clears 5 s later. CLOSE takes the message away, and after the last one the DCDU is empty but for `cRECALL*` on right key 2. With nothing in FLT NBR on the INIT page, no reply came; the first reply arrived as the callsign went in. A DCDU at brightness 0 still receives.
 
 ### Fenix v3: variants (the A319, A320 and A321, CFM and IAE, extra center tanks)
 
