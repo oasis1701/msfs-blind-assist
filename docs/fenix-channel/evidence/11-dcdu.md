@@ -72,3 +72,54 @@ word, 2026-11-03: only what needs the sim):
 
 Task 8 is done. From Task 9, the mute (no call while unticked, no replay, the next one called) is marked the same way:
 `A_muted_message_is_not_replayed_on_unmute` and `The_sampler_reads_one_snapshot_checks_its_row_and_queues_the_call`.
+
+## Task 1 step 3: real uplinks
+
+- **A first PDC request left the DCDU empty** (2026-11-03, 21:12, the A321 at EDDF, provider SayIntentions): field 186 had not changed once
+  since 21:04, so the app's silence was right. This does not show where a PDC goes. The MCDU's AOC Departure Request page still showed the
+  gate, ATIS and station as empty boxes at 21:12, so it may never have been sent, and the E/WD's "COMPANY MSG" may be the Fenix's virtual
+  ACARS (`virtual_acars_enabled` is on) and not a reply. BeyondATC's own guide says a PDC reply arrives on the DCDU under its service.
+- **The first real DCDU message** (2026-11-03, 21:21:21, SayIntentions): it arrived as soon as FLT NBR was entered on the INIT page. So a PDC
+  reply does reach the DCDU, and a missing flight number was what held it back. Raw field 186, each line as sent:
+
+  | Field | Name | Value |
+  |---|---|---|
+  | 1 | PrintFrame | 1 |
+  | 2 | HeaderLeft | `g 2021Z FROM EDDF` |
+  | 3 | HeaderRight | `cOPEN` |
+  | 4 | Msg1 | `DEPART REQUEST STATUS . ` |
+  | 5 | Msg2 | `FSM 2010 261103 cEDDFw  ` |
+  | 6 | Msg3 | `cBVI4RKw  RCD REQUEST   ` |
+  | 7 | Msg4 | `BEING PROCESSED         ` |
+  | 8 | Msg5 | `cSTANDBYw  IF cNO       ` |
+  | 9 | Info1 | empty |
+  | 10 | Info2 | `MSG        PGE` |
+  | 11 | Info3 | `1/2        1/2` |
+  | 12-14 | Lsk1L, Lsk2L, Lsk1R | empty |
+  | 15 | Lsk2R | `cCLOSE*` |
+
+  Header-left holds the time and sender (outcome A so far). Every letter is one the app knows. The right key's label has no padding and no arrow
+  of its own. Info2 and Info3 are the message and page counters.
+- **The announcement and the rows on it:** "DCDU: 2021Z FROM EDDF, green, DEPART REQUEST STATUS ." once, with the window closed, and the nine
+  rows as composed, heard by Robin. Passed.
+- **PageDown goes forward** ([A320-17]): pressed `S_DCDU1_PGDN` at 21:25:01.020; field 186 moved to the message's page 2/2 at 21:25:01.301, its
+  first line the last line of page 1 again (`cSTANDBYw  IF cNO`, `RESPONSEw IN c2 MINSw   `, `REQUEST cNEW FLIGHTw IN `, `APP`). No
+  announcement (Robin). Passed.
+- **The message behind it, the PDC itself** (read 21:29:20 after one Ctrl+PageUp): header as before (`g 2021Z FROM EDDF`, `cOPEN`), so two messages
+  shared one header; `CLRD TO cEGSSw.`, `cOBOK2Ew DEPARTURE.`, `MNTN c4000w. SQUAWK`, `c4172w. EXPCT RWY`, `c07Cw.`; Info2 `MSG`, Info3 `2/2`
+  (no page counter on a one-page message); keys Lsk1L `c*UNABLE`, Lsk1R `cSTBY*`, Lsk2R `cWILCO*`, Lsk2L empty. So the star marks the key's side, labels
+  carry no padding, and letters are g, c, w again.
+- **A message behind another stays hidden: outcome C.** The counter read `1/2` from the first change at 21:21:21, and field 186 showed only message 1
+  until the pilot stepped: the clearance was never on screen, so it was never announced. The announcer's rule cannot see it. For the owner's ruling.
+- **Which way the message keys go:** at `1/2`, Message Plus (`S_DCDU1_MSGUP`) put "NO MORE MSG" on Info1 for about 5 s, four times; Message Minus
+  (`S_DCDU1_MSGDWN`) went to `2/2`. So the counter rises with `MSGDWN`, and Ctrl+PageDown as built does not go forward ([A320-17]). The part
+  names are right, but "Plus" does not mean forward here.
+- **A press's result can be unheard:** "NO MORE MSG" was a new list row away from the cursor, so NVDA said nothing, and Robin took the key for dead
+  (the whole-plan review's first question).
+- **Message keys, from message 2:** Message Plus (`S_DCDU1_MSGUP`, 21:37:22) went back from `2/2` to `1/2`. With Message Minus (`S_DCDU1_MSGDWN`, 21:41:06) going from `1/2` to `2/2`, the counter rises with `MSGDWN`: Ctrl+PageDown must press `MSGDWN`, Ctrl+PageUp `MSGUP` ([A320-17]).
+- **A new letter, `i`, on the first press of an answer key** (2026-11-03, 21:41, WILCO, `S_DCDU1_LSK2R` at 21:41:16.960):
+  - 21:41:17.220: Lsk2R `ciWILCO*`, the label drawn with a new letter while the press is shown.
+  - 21:41:17.698: Lsk2R `cWILCO*` again.
+  - 21:41:18.178: HeaderRight `ciWILCO`, Lsk1L `c*CANCEL`, Lsk2R `cSEND*`, Lsk1R and Lsk2L empty: the answer is chosen and waits for SEND on the same slot, about 1.2 s after the press.
+
+  `FenixChannelText` does not know `i`, so as designed the DCDU went "not available, unknown code 'i' in the DCDU header" (`fenix_channel.log`, 21:41:17 and 21:41:18) and its soft keys refused, leaving the pilot unable to send or cancel from the window. An outcome the plan names. The letter must be known before the DCDU can be answered at all.
