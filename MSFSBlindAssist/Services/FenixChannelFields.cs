@@ -1,8 +1,8 @@
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// The calls the Fenix display channel client may open. Both only read: the display data stream and the
-/// ECAM entries stream. The service has calls that write values, run actions and hand out credentials
+/// The calls the Fenix display channel client may open. All four only read: the display data stream, the
+/// ECAM entries stream and the two map reads. The service has calls that write values, run actions and hand out credentials
 /// too; none has a member here, and <see cref="FenixChannelFields.PathOf"/> gives a path for no other
 /// value.
 /// </summary>
@@ -12,12 +12,18 @@ internal enum FenixChannelCall
     DisplayData,
 
     /// <summary>The ECAM entries: a stream of EcamUpdate messages, sent when the list changes.</summary>
-    EcamEntries
+    EcamEntries,
+
+    /// <summary>The ND map points' version: one request, one reply, read-only (a unary call).</summary>
+    MapDataVersion,
+
+    /// <summary>The ND map points: one request, one reply, read-only (a unary call).</summary>
+    MapData
 }
 
 /// <summary>
 /// The app's own copy of what it uses of the Fenix display channel (gRPC on 127.0.0.1:18083): where the
-/// channel is, the two calls that read it, the field numbers the decoders read and the wire shape of each.
+/// channel is, the four calls that read it, the field numbers the decoders read and the wire shape of each.
 /// The service is protobuf-net "code first", so there is no .proto file to take them from: they were read
 /// off the live channel, and after a Fenix update this file, with the <c>FenixChannelFields.&lt;Feature&gt;.cs</c>
 /// partials of this class, is what to compare with it. The field numbers live in this file and in those
@@ -42,12 +48,14 @@ internal static partial class FenixChannelFields
 
     /// <summary>
     /// The gRPC path of a call: <c>/service/method</c>, the service named without the leading I of its
-    /// interface. An enum member that is not one of the two throws, so no other path can come out of here.
+    /// interface. An enum member that is not one of the four throws, so no other path can come out of here.
     /// </summary>
     public static string PathOf(FenixChannelCall call) => call switch
     {
         FenixChannelCall.DisplayData => "/ProsimRemoting.GrpcAircraftDataSource/Subscribe",
         FenixChannelCall.EcamEntries => "/ProsimRemoting.GrpcSdk/SubscribeEcamEntries",
+        FenixChannelCall.MapDataVersion => "/ProsimRemoting.GrpcAircraftDataSource/GetMapDataVersion",
+        FenixChannelCall.MapData => "/ProsimRemoting.GrpcAircraftDataSource/GetMapData",
         _ => throw new ArgumentOutOfRangeException(nameof(call), call, "Not a Fenix channel call.")
     };
 

@@ -15,6 +15,8 @@ public class FenixChannelReadOnlyTests
 {
     private const string DisplayDataPath = "/ProsimRemoting.GrpcAircraftDataSource/Subscribe";
     private const string EcamEntriesPath = "/ProsimRemoting.GrpcSdk/SubscribeEcamEntries";
+    private const string MapVersionPath = "/ProsimRemoting.GrpcAircraftDataSource/GetMapDataVersion";
+    private const string MapDataPath = "/ProsimRemoting.GrpcAircraftDataSource/GetMapData";
     private const string FieldsFile = "Services/FenixChannelFields.cs";
 
     // A call path as gRPC spells it, /<service>/<method>, with a service of the Fenix's own. Matched
@@ -27,6 +29,8 @@ public class FenixChannelReadOnlyTests
     {
         Assert.Equal(DisplayDataPath, FenixChannelFields.PathOf(FenixChannelCall.DisplayData));
         Assert.Equal(EcamEntriesPath, FenixChannelFields.PathOf(FenixChannelCall.EcamEntries));
+        Assert.Equal(MapVersionPath, FenixChannelFields.PathOf(FenixChannelCall.MapDataVersion));
+        Assert.Equal(MapDataPath, FenixChannelFields.PathOf(FenixChannelCall.MapData));
     }
 
     [Fact]
@@ -35,9 +39,13 @@ public class FenixChannelReadOnlyTests
         // A third call is a decision, not an edit: adding a member to the enum fails here first
         // (docs/invariants/fenix-channel.md#fnx-21).
         Assert.Equal(
-            new[] { FenixChannelCall.DisplayData, FenixChannelCall.EcamEntries },
+            new[]
+            {
+                FenixChannelCall.DisplayData, FenixChannelCall.EcamEntries,
+                FenixChannelCall.MapDataVersion, FenixChannelCall.MapData
+            },
             Enum.GetValues<FenixChannelCall>());
-        Assert.Throws<ArgumentOutOfRangeException>(() => FenixChannelFields.PathOf((FenixChannelCall)2));
+        Assert.Throws<ArgumentOutOfRangeException>(() => FenixChannelFields.PathOf((FenixChannelCall)4));
     }
 
     [Fact]
@@ -78,9 +86,9 @@ public class FenixChannelReadOnlyTests
         }
 
         Assert.True(
-            paths.SetEquals([DisplayDataPath, EcamEntriesPath]),
-            "The Fenix display channel client may open only the two calls that read the displays "
-            + $"({DisplayDataPath} and {EcamEntriesPath}); the service's other calls write values, run actions "
+            paths.SetEquals([DisplayDataPath, EcamEntriesPath, MapVersionPath, MapDataPath]),
+            "The Fenix display channel client may open only the four read-only calls "
+            + $"({DisplayDataPath}, {EcamEntriesPath}, {MapVersionPath} and {MapDataPath}); the service's other calls write values, run actions "
             + "or hand out credentials (docs/invariants/fenix-channel.md#fnx-21). "
             + $"The app's source names: {string.Join(", ", paths)}");
         Assert.True(

@@ -28,6 +28,16 @@ internal enum FenixChannelState
 }
 
 /// <summary>
+/// How one unary call ended (<see cref="FenixChannelClient.CallOnceAsync"/>): the state it leaves the call in, the
+/// one reply message when it answered, and why when it did not.
+/// </summary>
+/// <param name="State">Connected when the call answered with one message; NotAnswering when it did not (no answer,
+/// not offered, timed out, a wrong shape); Refused when the Fenix refused the client.</param>
+/// <param name="Message">The reply message without its gRPC header; null unless Connected.</param>
+/// <param name="Text">Why, for the log; empty when Connected.</param>
+internal readonly record struct FenixChannelUnaryResult(FenixChannelState State, byte[]? Message, string Text);
+
+/// <summary>
 /// The connection to the Fenix display channel, the local gRPC service on 127.0.0.1:18083 (HTTP/2 without TLS).
 /// It opens one of the two read calls (<see cref="FenixChannelCall"/>), splits the answer into messages, hands
 /// each to a callback and reports the call's state, and reconnects quietly when the call fails or ends. The
@@ -136,10 +146,145 @@ internal sealed class FenixChannelClient : IDisposable
         ArgumentNullException.ThrowIfNull(onMessage);
         ArgumentNullException.ThrowIfNull(onState);
         string path = FenixChannelFields.PathOf(call);
+
+        // The map calls are unary (CallOnceAsync); a stream loop on one would send it an empty request.
+        if (call is FenixChannelCall.MapDataVersion or FenixChannelCall.MapData)
+        {
+            throw new ArgumentOutOfRangeException(nameof(call), call, "Not a stream call.");
+        }
+
         if (Volatile.Read(ref _disposed) != 0) return;
 
         var loop = new CallLoop(this, call, path, onMessage, onState, _lifetime.Token);
         _ = Task.Run(loop.RunAsync);
+    }
+
+    /// <summary>
+    /// Makes one of the two map calls: one request, one reply message and the trailers. Whatever goes wrong at the
+    /// Fenix is the result that says why, never a throw. A refusal (grpc-status 7 or 16, HTTP 401 or 403) is
+    /// <see cref="FenixChannelState.Refused"/>; the owner ends the channel, and this method does not ask again by
+    /// itself. After <see cref="Dispose"/> it returns at once without a call. A stream call throws
+    /// <see cref="ArgumentException"/> here: a mistake in the code, not a condition of the sim.
+    /// </summary>
+    /// <param name="call">MapDataVersion or MapData.</param>
+    /// <param name="request">The request message, without its gRPC header.</param>
+    /// <param name="timeout">How long the whole call may take.</param>
+    public Task<FenixChannelUnaryResult> CallOnceAsync(
+        FenixChannelCall call, byte[] request, TimeSpan timeout, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (call is not (FenixChannelCall.MapDataVersion or FenixChannelCall.MapData))
+        {
+            throw new ArgumentException("Only the map calls are unary calls.", nameof(call));
+        }
+
+        string path = FenixChannelFields.PathOf(call);
+        if (Volatile.Read(ref _disposed) != 0) return Task.FromResult(UnaryDown("the channel client is stopped"));
+
+        return UnaryAsync(path, request, timeout, ct);
+    }
+
+    private static FenixChannelUnaryResult UnaryDown(string text) => new(FenixChannelState.NotAnswering, null, text);
+
+    private async Task<FenixChannelUnaryResult> UnaryAsync(
+        string path, byte[] request, TimeSpan timeout, CancellationToken ct)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, ct);
+        limit.CancelAfter(timeout);
+        try
+        {
+            var uri = new Uri(string.Create(
+                CultureInfo.InvariantCulture, $"http://{FenixChannelFields.Host}:{FenixChannelFields.Port}{path}"));
+
+            // One gRPC frame: a flag byte of 0, the length as four big-endian bytes, the message.
+            byte[] framed = new byte[5 + request.Length];
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(framed.AsSpan(1), (uint)request.Length);
+            request.CopyTo(framed, 5);
+
+            var content = new ByteArrayContent(framed);
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/grpc");
+            using var message = new HttpRequestMessage(HttpMethod.Post, uri)
+            {
+                Version = HttpVersion.Version20,
+                VersionPolicy = HttpVersionPolicy.RequestVersionExact,
+                Content = content
+            };
+            message.Headers.TryAddWithoutValidation("te", "trailers");
+            message.Headers.TryAddWithoutValidation("grpc-accept-encoding", "identity");
+
+            using HttpResponseMessage response = await _http
+                .SendAsync(message, HttpCompletionOption.ResponseHeadersRead, limit.Token).ConfigureAwait(false);
+
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                int code = (int)response.StatusCode;
+                if (code is 401 or 403)
+                {
+                    string name = code == 401 ? "Unauthorized" : "Forbidden";
+                    return new(FenixChannelState.Refused, null, string.Create(CultureInfo.InvariantCulture,
+                        $"the Fenix refused {path} (HTTP {code}, {name}); the call stays off for the session"));
+                }
+
+                return UnaryDown(string.Create(CultureInfo.InvariantCulture, $"HTTP {code}"));
+            }
+
+            await using Stream body = await response.Content.ReadAsStreamAsync(limit.Token).ConfigureAwait(false);
+            var reader = new FenixChannelMessageReader();
+            var messages = new List<byte[]>();
+            byte[] chunk = new byte[ReadChunkBytes];
+            while (true)
+            {
+                int read = await body.ReadAsync(chunk.AsMemory(), limit.Token).ConfigureAwait(false);
+                if (read == 0) break;
+
+                reader.Append(chunk.AsSpan(0, read));
+                while (reader.TryTake(out byte[] taken)) messages.Add(taken);
+                if (reader.Error is not null) break;
+            }
+
+            // The trailers come after the body, which has been read to its end; a trailers-only answer has its
+            // status in the headers.
+            var (status, statusMessage) = FenixChannelFraming.ReadStatus(response);
+            if (status is int s && s != 0)
+            {
+                string why = string.IsNullOrWhiteSpace(statusMessage) ? "" : ": " + statusMessage;
+                return s switch
+                {
+                    7 or 16 => new FenixChannelUnaryResult(FenixChannelState.Refused, null, string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"the Fenix refused {path} (grpc-status {s}{why}); the call stays off for the session")),
+                    12 => UnaryDown($"the Fenix does not offer {path} (did an update change the channel?)"),
+                    _ => UnaryDown(string.Create(CultureInfo.InvariantCulture, $"grpc-status {s}{why}"))
+                };
+            }
+
+            if (reader.Error is { } error) return UnaryDown(error);
+            if (reader.HasPartialMessage) return UnaryDown("cut-off message");
+            if (status is null) return UnaryDown("the reply ended with no grpc-status");
+            if (messages.Count != 1)
+            {
+                return UnaryDown(string.Create(
+                    CultureInfo.InvariantCulture, $"{messages.Count} reply messages, expected one"));
+            }
+
+            return new(FenixChannelState.Connected, messages[0], "");
+        }
+        catch (Exception) when (_lifetime.IsCancellationRequested)
+        {
+            return UnaryDown("the channel client is stopped");
+        }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            return UnaryDown("the call was canceled");
+        }
+        catch (OperationCanceledException)
+        {
+            return UnaryDown(string.Create(CultureInfo.InvariantCulture, $"no reply within {timeout.TotalSeconds} s"));
+        }
+        catch (Exception ex)
+        {
+            return UnaryDown($"{ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>

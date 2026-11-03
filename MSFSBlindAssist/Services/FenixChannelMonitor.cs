@@ -309,6 +309,39 @@ internal sealed class FenixChannelMonitor : IDisposable
         }
     }
 
+    private static readonly TimeSpan UnaryTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// One read-only map call (MapDataVersion or MapData) through the monitor's own client, limited to 5 s. Once
+    /// the channel is refused or disposed it returns at once without a call. A refusal ends the channel for the
+    /// session exactly as a stream's does ([FNX-21]) and is logged once. Any other failure is the result's text for
+    /// the caller to log and retry after a wait; it changes nothing here.
+    /// </summary>
+    public async Task<FenixChannelUnaryResult> RequestOnceAsync(
+        FenixChannelCall call, byte[] request, CancellationToken ct)
+    {
+        if (IsStopped) return new(FenixChannelState.NotAnswering, null, "the channel is stopped");
+
+        FenixChannelUnaryResult result = await _client
+            .CallOnceAsync(call, request, UnaryTimeout, ct).ConfigureAwait(false);
+        if (result.State != FenixChannelState.Refused) return result;
+
+        CancellationTokenSource? ended = null;
+        bool refusedNow = false;
+        lock (_lock)
+        {
+            if (!IsStopped)
+            {
+                ended = Refuse(call.ToString(), result.Text);
+                refusedNow = true;
+            }
+        }
+
+        Cancel(ended);
+        if (refusedNow) StopClient();
+        return result;
+    }
+
     /// <summary>
     /// Everything a reader needs for <paramref name="display"/>, taken under the one lock at the same instant (see
     /// <see cref="FenixChannelSnapshot"/>): whether it may be read to the pilot now and the first reason it may not,
