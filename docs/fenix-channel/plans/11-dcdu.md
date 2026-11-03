@@ -91,7 +91,10 @@ press, only on the owner's go-ahead, is the app's own write (the L:var 0, then 1
   logged on through the owner's network (Hoppie, or SayIntentions's Hoppie-compatible service). Read 186: a message
   arriving on an empty DCDU; after PGE+ on a long one; a second arriving while one is shown; after MSG- and MSG+;
   through the owner's answer (a key the owner chooses to send) to sent or closed; after PRINT. Record the raw lines,
-  their letters, how an inactive soft key is drawn and which variable moves forward. It may share Task 9's flight.
+  their letters, how an inactive soft key is drawn and which variable moves forward. It may share Task 9's flight. Also
+  (added by the whole-plan review, 2026-11-03): that the label at each field is drawn at the corner its variable presses, for every
+  drawn key; whether a label carries its own arrow or padding; whether SEND replaces WILCO on the same slot, and how soon; whether a
+  downlink composed on the MCDU appears; a lowercase free-text uplink, if the network allows one.
 - Outcomes. **A** (expected): header-left holds the time and sender, stays through paging, stepping and the answer, and
   a new message shows on arrival: Task 5 stands. **B**: the sender is in header-right, or header-left follows the
   status: `IdentityOf` takes the stable field, with its tests, before Task 9. **C**: a message behind another stays
@@ -312,6 +315,9 @@ the evidence file; a failure goes back to its task.
   each in `debug.log`, naming its variable; nothing spoken.
 - [ ] "DCDU Brightness", Bright then Dim: `PulseSpringSwitch: S_DCDU1_DIM_BRT = 2`, then `= 1 (return to middle)`, the
   same with 0; the combo reads Mid again; nothing else spoken.
+- [ ] Added by the whole-plan review: tab to "DCDU Brightness" and press PageDown: one page line in `debug.log`, the combo still on
+  Mid. An arrow on the closed combo makes one step and it returns to Mid: does NVDA say "Mid" about 400 ms later, and is that wanted?
+- [ ] Added with the held-key ruling: hold Ctrl+PageDown for 2 s: one `ExecuteButtonTransition START` line in `debug.log`.
 - [ ] Cold and dark: "DCDU: not available, display off"; Ctrl+1: "DCDU not available".
 - [ ] [owner] The DCDU option off for the session (Fenix windows list, Options, F2, Yes): the key and the "DCDU" entry
   say "This Fenix has no DCDU."; input mode stays on after the key. The option back on.
@@ -328,6 +334,10 @@ the evidence file.
 - [ ] PageDown through a long uplink, and Ctrl+PageUp/Ctrl+PageDown between two: no call; DOWN goes forward ([A320-17]).
 - [ ] The owner's answer on a key the owner chooses: the result shows in the list; no call; no key name spoken.
 - [ ] "DCDU messages" unticked in Ctrl+M, an uplink: silence; ticked again: no replay; the next uplink is called.
+- [ ] Added by the whole-plan review, each for the owner to rule on (Execution record, "Waiting on the owner"):
+  - Answer with the cursor on a row that does not change: is the silence after the press acceptable, or is a read-back wanted?
+  - A second uplink while the first is shown, then a press: which message did it answer?
+  - The window open on an empty DCDU with the cursor on its one row, at least three uplinks: does the refreshed row cut the call off?
 
 ### Task 10 [controller]: Push the switch commit and land
 
@@ -369,9 +379,11 @@ the evidence file.
   both; [A320-19] and [A320-20] stay FBW's. (3) `docs/a32nx.md` outside this plan's sub-heading: the variants
   paragraph's "today that is 'DCDU Left' without a DCDU and 'ISIS'" becomes ISIS alone. (4) `FenixChannelText.cs`: any
   DCDU letter Task 1 finds unknown. (5) If the sampler seam is not pushed by landing, plan 01's "DCDU messages" row
-  mutes nothing until it is: plan 12 rules whether the row stays.
+  mutes nothing until it is: plan 12 rules whether the row stays. (6) `docs/invariants/fenix-data.md`, line 89 ("DCDU Left
+  without a DCDU"), which plan 12's list does not name yet: ISIS alone.
 - **Also seen on:** the FBW A32NX DCDU window speaks a soft key's label after each press
-  (`FlyByWireDcduForm.SendSoftKey`), which spec 2.8 rules out here under [CORE-7]: its own issue.
+  (`FlyByWireDcduForm.SendSoftKey`), which spec 2.8 rules out here under [CORE-7]: its own issue. The same window has no
+  auto-repeat guard (`FlyByWireDcduForm.OnFormKeyDown`), so a held soft key presses again: its own issue.
 
 ## Execution record
 
@@ -383,9 +395,15 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Started:** 2026-11-03, from 4dee8fe38 (the branch head, which holds plan 01's recorded base 1d29a73ee)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:** 0, 1 step 2 and 2-6 done (2-6 inert, each reviewed); 1 step 1 read on an airframe with no DCDU, to repeat; 7 next.
+- **Tasks:** 0, 1 step 2 and 2-6 done (2-6 inert, each reviewed, pushed); 1 step 1 read on an airframe with no DCDU, to repeat; 7
+  written, reviewed and kept local on `fc-p11-dcdu`; the whole-plan review done, its fixes kept local with 7. 8-10 next.
 - **Waiting on the owner:** a Fenix with the DCDU option on for Task 1 step 1 and Task 8; a CPDLC connection for Task 1 step 3
-  and Task 9.
+  and Task 9. Two rulings before the switch commit is pushed, with those measurements in hand (the whole-plan review's Important
+  findings, which question spec 2.8 and the Review Focus, not the code): (1) a press that goes ahead is silent unless the cursor's row
+  changes, and silence invites the second press, which sends: is a read-back wanted? (2) `Decide` refuses only a blank label, so a
+  slot relabeled by a new message is pressed unheard: should a press be refused when the screen differs from what the list last
+  showed? Outcome C of Task 1 step 3 would shrink (2) to the pilot's own stepping. One to hear: whether the refreshed row cuts the
+  call off (Task 9).
 - **In-sim results:** `docs/fenix-channel/evidence/11-dcdu.md`.
 - **Changed from the plan:**
   - The cockpit file holds no tooltips (Task 1 step 2), so the model's part names settle which key is which. They agree with
@@ -401,3 +419,7 @@ Kept in this file only, so no other plan's push ever touches it.
     evidence), and Task 7 as written had no check; tracking stays on, so nothing replays.
   - `CallText` speaks header-left alone, not `HeaderText`: spec row 45 leaves the status out, and Task 5's rules and test say so;
     its Interfaces line was the slip.
+  - The sampler has no `Suppressed` check, unlike the session notice's: on a Fenix only MainForm's synchronous wrap sets it, and the
+    host's timer tick cannot run inside that wrap.
+  - A right key's label loses trailing spaces before its ">": the empty DCDU pads its info lines, so a padded label is plausible
+    ("WILCO* >"). Task 1 step 3 shows whether it is needed.
