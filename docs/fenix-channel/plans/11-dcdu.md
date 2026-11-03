@@ -383,8 +383,21 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Started:** 2026-11-03, from 4dee8fe38 (the branch head, which holds plan 01's recorded base 1d29a73ee)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:**
-- **Waiting on the owner:**
-- **In-sim results:**
+- **Tasks:** 0, 1 step 2 and 2-6 done (2-6 inert, each reviewed); 1 step 1 read on an airframe with no DCDU, to repeat; 7 next.
+- **Waiting on the owner:** a Fenix with the DCDU option on for Task 1 step 1 and Task 8; a CPDLC connection for Task 1 step 3
+  and Task 9.
+- **In-sim results:** `docs/fenix-channel/evidence/11-dcdu.md`.
 - **Changed from the plan:**
-- **Rulings made while working:**
+  - The cockpit file holds no tooltips (Task 1 step 2), so the model's part names settle which key is which. They agree with
+    today's labels: Task 4's table stands and Task 7 relabels nothing.
+  - `Decode` and `Read` call `Missing("DCDU content")`: the factory adds the "no ", so the text is the plan's "no DCDU content".
+  - `DcduContent` is `partial`, as every feature's message classes are.
+  - New in the window (Task 6): a held key presses once (`A_held_key_presses_once`). New in the sampler (Task 7): silent on an
+    airframe with no DCDU.
+- **Rulings made while working** (each Claude's, 2026-11-03, for the owner to overturn):
+  - A held key presses once. The base asks `HandleWindowKey` on auto-repeat, `ExecuteButtonTransition` has no guard, and an answer
+    key is pressed once for WILCO and again for SEND, so a held Ctrl+1 could answer and send.
+  - The sampler treats `Variant.HasDcdu == false` as muted. The channel reads the DCDU trusted on an airframe with none (plan 01's
+    evidence), and Task 7 as written had no check; tracking stays on, so nothing replays.
+  - `CallText` speaks header-left alone, not `HeaderText`: spec row 45 leaves the status out, and Task 5's rules and test say so;
+    its Interfaces line was the slip.

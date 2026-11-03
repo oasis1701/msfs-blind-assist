@@ -14,6 +14,13 @@ Fenix with the DCDU option on, so it is repeated on one; the result below is wha
 - Field 187 (the first officer's) reads the same.
 - It did not change over 6 s (100 messages).
 
+## Task 2 step 6: the field numbers
+
+186 (`dcduCapt`) and its sub-fields 1-15 are as the team's contract dump gives them, and plan 01's check found no field number
+moved between that dump and 3.0.0.7613. The read above agrees on the installed build: every number 2-15 came as a string, 1 as a
+varint, and Info2 and Info3 came on 10 and 11. The other lines have only been seen empty, so Task 1 step 3's real message is what
+tells them apart.
+
 ## Task 1 step 2: which way the page and message keys go
 
 Read on 2026-11-03 from the installed package,
