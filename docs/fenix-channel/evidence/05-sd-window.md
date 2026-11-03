@@ -159,9 +159,8 @@ composed with the A321 variant:
   0.04, .12 0.12 and 0.11): "VIB N1: 0.0, 0.0", "VIB N2: 0.1, 0.1". F.USED counted from the start.
 - **ELEC and HYD.** Both generators on line, external power no longer shown once 17.8 cleared; HYD normal with "PTU:
   idle".
-- **Found for the definition, not this plan.** The Fenix's fuel panel has an ACT pushbutton (`S_OH_FUEL_ACT`, with
-  `I_OH_FUEL_ACT_U`/`_L`), which the app's Fenix panels do not offer, so an A321 pilot cannot reach the extra tanks'
-  pump from the app (a handoff to plan 12).
+- **The ACT pump.** The fuel panel's ACT pushbutton (`S_OH_FUEL_ACT`) read 0, out; the app's Fuel panel already offers
+  it as "ACT Pump" on an airframe with extra tanks (`FenixA320Definition.Variants.cs`).
 
 ## Waiting on the owner
 
