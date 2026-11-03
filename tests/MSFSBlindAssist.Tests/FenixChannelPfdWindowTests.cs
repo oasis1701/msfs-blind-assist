@@ -2,8 +2,9 @@
 // FenixA320Definition.AnswerChannelPfdKey (Aircraft/FenixA320Definition.ChannelPfd.cs). No sim and no socket: a monitor
 // that is never started trusts nothing, and one the test feeds by hand trusts what the gate lets it. The window is
 // built, never shown (StartLive runs the first open's work without putting anything on screen), as the other display
-// windows are tested (FenixChannelWindowTests). Nothing calls either one yet: the key's seam is not implemented, so
-// what a pilot hears from the keys is checked in the sim ([CORE-5]).
+// windows are tested (FenixChannelWindowTests). These tests call the answer and the window directly, not through the
+// definition's key seam or the Fenix windows list that lead to them, and what a pilot hears from the keys is checked in
+// the sim ([CORE-5]).
 //
 // The contract: Alt+P (ReadDisplayPFD) is answered only by opening the window, which needs a trusted PFD: while the PFD
 // is not trusted, or there is no monitor, it is false and nothing is said, so the key goes on to its AI read. Each of
@@ -11,7 +12,9 @@
 // available" in the same way when the PFD is not trusted, cannot be read, draws no row for that speed, or there is no
 // monitor. One snapshot of the PFD decides both whether it is trusted and what it holds. A PFD that cannot be read is
 // reported under the window's name, as the window reports it. Any other action is false and silent. The window is a
-// class of its own for the PFD, titled "Fenix PFD", and shows the PFD's rows.
+// class of its own for the PFD, titled "Fenix PFD", and shows the PFD's rows. Both the keys and the window read the
+// PFD's own verdict, not another display's: with the captain's PFD dark and the other units lit, Alt+P is false and
+// silent, a speed key says it is not available, and the window shows the one status row.
 
 using System.Windows.Forms;
 using MSFSBlindAssist.Aircraft;
@@ -110,9 +113,9 @@ public class FenixChannelPfdWindowTests
         return new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().Raw(remote)).ToArray();
     }
 
-    // A monitor the PFD trusts: SimConnect's values agree with the push, the data call is connected, the build is checked
-    // and one good push, with the PFD's fields, has arrived.
-    private static FenixChannelMonitor TrustedPfdMonitor(MonitorTestKit.Lines lines, PfdPushes.Push pfd)
+    // A monitor with SimConnect's values agreeing with GoodPush, the data call connected and the build checked, before
+    // any push has arrived.
+    private static FenixChannelMonitor ConnectedMonitor(MonitorTestKit.Lines lines)
     {
         FenixChannelMonitor monitor = MonitorTestKit.NewIdleMonitor(lines);
         MonitorTestKit.AgreeWithGoodPush(monitor);
@@ -121,10 +124,40 @@ public class FenixChannelPfdWindowTests
             SpinWait.SpinUntil(
                 () => lines.All.Contains($"build {MonitorTestKit.CheckedBuild}: checked"), MonitorTestKit.Generous),
             "the build was never checked. The log: " + lines);
+        return monitor;
+    }
 
+    // A monitor the PFD trusts: SimConnect's values agree with the push, the data call is connected, the build is checked
+    // and one good push, with the PFD's fields, has arrived.
+    private static FenixChannelMonitor TrustedPfdMonitor(MonitorTestKit.Lines lines, PfdPushes.Push pfd)
+    {
+        FenixChannelMonitor monitor = ConnectedMonitor(lines);
         monitor.OnDataMessage(PushWith(pfd));
         Assert.Equal(new FenixDisplayVerdict(true, "trusted"), monitor.VerdictFor(FenixChannelDisplay.Pfd));
         return monitor;
+    }
+
+    // The display units of GoodPush, as its DUData part (field 12): all eleven powered with the content they showed on
+    // 2026-11-02, or all but the first, the captain's PFD (content 0), which is dark.
+    private static byte[] DuDataPart(bool captainsPfdPowered)
+    {
+        bool[] power = Enumerable.Repeat(true, 11).ToArray();
+        power[0] = captainsPfdPowered;
+        return new FenixChannelProtoWriter()
+            .Message(12, FenixChannelProtoWriter.DuData(power, FenixChannelProtoWriter.PoweredContent))
+            .ToArray();
+    }
+
+    // PushWith's push with the captain's PFD unit unpowered and every other unit as it was. A bool is one byte whatever
+    // it holds, so the part is the same length lit or dark and is written over the lit one in place.
+    private static byte[] PushWithTheCaptainsPfdDark(PfdPushes.Push pfd)
+    {
+        byte[] push = PushWith(pfd);
+        int at = push.AsSpan().IndexOf(DuDataPart(captainsPfdPowered: true));
+        Assert.True(at >= 0, "the push has no DUData part of the eleven powered units");
+
+        DuDataPart(captainsPfdPowered: false).CopyTo(push, at);
+        return push;
     }
 
     [Fact]
@@ -236,5 +269,44 @@ public class FenixChannelPfdWindowTests
         // Fenix windows are tracked one for each type: a display that shared the base class would share its window.
         Assert.NotEqual(typeof(FenixChannelDisplayForm), typeof(FenixChannelPfdForm));
         Assert.True(typeof(FenixChannelPfdForm).IsSubclassOf(typeof(FenixChannelDisplayForm)));
+    }
+
+    // ---- The PFD's own verdict ------------------------------------------------------------------
+
+    [Fact]
+    public void The_window_and_the_keys_read_the_pfds_own_verdict()
+    {
+        // The captain's PFD unit is dark and the other units are lit, with the PFD's fields in the push all the same. A
+        // key or a window that read another display's verdict (the E/WD's, the ND's) would find that display trusted and
+        // speak or show the speeds. They read the PFD's: "display off".
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = ConnectedMonitor(lines);
+        monitor.OnDataMessage(PushWithTheCaptainsPfdDark(Cruise()));
+
+        Assert.Equal(new FenixDisplayVerdict(false, "display off"), monitor.VerdictFor(FenixChannelDisplay.Pfd));
+        foreach (FenixChannelDisplay lit in new[] { FenixChannelDisplay.Ewd, FenixChannelDisplay.Sd, FenixChannelDisplay.Nd })
+        {
+            Assert.True(monitor.VerdictFor(lit).Trusted, $"the {lit} should stay lit. The log: " + lines);
+        }
+
+        var definition = new FenixA320Definition();
+        var speech = new SpeechCapture();
+        FenixA320Definition.ChannelKeyContext context = Context(speech, monitor);
+
+        // Alt+P: false and silent, so the key goes on to its AI read.
+        Assert.False(definition.AnswerChannelPfdKey(HotkeyAction.ReadDisplayPFD, context));
+        Assert.Empty(speech.All);
+
+        // A speed key: answered, with the words of a display it cannot read.
+        Assert.True(definition.AnswerChannelPfdKey(HotkeyAction.ReadSpeedGD, context));
+        Assert.Equal(new[] { "Green dot not available" }, speech.Interrupts);
+        Assert.Equal(speech.Interrupts, speech.All);
+
+        // The window: the one status row, the PFD's reason.
+        using var form = new FenixChannelPfdForm(monitor);
+        form.StartLive();
+        Assert.Equal(
+            new[] { "PFD: not available, display off" },
+            ListOf(form).Items.Cast<string>().ToArray());
     }
 }
