@@ -26,6 +26,10 @@ static class ApproachSelfTest
             ("saturated-uses-callout", SaturatedUsesCalloutCheck),
             ("saturated-no-callout", SaturatedNoCalloutCheck),
             ("speech-clock", SpeechClockCheck),
+            ("fps-all-complete", FpsAllCompleteCheck),
+            ("results-invariant", ResultsInvariantCheck),
+            ("matrix-size", MatrixSizeCheck),
+            ("step-feedback-measured", StepFeedbackMeasuredCheck),
         };
 
         int failures = 0;
@@ -207,5 +211,71 @@ static class ApproachSelfTest
         if (speech.Lines.Count != 1) return $"{speech.Lines.Count} lines captured, expected 1";
         var line = speech.Lines[0];
         return line.T == 12.5 && line.Text == "matched" && line.Immediate ? null : $"captured ({F(line.T)}, {line.Text}, {line.Immediate})";
+    }
+
+    // ── Scenarios and results ─────────────────────────────────────────────────────────────
+
+    private static ApproachScenario Scenario(string name)
+        => ApproachScenarios.All().Single(s => s.Name == name);
+
+    // Review Focus 2: the same scenario at 20, 30 and 60 frames a second runs to an end and writes
+    // a results line, whatever today's guidance does with the frame rate.
+    private static string? FpsAllCompleteCheck()
+    {
+        var problems = new List<string>();
+        foreach (string name in new[] { "FPS-A-JET-f20", "FPS-A-JET-f30", "FPS-A-JET-f60" })
+        {
+            string line = ApproachRunner.RunOne(Scenario(name), trace: null).ToResultsLine(name);
+            if (!line.StartsWith("VG|" + name + "|", StringComparison.Ordinal) || !line.Contains("|endReason=", StringComparison.Ordinal))
+                problems.Add($"{name}: {line}");
+        }
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // Review Focus 5: a Swedish or German PC still writes '.' decimals, or the compare script misreads them.
+    private static string? ResultsInvariantCheck()
+    {
+        var saved = CultureInfo.CurrentCulture;
+        string line;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("sv-SE");
+            line = ApproachRunner.RunOne(Scenario("FINAL-A-JET-x0-h0-d0.5"), trace: null).ToResultsLine("FINAL-A-JET-x0-h0-d0.5");
+        }
+        finally { CultureInfo.CurrentCulture = saved; }
+
+        if (line.Contains(',')) return "results line contains ','";
+        var problems = new List<string>();
+        foreach (string field in line.Split('|').Skip(2))
+        {
+            int eq = field.IndexOf('=');
+            if (eq < 0) { problems.Add($"field without '=': {field}"); continue; }
+            string key = field[..eq], value = field[(eq + 1)..];
+            if (key is "endReason" or "established" || value == "NA") continue;
+            if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                problems.Add($"{key}={value} does not parse");
+        }
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    private static string? MatrixSizeCheck()
+    {
+        var all = ApproachScenarios.All();
+        int unique = all.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count();
+        return all.Count == 147 && unique == 147 ? null : $"{all.Count} scenarios, {unique} unique names; expected 147";
+    }
+
+    // A step run records its sample at step + 10 s before it ends, so both self-feedback measures exist.
+    private static string? StepFeedbackMeasuredCheck()
+    {
+        var problems = new List<string>();
+        foreach (string name in new[] { "STEP-A-JET", "STEP-A-LIGHT" })
+        {
+            string line = ApproachRunner.RunOne(Scenario(name), trace: null).ToResultsLine(name);
+            foreach (string key in new[] { "selfFeedback3s", "selfFeedback10s" })
+                if (!line.Contains("|" + key + "=", StringComparison.Ordinal) || line.Contains("|" + key + "=NA", StringComparison.Ordinal))
+                    problems.Add($"{name} has no {key}");
+        }
+        return problems.Count == 0 ? null : string.Join("; ", problems);
     }
 }
