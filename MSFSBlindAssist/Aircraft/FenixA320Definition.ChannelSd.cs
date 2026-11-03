@@ -2,11 +2,26 @@ namespace MSFSBlindAssist.Aircraft;
 
 // The SD's side of the Fenix display channel: the window of the lower ECAM. The window is
 // Forms/Fenix/FenixChannelSdForm.cs, its rows are Services/FenixChannelSd.cs and the pages' rows are the
-// Services/FenixChannelSdPage.*.cs partials. Nothing opens the window yet: Alt+S keeps its AI read until the SD's in-sim
-// checks pass, and the key's answer then joins this file. This file holds the window's factory and the press of the
-// page keys the window carries.
+// Services/FenixChannelSdPage.*.cs partials. Two things open the window: Alt+S, answered by ChannelSdKey below, and the
+// "SD" entry of the Fenix windows list (Forms/Fenix/FenixWindowRegistry.ChannelSd.cs). This file holds the window's
+// factory, the press of the page keys the window carries, and the key's seam: Alt+S opens the window only while the SD
+// is trusted at the press, and otherwise it is left to its AI read.
 public partial class FenixA320Definition
 {
+    /// <summary>
+    /// The SD's key, Alt+S (ReadDisplayLowerECAM): opens the SD window through <see cref="OpenChannelWindow{TForm}"/>, so
+    /// the key answers only while the SD is trusted at the press, and with an SD that is not trusted (or no monitor) it
+    /// says nothing and leaves <paramref name="handled"/> false, so the key goes on to its AI read with no extra words
+    /// (spec 2.4). It is the only key the SD owns, and it never calls <see cref="ShowChannelWindow{TForm}"/>, which shows
+    /// the window whatever the verdict and is the windows list's way in. Any other action is left as it was.
+    /// </summary>
+    partial void ChannelSdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled)
+    {
+        if (action == Hotkeys.HotkeyAction.ReadDisplayLowerECAM)
+            handled = OpenChannelWindow(ctx, Services.FenixChannelDisplay.Sd, Services.FenixChannelSd.DisplayName,
+                monitor => CreateChannelSdForm(monitor, ctx.SimConnect, ctx.Announcer));
+    }
+
     /// <summary>
     /// The SD window on <paramref name="monitor"/>. It reads <see cref="Variant"/> at each refresh, on the UI thread
     /// where the variant changes, so a page whose layout follows the airframe (FUEL) follows a variant that is detected

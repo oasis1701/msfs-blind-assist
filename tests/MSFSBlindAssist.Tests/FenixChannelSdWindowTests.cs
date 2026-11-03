@@ -1,10 +1,12 @@
 // Characterization tests for the Fenix SD window: its rows (FenixChannelSd.Compose), the field reader every SD page
 // reads with (FenixChannelSdReader), the bottom line and the check for format letters the app does not know
 // (FenixChannelSdFrame), the window (Forms/Fenix/FenixChannelSdForm) and the definition's factory for it
-// (FenixA320Definition.CreateChannelSdForm). Pure logic, except the window tests, which build the window without
-// showing it, as the other display windows are tested (FenixChannelPfdWindowTests). Every field number is written out
-// here, never read from FenixChannelFields, so that a wrong number in the app fails a test. SdPush, at the end of this
-// file, builds the pushes; the page tests of plan 05 (FenixChannelSdEngTests and the others) build theirs with it too.
+// (FenixA320Definition.CreateChannelSdForm), and the two seams that let a pilot reach it: the entry in the Fenix
+// windows list and Alt+S (ChannelSdKey, pinned by its source). Pure logic, except the window tests, which build the
+// window without showing it, as the other display windows are tested (FenixChannelPfdWindowTests). Every field number
+// is written out here, never read from FenixChannelFields, so that a wrong number in the app fails a test. SdPush, at
+// the end of this file, builds the pushes; the page tests of plan 05 (FenixChannelSdEngTests and the others) build
+// theirs with it too.
 //
 // The contract: a snapshot with no message or no frame is "no data", which is not reported. Then the first format
 // letter the app does not know, in the bottom line and, on the STATUS page (14), in the STATUS text, is the whole
@@ -19,6 +21,7 @@
 // reader it hands out; a valve value outside the enum reads "not available" and is reported without stopping the page.
 // Numbers are written in the invariant culture, rounded away from zero, never "-0", and "XX" when not a number.
 
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Forms;
@@ -620,6 +623,70 @@ public class FenixChannelSdWindowTests
         Assert.Equal("Fenix SD", form.Text);
         Assert.True(typeof(FenixChannelSdForm).IsSubclassOf(typeof(FenixChannelDisplayForm)));
         Assert.Equal("SD", FenixChannelSd.DisplayName);
+    }
+
+    // ---- The switch: the Fenix windows list and Alt+S -------------------------------------------
+
+    [Fact]
+    public void The_sd_window_is_listed_once()
+    {
+        // The list speaks "Name. Description", and the SD's name is the display's short name, as the other displays'
+        // are. Whatever opens the entry is the definition's own ShowChannelWindow, which shows the window whatever the
+        // verdict, so the entry carries no check of its own.
+        FenixWindowEntry entry = Assert.Single(FenixWindowRegistry.Build(), e => e.Name == "SD");
+
+        Assert.Equal(
+            "The System Display from the Fenix: the page shown, its values, STATUS and the bottom line",
+            entry.Description);
+    }
+
+    [Fact]
+    public void The_sd_key_opens_the_window_by_the_trusted_path()
+    {
+        // ChannelSdKey is a private partial method, so it is pinned by reading its source, as the dispatch is
+        // (FenixChannelDispatchTests). Alt+S opens the window through OpenChannelWindow, which opens it only while the SD
+        // is trusted at the press and otherwise leaves the key to the AI read with no extra words (spec 2.4). It never
+        // calls ShowChannelWindow, which shows the window whatever the verdict: that is the windows list's way in. The
+        // key's answer is OpenChannelWindow's own result for the SD, never a "handled = true" after it, which would
+        // swallow Alt+S, and with it the AI read, while the SD is not trusted.
+        string code = Comment.Replace(
+            File.ReadAllText(Path.Combine(
+                ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Aircraft", "FenixA320Definition.ChannelSd.cs")),
+            "");
+        int declaration = code.IndexOf("partial void ChannelSdKey(", StringComparison.Ordinal);
+        Assert.True(declaration >= 0, "FenixA320Definition.ChannelSd.cs does not implement ChannelSdKey");
+        string body = BlockAfter(code, declaration);
+
+        Assert.Contains("ReadDisplayLowerECAM", body);
+        Assert.Matches(OpenedForTheSd, body);
+        Assert.DoesNotContain("ShowChannelWindow", body);
+    }
+
+    // The key's answer: "handled" is assigned what OpenChannelWindow returns for the SD's display, the window's factory
+    // and name coming after.
+    private static readonly Regex OpenedForTheSd = new(
+        @"handled\s*=\s*OpenChannelWindow\(\s*ctx\s*,\s*(Services\.)?FenixChannelDisplay\.Sd\b",
+        RegexOptions.CultureInvariant);
+
+    // ---- Reading the source ---------------------------------------------------------------------
+
+    // A line comment or a block comment: a call named in a comment is no call.
+    private static readonly Regex Comment = new(@"//[^\r\n]*|/\*.*?\*/",
+        RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+    // The block that opens at the first "{" after start, braces and all, up to its closing brace.
+    private static string BlockAfter(string code, int start)
+    {
+        int open = code.IndexOf('{', start);
+        Assert.True(open >= 0, "no block after the declaration");
+        int depth = 0;
+        for (int i = open; i < code.Length; i++)
+        {
+            if (code[i] == '{') depth++;
+            else if (code[i] == '}' && --depth == 0) return code.Substring(open, i - open + 1);
+        }
+
+        throw new InvalidOperationException("the block is not closed");
     }
 }
 
