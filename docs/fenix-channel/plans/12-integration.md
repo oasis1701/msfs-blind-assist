@@ -151,6 +151,8 @@ pull request.
 - [ ] Record the last commit that holds `docs/fenix-channel/` (it goes in the pull request). `git rm -r docs/fenix-channel`;
   `git grep -n "docs/fenix-channel"` returns nothing outside `changelog.d` (fix any hit). Commit
   `docs: remove the Fenix display channel working documents`.
+- [ ] `.github/workflows/tests.yml`: take `feat/fenix-display-channel` and its comment out of `push.branches`, back to `[main]`
+  (added at the owner's word, 2026-11-03, while plans landed by direct push). Commit `ci: the tests run on main again`.
 
 ### Task 9: The pull request (owner go-ahead first)
 

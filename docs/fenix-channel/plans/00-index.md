@@ -6,9 +6,9 @@ Background: `docs/a32nx.md` ("Fenix display channel (port 18083, 2026-11)"), the
 (FNX-21 to FNX-25, full text `docs/invariants/fenix-channel.md`), `fenix-data.md`, `fenix-windows.md`, `a32nx-fenix.md`.
 **Branch:** `feat/fenix-display-channel` on `origin` (`oasis1701/msfs-blind-assist`; `<remote>` below is your name for
 it, `origin` on Robin's machine). Every plan lands on this one branch. One pull request to `main` at the end (plan 12),
-opened only when the owner says. Contributors rebase onto the branch and push straight to it; pushes there run no CI,
-so the suite runs locally after the rebase ("Workflow for one plan"). No per-plan pull requests, changelog fragments or
-"User guide:" lines: plan 12 writes them.
+opened only when the owner says. Contributors rebase onto the branch and push straight to it. Each push runs the Tests workflow
+(at the owner's word, 2026-11-03), but only after it has landed, so the suite still runs locally after the rebase ("Workflow for
+one plan"). No per-plan pull requests, changelog fragments or "User guide:" lines: plan 12 writes them.
 **Where these documents live:** `docs/fenix-channel/` on the branch. Plan 12 deletes the folder before the pull request
 merges.
 **The owner** rules on what a plan leaves open (spec section 5, and questions found while working). Until the team names
