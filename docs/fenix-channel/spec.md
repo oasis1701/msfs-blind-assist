@@ -447,7 +447,7 @@ Hadi claimed that day. They change sections 1, 2.1, 2.2, 2.4, 2.6, 2.7, 3.3 and 
 | 51 | 03 | Explaining what an item means | a key in the window | Rows only: the user guide's chapter on the Fenix ND says what each item means (plan 12) |
 | 52 | 03 | Colors on the ND map | from the channel (color fields, color letters) or a color the captures show is always used | As recommended (2.6) |
 | 53 | 03 | How plan 03 learns the ND | layer by layer: one sim session per layer before its code; captures and EFIS changes by Claude; the program's code only where a capture cannot decide | As recommended |
-| 54 | 03 | Plan 01's frozen files plan 03 needs | changed by plan 03, additively, under the index's exemption for a landed plan: the two map calls in `FenixChannelFields.cs` and `FenixChannelClient.cs`, the paths in `FenixChannelReadOnlyTests`, the sixth row in `FenixChannelAnnouncementRows.cs` | As recommended; recorded in plan 03's execution record |
+| 54 | 03 | Plan 01's frozen files plan 03 needs | changed by plan 03, additively, under the index's exemption for a landed plan: the two map calls in `FenixChannelFields.cs` and `FenixChannelClient.cs`, their request method in `FenixChannelMonitor.cs`, the paths in `FenixChannelReadOnlyTests`, the sixth row in `FenixChannelAnnouncementRows.cs` and `FenixChannelMonitorRowsTests`, the `SampleChannelNd` seam in `FenixA320Definition.Hooks.cs` and its line in `FenixA320Definition.DisplayChannel.cs`'s sampler list | As recommended; recorded in plan 03's execution record |
 
 ## 6. Open checks (each owned by the plan named)
 
