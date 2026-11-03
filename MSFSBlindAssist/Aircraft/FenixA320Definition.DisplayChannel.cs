@@ -7,18 +7,24 @@ namespace MSFSBlindAssist.Aircraft;
 // owns one session of it: it decodes what comes and decides, display by display, whether that can be trusted. It
 // never speaks and never touches a control. This partial gives the monitor its home and its inputs: Start and
 // Stop beside the cabin's, the three SimConnect values its cross-checks need and the annunciator light switch that
-// pauses its FD checks, the peek that hands it the five comparison values and the light switch as they arrive, and
-// the key dispatch, the first look at a channel key, which hands it to the seam of the feature that owns it.
+// pauses its FD checks, the peek that hands it the five comparison values and the light switch as they arrive, the
+// key dispatch, the first look at a channel key, which hands it to the seam of the feature that owns it, and the two
+// ways a display's window opens: a Fenix windows list entry (ShowChannelWindow) and a display key (OpenChannelWindow).
 // A seam nothing implements is no call at all, so a key whose feature has not landed behaves as it did before:
 // a display key gives its AI read and the others stay silent. So does a key whose seam throws.
 public partial class FenixA320Definition
 {
     // This instance's monitor: made by StartDisplayChannelBackground, disposed and cleared by Stop. Start, Stop,
-    // the value peek and the display key all run on the UI thread (the sim's updates, a hotkey, and the quit or
-    // aircraft switch that calls OnSwitchedAway), so a plain field is enough; each method reads it once.
+    // the value peek, the display key and the window list entry all run on the UI thread (the sim's updates, a
+    // hotkey, a list entry, and the quit or aircraft switch that calls OnSwitchedAway), so a plain field is enough;
+    // each method reads it once.
     private Services.FenixChannelMonitor? _displayChannelMonitor;
 
-    /// <summary>For the tests: this instance's display channel monitor; null until Start, and after Stop.</summary>
+    /// <summary>
+    /// This instance's display channel monitor; null until Start, and after Stop. A Fenix windows list entry reads it
+    /// too, through <see cref="ShowChannelWindow{TForm}"/>, since an entry has no key context to take the monitor
+    /// from; and the tests read it.
+    /// </summary>
     internal Services.FenixChannelMonitor? DisplayChannelMonitor => _displayChannelMonitor;
 
     // Starts the channel with the Fenix (EnsureFenixBackground: UI thread, once per definition instance). The
@@ -255,4 +261,57 @@ public partial class FenixA320Definition
     /// </summary>
     internal void SpeakNotAvailable(ChannelKeyContext ctx, string name)
         => ctx.Announcer.AnnounceImmediate($"{name} not available");
+
+    /// <summary>
+    /// Opens a display's window on this instance's channel monitor, whatever the display's verdict: the window shows
+    /// one status row, "&lt;display&gt;: not available, &lt;reason&gt;", while the display is not trusted, and its
+    /// rows once it is. A Fenix windows list entry calls this directly (<see cref="OpenChannelWindow{TForm}"/> is the
+    /// key's way in). It opens the window through <see cref="ShowFenixWindow{T}"/>, so there is one window for each
+    /// type of <typeparamref name="TForm"/>, a second call brings the open one forward, and the aircraft switch
+    /// closes it: each display's window is a class of its own for that reason. With no monitor (before Start, after
+    /// Stop) there is nothing to show: the pilot is told "&lt;displayName&gt; display not available" at once and
+    /// nothing opens.
+    /// </summary>
+    /// <param name="announcer">Where the refusal is spoken.</param>
+    /// <param name="displayName">The display's short name: "PFD", "ND", "E/WD", "SD", "ISIS" or "DCDU".</param>
+    /// <param name="factory">Builds the display's window, a class of its own, on the monitor it is given. Called only
+    /// when no window of that type is open.</param>
+    internal void ShowChannelWindow<TForm>(
+        Accessibility.ScreenReaderAnnouncer announcer,
+        string displayName,
+        Func<Services.FenixChannelMonitor, TForm> factory) where TForm : Forms.Fenix.FenixChannelDisplayForm
+    {
+        Services.FenixChannelMonitor? monitor = _displayChannelMonitor;
+        if (monitor is null)
+        {
+            announcer.AnnounceImmediate($"{displayName} display not available");
+            return;
+        }
+
+        ShowFenixWindow(() => factory(monitor), f => f.ShowForm());
+    }
+
+    /// <summary>
+    /// A display key's way to its window: opens it only while the display is trusted at the press, and says whether
+    /// it did. False, having done nothing at all, when there is no monitor or the display is not trusted, so the key
+    /// goes on to the AI read with no extra words (the PMDG 737's silent fallback, [WASM-29]) and the key context's
+    /// hotkey manager is not even touched. Otherwise both hotkey modes are left first, because a window opened with a
+    /// mode still on loses its keys to it (the PMDG 737's display windows and <see cref="ShowFenixWindows"/> leave
+    /// theirs too), and then the window opens through <see cref="ShowChannelWindow{TForm}"/>, or the open one comes
+    /// forward, and the result is true. The verdict comes from the key context's monitor, which is this instance's,
+    /// taken at the press.
+    /// </summary>
+    internal bool OpenChannelWindow<TForm>(
+        ChannelKeyContext ctx,
+        Services.FenixChannelDisplay display,
+        string displayName,
+        Func<Services.FenixChannelMonitor, TForm> factory) where TForm : Forms.Fenix.FenixChannelDisplayForm
+    {
+        if (ctx.Monitor is not { } monitor || !monitor.Snapshot(display).Verdict.Trusted) return false;
+
+        ctx.HotkeyManager.ExitOutputHotkeyMode();
+        ctx.HotkeyManager.ExitInputHotkeyMode();
+        ShowChannelWindow(ctx.Announcer, displayName, factory);
+        return true;
+    }
 }
