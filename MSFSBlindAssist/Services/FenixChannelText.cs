@@ -45,8 +45,9 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 /// Parses one line of the Fenix display channel's text (an FMA slot, an upper ECAM line, the FOB text) into
 /// runs that keep their colors. A lowercase letter before a run is a format code, not text: the color
 /// letters <c>w g c a m y r</c> (white, green, cyan, amber, magenta, yellow, red), <c>u</c>, <c>b</c> and
-/// <c>f</c> to toggle underline, a box and flashing, and <c>s</c> or <c>l</c> for a small or large size.
-/// Display text is uppercase, so an uppercase letter is never a code.
+/// <c>f</c> to toggle underline, a box and flashing, and <c>s</c> or <c>l</c> for a small or large size. The
+/// letters <c>p</c> and <c>d</c> are known and draw nothing. Display text is uppercase, so an uppercase letter is
+/// never a code.
 /// </summary>
 /// <remarks>
 /// <para>The colors are the meaning, so the codes are parsed into data and never stripped: a read that speaks
@@ -58,6 +59,11 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 /// run being built closes whenever a code changes the color, underline, box, flashing or size (<c>u</c>, <c>b</c>
 /// and <c>f</c> always do, as they toggle), so a code that restates what the line is already in does not split it,
 /// and no run is empty.</para>
+/// <para>Two letters are known and are attributes that are never spoken: <c>p</c> and <c>d</c>. Neither is a
+/// toggle, neither closes the run or changes it, and neither is kept on a <see cref="FenixTextRun"/>, so no reader
+/// can speak one. <c>p</c> appears in the FMA for the ten seconds of the flight director's flash
+/// (<c>bgpV/Scp+1800</c>) and in an E/WD memo (<c>pgIR IN ALIGN 1 MN</c>); the text stays drawn. <c>d</c> moves
+/// the drawing position right and draws nothing (the FMA's <c>RADIOdc 200</c>, the ND's ground speed line).</para>
 /// <para>U+2800, the blank braille cell the display uses as a spacer, becomes a space. Any other lowercase
 /// ASCII letter is a code the app does not know: it goes into <see cref="FenixTextLine.UnknownCodes"/>, once
 /// and in order, and is dropped from the text. A lowercase letter outside a to z is text, not a code.</para>
@@ -119,6 +125,10 @@ internal static class FenixChannelText
                     break;
                 case 's': SetSize(FenixTextSize.Small); break;
                 case 'l': SetSize(FenixTextSize.Large); break;
+                case 'p':
+                case 'd':
+                    // Known, and nothing to the run: neither closes it, changes it or draws a character.
+                    break;
                 default:
                     // A letter the app does not know: listed once, and dropped from the text.
                     unknown ??= new List<char>();

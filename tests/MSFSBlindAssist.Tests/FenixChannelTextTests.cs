@@ -6,7 +6,8 @@
 // underline, box, flashing or size and is never kept as text, and the colors stay on the runs as data,
 // because the color is the meaning (a warning, a memo, an action) and is never stripped for speech. A letter
 // the app does not know is listed on the line, once and in the order it came, so the gate can distrust the
-// display that drew it. Display text is uppercase, so an uppercase letter is never a code.
+// display that drew it. Display text is uppercase, so an uppercase letter is never a code. The letters p and d are
+// known and change nothing: they are neither text, nor an unknown code, nor kept on a run, and are never spoken.
 
 using MSFSBlindAssist.Services;
 
@@ -149,11 +150,67 @@ public class FenixChannelTextTests
     [Fact]
     public void Each_unknown_letter_is_listed_once_in_the_order_it_came()
     {
-        // x comes first and again later, so the list is neither sorted nor repeating: x, d, q.
-        FenixTextLine line = FenixChannelText.Parse("xAdBqCxD");
+        // x comes first and again later, so the list is neither sorted nor repeating: x, k, q.
+        FenixTextLine line = FenixChannelText.Parse("xAkBqCxD");
 
-        Assert.Equal(new[] { 'x', 'd', 'q' }, line.UnknownCodes);
+        Assert.Equal(new[] { 'x', 'k', 'q' }, line.UnknownCodes);
         Assert.Equal("ABCD", line.JoinedText);
+    }
+
+    // ---- p and d: known, and never spoken -------------------------------------------------------
+
+    [Fact]
+    public void The_p_letter_is_known_and_draws_nothing()
+    {
+        // The FMA for the ten seconds of the flight director's flash, where the text stays drawn: p changes
+        // nothing on the run (it is no toggle), so V/S keeps its green and box and +1800 its cyan and box. In an E/WD
+        // memo it comes first on the line, ahead of the color.
+        FenixTextLine flash = FenixChannelText.Parse("bgpV/Scp+1800");
+        FenixTextLine memo = FenixChannelText.Parse("pgIR IN ALIGN 1 MN");
+
+        Assert.Equal(new[]
+        {
+            Run("V/S", FenixTextColor.Green, boxed: true),
+            Run("+1800", FenixTextColor.Cyan, boxed: true)
+        }, flash.Runs);
+        Assert.Equal("V/S+1800", flash.JoinedText);
+        Assert.Empty(flash.UnknownCodes);
+
+        Assert.Equal(new[] { Run("IR IN ALIGN 1 MN", FenixTextColor.Green) }, memo.Runs);
+        Assert.Empty(memo.UnknownCodes);
+    }
+
+    [Fact]
+    public void The_d_letter_is_known_and_draws_nothing()
+    {
+        // The FMA's minimum (RADIO 200, two spacers after the c) and the ND's ground speed line: d moves the drawing
+        // position right and draws nothing, so it is neither text nor an unknown code, and it splits no run.
+        FenixTextLine minimum = FenixChannelText.Parse("RADIOdc" + Spacer + Spacer + " 200");
+        FenixTextLine groundSpeed = FenixChannelText.Parse("wsGSlgd456");
+
+        Assert.Equal(new[]
+        {
+            Run("RADIO", null),
+            Run("   200", FenixTextColor.Cyan)
+        }, minimum.Runs);
+        Assert.Empty(minimum.UnknownCodes);
+
+        Assert.Equal(new[]
+        {
+            Run("GS", FenixTextColor.White, size: FenixTextSize.Small),
+            Run("456", FenixTextColor.Green, size: FenixTextSize.Large)
+        }, groundSpeed.Runs);
+        Assert.Empty(groundSpeed.UnknownCodes);
+    }
+
+    [Fact]
+    public void Speech_reads_the_lines_with_p_and_d()
+    {
+        // Neither letter is a color, so neither is ever named, and a line holding one is spoken, not held back as
+        // untrusted.
+        Assert.Equal("V/S green, +1800 cyan", FenixChannelSpeech.Line("bgpV/Scp+1800"));
+        Assert.Equal("RADIO white, 200 cyan", FenixChannelSpeech.Line("RADIOdc" + Spacer + Spacer + " 200"));
+        Assert.Equal("IR IN ALIGN 1 MN, green", FenixChannelSpeech.Line("pgIR IN ALIGN 1 MN"));
     }
 
     // ---- Whole lines ----------------------------------------------------------------------------
