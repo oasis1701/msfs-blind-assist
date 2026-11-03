@@ -29,14 +29,14 @@ rows 14-45 (2026-11-03): a plan's "(owner question)" mark is settled there, as t
 |---|---|---|---|
 | 01 | `01-groundwork.md`: the seams, the shared fields, the new displays in the gate, the stall guard, the session notice | first | — |
 | 02 | `02-pfd.md`: the PFD window (Alt+P) and the speed keys (Shift+1 to Shift+6) | parallel | 01 |
-| 03 | `03-nd.md`: the ND window (Alt+N) and Ctrl+W; the `d` letter | parallel | 01 |
+| 03 | `03-nd.md`: the captain's whole ND (Alt+N): its window with the map and the EFIS controls, Ctrl+W, the route decoder (first, for 10), the map points (`GetMapData`), the "ND messages" announcement (spec rows 46-54) | parallel | 01 |
 | 04 | `04-ewd-window.md`: the E/WD window (Alt+E): engines by family, thrust limit, FOB, flaps, warning lines and memos | parallel | 01 |
 | 05 | `05-sd-window.md`: the SD window (Alt+S): page and frame, STATUS, bottom line, and the ENG, ELEC, HYD and FUEL pages | parallel | 01 |
 | 06 | `06-sd-pages.md`: the SD's APU, BLEED, PRESS, COND, CRUISE, DOOR, WHEEL and F/CTL pages | parallel | 01 (its in-sim checks need 05's switch commit, from `fc-p05-sd-window`) |
 | 07 | `07-isis.md`: the ISIS window (Alt+I) | parallel | 01 |
 | 08 | `08-fma-announcements.md`: FMA changes spoken; the FMA layout confirmed in the sim | parallel | 01 |
 | 09 | `09-ewd-alerts.md`: warnings, cautions and memos spoken | parallel | 01 |
-| 10 | `10-distances.md`: D and Shift+D from the route, checked against the MCDU | parallel | 01 |
+| 10 | `10-distances.md`: D and Shift+D from the route, checked against the MCDU | parallel | 01; 03's route decoder (its commit `feat(fenix-channel): the route fields and their decoder`, on the shared branch) |
 | 11 | `11-dcdu.md`: the DCDU window (input Ctrl+Shift+D), its new-message call, the "DCDU Left" panel removed | parallel | 01 |
 | 12 | `12-integration.md`: handoffs, guide, rules, changelog, whole-branch review, a full test flight, the pull request, delete `docs/fenix-channel/` | last | all |
 
@@ -59,14 +59,14 @@ record. Paths are under `MSFSBlindAssist/` unless they start with `docs/`, `test
 | `Aircraft/FenixA320Definition.DisplayChannel.cs`, `Aircraft/FenixA320Definition.Hooks.cs`, `Forms/Fenix/FenixWindowRegistry.cs`, `Forms/FenixMonitorManagerForm.cs`; the one-time channel seed in `Settings/SettingsManager.cs` and `Settings/UserSettings.cs`; the `paths:` list of `.claude/rules/fenix-channel.md` | 01, then frozen |
 | `Aircraft/FenixA320Definition.cs` | 01 (only if a seam needs a line there) → 11 (the "DCDU Left" panel out of the panel structure and its control lists), then frozen |
 | `Aircraft/FenixA320Definition.ChannelPfd.cs`, `Services/FenixChannelPfd*.cs`, `Services/FenixChannelSpeedKeys.cs`, `Services/FenixChannelFields.Pfd.cs`, `Forms/Fenix/FenixChannelPfdForm.cs`, `Forms/Fenix/FenixWindowRegistry.ChannelPfd.cs` | 02 |
-| `Aircraft/FenixA320Definition.ChannelNd.cs`, `Services/FenixChannelNd*.cs`, `Services/FenixChannelFields.Nd.cs`, `Forms/Fenix/FenixChannelNdForm.cs`, `Forms/Fenix/FenixWindowRegistry.ChannelNd.cs` | 03 |
+| `Aircraft/FenixA320Definition.ChannelNd.cs`, `Services/FenixChannelNd*.cs`, `Services/FenixChannelFields.Nd.cs`, `Forms/Fenix/FenixChannelNdForm.cs`, `Forms/Fenix/FenixWindowRegistry.ChannelNd.cs`; the route decoder, `Services/FenixChannelRoute.cs` and `Services/FenixChannelFields.Route.cs` (10 → 03 on 2026-11-03, spec row 48, while 10 was unclaimed) | 03. Also, under the landed-plan exemption above (spec row 54), additive changes only: the map calls in `FenixChannelFields.cs` and `FenixChannelClient.cs`, their paths in `FenixChannelReadOnlyTests`, the sixth row in `FenixChannelAnnouncementRows.cs` |
 | `Aircraft/FenixA320Definition.ChannelEwd.cs`, `Services/FenixChannelEwd*.cs` (except `FenixChannelEwdAlert*`), `Services/FenixChannelFields.Ewd.cs`, `Forms/Fenix/FenixChannelEwdForm.cs`, `Forms/Fenix/FenixWindowRegistry.ChannelEwd.cs` | 04 |
 | `Aircraft/FenixA320Definition.ChannelSd.cs`, `Services/FenixChannelSd.cs`, `Services/FenixChannelSdFrame*.cs`, `Services/FenixChannelSdPage.Status.cs`, `.Eng.cs`, `.Elec.cs`, `.Hyd.cs`, `.Fuel.cs`, `Services/FenixChannelFields.Sd.cs`, `Forms/Fenix/FenixChannelSdForm.cs`, `Forms/Fenix/FenixWindowRegistry.ChannelSd.cs` | 05 |
 | `Services/FenixChannelSdPage.Apu.cs`, `.Bleed.cs`, `.Press.cs`, `.Cond.cs`, `.Cruise.cs`, `.Door.cs`, `.Wheel.cs`, `.Fctl.cs`, `Services/FenixChannelFields.SdPages.cs` | 06 |
 | `Aircraft/FenixA320Definition.ChannelIsis.cs`, `Services/FenixChannelIsis*.cs`, `Services/FenixChannelFields.Isis.cs`, `Forms/Fenix/FenixChannelIsisForm.cs`, `Forms/Fenix/FenixWindowRegistry.ChannelIsis.cs` | 07 |
 | `Aircraft/FenixA320Definition.ChannelFma.cs`, `Services/FenixChannelFmaAnnouncer.cs`, `Services/FenixChannelFmaSpeech.cs` | 08 (and `FenixChannelFmaLayout.cs` after 01) |
 | `Aircraft/FenixA320Definition.ChannelEwdAlerts.cs`, `Services/FenixChannelEwdAlert*.cs` | 09 |
-| `Aircraft/FenixA320Definition.ChannelDistances.cs`, `Services/FenixChannelRoute*.cs`, `Services/FenixChannelFields.Route.cs` | 10 |
+| `Aircraft/FenixA320Definition.ChannelDistances.cs`, `Services/FenixChannelRoute*.cs` except `FenixChannelRoute.cs` (`FenixChannelRouteGeometry.cs`, `FenixChannelRouteDistances.cs`) | 10 (the route decoder and `FenixChannelFields.Route.cs` are 03's) |
 | `Aircraft/FenixA320Definition.ChannelDcdu.cs`, `Services/FenixChannelDcdu*.cs`, `Services/FenixChannelFields.Dcdu.cs`, `Forms/Fenix/FenixChannelDcduForm.cs`, `Forms/Fenix/FenixWindowRegistry.ChannelDcdu.cs`; the DCDU lines of `Aircraft/FenixA320Definition.Variants.cs` | 11 |
 | `docs/a32nx.md`, the "Fenix display channel" section | by heading, so two plans never edit one: 01 creates one sub-heading per plan (02-11) under it and owns the section's existing text; each plan writes only under its own heading; the rest of `docs/a32nx.md` is 12's |
 | `guide/**`, `HotkeyGuides/**` (the Fenix's), `docs/invariants/**`, `.claude/rules/**` (except 01's `paths:` lines), `changelog.d/**`, `CLAUDE.md`, `README.md` | 12: plans hand off their lines (a rule as its proposed one-line form and full text) |
@@ -79,7 +79,8 @@ record. Paths are under `MSFSBlindAssist/` unless they start with `docs/`, `test
 `FenixChannelDecoderTests`, `FenixChannelReadsTests`, `FenixChannelReadOnlyTests`, `FenixChannelDefinitionTests`,
 `FenixChannelClientTests`, `FenixChannelFramingTests`, `FenixChannelWireTests`, `FenixChannelFakeServer.cs`,
 `FenixChannelProtoWriter.cs`) are 01's, then frozen; `FenixChannelTextTests` follows `FenixChannelText.cs` (01 → 02 → 03);
-`FenixVariantControlsTests` and `FenixV3FixPanelControlsTests` (they pin the DCDU panel) are 11's. A plan's new tests go
+`FenixVariantControlsTests` and `FenixV3FixPanelControlsTests` (they pin the DCDU panel) are 11's;
+`FenixChannelRouteDecoderTests` is 03's, the other `FenixChannelRoute*Tests` and `FenixChannelDistances*Tests` 10's. A plan's new tests go
 in new files named for its feature, `tests/MSFSBlindAssist.Tests/FenixChannel<Feature>*Tests.cs`, so the channel rules
 load. Tests build their own protobuf bytes with `FenixChannelProtoWriter` (01 may extend it before freezing it; a plan
 needing more writes a helper in its own test file), never a capture. No test, code or CI step may read a file under
@@ -193,7 +194,8 @@ each); plan 12 is live work, worked with superpowers:executing-plans.
   snapshot (plan 01's `FenixChannelSnapshot`), never from two reads.
 - Channel text is spoken through `FenixChannelSpeech` (plan 01; spec 2.6): colors after each stretch, never stripped
   ([FNX-24]); text drawn in pieces (an FMA column, the thrust limit, a wrapped title) through its `Line(parts)`. A row
-  the app builds from values or flags speaks no color: colors come only from channel text. Key readouts speak plain
+  the app builds from values or flags speaks no color: colors come only from channel text (one exception, the ND map's
+  rows: a color the channel's color fields send or the captures show the ND always uses, spec 2.6 and row 52). Key readouts speak plain
   values. Cockpit words are kept as drawn; US English everywhere else ("meters", "tires").
 - One way to say each kind of thing, in every window and key: a refusal is "<name> not available" (keys) or the
   window's one status row "<Display>: not available, <reason>" ("no data" when the snapshot has no message); a value a
@@ -201,7 +203,8 @@ each); plan 12 is live work, worked with superpowers:executing-plans.
   flag"); a value a display shows but the channel sends as NaN reads "<label> not available"; north reads "360".
 - A direct interaction is confirmed once, with what the screen reader cannot say ([CORE-7]); a background change speaks
   once, after a silent first reading.
-- Every new announcement has its Ctrl+M row in `FenixChannelAnnouncementRows` (plan 01 declares all five) and checks it
+- Every new announcement has its Ctrl+M row in `FenixChannelAnnouncementRows` (plan 01 declares five; plan 03 adds the
+  sixth, "ND messages", spec row 50) and checks it
   before speaking; each announcing plan has a test that a muted row says nothing and that unmuting replays nothing.
 - Anything spoken or formatted gets a de-DE or sv-SE test; numbers the Fenix writes go through
   `NumberParsing.TryParseExternal` ([CORE-17]).

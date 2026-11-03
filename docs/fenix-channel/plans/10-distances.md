@@ -8,11 +8,21 @@
 computed along the active route in the Fenix's display channel, and "not available" wherever the computation was not
 shown to match the MCDU.
 
-**Architecture:** A decoder reads the captain's route data (field 2: the active route's legs, the active leg and the map
+**Changed on 2026-11-03 (spec row 48, the team's decision, while this plan was unclaimed):** plan 03 decodes the route,
+because its ND map reads every field of a leg. Its route decoder (`Services/FenixChannelRoute.cs`,
+`Services/FenixChannelFields.Route.cs`, in the commit `feat(fenix-channel): the route fields and their decoder`) meets
+Task 2's interface below at the least, and also gives the leg rules `IsPath`, `IsDestination` and `BreaksPath`, which
+the map needs too. Plan 03 also does Task 1's Steps 1-3 (the route's structure, the position, a discontinuity) and
+records them in `docs/fenix-channel/evidence/03-nd.md`. This plan starts once that commit is on the shared branch,
+builds on the decoder and keeps everything else: Task 1's Steps 4-6, the geometry, the sums, the sentences, the switch
+commit and the checks.
+
+**Architecture:** Plan 03's route decoder reads the captain's route data (field 2: the active route's legs, the active leg and the map
 markers) and the aircraft's position (field 192) out of the snapshot's message. Pure geometry sums great-circle
 distances from the position through the active leg to the destination, and projects the top-of-descent marker onto the
-route ahead. Which legs draw the path, which is the destination, what breaks the path and what shows a passed top of
-descent are measured in the sim first (Task 1); a route Task 1 did not show matching the MCDU is "not available". The
+route ahead. Which legs draw the path, which is the destination and what breaks the path are measured by plan 03; what
+shows a passed top of descent, and whether the sums match, are measured here first (Task 1); a route Task 1 did not show
+matching the MCDU is "not available". The
 switch commit last implements plan 01's `ChannelDistancesKey`: the ND verdict and the route from one snapshot,
 `BaseAircraftDefinition`'s sentences, the time from `FormatEtaFromDistance` at SimConnect's ground speed.
 
@@ -20,16 +30,22 @@ switch commit last implements plan 01's `ChannelDistancesKey`: the ND verdict an
 formulas); `FenixChannelProtoWriter` (tests).
 
 **Spec:** `docs/fenix-channel/spec.md` 2.2 (the ND verdict), 2.5 (the keys: computed, checked against the MCDU, "not
-available" rather than a guess), 3.3 (the route fields), 4, 6 (leg fields 3 and 9-11, the top-of-descent marker type,
-the distance against the MCDU); answer 9.
+available" rather than a guess), 3.3 (the route fields), 4, 6 (the distance against the MCDU, a passed top of descent;
+the leg fields and the marker types are plan 03's); answers 9, 39-41 and 48.
 
 ## Global Constraints
 
 - Spec section 4 and the index's "Shared conventions" apply to every task.
-- Owned files (index): `Aircraft/FenixA320Definition.ChannelDistances.cs`, `Services/FenixChannelRoute*.cs`,
-  `Services/FenixChannelFields.Route.cs`, new tests `tests/MSFSBlindAssist.Tests/FenixChannelRoute*Tests.cs` and
-  `FenixChannelDistances*Tests.cs`, `docs/fenix-channel/evidence/10-distances.md` (new), and the "D and Shift+D"
-  sub-heading of the "Fenix display channel" section of `docs/a32nx.md`.
+- Owned files (index): `Aircraft/FenixA320Definition.ChannelDistances.cs`, `Services/FenixChannelRouteGeometry.cs`,
+  `Services/FenixChannelRouteDistances.cs`, new tests `tests/MSFSBlindAssist.Tests/FenixChannelRouteGeometryTests.cs`,
+  `FenixChannelRouteDistancesTests.cs` and `FenixChannelDistances*Tests.cs`,
+  `docs/fenix-channel/evidence/10-distances.md` (new), and the "D and Shift+D" sub-heading of the "Fenix display
+  channel" section of `docs/a32nx.md`. Not this plan's (spec row 48): the route decoder, `Services/FenixChannelRoute.cs`
+  and `Services/FenixChannelFields.Route.cs`, and its tests `FenixChannelRouteDecoderTests.cs`, which are plan 03's.
+- Plan 03's names consumed (Task 2's interface, which its decoder meets): `FenixChannelRoute.Decode`, `FenixRoute`,
+  `FenixRouteLeg`, `FenixRouteMarker`, `FenixLatLon`, the `RouteLegKind` and `MapMarkerKind` constants, and the leg
+  rules `FenixChannelRoute.IsPath`, `IsDestination` and `BreaksPath`. A member this plan needs that the decoder lacks
+  is a question for plan 03's claimant.
 - Plan 01 seam implemented here, in the switch commit (Task 6): `ChannelDistancesKey`. Plan 01 names consumed as they
   are: `ChannelKeyContext`, `SpeakNotAvailable`, `FenixChannelSnapshot`, `FenixChannelPush`, `FenixChannelField`,
   `FenixChannelSection<T>`, `FenixChannelMonitor.ReportFeatureProblem`, `FenixChannelDisplay.Nd`. App names:
@@ -40,7 +56,8 @@ the distance against the MCDU); answer 9.
   never the ND's ground speed text (its `d` letter is plan 03's to measure).
 - The present position is field 192 (truePos, a LatLon: the aircraft's own position by name and type). Field 56
   (ndPosCapt, an NdPositionData) holds its Lat and Lon beside the ND's map reference point (MrpValid, MrpTrack,
-  MrpDist), so it may follow what the ND shows. Task 1 Step 2 checks both against the sim.
+  MrpDist), so it may follow what the ND shows. Plan 03 checks both against the sim (this plan's former Task 1 Step 2),
+  and its decoder reads the one that matches.
 - **Tolerance**, fixed here; Task 1 measures against it and Task 7 checks it. To the destination: within 1 NM plus 0.5 %
   of the MCDU F-PLN DEST line's DIST taken at the same instant (Task 1: the same push; Task 7: read straight after the
   press). To the top of descent: within 1 NM plus 0.5 NM for each F-PLN leg distance summed in the reference (the ND's
@@ -69,7 +86,7 @@ the distance against the MCDU); answer 9.
   spoken, without a time, never silence (Task 5, `The_time_needs_thirty_knots`,
   `A_disconnected_sim_still_speaks_the_distance`).
 - **One snapshot.** An untrusted ND, no message or a wrong shape gives "not available" for both keys, and the field is
-  logged once (Task 4, `The_answer_takes_one_snapshot`; Task 2, `A_wrong_shape_names_its_field`).
+  logged once (Task 4, `The_answer_takes_one_snapshot`; plan 03's decoder test, `A_wrong_shape_names_its_field`).
 
 ---
 
@@ -96,10 +113,12 @@ the route data, the markers, the position and the MCDU's text come from one inst
 uses a scratch script outside the repo, never committed, with `NavigationCalculator`'s formula and radius. Setup: MSFS
 2024, the Fenix on 3.0.0.7613, powered at a gate; a flight plan with a SID, at least one airway, a STAR, an ILS approach
 with its missed approach and an alternate, loaded the owner's usual way; the captain's EFIS in NAV and the captain's
-MCDU on F-PLN. Record each result with the date and build in `docs/fenix-channel/evidence/10-distances.md`. Tasks 2 and
-3 need only Steps 1 and 2 (on the ground) and may start while Steps 4 and 5 wait for a flight; Task 4 waits for Step 6.
+MCDU on F-PLN. Record each result with the date and build in `docs/fenix-channel/evidence/10-distances.md`. Steps 1-3
+moved to plan 03 on 2026-11-03 (spec row 48): their text stays below as what plan 03 measures, and their outcomes are in
+`docs/fenix-channel/evidence/03-nd.md`. Task 3 needs no flight (it uses plan 03's `FenixLatLon`); Task 4 waits for
+Step 6.
 
-- [ ] **Step 1 [sim]: The route's structure.** Capture a push, then page through the F-PLN in the app's MCDU window
+- **Step 1 [sim], moved to plan 03: The route's structure.** Capture a push, then page through the F-PLN in the app's MCDU window
   (input Shift+M), capturing each page. Record every field present in each element of 2.4 (1, 2, 3, 6 and any of 4, 5,
   7-17), in 2.11 and in each 2.12 marker (1-7). Answer: which kinds (2.4.3) draw the path and which are symbols drawn on
   it (inferred from one cruise capture: 0 straight, 1 a turn piece, 2 the route's start; 3 an airport, 4 a symbol); which element
@@ -108,11 +127,11 @@ MCDU on F-PLN. Record each result with the date and build in `docs/fenix-channel
   names the first element of its leg in 2.4, also after a DIR TO ("T-P") and on the SID's altitude leg; each marker's
   type, label, color and go-around flag (T/C, T/D, DECEL; the T/D expected as type 0, MapMarkerEnum's first member), and
   whether any belongs to the alternate or secondary route.
-- [ ] **Step 2 [sim]: The position.** 192 and 56 beside the sim's PLANE LATITUDE and PLANE LONGITUDE (simconnect MCP
+- **Step 2 [sim], moved to plan 03: The position.** 192 and 56 beside the sim's PLANE LATITUDE and PLANE LONGITUDE (simconnect MCP
   reads), with the captain's EFIS in ROSE ILS, ROSE VOR, ROSE NAV, ARC and PLAN (PLAN centered on a far waypoint), and
   whether 2.4 is still sent in each mode. 192 within 0.05 NM of the sim in every mode: the code reads 192; otherwise the
-  field that is, recorded under "Changed from the plan", and Task 2 declares that one instead.
-- [ ] **Step 3 [sim]: A discontinuity.** The owner makes a F-PLN DISCONTINUITY (for example, deleting the STAR's first
+  field that is, recorded under plan 03's "Changed from the plan", and plan 03's decoder declares that one instead.
+- **Step 3 [sim], moved to plan 03: A discontinuity.** The owner makes a F-PLN DISCONTINUITY (for example, deleting the STAR's first
   waypoint in the MCDU window); capture; record how 2.4 shows it; then reload the flight plan.
 - [ ] **Step 4 [in flight]: The sums.** At four points (climbing with the T/C ahead; cruising more than 50 NM before the
   T/D; within 10 NM after the T/D; on the approach before the final fix), with the captain's MCDU on F-PLN so that the
@@ -126,16 +145,16 @@ MCDU on F-PLN. Record each result with the date and build in `docs/fenix-channel
 - [ ] **Step 6.** Record the outcomes below in the evidence file, commit it (`docs(fenix-channel): plan 10's route
   measurements`) and push.
 
-The outcomes, which Tasks 2 and 4 follow:
-- `IsPath`: the kinds that draw the path; the symbol kinds are skipped.
-- `IsDestination`: what names the destination element (its kind, or its ident where the kind does not set it apart).
-- `BreaksPath`: how a discontinuity shows (expected: a start point after the first element).
+The outcomes, which plan 03's decoder and Task 4 follow:
+- Plan 03's (from Steps 1-3), in its decoder: `IsPath`, the kinds that draw the path (the symbol kinds are skipped);
+  `IsDestination`, what names the destination element (its kind, or its ident where the kind does not set it apart);
+  `BreaksPath`, how a discontinuity shows (expected: a start point after the first element).
 - Refusals: each configuration of Steps 1-4 whose sum missed the tolerance and which the snapshot shows becomes a "not
   available" rule with its own test in Task 4.
 - `ShowsPastTopOfDescent`: what Step 5 found showing a passed T/D once the marker is gone, or nothing (then "Top of
-  descent not available" from there on). An indication outside the route data joins Task 2's decoder and `FenixRoute`
-  only if it is an ND field no other plan declares (a field another open plan declares is a question for its claimant).
-- Turns: if the chord sums miss the tolerance because of the turn pieces alone, Task 2 also reads 2.4.8 (turn side,
+  descent not available" from there on). An indication outside the route data is a request to plan 03's claimant: it
+  joins the decoder and `FenixRoute` there (a field another open plan declares is a question for its claimant).
+- Turns: if the chord sums miss the tolerance because of the turn pieces alone, plan 03's decoder also reads 2.4.8 (turn side,
   string) and 2.4.9-11 (fixed32 in the notes; radius and the courses in and out once Step 1 confirms them), and Task 4
   sums a turn piece as its radius times its turn angle.
 - Stop: a sum that misses the tolerance where the snapshot cannot show it, or a 2.4 that does not reach the destination
@@ -143,9 +162,13 @@ The outcomes, which Tasks 2 and 4 follow:
   owner", with the numbers. The owner rules whether D ships saying "not available" there, or this plan leaves D silent
   and ships Shift+D alone.
 
-### Task 2: The route fields and their decoder
+### Task 2: The route fields and their decoder (plan 03's since 2026-11-03)
 
-**Files:** Create `Services/FenixChannelFields.Route.cs`, `Services/FenixChannelRoute.cs`; test
+Plan 03 does this task (spec row 48). Its interface below stays here as the contract plan 03's decoder meets: plan 03
+may add members (the map reads every field of a leg) and the leg rules `IsPath`, `IsDestination` and `BreaksPath`,
+never rename or drop these. Its steps are plan 03's; this plan starts once that commit is on the shared branch.
+
+**Files (plan 03's):** Create `Services/FenixChannelFields.Route.cs`, `Services/FenixChannelRoute.cs`; test
 `tests/MSFSBlindAssist.Tests/FenixChannelRouteDecoderTests.cs` (new).
 
 **Interfaces:**
@@ -167,7 +190,7 @@ The outcomes, which Tasks 2 and 4 follow:
     `internal sealed record FenixRoute(FenixLatLon Position, IReadOnlyList<FenixRouteLeg> Legs, FenixRouteLeg? ActiveLeg, IReadOnlyList<FenixRouteMarker> Markers)`.
   - `internal static class FenixChannelRoute` with `FenixChannelSection<FenixRoute> Decode(FenixChannelPush push)`.
 
-- [ ] **Steps 1-5.** Rules: 2 absent: `Missing("no route data")`; 192 absent: `Missing("no present position")`; a field
+- **Steps 1-5 (plan 03's).** Rules: 2 absent: `Missing("no route data")`; 192 absent: `Missing("no present position")`; a field
   in another wire type than above: `WrongShape` with its path ("2", "2.4", "2.4.1", "2.4.2", "2.4.3", "2.4.6", "2.11"
   and "2.11.<n>", "2.12", "2.12.1", "2.12.2", "2.12.4", "2.12.6", "192", "192.1", "192.2"); an ident that is not valid
   UTF-8: `WrongShape("2.4.6")` (or "2.11.6"); an absent member reads its default (kind 0, ident "", type 0, go-around
@@ -178,7 +201,7 @@ The outcomes, which Tasks 2 and 4 follow:
   `An_empty_route_decodes_with_no_legs`, `A_wrong_shape_names_its_field` (theory over the paths above, each "field
   <path> has the wrong shape"), `Unread_members_are_skipped` (a leg carrying 8, 9-11 and 16 decodes as one without).
   Commit: `feat(fenix-channel): the route fields and their decoder`.
-- [ ] **Step 6 [owner].** The numbers and wire shapes this task adds checked against 3.0.0.7613 with the team's local
+- **Step 6 [owner] (plan 03's).** The numbers and wire shapes this task adds checked against 3.0.0.7613 with the team's local
   channel tools ([FNX-23]), the scrambled leg type's included; a number that moved is fixed in
   `FenixChannelFields.Route.cs` alone and recorded in the evidence file.
 
@@ -207,14 +230,15 @@ The outcomes, which Tasks 2 and 4 follow:
 `tests/MSFSBlindAssist.Tests/FenixChannelRouteDistancesTests.cs` (new).
 
 **Interfaces:**
-- Consumes: Tasks 2 and 3; `FenixChannelSnapshot`.
+- Consumes: plan 03's decoder (Task 2's interface, with `FenixChannelRoute.IsPath`, `IsDestination` and `BreaksPath`),
+  Task 3; `FenixChannelSnapshot`.
 - Produces: `internal enum FenixDistanceKind { Distance, Past, NotAvailable }`;
   `internal readonly record struct FenixDistanceAnswer(FenixDistanceKind Kind, double Nm)`;
   `internal static class FenixChannelRouteDistances` with `double? ToDestination(FenixRoute r)`,
   `FenixDistanceAnswer ToTopOfDescent(FenixRoute r)`,
-  `FenixDistanceAnswer Answer(FenixChannelSnapshot s, bool topOfDescent, Action<string> reportProblem)`, Task 1's rules
-  as `internal static` `IsPath(FenixRouteLeg)`, `IsDestination(FenixRouteLeg)`, `BreaksPath(FenixRouteLeg)` and
-  `ShowsPastTopOfDescent(FenixRoute)`, and `OnRouteNm = 0.5`, `PastWithinNm = 0.1` (the base's "past" threshold).
+  `FenixDistanceAnswer Answer(FenixChannelSnapshot s, bool topOfDescent, Action<string> reportProblem)`, Task 1's rule
+  as `internal static` `ShowsPastTopOfDescent(FenixRoute)`, and `OnRouteNm = 0.5`, `PastWithinNm = 0.1` (the base's
+  "past" threshold).
 
 - [ ] **Steps 1-5.** Rules:
   - The path is the legs `IsPath` keeps, in order. The active start is the first path leg whose ident equals the active
@@ -231,7 +255,7 @@ The outcomes, which Tasks 2 and 4 follow:
     T/D may lie in a route that does not reach the destination.
   - `Answer`: not trusted or no message: NotAvailable; a section that is not ok: `reportProblem` with its problem, then
     NotAvailable; otherwise `ToDestination` (null: NotAvailable) or `ToTopOfDescent`.
-  Tests (a helper builds legs with Task 1's kinds, the destination and the break as Task 1 found them):
+  Tests (a helper builds legs with the kinds, the destination and the break as plan 03 found them):
   `The_sum_runs_from_the_position_through_the_active_leg` (position (0, 0); path: start (0, -1), "A" (0, 1), "B" (1, 1),
   the destination (1, 2); active leg "A": 180.11 within 0.01), `The_sum_stops_at_the_destination` (two missed approach
   legs after the destination: still 180.11), `An_unfollowable_route_is_not_available` (theory: no legs; no active leg;
@@ -314,8 +338,8 @@ a check that fails is fixed and run again before Task 9.
 
 **Files:** Modify `docs/a32nx.md` (only under the "D and Shift+D" sub-heading of "Fenix display channel").
 
-- [ ] **Step 1.** In place of "(Plan 10 writes this section.)": the fields read, Task 1's rules (path, destination, break,
-  past T/D), the tolerance and why, the refusals, and where the evidence is. Commit: `docs(fenix-channel): D and Shift+D
+- [ ] **Step 1.** In place of "(Plan 10 writes this section.)": the fields read, the rules (path, destination and break
+  from plan 03's decoder; Task 1's past T/D), the tolerance and why, the refusals, and where the evidence is. Commit: `docs(fenix-channel): D and Shift+D
   from the route`.
 
 ### Task 9 [controller]: Land
