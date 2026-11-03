@@ -239,7 +239,6 @@ plan's `docs/fenix-channel/evidence/NN-<slug>.md`.
 
 - Plan 01 starts from the commit that added this folder ("docs(fenix-channel): plans for the pilot features"), or from
   the branch's head when it starts.
-- Plans 02-11 start from the commit plan 01 records here once it lands: `1d29a73ee`. (Plan 01's last checks, by ear, wait on
-  the owner: its execution record names them. Should one change anything, it reaches a plan through the usual rebase.)
+- Plans 02-11 start from the commit plan 01 records here once it lands: `1d29a73ee`.
 - Plan 12 starts from the branch once every other plan has landed; record the commit you started from in your plan's
   execution record ("Started").
