@@ -285,6 +285,9 @@ public class FenixChannelPushTests
         Assert.False(unknown.IsOk);
         Assert.Equal("unknown code 'd' in the ground speed line", unknown.Problem);
         Assert.Equal(0, unknown.Value);
+
+        // A decoder that returns default by mistake fails closed: no value is not ok, though it names no problem.
+        Assert.False(default(FenixChannelSection<string>).IsOk);
     }
 
     [Theory]

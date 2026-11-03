@@ -592,7 +592,9 @@ public class FenixChannelMonitorTests
         // lock and gets the verdict, the frame and the message that frame was decoded from as they stand after that
         // frame, with the list of ECAM entries, the clock and the connection number. A reader that took the latest
         // frame first and the verdict after it, two steps, would get the verdict on the new frame beside no frame;
-        // one that took the message in a third step could get the new frame beside no message.
+        // one that read the message before it took the lock would get the new frame beside no message. (One that
+        // read it after the lock would get the new message as well: only the test below, in which pushes follow
+        // each other, tells that one.)
         // The pause before the release lets the snapshot reach the lock; on a slow machine it may not, and the test
         // then passes without proving anything, but it never fails.
         using var held = new ManualResetEventSlim(false);
@@ -632,13 +634,82 @@ public class FenixChannelMonitorTests
         Assert.Equal(2000, taken.Frame.Altitude);
         Assert.Same(monitor.Latest, taken.Frame);
 
-        // The message belongs to the frame: it is the push that frame was decoded from.
+        // The message is there, and it is the one push this monitor was sent. With only one, which push a message
+        // belongs to cannot be told here: the test below does.
         Assert.Equal(taken.Frame.Altitude, AltitudeOf(taken.Push));
 
         // The list the entries stream gave, the one connection so far, and the clock the verdict was judged at.
         Assert.Equal(new[] { "AUTOFLT-AP-OFF" }, taken.Entries?.Entries.Select(entry => entry.Name));
         Assert.Equal(1, taken.Connection);
         Assert.InRange(taken.AtMs, beforeRelease, afterSnapshot);
+    }
+
+    [Fact]
+    public async Task A_snapshot_never_pairs_a_frame_with_the_message_of_another_push()
+    {
+        // The test above holds one push inside the lock, so it can only tell that the message is there. Here pushes
+        // of two altitudes follow each other as fast as one thread can deliver them while another takes snapshots,
+        // and the message of every snapshot must be the push its frame was decoded from: the two are swapped in
+        // together under the lock, and a snapshot takes them under it. A message swapped in before the lock, or in a
+        // lock section after the frame's, or read by a snapshot outside the lock, gives a frame beside the message
+        // of the push before or after it at some snapshot now and then, so the reader runs for half a second. It
+        // asks for one snapshot with a frame in it and no more, so a slow machine proves less and never fails.
+        var lines = new Lines();
+        using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        byte[] low = GoodPush(1000);
+        byte[] high = GoodPush(2000);
+        using var stop = new CancellationTokenSource();
+        long withFrame = 0;
+        string? mismatch = null;
+
+        Task writer = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                monitor.OnDataMessage(low);
+                monitor.OnDataMessage(high);
+            }
+        });
+        Task reader = Task.Run(() =>
+        {
+            try
+            {
+                long start = Environment.TickCount64;
+                while (mismatch is null)
+                {
+                    long elapsed = Environment.TickCount64 - start;
+                    if (elapsed >= 3000 || (elapsed >= 500 && withFrame > 0)) break;
+
+                    FenixChannelSnapshot taken = monitor.Snapshot(FenixChannelDisplay.Sd);
+                    if (taken.Frame is null)
+                    {
+                        if (taken.Push is not null) mismatch = "a message with no frame";
+                        continue;
+                    }
+
+                    withFrame++;
+                    if (taken.Push is null || !taken.Push.TryGet(197, out FenixChannelField altitude))
+                    {
+                        mismatch = "a frame with no message";
+                    }
+                    else if (altitude.AsDouble() != taken.Frame.Altitude)
+                    {
+                        mismatch = string.Create(CultureInfo.InvariantCulture,
+                            $"a frame of the push at {taken.Frame.Altitude} ft beside the message of the push at {altitude.AsDouble()} ft");
+                    }
+                }
+            }
+            finally
+            {
+                stop.Cancel();
+            }
+        });
+
+        await Task.WhenAll(reader, writer).WaitAsync(Generous);
+
+        Assert.True(mismatch is null, mismatch);   // the message in full: Assert.Null cuts a long string short
+        Assert.True(withFrame > 0, "no snapshot held a frame");
     }
 
     [Fact]
@@ -837,6 +908,22 @@ public class FenixChannelMonitorTests
         FenixEcamEntries? emptied = monitor.Snapshot(FenixChannelDisplay.Ewd).Entries;
         Assert.NotNull(emptied);
         Assert.Empty(emptied.Entries);
+
+        // A message that is in the wrong shape, or damaged, is no bare heartbeat either: it replaces the list, and
+        // the entries then say so (ShapesOk is false), which is why a feature looks at ShapesOk before it reads them.
+        // The gate has latched the channel on such a message, so no display is trusted meanwhile.
+        monitor.OnEcamMessage(WrongShapedEntries());
+        FenixEcamEntries? wrongShaped = monitor.Snapshot(FenixChannelDisplay.Ewd).Entries;
+        Assert.NotNull(wrongShaped);
+        Assert.False(wrongShaped.ShapesOk);
+        Assert.NotSame(emptied, wrongShaped);
+
+        monitor.OnEcamMessage(ListedEntries(false, ("22", "AUTOFLT-AP-OFF", "AUTO FLT AP OFF", true)));
+        monitor.OnEcamMessage(new FenixChannelProtoWriter().Tag(1, 2).Raw(5, 1).ToArray());   // an entry cut short
+        FenixEcamEntries? damaged = monitor.Snapshot(FenixChannelDisplay.Ewd).Entries;
+        Assert.NotNull(damaged);
+        Assert.True(damaged.Malformed);
+        Assert.False(damaged.ShapesOk);
     }
 
     [Fact]
@@ -1474,13 +1561,19 @@ public class FenixChannelMonitorTests
     public async Task After_a_refusal_every_callback_of_the_client_is_ignored()
     {
         // A callback already under way when the client stopped may still arrive: none may reach the gate, the
-        // log, the latest frame or the build query. A late "connected" would otherwise start the gate fresh.
+        // log, the latest frame and its message, the list of ECAM entries, the connection number or the build query.
+        // A late "connected" would otherwise start the gate fresh.
         var lines = new Lines();
         var queries = new BuildQueries();
         using var monitor = NewIdleMonitor(lines, queries.Read);
         monitor.OnDataState(FenixChannelState.Connected, "");
         monitor.OnDataMessage(GoodPush(1000));
+        monitor.OnEcamMessage(ListedEntries(false, ("22", "AUTOFLT-AP-OFF", "AUTO FLT AP OFF", true)));
         await WaitUntil(() => queries.Asked == 1, "the build query", lines);
+        FenixChannelSnapshot beforeRefusal = monitor.Snapshot(FenixChannelDisplay.Pfd);
+        Assert.NotNull(beforeRefusal.Frame);
+        Assert.NotNull(beforeRefusal.Push);
+        Assert.NotNull(beforeRefusal.Entries);
 
         monitor.OnEcamState(FenixChannelState.Refused, "no key");
 
@@ -1499,6 +1592,13 @@ public class FenixChannelMonitorTests
             lines.All);
         AssertEveryDisplay(monitor, new FenixDisplayVerdict(false, "channel not answering: no key"));
         Assert.Equal(1000, monitor.Latest?.Altitude);
+
+        // What a snapshot hands out beside that verdict stays as the refusal found it.
+        FenixChannelSnapshot afterRefusal = monitor.Snapshot(FenixChannelDisplay.Pfd);
+        Assert.Same(beforeRefusal.Frame, afterRefusal.Frame);
+        Assert.Same(beforeRefusal.Push, afterRefusal.Push);
+        Assert.Same(beforeRefusal.Entries, afterRefusal.Entries);
+        Assert.Equal(1, afterRefusal.Connection);
         Assert.Equal(1, queries.Asked);
     }
 
@@ -1651,7 +1751,8 @@ public class FenixChannelMonitorTests
     public async Task Callbacks_after_Dispose_are_ignored()
     {
         // The client may deliver a callback that was already under way when Dispose ran. None may reach the gate,
-        // the log, the latest frame or the build query.
+        // the log, the latest frame and its message, the list of ECAM entries, the connection number or the build
+        // query.
         var lines = new Lines();
         int asked = 0;
         using var monitor = NewIdleMonitor(lines, _ =>
@@ -1661,8 +1762,12 @@ public class FenixChannelMonitorTests
         });
         monitor.OnDataState(FenixChannelState.Connected, "");
         monitor.OnDataMessage(GoodPush(1000));
+        monitor.OnEcamMessage(ListedEntries(false, ("22", "AUTOFLT-AP-OFF", "AUTO FLT AP OFF", true)));
         await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
         FenixChannelFrame? latest = monitor.Latest;
+        FenixChannelSnapshot beforeDispose = monitor.Snapshot(FenixChannelDisplay.Pfd);
+        Assert.NotNull(beforeDispose.Push);
+        Assert.NotNull(beforeDispose.Entries);
         monitor.Dispose();
         int linesAtDispose = lines.All.Length;   // Dispose's own line, "channel stopped", is in it
 
@@ -1679,6 +1784,15 @@ public class FenixChannelMonitorTests
         await Task.Delay(Quiet);
 
         Assert.Same(latest, monitor.Latest);
+
+        // A stopped monitor still hands out what it had, beside a verdict that trusts nothing, and none of it moved.
+        FenixChannelSnapshot afterDispose = monitor.Snapshot(FenixChannelDisplay.Pfd);
+        Assert.Equal(new FenixDisplayVerdict(false, "channel stopped"), afterDispose.Verdict);
+        Assert.Same(beforeDispose.Frame, afterDispose.Frame);
+        Assert.Same(beforeDispose.Push, afterDispose.Push);
+        Assert.Same(beforeDispose.Entries, afterDispose.Entries);
+        Assert.Equal(1, afterDispose.Connection);   // a connect after Dispose is not counted
+
         Assert.Equal(linesAtDispose, lines.All.Length);
         Assert.Equal(1, Volatile.Read(ref asked));   // a connection after Dispose asked for no build
     }

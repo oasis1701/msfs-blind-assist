@@ -10,12 +10,18 @@ namespace MSFSBlindAssist.Services;
 /// <remarks>
 /// The reasons are worded to read after "not available, " in a window's status row and after the feature's name in
 /// the log: "field 125.2 has the wrong shape", "no speed limits", "unknown code 'd' in the ground speed line". Build
-/// a section with the factories, so a reason always has this wording.
+/// a section with the factories, so a reason always has this wording. A section is ok only with a value as well as
+/// no problem, so a decoder that returns <c>default</c> by mistake fails closed: for a reference type that section is
+/// not ok, where it would otherwise read as ok with nothing in it. (A number or a flag has no null to check, and its
+/// default is a value.)
 /// </remarks>
 internal readonly record struct FenixChannelSection<T>(T? Value, string? Problem)
 {
-    /// <summary>True for a section that decoded: it has its <see cref="Value"/> and no <see cref="Problem"/>.</summary>
-    public bool IsOk => Problem is null;
+    /// <summary>
+    /// True for a section that decoded: it has a <see cref="Value"/> and no <see cref="Problem"/>. A default section of
+    /// a reference type, which has neither, is not ok.
+    /// </summary>
+    public bool IsOk => Problem is null && Value is not null;
 
     /// <summary>A section that decoded.</summary>
     public static FenixChannelSection<T> Ok(T value) => new(value, null);

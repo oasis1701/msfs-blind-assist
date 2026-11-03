@@ -257,7 +257,9 @@ internal sealed class FenixChannelMonitor : IDisposable
     /// the snapshot carries. A reader takes all of it from one snapshot and never in two steps, or its parts would not
     /// belong together: an older frame beside a newer verdict or the reverse, or a frame beside another push's
     /// message. The frame and its message are null before the first of a connection. A monitor that has been disposed
-    /// trusts nothing ("channel stopped"): its frames have stopped, and the gate would take 2 s to notice.
+    /// trusts nothing ("channel stopped"): its frames have stopped, and the gate would take 2 s to notice. A stopped
+    /// monitor, disposed or ended by a refusal, still hands out the last frame, message and list it had, beside its
+    /// untrusted verdict: a reader speaks nothing from them without a trusted one.
     /// </summary>
     public FenixChannelSnapshot Snapshot(FenixChannelDisplay display)
     {
