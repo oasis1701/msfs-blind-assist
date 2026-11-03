@@ -15,7 +15,10 @@
 // reported under the window's name, as the window reports it. Any other action is false and silent. The window is a
 // class of its own for the PFD, titled "Fenix PFD", and shows the PFD's rows. Both the keys and the window read the
 // PFD's own verdict, not another display's: with the captain's PFD dark and the other units lit, Alt+P is false and
-// silent, a speed key says it is not available, and the window shows the one status row.
+// silent, a speed key says it is not available, and the window shows the one status row. Every channel window keeps
+// the pilot on their row through a refresh: the row is followed by its words when its figure changes or a row appears
+// above it (FenixChannelDisplayForm.RowToFollow), and after a status row the cursor goes back to it; these tests run it
+// on the PFD's real rows.
 
 using System.Windows.Forms;
 using MSFSBlindAssist.Aircraft;
@@ -309,6 +312,158 @@ public class FenixChannelPfdWindowTests
         Assert.Equal(
             new[] { "PFD: not available, display off" },
             ListOf(form).Items.Cast<string>().ToArray());
+    }
+
+    // ---- The pilot's row stays put --------------------------------------------------------------
+
+    private static string[] ItemsOf(Control form) => ListOf(form).Items.Cast<string>().ToArray();
+
+    [Fact]
+    public void The_cursor_follows_its_row_when_a_row_appears_above()
+    {
+        // The list put the cursor back by the row's exact text, but the row's text changed with the new row above it, so
+        // the cursor stayed at index 1, on the row that slid under it ("Alpha prot"). The row is found by its words.
+        string[] before = ["Airspeed 268 knots", "Altitude -63 feet, STD", "Vertical speed 0 feet per minute"];
+        string[] after =
+        [
+            "Airspeed 268 knots", "Alpha prot 106 knots", "Altitude -64 feet, STD", "Vertical speed 0 feet per minute"
+        ];
+
+        Assert.Equal(2, FenixChannelDisplayForm.RowToFollow(after, before[1], currentIndex: 1));
+
+        // The same row, unchanged, is found exactly, and a cursor that is already on it needs nothing.
+        Assert.Equal(2, FenixChannelDisplayForm.RowToFollow(after, "Altitude -64 feet, STD", currentIndex: 1));
+        Assert.Equal(2, FenixChannelDisplayForm.RowToFollow(after, "Altitude -64 feet, STD", currentIndex: 2));
+    }
+
+    [Fact]
+    public void The_cursor_follows_a_value_that_changes_its_words()
+    {
+        // The airspeed row leaves the floor wording, and the heading row loses its figures: each keeps its first word.
+        string[] airspeed = ["Airspeed 31 knots", "Altitude 100 feet, STD", "Vertical speed 0 feet per minute"];
+        Assert.Equal(0, FenixChannelDisplayForm.RowToFollow(airspeed, "Airspeed below 30 knots", currentIndex: 0));
+        Assert.Equal(0, FenixChannelDisplayForm.RowToFollow(airspeed, "Airspeed below 30 knots", currentIndex: 2));
+
+        string[] heading = ["Pitch 0 degrees, wings level", "Heading not available", "Radio altitude 190, amber"];
+        Assert.Equal(1, FenixChannelDisplayForm.RowToFollow(heading, "Heading 094, track 094", currentIndex: 0));
+
+        // The row that shares the most leading words wins over one that shares fewer, wherever the cursor is.
+        string[] altitudes = ["Altitude 100 feet", "Altitude 200 feet, STD", "Altitude 300 feet, QNH 1013"];
+        Assert.Equal(2, FenixChannelDisplayForm.RowToFollow(altitudes, "Altitude 300 feet, STD", currentIndex: 0));
+        Assert.Equal(1, FenixChannelDisplayForm.RowToFollow(altitudes, "Altitude 200 feet, QNH 1013", currentIndex: 2));
+    }
+
+    [Fact]
+    public void The_cursor_follows_the_nearest_of_two_messages()
+    {
+        // Two rows with the same text (a message in two slots): the one nearest the cursor, the lower on a tie.
+        string[] twice = ["FMA message: A", "Heading 090", "FMA message: A", "Pitch 1 degree up, wings level"];
+        Assert.Equal(0, FenixChannelDisplayForm.RowToFollow(twice, "FMA message: A", currentIndex: 0));
+        Assert.Equal(0, FenixChannelDisplayForm.RowToFollow(twice, "FMA message: A", currentIndex: 1));
+        Assert.Equal(2, FenixChannelDisplayForm.RowToFollow(twice, "FMA message: A", currentIndex: 3));
+
+        // Two different messages that share the words "FMA message:", neither the pilot's row: the nearer one, and the
+        // lower when both are as near.
+        string[] messages =
+        [
+            "Airspeed 250 knots", "FMA message: B, green", "Heading 090", "Pitch 1 degree up, wings level", "Mach .78",
+            "FMA message: C, white"
+        ];
+        Assert.Equal(5, FenixChannelDisplayForm.RowToFollow(messages, "FMA message: A, amber", currentIndex: 4));
+        Assert.Equal(1, FenixChannelDisplayForm.RowToFollow(messages, "FMA message: A, amber", currentIndex: 2));
+        Assert.Equal(1, FenixChannelDisplayForm.RowToFollow(messages, "FMA message: A, amber", currentIndex: 3));
+    }
+
+    [Fact]
+    public void A_row_with_no_word_in_common_is_left_to_the_clamp()
+    {
+        string[] rows = ["Airspeed 268 knots", "Altitude 34011 feet, STD", "Heading 313, track 318"];
+
+        // No row starts with the pilot's first word (a word is a whole word: "Airspeed" is not "Airspeedy").
+        Assert.Equal(-1, FenixChannelDisplayForm.RowToFollow(rows, "Flight director: pitch bar centered", currentIndex: 1));
+        Assert.Equal(-1, FenixChannelDisplayForm.RowToFollow(rows, "Airspeedy 12", currentIndex: 1));
+
+        // Nothing to follow, or nothing to follow it to.
+        Assert.Equal(-1, FenixChannelDisplayForm.RowToFollow(rows, null, currentIndex: 1));
+        Assert.Equal(-1, FenixChannelDisplayForm.RowToFollow([], "Altitude 34011 feet, STD", currentIndex: 0));
+        Assert.Equal(-1, FenixChannelDisplayForm.RowToFollow(rows, "", currentIndex: 0));
+    }
+
+    [Fact]
+    public void A_status_row_returns_the_cursor_to_its_row()
+    {
+        // The pilot is on the altitude row. The captain's PFD goes dark: the one status row stands in, and the cursor is
+        // on it. When the PFD is lit again the cursor goes back to the altitude row, though its figure changed meanwhile
+        // and the rows above it are not the same ones.
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = TrustedPfdMonitor(lines, Cruise());
+        using var form = new FenixChannelPfdForm(monitor);
+        form.StartLive();
+        DisplayListBox list = ListOf(form);
+        list.SelectedIndex = Array.FindIndex(ItemsOf(form), row => row.StartsWith("Altitude ", StringComparison.Ordinal));
+        Assert.Equal("Altitude 34011 feet, STD", list.SelectedItem);
+
+        monitor.OnDataMessage(PushWithTheCaptainsPfdDark(Cruise()));
+        form.RefreshNow();
+        Assert.Equal(new[] { "PFD: not available, display off" }, ItemsOf(form));
+        Assert.Equal(0, list.SelectedIndex);
+
+        // A second refresh with the status row still in place keeps what is followed.
+        form.RefreshNow();
+        Assert.Equal(0, list.SelectedIndex);
+
+        monitor.OnDataMessage(PushWith(new PfdPushes.Push { Altitude = 34211, F = 190 }));
+        Assert.True(monitor.VerdictFor(FenixChannelDisplay.Pfd).Trusted, "the PFD should be lit again. The log: " + lines);
+        form.RefreshNow();
+
+        Assert.Contains("F speed 190 knots", ItemsOf(form));
+        Assert.Equal("Altitude 34211 feet, STD", list.SelectedItem);
+    }
+
+    [Fact]
+    public void A_row_that_appears_above_does_not_move_the_cursor_off_its_row()
+    {
+        // The live case: the pilot is on the altitude row, a speed mark appears on the tape above it and the altitude
+        // changes in the same second. The list alone leaves the cursor at the same index, on the Mach row that slid
+        // under it.
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = TrustedPfdMonitor(lines, Cruise());
+        using var form = new FenixChannelPfdForm(monitor);
+        form.StartLive();
+        DisplayListBox list = ListOf(form);
+        list.SelectedIndex = Array.FindIndex(ItemsOf(form), row => row.StartsWith("Altitude ", StringComparison.Ordinal));
+
+        monitor.OnDataMessage(PushWith(new PfdPushes.Push { Altitude = 34012, F = 190 }));
+        form.RefreshNow();
+
+        string[] rows = ItemsOf(form);
+        Assert.Contains("F speed 190 knots", rows);
+        Assert.Equal("Altitude 34012 feet, STD", list.SelectedItem);
+        Assert.Equal(Array.IndexOf(rows, "Altitude 34012 feet, STD"), list.SelectedIndex);
+    }
+
+    [Fact]
+    public void A_cursor_nothing_moved_is_not_set_again()
+    {
+        // The altitude changes under the cursor and nothing appears above it: the cursor is where it was, and it fires
+        // no selection change.
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = TrustedPfdMonitor(lines, Cruise());
+        using var form = new FenixChannelPfdForm(monitor);
+        form.StartLive();
+        DisplayListBox list = ListOf(form);
+        int altitude = Array.FindIndex(ItemsOf(form), row => row.StartsWith("Altitude ", StringComparison.Ordinal));
+        list.SelectedIndex = altitude;
+        form.RefreshNow();
+        int changes = 0;
+        list.SelectedIndexChanged += (_, _) => changes++;
+
+        monitor.OnDataMessage(PushWith(new PfdPushes.Push { Altitude = 34012 }));
+        form.RefreshNow();
+
+        Assert.Equal("Altitude 34012 feet, STD", list.SelectedItem);
+        Assert.Equal(altitude, list.SelectedIndex);
+        Assert.Equal(0, changes);
     }
 
     // ---- The way in -----------------------------------------------------------------------------

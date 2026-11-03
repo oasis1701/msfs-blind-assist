@@ -7,7 +7,8 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// The live window every display of the Fenix display channel uses ("Fenix PFD", "Fenix ND" and the rest): one list,
 /// named "&lt;display&gt; display", that fills the window and shows what the display shows, top to bottom and left to
 /// right, in the display's own words. A WinForms timer reads the display's snapshot and reconciles the list in
-/// place every second, so the row the pilot is on stays under the reader; F5 reads it again now, and Escape closes
+/// place every second, so the row the pilot is on stays under the reader (<see cref="RowToFollow"/>); F5 reads it
+/// again now, and Escape closes
 /// the window, once any combo list a derived window has open is closed. A derived window may add controls after the
 /// list (<see cref="AddControlAfterList"/>) and take keys before the base does (<see cref="HandleWindowKey"/>).
 /// </summary>
@@ -21,7 +22,14 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// on open or close ([CORE-7]).</para>
 /// <para>Focus. A refresh runs every second and never takes focus or moves the reader. Only the pilot's own open
 /// (<see cref="ShowForm"/>) does, and it lands on the list; the first open selects its first row, as the Engines
-/// window does, so that the reader has a current row.</para>
+/// window does, so that the reader has a current row. The pilot keeps their row. The list follows a row by its exact
+/// text, and these rows change every second ("Altitude -63 feet" is "Altitude -64 feet" a second later) while rows come
+/// and go above them, so a refresh would slide the content under the cursor. The window therefore remembers the words
+/// of the selected row and, after the rows are reconciled, moves the selection to the row that reads the same or, when
+/// its value changed, shares the most leading words with it (<see cref="RowToFollow"/>). While the list holds a
+/// status row the row remembered stays the one followed, so the pilot lands back on it when the content returns. A
+/// row with no word in common is left to the list's own clamp. Moving the selection fires a selection change but
+/// never speaks and never takes focus.</para>
 /// <para>One class for each display. Fenix windows are tracked one for each type
 /// (<c>FenixA320Definition.ShowFenixWindow</c>), so two displays that shared this class would share one window:
 /// each display's window is a class of its own, derived from this one, in a file of its own. This class is not
@@ -50,6 +58,9 @@ internal class FenixChannelDisplayForm : Form
     private readonly System.Windows.Forms.Timer _timer;
     private bool _started;
     private IntPtr _previousWindow;
+
+    // The row the pilot is on, by its text, as the last refresh found it with content in the list; null until one has.
+    private string? _followedRow;
 
     /// <param name="displayName">The display's short name: "PFD", "ND", "E/WD", "SD", "ISIS" or "DCDU". It makes the
     /// title ("Fenix PFD"), names the list ("PFD display") and starts the status row.</param>
@@ -135,20 +146,92 @@ internal class FenixChannelDisplayForm : Form
 
     /// <summary>
     /// Reads the display's snapshot again and reconciles the list with it in place, so the pilot keeps their row
-    /// (<see cref="DisplayListBox.SetLines"/>). The timer's tick and F5 (UI thread). It never speaks and never takes
-    /// focus. After the window is disposed it does nothing, so a tick that was already queued as the window closed
-    /// cannot touch a list that is gone.
+    /// (<see cref="DisplayListBox.SetLines"/>, then <see cref="RowToFollow"/> for a row that moved or changed its words).
+    /// The timer's tick and F5 (UI thread). It never speaks and never takes focus. After the window is disposed it does
+    /// nothing, so a tick that was already queued as the window closed cannot touch a list that is gone.
     /// </summary>
     internal void RefreshNow()
     {
         if (IsDisposed || Disposing) return;
 
-        _list.SetLines(RowsFor(
+        // The row the pilot is on, before the rows change. A status row is nobody's row, so while the list holds one the
+        // row followed before it stays the one followed.
+        if (!HoldsStatusRow(_list.Items.Cast<string>().ToList())) _followedRow = _list.SelectedItem as string;
+
+        IReadOnlyList<string> rows = RowsFor(
             _displayName,
             _monitor.Snapshot(_display),
             _compose,
-            problem => _monitor.ReportFeatureProblem(_displayName, problem)));
+            problem => _monitor.ReportFeatureProblem(_displayName, problem));
+        _list.SetLines(rows);
+
+        if (HoldsStatusRow(rows)) return;
+
+        // The list put the cursor back by the row's exact text. A row whose value changed, with another row above it
+        // appearing, is not found that way and the clamp would leave the pilot on a neighbor: follow its words.
+        int best = RowToFollow(rows, _followedRow, _list.SelectedIndex);
+        if (best != -1 && best != _list.SelectedIndex) _list.SelectedIndex = best;
     }
+
+    /// <summary>
+    /// The index in <paramref name="rows"/> of the row the pilot was on, or -1 when none reads like it (the list's own
+    /// clamp then stands). <paramref name="followed"/> is the text the pilot's row had, and <paramref name="currentIndex"/>
+    /// where the cursor is now. A row with exactly that text is the one, the nearest to <paramref name="currentIndex"/>
+    /// when several are. Otherwise the row that shares the most leading words with it, at least one (words split on spaces
+    /// and compared ordinally), again the nearest on a tie: "Altitude -63 feet, STD" is followed to "Altitude -64 feet,
+    /// STD", and "Heading 094, track 094" to "Heading not available".
+    /// </summary>
+    internal static int RowToFollow(IReadOnlyList<string> rows, string? followed, int currentIndex)
+    {
+        if (followed is null) return -1;
+
+        int exact = Nearest(rows, currentIndex, row => string.Equals(row, followed, StringComparison.Ordinal) ? 1 : 0);
+        if (exact != -1) return exact;
+
+        string[] words = Words(followed);
+        return Nearest(rows, currentIndex, row => LeadingWordsShared(words, Words(row)));
+    }
+
+    // The index of the row with the highest score above 0, the nearest to currentIndex among equals (the lower index
+    // when two are as near); -1 when no row scores.
+    private static int Nearest(IReadOnlyList<string> rows, int currentIndex, Func<string, int> score)
+    {
+        int best = -1;
+        int bestScore = 0;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            int rowScore = score(rows[i]);
+            if (rowScore == 0) continue;
+
+            if (rowScore > bestScore || (rowScore == bestScore && Math.Abs(i - currentIndex) < Math.Abs(best - currentIndex)))
+            {
+                best = i;
+                bestScore = rowScore;
+            }
+        }
+
+        return best;
+    }
+
+    private static string[] Words(string row) => row.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+    private static int LeadingWordsShared(string[] first, string[] second)
+    {
+        int shared = 0;
+        while (shared < first.Length && shared < second.Length
+               && string.Equals(first[shared], second[shared], StringComparison.Ordinal))
+        {
+            shared++;
+        }
+
+        return shared;
+    }
+
+    // A status row is a single row that starts "<display>: not available, ": what StatusRow builds.
+    private bool HoldsStatusRow(IReadOnlyList<string> rows)
+        => rows.Count == 1 && rows[0].StartsWith(StatusStart(_displayName), StringComparison.Ordinal);
+
+    private static string StatusStart(string displayName) => $"{displayName}: not available, ";
 
     /// <summary>
     /// The rows the list shows for one snapshot, and the testable core of the window. Never empty, so a screen
@@ -200,7 +283,7 @@ internal class FenixChannelDisplayForm : Form
     }
 
     private static IReadOnlyList<string> StatusRow(string displayName, string reason)
-        => [$"{displayName}: not available, {reason}"];
+        => [StatusStart(displayName) + reason];
 
     /// <summary>
     /// Adds a control below the list, at the bottom edge of the window, and last in the tab order: the list first,
