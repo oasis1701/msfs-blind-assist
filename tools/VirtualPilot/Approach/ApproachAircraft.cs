@@ -82,7 +82,15 @@ sealed class ApproachAircraft
 
         UpdateVelocity();
         AltMslFt += VsFpm / 60.0 * dt;
+        double lat0 = Lat, lon0 = Lon;
         (Lat, Lon) = VolantaTrafficCalculator.Project(Lat, Lon, TrackTrueDeg, GsKt * dt / 3600.0);
+
+        // Wings level is a great circle, whose true bearing turns with the convergence of the
+        // meridians (Δλ·sin φ). Holding a constant true heading instead flies a rhumb line, about
+        // 40 ft off an east-west centreline at 40° N in 7.5 nm (the great-circle self-test).
+        double dLon = ((Lon - lon0) % 360 + 540) % 360 - 180;
+        HeadingTrueDeg = ApproachRunways.Norm(HeadingTrueDeg + dLon * Math.Sin((lat0 + Lat) / 2 * Math.PI / 180));
+        UpdateVelocity();
     }
 
     // The air vector is the TAS along the true heading; the wind adds to it.

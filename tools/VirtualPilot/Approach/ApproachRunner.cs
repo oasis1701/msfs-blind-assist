@@ -78,7 +78,9 @@ static class ApproachRunner
             // A start on the course is already flying final, so it starts descending at the glide
             // path's angle; every other start (intercept, downwind) is level.
             double startGamma = sc.HeadingRelDeg == 0 ? -rwy.Runway.GlideslopeAngleDeg : 0.0;
-            var ac = new ApproachAircraft(sc.Kind, rwy, lat, lon, alt, course + sc.HeadingRelDeg,
+            // Headings are relative to the centreline's direction where the aircraft starts; the
+            // wind is relative to the threshold's course.
+            var ac = new ApproachAircraft(sc.Kind, rwy, lat, lon, alt, ApproachRunways.LocalCourse(rwy, lat, lon) + sc.HeadingRelDeg,
                 course + sc.WindFromRelDeg, sc.WindKt, sc.TasKt, startGamma);
             var pilot = new TonePilot(sc.Kind, profile, sc.ReactionDelayS, 0.0, ac.PitchDeg);
             var metrics = new ApproachMetrics(sc, profile);

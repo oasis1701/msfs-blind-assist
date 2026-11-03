@@ -57,6 +57,17 @@ static class ApproachRunways
             : VolantaTrafficCalculator.Project(lat, lon, Norm(h - 90), -crossNm);
     }
 
+    /// <summary>
+    /// The extended centreline's true direction abeam a position: the threshold's course turned by
+    /// the meridians' convergence between them (on runway B at 8 nm, 268.11° against 268.00°). A
+    /// start "on the course" heads this way, so it flies parallel to the line where it is.
+    /// </summary>
+    public static double LocalCourse(ApproachRunway r, double lat, double lon)
+    {
+        double dLon = ((lon - r.Runway.StartLon) % 360 + 540) % 360 - 180;
+        return Norm(r.Runway.Heading + dLon * Math.Sin((lat + r.Runway.StartLat) / 2 * Math.PI / 180));
+    }
+
     /// <summary>The height of the 3° path at <paramref name="alongNm"/> out, with the profile's glidepath bias, as visual guidance defines it.</summary>
     public static double PathMslFt(ApproachRunway r, double alongNm, VisualGuidanceProfile p)
         => r.Runway.ThresholdElevation + alongNm * FtPerNm * Math.Tan(GlidePathDeg * Math.PI / 180) + p.GlideslopeAltitudeBiasFt;

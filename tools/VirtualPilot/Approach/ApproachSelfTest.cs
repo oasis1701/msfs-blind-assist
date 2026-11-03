@@ -20,6 +20,7 @@ static class ApproachSelfTest
             ("simframe-signs", SimFrameSignsCheck),
             ("wrap-north", WrapNorthCheck),
             ("locate", LocateCheck),
+            ("great-circle", GreatCircleCheck),
             ("delay", DelayCheck),
             ("roll-rate", RollRateCheck),
             ("deadband", DeadbandCheck),
@@ -124,6 +125,22 @@ static class ApproachSelfTest
             }
         }
         return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // Wings level is a great circle, so an aircraft started on the centreline along its local
+    // direction stays on it. Runway B's course is east-west at 40° N, where a constant true heading
+    // (a rhumb line) would drift about 40 ft off in 7.5 nm.
+    private static string? GreatCircleCheck()
+    {
+        var rwy = ApproachRunways.B;
+        var (lat, lon) = ApproachRunways.PointOnApproach(rwy, 8, 0);
+        double localCourse = MSFSBlindAssist.Navigation.NavigationCalculator.CalculateBearing(lat, lon, rwy.Runway.StartLat, rwy.Runway.StartLon);
+        var spec = ApproachAircraftSpecs.For(ApproachAircraftKind.Jet);
+        var ac = new ApproachAircraft(ApproachAircraftKind.Jet, rwy, lat, lon, 3000, localCourse, 0, 0);
+        int steps = (int)Math.Round(7.5 / 140.0 * 3600 * 30);
+        for (int i = 0; i < steps; i++) ac.Step(1.0 / 30, 0, spec.AlphaTrimDeg);
+        var (along, cross) = ApproachRunways.Locate(rwy, ac.Lat, ac.Lon);
+        return Math.Abs(cross) < 0.0005 ? null : $"at {F(along)} nm out the aircraft is {F(cross * 6076.12)} ft off the centreline, expected under 3";
     }
 
     // ── The tone-following pilot ──────────────────────────────────────────────────────────
