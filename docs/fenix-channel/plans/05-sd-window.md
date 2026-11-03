@@ -435,10 +435,10 @@ fields with the team's tools, the SD from a capture of the sim. Each result into
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** not started
-- **Claimed by:** none
-- **Worked by:**
-- **Started:**
+- **Status:** claimed
+- **Claimed by:** kn4iee, 2026-11-03
+- **Worked by:** kn4iee with Claude (superpowers:subagent-driven-development)
+- **Started:** 2026-11-03, from `1d29a73ee`
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:**
