@@ -31,6 +31,10 @@ static class ApproachSelfTest
             ("results-invariant", ResultsInvariantCheck),
             ("matrix-size", MatrixSizeCheck),
             ("step-feedback-measured", StepFeedbackMeasuredCheck),
+            ("touchdown-at-wheels", TouchdownAtWheelsCheck),
+            ("far-end-ends-run", FarEndEndsRunCheck),
+            ("downwind-mirror", DownwindMirrorCheck),
+            ("landing-classified", LandingClassifiedCheck),
         };
 
         int failures = 0;
@@ -280,6 +284,67 @@ static class ApproachSelfTest
         var all = ApproachScenarios.All();
         int unique = all.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count();
         return all.Count == 147 && unique == 147 ? null : $"{all.Count} scenarios, {unique} unique names; expected 147";
+    }
+
+    // The run ends when the WHEELS reach the ground: visual guidance puts the main gear the profile's
+    // FlareAltitudeBiasFt below the datum, so the datum is then at that height, within one frame.
+    private static string? TouchdownAtWheelsCheck()
+    {
+        const string name = "FINAL-A-JET-x0-h0-d0.5";
+        var m = ApproachRunner.RunOne(Scenario(name), trace: null);
+        double bias = new MSFSBlindAssist.Aircraft.VisualGuidanceProfile().FlareAltitudeBiasFt;
+        bool atWheels = m.EndDatumAglFt <= bias && m.EndDatumAglFt > bias - 1.0;
+        return atWheels ? null : $"{name} ended ({m.EndReason}) with the datum at {F(m.EndDatumAglFt)} ft, expected just under {F(bias)} (wheel contact)";
+    }
+
+    // A run still airborne past the runway's far end ends there, rather than flying on to the timeout.
+    private static string? FarEndEndsRunCheck()
+    {
+        const string name = "FINAL-A-LIGHT-x0-h0-d0.5";
+        var sc = Scenario(name);
+        var m = ApproachRunner.RunOne(sc, trace: null);
+        double farEndNm = -sc.Runway.Runway.Length / 6076.12;
+        return m.EndAlongNm >= farEndNm - 0.01 ? null : $"{name} ended ({m.EndReason}) {F(-m.EndAlongNm)} nm past the threshold, beyond the far end at {F(-farEndNm)} nm";
+    }
+
+    // A downwind from the left and one from the right are mirror images: the same ending, about the
+    // same time, on their own sides. The start must not sit where a rounding decides the phase.
+    private static string? DownwindMirrorCheck()
+    {
+        var problems = new List<string>();
+        foreach (string rwy in new[] { "A", "B" })
+        {
+            string left = $"DW-{rwy}-JET-L-d0.5", right = $"DW-{rwy}-JET-R-d0.5";
+            string l = ApproachRunner.RunOne(Scenario(left), trace: null).ToResultsLine(left);
+            string r = ApproachRunner.RunOne(Scenario(right), trace: null).ToResultsLine(right);
+            string Field(string line, string key) => line.Split('|').FirstOrDefault(f => f.StartsWith(key + "=", StringComparison.Ordinal))?[(key.Length + 1)..] ?? "NA";
+            double Num(string line, string key) => Field(line, key) is var v && v != "NA" ? double.Parse(v, CultureInfo.InvariantCulture) : double.NaN;
+            if (Field(l, "endReason") != Field(r, "endReason"))
+                problems.Add($"runway {rwy}: {Field(l, "endReason")} on the left, {Field(r, "endReason")} on the right");
+            if (Math.Abs(Num(l, "durationS") - Num(r, "durationS")) > 10)
+                problems.Add($"runway {rwy}: {F(Num(l, "durationS"))} s on the left, {F(Num(r, "durationS"))} s on the right");
+            double xl = Num(l, "touchdownXteFt"), xr = Num(r, "touchdownXteFt");
+            if (!double.IsNaN(xl) && !double.IsNaN(xr) && !(Math.Abs(xl) < 30 && Math.Abs(xr) < 30) && Math.Sign(xl) == Math.Sign(xr))
+                problems.Add($"runway {rwy}: both landed on the same side ({F(xl)} ft, {F(xr)} ft)");
+        }
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // "touchdown" means on the runway's pavement (2 nm by 150 ft); everything else names where it landed.
+    private static string? LandingClassifiedCheck()
+    {
+        var r = ApproachRunways.A;
+        const double Ft = 1.0 / 6076.12;
+        var cases = new (double Along, double Cross, string Expected)[]
+        {
+            (0.1, 0, "landedShort"), (-0.3, 0, "touchdown"), (-0.3, 50 * Ft, "touchdown"),
+            (-0.3, -100 * Ft, "offRunway"), (-2.1, 0, "landedLong"),
+        };
+        var problems = cases
+            .Where(c => ApproachRunner.LandingEndReason(r, c.Along, c.Cross) != c.Expected)
+            .Select(c => $"({F(c.Along)} nm, {F(c.Cross / Ft)} ft) is {ApproachRunner.LandingEndReason(r, c.Along, c.Cross)}, expected {c.Expected}")
+            .ToList();
+        return problems.Count == 0 ? null : string.Join("; ", problems);
     }
 
     // A step run records its sample at step + 10 s before it ends, so both self-feedback measures exist.

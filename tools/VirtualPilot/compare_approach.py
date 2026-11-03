@@ -3,8 +3,10 @@
     python tools/VirtualPilot/compare_approach.py BEFORE.results.txt AFTER.results.txt
 
 Reads the VG| lines `approach` writes and prints BETTER and WORSE counts per measure, with up to six
-examples each, the way compare.py does for landings. Two runs of the same build print BETTER {} and
-WORSE {}: the harness is deterministic. Measures written NA on either side are not compared.
+examples each, the way compare.py does for landings, then CHANGED: moves with no single right
+direction (the touchdown point along the runway, an end reason changing between two non-touchdown
+outcomes). Two runs of the same build print BETTER {}, WORSE {} and CHANGED {}: the harness is
+deterministic. Measures written NA on either side are not compared.
 """
 import collections
 import sys
@@ -30,13 +32,14 @@ def sign(v):
 
 
 before, after = load(sys.argv[1]), load(sys.argv[2])
-better, worse = collections.Counter(), collections.Counter()
+better, worse, changed = collections.Counter(), collections.Counter(), collections.Counter()
 examples = collections.defaultdict(list)
 
 
 def note(counter, category, name, detail):
     counter[category] += 1
-    examples[('BETTER ' if counter is better else 'WORSE ') + category].append(f'{name} {detail}')
+    label = 'BETTER ' if counter is better else 'WORSE ' if counter is worse else 'CHANGED '
+    examples[label + category].append(f'{name} {detail}')
 
 
 def rise(name, x, y, key, worse_if, better_if, fmt='{:.1f}'):
@@ -63,6 +66,20 @@ for name in common:
         note(worse, 'no longer touches down', name, '-> ' + y.get('endReason', '?'))
     if x.get('endReason') != 'touchdown' and y.get('endReason') == 'touchdown':
         note(better, 'now touches down', name, x.get('endReason', '?') + ' ->')
+    if 'touchdown' not in (x.get('endReason'), y.get('endReason')) and x.get('endReason') != y.get('endReason'):
+        note(changed, 'endReason', name, f"{x.get('endReason', '?')} -> {y.get('endReason', '?')}")
+
+    # Where the wheels touched: sideways farther off is worse; along the runway there is no
+    # single right answer, so a move of more than 300 ft is listed for a person to judge.
+    b, a = num(x, 'touchdownXteFt'), num(y, 'touchdownXteFt')
+    if b is not None and a is not None:
+        if abs(a) - abs(b) > 25:
+            note(worse, '|touchdownXteFt| up', name, f'{b:.0f} -> {a:.0f}')
+        elif abs(b) - abs(a) > 25:
+            note(better, '|touchdownXteFt| down', name, f'{b:.0f} -> {a:.0f}')
+    b, a = num(x, 'touchdownAlongFt'), num(y, 'touchdownAlongFt')
+    if b is not None and a is not None and abs(a - b) > 300:
+        note(changed, 'touchdownAlongFt moved', name, f'{b:.0f} -> {a:.0f}')
 
     # Up by more than 10 % AND by more than 15 ft.
     for key in ('finalXteRmsFt', 'pathRmsFt'):
@@ -92,6 +109,7 @@ only_after = [n for n in after if n not in before]
 print(f'compared {len(common)} scenarios; only before {len(only_before)}, only after {len(only_after)}')
 print('BETTER', dict(better))
 print('WORSE', dict(worse))
+print('CHANGED', dict(changed))
 for category, lines in examples.items():
     print('==', category, len(lines))
     for line in lines[:6]:

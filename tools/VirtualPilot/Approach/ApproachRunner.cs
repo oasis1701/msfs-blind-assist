@@ -12,7 +12,7 @@ namespace VirtualPilot.Approach;
 /// </summary>
 static class ApproachRunner
 {
-    private const double MaxRunS = 900.0, StepRunAfterS = 10.0, TouchdownWithinNm = 0.3, PitchStepDeg = 1.0;
+    private const double MaxRunS = 900.0, StepRunAfterS = 10.0, PitchStepDeg = 1.0, FtPerNm = 6076.12;
     private static readonly DateTime ClockStart = new(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
@@ -117,12 +117,15 @@ static class ApproachRunner
                 ac.Step(dt, bank, pitch);
                 t = (frame + 1) * dt;
 
-                if (ac.AglFt <= 0)
+                // Visual guidance puts the main gear the profile's FlareAltitudeBiasFt below the
+                // datum, so contact is when the wheels, not the datum, reach the ground.
+                var (alongNow, crossNow) = ApproachRunways.Locate(rwy, ac.Lat, ac.Lon);
+                if (ac.AglFt - profile.FlareAltitudeBiasFt <= 0)
                 {
-                    var (along, _) = ApproachRunways.Locate(rwy, ac.Lat, ac.Lon);
-                    endReason = along <= TouchdownWithinNm ? "touchdown" : "landedShort";
+                    endReason = LandingEndReason(rwy, alongNow, crossNow);
                     break;
                 }
+                if (alongNow < -rwy.Runway.Length / FtPerNm) { endReason = "pastRunwayEnd"; break; }
                 if (!vg.IsActive) { endReason = "vgOff"; break; }
                 if (t > MaxRunS) { endReason = "timeout"; break; }
             }
@@ -143,6 +146,18 @@ static class ApproachRunner
         {
             SimClock.Override = savedClock;
         }
+    }
+
+    /// <summary>
+    /// Where a landing put the wheels: "touchdown" on the runway's pavement, else "landedShort"
+    /// (before the threshold), "landedLong" (past the far end) or "offRunway" (beside it).
+    /// </summary>
+    public static string LandingEndReason(ApproachRunway r, double alongNm, double crossNm)
+    {
+        if (alongNm > 0) return "landedShort";
+        if (alongNm < -r.Runway.Length / FtPerNm) return "landedLong";
+        if (Math.Abs(crossNm * FtPerNm) > r.Runway.Width / 2) return "offRunway";
+        return "touchdown";
     }
 
     private static string TraceLine(double t, ApproachScenario sc, ApproachAircraft ac, VisualGuidanceManager vg, VisualGuidanceProfile profile)

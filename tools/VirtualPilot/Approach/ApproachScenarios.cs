@@ -16,6 +16,7 @@ sealed record ApproachScenario(string Name, ApproachRunway Runway, ApproachAircr
 static class ApproachScenarios
 {
     private static readonly double[] Delays = { 0.5, 1.0 };
+    private const double DownwindAlongNm = -1.0;   // abeam the middle of the 2 nm runway
     private static IReadOnlyList<ApproachScenario>? _all;
 
     public static IReadOnlyList<ApproachScenario> All() => _all ??= Build();
@@ -24,8 +25,10 @@ static class ApproachScenarios
     private static string KindName(ApproachAircraftKind k) => k == ApproachAircraftKind.Jet ? "JET" : "LIGHT";
     private static string DelayName(double d) => "d" + Inv(d, "0.0");
 
-    // A height above the field, as an offset from the path height at the threshold (the glidepath bias).
-    private static double AboveField(double ft) => ft - new VisualGuidanceProfile().GlideslopeAltitudeBiasFt;
+    // A height above the field, as the scenario's offset from the path height at the start
+    // (ApproachRunways.PathMslFt, which is below the field past the threshold).
+    private static double AboveField(double ft, double alongNm)
+        => ft - (alongNm * 6076.12 * Math.Tan(3.0 * Math.PI / 180) + new VisualGuidanceProfile().GlideslopeAltitudeBiasFt);
 
     private static double FinalAlong(ApproachAircraftKind k) => k == ApproachAircraftKind.Jet ? 8.0 : 4.0;
     private static (double Along, double Side) InterceptStart(ApproachAircraftKind k) => k == ApproachAircraftKind.Jet ? (12.0, 3.0) : (6.0, 1.5);
@@ -66,7 +69,9 @@ static class ApproachScenarios
                         foreach (double d in Delays)
                             list.Add(Intercept($"INT-{r.Id}-{KindName(k)}-{side}{Inv(angle, "0")}-{DelayName(d)}", r, k, side, angle, d));
 
-        // Downwind: abeam the threshold, flying the reciprocal, above the field.
+        // Downwind: abeam mid-runway, flying the reciprocal, above the field. Not abeam the
+        // threshold itself: there visual guidance's behind-the-runway test (bearing within 90° of
+        // the course) is decided by rounding, so one side started Extending and the other not.
         foreach (var r in ApproachRunways.All)
             foreach (var k in kinds)
                 foreach (char side in new[] { 'L', 'R' })
@@ -74,8 +79,8 @@ static class ApproachScenarios
                     {
                         bool jet = k == ApproachAircraftKind.Jet;
                         double offset = (jet ? 3.0 : 1.5) * (side == 'R' ? 1 : -1);
-                        list.Add(new($"DW-{r.Id}-{KindName(k)}-{side}-{DelayName(d)}", r, k, 0, offset, 180,
-                            AboveField(jet ? 2000 : 1000), 0, 0, 30, d, null, null));
+                        list.Add(new($"DW-{r.Id}-{KindName(k)}-{side}-{DelayName(d)}", r, k, DownwindAlongNm, offset, 180,
+                            AboveField(jet ? 2000 : 1000, DownwindAlongNm), 0, 0, 30, d, null, null));
                     }
 
         var a = ApproachRunways.A;

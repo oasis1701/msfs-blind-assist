@@ -30,6 +30,10 @@ sealed class ApproachMetrics
 
     public string EndReason { get; private set; } = "running";
 
+    /// <summary>Where the run ended (nm back from the threshold, negative past it) and the datum's height there; for the self-test.</summary>
+    public double EndAlongNm { get; private set; }
+    public double EndDatumAglFt { get; private set; }
+
     public ApproachMetrics(ApproachScenario sc, VisualGuidanceProfile profile) { _sc = sc; _profile = profile; }
 
     /// <summary>One frame: the aircraft state and the command visual guidance produced from it.</summary>
@@ -51,7 +55,9 @@ sealed class ApproachMetrics
 
         var r = _sc.Runway;
         var (along, cross) = ApproachRunways.Locate(r, ac.Lat, ac.Lon);
-        bool landed = endReason is "touchdown" or "landedShort";
+        EndAlongNm = along;
+        EndDatumAglFt = ac.AglFt;
+        bool landed = endReason is "touchdown" or "landedShort" or "landedLong" or "offRunway";
         Put("touchdownAlongFt", landed ? along * FtPerNm : null, "0");
         Put("touchdownXteFt", landed ? cross * FtPerNm : null, "0");
 
