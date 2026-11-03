@@ -91,6 +91,85 @@ public class FenixChannelNdGeometryTests
         if (arc.HasValue) Assert.Equal(arcEdge, arc.Value.AtEdge);
     }
 
+    // The point the ND window draws at pixel (x, y) in a frame: the model run backwards, on the sphere.
+    private static FenixLatLon AtPixel(FenixNdFrame f, double x, double y)
+    {
+        bool arc = f.Mode == "ARC";
+        double ppn = arc ? 473 / f.RangeNm : 241.5 / (f.RangeNm / 2);
+        double cy = arc ? 597 : 357;
+        double dx = x - 375.5, dy = cy - y;
+        double distance = Math.Sqrt(dx * dx + dy * dy) / ppn;
+        double bearing = (f.UpTrueDegrees + Math.Atan2(dx, dy) * 180 / Math.PI) * Math.PI / 180;
+        double delta = distance / 3440.065, lat1 = f.Center.Latitude * Math.PI / 180, lon1 = f.Center.Longitude * Math.PI / 180;
+        double lat2 = Math.Asin(Math.Sin(lat1) * Math.Cos(delta) + Math.Cos(lat1) * Math.Sin(delta) * Math.Cos(bearing));
+        double lon2 = lon1 + Math.Atan2(Math.Sin(bearing) * Math.Sin(delta) * Math.Cos(lat1),
+            Math.Cos(delta) - Math.Sin(lat1) * Math.Sin(lat2));
+        return new FenixLatLon(lat2 * 180 / Math.PI, lon2 * 180 / Math.PI);
+    }
+
+    private static FenixNdFrame Named(string name) => name switch
+    {
+        "ARC40" => Frame("ARC", 40), "ARC160" => Frame("ARC", 160),
+        "NAV40" => Frame("NAV", 40), "NAV160" => Frame("NAV", 160),
+        "PLAN40" => Plan(40), _ => Plan(160),
+    };
+
+    // Each row: the frame, a pixel, whether the ND draws it, and whether it is cut by an edge.
+    [Theory]
+    [InlineData("ARC40", 375.0, 400.0, true, false)]    // inside
+    [InlineData("ARC160", 375.0, 400.0, true, false)]
+    [InlineData("ARC40", 3.0, 500.0, true, true)]       // near x 0
+    [InlineData("ARC160", 749.0, 500.0, true, true)]    // near x 752
+    [InlineData("ARC40", 375.0, 626.0, true, true)]     // near y 630
+    [InlineData("ARC160", 375.0, 129.0, true, true)]    // 468 px from the aircraft: the arc's edge
+    [InlineData("ARC40", 375.0, 117.0, false, false)]   // 480 px: beyond the arc
+    [InlineData("ARC160", -3.0, 500.0, false, false)]   // left of the window
+    [InlineData("ARC40", 756.0, 500.0, false, false)]   // right of the window
+    [InlineData("ARC160", 375.0, 634.0, false, false)]  // below y 630
+    [InlineData("NAV40", 375.0, 300.0, true, false)]
+    [InlineData("NAV160", 375.0, 300.0, true, false)]
+    [InlineData("NAV40", 375.0, 118.0, true, true)]     // near y 115, inside the circle
+    [InlineData("NAV160", 375.0, 626.0, true, true)]    // near y 630, inside the circle
+    [InlineData("NAV40", 661.5, 357.0, true, true)]     // 286 px: the circle's edge
+    [InlineData("NAV160", 669.5, 357.0, false, false)]  // 294 px: beyond the circle
+    [InlineData("NAV40", 375.0, 110.0, false, false)]   // above y 115
+    [InlineData("NAV160", 375.0, 634.0, false, false)]  // below y 630
+    [InlineData("PLAN40", 375.0, 300.0, true, false)]
+    [InlineData("PLAN160", 375.0, 300.0, true, false)]
+    [InlineData("PLAN40", 661.5, 357.0, true, true)]    // just inside the 290 px circle
+    [InlineData("PLAN160", 89.5, 357.0, true, true)]
+    [InlineData("PLAN40", 669.5, 357.0, false, false)]  // just outside it
+    [InlineData("PLAN160", 81.5, 357.0, false, false)]
+    [InlineData("PLAN40", 375.0, 118.0, true, true)]
+    [InlineData("PLAN160", 375.0, 110.0, false, false)]
+    public void A_pixel_is_clipped_where_the_ND_clips_it(string frame, double x, double y, bool drawn, bool atEdge)
+    {
+        var f = Named(frame);
+        var place = FenixChannelNdGeometry.Place(f, AtPixel(f, x, y));
+        Assert.Equal(drawn, place.HasValue);
+        if (place.HasValue) Assert.Equal(atEdge, place.Value.AtEdge);
+    }
+
+    [Theory]
+    [InlineData("ARC160", 375.0, 300.0, true, false)]
+    [InlineData("NAV40", 375.0, 300.0, true, false)]
+    [InlineData("NAV160", 3.0, 300.0, true, true)]      // near x 0
+    [InlineData("ARC40", 749.0, 300.0, true, true)]     // near x 752
+    [InlineData("PLAN160", 375.0, 626.0, true, true)]   // near y 630
+    [InlineData("ARC160", 375.0, 3.0, true, true)]      // near the top of the window
+    [InlineData("NAV40", 375.0, 100.0, true, false)]    // above y 115 is fine for a route item
+    [InlineData("NAV160", -3.0, 300.0, false, false)]
+    [InlineData("ARC40", 756.0, 300.0, false, false)]
+    [InlineData("PLAN40", 375.0, 634.0, false, false)]
+    [InlineData("ARC160", 375.0, -3.0, false, false)]
+    public void A_route_pixel_is_clipped_by_the_window(string frame, double x, double y, bool drawn, bool atEdge)
+    {
+        var f = Named(frame);
+        var place = FenixChannelNdGeometry.PlaceRoute(f, AtPixel(f, x, y));
+        Assert.Equal(drawn, place.HasValue);
+        if (place.HasValue) Assert.Equal(atEdge, place.Value.AtEdge);
+    }
+
     [Fact]
     public void ROSE_LS_and_VOR_clip_like_ROSE_NAV_and_a_smaller_range_clips_more()
     {
