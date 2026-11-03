@@ -1,11 +1,18 @@
 namespace MSFSBlindAssist.Aircraft;
 
-// The E/WD's side of the Fenix display channel: the window of the upper ECAM. The window is
-// Forms/Fenix/FenixChannelEwdForm.cs and its rows are Services/FenixChannelEwdRows.cs. Nothing opens the window yet:
-// Alt+E keeps its AI read and the Fenix windows list has no E/WD entry until the E/WD's in-sim checks pass, and the
-// key's answer then joins this file.
+// The E/WD's side of the Fenix display channel: the window of the upper ECAM and the answer to its key, Alt+E. The window
+// is Forms/Fenix/FenixChannelEwdForm.cs, its rows are Services/FenixChannelEwdRows.cs and its entry in the Fenix windows
+// list is Forms/Fenix/FenixWindowRegistry.ChannelEwd.cs. The answer is the seam of FenixA320Definition.Hooks.cs, which
+// only hands this file the key.
 public partial class FenixA320Definition
 {
+    // The E/WD's key seam (declared in FenixA320Definition.Hooks.cs): HandleHotkeyAction asks it first for Alt+E. The
+    // window opens only while the E/WD is trusted at the press, and the key is then answered. Otherwise handled stays
+    // false and the key goes on to its AI read, with no words of its own.
+    partial void ChannelEwdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled)
+        => handled = OpenChannelWindow(
+            ctx, Services.FenixChannelDisplay.Ewd, Services.FenixChannelEwdRows.DisplayName, CreateChannelEwdForm);
+
     /// <summary>
     /// The E/WD window on <paramref name="monitor"/>. It reads <see cref="Variant"/>'s engine family at each refresh, on
     /// the UI thread where the variant changes, so the engine block follows a variant that is detected after the window

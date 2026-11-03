@@ -10,8 +10,11 @@
 // "Fenix E/WD" and its list is named "E/WD display". It is a class of its own, since Fenix windows are tracked one for
 // each type. The engine family is not in the channel: the window asks for it at each refresh, on the UI thread, and the
 // definition's factory answers with the loaded Fenix's. A problem the composer reports goes to the channel's log under
-// "E/WD window", once for each distinct line.
+// "E/WD window", once for each distinct line. The window is in the Fenix windows list once, as "E/WD", and Alt+E reaches
+// it only through OpenChannelWindow, which opens it while the E/WD is trusted at the press and otherwise leaves the key to
+// its AI read; the key's seam is a partial method a test cannot reach, so its source is read.
 
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Forms;
@@ -260,4 +263,51 @@ public class FenixChannelEwdWindowTests
             new[] { "Engines: not available, engine type not read yet", "CLB cyan, 1.618 green" },
             ItemsOf(form).Take(2));
     }
+
+    // ---- The way in -------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_ewd_window_is_listed_once()
+    {
+        // The Fenix windows list speaks "Name. Description": one E/WD entry, named for the display as the others are.
+        FenixWindowEntry entry = Assert.Single(FenixWindowRegistry.Build(), e => e.Name == "E/WD");
+
+        Assert.Equal(
+            "Engines, thrust limit, fuel on board, flaps, warnings and memos, as the Fenix's E/WD shows them",
+            entry.Description);
+        Assert.NotNull(entry.Open);
+    }
+
+    // Alt+E has two ways to answer and only one may open the window. The key opens it when the E/WD is trusted at the
+    // press and otherwise leaves the key to its AI read, with no extra words: that is OpenChannelWindow's work (judged on
+    // the monitor's snapshot, both hotkey modes left first), so the seam may do nothing but hand it the window. The
+    // seam is a partial method nothing in a test can reach, so its source is read.
+    [Fact]
+    public void The_ewd_key_opens_its_window_only_through_OpenChannelWindow()
+    {
+        string source = Comment.Replace(
+            File.ReadAllText(Path.Combine(
+                ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Aircraft", "FenixA320Definition.ChannelEwd.cs")),
+            "");
+
+        Match key = Regex.Match(
+            source,
+            @"partial\s+void\s+ChannelEwdKey\s*\(\s*Hotkeys\.HotkeyAction\s+action\s*,\s*ChannelKeyContext\s+ctx\s*,"
+            + @"\s*ref\s+bool\s+handled\s*\)\s*(?:=>\s*(?<body>[^;]*;)|\{\s*(?<body>[^;]*;)\s*\})");
+        Assert.True(key.Success, "FenixA320Definition.ChannelEwd.cs implements no ChannelEwdKey of the seam's shape");
+
+        // The body is one assignment, and it names the E/WD's verdict and its name. Compared without whitespace, so that
+        // where the line breaks is no part of it.
+        Assert.Equal(
+            WithoutWhitespace(
+                "handled = OpenChannelWindow(ctx, Services.FenixChannelDisplay.Ewd, Services.FenixChannelEwdRows.DisplayName,"
+                + " CreateChannelEwdForm);"),
+            WithoutWhitespace(key.Groups["body"].Value));
+    }
+
+    private static string WithoutWhitespace(string text) => Regex.Replace(text, @"\s+", "");
+
+    // A line comment or a block comment: a call named in a comment is no call.
+    private static readonly Regex Comment = new(
+        @"//[^\r\n]*|/\*.*?\*/", RegexOptions.Singleline | RegexOptions.CultureInvariant);
 }
