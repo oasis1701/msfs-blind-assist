@@ -47,7 +47,8 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 /// letters <c>w g c a m y r</c> (white, green, cyan, amber, magenta, yellow, red), <c>u</c>, <c>b</c> and
 /// <c>f</c> to toggle underline, a box and flashing, and <c>s</c> or <c>l</c> for a small or large size. The
 /// letters <c>p</c> and <c>d</c> are known and draw nothing (<c>d</c> adds a space between the words either side of
-/// it). Display text is uppercase, so an uppercase letter is never a code.
+/// it), as is <c>x1</c>, the letter x with the digit 1, which draws nothing either. Display text is uppercase, so an
+/// uppercase letter is never a code.
 /// </summary>
 /// <remarks>
 /// <para>The colors are the meaning, so the codes are parsed into data and never stripped: a read that speaks
@@ -67,6 +68,10 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 /// moves the drawing position right and draws nothing (the FMA's <c>RADIOdc 200</c>, the ND's ground speed line),
 /// and speech merges stretches by color alone, so it adds a space to the run being built: the words either side of
 /// it stay two words ("GS 456"), and no run closes.</para>
+/// <para><c>x1</c> comes as one code, the digit included, and is never spoken: neither is kept as text or on a run, and
+/// no run closes. It came on the PFD's amber ILS with the LS button off on an ILS approach (<c>ax1ILS</c>) and on the
+/// baro text through the transition altitude and level (<c>x1QNH c30.36</c>, <c>x1  fcSTDyf</c>). An x with no digit,
+/// another digit or more digits has not been seen, so it stays a code the app does not know.</para>
 /// <para>U+2800, the blank braille cell the display uses as a spacer, becomes a space. Any other lowercase
 /// ASCII letter is a code the app does not know: it goes into <see cref="FenixTextLine.UnknownCodes"/>, once
 /// and in order, and is dropped from the text. A lowercase letter outside a to z is text, not a code.</para>
@@ -96,8 +101,10 @@ internal static class FenixChannelText
         bool flashing = false;
         FenixTextSize size = FenixTextSize.Normal;
 
-        foreach (char c in raw)
+        for (int i = 0; i < raw.Length; i++)
         {
+            char c = raw[i];
+
             // Only a to z are codes. Everything else is text, the braille blank as a space.
             if (c is < 'a' or > 'z')
             {
@@ -137,6 +144,10 @@ internal static class FenixChannelText
                     // space keeps them apart. It closes no run.
                     text.Append(' ');
                     break;
+                case 'x' when IsXOne(raw, i):
+                    // Known with its digit, which is the code's and never text: the flag is "ILS", not "1ILS". It closes no run.
+                    i++;
+                    break;
                 default:
                     // A letter the app does not know: listed once, and dropped from the text.
                     unknown ??= new List<char>();
@@ -172,4 +183,9 @@ internal static class FenixChannelText
             text.Clear();
         }
     }
+
+    // The x at index is the measured x1: followed by the digit 1 and no further digit. Any other x stays unknown.
+    private static bool IsXOne(string raw, int index)
+        => index + 1 < raw.Length && raw[index + 1] == '1'
+            && (index + 2 >= raw.Length || !char.IsAsciiDigit(raw[index + 2]));
 }

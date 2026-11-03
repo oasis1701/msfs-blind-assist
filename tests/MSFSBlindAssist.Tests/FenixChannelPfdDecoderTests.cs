@@ -408,9 +408,9 @@ public class FenixChannelPfdDecoderTests
     [Fact]
     public void The_qnh_text_is_never_read()
     {
-        // In flight at QNH the Fenix draws "x1QNH c1029", an x the app does not know. The baro is the EFIS's.
-        Assert.Contains('x', FenixChannelText.Parse("x1QNH c1029").UnknownCodes);
-        var atQnh = new PfdPushes.Push { QnhText = "x1QNH c1029", Efis = { QnhStd = false, Qnh = 1029f, QnhInch = 30.39f } };
+        // The baro is the EFIS's: this text is never read, so even a letter the app does not know in it costs nothing.
+        Assert.Contains('x', FenixChannelText.Parse("xQNH c1029").UnknownCodes);
+        var atQnh = new PfdPushes.Push { QnhText = "xQNH c1029", Efis = { QnhStd = false, Qnh = 1029f, QnhInch = 30.39f } };
 
         FenixChannelPfd pfd = Decoded(atQnh);
         Assert.Equal(new FenixPfdBaro(Std: false, Inches: false, Qfe: false, QnhHpa: 1029, QnhInHg: 30.39f), pfd.Baro);

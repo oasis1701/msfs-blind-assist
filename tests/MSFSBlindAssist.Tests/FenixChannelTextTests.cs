@@ -159,6 +159,35 @@ public class FenixChannelTextTests
         Assert.Equal("ABCD", line.JoinedText);
     }
 
+    // ---- x1: known with its digit ---------------------------------------------------------------
+
+    [Fact]
+    public void The_x1_code_is_known_and_draws_nothing()
+    {
+        // Measured: the PFD's amber ILS with the LS button off on an ILS approach, and the baro text through the transition
+        // altitude. The digit is the code's: the flag is "ILS", never "1ILS".
+        FenixTextLine flag = FenixChannelText.Parse("ax1ILS");
+        FenixTextLine baro = FenixChannelText.Parse("x1QNH c1029");
+
+        Assert.Equal(new[] { Run("ILS", FenixTextColor.Amber) }, flag.Runs);
+        Assert.Empty(flag.UnknownCodes);
+        Assert.Equal(new[] { Run("QNH ", null), Run("1029", FenixTextColor.Cyan) }, baro.Runs);
+        Assert.Empty(baro.UnknownCodes);
+    }
+
+    [Theory]
+    [InlineData("xILS", "ILS")]
+    [InlineData("x2ILS", "2ILS")]
+    [InlineData("x12ILS", "12ILS")]
+    [InlineData("x", "")]
+    public void An_x_without_exactly_the_digit_1_stays_unknown(string raw, string text)
+    {
+        FenixTextLine line = FenixChannelText.Parse(raw);
+
+        Assert.Equal(new[] { 'x' }, line.UnknownCodes);
+        Assert.Equal(text, line.JoinedText);
+    }
+
     // ---- p and d: known, and never spoken -------------------------------------------------------
 
     [Fact]

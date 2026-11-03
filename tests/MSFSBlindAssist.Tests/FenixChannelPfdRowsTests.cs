@@ -794,6 +794,17 @@ public class FenixChannelPfdRowsTests
     }
 
     [Fact]
+    public void The_amber_ils_reminder_reads_as_the_pfd_draws_it()
+    {
+        // Measured: with the LS button off on an ILS approach the PFD draws an amber ILS, and 117.3 holds "ax1ILS".
+        PfdPushes.Push push = IlsPush(false);
+        push.ApproachCenter = push.ApproachLoc = push.ApproachGs = push.MarkerText = "";
+        push.LsFlagText = "ax1ILS";
+
+        Assert.Equal(CruiseRows.Append("LS flag: ILS, amber"), RowsOf(push));
+    }
+
+    [Fact]
     public void The_deviations_read_the_side_the_diamond_is_drawn_on()
     {
         PfdPushes.Push Deviations(double loc, double gs) => new() { Efis = { Ls = true }, LocDots = loc, GsDots = gs };
