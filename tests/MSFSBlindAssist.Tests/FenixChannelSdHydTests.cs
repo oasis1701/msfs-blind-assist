@@ -23,7 +23,7 @@ public class FenixChannelSdHydTests
 {
     // The bottom line of SdPush's default push, as the window reads it.
     private static readonly string[] BottomRows =
-        ["TAT °C: +15, green", "SAT °C: +15, green", "UTC: 15 H 06", "GW KG: --, cyan"];
+        ["TAT °C: +15, green", "SAT °C: +15, green", "UTC: 15:06", "GW KG: --, cyan"];
 
     // The page's own rows (after its name, before the bottom line) of HydPush's default push: the PTU left out, the green
     // and blue pumps running, the yellow engine pump low, the yellow electric pump off, the green valve open and the

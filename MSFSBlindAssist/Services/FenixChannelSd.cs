@@ -214,7 +214,8 @@ internal sealed class FenixChannelSdReader
 /// not available, &lt;problem&gt;", and the page's name and the bottom line stay (spec 5, row 30).</para>
 /// <para>The bottom line reads its TAT, SAT, UTC and gross weight, each element spoken with its colors
 /// (<see cref="FenixChannelSpeech"/>) and an empty one "not available". The UTC row is labeled "UTC", though the SD prints
-/// only "15 H 06" (owner question Q3). Elements 2, 3, 7 and 8 have no label and are not read.</para>
+/// only "15 H 06" (owner question Q3), and is spoken as hours:minutes, "15:06", as every other time in the app is.
+/// Elements 2, 3, 7 and 8 have no label and are not read.</para>
 /// </remarks>
 internal static class FenixChannelSd
 {
@@ -325,13 +326,14 @@ internal static class FenixChannelSd
     // One element spoken with its colors, or "not available" when it has nothing to say.
     private static string Spoken(string coded) => FenixChannelSpeech.Line(coded) ?? "not available";
 
-    // The hour and the minute as the SD prints them, "15 H 06", spoken as one coded line; "not available" unless both
-    // have something to say.
+    // The hour and the minute joined with a colon, "15:06", spoken as one coded line; "not available" unless both have
+    // something to say. The SD draws "15 H 06", which a screen reader reads as written, and the app speaks every other
+    // time as hours:minutes (Output Shift+Z: "18:16Z"), so the row does too (the claimant found the H odd by ear).
     private static string Utc(string hour, string minute)
     {
         if (FenixChannelSpeech.Line(hour) is null || FenixChannelSpeech.Line(minute) is null) return "not available";
 
-        return FenixChannelSpeech.Line($"{hour} H {minute}") ?? "not available";
+        return FenixChannelSpeech.Line($"{hour}:{minute}") ?? "not available";
     }
 
     // A finite number rounded away from zero to its places and written in the invariant culture; a rounded -0 is written

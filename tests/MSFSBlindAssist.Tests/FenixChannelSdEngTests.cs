@@ -19,7 +19,7 @@ public class FenixChannelSdEngTests
 {
     // The bottom line of SdPush's default push, as the window reads it.
     private static readonly string[] BottomRows =
-        ["TAT °C: +15, green", "SAT °C: +15, green", "UTC: 15 H 06", "GW KG: --, cyan"];
+        ["TAT °C: +15, green", "SAT °C: +15, green", "UTC: 15:06", "GW KG: --, cyan"];
 
     // The rows of a push that composes, and nothing reported.
     private static IReadOnlyList<string> RowsOf(SdPush push)

@@ -31,7 +31,7 @@ public class FenixChannelSdWindowTests
 {
     // The bottom line of SdPush's default push, as the window reads it.
     private static readonly string[] BottomRows =
-        ["TAT °C: +15, green", "SAT °C: +15, green", "UTC: 15 H 06", "GW KG: --, cyan"];
+        ["TAT °C: +15, green", "SAT °C: +15, green", "UTC: 15:06", "GW KG: --, cyan"];
 
     // The rows of a push that composes, and nothing reported.
     private static IReadOnlyList<string> RowsOf(SdPush push)
@@ -124,7 +124,7 @@ public class FenixChannelSdWindowTests
         push.BottomLine[6] = "g ";
 
         Assert.Equal(
-            new[] { "page 42", "TAT °C: not available", "SAT °C: not available", "UTC: 15 H 06", "GW KG: not available" },
+            new[] { "page 42", "TAT °C: not available", "SAT °C: not available", "UTC: 15:06", "GW KG: not available" },
             RowsOf(push));
     }
 
@@ -146,13 +146,25 @@ public class FenixChannelSdWindowTests
     [Fact]
     public void The_utc_row_is_spoken_as_one_coded_line()
     {
-        // The hour, an H and the minute make one coded line, "<hour> H <minute>", spoken once: one color at its end
+        // The hour, a colon and the minute make one coded line, "<hour>:<minute>", spoken once: one color at its end
         // where the line has one, never a color after each element.
         SdPush push = new();
         push.BottomLine[4] = "g15";
         push.BottomLine[5] = "g06";
 
-        Assert.Equal("UTC: 15 H 06, green", RowsOf(push)[3]);
+        Assert.Equal("UTC: 15:06, green", RowsOf(push)[3]);
+    }
+
+    [Fact]
+    public void The_utc_row_reads_hours_and_minutes_with_a_colon_never_an_h()
+    {
+        // The SD draws "18 H 16", which a screen reader reads as "18 H 16"; the app speaks every other time as
+        // hours:minutes (Output Shift+Z: "18:16Z"), so the row does too. Measured live: "UTC: 18:16".
+        SdPush push = new();
+        push.BottomLine[4] = "18";
+        push.BottomLine[5] = "16";
+
+        Assert.Equal("UTC: 18:16", RowsOf(push)[3]);
     }
 
     // ---- What takes the window to one status row ------------------------------------------------

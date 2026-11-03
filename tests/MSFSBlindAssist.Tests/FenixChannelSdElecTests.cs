@@ -20,7 +20,7 @@ public class FenixChannelSdElecTests
 {
     // The bottom line of SdPush's default push, as the window reads it.
     private static readonly string[] BottomRows =
-        ["TAT °C: +15, green", "SAT °C: +15, green", "UTC: 15 H 06", "GW KG: --, cyan"];
+        ["TAT °C: +15, green", "SAT °C: +15, green", "UTC: 15:06", "GW KG: --, cyan"];
 
     // The page's own rows (after its name, before the bottom line) of ElecPush's default push: no external power, no
     // shed, no flag set.

@@ -28,7 +28,7 @@ public class FenixChannelSdFuelTests
 {
     // The bottom line of SdPush's default push, as the window reads it.
     private static readonly string[] BottomRows =
-        ["TAT °C: +15, green", "SAT °C: +15, green", "UTC: 15 H 06", "GW KG: --, cyan"];
+        ["TAT °C: +15, green", "SAT °C: +15, green", "UTC: 15:06", "GW KG: --, cyan"];
 
     // An A321 with two extra tanks, the airframe the A321 layout is tested with.
     private static readonly FenixVariant A321 = FenixVariant.Unknown with
