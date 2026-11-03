@@ -7,19 +7,21 @@
 // registry's Build) and Shift+1 through HandleHotkeyAction. What a pilot hears from the keys is checked in the sim
 // ([CORE-5]).
 //
-// The contract: Alt+P (ReadDisplayPFD) is answered only by opening the window, which needs a trusted PFD: while the PFD
-// is not trusted, or there is no monitor, it is false and nothing is said, so the key goes on to its AI read. Each of
+// The contract: Alt+P (ReadDisplayPFD) is answered only by opening the window, which needs a PFD that is trusted or dark
+// (OpenChannelWindow; the dark one opens on its status row, FenixChannelWindowTests): while the PFD is not trusted for
+// any other reason, or there is no monitor, it is false and nothing is said, so the key goes on to its AI read. Each of
 // the six speed keys is always answered (true): it speaks its tape row with an interrupting announcement, or "<name> not
 // available" in the same way when the PFD is not trusted, cannot be read, draws no row for that speed, or there is no
 // monitor. One snapshot of the PFD decides both whether it is trusted and what it holds. A PFD that cannot be read is
 // reported under the window's name, as the window reports it. Any other action is false and silent. The window is a
 // class of its own for the PFD, titled "Fenix PFD", and shows the PFD's rows. Both the keys and the window read the
-// PFD's own verdict, not another display's: with the captain's PFD dark and the other units lit, Alt+P is false and
-// silent, a speed key says it is not available, and the window shows the one status row. A flight director field (110)
-// in a real message reaches the flight director row through the decoder, the gate and the window. Every channel
-// window keeps the pilot on their row through a refresh: the row is followed by its words when its figure changes or a
-// row appears above it (FenixChannelDisplayForm.RowToFollow), and after a status row the cursor goes back to it; these
-// tests run it on the PFD's real rows.
+// PFD's own verdict, not another display's: with the captain's PFD dark and the other units lit, a speed key says it is
+// not available and the window shows the one status row; with only the PFD's altitude disagreeing and the other
+// displays trusted, Alt+P is false and silent. A flight director field (110) in a real message reaches the flight
+// director row through the decoder, the gate and the window. Every channel window keeps the pilot on their row through
+// a refresh: the row is followed by its words when its figure changes or a row appears above it
+// (FenixChannelDisplayForm.RowToFollow), and after a status row the cursor goes back to it; these tests run it on the
+// PFD's real rows.
 
 using System.Windows.Forms;
 using MSFSBlindAssist.Aircraft;
@@ -40,10 +42,11 @@ public class FenixChannelPfdWindowTests
         => new(null!, speech, null!, null!, monitor);
 
     [Fact]
-    public void Alt_p_says_nothing_and_opens_nothing_while_the_pfd_is_not_trusted()
+    public void Alt_p_says_nothing_and_opens_nothing_while_the_pfd_is_not_trusted_and_not_dark()
     {
-        // No monitor (before Start, after Stop), and a monitor that was never started, which has nothing connected: false,
-        // and not a word, so the key goes on to the AI read as it does with no feature.
+        // No monitor (before Start, after Stop), and a monitor that was never started, which has nothing connected (a dark
+        // PFD is the one reason that opens, FenixChannelWindowTests): false, and not a word, so the key goes on to the AI
+        // read as it does with no feature.
         using FenixChannelMonitor neverStarted = MonitorTestKit.NewIdleMonitor(new MonitorTestKit.Lines());
         Assert.False(neverStarted.VerdictFor(FenixChannelDisplay.Pfd).Trusted);
         var definition = new FenixA320Definition();
@@ -343,7 +346,8 @@ public class FenixChannelPfdWindowTests
     {
         // The captain's PFD unit is dark and the other units are lit, with the PFD's fields in the push all the same. A
         // key or a window that read another display's verdict (the E/WD's, the ND's) would find that display trusted and
-        // speak or show the speeds. They read the PFD's: "display off".
+        // speak or show the speeds. They read the PFD's: "display off". (Alt+P on a dark PFD opens the window, which
+        // needs a hotkey manager and a screen: FenixChannelWindowTests. Its own verdict is checked in the next test.)
         var lines = new MonitorTestKit.Lines();
         using FenixChannelMonitor monitor = ConnectedMonitor(lines);
         monitor.OnDataMessage(PushWithTheCaptainsPfdDark(Cruise()));
@@ -358,10 +362,6 @@ public class FenixChannelPfdWindowTests
         var speech = new SpeechCapture();
         FenixA320Definition.ChannelKeyContext context = Context(speech, monitor);
 
-        // Alt+P: false and silent, so the key goes on to its AI read.
-        Assert.False(definition.AnswerChannelPfdKey(HotkeyAction.ReadDisplayPFD, context));
-        Assert.Empty(speech.All);
-
         // A speed key: answered, with the words of a display it cannot read.
         Assert.True(definition.AnswerChannelPfdKey(HotkeyAction.ReadSpeedGD, context));
         Assert.Equal(new[] { "Green dot not available" }, speech.Interrupts);
@@ -373,6 +373,32 @@ public class FenixChannelPfdWindowTests
         Assert.Equal(
             new[] { "PFD: not available, display off" },
             ListOf(form).Items.Cast<string>().ToArray());
+    }
+
+    [Fact]
+    public void Alt_p_reads_the_pfds_own_verdict_and_not_another_displays()
+    {
+        // The PFD's altitude disagrees with SimConnect's while the E/WD, the SD and the ND are lit and agree. A key that
+        // read another display's verdict would find it trusted and open a window. Alt+P reads the PFD's: not trusted, and
+        // not dark either, so it is false and silent and goes on to its AI read (the hotkey manager is null, so a call
+        // to it would throw).
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = TrustedPfdMonitor(lines, Cruise());
+        monitor.OnComparison(FenixComparison.AltitudeFt, 5000);
+        monitor.OnDataMessage(PushWith(Cruise()));
+
+        FenixDisplayVerdict pfd = monitor.VerdictFor(FenixChannelDisplay.Pfd);
+        Assert.False(pfd.Trusted, "the PFD should be untrusted. The log: " + lines);
+        Assert.StartsWith("altitude disagrees", pfd.Reason);
+        foreach (FenixChannelDisplay lit in new[] { FenixChannelDisplay.Ewd, FenixChannelDisplay.Sd, FenixChannelDisplay.Nd })
+        {
+            Assert.True(monitor.VerdictFor(lit).Trusted, $"the {lit} should stay lit. The log: " + lines);
+        }
+
+        var speech = new SpeechCapture();
+
+        Assert.False(new FenixA320Definition().AnswerChannelPfdKey(HotkeyAction.ReadDisplayPFD, Context(speech, monitor)));
+        Assert.Empty(speech.All);
     }
 
     // ---- The pilot's row stays put --------------------------------------------------------------

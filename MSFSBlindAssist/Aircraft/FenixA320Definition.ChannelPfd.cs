@@ -13,8 +13,9 @@ public partial class FenixA320Definition
 
     /// <summary>
     /// The PFD's answer to <paramref name="action"/>, true when it answered the key.
-    /// Alt+P (ReadDisplayPFD) opens the PFD window through <see cref="OpenChannelWindow{TForm}"/>, so it answers only
-    /// while the PFD is trusted at the press, and otherwise says nothing and leaves the key to its AI read (false).
+    /// Alt+P (ReadDisplayPFD) opens the PFD window through <see cref="OpenChannelWindow{TForm}"/>, so it answers while
+    /// the PFD is trusted at the press, or dark (the window then shows its one status row), and for any other reason,
+    /// or with no monitor, says nothing and leaves the key to its AI read (false).
     /// A speed key is always answered: it speaks its tape row at once, or "&lt;name&gt; not available" in the same way
     /// when there is no monitor, the PFD is not trusted or cannot be read, or the tape draws no row for that speed.
     /// The key takes one snapshot of the PFD, which decides both whether the display is trusted and what it holds.

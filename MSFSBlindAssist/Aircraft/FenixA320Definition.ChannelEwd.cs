@@ -7,8 +7,8 @@ namespace MSFSBlindAssist.Aircraft;
 public partial class FenixA320Definition
 {
     // The E/WD's key seam (declared in FenixA320Definition.Hooks.cs): HandleHotkeyAction asks it first for Alt+E. The
-    // window opens only while the E/WD is trusted at the press, and the key is then answered. Otherwise handled stays
-    // false and the key goes on to its AI read, with no words of its own.
+    // window opens while the E/WD is trusted at the press, or dark (on its one status row), and the key is then
+    // answered. Otherwise handled stays false and the key goes on to its AI read, with no words of its own.
     partial void ChannelEwdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled)
         => handled = OpenChannelWindow(
             ctx, Services.FenixChannelDisplay.Ewd, Services.FenixChannelEwdRows.DisplayName, CreateChannelEwdForm);

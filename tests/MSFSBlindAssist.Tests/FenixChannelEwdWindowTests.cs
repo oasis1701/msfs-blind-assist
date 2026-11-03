@@ -12,8 +12,8 @@
 // definition's factory answers with the loaded Fenix's. A problem the composer reports goes to the channel's log under
 // the display's name, "E/WD", as one it throws does, once for each distinct line. The window is in the Fenix windows list
 // once, as "E/WD", and Alt+E reaches it only through OpenChannelWindow, which opens it while the E/WD is trusted at the
-// press and otherwise leaves the key to its AI read; the key's seam is a partial method a test cannot reach, so its
-// source is read.
+// press, or dark (on its one status row), and otherwise leaves the key to its AI read; the key's seam is a partial
+// method a test cannot reach, so its source is read.
 
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
@@ -280,9 +280,9 @@ public class FenixChannelEwdWindowTests
     }
 
     // Alt+E has two ways to answer and only one may open the window. The key opens it when the E/WD is trusted at the
-    // press and otherwise leaves the key to its AI read, with no extra words: that is OpenChannelWindow's work (judged on
-    // the monitor's snapshot, both hotkey modes left first), so the seam may do nothing but hand it the window. The
-    // seam is a partial method nothing in a test can reach, so its source is read.
+    // press, or dark, and otherwise leaves the key to its AI read, with no extra words: that is OpenChannelWindow's work
+    // (judged on the monitor's snapshot, both hotkey modes left first), so the seam may do nothing but hand it the
+    // window. The seam is a partial method nothing in a test can reach, so its source is read.
     [Fact]
     public void The_ewd_key_opens_its_window_only_through_OpenChannelWindow()
     {

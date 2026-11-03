@@ -15,7 +15,14 @@ internal enum FenixChannelDisplay { Pfd, Ewd, Sd, Nd, Isis, Dcdu }
 /// The gate's answer for one display: whether the values the channel gave for it may be read to the pilot.
 /// <paramref name="Reason"/> is "trusted" when they may, and what stands in the way when they may not.
 /// </summary>
-internal readonly record struct FenixDisplayVerdict(bool Trusted, string Reason);
+internal readonly record struct FenixDisplayVerdict(bool Trusted, string Reason)
+{
+    /// <summary>
+    /// Whether the channel is healthy and the display itself is dark: "display off" is judged only after every
+    /// channel-wide condition held, so no channel fault ever reads as a dark display.
+    /// </summary>
+    public bool IsDisplayOff => !Trusted && Reason == FenixChannelTrust.DisplayOffReason;
+}
 
 /// <summary>
 /// The values the channel gives that SimConnect also knows, which the gate compares: the two flight director
@@ -28,7 +35,8 @@ internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDe
 /// The trust gate of the Fenix display channel: a pure state machine, with the time passed in and no I/O, that
 /// decides display by display whether the values decoded from the channel may be read to the pilot. Its whole
 /// purpose is that a Fenix update can never make the app speak a wrong value: when in doubt a display is not
-/// trusted, and its key falls back to the AI read (FNX-22).
+/// trusted, and its key falls back to the AI read (FNX-22), or opens its window on one status row while the display is
+/// dark (<see cref="FenixDisplayVerdict.IsDisplayOff"/>).
 /// </summary>
 /// <remarks>
 /// <para>A display is trusted only when every channel-wide condition and every condition of its own holds, and
@@ -130,7 +138,7 @@ internal sealed class FenixChannelTrust
 
     private const string TrustedReason = "trusted";
 
-    private const string DisplayOffReason = "display off";
+    internal const string DisplayOffReason = "display off";
 
     private const string NoFmaReason = "no FMA";
 

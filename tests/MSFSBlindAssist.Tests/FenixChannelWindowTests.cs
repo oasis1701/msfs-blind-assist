@@ -17,8 +17,10 @@
 // every second, and ends with the window; a refresh after the window is disposed does nothing. A derived window is
 // asked about every key before the base is (Escape closes, unless a combo's list is open, and then that list has the
 // key; F5 refreshes once per press, however long it is held), and controls it adds go after the list, in the order
-// added, in the tab order too. A display key opens its window only while the display is trusted at the press, and
-// leaves both hotkey modes first; a window list entry opens it whatever the verdict.
+// added, in the tab order too. A display key opens its window while the display is trusted at the press, or dark (the
+// channel is healthy and the display itself is off: the window then shows its one status row), and leaves both hotkey
+// modes first; for any other reason the display is not trusted the key does nothing, and goes on to its AI read. A
+// window list entry opens it whatever the verdict.
 //
 // Rows are built from the verdict's own words and the composer's, never formatted from a number here, so the status
 // rows read the same where the PC's culture writes a comma.
@@ -29,6 +31,7 @@ using System.Windows.Forms;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Forms.Fenix;
+using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
@@ -668,61 +671,224 @@ public class FenixChannelWindowTests
     private static FenixA320Definition.ChannelKeyContext Context(SpeechCapture speech, FenixChannelMonitor? monitor)
         => new(null!, speech, null!, null!, monitor);
 
-    [Fact]
-    public void A_key_opens_no_window_for_an_untrusted_display()
+    private static FenixA320Definition.ChannelKeyContext Context(
+        SpeechCapture speech, FenixChannelMonitor monitor, HotkeyManager hotkeys)
+        => new(null!, speech, null!, hotkeys, monitor);
+
+    // A monitor whose channel is healthy and whose displays are all dark: connected, the build checked, SimConnect's
+    // values agreeing, and one push with no display unit powered.
+    private static FenixChannelMonitor DarkMonitor(MonitorTestKit.Lines lines)
     {
-        // The key goes on to the AI read with no extra words, as the PMDG 737's display keys do: false, nothing spoken,
-        // no window built, and nothing touched. The hotkey manager is null here, so a call to it would throw.
-        using FenixChannelMonitor neverStarted = MonitorTestKit.NewIdleMonitor(new MonitorTestKit.Lines());
+        FenixChannelMonitor monitor = ConnectedMonitor(lines);
+        monitor.OnDataMessage(FenixChannelProtoWriter.GoodPush(displaysOn: false));
+        return monitor;
+    }
+
+    // Hands the definition the monitor a key's window is built on. In the app the key context's monitor and the
+    // definition's own are one object, because HandleHotkeyAction makes the context from that field.
+    private static void GiveMonitor(FenixA320Definition definition, FenixChannelMonitor monitor)
+        => typeof(FenixA320Definition).GetField("_displayChannelMonitor", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(definition, monitor);
+
+    [Fact]
+    public void A_key_opens_no_window_for_a_display_that_is_not_trusted_and_not_dark()
+    {
+        // Any reason but a dark display leaves the key to the AI read with no extra words, as the PMDG 737's display
+        // keys do, because the screen is live: false, nothing spoken, no window built, and nothing touched. The hotkey
+        // manager is null here, so a call to it would throw.
         var definition = new FenixA320Definition();
         var speech = new SpeechCapture();
         int built = 0;
 
+        void AssertRefused(FenixChannelMonitor monitor, FenixChannelDisplay display, string reason)
+        {
+            FenixDisplayVerdict verdict = monitor.VerdictFor(display);
+            Assert.False(verdict.Trusted);
+            Assert.StartsWith(reason, verdict.Reason);
+            Assert.False(
+                definition.OpenChannelWindow<FenixChannelDisplayForm>(Context(speech, monitor), display, "PFD", _ =>
+                {
+                    built++;
+                    return null!;
+                }),
+                $"the {display} key opened a window on '{verdict.Reason}'");
+        }
+
+        // No monitor: before Start, after Stop.
         foreach (FenixChannelDisplay display in Enum.GetValues<FenixChannelDisplay>())
         {
-            // No monitor: before Start, after Stop.
             Assert.False(definition.OpenChannelWindow<FenixChannelDisplayForm>(
                 Context(speech, null), display, "PFD", _ =>
                 {
                     built++;
                     return null!;
                 }));
-
-            // A monitor that was never started has nothing connected: no display is trusted.
-            Assert.False(neverStarted.VerdictFor(display).Trusted);
-            Assert.False(definition.OpenChannelWindow<FenixChannelDisplayForm>(
-                Context(speech, neverStarted), display, "PFD", _ =>
-                {
-                    built++;
-                    return null!;
-                }));
         }
+
+        // Each monitor has a log of its own: Connect waits for the line that says its build was checked.
+
+        // A monitor that was never started has nothing connected.
+        using FenixChannelMonitor neverStarted = MonitorTestKit.NewIdleMonitor(new MonitorTestKit.Lines());
+        // The displays are dark and the channel stops answering: the channel-wide reason wins, so the screen is not
+        // known to be dark and the key keeps its AI read.
+        using FenixChannelMonitor stopped = DarkMonitor(new MonitorTestKit.Lines());
+        stopped.OnDataState(FenixChannelState.NotAnswering, "gone");
+        // The displays are dark and a push has a field in the wrong shape: the channel is latched until reconnect.
+        using FenixChannelMonitor latched = DarkMonitor(new MonitorTestKit.Lines());
+        latched.OnDataMessage(MonitorTestKit.WrongShapedPush());
+
+        foreach (FenixChannelDisplay display in Enum.GetValues<FenixChannelDisplay>())
+        {
+            AssertRefused(neverStarted, display, "channel not answering");
+            AssertRefused(stopped, display, "channel not answering: gone");
+            AssertRefused(latched, display, "field 110 has the wrong shape");
+        }
+
+        // A reason of the display's own that is not darkness: the PFD's altitude disagrees with SimConnect's while the
+        // others are lit and agree.
+        var disagreeingLines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor disagreeing = TrustedPfdMonitor(disagreeingLines);
+        disagreeing.OnComparison(FenixComparison.AltitudeFt, 5000);
+        disagreeing.OnDataMessage(MonitorTestKit.GoodPush());
+        AssertRefused(disagreeing, FenixChannelDisplay.Pfd, "altitude disagrees");
+        Assert.True(
+            disagreeing.VerdictFor(FenixChannelDisplay.Ewd).Trusted,
+            "the E/WD should stay lit. The log: " + disagreeingLines);
 
         Assert.Equal(0, built);
         Assert.Empty(speech.All);
+    }
+
+    // A display window that is built and takes the open a key gives it, and is never put on screen: ShowForm shows a
+    // window through Visible, which this declines, and everything else it does (the first refresh, the timer) runs.
+    private sealed class UnshownDisplayForm : FenixChannelDisplayForm
+    {
+        public UnshownDisplayForm(string displayName, FenixChannelDisplay display, FenixChannelMonitor monitor)
+            : base(displayName, display, monitor, _ => FenixChannelRows.Of(["a row of a trusted display"]))
+        {
+        }
+
+        protected override void SetVisibleCore(bool value)
+        {
+        }
+    }
+
+    private static readonly (FenixChannelDisplay Display, string Name)[] NamedDisplays =
+    [
+        (FenixChannelDisplay.Pfd, "PFD"), (FenixChannelDisplay.Nd, "ND"), (FenixChannelDisplay.Ewd, "E/WD"),
+        (FenixChannelDisplay.Sd, "SD"), (FenixChannelDisplay.Isis, "ISIS"), (FenixChannelDisplay.Dcdu, "DCDU")
+    ];
+
+    // The key's press on a definition: both hotkey modes are on, and the window the factory builds is never shown.
+    private static bool PressKey(
+        FenixA320Definition definition, SpeechCapture speech, HotkeyManager hotkeys, FenixChannelMonitor monitor,
+        FenixChannelDisplay display, string name, List<UnshownDisplayForm> built)
+    {
+        foreach (string mode in new[] { "outputHotkeyModeActive", "inputHotkeyModeActive" })
+        {
+            typeof(HotkeyManager).GetField(mode, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(hotkeys, true);
+        }
+
+        Assert.True(hotkeys.IsOutputHotkeyModeActive && hotkeys.IsInputHotkeyModeActive);
+
+        return definition.OpenChannelWindow(Context(speech, monitor, hotkeys), display, name, windowMonitor =>
+        {
+            var window = new UnshownDisplayForm(name, display, windowMonitor);
+            built.Add(window);
+            return window;
+        });
+    }
+
+    [Fact]
+    public void A_key_opens_the_window_on_its_status_row_for_a_dark_display()
+    {
+        // The owner's ruling (spec 2.4): while the channel is healthy and the display itself is dark, the key opens its
+        // window on the one status row, as its Fenix windows list entry does, instead of giving the AI read. Every
+        // display's key is the same helper. The key leaves both hotkey modes, builds the window once on the definition's
+        // monitor, says nothing itself ([CORE-7]: the list is what the reader reads), and a second press brings the
+        // open window forward.
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = DarkMonitor(lines);
+
+        foreach ((FenixChannelDisplay display, string name) in NamedDisplays)
+        {
+            Assert.Equal(new FenixDisplayVerdict(false, "display off"), monitor.VerdictFor(display));
+            var definition = new FenixA320Definition();
+            GiveMonitor(definition, monitor);
+            var speech = new SpeechCapture();
+            using var hotkeys = new HotkeyManager();
+            var built = new List<UnshownDisplayForm>();
+
+            try
+            {
+                Assert.True(PressKey(definition, speech, hotkeys, monitor, display, name, built), $"the {name} key");
+                Assert.False(hotkeys.IsOutputHotkeyModeActive, $"the {name} key left the output mode on");
+                Assert.False(hotkeys.IsInputHotkeyModeActive, $"the {name} key left the input mode on");
+                UnshownDisplayForm window = Assert.Single(built);
+                Assert.Equal(new[] { $"{name}: not available, display off" }, ItemsOf(ListOf(window)));
+
+                Assert.True(PressKey(definition, speech, hotkeys, monitor, display, name, built), $"the {name} key again");
+                Assert.False(hotkeys.IsOutputHotkeyModeActive, $"the {name} key left the output mode on the second time");
+                Assert.False(hotkeys.IsInputHotkeyModeActive, $"the {name} key left the input mode on the second time");
+                Assert.Same(window, Assert.Single(built));
+                Assert.Empty(speech.All);
+            }
+            finally
+            {
+                definition.DisposeTrackedWindows();
+            }
+        }
+    }
+
+    [Fact]
+    public void A_key_opens_the_window_with_its_rows_for_a_trusted_display()
+    {
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = TrustedPfdMonitor(lines);
+        var definition = new FenixA320Definition();
+        GiveMonitor(definition, monitor);
+        var speech = new SpeechCapture();
+        using var hotkeys = new HotkeyManager();
+        var built = new List<UnshownDisplayForm>();
+
+        try
+        {
+            Assert.True(PressKey(definition, speech, hotkeys, monitor, FenixChannelDisplay.Pfd, "PFD", built));
+
+            Assert.False(hotkeys.IsOutputHotkeyModeActive);
+            Assert.False(hotkeys.IsInputHotkeyModeActive);
+            UnshownDisplayForm window = Assert.Single(built);
+            Assert.Equal(new[] { "a row of a trusted display" }, ItemsOf(ListOf(window)));
+            Assert.Empty(speech.All);
+        }
+        finally
+        {
+            definition.DisposeTrackedWindows();
+        }
     }
 
     [Fact]
     public void A_key_that_opens_a_window_leaves_both_hotkey_modes_first()
     {
         // A window opened with a hotkey mode still on loses its keys to it, as the 737's display windows and the
-        // Fenix windows list know. The order is the contract: the verdict, then both exits, then the window. Opening a
-        // window needs a sim and a screen, so the order is pinned in the source.
+        // Fenix windows list know. The order is the contract: the verdict (a display that is neither trusted nor dark is
+        // refused), then both exits, then the window. The tests above run the two ways through; this pins that the exits
+        // come before the window shows, which a test that never shows one cannot see, so the order is pinned in the
+        // source.
         string source = StripComments(File.ReadAllText(
             SourcePath("Aircraft", "FenixA320Definition.DisplayChannel.cs")));
         int declaration = source.IndexOf("internal bool OpenChannelWindow<TForm>(", StringComparison.Ordinal);
         Assert.True(declaration >= 0, "the definition has no OpenChannelWindow");
         string body = BlockAfter(source, declaration);
 
-        int verdict = body.IndexOf("Verdict.Trusted", StringComparison.Ordinal);
-        int refusal = body.IndexOf("return false", StringComparison.Ordinal);
+        Match refusal = Regex.Match(
+            body, @"if\s*\(\s*!\s*(?<verdict>\w+)\.Trusted\s*&&\s*!\s*\k<verdict>\.IsDisplayOff\s*\)\s*return\s+false\s*;");
         int output = body.IndexOf("HotkeyManager.ExitOutputHotkeyMode()", StringComparison.Ordinal);
         int input = body.IndexOf("HotkeyManager.ExitInputHotkeyMode()", StringComparison.Ordinal);
         int show = body.IndexOf("ShowChannelWindow(", StringComparison.Ordinal);
 
-        Assert.True(verdict >= 0, "OpenChannelWindow never asks whether the display is trusted");
-        Assert.True(verdict < refusal, "OpenChannelWindow does not refuse an untrusted display");
-        Assert.True(refusal < output, "OpenChannelWindow leaves the output hotkey mode before it has refused");
+        Assert.True(refusal.Success, "OpenChannelWindow does not refuse a display that is neither trusted nor dark");
+        Assert.True(refusal.Index < output, "OpenChannelWindow leaves the output hotkey mode before it has refused");
         Assert.True(output >= 0 && input >= 0, "OpenChannelWindow does not leave both hotkey modes");
         Assert.True(output < show && input < show, "OpenChannelWindow opens the window before it leaves the hotkey modes");
         Assert.Contains("return true", body[show..]);

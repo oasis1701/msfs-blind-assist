@@ -13,7 +13,10 @@
 // lasts three seconds without a break latches until the channel reconnects); and no line the display covers
 // holds a text code the app does not know. The gate judges six displays: the PFD, the E/WD, the SD, the ND, the
 // ISIS and the DCDU. The ND is cross-checked by the heading check the PFD has (one check, shared); the SD, the
-// ISIS and the DCDU have no cross-check; and the ND, the ISIS and the DCDU have no text check of the gate's.
+// ISIS and the DCDU have no cross-check; and the ND, the ISIS and the DCDU have no text check of the gate's. A verdict
+// says that the display itself is dark (IsDisplayOff) only for "display off", which comes after every channel-wide
+// condition: a stopped, silent or latched channel, or a build not checked, never reads as a dark display, whatever
+// the last frame showed.
 //
 // SimConnect's batch comes about once a second, so a value of its is compared with the channel as the channel
 // was when the value arrived, not as it is now.
@@ -485,6 +488,161 @@ public class FenixChannelTrustTests
             Array.Empty<FenixFmaSlot>(), Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, 0, ""), 100);
 
         AssertAll(gate, 100, Untrusted("display off"));
+    }
+
+    // ---- Whether a verdict says the display itself is dark -------------------------------------------
+
+    [Fact]
+    public void The_display_off_verdict_says_the_display_is_dark()
+    {
+        // The channel is healthy and no powered unit shows the display: the one verdict whose key opens the window on its
+        // status row (spec 2.4) and not its AI read. Each display is dark on its own.
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate);
+        Feed(gate, 0, 1_000, Dark());
+
+        foreach (FenixChannelDisplay display in AllDisplays)
+        {
+            FenixDisplayVerdict verdict = gate.VerdictFor(display, 1_000);
+
+            Assert.Equal(Untrusted("display off"), verdict);
+            Assert.True(verdict.IsDisplayOff, $"the {display} is dark");
+        }
+
+        // One display dark in a frame the others are lit in.
+        gate.OnFrame(Frame(ewdLive: false), 1_100);
+
+        Assert.True(Ewd(gate, 1_100).IsDisplayOff);
+        Assert.False(Pfd(gate, 1_100).IsDisplayOff);
+    }
+
+    [Fact]
+    public void A_trusted_verdict_is_not_display_off()
+    {
+        FenixChannelTrust gate = TrustedGate();
+
+        foreach (FenixChannelDisplay display in AllDisplays)
+        {
+            Assert.False(gate.VerdictFor(display, 0).IsDisplayOff, $"the {display} is lit");
+        }
+
+        // The words alone do not make it so: a verdict that trusts is never dark.
+        Assert.False(new FenixDisplayVerdict(true, "display off").IsDisplayOff);
+        Assert.True(new FenixDisplayVerdict(false, "display off").IsDisplayOff);
+        Assert.False(new FenixDisplayVerdict(false, "Display off").IsDisplayOff);
+    }
+
+    [Fact]
+    public void A_lit_display_whose_check_fails_is_not_display_off()
+    {
+        // Every one of these keeps its key on the AI read: the screen is live, and the display's own check says why it
+        // cannot be read.
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate, altitude: 5000);
+
+        // A disagreement in force.
+        gate.OnFrame(Frame(), 0);
+
+        FenixDisplayVerdict disagreeing = Pfd(gate, 0);
+        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), disagreeing);
+        Assert.False(disagreeing.IsDisplayOff);
+
+        // The same disagreement latched until reconnect.
+        Feed(gate, 100, 3_100, Frame());
+
+        FenixDisplayVerdict latched = Pfd(gate, 3_100);
+        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), latched);
+        Assert.False(latched.IsDisplayOff);
+
+        // A check that has never passed, and a code the display does not know.
+        FenixChannelTrust fresh = ConnectedGate();
+        fresh.OnFrame(Frame(upperLeft: new[] { "xFAULT" }), 0);
+
+        Assert.Equal(Untrusted("FD captain not checked yet"), Pfd(fresh, 0));
+        Assert.False(Pfd(fresh, 0).IsDisplayOff);
+        Compare(fresh, atMs: 100);
+        fresh.OnFrame(Frame(upperLeft: new[] { "xFAULT" }), 100);
+
+        Assert.Equal(Untrusted("unknown code 'x' in the upper ECAM"), Ewd(fresh, 100));
+        Assert.False(Ewd(fresh, 100).IsDisplayOff);
+    }
+
+    [Fact]
+    public void A_build_that_is_not_checked_is_not_display_off_though_the_display_is_dark()
+    {
+        FenixChannelTrust gate = ConnectedGate();
+        gate.OnBuild("3.0.0.7700");
+        Compare(gate);
+        gate.OnFrame(Dark(), 0);
+
+        foreach (FenixChannelDisplay display in AllDisplays)
+        {
+            FenixDisplayVerdict verdict = gate.VerdictFor(display, 0);
+
+            Assert.Equal(Untrusted("build 3.0.0.7700 not checked"), verdict);
+            Assert.False(verdict.IsDisplayOff, $"the {display} reads the channel's reason");
+        }
+    }
+
+    [Fact]
+    public void A_stopped_or_silent_channel_is_not_display_off_though_the_display_also_reads_dark()
+    {
+        // The channel-wide reason wins over the display's own, so a screen that may still be live is never taken for a
+        // dark one: in each of these the channel fails in its own way, and where there is a frame at all, every display
+        // in it is dark.
+        void AssertNone(FenixChannelTrust gate, long nowMs, string reason)
+        {
+            foreach (FenixChannelDisplay display in AllDisplays)
+            {
+                FenixDisplayVerdict verdict = gate.VerdictFor(display, nowMs);
+
+                Assert.Equal(Untrusted(reason), verdict);
+                Assert.False(verdict.IsDisplayOff, $"the {display} reads '{reason}'");
+            }
+        }
+
+        // The stream stops answering after the displays went dark.
+        FenixChannelTrust stopped = ConnectedGate();
+        Compare(stopped);
+        stopped.OnFrame(Dark(), 0);
+        Assert.True(Pfd(stopped, 0).IsDisplayOff);
+        stopped.OnDisconnected("connection reset");
+        AssertNone(stopped, 0, "channel not answering: connection reset");
+
+        // Never connected.
+        AssertNone(new FenixChannelTrust(new HashSet<string> { CheckedBuild }), 0, "channel not answering");
+
+        // Connected, no message yet.
+        var silent = new FenixChannelTrust(new HashSet<string> { CheckedBuild });
+        silent.OnConnected(0);
+        AssertNone(silent, 60_000, "no data yet");
+
+        // The stream stalls after a dark frame.
+        FenixChannelTrust stalled = ConnectedGate();
+        Compare(stalled);
+        stalled.OnFrame(Dark(), 0);
+        Assert.True(Pfd(stalled, 2_000).IsDisplayOff);
+        AssertNone(stalled, 2_001, "stream stalled");
+
+        // A dark frame, then a malformed message: the latch.
+        FenixChannelTrust latched = ConnectedGate();
+        Compare(latched);
+        latched.OnFrame(Dark(), 0);
+        latched.OnFrame(FenixChannelFrame.MalformedFrame, 100);
+        AssertNone(latched, 100, "malformed message");
+    }
+
+    [Fact]
+    public void A_display_the_gate_does_not_know_is_not_display_off()
+    {
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate);
+        gate.OnFrame(Dark(), 0);
+
+        FenixDisplayVerdict verdict = gate.VerdictFor((FenixChannelDisplay)99, 0);
+
+        Assert.Equal(Untrusted("not a display of the channel"), verdict);
+        Assert.False(verdict.IsDisplayOff);
     }
 
     // ---- The ND, the ISIS and the DCDU ------------------------------------------------------------

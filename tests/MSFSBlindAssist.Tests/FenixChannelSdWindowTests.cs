@@ -644,11 +644,12 @@ public class FenixChannelSdWindowTests
     public void The_sd_key_opens_the_window_by_the_trusted_path()
     {
         // ChannelSdKey is a private partial method, so it is pinned by reading its source, as the dispatch is
-        // (FenixChannelDispatchTests). Alt+S opens the window through OpenChannelWindow, which opens it only while the SD
-        // is trusted at the press and otherwise leaves the key to the AI read with no extra words (spec 2.4). It never
-        // calls ShowChannelWindow, which shows the window whatever the verdict: that is the windows list's way in. The
-        // key's answer is OpenChannelWindow's own result for the SD, never a "handled = true" after it, which would
-        // swallow Alt+S, and with it the AI read, while the SD is not trusted.
+        // (FenixChannelDispatchTests). Alt+S opens the window through OpenChannelWindow, which opens it while the SD is
+        // trusted at the press, or dark (on its one status row), and otherwise leaves the key to the AI read with no
+        // extra words (spec 2.4). It never calls ShowChannelWindow, which shows the window whatever the verdict: that is
+        // the windows list's way in. The key's answer is OpenChannelWindow's own result for the SD, never a
+        // "handled = true" after it, which would swallow Alt+S, and with it the AI read, while the SD is not trusted for
+        // any other reason.
         string code = Comment.Replace(
             File.ReadAllText(Path.Combine(
                 ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Aircraft", "FenixA320Definition.ChannelSd.cs")),

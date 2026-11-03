@@ -333,12 +333,12 @@ public partial class FenixA320Definition
     /// <summary>
     /// Opens a display's window on this instance's channel monitor, whatever the display's verdict: the window shows
     /// one status row, "&lt;display&gt;: not available, &lt;reason&gt;", while the display is not trusted, and its
-    /// rows once it is. A Fenix windows list entry calls this directly (<see cref="OpenChannelWindow{TForm}"/> is the
-    /// key's way in). It opens the window through <see cref="ShowFenixWindow{T}"/>, so there is one window for each
-    /// type of <typeparamref name="TForm"/>, a second call brings the open one forward, and the aircraft switch
-    /// closes it: each display's window is a class of its own for that reason. With no monitor (before Start, after
-    /// Stop) there is nothing to show: the pilot is told "&lt;displayName&gt; display not available" at once and
-    /// nothing opens.
+    /// rows once it is. A Fenix windows list entry calls this directly, and a display key calls it through
+    /// <see cref="OpenChannelWindow{TForm}"/>, for a trusted or a dark display. It opens the window through
+    /// <see cref="ShowFenixWindow{T}"/>, so there is one window for each type of <typeparamref name="TForm"/>, a second
+    /// call brings the open one forward, and the aircraft switch closes it: each display's window is a class of its own
+    /// for that reason. With no monitor (before Start, after Stop) there is nothing to show: the pilot is told
+    /// "&lt;displayName&gt; display not available" at once and nothing opens.
     /// </summary>
     /// <param name="announcer">Where the refusal is spoken.</param>
     /// <param name="displayName">The display's short name: "PFD", "ND", "E/WD", "SD", "ISIS" or "DCDU".</param>
@@ -360,15 +360,19 @@ public partial class FenixA320Definition
     }
 
     /// <summary>
-    /// A display key's way to its window: opens it only while the display is trusted at the press, and says whether
-    /// it did. False, having done nothing at all, when there is no monitor or the display is not trusted, so the key
-    /// goes on to the AI read with no extra words (the PMDG 737's silent fallback, [WASM-29]) and the key context's
-    /// hotkey manager is not even touched. Otherwise both hotkey modes are left first, because a window opened with a
-    /// mode still on loses its keys to it (the PMDG 737's display windows and <see cref="ShowFenixWindows"/> leave
-    /// theirs too), and then the window opens through <see cref="ShowChannelWindow{TForm}"/>, or the open one comes
-    /// forward, and the result is true. The verdict is judged at the press on the key context's monitor and the window
-    /// is built on this instance's own: in the app they are one object, because HandleHotkeyAction makes the context
-    /// from that field.
+    /// A display key's way to its window: opens it while the display is trusted at the press, or dark, and says whether
+    /// it did. A dark display (<see cref="Services.FenixDisplayVerdict.IsDisplayOff"/>: the channel is healthy and the
+    /// display itself is off) opens on its one status row, "&lt;display&gt;: not available, display off", as its
+    /// Fenix windows list entry does, because the screen is dark and an AI read has nothing to read (the owner's
+    /// ruling, spec 2.4). False, having done nothing at all, when there is no monitor or the display is not trusted for
+    /// any other reason (the channel stopped, refused or silent, a build not checked, a check disagreeing or latched, a
+    /// text code the app does not know), so the key goes on to the AI read with no extra words (the PMDG 737's silent
+    /// fallback, [WASM-29]), because the screen is live, and the key context's hotkey manager is not even touched.
+    /// Otherwise, trusted or dark, both hotkey modes are left first, because a window opened with a mode still on loses
+    /// its keys to it (the PMDG 737's display windows and <see cref="ShowFenixWindows"/> leave theirs too), and then the
+    /// window opens through <see cref="ShowChannelWindow{TForm}"/>, or the open one comes forward, and the result is
+    /// true. The verdict is judged at the press on the key context's monitor and the window is built on this
+    /// instance's own: in the app they are one object, because HandleHotkeyAction makes the context from that field.
     /// </summary>
     internal bool OpenChannelWindow<TForm>(
         ChannelKeyContext ctx,
@@ -376,7 +380,10 @@ public partial class FenixA320Definition
         string displayName,
         Func<Services.FenixChannelMonitor, TForm> factory) where TForm : Forms.Fenix.FenixChannelDisplayForm
     {
-        if (ctx.Monitor is not { } monitor || !monitor.Snapshot(display).Verdict.Trusted) return false;
+        if (ctx.Monitor is not { } monitor) return false;
+
+        Services.FenixDisplayVerdict verdict = monitor.Snapshot(display).Verdict;
+        if (!verdict.Trusted && !verdict.IsDisplayOff) return false;
 
         ctx.HotkeyManager.ExitOutputHotkeyMode();
         ctx.HotkeyManager.ExitInputHotkeyMode();
