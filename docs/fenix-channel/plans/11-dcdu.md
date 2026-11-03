@@ -385,12 +385,12 @@ the evidence file.
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed
+- **Status:** landed 2026-11-03; every check done in the sim on Robin's real PDCs, by ear and with raw reads (Robin: "All exactly as described"); nothing waits
 - **Claimed by:** Robin Kipp (robin24), 2026-11-03
 - **Worked by:** Robin Kipp with Claude, with subagents (superpowers:subagent-driven-development)
 - **Started:** 2026-11-03, from 4dee8fe38 (the branch head, which holds plan 01's recorded base 1d29a73ee)
-- **Landed:**
-- **Tests at landing:**
+- **Landed:** 2026-11-03: the switch at a99af1720, the fixes from real messages through 21fe58c1c, the docs at c551f1d64, and this record.
+- **Tests at landing:** 18,633 passed, none failed, on the combined code after the rebase (`ClaudeRulesHookTests` left out, as the index says).
 - **Tasks:** all done.
 - **Waiting on the owner:** nothing.
 - **In-sim results:** `docs/fenix-channel/evidence/11-dcdu.md`. Tasks 8 and 9 passed on 2026-11-03 on Robin's real PDCs under SayIntentions, by ear plus raw field reads. What only exercises the app's logic was marked from the code, the tests and the logs, at Robin's word. The final polish (no dark row, a lit DCDU never says 0 percent) has its tests but was not flown.
