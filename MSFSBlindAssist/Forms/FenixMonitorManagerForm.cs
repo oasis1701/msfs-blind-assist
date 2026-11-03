@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.Forms;
 /// Per-variable background-announcement manager for the Fenix A320 (Ctrl+M). Lists every
 /// auto-announced variable from the aircraft definition; unticked keys are written to
 /// UserSettings.FenixDisabledMonitorVariables, which MainForm.OnSimVarUpdated consults before
-/// speaking. All behaviour lives in <see cref="MonitorManagerFormBase"/>; the only things this form
+/// speaking. All behavior lives in <see cref="MonitorManagerFormBase"/>; the only things this form
 /// adds are two sets of rows that no variable owns: one per app-wide cabin announcement
 /// (<see cref="FenixCabinAnnouncements.Rows"/>), which FenixCabinReadyMonitor reads the same list for, and one per
 /// display channel announcement (<see cref="FenixChannelAnnouncementRows.Rows"/>: the FMA changes, the E/WD warnings,

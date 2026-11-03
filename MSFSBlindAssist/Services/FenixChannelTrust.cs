@@ -77,9 +77,10 @@ internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDe
 /// and while the newest one is more than <see cref="StallGuardMs"/> older than a data message every comparison on
 /// that message waits, as above: the hold clock restarts, nothing passes, nothing starts or ends a disagreement, a
 /// check that passed stays passed and a latch stays latched. The channel's values are still kept, so the first
-/// comparison after the stall is aligned as any other. Before the first heartbeat ever there is no guard, so a gate
-/// with no host judges as it always did, and a reconnect keeps the heartbeat as it keeps SimConnect's values:
-/// neither belongs to one connection.</para>
+/// comparison after the stall is aligned as any other. A SimConnect message queued during a stall is stamped when it is
+/// drained, so a value is at most one 1 Hz period old under a fresh stamp, within every tolerance. Before the first
+/// heartbeat ever there is no guard, so a gate with no host judges as it always did, and a reconnect keeps the
+/// heartbeat as it keeps SimConnect's values: neither belongs to one connection.</para>
 /// <para>Not thread-safe: the monitor locks around every call.</para>
 /// </remarks>
 internal sealed class FenixChannelTrust
@@ -398,10 +399,9 @@ internal sealed class FenixChannelTrust
     /// gap"). The gate treats an old SimConnect value as unchanged, so a long gap could become a false disagreement: a
     /// UI stall in a turn (the stall guard waits out one longer than <see cref="StallGuardMs"/>), or SimConnect itself
     /// delivering late (nothing waits that out). This line is how a flight measures it. A value is delivered only when
-    /// it changes ([SIM-7]),
-    /// so a long gap is a stall only while a compared value is moving (the heading in a turn, the fuel with the
-    /// engines running); parked, or cold and dark, long gaps are normal. Side effect: each call starts a new period,
-    /// so the next call counts only what arrives after this one; the time of the last arrival carries over.
+    /// it changes ([SIM-7]), so a long gap is a stall only while a compared value is moving (the heading in a turn, the
+    /// fuel with the engines running); parked, or cold and dark, long gaps are normal. Side effect: each call starts a
+    /// new period, so the next call counts only what arrives after this one; the time of the last arrival carries over.
     /// </summary>
     public string DescribeSimDeliveries()
     {

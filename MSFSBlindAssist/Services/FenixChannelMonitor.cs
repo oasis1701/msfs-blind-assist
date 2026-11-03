@@ -108,10 +108,10 @@ internal readonly record struct FenixChannelSession(
 /// they start fresh at each connection: <see cref="Session"/> hands them out under the same lock. The build is the
 /// latest one the build query answered, and a reconnect does not clear it (the gate takes the next answer and meanwhile
 /// reads "build unknown"; an answer from a loop that has ended is dropped here by the same generation test that keeps
-/// it from the gate). It is checked when the verified set holds it. The refusal is the flag above. The first data is
-/// the clock reading of the first frame that becomes the latest one (data, every shape right), and the start is the
-/// reading when <see cref="Start"/> ran. None of them is ever cleared, so a gap in the stream, or a reconnect, changes
-/// nothing the notice reads.</para>
+/// it from the gate). It is checked when the verified set holds it. The refusal is the flag a refusal of either call
+/// sets (below). The first data is the clock reading of the first frame that becomes the latest one (data, every shape
+/// right), and the start is the reading when <see cref="Start"/> ran. None of them is ever cleared, so a gap in the
+/// stream, or a reconnect, changes nothing the notice reads.</para>
 /// <para>The log. A line is written for each change of a call's state, for each build, for each change of a
 /// display's verdict (its Trusted, or the headline of its reason: the text before the first colon, so the
 /// numbers of a disagreement moving every second are one line), for each stall of the UI thread that ends

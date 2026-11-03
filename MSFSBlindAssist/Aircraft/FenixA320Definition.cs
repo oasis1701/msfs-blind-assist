@@ -13535,8 +13535,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
         // The Fenix display channel's key dispatch, asked first for any key (FenixA320Definition.DisplayChannel.cs): a
         // channel key goes to the seam of the feature that owns it. With no seam implemented, or the seam leaving the
-        // key unhandled (its display not trusted) or throwing, the key carries on to the AI read or stays silent, as
-        // before.
+        // key unhandled (its display not trusted) or throwing, the key does what it did before: a display key gives its
+        // AI read, ShowDCDU reaches MainForm's sentence, and the others do nothing.
         bool channelHandled = false;
         TryChannelDisplayRead(action,
             new ChannelKeyContext(simConnect, announcer, parentForm, hotkeyManager, _displayChannelMonitor),

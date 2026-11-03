@@ -14,10 +14,10 @@ namespace MSFSBlindAssist.Services;
 /// frame with data, or no build answered. A stream whose build is never answered is no better off than a silent one:
 /// every display reads "build unknown" and every announcement stays off, so the pilot is told. A healthy load is
 /// nowhere near that long: the build is answered within milliseconds of the first message (2 to 6 ms, measured on
-/// 2026-11-02 in three sessions), and the build loop asks again every 30 s. The notice is never due for a checked
-/// build whose channel has delivered, and never for a gap after the first data: a stall of a few seconds, a reconnect
-/// or a display losing its trust are not news, the displays fall back on their own meanwhile, and a pilot is not told
-/// about a session that was working.</para>
+/// 2026-11-02 in three sessions), and the build loop asks again every 30 s. Apart from a refusal, the notice is never
+/// due for a checked build whose channel has delivered, and never for a gap after the first data: a stall of a few
+/// seconds, a reconnect or a display losing its trust are not news, the displays fall back on their own meanwhile, and
+/// a pilot is not told about a session that was working.</para>
 /// <para>What it says. "Fenix display channel not available for Fenix build 3.0.0.7613: displays use AI reading; FMA
 /// and E/WD announcements are off." The build is spoken as the Fenix writes it; with no build known it is "for this
 /// Fenix build". The sentence is made of strings alone, so the PC's culture cannot change a word of it.</para>

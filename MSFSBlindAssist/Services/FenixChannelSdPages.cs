@@ -39,9 +39,9 @@ internal readonly record struct FenixChannelSdPageContext(
 /// <remarks>
 /// <para>One seam for each page. A page's composer is a <c>partial void</c> declared below with no implementation here,
 /// so C# drops the call to it, <see cref="Compose"/> gives no rows, and the window shows the page's name and the bottom
-/// line alone. Plan 06 implements the seams of APU, BLEED, PRESS, COND, CRUISE, DOOR, WHEEL and F/CTL, and plan 05
-/// those of ENG, ELEC, HYD, FUEL and STATUS, each in a partial file of its own, and only once its in-sim checks have
-/// passed.</para>
+/// line alone. Plan 06 implements the seams of APU, BLEED, PRESS, COND, CRUISE, DOOR, WHEEL and F/CTL, only once their
+/// in-sim checks have passed, and plan 05 those of ENG, ELEC, HYD, FUEL and STATUS, which land inert with their pages
+/// because its window's key is switched on separately. Each plan's are in a partial file of its own.</para>
 /// <para>The pages' field numbers are not here either. They belong to the plans that implement the pages: each declares
 /// the ones only its own pages read in a partial of <see cref="FenixChannelFields"/> of its own, and the ones several
 /// pages read are declared once, in FenixChannelFields.cs.</para>
@@ -182,8 +182,9 @@ internal static partial class FenixChannelSdPages
 
     // The page seams, one for each page, called by Compose and nowhere else. An implementation sets rows to the page's
     // rows, or to FenixChannelRows.NotAvailable with the page's problem, and leaves it null to show no content. With no
-    // implementation C# drops the call, so rows stays null and the page shows as its name and the bottom line alone;
-    // each plan implements its seams in a partial file of its own, and only once its in-sim checks have passed.
+    // implementation C# drops the call, so rows stays null and the page shows as its name and the bottom line alone.
+    // Each plan implements its seams in a partial file of its own: plan 06 only once their in-sim checks have passed,
+    // and plan 05 with its pages, inert until its window's key is switched on.
 
     /// <summary>The APU page (1). Plan 06 implements it.</summary>
     static partial void ComposeApu(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);

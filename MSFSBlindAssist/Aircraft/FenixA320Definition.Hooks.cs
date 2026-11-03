@@ -57,8 +57,9 @@ public partial class FenixA320Definition
     // The channel keys' seams, one per feature, each called only with the actions that feature owns
     // (ChannelKeyOwnerOf in FenixA320Definition.DisplayChannel.cs). An implementation sets handled when it answered
     // the key and leaves it false to let the key carry on. With no implementation C# drops the call, so handled
-    // stays false and the key behaves as it did before the feature: a display key gives its AI read and the others
-    // stay silent. Each plan implements its seam in a partial of its own, and only once its in-sim checks pass.
+    // stays false and the key does what it did before the feature: a display key gives its AI read, ShowDCDU reaches
+    // MainForm's "only available on the A32NX and the Headwind A330" sentence, and the others do nothing. Each plan
+    // implements its seam in a partial of its own, and only once its in-sim checks pass.
     /// <summary>The PFD's keys: Alt+P and the six speed reads, Shift+1 to Shift+6. Plan 02 implements it.</summary>
     partial void ChannelPfdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
     /// <summary>The ND's keys: Alt+N and Ctrl+W. Plan 03 implements it.</summary>

@@ -1,9 +1,9 @@
 // Characterization tests for FenixChannelSdPages, what every page of the Fenix SD shares: the name of each page, the
 // one word for a valve state, and the dispatch from a page number to the composer that gives the page its rows. Pure
-// logic. Plans 05 and 06 implement the page seams, in parallel and each once its in-sim checks have passed, so the
-// dispatch tests follow the seams as they land: a page whose seam exists is its plan's to test, and every other page
-// must give no rows. Every number is written out here, never read from FenixChannelFields, so that a wrong number in
-// the app fails a test.
+// logic. Plans 05 and 06 implement the page seams, in parallel (plan 06 once their in-sim checks have passed, plan 05
+// with its pages, inert until its window's key is switched on), so the dispatch tests follow the seams as they land: a
+// page whose seam exists is its plan's to test, and every other page must give no rows. Every number is written out
+// here, never read from FenixChannelFields, so that a wrong number in the app fails a test.
 //
 // The contract: the SD's pages are numbered as the frame's FwcPage carries them, 1 APU to 12 WHEEL and 14 STATUS;
 // pages 0 and 13 are not known to be drawn. A page is named as the SD draws it, and a number that is none of those is
@@ -107,10 +107,9 @@ public class FenixChannelSdPagesTests
     [Fact]
     public void Each_page_seam_is_absent_or_has_the_exact_signature()
     {
-        // Today all 13 are absent. Once a plan implements one, it has the shape Compose calls it with, and it is the
-        // only method of that name: static void ComposeX(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows).
-        // Another shape under the same name (an overload) is not the seam, yet the cases above would take it for one
-        // and leave its page out.
+        // A seam a plan has implemented has the shape Compose calls it with, and is the only method of that name:
+        // static void ComposeX(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows). Another shape under the same
+        // name (an overload) is not the seam, yet the cases above would take it for one and leave its page out.
         var wrong = new List<string>();
         foreach (string seam in Seams.Select(entry => entry.Seam))
         {

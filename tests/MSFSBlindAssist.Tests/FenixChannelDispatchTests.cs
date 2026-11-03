@@ -4,7 +4,8 @@
 // and no socket: the owner of an action is a pure function. The seams themselves have no implementation in this work
 // (each feature's plan implements one and tests it), and C# drops a call to an unimplemented partial method, so with
 // none implemented every channel key leaves `handled` false and carries on exactly as before: the display keys give
-// their AI read and the others stay silent. That is checked in the sim.
+// their AI read, ShowDCDU reaches MainForm's "only available on the A32NX and the Headwind A330" sentence, and the
+// others do nothing. That is checked in the sim.
 //
 // The contract: the five display keys (Alt+P, N, E, S, I), the six speed reads (Shift+1 to Shift+6), Ctrl+W, D,
 // Shift+D and the app-wide ShowDCDU each have exactly one owner, and every other action has none, so an action outside
@@ -12,9 +13,10 @@
 // context and its own `handled` by reference (so the seam's answer reaches HandleHotkeyAction), and no other seam. It
 // is a private partial method, and a call to a seam nothing implements is no call at all, so which seam each owner
 // reaches is pinned by reading the method's source. The seam runs inside RunChannelKeySeam: one that throws is reported
-// and leaves `handled` false, so the key carries on as it does with no feature (a display key to its AI read, every
-// other key silent) and costs only itself. No seam can be made to throw from a test, so that helper is tested with seam
-// calls of the tests' own, and that the dispatch goes through it is pinned by reading its source too.
+// and leaves `handled` false, so the key carries on as it does with no feature (a display key to its AI read, ShowDCDU
+// to MainForm's sentence, any other key to nothing) and costs only itself. No seam can be made to throw from a test, so
+// that helper is tested with seam calls of the tests' own, and that the dispatch goes through it is pinned by reading
+// its source too.
 
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Aircraft;

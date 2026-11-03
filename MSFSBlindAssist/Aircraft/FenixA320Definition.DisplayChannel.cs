@@ -15,10 +15,11 @@ namespace MSFSBlindAssist.Aircraft;
 // then one for each announcer (those are seams too, declared in FenixA320Definition.Hooks.cs). The host starts with
 // the monitor and ends before it, in the same Start and Stop: the stall guard and the announcers exist exactly while
 // the channel does.
-// A seam nothing implements is no call at all, so a key whose feature has not landed behaves as it did before:
-// a display key gives its AI read and the others stay silent, and an announcer's sampler says nothing. So does a key
-// whose seam throws. The session notice is the one thing that speaks before any feature has landed, and it is no
-// seam: it says one line per Fenix load, when the channel cannot be used.
+// A seam nothing implements is no call at all, so a key whose feature has not landed does what it did before: a
+// display key gives its AI read, ShowDCDU reaches MainForm's "only available on the A32NX and the Headwind A330"
+// sentence, and the others do nothing. A key whose seam throws does the same. An announcer's sampler with no
+// implementation says nothing. The session notice is the one thing that speaks before any feature has landed, and it
+// is no seam: it says one line per Fenix load, when the channel cannot be used.
 public partial class FenixA320Definition
 {
     // This instance's monitor: made by StartDisplayChannelBackground, disposed and cleared by Stop. Start, Stop,
@@ -251,11 +252,11 @@ public partial class FenixA320Definition
     /// stops that feature only, and the pilot never loses a key to it. Without this an exception would reach the
     /// app's UI-thread handler and the key would do nothing at all, not even its AI read. The exception is caught and
     /// reported, and <paramref name="handled"/> ends false whatever the seam had set before it threw: a key that
-    /// failed is not an answered key, so it carries on as it does with no feature, a display key to its AI read and
-    /// every other key silent. Nothing is spoken. The report goes to the monitor's log when there is a monitor
-    /// ("Pfd: key failed: InvalidOperationException: ...", which the monitor writes once for each distinct line, so a
-    /// seam that throws at every press is one line), and otherwise to debug.log, as RunSeam does for the background
-    /// seams.
+    /// failed is not an answered key. It then does what it does with no feature: a display key gives its AI read,
+    /// ShowDCDU reaches MainForm's sentence, and the others do nothing. Nothing is said of the failure itself. The
+    /// report goes to the monitor's log when there is a monitor ("Pfd: key failed: InvalidOperationException: ...",
+    /// which the monitor writes once for each distinct line, so a seam that throws at every press is one line), and
+    /// otherwise to debug.log, as RunSeam does for the background seams.
     /// </summary>
     internal static void RunChannelKeySeam(
         ChannelKeyOwner owner, ChannelKeyContext ctx, ref bool handled, ChannelKeyCall call)
@@ -276,12 +277,12 @@ public partial class FenixA320Definition
     }
 
     // HandleHotkeyAction's first look at any action, before its own switch. A channel key goes to the seam of the
-    // feature that owns it (ChannelKeyOwnerOf), which sets handled when it answered the key; every other key returns
-    // at once and carries on untouched. A seam nothing implements is no call at all (C# drops it), so handled stays
-    // false and the key behaves as it did before the feature: a display key gives its AI read and the others stay
-    // silent. The switch runs inside RunChannelKeySeam, which gives the seam the dispatch's own handled by reference,
-    // so its answer reaches HandleHotkeyAction, and keeps a seam that throws from costing more than its own key.
-    // Whether a display is trusted is for the seam to ask the monitor ([FNX-22]): nothing here reads channel data.
+    // feature that owns it (ChannelKeyOwnerOf), which sets handled when it answered the key; every other key carries
+    // on untouched. A seam nothing implements is no call at all (C# drops it), so handled stays false and the key does
+    // what it did before the feature: a display key gives its AI read, ShowDCDU reaches MainForm's sentence, and the
+    // others do nothing. The switch runs inside RunChannelKeySeam, which gives the seam the dispatch's own handled by
+    // reference, so its answer reaches HandleHotkeyAction, and keeps a seam that throws from costing more than its own
+    // key. Whether a display is trusted is for the seam to ask the monitor ([FNX-22]): nothing here reads channel data.
     partial void TryChannelDisplayRead(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled)
     {
         ChannelKeyOwner owner = ChannelKeyOwnerOf(action);
@@ -365,8 +366,9 @@ public partial class FenixA320Definition
     /// hotkey manager is not even touched. Otherwise both hotkey modes are left first, because a window opened with a
     /// mode still on loses its keys to it (the PMDG 737's display windows and <see cref="ShowFenixWindows"/> leave
     /// theirs too), and then the window opens through <see cref="ShowChannelWindow{TForm}"/>, or the open one comes
-    /// forward, and the result is true. The verdict comes from the key context's monitor, which is this instance's,
-    /// taken at the press.
+    /// forward, and the result is true. The verdict is judged at the press on the key context's monitor and the window
+    /// is built on this instance's own: in the app they are one object, because HandleHotkeyAction makes the context
+    /// from that field.
     /// </summary>
     internal bool OpenChannelWindow<TForm>(
         ChannelKeyContext ctx,
