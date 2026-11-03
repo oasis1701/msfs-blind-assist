@@ -108,7 +108,8 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
     and nothing it shows merged or dropped. Each row starts with its place on the screen, as the 737's do ("Top left:",
     "Map:", "Centre:"), and says the item as drawn: its symbol and color in words (2.6) and the label the ND prints. In
     screen order:
-    - Header: "Captain ND: <mode>, range <n>"; top left, the ground speed, TAS and wind lines; top centre, the compass,
+    - Header (no row of the app's own: no "Captain ND" line, row 55): top left, the ground speed, TAS and wind lines;
+      top centre, the compass,
       with the heading and where the track diamond sits; top right, the next-waypoint lines, or in ROSE LS and ROSE VOR
       the LS or VOR block (ident, frequency, course, DME).
     - The map: the route's waypoints in route order, each with its distance, its degrees off the top of the screen and
@@ -119,8 +120,8 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
       buttons select them; traffic nearest first, with its relative altitude and whether it climbs or descends. In PLAN
       a place is the distance and compass point from the centre waypoint ("5.0 NM north-west of VAKSU").
     - ROSE LS and ROSE VOR: the course pointer, the deviation in dots, the glideslope, TO or FROM.
-    - Bottom: the VOR and ADF corners and the bearing pointers; then "Message: <text>" for each message, or "Messages:
-      none".
+    - Bottom: the VOR and ADF corners and the bearing pointers; then "Message: <text>" for each message; no row while
+      the ND shows none (row 55).
     - Only what the ND draws at that mode, range and option is listed: what the edges cut off and what the ND hides
       when cluttered are measured against captures.
     - The ND is read in layers: the header, the route, the map points, the ROSE LS and VOR content, and traffic. A
@@ -437,7 +438,7 @@ Rows 14-45 are the questions the plans raised, answered on 2026-11-03 ("Accept a
 | 44 | 11 | A new DCDU message | new header and first line, held 300 ms; quiet 3 s after the pilot's own page or message key | As recommended |
 | 45 | 11 | The status word in the new-message call | left out | As recommended |
 
-Rows 46-54 are the team's decision of 2026-11-03 (Hadi, Robin and the team) to read the whole ND in plan 03, which
+Rows 46-55 are the team's decision of 2026-11-03 (Hadi, Robin and the team) to read the whole ND in plan 03, which
 Hadi claimed that day. They change sections 1, 2.1, 2.2, 2.4, 2.6, 2.7, 3.3 and 6 as stated there.
 
 | # | Plan | Question | Recommendation | Answer |
@@ -451,6 +452,7 @@ Hadi claimed that day. They change sections 1, 2.1, 2.2, 2.4, 2.6, 2.7, 3.3 and 
 | 52 | 03 | Colors on the ND map | from the channel (color fields, color letters) or a color the captures show is always used | As recommended (2.6) |
 | 53 | 03 | How plan 03 learns the ND | layer by layer: one sim session per layer before its code; captures and EFIS changes by Claude; the program's code only where a capture cannot decide | As recommended |
 | 54 | 03 | Plan 01's frozen files plan 03 needs | changed by plan 03, additively, under the index's exemption for a landed plan: the two map calls in `FenixChannelFields.cs` and `FenixChannelClient.cs`, their request method in `FenixChannelMonitor.cs`, the paths in `FenixChannelReadOnlyTests`, the sixth row in `FenixChannelAnnouncementRows.cs` and `FenixChannelMonitorRowsTests`, the `SampleChannelNd` seam in `FenixA320Definition.Hooks.cs` and its line in `FenixA320Definition.DisplayChannel.cs`'s sampler list | As recommended; recorded in plan 03's execution record |
+| 55 | 03 | Two rows the PMDG 737's ND window has that its ND does not draw: "Captain ND: <mode>, range <n>" and "Messages: none" | keep both, as the 737 | Dropped (Hadi, 2026-11-03): the Fenix ND window lists only what the ND draws; the mode and range are in its controls |
 
 ## 6. Open checks (each owned by the plan named)
 
