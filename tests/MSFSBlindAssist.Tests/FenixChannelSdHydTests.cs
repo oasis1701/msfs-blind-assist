@@ -4,16 +4,16 @@
 // out here, never read from FenixChannelFields, so that a wrong number in the app fails a test.
 //
 // The contract: page 11 reads 132 (the PTU state) and 133 (the hydraulic state). The rows, every number whole: GREEN,
-// BLUE and YELLOW pressure (133.1.1, 133.2.1, 133.3.1, "GREEN: 2988 PSI"); PTU (132, "idle" for 0, the one state the app
-// knows, inferred; any other value reads "PTU: not available" and is reported as "PTU state <n> not known" without
-// stopping the page); GREEN ENG 1 pump (133.4 switch, 133.5 output), BLUE ELEC pump (133.8.1 switch, 133.8.2 output, then
-// ", OVHT" while 133.8.3), YELLOW ENG 2 pump (133.6, 133.7) and YELLOW ELEC pump (133.9.1, 133.9.2), each "off" without
-// the switch, "LO" with the switch and no output, else "running"; RAT (133.12, "stowed", "deployed" while set); GREEN and
-// YELLOW fire valve (133.10, 133.11, "open" while set, else "closed", inferred); and each reservoir (133.1.2, 133.2.2,
-// 133.3.2: a whole number with no unit, then ", LO AIR PRESS" while 133.n.6 and ", OVHT" while 133.n.7). A message the
-// rows read that the push leaves out (133, 133.1 to 133.3, 133.8, 133.9) stops this page only ("HYD: not available, no
-// field 133.2"), never read as its defaults; one present but empty (the Fenix sends an empty yellow electric pump while it
-// is off) is its defaults.
+// BLUE and YELLOW pressure (133.1.1, 133.2.1, 133.3.1, "GREEN: 2988 PSI"); PTU (132, the four states measured in the sim:
+// -1 "off", 0 "idle", 1 "yellow to green", 2 "green to yellow"; any other value reads "PTU: not available" and is
+// reported as "PTU state <n> not known" without stopping the page); GREEN ENG 1 pump (133.4 switch, 133.5 output), BLUE
+// ELEC pump (133.8.1 switch, 133.8.2 output, then ", OVHT" while 133.8.3), YELLOW ENG 2 pump (133.6, 133.7) and YELLOW
+// ELEC pump (133.9.1, 133.9.2), each "off" without the switch, "LO" with the switch and no output, else "running"; RAT
+// (133.12, "stowed", "deployed" while set); GREEN and YELLOW fire valve (133.10, 133.11, "open" while set, else "closed",
+// inferred); and each reservoir (133.1.2, 133.2.2, 133.3.2: a whole number with no unit, then ", LO AIR PRESS" while
+// 133.n.6 and ", OVHT" while 133.n.7). A message the rows read that the push leaves out (133, 133.1 to 133.3, 133.8,
+// 133.9) stops this page only ("HYD: not available, no field 133.2"), never read as its defaults; one present but empty
+// (the Fenix sends an empty yellow electric pump while it is off) is its defaults.
 
 using MSFSBlindAssist.Services;
 
@@ -102,7 +102,8 @@ public class FenixChannelSdHydTests
         // Whether 133 is in the push at all.
         public bool HasHydraulicState { get; init; } = true;
 
-        // The PTU state (132); null leaves the field out, as the Fenix does for the idle value.
+        // The PTU state (132); null leaves the field out, as the Fenix does for the idle value. A negative state is a
+        // negative varint (sign-extended to 64 bits), as protobuf writes an int32.
         public int? Ptu { get; init; }
 
         // The same boxes with the message at <path> ("133", "133.1" to "133.3", "133.8", "133.9") left out of the push.
@@ -283,25 +284,29 @@ public class FenixChannelSdHydTests
     // ---- The PTU --------------------------------------------------------------------------------
 
     [Theory]
-    [InlineData(0, "PTU: idle")]    // inferred: field 132 was left out of the 2026-11-01 cruise push, so 0 is idle
+    [InlineData(-1, "PTU: off")]                    // PTU pushbutton off with both engines running; AUTO with the parking brake set and one engine master on (the inhibit)
+    [InlineData(0, "PTU: idle")]                    // normal, both engines running, nothing to transfer (the Fenix leaves the field out)
+    [InlineData(1, "PTU: yellow to green")]         // both engines off with the yellow electric pump on, and engine 1 starting with engine 2 running
+    [InlineData(2, "PTU: green to yellow")]         // about 50 s after engine 1's master went off with engine 2 already off
     public void Each_measured_ptu_state_reads_its_word(int state, string row)
     {
-        // The field is written out here, as a value the Fenix sends (the page test above leaves it out).
+        // The field is written out here, as a value the Fenix sends (the page test above leaves it out); -1 goes out as a
+        // negative varint, the way protobuf writes an int32.
         IReadOnlyList<string> rows = PageOf(HydPush(new HydBoxes { Ptu = state }));
 
         Assert.Equal(PlainPage.Select(plain => plain.StartsWith("PTU:", StringComparison.Ordinal) ? row : plain), rows);
     }
 
     [Theory]
-    [InlineData(1, "PTU state 1 not known")]
-    [InlineData(2, "PTU state 2 not known")]
+    [InlineData(3, "PTU state 3 not known")]
     [InlineData(1234, "PTU state 1234 not known")]
+    [InlineData(-2, "PTU state -2 not known")]
     [InlineData(-7, "PTU state -7 not known")]
     public void An_unmeasured_ptu_state_reads_not_available_and_is_reported(int state, string report)
     {
-        // Any value but the idle one is a state the app does not know: the row says so, the rest of the page stays, and the
-        // problem is reported without stopping the page (at page level, as the page's context gives it; the window adds
-        // the page's name).
+        // Any value but the four measured ones is a state the app does not know: the row says so, the rest of the page
+        // stays, and the problem is reported without stopping the page (at page level, as the page's context gives it; the
+        // window adds the page's name).
         SdPush push = HydPush(new HydBoxes { Ptu = state });
         var reported = new List<string>();
         var windowReported = new List<string>();

@@ -110,13 +110,15 @@ internal static partial class FenixChannelFields
     }
 
     /// <summary>
-    /// The values of <see cref="Remote.PtuState"/> the app knows, each named for what the SD showed. Only the idle value
-    /// is declared, and it is inferred, not measured; the sim run (Task 1) measures the others, and any other value
-    /// reads as a state the app does not know.
+    /// The values of <see cref="Remote.PtuState"/> the app knows, each named for what the SD showed, as measured in the sim
+    /// (Fenix 3.0.0.7613, 2026-11-03). Any other value reads as a state the app does not know.
     /// </summary>
     public static class PtuStates
     {
-        public const int Idle = 0;                  // inferred, not measured: field 132 was left out of the 2026-11-01 cruise push (both engines running, PTU in AUTO), so 0, the default, is idle
+        public const int Off = -1;                  // measured: pushbutton off, both engines running; AUTO, parking brake set, one engine master on (the inhibit): no transfer
+        public const int Idle = 0;                  // measured: both engines running, nothing to transfer (the Fenix leaves the field out)
+        public const int YellowToGreen = 1;         // measured: engines off, yellow electric pump on (green 0 to 2650 PSI); engine 1 starting, engine 2 running
+        public const int GreenToYellow = 2;         // measured: about 50 s after engine 1's master went off, engine 2 already off (yellow 0 PSI, green falling)
     }
 
     /// <summary>

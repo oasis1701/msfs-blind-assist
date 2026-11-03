@@ -10,7 +10,8 @@ internal static partial class FenixChannelSdPages
 {
     /// <summary>
     /// The HYD page's rows, in the SD's order, every number whole: the pressure of each system (<c>GREEN: 2988 PSI</c>,
-    /// then <c>BLUE</c> and <c>YELLOW</c>), the PTU (<c>PTU: idle</c>), the pumps (<c>GREEN ENG 1 pump</c>, <c>BLUE ELEC
+    /// then <c>BLUE</c> and <c>YELLOW</c>), the PTU (<c>PTU: idle</c>, or <c>off</c>, <c>yellow to green</c>, <c>green to
+    /// yellow</c>), the pumps (<c>GREEN ENG 1 pump</c>, <c>BLUE ELEC
     /// pump</c>, <c>YELLOW ENG 2 pump</c>, <c>YELLOW ELEC pump</c>: "off" without the pump's switch, "LO" with the switch
     /// and no output, else "running", and <c>, OVHT</c> after the blue electric pump's word while it is overheated), the
     /// RAT (<c>RAT: stowed</c>, or <c>deployed</c>), the green and yellow shutoff valves (<c>GREEN fire valve: open</c>,
@@ -132,11 +133,14 @@ internal static partial class FenixChannelSdPages
         return "PTU: not available";
     }
 
-    // The word for a PTU state, null for one the app does not know. Idle is inferred, not measured (see PtuStates); Task 1
-    // measures the others, and adds a case here with its test.
+    // The word for a PTU state, null for one the app does not know. The four states are those measured in the sim (see
+    // PtuStates); a new one is added here with its test.
     private static string? HydPtuWord(int state) => state switch
     {
+        FenixChannelFields.PtuStates.Off => "off",
         FenixChannelFields.PtuStates.Idle => "idle",
+        FenixChannelFields.PtuStates.YellowToGreen => "yellow to green",
+        FenixChannelFields.PtuStates.GreenToYellow => "green to yellow",
         _ => null
     };
 }
