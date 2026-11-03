@@ -5,6 +5,13 @@ namespace MSFSBlindAssist.Services;
 /// <summary>
 /// The nine keys of the captain's DCDU: its four soft keys, named by position, then the page, message and print keys.
 /// </summary>
+/// <remarks>
+/// The message keys are named for the way they move through the messages, not for the cockpit part they press. The
+/// model calls the part of <c>S_DCDU1_MSGUP</c> Plus and the part of <c>S_DCDU1_MSGDWN</c> Minus, yet the message counter
+/// rises with MSGDWN: measured on build 3.0.0.7613 (2026-11-03), from message 1/2 MSGUP says "NO MORE MSG" and MSGDWN
+/// moves to 2/2, and from 2/2 MSGUP moves back to 1/2. So <see cref="MessageForward"/> presses MSGDWN and
+/// <see cref="MessageBack"/> presses MSGUP. The page keys are the parts' own: PGDN is page plus and moved to page 2/2.
+/// </remarks>
 internal enum FenixDcduKey
 {
     LeftKey1,
@@ -13,8 +20,8 @@ internal enum FenixDcduKey
     RightKey2,
     PageMinus,
     PagePlus,
-    MessageMinus,
-    MessagePlus,
+    MessageBack,
+    MessageForward,
     Print
 }
 
@@ -33,8 +40,8 @@ internal readonly record struct FenixDcduDecision(string? VariableKey, string? R
 /// <remarks>
 /// <para>The chords are the A32NX DCDU window's. The four soft keys are Ctrl+1 and Ctrl+2 (left) and Alt+1 and Alt+2
 /// (right), or F1 and F2 and F7 and F8 when the alternate soft keys are on, and then the other set maps to nothing.
-/// PageDown and PageUp are page plus and minus and Ctrl+PageDown and Ctrl+PageUp message plus and minus (DOWN is
-/// forward), Ctrl+P prints. A chord must match exactly, so the same key with another modifier is nothing.</para>
+/// PageDown and PageUp are page plus and minus and Ctrl+PageDown and Ctrl+PageUp the next and the previous message (DOWN
+/// is forward, [A320-17]), Ctrl+P prints. A chord must match exactly, so the same key with another modifier is nothing.</para>
 /// <para>A soft key acts on the label it has now, so <see cref="Decide"/> is given the snapshot taken at the press and
 /// keeps nothing between presses: a message arriving after the last refresh relabels a slot. The page, message and print
 /// keys never depend on what the app reads, so they press whatever the DCDU shows.</para>
@@ -78,17 +85,17 @@ internal static class FenixChannelDcduKeys
         {
             Keys.PageDown => FenixDcduKey.PagePlus,
             Keys.PageUp => FenixDcduKey.PageMinus,
-            Keys.Control | Keys.PageDown => FenixDcduKey.MessagePlus,
-            Keys.Control | Keys.PageUp => FenixDcduKey.MessageMinus,
+            Keys.Control | Keys.PageDown => FenixDcduKey.MessageForward,
+            Keys.Control | Keys.PageUp => FenixDcduKey.MessageBack,
             Keys.Control | Keys.P => FenixDcduKey.Print,
             _ => null
         };
     }
 
     /// <summary>
-    /// The Fenix button variable <paramref name="key"/> presses: each soft key by the position of its label's field, and
-    /// the page, message and print keys by the part of the cockpit they are (the variable names are the model's, in which
-    /// "PGDN" is page plus and "MSGUP" message plus).
+    /// The Fenix button variable <paramref name="key"/> presses: each soft key by the position of its label's field, the
+    /// page keys by the part of the cockpit they are (in the model's names "PGDN" is page plus) and the message keys by the
+    /// way the counter moves, which is not the model's naming (see <see cref="FenixDcduKey"/>: MSGDWN steps forward).
     /// </summary>
     public static string VariableOf(FenixDcduKey key) => key switch
     {
@@ -98,8 +105,8 @@ internal static class FenixChannelDcduKeys
         FenixDcduKey.RightKey2 => "S_DCDU1_LSK2R",
         FenixDcduKey.PagePlus => "S_DCDU1_PGDN",
         FenixDcduKey.PageMinus => "S_DCDU1_PGUP",
-        FenixDcduKey.MessagePlus => "S_DCDU1_MSGUP",
-        FenixDcduKey.MessageMinus => "S_DCDU1_MSGDWN",
+        FenixDcduKey.MessageForward => "S_DCDU1_MSGDWN",
+        FenixDcduKey.MessageBack => "S_DCDU1_MSGUP",
         FenixDcduKey.Print => "S_DCDU1_PRINT",
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, null)
     };
@@ -110,11 +117,12 @@ internal static class FenixChannelDcduKeys
 
     /// <summary>Whether <paramref name="key"/> is a page or a message key, the keys that move through the messages.</summary>
     public static bool IsNavigation(FenixDcduKey key)
-        => key is FenixDcduKey.PageMinus or FenixDcduKey.PagePlus or FenixDcduKey.MessageMinus or FenixDcduKey.MessagePlus;
+        => key is FenixDcduKey.PageMinus or FenixDcduKey.PagePlus or FenixDcduKey.MessageBack or FenixDcduKey.MessageForward;
 
     /// <summary>
     /// Whether the press of <paramref name="key"/> goes ahead, judged on <paramref name="s"/>, the snapshot taken at the
-    /// press. A soft key presses its variable when the DCDU reads and the key's label speaks something; it is refused
+    /// press. A soft key presses its variable when the DCDU reads and the key's label has words (<see cref="FenixChannelDcdu.Plain"/>
+    /// leaves something of it); it is refused
     /// with <see cref="NotAvailableMessage"/> when the DCDU cannot be read (the display is not trusted, the content is
     /// missing or in another shape, or a line has a format letter the app does not know) and with
     /// <see cref="NoActionMessage"/> when the label is blank. The page, message and print keys always press.
@@ -136,7 +144,9 @@ internal static class FenixChannelDcduKeys
             _ => throw new ArgumentOutOfRangeException(nameof(key), key, null)
         };
 
-        return FenixChannelSpeech.Line(label) is null
+        // Blank is judged on the label's words (Plain): "ciWILCO*" is a label, a key drawn pressed, and a label of nothing but
+        // format letters and spaces is not.
+        return FenixChannelDcdu.Plain(label).Length == 0
             ? new FenixDcduDecision(null, NoActionMessage)
             : new FenixDcduDecision(VariableOf(key), null);
     }

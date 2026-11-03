@@ -7,7 +7,14 @@
 // ok screen after a start, a problem or a reconnect is a silent baseline. After it an identity counts once it has held 300 ms:
 // it is remembered then (up to 64, the oldest dropped) and called once, unless the DCDU is muted or the call falls within
 // 3 s of the first sample after the pilot's own window key. A call is "DCDU: " and the header-left line, then the first
-// message line.
+// message line, in plain words: no color names, runs of spaces collapsed (owner's ruling, 2026-11-03).
+//
+// A message can also wait behind another that is on the screen, which no identity shows. The total is the number after the
+// slash in the first token of the third info line when the second starts with MSG ("1/2" is two), else one while the screen
+// has an identity and none otherwise. A total that rises and holds 300 ms is called "DCDU: 2 messages", or in the same call as
+// a new message when both fall due in the same sample; a fall says nothing, and nor do stepping or paging. The rise is a real
+// message, so the quiet after the pilot's own key does not silence it, and a mute does, without a replay on unmute. The first
+// reading, a gap and a reconnect take a silent baseline for the total as for the identity.
 
 using System.Globalization;
 using MSFSBlindAssist.Services;
@@ -23,9 +30,24 @@ public class FenixChannelDcduAnnouncerTests
     private static readonly FenixDcduScreen MessageB = Message("w1431Z FROM EDGG", "cMAINTAIN", "cFL330");
     private static readonly FenixDcduScreen MessageC = Message("w1440Z FROM EDGG", "cCONTACT", "cEDGG CTR");
 
-    private const string CallA = "DCDU: 1426Z FROM EDGG, white, CLIMB TO, cyan";
-    private const string CallB = "DCDU: 1431Z FROM EDGG, white, MAINTAIN, cyan";
-    private const string CallC = "DCDU: 1440Z FROM EDGG, white, CONTACT, cyan";
+    private const string CallA = "DCDU: 1426Z FROM EDGG, CLIMB TO";
+    private const string CallB = "DCDU: 1431Z FROM EDGG, MAINTAIN";
+    private const string CallC = "DCDU: 1440Z FROM EDGG, CONTACT";
+
+    // U+2800, the blank braille cell the display uses as a spacer, written as a cast because it cannot be seen in source.
+    private static readonly string Spacer = ((char)0x2800).ToString();
+
+    // The first real message of build 3.0.0.7613 (2026-11-03), page 1 of 2, as the Fenix sent its header, first lines and
+    // counters. Three more messages from one station for the call.
+    private static readonly FenixDcduScreen DepartRequest = Screen(
+        "g 2021Z FROM EDDF", "cOPEN",
+        ["DEPART REQUEST STATUS . ", "FSM 2010 261103 cEDDFw  ", "cBVI4RKw  RCD REQUEST   ", "BEING PROCESSED         ",
+            "cSTANDBYw  IF cNO       "],
+        ["", "MSG        PGE", "1/2        1/2"], rightKey2: "cCLOSE*");
+
+    // The screen with the message counter given, as the Fenix draws it under MSG: "1/2" is message 1 of 2.
+    private static FenixDcduScreen Counted(FenixDcduScreen screen, string counter)
+        => screen with { Info = ["", "MSG        PGE", counter + "        1/1"] };
 
     // A constructed screen: the header halves, the message lines and info lines given from the first (the rest blank), then
     // the keys.
@@ -105,7 +127,7 @@ public class FenixChannelDcduAnnouncerTests
 
         // Parsed and trimmed: colors, a braille spacer or spaces around the text change nothing.
         Assert.Equal("1426Z FROM EDGG\nCLIMB TO",
-            FenixChannelDcduAnnouncer.IdentityOf(Screen("w  1426Z FROM EDGG ", message: ["g⠀CLIMB TO  "])));
+            FenixChannelDcduAnnouncer.IdentityOf(Screen("w  1426Z FROM EDGG ", message: ["g" + Spacer + "CLIMB TO  "])));
         Assert.Equal(FenixChannelDcduAnnouncer.IdentityOf(MessageA),
             FenixChannelDcduAnnouncer.IdentityOf(Screen("g1426Z FROM EDGG", message: ["aCLIMB TO"])));
     }
@@ -148,7 +170,7 @@ public class FenixChannelDcduAnnouncerTests
         Assert.Null(FenixChannelDcduAnnouncer.IdentityOf(Screen()));
         Assert.Null(FenixChannelDcduAnnouncer.IdentityOf(Screen(Spaces14, "gOPEN", ["cCLIMB TO"])));
         Assert.Null(FenixChannelDcduAnnouncer.IdentityOf(Screen("w", message: ["cCLIMB TO"], leftKey1: "c*UNABLE")));
-        Assert.Null(FenixChannelDcduAnnouncer.IdentityOf(Screen("w⠀  ", message: ["cCLIMB TO"])));
+        Assert.Null(FenixChannelDcduAnnouncer.IdentityOf(Screen("w" + Spacer + "  ", message: ["cCLIMB TO"])));
     }
 
     // ---- The call ---------------------------------------------------------------------------
@@ -157,12 +179,30 @@ public class FenixChannelDcduAnnouncerTests
     public void The_call_is_dcdu_the_header_left_line_and_the_first_message_line()
     {
         Assert.Equal(CallA, FenixChannelDcduAnnouncer.CallText(MessageA));
-        Assert.Equal("DCDU: 1426Z FROM EDGG, white, CLIMB TO, cyan",
+        Assert.Equal("DCDU: 1426Z FROM EDGG, CLIMB TO",
             FenixChannelDcduAnnouncer.CallText(Screen("w1426Z FROM EDGG", message: ["", "c  ", "cCLIMB TO", "cFL350"])));
 
-        // A header of two colors names each, as the window's rows do.
-        Assert.Equal("DCDU: 1426Z FROM white, EDGG green, CLIMB TO, cyan",
+        // A header of two colors reads as its words: no color is named, as the window names none.
+        Assert.Equal("DCDU: 1426Z FROM EDGG, CLIMB TO",
             FenixChannelDcduAnnouncer.CallText(Screen("w1426Z FROM gEDGG", message: ["cCLIMB TO"])));
+    }
+
+    [Fact]
+    public void The_call_for_the_first_real_message_is_in_plain_words()
+    {
+        // The Fenix's header starts with a space after its color letter, and its first line ends with a space: the call has
+        // neither, and no color name.
+        Assert.Equal("DCDU: 2021Z FROM EDDF, DEPART REQUEST STATUS .", FenixChannelDcduAnnouncer.CallText(DepartRequest));
+    }
+
+    [Fact]
+    public void The_call_collapses_runs_of_spaces()
+    {
+        // The window keeps the spacing the Fenix drew; a sentence does not.
+        Assert.Equal("DCDU: 2021Z FROM EDDF, BVI4RK RCD REQUEST",
+            FenixChannelDcduAnnouncer.CallText(Screen("g 2021Z   FROM  EDDF", message: ["cBVI4RKw  RCD REQUEST   "])));
+        Assert.Equal("DCDU: 1426Z FROM EDGG, CLIMB TO",
+            FenixChannelDcduAnnouncer.CallText(Screen("w" + Spacer + "1426Z" + Spacer + " FROM EDGG", message: ["c" + Spacer + "CLIMB  TO"])));
     }
 
     [Fact]
@@ -179,7 +219,7 @@ public class FenixChannelDcduAnnouncerTests
     [Fact]
     public void A_header_with_no_message_line_is_called_by_its_header_alone()
     {
-        Assert.Equal("DCDU: 1426Z FROM EDGG, white",
+        Assert.Equal("DCDU: 1426Z FROM EDGG",
             FenixChannelDcduAnnouncer.CallText(Screen("w1426Z FROM EDGG", "gOPEN", info: ["gINFO"], leftKey1: "c*UNABLE")));
     }
 
@@ -302,9 +342,9 @@ public class FenixChannelDcduAnnouncerTests
         FenixDcduScreen climb = Screen("w1426Z FROM EDGG", "gOPEN", ["cCLIMB TO", "cFL350"]);
         FenixDcduScreen maintain = Screen("w1426Z FROM EDGG", "gOPEN", ["cMAINTAIN", "cFL350"]);
 
-        Assert.Equal(new[] { (1300L, "DCDU: 1426Z FROM EDGG, white, CLIMB TO, cyan") },
+        Assert.Equal(new[] { (1300L, "DCDU: 1426Z FROM EDGG, CLIMB TO") },
             Calls(announcer, 1000, 1500, climb).ToArray());
-        Assert.Equal(new[] { (2300L, "DCDU: 1426Z FROM EDGG, white, MAINTAIN, cyan") },
+        Assert.Equal(new[] { (2300L, "DCDU: 1426Z FROM EDGG, MAINTAIN") },
             Calls(announcer, 2000, 2500, maintain).ToArray());
     }
 
@@ -428,6 +468,283 @@ public class FenixChannelDcduAnnouncerTests
         Assert.Empty(Calls(announcer, 2000, 3000, MessageA));
         Assert.Empty(Calls(announcer, 3100, 4000, MessageB));
         Assert.Empty(Calls(announcer, 4100, 5000, MessageA));
+    }
+
+    // ---- The messages behind the first --------------------------------------------------------
+
+    [Fact]
+    public void The_total_is_the_number_after_the_slash_in_the_first_token_of_the_third_info_line()
+    {
+        // Under MSG the Fenix draws the message counter ("1/2": message 1 of 2) and under PGE the page counter; only the first
+        // token counts, so paging changes nothing.
+        Assert.Equal(2, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG        PGE", "1/2        1/2"])));
+        Assert.Equal(2, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG        PGE", "1/2        2/2"])));
+        Assert.Equal(2, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG".PadRight(14), "2/2".PadRight(14)])));
+        Assert.Equal(1, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG        PGE", "1/1        1/3"])));
+        Assert.Equal(12, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG", "10/12"])));
+
+        // The lines are channel text: their codes are no part of the counter.
+        Assert.Equal(3, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "gMSG        PGE", "g1/3        g1/2"])));
+
+        // The counter does not need a message on the screen.
+        Assert.Equal(3, FenixChannelDcduAnnouncer.TotalOf(Screen(info: ["", "MSG", "1/3"])));
+    }
+
+    [Fact]
+    public void With_no_counter_the_total_is_one_while_a_message_is_on_the_screen_and_nothing_otherwise()
+    {
+        // No MSG on the second info line: a page counter alone is not a message counter.
+        Assert.Equal(1, FenixChannelDcduAnnouncer.TotalOf(MessageA));
+        Assert.Equal(1, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "       PGE", "       1/2"])));
+        Assert.Equal(0, FenixChannelDcduAnnouncer.TotalOf(Screen()));
+        Assert.Equal(0, FenixChannelDcduAnnouncer.TotalOf(Screen(info: ["", Spaces14, Spaces14])));
+        Assert.Equal(0, FenixChannelDcduAnnouncer.TotalOf(Screen(info: ["", "       PGE", "       1/2"])));
+
+        // MSG with no readable counter after it: the same ("1/" and the Arabic-Indic digit two is not a figure the app reads).
+        Assert.Equal(1, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG", ""])));
+        foreach (string third in new[] { "X", "1", "1/", "A/B", "1/X", "1/2X", "1/0", "1/-2", "1/2/3", "1/٢", "1/ 2" })
+        {
+            int withMessage = FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG", third]));
+            int withNothing = FenixChannelDcduAnnouncer.TotalOf(Screen(info: ["", "MSG", third]));
+            Assert.True(withMessage == 1 && withNothing == 0, $"counter '{third}' read {withMessage} with a message and {withNothing} without");
+        }
+    }
+
+    [Fact]
+    public void A_message_behind_another_says_how_many()
+    {
+        // A is on the screen; B arrives behind it and the counter becomes 1/2, with A still shown. Only the first reaches the
+        // screen, so this is the one time B is heard of.
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/1"));
+
+        Assert.Equal(new[] { (1300L, "DCDU: 2 messages") }, Calls(announcer, 1000, 3000, Counted(MessageA, "1/2")).ToArray());
+        Assert.Empty(Calls(announcer, 3100, 5000, Counted(MessageA, "1/2")));
+    }
+
+    [Fact]
+    public void A_message_behind_another_with_no_counter_before_says_how_many()
+    {
+        // The screen had no counter (a lone message is total 1) and a second message makes the counter appear.
+        FenixChannelDcduAnnouncer announcer = Baselined(MessageA);
+
+        Assert.Equal(new[] { (1300L, "DCDU: 2 messages") }, Calls(announcer, 1000, 3000, Counted(MessageA, "1/2")).ToArray());
+    }
+
+    [Fact]
+    public void A_rise_to_three_says_three()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/2"));
+
+        Assert.Equal(new[] { (1300L, "DCDU: 3 messages") }, Calls(announcer, 1000, 3000, Counted(MessageA, "1/3")).ToArray());
+    }
+
+    [Fact]
+    public void A_total_must_hold_the_settle_to_be_called()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/1"));
+
+        // 200 ms of 1/2 and it is gone: not called, and the hold starts again for the next rise.
+        Assert.Empty(Calls(announcer, 1000, 1200, Counted(MessageA, "1/2")));
+        Assert.Empty(Calls(announcer, 1300, 3000, Counted(MessageA, "1/1")));
+
+        Assert.Null(At(announcer, 3100, Counted(MessageA, "1/2")));
+        Assert.Null(At(announcer, 3399, Counted(MessageA, "1/2")));
+        Assert.Equal("DCDU: 2 messages", At(announcer, 3400, Counted(MessageA, "1/2")));
+    }
+
+    [Fact]
+    public void Two_messages_arriving_together_say_both_in_one_call()
+    {
+        // From an empty DCDU two messages come at once: the first on the screen and the counter showing two. One call says the
+        // message and the count, when both have held the settle.
+        FenixChannelDcduAnnouncer announcer = Baselined(Screen());
+
+        Assert.Equal(new[] { (1300L, CallA + ", 2 messages") }, Calls(announcer, 1000, 3000, Counted(MessageA, "1/2")).ToArray());
+    }
+
+    [Fact]
+    public void The_first_real_message_with_another_behind_it_says_both()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Screen());
+
+        Assert.Equal(new[] { (1300L, "DCDU: 2021Z FROM EDDF, DEPART REQUEST STATUS ., 2 messages") },
+            Calls(announcer, 1000, 3000, DepartRequest).ToArray());
+    }
+
+    [Fact]
+    public void A_new_message_with_a_total_that_does_not_rise_says_no_count()
+    {
+        // From an empty DCDU, one message: the total goes from nothing to one, which is no count to say.
+        FenixChannelDcduAnnouncer lone = Baselined(Screen());
+        Assert.Equal(new[] { (1300L, CallA) }, Calls(lone, 1000, 3000, Counted(MessageA, "1/1")).ToArray());
+
+        // Message A at 1/2 is on the screen and B comes onto it at 2/2: the total is two before and after.
+        FenixChannelDcduAnnouncer same = Baselined(Counted(MessageA, "1/2"));
+        Assert.Equal(new[] { (1300L, CallB) }, Calls(same, 1000, 3000, Counted(MessageB, "2/2")).ToArray());
+    }
+
+    [Fact]
+    public void A_new_message_and_a_rise_to_three_say_both()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/2"));
+
+        Assert.Equal(new[] { (1300L, CallB + ", 3 messages") }, Calls(announcer, 1000, 3000, Counted(MessageB, "1/3")).ToArray());
+    }
+
+    [Fact]
+    public void Stepping_between_messages_and_paging_say_nothing_about_the_total()
+    {
+        // Two messages behind each other: the pilot steps to B (the quiet silences its identity) and pages in it. The counter
+        // reads 1/2, then 2/2, and the page counter moves; the total is two throughout.
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/2"));
+
+        announcer.NoteNavigation();
+        Assert.Null(At(announcer, 100, Counted(MessageA, "1/2")));
+        Assert.Empty(Calls(announcer, 200, 1500, Counted(MessageB, "2/2")));
+        Assert.Empty(Calls(announcer, 1600, 2500, MessageB with { Info = ["", "MSG        PGE", "2/2        2/3"] }));
+
+        // And back to A, outside the quiet: seen before, and still two.
+        Assert.Empty(Calls(announcer, 4000, 5000, Counted(MessageA, "1/2")));
+    }
+
+    [Fact]
+    public void Paging_alone_says_nothing()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(DepartRequest);
+
+        Assert.Empty(Calls(announcer, 100, 1500, DepartRequest with { Info = ["", "MSG        PGE", "1/2        2/2"] }));
+        Assert.Empty(Calls(announcer, 1600, 3000, DepartRequest));
+    }
+
+    [Fact]
+    public void A_fall_is_silent_and_a_rise_after_it_speaks()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/2"));
+
+        // The pilot closes a message: the total goes from two to one. Silent.
+        Assert.Empty(Calls(announcer, 100, 1000, Counted(MessageA, "1/1")));
+
+        // Another arrives: one to two, and that speaks.
+        Assert.Equal(new[] { (1400L, "DCDU: 2 messages") }, Calls(announcer, 1100, 3000, Counted(MessageA, "1/2")).ToArray());
+    }
+
+    [Fact]
+    public void A_total_that_dips_for_less_than_the_settle_is_no_rise_when_it_returns()
+    {
+        // A screen being redrawn can read one for a moment: the total that was settled is still two, so two again is no rise.
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/2"));
+
+        Assert.Empty(Calls(announcer, 1000, 1200, Counted(MessageA, "1/1")));
+        Assert.Empty(Calls(announcer, 1300, 3000, Counted(MessageA, "1/2")));
+    }
+
+    [Fact]
+    public void A_rise_inside_the_quiet_after_the_pilots_own_key_speaks()
+    {
+        // The count is a real message, not the pilot's reading: the quiet silences a message that comes onto the screen
+        // after a key, and not this.
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/1"));
+
+        announcer.NoteNavigation();
+        Assert.Null(At(announcer, 100, Counted(MessageA, "1/1")));
+        Assert.Equal(new[] { (500L, "DCDU: 2 messages") }, Calls(announcer, 200, 2000, Counted(MessageA, "1/2")).ToArray());
+    }
+
+    [Fact]
+    public void In_the_quiet_a_rise_with_a_new_first_line_says_only_the_count()
+    {
+        // The pilot's key brings message B to the screen as a second message arrives: B's identity is their reading and is
+        // silent, the rise is not.
+        FenixChannelDcduAnnouncer announcer = Baselined(Screen());
+
+        announcer.NoteNavigation();
+        Assert.Null(At(announcer, 100, Screen()));
+        Assert.Equal(new[] { (500L, "DCDU: 2 messages") }, Calls(announcer, 200, 2000, Counted(MessageB, "1/2")).ToArray());
+    }
+
+    [Fact]
+    public void A_muted_rise_is_not_replayed_on_unmute()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/1"));
+
+        // Shown and settled while muted: silent, and tracked.
+        Assert.Empty(Calls(announcer, 1000, 2000, Counted(MessageA, "1/2"), muted: true));
+
+        // Unmuted with two still on the screen: silent for as long as it stays.
+        Assert.Empty(Calls(announcer, 2100, 5000, Counted(MessageA, "1/2")));
+
+        // And a later rise is called as usual.
+        Assert.Equal(new[] { (6300L, "DCDU: 3 messages") }, Calls(announcer, 6000, 6500, Counted(MessageA, "1/3")).ToArray());
+    }
+
+    [Fact]
+    public void A_mute_beginning_under_the_hold_silences_the_rise()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/1"));
+
+        Assert.Null(At(announcer, 1000, Counted(MessageA, "1/2")));
+        Assert.Null(At(announcer, 1200, Counted(MessageA, "1/2")));
+        Assert.Null(At(announcer, 1300, Counted(MessageA, "1/2"), muted: true));
+        Assert.Empty(Calls(announcer, 1400, 3000, Counted(MessageA, "1/2")));
+    }
+
+    [Fact]
+    public void A_muted_message_and_count_together_are_not_replayed()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Screen());
+
+        Assert.Empty(Calls(announcer, 1000, 2000, Counted(MessageA, "1/2"), muted: true));
+        Assert.Empty(Calls(announcer, 2100, 5000, Counted(MessageA, "1/2")));
+    }
+
+    [Fact]
+    public void A_baseline_with_a_counter_is_silent()
+    {
+        // Two messages waiting when the app starts, or the aircraft loads, are not news.
+        var announcer = new FenixChannelDcduAnnouncer();
+
+        Assert.Null(At(announcer, 0, Counted(MessageA, "1/2")));
+        Assert.Empty(Calls(announcer, 100, 5000, Counted(MessageA, "1/2")));
+
+        var real = new FenixChannelDcduAnnouncer();
+        Assert.Null(At(real, 0, DepartRequest));
+        Assert.Empty(Calls(real, 100, 5000, DepartRequest));
+    }
+
+    [Fact]
+    public void A_gap_takes_a_new_silent_baseline_for_the_total()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/1"));
+
+        // A second message came during the gap: the first ok screen after it shows two, and is the baseline.
+        Assert.Null(announcer.Sample(new FenixChannelSection<FenixDcduScreen>(default, "display off"), 1, false, 1000));
+        Assert.Null(At(announcer, 1100, Counted(MessageA, "1/2")));
+        Assert.Empty(Calls(announcer, 1200, 3000, Counted(MessageA, "1/2")));
+
+        // A rise after that is news again.
+        Assert.Equal(new[] { (4300L, "DCDU: 3 messages") }, Calls(announcer, 4000, 4500, Counted(MessageA, "1/3")).ToArray());
+    }
+
+    [Fact]
+    public void A_gap_too_short_to_hold_a_total_still_ends_the_baseline()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/1"));
+
+        Assert.Null(At(announcer, 1000, Counted(MessageA, "1/2")));
+        Assert.Null(At(announcer, 1100, Counted(MessageA, "1/2")));
+        Assert.Null(announcer.Sample(new FenixChannelSection<FenixDcduScreen>(default, "display off"), 1, false, 1200));
+        Assert.Empty(Calls(announcer, 1300, 3000, Counted(MessageA, "1/2")));
+    }
+
+    [Fact]
+    public void A_reconnect_takes_a_new_silent_baseline_for_the_total()
+    {
+        FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/1"));
+
+        Assert.Null(At(announcer, 1000, Counted(MessageA, "1/2"), connection: 2));
+        Assert.Empty(Calls(announcer, 1100, 3000, Counted(MessageA, "1/2"), connection: 2));
+        Assert.Equal(new[] { (4300L, "DCDU: 3 messages") },
+            Calls(announcer, 4000, 4500, Counted(MessageA, "1/3"), connection: 2).ToArray());
     }
 
     // ---- The mute ---------------------------------------------------------------------------
@@ -573,7 +890,7 @@ public class FenixChannelDcduAnnouncerTests
         [
             FenixChannelSection<FenixDcduScreen>.Missing("DCDU content"),
             FenixChannelSection<FenixDcduScreen>.WrongShape("186.4"),
-            FenixChannelSection<FenixDcduScreen>.UnknownCode('i', "DCDU message"),
+            FenixChannelSection<FenixDcduScreen>.UnknownCode('h', "DCDU message"),
             new(default, "display off"),
             default,
         ];
@@ -629,20 +946,31 @@ public class FenixChannelDcduAnnouncerTests
     [Fact]
     public void The_call_reads_the_same_in_de_DE()
     {
-        // CI runs under en-US: a call built with the PC's culture would read differently here. It holds no number the
-        // app writes, only the DCDU's own text.
+        // CI runs under en-US: a call built with the PC's culture would read differently here. The only figure the app writes
+        // is the count of messages, and the counter it reads is the Fenix's own text.
         InCulture("de-DE", () =>
         {
             Assert.Equal(CallA, FenixChannelDcduAnnouncer.CallText(MessageA));
             Assert.Equal("1426Z FROM EDGG\nCLIMB TO", FenixChannelDcduAnnouncer.IdentityOf(MessageA));
+            Assert.Equal(12, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG", "10/12"])));
 
             FenixChannelDcduAnnouncer announcer = Baselined(Screen());
             Assert.Equal(new[] { (1300L, CallA) }, Calls(announcer, 1000, 1500, MessageA).ToArray());
+
+            FenixChannelDcduAnnouncer two = Baselined(Screen());
+            Assert.Equal(new[] { (1300L, "DCDU: 2021Z FROM EDDF, DEPART REQUEST STATUS ., 2 messages") },
+                Calls(two, 1000, 1500, DepartRequest).ToArray());
+
+            FenixChannelDcduAnnouncer behind = Baselined(Counted(MessageA, "1/1"));
+            Assert.Equal(new[] { (1300L, "DCDU: 2 messages") }, Calls(behind, 1000, 1500, Counted(MessageA, "1/2")).ToArray());
         });
 
         InCulture("sv-SE", () =>
         {
             Assert.Equal(CallA, FenixChannelDcduAnnouncer.CallText(MessageA));
+
+            FenixChannelDcduAnnouncer behind = Baselined(Counted(MessageA, "1/1"));
+            Assert.Equal(new[] { (1300L, "DCDU: 3 messages") }, Calls(behind, 1000, 1500, Counted(MessageA, "1/3")).ToArray());
         });
     }
 }

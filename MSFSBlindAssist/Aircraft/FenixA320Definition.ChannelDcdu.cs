@@ -20,6 +20,9 @@ public partial class FenixA320Definition
     // The tracker of the pilot's own page and message keys, made by the first press of one (UI thread only).
     private Services.FenixChannelDcduAnnouncer? _dcduAnnouncer;
 
+    // The read-back of the pilot's own presses, made by the first press of any key (UI thread only).
+    private Services.FenixChannelDcduReadback? _dcduReadback;
+
     /// <summary>
     /// Whether the new-message call is muted: the Ctrl+M row is unticked, or the variant says there is no DCDU, which the
     /// channel still reads trusted (measured in plan 01). An unread field (null) mutes nothing ([FNX-11]).
@@ -45,13 +48,18 @@ public partial class FenixA320Definition
     // The DCDU announcer's sampler (declared in FenixA320Definition.Hooks.cs), run by the announcer host on every tick. One
     // snapshot gives the verdict, the screen and the connection together. The monitor already logs why a display is not
     // trusted, so only a problem on a trusted DCDU is reported here. The announcer tracks on every tick, muted or not, and
-    // answers with the call when one is due: spoken queued, a background change the pilot did not trigger ([CORE-7]).
+    // answers with the call when one is due: spoken queued, a background change the pilot did not trigger ([CORE-7]). The
+    // read-back of the pilot's own press reads the same screen: what the press changed away from the row under the cursor
+    // (the status, NO MORE MSG), spoken queued once. It is the pilot's own press, so the Ctrl+M row and the variant's mute
+    // leave it alone.
     partial void SampleChannelDcdu(ChannelAnnounceContext ctx)
     {
         Services.FenixChannelSnapshot s = ctx.Monitor.Snapshot(Services.FenixChannelDisplay.Dcdu);
         Services.FenixChannelSection<Services.FenixDcduScreen> section = Services.FenixChannelDcdu.Read(s);
         if (s.Verdict.Trusted && !section.IsOk)
             ctx.Monitor.ReportFeatureProblem(Services.FenixChannelDcdu.DisplayName, section.Problem ?? "no data");
+
+        if (_dcduReadback?.Sample(section, ctx.NowMs) is { } readBack) ctx.Announcer.Announce(readBack);
 
         bool rowMuted = Services.FenixChannelAnnouncementRows.IsMuted(Services.FenixChannelAnnouncementRows.DcduKey);
         string? call = (_dcduAnnouncer ??= new Services.FenixChannelDcduAnnouncer())
@@ -74,13 +82,15 @@ public partial class FenixA320Definition
     }
 
     /// <summary>
-    /// Presses the DCDU key <paramref name="key"/> through the panel's button for it. A page or message key tells the
-    /// announcer first, so that what the key brings onto the screen is read in the window and never called as a new
-    /// message; the announcer is made by the first such key.
+    /// Presses the DCDU key <paramref name="key"/> through the panel's button for it. Every key tells the read-back first,
+    /// so that what the press changes away from the row under the cursor is heard once; the read-back is made by the first
+    /// key. A page or message key tells the announcer as well, so that what the key brings onto the screen is read in the
+    /// window and never called as a new message; the announcer is made by the first such key.
     /// </summary>
     internal void PressDcdu(
         Services.FenixDcduKey key, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
+        (_dcduReadback ??= new Services.FenixChannelDcduReadback()).NotePress(key);
         if (Services.FenixChannelDcduKeys.IsNavigation(key)) (_dcduAnnouncer ??= new Services.FenixChannelDcduAnnouncer()).NoteNavigation();
 
         string varKey = Services.FenixChannelDcduKeys.VariableOf(key);

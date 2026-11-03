@@ -7,7 +7,9 @@
 // four key labels (12 to 15) are strings, kept as sent with their format letters; a line left out is "" (protobuf-net
 // writes nothing for a null string); the print frame (1) is not read. A 186 that is absent is missing content, a 186 that
 // is not a message or a line in another shape is a wrong shape named by its path, and a format letter the app does not
-// know makes the section an unknown code that names the part ([FNX-24]). A shape problem is reported before a letter.
+// know makes the section an unknown code that names the part ([FNX-24]), except "i", which the DCDU draws on a pressed key
+// and on a chosen answer's status (measured 2026-11-03) and which is known here. A shape problem is reported before a letter.
+// Plain is a line's text for the window and the announcement: no codes, no color names, the end trimmed (owner's ruling).
 
 using MSFSBlindAssist.Services;
 
@@ -17,6 +19,9 @@ public class FenixChannelDcduDecoderTests
 {
     // 14 spaces, as the empty DCDU's Info2 and Info3 were measured on 3.0.0.7613 (2026-11-03).
     private const string Spaces14 = "              ";
+
+    // U+2800, the blank braille cell the display uses as a spacer, written as a cast because it cannot be seen in source.
+    private static readonly string Spacer = ((char)0x2800).ToString();
 
     // A DCDU part with the print frame set, as the empty DCDU was measured, and the lines given: field number and text.
     private static FenixChannelProtoWriter Content(params (int Field, string Text)[] lines)
@@ -232,10 +237,34 @@ public class FenixChannelDcduDecoderTests
         Assert.False(uplink.IsOk);
         Assert.Equal("unknown code 'q' in the DCDU message", uplink.Problem);
 
-        // Lowercase free text: c is cyan, l is large, i is the first letter that is no code.
-        FenixChannelSection<FenixDcduScreen> freeText = Decode(Content((5, "climb")));
+        // Lowercase free text: h is the first letter of "hello" that is no code (e, l and o follow it, and l is a code).
+        FenixChannelSection<FenixDcduScreen> freeText = Decode(Content((5, "hello")));
         Assert.False(freeText.IsOk);
-        Assert.Equal("unknown code 'i' in the DCDU message", freeText.Problem);
+        Assert.Equal("unknown code 'h' in the DCDU message", freeText.Problem);
+    }
+
+    [Fact]
+    public void The_answer_letter_i_is_known_on_the_dcdu()
+    {
+        // Measured on 3.0.0.7613 (2026-11-03): "i" is drawn on a pressed key ("ciWILCO*") and on a chosen answer's status
+        // ("ciWILCO"). It is a letter the DCDU knows, so a line with it decodes, in every part, and keeps it as sent.
+        FenixDcduScreen screen = Decoded(Content(
+            (2, "g 2021Z FROM EDDF"), (3, "ciWILCO"), (4, "ciMSG"), (9, "gi"), (12, "c*iCANCEL"), (13, "ci"), (14, "cWILCO*"),
+            (15, "ciWILCO*")));
+
+        Assert.Equal("ciWILCO", screen.HeaderRight);
+        Assert.Equal("ciMSG", screen.Message[0]);
+        Assert.Equal("gi", screen.Info[0]);
+        Assert.Equal("c*iCANCEL", screen.LeftKey1);
+        Assert.Equal("ci", screen.LeftKey2);
+        Assert.Equal("ciWILCO*", screen.RightKey2);
+
+        // It does not make any other letter known: the first letter that is still unknown names the problem, whether it
+        // comes before the "i" or after it.
+        FenixChannelSection<FenixDcduScreen> before = Decode(Content((15, "cqiWILCO*")));
+        Assert.Equal("unknown code 'q' in the DCDU key labels", before.Problem);
+        FenixChannelSection<FenixDcduScreen> after = Decode(Content((3, "ciqWILCO")));
+        Assert.Equal("unknown code 'q' in the DCDU header", after.Problem);
     }
 
     [Theory]
@@ -309,8 +338,53 @@ public class FenixChannelDcduDecoderTests
         // Trusted, and the decoder's own problems come through.
         Assert.Equal("field 186.4 has the wrong shape",
             FenixChannelDcdu.Read(Snapshot(true, "trusted", Remote(new FenixChannelProtoWriter().Varint(4, 1)))).Problem);
-        Assert.Equal("unknown code 'i' in the DCDU message",
-            FenixChannelDcdu.Read(Snapshot(true, "trusted", Remote(Content((5, "climb"))))).Problem);
+        Assert.Equal("unknown code 'h' in the DCDU message",
+            FenixChannelDcdu.Read(Snapshot(true, "trusted", Remote(Content((5, "hello"))))).Problem);
+    }
+
+    // ---- Plain and Spoken ---------------------------------------------------------------------
+
+    [Fact]
+    public void Plain_is_the_lines_text_without_codes_and_with_the_end_trimmed()
+    {
+        // The Fenix's own lines, as measured: the codes are dropped, the spacing inside the line is kept, and the padding at
+        // the end goes.
+        Assert.Equal("BVI4RK  RCD REQUEST", FenixChannelDcdu.Plain("cBVI4RKw  RCD REQUEST   "));
+        Assert.Equal("STANDBY  IF NO", FenixChannelDcdu.Plain("cSTANDBYw  IF cNO       "));
+        Assert.Equal("FSM 2010 261103 EDDF", FenixChannelDcdu.Plain("FSM 2010 261103 cEDDFw  "));
+        Assert.Equal("MSG        PGE", FenixChannelDcdu.Plain("MSG        PGE"));
+
+        // The start is kept as the display drew it: the header's left half starts with a space after its color.
+        Assert.Equal(" 2021Z FROM EDDF", FenixChannelDcdu.Plain("g 2021Z FROM EDDF"));
+
+        // The answer letter is a code and is never part of the text.
+        Assert.Equal("WILCO*", FenixChannelDcdu.Plain("ciWILCO*"));
+        Assert.Equal("WILCO", FenixChannelDcdu.Plain("ciWILCO"));
+
+        // "!" is a space, as the speech function has it, and the braille blank is a space too.
+        Assert.Equal("ALT CRZ", FenixChannelDcdu.Plain("gALT!CRZ"));
+        Assert.Equal(" ACTIVE", FenixChannelDcdu.Plain("g" + Spacer + "ACTIVE"));
+        Assert.Equal("ALT", FenixChannelDcdu.Plain("gALT!!!"));
+    }
+
+    [Fact]
+    public void A_line_with_nothing_left_after_the_trim_is_blank()
+    {
+        // Plain is empty exactly when the line has nothing to read: nothing, spaces, a color letter, a color letter and spaces.
+        foreach (string blank in new[] { "", "              ", "c", "c ", "g", "wc", "ci", "c!", "c" + Spacer + Spacer })
+        {
+            Assert.Equal("", FenixChannelDcdu.Plain(blank));
+        }
+    }
+
+    [Fact]
+    public void Spoken_collapses_runs_of_spaces_and_trims_both_ends()
+    {
+        Assert.Equal("BVI4RK RCD REQUEST", FenixChannelDcdu.Spoken("cBVI4RKw  RCD REQUEST   "));
+        Assert.Equal("2021Z FROM EDDF", FenixChannelDcdu.Spoken("g 2021Z FROM EDDF"));
+        Assert.Equal("ACTIVE", FenixChannelDcdu.Spoken("g" + Spacer + "ACTIVE"));
+        Assert.Equal("FL350 AT 1426Z", FenixChannelDcdu.Spoken("cFL350   AT  1426Z"));
+        Assert.Equal("", FenixChannelDcdu.Spoken("c  "));
     }
 
     [Fact]

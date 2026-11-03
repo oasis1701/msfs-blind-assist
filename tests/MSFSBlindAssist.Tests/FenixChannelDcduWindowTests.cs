@@ -5,8 +5,10 @@
 //
 // The contract: the window is the base's list of rows ("DCDU display") with a keyboard on it. A key of the nine
 // (FenixChannelDcduKeys.Map, the shared alternate soft keys setting picking the chords) is judged at the press on a
-// snapshot taken then, never on the last refresh's, and a refusal is the only thing it ever says: the result of a press is
-// heard in the refreshed list, never the key's name ([CORE-7]). A press goes through the definition's own handler for the
+// snapshot taken then, never on the last refresh's, and a refusal is the only thing the window ever says: the result of a
+// press is heard in the refreshed list, never the key's name ([CORE-7]); a result that is not on the row under the cursor
+// (the status, NO MORE MSG) is read back once by the sampler (FenixChannelDcduReadback), which every press tells first. A
+// press goes through the definition's own handler for the
 // panel's S_DCDU1_* button, which presses and releases ([A320-3]) and carries the variant's refusal in front of it; the
 // window and the definition's DCDU calls never write a variable, run a calculator string or open the channel themselves
 // ([FNX-21]). A key held down presses once: the base asks the window about every auto-repeat too, and an answer key is
@@ -248,6 +250,49 @@ public class FenixChannelDcduWindowTests : IDisposable
         Assert.Empty(speech.All);
     }
 
+    private static readonly FieldInfo ReadbackField =
+        typeof(FenixA320Definition).GetField("_dcduReadback", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+    // A DCDU that reads, with the given first info line.
+    private static FenixChannelSection<FenixDcduScreen> InfoScreen(string info1)
+        => FenixChannelSection<FenixDcduScreen>.Ok(new FenixDcduScreen(
+            "g 2021Z FROM EDDF", "cOPEN", ["CLRD TO cEGSSw.", "", "", "", ""], [info1, "MSG", "2/2"], "", "", "", ""));
+
+    [Fact]
+    public void Every_press_notes_the_read_back_so_that_its_result_is_heard()
+    {
+        // After the pilot's own press the DCDU's first info line (a message key with nothing to step to: NO MORE MSG) may be
+        // the only sign of the result, and it is not on the row under the cursor. Each of the nine keys tells the read-back
+        // first, so that the first sample is the before reading.
+        var speech = new SpeechCapture();
+        var sim = new SimConnectManager(IntPtr.Zero);
+
+        foreach (FenixDcduKey key in Enum.GetValues<FenixDcduKey>())
+        {
+            var definition = new FenixA320Definition();
+            var readback = new FenixChannelDcduReadback();
+            ReadbackField.SetValue(definition, readback);
+
+            definition.PressDcdu(key, sim, speech);
+
+            Assert.Null(readback.Sample(InfoScreen(""), 0));
+            Assert.True(readback.Sample(InfoScreen("NO MORE MSG"), 200) == "NO MORE MSG", $"{key} did not note the read-back");
+        }
+
+        Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public void The_first_press_makes_the_read_back()
+    {
+        var definition = new FenixA320Definition();
+        Assert.Null(ReadbackField.GetValue(definition));
+
+        definition.PressDcdu(FenixDcduKey.Print, new SimConnectManager(IntPtr.Zero), new SpeechCapture());
+
+        Assert.NotNull(ReadbackField.GetValue(definition));
+    }
+
     // ---- Reading the source ---------------------------------------------------------------------
 
     private static string SourcePath(params string[] parts)
@@ -480,6 +525,22 @@ public class FenixChannelDcduWindowTests : IDisposable
         // A call is a background change the pilot did not trigger ([CORE-7]): queued, never interrupting.
         Assert.Contains("ctx.Announcer.Announce(", body);
         Assert.DoesNotContain("AnnounceImmediate", body);
+    }
+
+    [Fact]
+    public void The_sampler_speaks_the_read_back_of_the_same_snapshot_queued_and_not_muted()
+    {
+        string body = BodyOf(DefinitionPath, "SampleChannelDcdu");
+
+        // Every tick the read-back is given the screen of the tick's one snapshot and its clock, and what it says is queued.
+        // It is the pilot's own press, so neither the Ctrl+M row nor the airframe's variant mutes it.
+        Match sample = Regex.Match(body, @"[^\r\n;]*_dcduReadback\s*\?\s*\.\s*Sample\(\s*section\s*,\s*ctx\.NowMs\s*\)[^;]*;");
+        Assert.True(sample.Success, "the sampler never gives the read-back the tick's screen and clock");
+        Assert.DoesNotContain("uted", sample.Value);
+        Assert.Matches(@"Announce\(\s*readBack\s*\)", body);
+
+        // And still the one snapshot a tick.
+        Assert.Single(Regex.Matches(body, @"Snapshot\("));
     }
 
     [Fact]

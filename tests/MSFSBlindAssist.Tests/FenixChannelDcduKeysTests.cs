@@ -6,11 +6,14 @@
 // The contract: nine keys, each pressed through one registered button variable of the Fenix definition. The chords are the
 // A32NX window's: Ctrl+1/Ctrl+2 and Alt+1/Alt+2 for the four soft keys, or F1/F2 and F7/F8 when the alternate soft keys
 // are on (the other set then maps to nothing), always PageDown/PageUp for page plus and minus, Ctrl+PageDown/Ctrl+PageUp
-// for message plus and minus (DOWN is forward) and Ctrl+P for print; a chord with any other modifier maps to nothing. A
-// soft key is decided on the snapshot it is given: a DCDU the app cannot read gives "DCDU not available", a blank label
-// gives "No action on that key.", otherwise the key presses. The page, message and print keys always press: they never
-// depend on what the app reads.
+// for the next and the previous message (DOWN is forward) and Ctrl+P for print; a chord with any other modifier maps to
+// nothing. The message keys press the cockpit part that moves the counter that way, measured on 3.0.0.7613 (2026-11-03):
+// S_DCDU1_MSGDWN steps forward and S_DCDU1_MSGUP back, whatever the part's names (Plus and Minus) say. A soft key is
+// decided on the snapshot it is given: a DCDU the app cannot read gives "DCDU not available", a blank label gives "No
+// action on that key.", otherwise the key presses. The page, message and print keys always press: they never depend on what
+// the app reads. A label is blank when FenixChannelDcdu.Plain leaves nothing of it, so "ciWILCO*" (a pressed key) is a label.
 
+using System.Globalization;
 using System.Windows.Forms;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Services;
@@ -28,7 +31,7 @@ public class FenixChannelDcduKeysTests
 
     private static readonly FenixDcduKey[] OtherKeys =
     [
-        FenixDcduKey.PageMinus, FenixDcduKey.PagePlus, FenixDcduKey.MessageMinus, FenixDcduKey.MessagePlus,
+        FenixDcduKey.PageMinus, FenixDcduKey.PagePlus, FenixDcduKey.MessageBack, FenixDcduKey.MessageForward,
         FenixDcduKey.Print
     ];
 
@@ -41,8 +44,9 @@ public class FenixChannelDcduKeysTests
         (FenixDcduKey.RightKey2, "S_DCDU1_LSK2R", "LSK 2 Right"),
         (FenixDcduKey.PagePlus, "S_DCDU1_PGDN", "Page Plus"),
         (FenixDcduKey.PageMinus, "S_DCDU1_PGUP", "Page Minus"),
-        (FenixDcduKey.MessagePlus, "S_DCDU1_MSGUP", "Message Plus"),
-        (FenixDcduKey.MessageMinus, "S_DCDU1_MSGDWN", "Message Minus"),
+        // Forward is the part the cockpit calls Minus: its counter rises with it.
+        (FenixDcduKey.MessageForward, "S_DCDU1_MSGDWN", "Message Minus"),
+        (FenixDcduKey.MessageBack, "S_DCDU1_MSGUP", "Message Plus"),
         (FenixDcduKey.Print, "S_DCDU1_PRINT", "Print")
     ];
 
@@ -94,12 +98,12 @@ public class FenixChannelDcduKeysTests
             (Keys.F1, FenixDcduKey.LeftKey1), (Keys.F2, FenixDcduKey.LeftKey2),
             (Keys.F7, FenixDcduKey.RightKey1), (Keys.F8, FenixDcduKey.RightKey2)
         ];
-        // DOWN is forward: page down is page plus, and with Ctrl message plus.
+        // DOWN is forward: page down is page plus, and with Ctrl it steps to the next message.
         (Keys Chord, FenixDcduKey Key)[] always =
         [
             (Keys.PageDown, FenixDcduKey.PagePlus), (Keys.PageUp, FenixDcduKey.PageMinus),
-            (Keys.Control | Keys.PageDown, FenixDcduKey.MessagePlus),
-            (Keys.Control | Keys.PageUp, FenixDcduKey.MessageMinus),
+            (Keys.Control | Keys.PageDown, FenixDcduKey.MessageForward),
+            (Keys.Control | Keys.PageUp, FenixDcduKey.MessageBack),
             (Keys.Control | Keys.P, FenixDcduKey.Print)
         ];
 
@@ -168,7 +172,7 @@ public class FenixChannelDcduKeysTests
         // Page and message keys are navigation; print is neither.
         foreach (FenixDcduKey key in new[]
                  {
-                     FenixDcduKey.PageMinus, FenixDcduKey.PagePlus, FenixDcduKey.MessageMinus, FenixDcduKey.MessagePlus
+                     FenixDcduKey.PageMinus, FenixDcduKey.PagePlus, FenixDcduKey.MessageBack, FenixDcduKey.MessageForward
                  })
         {
             Assert.False(FenixChannelDcduKeys.IsSoftKey(key), key.ToString());
@@ -184,6 +188,64 @@ public class FenixChannelDcduKeysTests
     {
         Assert.Equal("No action on that key.", FenixChannelDcduKeys.NoActionMessage);
         Assert.Equal("DCDU not available", FenixChannelDcduKeys.NotAvailableMessage);
+    }
+
+    [Fact]
+    public void Ctrl_PageDown_steps_to_the_next_message_and_Ctrl_PageUp_to_the_previous_one()
+    {
+        // Measured on 3.0.0.7613 (2026-11-03): from message 1/2 S_DCDU1_MSGUP says "NO MORE MSG" and S_DCDU1_MSGDWN moves to
+        // 2/2; from 2/2 S_DCDU1_MSGUP moves back to 1/2. The cockpit calls the parts Plus for MSGUP and Minus for MSGDWN, yet
+        // the counter rises with MSGDWN. DOWN is forward ([A320-17]), so Ctrl+PageDown presses MSGDWN.
+        foreach (bool alternate in new[] { false, true })
+        {
+            FenixDcduKey forward = FenixChannelDcduKeys.Map(Keys.Control | Keys.PageDown, alternate)!.Value;
+            FenixDcduKey back = FenixChannelDcduKeys.Map(Keys.Control | Keys.PageUp, alternate)!.Value;
+
+            Assert.Equal(FenixDcduKey.MessageForward, forward);
+            Assert.Equal(FenixDcduKey.MessageBack, back);
+            Assert.Equal("S_DCDU1_MSGDWN", FenixChannelDcduKeys.VariableOf(forward));
+            Assert.Equal("S_DCDU1_MSGUP", FenixChannelDcduKeys.VariableOf(back));
+        }
+
+        // The page keys keep their variables: PageDown moved to page 2/2 on S_DCDU1_PGDN.
+        Assert.Equal("S_DCDU1_PGDN", FenixChannelDcduKeys.VariableOf(FenixChannelDcduKeys.Map(Keys.PageDown, false)!.Value));
+        Assert.Equal("S_DCDU1_PGUP", FenixChannelDcduKeys.VariableOf(FenixChannelDcduKeys.Map(Keys.PageUp, false)!.Value));
+    }
+
+    [Fact]
+    public void A_pressed_keys_label_is_a_label_and_not_blank()
+    {
+        // About 0.3 s after a press the key's label is "ciWILCO*" for half a second: it has words, so a press goes ahead. The
+        // answer letter alone is nothing to read, and a key with only that is blank.
+        FenixChannelSnapshot pressing = Trusted((12, "c*UNABLE"), (14, "ciWILCO*"), (15, "ciSTBY*"), (13, "ci"));
+
+        Assert.Equal(new FenixDcduDecision("S_DCDU1_LSK1R", null), FenixChannelDcduKeys.Decide(FenixDcduKey.RightKey1, pressing));
+        Assert.Equal(new FenixDcduDecision("S_DCDU1_LSK2R", null), FenixChannelDcduKeys.Decide(FenixDcduKey.RightKey2, pressing));
+        Assert.Equal(new FenixDcduDecision(null, "No action on that key."), FenixChannelDcduKeys.Decide(FenixDcduKey.LeftKey2, pressing));
+    }
+
+    [Fact]
+    public void Decisions_read_the_same_in_de_DE_and_sv_SE()
+    {
+        // CI runs under en-US: the refusals are words and a decision is a variable name, so none depends on the PC's culture.
+        CultureInfo saved = CultureInfo.CurrentCulture;
+        try
+        {
+            foreach (string name in new[] { "de-DE", "sv-SE" })
+            {
+                CultureInfo.CurrentCulture = new CultureInfo(name);
+
+                FenixChannelSnapshot snapshot = Trusted((14, "ciWILCO*"), (15, ""));
+                Assert.Equal(new FenixDcduDecision("S_DCDU1_LSK1R", null), FenixChannelDcduKeys.Decide(FenixDcduKey.RightKey1, snapshot));
+                Assert.Equal(new FenixDcduDecision(null, "No action on that key."),
+                    FenixChannelDcduKeys.Decide(FenixDcduKey.RightKey2, snapshot));
+                Assert.Equal("S_DCDU1_MSGDWN", FenixChannelDcduKeys.VariableOf(FenixDcduKey.MessageForward));
+            }
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
     }
 
     // ---- A soft key --------------------------------------------------------------------------
@@ -255,7 +317,7 @@ public class FenixChannelDcduKeysTests
             Snapshot(true, "trusted", FenixChannelPush.From(new FenixChannelProtoWriter().Double(197, 1000).ToArray())!),
             Snapshot(true, "trusted", null),
             // Trusted, with lowercase free text: a letter the app does not know, so nothing is sent for any key.
-            Snapshot(true, "trusted", Remote(Content((4, "climb"), (12, "cROGER"), (13, "cSTBY"), (14, "cWILCO*"), (15, "cREJECT*"))))
+            Snapshot(true, "trusted", Remote(Content((4, "hello"), (12, "cROGER"), (13, "cSTBY"), (14, "cWILCO*"), (15, "cREJECT*"))))
         ];
 
         foreach (FenixChannelSnapshot snapshot in cannotBeRead)
@@ -298,7 +360,7 @@ public class FenixChannelDcduKeysTests
             Snapshot(false, "display off", null),
             Snapshot(true, "trusted", null),
             Snapshot(true, "trusted", FenixChannelPush.From(new FenixChannelProtoWriter().Varint(186, 1).ToArray())!),
-            Snapshot(true, "trusted", Remote(Content((4, "climb"))))
+            Snapshot(true, "trusted", Remote(Content((4, "hello"))))
         ];
 
         foreach (FenixChannelSnapshot snapshot in snapshots)

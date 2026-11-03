@@ -1,23 +1,35 @@
+using System.Globalization;
+
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// The rows of the Fenix DCDU window: one snapshot of the display channel turned into what the captain's DCDU draws,
-/// worded for a screen reader. Every line goes through <see cref="FenixChannelSpeech"/> with its colors, and a blank
+/// The rows of the Fenix DCDU window: one snapshot of the display channel turned into what the captain's DCDU draws, as
+/// plain words laid out as the MCDU window is. Every line goes through <see cref="FenixChannelDcdu.Plain"/> and a blank
 /// line makes no row.
 /// </summary>
 /// <remarks>
-/// <para>The rows run: the header (its left half, then its right, as <see cref="HeaderText"/>), the five message lines,
-/// the three info lines, then the soft keys top to bottom and left to right (L1, R1, L2, R2). A key keeps its slot number
-/// and its side arrow with its label, before the spoken color, as the A32NX window shows its keys: a left key reads
-/// "1 &lt;*UNABLE, cyan" and a right key "1 WILCO*&gt;, cyan". A key with no label makes no row, so a key alone on a side
-/// still reads under its own number ([A320-16]).</para>
+/// <para>No color is named: the owner ruled it for the DCDU (2026-11-03), over spec 2.6 and [FNX-24], as the MCDU window
+/// names none. The format codes are read and dropped.</para>
+/// <para>The rows run: the header on one row, the five message lines, the three info lines, then the key rows. Every line
+/// the Fenix sends is 24 columns wide, and a row that holds a left and a right part lays them out on those 24 columns
+/// with <see cref="FbwMcduFormat.PositionLine(string, string, string, int)"/>, the A32NX DCDU window's way. The header is
+/// the left half at the left edge and the right half at the right edge, both trimmed ("2021Z FROM EDDF     OPEN"). A
+/// message or info line keeps the spacing the Fenix drew inside it and loses its padding at the end. A key row is the row's
+/// number first: a left key's label follows "&lt;" ("1 &lt;*UNABLE"), a right key's label ends with "&gt;" at the right edge
+/// ("1 &lt;*UNABLE        STBY*&gt;"), and a row with a right key alone is its number and the label at the right edge. A key
+/// row with no label on either side makes no row, so a key alone on a side still reads under its own number ([A320-16]).</para>
+/// <para>A row that cannot hold both of its parts on the 24 columns is not clipped: its parts are joined by one space, so no
+/// word is ever lost to the grid.</para>
 /// <para>A screen with no row at all reads <see cref="NoMessageRow"/>, the A32NX window's words. The only figure the
-/// app writes is a key's slot number, 1 or 2, so no row depends on the PC's culture.</para>
+/// app writes is a key row's number, 1 or 2, so no row depends on the PC's culture.</para>
 /// </remarks>
 internal static class FenixChannelDcduRows
 {
     /// <summary>The one row of a DCDU that draws nothing, in the A32NX DCDU window's words.</summary>
     public const string NoMessageRow = "(no CPDLC message displayed)";
+
+    // The width of every line of the DCDU, and of the A32NX DCDU window.
+    private const int Columns = 24;
 
     /// <summary>
     /// The window's rows for <paramref name="s"/>: <see cref="RowsOf"/> of the captain's DCDU, or <see cref="NoMessageRow"/>
@@ -47,55 +59,59 @@ internal static class FenixChannelDcduRows
 
         if (HeaderText(screen) is { } header) rows.Add(header);
 
-        rows.AddRange(screen.Message.Select(line => FenixChannelSpeech.Line(line)).OfType<string>());
-        rows.AddRange(screen.Info.Select(line => FenixChannelSpeech.Line(line)).OfType<string>());
+        rows.AddRange(LinesOf(screen.Message));
+        rows.AddRange(LinesOf(screen.Info));
 
-        // Top to bottom, left to right: the keys of the first row, then the keys of the second.
-        string?[] keys =
-        [
-            LeftKeyRow(1, screen.LeftKey1), RightKeyRow(1, screen.RightKey1),
-            LeftKeyRow(2, screen.LeftKey2), RightKeyRow(2, screen.RightKey2)
-        ];
+        // The first row of keys, then the second: each holds a left key and a right key.
+        string?[] keys = [KeyRow(1, screen.LeftKey1, screen.RightKey1), KeyRow(2, screen.LeftKey2, screen.RightKey2)];
         rows.AddRange(keys.OfType<string>());
 
         return rows;
     }
 
     /// <summary>
-    /// The header as one line: its left half and its right half spoken and joined by ", " ("1426Z FROM EDGG, white, OPEN,
-    /// green"), or just the half that has words. Null when both are blank.
+    /// The header as one 24-column row: its left half at the left edge and its right half at the right edge, both trimmed
+    /// ("2021Z FROM EDDF     OPEN"). A blank half leaves its side empty. Null when both are blank.
     /// </summary>
     public static string? HeaderText(FenixDcduScreen screen)
     {
-        string[] halves = [.. new[] { screen.HeaderLeft, screen.HeaderRight }
-            .Select(half => FenixChannelSpeech.Line(half)).OfType<string>()];
+        string left = FenixChannelDcdu.Plain(screen.HeaderLeft).Trim();
+        string right = FenixChannelDcdu.Plain(screen.HeaderRight).Trim();
 
-        return halves.Length == 0 ? null : string.Join(", ", halves);
+        return left.Length == 0 && right.Length == 0 ? null : OnGrid(left, right);
     }
 
     /// <summary>
-    /// The first message line that has words, spoken with its colors. Null when no message line has any: the header, the
-    /// info lines and the keys are not the message.
+    /// The first message line that has words, as a sentence (runs of spaces made one). Null when no message line has any:
+    /// the header, the info lines and the keys are not the message.
     /// </summary>
     public static string? FirstMessageLine(FenixDcduScreen screen)
-        => screen.Message.Select(line => FenixChannelSpeech.Line(line)).OfType<string>().FirstOrDefault();
+        => screen.Message.Select(line => FenixChannelDcdu.Spoken(line)).FirstOrDefault(line => line.Length > 0);
 
-    // "1 <*UNABLE, cyan": the slot, the arrow the DCDU draws before a left label and the label's speech. Null for a blank
-    // label.
-    private static string? LeftKeyRow(int slot, string label)
-        => FenixChannelSpeech.Line(label) is { } spoken ? $"{slot} <{spoken}" : null;
+    // The lines that have words, each as the display drew it with its end trimmed.
+    private static IEnumerable<string> LinesOf(IReadOnlyList<string> lines)
+        => lines.Select(line => FenixChannelDcdu.Plain(line)).Where(line => line.Length > 0);
 
-    // U+2800, the blank braille cell the display uses as a spacer, which the parser reads as a space. Written as a cast
-    // because the character cannot be seen in source.
-    private const char BrailleBlank = (char)0x2800;
+    // "1 <*UNABLE        STBY*>": the row's number, the left key's label after "<", and the right key's label with the
+    // arrow the DCDU draws after it at the right edge. Null when neither side has a label.
+    private static string? KeyRow(int row, string leftLabel, string rightLabel)
+    {
+        string left = FenixChannelDcdu.Plain(leftLabel).Trim();
+        string right = FenixChannelDcdu.Plain(rightLabel).Trim();
+        if (left.Length == 0 && right.Length == 0) return null;
 
-    // "1 WILCO*>, cyan": the slot and the label with the arrow the DCDU draws after a right label. The arrow is added to
-    // the coded label so that it is spoken in the label's last stretch, but only to a label that has words: a blank one
-    // makes no row, and the arrow alone never does. The label's trailing padding (spaces, the braille blank) is left off
-    // first, so that the arrow follows the word: speech keeps one space, so "WILCO*   " + ">" would read "WILCO* >".
-    private static string? RightKeyRow(int slot, string label)
-        => FenixChannelSpeech.Line(label) is not null
-            && FenixChannelSpeech.Line(label.TrimEnd(' ', BrailleBlank) + ">") is { } spoken
-            ? $"{slot} {spoken}"
-            : null;
+        string number = row.ToString(CultureInfo.InvariantCulture);
+        return OnGrid(left.Length == 0 ? number : $"{number} <{left}", right.Length == 0 ? "" : right + ">");
+    }
+
+    // The left text at the left edge of the 24 columns and the right text at the right edge. Two parts that do not fit with a
+    // space between them, or a part wider than the grid, are joined by one space instead: the grid clips and lets one part
+    // write over the other, and a word the pilot needs must not be lost to that.
+    private static string OnGrid(string left, string right)
+    {
+        int gap = left.Length > 0 && right.Length > 0 ? 1 : 0;
+        if (left.Length + gap + right.Length > Columns) return gap == 1 ? $"{left} {right}" : left + right;
+
+        return FbwMcduFormat.PositionLine(left, "", right, Columns);
+    }
 }

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
@@ -15,7 +17,7 @@ namespace MSFSBlindAssist.Services;
 /// screen that was not ok (a display-off gap, an untrusted display) or after the channel reconnected: a message already on
 /// the DCDU then is not news, and a message that came while nothing could be read is not either. The screen that shows
 /// the problem or the new connection is not itself the baseline: the next ok screen is. What was remembered before the
-/// baseline is forgotten with it.</para>
+/// baseline is forgotten with it, and the total of messages (below) is taken afresh.</para>
 /// <para>After the baseline an identity counts once it has stayed on the screen <see cref="SettleMs"/> without a break, the
 /// settle the FMA announcements use, so a screen that is still being drawn is not called. When it counts it is
 /// remembered, up to <see cref="SeenCapacity"/> of them (the oldest dropped), and an identity already remembered never
@@ -27,11 +29,21 @@ namespace MSFSBlindAssist.Services;
 /// when the message pages or the next message on the screen, is heard in the list, never as a call. The quiet is the
 /// cabin window's own-press rule (<see cref="FenixCabinOwnPresses"/>), counted here from the first sample after the key
 /// because the key takes no clock; it is over at exactly <see cref="NavigationQuietMs"/> after that sample.</para>
-/// <para>What is said. <see cref="CallText"/>: "DCDU: " and the header's left half spoken, then the first message line
-/// spoken. Never the status.</para>
+/// <para>A message waiting behind another. Two messages can arrive and only the first reaches the screen, so its identity
+/// never shows the second. The total is what the screen's counter says (<see cref="TotalOf"/>), and a total that rises and
+/// holds <see cref="SettleMs"/> to two or more is a message that came: it is called "DCDU: 2 messages". The total that
+/// has held is remembered whether or not it was heard, and it falls silently: a message closed says nothing, and a rise
+/// after a fall speaks again. A total that moves for less than the settle (a screen being redrawn) moves nothing.
+/// Stepping or paging changes no total. A rise is a real message and not the pilot's reading, so the quiet after the
+/// pilot's own key does not silence it; the mute does, and unmuting replays nothing. When a new message's call and a rise
+/// of the total to two or more fall due in the same sample, one call says both: "DCDU: 2021Z FROM EDDF, DEPART REQUEST
+/// STATUS ., 2 messages".</para>
+/// <para>What is said. <see cref="CallText"/>: "DCDU: " and the header's left half, then the first message line, as plain
+/// words with no color named (owner's ruling, 2026-11-03: the DCDU speaks none, as the MCDU does) and runs of spaces made
+/// one. Never the status.</para>
 /// <para>Threads. Called on the UI thread only, by the host's timer, and <see cref="NoteNavigation"/> from the window's key
-/// handler on the same thread, so the announcer takes no lock. The text is the DCDU's own words and colors, so the PC's
-/// culture changes none of it.</para>
+/// handler on the same thread, so the announcer takes no lock. The text is the DCDU's own words, so the PC's culture
+/// changes none of it, and the only figure written, the count, is formatted with the invariant culture.</para>
 /// </remarks>
 internal sealed class FenixChannelDcduAnnouncer
 {
@@ -66,6 +78,13 @@ internal sealed class FenixChannelDcduAnnouncer
     private long _candidateSinceMs;
     private bool _candidateMuted;
 
+    // The total that has held the settle (taken at the baseline), and the total on the screen that has not yet, since when
+    // it has been there and whether the DCDU was muted at any sample of that stretch.
+    private int _total;
+    private int? _totalCandidate;
+    private long _totalCandidateSinceMs;
+    private bool _totalCandidateMuted;
+
     // NoteNavigation has been called since the last sample, and the end of the quiet that sample began.
     private bool _navigationPending;
     private long _quietUntilMs = long.MinValue;
@@ -78,8 +97,8 @@ internal sealed class FenixChannelDcduAnnouncer
     public void NoteNavigation() => _navigationPending = true;
 
     /// <summary>
-    /// One reading of the DCDU. Returns the text to speak when the message on the screen has just counted as new, else
-    /// null (see the class remarks).
+    /// One reading of the DCDU. Returns the text to speak when the message on the screen has just counted as new or the
+    /// total of messages has just risen, else null (see the class remarks).
     /// </summary>
     /// <param name="screen">The DCDU as the decoder gave it; a section that is not ok says nothing and ends the baseline.</param>
     /// <param name="connection">Which connection of the channel the screen came from; another than the last sample's
@@ -101,10 +120,13 @@ internal sealed class FenixChannelDcduAnnouncer
         {
             _baselined = false;
             _candidate = null;
+            _totalCandidate = null;
             return null;
         }
 
-        string? identity = IdentityOf(screen.Value!);
+        FenixDcduScreen current = screen.Value!;
+        string? identity = IdentityOf(current);
+        int total = TotalOf(current);
 
         if (!_baselined)
         {
@@ -112,9 +134,67 @@ internal sealed class FenixChannelDcduAnnouncer
             _seen.Clear();
             _seenOrder.Clear();
             if (identity is not null) Remember(identity);
+            _total = total;
             return null;
         }
 
+        string? call = SampleIdentity(current, identity, muted, nowMs);
+        int? messages = SampleTotal(total, muted, nowMs);
+
+        if (messages is not { } count) return call;
+
+        string waiting = FormattableString.Invariant($"{count} messages");
+        return call is null ? "DCDU: " + waiting : call + ", " + waiting;
+    }
+
+    /// <summary>
+    /// What makes a message the same message: the header's left half and the first message line that has words, each
+    /// parsed (its colors and codes are not part of it) and trimmed, with a line break between. Null while the header's
+    /// left half is blank. A header with no message line is an identity with an empty second half.
+    /// </summary>
+    public static string? IdentityOf(FenixDcduScreen screen)
+    {
+        string header = TextOf(screen.HeaderLeft);
+        if (header.Length == 0) return null;
+
+        string first = screen.Message.Select(TextOf).FirstOrDefault(text => text.Length > 0) ?? "";
+        return header + IdentitySeparator + first;
+    }
+
+    /// <summary>
+    /// What to say about a new message: "DCDU: " and the header's left half as <see cref="FenixChannelDcdu.Spoken"/> gives
+    /// it, then ", " and the first message line as <see cref="FenixChannelDcduRows.FirstMessageLine"/> gives it ("DCDU: 1426Z
+    /// FROM EDGG, CLIMB TO"); the last part is left out when no message line has words. No color is named, and the status,
+    /// the right half of the header, is not said (a new message's status adds nothing). Null when the header's left half
+    /// has no words.
+    /// </summary>
+    public static string? CallText(FenixDcduScreen screen)
+    {
+        string header = FenixChannelDcdu.Spoken(screen.HeaderLeft);
+        if (header.Length == 0) return null;
+
+        string call = "DCDU: " + header;
+        return FenixChannelDcduRows.FirstMessageLine(screen) is { } message ? call + ", " + message : call;
+    }
+
+    /// <summary>
+    /// How many messages the DCDU holds: the number after the slash in the first token of the third info line when the
+    /// second info line starts with "MSG" ("MSG        PGE" over "1/2        1/2" is two: message 1 of 2, page 1 of 2).
+    /// With no counter (no "MSG", a token with no slash, or what follows the slash is not a whole number of one or more)
+    /// the total is one while the screen has an <see cref="IdentityOf">identity</see> and none otherwise. The figure is
+    /// read with the invariant culture, from the DCDU's own text.
+    /// </summary>
+    public static int TotalOf(FenixDcduScreen screen)
+    {
+        if (CounterTotal(screen) is { } counted) return counted;
+
+        return IdentityOf(screen) is null ? 0 : 1;
+    }
+
+    // The identity half of a sample, after the baseline: the call for the message on the screen when it has just counted as
+    // new and may be heard, else null.
+    private string? SampleIdentity(FenixDcduScreen screen, string? identity, bool muted, long nowMs)
+    {
         // Nothing is drawn, or the message is one already counted: no hold to keep.
         if (identity is null || _seen.Contains(identity))
         {
@@ -139,36 +219,56 @@ internal sealed class FenixChannelDcduAnnouncer
 
         if (_candidateMuted || nowMs < _quietUntilMs) return null;
 
-        return CallText(screen.Value!);
+        return CallText(screen);
     }
 
-    /// <summary>
-    /// What makes a message the same message: the header's left half and the first message line that has words, each
-    /// parsed (its colors and codes are not part of it) and trimmed, with a line break between. Null while the header's
-    /// left half is blank. A header with no message line is an identity with an empty second half.
-    /// </summary>
-    public static string? IdentityOf(FenixDcduScreen screen)
+    // The total half of a sample, after the baseline: the total to call when it has just risen, held the settle, to two or
+    // more and may be heard, else null. A total that differs from the settled one begins a hold of its own; one that holds
+    // is the settled total from then on, heard or not, so that a fall is tracked silently and a rise after it speaks. The
+    // quiet after the pilot's own key does not apply: a rise is a message that came, not the pilot's reading.
+    private int? SampleTotal(int total, bool muted, long nowMs)
     {
-        string header = TextOf(screen.HeaderLeft);
-        if (header.Length == 0) return null;
+        if (total == _total)
+        {
+            _totalCandidate = null;
+            return null;
+        }
 
-        string first = screen.Message.Select(TextOf).FirstOrDefault(text => text.Length > 0) ?? "";
-        return header + IdentitySeparator + first;
+        if (total != _totalCandidate)
+        {
+            _totalCandidate = total;
+            _totalCandidateSinceMs = nowMs;
+            _totalCandidateMuted = muted;
+            return null;
+        }
+
+        _totalCandidateMuted |= muted;
+        if (nowMs - _totalCandidateSinceMs < SettleMs) return null;
+
+        int previous = _total;
+        _total = total;
+        _totalCandidate = null;
+
+        // A rise to one is a message arriving on an empty DCDU, which its call announces; only two or more are a count.
+        return total > previous && total > 1 && !_totalCandidateMuted ? total : null;
     }
 
-    /// <summary>
-    /// What to say about a new message: "DCDU: " and the header's left half as <see cref="FenixChannelSpeech"/> speaks it,
-    /// then ", " and the first message line as <see cref="FenixChannelDcduRows.FirstMessageLine"/> speaks it ("DCDU: 1426Z
-    /// FROM EDGG, white, CLIMB TO, cyan"); the last part is left out when no message line has words. The status, the
-    /// right half of the header, is not said (a new message's status adds nothing). Null when the header's left half has
-    /// no words.
-    /// </summary>
-    public static string? CallText(FenixDcduScreen screen)
+    // The counter's total, or null when the screen has no counter that reads.
+    private static int? CounterTotal(FenixDcduScreen screen)
     {
-        if (FenixChannelSpeech.Line(screen.HeaderLeft) is not { } header) return null;
+        if (screen.Info.Count < 3) return null;
+        if (!FenixChannelDcdu.Plain(screen.Info[1]).TrimStart().StartsWith("MSG", StringComparison.Ordinal)) return null;
 
-        string call = "DCDU: " + header;
-        return FenixChannelDcduRows.FirstMessageLine(screen) is { } message ? call + ", " + message : call;
+        string[] tokens = FenixChannelDcdu.Plain(screen.Info[2]).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0) return null;
+
+        int slash = tokens[0].IndexOf('/');
+        if (slash < 0) return null;
+
+        // Digits only: no sign, no space, no group separator; and a counter of nothing is no counter.
+        return int.TryParse(tokens[0][(slash + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out int total) && total >= 1
+            ? total
+            : null;
     }
 
     // The line's own text, with the codes read out of it and the ends trimmed.
