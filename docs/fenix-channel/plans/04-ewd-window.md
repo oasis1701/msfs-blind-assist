@@ -316,6 +316,8 @@ the CFM A320 and the IAE A321; writes only with the owner's go-ahead. Record eac
 - **Requests for frozen files:** none left. Row 57 changed plan 01's `FenixChannelTrust.cs` and
   `FenixA320Definition.DisplayChannel.cs`, with comments in `ChannelPfd.cs` and `ChannelSd.cs` and tests in plan 01's, 02's and
   05's files, and the sentences on Alt+P and Alt+S in `docs/a32nx.md`'s PFD and SD sections, under the landed-plan exemption.
+- **For plan 12's test flight** (Robin, 2026-11-03): with the code's half pinned in `FenixChannelWindowTests`, two things to hear: output Alt+E cold and dark, then the power-up with the window focused, through its status rows to the first gauge row; and "Flaps:" on
+  the flap row, which came after plan 04's runs.
 - **For plan 12:** the E/WD's fuel check still latches on every landing roll, so after a landing this window shows its status
   row until reconnect (plan 02's evidence): nothing in plan 04 changes it. FNX-22's full text in `docs/invariants/fenix-channel.md`
   calls "display off" for a display on another unit "the conservative choice, which only falls back to the AI read": since row
@@ -329,14 +331,14 @@ the CFM A320 and the IAE A321; writes only with the owner's go-ahead. Record eac
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** landed 2026-11-03; every check in Task 6 done, on both airframes. One extra listening check waits, below
+- **Status:** landed 2026-11-03; every check in Task 6 done, on both airframes
 - **Claimed by:** Robin Kipp (robin24), 2026-11-03
 - **Worked by:** Robin Kipp with Claude, with subagents (superpowers:subagent-driven-development)
 - **Started:** 2026-11-03, from 5e66b1dbf (the branch head, which holds plan 01's recorded base 1d29a73ee)
 - **Landed:** 2026-11-03: switch commit e450fd524, row 57's code f92e76df1, last code c3181ade4.
 - **Tests at landing:** 18,503 passed, 0 failed (`ClaudeRulesHookTests` excluded, as the index says), on the combined branch. Reviews: one per task, a whole-plan review (no Critical; two Important, both settled), one fix wave with its re-review.
 - **Tasks:** All done (Step 6 of Task 2 included).
-- **Waiting on the owner:** one by-ear check the whole-plan review asked for, not in the plan and blocking nothing (the code's half is pinned in `FenixChannelWindowTests`): output Alt+E cold and dark, then power up with the window focused, and hear it go through the status rows to the first gauge row. Task 6's runs had the sim shared with plan 11's session by then. Also not heard since it changed: "Flaps:" on the flap row.
+- **Waiting on the owner:** nothing. One by-ear check the whole-plan review asked for, not in the plan, goes to plan 12's test flight at Robin's word (Handoff to plan 12).
 - **In-sim results:** Tasks 1 and 6 on both airframes, 2026-11-03, every check passed; Robin's by-ear checks: "All as expected", "All three did". `docs/fenix-channel/evidence/04-ewd-window.md`.
 - **Changed from the plan:** (Task 1's results, as its last bullets order.) The fuel flow label is "FF", not "F.F". N1, N2 and
   EPR truncate and EGT and FF round, so `FenixChannelEwdRows` has `Number` and `Truncated`, and the expected strings of Task 3's
