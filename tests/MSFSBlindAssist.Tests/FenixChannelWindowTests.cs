@@ -747,10 +747,16 @@ public class FenixChannelWindowTests
             .ToArray();
         Assert.Equal(expected, called);
 
-        // Each is declared once, as an optional partial method of the registry.
+        // Each is declared once, as an optional partial method of the registry: the five that were there before in the
+        // registry's own file, the six display seams in its channel partial, FenixWindowRegistry.Channel.cs, a file
+        // the channel's rule glob (FenixWindowRegistry.Channel*.cs) loads the channel rules on, as it does on the
+        // partial of each display that implements its seam.
+        string channelSource = StripComments(
+            File.ReadAllText(SourcePath("Forms", "Fenix", "FenixWindowRegistry.Channel.cs")));
         foreach (string seam in expected)
         {
-            Assert.Single(Regex.Matches(source,
+            string declaredIn = seam.StartsWith("AddChannel", StringComparison.Ordinal) ? channelSource : source;
+            Assert.Single(Regex.Matches(declaredIn,
                 @"static\s+partial\s+void\s+" + seam + @"\s*\(\s*List<FenixWindowEntry>\s+entries\s*\)\s*;"));
         }
     }

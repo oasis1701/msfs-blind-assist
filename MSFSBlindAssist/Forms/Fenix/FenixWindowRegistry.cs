@@ -24,7 +24,8 @@ public sealed record FenixWindowEntry(string Name, string Description, Action<Fe
 
 /// <summary>
 /// The windows the "Fenix windows" list offers. Each kind of window adds itself from its own
-/// partial file by implementing one of the optional seams below, so no window's file edits another's, and a
+/// partial file by implementing one of the optional seams below (the display channel's six are declared in
+/// <c>FenixWindowRegistry.Channel.cs</c>), so no window's file edits another's, and a
 /// seam nobody implements compiles to nothing (the list is then empty).
 /// <list type="bullet">
 /// <item>Engines: <c>FenixWindowRegistry.Engines.cs</c>, <see cref="AddEngineWindows"/></item>
@@ -40,7 +41,9 @@ public sealed record FenixWindowEntry(string Name, string Description, Action<Fe
 /// <item>DCDU: <c>FenixWindowRegistry.ChannelDcdu.cs</c>, <see cref="AddChannelDcduWindows"/></item>
 /// </list>
 /// The last six are the Fenix display channel's windows, one for each display, named by the display's short name
-/// (the way "Engines" and "Cabin" are named). Each opens through
+/// (the way "Engines" and "Cabin" are named). Their seams are declared in <c>FenixWindowRegistry.Channel.cs</c>, and
+/// each display's partial has "Channel" in its file name, which is what the channel's rule glob loads the channel
+/// rules on. Each opens through
 /// <c>FenixA320Definition.ShowChannelWindow</c>, which shows its window whatever the display's verdict, since the
 /// window itself shows a status row while the display is not trusted.
 /// A window opens through <see cref="FenixA320Definition.ShowFenixWindow{T}"/>, so it closes with the
@@ -53,21 +56,6 @@ public static partial class FenixWindowRegistry
     static partial void AddFailureWindows(List<FenixWindowEntry> entries);
     static partial void AddDocumentWindows(List<FenixWindowEntry> entries);
     static partial void AddOptionsWindows(List<FenixWindowEntry> entries);
-
-    // The display channel's windows, one seam each. Every seam has no implementation until the plan of its display
-    // adds one, and an unimplemented seam adds no entry, so the list is as it was.
-    /// <summary>The PFD's entry, "PFD". Plan 02 implements it.</summary>
-    static partial void AddChannelPfdWindows(List<FenixWindowEntry> entries);
-    /// <summary>The ND's entry, "ND". Plan 03 implements it.</summary>
-    static partial void AddChannelNdWindows(List<FenixWindowEntry> entries);
-    /// <summary>The E/WD's entry, "E/WD". Plan 04 implements it.</summary>
-    static partial void AddChannelEwdWindows(List<FenixWindowEntry> entries);
-    /// <summary>The SD's entry, "SD". Plan 05 implements it.</summary>
-    static partial void AddChannelSdWindows(List<FenixWindowEntry> entries);
-    /// <summary>The ISIS's entry, "ISIS". Plan 07 implements it.</summary>
-    static partial void AddChannelIsisWindows(List<FenixWindowEntry> entries);
-    /// <summary>The DCDU's entry, "DCDU". Plan 11 implements it.</summary>
-    static partial void AddChannelDcduWindows(List<FenixWindowEntry> entries);
 
     /// <summary>
     /// The entries in list order: engines, cabin, failures, documents, options, then the display channel's windows:

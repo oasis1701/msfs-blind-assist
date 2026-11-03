@@ -1,9 +1,9 @@
 ---
 paths:
   - "MSFSBlindAssist/Services/FenixChannel*.cs"
-  - "MSFSBlindAssist/Aircraft/FenixA320Definition.DisplayChannel.cs"
   - "MSFSBlindAssist/Aircraft/FenixA320Definition.*Channel*.cs"
   - "MSFSBlindAssist/Forms/Fenix/FenixChannel*.cs"
+  - "MSFSBlindAssist/Forms/Fenix/FenixWindowRegistry.Channel*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*FenixChannel*.cs"
 ---
 # Fenix display channel rules (port 18083)
