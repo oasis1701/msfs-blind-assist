@@ -158,9 +158,12 @@ internal class FenixChannelDisplayForm : Form
         // row followed before it stays the one followed.
         if (!HoldsStatusRow(_list.Items.Cast<string>().ToList())) _followedRow = _list.SelectedItem as string;
 
+        FenixChannelSnapshot snapshot = _monitor.Snapshot(_display);
+        OnRefresh(snapshot);
+
         IReadOnlyList<string> rows = RowsFor(
             _displayName,
-            _monitor.Snapshot(_display),
+            snapshot,
             _compose,
             problem => _monitor.ReportFeatureProblem(_displayName, problem));
         _list.SetLines(rows);
@@ -172,6 +175,12 @@ internal class FenixChannelDisplayForm : Form
         int best = RowToFollow(rows, _followedRow, _list.SelectedIndex);
         if (best != -1 && best != _list.SelectedIndex) _list.SelectedIndex = best;
     }
+
+    /// <summary>
+    /// Called on the UI thread at every refresh with the snapshot the rows are read from, trusted or not, before the
+    /// rows are set; for a derived window's controls. The base does nothing.
+    /// </summary>
+    protected virtual void OnRefresh(FenixChannelSnapshot s) { }
 
     /// <summary>
     /// The index in <paramref name="rows"/> of the row the pilot was on, or -1 when none reads like it (the list's own

@@ -3,16 +3,124 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Forms.Fenix;
 
 /// <summary>
-/// The ND's window ("Fenix ND"): the captain's navigation display as <see cref="FenixChannelNdRows"/> words it. A class
-/// of its own, holding only its constructor, because Fenix windows are tracked one for each type
-/// (<see cref="FenixChannelDisplayForm"/>). Nothing constructs it yet.
+/// The ND's window ("Fenix ND"): the captain's navigation display as <see cref="FenixChannelNdRows"/> words it, and
+/// under the list the captain's EFIS controls: Mode and Range combos and the CSTR, WPT, VOR.D, NDB, ARPT and LS
+/// buttons (<see cref="FenixChannelNdControls"/>). A class of its own because Fenix windows are tracked one for each
+/// type (<see cref="FenixChannelDisplayForm"/>). Nothing constructs it yet.
 /// </summary>
+/// <remarks>
+/// <para>The controls follow every refresh from the snapshot the rows are read from (<see cref="OnRefresh"/>). While
+/// the ND is not trusted the combos show no selection and the buttons read their bare names. A pick or a press calls
+/// the writer with the panel's own key and number and nothing else: a combo's index, or 1 for a button. The full
+/// press-release of a button is the writer's work ([A320-3], [FNX-6]), never this window's. A refresh never writes,
+/// and leaves alone a combo the pilot is on.</para>
+/// <para>Silence ([CORE-7]). The window says nothing itself: the screen reader reads the combos and the buttons'
+/// text, and the lights are already announced.</para>
+/// </remarks>
 internal sealed class FenixChannelNdForm : FenixChannelDisplayForm
 {
-    public FenixChannelNdForm(FenixChannelMonitor monitor)
+    private readonly Action<string, double>? _writeControl;
+    private readonly List<Button> _buttons = [];
+
+    // True while a refresh sets the controls, so that nothing it sets can reach the writer.
+    private bool _refreshing;
+
+    /// <param name="monitor">The channel monitor the snapshots come from.</param>
+    /// <param name="writeControl">Writes a panel control: its variable name and the number the panel takes. With it the
+    /// window adds the EFIS controls; without it, it adds none.</param>
+    public FenixChannelNdForm(FenixChannelMonitor monitor, Action<string, double>? writeControl = null)
         : base("ND", FenixChannelDisplay.Nd, monitor,
             snapshot => FenixChannelNdRows.Compose(
                 snapshot, problem => monitor.ReportFeatureProblem(FenixChannelNdRows.Feature, problem)))
     {
+        _writeControl = writeControl;
+        if (writeControl is null) return;
+
+        ModeCombo = NewCombo("Mode", FenixChannelNdControls.Modes, FenixChannelNdControls.ModeKey);
+        RangeCombo = NewCombo("Range", FenixChannelNdControls.Ranges, FenixChannelNdControls.RangeKey);
+
+        var panel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = true,
+            FlowDirection = FlowDirection.LeftToRight
+        };
+        panel.Controls.Add(ModeCombo);
+        panel.Controls.Add(RangeCombo);
+        foreach ((string name, string key) in FenixChannelNdControls.Buttons)
+        {
+            var button = new Button { Text = name, AutoSize = true, AccessibleName = name };
+            button.Click += (_, _) => _writeControl!(key, 1);
+            _buttons.Add(button);
+            panel.Controls.Add(button);
+        }
+
+        for (int i = 0; i < panel.Controls.Count; i++) panel.Controls[i].TabIndex = i;
+        AddControlAfterList(panel);
+    }
+
+    /// <summary>The Mode combo; null without a writer. For the tests.</summary>
+    internal ComboBox? ModeCombo { get; }
+
+    /// <summary>The Range combo; null without a writer. For the tests.</summary>
+    internal ComboBox? RangeCombo { get; }
+
+    /// <summary>The six buttons in order (<see cref="FenixChannelNdControls.Buttons"/>); empty without a writer.</summary>
+    internal IReadOnlyList<Button> EfisButtons => _buttons;
+
+    private ComboBox NewCombo(string name, IReadOnlyList<string> items, string key)
+    {
+        var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = name };
+        combo.Items.AddRange([.. items]);
+        // Only the pilot's own pick raises this; setting SelectedIndex in code does not.
+        combo.SelectionChangeCommitted += (_, _) =>
+        {
+            if (!_refreshing && combo.SelectedIndex >= 0) _writeControl!(key, combo.SelectedIndex);
+        };
+        return combo;
+    }
+
+    protected override void OnRefresh(FenixChannelSnapshot s) => ApplyControls(s);
+
+    /// <summary>
+    /// Sets the controls from one snapshot: with the ND trusted and its header read, the combos select the mode and
+    /// range (no selection for a value not in the list) and each button reads its state; otherwise the combos show no
+    /// selection (never a stale mode) and the buttons read their bare names. A combo with focus or an open list is
+    /// left as the pilot has it.
+    /// </summary>
+    internal void ApplyControls(FenixChannelSnapshot s)
+    {
+        if (ModeCombo is null || RangeCombo is null) return;
+
+        FenixNdData? header = null;
+        if (s.Verdict.Trusted)
+        {
+            FenixChannelSection<FenixNdData> section = FenixChannelNd.Read(s);
+            if (section.Problem is null) header = section.Value;
+        }
+
+        _refreshing = true;
+        try
+        {
+            Select(ModeCombo, FenixChannelNdControls.ModeIndex(header?.Mode));
+            Select(RangeCombo, FenixChannelNdControls.RangeIndex(header?.Range));
+            for (int i = 0; i < _buttons.Count; i++)
+            {
+                string text = FenixChannelNdControls.ButtonText(FenixChannelNdControls.Buttons[i].Name, header);
+                if (_buttons[i].Text != text) _buttons[i].Text = text;
+                _buttons[i].AccessibleName = text;
+            }
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private static void Select(ComboBox combo, int index)
+    {
+        if (combo.Focused || combo.DroppedDown) return;
+        if (combo.SelectedIndex != index) combo.SelectedIndex = index;
     }
 }
