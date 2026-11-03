@@ -320,7 +320,7 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Started:** 2026-11-03, from 5e66b1dbf (the branch head, which holds plan 01's recorded base 1d29a73ee)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:**
+- **Tasks:** Task 2 done, its Step 6 included. Task 1 measured on the IAE A321; the CFM A320 next.
 - **Waiting on the owner:**
 - **In-sim results:**
 - **Changed from the plan:**
