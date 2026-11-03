@@ -153,7 +153,34 @@ Every state reads as sent: no flag is needed.
 - 129's FF is already in the display's unit: shown as sent.
 - NaN reads "XX", an absent value reads 0, as planned; no `SingleEngineState` flag is needed, so Task 2 stands.
 
+## The window and the key in the sim: Task 6, 2026-11-03
+
+MSFSBA from this plan's branch, run from `C:\MSFSBA-FenixChannel`: `791e922cf` for the CFM A320's runs, `7fb25677e` (with row 57) for the IAE A321's and the dark keys. Rows read through UI Automation, read only, beside a capture of the E/WD; the list's name "E/WD display" and the window's "Fenix E/WD" confirmed the same way. Robin ran the keys and listened.
+
+**CFM A320, D-AIZA, EDDF.**
+
+- Powered at the gate, engines running, flaps at 1, `fenix_channel.log` "E/WD trusted" (19:39:39), `Variant` `Engine = Cfm56`. Input Ctrl+Shift+F, "E/WD" opened it. Rows at 20:23:50, capture in the same second: `N1 %: 18.1, 18.2`, `EGT °C: 387, 387`, `N2 %: 58.7, 58.8`, `FF KG/H: 300, 300`, `TOGA cyan, 90.6 green, % cyan`, `FOB: white, 2260 green, KG cyan`, `1+F, green`, the take-off memo (`T.O AUTO BRK green, .....MAX cyan`, `SIGNS ON, green`, `CABIN green, ......CHECK cyan`, `SPLRS green, ........ARM cyan`, `FLAPS T.O, green`, `T.O CONFIG green, ..TEST cyan`), `PARK BRK, green`, `PRED W/S OFF, green`, `TCAS STBY, green`, `APU BLEED, green`. Each matched.
+- TO CONFIG pressed: `T.O SPEEDS NOT INSERTED, amber` and `PRED W/S OFF, amber`, as drawn. The list went from 17 rows to 12 and kept the selection.
+- By ear (Robin: "All as expected"): the selection stays on the EGT row for 10 s, F5 refreshes, Escape closes.
+- Output Alt+E opened it; pressed again from another window, the same window came forward; UI Automation found one, selection on the first row, and `debug.log` no AI read.
+- Engines shut down, the APU still on: `N1 %: 0.7, 0.7`, `EGT °C: 234, 234`, `N2 %: 2.2, 2.2`, `FF KG/H: 0, 0`, `CLB cyan, 83.2 green, % cyan`, `OUTR TK FUEL XFRD, green`, each as drawn.
+- Cold and dark: the open window went to the one row `E/WD: not available, display off` (log 20:32:03). As the plan first had it, Alt+E gave the AI read with no extra words and the list entry the status row. Robin ruled that this is not what he wants (spec row 57).
+
+**IAE A321, N106NN, EDDF**, in pounds by its livery.
+
+- `Variant` `Engine = IaeV2500`; "E/WD trusted" at 21:45:58. Output Alt+E opened it. Rows at 21:47:29, capture in the same second: `EPR: 1.010, 1.010`, `FF LBS/H: 900, 900`, `EGT °C: 424, 421`, `N2 %: 59.9, 59.9`, `N1 %: 21.5, 21.4`, `TOGA cyan, 1.619 green`, `FOB: white, 4500 green, LBS cyan`, `1+F, green`, the memo as above, each as drawn (N2 within its last digit).
+- Both N1 MODE pushbuttons on: `EPR: XX, XX`, `N1 MODE, TOGA cyan, 95.3 green, % cyan`.
+- Flaps to 0: `0, cyan` while moving, then no row.
+- Engines shut down, the APU still on: `EPR: 0.997, 0.997`, `FF LBS/H: 0, 0`, `EGT °C: 345, 345`, `N2 %: XX, XX`, `N1 %: XX, XX`, `CLB cyan, 1.366 green`, `FOB BELOW 6600 LBS, green`, each as drawn.
+- Cold and dark, six displays "display off" in the log (ISIS last, at 21:53:23). Row 57: output Alt+E, Alt+P and Alt+S each opened the window on its one status row, with no AI read (Robin: "All three did"; `debug.log` none). Alt+N and Alt+I have no window on this build yet.
+
+**The log.** No "E/WD:" line (no problem reported) through either airframe's runs.
+
+**A red warning, by accident.** With the IRSs left off and both engines started, `urNAVu rADR 1+2+3 FAULT` and its cyan lines (`c -AP+FD..............OFF` and four more) came with the continuous chime. That was Claude's own omission; IRSs to NAV and Master Warning cleared it. It shows a red E/WD title arriving in the shape the rows test expects.
+
 ## Not measured
+
+An alert while the window is open: its rows follow the lines above, and spoken alerts are plan 09's. The E/WD's fuel check still latches on every landing roll (plan 02's evidence), so after a landing this window shows its status row until reconnect: for plan 12.
 
 LEAP and PW GTF: no NEO on 3.0.0.7613. Task 3 gives them the real A320neo's N1 block (owner question, as recommended),
 unmeasured. Pounds on the CFM airframe and kilograms beyond a minute on the IAE: 154 and FF behaved the same way in both

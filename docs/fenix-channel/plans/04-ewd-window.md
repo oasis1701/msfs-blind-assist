@@ -289,8 +289,10 @@ the CFM A320 and the IAE A321; writes only with the owner's go-ahead. Record eac
 ## Handoff to plan 12
 
 - **What changes for a pilot.** Guide: `guide/airbus-aircraft.md`, the Fenix chapter's "Special windows"
-  (`#special-windows-2`): Alt+E opens the "E/WD display" window when the channel can read the E/WD, and gives the AI
-  read as today otherwise; what the window lists; "E/WD" joins the Fenix windows list; the sentence "Alt+E is
+  (`#special-windows-2`): Alt+E opens the "E/WD display" window when the channel can read the E/WD, opens it on its one
+  status row while the E/WD is dark, and gives the AI read as today for any other reason (spec row 57: every display
+  key, so Alt+P, Alt+N, Alt+S and Alt+I read the same; plans 02, 03, 05 and 07's handoff text yields to it); what the
+  window lists; "E/WD" joins the Fenix windows list; the sentence "Alt+E is
   the way to hear the E/WD's memos and warnings" changes. Hotkey guide `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt`:
   "Alt+E      Read E/WD (Engine and Warning Display)" becomes "Alt+E      E/WD window (the AI read when the Fenix
   cannot share the E/WD)", and the Fenix windows line adds "E/WD". Changelog category `feature`, draft: "Fenix:
@@ -301,12 +303,21 @@ the CFM A320 and the IAE A321; writes only with the owner's go-ahead. Record eac
   ```text
   - [FNX-?] The Fenix E/WD window's engine block follows `FenixA320Definition.Variant.Engine` (IAE V2500: EPR first; CFM56, LEAP, PW GTF: N1 first), never channel field 6.5, whose CFM56 value 0 protobuf-net leaves out; an unread engine type shows no block, never a guessed order. Full: docs/invariants/fenix-channel.md#fnx-?
   - [FNX-?] Channel text the trust gate does not scan (the E/WD's thrust limit 129.8, its flap text 152) is checked by its reader: an unknown letter (`FenixTextLine.UnknownCodes`) makes the whole window "not available", never a row with the letter dropped. Full: docs/invariants/fenix-channel.md#fnx-?
+  - [FNX-?] The Fenix E/WD draws N1, N2 and EPR truncated (`FenixChannelEwdRows.Truncated`) and EGT and FF rounded (`Number`), measured on both engine families; never one rule for all, and never truncate in double, where 1.407 reads 1.406. Full: docs/invariants/fenix-channel.md#fnx-?
+  - [FNX-?] A Fenix display key opens its window while the display is trusted or dark (`FenixDisplayVerdict.IsDisplayOff`, the one status row), through `OpenChannelWindow` alone; any other reason not to trust it leaves the key to the AI read with no extra words, because that screen is live. Full: docs/invariants/fenix-channel.md#fnx-?
   ```
 
   Full texts: the first, Task 1's measurements per family and why 6.5 cannot tell CFM56 from a missing field (pinned by
   `Each_family_has_its_block`); the second, FNX-24's reason applied outside the gate (pinned by
-  `An_unknown_letter_outside_the_gate_makes_the_window_not_available`), or instead a sentence in FNX-24's full text.
-- **Requests for frozen files:** none.
+  `An_unknown_letter_outside_the_gate_makes_the_window_not_available`), or instead a sentence in FNX-24's full text; the
+  third, the captures in `docs/fenix-channel/evidence/04-ewd-window.md` (pinned by
+  `Each_value_rounds_or_truncates_as_the_display_draws_it`); the fourth, spec row 57 (pinned in
+  `FenixChannelWindowTests`).
+- **Requests for frozen files:** none left. Row 57 changed plan 01's `FenixChannelTrust.cs` and
+  `FenixA320Definition.DisplayChannel.cs`, with comments in `ChannelPfd.cs` and `ChannelSd.cs` and tests in plan 01's, 02's and
+  05's files, and the sentences on Alt+P and Alt+S in `docs/a32nx.md`'s PFD and SD sections, under the landed-plan exemption.
+- **For plan 12:** the E/WD's fuel check still latches on every landing roll, so after a landing this window shows its status
+  row until reconnect (plan 02's evidence): nothing in plan 04 changes it.
 - **Also seen on:** the "Engines" window shows N1, EGT, N2 and fuel flow from the 8083 data service; the guide should
   say which to use (the E/WD window for what the display shows, the Engines window for oil and temperatures).
 
@@ -320,12 +331,13 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Started:** 2026-11-03, from 5e66b1dbf (the branch head, which holds plan 01's recorded base 1d29a73ee)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:** Tasks 1 and 2 done (Step 6 of Task 2 included).
-- **Waiting on the owner:**
-- **In-sim results:** Task 1 measured on both airframes, 2026-11-03: `docs/fenix-channel/evidence/04-ewd-window.md`.
+- **Tasks:** Tasks 1 to 7 done (Step 6 of Task 2 included).
+- **Waiting on the owner:** nothing.
+- **In-sim results:** Tasks 1 and 6 on both airframes, 2026-11-03, every check passed; Robin's by-ear checks: "All as expected", "All three did". `docs/fenix-channel/evidence/04-ewd-window.md`.
 - **Changed from the plan:** (Task 1's results, as its last bullets order.) The fuel flow label is "FF", not "F.F". N1, N2 and
   EPR truncate and EGT and FF round, so `FenixChannelEwdRows` has `Number` and `Truncated`, and the expected strings of Task 3's
   tests change with it ("N1 %: 81.0, 81.2"). The IAE block is drawn EPR, FF and EGT, N2 and N1, so its rows go in that order.
-  `FadecFault` at 31 is `EiuFault` (plan 01's name).
-- **Rulings made while working:** IAE row order follows spec 2.4's "top to bottom, left to right" rather than the plan's expected
-  gauges first; Claude, Robin to hear it at Task 6.
+  `FadecFault` at 31 is `EiuFault` (plan 01's name). The window logs under "E/WD", not "E/WD window", as the other windows log
+  under their one name, so Task 6's log check looked for "E/WD:" lines. Row 57 changed Alt+E's dark case from the plan's AI read,
+  and with it the other display keys; Task 6 heard Alt+E, Alt+P and Alt+S.
+- **Rulings made while working:** A display key on a dark display opens the window on its status row, every other reason keeps the AI read, on every display key; Robin, spec row 57. IAE row order follows spec 2.4's "top to bottom, left to right" rather than the plan's expected gauges first; Claude, heard by Robin at Task 6. The flap row stays the display's bare words ("1+F, green"); the plan's, Robin heard it and did not ask for a label.
