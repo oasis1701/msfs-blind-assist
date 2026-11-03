@@ -260,6 +260,21 @@ public partial class FenixA320Definition
         return true;
     }
 
+    internal const string NoDcduMessage = "This Fenix has no DCDU.";
+
+    /// <summary>
+    /// Speaks "This Fenix has no DCDU." and returns true when the variant says the airframe has none
+    /// (<see cref="FenixVariant.HasDcdu"/> false), for the DCDU window's way in, which is no panel control and so
+    /// has no key for <see cref="TryRefuseNotFitted"/>. A Fenix whose DCDU field is not read yet is silent and false:
+    /// an unread field hides nothing ([FNX-11]), so the window opens.
+    /// </summary>
+    internal static bool TryRefuseNoDcdu(FenixVariant variant, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (variant.HasDcdu != false) return false;
+        announcer.AnnounceImmediate(NoDcduMessage);
+        return true;
+    }
+
     // The plain writes: ECON FLOW and ACT PUMP hold their value (the model's latched-button template), and so
     // do the headset, UTC selector, ET Run/Stop and the cargo knob: one SetLVar write, nothing spoken. ET Reset is not
     // plain (the knob springs back, see HandleVariantUIVariableSet). The writer is passed in so a test can

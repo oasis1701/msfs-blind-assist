@@ -116,6 +116,30 @@ public class FenixV3FixPanelControlsTests : IDisposable
         Assert.Single(Regex.Matches(body, "pressed\""));
     }
 
+    // The DCDU window presses these nine through the panel's own branches (PressDcdu goes through HandleUIVariableSet),
+    // so each must be a full press and release (A320-3), never a bare write that leaves the key held down.
+    private static readonly string[] DcduButtonKeys =
+    [
+        "S_DCDU1_LSK1L", "S_DCDU1_LSK2L", "S_DCDU1_LSK1R", "S_DCDU1_LSK2R",
+        "S_DCDU1_PGDN", "S_DCDU1_PGUP", "S_DCDU1_MSGUP", "S_DCDU1_MSGDWN", "S_DCDU1_PRINT"
+    ];
+
+    [Fact]
+    public void Dcdu_keys_press_and_release_for_the_window()
+    {
+        // The nine keys the window presses are exactly these, so a new key cannot slip in without a branch checked here.
+        Assert.Equal(
+            DcduButtonKeys.Order(),
+            Enum.GetValues<Services.FenixDcduKey>().Select(Services.FenixChannelDcduKeys.VariableOf).Order());
+
+        foreach (string key in DcduButtonKeys)
+        {
+            string branch = Branch(key);
+            Assert.Contains($"ExecuteButtonTransition(\"{key}\"", branch);
+            Assert.DoesNotContain("SetLVar(", branch);
+        }
+    }
+
     [Fact]
     public void Calls_emergency_is_not_a_press_button()
     {
