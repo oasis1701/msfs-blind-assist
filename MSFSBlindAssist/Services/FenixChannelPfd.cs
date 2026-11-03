@@ -8,18 +8,16 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 /// <param name="Std">The baro is at standard (QnhStd).</param>
 /// <param name="Inches">The reference is shown in inches of mercury (QnhInches); false is hectopascals.</param>
-/// <param name="ShowQnh">The QNH is shown (ShowQnh).</param>
 /// <param name="Qfe">The QFE mode is on (QfeMode).</param>
-/// <param name="Meters">The altitude is shown in meters (Meters).</param>
 /// <param name="QnhHpa">The QNH in hectopascals (Qnh): 1013 when the field is absent, its contract default.</param>
 /// <param name="QnhInHg">The QNH in inches of mercury as the Fenix itself shows it (QnhInch): NaN when absent.</param>
-internal readonly record struct FenixPfdBaro(
-    bool Std, bool Inches, bool ShowQnh, bool Qfe, bool Meters, double QnhHpa, double QnhInHg);
+internal readonly record struct FenixPfdBaro(bool Std, bool Inches, bool Qfe, double QnhHpa, double QnhInHg);
 
 /// <summary>
 /// What the captain's PFD draws, read from the RemoteData message of a push: the air data, which of it the PFD shows,
 /// the speed tape's limits and marks, the FCU speed target, the Mach, radio altitude, LS and marker texts, the
-/// deviations, the minimums, the EFIS settings and the magnetic track. The heading is the frame's.
+/// deviations, the altitude readout's metric flag, the DH message, the EFIS settings and the magnetic track. The
+/// heading is the frame's.
 /// </summary>
 /// <remarks>
 /// <para>Everything here is the captain's side: the first EFIS entry is the captain's panel, and the first officer's
@@ -27,7 +25,7 @@ internal readonly record struct FenixPfdBaro(
 /// 105), which carries a format letter the app does not know while the baro is at QNH in flight.</para>
 /// <para>A value the push left out reads as protobuf-net leaves it: the air data, the trend and the track are 0, a
 /// text is "", a flag is false, and the QNH is 1013. A speed, the speed target or a deviation that is absent is NaN,
-/// the same as one the PFD does not draw, since 0 is none of them. The minimums are null until the Fenix sets them.</para>
+/// the same as one the PFD does not draw, since 0 is none of them.</para>
 /// </remarks>
 internal sealed record FenixChannelPfd
 {
@@ -136,8 +134,11 @@ internal sealed record FenixChannelPfd
     /// <summary>The LS flag text, channel text (117.3); "" when absent.</summary>
     public string LsFlagText { get; init; } = "";
 
-    /// <summary>The minimums (155); null until the Fenix sets one.</summary>
-    public double? Minimums { get; init; }
+    /// <summary>The altitude readout is drawn in meters under the baro box as well (122.3); false when absent.</summary>
+    public bool MetricAltitude { get; init; }
+
+    /// <summary>The PFD draws the DH message above the radio altitude (205); false when absent.</summary>
+    public bool DhMessage { get; init; }
 
     /// <summary>The localizer deviation (82.1); NaN when not drawn.</summary>
     public double LocDots { get; init; } = double.NaN;
@@ -148,8 +149,8 @@ internal sealed record FenixChannelPfd
     /// <summary>The captain's EFIS LS pushbutton is on (1.6).</summary>
     public bool Ls { get; init; }
 
-    /// <summary>The captain's EFIS baro settings (1).</summary>
-    public FenixPfdBaro Baro { get; init; }
+    /// <summary>The captain's EFIS baro settings (1); the defaults of an EFIS entry that sends none until set.</summary>
+    public FenixPfdBaro Baro { get; init; } = new(false, false, false, 1013, double.NaN);
 
     /// <summary>The magnetic track (194.2); 0 when absent.</summary>
     public double MagneticTrack { get; init; }
@@ -187,6 +188,7 @@ internal sealed record FenixChannelPfd
         Part lsData = PartOf(root, Remote.LsDataCapt);
         Part labels = PartOf(root, Remote.ApproachLabelsCapt);
         Part flags = PartOf(root, Remote.PfdFlags);
+        Part altStatus = PartOf(root, Remote.AltStatus);
         Part heading = PartOf(root, Remote.Heading);
 
         // The EFIS is repeated, the captain's panel first: the first entry, not the last as a singular field reads.
@@ -235,16 +237,15 @@ internal sealed record FenixChannelPfd
             ApproachGs = TextOf(labels, ApproachLabelData.Gs),
             MarkerText = TextOf(flags, PfdFlagsData.MarkerCapt),
             LsFlagText = TextOf(flags, PfdFlagsData.LsFlagCapt),
-            Minimums = TryDouble(root, Remote.Minimums, out double minimums) ? minimums : null,
+            MetricAltitude = FlagOf(altStatus, AltStatusData.Metric),
+            DhMessage = FlagOf(root, Remote.DhMessage),
             LocDots = DoubleOf(lsData, LsInputData.PfdHorDots, double.NaN),
             GsDots = DoubleOf(lsData, LsInputData.PfdVertDots, double.NaN),
             Ls = FlagOf(efis, Efis.Ls),
             Baro = new FenixPfdBaro(
                 Std: FlagOf(efis, Efis.QnhStd),
                 Inches: FlagOf(efis, Efis.QnhInches),
-                ShowQnh: FlagOf(efis, Efis.ShowQnh),
                 Qfe: FlagOf(efis, Efis.QfeMode),
-                Meters: FlagOf(efis, Efis.Meters),
                 QnhHpa: SingleOf(efis, Efis.Qnh, 1013),
                 QnhInHg: SingleOf(efis, Efis.QnhInch, double.NaN)),
             MagneticTrack = DoubleOf(heading, HeadingData.MagneticTrack, 0)

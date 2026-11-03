@@ -17,10 +17,11 @@ internal static partial class FenixChannelFields
         public const int MachCapt = 107;            // machCapt: string, the Mach line (channel text)
         public const int FcuData = 113;             // fcuData: nested FcuData, the speed target the FCU sends
         public const int PfdFlags = 117;            // pfdFlags: nested PfdFlagsData, the marker beacon and LS flag texts
+        public const int AltStatus = 122;           // altStatus: nested AltStatusData, how the altitude readout is drawn
         public const int SpeedLimitsCapt = 125;     // speedLimitsCapt: nested SpeedLimitsData
         public const int Speeds = 127;              // speeds: nested SpeedsData, NaN for a speed that is not drawn
-        public const int Minimums = 155;            // minimums: fixed64 (double?), a Nullable<double> with no wrapper: left out when not set
         public const int RadioAltString = 157;      // radioAltString: string, the radio altitude text (channel text)
+        public const int DhMessage = 205;           // dhMessage: varint (bool), the DH message above the radio altitude
     }
 
     /// <summary>AdirsData, the captain's air data (<see cref="Remote.AdirsCapt"/>).</summary>
@@ -91,6 +92,12 @@ internal static partial class FenixChannelFields
     {
         public const int MarkerCapt = 1;            // MarkerCapt: string (channel text)
         public const int LsFlagCapt = 3;            // LsFlagCapt: string (channel text)
+    }
+
+    /// <summary>AltStatusData, how the altitude readout is drawn (<see cref="Remote.AltStatus"/>).</summary>
+    public static partial class AltStatusData
+    {
+        public const int Metric = 3;                // Metric: varint (bool), a metric altitude is drawn under the baro box
     }
 
     /// <summary>SpeedLimitsData, the speed limits the tape draws (<see cref="Remote.SpeedLimitsCapt"/>).</summary>

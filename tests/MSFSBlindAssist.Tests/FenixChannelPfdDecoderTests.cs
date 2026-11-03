@@ -7,9 +7,9 @@
 // another shape is a wrong shape named by its path ("28.5", "46.2.1", "1.14"), reported before any missing content; the
 // air data (28), the air data flags (46) and an EFIS entry must be there, and the first EFIS entry is the captain's; a
 // value left out reads as protobuf-net leaves it (the air data, the trend and the track 0, a text "", a flag false, the
-// QNH 1013) except a speed, the speed target and a deviation, which are NaN, and the minimums, which are null; the baro
-// text (105) is never read; the heading is the frame's; the first format letter the app does not know in a PFD text makes
-// the section an unknown code that names the text.
+// QNH 1013) except a speed, the speed target and a deviation, which are NaN; the baro text (105) is never read; the
+// heading is the frame's; the first format letter the app does not know in a PFD text makes the section an unknown
+// code that names the text.
 
 using System.Globalization;
 using MSFSBlindAssist.Services;
@@ -75,12 +75,12 @@ public class FenixChannelPfdDecoderTests
         Assert.Equal("", pfd.ApproachGs);
         Assert.Equal("", pfd.MarkerText);
         Assert.Equal("", pfd.LsFlagText);
-        Assert.Null(pfd.Minimums);
         AssertNotDrawn(pfd.LocDots, pfd.GsDots);
+        Assert.False(pfd.MetricAltitude);
+        Assert.False(pfd.DhMessage);
 
         Assert.False(pfd.Ls);
-        Assert.Equal(new FenixPfdBaro(Std: true, Inches: false, ShowQnh: false, Qfe: false, Meters: false,
-            QnhHpa: 1016, QnhInHg: 30.0025f), pfd.Baro);
+        Assert.Equal(new FenixPfdBaro(Std: true, Inches: false, Qfe: false, QnhHpa: 1016, QnhInHg: 30.0025f), pfd.Baro);
         Assert.Equal(318.0504, pfd.MagneticTrack);
         Assert.Equal(0, pfd.MagHeading);
     }
@@ -94,7 +94,7 @@ public class FenixChannelPfdDecoderTests
             Pitch = 1.5, Bank = 2.5, Altitude = 3.5, Airspeed = 4.5, VerticalSpeed = 5.5,
             VMax = 11.5, Vls = 12.5, AlphaProt = 13.5, Vsw = 14.5,
             V1 = 21.5, V2 = 22.5, Vr = 23.5, F = 24.5, S = 25.5, GreenDot = 26.5, VfeNext = 27.5,
-            TargetIas = 31.5, SpeedTrend = 41.5, Minimums = 51.5, LocDots = 61.5, GsDots = 62.5, MagneticTrack = 71.5,
+            TargetIas = 31.5, SpeedTrend = 41.5, LocDots = 61.5, GsDots = 62.5, MagneticTrack = 71.5,
             MachText = "mach", RadioAltitudeText = "radio", LsIdent = "ident", LsFrequency = "freq", LsDme = "dme",
             ApproachCenter = "center", ApproachLoc = "loc", ApproachGs = "gs", MarkerText = "marker", LsFlagText = "flag"
         });
@@ -106,7 +106,6 @@ public class FenixChannelPfdDecoderTests
             new[] { pfd.V1, pfd.V2, pfd.Vr, pfd.F, pfd.S, pfd.GreenDot, pfd.VfeNext });
         Assert.Equal(new[] { 31.5, 41.5, 61.5, 62.5, 71.5 },
             new[] { pfd.TargetIas, pfd.SpeedTrend, pfd.LocDots, pfd.GsDots, pfd.MagneticTrack });
-        Assert.Equal(51.5, pfd.Minimums);
         Assert.Equal(new[] { "mach", "radio", "ident", "freq", "dme", "center", "loc", "gs", "marker", "flag" },
             new[]
             {
@@ -127,10 +126,10 @@ public class FenixChannelPfdDecoderTests
         ["BugsVisible"] = (push, on) => push.BugsVisible = on,
         ["Std"] = (push, on) => push.Efis.QnhStd = on,
         ["Inches"] = (push, on) => push.Efis.QnhInches = on,
-        ["ShowQnh"] = (push, on) => push.Efis.ShowQnh = on,
         ["Qfe"] = (push, on) => push.Efis.Qfe = on,
-        ["Meters"] = (push, on) => push.Efis.Meters = on,
-        ["Ls"] = (push, on) => push.Efis.Ls = on
+        ["Ls"] = (push, on) => push.Efis.Ls = on,
+        ["MetricAltitude"] = (push, on) => push.MetricAltitude = on,
+        ["DhMessage"] = (push, on) => push.DhMessage = on
     };
 
     public static IEnumerable<object[]> FlagNames() => FlagSetters.Keys.Select(name => new object[] { name });
@@ -159,10 +158,10 @@ public class FenixChannelPfdDecoderTests
             ["BugsVisible"] = pfd.BugsVisible,
             ["Std"] = pfd.Baro.Std,
             ["Inches"] = pfd.Baro.Inches,
-            ["ShowQnh"] = pfd.Baro.ShowQnh,
             ["Qfe"] = pfd.Baro.Qfe,
-            ["Meters"] = pfd.Baro.Meters,
-            ["Ls"] = pfd.Ls
+            ["Ls"] = pfd.Ls,
+            ["MetricAltitude"] = pfd.MetricAltitude,
+            ["DhMessage"] = pfd.DhMessage
         };
         Assert.Equal(flag, Assert.Single(read.Where(entry => entry.Value)).Key);
     }
@@ -217,13 +216,25 @@ public class FenixChannelPfdDecoderTests
     }
 
     [Fact]
-    public void Minimums_are_null_until_set()
+    public void The_metric_flag_and_the_dh_message_are_false_until_the_message_sets_them()
     {
-        Assert.Null(Decoded(new PfdPushes.Push()).Minimums);
-        Assert.Equal(200.0, Decoded(new PfdPushes.Push { Minimums = 200 }).Minimums);
+        Assert.False(Decoded(new PfdPushes.Push()).MetricAltitude);
+        Assert.False(Decoded(new PfdPushes.Push()).DhMessage);
 
-        // A nullable carries no wrapper, so a minimum of 0 is sent and is not the same as none.
-        Assert.Equal(0.0, Decoded(new PfdPushes.Push { Minimums = 0 }).Minimums);
+        // Set, and then the parts and fields left out: a flag the message does not carry is false.
+        Assert.True(Decoded(new PfdPushes.Push { MetricAltitude = true }).MetricAltitude);
+        Assert.True(Decoded(new PfdPushes.Push { DhMessage = true }).DhMessage);
+        Assert.False(Decoded(new PfdPushes.Push { MetricAltitude = true }.Omit("122")).MetricAltitude);
+        Assert.False(Decoded(new PfdPushes.Push { MetricAltitude = true }.Omit("122.3")).MetricAltitude);
+        Assert.False(Decoded(new PfdPushes.Push { DhMessage = true }.Omit("205")).DhMessage);
+    }
+
+    [Fact]
+    public void A_pfd_with_no_baro_set_reads_the_absent_defaults()
+    {
+        // The default of a record built by hand is the one an EFIS entry that sends nothing decodes to.
+        Assert.Equal(new FenixPfdBaro(Std: false, Inches: false, Qfe: false, QnhHpa: 1013, QnhInHg: double.NaN),
+            new FenixChannelPfd().Baro);
     }
 
     // ---- Wrong shapes -----------------------------------------------------------------------
@@ -238,8 +249,8 @@ public class FenixChannelPfdDecoderTests
             ("28.6", "varint"),
             ("46", "varint"), ("46.1", "varint"), ("46.2", "varint"), ("46.1.1", "fixed64"), ("46.1.2", "fixed64"),
             ("46.2.1", "fixed64"), ("46.2.2", "fixed64"), ("46.8", "fixed64"),
-            ("1", "varint"), ("1.5", "fixed64"), ("1.6", "fixed64"), ("1.7", "fixed64"), ("1.10", "fixed64"),
-            ("1.11", "fixed64"), ("1.12", "fixed64"), ("1.14", "fixed64"), ("1.15", "fixed64"),
+            ("1", "varint"), ("1.6", "fixed64"), ("1.7", "fixed64"), ("1.10", "fixed64"), ("1.11", "fixed64"),
+            ("1.14", "fixed64"), ("1.15", "fixed64"),
             ("74", "varint"), ("74.1", "utf8"), ("74.2", "varint"), ("74.3", "varint"),
             ("82", "varint"), ("82.1", "varint"), ("82.2", "varint"),
             ("98", "varint"),
@@ -247,12 +258,13 @@ public class FenixChannelPfdDecoderTests
             ("107", "varint"), ("107", "utf8"),
             ("113", "varint"), ("113.4", "varint"), ("113.5", "fixed64"), ("113.9", "fixed64"),
             ("117", "varint"), ("117.1", "varint"), ("117.3", "utf8"),
+            ("122", "varint"), ("122.3", "fixed64"),
             ("125", "varint"), ("125.1", "varint"), ("125.2", "varint"), ("125.3", "varint"), ("125.5", "varint"),
             ("127", "varint"), ("127.1", "varint"), ("127.2", "varint"), ("127.3", "varint"), ("127.4", "varint"),
             ("127.5", "varint"), ("127.6", "varint"), ("127.7", "varint"),
-            ("155", "varint"),
             ("157", "varint"), ("157", "utf8"),
-            ("194", "varint"), ("194.2", "varint")
+            ("194", "varint"), ("194.2", "varint"),
+            ("205", "fixed64")
         ];
 
         return reshapes.Select(reshape => new object[] { reshape.Path, reshape.Shape });
@@ -345,15 +357,14 @@ public class FenixChannelPfdDecoderTests
         // The push writes the first officer's entry after the captain's, and a singular field reads the last one sent.
         var push = new PfdPushes.Push
         {
-            Efis = { QnhStd = false, QnhInches = true, ShowQnh = true, Ls = true, Qnh = 1029f, QnhInch = 30.39f },
-            OfficerEfis = { QnhStd = true, QnhInches = false, ShowQnh = false, Ls = false, Qnh = 1008f, QnhInch = 29.77f }
+            Efis = { QnhStd = false, QnhInches = true, Ls = true, Qnh = 1029f, QnhInch = 30.39f },
+            OfficerEfis = { QnhStd = true, QnhInches = false, Ls = false, Qnh = 1008f, QnhInch = 29.77f }
         };
 
         FenixChannelPfd pfd = Decoded(push);
 
         Assert.True(pfd.Ls);
-        Assert.Equal(new FenixPfdBaro(Std: false, Inches: true, ShowQnh: true, Qfe: false, Meters: false,
-            QnhHpa: 1029, QnhInHg: 30.39f), pfd.Baro);
+        Assert.Equal(new FenixPfdBaro(Std: false, Inches: true, Qfe: false, QnhHpa: 1029, QnhInHg: 30.39f), pfd.Baro);
     }
 
     [Fact]
@@ -369,11 +380,11 @@ public class FenixChannelPfdDecoderTests
     public void The_qnh_text_is_never_read()
     {
         // In flight at QNH the Fenix draws "x1QNH c1029", an x the app does not know. The baro is the EFIS's.
+        Assert.Contains('x', FenixChannelText.Parse("x1QNH c1029").UnknownCodes);
         var atQnh = new PfdPushes.Push { QnhText = "x1QNH c1029", Efis = { QnhStd = false, Qnh = 1029f, QnhInch = 30.39f } };
 
         FenixChannelPfd pfd = Decoded(atQnh);
-        Assert.Equal(new FenixPfdBaro(Std: false, Inches: false, ShowQnh: false, Qfe: false, Meters: false,
-            QnhHpa: 1029, QnhInHg: 30.39f), pfd.Baro);
+        Assert.Equal(new FenixPfdBaro(Std: false, Inches: false, Qfe: false, QnhHpa: 1029, QnhInHg: 30.39f), pfd.Baro);
         Assert.True(FenixChannelPfd.From(atQnh.Snapshot()).IsOk);
 
         // And in a shape it does not have: a field that is not looked at has no wrong shape.
@@ -451,7 +462,8 @@ public class FenixChannelPfdDecoderTests
     [InlineData("LsFlag", "LS flag")]
     public void An_unknown_letter_in_a_pfd_text_names_its_place(string text, string place)
     {
-        // k, as plan 01 asks: plan 03 may make d known. The text is otherwise one the PFD draws: a code and a number.
+        // k is a letter the app does not know, and stays one: p and d are known now. The text is otherwise one the PFD
+        // draws: a code and a number.
         var push = new PfdPushes.Push();
         SetText(push, text, "k350");
 
@@ -495,8 +507,7 @@ public class FenixChannelPfdDecoderTests
 /// </summary>
 /// <remarks>
 /// A value at its default is left out of the message, as protobuf-net leaves it out: a double of 0, a flag that is
-/// false, an empty text, a Qnh of 1013. A NaN is written, since the Fenix sends one for a speed it does not draw. The
-/// minimums are the exception: a nullable is written whenever it has a value, 0 too.
+/// false, an empty text, a Qnh of 1013. A NaN is written, since the Fenix sends one for a speed it does not draw.
 /// </remarks>
 internal static class PfdPushes
 {
@@ -581,8 +592,9 @@ internal static class PfdPushes
         public string LsFlagText { get; set; } = "";
         public string QnhText { get; set; } = "";
 
-        /// <summary>155, the minimums; null is a message that leaves the field out.</summary>
-        public double? Minimums { get; set; }
+        // 122.3 the altitude readout also drawn in meters, 205 the DH message
+        public bool MetricAltitude { get; set; }
+        public bool DhMessage { get; set; }
 
         // 82 the deviations, NaN while the PFD draws no LS scale
         public double LocDots { get; set; } = double.NaN;
@@ -699,6 +711,7 @@ internal static class PfdPushes
                 PutText(flags, at, 1, MarkerText);
                 PutText(flags, at, 3, LsFlagText);
             });
+            PutPart(remote, "", 122, (altStatus, at) => PutFlag(altStatus, at, 3, MetricAltitude));
             PutPart(remote, "", 125, (limits, at) =>
             {
                 PutDouble(limits, at, 1, VMax);
@@ -716,13 +729,13 @@ internal static class PfdPushes
                 PutDouble(speeds, at, 6, GreenDot);
                 PutDouble(speeds, at, 7, VfeNext);
             });
-            PutDouble(remote, "", 155, Minimums, zeroIsDefault: false);
             PutText(remote, "", 157, RadioAltitudeText);
             PutPart(remote, "", 194, (heading, at) =>
             {
                 PutDouble(heading, at, 1, MagHeading);
                 PutDouble(heading, at, 2, MagneticTrack);
             });
+            PutFlag(remote, "", 205, DhMessage);
 
             return remote.ToArray();
         }
@@ -772,13 +785,12 @@ internal static class PfdPushes
             writer.Message(field, inner);
         }
 
-        private void PutDouble(FenixChannelProtoWriter writer, string parent, int field, double? value,
-            bool zeroIsDefault = true)
+        private void PutDouble(FenixChannelProtoWriter writer, string parent, int field, double value)
         {
             if (Handled(writer, At(parent, field), field)) return;
-            if (value is null || (zeroIsDefault && value == 0)) return;
+            if (value == 0) return;
 
-            writer.Double(field, value.Value);
+            writer.Double(field, value);
         }
 
         private void PutSingle(FenixChannelProtoWriter writer, string parent, int field, float? value)
