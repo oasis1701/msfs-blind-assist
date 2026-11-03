@@ -441,8 +441,25 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Started:** 2026-11-03, from `1d29a73ee`
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:**
-- **Waiting on the owner:**
+- **Tasks:** 0 done (claim `66a246511`); 2 to 8 done 2026-11-03 and pushed, inert (nothing calls them before Task 9),
+  each with its review; 2's Step 2 field check done (evidence file). 9 next, on `fc-p05-sd-window` only. 1, 10 and 11
+  wait on the owner.
+- **Waiting on the owner:** Task 1 [sim] and Task 10 [sim, in flight, owner]; then Task 11. The evidence file lists what
+  the two runs must also look at.
 - **In-sim results:**
-- **Changed from the plan:**
-- **Rulings made while working:**
+- **Changed from the plan:** Tasks 2 to 8 ran before Task 1, from the plan's values marked "inferred" in the code, as
+  Task 1's own text allows; the evidence file lists every inferred value.
+- **Rulings made while working:** (asked by the plan's text; answered by Claude as controller, for the owner to revisit)
+  - `PtuStates` with Task 1 unmeasured: one value, `Idle = 0`, inferred from the cruise push, spoken "PTU: idle"; every
+    other value "PTU: not available" and reported "PTU state <n> not known".
+  - Who reports a page's problem: a page returns a stopping problem and `FenixChannelSd.Compose` reports it once as
+    "<page>: <problem>"; the reader's own report is only for what does not stop the page (an unknown valve value or PTU
+    state).
+  - NaN and the infinities read "XX" (spec row 15), not "<label> not available".
+  - An empty UTC element makes the row "UTC: not available".
+  - `Compose` reports an unknown letter, a missing bottom line and a bottom line of another length, but not "no data".
+  - A field 154 in another shape stops the whole window (the gate never checks it, and a wrong unit is 2.2 times off).
+  - `NameOf` unchanged: Task 1 has not shown page 0 or 13 drawn.
+  - The A318 follows the A320's FUEL layout (inferred; no Fenix A318 today).
+  - The A321's extra FUEL rows sit right after the center tank, as the plan's text reads, until a capture says
+    otherwise.
