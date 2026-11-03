@@ -412,14 +412,16 @@ fields with the team's tools, the SD from a capture of the sim. Each result into
 
 - **What changes for a pilot.** `guide/airbus-aircraft.md`, "Fenix A320 CEO": the opening paragraph (the ECAM screens
   are no longer read with AI only) and a new section, "The SD window": Alt+S, the rows (the page's name, its values,
-  the STATUS text and the bottom line, with colors after each stretch), F5, Escape, the status row, the AI read when the
-  SD cannot be read, the list entry. `guide/hotkey-reference.md`, "Fenix A320 CEO": "**Output Alt+S** — Open the SD
-  window: the System Display's page, its values, STATUS and the bottom line, read from the Fenix. When the Fenix cannot
-  be read, the AI read as before."; its Ctrl+Shift+F line and "Fenix windows" list gain "SD".
-  `HotkeyGuides/Fenix_A320_Hotkeys.txt`: "Alt+S Read SD (System Display)" becomes "Alt+S SD window (System Display);
-  AI read when not available". Changelog `feature`: "Fenix: Alt+S opens a live System Display window read from the
-  Fenix itself, with the page shown and its values, the STATUS page and the bottom line (TAT, SAT, UTC and gross
-  weight). When the Fenix cannot be read, Alt+S reads the display with AI as before."
+  the STATUS text and the bottom line, with colors after each stretch; the time as "UTC: 18:16"), the page keys after
+  the list (ENG to F/CTL, ALL and STS, each pressing the panel's key; Tab from the list reaches them), F5, Escape, the
+  status row, the AI read when the SD cannot be read, the list entry. `guide/hotkey-reference.md`, "Fenix A320 CEO":
+  "**Output Alt+S** — Open the SD window: the System Display's page, its values, STATUS and the bottom line, read from
+  the Fenix, with the ECAM page keys after the list. When the Fenix cannot be read, the AI read as before."; its
+  Ctrl+Shift+F line and "Fenix windows" list gain "SD". `HotkeyGuides/Fenix_A320_Hotkeys.txt`: "Alt+S Read SD (System
+  Display)" becomes "Alt+S SD window (System Display); AI read when not available". Changelog `feature`: "Fenix: Alt+S
+  opens a live System Display window read from the Fenix itself, with the page shown and its values, the STATUS page and
+  the bottom line (TAT, SAT, UTC and gross weight), and the ECAM page keys to change the page without leaving the
+  window. When the Fenix cannot be read, Alt+S reads the display with AI as before."
 - **Proposed rule lines.**
   - `- [FNX-?] An SD page composer makes its page not available when a nested message its rows read is absent, never its defaults: protobuf leaves out the Fenix's valve value Open (0) and every false or 0, so a missing message would read every valve open and every bus not powered (`FenixChannelSdReader.Message`). Full: docs/invariants/fenix-channel.md#fnx-?`
     Full text: the cruise push that carried the closed valves and none of the open ones; Task 1's presence and values.
@@ -428,7 +430,15 @@ fields with the team's tools, the SD from a capture of the sim. Each result into
 - **Requests.** None expected for frozen files: plan 01 declares the shared fields (154, 24, `ValveStateEnum`,
   `ValveWord`), and `NameOf` passes to this plan. A `ValveStateEnum` value a sim check here finds other than plan 01's
   (its [owner] check confirms them) is told to the owner and its fix written here for plan 12, since plan 01's
-  `FenixChannelFields.cs` is frozen; the composers keep using `ValveWord`.
+  `FenixChannelFields.cs` is frozen; the composers keep using `ValveWord`. Found while working, for their owners:
+  - **For plan 04 and Robin (the claimant's request, 2026-11-03).** The SD window got the ECAM page keys after its list;
+    the claimant asked for the panel's other keys, T.O CONFIG, CLR (left and right), RCL and EMER CANC, in the E/WD
+    window, where their results show (T.O CONFIG's memo or warnings, the warnings CLR and RCL step through). Each would
+    run the panel's own code, `HandleUIVariableSet(<key>, 1, ...)` as plan 05's `PressEcamPageKey` does, so T.O CONFIG
+    keeps `RunTakeoffConfigTestAsync` and its verdict ([FNX-4]). Plan 04's form has "no control after the list" today.
+  - **For the definition (plan 12, or the owner).** The ALL key (`S_ECAM_ALL`) has no light, and its panel case passes
+    no `confirmPress`, so a press from the panel or from the SD window says nothing ([CORE-7] gives a press with no
+    readable state "<name> pressed"): one argument in `FenixA320Definition.cs`'s `S_ECAM_ALL` case.
 - **Also seen on.** Nothing: no code is shared with another aircraft.
 - **Found while working (2026-11-03, the whole-plan review), for the owner and plan 12:**
   - **Pages with no composer yet.** Once this plan's switch is on, Alt+S opens the SD window on every page the SD shows.
@@ -453,29 +463,35 @@ fields with the team's tools, the SD from a capture of the sim. Each result into
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed
+- **Status:** landed 2026-11-03 (Alt+S and the windows list reach the SD window on this branch)
 - **Claimed by:** kn4iee, 2026-11-03
-- **Worked by:** kn4iee with Claude (superpowers:subagent-driven-development)
+- **Worked by:** kn4iee with Claude (superpowers:subagent-driven-development); in-sim and in-app checks by kn4iee and
+  Claude the same day
 - **Started:** 2026-11-03, from `1d29a73ee`
-- **Landed:**
-- **Tests at landing:**
-- **Tasks:** 0 done (claim `66a246511`); 2 to 8 done 2026-11-03 and pushed, inert (nothing calls them before Task 9),
-  each with its review; 2's Step 2 field check done (evidence file). 9 done, with its review and a whole-plan review,
-  on `fc-p05-sd-window` only (never on this branch before Task 10's ground steps pass). 1 done in the sim on 2026-11-03
-  but for the captures, the other airframe and cold and dark; 10's data checks done the same day, with two fixes of
-  their own before the switch; 10's steps in the app, by ear, and 11 wait on the owner.
-- **Waiting on the owner:** Task 10's steps in the app (Alt+S, the list entry, the log, cold and dark) and by ear, on a
-  checked build: kn4iee's Fenix is 3.0.0.7454, which the gate does not trust, so Alt+S gave the AI read there; the
-  captures, the A321, kilograms, cold and dark and the pump overheat failure (the evidence file's list); then Task 11.
+- **Landed:** 2026-11-03, the switch commit `feat(fenix-channel): Alt+S and the windows list open the SD window`
+- **Tests at landing:** 18,491 passed, 0 failed: the whole suite but `ClaudeRulesHookTests`, on the branch rebased onto
+  `0acabdc3f` (plans 04 and 11's latest work), with the switch.
+- **Tasks:** all done. 0 (claim `66a246511`); 2 to 8 on 2026-11-03, each reviewed, pushed inert; 2's Step 2 field check
+  (evidence file); 9, reviewed, with a whole-plan review; 1 and 10 in the sim and the app the same day (evidence file),
+  with the fixes they found before the switch (the PTU's four states, APU GEN OFF) and Task 10b, added at the claimant's
+  request after hearing the window (the UTC row as "18:16", the ECAM page keys after the list); 11, this landing.
+- **Waiting on the owner:** none that gates the window. Still open (evidence file, "Waiting on the owner"): the labels
+  against pictures of the SD, the list entry's status row with the SD off, the A321's FUEL page, the yellow electric
+  pump's overheat, and the in-flight look; and the requests in "Handoff to plan 12" (the E/WD keys for plan 04, the ALL
+  key's confirmation, the pages with no composer yet).
 - **In-sim results:** 2026-11-03, kn4iee's A320 CFM at KATL on 3.0.0.7454 (not 7613, as this line first said; its whole
   channel contract matches the team's dump, evidence file), run by Claude through the simconnect MCP
   (evidence file): every page this plan composes read its fields as the plan has them, and its rows matched the
   Fenix's own values (battery volts, the Engines window's oil, TAT and OAT, the E/WD's FOB, the sim's UTC). Two
   differences, fixed before the switch: the PTU has four states (-1 off or inhibited, 0 idle, 1 yellow to green, 2 green
   to yellow), and the APU generator reads "APU GEN: OFF" while its pushbutton is off (24.14). Pages 0 and 13 did not
-  show on the ground.
+  show on the ground. Then on 3.0.0.7613: kn4iee heard the window by ear in the app (Alt+S, the list entry, the STATUS
+  page, the bottom line, the page keys; the log clean), and cold and dark, the power-up with the self-test and the
+  weight unit in kilograms were measured (evidence file).
 - **Changed from the plan:** Tasks 2 to 8 ran before Task 1, from the plan's values marked "inferred" in the code, as
-  Task 1's own text allows; the evidence file lists every inferred value.
+  Task 1's own text allows; the evidence file lists every inferred value. Task 10b was added at the claimant's request:
+  the UTC row reads "UTC: 18:16" rather than the plan's `UTC: <4> H <5>` (Task 3's text above keeps the old form), and
+  the window has the ECAM page keys after its list (the spec's "then any controls", 2.4).
 - **Rulings made while working:** (asked by the plan's text; answered by Claude as controller, for the owner to revisit)
   - `PtuStates` with Task 1 unmeasured: one value, `Idle = 0`, inferred from the cruise push, spoken "PTU: idle"; every
     other value "PTU: not available" and reported "PTU state <n> not known". Replaced on 2026-11-03 by the four measured
@@ -488,7 +504,12 @@ Kept in this file only, so no other plan's push ever touches it.
   - An empty UTC element makes the row "UTC: not available".
   - `Compose` reports an unknown letter, a missing bottom line and a bottom line of another length, but not "no data".
   - A field 154 in another shape stops the whole window (the gate never checks it, and a wrong unit is 2.2 times off).
-  - `NameOf` unchanged: Task 1 has not shown page 0 or 13 drawn.
   - The A318 follows the A320's FUEL layout (inferred; no Fenix A318 today).
   - The A321's extra FUEL rows sit right after the center tank, as the plan's text reads, until a capture says
     otherwise.
+  - The UTC row joins the hour and minute with a colon ("UTC: 18:16"), as the app speaks every time (Output Shift+Z),
+    though the SD draws an H; the claimant found the H odd by ear.
+  - The SD window has the 13 page keys (ENG to F/CTL, ALL, STS) as buttons, not a combo box (a combo would press a key
+    at every page the reader arrows past), each running the panel's own code and saying nothing of its own; T.O CONFIG,
+    CLR, RCL and EMER CANC belong with the E/WD, a request to plan 04 (Robin, claimed the same day).
+  - Pages 0 and 13: never seen, on the ground or from cold and dark through the self-test; `NameOf` names neither.

@@ -98,21 +98,43 @@ following the A320's, and the meaning of the flags the run did not change one by
 - Which flag means what (ELEC, HYD, FUEL), the igniter letters (17 A, 18 B), the A321 FUEL layout (no outer tanks,
   transfer valves or center pumps; its extra rows after the center tank) and the A318 following the A320's layout.
 
+## In the app, 2026-11-03 (Task 10's Alt+S, list, log and by-ear steps)
+
+kn4iee, by ear with NVDA, on Fenix 3.0.0.7613 (after updating from 7454) with MSFSBA built from this plan's branch, at
+13:13 and again at 13:49 with the page keys: Output Alt+S opened "Fenix SD" on the page shown and a second press brought
+it forward; the Fenix windows list's "SD" opened it; the STATUS page and the bottom line read naturally, colors after
+each stretch; the page keys after the list switched the page as the panel's do. `fenix_channel.log`: "build 3.0.0.7613:
+checked", "SD trusted", and no "SD:" problem line over either run. The one wording the claimant found odd, "UTC: 18 H
+16", is now "UTC: 18:16". On the unchecked 7454, earlier the same day, Alt+S gave the AI read with nothing before it
+("SD not trusted: build 3.0.0.7454 not checked"): the fallback path works.
+
+## Cold and dark, power-up and kilograms, 2026-11-03
+
+On 3.0.0.7613, kn4iee's A320 cold and dark at KATL, with the Fenix's weight unit switched to kilograms; Claude through
+the simconnect MCP, the aircraft left cold and dark again afterwards (DOOR page, external power connected but off,
+batteries off).
+
+- **Cold and dark.** Every display unit's power was 0 (12.1), so the SD is not live: the gate reads "display off" and
+  Alt+S keeps the AI read. `elecFlags` (16) still came empty and `apuData` (24) still came, its values NaN; 22 and
+  133.1.1 were NaN. The bottom line held ` aXX` for TAT and SAT.
+- **Power-up.** Batteries on: DC BAT powered (17.6), the SD still dark. External power on: AC and DC powered, and both
+  ECAM units on with content 7 (SelfTest) for 25 to 45 s, then 5 (the lower ECAM: the SD live). Field 10 stayed 6 (DOOR)
+  from cold and dark through the self-test: pages 0 and 13 were never seen, so `NameOf` stays unchanged. TAT and SAT
+  read "XX, amber" with the IRs off, as the SD draws them.
+- **Kilograms.** With the weight unit in kilograms, 154 was set: "F.USED 1+2: 0 KG" and "FOB: 3000 KG", the E/WD's FOB
+  line `g3000 cs KG`; the empty outer tanks' temperatures came as NaN and read "XX". The ELEC page on external power:
+  "EXT PWR: 115 V, 400 HZ", "GEN 1: 0 %, 0 V, 0 HZ" with the engines off.
+
 ## Waiting on the owner
 
-What the 2026-11-03 run could not do:
+What the 2026-11-03 runs could not do; none of it gates the window, which the claimant has heard working:
 
-- **In the app (Task 10's Alt+S, list and log steps, by ear).** MSFSBA from this plan's build: Output Alt+S opens the
-  window on the page shown and a second press brings it forward; the Fenix windows list's "SD" opens it; over the
-  checks, `fenix_channel.log` holds no "SD:" problem line; NVDA reads the STATUS page and the bottom line naturally,
-  colors after each stretch. Cold and dark: Alt+S gives the AI read with nothing before it ("SD not trusted: display
-  off" in the log), and the list's entry opens "SD: not available, display off".
 - **Labels against the SD's drawing.** No sim captures were taken: the rows' labels, order and rounding against a
-  picture of each page.
-- **Other airframes and settings.** The A321's FUEL page (its layout and its ACT rows), the variant on each airframe,
-  field 154 with the Fenix's weight unit in kilograms, and whether an A319 or A320 reports extra tanks.
-- **Cold and dark.** The power-up and the SD's self-test (pages 0 and 13), and whether `apuData` and `elecFlags` still
-  come.
+  picture of each page. The claimant's by-ear check found only the UTC wording; the owner rules whether that is enough.
+- **The list entry with the SD off.** "SD: not available, display off" in the window opened from the Fenix windows list
+  while cold and dark (the verdict itself was measured above).
+- **Other airframes.** The A321's FUEL page (its layout and its ACT rows), the variant on each airframe, and whether an
+  A319 or A320 reports extra tanks.
 - **A failure.** The yellow electric pump's overheat, set from the Fenix failures window: whether the SD draws OVHT on
   it (133.9.3, not read today).
 - **In flight** (gates nothing): ENG and FUEL in cruise, SAT below zero, what elements 2, 3, 7 and 8 of the bottom line
