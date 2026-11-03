@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
@@ -15,12 +17,13 @@ namespace MSFSBlindAssist.Services;
 /// sampler can therefore only make the next beat late, which is what the guard is there to notice. The host gives the
 /// beat no argument and keeps no time of its own for it: the monitor stamps its own clock.</para>
 /// <para>Isolation. A sampler that throws, and likewise the heartbeat, is reported once for each distinct line
-/// ("&lt;exception type&gt;: &lt;message&gt;") and costs nothing else: the other samplers of that tick still run, the timer
-/// stays on, and the next tick runs them all again. The lines remembered are bounded as the monitor's own problems are:
-/// 32 distinct ones, and the line that would be the 33rd empties the memory first, so a fault whose message changes at
-/// every tick cannot grow it. A log that throws is swallowed in its turn. So no announcer's fault silences another, none
-/// stops the heartbeat that keeps the guard alive, and none reaches the timer's tick event, where it would go to the
-/// application's UI-thread handler.</para>
+/// ("&lt;exception type&gt;: &lt;message&gt; (at &lt;type&gt;.&lt;method&gt;)", the method that threw: see
+/// <see cref="ProblemLine"/>) and costs nothing else: the other samplers of that tick still run, the timer stays on, and
+/// the next tick runs them all again. The lines remembered are bounded as the monitor's own problems are: 32 distinct
+/// ones, and the line that would be the 33rd empties the memory first, so a fault whose message changes at every tick
+/// cannot grow it. A log that throws is swallowed in its turn. So no announcer's fault silences another, none stops the
+/// heartbeat that keeps the guard alive, and none reaches the timer's tick event, where it would go to the application's
+/// UI-thread handler.</para>
 /// <para>Time. The clock is read once for each tick and its reading is handed to every sampler of that tick, so the
 /// samplers agree on when the tick was. In the app it is <see cref="Environment.TickCount64"/>, the one clock of the
 /// channel, so a reading compares with a snapshot's <see cref="FenixChannelSnapshot.AtMs"/>.</para>
@@ -55,8 +58,8 @@ internal sealed class FenixChannelAnnouncers : IDisposable
     /// <param name="samplers">One optional sampler for each announcer, in the order they run. Each is handed the tick's
     /// reading of <paramref name="clock"/> in milliseconds. The list is copied, so the host runs the samplers it was
     /// given, whatever happens to the list afterwards.</param>
-    /// <param name="logProblem">Where a throw is reported, once for each distinct "&lt;exception type&gt;: &lt;message&gt;",
-    /// for example <see cref="FenixChannelMonitor.ReportFeatureProblem"/> under the name "announcer".</param>
+    /// <param name="logProblem">Where a throw is reported, once for each distinct line of <see cref="ProblemLine"/>, for
+    /// example <see cref="FenixChannelMonitor.ReportFeatureProblem"/> under the name "announcer".</param>
     /// <param name="clock">The time of a tick, read once for each tick: <see cref="Environment.TickCount64"/> in the app.</param>
     public FenixChannelAnnouncers(
         Action heartbeat, IReadOnlyList<Action<long>> samplers, Action<string> logProblem, Func<long> clock)
@@ -151,7 +154,7 @@ internal sealed class FenixChannelAnnouncers : IDisposable
     // Each distinct line once, bounded as the monitor's problems are.
     private void Report(Exception ex)
     {
-        string problem = $"{ex.GetType().Name}: {ex.Message}";
+        string problem = ProblemLine(ex);
         if (_problems.Contains(problem)) return;
 
         if (_problems.Count >= MaxRememberedProblems) _problems.Clear();
@@ -165,5 +168,21 @@ internal sealed class FenixChannelAnnouncers : IDisposable
         {
             // A log that throws must not take the tick down with it.
         }
+    }
+
+    /// <summary>
+    /// The line a throw is logged as: "&lt;exception type&gt;: &lt;message&gt; (at &lt;type&gt;.&lt;method&gt;)", the last
+    /// part naming the method that threw it (the first frame of its stack trace, with the short name of its declaring
+    /// type). The host knows its samplers only as delegates, so this is what tells the log which of them it was. An
+    /// exception with no such frame, one never thrown, leaves the part out. Only names go into the line, no number is
+    /// formatted here, so the PC's culture changes nothing. Internal for the tests.
+    /// </summary>
+    internal static string ProblemLine(Exception ex)
+    {
+        string line = $"{ex.GetType().Name}: {ex.Message}";
+
+        return new StackTrace(ex).GetFrame(0)?.GetMethod() is { DeclaringType: { } type } method
+            ? $"{line} (at {type.Name}.{method.Name})"
+            : line;
     }
 }

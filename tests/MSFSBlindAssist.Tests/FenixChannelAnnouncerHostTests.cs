@@ -7,14 +7,15 @@
 //
 // The contract: each tick calls the heartbeat first and then every sampler in the order given, with one reading of the
 // clock for the whole tick that every sampler is handed. A sampler, or the heartbeat, that throws is logged once for each
-// distinct "<exception type>: <message>" (32 are remembered, then forgotten, as the monitor's own problems are) and costs
-// nothing else: the other samplers of the tick still run, the timer stays on and the next tick runs them all again; a log
-// that throws is swallowed as well. Start makes the one timer, at 100 ms, and a second Start does nothing. Dispose stops and
-// disposes it, never throws, and a second Dispose does nothing; after it a tick does nothing at all (no beat, no sampler,
-// no clock reading) and Start makes no timer.
+// distinct "<exception type>: <message> (at <type>.<method>)", the method being the one that threw, so that the log says
+// which of several samplers it was (32 lines are remembered, then forgotten, as the monitor's own problems are), and
+// costs nothing else: the other samplers of the tick still run, the timer stays on and the next tick runs them all again;
+// a log that throws is swallowed as well. Start makes the one timer, at 100 ms, and a second Start does nothing. Dispose
+// stops and disposes it, never throws, and a second Dispose does nothing; after it a tick does nothing at all (no beat, no
+// sampler, no clock reading) and Start makes no timer.
 //
-// The host formats no number: a log line is the exception's own type and message, so it reads the same where the PC's
-// culture writes a comma.
+// The host formats no number: a log line is the exception's own type and message and the names of the method that threw,
+// so it reads the same where the PC's culture writes a comma.
 
 using System.Reflection;
 using MSFSBlindAssist.Services;
@@ -34,6 +35,13 @@ public class FenixChannelAnnouncerHostTests
     private static System.Windows.Forms.Timer TimerOf(FenixChannelAnnouncers host)
         => (System.Windows.Forms.Timer)typeof(FenixChannelAnnouncers)
             .GetField("_timer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
+
+    // Throw sites with names the log lines below can write out: a lambda's is the compiler's.
+    private static void NoSpeedLimits(long now) => throw new InvalidOperationException("no speed limits");
+
+    private static void NoSpeedLimitsEither(long now) => throw new InvalidOperationException("no speed limits");
+
+    private static void Throw(Exception exception) => throw exception;
 
     // ---- The tick -----------------------------------------------------------------------------------
 
@@ -143,10 +151,10 @@ public class FenixChannelAnnouncerHostTests
         using FenixChannelAnnouncers host = NewHost(
             samplers:
             [
-                _ => throw new InvalidOperationException("no speed limits"),
+                NoSpeedLimits,
                 _ =>
                 {
-                    if (secondThrows is not null) throw secondThrows;
+                    if (secondThrows is not null) Throw(secondThrows);
                 },
             ],
             logProblem: logged.Add);
@@ -155,30 +163,63 @@ public class FenixChannelAnnouncerHostTests
         host.Tick();
         host.Tick();
         host.Tick();
-        Assert.Equal(new[] { "InvalidOperationException: no speed limits" }, logged);
+        Assert.Equal(
+            new[] { "InvalidOperationException: no speed limits (at FenixChannelAnnouncerHostTests.NoSpeedLimits)" },
+            logged);
 
-        // The line is the whole of what is remembered: the same type and message from another sampler is the same
-        // line, and the same type with another message is a new one.
+        // The line is the whole of what is remembered: the same type and message from another site is a new line, and
+        // so is the same type with another message.
         secondThrows = new InvalidOperationException("no speed limits");
         host.Tick();
-        Assert.Single(logged);
-
+        host.Tick();
         secondThrows = new InvalidOperationException("no vertical profile");
         host.Tick();
         host.Tick();
         Assert.Equal(
             new[]
             {
-                "InvalidOperationException: no speed limits",
-                "InvalidOperationException: no vertical profile",
+                "InvalidOperationException: no speed limits (at FenixChannelAnnouncerHostTests.NoSpeedLimits)",
+                "InvalidOperationException: no speed limits (at FenixChannelAnnouncerHostTests.Throw)",
+                "InvalidOperationException: no vertical profile (at FenixChannelAnnouncerHostTests.Throw)",
             },
             logged);
 
         // Another exception type with a message already heard is a new line too.
         secondThrows = new ArgumentException("no speed limits");
         host.Tick();
-        Assert.Equal("ArgumentException: no speed limits", logged[^1]);
-        Assert.Equal(3, logged.Count);
+        Assert.Equal("ArgumentException: no speed limits (at FenixChannelAnnouncerHostTests.Throw)", logged[^1]);
+        Assert.Equal(4, logged.Count);
+    }
+
+    [Fact]
+    public void The_same_exception_from_two_sites_is_two_lines()
+    {
+        // Plans 08, 09 and 11 each add a sampler, and the host's constructor knows them only as delegates: the site is how
+        // the log tells apart two that throw the same exception. Two that throw it from one site are one line.
+        var logged = new List<string>();
+        using FenixChannelAnnouncers host = NewHost(
+            samplers: [NoSpeedLimits, NoSpeedLimitsEither, NoSpeedLimits],
+            logProblem: logged.Add);
+
+        host.Tick();
+        host.Tick();
+
+        Assert.Equal(
+            new[]
+            {
+                "InvalidOperationException: no speed limits (at FenixChannelAnnouncerHostTests.NoSpeedLimits)",
+                "InvalidOperationException: no speed limits (at FenixChannelAnnouncerHostTests.NoSpeedLimitsEither)",
+            },
+            logged);
+    }
+
+    [Fact]
+    public void An_exception_with_no_throw_site_is_the_line_as_it_is()
+    {
+        // Never thrown, so it has no stack trace to name a method from: the type and the message alone.
+        Assert.Equal(
+            "InvalidOperationException: no speed limits",
+            FenixChannelAnnouncers.ProblemLine(new InvalidOperationException("no speed limits")));
     }
 
     [Fact]
@@ -217,7 +258,7 @@ public class FenixChannelAnnouncerHostTests
         var logged = new List<string>();
         int fault = 0;
         using FenixChannelAnnouncers host = NewHost(
-            samplers: [_ => throw new InvalidOperationException($"fault {fault}")],
+            samplers: [_ => Throw(new InvalidOperationException($"fault {fault}"))],
             logProblem: logged.Add);
 
         for (fault = 0; fault < 32; fault++) host.Tick();
@@ -238,7 +279,7 @@ public class FenixChannelAnnouncerHostTests
         fault = 0;
         host.Tick();
         Assert.Equal(34, logged.Count);
-        Assert.Equal("InvalidOperationException: fault 0", logged[^1]);
+        Assert.Equal("InvalidOperationException: fault 0 (at FenixChannelAnnouncerHostTests.Throw)", logged[^1]);
     }
 
     [Theory]
@@ -246,13 +287,13 @@ public class FenixChannelAnnouncerHostTests
     [InlineData("sv-SE")]
     public void The_log_line_reads_the_same_under_a_comma_decimal_culture(string culture)
     {
-        // The line is the exception's own type and message, formatted by nothing here, so a number inside the message
-        // keeps its decimal point where the PC's culture writes a comma.
+        // The line is the exception's own type and message and the names of the method that threw it, formatted by
+        // nothing here, so a number inside the message keeps its decimal point where the PC's culture writes a comma.
         string[] logged = TestCulture.Run(culture, () =>
         {
             var lines = new List<string>();
             using FenixChannelAnnouncers host = NewHost(
-                samplers: [_ => throw new InvalidOperationException("speed 250.5 is outside 0.0-1.0")],
+                samplers: [_ => Throw(new InvalidOperationException("speed 250.5 is outside 0.0-1.0"))],
                 logProblem: lines.Add);
 
             host.Tick();
@@ -260,7 +301,9 @@ public class FenixChannelAnnouncerHostTests
             return lines.ToArray();
         });
 
-        Assert.Equal(new[] { "InvalidOperationException: speed 250.5 is outside 0.0-1.0" }, logged);
+        Assert.Equal(
+            new[] { "InvalidOperationException: speed 250.5 is outside 0.0-1.0 (at FenixChannelAnnouncerHostTests.Throw)" },
+            logged);
     }
 
     // ---- Start and Dispose --------------------------------------------------------------------------
