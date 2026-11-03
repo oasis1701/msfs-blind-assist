@@ -23,13 +23,63 @@ fresh from the installed `FenixDisplay.exe` with the team's metadata tool and co
   `ValveStateEnum` declared Open, Closed, Transit, FailedOpen, FailedClose, DataInvalid. `SingleEngineState.StartValve` is a
   `ValveStateEnum`, so the ENG page's start valve reads valve words.
 
-## Inferred, not yet measured (Task 1)
+## In the sim, 2026-11-03 (Task 1, and Task 10's checks of the rows against the data)
 
-Without a sim run, Tasks 2 to 8 took these from the plan and the team's decoded cruise push of 2026-11-01 (an A321 at
-FL340, both engines running); each is marked "inferred" in the code:
+The owner's Fenix A320 CFM (N328NW) at KATL on 3.0.0.7613, MSFS 2024, both engines running at first, the parking brake
+set. Claude worked the aircraft through the simconnect MCP as the definition writes it (an ECP key 1 then 0; switches by
+value), with the owner's go-ahead, and left it as found (both engines running, APU off, the SD back on WHEEL). The fields
+came from the team's listener (a push saved per page or after each action, read-only); the rows were made from those
+pushes by the app's own `FenixChannelSd.Compose`, through a throwaway probe that is not committed. No sim captures were
+taken, so the labels against the SD's drawing still wait (below).
 
-- 132 `ptuState` was left out (0) with both engines running and the PTU in AUTO: `PtuStates.Idle = 0`, spoken "PTU: idle".
-  Every other value reads "PTU: not available" and is reported.
+- **Pages.** ENG 8, ELEC 7, HYD 11, FUEL 10, STS 14 (shown 4.9 s with NORMAL, then back to WHEEL 12, the ground's
+  automatic page). ALL, pressed and held, cycled 8, 2, 3, 7, 11, 10, 1, 4, 6, 12, 9 and round again. Pages 0, 5 and 13
+  never showed on the ground; the power-up and self-test from cold and dark were not run. `NameOf` is unchanged.
+- **Presence and shapes.** Every field the plan reads came in the shape `FenixChannelFields.Sd.cs` declares. Sent as
+  empty messages when all false or 0: 16 `elecFlags`, 22 `essTR`, 133.9 (the yellow electric pump, off), 134.8, 134.15
+  and 177. 23 `extPwr` carried 23.2 = 400 with no external power (17.8 clear), so the page reads it only while 17.8 is
+  set, as it does. 154 was left out: this Fenix is set to pounds, and FOB, F.USED and GW read LBS. The vibrations
+  (129.n.11, .12) were left out at idle, so VIB reads 0.0. 175 came as seven empty elements and `            gNORMAL`;
+  176 was left out with nothing to report.
+- **The frame.** 178 at the gate: `g+17`, `g+17`, empty, empty, `16`, `25`, `c--`, empty, empty (GW not computed: no
+  ZFW entered). With GEN 1 off, 176 read `  wuINOP SYSu`, `aMAIN GALLEY`, `aGEN 1`, and 175 was left out: the letters
+  seen were `g`, `c`, `w`, `u` and `a` (amber, measured for the first time). The STATUS page read "STATUS", "INOP SYS,
+  white", "MAIN GALLEY, amber", "GEN 1, amber".
+- **Valves.** X FEED on: 134.11.4 went 1 (closed), 2 (in transit, about 3 s), then left out (open); off: 2, then 1. An
+  engine master off: its LP valve went 2, then 1. The start valve read 1 (closed) running, 2 then left out (open) during
+  the start, and 5 (DataInvalid) while the ENG 2 FIRE pushbutton was out. `ValveStateEnum` holds.
+- **PTU (132).** -1 with the PTU pushbutton off and both engines running, and, with the pushbutton in AUTO, while the
+  parking brake was set and one engine master on (the PTU inhibit); 0 normal; 1 with both engines off and the yellow
+  electric pump on (green rose to 2650 PSI through the PTU), and while engine 1 started with engine 2 running; 2 for
+  about 50 s after engine 1's master went off with engine 2 already off (yellow at 0, green falling). They became
+  `PtuStates` Off, Idle, YellowToGreen and GreenToYellow.
+- **ELEC.** GEN 1 off: "GEN 1: OFF" at once, and the Fenix set GALLEY SHED (16.1). The APU master on: 24.12 and 24.13
+  (the amber title), "APU GEN: 0 %, 0 V, 0 HZ"; AVAIL (24.8) after about 75 s, "APU GEN: 0 %, 115 V, 399 HZ"; the APU
+  GEN pushbutton off set 24.14 (Off) while the row still spoke the figures, so the row now reads "APU GEN: OFF" then.
+  24.12 cleared about 80 s after AVAIL did, once the APU stopped. After the ENG 2 FIRE test, GEN 2 stayed off line
+  until its pushbutton was cycled.
+- **HYD.** Engine 2 off: "YELLOW: 0 PSI", "YELLOW ENG 2 pump: LO"; both off: the blue electric pump stopped ("off");
+  the yellow electric pump on: "YELLOW ELEC pump: running". The ENG 2 FIRE pushbutton out: 133.11 left out, "YELLOW fire
+  valve: closed", which confirms that a fire valve is open while its field is set.
+- **ENG.** The mode selector at IGN/START set 129.6, and the start rows read "IGN: off, B", "start valve: closed, open",
+  "PSI: 38, 38" for engine 2's start and "IGN: A, off", "start valve: open, closed" for engine 1's; 129.6 cleared about
+  20 s after the selector went back to NORM. NAC (129.7) was never set on the ground.
+- **Against the Fenix's own values.** BAT 1 and BAT 2 27.6 and 27.4 V (`N_ELEC_VOLT_BAT_1`, `_2`), "28 V" and "27 V";
+  OIL QT, PSI and °C against the data service's `aircraft.engines.n.oil.*` (14.42, 14.27; 33.7, 33.7; 47.3, 47.4): "14.4,
+  14.3", "34, 34", "47, 47"; TAT and SAT against `aircraft.temperature.tat` and `.oat` (16.97): "+17"; FOB 6080 against
+  the E/WD's FOB line (`wFOB:   g6080 cs LBS`); UTC against the sim's ZULU TIME (16:48). GW was "--": no FMS gross weight
+  to compare.
+
+## Inferred before the sim run
+
+Before the run, Tasks 2 to 8 took these from the plan and the team's decoded cruise push of 2026-11-01 (an A321 at FL340,
+both engines running), each marked "inferred" in the code. The run above settled the PTU (four states, not one), the
+fire valves (open while set: confirmed), the empty messages (confirmed on the ground) and the igniter letters (A for
+engine 1's start, B for engine 2's, consistent with 17 and 18). Still inferred: the A321 FUEL layout, the A318
+following the A320's, and the meaning of the flags the run did not change one by one.
+
+- 132 `ptuState` was left out (0) with both engines running and the PTU in AUTO, so `PtuStates` first held only
+  `Idle = 0` ("PTU: idle"), every other value "not available"; replaced by the four measured states above.
 - 133.10 and 133.11 (`ShutoffLeft`, `ShutoffRight`) were set with the engines running: a fire valve reads "open" while set.
 - 16 `elecFlags`, 22 `essTR` and 133.9 (the yellow electric pump, off) came as empty messages, so a part with everything
   false is sent, not left out; 24 `apuData` carried EgtCaution 1067 and EgtMax 1100 with the APU off.
@@ -41,17 +91,20 @@ FL340, both engines running); each is marked "inferred" in the code:
 
 ## Waiting on the owner
 
-Task 1 [sim] (pages 0 and 13, presence and shapes at the gate, the X FEED and PTU values with captures, the variant on an
-A320 and an A321 with the A321's FUEL capture, field 154 in kilograms and pounds, the frame's 178/175/176, labels against
-captures) and Task 10 [sim] (each page against the cockpit, the changes, Alt+S, the log; in flight; by ear). Also for
-those runs (the whole-plan review's list):
+What the 2026-11-03 run could not do:
 
-- Whether the SD draws OVHT on the yellow electric pump (133.9.3, not read today): set the pump's overheat from the Fenix
-  failures window on the ground.
-- An ENG FIRE pushbutton released out on the ground: the HYD page should read "GREEN fire valve: closed" (the field is
-  named Shutoff, and the page reads it open while set).
-- The APU GEN pushbutton off with the APU running: `ApuData.Off` (24.14) is not read, so the ELEC page may speak the
-  generator's figures where the SD shows OFF.
-- The PTU: the run must see a value of field 132 other than 0, since 0 is also what an absent field reads.
-- The ELEC page cold and dark: whether `apuData` and `elecFlags` still come.
-- Whether the Fenix reports extra tanks on an A319 or A320 (the A320 layout shows no ACT row whatever the config).
+- **In the app (Task 10's Alt+S, list and log steps, by ear).** MSFSBA from this plan's build: Output Alt+S opens the
+  window on the page shown and a second press brings it forward; the Fenix windows list's "SD" opens it; over the
+  checks, `fenix_channel.log` holds no "SD:" problem line; NVDA reads the STATUS page and the bottom line naturally,
+  colors after each stretch. Cold and dark: Alt+S gives the AI read with nothing before it ("SD not trusted: display
+  off" in the log), and the list's entry opens "SD: not available, display off".
+- **Labels against the SD's drawing.** No sim captures were taken: the rows' labels, order and rounding against a
+  picture of each page.
+- **Other airframes and settings.** The A321's FUEL page (its layout and its ACT rows), the variant on each airframe,
+  field 154 with the Fenix's weight unit in kilograms, and whether an A319 or A320 reports extra tanks.
+- **Cold and dark.** The power-up and the SD's self-test (pages 0 and 13), and whether `apuData` and `elecFlags` still
+  come.
+- **A failure.** The yellow electric pump's overheat, set from the Fenix failures window: whether the SD draws OVHT on
+  it (133.9.3, not read today).
+- **In flight** (gates nothing): ENG and FUEL in cruise, SAT below zero, what elements 2, 3, 7 and 8 of the bottom line
+  hold.

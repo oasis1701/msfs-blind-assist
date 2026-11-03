@@ -441,6 +441,9 @@ fields with the team's tools, the SD from a capture of the sim. Each result into
     bottom line of another length, or field 154 in another shape is found when the window composes, after the gate said
     trusted, so Alt+S opens a window with one status row instead of the AI read. Rare on a checked build; the owner
     accepts it (and the guide says so) or the key checks these too.
+  - **For plan 06 (measured 2026-11-03).** Its APU page has the same APU GEN row as the ELEC page: with the APU running
+    and the APU GEN pushbutton off, the Fenix sets `ApuData.Off` (24.14) and the row must read "APU GEN: OFF", not the
+    figures (plan 05's `ElecApuRow`). ALL on the ground never showed CRUISE (5), so plan 06's CRUISE check needs a flight.
   - **Plan 05's own follow-ups before it lands (Task 11) or in plan 12's pass:** the ENG tests give NAC and VIB N2 the
     same value on both engines, so an engine swap in those rows would pass; the pump words ("off", "LO", "running") and
     the open/closed words are built twice (HYD, FUEL); the FUEL page keeps 0 or "" for parts it does not read; the test
@@ -458,15 +461,24 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Tests at landing:**
 - **Tasks:** 0 done (claim `66a246511`); 2 to 8 done 2026-11-03 and pushed, inert (nothing calls them before Task 9),
   each with its review; 2's Step 2 field check done (evidence file). 9 done, with its review and a whole-plan review,
-  on `fc-p05-sd-window` only (never on this branch before Task 10's ground steps pass). 1, 10 and 11 wait on the owner.
-- **Waiting on the owner:** Task 1 [sim] and Task 10 [sim, in flight, owner]; then Task 11. The evidence file lists what
-  the two runs must also look at.
-- **In-sim results:**
+  on `fc-p05-sd-window` only (never on this branch before Task 10's ground steps pass). 1 done in the sim on 2026-11-03
+  but for the captures, the other airframe and cold and dark; 10's data checks done the same day, with two fixes of
+  their own before the switch; 10's steps in the app, by ear, and 11 wait on the owner.
+- **Waiting on the owner:** Task 10's steps in the app (Alt+S, the list entry, the log, cold and dark) and by ear; the
+  captures, the A321, kilograms, cold and dark and the pump overheat failure (the evidence file's list); then Task 11.
+- **In-sim results:** 2026-11-03, the owner's A320 CFM at KATL on 3.0.0.7613, run by Claude through the simconnect MCP
+  (evidence file): every page this plan composes read its fields as the plan has them, and its rows matched the
+  Fenix's own values (battery volts, the Engines window's oil, TAT and OAT, the E/WD's FOB, the sim's UTC). Two
+  differences, fixed before the switch: the PTU has four states (-1 off or inhibited, 0 idle, 1 yellow to green, 2 green
+  to yellow), and the APU generator reads "APU GEN: OFF" while its pushbutton is off (24.14). Pages 0 and 13 did not
+  show on the ground.
 - **Changed from the plan:** Tasks 2 to 8 ran before Task 1, from the plan's values marked "inferred" in the code, as
   Task 1's own text allows; the evidence file lists every inferred value.
 - **Rulings made while working:** (asked by the plan's text; answered by Claude as controller, for the owner to revisit)
   - `PtuStates` with Task 1 unmeasured: one value, `Idle = 0`, inferred from the cruise push, spoken "PTU: idle"; every
-    other value "PTU: not available" and reported "PTU state <n> not known".
+    other value "PTU: not available" and reported "PTU state <n> not known". Replaced on 2026-11-03 by the four measured
+    states; their words, chosen without a capture of the SD's PTU symbol: "off" (-1, which the PTU shows both when its
+    pushbutton is off and when it is inhibited), "idle", "yellow to green", "green to yellow".
   - Who reports a page's problem: a page returns a stopping problem and `FenixChannelSd.Compose` reports it once as
     "<page>: <problem>"; the reader's own report is only for what does not stop the page (an unknown valve value or PTU
     state).
