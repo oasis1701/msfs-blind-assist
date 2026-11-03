@@ -23,11 +23,13 @@ internal sealed record FenixNdWaypointLines(string Line1, string Line2, string L
 /// <param name="Position">The present position (192); null when absent.</param>
 /// <param name="PlanCenter">The PLAN centre (84); null when absent.</param>
 /// <param name="Waypoint">The next-waypoint lines (68); null when absent.</param>
-/// <param name="Messages">The center, windshear and TCAS messages when not blank, then the ND messages that are not null or blank.</param>
+/// <param name="CenterMessages">The center (62), windshear (64) and TCAS (66) messages when not blank, in that order.</param>
+/// <param name="ListedMessages">The ND messages (103) that are not null or blank, in order, as sent.</param>
 internal sealed record FenixNdData(
     string? Mode, string Range, string? MapOption, bool LsOn, string? GroundSpeedLine, string? WindLine,
     double? MagneticHeading, double? MagneticTrack, double? MagneticVariation, double? SelectedHeading,
-    FenixLatLon? Position, FenixLatLon? PlanCenter, FenixNdWaypointLines? Waypoint, IReadOnlyList<string> Messages);
+    FenixLatLon? Position, FenixLatLon? PlanCenter, FenixNdWaypointLines? Waypoint,
+    IReadOnlyList<string> CenterMessages, IReadOnlyList<string> ListedMessages);
 
 /// <summary>
 /// Reads the captain's ND header from one snapshot. Never the first officer's side. The first problem found is the
@@ -157,18 +159,18 @@ internal static class FenixChannelNd
             if (Unknown(message) is char letter) return FenixChannelSection<FenixNdData>.UnknownCode(letter, "ND messages");
         }
 
-        List<string> messages = [];
+        List<string> centerMessages = [];
         foreach (string? message in new[] { center, windshear, tcas })
         {
-            if (!string.IsNullOrWhiteSpace(message)) messages.Add(message);
+            if (!string.IsNullOrWhiteSpace(message)) centerMessages.Add(message);
         }
 
-        messages.AddRange(listed.Where(message => !string.IsNullOrWhiteSpace(message)));
+        List<string> listedMessages = [.. listed.Where(message => !string.IsNullOrWhiteSpace(message))];
 
         return FenixChannelSection<FenixNdData>.Ok(new FenixNdData(
             ModeName(mode), RangeName(range), MapOptionName(mapOption), ls is not null && ls != 0,
             groundSpeed, windLine, magHeading, magTrack, magVar, selected, position, planCenter,
-            nav is null ? null : new FenixNdWaypointLines(line1 ?? "", line2 ?? "", line3 ?? ""), messages));
+            nav is null ? null : new FenixNdWaypointLines(line1 ?? "", line2 ?? "", line3 ?? ""), centerMessages, listedMessages));
 
         // ---- The reads. A field in another wire shape records its path (the first only) and reads as absent.
 

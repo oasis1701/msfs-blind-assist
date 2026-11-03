@@ -66,7 +66,8 @@ public class FenixChannelNdTests
         Assert.Null(nd.SelectedHeading);
         Assert.Null(nd.Position);
         Assert.Null(nd.PlanCenter);
-        Assert.Empty(nd.Messages);
+        Assert.Empty(nd.CenterMessages);
+        Assert.Empty(nd.ListedMessages);
     }
 
     [Fact]
@@ -83,7 +84,8 @@ public class FenixChannelNdTests
         Assert.Equal("20", nd.Range);
         Assert.Equal("VAKSU g318c", nd.Waypoint!.Line1);
         Assert.Equal("wsGSlgd456wsdTASlgd448", nd.GroundSpeedLine);
-        Assert.Empty(nd.Messages);
+        Assert.Empty(nd.CenterMessages);
+        Assert.Empty(nd.ListedMessages);
     }
 
     [Fact]
@@ -257,18 +259,22 @@ public class FenixChannelNdTests
             .Message(103, new FenixChannelProtoWriter().String(1, "  "))
             .Message(103, new FenixChannelProtoWriter().String(1, "TA ONLY"));
 
-        Assert.Equal(["TA ONLY"], Value(remote).Messages);
+        Assert.Equal(["TA ONLY"], Value(remote).ListedMessages);
+        Assert.Empty(Value(remote).CenterMessages);
     }
 
     [Fact]
-    public void Messages_come_center_windshear_tcas_then_the_list()
+    public void Center_windshear_and_tcas_messages_are_kept_apart_from_the_listed_ones()
     {
         FenixChannelProtoWriter remote = Cruise()
             .Message(103, new FenixChannelProtoWriter().String(1, "GPS PRIMARY"))
             .String(66, "TCAS FAIL").String(62, "CENTER").String(64, "WINDSHEAR")
             .Message(103, new FenixChannelProtoWriter().String(1, "TA ONLY"));
 
-        Assert.Equal(["CENTER", "WINDSHEAR", "TCAS FAIL", "GPS PRIMARY", "TA ONLY"], Value(remote).Messages);
+        FenixNdData nd = Value(remote);
+
+        Assert.Equal(["CENTER", "WINDSHEAR", "TCAS FAIL"], nd.CenterMessages);
+        Assert.Equal(["GPS PRIMARY", "TA ONLY"], nd.ListedMessages);
     }
 
     [Theory]
