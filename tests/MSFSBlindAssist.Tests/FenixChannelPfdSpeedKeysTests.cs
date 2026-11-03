@@ -1,6 +1,6 @@
 // Characterization tests for FenixChannelSpeedKeys, the six output keys (Shift+1 to Shift+6) that read one speed of the
 // PFD's tape. Pure logic: every snapshot is built with PfdPushes (FenixChannelPfdDecoderTests.cs), whose starting point is
-// the cruise of spec 3.2.
+// a cruise at 34,000 feet and Mach .775 at standard pressure, with VMAX, a green dot, VLS and alpha prot drawn.
 //
 // The contract: a key reads the tape's row of that name, worded as the window words it ("Green dot 237 knots"), so a key
 // and its window row can never disagree; Shift+5 reads the VSW row while the PFD draws one and the alpha prot row
@@ -70,20 +70,36 @@ public class FenixChannelPfdSpeedKeysTests
     [Fact]
     public void A_key_reads_the_row_the_window_shows_for_that_speed()
     {
-        var push = new PfdPushes.Push
-        {
-            GreenDot = 237.4975, S = 215, F = 180, Vls = 189, VfeNext = 200, V1 = 140, Vr = 145, V2 = 150
-        };
+        // The first push draws alpha prot (the cruise's), the second a VSW, which takes alpha prot's place on the tape:
+        // Shift+5 and the window agree on whichever the PFD draws.
+        (PfdPushes.Push Push, string Fifth)[] cases =
+        [
+            (new PfdPushes.Push
+            {
+                GreenDot = 237.4975, S = 215, F = 180, Vls = 189, VfeNext = 200, V1 = 140, Vr = 145, V2 = 150
+            }, "Alpha prot 197 knots"),
+            (new PfdPushes.Push
+            {
+                GreenDot = 237.4975, S = 215, F = 180, Vls = 189, VfeNext = 200, V1 = 140, Vr = 145, V2 = 150, Vsw = 158
+            }, "VSW 158 knots")
+        ];
 
-        var reported = new List<string>();
-        IReadOnlyList<string> window = FenixChannelPfdRows.Compose(push.Snapshot(), reported.Add).Rows!;
-
-        foreach (HotkeyAction action in SpeedKeys.Where(action => action != HotkeyAction.ReadSpeedVS))
+        foreach ((PfdPushes.Push push, string fifth) in cases)
         {
-            Assert.Contains(SpokenBy(action, push), window);
+            var reported = new List<string>();
+            IReadOnlyList<string> window = FenixChannelPfdRows.Compose(push.Snapshot(), reported.Add).Rows!;
+
+            foreach (HotkeyAction action in SpeedKeys)
+            {
+                string? spoken = SpokenBy(action, push);
+
+                Assert.NotNull(spoken);
+                Assert.Contains(spoken, window);
+            }
+
+            Assert.Equal(fifth, SpokenBy(HotkeyAction.ReadSpeedVS, push));
+            Assert.Empty(reported);
         }
-
-        Assert.Empty(reported);
     }
 
     [Fact]
@@ -172,6 +188,7 @@ public class FenixChannelPfdSpeedKeysTests
 
             var windowReported = new List<string>();
             Assert.Equal(problem, FenixChannelPfdRows.Compose(snapshot, windowReported.Add).Problem);
+            Assert.Equal(new[] { problem }, windowReported);
 
             foreach (HotkeyAction action in SpeedKeys)
             {
@@ -179,6 +196,8 @@ public class FenixChannelPfdSpeedKeysTests
 
                 Assert.Null(spoken);
                 Assert.Equal(new[] { problem }, reported);
+                // A key reports to the monitor what the window reports to it.
+                Assert.Equal(windowReported, reported);
             }
         }
     }

@@ -7,9 +7,10 @@
 // another shape is a wrong shape named by its path ("28.5", "46.2.1", "1.14"), reported before any missing content; the
 // air data (28), the air data flags (46) and an EFIS entry must be there, and the first EFIS entry is the captain's; a
 // value left out reads as protobuf-net leaves it (the air data, the trend and the track 0, a text "", a flag false, the
-// QNH 1013) except a speed, the speed target and a deviation, which are NaN; the baro text (105) is never read; the
-// heading is the frame's; the first format letter the app does not know in a PFD text makes the section an unknown
-// code that names the text.
+// QNH 1013) except a speed and the speed target, which are NaN, and a deviation: the channel writes NaN for a scale it
+// does not draw, so a deviation left out of a part that is sent is a real 0.0 (centered), and only with the whole
+// part left out are both NaN; the baro text (105) is never read; the heading is the frame's; the first format letter
+// the app does not know in a PFD text makes the section an unknown code that names the text.
 
 using System.Globalization;
 using MSFSBlindAssist.Services;
@@ -527,7 +528,8 @@ public class FenixChannelPfdDecoderTests
 
 /// <summary>
 /// Builds the RemoteData message of the captain's PFD, and the snapshot around it, for the PFD tests. A
-/// <see cref="Push"/> starts as the cruise of spec 3.2 and a test changes what it needs: it sets a value, leaves a field
+/// <see cref="Push"/> starts as a cruise at 34,000 feet (Mach .775 at standard pressure, 268 knots, VMAX, a green dot,
+/// VLS and alpha prot drawn, both LS deviations NaN) and a test changes what it needs: it sets a value, leaves a field
 /// out by its path (<see cref="Push.Omit"/>), or writes it in another wire shape (<see cref="Push.AsVarint"/>,
 /// <see cref="Push.AsFixed64"/>, <see cref="Push.AsInvalidUtf8"/>). A path is the field numbers joined by dots, from
 /// RemoteData down: "28.5", "46.2.1", "1.14". Every field number is written out literally here, as

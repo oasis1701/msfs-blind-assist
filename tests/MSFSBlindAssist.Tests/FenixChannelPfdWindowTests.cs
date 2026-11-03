@@ -15,10 +15,11 @@
 // reported under the window's name, as the window reports it. Any other action is false and silent. The window is a
 // class of its own for the PFD, titled "Fenix PFD", and shows the PFD's rows. Both the keys and the window read the
 // PFD's own verdict, not another display's: with the captain's PFD dark and the other units lit, Alt+P is false and
-// silent, a speed key says it is not available, and the window shows the one status row. Every channel window keeps
-// the pilot on their row through a refresh: the row is followed by its words when its figure changes or a row appears
-// above it (FenixChannelDisplayForm.RowToFollow), and after a status row the cursor goes back to it; these tests run it
-// on the PFD's real rows.
+// silent, a speed key says it is not available, and the window shows the one status row. A flight director field (110)
+// in a real message reaches the flight director row through the decoder, the gate and the window. Every channel
+// window keeps the pilot on their row through a refresh: the row is followed by its words when its figure changes or a
+// row appears above it (FenixChannelDisplayForm.RowToFollow), and after a status row the cursor goes back to it; these
+// tests run it on the PFD's real rows.
 
 using System.Windows.Forms;
 using MSFSBlindAssist.Aircraft;
@@ -105,15 +106,17 @@ public class FenixChannelPfdWindowTests
 
     // A whole display push that passes the gate (FenixChannelProtoWriter.GoodPush) with the PFD's own fields in the same
     // RemoteData message: the push of a real Fenix, which has both. The PFD's heading is left out, since GoodPush carries
-    // the one the gate cross-checks.
-    private static byte[] PushWith(PfdPushes.Push pfd)
+    // the one the gate cross-checks. A flight director given is written as a second field 110 after GoodPush's, which
+    // carries the two lights: the decoder reads both into one state.
+    private static byte[] PushWith(PfdPushes.Push pfd, FenixChannelProtoWriter? flightDirector = null)
     {
         byte[] good = FenixChannelProtoWriter.GoodPush();
         int at = 1;
         while ((good[at] & 0x80) != 0) at++;
         at++;
 
-        byte[] remote = [.. good[at..], .. pfd.Omit("194").RemoteBytes()];
+        byte[] fd = flightDirector is null ? [] : new FenixChannelProtoWriter().Message(110, flightDirector).ToArray();
+        byte[] remote = [.. good[at..], .. pfd.Omit("194").RemoteBytes(), .. fd];
         return new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().Raw(remote)).ToArray();
     }
 
@@ -265,6 +268,64 @@ public class FenixChannelPfdWindowTests
         Assert.Equal(
             new[] { $"PFD: not available, {neverStarted.VerdictFor(FenixChannelDisplay.Pfd).Reason}" },
             ListOf(form).Items.Cast<string>().ToArray());
+    }
+
+    // A flight director part (field 110) as the Fenix sends it, the numbers written out: 1 pitch, 3 roll, 4 yawbar, 5 and
+    // 6 the two lights (on, as GoodPush's are, so the gate's check of them agrees), 7 TRK/FPA, 8 roll guidance, 9 flash,
+    // 11 inhibit roll and 12 inhibit pitch. A bool is written only when it is set, as protobuf-net writes one.
+    private static FenixChannelProtoWriter FlightDirector(double pitch, double roll, double yawbar = 0,
+        bool trkFpa = false, bool rollGuidance = false, bool flash = false, bool inhibitRoll = false,
+        bool inhibitPitch = false)
+    {
+        var fd = new FenixChannelProtoWriter().Double(1, pitch).Double(3, roll).Double(4, yawbar).Bool(5, true).Bool(6, true);
+        if (trkFpa) fd.Bool(7, true);
+        if (rollGuidance) fd.Bool(8, true);
+        if (flash) fd.Bool(9, true);
+        if (inhibitRoll) fd.Bool(11, true);
+        if (inhibitPitch) fd.Bool(12, true);
+        return fd;
+    }
+
+    [Fact]
+    public void A_real_flight_director_field_reaches_the_row()
+    {
+        // Field 110 from the wire, through the decoder, the gate, the monitor and the window. The attitude is 3.1 degrees
+        // up and wings level, so a commanded pitch of 5.56 and roll of -4.04 are bars 2.5 up and 4 left, and a yaw bar of
+        // 92.5 against the frame's heading of 90 is 2.5 right.
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = ConnectedMonitor(lines);
+        monitor.OnDataMessage(PushWith(Cruise(), FlightDirector(5.56, -4.04, 92.5, rollGuidance: true)));
+        Assert.True(monitor.VerdictFor(FenixChannelDisplay.Pfd).Trusted, "the PFD should be trusted. The log: " + lines);
+        using var form = new FenixChannelPfdForm(monitor);
+
+        form.StartLive();
+
+        string[] rows = ItemsOf(form);
+        int attitude = Array.FindIndex(rows, row => row.StartsWith("Pitch ", StringComparison.Ordinal));
+        Assert.True(attitude >= 0, "no attitude row in " + string.Join(" | ", rows));
+        Assert.Equal("Flight director: pitch bar 2.5 degrees up, roll bar 4 degrees left, yaw bar 2.5 degrees right",
+            rows[attitude + 1]);
+        Assert.StartsWith("Heading ", rows[attitude + 2]);
+
+        // The flash adds its word; the two inhibits take the pitch and roll bars and leave the yaw bar; TRK/FPA takes
+        // every bar.
+        (FenixChannelProtoWriter Fd, string? Row)[] cases =
+        [
+            (FlightDirector(5.56, -4.04, flash: true),
+                "Flight director: pitch bar 2.5 degrees up, roll bar 4 degrees left, flashing"),
+            (FlightDirector(5.56, -4.04, 92.5, rollGuidance: true, inhibitRoll: true, inhibitPitch: true),
+                "Flight director: yaw bar 2.5 degrees right"),
+            (FlightDirector(5.56, -4.04, 92.5, trkFpa: true, rollGuidance: true), null)
+        ];
+        foreach ((FenixChannelProtoWriter fd, string? expected) in cases)
+        {
+            monitor.OnDataMessage(PushWith(Cruise(), fd));
+            form.RefreshNow();
+
+            string[] after = ItemsOf(form);
+            Assert.Equal(expected is null ? 0 : 1, after.Count(row => row.StartsWith("Flight director", StringComparison.Ordinal)));
+            if (expected is not null) Assert.Contains(expected, after);
+        }
     }
 
     [Fact]

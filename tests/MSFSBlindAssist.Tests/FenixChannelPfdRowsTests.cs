@@ -1,6 +1,7 @@
 // Characterization tests for FenixChannelPfdRows, which turns one snapshot of the Fenix display channel into the rows of
 // the PFD window. Pure logic: every snapshot is built with PfdPushes (FenixChannelPfdDecoderTests.cs), whose starting
-// point is the cruise of spec 3.2.
+// point is a cruise at 34,000 feet and Mach .775 at standard pressure (CruiseRows below), with no FMA text and no flight
+// director.
 //
 // The contract: the rows run FMA, airspeed and speed target, the tape's speeds, Mach, altitude, vertical speed,
 // attitude, flight director, heading, radio altitude and DH, then the LS rows; a row whose condition fails or whose value
@@ -16,6 +17,9 @@ namespace MSFSBlindAssist.Tests;
 
 public class FenixChannelPfdRowsTests
 {
+    // U+2800, the blank braille cell the display uses as a spacer. Named because it cannot be seen in source.
+    private const char Spacer = (char)0x2800;
+
     // The cruise of PfdPushes with an empty FMA and no flight director.
     private static readonly string[] CruiseRows =
     [
@@ -120,16 +124,44 @@ public class FenixChannelPfdRowsTests
     [Fact]
     public void The_approach_column_keeps_its_third_row_and_the_messages_run_by_column_then_slot()
     {
-        IReadOnlyList<FenixFmaSlot> slots = Fma((3, "gCAT3"), (8, "gSINGLE"), (13, "cRADIO 200"), (12, "aTOO LOW"),
-            (10, "wLVR CLB"), (11, "gSPEED"));
+        // Slots 3, 8 and 13 are the lines the Fenix sent on the ILS to EDDF 07R, with the spacer cells it draws; the
+        // message in slot 11 is the one it sent with no color letter. Slots 10 and 12 are here for the order.
+        IReadOnlyList<FenixFmaSlot> slots = Fma((3, "CAT3"), (8, "DUAL"), (13, "RADIOdc" + Spacer + Spacer + " 200"),
+            (12, "aTOO LOW"), (10, "wfLVR CLB"), (11, "CHECK SPEED MODE"));
 
         Assert.Equal(
             new[]
             {
-                "Approach: CAT3 SINGLE green, RADIO 200 cyan", "FMA message: LVR CLB, white",
-                "FMA message: SPEED, green", "FMA message: TOO LOW, amber"
+                "Approach: CAT3 DUAL, RADIO white, 200 cyan", "FMA message: LVR CLB, white",
+                "FMA message: CHECK SPEED MODE", "FMA message: TOO LOW, amber"
             },
             FenixChannelPfdRows.FmaRows(slots));
+    }
+
+    [Fact]
+    public void The_fma_lines_measured_in_flight_read_as_the_pfd_draws_them()
+    {
+        // Each line as the channel sent it on 2026-11-03 (an A321, EDDF 07C to an ILS autoland on 07R), alone in its
+        // column so the row shows exactly what that line says.
+        Assert.Equal(new[] { "Approach: CAT3 DUAL, RADIO white, 200 cyan" },
+            FenixChannelPfdRows.FmaRows(Fma((3, "CAT3"), (8, "DUAL"), (13, "RADIOdc" + Spacer + Spacer + " 200"))));
+        Assert.Equal(new[] { "Approach: CAT3 SINGLE, BARO white, 700 cyan" },
+            FenixChannelPfdRows.FmaRows(Fma((3, "CAT3"), (8, "SINGLE"), (13, "BAROdc" + Spacer + "  700"))));
+
+        // The V/S reversion's line, with the letter p the flight director's flash came with, and the glide slope line
+        // that fills slot 6 when slot 1 is empty.
+        Assert.Equal(new[] { "Vertical: V/S green, +1800 cyan" },
+            FenixChannelPfdRows.FmaRows(Fma((1, "bgpV/Scp+1800"))));
+        Assert.Equal(new[] { "Vertical: G/S, cyan" }, FenixChannelPfdRows.FmaRows(Fma((1, ""), (6, " cG/S"))));
+
+        // A message with no color letter is spoken as it is, and a slot with only its change box has nothing to say.
+        Assert.Equal(new[] { "FMA message: CHECK SPEED MODE" },
+            FenixChannelPfdRows.FmaRows(Fma((11, "CHECK SPEED MODE"))));
+
+        FenixFmaSlot[] boxedAndEmpty = Fma().ToArray();
+        boxedAndEmpty[0] = new FenixFmaSlot("", true);
+        Assert.Empty(FenixChannelPfdRows.FmaRows(boxedAndEmpty));
+        Assert.DoesNotContain(RowsOf(new PfdPushes.Push(), boxedAndEmpty), row => row.StartsWith("Thrust"));
     }
 
     [Fact]
