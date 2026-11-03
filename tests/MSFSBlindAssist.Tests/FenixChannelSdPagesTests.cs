@@ -1,8 +1,9 @@
 // Characterization tests for FenixChannelSdPages, what every page of the Fenix SD shares: the name of each page, the
 // one word for a valve state, and the dispatch from a page number to the composer that gives the page its rows. Pure
-// logic. No page has a composer yet (plans 05 and 06 implement them, each once its in-sim checks have passed), so the
-// dispatch is tested as what it is today: nothing, for every page. Every number is written out here, never read from
-// FenixChannelFields, so that a wrong number in the app fails a test.
+// logic. Plans 05 and 06 implement the page seams, in parallel and each once its in-sim checks have passed, so the
+// dispatch tests follow the seams as they land: a page whose seam exists is its plan's to test, and every other page
+// must give no rows. Every number is written out here, never read from FenixChannelFields, so that a wrong number in
+// the app fails a test.
 //
 // The contract: the SD's pages are numbered as the frame's FwcPage carries them, 1 APU to 12 WHEEL and 14 STATUS;
 // pages 0 and 13 are not known to be drawn. A page is named as the SD draws it, and a number that is none of those is
@@ -10,6 +11,7 @@
 // as crosses, and "not available" for a number that is no state. A page whose composer has not landed gives no rows at
 // all (null, not an empty list), and the SD window then shows the page's name and the bottom line alone.
 
+using System.Reflection;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Services;
 
@@ -54,34 +56,75 @@ public class FenixChannelSdPagesTests
 
     // ---- The dispatch -----------------------------------------------------------------------------
 
-    // The pages whose composer has not landed, each with the plan that implements it, and then numbers that are no page
-    // the dispatch knows. A plan that lands a composer takes its page's line out of this list in the same commit and
-    // tests the page in its own file, where the page gives rows.
+    // The page seams Compose calls: the number of each listed page and the name of its partial void. Plan 06 implements
+    // the seams of pages 1 to 6, 9 and 12, and plan 05 those of pages 7, 8, 10, 11 and 14.
+    private static readonly (int Page, string Seam)[] Seams =
+    [
+        (1, "ComposeApu"),      // plan 06
+        (2, "ComposeBleed"),    // plan 06
+        (3, "ComposePress"),    // plan 06
+        (4, "ComposeCond"),     // plan 06
+        (5, "ComposeCruise"),   // plan 06
+        (6, "ComposeDoor"),     // plan 06
+        (7, "ComposeElec"),     // plan 05
+        (8, "ComposeEng"),      // plan 05
+        (9, "ComposeFctl"),     // plan 06
+        (10, "ComposeFuel"),    // plan 05
+        (11, "ComposeHyd"),     // plan 05
+        (12, "ComposeWheel"),   // plan 06
+        (14, "ComposeStatus"),  // plan 05
+    ];
+
+    // The cases of A_page_with_no_plan_yet_gives_null. They follow the seams as they land, so that plans 05 and 06,
+    // which run in parallel and land a seam at a time, never have to edit this test. A partial void with no
+    // implementation is removed by the compiler and leaves no method in the assembly, so a seam that reflection finds
+    // is a seam whose plan has landed: its page is left out here, because that plan tests the page's rows. Every other
+    // listed page must still give null, and so must every number that is no page, always. A seam renamed by mistake
+    // shows up as a page that gives rows while the table above says its plan has not landed.
+    public static IEnumerable<object[]> PagesWithNoPlanYet()
+    {
+        foreach ((int page, string seam) in Seams)
+        {
+            if (FindSeam(seam).Length == 0) yield return [page];
+        }
+
+        // Pages 0 and 13 are not known to be drawn; the rest are beyond the pages.
+        foreach (int page in new[] { 0, 13, 42, -1, int.MaxValue, int.MinValue })
+        {
+            yield return [page];
+        }
+    }
+
     [Theory]
-    [InlineData(1)]     // APU, plan 06
-    [InlineData(2)]     // BLEED, plan 06
-    [InlineData(3)]     // PRESS, plan 06
-    [InlineData(4)]     // COND, plan 06
-    [InlineData(5)]     // CRUISE, plan 06
-    [InlineData(6)]     // DOOR, plan 06
-    [InlineData(7)]     // ELEC, plan 05
-    [InlineData(8)]     // ENG, plan 05
-    [InlineData(9)]     // F/CTL, plan 06
-    [InlineData(10)]    // FUEL, plan 05
-    [InlineData(11)]    // HYD, plan 05
-    [InlineData(12)]    // WHEEL, plan 06
-    [InlineData(14)]    // STATUS, plan 05
-    [InlineData(0)]     // not known to be drawn
-    [InlineData(13)]    // not known to be drawn
-    [InlineData(42)]
-    [InlineData(-1)]
-    [InlineData(int.MaxValue)]
-    [InlineData(int.MinValue)]
+    [MemberData(nameof(PagesWithNoPlanYet))]
     public void A_page_with_no_plan_yet_gives_null(int page)
     {
         FenixChannelRows? rows = FenixChannelSdPages.Compose(page, Context());
 
         Assert.Null(rows);
+    }
+
+    [Fact]
+    public void Each_page_seam_is_absent_or_has_the_exact_signature()
+    {
+        // Today all 13 are absent. Once a plan implements one, it has the shape Compose calls it with, and it is the
+        // only method of that name: static void ComposeX(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows).
+        // Another shape under the same name (an overload) is not the seam, yet the cases above would take it for one
+        // and leave its page out.
+        var wrong = new List<string>();
+        foreach (string seam in Seams.Select(entry => entry.Seam))
+        {
+            MethodInfo[] found = FindSeam(seam);
+            if (found.Length == 0) continue;
+
+            if (found.Length != 1 || !HasSeamSignature(found[0]))
+            {
+                string shapes = string.Join(" | ", found.Select(method => method.ToString()));
+                wrong.Add($"{seam} ({found.Length} found: {shapes})");
+            }
+        }
+
+        Assert.True(wrong.Count == 0, "A page seam has another shape than Compose calls: " + string.Join("; ", wrong));
     }
 
     // ---- The valve states -------------------------------------------------------------------------
@@ -142,4 +185,24 @@ public class FenixChannelSdPagesTests
     // builds: an empty RemoteData, a frame with no data, an unknown Fenix, and a report that drops what it is told.
     private static FenixChannelSdPageContext Context() => new(
         FenixChannelPush.From(ReadOnlyMemory<byte>.Empty)!, FenixChannelFrame.NoData, FenixVariant.Unknown, _ => { });
+
+    // The methods of FenixChannelSdPages with this name: none for a seam whose plan has not landed.
+    private static MethodInfo[] FindSeam(string name) => typeof(FenixChannelSdPages)
+        .GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+        .Where(method => method.Name == name)
+        .ToArray();
+
+    // Whether a method has the shape Compose calls a seam with: static void, taking the context and a ref to the
+    // nullable rows.
+    private static bool HasSeamSignature(MethodInfo method)
+    {
+        ParameterInfo[] parameters = method.GetParameters();
+
+        return method.IsStatic
+            && method.ReturnType == typeof(void)
+            && parameters.Length == 2
+            && parameters[0].ParameterType == typeof(FenixChannelSdPageContext)
+            && parameters[1].ParameterType == typeof(FenixChannelRows?).MakeByRefType()
+            && !parameters[1].IsOut;
+    }
 }
