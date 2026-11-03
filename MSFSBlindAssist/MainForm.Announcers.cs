@@ -966,7 +966,7 @@ public partial class MainForm
         {
             // SimConnect pitch is positive=nose down (Euler convention); negate to
             // standard right-handed convention (positive=nose up).
-            double pitchDegrees = -(e.Value * (180.0 / Math.PI));
+            double pitchDegrees = VisualGuidanceManager.PitchDegreesFromSimConnect(e.Value);
             visualGuidanceManager.UpdatePitch(pitchDegrees);
             return true;
         }
@@ -975,7 +975,7 @@ public partial class MainForm
             // SimConnect bank is left-positive; VisualGuidanceManager.StandardBank() applies
             // the sign conversion at the consumer side, so we pass the raw SimConnect value
             // (just converted from radians to degrees).
-            double bankDegrees = e.Value * (180.0 / Math.PI);
+            double bankDegrees = VisualGuidanceManager.BankDegreesFromSimConnect(e.Value);
             visualGuidanceManager.UpdateBank(bankDegrees);
             return true;
         }
@@ -983,7 +983,7 @@ public partial class MainForm
         {
             // INCIDENCE ALPHA from SimConnect arrives in radians. VG smooths and sanity-gates
             // it consumer-side; we just convert and forward.
-            double aoaDegrees = e.Value * (180.0 / Math.PI);
+            double aoaDegrees = VisualGuidanceManager.AoaDegreesFromSimConnect(e.Value);
             visualGuidanceManager.UpdateAoA(aoaDegrees);
             return true;
         }

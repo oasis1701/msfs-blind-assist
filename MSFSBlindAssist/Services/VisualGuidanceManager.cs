@@ -3,6 +3,7 @@ using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
@@ -109,7 +110,7 @@ public class VisualGuidanceManager : IDisposable
     // P pitch, S speed, etc.) while VG is active, the per-second bank-guidance and
     // centerline-deviation callouts — both AnnounceImmediate — would cut the readout
     // off mid-sentence. NotifyManualQuery() sets this timestamp; the two chatty
-    // callouts skip while DateTime.UtcNow is before it. Skipped callouts lose nothing:
+    // callouts skip while SimClock.UtcNow is before it. Skipped callouts lose nothing:
     // both always reflect CURRENT state, so the next un-suppressed one carries fresh
     // data. One-shot announcements (phase changes, distance callouts) are NOT
     // suppressed — they're rare and important enough to let through.
@@ -210,6 +211,32 @@ public class VisualGuidanceManager : IDisposable
     public event EventHandler<bool>? VisualGuidanceActiveChanged;
 
     /// <summary>
+    /// VirtualPilot hook (VP-1): when true, <see cref="Initialize"/> builds no tones and
+    /// <see cref="ProcessUpdate"/> runs the guidance with none, so a simulated approach opens no
+    /// audio device. Set only by tools/VirtualPilot and tests; the app never sets it. An instance
+    /// <c>init</c> flag rather than a static switch, so parallel tests need no shared collection.
+    /// </summary>
+    internal bool HeadlessForHarness { get; init; }
+
+    /// <summary>VirtualPilot hook (VP-1): the pitch (nose-up positive) commanded on the last <see cref="ProcessUpdate"/>, before tone saturation.</summary>
+    internal double DesiredPitchForHarness { get; private set; }
+
+    /// <summary>VirtualPilot hook (VP-1): the bank (right-positive) commanded on the last <see cref="ProcessUpdate"/>, before tone saturation.</summary>
+    internal double DesiredBankForHarness { get; private set; }
+
+    /// <summary>VirtualPilot hook (VP-1): the current guidance phase's name.</summary>
+    internal string PhaseForHarness => currentPhase.ToString();
+
+    /// <summary>SimConnect's pitch (radians, nose-down positive, Euler convention) in degrees nose-up positive. MainForm and VirtualPilot both convert through this.</summary>
+    internal static double PitchDegreesFromSimConnect(double radians) => -(radians * 180.0 / Math.PI);
+
+    /// <summary>SimConnect's bank (radians) in degrees, still left-positive: <see cref="StandardBank"/> flips it at the consumer (VG-7).</summary>
+    internal static double BankDegreesFromSimConnect(double radians) => radians * 180.0 / Math.PI;
+
+    /// <summary>SimConnect's INCIDENCE ALPHA (radians) in degrees.</summary>
+    internal static double AoaDegreesFromSimConnect(double radians) => radians * 180.0 / Math.PI;
+
+    /// <summary>
     /// Gets the current target FPM for the approach
     /// </summary>
     public double GetTargetFPM() => lastCalculatedTargetFPM;
@@ -269,11 +296,11 @@ public class VisualGuidanceManager : IDisposable
     public void NotifyManualQuery()
     {
         if (!isActive) return;
-        routineAnnouncementsSuppressedUntil = DateTime.UtcNow.AddSeconds(MANUAL_QUERY_GRACE_SECONDS);
+        routineAnnouncementsSuppressedUntil = SimClock.UtcNow.AddSeconds(MANUAL_QUERY_GRACE_SECONDS);
     }
 
     /// <summary>True while a manual-query grace window is open (see <see cref="NotifyManualQuery"/>).</summary>
-    private bool RoutineAnnouncementsSuppressed => DateTime.UtcNow < routineAnnouncementsSuppressedUntil;
+    private bool RoutineAnnouncementsSuppressed => SimClock.UtcNow < routineAnnouncementsSuppressedUntil;
 
     /// <summary>
     /// Initializes visual guidance with runway, audio preferences, and aircraft-specific tunables.
@@ -372,25 +399,30 @@ public class VisualGuidanceManager : IDisposable
         // pitch/bank values exist, avoiding ~33 ms of meaningless fused-tone playback at the
         // default center frequency / center pan. Configure() must run before Start(), so we
         // call it here even though Start is deferred.
-        try
+        // Headless (VirtualPilot, VP-1): no tones at all; DisposeTones above already left
+        // tonesNeedStart false, so nothing later tries to start them.
+        if (!HeadlessForHarness)
         {
-            desiredAttitudeTone = new AudioToneGenerator();
-            currentAttitudeTone = new AudioToneGenerator();
-            desiredAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz,
-                                          profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
-            currentAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz,
-                                          profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
-            tonesNeedStart = true;
-            Log.Debug("VisualGuidance", $"Tones instantiated ({profile.ToneMinFrequencyHz}–{profile.ToneMaxFrequencyHz} Hz over ±{profile.TonePitchRangeDeg}° pitch, pan ±{profile.ToneBankRangeDeg}° bank); deferring Start until first ProcessUpdate");
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("VisualGuidance", $"Failed to instantiate tones: {ex.Message}");
-            desiredAttitudeTone?.Dispose();
-            desiredAttitudeTone = null;
-            currentAttitudeTone?.Dispose();
-            currentAttitudeTone = null;
-            tonesNeedStart = false;
+            try
+            {
+                desiredAttitudeTone = new AudioToneGenerator();
+                currentAttitudeTone = new AudioToneGenerator();
+                desiredAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz,
+                                              profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
+                currentAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz,
+                                              profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
+                tonesNeedStart = true;
+                Log.Debug("VisualGuidance", $"Tones instantiated ({profile.ToneMinFrequencyHz}–{profile.ToneMaxFrequencyHz} Hz over ±{profile.TonePitchRangeDeg}° pitch, pan ±{profile.ToneBankRangeDeg}° bank); deferring Start until first ProcessUpdate");
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("VisualGuidance", $"Failed to instantiate tones: {ex.Message}");
+                desiredAttitudeTone?.Dispose();
+                desiredAttitudeTone = null;
+                currentAttitudeTone?.Dispose();
+                currentAttitudeTone = null;
+                tonesNeedStart = false;
+            }
         }
 
         announcer.AnnounceImmediate($"Visual guidance active, runway {runway.RunwayID}");
@@ -608,7 +640,9 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     public void ProcessUpdate()
     {
-        if (!isActive || runway == null || desiredAttitudeTone == null)
+        // Headless (VirtualPilot, VP-1) runs the guidance with no tones; every tone use below
+        // is null-safe. In the app the flag is false and this guard is unchanged.
+        if (!isActive || runway == null || (desiredAttitudeTone == null && !HeadlessForHarness))
         {
             return;
         }
@@ -756,6 +790,8 @@ public class VisualGuidanceManager : IDisposable
             // Calculate guidance
             double desiredBank = CalculateDesiredBank(lat, lon, heading);
             double desiredPitch = CalculateDesiredPitch(lat, lon, agl, altMSL);
+            DesiredBankForHarness = desiredBank;
+            DesiredPitchForHarness = desiredPitch;
             double currentBankStandard = StandardBank(cachedBank ?? 0.0);
 
             // First-frame deferred Start — by the time the 150 ms WasapiOut buffer fills, the
@@ -955,7 +991,7 @@ public class VisualGuidanceManager : IDisposable
 
             // Calculate cross-track rate (derivative term) for damping using multi-sample averaging
             // Add current sample to history buffer
-            crossTrackHistory.Enqueue((signedCrossTrackNM, DateTime.UtcNow));
+            crossTrackHistory.Enqueue((signedCrossTrackNM, SimClock.UtcNow));
 
             // Maintain history size limit (rolling window)
             while (crossTrackHistory.Count > CROSS_TRACK_HISTORY_SIZE)
@@ -1312,7 +1348,7 @@ public class VisualGuidanceManager : IDisposable
             double fpmErrorRate = 0.0;
             if (previousGlideslopeDeviation.HasValue && previousGlideslopeTimestamp.HasValue)
             {
-                double deltaTime = (DateTime.UtcNow - previousGlideslopeTimestamp.Value).TotalSeconds;
+                double deltaTime = (SimClock.UtcNow - previousGlideslopeTimestamp.Value).TotalSeconds;
                 if (deltaTime > 0.01)
                 {
                     // Using previousGlideslopeDeviation to store previous FPM error
@@ -1322,7 +1358,7 @@ public class VisualGuidanceManager : IDisposable
 
             // Update tracking state for next iteration
             previousGlideslopeDeviation = fpmError;  // Reusing field for FPM error history
-            previousGlideslopeTimestamp = DateTime.UtcNow;
+            previousGlideslopeTimestamp = SimClock.UtcNow;
 
             // Calculate nominal pitch for descent.
             // Prefer LIVE angle of attack (SimConnect INCIDENCE ALPHA) over the static profile
@@ -1440,13 +1476,13 @@ public class VisualGuidanceManager : IDisposable
         if (currentlyBehind != wasBehindLastCheck)
         {
             // State is trying to change - check if enough time has passed
-            if ((DateTime.UtcNow - lastBehindStateChange).TotalMilliseconds < STATE_CHANGE_DELAY_MS)
+            if ((SimClock.UtcNow - lastBehindStateChange).TotalMilliseconds < STATE_CHANGE_DELAY_MS)
             {
                 // Not enough time passed, return previous state (ignore this change)
                 return wasBehindLastCheck;
             }
             // Enough time passed, allow state change
-            lastBehindStateChange = DateTime.UtcNow;
+            lastBehindStateChange = SimClock.UtcNow;
         }
 
         // Update tracking and return current state
@@ -1487,7 +1523,7 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     private void AnnouncePhaseChange(string message)
     {
-        var now = DateTime.UtcNow;
+        var now = SimClock.UtcNow;
         if ((now - lastPhaseAnnouncement).TotalMilliseconds >= ANNOUNCEMENT_INTERVAL_MS)
         {
             announcer.Announce(message);
@@ -1502,7 +1538,7 @@ public class VisualGuidanceManager : IDisposable
     {
         if (runway == null) return;
 
-        var now = DateTime.UtcNow;
+        var now = SimClock.UtcNow;
         if ((now - lastDistanceAnnouncement).TotalMilliseconds < ANNOUNCEMENT_INTERVAL_MS)
             return;
 
@@ -1531,7 +1567,7 @@ public class VisualGuidanceManager : IDisposable
     {
         if (runway == null || currentPhase != GuidancePhase.Extending) return;
 
-        var now = DateTime.UtcNow;
+        var now = SimClock.UtcNow;
         if ((now - lastExtendingProgressAnnouncement).TotalMilliseconds < EXTENDING_PROGRESS_INTERVAL_MS)
             return;
 
