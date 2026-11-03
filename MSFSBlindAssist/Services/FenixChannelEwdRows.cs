@@ -10,9 +10,10 @@ namespace MSFSBlindAssist.Services;
 /// <para>The rows run: the engine block, the thrust limit, the FOB line, the flap and slat text, then the upper ECAM's
 /// left lines and its right lines, each top to bottom. A text with nothing to say gives no row. The engine block is one
 /// row for each gauge, "&lt;label&gt;: &lt;engine 1&gt;, &lt;engine 2&gt;", in the order the screen shows the gauges, and it
-/// follows the engine family: the Fenix draws a different set of gauges for each. The family is not in the channel, so
-/// the caller passes the one the config L:vars gave, and an unread one gives a single status row in place of the block
-/// rather than a guessed order.</para>
+/// follows the engine family: the CFM56 and the IAE V2500 draw different sets of gauges (measured), and the LEAP and the
+/// GTF get the CFM56's unmeasured. The family is not in the channel, so the caller passes the one the config L:vars gave,
+/// and an unread one gives a single status row in place of the block rather than a guessed order. The flap row is
+/// labeled "Flaps: 1+F, green", a label the app adds since a bare number says little by ear.</para>
 /// <para>The labels, units, decimals and the order of the blocks are what the E/WD drew on the installed build
 /// 3.0.0.7613. N1, N2 and EPR are truncated to the decimals the display draws and EGT and the fuel flow are rounded, as
 /// the display does; the fuel flow is the channel's number in the unit field 154 names. A value the display cannot draw
@@ -30,11 +31,11 @@ internal static class FenixChannelEwdRows
     // What the display draws for a number it cannot: its crosses.
     private const string Cross = "XX";
 
-    // A value of this size or more is no engine value, and Truncated reads it as one the display cannot draw. The bound is
-    // 1e15 because (decimal)double keeps only 15 significant digits, so a larger value no longer holds the decimals asked
-    // for. It also leaves a wide margin for the multiply by the scale: decimal holds about 7.9e28, against 1e15 times the
-    // 10 or 1000 the callers scale by.
-    private const double TruncatableBelow = 1e15;
+    // A value of this size or more is no engine value, and Number and Truncated read it as one the display cannot draw, so
+    // a garbage 1e300 reads "XX" and not 301 digits. The bound is 1e15 because (decimal)double keeps only 15 significant
+    // digits, so a larger value no longer holds the decimals asked for. It also leaves a wide margin for Truncated's
+    // multiply by the scale: decimal holds about 7.9e28, against 1e15 times the 10 or 1000 the callers scale by.
+    private const double DrawableBelow = 1e15;
 
     private const string EnginesUnread = "Engines: not available, engine type not read yet";
 
@@ -47,12 +48,13 @@ internal static class FenixChannelEwdRows
         Egt
     }
 
-    // The gauges in the order the screen shows them, top to bottom and left to right. The CFM56, the LEAP and the GTF
-    // draw one set; the IAE V2500 draws EPR, with the fuel flow block left of the EGT gauge at that level and the N2
-    // block left of the N1 gauge at the next.
-    private static readonly Gauge[] TurbofanBlock = [Gauge.N1, Gauge.Egt, Gauge.N2, Gauge.FuelFlow];
+    // The gauges in the order the screen shows them, top to bottom and left to right. The CFM56 draws N1 first (measured
+    // on 3.0.0.7613); the LEAP and the GTF get the same block unmeasured, since no NEO exists on that build. The IAE V2500
+    // draws EPR first (measured), with the fuel flow block left of the EGT gauge at that level and the N2 block left of
+    // the N1 gauge at the next.
+    private static readonly Gauge[] N1FirstBlock = [Gauge.N1, Gauge.Egt, Gauge.N2, Gauge.FuelFlow];
 
-    private static readonly Gauge[] IaeBlock = [Gauge.Epr, Gauge.FuelFlow, Gauge.Egt, Gauge.N2, Gauge.N1];
+    private static readonly Gauge[] EprFirstBlock = [Gauge.Epr, Gauge.FuelFlow, Gauge.Egt, Gauge.N2, Gauge.N1];
 
     // ---- The window ---------------------------------------------------------------------------
 
@@ -77,7 +79,7 @@ internal static class FenixChannelEwdRows
 
         Add(rows, FenixChannelSpeech.Line(ewd.ThrustLimit));
         Add(rows, FenixChannelSpeech.Line(frame.FobText));
-        Add(rows, FenixChannelSpeech.Line(ewd.FlapText));
+        Add(rows, Labeled("Flaps", FenixChannelSpeech.Line(ewd.FlapText)));
 
         foreach (string line in frame.UpperEcamLeft)
         {
@@ -105,8 +107,8 @@ internal static class FenixChannelEwdRows
         Gauge[]? block = family switch
         {
             Aircraft.FenixEngineFamily.Cfm56 or Aircraft.FenixEngineFamily.CfmLeap or Aircraft.FenixEngineFamily.PwGtf
-                => TurbofanBlock,
-            Aircraft.FenixEngineFamily.IaeV2500 => IaeBlock,
+                => N1FirstBlock,
+            Aircraft.FenixEngineFamily.IaeV2500 => EprFirstBlock,
             _ => null
         };
 
@@ -131,11 +133,12 @@ internal static class FenixChannelEwdRows
 
     /// <summary>
     /// A number rounded away from zero to <paramref name="decimals"/> places (0 to 15), written with the invariant
-    /// culture and never as "-0": "377", "-49". "XX" for NaN and infinity, which the display cannot draw.
+    /// culture and never as "-0": "377", "-49". "XX" for NaN, infinity and a value no engine has, which the display
+    /// cannot draw.
     /// </summary>
     internal static string Number(double value, int decimals)
     {
-        if (!double.IsFinite(value)) return Cross;
+        if (!double.IsFinite(value) || Math.Abs(value) >= DrawableBelow) return Cross;
 
         double rounded = Math.Round(value, decimals, MidpointRounding.AwayFromZero);
         return (rounded == 0 ? 0.0 : rounded).ToString(FixedPoint(decimals), CultureInfo.InvariantCulture);
@@ -144,12 +147,12 @@ internal static class FenixChannelEwdRows
     /// <summary>
     /// A number truncated toward zero to <paramref name="decimals"/> places, written like <see cref="Number"/>: "1.407",
     /// "81.2", never "-0.0". The display truncates N1, N2 and EPR rather than rounding them (measured on 3.0.0.7613: the
-    /// channel's 21.567 is drawn 21.5 and its 1.0625 is drawn 1.062). "XX" for NaN, infinity and a value no engine
-    /// has.
+    /// channel's 21.567 is drawn 21.5 and its EPR 1.00978 is drawn 1.009). "XX" for NaN, infinity and a value no
+    /// engine has.
     /// </summary>
     internal static string Truncated(double value, int decimals)
     {
-        if (!double.IsFinite(value) || Math.Abs(value) >= TruncatableBelow) return Cross;
+        if (!double.IsFinite(value) || Math.Abs(value) >= DrawableBelow) return Cross;
 
         // In decimal, never in double: a double cannot hold 1.407 exactly, so scaling it gives 1406.99999..., and the
         // display must read "1.407" for it, never "1.406". The conversion to decimal keeps the 15 digits a double has.
@@ -171,6 +174,9 @@ internal static class FenixChannelEwdRows
     {
         if (row is not null) rows.Add(row);
     }
+
+    // A row with the label the display does not draw: "Flaps: 1+F, green". Null stays null, so a blank text gives no row.
+    private static string? Labeled(string label, string? row) => row is null ? null : $"{label}: {row}";
 
     // The problem of the first letter the app does not know in the FOB line and then in the upper ECAM, the left lines
     // and then the right ones; null when it knows them all. The thrust limit and the flap text are the decoder's.

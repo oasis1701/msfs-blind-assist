@@ -2,13 +2,14 @@
 // the E/WD window. Pure logic: every snapshot is built here with FenixChannelProtoWriter, the field numbers written out
 // literally and never read from FenixChannelFields or a capture, so a wrong number in the app's table fails a test.
 //
-// The contract: the rows run the engine block, the thrust limit, the FOB line, the flap text, the upper ECAM's left
-// lines and then its right lines, and a text with nothing to say gives no row. The engine block is one row for each
-// gauge, "<label>: <engine 1>, <engine 2>", in the order the E/WD shows them (measured on the installed build
-// 3.0.0.7613): N1, EGT, N2 and fuel flow for the CFM56, the LEAP and the GTF; EPR, fuel flow, EGT, N2 and N1 for the IAE
-// V2500; and one status row for an engine family not read yet. N1, N2 and EPR are truncated to 1, 1 and 3 decimals, EGT
-// and fuel flow are rounded to none, a value the display cannot draw reads "XX", and a minus is ASCII whatever the PC's
-// culture is. A problem makes the window not available and is reported.
+// The contract: the rows run the engine block, the thrust limit, the FOB line, the flap text (labeled "Flaps: "), the
+// upper ECAM's left lines and then its right lines, and a text with nothing to say gives no row. The engine block is one
+// row for each gauge, "<label>: <engine 1>, <engine 2>", in the order the E/WD shows them (measured on the installed
+// build 3.0.0.7613): N1, EGT, N2 and fuel flow for the CFM56, and EPR, fuel flow, EGT, N2 and N1 for the IAE V2500. The
+// LEAP and the GTF get the CFM56's block unmeasured, since no NEO exists on 3.0.0.7613; an engine family not read yet
+// gets one status row. N1, N2 and EPR are truncated to 1, 1 and 3 decimals, EGT and fuel flow are rounded to none, a
+// value the display cannot draw reads "XX", and a minus is ASCII whatever the PC's culture is. A problem makes the
+// window not available and is reported.
 
 using System.Globalization;
 using MSFSBlindAssist.Aircraft;
@@ -200,7 +201,7 @@ public class FenixChannelEwdRowsTests
         Assert.Equal(
             new[]
             {
-                "CLB cyan, 1.618 green", "FOB: white, 8140 green, KG cyan", "1+F, cyan", "ENG 1 FIRE, red",
+                "CLB cyan, 1.618 green", "FOB: white, 8140 green, KG cyan", "Flaps: 1+F, cyan", "ENG 1 FIRE, red",
                 "-GEN 1......OFF THEN ON, cyan", "T.O INHIBIT, magenta", "*AIR BLEED, amber"
             },
             AfterBlock(snapshot));
@@ -243,12 +244,14 @@ public class FenixChannelEwdRowsTests
     }
 
     [Fact]
-    public void The_flap_text_reads_with_its_color_and_an_absent_one_gives_no_row()
+    public void The_flap_text_reads_with_its_label_and_color_and_an_absent_one_gives_no_row()
     {
+        // The row is labeled "Flaps: ", since a bare "1+F" says little by ear. A blank text has no row.
         FenixChannelSnapshot Only(string? flap) => Cruise(flap: flap, limit: [], fob: "", upperRight: []);
 
-        Assert.Equal(new[] { "1+F, cyan" }, AfterBlock(Only("c1+F")));
-        Assert.Equal(new[] { "FULL, green" }, AfterBlock(Only("gFULL")));
+        Assert.Equal(new[] { "Flaps: 1+F, cyan" }, AfterBlock(Only("c1+F")));
+        Assert.Equal(new[] { "Flaps: 2, cyan" }, AfterBlock(Only("c2")));
+        Assert.Equal(new[] { "Flaps: FULL, green" }, AfterBlock(Only("gFULL")));
         Assert.Empty(AfterBlock(Only(null)));
         Assert.Empty(AfterBlock(Only("")));
     }
@@ -345,6 +348,9 @@ public class FenixChannelEwdRowsTests
         Assert.Equal("XX", FenixChannelEwdRows.Truncated(-1e300, 3));
         Assert.Equal("XX", FenixChannelEwdRows.Truncated(double.MaxValue, 1));
         Assert.Equal("123456789012345.0", FenixChannelEwdRows.Truncated(123456789012345, 1));
+
+        // Number has the same bound: a garbage EGT of 1e300 reads "XX", not 301 digits.
+        Assert.Equal("XX", FenixChannelEwdRows.Number(1e300, 0));
     }
 
     [Fact]

@@ -360,15 +360,16 @@ public partial class FenixA320Definition
     }
 
     /// <summary>
-    /// A display key's way to its window: opens it while the display is trusted at the press, or dark, and says whether
-    /// it did. A dark display (<see cref="Services.FenixDisplayVerdict.IsDisplayOff"/>: the channel is healthy and the
-    /// display itself is off) opens on its one status row, "&lt;display&gt;: not available, display off", as its
-    /// Fenix windows list entry does, because the screen is dark and an AI read has nothing to read (the owner's
-    /// ruling, spec 2.4). False, having done nothing at all, when there is no monitor or the display is not trusted for
+    /// A display key's way to its window: opens it while the display is trusted at the press, or off, and says whether
+    /// it did. An off display (<see cref="Services.FenixDisplayVerdict.IsDisplayOff"/>: the channel is healthy and no
+    /// powered unit shows the display, whether it is dark or shown only on another unit) opens on its one status row,
+    /// "&lt;display&gt;: not available, display off", as its Fenix windows list entry does, because there is nothing on
+    /// the pilot's screens for an AI read to read (the owner's ruling, spec 2.4). False, having done nothing at all,
+    /// when there is no monitor or the display is not trusted for
     /// any other reason (the channel stopped, refused or silent, a build not checked, a check disagreeing or latched, a
     /// text code the app does not know), so the key goes on to the AI read with no extra words (the PMDG 737's silent
     /// fallback, [WASM-29]), because the screen is live, and the key context's hotkey manager is not even touched.
-    /// Otherwise, trusted or dark, both hotkey modes are left first, because a window opened with a mode still on loses
+    /// Otherwise, trusted or off, both hotkey modes are left first, because a window opened with a mode still on loses
     /// its keys to it (the PMDG 737's display windows and <see cref="ShowFenixWindows"/> leave theirs too), and then the
     /// window opens through <see cref="ShowChannelWindow{TForm}"/>, or the open one comes forward, and the result is
     /// true. The verdict is judged at the press on the key context's monitor and the window is built on this

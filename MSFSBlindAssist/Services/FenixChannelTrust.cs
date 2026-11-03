@@ -18,8 +18,9 @@ internal enum FenixChannelDisplay { Pfd, Ewd, Sd, Nd, Isis, Dcdu }
 internal readonly record struct FenixDisplayVerdict(bool Trusted, string Reason)
 {
     /// <summary>
-    /// Whether the channel is healthy and the display itself is dark: "display off" is judged only after every
-    /// channel-wide condition held, so no channel fault ever reads as a dark display.
+    /// Whether the channel is healthy and no powered unit shows this display: it is dark, or shown only on another unit
+    /// (the first officer's PFD or ND, an ECAM on an ND). "display off" is judged only after every channel-wide condition
+    /// held, so no channel fault ever reads as "display off".
     /// </summary>
     public bool IsDisplayOff => !Trusted && Reason == FenixChannelTrust.DisplayOffReason;
 }
@@ -35,8 +36,8 @@ internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDe
 /// The trust gate of the Fenix display channel: a pure state machine, with the time passed in and no I/O, that
 /// decides display by display whether the values decoded from the channel may be read to the pilot. Its whole
 /// purpose is that a Fenix update can never make the app speak a wrong value: when in doubt a display is not
-/// trusted, and its key falls back to the AI read (FNX-22), or opens its window on one status row while the display is
-/// dark (<see cref="FenixDisplayVerdict.IsDisplayOff"/>).
+/// trusted, and its key falls back to the AI read (FNX-22), or opens its window on one status row while no powered unit
+/// shows the display (<see cref="FenixDisplayVerdict.IsDisplayOff"/>).
 /// </summary>
 /// <remarks>
 /// <para>A display is trusted only when every channel-wide condition and every condition of its own holds, and

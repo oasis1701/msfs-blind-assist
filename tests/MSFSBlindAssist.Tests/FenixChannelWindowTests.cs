@@ -362,6 +362,7 @@ public class FenixChannelWindowTests
         FeedTrusted(monitor);
         form.RefreshNow();
         Assert.Equal(new[] { "SPD 250", "ALT 10000" }, ItemsOf(list));
+        Assert.Equal(0, list.SelectedIndex);
         list.SelectedIndex = 1;
 
         // The channel stops answering: the rows are gone at the next refresh, and the pilot lands on the one row.

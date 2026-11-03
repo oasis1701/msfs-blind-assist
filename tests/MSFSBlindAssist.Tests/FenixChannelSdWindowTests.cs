@@ -641,7 +641,7 @@ public class FenixChannelSdWindowTests
     }
 
     [Fact]
-    public void The_sd_key_opens_the_window_by_the_trusted_path()
+    public void The_sd_key_opens_the_window_only_through_OpenChannelWindow()
     {
         // ChannelSdKey is a private partial method, so it is pinned by reading its source, as the dispatch is
         // (FenixChannelDispatchTests). Alt+S opens the window through OpenChannelWindow, which opens it while the SD is
