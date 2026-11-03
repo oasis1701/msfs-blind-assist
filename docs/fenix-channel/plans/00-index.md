@@ -188,8 +188,9 @@ each); plan 12 is live work, worked with superpowers:executing-plans.
   its code, the Fenix rules (`fenix-data.md`, `fenix-windows.md`, `a32nx-fenix.md`) with the definition and its forms.
   Spec section 4 holds the team's rules.
 - The channel is read only ([FNX-21]): every write (a DCDU key, a brightness change) goes through the definition's
-  existing write paths, full press-release for buttons ([FNX-6], [A320-3]); never a call on the channel other than the
-  two it already makes.
+  existing write paths, full press-release for buttons ([FNX-6], [A320-3]); never a call on the channel other than those
+  `FenixChannelCall` names: the two it makes today, and the two map reads plan 03 adds, `GetMapDataVersion` and
+  `GetMapData` (spec 2.1, row 54).
 - Nothing reaches a pilot unless its display is trusted ([FNX-22]); a feature takes its verdict and its data from one
   snapshot (plan 01's `FenixChannelSnapshot`), never from two reads.
 - Channel text is spoken through `FenixChannelSpeech` (plan 01; spec 2.6): colors after each stretch, never stripped
