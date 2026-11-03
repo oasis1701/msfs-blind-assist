@@ -446,11 +446,11 @@ With MSFSBA built from this branch and the Fenix on a checked build. Record each
 - [x] Powered at a gate: `fenix_channel.log` shows six verdicts, the PFD, E/WD, SD, ND and ISIS trusted, and the DCDU
   trusted on an airframe with one (display off otherwise); no notice is spoken.
 - [x] Cold and dark: all six "display off"; no notice.
-- [ ] Keys: Alt+P/N/E/S/I give the AI read; Shift+1-6, Ctrl+W, D and Shift+D are silent; input Ctrl+Shift+D says the
+- [x] Keys: Alt+P/N/E/S/I give the AI read; Shift+1-6, Ctrl+W, D and Shift+D are silent; input Ctrl+Shift+D says the
   DCDU sentence it says today.
-- [ ] Ctrl+M shows the five new rows after the cabin rows, "E/WD memos" unticked.
-- [ ] [owner] With a working-copy build whose `VerifiedBuilds` is emptied (never committed): the notice is spoken once
-  at load, and not again after a reconnect.
+- [x] Ctrl+M shows the five new rows after the cabin rows, "E/WD memos" unticked.
+- [x] [owner] With a working-copy build whose `VerifiedBuilds` is emptied (never committed): the notice is spoken once
+  at load, and not again after a reconnect. (Heard once at load. A reconnect was not forced: a unit test pins that part.)
 - [x] [owner] Every field number, wire shape and enum value this plan adds (Task 1's shared fields and
   `ValveStateEnum`'s values, Task 2's `DisplayContent.NdCapt` and `DcduCapt`, `Remote.Isis` and `IsisState.Powered`)
   checked against 3.0.0.7613 with the team's local channel tools ([FNX-23]); a number that moved is fixed in
@@ -510,15 +510,15 @@ With MSFSBA built from this branch and the Fenix on a checked build. Record each
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** landed 2026-11-03, so plans 02-11 may start (Robin's word, 2026-11-03: "others from the team ... may want to start on the later plans once this lands"); waiting on owner: Task 12's checks by ear, then the close-out
+- **Status:** landed 2026-11-03; every check done, the last by ear the same day (Robin: "All verified as expected!")
 - **Claimed by:** Robin Kipp (robin24), 2026-11-03
 - **Worked by:** Robin Kipp with Claude, with subagents (superpowers:subagent-driven-development)
 - **Started:** 2026-11-03, `feat/fenix-display-channel` at f0d012c63 (the plan set's last commit)
 - **Landed:** 2026-11-03, code at ec6bcf0a5 (the last code commit; this record and the evidence sit on top of it)
 - **Tests at landing:** 17656 passed, 0 failed, `ClaudeRulesHookTests` excluded as the index says (that class: 203 passed at 688faa3c7, the last commit to change a rule file); solution build 0 errors, 16 warnings, the baseline's.
-- **Tasks:** 0-11 done. 12: the gate cold and dark and powered, every field number and enum value, the color before a color letter, and the notice by the log: done; the keys, Ctrl+M and the notice by ear: below. 13: base commit recorded in the index; the close-out waits with Task 12.
-- **Waiting on the owner:** With `C:\MSFSBA-FenixChannel` (ec6bcf0a5) and the Fenix: Alt+P/N/E/S/I give the AI read; Shift+1 to Shift+6, Ctrl+W, D and Shift+D are silent; input Ctrl+Shift+D says the DCDU sentence; Ctrl+M shows the five rows after the cabin rows, "E/WD memos" unticked. With `C:\MSFSBA-FenixChannel-NoBuilds` (the same build with `VerifiedBuilds` emptied, never committed): the notice is heard once at load.
-- **In-sim results:** `docs/fenix-channel/evidence/01-groundwork.md`. In short, on 3.0.0.7613 with an A321 IAE: six verdicts in the log, cold and dark all "display off"; the ISIS trusted on batteries; all six trusted with the APU, the DCDU among them although this airframe has none (the plan's "display off otherwise" does not hold; plan 11 gates on `FenixVariant`); no notice on a checked channel; one notice line on a build with none checked; a 1.6 s UI stall gave one log line and no verdict change; the seed wrote its flag and the memos mute and kept every other key.
+- **Tasks:** 0-13 done. 12: the gate cold and dark and powered, every field number and enum value, the color before a color letter, and the notice by the log, by Claude with the aircraft Robin handed over; the keys, Ctrl+M and the notice by ear, by Robin.
+- **Waiting on the owner:** nothing.
+- **In-sim results:** `docs/fenix-channel/evidence/01-groundwork.md`. In short, on 3.0.0.7613 with an A321 IAE: six verdicts in the log, cold and dark all "display off"; the ISIS trusted on batteries; all six trusted with the APU, the DCDU among them although this airframe has none (the plan's "display off otherwise" does not hold; plan 11 gates on `FenixVariant`); no notice on a checked channel; one notice line on a build with none checked; a 1.6 s UI stall gave one log line and no verdict change; the seed wrote its flag and the memos mute and kept every other key. By ear, Robin, the same day ("All verified as expected!"): the keys, Ctrl+M and the notice, heard once at load; his two runs' log lines are in the evidence. A reconnect was not forced: `An_unchecked_build_is_announced_once` pins that part.
 - **Changed from the plan:**
   - Fields: `SingleEngineState` 31 is `EiuFault` on the checked build, not `FadecFault`; `EngLimit` is repeated nested NullWrapped; `EfisSelectors` arrives unpacked.
   - `RowsFor` has an optional fourth parameter, `reportThrow`, and treats a default result, an empty list or a null row as "no data".
@@ -529,6 +529,18 @@ Kept in this file only, so no other plan's push ever touches it.
   - New `Forms/Fenix/FenixWindowRegistry.Channel.cs` for the six window seams, and the Aircraft glob is `FenixA320Definition.*Channel*.cs`, because `ClaudeContextBudgetTests` refuses a glob with no file.
   - New `tests/MSFSBlindAssist.Tests/FenixChannelTestSettings.cs`: a module initializer points `SettingsManager` at a temp folder for the whole test process, and `SettingsRedirect` lives there. `FenixCabinMonitorRowsTests` changed because `BuildRows` did.
   - `A_page_with_no_plan_yet_gives_null` adjusts itself by reflection. The host's log line names the app's frame that threw.
+- **Small findings left**, the final review's call; none changes what a pilot hears:
+  - `FenixChannelMonitorTests`: the one-instant probe's failure path disposes the monitor while its writer may still loop (only after the test has failed), and the probe pairs only the message with the frame (the code takes everything under the lock).
+  - No test carries a decoded wrong-shaped 182 or 182.1 through the gate or the monitor, and `A_missing_isis_field_is_not_a_wrong_shape`'s frame lacks the varint field 2 a cold-and-dark 182 has (low risk: the reads are generic).
+  - `FenixChannelStallGuardTests` copies a helper block from `FenixChannelTrustTests`; it and `FenixChannelFmaLayoutTests` keep a private `InCulture` though `TestCulture.Run` exists; the monitor's post-Dispose test does not call `OnUiHeartbeat`.
+  - `FenixChannelTextTests` still uses `d` as an unknown letter: plan 03's file (handoff above).
+  - `RunChannelKeySeam`: with no monitor it goes to `Log.Error`, which `A_seam_that_throws_with_no_monitor_is_isolated_too` cannot see; with one, the line names no throw site.
+  - `ShowChannelWindow<FenixChannelDisplayForm>` would key every display to one tracked window, so each display needs its own derived class, as the base's remarks say. The window's focus source scan misses an `ActiveControl =` assignment.
+  - The channel's stop disposes the host with no try/finally before the monitor's dispose.
+  - `FenixChannelSession.StartedAtMs`: `Sample` replaces the monitor's value before `Due` reads it, so nothing in production uses what the monitor stamps.
+  - `FenixChannelSdPagesTests` has no pin of each page's arm to its seam.
+  - `docs/a32nx.md`'s groundwork paragraph is long, and "Channel in the file name loads the rules" is written three times (`FenixWindowRegistry.cs`, `FenixWindowRegistry.Channel.cs`, the registry's tests).
+  - Outside this plan's files: stale comments in `SettingsManagerGlobalStateCollection.cs` and `SettingsSeedTests.cs`.
 - **Rulings made while working** (question; answer; decided by Claude, running the plan):
   1. Which worktree? This session's, on `fc-p01-groundwork`, not a new `.claude/worktrees/fc-p01`.
   2. `From` null when malformed and the index lazy? One allocation-free walk in `From`, the index on first read.

@@ -86,8 +86,16 @@ then six "not trusted: build 3.0.0.7613 not checked". No second line through the
 call was made once, not that it was heard. That a reconnect says nothing more rests on a unit test: nothing forces a
 reconnect short of killing the Fenix.
 
-## Waiting on the owner
+## The checks by ear
 
-Task 12's checks that need ears: the keys (Alt+P/N/E/S/I give the AI read; Shift+1 to Shift+6, Ctrl+W, D and Shift+D are
-silent; input Ctrl+Shift+D says the DCDU sentence), Ctrl+M showing the five rows, and the notice heard, from
-`C:\MSFSBA-FenixChannel-NoBuilds`.
+Robin ran Task 12's last checks on 2026-11-03, with speech, and reports "All verified as expected!".
+
+- With `C:\MSFSBA-FenixChannel` (ec6bcf0a5): Alt+P/N/E/S/I give the AI read; Shift+1 to Shift+6, Ctrl+W, D and Shift+D are
+  silent; input Ctrl+Shift+D says the DCDU sentence; Ctrl+M shows the five rows after the cabin rows, "E/WD memos" unticked.
+  The log of that run, 10:49:40 to 10:54:28: "build 3.0.0.7613: checked" 4 ms after the first message, six "display off",
+  the ISIS trusted at 10:49:55, the other five from 10:50:24 to 10:50:33, no notice and no problem line.
+- With a copy of the same build with `VerifiedBuilds` emptied (never committed, deleted when the plan closed): the notice
+  heard once at load. The log of that run, 10:54:48 to 10:55:00: "not checked" at 10:54:48.583, one "session notice:" line
+  74 ms later, six "not trusted: build 3.0.0.7613 not checked", then "channel stopped".
+
+That a reconnect says nothing more is still the unit test's, `An_unchecked_build_is_announced_once` ("The session notice").
