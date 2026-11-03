@@ -3,8 +3,9 @@
 // that is never started trusts nothing, and one the test feeds by hand trusts what the gate lets it. The window is
 // built, never shown (StartLive runs the first open's work without putting anything on screen), as the other display
 // windows are tested (FenixChannelWindowTests). These tests call the answer and the window directly, not through the
-// definition's key seam or the Fenix windows list that lead to them, and what a pilot hears from the keys is checked in
-// the sim ([CORE-5]).
+// definition's key seam or the Fenix windows list that lead to them, except the last two: the list's entry (the
+// registry's Build) and Shift+1 through HandleHotkeyAction. What a pilot hears from the keys is checked in the sim
+// ([CORE-5]).
 //
 // The contract: Alt+P (ReadDisplayPFD) is answered only by opening the window, which needs a trusted PFD: while the PFD
 // is not trusted, or there is no monitor, it is false and nothing is said, so the key goes on to its AI read. Each of
@@ -308,5 +309,35 @@ public class FenixChannelPfdWindowTests
         Assert.Equal(
             new[] { "PFD: not available, display off" },
             ListOf(form).Items.Cast<string>().ToArray());
+    }
+
+    // ---- The way in -----------------------------------------------------------------------------
+
+    [Fact]
+    public void The_pfd_window_is_listed_once_as_PFD()
+    {
+        // The Fenix windows list speaks "Name. Description": one PFD entry, named for the display as the others are.
+        FenixWindowEntry entry = Assert.Single(FenixWindowRegistry.Build(), e => e.Name == "PFD");
+
+        Assert.Equal(
+            "The captain's PFD from the Fenix's own display data: FMA, speeds, altitude, attitude, flight director and heading",
+            entry.Description);
+        Assert.NotNull(entry.Open);
+    }
+
+    [Fact]
+    public void Shift_1_reaches_the_speed_keys_through_the_definition()
+    {
+        // HandleHotkeyAction is the key's way in, and the definition has no monitor here: the PFD's answer is "Green dot
+        // not available", spoken at once, and the key is handled, so it goes no further. Nothing else is touched: the
+        // sim, the form and the hotkey manager are null, and a call to any of them would throw.
+        var definition = new FenixA320Definition();
+        var speech = new SpeechCapture();
+
+        bool handled = definition.HandleHotkeyAction(HotkeyAction.ReadSpeedGD, null!, speech, null!, null!);
+
+        Assert.True(handled);
+        Assert.Equal(new[] { "Green dot not available" }, speech.Interrupts);
+        Assert.Equal(speech.Interrupts, speech.All);
     }
 }

@@ -2,10 +2,15 @@ namespace MSFSBlindAssist.Aircraft;
 
 // The PFD's side of the Fenix display channel: the answer to its keys, Alt+P and the six speed reads (Shift+1 to
 // Shift+6). The window is Forms/Fenix/FenixChannelPfdForm.cs, its rows are Services/FenixChannelPfdRows.cs, and a speed
-// key reads the tape row of its speed (Services/FenixChannelSpeedKeys.cs). The answer is a method of its own, not the
-// seam of FenixA320Definition.Hooks.cs, so that the tests can call it.
+// key reads the tape row of its speed (Services/FenixChannelSpeedKeys.cs). The answer is a method of its own, and the
+// seam of FenixA320Definition.Hooks.cs only hands it the key, so that the tests can call it.
 public partial class FenixA320Definition
 {
+    // The PFD's key seam (declared in FenixA320Definition.Hooks.cs): HandleHotkeyAction asks it first for Alt+P and the
+    // six speed reads, and a key it answers goes no further.
+    partial void ChannelPfdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled)
+        => handled = AnswerChannelPfdKey(action, ctx);
+
     /// <summary>
     /// The PFD's answer to <paramref name="action"/>, true when it answered the key.
     /// Alt+P (ReadDisplayPFD) opens the PFD window through <see cref="OpenChannelWindow{TForm}"/>, so it answers only
