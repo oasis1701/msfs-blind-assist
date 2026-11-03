@@ -9,15 +9,16 @@
 // The contract: the window is titled "Fenix <display>", holds one list named "<display> display" that fills it, and
 // says nothing itself, since the refreshed rows are what the pilot reads ([CORE-7]). Its rows come from RowsFor, the
 // testable core: a display that is not trusted gives one row "<display>: not available, <reason>" and its data is
-// never composed ([FNX-22]); a composer that says not available, or gives no rows, or throws, gives one row too
-// ("no data" for no rows, "read failed" for a throw), never an empty list a screen reader cannot land on and never a
-// crash; a throw is also reported once through the monitor, under the display's name. A refresh reconciles the list
-// in place, so the pilot keeps their row, and only the pilot's own open moves focus. The first refresh happens at the
-// first open, before the window shows, and selects row 0; the timer starts then, ticks every second, and ends with
-// the window; a refresh after the window is disposed does nothing. A derived window is asked about every key before
-// the base is (Escape closes, F5 refreshes once per press, however long it is held), and controls it adds go after
-// the list, in the order added, in the tab order too. A display key opens its window only while the display is
-// trusted at the press, and leaves both hotkey modes first; a window list entry opens it whatever the verdict.
+// never composed ([FNX-22]); a composer that says not available, or gives no rows or a list holding a null, or throws,
+// gives one row too ("no data" for no rows or a null, "read failed" for a throw), never an empty list a screen reader
+// cannot land on and never a crash; a throw is also reported once through the monitor, under the display's name. A
+// refresh reconciles the list in place, so the pilot keeps their row, and only the pilot's own open moves focus. The
+// first refresh happens at the first open, before the window shows, and selects row 0; the timer starts then, ticks
+// every second, and ends with the window; a refresh after the window is disposed does nothing. A derived window is
+// asked about every key before the base is (Escape closes, unless a combo's list is open, and then that list has the
+// key; F5 refreshes once per press, however long it is held), and controls it adds go after the list, in the order
+// added, in the tab order too. A display key opens its window only while the display is trusted at the press, and
+// leaves both hotkey modes first; a window list entry opens it whatever the verdict.
 //
 // Rows are built from the verdict's own words and the composer's, never formatted from a number here, so the status
 // rows read the same where the PC's culture writes a comma.
@@ -95,6 +96,27 @@ public class FenixChannelWindowTests
         Assert.Equal(expected, FenixChannelDisplayForm.RowsFor("ND", Trusted(), _ => FenixChannelRows.Of([])));
         Assert.Equal(expected, FenixChannelDisplayForm.RowsFor("ND", Trusted(),
             _ => new FenixChannelRows(Array.Empty<string>(), null)));
+    }
+
+    [Fact]
+    public void A_compose_whose_list_holds_a_null_reads_as_no_data()
+    {
+        // The list box throws on a null row, and it would do so on the timer's tick, past the try that catches a
+        // composer's throw. So a list holding one is no data, whichever row it is, and it never reaches the list box.
+        string[] expected = ["ND: not available, no data"];
+
+        Assert.Equal(expected, FenixChannelDisplayForm.RowsFor("ND", Trusted(),
+            _ => FenixChannelRows.Of([null!])));
+        Assert.Equal(expected, FenixChannelDisplayForm.RowsFor("ND", Trusted(),
+            _ => FenixChannelRows.Of(["a row", null!, "another row"])));
+
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = TrustedPfdMonitor(lines);
+        using FenixChannelDisplayForm form = NewForm(monitor, _ => FenixChannelRows.Of(["SPD 250", null!]));
+
+        form.StartLive();
+
+        Assert.Equal(new[] { "PFD: not available, no data" }, ItemsOf(ListOf(form)));
     }
 
     [Fact]
@@ -473,6 +495,49 @@ public class FenixChannelWindowTests
 
         Assert.True(handled);
         Assert.True(closed);
+    }
+
+    // A combo whose list reads as open with nothing on the screen: DroppedDown asks the control's own window, and this
+    // one answers as the test tells it to.
+    private sealed class ComboWithAList : ComboBox
+    {
+        private const int CB_GETDROPPEDSTATE = 0x0157;
+
+        public bool ListOpen;
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == CB_GETDROPPEDSTATE)
+            {
+                m.Result = ListOpen ? 1 : 0;
+                return;
+            }
+
+            base.WndProc(ref m);
+        }
+    }
+
+    [Fact]
+    public void Escape_leaves_an_open_combo_list_before_it_closes_the_window()
+    {
+        // A derived window's combo: a pilot pressing Escape to cancel its dropped list must not lose the whole window.
+        // Not taken here, so the key goes on to the combo, which closes its list; the next Escape closes the window.
+        using FenixChannelMonitor monitor = MonitorTestKit.NewIdleMonitor(new MonitorTestKit.Lines());
+        using var form = new KeyedForm(monitor, _ => FenixChannelRows.Of(["a row"]));
+        var combo = new ComboWithAList();
+        form.Add(combo);
+        _ = form.Handle;   // a handle-less Form.Close() raises nothing
+        _ = combo.Handle;   // a handle-less combo reads its list as closed
+        form.ActiveControl = combo;
+        combo.ListOpen = true;
+        Assert.True(combo.DroppedDown);
+
+        Assert.False(Press(form, Keys.Escape));
+        Assert.False(form.IsDisposed);
+
+        combo.ListOpen = false;
+        Assert.True(Press(form, Keys.Escape));
+        Assert.True(form.IsDisposed);
     }
 
     [Fact]

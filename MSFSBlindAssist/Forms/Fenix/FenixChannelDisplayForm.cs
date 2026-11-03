@@ -8,8 +8,8 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// named "&lt;display&gt; display", that fills the window and shows what the display shows, top to bottom and left to
 /// right, in the display's own words. A WinForms timer reads the display's snapshot and reconciles the list in
 /// place every second, so the row the pilot is on stays under the reader; F5 reads it again now, and Escape closes
-/// the window. A derived window may add controls after the list (<see cref="AddControlAfterList"/>) and take keys
-/// before the base does (<see cref="HandleWindowKey"/>).
+/// the window, once any combo list a derived window has open is closed. A derived window may add controls after the
+/// list (<see cref="AddControlAfterList"/>) and take keys before the base does (<see cref="HandleWindowKey"/>).
 /// </summary>
 /// <remarks>
 /// <para>Where the rows come from. The window takes its verdict and its rows from one snapshot ([FNX-22]), through
@@ -165,9 +165,10 @@ internal class FenixChannelDisplayForm : Form
     /// A display that is not trusted: one row, "&lt;display&gt;: not available, &lt;reason&gt;", and
     /// <paramref name="compose"/> is not asked, so no data of it can reach the list ([FNX-22]). A composer that says
     /// not available: one row with its problem. One that throws: "&lt;display&gt;: not available, read failed". One
-    /// that gives no rows and no problem (a result that was never filled in, or an empty list): "&lt;display&gt;: not
-    /// available, no data". Otherwise the composed rows, in the order given. The composers say "no data" themselves
-    /// when the snapshot holds no message, so a missing <see cref="FenixChannelSnapshot.Push"/> is not checked here.
+    /// that gives no rows and no problem (a result that was never filled in, an empty list, or a list holding a null):
+    /// "&lt;display&gt;: not available, no data". Otherwise the composed rows, in the order given. The composers say "no
+    /// data" themselves when the snapshot holds no message, so a missing <see cref="FenixChannelSnapshot.Push"/> is not
+    /// checked here.
     /// </returns>
     internal static IReadOnlyList<string> RowsFor(
         string displayName,
@@ -190,7 +191,11 @@ internal class FenixChannelDisplayForm : Form
 
         // A result with a problem is a problem even if it also holds rows: fail closed, never show them.
         if (composed.Problem is not null) return StatusRow(displayName, composed.Problem);
-        if (composed.Rows is not { Count: > 0 } rows) return StatusRow(displayName, "no data");
+
+        // The list box throws on a null row, and it would do so on the timer's tick, past the try above: no data.
+        if (composed.Rows is not { Count: > 0 } rows || rows.Any(row => row is null))
+            return StatusRow(displayName, "no data");
+
         return rows;
     }
 
@@ -214,9 +219,10 @@ internal class FenixChannelDisplayForm : Form
     }
 
     /// <summary>
-    /// A derived window's chance at a key before the base's own (Escape closes, F5 refreshes). Asked about every key
-    /// press: an auto-repeat of a key held down and an Alt chord included, which a window gets as a system key message.
-    /// Returns true when the window took the key, which then goes no further; the base takes no key.
+    /// A derived window's chance at a key before the base's own (Escape closes, unless a combo's list is open; F5
+    /// refreshes). Asked about every key press: an auto-repeat of a key held down and an Alt chord included, which a
+    /// window gets as a system key message. Returns true when the window took the key, which then goes no further; the
+    /// base takes no key.
     /// </summary>
     protected virtual bool HandleWindowKey(Keys keyData) => false;
 
@@ -226,7 +232,9 @@ internal class FenixChannelDisplayForm : Form
         {
             if (HandleWindowKey(keyData)) return true;
 
-            if (keyData == Keys.Escape)
+            // Escape closes, unless it is closing a combo's open list: a derived window's combo has the key then, so a
+            // pilot cancelling the list does not lose the window.
+            if (keyData == Keys.Escape && ActiveControl is not ComboBox { DroppedDown: true })
             {
                 Close();
                 return true;
