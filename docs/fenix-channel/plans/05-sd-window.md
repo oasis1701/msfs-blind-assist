@@ -430,6 +430,21 @@ fields with the team's tools, the SD from a capture of the sim. Each result into
   (its [owner] check confirms them) is told to the owner and its fix written here for plan 12, since plan 01's
   `FenixChannelFields.cs` is frozen; the composers keep using `ValveWord`.
 - **Also seen on.** Nothing: no code is shared with another aircraft.
+- **Found while working (2026-11-03, the whole-plan review), for the owner and plan 12:**
+  - **Pages with no composer yet.** Once this plan's switch is on, Alt+S opens the SD window on every page the SD shows.
+    On the eight pages plan 06 composes (APU, BLEED, PRESS, COND, CRUISE, DOOR, WHEEL, F/CTL) the window shows only the
+    page's name and the bottom line until plan 06's seams land, and pilots meet DOOR, WHEEL and CRUISE most. The guide
+    text above says Alt+S reads with AI "when the Fenix cannot be read". Either plan 12 merges only once every SD page
+    has its composer, or Alt+S keeps the AI read on a page with no composer (which needs a helper in plan 01's frozen
+    `FenixChannelSdPages.cs`, a request for plan 12). The owner decides.
+  - **A window-level problem after the gate trusts the SD.** An unknown letter in the bottom line or the STATUS text, a
+    bottom line of another length, or field 154 in another shape is found when the window composes, after the gate said
+    trusted, so Alt+S opens a window with one status row instead of the AI read. Rare on a checked build; the owner
+    accepts it (and the guide says so) or the key checks these too.
+  - **Plan 05's own follow-ups before it lands (Task 11) or in plan 12's pass:** the ENG tests give NAC and VIB N2 the
+    same value on both engines, so an engine swap in those rows would pass; the pump words ("off", "LO", "running") and
+    the open/closed words are built twice (HYD, FUEL); the FUEL page keeps 0 or "" for parts it does not read; the test
+    files repeat small helpers that belong in the `SdPush` partial. None changes what a pilot hears today.
 
 ## Execution record
 
@@ -442,8 +457,8 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:** 0 done (claim `66a246511`); 2 to 8 done 2026-11-03 and pushed, inert (nothing calls them before Task 9),
-  each with its review; 2's Step 2 field check done (evidence file). 9 next, on `fc-p05-sd-window` only. 1, 10 and 11
-  wait on the owner.
+  each with its review; 2's Step 2 field check done (evidence file). 9 done, with its review and a whole-plan review,
+  on `fc-p05-sd-window` only (never on this branch before Task 10's ground steps pass). 1, 10 and 11 wait on the owner.
 - **Waiting on the owner:** Task 1 [sim] and Task 10 [sim, in flight, owner]; then Task 11. The evidence file lists what
   the two runs must also look at.
 - **In-sim results:**

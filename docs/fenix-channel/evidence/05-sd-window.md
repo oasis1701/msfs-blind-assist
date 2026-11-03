@@ -44,5 +44,14 @@ FL340, both engines running); each is marked "inferred" in the code:
 Task 1 [sim] (pages 0 and 13, presence and shapes at the gate, the X FEED and PTU values with captures, the variant on an
 A320 and an A321 with the A321's FUEL capture, field 154 in kilograms and pounds, the frame's 178/175/176, labels against
 captures) and Task 10 [sim] (each page against the cockpit, the changes, Alt+S, the log; in flight; by ear). Also for
-those runs: whether the SD draws OVHT on the yellow electric pump (133.9.3, not read today), and the ELEC page cold and
-dark (whether `apuData` and `elecFlags` still come).
+those runs (the whole-plan review's list):
+
+- Whether the SD draws OVHT on the yellow electric pump (133.9.3, not read today): set the pump's overheat from the Fenix
+  failures window on the ground.
+- An ENG FIRE pushbutton released out on the ground: the HYD page should read "GREEN fire valve: closed" (the field is
+  named Shutoff, and the page reads it open while set).
+- The APU GEN pushbutton off with the APU running: `ApuData.Off` (24.14) is not read, so the ELEC page may speak the
+  generator's figures where the SD shows OFF.
+- The PTU: the run must see a value of field 132 other than 0, since 0 is also what an absent field reads.
+- The ELEC page cold and dark: whether `apuData` and `elecFlags` still come.
+- Whether the Fenix reports extra tanks on an A319 or A320 (the A320 layout shows no ACT row whatever the config).
