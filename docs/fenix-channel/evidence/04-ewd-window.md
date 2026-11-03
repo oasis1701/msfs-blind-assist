@@ -104,7 +104,57 @@ Each as sent and as drawn, matching: left `gIR IN ALIGN > 7 MN`, `gFOB BELOW 660
 `g    FLAPSc........T.O    `, `g    T.O CONFIGc..TEST    `; right `gPARK BRK`, `gPRED W/S OFF`, `gTCAS STBY`, `gAPU AVAIL`, `gAPU BLEED`.
 Unpowered, 173 and 174 came empty and the FOB line read `wFOB:    aXXX cs LBS`.
 
+## What the E/WD draws: Task 1, A320 CFM, 2026-11-03
+
+`FenixA320 CFM WF`, D-AIZA, EDDF. `weight_unit` Kilograms, source Livery.
+
+### The engine block
+
+One column, top to bottom, each engine's value either side of it: N1 %, EGT °C, N2 %, FF KG/H. "FF" has no dot here either.
+
+| Value | Channel | Drawn | Reading |
+|---|---|---|---|
+| N1 | 18.2898, 18.2156 | 18.2, 18.2 | truncated |
+| N1 | 18.34 | 18.3 | |
+| N1 | 0.8824, spooling down | 0.8 | truncated |
+| N2 | 58.7576, 58.8590 | 58.7, 58.8 | truncated |
+| EGT | 387.78, 386.79 | 388, 387 | rounded |
+| EGT | 219.78 | 220 | rounded |
+| EGT | -48.52 | -49 | rounded |
+| FF | 300 | 300 | as sent |
+
+129.1.5 and 129.2.5 carry an EPR here too (1.000 with the engines off, 0.999 to 1.001 at idle); the E/WD draws none. The thrust
+limit is `cCLB`, `g79.1c%`, empty, and `cTOGA`, `g90.6c%`, empty once running: its number moves with the temperature.
+
+### Engines shut down
+
+Powered from the APU, both masters off, three states:
+
+| | FADECs on, never started | Spooling down, 90 s after the masters | FADECs off |
+|---|---|---|---|
+| N1 | left out, drawn 0.0 | 0.8824, drawn 0.8 | NaN, XX |
+| N2 | 0.1196, drawn 0.1 | 2.6494, drawn 2.6 | NaN, XX |
+| EGT | -49, cooling toward ambient | 233.18, drawn 233 | NaN, XX |
+| FF | left out, drawn 0 | left out, drawn 0 | NaN, XX |
+| Thrust limit | `cCLB`, `g79.1c%` | `cCLB`, `g83.2c%` | `aXX`, `aXX`, drawn XX over XX, amber |
+
+The FADECs dropped out by themselves about five minutes after the batteries came on, with the engines never started (19:00:04).
+Every state reads as sent: no flag is needed.
+
+### Flaps
+
+152 as on the A321: `c1+F`, `c2`, `c3`, `cFULL` moving; `gFULL` at rest; the texts the same on both airframes.
+
+## What changes for Task 3
+
+- The fuel flow label is "FF", not "F.F".
+- The IAE block is drawn EPR, then FF and EGT, then N2 and N1. Rows go top to bottom and left to right (spec 2.4): EPR, FF, EGT, N2, N1.
+- N1, N2 and EPR truncate; EGT and FF round. The plan's one rounding rule cannot hold both.
+- 129's FF is already in the display's unit: shown as sent.
+- NaN reads "XX", an absent value reads 0, as planned; no `SingleEngineState` flag is needed, so Task 2 stands.
+
 ## Not measured
 
 LEAP and PW GTF: no NEO on 3.0.0.7613. Task 3 gives them the real A320neo's N1 block (owner question, as recommended),
-unmeasured.
+unmeasured. Pounds on the CFM airframe and kilograms beyond a minute on the IAE: 154 and FF behaved the same way in both
+units on the A321, and plan 05's run on an A320 CFM in pounds also had 154 left out and LBS on the FOB line.

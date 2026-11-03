@@ -320,8 +320,12 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Started:** 2026-11-03, from 5e66b1dbf (the branch head, which holds plan 01's recorded base 1d29a73ee)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:** Task 2 done, its Step 6 included. Task 1 measured on the IAE A321; the CFM A320 next.
+- **Tasks:** Tasks 1 and 2 done (Step 6 of Task 2 included).
 - **Waiting on the owner:**
-- **In-sim results:**
-- **Changed from the plan:**
-- **Rulings made while working:**
+- **In-sim results:** Task 1 measured on both airframes, 2026-11-03: `docs/fenix-channel/evidence/04-ewd-window.md`.
+- **Changed from the plan:** (Task 1's results, as its last bullets order.) The fuel flow label is "FF", not "F.F". N1, N2 and
+  EPR truncate and EGT and FF round, so `FenixChannelEwdRows` has `Number` and `Truncated`, and the expected strings of Task 3's
+  tests change with it ("N1 %: 81.0, 81.2"). The IAE block is drawn EPR, FF and EGT, N2 and N1, so its rows go in that order.
+  `FadecFault` at 31 is `EiuFault` (plan 01's name).
+- **Rulings made while working:** IAE row order follows spec 2.4's "top to bottom, left to right" rather than the plan's expected
+  gauges first; Claude, Robin to hear it at Task 6.
