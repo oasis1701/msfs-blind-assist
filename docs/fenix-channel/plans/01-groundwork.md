@@ -57,13 +57,13 @@ exactly as today.
 Who: whoever runs the plan; with subagents, the controller itself, never an implementer. A claim counts only once it is
 on the remote branch.
 
-- [ ] **Step 1: Check the plan is free on the remote.** `git fetch <remote>`, then
+- [x] **Step 1: Check the plan is free on the remote.** `git fetch <remote>`, then
   `git grep -e "^- \*\*Status:\*\*" -e "^- \*\*Claimed by:\*\*" <remote>/feat/fenix-display-channel -- docs/fenix-channel/plans/01-groundwork.md`.
   Anything but "not started" and "none" means the plan is taken: stop.
-- [ ] **Step 2: Branch and claim.** Branch as in the index's workflow step 1 (`fc-p01-groundwork`). In this file's
+- [x] **Step 2: Branch and claim.** Branch as in the index's workflow step 1 (`fc-p01-groundwork`). In this file's
   "Execution record", set **Status** to claimed, **Claimed by** to your name and **Started** to today's date and the
   commit you branched from. Commit only that change: `docs(fenix-channel): claim plan 01`, with the `Plan: 01` trailer.
-- [ ] **Step 3: Push the claim.** `git fetch <remote>`, `git rebase <remote>/feat/fenix-display-channel`,
+- [x] **Step 3: Push the claim.** `git fetch <remote>`, `git rebase <remote>/feat/fenix-display-channel`,
   `git push <remote> HEAD:feat/fenix-display-channel`. If the rebase stops on these lines, someone claimed the plan
   first: `git rebase --abort` and stop. If the push is rejected, repeat this step. Task 1 starts only once the push has
   gone through.
@@ -144,7 +144,7 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
   - `FenixChannelMonitor.ReportFeatureProblem(string feature, string problem)`: writes "<feature>: <problem>" to
     `fenix_channel.log` once per distinct line (the monitor's existing `LogProblem` rule), from any thread, never throws.
 
-- [ ] **Steps 1-5.** Tests: `A_message_indexes_each_field_and_keeps_the_last_singular_one`,
+- [x] **Steps 1-5.** Tests: `A_message_indexes_each_field_and_keeps_the_last_singular_one`,
   `A_repeated_field_comes_back_in_order`, `A_nested_message_reads_as_its_own_push`,
   `A_malformed_message_gives_no_push`, `A_string_with_invalid_utf8_reads_as_null`,
   `A_section_says_ok_wrong_shape_or_missing` (FenixChannelPushTests);
@@ -169,7 +169,7 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
   `public static partial class IsisState` with `Powered = 1` (comment: Powered: varint (bool)); plan 07 adds IsisState's
   other members. Log names "ND", "ISIS", "DCDU".
 
-- [ ] **Steps 1-5.** Rules (spec 2.2): the ND is live while a powered unit shows NDCapt and is cross-checked with the
+- [x] **Steps 1-5.** Rules (spec 2.2): the ND is live while a powered unit shows NDCapt and is cross-checked with the
   existing heading comparison only; the ISIS is live while field 182.1 is set and has no cross-check; the DCDU is live
   while a powered unit shows DCDUCapt and has no cross-check. "display off" stays the first of a display's own reasons.
   182.1 with another wire type is a wrong shape at "182.1"; a missing 182 means not powered, never a wrong shape. The
@@ -187,7 +187,7 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
 - Produces: `FenixChannelTrust.StallGuardMs = 1000` (public const); `FenixChannelTrust.OnUiHeartbeat(long nowMs)`;
   `FenixChannelMonitor.OnUiHeartbeat()` (stamps the monitor's clock under the lock; called by the host, Task 8).
 
-- [ ] **Steps 1-5.** While the newest heartbeat is older than `StallGuardMs`, every comparison is waiting (its hold
+- [x] **Steps 1-5.** While the newest heartbeat is older than `StallGuardMs`, every comparison is waiting (its hold
   restarts, nothing passes, nothing starts or ends a disagreement). Before the first heartbeat ever the guard is off, so
   the existing tests and a monitor with no host behave as today. One log line per stall longer than `StallGuardMs`, once
   it ends: "UI thread stalled 1.6 s; comparisons waited". Tests: `A_stalled_ui_thread_makes_comparisons_wait`,
@@ -212,7 +212,7 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
   next, the parts' runs joined in order with a space between parts, then spoken as one line; null when every part is
   blank or any part holds an unknown letter. `Line(coded)` is `Line([coded])`.
 
-- [ ] **Steps 1-5.** Spec 2.6: a one-color line ends ", <color>"; a mixed line names each stretch's color after its
+- [x] **Steps 1-5.** Spec 2.6: a one-color line ends ", <color>"; a mixed line names each stretch's color after its
   words, stretches joined by ", "; adjacent stretches of one color merge, whatever their other attributes (box, flash,
   size, or one a later plan adds, such as plan 03's `d`): stretches merge by color alone; empty and whitespace-only
   stretches are skipped; a run with no color is spoken without one (the FMA's "FLX c+56" gives "FLX, +56 cyan"). If
@@ -251,7 +251,7 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
   Plan 02's PFD window and plan 08's announcer both word the FMA through these two, so the window and the
   announcement never say one column two ways; plan 08 may change all four after measuring (01 → 08).
 
-- [ ] **Steps 1-5.** The layout is inferred from the slots seen so far (spec 3.2 and 6): plan 08 confirms it in the sim
+- [x] **Steps 1-5.** The layout is inferred from the slots seen so far (spec 3.2 and 6): plan 08 confirms it in the sim
   and may change this file (01 → 08). Tests: `Slots_zero_to_fourteen_are_three_rows_of_five`,
   `The_measured_slots_land_in_their_columns` (only slots seen on 3.0.0.7613, the mode seen there in a comment: 0 MACH and
   MAN, Thrust row 1; 1 ALT CRZ, Vertical row 1; 2 NAV, Lateral row 1; 4 AP1, Engagement row 1; 5 FLX +56, Thrust row 2;
@@ -286,13 +286,13 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
   - `void SpeakNotAvailable(ChannelKeyContext ctx, string name)`: "<name> not available" through
     `Announcer.AnnounceImmediate`, as the other aircraft's key readouts.
 
-- [ ] **Step 1: Confirm the DCDU key's route.** Read on 2026-11-02: `MainForm.Hotkeys.cs` asks
+- [x] **Step 1: Confirm the DCDU key's route.** Read on 2026-11-02: `MainForm.Hotkeys.cs` asks
   `currentAircraft.HandleHotkeyAction` first for every action (about line 70) and reaches its own
   `case HotkeyAction.ShowDCDU` (about line 313, "only available on the A32NX and the Headwind A330") only when the
   aircraft did not handle it. So the spec's widened gate (2.8) needs no MainForm change: the Fenix handles `ShowDCDU`
   itself once plan 11's seam lands. Re-read both places; if either moved, say so in the execution record. Hand off to
   plan 12: that sentence then names the Fenix too.
-- [ ] **Steps 2-6 (the usual five).** `FenixChannelReads` and its table are retired (the windows replace the spoken
+- [x] **Steps 2-6 (the usual five).** `FenixChannelReads` and its table are retired (the windows replace the spoken
   reads); `FenixChannelReadsTests` goes with it, and `FenixChannelDefinitionTests` follows the new seam. With no seam
   implemented, every channel key leaves `handled` false (C# drops the calls), which Task 12 checks in the sim. Tests:
   `Each_channel_key_has_its_owner` (the table above, every row), `Any_other_key_has_no_owner` (a sample of other
@@ -338,7 +338,7 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
     `FenixWindowRegistry.Channel<Feature>.cs`, its entry named by the display's short name, as "Engines" and "Cabin"
     are: "PFD", "ND", "E/WD", "SD", "ISIS", "DCDU".
 
-- [ ] **Steps 1-5.** Tests: `An_untrusted_display_shows_one_status_row`, `A_compose_problem_shows_one_status_row`,
+- [x] **Steps 1-5.** Tests: `An_untrusted_display_shows_one_status_row`, `A_compose_problem_shows_one_status_row`,
   `A_throwing_compose_shows_a_status_row_and_is_reported_once`, `A_trusted_display_shows_its_rows`,
   `The_list_is_named_for_its_display`, `A_key_opens_no_window_for_an_untrusted_display` (OpenChannelWindow false with
   no monitor and with an untrusted verdict), `The_window_list_still_has_unique_names`. Commit: `feat(fenix-channel): the
@@ -373,7 +373,7 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
     starts the host with `monitor.OnUiHeartbeat`, the session notice's sampler (Task 9) and the three seams;
     `StopDisplayChannelBackground` disposes the host before the monitor.
 
-- [ ] **Steps 1-5.** Tests: `The_host_beats_then_samples_in_order`, `A_throwing_sampler_does_not_stop_the_others_or_the_timer`,
+- [x] **Steps 1-5.** Tests: `The_host_beats_then_samples_in_order`, `A_throwing_sampler_does_not_stop_the_others_or_the_timer`,
   `A_throw_is_logged_once`, `The_five_channel_rows_follow_the_cabin_rows`, `Each_row_key_is_unique_and_no_variable_owns_it`,
   `Memos_start_muted_once_and_a_re_enable_sticks`, `A_mute_applies_at_once`. Commit: `feat(fenix-channel): the
   announcer host and the five Ctrl+M rows`.
@@ -389,7 +389,7 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
   `string? Due(FenixChannelSession s, long nowMs)` returning the text to speak once, or null, and
   `public const long NoDataAfterMs = 60_000`.
 
-- [ ] **Steps 1-5.** Spec 2.3: speak "Fenix display channel not available for Fenix build <build>: displays use AI
+- [x] **Steps 1-5.** Spec 2.3: speak "Fenix display channel not available for Fenix build <build>: displays use AI
   reading; FMA and E/WD announcements are off." once per Fenix load when the build is known and not checked or the
   channel refused; when no data has come `NoDataAfterMs` after the start, the same sentence with "this Fenix build"
   for an unknown build. Spoken with `Announce` (not interrupting). Never again in that load, whatever happens next; a
@@ -417,7 +417,7 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
   `ComposeBleed`, `ComposePress`, `ComposeCond`, `ComposeCruise`, `ComposeDoor`, `ComposeWheel`, `ComposeFctl` (06),
   `ComposeEng`, `ComposeElec`, `ComposeHyd`, `ComposeFuel`, `ComposeStatus` (05).
 
-- [ ] **Steps 1-5.** `ValveWord` is a static member of `FenixChannelSdPages`. Tests: `Each_page_number_has_its_name`,
+- [x] **Steps 1-5.** `ValveWord` is a static member of `FenixChannelSdPages`. Tests: `Each_page_number_has_its_name`,
   `An_unknown_page_is_named_by_its_number` (42 gives "page 42": never 0 or 13, which plan 05 may name),
   `A_page_with_no_plan_yet_gives_null`, `Each_valve_state_has_one_word` (0 to 5, and 9 "not available"). Commit: `feat(fenix-channel): one seam per SD page`. (`FenixChannelSdPages.cs` passes to
   plan 05 after this plan, for `NameOf` should its Task 1 find pages 0 or 13 drawn.)
@@ -427,15 +427,15 @@ this file and its `FenixChannelFields.<Feature>.cs` partials, and nowhere else),
 **Files:** Modify `.claude/rules/fenix-channel.md` (`paths:` only), `docs/a32nx.md` (the "Fenix display channel"
 section only).
 
-- [ ] **Step 1.** Add to the `paths:` of `.claude/rules/fenix-channel.md`: `MSFSBlindAssist/Aircraft/FenixA320Definition.Channel*.cs`,
+- [x] **Step 1.** Add to the `paths:` of `.claude/rules/fenix-channel.md`: `MSFSBlindAssist/Aircraft/FenixA320Definition.Channel*.cs`,
   `MSFSBlindAssist/Forms/Fenix/FenixChannel*.cs`, `MSFSBlindAssist/Forms/Fenix/FenixWindowRegistry.Channel*.cs`. Run
   `ClaudeContextBudgetTests` and `ClaudeRulesHookTests`: green (no rule loads twice on a file; read the test's message if
   not).
-- [ ] **Step 2.** Under the "Fenix display channel" section of `docs/a32nx.md`, describe this plan's seams in a short
+- [x] **Step 2.** Under the "Fenix display channel" section of `docs/a32nx.md`, describe this plan's seams in a short
   paragraph and add one sub-heading per plan, each with the line "(Plan NN writes this section.)": "PFD window and speed
   keys" (02), "ND window and Ctrl+W" (03), "E/WD window" (04), "SD window" (05), "SD pages" (06), "ISIS window" (07),
   "FMA announcements" (08), "E/WD alert announcements" (09), "D and Shift+D" (10), "DCDU window" (11).
-- [ ] **Step 3.** Fill in "Handoff to plan 12" below (the FNX-22 and FNX-24 full-text changes, the proposed rule lines).
+- [x] **Step 3.** Fill in "Handoff to plan 12" below (the FNX-22 and FNX-24 full-text changes, the proposed rule lines).
   Commit: `docs(fenix-channel): rule globs for the new files, and a heading per plan`.
 
 ### Task 12 [sim]: Check the groundwork in the sim
@@ -443,25 +443,25 @@ section only).
 With MSFSBA built from this branch and the Fenix on a checked build. Record each result in
 `docs/fenix-channel/evidence/01-groundwork.md`.
 
-- [ ] Powered at a gate: `fenix_channel.log` shows six verdicts, the PFD, E/WD, SD, ND and ISIS trusted, and the DCDU
+- [x] Powered at a gate: `fenix_channel.log` shows six verdicts, the PFD, E/WD, SD, ND and ISIS trusted, and the DCDU
   trusted on an airframe with one (display off otherwise); no notice is spoken.
-- [ ] Cold and dark: all six "display off"; no notice.
+- [x] Cold and dark: all six "display off"; no notice.
 - [ ] Keys: Alt+P/N/E/S/I give the AI read; Shift+1-6, Ctrl+W, D and Shift+D are silent; input Ctrl+Shift+D says the
   DCDU sentence it says today.
 - [ ] Ctrl+M shows the five new rows after the cabin rows, "E/WD memos" unticked.
 - [ ] [owner] With a working-copy build whose `VerifiedBuilds` is emptied (never committed): the notice is spoken once
   at load, and not again after a reconnect.
-- [ ] [owner] Every field number, wire shape and enum value this plan adds (Task 1's shared fields and
+- [x] [owner] Every field number, wire shape and enum value this plan adds (Task 1's shared fields and
   `ValveStateEnum`'s values, Task 2's `DisplayContent.NdCapt` and `DcduCapt`, `Remote.Isis` and `IsisState.Powered`)
   checked against 3.0.0.7613 with the team's local channel tools ([FNX-23]); a number that moved is fixed in
   `FenixChannelFields.cs` alone.
-- [ ] [owner] With the team's local tools (the code that draws the channel's text): the color of text that comes
+- [x] [owner] With the team's local tools (the code that draws the channel's text): the color of text that comes
   before any color letter, as "FLX" in the FMA's "FLX c+56". White: Task 4's change. Anything else, or not found: no
   change (such a run stays colorless). Record the answer in the evidence file.
 
 ### Task 13 [controller]: Land and record the base commit
 
-- [ ] Set **Status** to landed with the landing date and commit, fill in "Tests at landing", push. Then, alone, write
+- [x] Set **Status** to landed with the landing date and commit, fill in "Tests at landing", push. Then, alone, write
   that commit into the index's "Base commits" line for plans 02-11 and push it: `docs(fenix-channel): plan 01's base
   commit`, with the `Plan: 01` trailer. Plans 02-11 may start.
 
@@ -497,23 +497,57 @@ With MSFSBA built from this branch and the Fenix on a checked build. Record each
   on an airframe with no DCDU (measured), so its key and list entry check `FenixVariant` first, as it plans; `ShowDCDU` is
   not in `offlineActions`, so before the sim connects the key says "Not connected to simulator" while the Fenix windows
   list still opens. 05, 06: `A_page_with_no_plan_yet_gives_null` adjusts itself, so neither plan edits it; the first
-  seam implementations must build with no signature warning. 08, 09, 11: `SettingsRedirect` is what a muted-row test
-  uses. 02 and later: F5 in a channel window refreshes without speaking (the base has no announcer); say if a window
-  needs more.
+  seam implementations must build with no signature warning. 08: `ColumnPhrase` asks `Of`, so a slot moved in `Of` moves
+  in the phrase too. 08, 09, 11: `SettingsRedirect` (`FenixChannelTestSettings.cs`) is what a muted-row test uses; every
+  test already runs against a temp settings folder; under `-c Release` a redirect can be missed once `SettingsManager` has
+  tiered up, so run the documented Debug command. 02 and later: F5 in a channel window refreshes without speaking (the
+  base has no announcer); say if a window needs more. Every plan: a `ReportFeatureProblem` string must not hold a changing
+  value, since it is written once per distinct line, and a value in it writes 17 lines a second. `tools/VirtualPilot` builds
+  a `ScreenReaderAnnouncer`, so running it on a developer's machine saves the real settings once, as the app would.
 - **Also seen on:** none.
 
 ## Execution record
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed
+- **Status:** landed 2026-11-03, so plans 02-11 may start (Robin's word, 2026-11-03: "others from the team ... may want to start on the later plans once this lands"); waiting on owner: Task 12's checks by ear, then the close-out
 - **Claimed by:** Robin Kipp (robin24), 2026-11-03
 - **Worked by:** Robin Kipp with Claude, with subagents (superpowers:subagent-driven-development)
 - **Started:** 2026-11-03, `feat/fenix-display-channel` at f0d012c63 (the plan set's last commit)
-- **Landed:**
-- **Tests at landing:**
-- **Tasks:** 0-11 done.
-- **Waiting on the owner:**
-- **In-sim results:**
+- **Landed:** 2026-11-03, code at ec6bcf0a5 (the last code commit; this record and the evidence sit on top of it)
+- **Tests at landing:** 17656 passed, 0 failed, `ClaudeRulesHookTests` excluded as the index says (that class: 203 passed at 688faa3c7, the last commit to change a rule file); solution build 0 errors, 16 warnings, the baseline's.
+- **Tasks:** 0-11 done. 12: the gate cold and dark and powered, every field number and enum value, the color before a color letter, and the notice by the log: done; the keys, Ctrl+M and the notice by ear: below. 13: base commit recorded in the index; the close-out waits with Task 12.
+- **Waiting on the owner:** With `C:\MSFSBA-FenixChannel` (ec6bcf0a5) and the Fenix: Alt+P/N/E/S/I give the AI read; Shift+1 to Shift+6, Ctrl+W, D and Shift+D are silent; input Ctrl+Shift+D says the DCDU sentence; Ctrl+M shows the five rows after the cabin rows, "E/WD memos" unticked. With `C:\MSFSBA-FenixChannel-NoBuilds` (the same build with `VerifiedBuilds` emptied, never committed): the notice is heard once at load. A question: should F5 in a channel window say "refreshed", as the FBW E/WD and the status display do (ruling 16)?
+- **In-sim results:** `docs/fenix-channel/evidence/01-groundwork.md`. In short, on 3.0.0.7613 with an A321 IAE: six verdicts in the log, cold and dark all "display off"; the ISIS trusted on batteries; all six trusted with the APU, the DCDU among them although this airframe has none (the plan's "display off otherwise" does not hold; plan 11 gates on `FenixVariant`); no notice on a checked channel; one notice line on a build with none checked; a 1.6 s UI stall gave one log line and no verdict change; the seed wrote its flag and the memos mute and kept every other key.
 - **Changed from the plan:**
-- **Rulings made while working:**
+  - Fields: `SingleEngineState` 31 is `EiuFault` on the checked build, not `FadecFault`; `EngLimit` is repeated nested NullWrapped; `EfisSelectors` arrives unpacked.
+  - `RowsFor` has an optional fourth parameter, `reportThrow`, and treats a default result, an empty list or a null row as "no data".
+  - `OpenChannelWindow` leaves both hotkey modes before opening. `TryChannelDisplayRead` isolates a seam's throw (`RunChannelKeySeam`).
+  - `OnUiHeartbeat` on the gate returns the log line, which the monitor writes.
+  - The white rule went in with Task 4, the check having answered first. `FenixChannelSpeech` speaks only a part's leading colorless run as white.
+  - The notice: `Sample` runs the minute from the Fenix being ready (its config published), not the monitor's start; the 60 s path also covers a build that never answered; the sampler skips while `Suppressed`; the sentence also goes to the log.
+  - New `Forms/Fenix/FenixWindowRegistry.Channel.cs` for the six window seams, and the Aircraft glob is `FenixA320Definition.*Channel*.cs`, because `ClaudeContextBudgetTests` refuses a glob with no file.
+  - New `tests/MSFSBlindAssist.Tests/FenixChannelTestSettings.cs`: a module initializer points `SettingsManager` at a temp folder for the whole test process, and `SettingsRedirect` lives there. `FenixCabinMonitorRowsTests` changed because `BuildRows` did.
+  - `A_page_with_no_plan_yet_gives_null` adjusts itself by reflection. The host's log line names the app's frame that threw.
+- **Rulings made while working** (question; answer; decided by Claude, running the plan):
+  1. Which worktree? This session's, on `fc-p01-groundwork`, not a new `.claude/worktrees/fc-p01`.
+  2. `From` null when malformed and the index lazy? One allocation-free walk in `From`, the index on first read.
+  3. `RowsFor` is static but must report a throw? An optional fourth parameter; plans 04 and 07 keep calling three.
+  4. A window opened from a hotkey mode? `OpenChannelWindow` leaves both modes, as the 737's windows do.
+  5. The notice's 60 s "after the start" against the spec's "of the Fenix being ready"? The spec: the clock runs from the variant being known, since the monitor can start in the sim's menu.
+  6. `OnUiHeartbeat`'s return? `string?`, the line; the gate formats, the monitor writes.
+  7. `FenixChannelReads` in the docs? `docs/a32nx.md` here, `docs/invariants/` to plan 12.
+  8. A whitespace-only stretch? Not named, but it still separates words.
+  9. The message of a push with field 1 twice? The last part, documented; protobuf-net never sends it.
+  10. The execution record? Updated with each push; the suite re-run after a rebase only when it moved code.
+  11. `FadecFault` or `EiuFault`? The checked build's name. `EngLimit` and `EfisSelectors` likewise follow what was measured.
+  12. Implement the white rule before Task 12? Yes: the check answered before Task 4 started.
+  13. A seam that throws? Logged once, `handled` false: the retired `Choose` did the same, and spec 2.1 says a fault stops that feature only.
+  14. F5 in a channel window? Silent: the base has no announcer. To the owner above.
+  15. `FirstDataAtMs`? The first frame with data and every shape right.
+  16. How to measure the notice without ears? It also writes to the log.
+  17. A channel streaming with no build answer? Told after 60 s: spec 2.3's "not checked" includes it (the answer came 2 to 6 ms after the first message, measured).
+  18. The notice during `Suppressed`? Skipped, not spent.
+  19. The SD page test as the plan names it would fail when a seam lands? It adjusts itself, so plans 05 and 06 never edit it.
+  20. A rule glob with no file yet? Superset for the Aircraft glob; the registry glob kept, made alive by a small partial.
+  21. Tests and the real settings file? The new seed made a one-time write certain on every maintainer's machine; a module initializer redirects the whole test process.
