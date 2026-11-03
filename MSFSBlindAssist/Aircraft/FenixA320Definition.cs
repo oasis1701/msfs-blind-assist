@@ -1140,6 +1140,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             },
 
             // ========== DCDU (10 variables) ==========
+            // The captain's DCDU keys and brightness switch. No panel lists them: the DCDU window (Ctrl+Shift+D, and the
+            // Fenix windows list) presses them through the branches below (FenixA320Definition.ChannelDcdu.cs). The first
+            // officer's brightness, S_DCDU2_DIM_BRT, stays a Cockpit control.
             ["S_DCDU1_DIM_BRT"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_DCDU1_DIM_BRT",
@@ -8505,7 +8508,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 "Engines",
                 "Weather Radar",
                 "ECAM",
-                "DCDU Left",
                 "Flight Controls",
                 "ATC TCAS",
                 "Radio Management Panel (RMP)",
@@ -8937,29 +8939,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 // Brightness Knobs (last in tab order - 2 step-based combo boxes)
                 "A_DISPLAY_BRIGHTNESS_ECAM_U",
                 "A_DISPLAY_BRIGHTNESS_ECAM_L"
-            },
-
-            ["DCDU Left"] = new List<string>
-            {
-                // Brightness Control (3-position switch)
-                "S_DCDU1_DIM_BRT",
-
-                // Line Select Keys (4 buttons)
-                "S_DCDU1_LSK1L",
-                "S_DCDU1_LSK1R",
-                "S_DCDU1_LSK2L",
-                "S_DCDU1_LSK2R",
-
-                // Message Navigation (2 buttons)
-                "S_DCDU1_MSGUP",
-                "S_DCDU1_MSGDWN",
-
-                // Page Navigation (2 buttons)
-                "S_DCDU1_PGUP",
-                "S_DCDU1_PGDN",
-
-                // Print (1 button)
-                "S_DCDU1_PRINT"
             },
 
             ["Flight Controls"] = new List<string>
@@ -11085,9 +11064,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // ========== PEDESTAL - DCDU LEFT PANEL CONTROLS ==========
+            // ========== DCDU WINDOW KEYS ==========
 
-            // DCDU Left Buttons (use ExecuteButtonTransition)
+            // The DCDU window's nine keys (FenixA320Definition.PressDcdu; use ExecuteButtonTransition). The window is
+            // their only way in since the "DCDU Left" panel left, and TryRefuseNotFitted still guards them first.
             if (varKey == "S_DCDU1_LSK1L" && value == 1)
             {
                 ExecuteButtonTransition("S_DCDU1_LSK1L", "DCDU LSK 1 Left", simConnect, announcer);

@@ -1,6 +1,7 @@
 // Characterization tests for the Fenix DCDU window (Forms/Fenix/FenixChannelDcduForm.cs) and the definition's DCDU calls
-// (Aircraft/FenixA320Definition.ChannelDcdu.cs, and the Variants.cs refusal for an airframe with no DCDU). Nothing here
-// reaches a pilot yet: the window has no key, no list entry and no sampler.
+// (Aircraft/FenixA320Definition.ChannelDcdu.cs, and the Variants.cs refusal for an airframe with no DCDU). The window is
+// reached by Ctrl+Shift+D (the key seam) and by the "DCDU" entry of the Fenix windows list, and a new message is called by
+// the announcer host's sampler; the way in, the sampler and the mute are pinned at the end of this file.
 //
 // The contract: the window is the base's list of rows ("DCDU display") with a keyboard on it. A key of the nine
 // (FenixChannelDcduKeys.Map, the shared alternate soft keys setting picking the chords) is judged at the press on a
@@ -22,6 +23,7 @@ using System.Windows.Forms;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Forms.Fenix;
+using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
@@ -334,5 +336,122 @@ public class FenixChannelDcduWindowTests : IDisposable
         Assert.Contains("FenixChannelDcduForm(", body);
         Assert.DoesNotContain("Verdict", body);
         Assert.DoesNotContain("Snapshot(", body);
+    }
+
+    // ---- The way in -----------------------------------------------------------------------------
+
+    [Fact]
+    public void The_dcdu_entry_is_listed_once()
+    {
+        // The Fenix windows list speaks "Name. Description": one DCDU entry, named for the display as the others are.
+        FenixWindowEntry entry = Assert.Single(FenixWindowRegistry.Build(), e => e.Name == "DCDU");
+
+        Assert.Equal("Datalink messages on the DCDU screen, with its soft keys, print and brightness", entry.Description);
+        Assert.NotNull(entry.Open);
+    }
+
+    [Fact]
+    public void The_list_entry_refuses_in_the_same_words_as_the_key()
+    {
+        FenixWindowEntry entry = Assert.Single(FenixWindowRegistry.Build(), e => e.Name == "DCDU");
+        var sim = new SimConnectManager(IntPtr.Zero);
+
+        // An airframe that says it has no DCDU: the refusal, and no window. Only the definition and the announcer are used.
+        var none = new FenixA320Definition();
+        Assert.True(none.TryApplyConfigValue(FenixConfigVars.AircraftType, 3));
+        none.TryApplyConfigValue(FenixConfigVars.Dcdu, 0);
+        var refused = new SpeechCapture();
+        entry.Open(new FenixWindowContext(none, null!, sim, refused, null!));
+        Assert.Equal(new[] { FenixA320Definition.NoDcduMessage }, refused.Interrupts);
+        Assert.Equal(refused.Interrupts, refused.All);
+
+        // A Fenix whose DCDU field is not read yet is not refused: it goes on to the window, which without a monitor says so.
+        var unread = new SpeechCapture();
+        entry.Open(new FenixWindowContext(new FenixA320Definition(), null!, sim, unread, null!));
+        Assert.Equal(new[] { "DCDU display not available" }, unread.Interrupts);
+    }
+
+    [Fact]
+    public void Ctrl_Shift_D_on_a_fenix_without_a_dcdu_is_answered_here()
+    {
+        // The key is always answered by the Fenix, so MainForm's "only available on the A32NX and the Headwind A330"
+        // sentence never reaches its pilot. The refusal touches neither the sim, the form nor the hotkey manager.
+        var definition = new FenixA320Definition();
+        Assert.True(definition.TryApplyConfigValue(FenixConfigVars.AircraftType, 3));
+        definition.TryApplyConfigValue(FenixConfigVars.Dcdu, 0);
+        Assert.False(definition.Variant.HasDcdu);
+        var speech = new SpeechCapture();
+
+        bool handled = definition.HandleHotkeyAction(HotkeyAction.ShowDCDU, null!, speech, null!, null!);
+
+        Assert.True(handled);
+        Assert.Equal(new[] { "This Fenix has no DCDU." }, speech.Interrupts);
+        Assert.Equal(speech.Interrupts, speech.All);
+    }
+
+    [Fact]
+    public void The_key_refuses_before_it_leaves_input_mode()
+    {
+        // The key is always answered (handled), and a refusal comes first and ends it: input mode stays on, as after
+        // MainForm's own refusals. Only a window about to open leaves both hotkey modes, so that the chords and the page
+        // keys reach it (ShowA32NXDcduDialog does the same), and then opens it.
+        string body = BodyOf(DefinitionPath, "ChannelDcduKey");
+
+        string[] inOrder =
+        [
+            "handled = true", "TryRefuseNoDcdu(", "ExitInputHotkeyMode()", "ExitOutputHotkeyMode()", "OpenDcduWindow("
+        ];
+        int at = -1;
+        foreach (string step in inOrder)
+        {
+            int found = body.IndexOf(step, at + 1, StringComparison.Ordinal);
+            Assert.True(found > at, $"ChannelDcduKey does not have `{step}` after `{(at < 0 ? "its start" : "the step before it")}`");
+            at = found;
+        }
+
+        Assert.Matches(@"if\s*\(\s*TryRefuseNoDcdu\(Variant,\s*ctx\.Announcer\)\s*\)\s*return;", body);
+        Assert.Contains("OpenDcduWindow(ctx.SimConnect, ctx.Announcer)", body);
+    }
+
+    [Fact]
+    public void The_sampler_reads_one_snapshot_checks_its_row_and_queues_the_call()
+    {
+        string body = BodyOf(DefinitionPath, "SampleChannelDcdu");
+
+        // One snapshot of the DCDU, from which the verdict, the screen and the connection are all taken.
+        Assert.Single(Regex.Matches(body, @"Snapshot\("));
+        Assert.Contains("Snapshot(Services.FenixChannelDisplay.Dcdu)", body);
+        Assert.Contains("Services.FenixChannelDcdu.Read(s)", body);
+        Assert.Contains("s.Connection", body);
+
+        // A problem on a display the monitor trusts is the decoder's, and is reported under the window's name.
+        Assert.Contains("s.Verdict.Trusted", body);
+        Assert.Contains("ReportFeatureProblem(Services.FenixChannelDcdu.DisplayName", body);
+
+        // The row is asked each tick it could speak, and the airframe's own answer is added to it.
+        Assert.Contains("IsMuted(Services.FenixChannelAnnouncementRows.DcduKey)", body);
+        Assert.Contains("DcduCallMuted(Variant,", body);
+
+        // A call is a background change the pilot did not trigger ([CORE-7]): queued, never interrupting.
+        Assert.Contains("ctx.Announcer.Announce(", body);
+        Assert.DoesNotContain("AnnounceImmediate", body);
+    }
+
+    [Fact]
+    public void The_call_stays_silent_on_an_airframe_with_no_dcdu()
+    {
+        // The channel reads the DCDU trusted on an airframe that has none, so the variant mutes the call as well as the
+        // row. An unread field mutes nothing ([FNX-11]). The announcer keeps tracking while muted, so nothing replays.
+        FenixVariant none = FenixVariant.Unknown with { HasDcdu = false };
+        FenixVariant fitted = FenixVariant.Unknown with { HasDcdu = true };
+
+        Assert.True(FenixA320Definition.DcduCallMuted(none, rowMuted: false));
+        Assert.False(FenixA320Definition.DcduCallMuted(fitted, rowMuted: false));
+        Assert.False(FenixA320Definition.DcduCallMuted(FenixVariant.Unknown, rowMuted: false));
+
+        // An unticked row mutes it whatever the airframe says.
+        Assert.True(FenixA320Definition.DcduCallMuted(none, rowMuted: true));
+        Assert.True(FenixA320Definition.DcduCallMuted(fitted, rowMuted: true));
+        Assert.True(FenixA320Definition.DcduCallMuted(FenixVariant.Unknown, rowMuted: true));
     }
 }
