@@ -501,7 +501,7 @@ With MSFSBA built from this branch and the Fenix on a checked build. Record each
   in the phrase too. 08, 09, 11: `SettingsRedirect` (`FenixChannelTestSettings.cs`) is what a muted-row test uses; every
   test already runs against a temp settings folder; under `-c Release` a redirect can be missed once `SettingsManager` has
   tiered up, so run the documented Debug command. 02 and later: F5 in a channel window refreshes without speaking (the
-  base has no announcer); say if a window needs more. Every plan: a `ReportFeatureProblem` string must not hold a changing
+  base has no announcer), and Robin ruled it stays silent. Every plan: a `ReportFeatureProblem` string must not hold a changing
   value, since it is written once per distinct line, and a value in it writes 17 lines a second. `tools/VirtualPilot` builds
   a `ScreenReaderAnnouncer`, so running it on a developer's machine saves the real settings once, as the app would.
 - **Also seen on:** none.
@@ -517,7 +517,7 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Landed:** 2026-11-03, code at ec6bcf0a5 (the last code commit; this record and the evidence sit on top of it)
 - **Tests at landing:** 17656 passed, 0 failed, `ClaudeRulesHookTests` excluded as the index says (that class: 203 passed at 688faa3c7, the last commit to change a rule file); solution build 0 errors, 16 warnings, the baseline's.
 - **Tasks:** 0-11 done. 12: the gate cold and dark and powered, every field number and enum value, the color before a color letter, and the notice by the log: done; the keys, Ctrl+M and the notice by ear: below. 13: base commit recorded in the index; the close-out waits with Task 12.
-- **Waiting on the owner:** With `C:\MSFSBA-FenixChannel` (ec6bcf0a5) and the Fenix: Alt+P/N/E/S/I give the AI read; Shift+1 to Shift+6, Ctrl+W, D and Shift+D are silent; input Ctrl+Shift+D says the DCDU sentence; Ctrl+M shows the five rows after the cabin rows, "E/WD memos" unticked. With `C:\MSFSBA-FenixChannel-NoBuilds` (the same build with `VerifiedBuilds` emptied, never committed): the notice is heard once at load. A question: should F5 in a channel window say "refreshed", as the FBW E/WD and the status display do (ruling 16)?
+- **Waiting on the owner:** With `C:\MSFSBA-FenixChannel` (ec6bcf0a5) and the Fenix: Alt+P/N/E/S/I give the AI read; Shift+1 to Shift+6, Ctrl+W, D and Shift+D are silent; input Ctrl+Shift+D says the DCDU sentence; Ctrl+M shows the five rows after the cabin rows, "E/WD memos" unticked. With `C:\MSFSBA-FenixChannel-NoBuilds` (the same build with `VerifiedBuilds` emptied, never committed): the notice is heard once at load.
 - **In-sim results:** `docs/fenix-channel/evidence/01-groundwork.md`. In short, on 3.0.0.7613 with an A321 IAE: six verdicts in the log, cold and dark all "display off"; the ISIS trusted on batteries; all six trusted with the APU, the DCDU among them although this airframe has none (the plan's "display off otherwise" does not hold; plan 11 gates on `FenixVariant`); no notice on a checked channel; one notice line on a build with none checked; a 1.6 s UI stall gave one log line and no verdict change; the seed wrote its flag and the memos mute and kept every other key.
 - **Changed from the plan:**
   - Fields: `SingleEngineState` 31 is `EiuFault` on the checked build, not `FadecFault`; `EngLimit` is repeated nested NullWrapped; `EfisSelectors` arrives unpacked.
@@ -543,7 +543,7 @@ Kept in this file only, so no other plan's push ever touches it.
   11. `FadecFault` or `EiuFault`? The checked build's name. `EngLimit` and `EfisSelectors` likewise follow what was measured.
   12. Implement the white rule before Task 12? Yes: the check answered before Task 4 started.
   13. A seam that throws? Logged once, `handled` false: the retired `Choose` did the same, and spec 2.1 says a fault stops that feature only.
-  14. F5 in a channel window? Silent: the base has no announcer. To the owner above.
+  14. F5 in a channel window? Silent: the base has no announcer. Robin's word, 2026-11-03: "No, keep it silent".
   15. `FirstDataAtMs`? The first frame with data and every shape right.
   16. How to measure the notice without ears? It also writes to the log.
   17. A channel streaming with no build answer? Told after 60 s: spec 2.3's "not checked" includes it (the answer came 2 to 6 ms after the first message, measured).
