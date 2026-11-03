@@ -58,7 +58,7 @@ internal static class FenixChannelNd
     public static string RangeName(ulong? value)
         => value is null ? RangeWhenAbsent : value.Value.ToString(CultureInfo.InvariantCulture);
 
-    private static string? MapOptionName(ulong? value) => value switch
+    internal static string? MapOptionName(ulong? value) => value switch
     {
         null => null,
         EfisMapOptionValue.Cstr => "CSTR",

@@ -14,10 +14,17 @@ internal sealed record FenixNdLookEntry(string Item, string Symbol, string? Colo
 /// </summary>
 internal static class FenixChannelNdLook
 {
+    private const string MapPointsEvidence = "03-nd.md, Task 1 Part C, the looks of the map points";
+
     private static readonly FenixNdLookEntry[] Entries =
     [
         new("lubber line", "lubber line", "yellow", "03-nd.md, Task 1 Part A, the header as drawn"),
-        new("track diamond", "track diamond", "green", "03-nd.md, Task 1 Part A, the header as drawn")
+        new("track diamond", "track diamond", "green", "03-nd.md, Task 1 Part A, the header as drawn"),
+        new(FenixChannelNdMapData.LookItem.VorDme, "circle with a cross", "magenta", MapPointsEvidence),
+        new(FenixChannelNdMapData.LookItem.Dme, "circle", "magenta", MapPointsEvidence),
+        new(FenixChannelNdMapData.LookItem.Ndb, "triangle", "magenta", MapPointsEvidence),
+        new(FenixChannelNdMapData.LookItem.Airport, "star", "magenta", MapPointsEvidence),
+        new(FenixChannelNdMapData.LookItem.Fix, "diamond", "magenta", MapPointsEvidence)
     ];
 
     /// <summary>Every entry, in the order they were measured.</summary>

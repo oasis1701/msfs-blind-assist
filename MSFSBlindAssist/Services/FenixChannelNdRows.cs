@@ -39,6 +39,73 @@ internal static class FenixChannelNdRows
         => Compose(s, reportProblem, []);
 
     /// <summary>
+    /// The rows for <paramref name="s"/> with the "Map points" layer after the header. <paramref name="mapPoints"/> is the
+    /// poller's latest reply, when it was last confirmed current (on the clock <paramref name="nowMs"/> reads) and its
+    /// problem; the layer uses the points only under <see cref="FenixChannelNdMapData.Check"/> ([FNX-22]).
+    /// </summary>
+    internal static FenixChannelRows Compose(
+        FenixChannelSnapshot s, Action<string> reportProblem,
+        (FenixNdMapPoints? Points, long ReceivedAtMs, string? Problem) mapPoints, long nowMs)
+        => Compose(s, reportProblem, [(snapshot, nd) => MapPointsLayer(snapshot, nd, mapPoints, nowMs)]);
+
+    private const string MapPointsName = "Map points";
+
+    // The ND draws map points in ROSE NAV, ARC and PLAN only: in ROSE LS and ROSE VOR the layer gives no rows at all.
+    private static FenixNdLayer MapPointsLayer(
+        FenixChannelSnapshot s, FenixNdData nd, (FenixNdMapPoints? Points, long ReceivedAtMs, string? Problem) mapPoints,
+        long nowMs)
+    {
+        if (nd.Mode is not ("NAV" or "ARC" or "PLAN")) return FenixNdLayer.Of([]);
+
+        FenixNdFrame? frame = FenixNdFrame.From(nd);
+        if (frame is null) return FenixNdLayer.Failed(MapPointsName, "the ND's view is not known");
+        if (mapPoints.Points is not { } points) return FenixNdLayer.Failed(MapPointsName, mapPoints.Problem ?? "no data");
+
+        if (FenixChannelNdMapData.Check(points, nd, frame, mapPoints.ReceivedAtMs, nowMs) is { } disagrees)
+        {
+            return FenixNdLayer.Failed(MapPointsName, disagrees);
+        }
+
+        // No flight plan is no route: every point is listed. A route in the wrong shape is the layer's problem.
+        FenixRoute? route = null;
+        FenixChannelSection<FenixRoute> read = s.Push is null
+            ? FenixChannelSection<FenixRoute>.Missing("data")
+            : FenixChannelRoute.Decode(s.Push);
+        if (read.IsOk) route = read.Value;
+        else if (read.Problem is { } problem && !problem.StartsWith("no ", StringComparison.Ordinal))
+        {
+            return FenixNdLayer.Failed(MapPointsName, problem);
+        }
+
+        FenixNdLayer rows = FenixChannelNdMapData.Rows(points, frame, route);
+
+        // The poller's latest failure (the reply above is the last good one) is for the log.
+        return mapPoints.Problem is { } latest ? rows with { LayerProblem = $"{MapPointsName}: {latest}" } : rows;
+    }
+
+    /// <summary>Every element of the four route lists the ND draws: active, temporary, alternate, temporary alternate.</summary>
+    internal static IEnumerable<FenixRouteLeg> RouteLegs(FenixRoute route)
+        => route.Legs.Concat(route.TemporaryLegs).Concat(route.AlternateLegs).Concat(route.TemporaryAlternateLegs);
+
+    /// <summary>
+    /// The ident of the route element within 0.1 NM of the PLAN center, for "of VAKSU"; null when there is none ("of the
+    /// center").
+    /// </summary>
+    internal static string? PlanCenterIdent(FenixNdFrame frame, FenixRoute? route)
+    {
+        if (route is null) return null;
+
+        return RouteLegs(route)
+            .Where(leg => leg.Ident.Length > 0)
+            .Select(leg => (leg.Ident, Away: Navigation.NavigationCalculator.CalculateDistance(
+                frame.Center.Latitude, frame.Center.Longitude, leg.Point.Latitude, leg.Point.Longitude)))
+            .Where(entry => entry.Away <= 0.1)
+            .OrderBy(entry => entry.Away)
+            .Select(entry => entry.Ident)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
     /// The rows for <paramref name="s"/> with <paramref name="layers"/> between the header and the messages. The seam
     /// later tasks fill: the list is in screen order.
     /// </summary>

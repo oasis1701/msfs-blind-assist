@@ -62,4 +62,36 @@ internal static partial class FenixChannelFields
         public const int Arc = 3;                   // ARC
         public const int Plan = 4;                  // PLAN
     }
+
+    /// <summary>MapData, the reply of GetMapData (measured on 3.0.0.7613). Its repeated parts are <see cref="MapPoint"/>.</summary>
+    public static partial class MapData
+    {
+        public const int Airports = 1;              // Airports: repeated nested MapPoint, kind 1
+        public const int Navaids = 2;               // Navaids: repeated nested MapPoint, kinds 2, 3 and 4
+        public const int Fixes = 3;                 // Fixes: repeated nested MapPoint, kind 5
+        public const int Ndbs = 4;                  // Ndbs: repeated nested MapPoint, kind 7
+        public const int CenterLatitude = 5;        // CenterLatitude: fixed64 (double)
+        public const int CenterLongitude = 6;       // CenterLongitude: fixed64 (double)
+        public const int TrueTrack = 7;             // TrueTrack: fixed64 (double); left out in PLAN
+        public const int Range = 8;                 // Range: varint, the ND's reach in nautical miles; left out reads 0
+        public const int Mode = 9;                  // Mode: varint (2 ROSE NAV, 3 ARC, 4 PLAN), sent explicitly
+        public const int Version = 10;              // Version: varint
+        public const int Partial = 11;              // Partial: varint 1 when only a patch near the aircraft is sent; left out otherwise
+        public const int MapOption = 12;            // MapOption: varint (an EfisMapOptionValue); left out for none
+    }
+
+    /// <summary>MapPoint, one point of <see cref="MapData"/>. Member 4 (varint 3 on navaids and NDBs) is read for nothing.</summary>
+    public static partial class MapPoint
+    {
+        public const int Kind = 1;                  // Kind: varint (1 airport, 2, 3 or 4 a navaid, 5 a fix, 7 an NDB)
+        public const int Latitude = 2;              // Latitude: fixed64 (double)
+        public const int Longitude = 3;             // Longitude: fixed64 (double)
+        public const int Ident = 5;                 // Ident: string
+    }
+
+    /// <summary>The reply of GetMapDataVersion.</summary>
+    public static partial class MapDataVersionReply
+    {
+        public const int Version = 1;               // Version: varint
+    }
 }

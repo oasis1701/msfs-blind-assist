@@ -25,14 +25,72 @@ internal sealed class FenixChannelNdForm : FenixChannelDisplayForm
     // True while a refresh sets the controls, so that nothing it sets can reach the writer.
     private bool _refreshing;
 
+    private readonly MapPointsSource _mapPoints;
+    private readonly FenixChannelMonitor _channel;
+
+    /// <summary>
+    /// The map points' poller, made on the first show and disposed with the window; "no data" until then (the tests,
+    /// which never show the window, read it so).
+    /// </summary>
+    private sealed class MapPointsSource
+    {
+        private readonly object _lock = new();
+        private FenixChannelNdMapPoller? _poller;
+        private bool _closed;
+
+        public (FenixNdMapPoints? Points, long ReceivedAtMs, string? Problem) Latest
+        {
+            get
+            {
+                FenixChannelNdMapPoller? poller;
+                lock (_lock) poller = _poller;
+                return poller?.Latest ?? (null, 0, null);
+            }
+        }
+
+        public void StartOnce(FenixChannelMonitor monitor)
+        {
+            lock (_lock)
+            {
+                if (_poller is not null || _closed) return;
+
+                _poller = new FenixChannelNdMapPoller(monitor.RequestOnceAsync, () => Environment.TickCount64);
+                _poller.Start();
+            }
+        }
+
+        public void Close()
+        {
+            FenixChannelNdMapPoller? poller;
+            lock (_lock)
+            {
+                _closed = true;
+                poller = _poller;
+                _poller = null;
+            }
+
+            poller?.Dispose();
+        }
+    }
+
     /// <param name="monitor">The channel monitor the snapshots come from.</param>
     /// <param name="writeControl">Writes a panel control: its variable name and the number the panel takes. With it the
     /// window adds the EFIS controls; without it, it adds none.</param>
     public FenixChannelNdForm(FenixChannelMonitor monitor, Action<string, double>? writeControl = null)
+        : this(monitor, writeControl, new MapPointsSource())
+    {
+    }
+
+    // The composer reads the map points through the source, which exists before the base constructor runs and holds the
+    // poller once the window is first shown.
+    private FenixChannelNdForm(FenixChannelMonitor monitor, Action<string, double>? writeControl, MapPointsSource source)
         : base("ND", FenixChannelDisplay.Nd, monitor,
             snapshot => FenixChannelNdRows.Compose(
-                snapshot, problem => monitor.ReportFeatureProblem(FenixChannelNdRows.Feature, problem)))
+                snapshot, problem => monitor.ReportFeatureProblem(FenixChannelNdRows.Feature, problem),
+                source.Latest, Environment.TickCount64))
     {
+        _mapPoints = source;
+        _channel = monitor;
         _writeControl = writeControl;
         if (writeControl is null) return;
 
@@ -83,6 +141,25 @@ internal sealed class FenixChannelNdForm : FenixChannelDisplayForm
     }
 
     protected override void OnRefresh(FenixChannelSnapshot s) => ApplyControls(s);
+
+    // The map points' poller starts on the first show (the tests never show the window).
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        _mapPoints.StartOnce(_channel);
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _mapPoints.Close();
+        base.OnFormClosed(e);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _mapPoints.Close();
+        base.Dispose(disposing);
+    }
 
     /// <summary>
     /// Sets the controls from one snapshot: with the ND trusted and its header read, the combos select the mode and
