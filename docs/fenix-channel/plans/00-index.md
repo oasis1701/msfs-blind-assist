@@ -54,7 +54,7 @@ record. Paths are under `MSFSBlindAssist/` unless they start with `docs/`, `test
 | `Services/FenixChannelMonitor.cs`, `FenixChannelTrust.cs`, `FenixChannelFrame.cs`, `FenixChannelDecoder.cs`, `FenixChannelFields.cs`, `FenixChannelReads.cs`, `FenixChannelWire.cs`, `FenixChannelClient.cs`, `FenixChannelFraming.cs` | 01, then frozen (a feature adds its own field constants in its own `FenixChannelFields.<Feature>.cs` partial, never here) |
 | New in 01: `Services/FenixChannelPush.cs`, `FenixChannelSection.cs`, `FenixChannelSpeech.cs`, `FenixChannelAnnouncementRows.cs`, `FenixChannelAnnouncers.cs`, `FenixChannelNotice.cs`, `Forms/Fenix/FenixChannelDisplayForm.cs` | 01, then frozen |
 | `Services/FenixChannelSdPages.cs` (new in 01: the page names, `ValveWord` and the page seams' declarations) | 01 → 05 (`NameOf`, should pages 0 or 13 prove drawn), then frozen |
-| `Services/FenixChannelText.cs` | 01 → 03 (the `d` letter), then frozen |
+| `Services/FenixChannelText.cs` | 01 → 02 (the `p` and `d` letters, the owner's ruling of 2026-11-03) → 03 (`JoinedText`'s summary), then frozen |
 | `Services/FenixChannelFmaLayout.cs` (new in 01) | 01 → 08 |
 | `Aircraft/FenixA320Definition.DisplayChannel.cs`, `Aircraft/FenixA320Definition.Hooks.cs`, `Forms/Fenix/FenixWindowRegistry.cs`, `Forms/FenixMonitorManagerForm.cs`; the one-time channel seed in `Settings/SettingsManager.cs` and `Settings/UserSettings.cs`; the `paths:` list of `.claude/rules/fenix-channel.md` | 01, then frozen |
 | `Aircraft/FenixA320Definition.cs` | 01 (only if a seam needs a line there) → 11 (the "DCDU Left" panel out of the panel structure and its control lists), then frozen |
@@ -78,7 +78,7 @@ record. Paths are under `MSFSBlindAssist/` unless they start with `docs/`, `test
 **Tests** follow their code. The existing channel tests (`FenixChannelMonitorTests`, `FenixChannelTrustTests`,
 `FenixChannelDecoderTests`, `FenixChannelReadsTests`, `FenixChannelReadOnlyTests`, `FenixChannelDefinitionTests`,
 `FenixChannelClientTests`, `FenixChannelFramingTests`, `FenixChannelWireTests`, `FenixChannelFakeServer.cs`,
-`FenixChannelProtoWriter.cs`) are 01's, then frozen; `FenixChannelTextTests` follows `FenixChannelText.cs` (01 → 03);
+`FenixChannelProtoWriter.cs`) are 01's, then frozen; `FenixChannelTextTests` follows `FenixChannelText.cs` (01 → 02 → 03);
 `FenixVariantControlsTests` and `FenixV3FixPanelControlsTests` (they pin the DCDU panel) are 11's. A plan's new tests go
 in new files named for its feature, `tests/MSFSBlindAssist.Tests/FenixChannel<Feature>*Tests.cs`, so the channel rules
 load. Tests build their own protobuf bytes with `FenixChannelProtoWriter` (01 may extend it before freezing it; a plan
