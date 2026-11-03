@@ -194,16 +194,16 @@ public class FenixChannelSdKeysTests
     public void An_unknown_key_is_not_pressed()
     {
         // The press method knows the definition's variables only; a name it has none for is refused, never thrown.
-        Assert.False(new FenixA320Definition().PressEcamPageKey("NOT_A_FENIX_KEY", null!, null!));
+        Assert.False(new FenixA320Definition().PressEcamKey("NOT_A_FENIX_KEY", null!, null!));
     }
 
     [Fact]
     public void The_press_is_the_panels_own_code_for_the_key()
     {
-        // PressEcamPageKey runs HandleUIVariableSet with the value 1, whose S_ECAM_* cases run ExecuteButtonTransition,
+        // PressEcamKey runs HandleUIVariableSet with the value 1, whose S_ECAM_* cases run ExecuteButtonTransition,
         // the full press-release ([FNX-6], [A320-3]). It never writes or presses itself, so that the window and the
         // panel cannot drift apart. The source is read because a SimConnectManager cannot be built in a test.
-        string body = BodyOf("internal bool PressEcamPageKey(");
+        string body = BodyOf("internal bool PressEcamKey(");
 
         Assert.Matches(new Regex(@"HandleUIVariableSet\(\s*varKey\s*,\s*1\s*,", RegexOptions.CultureInvariant), body);
         Assert.DoesNotContain("SetLVar", body);
@@ -216,7 +216,7 @@ public class FenixChannelSdKeysTests
     {
         string body = BodyOf("internal Forms.Fenix.FenixChannelSdForm CreateChannelSdForm(");
 
-        Assert.Contains("PressEcamPageKey(", body);
+        Assert.Contains("PressEcamKey(", body);
         Assert.DoesNotContain("SetLVar", body);
         Assert.DoesNotContain("HandleUIVariableSet", body);
     }

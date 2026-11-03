@@ -13,7 +13,8 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// show a page and read it in the one window. A press calls the press delegate with the key's variable name and nothing
 /// else; the delegate is the definition's own press of that key, the panel's code, a full press-release ([FNX-6],
 /// [A320-3]). They are buttons and never a combo box, which changes its selection and so would press a key at every
-/// page the reader arrows past. The panel's T.O CONFIG, CLR, RCL and EMER CANC keys act on the E/WD and are not here.</para>
+/// page the reader arrows past. The panel's T.O CONFIG, CLR, RCL and EMER CANC keys act on the E/WD and are in its window
+/// (<see cref="FenixChannelEwdForm"/>), built by the same <see cref="BuildEcamKeyRow"/>.</para>
 /// <para>Silence ([CORE-7]). The window holds no announcer and no SimConnect: the screen reader reads a button's label
 /// as it takes focus, and what the panel's code and the key's light announce is the one confirmation of a press, as when
 /// the pilot presses the panel's button. The list shows the new page at its next refresh. A refresh, F5 and opening the
@@ -61,12 +62,18 @@ internal sealed class FenixChannelSdForm : FenixChannelDisplayForm
         ArgumentNullException.ThrowIfNull(variant);
         ArgumentNullException.ThrowIfNull(pressKey);
 
-        AddPageKeys(pressKey);
+        // The tab order is the list, then ENG to STS.
+        AddControlAfterList(BuildEcamKeyRow(PageKeys, pressKey));
     }
 
-    // One container under the list, wrapping and sizing itself, holding the buttons in the panel's order: the tab order
-    // is the list, then ENG to STS.
-    private void AddPageKeys(Action<string> pressKey)
+    /// <summary>
+    /// The ECAM control panel's keys as one row of buttons, shared by the SD window (its page keys) and the E/WD window
+    /// (T.O CONFIG, CLR, RCL and EMER CANC). One container wrapping and sizing itself, holding a button for each of
+    /// <paramref name="keys"/> in the order given, the label as the text and the accessible name (the reader says it and
+    /// "button", and nothing changes it), tab indexes in that order. A click calls <paramref name="press"/> with the
+    /// key's variable name and nothing else. The caller adds the panel after its list.
+    /// </summary>
+    internal static FlowLayoutPanel BuildEcamKeyRow(IReadOnlyList<(string Label, string Key)> keys, Action<string> press)
     {
         var panel = new FlowLayoutPanel
         {
@@ -76,15 +83,14 @@ internal sealed class FenixChannelSdForm : FenixChannelDisplayForm
             FlowDirection = FlowDirection.LeftToRight
         };
 
-        foreach ((string label, string key) in PageKeys)
+        foreach ((string label, string key) in keys)
         {
-            // The label is the text and the accessible name: the reader says it and "button", and nothing changes it.
             var button = new Button { Text = label, AccessibleName = label, AutoSize = true };
-            button.Click += (_, _) => pressKey(key);
+            button.Click += (_, _) => press(key);
             panel.Controls.Add(button);
         }
 
         for (int i = 0; i < panel.Controls.Count; i++) panel.Controls[i].TabIndex = i;
-        AddControlAfterList(panel);
+        return panel;
     }
 }
