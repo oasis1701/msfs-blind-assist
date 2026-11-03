@@ -11,11 +11,10 @@
 // keeps it ticked at the next start, on a fresh install and on a file written before the seed existed alike.
 //
 // The first class is pure. The second reaches SettingsManager (the seed saves; IsMuted reads Current), so it is in the
-// "SettingsManagerGlobalState" collection and every test of it runs with the settings paths redirected to a scratch folder
-// (SettingsRedirect): no test touches the real settings file of the person running them.
+// "SettingsManagerGlobalState" collection and every test of it takes a SettingsRedirect (FenixChannelTestSettings.cs, which
+// also keeps the whole test process away from a real settings file): a scratch folder of its own and no current settings,
+// so each test starts as a first start does.
 
-using System.Reflection;
-using System.Reflection.Emit;
 using System.Text.Json;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Forms;
@@ -218,90 +217,5 @@ public class FenixChannelMonitorRowsSettingsTests : IDisposable
         SettingsManager.Save(new UserSettings { FenixDisabledMonitorVariables = { FenixChannelAnnouncementRows.WarningsKey } });
         Assert.True(FenixChannelAnnouncementRows.IsMuted(FenixChannelAnnouncementRows.WarningsKey));
         Assert.False(FenixChannelAnnouncementRows.IsMuted(MemosKey));
-    }
-}
-
-/// <summary>
-/// Points SettingsManager at a scratch folder for as long as it lives, so that a test which reaches SettingsManager.Save
-/// or SettingsManager.Current never touches the settings file of the person running the tests, and starts it with no
-/// current settings, so the first Current loads from the scratch folder as a first start does. Dispose puts everything
-/// back and deletes the folder. The class that holds one is in the "SettingsManagerGlobalState" collection: the redirect
-/// is process-wide, so no other test that reaches SettingsManager may run beside it.
-/// </summary>
-/// <remarks>
-/// The redirect SettingsSeedTests makes, by the same means: the paths are <c>static readonly</c>, which reflection will
-/// not set once the type has run its initializer, so a tiny dynamic method stores them (<c>stsfld</c>); that class's own
-/// helper is private to it, so the pattern is repeated here. One path more is redirected: the legacy FBWBA file. A Load with
-/// no settings file would otherwise copy the legacy file of the machine into the scratch folder and read the old settings of
-/// whoever runs the tests back as a fresh install.
-/// </remarks>
-internal sealed class SettingsRedirect : IDisposable
-{
-    private static readonly FieldInfo DirectoryField = SettingsManagerField("SettingsDirectory");
-    private static readonly FieldInfo FilePathField = SettingsManagerField("SettingsFilePath");
-    private static readonly FieldInfo LegacyFilePathField = SettingsManagerField("LegacySettingsFilePath");
-    private static readonly FieldInfo CurrentSettingsField = SettingsManagerField("_currentSettings");
-
-    private readonly object? _originalDirectory = DirectoryField.GetValue(null);
-    private readonly object? _originalFilePath = FilePathField.GetValue(null);
-    private readonly object? _originalLegacyFilePath = LegacyFilePathField.GetValue(null);
-    private readonly object? _originalCurrentSettings = CurrentSettingsField.GetValue(null);
-
-    /// <summary>The scratch folder. It is created by the first save into it.</summary>
-    public string Folder { get; }
-
-    /// <summary>The settings file inside it, the one SettingsManager now reads and writes.</summary>
-    public string SettingsFile { get; }
-
-    public SettingsRedirect()
-    {
-        Folder = Path.Combine(Path.GetTempPath(), "MSFSBlindAssistTests_" + Guid.NewGuid().ToString("N"));
-        SettingsFile = Path.Combine(Folder, "settings.json");
-
-        SetStaticField(DirectoryField, Folder);
-        SetStaticField(FilePathField, SettingsFile);
-        SetStaticField(LegacyFilePathField, Path.Combine(Folder, "legacy", "settings.json"));
-        CurrentSettingsField.SetValue(null, null);   // not initonly, plain SetValue is fine
-    }
-
-    public void Dispose()
-    {
-        SetStaticField(DirectoryField, _originalDirectory);
-        SetStaticField(FilePathField, _originalFilePath);
-        SetStaticField(LegacyFilePathField, _originalLegacyFilePath);
-        CurrentSettingsField.SetValue(null, _originalCurrentSettings);
-
-        try
-        {
-            if (Directory.Exists(Folder)) Directory.Delete(Folder, recursive: true);
-        }
-        catch
-        {
-            // Best-effort cleanup; a leftover scratch folder is harmless.
-        }
-    }
-
-    private static FieldInfo SettingsManagerField(string name)
-        => typeof(SettingsManager).GetField(name, BindingFlags.NonPublic | BindingFlags.Static)!;
-
-    // FieldInfo.SetValue refuses a static readonly field once the declaring type has run its initializer; a hand-emitted
-    // stsfld against the same field is accepted by the runtime, which is how SettingsSeedTests redirects these too.
-    private static void SetStaticField(FieldInfo field, object? value)
-    {
-        var method = new DynamicMethod(
-            "ForceSetStatic_" + field.Name,
-            typeof(void),
-            new[] { typeof(object) },
-            typeof(SettingsRedirect).Module,
-            skipVisibility: true);
-
-        var il = method.GetILGenerator();
-        il.Emit(OpCodes.Ldarg_0);
-        il.Emit(OpCodes.Castclass, field.FieldType);
-        il.Emit(OpCodes.Stsfld, field);
-        il.Emit(OpCodes.Ret);
-
-        var setter = (Action<object?>)method.CreateDelegate(typeof(Action<object?>));
-        setter(value);
     }
 }
