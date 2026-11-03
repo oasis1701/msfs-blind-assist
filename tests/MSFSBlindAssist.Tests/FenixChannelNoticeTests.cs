@@ -5,7 +5,9 @@
 // Fenix load, by a sampler of the announcer host, and the notice itself is pure: no clock of its own, no speech, no
 // monitor. So these tests hand it sessions and clock readings, and the one thing that is not pure, the session view,
 // is read from a monitor that is driven through its normal callbacks, as the monitor tests do. The sampler in the
-// definition (private, and built on the real announcer host) cannot run here: it is checked in the sim ([CORE-5]).
+// definition (SampleChannelNotice), the one path plan 01 speaks through, runs here too, on a capturing announcer and an
+// idle monitor, with TryApplyConfigValue driving the variant. That the host's timer runs it and a real announcer speaks
+// it is checked in the sim ([CORE-5]).
 //
 // The contract of Due: the notice is due at once when the build is known and the app has not checked the channel
 // against it, and at once when the channel refused (the Fenix said no), however much data came. It is due when no
@@ -21,6 +23,12 @@
 // and keeps it even if the Fenix stops being ready; while it has never been ready the clock cannot run out. The
 // unchecked-build and refused paths do not wait for ready, since an answer on the channel proves a Fenix is there.
 //
+// The contract of the definition's sampler: while the announcer is suppressed it does not ask, so the notice stays due and
+// speaks on the next free tick, never spent unheard. The Fenix is ready once its variant is known, so a silent channel with
+// the variant unknown, 70 s on, says nothing, and the minute runs from the variant becoming known. What the notice returns
+// goes out once: one Announce, nothing through AnnounceImmediate, and one "session notice: <text>" line in the channel's
+// log; the next tick does nothing.
+//
 // The contract of Session: the build is the latest the build query answered; it survives a reconnect (the gate forgets
 // it, the session does not), and a stale answer from a loop that ended never reaches it. BuildChecked is whether the
 // monitor's verified set holds it. Refused is the monitor's refused flag, set by either call's refusal and by nothing
@@ -33,6 +41,7 @@
 // Timing: waits are polls with a 5 s limit (MonitorTestKit.WaitUntil). The short pauses only prove that nothing MORE
 // happens, so a slow machine can make them pass trivially but never fail.
 
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Services;
 using static MSFSBlindAssist.Tests.MonitorTestKit;
 
@@ -358,6 +367,118 @@ public class FenixChannelNoticeTests
         });
 
         Assert.Equal(new[] { UncheckedSentence, CheckedSentence, UnknownSentence, CheckedSentence }, spoken);
+    }
+
+    // ---- The definition's sampler ---------------------------------------------------------------
+
+    // What the sampler works with on a tick: a definition, whose variant says whether the Fenix is ready, the load's one
+    // notice, and a capturing announcer. The monitor is the test's.
+    private sealed class Sampler(FenixChannelMonitor monitor)
+    {
+        private readonly FenixChannelNotice _notice = new();
+
+        public FenixA320Definition Definition { get; } = new();
+
+        public SpeechCapture Speech { get; } = new();
+
+        public void Tick(long nowMs)
+            => Definition.SampleChannelNotice(_notice, new(monitor, Speech, nowMs));
+    }
+
+    // An idle monitor that has connected and read a build the app has not checked: the notice is due at once.
+    private static async Task<FenixChannelMonitor> MonitorOnAnUncheckedBuild(Lines lines)
+    {
+        FenixChannelMonitor monitor = NewIdleMonitor(lines, _ => Task.FromResult<string?>(UncheckedBuild));
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        await WaitUntil(() => monitor.Session.Build == UncheckedBuild, "the build to reach the session", lines);
+        return monitor;
+    }
+
+    [Fact]
+    public async Task The_sampler_says_an_unchecked_build_once_without_interrupting_and_logs_it()
+    {
+        // The notice is background news: it goes through Announce and never cuts off what the pilot is listening to. The
+        // same text goes to the channel's log, so that a check in the sim can measure that it spoke without needing ears.
+        var lines = new Lines();
+        using FenixChannelMonitor monitor = await MonitorOnAnUncheckedBuild(lines);
+        var sampler = new Sampler(monitor);
+
+        sampler.Tick(1_000);
+
+        Assert.Equal(new[] { UncheckedSentence }, sampler.Speech.All);
+        Assert.Empty(sampler.Speech.Interrupts);
+        Assert.Equal(new[] { "session notice: " + UncheckedSentence }, lines.Starting("session notice"));
+
+        // The next tick finds the notice spent: no second line in either place.
+        sampler.Tick(1_100);
+
+        Assert.Equal(new[] { UncheckedSentence }, sampler.Speech.All);
+        Assert.Single(lines.Starting("session notice"));
+    }
+
+    [Fact]
+    public async Task The_sampler_waits_while_the_announcer_is_suppressed()
+    {
+        // A real announcer drops the line while it is suppressed, and the notice is spent when it hands its text out, so
+        // asking now would spend the load's one notice unheard. SpeechCapture records whatever Announce is given, so a
+        // sampler that spoke into the suppression shows here. The notice stays due and speaks on the next free tick.
+        var lines = new Lines();
+        using FenixChannelMonitor monitor = await MonitorOnAnUncheckedBuild(lines);
+        var sampler = new Sampler(monitor);
+        sampler.Speech.Suppressed = true;
+
+        sampler.Tick(1_000);
+        sampler.Tick(1_100);
+
+        Assert.Empty(sampler.Speech.All);
+        Assert.Empty(lines.Starting("session notice"));
+
+        sampler.Speech.Suppressed = false;
+        sampler.Tick(1_200);
+
+        Assert.Equal(new[] { UncheckedSentence }, sampler.Speech.All);
+        Assert.Single(lines.Starting("session notice"));
+    }
+
+    [Fact]
+    public void The_sampler_says_nothing_with_no_data_while_the_variant_is_unknown()
+    {
+        // The sim's main menu: the monitor has started with the first sim update, nothing answers, and no Fenix has
+        // published its config. 70 s of that is no news: a notice now would be false, and would spend the one the load has.
+        var lines = new Lines();
+        using FenixChannelMonitor monitor = NewIdleMonitor(lines);
+        var sampler = new Sampler(monitor);
+        Assert.Equal(FenixAircraftType.Unknown, sampler.Definition.Variant.Type);
+
+        sampler.Tick(0);
+        sampler.Tick(70_000);
+
+        Assert.Empty(sampler.Speech.All);
+        Assert.Empty(lines.Starting("session notice"));
+    }
+
+    [Fact]
+    public void The_sampler_counts_the_minute_from_the_variant_becoming_known()
+    {
+        // The Fenix being ready is the definition's own word on it: the config reading that makes its variant known. The
+        // channel then has a minute to send data, down to the last millisecond, and a silent one is told.
+        var lines = new Lines();
+        using FenixChannelMonitor monitor = NewIdleMonitor(lines);
+        var sampler = new Sampler(monitor);
+        sampler.Tick(70_000);
+
+        Assert.True(sampler.Definition.TryApplyConfigValue(FenixConfigVars.AircraftType, 3));
+        Assert.Equal(FenixAircraftType.A320, sampler.Definition.Variant.Type);
+
+        sampler.Tick(80_000);
+        sampler.Tick(80_000 + FenixChannelNotice.NoDataAfterMs - 1);
+        Assert.Empty(sampler.Speech.All);
+
+        sampler.Tick(80_000 + FenixChannelNotice.NoDataAfterMs);
+
+        Assert.Equal(new[] { UnknownSentence }, sampler.Speech.All);
+        Assert.Empty(sampler.Speech.Interrupts);
+        Assert.Equal(new[] { "session notice: " + UnknownSentence }, lines.Starting("session notice"));
     }
 
     // ---- The monitor's session view -------------------------------------------------------------

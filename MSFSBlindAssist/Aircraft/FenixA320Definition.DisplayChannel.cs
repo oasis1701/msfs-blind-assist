@@ -89,8 +89,8 @@ public partial class FenixA320Definition
     // Fenix is loaded: a minute with no data counted from there would speak a notice that is false, and spend the one
     // the load has (FenixChannelNotice.Sample says the rest). The notice returns its text once at most. It is spoken
     // with Announce, which does not interrupt, and written to the channel's log as "session notice: <text>", so that a
-    // check in the sim can measure whether it spoke without needing ears. Nothing else is logged.
-    private void SampleChannelNotice(Services.FenixChannelNotice notice, ChannelAnnounceContext ctx)
+    // check in the sim can measure whether it spoke without needing ears. Nothing else is logged. Internal for the tests.
+    internal void SampleChannelNotice(Services.FenixChannelNotice notice, ChannelAnnounceContext ctx)
     {
         // Announce drops its line while Suppressed, so asking now would spend the notice unheard: wait for a free tick.
         if (ctx.Announcer.Suppressed) return;
