@@ -44,12 +44,12 @@ internal readonly record struct FenixChannelSnapshot(
 /// </summary>
 /// <remarks>
 /// <para>Threads. A call's messages and states arrive on the client's pool threads, comparison values, the light
-/// switch and reads on the UI thread, and the tick on a pool thread. One lock guards the gate and every field that
-/// decides what the log says, so a verdict is always read from one whole state, and the log's lines come out in the
-/// order the gate saw its events. Nothing under the lock waits for anything. A message is decoded before the lock
-/// is taken and fed under it. The latest frame is swapped in whole with the RemoteData message it was decoded from,
-/// and a snapshot reads both under the same lock as the verdict, so a reader never sees half of a frame, a frame
-/// beside the message of another push, nor a frame beside a verdict the gate gave on another one.
+/// switch, the heartbeat and reads on the UI thread, and the tick on a pool thread. One lock guards the gate and
+/// every field that decides what the log says, so a verdict is always read from one whole state, and the log's lines
+/// come out in the order the gate saw its events. Nothing under the lock waits for anything. A message is decoded
+/// before the lock is taken and fed under it. The latest frame is swapped in whole with the RemoteData message it
+/// was decoded from, and a snapshot reads both under the same lock as the verdict, so a reader never sees half of a
+/// frame, a frame beside the message of another push, nor a frame beside a verdict the gate gave on another one.
 /// Nothing here throws at a caller, speaks or touches a control, as with <see cref="FenixDataService"/>; every
 /// clock reading is <see cref="Environment.TickCount64"/>, so the gate compares times from one source.</para>
 /// <para>Each connection of the data call does three things, in this order, under the lock. The gate starts fresh,
@@ -66,9 +66,17 @@ internal readonly record struct FenixChannelSnapshot(
 /// heartbeat set and no entries): the stream sends a heartbeat to say it is alive and a list when its list changes,
 /// so a heartbeat taken for a list would empty it at every beat, and every alert would seem to clear. A connection of
 /// the data call does not clear that list either: that stream sends only when its list changes.</para>
+/// <para>The stall guard. SimConnect's values reach <see cref="OnComparison"/> on the UI thread, so while that thread
+/// is blocked they are stale. The host calls <see cref="OnUiHeartbeat"/> from a timer on that thread, which stamps the
+/// monitor's clock into the gate as its newest heartbeat; while it is more than
+/// <see cref="FenixChannelTrust.StallGuardMs"/> old, the gate makes every comparison wait (see its remarks). Until
+/// the first heartbeat the guard is off, so a monitor with no host judges as it always did, and a new connection of
+/// the data call keeps the heartbeat, as it keeps SimConnect's values. A heartbeat that ends a stall longer than that
+/// writes one line for it to the log.</para>
 /// <para>The log. A line is written for each change of a call's state, for each build, for each change of a
 /// display's verdict (its Trusted, or the headline of its reason: the text before the first colon, so the
-/// numbers of a disagreement moving every second are one line), and, every 30th tick of a connection, for the
+/// numbers of a disagreement moving every second are one line), for each stall of the UI thread that ends
+/// ("UI thread stalled 1.6 s; comparisons waited"), and, every 30th tick of a connection, for the
 /// comparison pairs and SimConnect's deliveries since the line before. A feature that cannot decode a section of
 /// a push reports why with <see cref="ReportFeatureProblem"/>, and the line "&lt;feature&gt;: &lt;problem&gt;" is written
 /// once for each distinct problem. Dispose writes one more, "channel stopped",
@@ -78,7 +86,8 @@ internal readonly record struct FenixChannelSnapshot(
 /// differs from the last one written since a message arrived: otherwise each try would write two lines. The ECAM
 /// entries call has no such cycle (nothing limits its silence), so its "connected" is written with its headers, but
 /// its failures to answer follow the same rule. A refusal is written once, since it ends the channel (below). This
-/// class formats no number itself: the pairs and the deliveries come from the gate in the invariant culture.</para>
+/// class formats no number itself: the pairs, the deliveries and the length of a stall come from the gate in the
+/// invariant culture.</para>
 /// <para>A refusal of either call (grpc-status 7 or 16, or HTTP 401 or 403, which the client reports as
 /// <see cref="FenixChannelState.Refused"/>) ends the channel for the session ([FNX-21]), not only the call refused:
 /// the gate is told the channel is not answering, with the refusal as the reason, so every display reads "channel
@@ -309,6 +318,24 @@ internal sealed class FenixChannelMonitor : IDisposable
         {
             if (IsDisposed) return;
             _trust.OnLightTest(position == LightTestPosition);
+        }
+    }
+
+    /// <summary>
+    /// The UI thread ran its timer: stamps the monitor's clock into the gate as its newest heartbeat (see
+    /// <see cref="FenixChannelTrust.OnUiHeartbeat"/>), and writes the line the gate gives back when this heartbeat ends a
+    /// stall longer than <see cref="FenixChannelTrust.StallGuardMs"/>. Called by the host from a timer on the UI thread,
+    /// the thread the values of <see cref="OnComparison"/> arrive on. Until the first call the gate has no guard; after
+    /// <see cref="Dispose"/> it does nothing.
+    /// </summary>
+    public void OnUiHeartbeat()
+    {
+        lock (_lock)
+        {
+            if (IsDisposed) return;
+
+            string? stalled = _trust.OnUiHeartbeat(Now);
+            if (stalled is not null) Write(stalled);
         }
     }
 

@@ -61,14 +61,25 @@ internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDe
 /// channel's value now. Agreement marks the check passed, and a display whose check has never passed is not
 /// trusted.</para>
 /// <para>A disagreement untrusts its display, and stays in force until a message agrees or the channel
-/// reconnects. A value that is missing makes the check wait: SimConnect has not delivered it, an FD light reads
-/// neither 0 nor 1 or the annunciator light test is on (<see cref="OnLightTest"/>), a channel value is not finite,
-/// or the FOB text is not a whole number of KG or LBS. Waiting neither passes nor fails and does not end a
+/// reconnects. A check waits when it has no value it can compare: SimConnect has not delivered it, an FD light
+/// reads neither 0 nor 1 or the annunciator light test is on (<see cref="OnLightTest"/>), a channel value is not
+/// finite, the FOB text is not a whole number of KG or LBS, or the UI thread is stalled, so that SimConnect's
+/// values may be stale (the next paragraph). Waiting neither passes nor fails and does not end a
 /// disagreement, and a check that passed before with none in force still counts as passed. Once a disagreement
-/// has lasted <see cref="MismatchHoldMs"/> without a break it latches until reconnect. A waiting value is a break,
+/// has lasted <see cref="MismatchHoldMs"/> without a break it latches until reconnect. A wait is a break,
 /// and so is a stall of the stream (a data message more than <see cref="StreamStaleMs"/> after the one before it):
 /// either one only restarts that count. An unknown text code untrusts a display too but never latches: it is an
 /// exact condition, not a noisy one.</para>
+/// <para>The stall guard. SimConnect's values reach the gate from the UI thread, so while that thread is blocked they
+/// go stale and the channel's go on without them: a climb, a turn or a flight director press that the channel shows
+/// and the app's copy of SimConnect's value does not yet would read as a disagreement, and would latch after
+/// <see cref="MismatchHoldMs"/>. A timer on the UI thread gives the gate a heartbeat (<see cref="OnUiHeartbeat"/>),
+/// and while the newest one is more than <see cref="StallGuardMs"/> older than a data message every comparison on
+/// that message waits, as above: the hold clock restarts, nothing passes, nothing starts or ends a disagreement, a
+/// check that passed stays passed and a latch stays latched. The channel's values are still kept, so the first
+/// comparison after the stall is aligned as any other. Before the first heartbeat ever there is no guard, so a gate
+/// with no host judges as it always did, and a reconnect keeps the heartbeat as it keeps SimConnect's values:
+/// neither belongs to one connection.</para>
 /// <para>Not thread-safe: the monitor locks around every call.</para>
 /// </remarks>
 internal sealed class FenixChannelTrust
@@ -77,8 +88,9 @@ internal sealed class FenixChannelTrust
     public const long StreamStaleMs = 2_000;
 
     /// <summary>
-    /// How long a disagreement must last, without a break, to latch its display until reconnect. A waiting
-    /// value or a stall of the stream is a break: it restarts the count, and the disagreement stays in force.
+    /// How long a disagreement must last, without a break, to latch its display until reconnect. A wait (a
+    /// missing value, a stalled UI thread) or a stall of the stream is a break: it restarts the count, and the
+    /// disagreement stays in force.
     /// </summary>
     public const long MismatchHoldMs = 3_000;
 
@@ -88,6 +100,14 @@ internal sealed class FenixChannelTrust
     /// case. A value older than this has not changed: it is compared with the channel now.
     /// </summary>
     public const long ComparisonWindowMs = 1_500;
+
+    /// <summary>
+    /// How old the newest UI heartbeat (<see cref="OnUiHeartbeat"/>) may be before the UI thread counts as stalled and
+    /// every comparison waits; a heartbeat exactly this old is not a stall. SimConnect's values are delivered on that
+    /// thread, so for as long as it is blocked they are stale. For scale: the largest gap between two of SimConnect's
+    /// own deliveries in a whole flight was 1.1 s (measured on 2026-11-02).
+    /// </summary>
+    public const long StallGuardMs = 1_000;
 
     // The starting tolerances, pinned only after the in-sim measurements. A Fenix update never loosens one to
     // make a build pass (FNX-23).
@@ -155,6 +175,11 @@ internal sealed class FenixChannelTrust
     private long? _longestDeliveryGapMs;
     private long? _lastDeliveryMs;
 
+    // The UI thread's heartbeat (OnUiHeartbeat): the time of the newest one, null before the first ever. It says how
+    // stale SimConnect's values may be, which are delivered on that thread, and is kept across reconnects for the same
+    // reason: a stall does not end when the channel's connection does.
+    private long? _lastHeartbeatMs;
+
     // Everything below belongs to one connection: OnConnected replaces it.
     private bool _connected;
     private string? _disconnectReason;
@@ -186,8 +211,9 @@ internal sealed class FenixChannelTrust
 
     /// <summary>
     /// The data call is open. Starts the connection fresh: the build unknown, no data message yet, no display live,
-    /// no latch and no check passed. SimConnect's values stay. <paramref name="nowMs"/> goes unused: "no data yet"
-    /// is judged by whether a message has come, not by how long ago the call opened.
+    /// no latch and no check passed. SimConnect's values stay, and so does the UI thread's heartbeat
+    /// (<see cref="OnUiHeartbeat"/>). <paramref name="nowMs"/> goes unused: "no data yet" is judged by whether a message
+    /// has come, not by how long ago the call opened.
     /// </summary>
     public void OnConnected(long nowMs)
     {
@@ -222,7 +248,8 @@ internal sealed class FenixChannelTrust
 
     /// <summary>
     /// One decoded data message, received at <paramref name="nowMs"/>: refreshes the stream, latches a bad
-    /// shape, and runs each cross-check against SimConnect's latest values. A message that comes more than
+    /// shape, and runs each cross-check against SimConnect's latest values (each one waits while the UI thread is
+    /// stalled, see <see cref="OnUiHeartbeat"/>). A message that comes more than
     /// <see cref="StreamStaleMs"/> after the one before it first restarts every hold clock (a disagreement
     /// stays in force). A frame that is not <see cref="FenixChannelFrame.ShapesOk"/> gives no values: the latch
     /// already holds every display, and the defaults it carries would only disagree.
@@ -310,6 +337,31 @@ internal sealed class FenixChannelTrust
     public void OnLightTest(bool testing) => _lightTest = testing;
 
     /// <summary>
+    /// The UI thread ran its timer at <paramref name="nowMs"/>: its newest heartbeat. SimConnect's values reach the gate
+    /// on that thread, so while it is blocked they go stale and the channel's values go on without them, and a
+    /// comparison would disagree for no fault of the Fenix. While the newest heartbeat is more than
+    /// <see cref="StallGuardMs"/> older than a data message, every comparison on that message waits, as a missing value
+    /// does; a heartbeat exactly that old is not over the limit. Before the first heartbeat ever there is no guard, and a
+    /// reconnect keeps the heartbeat, as it keeps SimConnect's values. Returns the line for the log when this heartbeat
+    /// ends a stall longer than <see cref="StallGuardMs"/> (the gap since the heartbeat before it, in seconds to a
+    /// tenth, in the invariant culture as <see cref="DescribeSimDeliveries"/> writes its numbers: "UI thread stalled
+    /// 1.6 s; comparisons waited"), and null for every other heartbeat, so a stall gives one line, when it ends.
+    /// </summary>
+    public string? OnUiHeartbeat(long nowMs)
+    {
+        long? previousMs = _lastHeartbeatMs;
+        _lastHeartbeatMs = nowMs;
+
+        if (previousMs is long beforeMs && nowMs - beforeMs > StallGuardMs)
+        {
+            return "UI thread stalled " + ((nowMs - beforeMs) / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)
+                + " s; comparisons waited";
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Whether <paramref name="display"/> may be read at <paramref name="nowMs"/>, and the first reason it
     /// may not. A display the gate does not know is not trusted.
     /// </summary>
@@ -343,8 +395,10 @@ internal sealed class FenixChannelTrust
     /// the invariant culture. The arrival before the period's first is the previous period's last, so a stall that
     /// spans a call shows in the next line ("SimConnect: 1 value, longest gap 6.0 s"). "no gap" when the period has
     /// no arrival ("SimConnect: 0 values, no gap"), or its only arrival is the first ever ("SimConnect: 1 value, no
-    /// gap"). The gate treats an old SimConnect value as unchanged, so a long gap (a UI stall in a turn) could become
-    /// a false disagreement: this is how a flight measures it. A value is delivered only when it changes ([SIM-7]),
+    /// gap"). The gate treats an old SimConnect value as unchanged, so a long gap could become a false disagreement: a
+    /// UI stall in a turn (the stall guard waits out one longer than <see cref="StallGuardMs"/>), or SimConnect itself
+    /// delivering late (nothing waits that out). This line is how a flight measures it. A value is delivered only when
+    /// it changes ([SIM-7]),
     /// so a long gap is a stall only while a compared value is moving (the heading in a turn, the fuel with the
     /// engines running); parked, or cold and dark, long gaps are normal. Side effect: each call starts a new period,
     /// so the next call counts only what arrives after this one; the time of the last arrival carries over.
@@ -502,7 +556,7 @@ internal sealed class FenixChannelTrust
         double sim = _sim[(int)kind];
         double channel = ChannelAt(check, _channel[(int)kind], _simAtMs[(int)kind], nowMs);
 
-        if (IsWaiting(kind, channel, sim))
+        if (IsWaiting(kind, channel, sim, nowMs))
         {
             check.HoldStartMs = null;   // a break in the run; a disagreement in force stays in force
             return;
@@ -563,12 +617,19 @@ internal sealed class FenixChannelTrust
         check.Recent.RemoveRange(0, stale);
     }
 
-    // Either value is missing (SimConnect has not delivered it, or a value is not finite), or an FD light says
-    // nothing about its flight director: it reads anything but exactly 0 or 1, or the annunciator light test is on,
-    // which lights both lamps whatever the FD buttons say.
-    private bool IsWaiting(FenixComparison kind, double channel, double sim) =>
-        !double.IsFinite(channel) || !double.IsFinite(sim)
+    // The UI thread is stalled, whatever the values say: SimConnect's are delivered on it, so for as long as it is
+    // blocked they are stale, and the channel's have moved on without them. Or either value is missing (SimConnect has
+    // not delivered it, or a value is not finite), or an FD light says nothing about its flight director: it reads
+    // anything but exactly 0 or 1, or the annunciator light test is on, which lights both lamps whatever the FD
+    // buttons say.
+    private bool IsWaiting(FenixComparison kind, double channel, double sim, long nowMs) =>
+        UiStalled(nowMs)
+        || !double.IsFinite(channel) || !double.IsFinite(sim)
         || (kind is FenixComparison.FdLightCapt or FenixComparison.FdLightFo && (_lightTest || (sim != 0 && sim != 1)));
+
+    // The newest heartbeat is more than StallGuardMs older than nowMs. False before the first heartbeat ever: a gate
+    // with no host has no guard.
+    private bool UiStalled(long nowMs) => _lastHeartbeatMs is long beatMs && nowMs - beatMs > StallGuardMs;
 
     // Both values present, and within the tolerance.
     private static bool Agrees(FenixComparison kind, double channel, double sim) => kind switch
