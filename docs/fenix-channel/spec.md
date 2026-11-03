@@ -22,7 +22,8 @@ In scope:
 - **The DCDU**: the "DCDU Left" panel is removed and replaced by a DCDU window on input Ctrl+Shift+D.
 
 Out of scope: the MCDU (it keeps its 8083 window), any write on the channel ([FNX-21]), the first officer's ND, the
-weather radar and terrain images (the channel sends them as pictures: the ND says only whether each is on), and every
+weather radar and terrain images (the channel sends them as pictures: the ND window reads only the labels and numbers
+the ND prints for them, as the PMDG 737's does), and every
 aircraft other than the Fenix.
 
 ## 2. Decisions
@@ -103,15 +104,17 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
     drawn, with "flashing" while they flash (no row when none is drawn, as for every other row); heading and track;
     radio altitude, minimums and the ILS lines when shown; flags and messages.
   - ND (plan 03; rows 46-54): the captain's whole ND, so that a pilot can fly with it and also learn what the glass
-    shows. Each row starts with its place on the screen, as the PMDG 737's ND window's do ("Top left:", "Map:",
-    "Centre:"), and says the item as drawn: its symbol and color in words (2.6) and the label the ND prints. In screen
-    order:
+    shows. The window lists only what the ND draws, as the PMDG 737's ND window does: nothing the glass does not show,
+    and nothing it shows merged or dropped. Each row starts with its place on the screen, as the 737's do ("Top left:",
+    "Map:", "Centre:"), and says the item as drawn: its symbol and color in words (2.6) and the label the ND prints. In
+    screen order:
     - Header: "Captain ND: <mode>, range <n>"; top left, the ground speed, TAS and wind lines; top centre, the compass,
       with the heading and where the track diamond sits; top right, the next-waypoint lines, or in ROSE LS and ROSE VOR
       the LS or VOR block (ident, frequency, course, DME).
     - The map: the route's waypoints in route order, each with its distance, its degrees off the top of the screen and
-      its constraint; the markers (T/C, T/D, DECEL and the others) in route order; holds after their fix; where the
-      route leaves the screen, and a discontinuity; the temporary flight plan while it is pending; the heading bug; the
+      its constraint as printed; the markers (T/C, T/D, DECEL and the others) in route order; holds after their fix;
+      where the route line leaves the screen; a discontinuity only as the ND draws it (nothing across a gap the line
+      leaves, as on the 737); the temporary flight plan while it is pending; the heading bug; the
       range rings; the FIX INFO rings and radials; navaids, fixes, airports and NDBs nearest first, as the option
       buttons select them; traffic nearest first, with its relative altitude and whether it climbs or descends. In PLAN
       a place is the distance and compass point from the centre waypoint ("5.0 NM north-west of VAKSU").
@@ -439,7 +442,7 @@ Hadi claimed that day. They change sections 1, 2.1, 2.2, 2.4, 2.6, 2.7, 3.3 and 
 
 | # | Plan | Question | Recommendation | Answer |
 | --- | --- | --- | --- | --- |
-| 46 | 03 | How much of the ND is read? | everything the captain's ND draws whose data the channel carries | The whole ND, its map included; the weather radar and terrain images stay out (pictures: only on or off is said); the first officer's ND is not read |
+| 46 | 03 | How much of the ND is read? | everything the captain's ND draws whose data the channel carries | The whole ND, its map included, listing only what the ND draws (Hadi, 2026-11-03: "the ND window should not list something that is not on the ND", as the PMDG 737's ND window); the weather radar and terrain images stay out (pictures: only the labels and numbers the ND prints for them are read); the first officer's ND is not read |
 | 47 | 03 | How does plan 03 ship? | in parts, each with its switch commit | All at once: one switch commit at the end (the branch reaches pilots only when every plan is done) |
 | 48 | 03, 10 | Who decodes the route? | plan 03 | Plan 03, its route decoder first so plan 10 can start soon; plan 10 builds D and Shift+D on it |
 | 49 | 03 | The EFIS controls in the ND window | Mode and Range combos, the CSTR, WPT, VOR.D, NDB, ARPT and LS buttons with their state | As recommended |
