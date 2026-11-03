@@ -467,23 +467,39 @@ With MSFSBA built from this branch and the Fenix on a checked build. Record each
 
 ## Handoff to plan 12
 
-(Filled in while working. Expected:)
-
 - **For a pilot:** `guide/airbus-aircraft.md`, "Fenix A320 CEO": the session notice, what it means, and that a Fenix
-  update can turn the channel off until the app has checked the new build; the five Ctrl+M rows exist (each feature
-  plan describes its own). No hotkey. Changelog: none of its own (the features' fragments cover it), or an `internal`
-  one if plan 12 wants the groundwork named.
+  update can turn the channel off until the app has checked the new build; the five Ctrl+M rows exist, "E/WD memos"
+  starting muted (each feature plan describes its own). No hotkey. Changelog: none of its own (the features' fragments
+  cover it), or an `internal` one if plan 12 wants the groundwork named. The rows are visible from plan 01 on while
+  nothing reads them, so the branch must not ship before plans 08, 09 and 11.
 - **Rules:** FNX-22's full text gains the ND, ISIS and DCDU and their live conditions, the stall guard, the snapshot's
-  connection number and the heartbeat rule; FNX-24's full text: channel text in windows and announcements is spoken
-  only through `FenixChannelSpeech` (`Line(parts)` for text drawn in pieces), stretches merging by color alone, and
-  key readouts (spec 2.5) speak plain values parsed out of channel text, never colors; Task 12's answer on text before a
-  color letter; FNX-23's full text: field numbers live in `FenixChannelFields.cs` and its feature partials, every one
-  re-checked after a Fenix update. Proposed line: `- [FNX-?] Every Fenix channel announcer checks its
+  connection number and the heartbeat rule, and that the channel's DCDU unit reads trusted on an airframe with no DCDU
+  (the feature gates on `FenixVariant`); FNX-24's full text: channel text in windows and announcements is spoken only
+  through `FenixChannelSpeech` (`Line(parts)` for text drawn in pieces), stretches merging by color alone, a part's
+  leading colorless run spoken white when the part holds a color letter (checked: every line starts in the color of
+  `w`), a part with none colorless, and key readouts (spec 2.5) speak plain values parsed out of channel text, never
+  colors; FNX-23's full text: field numbers live in `FenixChannelFields.cs` and its feature partials, every one
+  re-checked after a Fenix update. `docs/invariants/fenix-channel.md` lines 16, 42-45, 50 and 55 still name
+  `FenixChannelReads` or "three displays". Proposed line: `- [FNX-?] Every Fenix channel announcer checks its
   FenixChannelAnnouncementRows key before speaking, keeps tracking while muted (an unmute replays nothing), and takes
   its first reading after a start, a trust gap or a new FenixChannelSnapshot.Connection number silently. Full:
   docs/invariants/fenix-channel.md#fnx-?`
 - **Requests for frozen files:** `MainForm.Hotkeys.cs`, `case HotkeyAction.ShowDCDU`: the sentence for other aircraft
-  names the Fenix once plan 11's seam lands (plan 11 lists it too: plan 12 applies it once).
+  names the Fenix once plan 11's seam lands (plan 11 lists it too: plan 12 applies it once). `00-index.md`'s ownership
+  table: `Forms/Fenix/FenixWindowRegistry.Channel.cs` is plan 01's, then frozen (it holds the six window seams' declarations,
+  so the rule glob is alive). `docs/a32nx.md`: the fold (plan 12) drops "No feature reads the channel yet", "no
+  implementation yet" and "not yet confirmed in the sim".
+- **For other plans:** 03: the letter `d` only moves the drawing position right and draws nothing (seen in the code that
+  draws the text; `FenixChannelTextTests` still uses it as an unknown letter, and goes with `FenixChannelText.cs`). 04:
+  `SingleEngineState` field 31 is `EiuFault` on 3.0.0.7613, not `FadecFault`. 09: its reason "the gate latches on it
+  anyway" is not always true (a list, a wrong-shaped message, a bare heartbeat and a reconnect give a trusted verdict
+  beside `Entries` with `ShapesOk` false); its rule to ignore such a message is right. 11: the verdict says "DCDU trusted"
+  on an airframe with no DCDU (measured), so its key and list entry check `FenixVariant` first, as it plans; `ShowDCDU` is
+  not in `offlineActions`, so before the sim connects the key says "Not connected to simulator" while the Fenix windows
+  list still opens. 05, 06: `A_page_with_no_plan_yet_gives_null` adjusts itself, so neither plan edits it; the first
+  seam implementations must build with no signature warning. 08, 09, 11: `SettingsRedirect` is what a muted-row test
+  uses. 02 and later: F5 in a channel window refreshes without speaking (the base has no announcer); say if a window
+  needs more.
 - **Also seen on:** none.
 
 ## Execution record
@@ -496,7 +512,7 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Started:** 2026-11-03, `feat/fenix-display-channel` at f0d012c63 (the plan set's last commit)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:** 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 done.
+- **Tasks:** 0-11 done.
 - **Waiting on the owner:**
 - **In-sim results:**
 - **Changed from the plan:**
