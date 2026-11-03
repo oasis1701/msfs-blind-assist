@@ -470,13 +470,11 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
 
 ## Handoff to plan 12
 
-(Completed in Task 7; these are the drafts.)
-
 - **What changes for a pilot.** `guide/airbus-aircraft.md`, "Fenix A320 CEO": in "Special windows", Alt+P now opens a
-  live "PFD display" window of the captain's PFD while the channel can read it (its rows, F5, Escape, the "PFD" entry in
-  the Fenix windows list), and otherwise gives the AI read of the first officer's PFD as before; in "Aircraft-specific
-  hotkeys and callouts", Shift+1 to Shift+6 now read green dot, S, F, VLS, alpha prot or VSW, and VFE next, so they
-  leave the list of keys "the Fenix does not offer". `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt`: "Alt+P
+  live "PFD display" window of the captain's PFD while the channel can read it (its rows, flight director bars among
+  them, F5, Escape, the "PFD" entry in the Fenix windows list), and otherwise gives the AI read of the first officer's
+  PFD as before; in "Aircraft-specific hotkeys and callouts", Shift+1 to Shift+6 now read green dot, S, F, VLS, alpha
+  prot or VSW, and VFE next, so they leave the list of keys "the Fenix does not offer". `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt`: "Alt+P
   Read PFD: a live window of the captain's PFD when the display channel can read it, else the AI read", and output
   "Shift+1 Green dot", "Shift+2 S speed", "Shift+3 F speed", "Shift+4 VLS", "Shift+5 Alpha prot or VSW", "Shift+6 VFE
   next". Changelog, `feature`: "Fenix A320: Alt+P opens a live window of the captain's PFD, read from the Fenix's own
@@ -484,18 +482,77 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
   alpha prot or VSW, and VFE next."
 - **Proposed rules** (`.claude/rules/fenix-channel.md`):
   - `- [FNX-?] The Fenix PFD window and Shift+1-6 show a value only while the captain's PFD draws it: an instrument whose availability member (field 46) reads false shows its flag instead (the gate stays trusted then, since 194 and 197 still agree), and a speed that is NaN or absent is "not available", never 0. Full: docs/invariants/fenix-channel.md#fnx-?`
-    Full text: Task 2 Step 3's ADR and IR measurements; protobuf-net leaves a 0 out, and 0 is no speed.
+    Full text: on 2026-11-03 (3.0.0.7613, A321 IAE) ADR 1 off cleared 46.2.1, 46.2.2, 46.2.3 and 46.8 and the PFD drew
+    red SPD, ALT and V/S (the Mach line became `rMACH`); IR 1 off cleared 46.1.1, 46.1.2 and 46.1.3, left 46.8 set, and
+    drew red ATT and HDG; aligning at power-up clears 46.1.2 alone (red HDG). The PFD stayed trusted in both failures,
+    194.1 staying 345.47 and 197 agreeing, so the flag rows are what tell the pilot. protobuf-net leaves a 0 out, and 0
+    is no speed: NaN and absent are both "not available".
   - `- [FNX-?] The Fenix PFD's baro reference comes from the captain's EFIS entry (field 1, first element: QnhStd, QnhInches, Qnh, QnhInch; an absent Qnh is its default 1013, never "not shown"; QFE never read as QNH), never from the qnhCapt text (105), which carries an unknown x in flight at QNH. Full: docs/invariants/fenix-channel.md#fnx-?`
-    Full text: Task 2 Step 1's comparison with the Fenix's own baro L:vars and KOHLSMAN, and QnhInch for inches.
+    Full text: the six baro states of 2026-11-03 against the Fenix's own baro L:vars: hPa 1013 leaves 1.14 absent (the
+    box draws QNH 1013); hPa 1029 sends 1.14 1029; inches send 1.11 with 1.15 (29.9139 drawn QNH 29.91, 29.80 and 29.92
+    as set); STD sends 1.10 and 1.11. QFE (1.7) and the preselect (1.12) were never set, so QFE and an inch reading
+    with 1.15 absent read ", baro not read"; STD outranks QFE. The text (105) is `QNH c29.91`, `QNH c1029` or
+    `  fcSTDyf` on the ground and carries `x` in flight at QNH ([FNX-24]).
   - `- [FNX-?] A PFD flag joins the Fenix PFD window (FenixChannelPfdRows' flag rows) only after a capture in the sim showed what the PFD draws for it; an unmeasured flag is left out, never named by analogy with the real A320. Full: docs/invariants/fenix-channel.md#fnx-?`
-    Full text: the flags measured and those left out (Task 3 Step 6).
-  - `- [FNX-?] The Fenix PFD window's flight director row (FenixChannelPfdRows.FlightDirectorRow, field 110 from the frame) speaks a bar only while it is a number, FdOnCapt is set, the attitude is shown and no inhibit flag covers it; NaN is a bar not drawn, an absent bar (0) is centered, with no bar drawn there is no row, and FdFlash adds "flashing". Full: docs/invariants/fenix-channel.md#fnx-?`
-    Full text: Task 2 Step 5's and Task 3 Step 7's measurements (the unit, the signs, the yaw bar, TRK/FPA, each flag's
-    effect, when the flash is set); the row and its "flashing" were added on 2026-11-02 by Hadi, with Robin's
-    agreement.
-- **Flags not measured:** each member of fields 93, 94, 96, 114, 115, 118, 120 and 122, and of 110.8 to 110.12, that
-  Tasks 2 and 3 did not measure, so the window never shows it; plan 12 lists them as follow-ups.
+    Full text: measured and drawn (2026-11-03): 46.1.1 ATT, 46.1.2 HDG, 46.2.1 SPD, 46.2.2 ALT, 46.8 V/S; 122.3 Metric
+    (exactly while "-40 M" is drawn; `Efis.Meters` 1.5 is never set); 205 `dhMessage` (amber "DH" from a radio altitude
+    of 200); 122.6 and 122.7 follow STD. 122.8 `AltAmber` (the altitude readout amber, 12:49:07.4 to 12:49:59.3) and 206
+    `dhMessageFlashing` are measured but have no words, so no row. The ones left out are in "Flags not measured".
+  - `- [FNX-?] The Fenix PFD's flight director row (FenixChannelPfdRows.FlightDirectorRow) speaks each bar where it is drawn, commanded minus actual (110.1 minus pitch, 110.3 minus bank), positive up and right; the yaw bar (110.4 minus heading) only while RollGuidance (110.8) is set; no row with no bar drawn or in TRK/FPA; FdFlash (110.9) adds "flashing". Full: docs/invariants/fenix-channel.md#fnx-?`
+    Full text: 110.1, 110.3 and 110.4 are the commanded pitch, bank and heading, not positions (Robin ruled on
+    2026-11-03 that the row says where the bars are). Level at FL120 110.1 was 2.79 with a pitch of 2.78, bars
+    centered; a turn gave 110.3 25.0 with a bank of 16.8, the roll bar drawn right (-25.0 with -20.1, left); the
+    take-off roll 110.1 9.5 with a pitch of 0.46, the bar 9 degrees up; V/S -1000 110.1 0.82 with 1.93. 110.5 and 110.6
+    follow the FD buttons (no captain's bars while 110.5 is false, numbers or not), and 110.1 and 110.3 are NaN on the
+    ground with no mode. The yaw bar (a green rectangle) is drawn exactly while 110.8 is set: the take-off roll and
+    from a radio altitude of 40 ft to the end of the roll-out, at 110.4 minus the magnetic heading (67.39 with 64.91
+    drew it right); 110.4 alone says nothing (a number in cruise with an ILS tuned, no bar; NaN for the last 3 s of a
+    drawn bar). 110.11 and 110.12 together at touchdown remove the pitch and roll bars and leave the yaw bar; 110.10
+    was never set. TRK/FPA (110.7) draws the bird and its flight path director instead, with 110.1 and 110.3 still
+    numbers. 110.9 is set for 9.6 s, 5 s after a V/S reversion (OP CLB, AP1 on, FCU altitude turned below the
+    aircraft: 12:13:25.4 to 12:13:34.6 and 12:14:55.7 to 12:15:04.9), the bars on and off about every 0.5 s. The row and
+    its "flashing" were added on 2026-11-02 by Hadi, with Robin's agreement.
+  - `- [FNX-?] No Fenix channel code reads RemoteData field 155 as the approach minimum: it is not the setting (700.0 with BARO 700, but -701.76 and -124.87 with RADIO 200, moving with the aircraft). The minimum is the FMA's Approach column (slot 13, "RADIO 200"), spoken through FenixChannelSpeech. Full: docs/invariants/fenix-channel.md#fnx-?`
+    Full text: 155 is a fixed64, absent until a minimum is set. It read 700.0 with BARO 700; with RADIO 200 it read
+    -701.76 at FL150 and -124.87 at a radio altitude of 200 and a baro altitude of 518, moving with the aircraft, and
+    it is absent with none set. The Fenix's own slot 13 reads `BAROdc⠀  700` or `RADIOdc⠀⠀ 200`, drawn "RADIO 200".
+    The plan expected a minimums row; it was dropped, and the field number is not in `FenixChannelFields`.
+- **`FNX-24`'s full text** gains `p` and `d` as known letters that are never spoken (Robin, 2026-11-03). It says the
+  parser knows twelve letters, which becomes fourteen; its list of where each letter was seen gains `p` and `d`; and its
+  sentence "A `d` was seen only in the ND's GS/TAS block, meaning unknown, and is not in the list" goes. `p` was seen in
+  FMA slot 1, `bgpV/Scp+1800`, for the 10 s of each flash of the flight director bars (12:13:25.8 to 12:13:35.8 and
+  12:14:55.8 to 12:15:05.8, drawn through both phases of the blink), and in the E/WD memo `pgIR IN ALIGN 1 MN`
+  (11:25:47). `d` was seen in FMA slot 13 for as long as a minimum is shown (12:17:03.8 to 12:49:59.8) and in the ND's
+  GS/TAS block; the program that draws the text only moves the drawing position right for it. While each was an unknown
+  letter it made its display untrusted ("PFD not trusted: unknown code 'p' in the FMA", "E/WD not trusted"). Neither
+  changes a run's color or closes it, and no run keeps them, so no read can speak one. The rule's line names no letters
+  and needs no change. Pinned by `FenixChannelTextTests` (`The_p_letter_is_known_and_draws_nothing`,
+  `Speech_reads_the_lines_with_p_and_d`).
+- **Flags not measured:** 93, 94, 96, 114 (114.1 was set once, cold and dark, with no PFD drawn), 115 and 120, never
+  seen set; 118.1 and 118.2 (`FdFlag`, `FdFlagFlash`), set for 2 s at 12:50:02.5 with the aircraft stopped on the
+  runway and not captured; of 122, the members never seen set (122.1, 122.2, 122.4 and 122.5); of 110, 110.10 (never
+  set) and 110.11 and 110.12 (set only together, at touchdown). The window shows none of them; plan 12 lists them as
+  follow-ups. (122.8 is measured and has no words, so it is not a gap.)
 - **Requests for frozen files:** none.
+- **For other plans:**
+  - 12 and the owner, with 04 and 09 told: the E/WD's fuel check latched on the landing roll, "E/WD not trusted: fuel
+    disagrees: channel 1,715 kg, sim 1,609 kg" at 12:49:48.8 with the ground speed falling, then "fuel latched until
+    reconnect" at 12:49:51.8, and the E/WD stayed untrusted until the app ended. That is 106 kg between the Fenix's FOB
+    and the sim's total during heavy deceleration. The gate is plan 01's and frozen, so plan 12 and the owner decide;
+    plans 04 and 09 should expect an E/WD that is untrusted from the landing roll on.
+  - 12, with 08: each press of an FD button makes the PFD "not trusted: FD captain disagrees" for about a second
+    (11:28:27.9 to 11:28:28.9, three times), because the lamp changes at 1 Hz and the channel at once. The gate behaves
+    as designed, and the PFD window shows its status row for that second. Plan 08's announcer, under plan 01's proposed
+    rule (the first reading after a trust gap is silent), would then not announce the FD change the press itself made
+    in slot 9.
+  - 08: FMA text this plan measured. The Approach column on the ILS held slot 3 `CAT3`, slot 8 `SINGLE` then `DUAL`
+    and slot 13 `BAROdc⠀  700` or `RADIOdc⠀⠀ 200` (drawn "RADIO 200"), so `FenixChannelFmaLayout`'s remark that the
+    Approach column was never seen is out of date. Slot 9 is `w1   2`, `w1   -`, `w-   2` or blank, drawn "1 FD 2",
+    "1 FD -", "- FD 2", and the PFD window words it as drawn. Slot 11 `CHECK SPEED MODE` has no color letter. Slot 1
+    reads `bgpV/Scp+1800` for the 10 s of the FD flash that follows a reversion to V/S by 5 s.
+  - 03: `d` is known now (Robin's ruling), so the steps about `d` shrink to checking the ND's own line.
+  - 04 and 11: `p` may appear in other lines than the two seen (the FMA and an E/WD memo). It is known and never spoken,
+    so a reader needs no case for it.
 - **Also seen on:** none.
 
 ## Execution record
