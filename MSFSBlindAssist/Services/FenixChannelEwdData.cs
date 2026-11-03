@@ -2,7 +2,10 @@ using static MSFSBlindAssist.Services.FenixChannelFields;
 
 namespace MSFSBlindAssist.Services;
 
-/// <summary>One engine as the E/WD draws it, from a <see cref="SingleEngineState"/>.</summary>
+/// <summary>
+/// One engine as the E/WD draws it, from a <see cref="SingleEngineState"/>. A value may be NaN when the display does not
+/// draw it, and a composer must not speak it as a number.
+/// </summary>
 /// <param name="N1">The N1 (2); 0 when absent.</param>
 /// <param name="N2">The N2 (3); 0 when absent.</param>
 /// <param name="FuelFlow">The fuel flow (Ff, 4), in the weight unit of <see cref="FenixEwdData.IsKg"/> per hour; 0 when absent.</param>

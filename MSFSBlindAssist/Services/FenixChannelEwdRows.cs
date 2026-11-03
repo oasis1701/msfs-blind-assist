@@ -30,8 +30,10 @@ internal static class FenixChannelEwdRows
     // What the display draws for a number it cannot: its crosses.
     private const string Cross = "XX";
 
-    // A value of this size or more is no engine value, and it is where the decimal arithmetic of Truncated would near
-    // its own limit (about 7.9e28, before the scaling). Read as a value the display cannot draw.
+    // A value of this size or more is no engine value, and Truncated reads it as one the display cannot draw. The bound is
+    // 1e15 because (decimal)double keeps only 15 significant digits, so a larger value no longer holds the decimals asked
+    // for. It also leaves a wide margin for the multiply by the scale: decimal holds about 7.9e28, against 1e15 times the
+    // 10 or 1000 the callers scale by.
     private const double TruncatableBelow = 1e15;
 
     private const string EnginesUnread = "Engines: not available, engine type not read yet";

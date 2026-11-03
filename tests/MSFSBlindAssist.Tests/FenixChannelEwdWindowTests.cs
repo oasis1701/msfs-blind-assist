@@ -10,9 +10,10 @@
 // "Fenix E/WD" and its list is named "E/WD display". It is a class of its own, since Fenix windows are tracked one for
 // each type. The engine family is not in the channel: the window asks for it at each refresh, on the UI thread, and the
 // definition's factory answers with the loaded Fenix's. A problem the composer reports goes to the channel's log under
-// "E/WD window", once for each distinct line. The window is in the Fenix windows list once, as "E/WD", and Alt+E reaches
-// it only through OpenChannelWindow, which opens it while the E/WD is trusted at the press and otherwise leaves the key to
-// its AI read; the key's seam is a partial method a test cannot reach, so its source is read.
+// the display's name, "E/WD", as one it throws does, once for each distinct line. The window is in the Fenix windows list
+// once, as "E/WD", and Alt+E reaches it only through OpenChannelWindow, which opens it while the E/WD is trusted at the
+// press and otherwise leaves the key to its AI read; the key's seam is a partial method a test cannot reach, so its
+// source is read.
 
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
@@ -211,7 +212,7 @@ public class FenixChannelEwdWindowTests
     }
 
     [Fact]
-    public void A_window_problem_is_logged_under_the_ewd_window_once()
+    public void A_window_problem_is_logged_under_the_display_name_once()
     {
         // "x" is a format letter the app does not know. The gate does not look in the flap text, so the E/WD stays
         // trusted and the composer is the one that finds it: the window shows the problem and the monitor logs it once
@@ -224,7 +225,7 @@ public class FenixChannelEwdWindowTests
         form.RefreshNow();
 
         Assert.Equal(new[] { "E/WD: not available, unknown code 'x' in the flap text" }, ItemsOf(form));
-        Assert.Single(lines.All, line => line == "E/WD window: unknown code 'x' in the flap text");
+        Assert.Single(lines.All, line => line == "E/WD: unknown code 'x' in the flap text");
     }
 
     [Fact]

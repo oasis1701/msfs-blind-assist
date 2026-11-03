@@ -36,7 +36,8 @@ public class FenixChannelEwdRowsTests
         return engine;
     }
 
-    // The cruise values of the two engines (Task 2's).
+    // The cruise values of the two engines: N1 near 81, N2 near 86, a fuel flow of 1320, an EPR near 1.41 and an EGT near
+    // 377 and 378.
     private static FenixChannelProtoWriter LeftCruise() => Engine(81.0801, 86.1461, 1320, 1.4082, 376.7972);
 
     private static FenixChannelProtoWriter RightCruise() => Engine(81.2561, 86.3052, 1320, 1.407, 378.4421);
@@ -278,6 +279,19 @@ public class FenixChannelEwdRowsTests
             : FenixChannelEwdRows.Number(value, decimals);
 
         Assert.Equal(expected, shown);
+    }
+
+    [Fact]
+    public void The_rows_truncate_the_n2_and_round_the_fuel_flow()
+    {
+        // The two values nothing else separates, through the rows: the N2 58.7576 reads 58.7 (rounding it would read 58.8)
+        // and the fuel flow 899.6 reads 900 (truncating it would read 899).
+        FenixChannelSnapshot snapshot = SnapshotOf(Remote(
+            Engine(n2: 58.7576, ff: 899.6), Engine(n2: 58.7576, ff: 899.6), []));
+
+        Assert.Equal(
+            new[] { "N1 %: 0.0, 0.0", "EGT °C: 0, 0", "N2 %: 58.7, 58.7", "FF KG/H: 900, 900" },
+            RowsOf(snapshot, FenixEngineFamily.Cfm56));
     }
 
     [Fact]

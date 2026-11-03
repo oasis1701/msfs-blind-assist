@@ -7,6 +7,7 @@ internal static partial class FenixChannelFields
 {
     public static partial class Remote
     {
+        // Measured on 3.0.0.7613 (2026-11-03): the number and the shape (a string) were checked against the installed build.
         public const int FlapEcamState = 152;       // flapEcamState: string (channel text), the E/WD's flap and slat text
     }
 }

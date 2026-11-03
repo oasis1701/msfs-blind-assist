@@ -18,7 +18,7 @@ internal sealed class FenixChannelEwdForm : FenixChannelDisplayForm
     public FenixChannelEwdForm(FenixChannelMonitor monitor, Func<Aircraft.FenixEngineFamily> engines)
         : base(FenixChannelEwdRows.DisplayName, FenixChannelDisplay.Ewd, monitor,
             snapshot => FenixChannelEwdRows.Compose(
-                snapshot, engines(), problem => monitor.ReportFeatureProblem("E/WD window", problem)))
+                snapshot, engines(), problem => monitor.ReportFeatureProblem(FenixChannelEwdRows.DisplayName, problem)))
     {
         // The base asks the composer only once the window starts, so the check comes in time.
         ArgumentNullException.ThrowIfNull(engines);
