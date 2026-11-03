@@ -39,7 +39,7 @@ set). Two more, used since this evidence: `AltStatusData.Metric` 122.3 (varint b
 - **On the ground:** V1, VR, V2 numbers once entered (141, 143, 147 drawn as the off-scale "141"), F, S, green dot and every 125 member NaN.
   VFE next by lever 0 to FULL: 235, 215, 195, 190, NaN. The tape stops at 30 knots; 28.5 is absent at rest and about 7 knots in the wind.
 - **113:** the target is drawn with 113.5 true: "100" cyan at power-up, 113.4 100. Speed push: 113.9 set some seconds later, "147" magenta, 113.4 147 (V2).
-- **In the air (EDDF, F 151, S 194):** V1, VR and V2 are numbers until lift-off's phase change (12:01:41), then F 151 with VFE next 195; S 194 with 215; green dot 213.6 with 235. Approach: S 190 with 215; F 148 with 195; F 148 with 190; FULL all NaN. Each drawn on the tape as the captures show (124043, 124235, 124908).
+- **In the air (EDDF, F 151, S 194):** V1, VR and V2 are numbers (149, 158, 158) until lift-off's phase change (12:01:41), then F 151 with VFE next 195; S 194 with 215; green dot 213.6 with 235. Approach: S 190 with 215; F 148 with 195; F 148 with 190; FULL all NaN. Each drawn on the tape as the captures show (124043, 124235, 124908).
 - **125:** NaN on the ground; from lift-off VMAX 215, VLS 128, alpha prot 105.6 with flaps; clean at FL120 VMAX 280, VLS 206, alpha prot 179, each drawn. VSW NaN throughout (normal law).
 
 ## Air data flags (Task 2 Step 3): outcome A
@@ -54,7 +54,7 @@ The IR 1 press also sets 28.3 and 28.9 to the negated magnetic variation. A lett
 
 ## Texts (Task 2 Step 4, Task 3 Step 5)
 
-- **Mach:** blank on the ground, `g.469` at FL120, as drawn.
+- **Mach:** blank on the ground, `g.469` at FL120, as drawn. The Mach row flipped 42 times between 12:08 and 12:28 around M.48, and the PFD drew no Mach in capture 121631: the row follows the text the channel sends.
 - **Radio altitude:** `a0`, `a-1`, `a220`, amber as drawn; blank above 2,500 ft.
 - **LS information:** on the wire with LS on or off (the plan gates it on `Ls` either way); drawn with LS on only: `mIGWQ`, `m111.70`, `m1s.0l  scNM` ("1.0 NM").
 - **Approach labels 100, marker 117.1, LS flag 117.3:** blank through this whole flight, so their rows are unmeasured and only show if the channel sends text.
@@ -79,7 +79,7 @@ The arrow ends at 28.5 plus 98: 240.05 with -13.84 drew a tip at about 226. No a
 
 ## Deviations (Task 3 Step 5): positive is right and above
 
-82.1 +2.35: half diamond at the right end of the scale; +4.0 at a gate: the same. 82.2 +2.87: half diamond at the top; +1.18: diamond above center, climbing to it from below. NaN (82.2 on the ground): no diamond. The stock NAV CDI:1 and GSI:1 read 0: the Fenix does not feed them. A value past the scale's end is not clipped on the wire.
+82.1 +2.35: half diamond at the right end of the scale; +4.0 at a gate: the same. 82.2 +2.87: half diamond at the top; +1.18: diamond above center, climbing to it from below. NaN (82.2 on the ground): no diamond. The stock NAV CDI:1 and GSI:1 read 0: the Fenix does not feed them. A value past the scale's end is not clipped on the wire. The scales have two dots on each side, so the rows say "full scale" from 2.0 and give no figure (`FullScaleDots`). In flight 82.1 read a fixed 4.0 from 12:35:44 to about 12:40; below about 50 ft 82.2 runs 0.22, 3.98, -3.33, NaN, -3.08, 2.08 within seconds while the drawing stays near center (124924): the row follows the wire.
 
 ## The other flags (Task 3 Step 6)
 
@@ -88,7 +88,7 @@ Seen set during the flight and captured:
 - 122.8 `AltAmber` over the same stretch: the altitude readout amber. No words of its own, so no row.
 - 122.3 `Metric`: above.
 
-Seen set with no capture: 118.1 and 118.2 (`FdFlag`, `FdFlagFlash`) for 2 s at 12:50:02.5, stopped on the runway. Never set: 93, 94, 96, 114, 115, 120, 122.1, 122.2, 122.4, 122.5. (114.1 was set cold and dark, with no PFD drawn.)
+Seen set with no capture: 118.1 and 118.2 (`FdFlag`, `FdFlagFlash`) for 2 s at 12:50:02.5, stopped on the runway. Never set: 93, 94, 96, 115, 120, 122.1, 122.2, 122.4, 122.5. 114 was set once, cold and dark, with no PFD drawn.
 
 ## The flight director (Task 2 Step 5, Task 3 Step 7)
 
@@ -97,15 +97,15 @@ Seen set with no capture: 118.1 and 118.2 (`FdFlag`, `FdFlagFlash`) for 2 s at 1
 - **The FDs:** 110.5 and 110.6 follow the buttons. No captain's bars while 110.5 is false, on the ground or in cruise. All numbers can be present then.
 - **Not drawn:** 110.1 and 110.3 NaN on the ground with no mode, even lined up, with both FDs on.
 - **The yaw bar:** a green rectangle under the symbol, drawn exactly while 110.8 `RollGuidance` is set: on the take-off roll (RWY) and from a radio altitude of 40 ft to the end of the roll-out. It sits at 110.4 minus the magnetic heading: 67.39 with 64.91 draws it right. 110.4 alone says nothing: it holds a number in cruise with an ILS tuned (no bar), and stays NaN for the last 3 s of a drawn bar, after the ILS was cleared.
-- **Inhibits:** 110.11 and 110.12 together at touchdown: the pitch and roll bars go; the yaw bar stays. 110.10 never seen set.
+- **Inhibits:** 110.11 and 110.12 together at touchdown: the pitch and roll bars go; the yaw bar stays. 110.11 alone was set from 12:01:07.2 to 12:01:41.2 on the take-off roll, with no roll bar drawn (120121); 110.12 was seen only with it, at touchdown. 110.10 never seen set.
 - **TRK/FPA:** 110.7 set, the bars gone, the bird and its flight path director drawn in their place while 110.1 and 110.3 stay numbers. So no row.
-- **The flash:** in OP CLB with AP1 on, the FCU altitude turned below the aircraft: the FMA reverts to V/S at once, and 5 s later 110.9 sets for 9.6 s (12:13:25.4 to 12:13:34.6; again 12:14:55.7 to 12:15:04.9). Rapid captures: the bars on about 0.5 s and off about 0.5 s while it is set.
+- **The flash:** in OP CLB with AP1 on, the FCU altitude turned below the aircraft: the FMA reverts to V/S at once, and 5 s later 110.9 sets for 9.6 s (12:13:25.4 to 12:13:34.6; again 12:14:55.7 to 12:15:04.9). Rapid captures: the bars on about 0.5 s and off about 0.5 s while it is set. 110.9 was also set 12:02:13 to 12:02:22 and 12:11:09 to 12:11:19, with no `p` in the FMA, and those two have no captures; `p` came with the two V/S reversions.
 
 ## New letters: `p` and `d`
 
-Both make their display untrusted while unknown, and both now join `FenixChannelText` as attributes that are never spoken (Robin, 2026-11-03).
+Both make their display untrusted while unknown, and both now join `FenixChannelText` as attributes that are never spoken (Robin, 2026-11-03); `d` also puts a space between the words either side of it, since speech merges stretches by color alone.
 
-- `p`: FMA slot 1 `bgpV/Scp+1800` for 10 s with the FD flash ("PFD not trusted: unknown code 'p' in the FMA", 12:13:25.8 to 12:13:35.8, and 12:14:55.8 to 12:15:05.8). The text stays drawn in both phases of the bars' flash. Also E/WD `pgIR IN ALIGN 1 MN` ("E/WD not trusted", 11:25:47).
+- `p`: FMA slot 1 `bgpV/Scp+1800` for 10 s with each of the two V/S reversions, when the FD flash was set too ("PFD not trusted: unknown code 'p' in the FMA", 12:13:25.8 to 12:13:35.8, and 12:14:55.8 to 12:15:05.8). The flash was set twice more with no `p` (above). The text stays drawn in both phases of the bars' flash. Also E/WD `pgIR IN ALIGN 1 MN` ("E/WD not trusted", 11:25:47).
 - `d`: FMA slot 13, for as long as a minimum is shown ("PFD not trusted: unknown code 'd' in the FMA", 12:17:03.8 to 12:49:59.8). Plan 01 read in the program's code that `d` only moves the drawing position right and draws nothing.
 
 ## Seen in passing
