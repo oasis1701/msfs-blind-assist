@@ -185,17 +185,45 @@ public class FenixChannelPfdDecoderTests
         Assert.Equal(0, noParts.MagneticTrack);
 
         // The same parts there, with their fields left out one by one; the air data parts too, which may be empty.
-        FenixChannelPfd noFields = Decoded(new PfdPushes.Push { SpeedTrend = 12.5, MagneticTrack = 90, LocDots = 1.5, GsDots = 1.5 }
+        FenixChannelPfd noFields = Decoded(new PfdPushes.Push { SpeedTrend = 12.5, MagneticTrack = 90 }
             .Omit("28.1", "28.2", "28.4", "28.5", "28.6", "125.1", "125.2", "125.3", "125.5", "127.1", "127.6",
-                "113.4", "113.9", "82.1", "82.2", "98", "194.2", "107"));
+                "113.4", "113.9", "98", "194.2", "107"));
         Assert.Equal(new[] { 0.0, 0.0, 0.0, 0.0, 0.0 },
             new[] { noFields.Pitch, noFields.Bank, noFields.Altitude, noFields.Airspeed, noFields.VerticalSpeed });
         AssertNotDrawn(noFields.VMax, noFields.Vls, noFields.AlphaProt, noFields.Vsw, noFields.V1, noFields.GreenDot,
-            noFields.TargetIas, noFields.LocDots, noFields.GsDots);
+            noFields.TargetIas);
         Assert.False(noFields.SpeedManaged);
         Assert.Equal(0, noFields.SpeedTrend);
         Assert.Equal(0, noFields.MagneticTrack);
         Assert.Equal("", noFields.MachText);
+    }
+
+    [Fact]
+    public void An_absent_deviation_in_a_present_part_is_centered()
+    {
+        // The channel sends NaN for a scale it does not draw, so a deviation the part leaves out is a real 0.0 that
+        // protobuf-net left out. The cruise has the part, with both deviations NaN.
+        FenixChannelPfd bothLeftOut = Decoded(new PfdPushes.Push().Omit("82.1", "82.2"));
+        Assert.Equal(new[] { 0.0, 0.0 }, new[] { bothLeftOut.LocDots, bothLeftOut.GsDots });
+
+        // One of them 0 and the other NaN, as the builder writes them: only the NaN is sent.
+        FenixChannelPfd onlyLocalizer = Decoded(new PfdPushes.Push { LocDots = 0, GsDots = double.NaN });
+        Assert.Equal(0, onlyLocalizer.LocDots);
+        AssertNotDrawn(onlyLocalizer.GsDots);
+
+        FenixChannelPfd onlyGlideslope = Decoded(new PfdPushes.Push { LocDots = double.NaN, GsDots = 0 });
+        AssertNotDrawn(onlyGlideslope.LocDots);
+        Assert.Equal(0, onlyGlideslope.GsDots);
+
+        // A number sent is that number, and the part sent with nothing in it centers both.
+        FenixChannelPfd sent = Decoded(new PfdPushes.Push { LocDots = -0.5, GsDots = 1.25 });
+        Assert.Equal(new[] { -0.5, 1.25 }, new[] { sent.LocDots, sent.GsDots });
+        FenixChannelPfd empty = Decoded(new PfdPushes.Push { LocDots = 0, GsDots = 0 });
+        Assert.Equal(new[] { 0.0, 0.0 }, new[] { empty.LocDots, empty.GsDots });
+
+        // With the part itself left out there is no scale: both stay NaN.
+        FenixChannelPfd noPart = Decoded(new PfdPushes.Push { LocDots = 0.5, GsDots = 0.5 }.Omit("82"));
+        AssertNotDrawn(noPart.LocDots, noPart.GsDots);
     }
 
     [Fact]
@@ -596,7 +624,7 @@ internal static class PfdPushes
         public bool MetricAltitude { get; set; }
         public bool DhMessage { get; set; }
 
-        // 82 the deviations, NaN while the PFD draws no LS scale
+        // 82 the deviations, NaN (written) while the PFD draws no LS scale; a 0 is left out of the part like any default
         public double LocDots { get; set; } = double.NaN;
         public double GsDots { get; set; } = double.NaN;
 

@@ -11,9 +11,10 @@ namespace MSFSBlindAssist.Services;
 /// <remarks>
 /// <para>The rows run: the FMA by column, the airspeed and the speed target, the tape's speeds, the Mach, the altitude,
 /// the vertical speed, the attitude, the flight director, the heading, the radio altitude and the DH message, then the LS
-/// information and the two scales (only while the LS button is on), the approach labels, the marker and the LS flag. A row whose condition fails, or whose value is not a number, is left out. The exception is a primary value
-/// (airspeed, altitude, vertical speed, pitch and bank, heading) of an instrument the PFD draws: it reads "not available"
-/// in its place. An instrument the PFD does not draw reads as its flag, in the PFD's own words, where its rows would be.</para>
+/// information and the two scales (only while the LS button is on), the approach labels, the marker and the LS flag. A
+/// row whose condition fails, or whose value is not a number, is left out. The exception is a primary value (airspeed,
+/// altitude, vertical speed, pitch and bank, heading) of an instrument the PFD draws: it reads "not available" in its
+/// place. An instrument the PFD does not draw reads as its flag, in the PFD's own words, where its rows would be.</para>
 /// <para>A row speaks no color unless it comes from channel text through <see cref="FenixChannelSpeech"/>. Numbers are
 /// written with the invariant culture and an ASCII minus whatever the PC's culture is, whole numbers round away from zero,
 /// a figure with a decimal place drops a ".0", and a value that rounds to 0 never reads with a side or a minus.</para>
@@ -114,7 +115,8 @@ internal static class FenixChannelPfdRows
             Add(rows, Offset("Glideslope", pfd.GsDots, "dots", GsDotsPositiveIsAbove, "above", "below"));
         }
 
-        // The labels, the marker and the LS flag are drawn whenever the channel sends their text, whatever the LS button says.
+        // The labels, the marker and the LS flag are shown whenever the channel sends their text, whatever the LS button
+        // says.
         Add(rows, Spoken("Approach labels", pfd.ApproachCenter, pfd.ApproachLoc, pfd.ApproachGs));
         Add(rows, Spoken("Marker beacon", pfd.MarkerText));
         Add(rows, Spoken("LS flag", pfd.LsFlagText));
@@ -181,10 +183,12 @@ internal static class FenixChannelPfdRows
             ? $"Airspeed below {Whole(TapeFloorKnots)} knots"
             : $"Airspeed {Whole(pfd.Airspeed)} knots";
 
-        // The arrow ends at the airspeed plus the trend.
+        // The arrow ends at the airspeed plus the trend. The tape ends at the floor, so the PFD draws no arrow from an
+        // airspeed under it and none to a tip under it.
         if (IsNumber(pfd.SpeedTrend) && Math.Abs(pfd.SpeedTrend) >= TrendShownKnots)
         {
-            row += $", trend arrow to {Whole(pfd.Airspeed + pfd.SpeedTrend)}";
+            double tip = pfd.Airspeed + pfd.SpeedTrend;
+            if (pfd.Airspeed >= TapeFloorKnots && tip >= TapeFloorKnots) row += $", trend arrow to {Whole(tip)}";
         }
 
         return row;

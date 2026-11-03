@@ -24,8 +24,10 @@ internal readonly record struct FenixPfdBaro(bool Std, bool Inches, bool Qfe, do
 /// air data and texts are not read. The baro reference comes from the EFIS entry and never from the baro text (field
 /// 105), which carries a format letter the app does not know while the baro is at QNH in flight.</para>
 /// <para>A value the push left out reads as protobuf-net leaves it: the air data, the trend and the track are 0, a
-/// text is "", a flag is false, and the QNH is 1013. A speed, the speed target or a deviation that is absent is NaN,
-/// the same as one the PFD does not draw, since 0 is none of them.</para>
+/// text is "", a flag is false, and the QNH is 1013. A speed or the speed target that is absent is NaN, the same as one
+/// the PFD does not draw, since 0 is none of them. A deviation is different: the channel sends NaN for a scale the PFD
+/// does not draw, so one that is absent from the deviations part is a real 0.0, a centered scale. With the part itself
+/// absent both deviations are NaN.</para>
 /// </remarks>
 internal sealed record FenixChannelPfd
 {
@@ -140,10 +142,10 @@ internal sealed record FenixChannelPfd
     /// <summary>The PFD draws the DH message above the radio altitude (205); false when absent.</summary>
     public bool DhMessage { get; init; }
 
-    /// <summary>The localizer deviation (82.1); NaN when not drawn.</summary>
+    /// <summary>The localizer deviation (82.1); NaN when not drawn, 0 when the part leaves it out.</summary>
     public double LocDots { get; init; } = double.NaN;
 
-    /// <summary>The glideslope deviation (82.2); NaN when not drawn.</summary>
+    /// <summary>The glideslope deviation (82.2); NaN when not drawn, 0 when the part leaves it out.</summary>
     public double GsDots { get; init; } = double.NaN;
 
     /// <summary>The captain's EFIS LS pushbutton is on (1.6).</summary>
@@ -200,6 +202,10 @@ internal sealed record FenixChannelPfd
             if (efis.Message is null) Wrong(root, Remote.Efis);
         }
 
+        // The channel sends NaN for a scale the PFD does not draw, so a deviation that is left out of a part that was sent
+        // is a 0.0 that protobuf-net left out. With the part itself absent there is no scale.
+        double deviationAbsent = lsData.Message is null ? double.NaN : 0;
+
         var pfd = new FenixChannelPfd
         {
             Pitch = DoubleOf(air, AdirsData.Pitch, 0),
@@ -239,8 +245,8 @@ internal sealed record FenixChannelPfd
             LsFlagText = TextOf(flags, PfdFlagsData.LsFlagCapt),
             MetricAltitude = FlagOf(altStatus, AltStatusData.Metric),
             DhMessage = FlagOf(root, Remote.DhMessage),
-            LocDots = DoubleOf(lsData, LsInputData.PfdHorDots, double.NaN),
-            GsDots = DoubleOf(lsData, LsInputData.PfdVertDots, double.NaN),
+            LocDots = DoubleOf(lsData, LsInputData.PfdHorDots, deviationAbsent),
+            GsDots = DoubleOf(lsData, LsInputData.PfdVertDots, deviationAbsent),
             Ls = FlagOf(efis, Efis.Ls),
             Baro = new FenixPfdBaro(
                 Std: FlagOf(efis, Efis.QnhStd),

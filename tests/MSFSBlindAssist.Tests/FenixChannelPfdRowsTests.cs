@@ -272,6 +272,28 @@ public class FenixChannelPfdRowsTests
     }
 
     [Fact]
+    public void The_trend_arrow_stays_on_the_tape()
+    {
+        // The tape ends at 30 knots, so the PFD cannot draw an arrow from an airspeed under it or to a tip under it.
+        // The first case has both under, the second only the tip (35 less 40 is under it), the third only the airspeed
+        // (the tip at 85 is on the tape).
+        Assert.Equal("Airspeed below 30 knots",
+            RowStartingWith(new PfdPushes.Push { Airspeed = 25, SpeedTrend = -30 }, "Airspeed"));
+        Assert.Equal("Airspeed 35 knots",
+            RowStartingWith(new PfdPushes.Push { Airspeed = 35, SpeedTrend = -40 }, "Airspeed"));
+        Assert.Equal("Airspeed below 30 knots",
+            RowStartingWith(new PfdPushes.Push { Airspeed = 25, SpeedTrend = 60 }, "Airspeed"));
+
+        // A tip on the tape is read, down to 30 knots itself.
+        Assert.Equal("Airspeed 100 knots, trend arrow to 70",
+            RowStartingWith(new PfdPushes.Push { Airspeed = 100, SpeedTrend = -30 }, "Airspeed"));
+        Assert.Equal("Airspeed 70 knots, trend arrow to 30",
+            RowStartingWith(new PfdPushes.Push { Airspeed = 70, SpeedTrend = -40 }, "Airspeed"));
+        Assert.Equal("Airspeed 30 knots, trend arrow to 40",
+            RowStartingWith(new PfdPushes.Push { Airspeed = 30, SpeedTrend = 10 }, "Airspeed"));
+    }
+
+    [Fact]
     public void The_speed_target_reads_managed_or_selected_while_the_bugs_are_visible()
     {
         Assert.Equal("Speed target 268 knots, managed", RowStartingWith(new PfdPushes.Push(), "Speed target"));
@@ -285,7 +307,8 @@ public class FenixChannelPfdRowsTests
     [Fact]
     public void The_speed_tape_runs_top_to_bottom()
     {
-        // On the ground after lift-off's phase change: V1, VR and V2 with the flap speeds, no VMAX or green dot.
+        // Every mark and limit but VMAX, green dot and VSW is a number: V1, VR and V2, the flap speeds, VFE next, VLS and alpha
+        // prot. A made-up state that puts each of them in a different place on the tape.
         var push = new PfdPushes.Push
         {
             VMax = double.NaN, GreenDot = double.NaN, Vls = 128, AlphaProt = 105.6, V1 = 141, Vr = 143, V2 = 147, F = 190,
@@ -724,9 +747,11 @@ public class FenixChannelPfdRowsTests
         Assert.Equal(new[] { "Localizer 2.4 dots left", "Glideslope 1.3 dots below" },
             RowsOf(Deviations(-2.36, -1.3)).Skip(CruiseRows.Length));
 
-        // A deviation of exactly 0 is left out of the message, so a centered scale is a figure that rounds to 0.
+        // A figure that rounds to 0 is centered, and so is a real 0.0, which the message leaves out of its part.
         Assert.Equal(new[] { "Localizer centered", "Glideslope centered" },
             RowsOf(Deviations(0.04, -0.04)).Skip(CruiseRows.Length));
+        Assert.Equal(new[] { "Localizer centered", "Glideslope centered" },
+            RowsOf(Deviations(0.0, 0.0)).Skip(CruiseRows.Length));
         Assert.Equal(new[] { "Localizer 1 dot right", "Glideslope 2 dots below" },
             RowsOf(Deviations(1.02, -2)).Skip(CruiseRows.Length));
 
@@ -734,6 +759,26 @@ public class FenixChannelPfdRowsTests
         Assert.Equal(new[] { "Glideslope 0.5 dots above" },
             RowsOf(Deviations(double.NaN, 0.5)).Skip(CruiseRows.Length));
         Assert.Equal(CruiseRows, RowsOf(Deviations(double.NaN, double.NaN)));
+    }
+
+    [Fact]
+    public void A_deviation_the_part_leaves_out_reads_centered_and_a_scale_not_drawn_has_no_row()
+    {
+        // The channel sends NaN for a scale it does not draw; 82.1 left out of a part that is sent is a real 0.0.
+        var localizerLeftOut = new PfdPushes.Push { Efis = { Ls = true }, LocDots = 0, GsDots = double.NaN };
+        Assert.Equal(new[] { "Localizer centered" }, RowsOf(localizerLeftOut).Skip(CruiseRows.Length));
+
+        var glideslopeLeftOut = new PfdPushes.Push { Efis = { Ls = true }, LocDots = double.NaN, GsDots = 0 };
+        Assert.Equal(new[] { "Glideslope centered" }, RowsOf(glideslopeLeftOut).Skip(CruiseRows.Length));
+
+        // The same with the fields left out by their path, and with the whole part left out, which draws no scale.
+        var bothLeftOut = new PfdPushes.Push { Efis = { Ls = true } }.Omit("82.1", "82.2");
+        Assert.Equal(new[] { "Localizer centered", "Glideslope centered" }, RowsOf(bothLeftOut).Skip(CruiseRows.Length));
+        var noPart = new PfdPushes.Push { Efis = { Ls = true }, LocDots = 0.5, GsDots = 0.5 }.Omit("82");
+        Assert.Equal(CruiseRows, RowsOf(noPart));
+
+        // Off the LS button there is no scale row either way.
+        Assert.Equal(CruiseRows, RowsOf(new PfdPushes.Push { LocDots = 0, GsDots = 0 }));
     }
 
     // ---- A snapshot that cannot be read ---------------------------------------------------------
