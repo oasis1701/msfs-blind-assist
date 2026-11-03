@@ -36,7 +36,8 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 {
     /// <summary>
     /// The runs' text joined, with the colors, underline, box, flashing and size left out. For parsing a number out
-    /// of the line and for the log, never for speech: a read of channel text says each color (FNX-24).
+    /// of the line, for a key readout's plain value (Ctrl+W speaks plain values parsed from it) and for the log. Never
+    /// for a window or an announcement: a read of channel text says each color (FNX-24).
     /// </summary>
     public string JoinedText => string.Concat(Runs.Select(run => run.Text));
 }
