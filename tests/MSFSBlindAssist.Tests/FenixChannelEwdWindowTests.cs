@@ -1,5 +1,6 @@
 // Characterization tests for the Fenix E/WD's window: FenixChannelEwdForm (Forms/Fenix) and the definition's factory for
-// it (FenixA320Definition.CreateChannelEwdForm, Aircraft/FenixA320Definition.ChannelEwd.cs). No sim and no socket: a
+// it (FenixA320Definition.CreateChannelEwdForm, Aircraft/FenixA320Definition.ChannelEwd.cs). The window's ECAM keys are
+// FenixChannelEwdKeysTests'; these tests give the form a press that does nothing. No sim and no socket: a
 // monitor that is never started trusts nothing, and one the test feeds by hand trusts what the gate lets it. The window is
 // built, never shown (StartLive runs the first open's work without putting anything on screen), as the other display
 // windows are tested (FenixChannelPfdWindowTests). The rows themselves are FenixChannelEwdRowsTests'.
@@ -172,7 +173,7 @@ public class FenixChannelEwdWindowTests
         {
             reads++;
             return family;
-        });
+        }, _ => { });
 
         Assert.Equal("Fenix E/WD", form.Text);
         Assert.Equal("E/WD display", ListOf(form).AccessibleName);
@@ -201,7 +202,7 @@ public class FenixChannelEwdWindowTests
         {
             reads++;
             return Iae;
-        });
+        }, _ => { });
 
         form.StartLive();
 
@@ -219,7 +220,7 @@ public class FenixChannelEwdWindowTests
         // however often the window refreshes.
         var lines = new MonitorTestKit.Lines();
         using FenixChannelMonitor monitor = TrustedEwdMonitor(lines, CruiseRemote().String(152, "xCONF"));
-        using var form = new FenixChannelEwdForm(monitor, () => Iae);
+        using var form = new FenixChannelEwdForm(monitor, () => Iae, _ => { });
 
         form.StartLive();
         form.RefreshNow();
@@ -233,7 +234,7 @@ public class FenixChannelEwdWindowTests
     {
         using FenixChannelMonitor neverStarted = MonitorTestKit.NewIdleMonitor(new MonitorTestKit.Lines());
 
-        Assert.Throws<ArgumentNullException>(() => new FenixChannelEwdForm(neverStarted, null!));
+        Assert.Throws<ArgumentNullException>(() => new FenixChannelEwdForm(neverStarted, null!, _ => { }));
     }
 
     [Fact]
@@ -256,7 +257,7 @@ public class FenixChannelEwdWindowTests
         var definition = new FenixA320Definition();
         Assert.Equal(FenixEngineFamily.Unknown, definition.Variant.Engine);
 
-        using FenixChannelEwdForm form = definition.CreateChannelEwdForm(monitor);
+        using FenixChannelEwdForm form = definition.CreateChannelEwdForm(monitor, null!, null!);
         form.StartLive();
 
         Assert.Equal("Fenix E/WD", form.Text);
@@ -302,7 +303,7 @@ public class FenixChannelEwdWindowTests
         Assert.Equal(
             WithoutWhitespace(
                 "handled = OpenChannelWindow(ctx, Services.FenixChannelDisplay.Ewd, Services.FenixChannelEwdRows.DisplayName,"
-                + " CreateChannelEwdForm);"),
+                + " monitor => CreateChannelEwdForm(monitor, ctx.SimConnect, ctx.Announcer));"),
             WithoutWhitespace(key.Groups["body"].Value));
     }
 
