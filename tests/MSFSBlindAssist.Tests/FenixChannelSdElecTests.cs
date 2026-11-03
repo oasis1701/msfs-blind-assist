@@ -6,11 +6,11 @@
 // The contract: every number is whole. Page 7 reads 16 (the flags) to 26 (battery 2): BAT 1 (25: volts 1, amps 2, then
 // ", charging" while 16.2), DC BAT (17.6), BAT 2 (26, 16.3), DC 1 (17.1), DC ESS (17.3), DC 2 (17.2), AC 1 (17.4), AC ESS
 // (17.7), AC 2 (17.5), TR 1 (20), ESS TR (22), TR 2 (21), GEN 1 (18: load, volts, frequency, "OFF" while 18.4 is clear), APU
-// GEN (24: the same three while 24.12, else the legend alone), EXT PWR (23: volts, frequency, only while 17.8), GEN 2
-// (19), IDG 1 (18.5, then ", LO PR" while 16.6 and ", DISC" while 16.4), GALLEY SHED (only while 16.1), IDG 2 (19.5, 16.7,
-// 16.5). A bus reads "powered" or "not powered". EMER GEN and STAT INV have no field, so no row. A box the push leaves out
-// stops this page only ("ELEC: not available, no field 17"), never read as its defaults; a box present but empty (the
-// Fenix sends an empty elecFlags while every flag is false) is its defaults.
+// GEN (24: while 24.12 the same three, or "OFF" while 24.14 is set, else the legend alone), EXT PWR (23: volts,
+// frequency, only while 17.8), GEN 2 (19), IDG 1 (18.5, then ", LO PR" while 16.6 and ", DISC" while 16.4), GALLEY SHED
+// (only while 16.1), IDG 2 (19.5, 16.7, 16.5). A bus reads "powered" or "not powered". EMER GEN and STAT INV have no
+// field, so no row. A box the push leaves out stops this page only ("ELEC: not available, no field 17"), never read as
+// its defaults; a box present but empty (the Fenix sends an empty elecFlags while every flag is false) is its defaults.
 
 using MSFSBlindAssist.Services;
 
@@ -100,11 +100,14 @@ public class FenixChannelSdElecTests
     private static FenixChannelProtoWriter ExtPwr(double volts, double frequency)
         => new FenixChannelProtoWriter().Double(1, volts).Double(2, frequency);
 
-    // The APU (24): its generator's load, volts and frequency, an N1 the page does not read, and the master (12) while on.
-    private static FenixChannelProtoWriter Apu(bool master, double load, double volts, double frequency)
+    // The APU (24): its generator's load, volts and frequency, an N1 the page does not read, the master (12) while on and
+    // the APU GEN pushbutton's off (14) while set.
+    private static FenixChannelProtoWriter Apu(
+        bool master, double load, double volts, double frequency, bool off = false)
     {
         var apu = new FenixChannelProtoWriter().Double(1, load).Double(2, volts).Double(3, frequency).Double(4, 100);
         if (master) apu.Bool(12, true);
+        if (off) apu.Bool(14, true);
         return apu;
     }
 
@@ -268,6 +271,34 @@ public class FenixChannelSdElecTests
         Assert.Contains("APU GEN: 13 %, 116 V, 399 HZ", on);
         Assert.Equal(PlainPage.Select(row => row.StartsWith("APU GEN", StringComparison.Ordinal) ? "APU GEN" : row), off);
         Assert.Equal(off, empty);
+    }
+
+    [Fact]
+    public void Apu_gen_reads_off_while_its_pushbutton_is_off()
+    {
+        // The APU running with the APU GEN pushbutton off: the Fenix sets 24.14 and the SD shows the generator OFF, yet the
+        // push still carries the figures (measured in the sim: 0 %, 115 V, 399 HZ). The row is "APU GEN: OFF", as "GEN 1:
+        // OFF" is, and no other row changes; a row that ignores 24.14 reads the figures.
+        IReadOnlyList<string> rows = PageOf(ElecPush(new ElecBoxes { Apu = Apu(true, 12.5, 116.4, 398.5, off: true) }));
+
+        Assert.Equal(
+            PlainPage.Select(row => row.StartsWith("APU GEN", StringComparison.Ordinal) ? "APU GEN: OFF" : row), rows);
+    }
+
+    [Fact]
+    public void Apu_gen_off_without_the_master_leaves_the_legend()
+    {
+        // 24.14 is read only while the master (24.12) is on: with the master clear the row is the bare legend, the SD's
+        // own, whether 24.14 is set or even in the wrong shape (a double): a field the page does not read can neither
+        // stop the page nor be reported.
+        IReadOnlyList<string> off = PageOf(ElecPush(new ElecBoxes { Apu = Apu(false, 12.5, 116.4, 398.5, off: true) }));
+        var wrongShape = new FenixChannelProtoWriter().Double(1, 12.5).Double(14, 1);
+        IReadOnlyList<string> unread = PageOf(ElecPush(new ElecBoxes { Apu = wrongShape }));
+
+        IEnumerable<string> legend =
+            PlainPage.Select(row => row.StartsWith("APU GEN", StringComparison.Ordinal) ? "APU GEN" : row);
+        Assert.Equal(legend, off);
+        Assert.Equal(legend, unread);
     }
 
     [Fact]

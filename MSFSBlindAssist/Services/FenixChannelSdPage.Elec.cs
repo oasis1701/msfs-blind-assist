@@ -10,7 +10,8 @@ internal static partial class FenixChannelSdPages
     /// <c>, charging</c> while its charging flag is set) and the buses (<c>DC BAT: powered</c>, or <c>not powered</c>), the
     /// transformer-rectifiers (<c>TR 1</c>, <c>ESS TR</c>, <c>TR 2</c>: volts and amps), the generators (<c>GEN 1: 25 %,
     /// 115 V, 400 HZ</c>, or <c>GEN 1: OFF</c> while the generator's selector is clear), the APU generator (the same three
-    /// values while the APU master is on, else <c>APU GEN</c> alone, the legend the SD draws), the external power
+    /// values while the APU master is on, or <c>APU GEN: OFF</c> while its pushbutton is off, else <c>APU GEN</c> alone,
+    /// the legend the SD draws), the external power
     /// (<c>EXT PWR: 112 V, 400 HZ</c>, only while the buses say it is connected), and each IDG's temperature (<c>IDG 1: 99
     /// °C</c>, then <c>, LO PR</c> while its generator's oil pressure is low and <c>, DISC</c> while it is disconnected),
     /// with <c>GALLEY SHED</c> between the two while the flags say it is shed. The emergency generator and the static
@@ -22,13 +23,15 @@ internal static partial class FenixChannelSdPages
     /// a battery at 0 V. The page returns that problem and never reports it: the window reports it once, under the page's
     /// name. A box present but empty is its defaults: the Fenix sends an empty flags message while every flag is false.</para>
     /// <para>A box a row does not show is not read, so that a value the SD does not draw can neither stop the page nor be
-    /// reported: the external power (23) only while 17.8 says it is connected, the APU's figures only while its master (24.12)
-    /// is on, a generator's figures only while its selector is set. The APU message itself is read on every page, since its
-    /// legend is always drawn.</para>
+    /// reported: the external power (23) only while 17.8 says it is connected, the APU's pushbutton (24.14) only while its
+    /// master (24.12) is on and its figures only while that pushbutton is not off, a generator's figures only while its
+    /// selector is set. The APU message itself is read on every page, since its legend is always drawn.</para>
     /// <para>Which flag means what is inferred from the contract's names and the plan's text; Task 1 measures what the SD
     /// draws with each, and a difference changes the rows and their tests together: 16.1 the galley shed, 16.2 and 16.3 the
     /// batteries charging, 16.4 and 16.5 the generators disconnected, 16.6 and 16.7 their low oil pressure, 17.8 external
-    /// power connected, 18.4 and 19.4 the generator selectors, 24.12 the APU master.</para>
+    /// power connected, 18.4 and 19.4 the generator selectors, 24.12 the APU master. 24.14, the APU GEN pushbutton off, was
+    /// measured in the sim (2026-11-03, the APU running with the pushbutton off: the SD shows the generator OFF, the push
+    /// still carries 0 %, 115 V, 399 HZ).</para>
     /// </remarks>
     internal static FenixChannelRows ElecRows(FenixChannelSdPageContext ctx)
     {
@@ -70,17 +73,23 @@ internal static partial class FenixChannelSdPages
             extFrequency = ext.Double(FenixChannelFields.ExtPwrData.Frequency);
         }
 
-        // The APU message is read on every page, its legend being always drawn; its figures only while its master is on.
+        // The APU message is read on every page, its legend being always drawn; the pushbutton's off only while its master
+        // is on, and its figures only while that pushbutton is not off.
         FenixChannelSdReader apu = remote.Message(FenixChannelFields.Remote.ApuData);
         bool apuMaster = apu.Bool(FenixChannelFields.ApuData.MasterPower);
+        bool apuOff = false;
         double apuLoad = 0;
         double apuVolts = 0;
         double apuFrequency = 0;
         if (apuMaster)
         {
-            apuLoad = apu.Double(FenixChannelFields.ApuData.Load);
-            apuVolts = apu.Double(FenixChannelFields.ApuData.Volts);
-            apuFrequency = apu.Double(FenixChannelFields.ApuData.Frequency);
+            apuOff = apu.Bool(FenixChannelFields.ApuData.Off);
+            if (!apuOff)
+            {
+                apuLoad = apu.Double(FenixChannelFields.ApuData.Load);
+                apuVolts = apu.Double(FenixChannelFields.ApuData.Volts);
+                apuFrequency = apu.Double(FenixChannelFields.ApuData.Frequency);
+            }
         }
 
         ElecVoltAmpsReading bat1 = ReadElecVoltAmps(remote.Message(FenixChannelFields.Remote.Bat1));
@@ -104,7 +113,7 @@ internal static partial class FenixChannelSdPages
             ElecVoltAmpsRow("ESS TR", essTr),
             ElecVoltAmpsRow("TR 2", tr2),
             ElecGeneratorRow("GEN 1", gen1),
-            apuMaster ? ElecValues("APU GEN", apuLoad, apuVolts, apuFrequency) : "APU GEN"
+            ElecApuRow(apuMaster, apuOff, apuLoad, apuVolts, apuFrequency)
         };
 
         if (externalPower)
@@ -177,6 +186,11 @@ internal static partial class FenixChannelSdPages
         => generator.On
             ? ElecValues(label, generator.Load, generator.Voltage, generator.Frequency)
             : $"{label}: OFF";
+
+    // The APU generator: its three figures while the APU master is on, "APU GEN: OFF" while the master is on and the
+    // pushbutton is off (as "GEN 1: OFF"), else the bare legend the SD draws.
+    private static string ElecApuRow(bool master, bool off, double load, double volts, double frequency)
+        => !master ? "APU GEN" : off ? "APU GEN: OFF" : ElecValues("APU GEN", load, volts, frequency);
 
     // A generator's three figures, the load in percent: "APU GEN: 13 %, 116 V, 399 HZ".
     private static string ElecValues(string label, double load, double volts, double frequency)
