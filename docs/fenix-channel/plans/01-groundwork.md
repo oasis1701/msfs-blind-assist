@@ -496,7 +496,7 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Started:** 2026-11-03, `feat/fenix-display-channel` at f0d012c63 (the plan set's last commit)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:** 0, 1, 2, 3, 4, 5, 6 done.
+- **Tasks:** 0, 1, 2, 3, 4, 5, 6, 7 done.
 - **Waiting on the owner:**
 - **In-sim results:**
 - **Changed from the plan:**
