@@ -23,13 +23,15 @@ namespace MSFSBlindAssist.Services;
 /// <para>Text the display draws in pieces is spoken as one line from its parts: the FMA's rows of one column, the
 /// thrust limit's elements, a title the E/WD wraps onto two lines. Each part is parsed on its own, so no color carries
 /// from one part to the next, and the parts' runs are joined in order with a space between parts.</para>
-/// <para>The text before a part's first color letter is not colorless on the screen. The code that draws the channel's
-/// text starts every line in the same color as the letter <c>w</c> (checked on the installed build), so a part that
-/// holds a color letter speaks its leading colorless text as white: "FLX c+56" is "FLX white, +56 cyan", and after a
-/// "wbMAN" part, "MAN FLX white, +56 cyan". A part with no color letter at all, such as an ECAM entry's title, stays
-/// colorless: nothing in its text says what the display draws it in, and no color is ever guessed. A part holds a
-/// color letter when a run of the parsed part has a color. A letter with no text after it leaves no such run, so
-/// "FLXc" stays colorless, which is the safe direction.</para>
+/// <para>The text before a part's first color letter is not colorless on the screen. The program's own code that draws
+/// the channel's text starts every line in the color of the letter <c>w</c>: its three text routines all do (read on
+/// the installed build 3.0.0.7613, 2026-11-03). So a part that holds a color letter speaks its leading colorless text
+/// as white: "FLX c+56" is "FLX white, +56 cyan", and after a "wbMAN" part, "MAN FLX white, +56 cyan". Only the leading
+/// text: a colorless run after a colored one, which only a line built by hand can have, stays colorless ("A green, B").
+/// A part with no color letter at all, such as an ECAM entry's title, stays colorless too: nothing in its text says what
+/// the display draws it in, and no color is ever guessed. A part holds a color letter when a run of the parsed part has
+/// a color. A letter with no text after it leaves no such run, so "FLXc" stays colorless, which is the safe
+/// direction.</para>
 /// </remarks>
 internal static class FenixChannelSpeech
 {
@@ -93,16 +95,19 @@ internal static class FenixChannelSpeech
     };
 
     // Adds a part's runs after the ones before it, with the break between the parts. A part that holds a color speaks
-    // its colorless runs as white, which can only be the ones before its first color letter, because a color once set
-    // stays set (see the remarks). A part with no color adds its runs as they are.
+    // the colorless runs before its first color as white (see the remarks); a colorless run after it, which only a line
+    // built by hand can have (a color once set stays set: FenixChannelText's remarks), stays as it is. A part with no
+    // color adds its runs as they are.
     private static void AddPart(List<FenixTextRun> runs, FenixTextLine part)
     {
         if (runs.Count > 0) runs.Add(PartBreak);
 
         bool holdsColor = part.Runs.Any(run => run.Color is not null);
+        bool seenColor = false;
         foreach (FenixTextRun run in part.Runs)
         {
-            runs.Add(holdsColor && run.Color is null ? run with { Color = FenixTextColor.White } : run);
+            seenColor |= run.Color is not null;
+            runs.Add(holdsColor && !seenColor ? run with { Color = FenixTextColor.White } : run);
         }
     }
 

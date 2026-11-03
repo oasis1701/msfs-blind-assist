@@ -157,11 +157,26 @@ public class FenixChannelSpeechTests
     [InlineData("FLX c+56", "FLX white, +56 cyan")]
     [InlineData("A cB gC", "A white, B cyan, C green")]
     [InlineData("FLX y+56", "FLX white, +56")]            // yellow counts as a color letter, and has no name yet
+    [InlineData("X rLAND ASAP", "X white, LAND ASAP red")]
+    [InlineData(" rLAND ASAP", "LAND ASAP, red")]         // only a space before it: nothing to speak as white
     public void A_part_with_a_color_letter_speaks_the_text_before_it_as_white(string coded, string expected)
     {
         Assert.Equal(expected, FenixChannelSpeech.Line(coded));
         Assert.Equal(expected, FenixChannelSpeech.Line(FenixChannelText.Parse(coded)));
         Assert.Equal(expected, FenixChannelSpeech.Line(new[] { coded }));
+    }
+
+    [Fact]
+    public void Only_the_text_before_the_first_color_is_spoken_as_white()
+    {
+        // The parser never leaves a colorless run after a colored one, because a color once set stays set, but a line can
+        // be built by hand. Nothing says what the display draws that run in, so it stays colorless: no color is guessed.
+        var after = new FenixTextLine(new[] { Run("A", FenixTextColor.Green), Run(" B", null) }, Array.Empty<char>());
+        var aroundIt = new FenixTextLine(
+            new[] { Run("X ", null), Run("A", FenixTextColor.Green), Run(" B", null) }, Array.Empty<char>());
+
+        Assert.Equal("A green, B", FenixChannelSpeech.Line(after));
+        Assert.Equal("X white, A green, B", FenixChannelSpeech.Line(aroundIt));
     }
 
     [Fact]
