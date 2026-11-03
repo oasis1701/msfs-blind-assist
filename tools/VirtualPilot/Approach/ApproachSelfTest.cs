@@ -1,0 +1,118 @@
+using System.Globalization;
+
+namespace VirtualPilot.Approach;
+
+/// <summary>
+/// Checks of the approach harness itself (`approach --selftest`): the aircraft model's turn,
+/// path and wind arithmetic, the SimConnect sign conventions it feeds visual guidance, and the
+/// runway geometry. Each prints PASS or FAIL; the return value is the failure count.
+/// </summary>
+static class ApproachSelfTest
+{
+    public static int Run()
+    {
+        var checks = new List<(string Name, Func<string?> Check)>
+        {
+            ("turn-right", () => TurnCheck(+25, +36.4)),
+            ("turn-left", () => TurnCheck(-25, -36.4)),
+            ("path-3deg", PathCheck),
+            ("wind-drift", WindDriftCheck),
+            ("simframe-signs", SimFrameSignsCheck),
+            ("wrap-north", WrapNorthCheck),
+            ("locate", LocateCheck),
+        };
+
+        int failures = 0;
+        foreach (var (name, check) in checks)
+        {
+            string? detail;
+            try { detail = check(); }
+            catch (Exception ex) { detail = ex.GetType().Name + ": " + ex.Message; }
+            if (detail == null) Console.WriteLine($"PASS {name}");
+            else { Console.WriteLine($"FAIL {name}: {detail}"); failures++; }
+        }
+        Console.WriteLine(failures == 0 ? $"{checks.Count} checks passed" : $"{failures} of {checks.Count} checks failed");
+        return failures;
+    }
+
+    private static string F(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
+
+    private static double HeadingChange(double from, double to) => ((to - from) % 360 + 540) % 360 - 180;
+
+    // g·tan 25° / 72.02 m/s = 3.638°/s, so 10 s of 25° bank turns the jet 36.4°; right bank turns right.
+    private static string? TurnCheck(double bankStd, double expectedChange)
+    {
+        var rwy = ApproachRunways.B;
+        var (lat, lon) = ApproachRunways.PointOnApproach(rwy, 10, 0);
+        var spec = ApproachAircraftSpecs.For(ApproachAircraftKind.Jet);
+        var ac = new ApproachAircraft(ApproachAircraftKind.Jet, rwy, lat, lon, 3000, 268, 0, 0);
+        for (int i = 0; i < 100; i++) ac.Step(0.1, bankStd, spec.AlphaTrimDeg);
+        double change = HeadingChange(268, ac.HeadingTrueDeg);
+        return Math.Abs(change - expectedChange) <= 0.5 ? null : $"heading changed {F(change)}°, expected {F(expectedChange)}° ±0.5";
+    }
+
+    // Pitch at alpha-trim − 3 settles the flight path at −3°: 140 kt × 101.27 × sin 3° = 742 fpm down.
+    private static string? PathCheck()
+    {
+        var rwy = ApproachRunways.B;
+        var (lat, lon) = ApproachRunways.PointOnApproach(rwy, 10, 0);
+        var spec = ApproachAircraftSpecs.For(ApproachAircraftKind.Jet);
+        var ac = new ApproachAircraft(ApproachAircraftKind.Jet, rwy, lat, lon, 3000, 268, 0, 0);
+        for (int i = 0; i < 150; i++) ac.Step(0.1, 0, spec.AlphaTrimDeg - 3);
+        return Math.Abs(ac.VsFpm - -742) <= 10 ? null : $"VS {F(ac.VsFpm)} fpm, expected -742 ±10";
+    }
+
+    // 140 kt east plus 15 kt north (wind from 180): drift atan(15/140) = 6.1° left, track 083.9.
+    private static string? WindDriftCheck()
+    {
+        var rwy = ApproachRunways.B;
+        var (lat, lon) = ApproachRunways.PointOnApproach(rwy, 10, 0);
+        var spec = ApproachAircraftSpecs.For(ApproachAircraftKind.Jet);
+        var ac = new ApproachAircraft(ApproachAircraftKind.Jet, rwy, lat, lon, 3000, 90, 180, 15);
+        ac.Step(0.1, 0, spec.AlphaTrimDeg);
+        return Math.Abs(ac.TrackTrueDeg - 83.9) <= 0.3 ? null : $"track {F(ac.TrackTrueDeg)}°, expected 083.9 ±0.3";
+    }
+
+    // SimConnect conventions: bank is left-positive, pitch nose-down positive, both in radians.
+    private static string? SimFrameSignsCheck()
+    {
+        var rwy = ApproachRunways.B;
+        var (lat, lon) = ApproachRunways.PointOnApproach(rwy, 10, 0);
+        var ac = new ApproachAircraft(ApproachAircraftKind.Jet, rwy, lat, lon, 3000, 268, 0, 0);
+        ac.Step(0.01, 10, 5);
+        var f = ac.ToSimFrame();
+        var problems = new List<string>();
+        if (Math.Abs(f.BankRad - -0.1745) > 0.0005) problems.Add($"BankRad {F(f.BankRad)}, expected -0.1745");
+        if (Math.Abs(f.PitchRad - -0.0873) > 0.0005) problems.Add($"PitchRad {F(f.PitchRad)}, expected -0.0873");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // Review Focus 1: runway A's course is true 004 with 9° E variation, so magnetic 355.
+    private static string? WrapNorthCheck()
+    {
+        var rwy = ApproachRunways.A;
+        var (lat, lon) = ApproachRunways.PointOnApproach(rwy, 10, 0);
+        var ac = new ApproachAircraft(ApproachAircraftKind.Jet, rwy, lat, lon, 4500, 4, 0, 0);
+        var f = ac.ToSimFrame();
+        var problems = new List<string>();
+        if (Math.Abs(HeadingChange(355, f.HeadingMagDeg)) > 0.01) problems.Add($"HeadingMagDeg {F(f.HeadingMagDeg)}, expected 355");
+        if (Math.Abs(HeadingChange(355, f.GroundTrackMagDeg)) > 0.01) problems.Add($"GroundTrackMagDeg {F(f.GroundTrackMagDeg)}, expected 355");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    private static string? LocateCheck()
+    {
+        var problems = new List<string>();
+        foreach (var rwy in ApproachRunways.All)
+        {
+            foreach (double cross in new[] { 0.5, -0.5 })
+            {
+                var (lat, lon) = ApproachRunways.PointOnApproach(rwy, 8, cross);
+                var (along, x) = ApproachRunways.Locate(rwy, lat, lon);
+                if (Math.Abs(along - 8) > 0.01 || Math.Abs(x - cross) > 0.01)
+                    problems.Add($"runway {rwy.Id} (8, {F(cross)}) located at ({F(along)}, {F(x)})");
+            }
+        }
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+}

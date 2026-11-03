@@ -15,7 +15,7 @@ using MSFSBlindAssist.Settings;
 // entered with no hold short, route changes while following the tone, and so on.
 //
 //   dotnet run --project tools/VirtualPilot -p:Platform=x64 -c Release -- <mode> [options]
-//     mode: landings | taxi | all
+//     mode: landings | taxi | all | approach (visual guidance; --selftest, --scenario NAME, --trace NAME)
 //     --airports N          busiest N airports by taxi-path count (default 100)
 //     --icao A,B,C          explicit airport list (overrides --airports)
 //     --shard i/n           run only airports i, i+n, i+2n … (for parallel processes)
@@ -40,6 +40,11 @@ if (Environment.GetEnvironmentVariable("VP_LEGACY_REVENTRY") == "1") TaxiGuidanc
 var logSink = new List<string>();
 bool captureLog = false;
 MSFSBlindAssist.Utils.Logging.Log.Redirect = (file, msg) => { if (captureLog) logSink.Add($"[{file}] {msg}"); };
+#if !MAINAPP
+// Approaches fly two synthetic runways, so they run before the navdata check; the approach
+// runner handles --trace itself.
+if (opt.Mode == "approach") return VirtualPilot.Approach.ApproachRunner.Run(opt);
+#endif
 
 string db = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
     "MSFSBlindAssist", "databases", "fs2020.sqlite");
@@ -1435,6 +1440,7 @@ sealed class Options
 {
     public string Mode = "all"; public int Airports = 100; public List<string>? Icaos;
     public (int i, int n)? Shard; public int TaxiPerAirport = 6; public string Out = ""; public string? Trace;
+    public string? Scenario; public bool SelfTest;   // approach mode
     public static Options? Parse(string[] a)
     {
         if (a.Length == 0) { Console.WriteLine("usage: VirtualPilot landings|taxi|all [options] (see source header)"); return null; }
@@ -1449,6 +1455,8 @@ sealed class Options
                 case "--taxi-per-airport": o.TaxiPerAirport = int.Parse(a[++i]); break;
                 case "--out": o.Out = a[++i]; break;
                 case "--trace": o.Trace = a[++i]; break;
+                case "--scenario": o.Scenario = a[++i]; break;
+                case "--selftest": o.SelfTest = true; break;
                 default: Console.WriteLine($"unknown option {a[i]}"); return null;
             }
         }
