@@ -84,10 +84,11 @@ internal static class FenixChannelFmaLayout
     /// line of its own and joins them with "; ". Null when every row is blank.
     /// </summary>
     /// <remarks>
-    /// <para>A slot past the end of the list counts as blank, so a short list is never an error: the frame's FMA holds
-    /// none or all 16 slots today, and a later feature may pass what it has.</para>
+    /// <para>A slot past the end of the list counts as blank, so a short list is never an error. A trusted frame's FMA
+    /// holds all 16 slots, an unpowered PFD sends none, and the gate refuses a list of any other length, but a later
+    /// feature may pass what it has.</para>
     /// <para>The <see cref="FenixFmaColumn.Unknown"/> column has no phrase, and neither has a value the enum does not
-    /// have.</para>
+    /// have: <see cref="Of"/> puts no slot of 0 to 14 in either.</para>
     /// <para>A row with a letter <see cref="FenixChannelText"/> does not know cannot be spoken, which is not an error
     /// here. A column drawn as one line is null then, because the line cannot be told. The Engagement column leaves that
     /// row out and speaks the others. A pilot never hears either of them, because the trust gate keeps the PFD untrusted
@@ -95,31 +96,27 @@ internal static class FenixChannelFmaLayout
     /// </remarks>
     public static string? ColumnPhrase(IReadOnlyList<FenixFmaSlot> slots, FenixFmaColumn column)
     {
-        // The column's slot in row 1; its slots in rows 2 and 3 are five and ten after it.
-        int rowOneSlot = Array.IndexOf(ColumnOrder, column);
-        if (rowOneSlot < 0) return null;
-
         if (column == FenixFmaColumn.Engagement)
         {
             var statuses = new List<string>();
-            for (int row = 0; row < Rows; row++)
+            foreach (int slot in SlotsOf(column))
             {
-                string? status = FenixChannelSpeech.Line(TextAt(slots, rowOneSlot + row * ColumnsPerRow));
+                string? status = FenixChannelSpeech.Line(TextAt(slots, slot));
                 if (status is not null) statuses.Add(status);
             }
 
             return statuses.Count == 0 ? null : string.Join("; ", statuses);
         }
 
-        var parts = new List<string?>();
-        for (int row = 0; row < Rows; row++)
-        {
-            int slot = rowOneSlot + row * ColumnsPerRow;
-            if (!IsMessage(slot)) parts.Add(TextAt(slots, slot));
-        }
-
-        return FenixChannelSpeech.Line(parts);
+        return FenixChannelSpeech.Line(SlotsOf(column).Select(slot => TextAt(slots, slot)).ToList());
     }
+
+    // The slots a column speaks, in row order: those of 0 to 14 that Of puts in it and that are not messages. Of alone says
+    // where a slot sits, so a change there moves this with IsMessage, and the window and the announcement stay in step.
+    private static IEnumerable<int> SlotsOf(FenixFmaColumn column) =>
+        Enumerable.Range(0, Rows * ColumnsPerRow)
+            .Where(slot => Of(slot).Column == column && !IsMessage(slot))
+            .OrderBy(slot => Of(slot).Row);
 
     // The text of one slot. A slot past the end of the list counts as blank, and so does one built without its text (a
     // struct's default).
