@@ -20,6 +20,11 @@ windows list and, only when the E/WD is trusted, from Alt+E. The engine family i
 **Spec:** `docs/fenix-channel/spec.md` 2.1, 2.2 (the E/WD's verdict), 2.4 (the window and the E/WD's content), 2.6,
 3.4, 4, and section 6's "The engine family field and the order of the engine block per family"; answers 1, 2, 12.
 
+**Changed by plan 02 (2026-11-03):** `x1` is a known code now: the letter x with exactly the digit 1 draws nothing, the
+digit included (the PFD's `ax1ILS`). A bare x or an x with another digit stays unknown. So this plan's "x1.618" test
+strings are no longer an unknown letter: write them "q1.618", with "unknown code 'q' in the thrust limit", whatever its
+text below says. "xCONF" still is one.
+
 ## Global Constraints
 
 - Spec section 4 and the index's "Shared conventions" apply to every task.

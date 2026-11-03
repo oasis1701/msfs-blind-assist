@@ -482,7 +482,8 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
   the First Officer's PFD"). The window's ILS rows name the diamond, so a pilot cannot read them as the aircraft's
   side (the owner's ruling, 2026-11-03): "Localizer diamond 0.4 dots right", "Glideslope diamond 1.3 dots above",
   "Localizer diamond at full scale, left", and "Localizer centered" at 0; the guide uses those words if it quotes the
-  rows. Changelog, `feature`: "Fenix A320: Alt+P opens a live window of the captain's PFD, read from the Fenix's own
+  rows. With LS off and an ILS approach armed the window adds "LS flag: ILS, amber", the PFD's reminder to press LS: worth
+  a line, since the deviation rows wait for LS. Changelog, `feature`: "Fenix A320: Alt+P opens a live window of the captain's PFD, read from the Fenix's own
   display data, flight director bars included, and Shift+1 to Shift+6 read the speed tape: green dot, S, F, VLS,
   alpha prot or VSW, and VFE next."
 - **Proposed rules** (`.claude/rules/fenix-channel.md`):
@@ -493,17 +494,19 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
     194.1 staying 345.47 and 197 agreeing, so the flag rows are what tell the pilot. protobuf-net leaves a 0 out, and 0
     is no tape speed: NaN and absent are both not drawn (no row, and the key says "not available"). The airspeed
     (28.5) is the exception: absent it is 0 and reads "Airspeed below 30 knots".
-  - `- [FNX-?] The Fenix PFD's baro reference comes from the captain's EFIS entry (field 1, first element: QnhStd, QnhInches, Qnh, QnhInch; an absent Qnh is its default 1013, never "not shown"; QFE never read as QNH), never from the qnhCapt text (105), which carries an unknown x in flight at QNH. Full: docs/invariants/fenix-channel.md#fnx-?`
+  - `- [FNX-?] The Fenix PFD's baro reference comes from the captain's EFIS entry (field 1, first element: QnhStd, QnhInches, Qnh, QnhInch; an absent Qnh is its default 1013, never "not shown"; QFE never read as QNH), never from the qnhCapt text (105), which only draws it. Full: docs/invariants/fenix-channel.md#fnx-?`
     Full text: the six baro states of 2026-11-03 against the Fenix's own baro L:vars: hPa 1013 leaves 1.14 absent (the
     box draws QNH 1013); hPa 1029 sends 1.14 1029; inches send 1.11 with 1.15 (29.9139 drawn QNH 29.91, 29.80 and 29.92
     as set); STD sends 1.10 and 1.11. QFE (1.7) and the preselect (1.12) were never set, so QFE and an inch reading
     with 1.15 absent read ", baro not read"; STD outranks QFE. The text (105) is `QNH c29.91`, `QNH c1029` or
-    `  fcSTDyf` on the ground and carries `x` in flight at QNH ([FNX-24]).
+    `  fcSTDyf` on the ground and carries the code `x1` passing the transition altitude with QNH still set and the
+    transition level with STD still set ([FNX-24]).
   - `- [FNX-?] A PFD flag joins the Fenix PFD window (FenixChannelPfdRows' flag rows) only after a capture in the sim showed what the PFD draws for it; an unmeasured flag is left out, never named by analogy with the real A320. Full: docs/invariants/fenix-channel.md#fnx-?`
     Full text: measured and drawn (2026-11-03): 46.1.1 ATT, 46.1.2 HDG, 46.2.1 SPD, 46.2.2 ALT, 46.8 V/S; 122.3 Metric
     (exactly while "-40 M" is drawn; `Efis.Meters` 1.5 is never set); 205 `dhMessage` (amber "DH" from a radio altitude
-    of 200); 122.6 and 122.7 follow STD. 122.8 `AltAmber` (the altitude readout amber, 12:49:07.4 to 12:49:59.3) and 206
-    `dhMessageFlashing` are measured but have no words, so no row. The ones left out are in "Flags not measured".
+    of 200, never at BARO); 122.6 and 122.7 follow STD. 122.8 `AltAmber` (the altitude readout amber, 12:49:07.4 to
+    12:49:59.3, and alone from a BARO minimum down, 17:33:04.1 at 700 ft) and 206 `dhMessageFlashing` are measured but
+    have no words, so no row. The ones left out are in "Flags not measured".
   - `- [FNX-?] The PFD window's flight director row (FenixChannelPfdRows.FlightDirectorRow) speaks each bar where drawn, commanded minus actual (110.1 less pitch, 110.3 less bank), up and right positive; the yaw bar (110.4 less heading) only with RollGuidance (110.8) set and no HDG flag; no row with no bar or in TRK/FPA; FdFlash (110.9) adds "flashing". Full: docs/invariants/fenix-channel.md#fnx-?`
     Full text: 110.1, 110.3 and 110.4 are the commanded pitch, bank and heading, not positions (Robin ruled on
     2026-11-03 that the row says where the bars are). Level at FL120 110.1 was 2.79 with a pitch of 2.78, bars
@@ -526,9 +529,14 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
     -701.76 at FL150 and -124.87 at a radio altitude of 200 and a baro altitude of 518, moving with the aircraft, and
     it is absent with none set. The Fenix's own slot 13 reads `BAROdc⠀  700` or `RADIOdc⠀⠀ 200`, drawn "RADIO 200".
     The plan expected a minimums row; it was dropped, and the field number is not in `FenixChannelFields`.
-- **`FNX-24`'s full text** gains `p` and `d` as known letters that are never spoken (Robin, 2026-11-03). It says the
-  parser knows twelve letters, which becomes fourteen; its list of where each letter was seen gains `p` and `d`; and its
-  sentence "A `d` was seen only in the ND's GS/TAS block, meaning unknown, and is not in the list" goes. `p` came with
+- **`FNX-24`'s full text** gains `p` and `d` as known letters that are never spoken (Robin, 2026-11-03), and `x1`, the
+  letter x with exactly the digit 1, as a known code that draws nothing. It says the parser knows twelve letters, which
+  becomes fourteen and that code; its list of where each letter was seen gains all three; and its sentence "A `d` was
+  seen only in the ND's GS/TAS block, meaning unknown, and is not in the list" goes. `x1` came on the LS flag
+  (`ax1ILS`, exactly while LS is off and the ILS approach is armed; drawn amber, on and off) and on the baro text
+  (`x1QNH c30.36`, `x1  fcSTDyf`). A bare x or another digit stays unknown and fails closed. While x was unknown the LS
+  flag cost the whole PFD window its rows (17:23:51 to 17:26:18). Pinned by `The_x1_code_is_known_and_draws_nothing`,
+  `An_x_without_exactly_the_digit_1_stays_unknown` and `The_amber_ils_reminder_reads_as_the_pfd_draws_it`. `p` came with
   the two V/S reversions, not with every flash of the flight director bars: FMA slot 1 held `bgpV/Scp+1800` for 10 s
   each time (12:13:25.8 to 12:13:35.8 and 12:14:55.8 to 12:15:05.8, drawn through both phases of the blink), and the
   flash was also set 12:02:13 to 12:02:22 and 12:11:09 to 12:11:19 with no `p`. It was also in the E/WD memo
@@ -540,13 +548,14 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
   is "GS 456, white"). The rule's line names no letters and needs no change. Pinned by `FenixChannelTextTests`
   (`The_p_letter_is_known_and_draws_nothing`, `The_d_letter_is_known_and_keeps_the_words_either_side_apart`,
   `Speech_reads_the_lines_with_p_and_d`).
-- **Flags not measured:** 93, 94, 96, 114 (114.1 was set once, cold and dark, with no PFD drawn), 115 and 120, never
-  seen set; 118.1 and 118.2 (`FdFlag`, `FdFlagFlash`), set for 2 s at 12:50:02.5 with the aircraft stopped on the
-  runway and not captured; of 122, the members never seen set (122.1, 122.2, 122.4 and 122.5); of 110, 110.10 (never
-  set), 110.11 (seen alone on the take-off roll, 12:01:07.2 to 12:01:41.2, with no roll bar drawn, and with 110.12 at
-  touchdown) and 110.12 (seen only with 110.11, at touchdown). No row shows them; the flight director row reads
-  110.10 to 110.12 only to hide bars. Plan 12 lists them as follow-ups. (122.8 is measured and has no words, so it is
-  not a gap.)
+- **Flags not measured:** never seen set: 93, 94, 96, 115, 122.4, 122.5 and 110.10. Seen set with no capture of what
+  they draw: 114.1 (cold and dark, and at a power-down); 118.1 and 118.2 (`FdFlag`, `FdFlagFlash`, for 2 s at the end
+  of each roll-out and at a power-down); 120.4 to 120.6 (in a go-around, 17:33:17 to 17:33:21, and 120.5 again at
+  17:34:21 and 17:35:09); 120.1, 120.2, 120.8 and 120.9 (at a power-down); 122.1 (17:05:19.7 to 17:05:55.3, climbing
+  with the FCU altitude below); 122.2 (in and out around each altitude capture). Of 110: 110.11 was seen alone on the
+  RWY take-off roll, 12:01:07.2 to 12:01:41.2, with no roll bar drawn, and with 110.12 at touchdown; 110.12 only with
+  110.11, at touchdown. No row shows them; the flight director row reads 110.10 to 110.12 only to hide bars. Plan 12
+  lists them as follow-ups. (122.8 is measured and has no words, so it is not a gap.)
 - **Requests for frozen files:**
   - `FenixChannelDispatchTests.cs`, line 4: the header says "The seams themselves have no implementation in this work",
     which is stale since the PFD's switch commit implements two of them.
@@ -562,13 +571,29 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
   - 12 and the owner, with 04 and 09 told: the E/WD's fuel check latched on the landing roll, "E/WD not trusted: fuel
     disagrees: channel 1,715 kg, sim 1,609 kg" at 12:49:48.8 with the ground speed falling, then "fuel latched until
     reconnect" at 12:49:51.8, and the E/WD stayed untrusted until the app ended. That is 106 kg between the Fenix's FOB
-    and the sim's total during heavy deceleration. The gate is plan 01's and frozen, so plan 12 and the owner decide;
-    plans 04 and 09 should expect an E/WD that is untrusted from the landing roll on.
-  - 12, with 08: each press of an FD button makes the PFD "not trusted: FD captain disagrees" for about a second
-    (11:28:27.9 to 11:28:28.9, three times), because the lamp changes at 1 Hz and the channel at once. The gate behaves
-    as designed, and the PFD window shows its status row for that second. Plan 08's announcer, under plan 01's proposed
-    rule (the first reading after a trust gap is silent), would then not announce the FD change the press itself made
-    in slot 9.
+    and the sim's total during heavy deceleration. The second flight latched the same way (2,259 kg against 2,158 kg,
+    17:53:00, latched 17:53:03), so it is what a landing does. The gate is plan 01's and frozen, so plan 12 and the owner
+    decide; plans 04 and 09 should expect an E/WD that is untrusted from the landing roll on.
+  - 12, with 08: a press of an FD button can make the PFD "not trusted: FD captain disagrees" for about a second
+    (11:28:27.9 to 11:28:28.9, three times; 17:05:58, 17:56:08; but not at 17:56:40 or 17:57:03), because the lamp changes
+    at 1 Hz and the channel at once. The gate behaves as designed, and the PFD window shows its status row for that
+    second. Plan 08's announcer, under plan 01's proposed rule (the first reading after a trust gap is silent), would
+    then not announce the FD change the press itself made in slot 9.
+  - 12: an open question to measure. Twice in flight the shrink to a status row held the UI thread for 5 s ("UI thread
+    stalled 5.3 s", 17:06:03; "5.1 s", 17:23:56): 17 or 18 rows, the cursor on the flight director row, a local UI
+    Automation reader attached. Not with the cursor on row 0 (17:06:23), nor with the bottom row of 10 selected, reader
+    or not (17:56:08, 17:59:04). Robin noticed no freeze. A stall holds up the app's keys and speech, and every channel
+    window can shrink this way, so run it in flight with 17 rows, the cursor low and no reader. `DisplayList.UpdateInPlace`
+    is shared and removes rows one at a time.
+  - 12: "Letters still unconfirmed (`x`, `y`, `l`, ...)": `x1` is measured now, and only a bare `x` or another digit is
+    unconfirmed.
+  - 12 and the owner, a proposal for a later plan: at a BARO minimum the altitude digits turning amber is all the PFD
+    draws, with no message, and the altitude row says the number with no word for it, as rows the app builds speak no
+    color. Nothing was changed.
+  - 04: its "x1.618" test strings are not an unknown letter any more, so plan 04 now says to use "q1.618".
+  - All: the PFD window's rows rely on every code in the texts it reads being known. A code first seen in flight costs
+    the whole window until the line goes away, by design, so each later window should expect the same, and look for it
+    in a flight with LS off and the approach armed.
   - 08: FMA text this plan measured. The Approach column on the ILS held slot 3 `CAT3`, slot 8 `SINGLE` then `DUAL`
     and slot 13 `BAROdc⠀  700` or `RADIOdc⠀⠀ 200` (drawn "RADIO 200"), so `FenixChannelFmaLayout`'s remark that the
     Approach column was never seen is out of date. Slot 9 is `w1   2`, `w1   -`, `w-   2` or blank, drawn "1 FD 2",

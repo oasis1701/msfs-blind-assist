@@ -22,7 +22,7 @@ internal readonly record struct FenixPfdBaro(bool Std, bool Inches, bool Qfe, do
 /// <remarks>
 /// <para>Everything here is the captain's side: the first EFIS entry is the captain's panel, and the first officer's
 /// air data and texts are not read. The baro reference comes from the EFIS entry and never from the baro text (field
-/// 105), which carries a format letter the app does not know while the baro is at QNH in flight.</para>
+/// 105): the entry holds the setting as numbers, and the text only draws it.</para>
 /// <para>A value the push left out reads as protobuf-net leaves it: the air data, the trend and the track are 0, a
 /// text is "", a flag is false, and the QNH is 1013. A speed or the speed target that is absent is NaN, the same as one
 /// the PFD does not draw, since 0 is none of them. A deviation is different: the channel sends NaN for a scale the PFD

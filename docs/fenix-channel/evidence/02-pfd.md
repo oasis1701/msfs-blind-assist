@@ -57,9 +57,9 @@ The IR 1 press also sets 28.3 and 28.9 to the negated magnetic variation. A lett
 - **Mach:** blank on the ground, `g.469` at FL120, as drawn. The Mach row flipped 42 times between 12:08 and 12:28 around M.48, and the PFD drew no Mach in capture 121631: the row follows the text the channel sends.
 - **Radio altitude:** `a0`, `a-1`, `a220`, amber as drawn; blank above 2,500 ft.
 - **LS information:** on the wire with LS on or off (the plan gates it on `Ls` either way); drawn with LS on only: `mIGWQ`, `m111.70`, `m1s.0l  scNM` ("1.0 NM").
-- **Approach labels 100, marker 117.1, LS flag 117.3:** blank through this whole flight, so their rows are unmeasured and only show if the channel sends text.
+- **Approach labels 100, marker 117.1:** blank through both flights, so their rows are unmeasured and only show if the channel sends text. **LS flag 117.3:** blank in the first flight, where LS was on for the approach; `ax1ILS` in the second (below).
 - **The FMA's Approach column** on the ILS: slot 3 `CAT3`, slot 8 `SINGLE` then `DUAL`, slot 13 `BAROdc⠀  700` or `RADIOdc⠀⠀ 200`, drawn "RADIO 200", white and cyan.
-- **FMA engagement:** slot 9 `w1   2`, `w1   -`, `w-   2`, blank with both off, drawn "1 FD 2", "1 FD -", "- FD 2" ([spec 5, row 16]). Slot 11 `CHECK SPEED MODE` with no letter. Slot 6 ` cG/S`.
+- **FMA engagement:** slot 9 `w1   2`, `w1   -`, `w-   2`, blank with both off, drawn "1 FD 2", "1 FD -", "- FD 2". Slot 11 `CHECK SPEED MODE` with no letter. Slot 6 ` cG/S`.
 
 ## Field 155 is not the setting
 
@@ -88,7 +88,7 @@ Seen set during the flight and captured:
 - 122.8 `AltAmber` over the same stretch: the altitude readout amber. No words of its own, so no row.
 - 122.3 `Metric`: above.
 
-Seen set with no capture: 118.1 and 118.2 (`FdFlag`, `FdFlagFlash`) for 2 s at 12:50:02.5, stopped on the runway. Never set: 93, 94, 96, 115, 120, 122.1, 122.2, 122.4, 122.5. 114 was set once, cold and dark, with no PFD drawn.
+Seen set with no capture: 118.1 and 118.2 (`FdFlag`, `FdFlagFlash`) for 2 s at 12:50:02.5, stopped on the runway. Never set in this flight: 93, 94, 96, 115, 120, 122.1, 122.2, 122.4, 122.5. 114 was set once, cold and dark, with no PFD drawn. The second flight (below) saw 114, 120, 122.1 and 122.2 set.
 
 ## The flight director (Task 2 Step 5, Task 3 Step 7)
 
@@ -107,8 +107,36 @@ Both make their display untrusted while unknown, and both now join `FenixChannel
 
 - `p`: FMA slot 1 `bgpV/Scp+1800` for 10 s with each of the two V/S reversions, when the FD flash was set too ("PFD not trusted: unknown code 'p' in the FMA", 12:13:25.8 to 12:13:35.8, and 12:14:55.8 to 12:15:05.8). The flash was set twice more with no `p` (above). The text stays drawn in both phases of the bars' flash. Also E/WD `pgIR IN ALIGN 1 MN` ("E/WD not trusted", 11:25:47).
 - `d`: FMA slot 13, for as long as a minimum is shown ("PFD not trusted: unknown code 'd' in the FMA", 12:17:03.8 to 12:49:59.8). Plan 01 read in the program's code that `d` only moves the drawing position right and draws nothing.
+- `x1`: below, under the second flight.
 
 ## Seen in passing
 
 - **Each press of an FD button** makes the PFD "not trusted: FD captain disagrees" for about a second (11:28:27.9 to 11:28:28.9; three times), since the lamp comes at 1 Hz and the channel at once. The gate behaves as designed, and the window shows its status row for that second.
-- **The E/WD's fuel check latched on the landing roll:** "E/WD not trusted: fuel disagrees: channel 1,715 kg, sim 1,609 kg" at 12:49:48.8, ground speed falling, then "fuel latched until reconnect" at 12:49:51.8, and the E/WD stayed untrusted until the app ended. 106 kg between the Fenix's FOB and the sim's total during heavy deceleration. For plans 04 and 12.
+- **The E/WD's fuel check latched on the landing roll:** "E/WD not trusted: fuel disagrees: channel 1,715 kg, sim 1,609 kg" at 12:49:48.8, ground speed falling, then "fuel latched until reconnect" at 12:49:51.8, and the E/WD stayed untrusted until the app ended. 106 kg between the Fenix's FOB and the sim's total during heavy deceleration. For plans 04 and 12. The second flight latched the same way: 2,259 kg against 2,158 kg at 17:53:00, latched at 17:53:03.
+
+## The second flight (Task 9)
+
+Same build and aircraft, 2026-11-03, 16:40 to 18:02: EDDF 18 with no ILS tuned, an ILS approach to 07R at BARO 700, a go-around from a low point of 598 ft (radio altitude 270), and a second approach to an autoland. Robin flew and pressed the keys; Claude flew the points from 17:02 to 17:08 with AP1 on, and worked the aircraft on the ground. The rows came from the open window through a local reader every second, beside the raw fields (500 ms) and captures (4 s). The app was the review's fixes; from 17:38 it also had `x1`, deployed in flight.
+
+No PFD captures of the take-off: the camera sat on the pedestal view from before 16:38:41 until it was put back at 16:58. What moved it is not known; Shift+1 to Shift+6 at 17:02, with the PFD window in front, left it alone. So the roll bar on the ground was captured after landing instead.
+
+- **Speed keys.** At the stand the lever was at FULL, left from the last landing (S_FC_FLAPS 4; the stock handle index said 2), so all six said "not available", rightly: 127.7 NaN, no VFE drawn. Lever 0: 127.7 235, Shift+6 "VFE next 235 knots". ADR 1 off: 127.7 still 235, rows SPD, ALT and V/S flag, Shift+6 "VFE next not available". Clean at 12,000 ft: green dot 213, S and F not available, VLS 206, alpha prot 180, VFE next 235, each its row. Flaps 1: S 193, VFE next 215. Flaps 2: F 149, 195. Flaps 3: F 149, 190.
+- **Cursor.** Parked on Altitude from 16:51 through lift-off (about 16:53:14) to 16:54:38, the number climbing on Robin's braille display. One read in 82, 16:53:35.373, had the selection on the row above in a tick where that row changed too; the next was back. Had that been the state, `RowToFollow` would have followed Alpha prot from then on, so the read landed inside a refresh. The reader caught a half-shrunk list the same way at 17:06:03.668.
+- **Take-off, no ILS, HDG pulled at line-up.** 110.8 stayed clear, so no yaw row; 110.11 stayed clear too, unlike the first flight's RWY roll. The row read "pitch bar 9.2 degrees up, roll bar 4.9 degrees right" at the line-up, numbers only (no capture).
+- **Roll bar on the ground.** HDG pulled on the runway after landing, FCU 15 degrees right: 110.3 0.90, 110.1 NaN, row "Flight director: roll bar 0.9 degrees right". The capture (17:55:04) draws the roll bar alone, just right of center.
+- **Turn and bars.** "bank 25 degrees right", bars centered, drawn so (17:04:15). Roll bar 10.9 right with bank 14 right (17:05:42). Pitch bar 1.1 up, roll bar 2.9 left, bank 22 left (17:07:12). Go-around: pitch bar 11.6 up with SRS, NAV and MAN TOGA in boxes, and "Glideslope diamond 0.9 dots below", the diamond about a dot below center (17:33:15). All on the sides drawn.
+- **Vertical speed.** 1000 up beside the sim's 996 (17:04:55); 1400 down beside -1358 (17:05:52).
+- **Target.** "Speed target 251 knots, selected" from Robin's pull at 16:55:26, then 250, the triangle cyan (17:04:15).
+- **Flash.** OP CLB, FCU altitude turned below the aircraft: FMA "V/S green, +1000 cyan" at once; 110.9 from 17:05:08.3 to 17:05:18.1; the row ended ", flashing" from 17:05:09.2 to 17:05:18.8 and then not. No status row, nothing in the log.
+- **FD buttons.** Captain's off, 17:05:58: one second of status row ("FD captain disagrees"), then no flight director row and "- FD 2", no bars drawn. Both off: no row, no FD in the Engagement row. Both on: restored. Later presses did not always trip the gate: 17:56:40 and 17:57:03 gave no status row at all, as the compare only sees the two disagree if it runs in that moment.
+- **Radio altitude and approach rows.** "Radio altitude 2490, green" first at 17:30:08, amber below about 400 (410 green, 360 amber). "Approach: CAT3 SINGLE, BARO white, 700 cyan", then DUAL, as drawn. "FMA message: LVR CLB, white" at the go-around.
+- **Deviations.** "Localizer diamond at full scale, left" with the half diamond at the left end, 82.1 -2.04 (17:26:51); "Glideslope diamond 1.2 dots above", drawn so.
+- **BARO minimum.** 205 stays clear at BARO: it is the radio minimum's. 122.8 alone is set from 700 ft down (17:33:04.1 to 17:33:09.5; second approach 17:52:02.1 to 17:53:07.5), and the altitude digits turn amber (173307), with no message. The altitude row gives the number and no word for it, as rows the app builds speak no color. Slot 13 keeps showing the setting.
+- **Power-down.** Engine masters off with the window open, batteries still on: 17:59:04 one row, "PFD: not available, display off". Alt+P the AI read with no words first, Shift+1 "Green dot not available" (Robin). The ISIS followed at 18:02:42 with the batteries.
+- **The log.** One "PFD: " line in the whole session, the `x1` one below, from the build before it was known.
+
+`x1`, a known code since 17:38. With the LS button off and the ILS approach armed, 117.3 holds `ax1ILS`: it came with the arming at 17:23:51 (slots 6 and 7 `G/S`, `LOC`), went with the disarming at 17:24:03, came back at 17:24:10 and went with LS on at 17:26:18; and again 17:45:20 to 17:48:10, LS on then too. The PFD draws an amber ILS beside the baro box (pt-f2-ils1). The frames show it on and off while the text stays: absent in every frame 17:45:33 to 17:47:17, present in every frame 17:47:21 to 17:47:57, at one frame every 4 s. While x was unknown this dropped the whole window to "PFD: not available, unknown code 'x' in the LS flag" until LS was pressed, the speed keys with it. The same code came in 105 passing the transition altitude with QNH still set (`x1QNH c30.36`, 16:55:14.9 to 16:55:20.3, climbing through about 5,000 ft) and passing the transition level with STD still set (`x1  fcSTDyf`, first flight, 12:30:04 to 12:30:11), each until the setting changed. All three are x with the digit 1 and nothing else was seen, so that alone is known: it draws nothing and its digit is no text (the row would otherwise read "1ILS"). A bare x, or another digit, still fails closed. With it known: all rows kept, "LS flag: ILS, amber" last, 17:45:20 to 17:48:10.
+
+Flags seen set for the first time, with no row and no capture of what they draw: 122.2 in and out around each altitude capture (16:57:13.6 to 16:57:29.3, 17:04:49.4 to 17:05:02.9, and more); 122.1 from 17:05:19.7 to 17:05:55.3, climbing away from an FCU altitude below; 120.4 from 17:33:17.1 and 120.6 from 17:33:18.7, both to 17:33:20.9, in the go-around; 120.5 at 17:34:21.4 to 17:34:23.0 and 17:35:09.4 to 17:36:13.2; 120.1, 120.2, 120.8, 120.9 and 114.1 at the power-down, with 118.1 and 118.2, also seen at 17:53:11.3 to 17:53:13.4.
+
+Unexplained, measured: "UI thread stalled 5.3 s" (17:05:58.8 to 17:06:04) and "5.1 s" (17:23:51.9 to 17:23:57): the list going from 17 or 18 rows to one status row, the cursor on the flight director row, the local reader attached, and the reader saw lists of 1, 10, 1, 3 rows in between. Not with the cursor on row 0 and 17 rows (17:06:23, reader attached), the bottom row of 10 with no reader (17:56:08) or with it (17:59:04). Robin noticed no freeze. `DisplayList.UpdateInPlace` removes rows one at a time, and it is shared with other aircraft. The case with no reader and 17 rows has not been run.
