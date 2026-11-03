@@ -565,7 +565,7 @@ public class FenixChannelSdWindowTests
         {
             reads++;
             return SdPush.A320;
-        });
+        }, _ => { });
 
         Assert.Equal("Fenix SD", form.Text);
         Assert.Equal("SD display", ListOf(form).AccessibleName);
@@ -583,7 +583,7 @@ public class FenixChannelSdWindowTests
     {
         var lines = new MonitorTestKit.Lines();
         using FenixChannelMonitor monitor = TrustedSdMonitor(lines, new SdPush { BottomLine = [] });
-        using var form = new FenixChannelSdForm(monitor, () => SdPush.A320);
+        using var form = new FenixChannelSdForm(monitor, () => SdPush.A320, _ => { });
 
         form.StartLive();
 
@@ -600,7 +600,7 @@ public class FenixChannelSdWindowTests
         {
             reads++;
             return SdPush.A320;
-        });
+        }, _ => { });
 
         form.StartLive();
 
@@ -615,7 +615,7 @@ public class FenixChannelSdWindowTests
     {
         // Fenix windows are tracked one for each type: a display that shared the base class would share its window.
         using FenixChannelMonitor neverStarted = MonitorTestKit.NewIdleMonitor(new MonitorTestKit.Lines());
-        using FenixChannelSdForm form = new FenixA320Definition().CreateChannelSdForm(neverStarted);
+        using FenixChannelSdForm form = new FenixA320Definition().CreateChannelSdForm(neverStarted, null!, null!);
 
         Assert.Equal("Fenix SD", form.Text);
         Assert.True(typeof(FenixChannelSdForm).IsSubclassOf(typeof(FenixChannelDisplayForm)));
