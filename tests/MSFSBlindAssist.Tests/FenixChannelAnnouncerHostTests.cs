@@ -7,16 +7,18 @@
 //
 // The contract: each tick calls the heartbeat first and then every sampler in the order given, with one reading of the
 // clock for the whole tick that every sampler is handed. A sampler, or the heartbeat, that throws is logged once for each
-// distinct "<exception type>: <message> (at <type>.<method>)", the method being the one that threw, so that the log says
-// which of several samplers it was (32 lines are remembered, then forgotten, as the monitor's own problems are), and
-// costs nothing else: the other samplers of the tick still run, the timer stays on and the next tick runs them all again;
-// a log that throws is swallowed as well. Start makes the one timer, at 100 ms, and a second Start does nothing. Dispose
-// stops and disposes it, never throws, and a second Dispose does nothing; after it a tick does nothing at all (no beat, no
-// sampler, no clock reading) and Start makes no timer.
+// distinct "<exception type>: <message> (at <type>.<method>)", the method being the first of the app's own on its stack
+// trace, never a helper of the framework's, so that the log says which of several samplers it was (32 lines are
+// remembered, then forgotten, as the monitor's own problems are), and costs nothing else: the other samplers of the tick
+// still run, the timer stays on and the next tick runs them all again; a log that throws is swallowed as well. Start makes
+// the one timer, at 100 ms, and a second Start does nothing. Dispose stops and disposes it, never throws, and a second
+// Dispose does nothing; after it a tick does nothing at all (no beat, no sampler, no clock reading) and Start makes no
+// timer.
 //
-// The host formats no number: a log line is the exception's own type and message and the names of the method that threw,
-// so it reads the same where the PC's culture writes a comma.
+// The host formats no number: a log line is the exception's own type and message and the names of the app's method it
+// came from, so it reads the same where the PC's culture writes a comma.
 
+using System.Diagnostics;
 using System.Reflection;
 using MSFSBlindAssist.Services;
 
@@ -42,6 +44,17 @@ public class FenixChannelAnnouncerHostTests
     private static void NoSpeedLimitsEither(long now) => throw new InvalidOperationException("no speed limits");
 
     private static void Throw(Exception exception) => throw exception;
+
+    // An index past the end, which the framework throws from a helper of its own, below the method named here.
+    private static void IndexesAList(long now) => _ = new List<int>()[3];
+
+    private static void IndexesAnotherList(long now) => _ = new List<int>()[3];
+
+    private static void IndexesAnArray(long now)
+    {
+        int[] one = new int[1];
+        _ = one[3];
+    }
 
     // ---- The tick -----------------------------------------------------------------------------------
 
@@ -214,12 +227,68 @@ public class FenixChannelAnnouncerHostTests
     }
 
     [Fact]
+    public void A_throw_inside_the_framework_names_the_apps_own_frame()
+    {
+        // An index past the end of a list or an array is thrown from a helper of the framework's, below the sampler
+        // (ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessException and ThrowHelpers.ThrowIndexOutOfRangeException,
+        // measured on .NET 10). A line naming that tells nobody which sampler threw, so it names the first frame of the
+        // app's own, and two samplers that fault the same way are two lines. The tests' namespace is inside the app's.
+        var logged = new List<string>();
+        using FenixChannelAnnouncers host = NewHost(
+            samplers: [IndexesAList, IndexesAnotherList, IndexesAnArray],
+            logProblem: logged.Add);
+
+        host.Tick();
+        host.Tick();
+
+        Assert.Equal(3, logged.Count);
+        Assert.StartsWith("ArgumentOutOfRangeException: ", logged[0], StringComparison.Ordinal);
+        Assert.EndsWith(" (at FenixChannelAnnouncerHostTests.IndexesAList)", logged[0], StringComparison.Ordinal);
+        Assert.StartsWith("ArgumentOutOfRangeException: ", logged[1], StringComparison.Ordinal);
+        Assert.EndsWith(" (at FenixChannelAnnouncerHostTests.IndexesAnotherList)", logged[1], StringComparison.Ordinal);
+        Assert.StartsWith("IndexOutOfRangeException: ", logged[2], StringComparison.Ordinal);
+        Assert.EndsWith(" (at FenixChannelAnnouncerHostTests.IndexesAnArray)", logged[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_throw_in_a_lambda_names_the_lambda()
+    {
+        // The definition's samplers are lambdas. A lambda's type is nested, and it reads the namespace of the type around
+        // it, so it counts as the app's own: its name is the compiler's, with the method it was written in inside it.
+        var logged = new List<string>();
+        using FenixChannelAnnouncers host = NewHost(
+            samplers: [_ => throw new InvalidOperationException("no speed limits")],
+            logProblem: logged.Add);
+
+        host.Tick();
+
+        string line = Assert.Single(logged);
+        Assert.StartsWith("InvalidOperationException: no speed limits (at ", line, StringComparison.Ordinal);
+        Assert.Contains(nameof(A_throw_in_a_lambda_names_the_lambda), line, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void An_exception_with_no_throw_site_is_the_line_as_it_is()
     {
         // Never thrown, so it has no stack trace to name a method from: the type and the message alone.
         Assert.Equal(
             "InvalidOperationException: no speed limits",
             FenixChannelAnnouncers.ProblemLine(new InvalidOperationException("no speed limits")));
+    }
+
+    [Fact]
+    public async Task An_exception_with_no_frame_of_the_apps_is_the_line_as_it_is()
+    {
+        // Thrown and caught inside the framework: the task's delegate is the framework's own method, and the task keeps
+        // what it threw. So it has a stack trace, with no frame of the app's in it, and a framework's helper is never
+        // named in the app's place. (WhenAny, because an await of the task itself would add the test's frames.)
+        Func<object?, int> parse = Convert.ToInt32;
+        Task<int> task = Task.Factory.StartNew(parse, "not a number");
+        await Task.WhenAny(task);
+        Exception thrown = task.Exception!.InnerException!;
+        Assert.True(new StackTrace(thrown).FrameCount > 0, "the exception has no stack trace");
+
+        Assert.Equal($"FormatException: {thrown.Message}", FenixChannelAnnouncers.ProblemLine(thrown));
     }
 
     [Fact]

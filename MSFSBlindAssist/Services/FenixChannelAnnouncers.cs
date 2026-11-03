@@ -17,7 +17,7 @@ namespace MSFSBlindAssist.Services;
 /// sampler can therefore only make the next beat late, which is what the guard is there to notice. The host gives the
 /// beat no argument and keeps no time of its own for it: the monitor stamps its own clock.</para>
 /// <para>Isolation. A sampler that throws, and likewise the heartbeat, is reported once for each distinct line
-/// ("&lt;exception type&gt;: &lt;message&gt; (at &lt;type&gt;.&lt;method&gt;)", the method that threw: see
+/// ("&lt;exception type&gt;: &lt;message&gt; (at &lt;type&gt;.&lt;method&gt;)", the app's own method it came from: see
 /// <see cref="ProblemLine"/>) and costs nothing else: the other samplers of that tick still run, the timer stays on, and
 /// the next tick runs them all again. The lines remembered are bounded as the monitor's own problems are: 32 distinct
 /// ones, and the line that would be the 33rd empties the memory first, so a fault whose message changes at every tick
@@ -42,6 +42,9 @@ internal sealed class FenixChannelAnnouncers : IDisposable
 
     // The same bound the monitor puts on the problems it has logged.
     private const int MaxRememberedProblems = 32;
+
+    // Where the app's own code is, for the method a log line names (ProblemLine).
+    private const string AppNamespace = "MSFSBlindAssist";
 
     private readonly Action _heartbeat;
     private readonly Action<long>[] _samplers;
@@ -172,17 +175,30 @@ internal sealed class FenixChannelAnnouncers : IDisposable
 
     /// <summary>
     /// The line a throw is logged as: "&lt;exception type&gt;: &lt;message&gt; (at &lt;type&gt;.&lt;method&gt;)", the last
-    /// part naming the method that threw it (the first frame of its stack trace, with the short name of its declaring
-    /// type). The host knows its samplers only as delegates, so this is what tells the log which of them it was. An
-    /// exception with no such frame, one never thrown, leaves the part out. Only names go into the line, no number is
-    /// formatted here, so the PC's culture changes nothing. Internal for the tests.
+    /// part naming the first method of the app's own on its stack trace (the first frame whose declaring type is in the
+    /// app's namespace, with that type's short name). The host knows its samplers only as delegates, so this is what
+    /// tells the log which of them it was. It is not simply the first frame: an index past the end of a list or an array
+    /// is thrown from a helper of the framework's (ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessException and
+    /// ThrowHelpers.ThrowIndexOutOfRangeException, measured on .NET 10), and a line naming that tells nobody which
+    /// sampler it was. An exception with no such frame, one never thrown or one thrown and caught inside the framework,
+    /// leaves the part out. Only names go into the line, no number is formatted here, so the PC's culture changes
+    /// nothing. Internal for the tests.
     /// </summary>
     internal static string ProblemLine(Exception ex)
     {
         string line = $"{ex.GetType().Name}: {ex.Message}";
 
-        return new StackTrace(ex).GetFrame(0)?.GetMethod() is { DeclaringType: { } type } method
-            ? $"{line} (at {type.Name}.{method.Name})"
-            : line;
+        foreach (StackFrame frame in new StackTrace(ex).GetFrames())
+        {
+            if (frame.GetMethod() is { DeclaringType: { } type } method && IsInTheApp(type))
+                return $"{line} (at {type.Name}.{method.Name})";
+        }
+
+        return line;
     }
+
+    // A nested type, such as the one that holds a lambda, reads the namespace of the type around it.
+    private static bool IsInTheApp(Type type) =>
+        type.Namespace is { } name
+        && (name == AppNamespace || name.StartsWith(AppNamespace + ".", StringComparison.Ordinal));
 }
