@@ -1,7 +1,16 @@
 # Plan 05 evidence: the SD window
 
-Fenix build 3.0.0.7613 (the installed `FenixDisplay.exe` reports 3.0.0.7454 as its own file version, as it did for plan 02's
-checks). Worked by kn4iee with Claude. Raw fields come from the team's local channel tools, which stay local.
+Fenix build **3.0.0.7454**, kn4iee's install: the channel's log names that build, one update behind the team's checked
+3.0.0.7613 (`FenixChannelFields.VerifiedBuilds`). An earlier version of this file said 7613: that was wrong. Worked by
+kn4iee with Claude. Raw fields come from the team's local channel tools, which stay local.
+
+Because 7454 is not a checked build, the app's gate trusted no display on it, and Alt+S gave the AI read in the app
+(`fenix_channel.log`: "build 3.0.0.7454: not checked; every display uses the AI read"). Everything below that reads rows
+was made by the app's own composer from saved pushes, with the verdict given as trusted, so it shows what the window
+would say. On 2026-11-03 the whole channel contract of the installed 7454 (`FenixDisplay.exe`, all 232 `ProsimRemoting`
+types, 7,042 lines of the team's metadata dump, enum members and defaults included) was compared with the team's dump
+of 2026-11-01: identical but for the obfuscated internal names. Whether 7454 joins `VerifiedBuilds` ([FNX-23]) is the
+owner's decision; this plan does not add it.
 
 ## The fields ([FNX-23]): Task 2 Step 2, 2026-11-03
 
@@ -25,7 +34,7 @@ fresh from the installed `FenixDisplay.exe` with the team's metadata tool and co
 
 ## In the sim, 2026-11-03 (Task 1, and Task 10's checks of the rows against the data)
 
-The owner's Fenix A320 CFM (N328NW) at KATL on 3.0.0.7613, MSFS 2024, both engines running at first, the parking brake
+kn4iee's Fenix A320 CFM (N328NW) at KATL on 3.0.0.7454, MSFS 2024, both engines running at first, the parking brake
 set. Claude worked the aircraft through the simconnect MCP as the definition writes it (an ECP key 1 then 0; switches by
 value), with the owner's go-ahead, and left it as found (both engines running, APU off, the SD back on WHEEL). The fields
 came from the team's listener (a push saved per page or after each action, read-only); the rows were made from those

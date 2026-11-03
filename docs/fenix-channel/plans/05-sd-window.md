@@ -464,9 +464,11 @@ Kept in this file only, so no other plan's push ever touches it.
   on `fc-p05-sd-window` only (never on this branch before Task 10's ground steps pass). 1 done in the sim on 2026-11-03
   but for the captures, the other airframe and cold and dark; 10's data checks done the same day, with two fixes of
   their own before the switch; 10's steps in the app, by ear, and 11 wait on the owner.
-- **Waiting on the owner:** Task 10's steps in the app (Alt+S, the list entry, the log, cold and dark) and by ear; the
+- **Waiting on the owner:** Task 10's steps in the app (Alt+S, the list entry, the log, cold and dark) and by ear, on a
+  checked build: kn4iee's Fenix is 3.0.0.7454, which the gate does not trust, so Alt+S gave the AI read there; the
   captures, the A321, kilograms, cold and dark and the pump overheat failure (the evidence file's list); then Task 11.
-- **In-sim results:** 2026-11-03, the owner's A320 CFM at KATL on 3.0.0.7613, run by Claude through the simconnect MCP
+- **In-sim results:** 2026-11-03, kn4iee's A320 CFM at KATL on 3.0.0.7454 (not 7613, as this line first said; its whole
+  channel contract matches the team's dump, evidence file), run by Claude through the simconnect MCP
   (evidence file): every page this plan composes read its fields as the plan has them, and its rows matched the
   Fenix's own values (battery volts, the Engines window's oil, TAT and OAT, the E/WD's FOB, the sim's UTC). Two
   differences, fixed before the switch: the PTU has four states (-1 off or inhibited, 0 idle, 1 yellow to green, 2 green
