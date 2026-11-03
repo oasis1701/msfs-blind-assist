@@ -185,15 +185,17 @@ and the reaction delay 0.5 and 1.0 s.
 |---|---|---|---|
 | Final | `FINAL-{A,B}-{JET,LIGHT}-x{0,0.2R,0.2L}-h{0,+200,-200}-d{0.5,1.0}` | jet 8 nm out, light 4 nm; on the course, offset sideways and above or below the path | 72 |
 | Intercept | `INT-{A,B}-{JET,LIGHT}-{L,R}{30,45,90}-d{…}` | jet 12 nm out and 3 nm to the side, light 6 nm and 1.5 nm; cutting toward the line at the angle given; at the path's height | 48 |
-| Downwind | `DW-{A,B}-{JET,LIGHT}-{L,R}-d{…}` | abeam the threshold, jet 3 nm to the side and 2,000 ft above the field, light 1.5 nm and 1,000 ft; flying the reciprocal | 16 |
+| Downwind | `DW-{A,B}-{JET,LIGHT}-{L,R}-d{…}` | abeam the middle of the runway (1 nm past the threshold), jet 3 nm to the side and 2,000 ft above the field, light 1.5 nm and 1,000 ft; flying the reciprocal. Not abeam the threshold itself: there, guidance's behind-the-runway test is decided by rounding | 16 |
 | Wind | `WIND-XW-A-JET-d0.5`, `WIND-TW-A-JET-d0.5` | a jet final with 15 kt from the right; a jet on a 90° base from the right with the same wind behind it | 2 |
 | Frame rate | `FPS-A-JET-f{20,30,60}` | the jet final on the centreline and the path, at 20, 30 and 60 frames a second | 3 |
 | Step | `STEP-A-{JET,LIGHT}` | 6 nm out on the path; at 40 s the pilot holds 1° below their pitch for 10 s | 2 |
 | Speed | `SPEED-A-{JET160,LIGHT90}-{R45,x0.2R-h+200}-d0.5` | the 45° intercept and an offset final at 160 kt (jet) and 90 kt (light) | 4 |
 
-A run ends at touchdown (`touchdown` within 0.3 nm before the threshold or anywhere past it,
-otherwise `landedShort`), when visual guidance switches itself off (`vgOff`), after 900 simulated
-seconds (`timeout`), or 10 s after a step (`stepDone`).
+A run ends when the wheels touch, which is the profile's `FlareAltitudeBiasFt` below the datum, as
+visual guidance itself places them. The landing is `touchdown` on the runway (2 nm by 150 ft), or
+`landedShort`, `landedLong` or `offRunway`. A run also ends when the aircraft passes the runway's
+far end still airborne (`pastRunwayEnd`), when visual guidance switches itself off (`vgOff`), after
+900 simulated seconds (`timeout`), or 10 s after a step (`stepDone`).
 
 ### Measures
 
@@ -222,10 +224,11 @@ VirtualPilot.exe approach [--scenario TEXT] [--out file]
 VirtualPilot.exe approach --trace NAME
 ```
 
-`--selftest` runs 18 checks of the harness itself: turn rate and direction, the 3° descent rate,
+`--selftest` runs 22 checks of the harness itself: turn rate and direction, the 3° descent rate,
 wind drift, the SimConnect signs, the north wrap, the runway geometry, great-circle flight, the
 pilot's delay, roll rate, deadband and saturation, speech timestamps, the frame-rate runs, results
-under a Swedish culture, the matrix size and the step measures. `--scenario` runs every scenario
+under a Swedish culture, the matrix size, the step measures, wheel contact, the run ending past the
+runway, mirror-image downwinds, and the landing classes. `--scenario` runs every scenario
 whose name contains the text. `--trace` prints one scenario every half simulated second (phase,
 position, path error, commanded and actual bank and pitch) with each spoken line.
 
@@ -234,21 +237,30 @@ runs scenario by scenario and prints `BETTER` and `WORSE` counts with up to six 
 change counts as worse when `established` goes from True to False, `endReason` leaves `touchdown`,
 `finalXteRmsFt` or `pathRmsFt` rises by more than 10 % and 15 ft, `overshootFt` by 100 ft,
 `maxDescentFpm` by 200, `pitchJitterDeg` or `bankCalloutsPerMin` by 20 %, `|selfFeedback10s|` by
-0.1, or `selfFeedback10s` changes sign. Better is the mirror of each, except that a sign change
-is always worse. The harness is deterministic: two runs of one build compare as `BETTER {}` and
-`WORSE {}`.
+0.1, `selfFeedback10s` changes sign, or the touchdown point moves more than 25 ft farther from the
+centreline. Better is the mirror of each, except that a sign change is always worse. A third list,
+`CHANGED`, has the moves with no single right direction: the touchdown point moving more than
+300 ft along the runway, and the end reason changing between two outcomes neither of which is a
+touchdown. The harness is deterministic: two runs of one build compare as `BETTER {}`, `WORSE {}`
+and `CHANGED {}`.
 
 ### Baseline: today's visual guidance (2026-11-02)
 
-Measured at f90f36267, before any change to the guidance. Later stages of the redesign re-run it by
-building the harness at the commit that adds this section, then compare their own run against it.
+Measured at 0463330e9, before any change to the guidance (the app's code is the same from f4a129b48,
+which added the hooks, to the end of stage 1). Later stages of the redesign compare their own run
+against it with `compare_approach.py`. While the harness is unchanged, the baseline is the run of
+the harness built at 0463330e9. Once the harness changes (a fix, a new measure or scenario), the
+baseline has to be flown again with the new harness against the stage-1 app: make a worktree at
+0463330e9, copy the current `tools/VirtualPilot` over its own, build and run it there. That only
+works while the harness needs no app hooks the stage-1 app lacks.
 
 - Final tracking, jet: 0 ft RMS from a start on the centreline, about 21 ft from a start 0.2 nm off
   (24 runs). The median over every jet run with a final segment is 21.0 ft.
 - Final tracking, light aircraft: median 368 ft. From 0.2 nm (1,215 ft) off at 4 nm, today's arc
   capture asks for about 3° of intercept near the line and is still about 590 ft off at 3 nm. It
   counts as established anyway, because 0.1 nm is 608 ft, so `established` is not a tracking
-  result on its own.
+  result on its own. The light intercepts that land (the 1.0 s pilot) put the wheels down about
+  350 ft beside the runway (`offRunway`, 12 runs, and one 90 kt run).
 - Jet intercepts: established after about 172 s, no overshoot, final cross-track median 70 ft
   because the capture is still closing at 5 nm.
 - Path: median `pathRmsFt` 10.0 ft over 130 runs (jet 5.5 ft, light 10.3 ft).
@@ -257,15 +269,20 @@ building the harness at the commit that adds this section, then compare their ow
   The calculation from the code predicted about −1.2 and −0.6.
 - Frame rate: `pitchJitterDeg` 0.0076, 0.0092 and 0.0127 at 20, 30 and 60 frames a second. A
   smooth command changes less per frame as the frame rate rises; this one changes more.
-- Speech: median 12.5 bank callouts a minute (jet 26, light 11) and a median of 76 lines per run cut
-  off by the next.
-- End reasons: 107 touchdowns, 38 timeouts, 2 step runs. All 38 timeouts are light aircraft. The
-  flare commands a fixed 6° of pitch against a 4° trim angle of attack, so the aircraft climbs out of
-  the flare, falls back to final and repeats. Whether it lands at all depends on reaction timing: 34
-  of the timeouts are the 0.5 s pilot, 4 the 1.0 s one.
-- Touchdown: the jets that reached final touched down 1,249 to 1,810 ft past the threshold. The 8
-  jet downwinds were never established: they descended at up to 1,661 fpm and touched down 2.3 to
-  2.7 nm past the threshold, beyond the runway's far end, 900 to 2,400 ft to the side.
+- Speech: median 15.0 bank callouts a minute (jet 26.5, light 12.4) and a median of 52 lines per run
+  cut off by the next. Bank callouts can come one frame apart: "3 right", "6 right", "9 right"
+  within 0.07 s.
+- End reasons: 86 touchdowns, 46 past the runway's end, 13 beside the runway, 2 step runs.
+- Light aircraft flare: 38 light runs float past the runway's far end. The flare commands a fixed
+  6° of pitch against a 4° trim angle of attack, so the aircraft climbs out of the flare, falls back
+  to final and repeats. Whether it lands at all depends on reaction timing: 34 of the 38 are the
+  0.5 s pilot. The other 4 are the 1.0 s pilot's downwinds.
+- Touchdown: the jets that reached final touched down 761 to 1,299 ft past the threshold (median
+  1,147 ft, 67 runs); the light aircraft that landed, 1,780 to 2,844 ft past it.
+- Downwinds: none of the 16 is established. Today's guidance says "Extending", flies them outbound,
+  turns them in once they pass abeam the threshold, and says "Established on centerline" while they
+  are still 3 nm to the side. They reach the runway's far end in the flare, wheels under 30 ft, 1,750
+  to 1,960 ft beside it on their own side. The jets descend at up to 1,661 fpm on the way.
 - Two quirks in the traces: "5 miles" is spoken on activation when guidance starts inside 5 nm, and
   the activation sentence is cut off by "On commanded path" in the same frame.
 
