@@ -13533,10 +13533,13 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             return true;
         }
 
-        // The Fenix display channel's fallback switch, asked first for any key (FenixA320Definition.DisplayChannel.cs):
-        // with no channel read for the key, or its display not trusted, the key carries on to the AI read as before.
+        // The Fenix display channel's key dispatch, asked first for any key (FenixA320Definition.DisplayChannel.cs): a
+        // channel key goes to the seam of the feature that owns it. With no seam implemented, or the seam leaving the
+        // key unhandled (its display not trusted), the key carries on to the AI read or stays silent, as before.
         bool channelRead = false;
-        TryChannelDisplayRead(action, announcer, ref channelRead);
+        TryChannelDisplayRead(action,
+            new ChannelKeyContext(simConnect, announcer, parentForm, hotkeyManager, _displayChannelMonitor),
+            ref channelRead);
         if (channelRead) return true;
 
         // Handle display reading actions

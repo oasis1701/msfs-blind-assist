@@ -6,8 +6,9 @@ namespace MSFSBlindAssist.Aircraft;
 // never speaks and never touches a control. This partial gives the monitor its home and its inputs: Start and
 // Stop beside the cabin's, the three SimConnect values its cross-checks need and the annunciator light switch that
 // pauses its FD checks, the peek that hands it the five comparison values and the light switch as they arrive, and
-// the first look at a display key (the fallback switch, FenixChannelReads).
-// Nothing a pilot hears changes: FenixChannelReads.All is empty, so every display key still gives its AI read.
+// the key dispatch, the first look at a channel key, which hands it to the seam of the feature that owns it.
+// A seam nothing implements is no call at all, so a key whose feature has not landed behaves as it did before:
+// a display key gives its AI read and the others stay silent.
 public partial class FenixA320Definition
 {
     // This instance's monitor: made by StartDisplayChannelBackground, disposed and cleared by Stop. Start, Stop,
@@ -124,21 +125,89 @@ public partial class FenixA320Definition
         handled = consume;
     }
 
-    // HandleHotkeyAction's first look at any action, before its own switch. FenixChannelReads decides: it gives
-    // the channel's own text only when the key has a read and that read's display is trusted, and null otherwise,
-    // which is the AI read the key reaches exactly as before (handled stays false). The table is empty in this
-    // work, so nothing is spoken here yet. Choose takes the monitor's Snapshot, which gives a display's verdict and
-    // the latest frame from one locked instant, so a read composes only the frame its verdict judged.
-    partial void TryChannelDisplayRead(Hotkeys.HotkeyAction action, Accessibility.ScreenReaderAnnouncer announcer,
-        ref bool handled)
+    /// <summary>
+    /// What a channel key's seam is given: the pieces HandleHotkeyAction was called with, and this instance's channel
+    /// monitor, which is null before Start, after Stop and in the tests, so a seam that reads it handles null.
+    /// </summary>
+    internal sealed record ChannelKeyContext(
+        SimConnect.SimConnectManager SimConnect,
+        Accessibility.ScreenReaderAnnouncer Announcer,
+        System.Windows.Forms.Form ParentForm,
+        Hotkeys.HotkeyManager HotkeyManager,
+        Services.FenixChannelMonitor? Monitor);
+
+    /// <summary>
+    /// The feature that answers a channel key, which is the seam the key reaches. None is every other key.
+    /// </summary>
+    internal enum ChannelKeyOwner { None, Pfd, Nd, Ewd, Sd, Isis, Distances, Dcdu }
+
+    /// <summary>
+    /// Who owns an action. The PFD owns its display key and the six speed reads, the ND its display key and Ctrl+W,
+    /// the E/WD, the SD and the ISIS their display keys, the distances D and Shift+D, and the DCDU the app-wide
+    /// ShowDCDU. Every other action has no owner and never reaches a seam. Pure, so a test can pin the table.
+    /// </summary>
+    internal static ChannelKeyOwner ChannelKeyOwnerOf(Hotkeys.HotkeyAction action) => action switch
     {
-        Services.FenixChannelMonitor? monitor = _displayChannelMonitor;
-        if (monitor is null) return;
+        Hotkeys.HotkeyAction.ReadDisplayPFD
+            or Hotkeys.HotkeyAction.ReadSpeedGD
+            or Hotkeys.HotkeyAction.ReadSpeedS
+            or Hotkeys.HotkeyAction.ReadSpeedF
+            or Hotkeys.HotkeyAction.ReadSpeedVLS
+            or Hotkeys.HotkeyAction.ReadSpeedVS
+            or Hotkeys.HotkeyAction.ReadSpeedVFE => ChannelKeyOwner.Pfd,
+        Hotkeys.HotkeyAction.ReadDisplayND
+            or Hotkeys.HotkeyAction.ReadNDWaypoint => ChannelKeyOwner.Nd,
+        Hotkeys.HotkeyAction.ReadDisplayUpperECAM => ChannelKeyOwner.Ewd,
+        Hotkeys.HotkeyAction.ReadDisplayLowerECAM => ChannelKeyOwner.Sd,
+        Hotkeys.HotkeyAction.ReadDisplayISIS => ChannelKeyOwner.Isis,
+        Hotkeys.HotkeyAction.ReadDistanceToDest
+            or Hotkeys.HotkeyAction.ReadDistanceToTOD => ChannelKeyOwner.Distances,
+        Hotkeys.HotkeyAction.ShowDCDU => ChannelKeyOwner.Dcdu,
+        _ => ChannelKeyOwner.None,
+    };
 
-        string? text = Services.FenixChannelReads.Choose(action, Services.FenixChannelReads.All, monitor.Snapshot);
-        if (text is null) return;
+    // HandleHotkeyAction's first look at any action, before its own switch. A channel key goes to the seam of the
+    // feature that owns it (ChannelKeyOwnerOf), which sets handled when it answered the key; every other key returns
+    // at once and carries on untouched. The seam gets the dispatch's own handled by reference, so its answer reaches
+    // HandleHotkeyAction. A seam nothing implements is no call at all (C# drops it), so handled stays false and the
+    // key behaves as it did before the feature: a display key gives its AI read and the others stay silent. Whether
+    // a display is trusted is for the seam to ask the monitor ([FNX-22]): nothing here reads channel data.
+    partial void TryChannelDisplayRead(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled)
+    {
+        ChannelKeyOwner owner = ChannelKeyOwnerOf(action);
+        if (owner == ChannelKeyOwner.None) return;
 
-        announcer.Announce(text);
-        handled = true;
+        switch (owner)
+        {
+            case ChannelKeyOwner.Pfd:
+                ChannelPfdKey(action, ctx, ref handled);
+                break;
+            case ChannelKeyOwner.Nd:
+                ChannelNdKey(action, ctx, ref handled);
+                break;
+            case ChannelKeyOwner.Ewd:
+                ChannelEwdKey(action, ctx, ref handled);
+                break;
+            case ChannelKeyOwner.Sd:
+                ChannelSdKey(action, ctx, ref handled);
+                break;
+            case ChannelKeyOwner.Isis:
+                ChannelIsisKey(action, ctx, ref handled);
+                break;
+            case ChannelKeyOwner.Distances:
+                ChannelDistancesKey(action, ctx, ref handled);
+                break;
+            case ChannelKeyOwner.Dcdu:
+                ChannelDcduKey(action, ctx, ref handled);
+                break;
+        }
     }
+
+    /// <summary>
+    /// Says that a key's value cannot be read: "&lt;name&gt; not available", the words of the other aircraft's key
+    /// readouts ("Top of descent not available"), spoken at once because a key's answer interrupts. A seam says it
+    /// when its display is not trusted or the value is not shown, so every channel key refuses in the same words.
+    /// </summary>
+    internal void SpeakNotAvailable(ChannelKeyContext ctx, string name)
+        => ctx.Announcer.AnnounceImmediate($"{name} not available");
 }

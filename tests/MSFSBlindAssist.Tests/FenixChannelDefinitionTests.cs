@@ -2,9 +2,9 @@
 // (FenixA320Definition.DisplayChannel.cs): the three SimConnect values the trust gate cross-checks the channel
 // against, the annunciator light switch that tells it when the FD lamps are under test, and what
 // ProcessSimVarUpdate does with them. No sim and no socket: FenixTestHost turns the background seams off for the
-// whole test assembly, so no monitor starts here (the monitor, the gate and the fallback switch have tests of their
-// own). Starting and stopping the channel and the display-key hook are sim-facing ([CORE-5]), so they are checked
-// in the sim.
+// whole test assembly, so no monitor starts here (the monitor, the gate and the key dispatch have tests of their
+// own). Starting and stopping the channel and the key hook in HandleHotkeyAction are sim-facing ([CORE-5]), so they
+// are checked in the sim.
 //
 // The contract: the heading, the total fuel, the true altitude and the light switch ride the 1 Hz continuous batch
 // under keys of the channel's own, are the only batched key with their SimConnect name ([VAR-7]), keep the default

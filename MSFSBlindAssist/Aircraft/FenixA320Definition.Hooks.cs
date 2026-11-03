@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.Aircraft;
 //   FenixA320Definition.Variants.cs        variant, panel, display and visibility seams, OnFenixSwitchedAway
 //   FenixA320Definition.Cabin.cs           cabin background seams
 //   FenixA320Definition.DisplayChannel.cs  display channel seams: its background pair, the SimConnect keys of
-//                                          its own that its gate reads, the value peek and the display-key switch
+//                                          its own that its gate reads, the value peek and the key dispatch
 // The engine background seams (StartEngineBackground, StopEngineBackground) have no implementation: the Engines
 // window reads its own values while it is open.
 public partial class FenixA320Definition
@@ -47,11 +47,31 @@ public partial class FenixA320Definition
     // registers the SimConnect keys of the channel's own that its gate reads. PeekDisplayChannelValue hands each
     // value the gate reads to the monitor from ProcessSimVarUpdate and sets handled for the keys that are the
     // channel's own, so they are consumed there. TryChannelDisplayRead is HandleHotkeyAction's first look at
-    // any action; it sets handled only when the channel speaks that key's read, which no key has yet.
+    // any action: it hands a channel key to the seam of the feature that owns it (the seams below) and leaves
+    // every other key alone.
     partial void AddDisplayChannelVariables(Dictionary<string, SimConnect.SimVarDefinition> variables);
     partial void PeekDisplayChannelValue(string varName, double value, ref bool handled);
-    partial void TryChannelDisplayRead(Hotkeys.HotkeyAction action, Accessibility.ScreenReaderAnnouncer announcer,
-        ref bool handled);
+    partial void TryChannelDisplayRead(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+
+    // The channel keys' seams, one per feature, each called only with the actions that feature owns
+    // (ChannelKeyOwnerOf in FenixA320Definition.DisplayChannel.cs). An implementation sets handled when it answered
+    // the key and leaves it false to let the key carry on. With no implementation C# drops the call, so handled
+    // stays false and the key behaves as it did before the feature: a display key gives its AI read and the others
+    // stay silent. Each plan implements its seam in a partial of its own, and only once its in-sim checks pass.
+    /// <summary>The PFD's keys: Alt+P and the six speed reads, Shift+1 to Shift+6. Plan 02 implements it.</summary>
+    partial void ChannelPfdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The ND's keys: Alt+N and Ctrl+W. Plan 03 implements it.</summary>
+    partial void ChannelNdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The E/WD's key: Alt+E. Plan 04 implements it.</summary>
+    partial void ChannelEwdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The SD's key: Alt+S. Plan 05 implements it.</summary>
+    partial void ChannelSdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The ISIS's key: Alt+I. Plan 07 implements it.</summary>
+    partial void ChannelIsisKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The distance keys: D and Shift+D. Plan 10 implements it.</summary>
+    partial void ChannelDistancesKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The DCDU's key: the app-wide Ctrl+Shift+D, ShowDCDU. Plan 11 implements it.</summary>
+    partial void ChannelDcduKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
 
     private bool _backgroundStarted;
 
