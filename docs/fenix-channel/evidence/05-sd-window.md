@@ -137,6 +137,32 @@ power connected but off, batteries off). (An earlier version of this section sai
   valves read closed with the center tank empty; their open state was not seen. The ELEC page on external power:
   "EXT PWR: 115 V, 400 HZ", "GEN 1: 0 %, 0 V, 0 HZ" with the engines off.
 
+## The A321 fuelled, engines running, 2026-11-03 (15:20 to 15:40 local)
+
+Same A321 IAE, powered by Claude (batteries, external power); the engines were then started from the cockpit side
+(thrust levers a little above idle, parking brake set, 0 knots). 22,000 kg were loaded through the Fenix EFB's Mass and
+Balance page (fast time, 8 minutes, opened in Claude's own browser pane), with a push saved every 5 to 8 seconds and
+composed with the A321 variant:
+
+- **The FUEL page while fuelling.** Every row moved with the fuel: from FOB 2840 (wings 1420 each, center 0, ACTs 0),
+  through 11,140 (left 4750, right 3510, "center transfer valves: open, open", ACT 1 1880, ACT 2 1010) and 13,260, to
+  16,700 (left 6060, right 6080, center 1250, "center transfer valves: closed, closed", ACT 1 2310, ACT 2 1010) and
+  21,560 (left 6050, right 6040, center 6160, valves closed, ACT 1 2310, ACT 2 1010, "GW KG: 71700, green"). The
+  center transfer valves (134.1.3, .4) read open while the center tank fed the wings, with JetPumps' flow flags (134.1.1,
+  .2) set, and closed once the wings were full. ACT fuel showed in both ACT rows. The SD's FOB matched the E/WD's FOB line
+  in every push but one taken mid-flow (3070 against 3080).
+- **GW.** The EFB's Send to MCDU gave the FMS its weights, and 178[6] became `g59000`: "GW KG: 59000, green" (the
+  EFB's live figure 58,808 a moment before, the zero-fuel weight 50,158 plus 8,880 aboard), then 61,300, 63,400 and
+  66,900 as the fuel came: the SD's gross weight to the nearest 100. Elements 2, 3, 7 and 8 stayed empty.
+- **ENG with IAE engines.** "OIL QT: 14.5, 14.2", "OIL PSI: 151, 151", "OIL °C: 118, 118" against the data service's
+  14.52, 14.23; 151.1, 151.3; 117.9, 117.6. Unlike the CFM at idle, the IAE sends its vibrations (129.n.11 0.03 and
+  0.04, .12 0.12 and 0.11): "VIB N1: 0.0, 0.0", "VIB N2: 0.1, 0.1". F.USED counted from the start.
+- **ELEC and HYD.** Both generators on line, external power no longer shown once 17.8 cleared; HYD normal with "PTU:
+  idle".
+- **Found for the definition, not this plan.** The Fenix's fuel panel has an ACT pushbutton (`S_OH_FUEL_ACT`, with
+  `I_OH_FUEL_ACT_U`/`_L`), which the app's Fenix panels do not offer, so an A321 pilot cannot reach the extra tanks'
+  pump from the app (a handoff to plan 12).
+
 ## Waiting on the owner
 
 What the 2026-11-03 runs could not do; none of it gates the window, which the claimant has heard working:
@@ -145,8 +171,7 @@ What the 2026-11-03 runs could not do; none of it gates the window, which the cl
   picture of each page. The claimant's by-ear check found only the UTC wording; the owner rules whether that is enough.
 - **The list entry with the SD off.** "SD: not available, display off" in the window opened from the Fenix windows list
   while cold and dark (the verdict itself was measured above).
-- **The A321's FUEL page in motion.** The center transfer valves open and the ACT tanks holding fuel (only their closed
-  and empty states were seen), and the A321's row order against a picture of its FUEL page.
+- **The A321's FUEL page against a picture.** Its row order and labels against what the SD draws.
 - **A failure.** The yellow electric pump's overheat, set from the Fenix failures window: whether the SD draws OVHT on
   it (133.9.3, not read today).
 - **In flight** (gates nothing): ENG and FUEL in cruise, SAT below zero, what elements 2, 3, 7 and 8 of the bottom line

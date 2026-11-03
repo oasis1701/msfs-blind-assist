@@ -438,7 +438,9 @@ fields with the team's tools, the SD from a capture of the sim. Each result into
     keeps `RunTakeoffConfigTestAsync` and its verdict ([FNX-4]). Plan 04's form has "no control after the list" today.
   - **For the definition (plan 12, or the owner).** The ALL key (`S_ECAM_ALL`) has no light, and its panel case passes
     no `confirmPress`, so a press from the panel or from the SD window says nothing ([CORE-7] gives a press with no
-    readable state "<name> pressed"): one argument in `FenixA320Definition.cs`'s `S_ECAM_ALL` case.
+    readable state "<name> pressed"): one argument in `FenixA320Definition.cs`'s `S_ECAM_ALL` case. And the Fenix's fuel
+    panel has an ACT pushbutton (`S_OH_FUEL_ACT`, lights `I_OH_FUEL_ACT_U`/`_L`, measured on the A321 with two ACTs)
+    that the app's Fenix panels do not offer, so an A321 pilot cannot reach the extra tanks' pump from the app.
 - **Also seen on.** Nothing: no code is shared with another aircraft.
 - **Found while working (2026-11-03, the whole-plan review), for the owner and plan 12:**
   - **Pages with no composer yet.** Once this plan's switch is on, Alt+S opens the SD window on every page the SD shows.
@@ -476,8 +478,8 @@ Kept in this file only, so no other plan's push ever touches it.
   with the fixes they found before the switch (the PTU's four states, APU GEN OFF) and Task 10b, added at the claimant's
   request after hearing the window (the UTC row as "18:16", the ECAM page keys after the list); 11, this landing.
 - **Waiting on the owner:** none that gates the window. Still open (evidence file, "Waiting on the owner"): the labels
-  against pictures of the SD, the list entry's status row with the SD off, the A321's center transfer valves open and
-  its ACT tanks with fuel, the yellow electric pump's overheat, and the in-flight look; and the requests in "Handoff to plan 12" (the E/WD keys for plan 04, the ALL
+  against pictures of the SD, the list entry's status row with the SD off, the yellow electric pump's overheat, and
+  the in-flight look; and the requests in "Handoff to plan 12" (the E/WD keys for plan 04, the ALL
   key's confirmation, the pages with no composer yet).
 - **In-sim results:** 2026-11-03, kn4iee's A320 CFM at KATL on 3.0.0.7454 (not 7613, as this line first said; its whole
   channel contract matches the team's dump, evidence file), run by Claude through the simconnect MCP
