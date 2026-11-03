@@ -476,8 +476,8 @@ Kept in this file only, so no other plan's push ever touches it.
   with the fixes they found before the switch (the PTU's four states, APU GEN OFF) and Task 10b, added at the claimant's
   request after hearing the window (the UTC row as "18:16", the ECAM page keys after the list); 11, this landing.
 - **Waiting on the owner:** none that gates the window. Still open (evidence file, "Waiting on the owner"): the labels
-  against pictures of the SD, the list entry's status row with the SD off, the A321's FUEL page, the yellow electric
-  pump's overheat, and the in-flight look; and the requests in "Handoff to plan 12" (the E/WD keys for plan 04, the ALL
+  against pictures of the SD, the list entry's status row with the SD off, the A321's center transfer valves open and
+  its ACT tanks with fuel, the yellow electric pump's overheat, and the in-flight look; and the requests in "Handoff to plan 12" (the E/WD keys for plan 04, the ALL
   key's confirmation, the pages with no composer yet).
 - **In-sim results:** 2026-11-03, kn4iee's A320 CFM at KATL on 3.0.0.7454 (not 7613, as this line first said; its whole
   channel contract matches the team's dump, evidence file), run by Claude through the simconnect MCP
@@ -485,9 +485,10 @@ Kept in this file only, so no other plan's push ever touches it.
   Fenix's own values (battery volts, the Engines window's oil, TAT and OAT, the E/WD's FOB, the sim's UTC). Two
   differences, fixed before the switch: the PTU has four states (-1 off or inhibited, 0 idle, 1 yellow to green, 2 green
   to yellow), and the APU generator reads "APU GEN: OFF" while its pushbutton is off (24.14). Pages 0 and 13 did not
-  show on the ground. Then on 3.0.0.7613: kn4iee heard the window by ear in the app (Alt+S, the list entry, the STATUS
-  page, the bottom line, the page keys; the log clean), and cold and dark, the power-up with the self-test and the
-  weight unit in kilograms were measured (evidence file).
+  show on the ground. Then on 3.0.0.7613: kn4iee heard the window by ear in the app in the A320 (Alt+S, the list
+  entry, the STATUS page, the bottom line, the page keys; the log clean), and in the A321 IAE with two extra tanks cold
+  and dark, the power-up with the self-test, the weight unit in kilograms and the A321's FUEL page (its own layout, the
+  variant's two ACT rows, the parts it lacks never read) were measured (evidence file).
 - **Changed from the plan:** Tasks 2 to 8 ran before Task 1, from the plan's values marked "inferred" in the code, as
   Task 1's own text allows; the evidence file lists every inferred value. Task 10b was added at the claimant's request:
   the UTC row reads "UTC: 18:16" rather than the plan's `UTC: <4> H <5>` (Task 3's text above keeps the old form), and

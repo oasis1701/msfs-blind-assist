@@ -100,19 +100,24 @@ following the A320's, and the meaning of the flags the run did not change one by
 
 ## In the app, 2026-11-03 (Task 10's Alt+S, list, log and by-ear steps)
 
-kn4iee, by ear with NVDA, on Fenix 3.0.0.7613 (after updating from 7454) with MSFSBA built from this plan's branch, at
-13:13 and again at 13:49 with the page keys: Output Alt+S opened "Fenix SD" on the page shown and a second press brought
+kn4iee, by ear with NVDA, on Fenix 3.0.0.7613 (after updating from 7454) in the A320 CFM, with MSFSBA built from this
+plan's branch, at 13:13 and again at 13:49 with the page keys: Output Alt+S opened "Fenix SD" on the page shown and a second press brought
 it forward; the Fenix windows list's "SD" opened it; the STATUS page and the bottom line read naturally, colors after
 each stretch; the page keys after the list switched the page as the panel's do. `fenix_channel.log`: "build 3.0.0.7613:
 checked", "SD trusted", and no "SD:" problem line over either run. The one wording the claimant found odd, "UTC: 18 H
 16", is now "UTC: 18:16". On the unchecked 7454, earlier the same day, Alt+S gave the AI read with nothing before it
 ("SD not trusted: build 3.0.0.7454 not checked"): the fallback path works.
 
-## Cold and dark, power-up and kilograms, 2026-11-03
+## Cold and dark, power-up, kilograms and the A321, 2026-11-03
 
-On 3.0.0.7613, kn4iee's A320 cold and dark at KATL, with the Fenix's weight unit switched to kilograms; Claude through
-the simconnect MCP, the aircraft left cold and dark again afterwards (DOOR page, external power connected but off,
-batteries off).
+On 3.0.0.7613, kn4iee's A321 IAE (N934AA, two extra tanks) cold and dark at KATL, with the Fenix's weight unit switched
+to kilograms; Claude through the simconnect MCP, the aircraft left cold and dark again afterwards (DOOR page, external
+power connected but off, batteries off). (An earlier version of this section said A320: the A321 had been loaded at
+13:55, after the in-app runs.)
+
+- **The variant.** `debug.log`'s "Variant:" line read `Type = A320, Engine = Cfm56, ActCount = 0` for the A320 at 13:49
+  and `Type = A321, Engine = IaeV2500, ActCount = 2` for the A321 at 13:55 (N_CONFIG_AIRCRAFT_TYPE 4, N_CONFIG_ACT_COUNT
+  2): the FUEL page's layout follows it.
 
 - **Cold and dark.** Every display unit's power was 0 (12.1), so the SD is not live: the gate reads "display off" and
   Alt+S keeps the AI read. `elecFlags` (16) still came empty and `apuData` (24) still came, its values NaN; 22 and
@@ -121,8 +126,15 @@ batteries off).
   ECAM units on with content 7 (SelfTest) for 25 to 45 s, then 5 (the lower ECAM: the SD live). Field 10 stayed 6 (DOOR)
   from cold and dark through the self-test: pages 0 and 13 were never seen, so `NameOf` stays unchanged. TAT and SAT
   read "XX, amber" with the IRs off, as the SD draws them.
-- **Kilograms.** With the weight unit in kilograms, 154 was set: "F.USED 1+2: 0 KG" and "FOB: 3000 KG", the E/WD's FOB
-  line `g3000 cs KG`; the empty outer tanks' temperatures came as NaN and read "XX". The ELEC page on external power:
+- **Kilograms and the A321's FUEL page.** With the weight unit in kilograms, 154 was set. The FUEL page on external
+  power, engines off, composed with the A321 variant: "F.USED 1+2: 0 KG", "APU valve: closed", "LP valves: closed,
+  closed", "X FEED valve: closed", "left tank: 1500", "center tank: 0", "center transfer valves: closed, closed", "ACT 1:
+  0", "ACT 2: 0", "right tank: 1500", "left pumps: off, off", "right pumps: off, off", "FOB: 3000 KG" (the E/WD's FOB
+  line `g3000 cs KG`), "tanks °C: 18, 18". The channel still sent the parts an A321 lacks, and the page read none of
+  them: the outer tank temperatures (134.14.1, .4, NaN), Center1 and Center2 (134.4, .5, low pressure set), and all
+  four outer transfer valves (134.11.5 to .8, closed). It also sent `ActPump` (134.15) with Act1Available and
+  Act2Available set, and JetPumps (134.1) with fields 5 to 8 (the amber flags) but not 3 and 4, so the center transfer
+  valves read closed with the center tank empty; their open state was not seen. The ELEC page on external power:
   "EXT PWR: 115 V, 400 HZ", "GEN 1: 0 %, 0 V, 0 HZ" with the engines off.
 
 ## Waiting on the owner
@@ -133,8 +145,8 @@ What the 2026-11-03 runs could not do; none of it gates the window, which the cl
   picture of each page. The claimant's by-ear check found only the UTC wording; the owner rules whether that is enough.
 - **The list entry with the SD off.** "SD: not available, display off" in the window opened from the Fenix windows list
   while cold and dark (the verdict itself was measured above).
-- **Other airframes.** The A321's FUEL page (its layout and its ACT rows), the variant on each airframe, and whether an
-  A319 or A320 reports extra tanks.
+- **The A321's FUEL page in motion.** The center transfer valves open and the ACT tanks holding fuel (only their closed
+  and empty states were seen), and the A321's row order against a picture of its FUEL page.
 - **A failure.** The yellow electric pump's overheat, set from the Fenix failures window: whether the SD draws OVHT on
   it (133.9.3, not read today).
 - **In flight** (gates nothing): ENG and FUEL in cruise, SAT below zero, what elements 2, 3, 7 and 8 of the bottom line
