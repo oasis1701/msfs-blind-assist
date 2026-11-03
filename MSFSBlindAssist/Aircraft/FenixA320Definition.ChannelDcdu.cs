@@ -104,8 +104,8 @@ public partial class FenixA320Definition
 
     /// <summary>
     /// Moves the brightness switch to <paramref name="position"/> (0 Dim, 2 Bright) through the panel's branch, which
-    /// steps it once (about 50 on <see cref="Services.FenixChannelDcduBrightness.LevelKey"/>) and lets it spring back to the
-    /// middle.
+    /// steps it once (about 50 in the Fenix's own count behind <see cref="Services.FenixChannelDcduBrightness.LevelKey"/>) and
+    /// lets it spring back to the middle.
     /// </summary>
     internal void SetDcduBrightness(
         double position, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)

@@ -484,6 +484,9 @@ public class FenixChannelDcduWindowTests : IDisposable
         Assert.DoesNotContain("SelectionChangeCommitted", code);
     }
 
+    // N_DCDU1_BRIGHTNESS as the sim sends it for a count of the Fenix's own value (0 to 510): the count over 1023.
+    private static double Level(double count) => count / 1023.0;
+
     private static readonly FieldInfo ReadBackTimerField =
         typeof(FenixChannelDcduForm).GetField("_readBackTimer", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -514,7 +517,7 @@ public class FenixChannelDcduWindowTests : IDisposable
             form.ReadFresh = (key, _) =>
             {
                 reads.Add(key);
-                return Task.FromResult<double?>(310);
+                return Task.FromResult<double?>(Level(310));
             };
 
             form.PressBrightness(2);
@@ -579,11 +582,11 @@ public class FenixChannelDcduWindowTests : IDisposable
 
             // A second press while the first read is out: its wait restarts, and the first read's answer is not the last press's.
             form.PressBrightness(2);
-            firstRead.SetResult(110);
+            firstRead.SetResult(Level(110));
             await first;
             Assert.Empty(speech.All);
 
-            form.ReadFresh = (_, _) => Task.FromResult<double?>(160);
+            form.ReadFresh = (_, _) => Task.FromResult<double?>(Level(160));
             await form.ReadBackDueAsync();
             Assert.Equal(new[] { "Brightness 30 percent" }, speech.Interrupts);
         }
@@ -602,12 +605,12 @@ public class FenixChannelDcduWindowTests : IDisposable
 
             // The window is closed and disposed while the read is out: its answer comes to nobody.
             form.Dispose();
-            read.SetResult(310);
+            read.SetResult(Level(310));
             await pending;
             Assert.Empty(speech.All);
 
             // A read-back that is only due after the dispose says nothing either.
-            form.ReadFresh = (_, _) => Task.FromResult<double?>(310);
+            form.ReadFresh = (_, _) => Task.FromResult<double?>(Level(310));
             await form.ReadBackDueAsync();
             Assert.Empty(speech.All);
         }
@@ -672,9 +675,9 @@ public class FenixChannelDcduWindowTests : IDisposable
             Assert.Equal(new[] { FenixChannelDcduRows.DarkRow }, form.ComposeNow(snapshot).Rows!.ToArray());
 
             // Bright pressed: the level moved, and the rows are the empty DCDU's again.
-            form.ReadFresh = (_, _) => Task.FromResult<double?>(60);
+            form.ReadFresh = (_, _) => Task.FromResult<double?>(Level(60));
             await form.ReadLevelAsync();
-            Assert.Equal(60, form.Brightness);
+            Assert.Equal(Level(60), form.Brightness);
             Assert.Equal(new[] { FenixChannelDcduRows.NoMessageRow }, form.ComposeNow(snapshot).Rows!.ToArray());
         }
     }
@@ -685,11 +688,11 @@ public class FenixChannelDcduWindowTests : IDisposable
         using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out _);
         using (monitor)
         {
-            form.ReadFresh = (_, _) => Task.FromResult<double?>(110);
+            form.ReadFresh = (_, _) => Task.FromResult<double?>(Level(110));
             form.PressBrightness(2);
             await form.ReadBackDueAsync();
 
-            Assert.Equal(110, form.Brightness);
+            Assert.Equal(Level(110), form.Brightness);
         }
     }
 

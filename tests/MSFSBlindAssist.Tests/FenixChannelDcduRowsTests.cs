@@ -329,8 +329,9 @@ public class FenixChannelDcduRowsTests
     [Fact]
     public void Any_brightness_above_nothing_keeps_the_no_message_row()
     {
-        // Exactly 0 only: the first step of the switch measured 60, and the top is 510.
-        foreach (double brightness in new[] { 0.5, 1, 60, 255, 510 })
+        // Exactly 0 only: the L:var is the Fenix's count over 1023, and the first step of the switch measured a count of 60 and
+        // the top 510.
+        foreach (double brightness in new[] { 0.5 / 1023, 1.0 / 1023, 60.0 / 1023, 255.0 / 1023, 510.0 / 1023 })
         {
             Assert.Equal(new[] { FenixChannelDcduRows.NoMessageRow }, RowsAt(brightness, EmptyDcdu()).ToArray());
         }
@@ -342,7 +343,7 @@ public class FenixChannelDcduRowsTests
         // A message already delivered stays on field 186 at brightness 0 (measured 2026-11-03): its rows are its rows.
         string[] expected = RowsOf(DepartRequestPage1).ToArray();
 
-        foreach (double? brightness in new double?[] { null, 0, 60, 510 })
+        foreach (double? brightness in new double?[] { null, 0, 60.0 / 1023, 510.0 / 1023 })
         {
             Assert.Equal(expected, RowsAt(brightness, DepartRequestPage1).ToArray());
         }

@@ -45,8 +45,8 @@ internal static class FenixChannelDcduRows
     /// </summary>
     /// <param name="s">The snapshot to compose.</param>
     /// <param name="reportProblem">Where a problem the DCDU cannot be read for goes.</param>
-    /// <param name="brightness">The window's last read of the DCDU's brightness (<c>N_DCDU1_BRIGHTNESS</c>, 0 to 510); null
-    /// when it has none.</param>
+    /// <param name="brightness">The window's last read of the DCDU's brightness (<c>N_DCDU1_BRIGHTNESS</c>, as read: 0 is
+    /// dark); null when it has none.</param>
     public static FenixChannelRows Compose(
         FenixChannelSnapshot s, Action<string>? reportProblem = null, double? brightness = null)
     {

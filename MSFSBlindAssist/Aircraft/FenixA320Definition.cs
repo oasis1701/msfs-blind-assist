@@ -1150,11 +1150,11 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "DCDU Brightness",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                // Spring-loaded both ways: a press of Dim or Bright is one step (about 50 on the level below), then back to Mid
+                // Spring-loaded both ways: a press of Dim or Bright is one step (about 50 in the Fenix's count behind the level below), then back to Mid
                 // (PulseSpringSwitch).
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Mid", [2] = "Bright"}
             },
-            // What lights the captain's DCDU (Cockpit_Behavior.xml), 0 (dark) to 510 (full): the window reads it on request, to
+            // What lights the captain's DCDU (Cockpit_Behavior.xml), the Fenix's count (0 dark, 510 full) over 1023: the window reads it on request, to
             // say it after a press and to know a dark DCDU. Consumed by the window alone, silently, so it stays out of the
             // Ctrl+M list ([VAR-9]).
             ["N_DCDU1_BRIGHTNESS"] = new SimConnect.SimVarDefinition

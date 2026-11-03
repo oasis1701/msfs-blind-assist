@@ -6,33 +6,42 @@ namespace MSFSBlindAssist.Services;
 /// names as what lights the captain's DCDU. Pure logic: nothing here reads the sim.
 /// </summary>
 /// <remarks>
-/// Measured on build 3.0.0.7613 (2026-11-03): each 200 ms press of <c>S_DCDU1_DIM_BRT</c> moves the value about 50, and from 0
-/// on Bright it read 60, 110, 160, 210, 260, 310, 360, 410, 470 and 510, where it stops. So 510 is full brightness, and the
-/// ten steps are said as 10, 20 and on to 100 percent. The figure is written with the invariant culture, though a whole number
-/// from 0 to 100 reads the same in every culture; a value that was not read is not guessed at.
+/// Measured on build 3.0.0.7613 (2026-11-03): each 200 ms press of <c>S_DCDU1_DIM_BRT</c> moves the Fenix's own count about 50,
+/// and from 0 on Bright it read 60, 110, 160, 210, 260, 310, 360, 410, 470 and 510, where it stops. So a count of 510 is full
+/// brightness, and the ten steps are said as 10, 20 and on to 100 percent. The L:var is that count over 1023, not the count
+/// itself. The figure is written with the invariant culture, though a whole number from 0 to 100 reads the same in every
+/// culture; a value that was not read is not guessed at.
 /// </remarks>
 internal static class FenixChannelDcduBrightness
 {
-    /// <summary>The L:var the window reads: the captain's DCDU brightness, 0 (dark) to 510 (full).</summary>
+    /// <summary>
+    /// The L:var the window reads: the captain's DCDU brightness as the count over <see cref="CountRange"/>, 0 (dark) to
+    /// <see cref="FullCount"/> over <see cref="CountRange"/> (full).
+    /// </summary>
     public const string LevelKey = "N_DCDU1_BRIGHTNESS";
 
-    /// <summary>The value at full brightness, where it stops.</summary>
-    public const double FullScale = 510;
+    // Measured 2026-11-03: the Fenix's own value 510 and the L:var 0.49853372434017595 at the same moment, which is 510 / 1023.
+    /// <summary>What the L:var is the count over.</summary>
+    public const double CountRange = 1023;
+
+    /// <summary>The Fenix's own count at full brightness, where it stops.</summary>
+    public const double FullCount = 510;
 
     /// <summary>What is said when the value could not be read.</summary>
     public const string NotAvailable = "Brightness not available";
 
     /// <summary>
-    /// <paramref name="value"/> as a percentage of <see cref="FullScale"/> to the nearest ten (a half goes up), between 0 and
-    /// 100: 60 is 10, 310 is 60, 470 is 90, 510 is 100 and 0 is 0. A value below 0 is 0 and above the scale is 100; a value
-    /// that is not a number is 0.
+    /// <paramref name="value"/>, the L:var as read, as a percentage of <see cref="FullCount"/> in its count (the value times
+    /// <see cref="CountRange"/>) to the nearest ten (a half goes up), between 0 and 100: a count of 60 is 10, 310 is 60, 470 is
+    /// 90, 510 is 100 and 0 is 0. A value below 0 is 0 and above the scale is 100; a value that is not a number is 0.
     /// </summary>
     internal static int Percent(double value)
     {
         if (double.IsNaN(value)) return 0;
 
-        // The tens first (value * 10 / 510, exact for a half), then clamped, then back to a percentage.
-        double tens = Math.Round(value * 10 / FullScale, MidpointRounding.AwayFromZero);
+        // The count first, then the tens (count * 10 / 510, exact for a half), then clamped, then back to a percentage.
+        double count = value * CountRange;
+        double tens = Math.Round(count * 10 / FullCount, MidpointRounding.AwayFromZero);
         return (int)Math.Clamp(tens, 0, 10) * 10;
     }
 

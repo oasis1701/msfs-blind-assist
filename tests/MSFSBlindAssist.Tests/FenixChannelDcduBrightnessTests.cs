@@ -2,10 +2,12 @@
 // Bright or Dim, and for the L:var the window reads it from (N_DCDU1_BRIGHTNESS, the part the cockpit file names as what
 // lights the captain's DCDU). Pure logic.
 //
-// The contract: the value runs 0 to 510 and is said as a percentage to the nearest ten, "Brightness 60 percent", clamped to
-// 0 to 100; a value that was not read (null, or not a number) is "Brightness not available". Measured on build 3.0.0.7613
-// (2026-11-03): each 200 ms press of S_DCDU1_DIM_BRT moves it about 50; from 0 on Bright it read 60, 110, 160, 210, 260,
-// 310, 360, 410, 470, 510, and it stops at 510. The words are the app's own, so the PC's culture changes none of them.
+// The contract: the L:var is the Fenix's own count (0 to 510) over 1023, and is said as a percentage of that count to the
+// nearest ten, "Brightness 60 percent", clamped to 0 to 100; a value that was not read (null, or not a number) is
+// "Brightness not available". Measured on build 3.0.0.7613 (2026-11-03): each 200 ms press of S_DCDU1_DIM_BRT moves the count
+// about 50; from 0 on Bright it read 60, 110, 160, 210, 260, 310, 360, 410, 470, 510, and it stops at 510; at the moment the
+// Fenix's own value was 510 the L:var read 0.49853372434017595, which is 510 / 1023. The words are the app's own, so the PC's
+// culture changes none of them.
 
 using System.Globalization;
 using MSFSBlindAssist.Aircraft;
@@ -16,7 +18,10 @@ namespace MSFSBlindAssist.Tests;
 
 public class FenixChannelDcduBrightnessTests
 {
-    // The ten steps of Bright from 0, as measured, and the percentage each is said as.
+    // The L:var for a count of the Fenix's own value: the count over 1023.
+    private static double Level(double count) => count / 1023.0;
+
+    // The ten steps of Bright from 0, as measured (the Fenix's count), and the percentage each is said as.
     public static readonly TheoryData<double, int> MeasuredSteps = new()
     {
         { 0, 0 }, { 60, 10 }, { 110, 20 }, { 160, 30 }, { 210, 40 }, { 260, 50 },
@@ -38,40 +43,55 @@ public class FenixChannelDcduBrightnessTests
     }
 
     [Fact]
-    public void The_level_is_the_cockpit_files_lvar_and_runs_to_510()
+    public void The_level_is_the_cockpit_files_lvar_and_is_the_count_over_1023_with_510_at_the_top()
     {
         Assert.Equal("N_DCDU1_BRIGHTNESS", FenixChannelDcduBrightness.LevelKey);
-        Assert.Equal(510, FenixChannelDcduBrightness.FullScale);
+        Assert.Equal(1023, FenixChannelDcduBrightness.CountRange);
+        Assert.Equal(510, FenixChannelDcduBrightness.FullCount);
+        Assert.Equal(0.49853372434017595, FenixChannelDcduBrightness.FullCount / FenixChannelDcduBrightness.CountRange);
     }
 
     [Theory]
     [MemberData(nameof(MeasuredSteps))]
-    public void The_measured_steps_are_said_to_the_nearest_ten(double value, int percent)
+    public void The_measured_steps_are_said_to_the_nearest_ten(double count, int percent)
     {
+        double value = Level(count);
+
         Assert.Equal(percent, FenixChannelDcduBrightness.Percent(value));
         Assert.Equal($"Brightness {percent} percent", FenixChannelDcduBrightness.Spoken(value));
     }
 
     [Fact]
+    public void The_measured_lvar_at_full_brightness_is_a_hundred_percent()
+    {
+        // Read with the Fenix's own value at 510 (2026-11-03): the L:var is a fraction, not the count. Read as a count it was
+        // "Brightness 0 percent" on every press.
+        Assert.Equal(100, FenixChannelDcduBrightness.Percent(0.49853372434017595));
+        Assert.Equal("Brightness 100 percent", FenixChannelDcduBrightness.Spoken(0.49853372434017595));
+    }
+
+    [Fact]
     public void The_percentage_is_rounded_to_the_nearest_ten_with_a_half_going_up()
     {
-        // 25 percent of 510 is 127.5: halfway between 20 and 30, and it is 30 (away from zero, not to the even ten).
-        Assert.Equal(30, FenixChannelDcduBrightness.Percent(127.5));
-        Assert.Equal(20, FenixChannelDcduBrightness.Percent(127.4));
-        Assert.Equal(10, FenixChannelDcduBrightness.Percent(25.5));
-        Assert.Equal(0, FenixChannelDcduBrightness.Percent(25.4));
-        Assert.Equal(100, FenixChannelDcduBrightness.Percent(484.5));
-        Assert.Equal(90, FenixChannelDcduBrightness.Percent(484.4));
+        // 25 percent of a count of 510 is 127.5: halfway between 20 and 30, and it is 30 (away from zero, not to the even ten).
+        Assert.Equal(30, FenixChannelDcduBrightness.Percent(Level(127.5)));
+        Assert.Equal(20, FenixChannelDcduBrightness.Percent(Level(127.4)));
+        Assert.Equal(10, FenixChannelDcduBrightness.Percent(Level(25.5)));
+        Assert.Equal(0, FenixChannelDcduBrightness.Percent(Level(25.4)));
+        Assert.Equal(100, FenixChannelDcduBrightness.Percent(Level(484.5)));
+        Assert.Equal(90, FenixChannelDcduBrightness.Percent(Level(484.4)));
     }
 
     [Fact]
     public void The_percentage_stays_between_nothing_and_a_hundred()
     {
-        Assert.Equal(0, FenixChannelDcduBrightness.Percent(-50));
+        Assert.Equal(0, FenixChannelDcduBrightness.Percent(Level(-50)));
         Assert.Equal(0, FenixChannelDcduBrightness.Percent(double.NegativeInfinity));
-        Assert.Equal(100, FenixChannelDcduBrightness.Percent(520));
-        Assert.Equal(100, FenixChannelDcduBrightness.Percent(5100));
+        Assert.Equal(100, FenixChannelDcduBrightness.Percent(Level(520)));
+        Assert.Equal(100, FenixChannelDcduBrightness.Percent(Level(5100)));
+        Assert.Equal(100, FenixChannelDcduBrightness.Percent(1.0));
         Assert.Equal(100, FenixChannelDcduBrightness.Percent(double.PositiveInfinity));
+        Assert.Equal(0, FenixChannelDcduBrightness.Percent(double.NaN));
     }
 
     [Fact]
@@ -91,13 +111,13 @@ public class FenixChannelDcduBrightnessTests
         {
             InCulture(culture, () =>
             {
-                foreach ((double value, int percent) in new[] { (0.0, 0), (60.0, 10), (310.0, 60), (470.0, 90), (510.0, 100) })
-                    Assert.Equal($"Brightness {percent.ToString(CultureInfo.InvariantCulture)} percent", FenixChannelDcduBrightness.Spoken(value));
+                foreach ((double count, int percent) in new[] { (0.0, 0), (60.0, 10), (310.0, 60), (470.0, 90), (510.0, 100) })
+                    Assert.Equal($"Brightness {percent.ToString(CultureInfo.InvariantCulture)} percent", FenixChannelDcduBrightness.Spoken(Level(count)));
 
-                Assert.Equal("Brightness 60 percent", FenixChannelDcduBrightness.Spoken(310));
-                Assert.Equal("Brightness 100 percent", FenixChannelDcduBrightness.Spoken(510));
+                Assert.Equal("Brightness 60 percent", FenixChannelDcduBrightness.Spoken(Level(310)));
+                Assert.Equal("Brightness 100 percent", FenixChannelDcduBrightness.Spoken(0.49853372434017595));
                 Assert.Equal("Brightness not available", FenixChannelDcduBrightness.Spoken(null));
-                Assert.Equal(30, FenixChannelDcduBrightness.Percent(127.5));
+                Assert.Equal(30, FenixChannelDcduBrightness.Percent(Level(127.5)));
             });
         }
     }

@@ -24,8 +24,8 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// <para>A held key presses once. The base asks the window about every auto-repeat too, and an answer key is pressed once
 /// for WILCO and again for SEND, so a held Ctrl+1 must not answer and send: an auto-repeat of one of the nine keys is taken
 /// and does nothing, no decision, no speech and no press.</para>
-/// <para>Brightness. Bright and Dim step the switch once (<see cref="FenixA320Definition.SetDcduBrightness"/>: about 50 on a
-/// scale of 510), and it springs back to the middle on its own. <see cref="FenixA320Definition.DcduSpringBackMs"/> after the
+/// <para>Brightness. Bright and Dim step the switch once (<see cref="FenixA320Definition.SetDcduBrightness"/>: about 50 in the
+/// Fenix's own count of 510 at full), and it springs back to the middle on its own. <see cref="FenixA320Definition.DcduSpringBackMs"/> after the
 /// press, when the switch has gone back and the value has moved, the window reads <c>N_DCDU1_BRIGHTNESS</c> and says it
 /// ("Brightness 60 percent"): the spoken value is the press's confirmation ([CORE-7]), as an interrupting call like a refusal.
 /// Presses in quick succession restart the wait, so only the last is read back; a read that fails or times out says "Brightness
