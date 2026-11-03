@@ -46,8 +46,8 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 /// runs that keep their colors. A lowercase letter before a run is a format code, not text: the color
 /// letters <c>w g c a m y r</c> (white, green, cyan, amber, magenta, yellow, red), <c>u</c>, <c>b</c> and
 /// <c>f</c> to toggle underline, a box and flashing, and <c>s</c> or <c>l</c> for a small or large size. The
-/// letters <c>p</c> and <c>d</c> are known and draw nothing. Display text is uppercase, so an uppercase letter is
-/// never a code.
+/// letters <c>p</c> and <c>d</c> are known and draw nothing (<c>d</c> adds a space between the words either side of
+/// it). Display text is uppercase, so an uppercase letter is never a code.
 /// </summary>
 /// <remarks>
 /// <para>The colors are the meaning, so the codes are parsed into data and never stripped: a read that speaks
@@ -60,10 +60,13 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 /// and <c>f</c> always do, as they toggle), so a code that restates what the line is already in does not split it,
 /// and no run is empty.</para>
 /// <para>Two letters are known and are attributes that are never spoken: <c>p</c> and <c>d</c>. Neither is a
-/// toggle, neither closes the run or changes it, and neither is kept on a <see cref="FenixTextRun"/>, so no reader
-/// can speak one. <c>p</c> appears in the FMA for the ten seconds of the flight director's flash
-/// (<c>bgpV/Scp+1800</c>) and in an E/WD memo (<c>pgIR IN ALIGN 1 MN</c>); the text stays drawn. <c>d</c> moves
-/// the drawing position right and draws nothing (the FMA's <c>RADIOdc 200</c>, the ND's ground speed line).</para>
+/// toggle, neither closes the run or changes its color, underline, box, flashing or size, and neither is kept on a
+/// <see cref="FenixTextRun"/>, so no reader can speak one. <c>p</c> draws nothing and adds nothing to the run. It came
+/// in the FMA's slot 1 (<c>bgpV/Scp+1800</c>) for the ten seconds after each of the two V/S reversions, not with every
+/// flash of the flight director's bars, and in an E/WD memo (<c>pgIR IN ALIGN 1 MN</c>); the text stays drawn. <c>d</c>
+/// moves the drawing position right and draws nothing (the FMA's <c>RADIOdc 200</c>, the ND's ground speed line),
+/// and speech merges stretches by color alone, so it adds a space to the run being built: the words either side of
+/// it stay two words ("GS 456"), and no run closes.</para>
 /// <para>U+2800, the blank braille cell the display uses as a spacer, becomes a space. Any other lowercase
 /// ASCII letter is a code the app does not know: it goes into <see cref="FenixTextLine.UnknownCodes"/>, once
 /// and in order, and is dropped from the text. A lowercase letter outside a to z is text, not a code.</para>
@@ -126,8 +129,13 @@ internal static class FenixChannelText
                 case 's': SetSize(FenixTextSize.Small); break;
                 case 'l': SetSize(FenixTextSize.Large); break;
                 case 'p':
+                    // Known, and nothing to the run: it neither closes it, changes it nor draws a character.
+                    break;
                 case 'd':
-                    // Known, and nothing to the run: neither closes it, changes it or draws a character.
+                    // Moves the drawing position right and draws nothing, so the words either side of it are two words
+                    // on the screen. Speech merges stretches by color alone, which would join them ("GS456"): the
+                    // space keeps them apart. It closes no run.
+                    text.Append(' ');
                     break;
                 default:
                     // A letter the app does not know: listed once, and dropped from the text.

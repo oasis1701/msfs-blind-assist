@@ -7,7 +7,9 @@
 // because the color is the meaning (a warning, a memo, an action) and is never stripped for speech. A letter
 // the app does not know is listed on the line, once and in the order it came, so the gate can distrust the
 // display that drew it. Display text is uppercase, so an uppercase letter is never a code. The letters p and d are
-// known and change nothing: they are neither text, nor an unknown code, nor kept on a run, and are never spoken.
+// known: neither is text, an unknown code or kept on a run, and neither is ever spoken. p changes nothing. d moves the
+// drawing position right, so it adds a space to the run being built, which keeps the words either side of it apart in
+// speech and splits no run.
 
 using MSFSBlindAssist.Services;
 
@@ -181,16 +183,18 @@ public class FenixChannelTextTests
     }
 
     [Fact]
-    public void The_d_letter_is_known_and_draws_nothing()
+    public void The_d_letter_is_known_and_keeps_the_words_either_side_apart()
     {
         // The FMA's minimum (RADIO 200, two spacers after the c) and the ND's ground speed line: d moves the drawing
-        // position right and draws nothing, so it is neither text nor an unknown code, and it splits no run.
+        // position right and draws nothing, so it is neither text nor an unknown code. The two sides are separate
+        // words on the screen, but speech merges stretches by color alone, so d adds a space to the run being built
+        // (and closes no run).
         FenixTextLine minimum = FenixChannelText.Parse("RADIOdc" + Spacer + Spacer + " 200");
         FenixTextLine groundSpeed = FenixChannelText.Parse("wsGSlgd456");
 
         Assert.Equal(new[]
         {
-            Run("RADIO", null),
+            Run("RADIO ", null),
             Run("   200", FenixTextColor.Cyan)
         }, minimum.Runs);
         Assert.Empty(minimum.UnknownCodes);
@@ -198,9 +202,20 @@ public class FenixChannelTextTests
         Assert.Equal(new[]
         {
             Run("GS", FenixTextColor.White, size: FenixTextSize.Small),
-            Run("456", FenixTextColor.Green, size: FenixTextSize.Large)
+            Run(" 456", FenixTextColor.Green, size: FenixTextSize.Large)
         }, groundSpeed.Runs);
         Assert.Empty(groundSpeed.UnknownCodes);
+
+        // With the color restated before it, d splits no run of its own: only the size does.
+        FenixTextLine sameColor = FenixChannelText.Parse("wsGSlwd456");
+
+        Assert.Equal(new[]
+        {
+            Run("GS", FenixTextColor.White, size: FenixTextSize.Small),
+            Run(" 456", FenixTextColor.White, size: FenixTextSize.Large)
+        }, sameColor.Runs);
+        Assert.Equal("GS 456", sameColor.JoinedText);
+        Assert.Empty(sameColor.UnknownCodes);
     }
 
     [Fact]
@@ -211,6 +226,10 @@ public class FenixChannelTextTests
         Assert.Equal("V/S green, +1800 cyan", FenixChannelSpeech.Line("bgpV/Scp+1800"));
         Assert.Equal("RADIO white, 200 cyan", FenixChannelSpeech.Line("RADIOdc" + Spacer + Spacer + " 200"));
         Assert.Equal("IR IN ALIGN 1 MN, green", FenixChannelSpeech.Line("pgIR IN ALIGN 1 MN"));
+
+        // The words either side of a d are two words: stretches of one color merge, and they stay apart.
+        Assert.Equal("GS 456, white", FenixChannelSpeech.Line("wsGSlwd456"));
+        Assert.Equal("GS white, 456 green", FenixChannelSpeech.Line("wsGSlgd456"));
     }
 
     // ---- Whole lines ----------------------------------------------------------------------------
