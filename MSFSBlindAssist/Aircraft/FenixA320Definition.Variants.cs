@@ -214,7 +214,7 @@ public partial class FenixA320Definition
     /// True unless the variant's own field for this control says the airframe lacks it. An unread field
     /// (null, Unknown) never hides anything; a key not listed below is always fitted. The S_DCDU1_ arm hides no panel
     /// control any more (the DCDU window replaced the "DCDU Left" panel): it guards the window's presses through
-    /// <see cref="TryRefuseNotFitted"/>. The first officer's brightness, in "Cockpit Other", is still hidden by its own arm.
+    /// <see cref="TryRefuseNotFitted"/>. There is no first officer's DCDU control left to hide.
     /// </summary>
     internal static bool IsFitted(string varKey, FenixVariant variant)
     {
@@ -233,7 +233,6 @@ public partial class FenixA320Definition
             "S_OH_NAV_DATA_DISP" or "S_OH_NAV_SYS_DISP" => variant.HasGnadirs != false,
             "S_OH_NAV_IR1_SWITCH" or "S_OH_NAV_IR2_SWITCH" or "S_OH_NAV_IR3_SWITCH"
                 => variant.HasGnadirs != true,
-            "S_DCDU2_DIM_BRT" => variant.HasDcdu != false,
             "S_MIP_ISFD_BUGS" or "S_MIP_ISFD_LS" or "S_MIP_ISFD_PLUS" or "S_MIP_ISFD_MINUS"
                 or "S_MIP_ISFD_RST" or "E_MIP_ISFD_BARO_INC" or "E_MIP_ISFD_BARO_DEC"
                 or IsisBaroPushKey

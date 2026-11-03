@@ -6,8 +6,9 @@
 // none while header-left is blank), so a status change, a page of the message or an answer is never a new message. The first
 // ok screen after a start, a problem or a reconnect is a silent baseline. After it an identity counts once it has held 300 ms:
 // it is remembered then (up to 64, the oldest dropped) and called once, unless the DCDU is muted or the call falls within
-// 3 s of the first sample after the pilot's own window key. A call is "DCDU: " and the header-left line, then the first
-// message line, in plain words: no color names, runs of spaces collapsed (owner's ruling, 2026-11-03).
+// 3 s of the first sample after the pilot's own press of any of the window's keys (the answer keys too: SEND re-wraps the
+// message with a new first line, which is the answer drawn again and no news). A call is "DCDU: " and the header-left line,
+// then the first message line, in plain words: no color names, runs of spaces collapsed (owner's ruling, 2026-11-03).
 //
 // A message can also wait behind another that is on the screen, which no identity shows. The total is the number after the
 // slash in the first token of the third info line when the second starts with MSG ("1/2" is two), else one while the screen
@@ -379,7 +380,7 @@ public class FenixChannelDcduAnnouncerTests
         FenixChannelDcduAnnouncer announcer = Baselined(MessageA);
 
         // The key, and the first sample after it at 0: the quiet runs from there to 3,000.
-        announcer.NoteNavigation();
+        announcer.NoteOwnPress();
         Assert.Null(At(announcer, 0, MessageA));
 
         // A new first line 500 ms after the key (stepping to another message): shown, settled and silent.
@@ -397,7 +398,7 @@ public class FenixChannelDcduAnnouncerTests
         FenixChannelDcduAnnouncer announcer = Baselined(MessageA);
 
         // The key is pressed with no clock; the first sample after it comes at 10,000 ms. The quiet is 10,000 to 13,000.
-        announcer.NoteNavigation();
+        announcer.NoteOwnPress();
         Assert.Null(At(announcer, 10_000, MessageA));
 
         // B settles at 12,900: within the quiet, silent. It is remembered, so it is not called when the quiet ends.
@@ -409,7 +410,7 @@ public class FenixChannelDcduAnnouncerTests
     {
         // C settles at exactly 13,000: the quiet is over, so it is called.
         FenixChannelDcduAnnouncer exactly = Baselined(MessageA);
-        exactly.NoteNavigation();
+        exactly.NoteOwnPress();
         Assert.Null(At(exactly, 10_000, MessageA));
         Assert.Null(At(exactly, 12_700, MessageC));
         Assert.Null(At(exactly, 12_800, MessageC));
@@ -418,7 +419,7 @@ public class FenixChannelDcduAnnouncerTests
 
         // D settles at 12,999, a moment sooner: still within it, so it is silent.
         FenixChannelDcduAnnouncer sooner = Baselined(MessageA);
-        sooner.NoteNavigation();
+        sooner.NoteOwnPress();
         Assert.Null(At(sooner, 10_000, MessageA));
         Assert.Null(At(sooner, 12_699, MessageC));
         Assert.Null(At(sooner, 12_999, MessageC));
@@ -430,12 +431,12 @@ public class FenixChannelDcduAnnouncerTests
     {
         FenixChannelDcduAnnouncer announcer = Baselined(MessageA);
 
-        announcer.NoteNavigation();
+        announcer.NoteOwnPress();
         Assert.Null(At(announcer, 0, MessageA));
 
         // A second key at the pilot's next step, 2,500 ms in: the quiet runs on to 5,500. B settles at 3,300, after the
         // first quiet would have ended, and is silent.
-        announcer.NoteNavigation();
+        announcer.NoteOwnPress();
         Assert.Null(At(announcer, 2500, MessageA));
         Assert.Empty(Calls(announcer, 3000, 5000, MessageB));
 
@@ -450,7 +451,7 @@ public class FenixChannelDcduAnnouncerTests
         // The pilot steps to B in the quiet and back to A, then a new message C arrives later: B and A are seen, C is new.
         FenixChannelDcduAnnouncer announcer = Baselined(MessageA);
 
-        announcer.NoteNavigation();
+        announcer.NoteOwnPress();
         Assert.Null(At(announcer, 0, MessageA));
         Assert.Empty(Calls(announcer, 100, 800, MessageB));
         Assert.Empty(Calls(announcer, 900, 1600, MessageA));
@@ -468,6 +469,55 @@ public class FenixChannelDcduAnnouncerTests
         Assert.Empty(Calls(announcer, 2000, 3000, MessageA));
         Assert.Empty(Calls(announcer, 3100, 4000, MessageB));
         Assert.Empty(Calls(announcer, 4100, 5000, MessageA));
+    }
+
+    // A clearance with its answer open (status WILCO, keys CANCEL and SEND, message 2 of 2), and the same message 1.2 s after
+    // SEND as the Fenix sent it (build 3.0.0.7613, 2026-11-03): re-wrapped in green with a NEW first line, SENDING on the first
+    // info line, CLOSE the only key.
+    private static readonly FenixDcduScreen AnswerOpen = Screen(
+        "g 2124Z FROM EDDF", "ciWILCO",
+        ["CLRD TO cEGSSw.".PadRight(24), "cOBOK2Ew DEPARTURE.".PadRight(24), "MNTN c4000w. SQUAWK".PadRight(24),
+            "c2443w. EXPCT RWY".PadRight(24), "c07Cw.".PadRight(24)],
+        ["", "MSG".PadRight(14), "2/2".PadRight(14)], leftKey1: "c*CANCEL", rightKey2: "cSEND*");
+
+    private static readonly FenixDcduScreen AnswerSent = Screen(
+        "g 2124Z FROM EDDF", "giWILCO",
+        ["gCLRD TO EGSS. OBOK2E    ", "gDEPARTURE. MNTN 4000.   ", "gSQUAWK 2443. EXPCT RWY  ", "g07C.                    "],
+        ["SENDING", "MSG           ", "2/2           "], rightKey2: "cCLOSE*");
+
+    [Fact]
+    public void The_message_an_answer_re_wraps_is_silent_after_the_pilots_own_press()
+    {
+        // The pilot's SEND (a soft key) is an own press like a page key: the re-wrap that follows it, a new first line, is the
+        // answer drawn again and never a new message. The total is two before and after, so no count either.
+        FenixChannelDcduAnnouncer announcer = Baselined(AnswerOpen);
+
+        announcer.NoteOwnPress();
+        Assert.Null(At(announcer, 100, AnswerOpen));
+        Assert.Empty(Calls(announcer, 200, 1100, AnswerOpen));
+        Assert.Empty(Calls(announcer, 1200, 9000, AnswerSent));
+    }
+
+    [Fact]
+    public void The_same_re_wrap_with_no_press_before_it_is_called()
+    {
+        // What the quiet is for: with no press of the pilot's before it, the message drawn with a new first line is a new one.
+        FenixChannelDcduAnnouncer announcer = Baselined(AnswerOpen);
+
+        Assert.Empty(Calls(announcer, 100, 1100, AnswerOpen));
+        Assert.Equal(new[] { (1500L, "DCDU: 2124Z FROM EDDF, CLRD TO EGSS. OBOK2E") }, Calls(announcer, 1200, 3000, AnswerSent).ToArray());
+    }
+
+    [Fact]
+    public void A_message_that_comes_after_the_quiet_of_an_answer_is_called()
+    {
+        // The quiet is over 3 s after the first sample that follows the press: the next message is news again.
+        FenixChannelDcduAnnouncer announcer = Baselined(AnswerOpen);
+
+        announcer.NoteOwnPress();
+        Assert.Null(At(announcer, 100, AnswerOpen));
+        Assert.Empty(Calls(announcer, 200, 5000, AnswerSent));
+        Assert.Equal(new[] { (6300L, CallC) }, Calls(announcer, 6000, 6500, MessageC).ToArray());
     }
 
     // ---- The messages behind the first --------------------------------------------------------
@@ -508,6 +558,43 @@ public class FenixChannelDcduAnnouncerTests
             int withNothing = FenixChannelDcduAnnouncer.TotalOf(Screen(info: ["", "MSG", third]));
             Assert.True(withMessage == 1 && withNothing == 0, $"counter '{third}' read {withMessage} with a message and {withNothing} without");
         }
+    }
+
+    [Fact]
+    public void The_counter_is_read_from_the_first_column_of_both_lines()
+    {
+        // The Fenix draws the message counter at the first column. With one message left it draws the page counter alone, its
+        // label and figure still in the page column ("           PGE" over "           1/2"), which is no message counter.
+        Assert.Equal(1, FenixChannelDcduAnnouncer.TotalOf(
+            Screen("w1426Z FROM EDGG", info: ["", "           PGE", "           1/2"])));
+        Assert.Equal(0, FenixChannelDcduAnnouncer.TotalOf(Screen(info: ["", "           PGE", "           1/2"])));
+
+        // MSG must start the second line, and the third line's first token must start in the first column.
+        foreach ((string second, string third) in new[]
+                 {
+                     ("   MSG        PGE", "1/2        1/2"),
+                     (" MSG", "1/2"),
+                     ("MSG        PGE", "           1/2"),
+                     ("MSG", " 1/2"),
+                     ("PGE MSG", "1/2"),
+                 })
+        {
+            Assert.Equal(1, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", second, third])));
+            Assert.Equal(0, FenixChannelDcduAnnouncer.TotalOf(Screen(info: ["", second, third])));
+        }
+
+        // The first token is digits, a slash and digits and nothing else: no number before the slash is no counter.
+        foreach (string third in new[] { "/2", "X/2", "A1/2", "-1/2", "1 /2", "1/ 2", "1/2X", "1/2/3", "١/2", "1/٢" })
+        {
+            int withMessage = FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG", third]));
+            int withNothing = FenixChannelDcduAnnouncer.TotalOf(Screen(info: ["", "MSG", third]));
+            Assert.True(withMessage == 1 && withNothing == 0, $"counter '{third}' read {withMessage} with a message and {withNothing} without");
+        }
+
+        // What it does read: one or more digits either side, at the first column, then the page counter after spaces.
+        Assert.Equal(2, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG        PGE", "1/2        1/2"])));
+        Assert.Equal(12, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "MSG", "10/12"])));
+        Assert.Equal(2, FenixChannelDcduAnnouncer.TotalOf(Screen("w1426Z FROM EDGG", info: ["", "gMSG        PGE", "g12/2        g1/2"])));
     }
 
     [Fact]
@@ -598,7 +685,7 @@ public class FenixChannelDcduAnnouncerTests
         // reads 1/2, then 2/2, and the page counter moves; the total is two throughout.
         FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/2"));
 
-        announcer.NoteNavigation();
+        announcer.NoteOwnPress();
         Assert.Null(At(announcer, 100, Counted(MessageA, "1/2")));
         Assert.Empty(Calls(announcer, 200, 1500, Counted(MessageB, "2/2")));
         Assert.Empty(Calls(announcer, 1600, 2500, MessageB with { Info = ["", "MSG        PGE", "2/2        2/3"] }));
@@ -645,7 +732,7 @@ public class FenixChannelDcduAnnouncerTests
         // after a key, and not this.
         FenixChannelDcduAnnouncer announcer = Baselined(Counted(MessageA, "1/1"));
 
-        announcer.NoteNavigation();
+        announcer.NoteOwnPress();
         Assert.Null(At(announcer, 100, Counted(MessageA, "1/1")));
         Assert.Equal(new[] { (500L, "DCDU: 2 messages") }, Calls(announcer, 200, 2000, Counted(MessageA, "1/2")).ToArray());
     }
@@ -657,7 +744,7 @@ public class FenixChannelDcduAnnouncerTests
         // silent, the rise is not.
         FenixChannelDcduAnnouncer announcer = Baselined(Screen());
 
-        announcer.NoteNavigation();
+        announcer.NoteOwnPress();
         Assert.Null(At(announcer, 100, Screen()));
         Assert.Equal(new[] { (500L, "DCDU: 2 messages") }, Calls(announcer, 200, 2000, Counted(MessageB, "1/2")).ToArray());
     }

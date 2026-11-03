@@ -24,11 +24,13 @@ namespace MSFSBlindAssist.Services;
 /// counts again: stepping back to an earlier message is silent. Remembering does not depend on being heard, so a
 /// message that was not called is never called later.</para>
 /// <para>When a counted identity is not called. The DCDU is muted: a message that was on the screen while it was muted at
-/// any sample of its hold is not called, and unmuting replays nothing. Or the pilot's own page or message key
-/// (<see cref="NoteNavigation"/>) was pressed within <see cref="NavigationQuietMs"/>: that key's result, a new first line
-/// when the message pages or the next message on the screen, is heard in the list, never as a call. The quiet is the
-/// cabin window's own-press rule (<see cref="FenixCabinOwnPresses"/>), counted here from the first sample after the key
-/// because the key takes no clock; it is over at exactly <see cref="NavigationQuietMs"/> after that sample.</para>
+/// any sample of its hold is not called, and unmuting replays nothing. Or any key the pilot pressed in the window
+/// (<see cref="NoteOwnPress"/>: a page or message key, a soft key, print) was pressed within <see cref="NavigationQuietMs"/>:
+/// that key's result, a new first line when the message pages, the next message on the screen, or the message drawn again
+/// once it is answered (SEND re-wraps it with a new first line, which was heard as a false "DCDU: 2124Z FROM EDDF, CLRD TO
+/// EGSS. OBOK2E" on 2026-11-03), is heard in the list, never as a call. The quiet is the cabin window's own-press rule
+/// (<see cref="FenixCabinOwnPresses"/>), counted here from the first sample after the key because the key takes no clock;
+/// it is over at exactly <see cref="NavigationQuietMs"/> after that sample.</para>
 /// <para>A message waiting behind another. Two messages can arrive and only the first reaches the screen, so its identity
 /// never shows the second. The total is what the screen's counter says (<see cref="TotalOf"/>), and a total that rises and
 /// holds <see cref="SettleMs"/> to two or more is a message that came: it is called "DCDU: 2 messages". The total that
@@ -41,7 +43,7 @@ namespace MSFSBlindAssist.Services;
 /// <para>What is said. <see cref="CallText"/>: "DCDU: " and the header's left half, then the first message line, as plain
 /// words with no color named (owner's ruling, 2026-11-03: the DCDU speaks none, as the MCDU does) and runs of spaces made
 /// one. Never the status.</para>
-/// <para>Threads. Called on the UI thread only, by the host's timer, and <see cref="NoteNavigation"/> from the window's key
+/// <para>Threads. Called on the UI thread only, by the host's timer, and <see cref="NoteOwnPress"/> from the window's key
 /// handler on the same thread, so the announcer takes no lock. The text is the DCDU's own words, so the PC's culture
 /// changes none of it, and the only figure written, the count, is formatted with the invariant culture.</para>
 /// </remarks>
@@ -51,8 +53,8 @@ internal sealed class FenixChannelDcduAnnouncer
     public const long SettleMs = 300;
 
     /// <summary>
-    /// How long after the first sample that follows <see cref="NoteNavigation"/> a counted identity is not called, in
-    /// milliseconds.
+    /// How long after the first sample that follows <see cref="NoteOwnPress"/> a counted identity is not called, in
+    /// milliseconds. The name is from when only the page and message keys began it.
     /// </summary>
     public const long NavigationQuietMs = 3000;
 
@@ -85,16 +87,16 @@ internal sealed class FenixChannelDcduAnnouncer
     private long _totalCandidateSinceMs;
     private bool _totalCandidateMuted;
 
-    // NoteNavigation has been called since the last sample, and the end of the quiet that sample began.
-    private bool _navigationPending;
+    // NoteOwnPress has been called since the last sample, and the end of the quiet that sample began.
+    private bool _ownPressPending;
     private long _quietUntilMs = long.MinValue;
 
     /// <summary>
-    /// Notes that the pilot pressed one of the window's page or message keys. The first sample after it begins the quiet
-    /// of <see cref="NavigationQuietMs"/>, and a later key before that sample changes nothing more. Call it before the
-    /// key is sent, so that the sample cannot come first.
+    /// Notes that the pilot pressed one of the window's keys, any of the nine: what it brings onto the screen is the pilot's
+    /// own reading, not news. The first sample after it begins the quiet of <see cref="NavigationQuietMs"/>, and a later key
+    /// before that sample changes nothing more. Call it before the key is sent, so that the sample cannot come first.
     /// </summary>
-    public void NoteNavigation() => _navigationPending = true;
+    public void NoteOwnPress() => _ownPressPending = true;
 
     /// <summary>
     /// One reading of the DCDU. Returns the text to speak when the message on the screen has just counted as new or the
@@ -107,9 +109,9 @@ internal sealed class FenixChannelDcduAnnouncer
     /// <param name="nowMs">The caller's clock, in milliseconds; the same clock at every sample.</param>
     public string? Sample(FenixChannelSection<FenixDcduScreen> screen, int connection, bool muted, long nowMs)
     {
-        if (_navigationPending)
+        if (_ownPressPending)
         {
-            _navigationPending = false;
+            _ownPressPending = false;
             _quietUntilMs = nowMs + NavigationQuietMs;
         }
 
@@ -180,9 +182,11 @@ internal sealed class FenixChannelDcduAnnouncer
     /// <summary>
     /// How many messages the DCDU holds: the number after the slash in the first token of the third info line when the
     /// second info line starts with "MSG" ("MSG        PGE" over "1/2        1/2" is two: message 1 of 2, page 1 of 2).
-    /// With no counter (no "MSG", a token with no slash, or what follows the slash is not a whole number of one or more)
-    /// the total is one while the screen has an <see cref="IdentityOf">identity</see> and none otherwise. The figure is
-    /// read with the invariant culture, from the DCDU's own text.
+    /// Both lines are read from their first column: a second line that starts with white space, or a third whose first
+    /// token is not digits, a slash and digits, is no counter. With no counter (no "MSG" at the first column, a token
+    /// that is not that shape, or a total that is not a whole number of one or more) the total is one while the screen has
+    /// an <see cref="IdentityOf">identity</see> and none otherwise. The figure is read with the invariant culture, from the
+    /// DCDU's own text.
     /// </summary>
     public static int TotalOf(FenixDcduScreen screen)
     {
@@ -253,23 +257,34 @@ internal sealed class FenixChannelDcduAnnouncer
         return total > previous && total > 1 && !_totalCandidateMuted ? total : null;
     }
 
-    // The counter's total, or null when the screen has no counter that reads.
+    // The counter's total, or null when the screen has no counter that reads. The Fenix draws the counter at the first column of
+    // both lines: the second starts with "MSG" and the third with the message counter, digits, a slash, digits ("1/2"). A line
+    // that starts with spaces ("           PGE" over "           1/2", the page counter alone) or a token that is not exactly
+    // that shape ("/2", "X/2", "1/2X", "1/2/3") is no counter.
     private static int? CounterTotal(FenixDcduScreen screen)
     {
         if (screen.Info.Count < 3) return null;
-        if (!FenixChannelDcdu.Plain(screen.Info[1]).TrimStart().StartsWith("MSG", StringComparison.Ordinal)) return null;
+        if (!FenixChannelDcdu.Plain(screen.Info[1]).StartsWith("MSG", StringComparison.Ordinal)) return null;
 
-        string[] tokens = FenixChannelDcdu.Plain(screen.Info[2]).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        if (tokens.Length == 0) return null;
+        string line = FenixChannelDcdu.Plain(screen.Info[2]);
 
-        int slash = tokens[0].IndexOf('/');
-        if (slash < 0) return null;
+        // ASCII digits only: no sign, no space, no group separator, nor another script's digits.
+        int slash = 0;
+        while (slash < line.Length && IsDigit(line[slash])) slash++;
+        if (slash == 0 || slash >= line.Length || line[slash] != '/') return null;
 
-        // Digits only: no sign, no space, no group separator; and a counter of nothing is no counter.
-        return int.TryParse(tokens[0][(slash + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out int total) && total >= 1
+        int end = slash + 1;
+        while (end < line.Length && IsDigit(line[end])) end++;
+        if (end == slash + 1 || (end < line.Length && !char.IsWhiteSpace(line[end]))) return null;
+
+        // A counter of nothing is no counter.
+        return int.TryParse(line.AsSpan(slash + 1, end - slash - 1), NumberStyles.None, CultureInfo.InvariantCulture, out int total)
+               && total >= 1
             ? total
             : null;
     }
+
+    private static bool IsDigit(char c) => c is >= '0' and <= '9';
 
     // The line's own text, with the codes read out of it and the ends trimmed.
     private static string TextOf(string coded) => FenixChannelText.Parse(coded).JoinedText.Trim();

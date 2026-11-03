@@ -7,17 +7,21 @@
 // (FenixChannelDcduKeys.Map, the shared alternate soft keys setting picking the chords) is judged at the press on a
 // snapshot taken then, never on the last refresh's, and a refusal is the only thing the window ever says: the result of a
 // press is heard in the refreshed list, never the key's name ([CORE-7]); a result that is not on the row under the cursor
-// (the status, NO MORE MSG) is read back once by the sampler (FenixChannelDcduReadback), which every press tells first. A
-// press goes through the definition's own handler for the
-// panel's S_DCDU1_* button, which presses and releases ([A320-3]) and carries the variant's refusal in front of it; the
-// window and the definition's DCDU calls never write a variable, run a calculator string or open the channel themselves
-// ([FNX-21]). A key held down presses once: the base asks the window about every auto-repeat too, and an answer key is
-// pressed once for WILCO and again for SEND, so a held Ctrl+1 must not answer and send. A brightness combo after the list
-// steps the switch one position for a pick of Dim or Bright, and shows Mid again when the switch has sprung back, with
-// nothing written for that return.
+// (the status, the first info line: NO MORE MSG, SENDING, RECEIVD BY ATC) is read back by the sampler
+// (FenixChannelDcduReadback), which every press tells first. Every press also tells the announcer, whose quiet then keeps
+// the answered message, drawn again with a new first line, from being called as a new one. A press goes through the
+// definition's own handler for the panel's S_DCDU1_* button, which presses and releases ([A320-3]) and carries the
+// variant's refusal in front of it; the window and the definition's DCDU calls never write a variable, run a calculator
+// string or open the channel themselves ([FNX-21]). A key held down presses once: the base asks the window about every
+// auto-repeat too, and an answer key is pressed once for WILCO and again for SEND, so a held Ctrl+1 must not answer and
+// send. Two buttons after the list, Bright and then Dim, step the brightness switch once each; when the switch has gone
+// back and the value has moved the window reads N_DCDU1_BRIGHTNESS and says it ("Brightness 60 percent"), once for quick
+// presses, never over a closed window. The window reads the value itself every 2 s while it is open, so that a dark DCDU
+// with nothing drawn says so.
 //
 // What is built here is never shown (the DCDU window needs a sim and a screen); the SimConnect manager is never connected,
-// so a press the window sends writes nothing. The rest, the key behaviour in the sim, is checked there ([CORE-5]).
+// so a press the window sends writes nothing and the brightness is read through a stand-in. The rest, the key behaviour in
+// the sim, is checked there ([CORE-5]).
 
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -103,7 +107,7 @@ public class FenixChannelDcduWindowTests : IDisposable
     }
 
     [Fact]
-    public void The_window_is_the_dcdu_list_with_a_brightness_combo_after_it()
+    public void The_window_is_the_dcdu_list_with_bright_and_dim_buttons_after_it()
     {
         using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out _);
         using (monitor)
@@ -113,17 +117,20 @@ public class FenixChannelDcduWindowTests : IDisposable
             DisplayListBox list = form.Controls.OfType<DisplayListBox>().Single();
             Assert.Equal("DCDU display", list.AccessibleName);
 
-            // The variable's own items, on the resting middle, in a list the pilot picks from and cannot type into.
-            ComboBox combo = form.Controls.OfType<ComboBox>().Single();
-            Assert.Equal("DCDU Brightness", combo.AccessibleName);
-            Assert.Equal(ComboBoxStyle.DropDownList, combo.DropDownStyle);
-            Assert.Equal(new[] { "Dim", "Mid", "Bright" }, combo.Items.Cast<string>());
-            Assert.Equal("Mid", combo.SelectedItem);
+            // No combo any more: two plain buttons, Bright then Dim in the tab order, each read by its Text alone.
+            Assert.Empty(form.Controls.OfType<ComboBox>());
+            Button[] buttons = form.Controls.OfType<Button>().OrderBy(button => button.TabIndex).ToArray();
+            Assert.Equal(new[] { "Bright", "Dim" }, buttons.Select(button => button.Text));
+            foreach (Button button in buttons)
+            {
+                Assert.True(string.IsNullOrEmpty(button.AccessibleName), $"{button.Text} has the AccessibleName {button.AccessibleName}");
+                Assert.Equal(DockStyle.Bottom, button.Dock);
+            }
 
             // After the list, in the layout and in the tab order.
-            Assert.True(list.TabIndex < combo.TabIndex, "the combo is not after the list in the tab order");
+            Assert.True(list.TabIndex < buttons[0].TabIndex, "the Bright button is not after the list in the tab order");
+            Assert.True(buttons[0].TabIndex < buttons[1].TabIndex, "Dim is not after Bright in the tab order");
             Assert.Equal(DockStyle.Fill, list.Dock);
-            Assert.Equal(DockStyle.Bottom, combo.Dock);
         }
     }
 
@@ -219,11 +226,10 @@ public class FenixChannelDcduWindowTests : IDisposable
             headerLeft, "", [firstLine, "", "", "", ""], ["", "", ""], "", "", "", ""));
 
     [Fact]
-    public void Only_a_page_or_message_key_notes_the_navigation()
+    public void Every_key_notes_the_own_press_so_that_what_it_brings_is_never_called()
     {
-        // The pilot's own paging and stepping are never announced as news: the page and message keys tell the announcer
-        // first, so that a message that comes onto the screen within the quiet is silent, and the soft keys and print do not,
-        // so that a message that comes after one of those is called.
+        // The pilot's own paging, stepping and answering are never announced as news: each of the nine keys tells the announcer
+        // first, so that a message that comes onto the screen within the quiet that follows is silent.
         var speech = new SpeechCapture();
         var sim = new SimConnectManager(IntPtr.Zero);
         FenixChannelSection<FenixDcduScreen> before = MessageScreen("w1426Z FROM EDGG", "cCLIMB TO");
@@ -241,10 +247,66 @@ public class FenixChannelDcduWindowTests : IDisposable
             Assert.Null(announcer.Sample(after, 1, muted: false, nowMs: 1000));
             string? call = announcer.Sample(after, 1, muted: false, nowMs: 1000 + FenixChannelDcduAnnouncer.SettleMs);
 
-            if (FenixChannelDcduKeys.IsNavigation(key))
-                Assert.True(call is null, $"{key} is the pilot's own reading, yet its screen was called: {call}");
-            else
-                Assert.True(call is not null, $"{key} is no navigation, yet the message after it was not called");
+            Assert.True(call is null, $"{key} is the pilot's own press, yet the screen after it was called: {call}");
+        }
+
+        Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public void A_message_that_comes_with_no_press_before_it_is_called()
+    {
+        // The quiet is the press's: with no key pressed, the same new message is news.
+        var announcer = new FenixChannelDcduAnnouncer();
+
+        Assert.Null(announcer.Sample(MessageScreen("w1426Z FROM EDGG", "cCLIMB TO"), 1, muted: false, nowMs: 0));
+        FenixChannelSection<FenixDcduScreen> after = MessageScreen("w1431Z FROM EDGG", "cDESCEND TO");
+        Assert.Null(announcer.Sample(after, 1, muted: false, nowMs: 1000));
+        Assert.Equal("DCDU: 1431Z FROM EDGG, DESCEND TO",
+            announcer.Sample(after, 1, muted: false, nowMs: 1000 + FenixChannelDcduAnnouncer.SettleMs));
+    }
+
+    // A clearance with its answer open, as the Fenix drew it after one press of WILCO (build 3.0.0.7613, 2026-11-03): the status
+    // says WILCO, the keys are CANCEL and SEND, and the message counter reads message 2 of 2.
+    private static FenixChannelSection<FenixDcduScreen> AnswerOpen()
+        => FenixChannelSection<FenixDcduScreen>.Ok(new FenixDcduScreen(
+            "g 2124Z FROM EDDF", "ciWILCO",
+            ["CLRD TO cEGSSw.".PadRight(24), "cOBOK2Ew DEPARTURE.".PadRight(24), "MNTN c4000w. SQUAWK".PadRight(24),
+                "c2443w. EXPCT RWY".PadRight(24), "c07Cw.".PadRight(24)],
+            ["", "MSG".PadRight(14), "2/2".PadRight(14)], "c*CANCEL", "", "", "cSEND*"));
+
+    // The same message 1.2 s after SEND, as the Fenix sent it: re-wrapped in green with a NEW first line, SENDING on the first
+    // info line, and CLOSE the only key.
+    private static FenixChannelSection<FenixDcduScreen> AnswerSent()
+        => FenixChannelSection<FenixDcduScreen>.Ok(new FenixDcduScreen(
+            "g 2124Z FROM EDDF", "giWILCO",
+            ["gCLRD TO EGSS. OBOK2E    ", "gDEPARTURE. MNTN 4000.   ", "gSQUAWK 2443. EXPCT RWY  ", "g07C.                    ", ""],
+            ["SENDING", "MSG           ", "2/2           "], "", "", "", "cCLOSE*"));
+
+    [Fact]
+    public void An_answered_message_the_fenix_re_wraps_is_not_called_as_new()
+    {
+        // The pilot's SEND re-wraps the message with a new first line, which the announcer took for a new message and called
+        // ("DCDU: 2124Z FROM EDDF, CLRD TO EGSS. OBOK2E", heard 2026-11-03). Every press of the window's keys is the pilot's own
+        // reading, not only the page and message keys, so the quiet that follows it silences the re-wrap.
+        var speech = new SpeechCapture();
+        var sim = new SimConnectManager(IntPtr.Zero);
+
+        foreach (FenixDcduKey key in new[] { FenixDcduKey.RightKey2, FenixDcduKey.LeftKey1, FenixDcduKey.Print })
+        {
+            var definition = new FenixA320Definition();
+            var announcer = new FenixChannelDcduAnnouncer();
+            AnnouncerField.SetValue(definition, announcer);
+
+            Assert.Null(announcer.Sample(AnswerOpen(), 1, muted: false, nowMs: 0));
+            definition.PressDcdu(key, sim, speech);
+
+            // The sampler ticks every 100 ms; the re-wrap is on the screen from 1.2 s and holds the settle long before 3 s.
+            for (long ms = 100; ms <= 9000; ms += 100)
+            {
+                string? call = announcer.Sample(ms < 1200 ? AnswerOpen() : AnswerSent(), 1, muted: false, nowMs: ms);
+                Assert.True(call is null, $"{key} was followed by a call at {ms} ms: {call}");
+            }
         }
 
         Assert.Empty(speech.All);
@@ -275,22 +337,27 @@ public class FenixChannelDcduWindowTests : IDisposable
 
             definition.PressDcdu(key, sim, speech);
 
-            Assert.Null(readback.Sample(InfoScreen(""), 0));
-            Assert.True(readback.Sample(InfoScreen("NO MORE MSG"), 200) == "NO MORE MSG", $"{key} did not note the read-back");
+            // The first sample is the before reading (and the baseline), the next the result: with the DCDU muted it is still
+            // heard, because a key is never silent.
+            Assert.Null(readback.Sample(InfoScreen(""), muted: true, nowMs: 0));
+            Assert.True(readback.Sample(InfoScreen("NO MORE MSG"), muted: true, nowMs: 200) == "NO MORE MSG",
+                $"{key} did not note the read-back");
         }
 
         Assert.Empty(speech.All);
     }
 
     [Fact]
-    public void The_first_press_makes_the_read_back()
+    public void The_first_press_makes_the_read_back_and_the_announcer_when_the_sampler_has_not()
     {
         var definition = new FenixA320Definition();
         Assert.Null(ReadbackField.GetValue(definition));
+        Assert.Null(AnnouncerField.GetValue(definition));
 
         definition.PressDcdu(FenixDcduKey.Print, new SimConnectManager(IntPtr.Zero), new SpeechCapture());
 
         Assert.NotNull(ReadbackField.GetValue(definition));
+        Assert.NotNull(AnnouncerField.GetValue(definition));
     }
 
     // ---- Reading the source ---------------------------------------------------------------------
@@ -392,27 +459,256 @@ public class FenixChannelDcduWindowTests : IDisposable
         Assert.Equal(press, body.LastIndexOf("PressDcdu(", StringComparison.Ordinal));
     }
 
+    // ---- Bright and Dim ---------------------------------------------------------------------
+
     [Fact]
-    public void A_brightness_pick_steps_once_and_the_return_to_mid_writes_nothing()
+    public void Bright_steps_the_switch_to_its_bright_end_and_Dim_to_its_dim_end()
     {
-        // The combo is told apart from the switch's return by the event it listens to: SelectionChangeCommitted is raised
-        // for the pilot's pick only, never for the timer assigning SelectedIndex, so the return needs no guard of its own
-        // and the form has no SelectedIndexChanged handler, which would fire for both.
+        // Position 2 is Bright and 0 is Dim (the switch rests on 1 and springs back to it); the click goes to one method that
+        // presses and then waits for the read-back.
         string code = CodeOf(FormPath);
-        Assert.Contains("_brightness.SelectionChangeCommitted += OnBrightnessCommitted", code);
-        Assert.DoesNotContain("SelectedIndexChanged", code);
-        Assert.DoesNotContain("_returning", code);
+        Assert.Contains("BrightPosition = 2;", code);
+        Assert.Contains("DimPosition = 0;", code);
+        Assert.Matches(@"_bright\.Click\s*\+=\s*\(\s*_\s*,\s*_\s*\)\s*=>\s*PressBrightness\(\s*BrightPosition\s*\)\s*;", code);
+        Assert.Matches(@"_dim\.Click\s*\+=\s*\(\s*_\s*,\s*_\s*\)\s*=>\s*PressBrightness\(\s*DimPosition\s*\)\s*;", code);
 
-        string commit = BodyOf(FormPath, "OnBrightnessCommitted");
-        Assert.Contains("SetDcduBrightness(", commit);
+        // The press goes through the definition, and the read-back's wait is the time the switch takes to come back.
+        string press = BodyOf(FormPath, "PressBrightness");
+        Assert.Contains("_definition.SetDcduBrightness(position,", press);
+        Assert.DoesNotContain("SetLVar(", press);
+        Assert.Contains("FenixA320Definition.DcduSpringBackMs", code);
 
-        // The timer shows Mid again DcduSpringBackMs after a pick, and that return only assigns the selected index: it never
-        // reaches the switch.
-        Assert.Contains("DcduSpringBackMs", code);
-        string back = BodyOf(FormPath, "ReturnToMid");
-        Assert.Contains("_brightness.SelectedIndex = MidIndex;", back);
-        foreach (string write in new[] { "SetDcduBrightness(", "PressDcdu(", "HandleUIVariableSet(" })
-            Assert.False(back.Contains(write, StringComparison.Ordinal), $"the return to Mid calls {write}");
+        // No combo, and no timer that shows Mid again.
+        Assert.DoesNotContain("ComboBox", code);
+        Assert.DoesNotContain("_returnTimer", code);
+        Assert.DoesNotContain("SelectionChangeCommitted", code);
+    }
+
+    private static readonly FieldInfo ReadBackTimerField =
+        typeof(FenixChannelDcduForm).GetField("_readBackTimer", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+    [Fact]
+    public void A_press_starts_the_wait_for_the_switch_to_come_back_and_says_nothing_itself()
+    {
+        using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out SpeechCapture speech);
+        using (monitor)
+        {
+            var timer = (System.Windows.Forms.Timer)ReadBackTimerField.GetValue(form)!;
+            Assert.False(timer.Enabled);
+            Assert.Equal(FenixA320Definition.DcduSpringBackMs, timer.Interval);
+
+            form.PressBrightness(2);
+
+            Assert.True(timer.Enabled, "the press did not start the wait for the read-back");
+            Assert.Empty(speech.All);
+        }
+    }
+
+    [Fact]
+    public async Task The_value_is_read_back_and_said_once_the_switch_is_back()
+    {
+        using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out SpeechCapture speech);
+        using (monitor)
+        {
+            var reads = new List<string>();
+            form.ReadFresh = (key, _) =>
+            {
+                reads.Add(key);
+                return Task.FromResult<double?>(310);
+            };
+
+            form.PressBrightness(2);
+            Assert.Empty(reads);
+
+            await form.ReadBackDueAsync();
+
+            // The spoken read-back is the press's confirmation ([CORE-7]): the value, as the interrupting call a refusal uses.
+            Assert.Equal(new[] { FenixChannelDcduBrightness.LevelKey }, reads);
+            Assert.Equal(new[] { "Brightness 60 percent" }, speech.Interrupts);
+            Assert.Equal(speech.Interrupts, speech.All);
+        }
+    }
+
+    [Fact]
+    public async Task A_read_that_fails_or_times_out_says_the_brightness_is_not_available()
+    {
+        using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out SpeechCapture speech);
+        using (monitor)
+        {
+            // ReadFreshAsync gives null on a timeout, a disconnect or a key it cannot deliver; a throw is made null too.
+            form.ReadFresh = (_, _) => Task.FromResult<double?>(null);
+            form.PressBrightness(0);
+            await form.ReadBackDueAsync();
+
+            form.ReadFresh = (_, _) => throw new InvalidOperationException("the sim went away");
+            form.PressBrightness(0);
+            await form.ReadBackDueAsync();
+
+            form.ReadFresh = (_, _) => Task.FromException<double?>(new TimeoutException());
+            form.PressBrightness(0);
+            await form.ReadBackDueAsync();
+
+            Assert.Equal(Enumerable.Repeat("Brightness not available", 3), speech.Interrupts);
+        }
+    }
+
+    [Fact]
+    public async Task Without_a_sim_the_default_read_says_the_brightness_is_not_available()
+    {
+        // The read goes through the manager's ReadFreshAsync, which gives null when it is not connected.
+        using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out SpeechCapture speech);
+        using (monitor)
+        {
+            form.PressBrightness(2);
+            await form.ReadBackDueAsync();
+
+            Assert.Equal(new[] { "Brightness not available" }, speech.Interrupts);
+        }
+    }
+
+    [Fact]
+    public async Task Only_the_last_of_quick_presses_is_read_back()
+    {
+        using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out SpeechCapture speech);
+        using (monitor)
+        {
+            var firstRead = new TaskCompletionSource<double?>();
+            form.ReadFresh = (_, _) => firstRead.Task;
+            form.PressBrightness(2);
+            Task first = form.ReadBackDueAsync();
+
+            // A second press while the first read is out: its wait restarts, and the first read's answer is not the last press's.
+            form.PressBrightness(2);
+            firstRead.SetResult(110);
+            await first;
+            Assert.Empty(speech.All);
+
+            form.ReadFresh = (_, _) => Task.FromResult<double?>(160);
+            await form.ReadBackDueAsync();
+            Assert.Equal(new[] { "Brightness 30 percent" }, speech.Interrupts);
+        }
+    }
+
+    [Fact]
+    public async Task Nothing_is_said_after_the_window_is_disposed()
+    {
+        FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out SpeechCapture speech);
+        using (monitor)
+        {
+            var read = new TaskCompletionSource<double?>();
+            form.ReadFresh = (_, _) => read.Task;
+            form.PressBrightness(2);
+            Task pending = form.ReadBackDueAsync();
+
+            // The window is closed and disposed while the read is out: its answer comes to nobody.
+            form.Dispose();
+            read.SetResult(310);
+            await pending;
+            Assert.Empty(speech.All);
+
+            // A read-back that is only due after the dispose says nothing either.
+            form.ReadFresh = (_, _) => Task.FromResult<double?>(310);
+            await form.ReadBackDueAsync();
+            Assert.Empty(speech.All);
+        }
+    }
+
+    [Fact]
+    public void A_key_with_a_button_focused_is_the_windows_as_it_is_with_the_list()
+    {
+        // The keys are the form's (ProcessCmdKey), so which control has focus decides nothing: a soft key on a display that
+        // cannot be read says so with Bright focused as it does with the list, and a key that is none of the nine is left.
+        using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out SpeechCapture speech);
+        using (monitor)
+        {
+            form.ActiveControl = form.Controls.OfType<Button>().Single(button => button.Text == "Bright");
+
+            Assert.True(Press(form, Keys.Control | Keys.D1));
+            Assert.Equal(new[] { FenixChannelDcduKeys.NotAvailableMessage }, speech.Interrupts);
+            Assert.True(Press(form, Keys.PageDown));
+            Assert.False(Press(form, Keys.Down));
+            Assert.Single(speech.All);
+        }
+    }
+
+    // ---- The brightness the window reads for itself -----------------------------------------
+
+    // A trusted snapshot of the measured empty DCDU: nothing drawn at all.
+    private static FenixChannelSnapshot EmptyDcduSnapshot()
+    {
+        var empty = new FenixChannelProtoWriter().Bool(1, true);
+        foreach (int field in Enumerable.Range(2, 14))
+            empty.String(field, field is 10 or 11 ? "              " : "");
+
+        FenixChannelPush push = FenixChannelPush.From(new FenixChannelProtoWriter().Message(186, empty).ToArray());
+        return new FenixChannelSnapshot(new FenixDisplayVerdict(true, "trusted"), null, push, null, 0, 1);
+    }
+
+    [Fact]
+    public async Task A_dark_dcdu_with_nothing_drawn_says_so_from_the_brightness_the_window_read()
+    {
+        using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out _);
+        using (monitor)
+        {
+            FenixChannelSnapshot snapshot = EmptyDcduSnapshot();
+
+            // Not read yet: nothing says it is dark.
+            Assert.Null(form.Brightness);
+            Assert.Equal(new[] { FenixChannelDcduRows.NoMessageRow }, form.ComposeNow(snapshot).Rows!.ToArray());
+
+            form.ReadFresh = (key, _) =>
+            {
+                Assert.Equal(FenixChannelDcduBrightness.LevelKey, key);
+                return Task.FromResult<double?>(0);
+            };
+            await form.ReadLevelAsync();
+            Assert.Equal(0, form.Brightness);
+            Assert.Equal(new[] { FenixChannelDcduRows.DarkRow }, form.ComposeNow(snapshot).Rows!.ToArray());
+
+            // A read that fails keeps the last value.
+            form.ReadFresh = (_, _) => Task.FromResult<double?>(null);
+            await form.ReadLevelAsync();
+            Assert.Equal(0, form.Brightness);
+            Assert.Equal(new[] { FenixChannelDcduRows.DarkRow }, form.ComposeNow(snapshot).Rows!.ToArray());
+
+            // Bright pressed: the level moved, and the rows are the empty DCDU's again.
+            form.ReadFresh = (_, _) => Task.FromResult<double?>(60);
+            await form.ReadLevelAsync();
+            Assert.Equal(60, form.Brightness);
+            Assert.Equal(new[] { FenixChannelDcduRows.NoMessageRow }, form.ComposeNow(snapshot).Rows!.ToArray());
+        }
+    }
+
+    [Fact]
+    public async Task The_read_back_of_a_press_keeps_the_brightness_it_read()
+    {
+        using FenixChannelDcduForm form = NewWindow(out FenixChannelMonitor monitor, out _, out _);
+        using (monitor)
+        {
+            form.ReadFresh = (_, _) => Task.FromResult<double?>(110);
+            form.PressBrightness(2);
+            await form.ReadBackDueAsync();
+
+            Assert.Equal(110, form.Brightness);
+        }
+    }
+
+    [Fact]
+    public void The_window_reads_the_brightness_on_its_own_two_second_timer_and_the_composer_does_no_io()
+    {
+        // The composer is the rows class and only given the last value; the timer is the window's, started when the window shows.
+        string code = CodeOf(FormPath);
+        Assert.Contains("BrightnessRefreshMs = 2000;", code);
+        Assert.Matches(@"_levelTimer\s*=\s*new\s+System\.Windows\.Forms\.Timer\s*\{\s*Interval\s*=\s*BrightnessRefreshMs\s*\}", code);
+        Assert.Matches(@"FenixChannelDcduRows\.Compose\([^;]*level\.Value\s*\)", code);
+
+        string compose = BodyOf(FormPath, "ComposeRows");
+        Assert.DoesNotContain("ReadFresh", compose);
+        Assert.DoesNotContain("await", compose);
+
+        // The wait for a press and the timer read the same way: through the one seam, which is the manager's ReadFreshAsync.
+        Assert.Contains("simConnect.ReadFreshAsync(", code);
+        Assert.Contains("AnnounceImmediate(FenixChannelDcduBrightness.Spoken(", code);
     }
 
     [Fact]
@@ -528,16 +824,22 @@ public class FenixChannelDcduWindowTests : IDisposable
     }
 
     [Fact]
-    public void The_sampler_speaks_the_read_back_of_the_same_snapshot_queued_and_not_muted()
+    public void The_sampler_gives_the_read_back_the_same_snapshot_and_the_same_mute_as_the_announcer_and_queues_what_it_says()
     {
         string body = BodyOf(DefinitionPath, "SampleChannelDcdu");
 
-        // Every tick the read-back is given the screen of the tick's one snapshot and its clock, and what it says is queued.
-        // It is the pilot's own press, so neither the Ctrl+M row nor the airframe's variant mutes it.
-        Match sample = Regex.Match(body, @"[^\r\n;]*_dcduReadback\s*\?\s*\.\s*Sample\(\s*section\s*,\s*ctx\.NowMs\s*\)[^;]*;");
-        Assert.True(sample.Success, "the sampler never gives the read-back the tick's screen and clock");
-        Assert.DoesNotContain("uted", sample.Value);
+        // The mute is worked out once, from the Ctrl+M row and the airframe, and both the read-back and the announcer get it.
+        Assert.Matches(@"bool\s+muted\s*=\s*DcduCallMuted\(\s*Variant\s*,\s*rowMuted\s*\)\s*;", body);
+        Assert.Single(Regex.Matches(body, @"DcduCallMuted\("));
+
+        // Every tick the read-back (made by the sampler if no press made it) is given the screen of the tick's one snapshot,
+        // the mute and the clock, and what it says is queued: a background change the pilot did not trigger ([CORE-7]).
+        Assert.Matches(
+            @"\(\s*_dcduReadback\s*\?\?=\s*new\s+Services\.FenixChannelDcduReadback\(\)\s*\)\s*\.\s*Sample\(\s*section\s*,\s*muted\s*,\s*ctx\.NowMs\s*\)",
+            body);
+        Assert.Matches(@"Sample\(\s*section\s*,\s*s\.Connection\s*,\s*muted\s*,\s*ctx\.NowMs\s*\)", body);
         Assert.Matches(@"Announce\(\s*readBack\s*\)", body);
+        Assert.DoesNotContain("AnnounceImmediate", body);
 
         // And still the one snapshot a tick.
         Assert.Single(Regex.Matches(body, @"Snapshot\("));

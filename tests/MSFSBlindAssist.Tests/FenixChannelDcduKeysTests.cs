@@ -161,26 +161,13 @@ public class FenixChannelDcduKeysTests
     }
 
     [Fact]
-    public void The_soft_keys_and_the_navigation_keys_are_told_apart()
+    public void Only_the_four_soft_keys_are_soft_keys()
     {
-        foreach (FenixDcduKey key in SoftKeys)
-        {
-            Assert.True(FenixChannelDcduKeys.IsSoftKey(key), key.ToString());
-            Assert.False(FenixChannelDcduKeys.IsNavigation(key), key.ToString());
-        }
+        foreach (FenixDcduKey key in SoftKeys) Assert.True(FenixChannelDcduKeys.IsSoftKey(key), key.ToString());
 
-        // Page and message keys are navigation; print is neither.
-        foreach (FenixDcduKey key in new[]
-                 {
-                     FenixDcduKey.PageMinus, FenixDcduKey.PagePlus, FenixDcduKey.MessageBack, FenixDcduKey.MessageForward
-                 })
-        {
+        // The page, message and print keys press whatever the label is: not soft keys.
+        foreach (FenixDcduKey key in Enum.GetValues<FenixDcduKey>().Except(SoftKeys))
             Assert.False(FenixChannelDcduKeys.IsSoftKey(key), key.ToString());
-            Assert.True(FenixChannelDcduKeys.IsNavigation(key), key.ToString());
-        }
-
-        Assert.False(FenixChannelDcduKeys.IsSoftKey(FenixDcduKey.Print));
-        Assert.False(FenixChannelDcduKeys.IsNavigation(FenixDcduKey.Print));
     }
 
     [Fact]

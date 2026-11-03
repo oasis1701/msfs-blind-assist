@@ -1139,18 +1139,31 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = OffOn
             },
 
-            // ========== DCDU (10 variables) ==========
-            // The captain's DCDU keys and brightness switch. No panel lists them: the DCDU window (Ctrl+Shift+D, and the
-            // Fenix windows list) presses them through the branches below (FenixA320Definition.ChannelDcdu.cs). The first
-            // officer's brightness, S_DCDU2_DIM_BRT, stays a Cockpit control.
+            // ========== DCDU (11 variables) ==========
+            // The captain's DCDU keys and brightness switch, and the brightness itself. No panel lists them: the DCDU window
+            // (Ctrl+Shift+D, and the Fenix windows list) presses the keys and steps the switch through the branches below, and
+            // reads the brightness (FenixA320Definition.ChannelDcdu.cs). There is no first officer's DCDU window, so no
+            // brightness for it.
             ["S_DCDU1_DIM_BRT"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_DCDU1_DIM_BRT",
                 DisplayName = "DCDU Brightness",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                // Spring-loaded both ways: a pick of Dim or Bright is one step, then back to Mid (PulseSpringSwitch).
+                // Spring-loaded both ways: a press of Dim or Bright is one step (about 50 on the level below), then back to Mid
+                // (PulseSpringSwitch).
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Mid", [2] = "Bright"}
+            },
+            // What lights the captain's DCDU (Cockpit_Behavior.xml), 0 (dark) to 510 (full): the window reads it on request, to
+            // say it after a press and to know a dark DCDU. Consumed by the window alone, silently, so it stays out of the
+            // Ctrl+M list ([VAR-9]).
+            ["N_DCDU1_BRIGHTNESS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "N_DCDU1_BRIGHTNESS",
+                DisplayName = "DCDU Brightness Level",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ExcludeFromMonitorManager = true
             },
             ["S_DCDU1_LSK1L"] = new SimConnect.SimVarDefinition
             {
@@ -5005,7 +5018,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "WX", [1] = "WX+T", [2] = "TURB", [3] = "MAP"}
             },
 
-            // ========== COCKPIT — seats, comfort, standby, gravity gear, DCDU2 brightness ==========
+            // ========== COCKPIT — seats, comfort, standby, gravity gear ==========
             // All live-verified settable via the MobiFlight calculator path (SetLVar). Seats are
             // 3-position direction switches that HOLD the written value: the seat moves while the
             // switch is Up/Down (0/2) and the model auto-centers to Stop (1) at the travel limit.
@@ -5037,7 +5050,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["S_OXYGEN_MASK_COVER_FO"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_FO", DisplayName = "First Officer Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             // NOTE: S_OH_CALLS_EMER_Cover ("Calls Emergency Cover") is already defined+paneled in the overhead Calls panel — not re-added here.
             ["S_HYD_GRAVITY_GEAR_EXTEND"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND", DisplayName = "Gravity Gear Extension", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [3] = "Extended"}, ValueToDescriptionKey = FenixA320GravityGear.DescriptionKey },
-            ["S_DCDU2_DIM_BRT"] = new SimConnect.SimVarDefinition { Name = "S_DCDU2_DIM_BRT", DisplayName = "First Officer DCDU Brightness", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Mid", [2] = "Bright"} },
 
             // ========== PEDESTAL - ECAM PANEL (20 variables) ==========
             // Brightness Knobs (2 step-based combo boxes)
@@ -8910,7 +8922,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["First Officer Seat"] = new List<string> { "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO", "S_ARMREST_LEFT_FO", "S_ARMREST_RIGHT_FO" },
             ["Windows and Shades"] = new List<string> { "S_SUNSHADE_CAPT", "S_SUNSHADE_FO", "S_WINDOW_BLINDS_CAPT", "S_WINDOW_BLINDS_FO", "S_WINDOW_BLINDS_REAR_CAPT", "S_WINDOW_BLINDS_REAR_FO" },
             ["Standby Instruments"] = new List<string> { "S_STANDBY_COMPASS", "S_STANDBY_ATTITUDE_CAGE" },
-            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_HYD_GRAVITY_GEAR_EXTEND", "S_DCDU2_DIM_BRT" },
+            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_HYD_GRAVITY_GEAR_EXTEND" },
 
             ["ECAM"] = new List<string>
             {
@@ -9376,7 +9388,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             // All hold their written value; SetLVar routes through the MobiFlight calc path.
             // Seats are 3-position direction switches (Down/Stop/Up, Aft/Stop/Forward) that hold —
             // pick Up/Down to start moving, Stop to halt (the model auto-centers at the travel limit).
-            // The cockpit door video button and the DCDU2 brightness switch spring back: see below.
+            // The cockpit door video button and the DCDU brightness switch spring back: see below.
             switch (varKey)
             {
                 case "S_SEAT_HEIGHT_CAPT":
@@ -9412,16 +9424,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // DCDU brightness: spring-loaded both ways, one step per pick, then back to Mid.
+            // DCDU brightness: spring-loaded both ways, one step per press, then back to Mid.
             if (varKey == "S_DCDU1_DIM_BRT")
             {
                 PulseSpringSwitch("S_DCDU1_DIM_BRT", value, simConnect);
-                return true;
-            }
-
-            if (varKey == "S_DCDU2_DIM_BRT")
-            {
-                PulseSpringSwitch("S_DCDU2_DIM_BRT", value, simConnect);
                 return true;
             }
 

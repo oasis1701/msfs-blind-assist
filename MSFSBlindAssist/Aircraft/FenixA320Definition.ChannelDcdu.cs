@@ -3,24 +3,25 @@ namespace MSFSBlindAssist.Aircraft;
 // The DCDU's side of the Fenix display channel: the calls its window makes (Forms/Fenix/FenixChannelDcduForm.cs, whose rows
 // are Services/FenixChannelDcduRows.cs and whose keys are Services/FenixChannelDcduKeys.cs), the key that opens it
 // (Ctrl+Shift+D) and the sampler that calls a new message (Services/FenixChannelDcduAnnouncer.cs). Nothing here opens the
-// channel (the sampler only takes the monitor's snapshot), and no press is written here: a key or a brightness pick goes
+// channel (the sampler only takes the monitor's snapshot), and no press is written here: a key or a brightness press goes
 // through HandleUIVariableSet, the S_DCDU1_* branches, which press and release ([A320-3]) and carry the variant's refusal
 // in front of them.
 public partial class FenixA320Definition
 {
-    /// <summary>The captain's DCDU brightness switch, the variable the window's combo steps.</summary>
+    /// <summary>The captain's DCDU brightness switch, the variable the window's Bright and Dim buttons step.</summary>
     internal const string DcduBrightnessKey = "S_DCDU1_DIM_BRT";
 
     /// <summary>
-    /// How long after a brightness pick the switch is back in the middle and read again: the hold before the return write
-    /// and the gap before the forced read (<see cref="PulseSpringSwitch"/>). The window shows Mid again then.
+    /// How long after a Bright or Dim press the switch is back in the middle and the brightness has moved: the hold before the
+    /// return write and the gap before the forced read (<see cref="PulseSpringSwitch"/>). The window reads the brightness then.
     /// </summary>
     internal const int DcduSpringBackMs = ButtonPressHoldMs + ButtonReleaseGapMs;
 
-    // The tracker of the pilot's own page and message keys, made by the first press of one (UI thread only).
+    // The tracker of the pilot's own presses, made by the first press of any key or the first sample (UI thread only).
     private Services.FenixChannelDcduAnnouncer? _dcduAnnouncer;
 
-    // The read-back of the pilot's own presses, made by the first press of any key (UI thread only).
+    // The read-back of the first info line and of the pilot's own presses, made by the first press of any key or the first
+    // sample (UI thread only).
     private Services.FenixChannelDcduReadback? _dcduReadback;
 
     /// <summary>
@@ -49,9 +50,9 @@ public partial class FenixA320Definition
     // snapshot gives the verdict, the screen and the connection together. The monitor already logs why a display is not
     // trusted, so only a problem on a trusted DCDU is reported here. The announcer tracks on every tick, muted or not, and
     // answers with the call when one is due: spoken queued, a background change the pilot did not trigger ([CORE-7]). The
-    // read-back of the pilot's own press reads the same screen: what the press changed away from the row under the cursor
-    // (the status, NO MORE MSG), spoken queued once. It is the pilot's own press, so the Ctrl+M row and the variant's mute
-    // leave it alone.
+    // read-back reads the same screen and tracks on every tick too: it says every new first info line (SENDING, RECEIVD BY
+    // ATC, NO MORE MSG), queued, and the status after the pilot's own soft key. The mute (the Ctrl+M row, or an airframe with
+    // no DCDU) silences a background info line, never one inside the window after the pilot's own press and never the status.
     partial void SampleChannelDcdu(ChannelAnnounceContext ctx)
     {
         Services.FenixChannelSnapshot s = ctx.Monitor.Snapshot(Services.FenixChannelDisplay.Dcdu);
@@ -59,11 +60,14 @@ public partial class FenixA320Definition
         if (s.Verdict.Trusted && !section.IsOk)
             ctx.Monitor.ReportFeatureProblem(Services.FenixChannelDcdu.DisplayName, section.Problem ?? "no data");
 
-        if (_dcduReadback?.Sample(section, ctx.NowMs) is { } readBack) ctx.Announcer.Announce(readBack);
-
         bool rowMuted = Services.FenixChannelAnnouncementRows.IsMuted(Services.FenixChannelAnnouncementRows.DcduKey);
+        bool muted = DcduCallMuted(Variant, rowMuted);
+
+        if ((_dcduReadback ??= new Services.FenixChannelDcduReadback()).Sample(section, muted, ctx.NowMs) is { } readBack)
+            ctx.Announcer.Announce(readBack);
+
         string? call = (_dcduAnnouncer ??= new Services.FenixChannelDcduAnnouncer())
-            .Sample(section, s.Connection, DcduCallMuted(Variant, rowMuted), ctx.NowMs);
+            .Sample(section, s.Connection, muted, ctx.NowMs);
 
         // No Suppressed check, unlike the session notice's sampler: on a Fenix only MainForm's synchronous wrap sets it, and
         // this timer tick cannot run inside that wrap.
@@ -83,15 +87,16 @@ public partial class FenixA320Definition
 
     /// <summary>
     /// Presses the DCDU key <paramref name="key"/> through the panel's button for it. Every key tells the read-back first,
-    /// so that what the press changes away from the row under the cursor is heard once; the read-back is made by the first
-    /// key. A page or message key tells the announcer as well, so that what the key brings onto the screen is read in the
-    /// window and never called as a new message; the announcer is made by the first such key.
+    /// so that what the press changes away from the row under the cursor is heard once and a first info line it brings is
+    /// heard even with the DCDU muted; and the announcer as well, so that what the key brings onto the screen (the next page
+    /// or message, or the answered message drawn again with a new first line) is read in the window and never called as a
+    /// new message.
     /// </summary>
     internal void PressDcdu(
         Services.FenixDcduKey key, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
         (_dcduReadback ??= new Services.FenixChannelDcduReadback()).NotePress(key);
-        if (Services.FenixChannelDcduKeys.IsNavigation(key)) (_dcduAnnouncer ??= new Services.FenixChannelDcduAnnouncer()).NoteNavigation();
+        (_dcduAnnouncer ??= new Services.FenixChannelDcduAnnouncer()).NoteOwnPress();
 
         string varKey = Services.FenixChannelDcduKeys.VariableOf(key);
         HandleUIVariableSet(varKey, 1, GetVariables()[varKey], simConnect, announcer);
@@ -99,7 +104,8 @@ public partial class FenixA320Definition
 
     /// <summary>
     /// Moves the brightness switch to <paramref name="position"/> (0 Dim, 2 Bright) through the panel's branch, which
-    /// steps it once and lets it spring back to the middle.
+    /// steps it once (about 50 on <see cref="Services.FenixChannelDcduBrightness.LevelKey"/>) and lets it spring back to the
+    /// middle.
     /// </summary>
     internal void SetDcduBrightness(
         double position, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)

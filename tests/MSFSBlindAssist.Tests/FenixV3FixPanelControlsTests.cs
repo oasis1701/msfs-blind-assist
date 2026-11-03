@@ -239,10 +239,9 @@ public class FenixV3FixPanelControlsTests : IDisposable
     {
         foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT" })
             AssertValues(key, (0, "Agent 2"), (1, "Rest"), (2, "Agent 1"));
-        foreach (var key in new[] { "S_DCDU1_DIM_BRT", "S_DCDU2_DIM_BRT" })
-            AssertValues(key, (0, "Dim"), (1, "Mid"), (2, "Bright"));
+        AssertValues("S_DCDU1_DIM_BRT", (0, "Dim"), (1, "Mid"), (2, "Bright"));
 
-        foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT", "S_DCDU1_DIM_BRT", "S_DCDU2_DIM_BRT" })
+        foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT", "S_DCDU1_DIM_BRT" })
         {
             string branch = Branch(key);
             Assert.Contains($"PulseSpringSwitch(\"{key}\"", branch);
@@ -259,7 +258,7 @@ public class FenixV3FixPanelControlsTests : IDisposable
         // The combo kept showing the picked end after the spring-back, and WinForms ignores a same-index
         // pick, so a second step the same way committed nothing. One forced read after the return write
         // re-syncs it ([MD11-27] pattern), on the L:var each caller passes, which is the panel's var key.
-        foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT", "S_DCDU1_DIM_BRT", "S_DCDU2_DIM_BRT" })
+        foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT", "S_DCDU1_DIM_BRT" })
         {
             Assert.Equal(key, Vars[key].Name);
             Assert.Contains($"PulseSpringSwitch(\"{key}\", value, simConnect)", Branch(key));

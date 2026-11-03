@@ -115,10 +115,6 @@ internal static class FenixChannelDcduKeys
     public static bool IsSoftKey(FenixDcduKey key)
         => key is FenixDcduKey.LeftKey1 or FenixDcduKey.LeftKey2 or FenixDcduKey.RightKey1 or FenixDcduKey.RightKey2;
 
-    /// <summary>Whether <paramref name="key"/> is a page or a message key, the keys that move through the messages.</summary>
-    public static bool IsNavigation(FenixDcduKey key)
-        => key is FenixDcduKey.PageMinus or FenixDcduKey.PagePlus or FenixDcduKey.MessageBack or FenixDcduKey.MessageForward;
-
     /// <summary>
     /// Whether the press of <paramref name="key"/> goes ahead, judged on <paramref name="s"/>, the snapshot taken at the
     /// press. A soft key presses its variable when the DCDU reads and the key's label has words (<see cref="FenixChannelDcdu.Plain"/>

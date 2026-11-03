@@ -237,7 +237,7 @@ public class FenixVariantControlsTests
         AssertFitted(v, "S_OH_PNEUMATIC_ECON_FLOW", "S_OH_CALLS_MID", "S_OH_CALLS_EXIT", "S_OH_FUEL_ACT",
             "S_OH_ENG_N1_MODE_1", "S_OH_ENG_N1_MODE_2", "S_OH_NAV_IR1_SWITCH", "S_MIP_ISFD_BUGS", "S_MIP_ISFD_BARO_BUTTON", "S_OH_ELEC_BAT1");
         AssertNotFitted(v, "S_OH_PNEUMATIC_PACK_FLOW", "S_OH_ADIRS_KEY_0", "S_OH_NAV_DATA_DISP",
-            "S_DCDU1_LSK1L", "S_DCDU2_DIM_BRT", "S_STANDBY_ATTITUDE_CAGE");
+            "S_DCDU1_LSK1L", "S_STANDBY_ATTITUDE_CAGE");
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public class FenixVariantControlsTests
         AssertFitted(v, Keypad);
         AssertFitted(v, "S_OH_NAV_DATA_DISP", "S_OH_NAV_SYS_DISP", "S_DCDU1_DIM_BRT", "S_DCDU1_LSK1L",
             "S_DCDU1_LSK1R", "S_DCDU1_LSK2L", "S_DCDU1_LSK2R", "S_DCDU1_MSGUP", "S_DCDU1_MSGDWN",
-            "S_DCDU1_PGUP", "S_DCDU1_PGDN", "S_DCDU1_PRINT", "S_DCDU2_DIM_BRT");
+            "S_DCDU1_PGUP", "S_DCDU1_PGDN", "S_DCDU1_PRINT");
         AssertNotFitted(v, "S_OH_NAV_IR1_SWITCH", "S_OH_NAV_IR2_SWITCH", "S_OH_NAV_IR3_SWITCH");
     }
 
@@ -570,7 +570,10 @@ public class FenixVariantControlsTests
             Assert.DoesNotContain(Panels, panel => panel.Value.Contains(key));
         }
 
-        // The first officer's DCDU brightness has no window: it stays the last control of "Cockpit Other".
-        Assert.Equal("S_DCDU2_DIM_BRT", Panels["Cockpit Other"][^1]);
+        // The first officer's DCDU brightness is gone (owner's ruling, 2026-11-03: there is no second DCDU window): the
+        // variable, its panel entry and its fitted arm.
+        Assert.False(Vars.ContainsKey("S_DCDU2_DIM_BRT"), "the first officer's DCDU brightness is still registered");
+        Assert.DoesNotContain(Panels, panel => panel.Value.Contains("S_DCDU2_DIM_BRT"));
+        Assert.Equal("S_HYD_GRAVITY_GEAR_EXTEND", Panels["Cockpit Other"][^1]);
     }
 }
