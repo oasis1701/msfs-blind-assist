@@ -113,9 +113,11 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
       with the heading and where the track diamond sits; top right, the next-waypoint lines, or in ROSE LS and ROSE VOR
       the LS or VOR block (ident, frequency, course, DME).
     - The map: the route's waypoints in route order, each with its distance, its degrees off the top of the screen and
-      its constraint as printed; the markers (T/C, T/D, DECEL and the others) in route order; holds after their fix;
-      where the route line leaves the screen; a discontinuity only as the ND draws it (nothing across a gap the line
-      leaves, as on the 737); the temporary flight plan while it is pending; the heading bug; the
+      its constraint as printed; the markers (T/C, T/D, DECEL and the others) where each lies along the route, between
+      its waypoints (row 56); holds after their fix; where the route line leaves the screen; where the drawn line ends
+      and starts again at a gap inside the screen (a discontinuity: "route line ends at BRAVO", "route line starts
+      again at CHARLIE", row 56; the word "discontinuity" is not drawn, so it is never said); the temporary flight plan
+      while it is pending; the heading bug; the
       range rings; the FIX INFO rings and radials; navaids, fixes, airports and NDBs nearest first, as the option
       buttons select them; traffic nearest first, with its relative altitude and whether it climbs or descends. In PLAN
       a place is the distance and compass point from the centre waypoint ("5.0 NM north-west of VAKSU").
@@ -438,7 +440,7 @@ Rows 14-45 are the questions the plans raised, answered on 2026-11-03 ("Accept a
 | 44 | 11 | A new DCDU message | new header and first line, held 300 ms; quiet 3 s after the pilot's own page or message key | As recommended |
 | 45 | 11 | The status word in the new-message call | left out | As recommended |
 
-Rows 46-55 are the team's decision of 2026-11-03 (Hadi, Robin and the team) to read the whole ND in plan 03, which
+Rows 46-56 are the team's decision of 2026-11-03 (Hadi, Robin and the team) to read the whole ND in plan 03, which
 Hadi claimed that day. They change sections 1, 2.1, 2.2, 2.4, 2.6, 2.7, 3.3 and 6 as stated there.
 
 | # | Plan | Question | Recommendation | Answer |
@@ -453,6 +455,7 @@ Hadi claimed that day. They change sections 1, 2.1, 2.2, 2.4, 2.6, 2.7, 3.3 and 
 | 53 | 03 | How plan 03 learns the ND | layer by layer: one sim session per layer before its code; captures and EFIS changes by Claude; the program's code only where a capture cannot decide | As recommended |
 | 54 | 03 | Plan 01's frozen files plan 03 needs | changed by plan 03, additively, under the index's exemption for a landed plan: the two map calls in `FenixChannelFields.cs` and `FenixChannelClient.cs`, their request method in `FenixChannelMonitor.cs`, the paths in `FenixChannelReadOnlyTests`, the sixth row in `FenixChannelAnnouncementRows.cs` and `FenixChannelMonitorRowsTests`, the `SampleChannelNd` seam in `FenixA320Definition.Hooks.cs` and its line in `FenixA320Definition.DisplayChannel.cs`'s sampler list | As recommended; recorded in plan 03's execution record |
 | 55 | 03 | Two rows the PMDG 737's ND window has that its ND does not draw: "Captain ND: <mode>, range <n>" and "Messages: none" | keep both, as the 737 | Dropped (Hadi, 2026-11-03): the Fenix ND window lists only what the ND draws; the mode and range are in its controls |
+| 56 | 03 | The route's markers, and a gap the route line leaves (a discontinuity) | markers where each lies along the route; the line's ends at the gap described | Both as recommended (Hadi, 2026-11-03): "Map: route line ends at BRAVO", "Map: route line starts again at CHARLIE", once session 2 confirms the Fenix draws the gap so; the PMDG 737's window does neither (its markers after its waypoints, nothing across a gap), a question for its own issue |
 
 ## 6. Open checks (each owned by the plan named)
 
