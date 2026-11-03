@@ -20,6 +20,11 @@ gauges) keeps the AI read and refuses the entry.
 **Spec:** `docs/fenix-channel/spec.md` 2.2 (the ISIS verdict; no cross-check), 2.4 (the window and the ISIS content),
 3.6, 4; answer 1.
 
+**Changed by plan 02 (the owner's ruling, 2026-11-03):** the deviation rows name the diamond, so a pilot can't read them as
+the aircraft's side (the FBW A320's "above glideslope" is the aircraft's): "Localizer diamond 0.4 dots right",
+"Glideslope diamond 1.3 dots above", "Localizer diamond at full scale, left". Word this plan's rows so, whatever its text
+below says.
+
 ## Global Constraints
 
 - Spec section 4 and the index's "Shared conventions" apply to every task.
