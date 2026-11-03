@@ -1,3 +1,5 @@
+using MSFSBlindAssist.Utils.Logging;
+
 namespace MSFSBlindAssist.Aircraft;
 
 // The Fenix display channel's side of the definition (the seams are declared in FenixA320Definition.Hooks.cs).
@@ -8,7 +10,7 @@ namespace MSFSBlindAssist.Aircraft;
 // pauses its FD checks, the peek that hands it the five comparison values and the light switch as they arrive, and
 // the key dispatch, the first look at a channel key, which hands it to the seam of the feature that owns it.
 // A seam nothing implements is no call at all, so a key whose feature has not landed behaves as it did before:
-// a display key gives its AI read and the others stay silent.
+// a display key gives its AI read and the others stay silent. So does a key whose seam throws.
 public partial class FenixA320Definition
 {
     // This instance's monitor: made by StartDisplayChannelBackground, disposed and cleared by Stop. Start, Stop,
@@ -166,17 +168,60 @@ public partial class FenixA320Definition
         _ => ChannelKeyOwner.None,
     };
 
+    /// <summary>
+    /// One channel key's seam call. It gets the key's handled flag by reference and sets it when it answers.
+    /// </summary>
+    internal delegate void ChannelKeyCall(ref bool handled);
+
+    /// <summary>
+    /// Runs one channel key's seam call so that a seam which throws costs only its own key: a fault in one feature
+    /// stops that feature only, and the pilot never loses a key to it. Without this an exception would reach the
+    /// app's UI-thread handler and the key would do nothing at all, not even its AI read. The exception is caught and
+    /// reported, and <paramref name="handled"/> ends false whatever the seam had set before it threw: a key that
+    /// failed is not an answered key, so it carries on as it does with no feature, a display key to its AI read and
+    /// every other key silent. Nothing is spoken. The report goes to the monitor's log when there is a monitor
+    /// ("Pfd: key failed: InvalidOperationException: ...", which the monitor writes once for each distinct line, so a
+    /// seam that throws at every press is one line), and otherwise to debug.log, as RunSeam does for the background
+    /// seams.
+    /// </summary>
+    internal static void RunChannelKeySeam(
+        ChannelKeyOwner owner, ChannelKeyContext ctx, ref bool handled, ChannelKeyCall call)
+    {
+        try
+        {
+            call(ref handled);
+        }
+        catch (Exception ex)
+        {
+            handled = false;
+            string problem = $"key failed: {ex.GetType().Name}: {ex.Message}";
+            if (ctx.Monitor is { } monitor)
+                monitor.ReportFeatureProblem(owner.ToString(), problem);
+            else
+                Log.Error("Fenix", $"{owner}: {problem}", ex);
+        }
+    }
+
     // HandleHotkeyAction's first look at any action, before its own switch. A channel key goes to the seam of the
     // feature that owns it (ChannelKeyOwnerOf), which sets handled when it answered the key; every other key returns
-    // at once and carries on untouched. The seam gets the dispatch's own handled by reference, so its answer reaches
-    // HandleHotkeyAction. A seam nothing implements is no call at all (C# drops it), so handled stays false and the
-    // key behaves as it did before the feature: a display key gives its AI read and the others stay silent. Whether
-    // a display is trusted is for the seam to ask the monitor ([FNX-22]): nothing here reads channel data.
+    // at once and carries on untouched. A seam nothing implements is no call at all (C# drops it), so handled stays
+    // false and the key behaves as it did before the feature: a display key gives its AI read and the others stay
+    // silent. The switch runs inside RunChannelKeySeam, which gives the seam the dispatch's own handled by reference,
+    // so its answer reaches HandleHotkeyAction, and keeps a seam that throws from costing more than its own key.
+    // Whether a display is trusted is for the seam to ask the monitor ([FNX-22]): nothing here reads channel data.
     partial void TryChannelDisplayRead(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled)
     {
         ChannelKeyOwner owner = ChannelKeyOwnerOf(action);
         if (owner == ChannelKeyOwner.None) return;
 
+        RunChannelKeySeam(owner, ctx, ref handled,
+            (ref bool seamHandled) => CallChannelKeySeam(owner, action, ctx, ref seamHandled));
+    }
+
+    // The switch: one case per owner, each the one call of that owner's seam, with the key's handled flag by reference.
+    private void CallChannelKeySeam(
+        ChannelKeyOwner owner, Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled)
+    {
         switch (owner)
         {
             case ChannelKeyOwner.Pfd:

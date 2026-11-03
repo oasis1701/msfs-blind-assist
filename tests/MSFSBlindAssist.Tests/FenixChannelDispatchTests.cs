@@ -11,11 +11,15 @@
 // that table never reaches a seam. TryChannelDisplayRead calls the seam of the action's owner with the action, the
 // context and its own `handled` by reference (so the seam's answer reaches HandleHotkeyAction), and no other seam. It
 // is a private partial method, and a call to a seam nothing implements is no call at all, so which seam each owner
-// reaches is pinned by reading the method's source.
+// reaches is pinned by reading the method's source. The seam runs inside RunChannelKeySeam: one that throws is reported
+// and leaves `handled` false, so the key carries on as it does with no feature (a display key to its AI read, every
+// other key silent) and costs only itself. No seam can be made to throw from a test, so that helper is tested with seam
+// calls of the tests' own, and that the dispatch goes through it is pinned by reading its source too.
 
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Hotkeys;
+using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -83,10 +87,7 @@ public class FenixChannelDispatchTests
     [Fact]
     public void Each_owner_has_one_seam_call()
     {
-        string source = File.ReadAllText(Path.Combine(
-            ClaudeContextBudgetTests.RepoRoot(),
-            "MSFSBlindAssist", "Aircraft", "FenixA320Definition.DisplayChannel.cs"));
-        List<(string Owner, string Body)> cases = CasesOf(source);
+        List<(string Owner, string Body)> cases = CasesOf(DispatchSource());
 
         foreach (FenixA320Definition.ChannelKeyOwner owner in Enum.GetValues<FenixA320Definition.ChannelKeyOwner>())
         {
@@ -95,7 +96,7 @@ public class FenixChannelDispatchTests
             string name = owner.ToString();
             List<(string Owner, string Body)> own = cases.Where(c => c.Owner == name).ToList();
             Assert.True(own.Count == 1,
-                $"{name} is in {own.Count} cases of TryChannelDisplayRead's switch: it needs exactly one");
+                $"{name} is in {own.Count} cases of the dispatch switch: it needs exactly one");
 
             MatchCollection calls = SeamCall.Matches(own[0].Body);
             Assert.True(calls.Count == 1,
@@ -139,7 +140,143 @@ public class FenixChannelDispatchTests
         Assert.Equal(speech.Interrupts, speech.All);
     }
 
+    // ---- A seam that throws -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_seam_that_returns_keeps_its_answer(bool answers)
+    {
+        bool handled = false;
+
+        FenixA320Definition.RunChannelKeySeam(FenixA320Definition.ChannelKeyOwner.Pfd, ContextWith(null), ref handled,
+            (ref bool seamHandled) => seamHandled = answers);
+
+        Assert.Equal(answers, handled);
+    }
+
+    [Theory]
+    [InlineData(false)]     // it threw before it answered
+    [InlineData(true)]      // it set handled and then threw: a key that failed is not an answered key
+    public void A_seam_that_throws_leaves_the_key_unhandled(bool answeredFirst)
+    {
+        var speech = new SpeechCapture();
+        bool handled = false;
+
+        Exception? escaped = Record.Exception(() => FenixA320Definition.RunChannelKeySeam(
+            FenixA320Definition.ChannelKeyOwner.Pfd, ContextWith(null, speech), ref handled,
+            (ref bool seamHandled) =>
+            {
+                seamHandled = answeredFirst;
+                throw new InvalidOperationException("no speed limits");
+            }));
+
+        Assert.Null(escaped);
+        Assert.False(handled);
+        // Nothing is said: the key carries on as it does with no feature, a display key to its AI read.
+        Assert.Empty(speech.All);
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void A_seam_that_throws_is_reported_once_through_the_monitor(string culture)
+    {
+        // The monitor writes each distinct line once, so a seam that throws at every press is one line in the log, and
+        // another owner's is a second: "<owner>: key failed: <exception type>: <message>". The report formats no
+        // number, so it reads the same where the PC's culture writes a comma.
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = MonitorTestKit.NewIdleMonitor(lines);
+        FenixA320Definition.ChannelKeyContext context = ContextWith(monitor);
+
+        bool[] handledAfter = TestCulture.Run(culture, () =>
+        {
+            var after = new List<bool>();
+            foreach (FenixA320Definition.ChannelKeyOwner owner in new[]
+            {
+                FenixA320Definition.ChannelKeyOwner.Pfd, FenixA320Definition.ChannelKeyOwner.Pfd,
+                FenixA320Definition.ChannelKeyOwner.Pfd, FenixA320Definition.ChannelKeyOwner.Nd,
+            })
+            {
+                bool handled = false;
+                FenixA320Definition.RunChannelKeySeam(owner, context, ref handled, AnswersThenThrows);
+                after.Add(handled);
+            }
+            return after.ToArray();
+        });
+
+        Assert.Equal(new[] { false, false, false, false }, handledAfter);
+        Assert.Equal(
+            new[]
+            {
+                "Pfd: key failed: InvalidOperationException: no speed limits",
+                "Nd: key failed: InvalidOperationException: no speed limits",
+            },
+            lines.All);
+    }
+
+    [Fact]
+    public void A_seam_that_throws_with_no_monitor_is_isolated_too()
+    {
+        // Before Start and after Stop there is no monitor: the failure goes to the app's own log instead, and the key
+        // still carries on.
+        bool handled = false;
+
+        Exception? escaped = Record.Exception(() => FenixA320Definition.RunChannelKeySeam(
+            FenixA320Definition.ChannelKeyOwner.Isis, ContextWith(null), ref handled, AnswersThenThrows));
+
+        Assert.Null(escaped);
+        Assert.False(handled);
+    }
+
+    [Fact]
+    public void The_dispatch_runs_its_seam_inside_the_isolation()
+    {
+        // TryChannelDisplayRead is the one way into a seam. Its body hands the switch to RunChannelKeySeam, with the
+        // dispatch's own `handled`, and calls no seam of its own: the isolation is tested above, and this pins that the
+        // dispatch is in it.
+        string code = Comment.Replace(DispatchSource(), "");
+        int start = code.IndexOf("partial void TryChannelDisplayRead(", StringComparison.Ordinal);
+        Assert.True(start >= 0, "FenixA320Definition.DisplayChannel.cs has no TryChannelDisplayRead");
+        string body = BlockAfter(code, start);
+
+        Assert.Matches(
+            @"\bRunChannelKeySeam\s*\(\s*owner\s*,\s*ctx\s*,\s*ref\s+handled\s*,[^;]*\bCallChannelKeySeam\s*\(", body);
+        Assert.DoesNotMatch(SeamCall, body);
+    }
+
+    // A seam call that sets handled and then throws, the worst case for the key.
+    private static void AnswersThenThrows(ref bool handled)
+    {
+        handled = true;
+        throw new InvalidOperationException("no speed limits");
+    }
+
+    // A context with only the pieces these tests touch: the announcer and the monitor.
+    private static FenixA320Definition.ChannelKeyContext ContextWith(
+        FenixChannelMonitor? monitor, SpeechCapture? speech = null)
+        => new(null!, speech ?? new SpeechCapture(), null!, null!, monitor);
+
     // ---- Reading the dispatch's source ------------------------------------------------------------
+
+    // The definition's channel partial, read from the repository.
+    private static string DispatchSource() => File.ReadAllText(Path.Combine(
+        ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Aircraft", "FenixA320Definition.DisplayChannel.cs"));
+
+    // The block that opens at the first "{" after start, braces and all, up to its closing brace.
+    private static string BlockAfter(string code, int start)
+    {
+        int open = code.IndexOf('{', start);
+        Assert.True(open >= 0, "no block after the declaration");
+        int depth = 0;
+        for (int i = open; i < code.Length; i++)
+        {
+            if (code[i] == '{') depth++;
+            else if (code[i] == '}' && --depth == 0) return code.Substring(open, i - open + 1);
+        }
+
+        throw new InvalidOperationException("the block is not closed");
+    }
 
     // A line comment or a block comment: a seam named in a comment is no call.
     private static readonly Regex Comment = new(@"//[^\r\n]*|/\*.*?\*/",
