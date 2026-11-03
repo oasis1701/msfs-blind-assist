@@ -48,8 +48,9 @@ internal sealed record FenixChannelFrame(bool Malformed, IReadOnlyList<string> W
     /// <summary>
     /// True while a powered display unit shows the captain's PFD (duData: a unit whose Power is on and whose Content
     /// is PFDCapt). False when none does: the PFD is dark, the push has no duData, or the PFD is shown only on another
-    /// unit (the first officer's), which counts as off. Like <see cref="EwdLive"/> and <see cref="SdLive"/>, an init
-    /// property that is false unless set, so a frame built positionally shows no display.
+    /// unit (the first officer's), which counts as off. Like <see cref="EwdLive"/>, <see cref="SdLive"/>,
+    /// <see cref="NdLive"/>, <see cref="DcduLive"/> and <see cref="IsisPowered"/>, an init property that is false
+    /// unless set, so a frame built positionally shows no display.
     /// </summary>
     public bool PfdLive { get; init; }
 
@@ -64,6 +65,25 @@ internal sealed record FenixChannelFrame(bool Malformed, IReadOnlyList<string> W
     /// shown only on an ND included, as for <see cref="PfdLive"/>.
     /// </summary>
     public bool SdLive { get; init; }
+
+    /// <summary>
+    /// True while a powered display unit shows the captain's ND (Content NDCapt); false otherwise, an ND shown only on
+    /// the first officer's unit included, as for <see cref="PfdLive"/>.
+    /// </summary>
+    public bool NdLive { get; init; }
+
+    /// <summary>
+    /// True while a powered display unit shows the captain's DCDU (Content DCDUCapt); false otherwise, a DCDU shown
+    /// only on another unit included, as for <see cref="PfdLive"/>.
+    /// </summary>
+    public bool DcduLive { get; init; }
+
+    /// <summary>
+    /// True while the ISIS says it is powered: the Powered flag of its own message (field 182.1). The ISIS is not one
+    /// of the display units duData lists, so no Content names it, and a push with no such message leaves this false,
+    /// which is not a wrong shape. It plays the part for the ISIS that <see cref="PfdLive"/> plays for the PFD.
+    /// </summary>
+    public bool IsisPowered { get; init; }
 
     /// <summary>The frame of a malformed message: <see cref="Malformed"/> and every value its default.</summary>
     public static readonly FenixChannelFrame MalformedFrame = new(

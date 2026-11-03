@@ -1,9 +1,10 @@
 // Characterization tests for FenixChannelDecoder, which turns one message of the Fenix display channel
-// (the gRPC service on 127.0.0.1:18083) into a frame: which displays a powered unit shows, the flight
-// director, the FMA, the upper ECAM columns and the fields the trust gate cross-checks, or an ECAM entry
-// list. Pure logic: every message is built here with FenixChannelProtoWriter, with the field numbers
-// written as plain numbers (never read from FenixChannelFields, so a wrong number in the app's table
-// fails a test), and never read from Fenix's own capture.
+// (the gRPC service on 127.0.0.1:18083) into a frame: which displays a powered unit shows, whether the
+// ISIS says it is powered, the flight director, the FMA, the upper ECAM columns and the fields the trust
+// gate cross-checks, or an ECAM entry list. Pure logic: every message is built here with
+// FenixChannelProtoWriter, with the field numbers written as plain numbers (never read from
+// FenixChannelFields, so a wrong number in the app's table fails a test), and never read from Fenix's own
+// capture.
 //
 // The contract the trust gate builds on: the decoder never throws and never turns damaged or reshaped
 // data into confident values. Bytes that are not valid protobuf anywhere in a message, a nested part
@@ -179,18 +180,23 @@ public class FenixChannelDecoderTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void The_measured_powered_display_units_make_all_three_displays_live(bool packed)
+    public void The_measured_powered_display_units_make_all_five_displays_live(bool packed)
     {
         // 3.0.0.7613 powered (2026-11-02): all eleven units on, showing the captain's PFD, the two NDs, the first
         // officer's PFD, the upper and lower ECAM, the DCDUs and the DRAIMS. The Fenix sends Power and Content
-        // unpacked, one varint per unit; the packed form encodes the same contract, so it reads the same.
+        // unpacked, one varint per unit; the packed form encodes the same contract, so it reads the same. Five of
+        // the gate's six displays are on those units: the PFD, the ND, the E/WD, the SD and the DCDU. The ISIS is
+        // not, and says so in a part of its own (below).
         FenixChannelFrame frame = Decode(Remote().Message(12, FenixChannelProtoWriter.DuData(
             Enumerable.Repeat(true, 11).ToArray(), FenixChannelProtoWriter.PoweredContent, packed,
             Enumerable.Repeat(255.0, 13).ToArray())));
 
         Assert.True(frame.PfdLive);
+        Assert.True(frame.NdLive);
         Assert.True(frame.EwdLive);
         Assert.True(frame.SdLive);
+        Assert.True(frame.DcduLive);
+        Assert.False(frame.IsisPowered);
         Assert.True(frame.ShapesOk);
     }
 
@@ -200,14 +206,17 @@ public class FenixChannelDecoderTests
     public void The_measured_cold_and_dark_display_units_leave_every_display_off(bool packed)
     {
         // Cold and dark: no unit powered, the six main units on the diagonal line, and thirteen brightness levels.
-        // Nothing powered is not a wrong shape.
+        // Nothing powered is not a wrong shape. The two DCDU units still list their content, and are dark all the same.
         FenixChannelFrame frame = Decode(Remote().Message(12, FenixChannelProtoWriter.DuData(
             new bool[11], FenixChannelProtoWriter.ColdContent, packed,
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 128])));
 
         Assert.False(frame.PfdLive);
+        Assert.False(frame.NdLive);
         Assert.False(frame.EwdLive);
         Assert.False(frame.SdLive);
+        Assert.False(frame.DcduLive);
+        Assert.False(frame.IsisPowered);
         Assert.True(frame.ShapesOk);
     }
 
@@ -218,26 +227,56 @@ public class FenixChannelDecoderTests
         FenixChannelFrame frame = Decode(Remote().Double(197, 352.2));
 
         Assert.False(frame.PfdLive);
+        Assert.False(frame.NdLive);
         Assert.False(frame.EwdLive);
         Assert.False(frame.SdLive);
+        Assert.False(frame.DcduLive);
+        Assert.False(frame.IsisPowered);
         Assert.True(frame.ShapesOk);
         Assert.Empty(frame.WrongShapeFields);
     }
 
     [Theory]
-    [InlineData(0, true, false, false)]    // PFDCapt: the PFD
-    [InlineData(4, false, true, false)]    // ECAMUpper: the E/WD
-    [InlineData(5, false, false, true)]    // ECAMLower: the SD
-    [InlineData(1, false, false, false)]   // PFDFO: a PFD shown only on the first officer's side counts as off
-    [InlineData(8, false, false, false)]   // EcamOnND: an ECAM page shown only on an ND counts as off
-    [InlineData(2, false, false, false)]   // NDCapt
-    [InlineData(6, false, false, false)]   // DiagonalLine
-    [InlineData(7, false, false, false)]   // SelfTest
-    public void A_display_is_live_only_on_a_powered_unit_that_shows_it(int content, bool pfd, bool ewd, bool sd)
+    [InlineData(0, true, false, false, false, false)]     // PFDCapt: the PFD
+    [InlineData(2, false, false, false, true, false)]     // NDCapt: the ND
+    [InlineData(4, false, true, false, false, false)]     // ECAMUpper: the E/WD
+    [InlineData(5, false, false, true, false, false)]     // ECAMLower: the SD
+    [InlineData(9, false, false, false, false, true)]     // DCDUCapt: the DCDU
+    [InlineData(1, false, false, false, false, false)]    // PFDFO: a PFD shown only on the first officer's side is off
+    [InlineData(3, false, false, false, false, false)]    // the first officer's ND counts as off
+    [InlineData(10, false, false, false, false, false)]   // the other DCDU counts as off
+    [InlineData(8, false, false, false, false, false)]    // EcamOnND: an ECAM page shown only on an ND counts as off
+    [InlineData(6, false, false, false, false, false)]    // DiagonalLine
+    [InlineData(7, false, false, false, false, false)]    // SelfTest
+    public void A_display_is_live_only_on_a_powered_unit_that_shows_it(
+        int content, bool pfd, bool ewd, bool sd, bool nd, bool dcdu)
     {
         FenixChannelFrame frame = Decode(Remote().Message(12, FenixChannelProtoWriter.DuData([true], [content])));
 
-        Assert.Equal((pfd, ewd, sd), (frame.PfdLive, frame.EwdLive, frame.SdLive));
+        Assert.Equal(
+            (pfd, ewd, sd, nd, dcdu),
+            (frame.PfdLive, frame.EwdLive, frame.SdLive, frame.NdLive, frame.DcduLive));
+        Assert.False(frame.IsisPowered);   // no unit's content is the ISIS
+    }
+
+    [Fact]
+    public void The_dcdu_is_live_on_a_powered_dcdu_unit()
+    {
+        // Content 9 is the captain's DCDU. In the measured layout it is unit 6, with the other DCDU (10) at unit 7:
+        // only a powered unit showing 9 counts, and the other DCDU, powered or not, does not.
+        bool[] power = Enumerable.Repeat(true, 11).ToArray();
+        FenixChannelFrame powered = Decode(Remote().Message(12, FenixChannelProtoWriter.DuData(
+            power, FenixChannelProtoWriter.PoweredContent)));
+
+        power[6] = false;   // the unit that shows content 9 goes dark
+        FenixChannelFrame dark = Decode(Remote().Message(12, FenixChannelProtoWriter.DuData(
+            power, FenixChannelProtoWriter.PoweredContent)));
+
+        Assert.True(powered.DcduLive);
+        Assert.False(dark.DcduLive);   // the other DCDU, unit 7, is still powered
+        Assert.True(dark.PfdLive);     // and nothing else moved
+        Assert.True(dark.NdLive);
+        Assert.True(dark.ShapesOk);
     }
 
     [Fact]
@@ -339,6 +378,86 @@ public class FenixChannelDecoderTests
         FenixChannelFrame frame = Decode(Remote().Message(12, units).Double(197, 352.2));
 
         Assert.Same(FenixChannelFrame.MalformedFrame, frame);
+    }
+
+    // ---- The ISIS: powered by a part of its own -----------------------------------------------------
+
+    [Theory]
+    [InlineData(1UL, true)]
+    [InlineData(0UL, false)]
+    [InlineData(2UL, true)]   // as protobuf reads a bool: any value but 0
+    public void The_isis_is_live_only_while_powered(ulong powered, bool expected)
+    {
+        // The ISIS is no display unit, so no Content names it: its own message (field 182) carries a Powered flag
+        // (182.1), and the ISIS is live while that is set.
+        FenixChannelFrame frame = Decode(Remote().Message(182, new FenixChannelProtoWriter().Varint(1, powered)));
+
+        Assert.Equal(expected, frame.IsisPowered);
+        Assert.True(frame.ShapesOk);
+        Assert.Empty(frame.WrongShapeFields);
+
+        // And it makes no display unit show anything: the other five stay as the units say, off with no duData.
+        Assert.False(frame.PfdLive);
+        Assert.False(frame.NdLive);
+        Assert.False(frame.EwdLive);
+        Assert.False(frame.SdLive);
+        Assert.False(frame.DcduLive);
+    }
+
+    [Fact]
+    public void A_missing_isis_field_is_not_a_wrong_shape()
+    {
+        // The altitude keeps RemoteData from being empty, which would be no data at all. A push with no field 182
+        // means the ISIS is not powered; so does a field 182 with no Powered in it, whatever else it carries (fields
+        // the app does not read are skipped).
+        FenixChannelFrame none = Decode(new FenixChannelProtoWriter().Double(197, 1000.0));
+        FenixChannelFrame empty = Decode(new FenixChannelProtoWriter()
+            .Message(182, new FenixChannelProtoWriter()).Double(197, 1000.0));
+        FenixChannelFrame others = Decode(new FenixChannelProtoWriter()
+            .Message(182, new FenixChannelProtoWriter().Double(77, 2.5).String(99, "x")).Double(197, 1000.0));
+
+        foreach (FenixChannelFrame frame in new[] { none, empty, others })
+        {
+            Assert.False(frame.IsisPowered);
+            Assert.Empty(frame.WrongShapeFields);
+            Assert.True(frame.ShapesOk);
+            Assert.False(frame.Malformed);
+            Assert.True(frame.HasData);
+        }
+    }
+
+    [Fact]
+    public void The_isis_power_flag_in_another_wire_type_is_a_wrong_shape()
+    {
+        // Powered is a varint: a fixed64, a fixed32 or a length-delimited value is not. The finding is "182.1", the
+        // flag took its default, and the rest of the message still decodes.
+        FenixChannelFrame[] frames =
+        [
+            Decode(Remote().Message(182, new FenixChannelProtoWriter().Double(1, 1.0)).Double(197, 352.2)),
+            Decode(Remote().Message(182, new FenixChannelProtoWriter().Float(1, 1f)).Double(197, 352.2)),
+            Decode(Remote().Message(182, new FenixChannelProtoWriter().String(1, "x")).Double(197, 352.2))
+        ];
+
+        foreach (FenixChannelFrame frame in frames)
+        {
+            Assert.Equal(new[] { "182.1" }, frame.WrongShapeFields);
+            Assert.False(frame.IsisPowered);
+            Assert.Equal(352.2, frame.Altitude);
+            Assert.False(frame.Malformed);
+            Assert.False(frame.ShapesOk);
+        }
+    }
+
+    [Fact]
+    public void An_isis_that_is_not_a_part_is_a_wrong_shape()
+    {
+        FenixChannelFrame frame = Decode(Remote().Varint(182, 1).Double(197, 352.2));
+
+        Assert.Equal(new[] { "182" }, frame.WrongShapeFields);
+        Assert.False(frame.IsisPowered);
+        Assert.Equal(352.2, frame.Altitude);   // the rest still decodes
+        Assert.False(frame.Malformed);
+        Assert.False(frame.ShapesOk);
     }
 
     // ---- The upper ECAM columns, the numbers and the text ---------------------------------------
@@ -518,8 +637,11 @@ public class FenixChannelDecoderTests
         Assert.Equal(0, frame.FwcPage);
         Assert.Equal(0, frame.FwcPhase);
         Assert.False(frame.PfdLive);
+        Assert.False(frame.NdLive);
         Assert.False(frame.EwdLive);
         Assert.False(frame.SdLive);
+        Assert.False(frame.DcduLive);
+        Assert.False(frame.IsisPowered);
         Assert.True(frame.ShapesOk);
     }
 
@@ -691,8 +813,11 @@ public class FenixChannelDecoderTests
         Assert.Equal(0.0, frame.MagHeading);
         Assert.Equal("", frame.FobText);
         Assert.False(frame.PfdLive);
+        Assert.False(frame.NdLive);
         Assert.False(frame.EwdLive);
         Assert.False(frame.SdLive);
+        Assert.False(frame.DcduLive);
+        Assert.False(frame.IsisPowered);
     }
 
     [Fact]
@@ -732,8 +857,11 @@ public class FenixChannelDecoderTests
         Assert.Equal(0.0, frame.Altitude);
         Assert.Equal("", frame.FobText);
         Assert.False(frame.PfdLive);
+        Assert.False(frame.NdLive);
         Assert.False(frame.EwdLive);
         Assert.False(frame.SdLive);
+        Assert.False(frame.DcduLive);
+        Assert.False(frame.IsisPowered);
     }
 
     [Fact]
@@ -769,6 +897,7 @@ public class FenixChannelDecoderTests
     [InlineData(111)]   // an FMA entry
     [InlineData(173)]   // an element of the left column
     [InlineData(174)]   // an element of the right column
+    [InlineData(182)]   // IsisState
     [InlineData(194)]   // HeadingData
     public void A_nested_part_cut_short_inside_itself_makes_the_whole_message_malformed(int field)
     {
@@ -788,6 +917,7 @@ public class FenixChannelDecoderTests
     [InlineData(111)]
     [InlineData(173)]
     [InlineData(174)]
+    [InlineData(182)]
     [InlineData(194)]
     public void A_nested_part_with_a_damaged_tag_makes_the_whole_message_malformed(int field)
     {
@@ -831,8 +961,11 @@ public class FenixChannelDecoderTests
         Assert.True(frame.Fd.FdOnFo);
         Assert.Empty(frame.UpperEcamLeft);
         Assert.True(frame.PfdLive);
+        Assert.True(frame.NdLive);
         Assert.True(frame.EwdLive);
         Assert.True(frame.SdLive);
+        Assert.True(frame.DcduLive);
+        Assert.False(frame.IsisPowered);   // the push has an ISIS part only when asked for
     }
 
     [Fact]
@@ -851,8 +984,28 @@ public class FenixChannelDecoderTests
         Assert.True(frame.Fd.FdOnFo);
         Assert.Equal(new[] { "g    SIGNS ON", "gPARK BRK" }, frame.UpperEcamLeft);
         Assert.False(frame.PfdLive);
+        Assert.False(frame.NdLive);
         Assert.False(frame.EwdLive);
         Assert.False(frame.SdLive);
+        Assert.False(frame.DcduLive);
+        Assert.False(frame.IsisPowered);
+    }
+
+    [Fact]
+    public void GoodPush_powers_the_isis_only_when_asked_and_whatever_the_units_say()
+    {
+        FenixChannelFrame powered = FenixChannelDecoder.DecodeDisplayData(
+            FenixChannelProtoWriter.GoodPush(isisPowered: true));
+        FenixChannelFrame coldWithPoweredIsis = FenixChannelDecoder.DecodeDisplayData(
+            FenixChannelProtoWriter.GoodPush(displaysOn: false, isisPowered: true));
+
+        Assert.True(powered.ShapesOk);
+        Assert.True(powered.IsisPowered);
+        Assert.True(powered.PfdLive);   // the units are as they are without it
+        Assert.True(coldWithPoweredIsis.ShapesOk);
+        Assert.True(coldWithPoweredIsis.IsisPowered);   // its own part, not the units'
+        Assert.False(coldWithPoweredIsis.PfdLive);
+        Assert.False(coldWithPoweredIsis.DcduLive);
     }
 
     // ---- ECAM entries ---------------------------------------------------------------------------
@@ -1025,9 +1178,12 @@ public class FenixChannelDecoderTests
 
     // The contents of a nested part cut short inside itself, for the part with this field number: the
     // part's own length (written by Message) is right, but its first value is not all there.
-    private static FenixChannelProtoWriter CutShort(int field) => field is 110 or 194
-        ? new FenixChannelProtoWriter().Tag(1, 1).Raw(0, 0)       // a double with 2 of its 8 bytes
-        : new FenixChannelProtoWriter().Tag(1, 2).Raw(5, 0x41);   // a string of 5 with 1 byte
+    private static FenixChannelProtoWriter CutShort(int field) => field switch
+    {
+        110 or 194 => new FenixChannelProtoWriter().Tag(1, 1).Raw(0, 0),   // a double with 2 of its 8 bytes
+        182 => new FenixChannelProtoWriter().Tag(1, 0).Raw(0x80),          // a varint with nothing after its first byte
+        _ => new FenixChannelProtoWriter().Tag(1, 2).Raw(5, 0x41)          // a string of 5 with 1 byte
+    };
 
     // 2,000 rounds of messages from a fixed seed: random bytes, a good push with one byte changed, and the
     // real field numbers in random wire shapes (twice).
@@ -1055,7 +1211,7 @@ public class FenixChannelDecoderTests
     // wrong-shape and nested-part paths that raw random bytes almost never do.
     private static byte[] RandomShapes(Random random, int depth)
     {
-        int[] fields = [1, 2, 3, 4, 5, 10, 11, 12, 110, 111, 153, 173, 174, 194, 197];
+        int[] fields = [1, 2, 3, 4, 5, 10, 11, 12, 110, 111, 153, 173, 174, 182, 194, 197];
         var writer = new FenixChannelProtoWriter();
         for (int count = random.Next(0, 9); count > 0; count--)
         {

@@ -135,7 +135,10 @@ internal sealed class FenixChannelMonitor : IDisposable
 
     // In the order the log writes them.
     private static readonly FenixChannelDisplay[] Displays =
-        { FenixChannelDisplay.Pfd, FenixChannelDisplay.Ewd, FenixChannelDisplay.Sd };
+    {
+        FenixChannelDisplay.Pfd, FenixChannelDisplay.Ewd, FenixChannelDisplay.Sd,
+        FenixChannelDisplay.Nd, FenixChannelDisplay.Isis, FenixChannelDisplay.Dcdu
+    };
 
     private readonly object _lock = new();
     private readonly FenixChannelTrust _trust;
@@ -536,7 +539,7 @@ internal sealed class FenixChannelMonitor : IDisposable
 
     /// <summary>
     /// One tick of the timer: writes each display's verdict when its Trusted or the headline of its reason has
-    /// changed since it was last written (the first tick writes all three), and, while the data call is connected,
+    /// changed since it was last written (the first tick writes all six), and, while the data call is connected,
     /// every 30th tick of the connection the comparison pairs, followed by SimConnect's deliveries since the last
     /// such line (how many, and the longest gap between two in a row, a gap that spans a line counting in the next;
     /// see <see cref="FenixChannelTrust.DescribeSimDeliveries"/>).
@@ -597,6 +600,9 @@ internal sealed class FenixChannelMonitor : IDisposable
         FenixChannelDisplay.Pfd => "PFD",
         FenixChannelDisplay.Ewd => "E/WD",
         FenixChannelDisplay.Sd => "SD",
+        FenixChannelDisplay.Nd => "ND",
+        FenixChannelDisplay.Isis => "ISIS",
+        FenixChannelDisplay.Dcdu => "DCDU",
         _ => display.ToString()
     };
 

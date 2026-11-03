@@ -56,8 +56,20 @@ internal static class MonitorTestKit
     public static byte[] Frames(params byte[][] messages)
         => messages.SelectMany(message => FenixChannelProtoWriter.Frame(message)).ToArray();
 
-    /// <summary>A whole display push that passes every check of the gate, at the given altitude.</summary>
-    public static byte[] GoodPush(double altitude = 1000) => FenixChannelProtoWriter.GoodPush(altitude: altitude);
+    /// <summary>
+    /// A whole display push that passes every check of the gate, at the given altitude, with every display unit
+    /// powered. The ISIS, which has a part of its own, says it is powered only when asked: without, the push has none
+    /// and the ISIS is off.
+    /// </summary>
+    public static byte[] GoodPush(double altitude = 1000, bool isisPowered = false)
+        => FenixChannelProtoWriter.GoodPush(altitude: altitude, isisPowered: isisPowered);
+
+    /// <summary>The six displays the gate judges, in the order the log writes them.</summary>
+    public static readonly FenixChannelDisplay[] AllDisplays =
+    [
+        FenixChannelDisplay.Pfd, FenixChannelDisplay.Ewd, FenixChannelDisplay.Sd,
+        FenixChannelDisplay.Nd, FenixChannelDisplay.Isis, FenixChannelDisplay.Dcdu
+    ];
 
     /// <summary>An ECAM entries message whose entries arrive as a number instead of a nested message: a wrong shape.</summary>
     public static byte[] WrongShapedEntries() => new FenixChannelProtoWriter().Varint(1, 5).ToArray();
@@ -141,15 +153,12 @@ internal static class MonitorTestKit
     }
 
     public static bool AllTrusted(FenixChannelMonitor monitor)
-        => monitor.VerdictFor(FenixChannelDisplay.Pfd).Trusted
-           && monitor.VerdictFor(FenixChannelDisplay.Ewd).Trusted
-           && monitor.VerdictFor(FenixChannelDisplay.Sd).Trusted;
+        => AllDisplays.All(display => monitor.VerdictFor(display).Trusted);
 
     /// <summary>Asserts every display's verdict.</summary>
     public static void AssertEveryDisplay(FenixChannelMonitor monitor, FenixDisplayVerdict expected)
     {
-        var displays = new[] { FenixChannelDisplay.Pfd, FenixChannelDisplay.Ewd, FenixChannelDisplay.Sd };
-        foreach (FenixChannelDisplay display in displays)
+        foreach (FenixChannelDisplay display in AllDisplays)
         {
             Assert.Equal(expected, monitor.VerdictFor(display));
         }
@@ -219,11 +228,11 @@ internal static class MonitorTestKit
 
         /// <summary>
         /// The verdict lines ("PFD trusted", "E/WD not trusted: ..."), in order: those of the display named
-        /// ("PFD", "E/WD" or "SD"), or of all three.
+        /// ("PFD", "E/WD", "SD", "ND", "ISIS" or "DCDU"), or of all six.
         /// </summary>
         public string[] Verdicts(string? display = null)
         {
-            string[] names = display is null ? new[] { "PFD", "E/WD", "SD" } : new[] { display };
+            string[] names = display is null ? new[] { "PFD", "E/WD", "SD", "ND", "ISIS", "DCDU" } : new[] { display };
             return All
                 .Where(line => names.Any(name =>
                     line == name + " trusted" || line.StartsWith(name + " not trusted: ", StringComparison.Ordinal)))
@@ -450,6 +459,7 @@ public class FenixChannelMonitorTests
         // No SimConnect value reached the gate, so the displays that cross-check one are not trusted.
         Assert.False(monitor.VerdictFor(FenixChannelDisplay.Pfd).Trusted);
         Assert.False(monitor.VerdictFor(FenixChannelDisplay.Ewd).Trusted);
+        Assert.False(monitor.VerdictFor(FenixChannelDisplay.Nd).Trusted);
 
         // Start opened both calls, each once.
         await server.Ecam.WaitForRequestsAsync(1);
@@ -458,10 +468,11 @@ public class FenixChannelMonitorTests
     }
 
     [Fact]
-    public async Task Trusts_all_three_displays_when_the_five_values_agree()
+    public async Task Trusts_all_six_displays_when_the_five_values_agree()
     {
         // SimConnect's side comes first and the frames after it, as in the sim: a check runs on a frame. A feeder
         // keeps the frames fresh, so a slow machine cannot let the stream stall before the poll sees the verdicts.
+        // The push powers the ISIS too, which has a part of its own.
         var server = new ChannelServer();
         var stream = new OpenStream();
         server.Data.Enqueue(() => stream.Response);
@@ -478,9 +489,9 @@ public class FenixChannelMonitorTests
             monitor.OnComparison(FenixComparison.MagHeadingDeg, 90);
             monitor.OnComparison(FenixComparison.FuelKg, 2940);   // the FOB line of GoodPush
 
-            feeder = Feed(stream, GoodPush(altitude: 2000), stop.Token);
+            feeder = Feed(stream, GoodPush(altitude: 2000, isisPowered: true), stop.Token);
 
-            await WaitUntil(() => AllTrusted(monitor), "all three displays to be trusted", lines);
+            await WaitUntil(() => AllTrusted(monitor), "all six displays to be trusted", lines);
         }
         finally
         {
@@ -493,7 +504,8 @@ public class FenixChannelMonitorTests
     public async Task A_push_with_the_displays_dark_trusts_no_display()
     {
         // The display units the decoder reads reach the gate: cold and dark no powered unit shows a display, and
-        // every display reads "display off" though every value agrees; powered up, all three are trusted.
+        // every display reads "display off" though every value agrees (the ISIS, which has a part of its own, because
+        // that push has none); powered up, with the ISIS powered too, all six are trusted.
         var lines = new Lines();
         using var monitor = NewIdleMonitor(lines);
         AgreeWithGoodPush(monitor);
@@ -504,7 +516,7 @@ public class FenixChannelMonitorTests
 
         AssertEveryDisplay(monitor, new FenixDisplayVerdict(false, "display off"));
 
-        monitor.OnDataMessage(GoodPush());
+        monitor.OnDataMessage(GoodPush(isisPowered: true));
 
         AssertEveryDisplay(monitor, new FenixDisplayVerdict(true, "trusted"));
     }
@@ -1158,18 +1170,21 @@ public class FenixChannelMonitorTests
             {
                 "PFD not trusted: channel not answering",
                 "E/WD not trusted: channel not answering",
-                "SD not trusted: channel not answering"
+                "SD not trusted: channel not answering",
+                "ND not trusted: channel not answering",
+                "ISIS not trusted: channel not answering",
+                "DCDU not trusted: channel not answering"
             },
             lines.Verdicts());
         monitor.Tick();
-        Assert.Equal(3, lines.Verdicts().Length);
+        Assert.Equal(6, lines.Verdicts().Length);
 
         // "channel not answering: refused" and "...: reset" have the headline the first line had.
         monitor.OnDataState(FenixChannelState.NotAnswering, "refused");
         monitor.Tick();
         monitor.OnDataState(FenixChannelState.NotAnswering, "reset");
         monitor.Tick();
-        Assert.Equal(3, lines.Verdicts().Length);
+        Assert.Equal(6, lines.Verdicts().Length);
 
         monitor.OnDataState(FenixChannelState.Connected, "");
         await WaitUntil(() => queries.Asked == 1, "the first connection to ask for the build", lines);
@@ -1215,6 +1230,57 @@ public class FenixChannelMonitorTests
                 "SD not trusted: channel not answering: gone"
             },
             lines.Verdicts("SD"));
+    }
+
+    [Fact]
+    public async Task The_tick_writes_six_verdicts()
+    {
+        // The ND, the ISIS and the DCDU are judged and logged like the PFD, the E/WD and the SD: the first tick of a
+        // working channel writes a line for each, in the order of FenixChannelDisplay, and a later tick only the
+        // lines of the displays whose verdict changed. The ISIS has a part of its own, so it can be powered while
+        // the display units are dark and the reverse.
+        var lines = new Lines();
+        using var monitor = NewIdleMonitor(lines);
+        AgreeWithGoodPush(monitor);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
+
+        monitor.OnDataMessage(GoodPush());   // every unit powered; the push has no ISIS part
+        monitor.Tick();
+        Assert.Equal(
+            new[]
+            {
+                "PFD trusted",
+                "E/WD trusted",
+                "SD trusted",
+                "ND trusted",
+                "ISIS not trusted: display off",
+                "DCDU trusted"
+            },
+            lines.Verdicts());
+        monitor.Tick();
+        Assert.Equal(6, lines.Verdicts().Length);
+
+        monitor.OnDataMessage(GoodPush(isisPowered: true));
+        monitor.Tick();
+        Assert.Equal("ISIS trusted", lines.Verdicts().Last());
+        Assert.Equal(7, lines.Verdicts().Length);
+
+        // The units go dark and the ISIS stays powered: five lines, in order, and none for the ISIS.
+        monitor.OnDataMessage(FenixChannelProtoWriter.GoodPush(displaysOn: false, isisPowered: true));
+        monitor.Tick();
+        Assert.Equal(
+            new[]
+            {
+                "PFD not trusted: display off",
+                "E/WD not trusted: display off",
+                "SD not trusted: display off",
+                "ND not trusted: display off",
+                "DCDU not trusted: display off"
+            },
+            lines.Verdicts().Skip(7).ToArray());
+        monitor.Tick();
+        Assert.Equal(12, lines.Verdicts().Length);
     }
 
     [Fact]
@@ -1631,7 +1697,9 @@ public class FenixChannelMonitorTests
         var monitor = NewMonitor(server, lines);
         monitor.Start();
         await stream.SendAsync(GoodPush(2000));
-        await WaitUntil(() => lines.All.Contains("SD trusted"), "SD trusted to be logged", lines);
+        // The DCDU is the last display a tick writes: its line shows that the tick which wrote the others is over, so
+        // the count taken below is of a settled log.
+        await WaitUntil(() => lines.All.Contains("DCDU trusted"), "DCDU trusted to be logged", lines);
         await WaitUntil(() => lines.All.Contains("ECAM entries: connected"), "the ECAM entries call to connect", lines);
         FenixChannelFrame? latest = monitor.Latest;
         int linesBefore = lines.All.Length;
@@ -1663,7 +1731,8 @@ public class FenixChannelMonitorTests
         var lines = new Lines();
         var monitor = NewMonitor(server, lines);
         monitor.Start();
-        await WaitUntil(() => lines.All.Contains("SD trusted"), "SD trusted to be logged", lines);
+        // The DCDU is the last display a tick writes: its line shows that the tick which wrote the others is over.
+        await WaitUntil(() => lines.All.Contains("DCDU trusted"), "DCDU trusted to be logged", lines);
         Assert.DoesNotContain("channel stopped", lines.All);
 
         monitor.Dispose();
@@ -1732,7 +1801,7 @@ public class FenixChannelMonitorTests
     [Fact]
     public async Task Dispose_stops_the_tick()
     {
-        // The first tick, 100 ms after Start, writes the three verdicts (nothing has connected). Disposing at once
+        // The first tick, 100 ms after Start, writes the six verdicts (nothing has connected). Disposing at once
         // leaves it no time to; a timer that was not stopped would write them after the count taken here.
         var lines = new Lines();
         var monitor = new FenixChannelMonitor(

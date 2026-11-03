@@ -1,8 +1,9 @@
 // Test helper for the Fenix display channel tests: builds protobuf bytes, and the gRPC frame around
 // them, one field at a time. It writes only what a test asks for and knows nothing about Fenix's own
 // messages: every test names its field numbers and values itself, so no test depends on a capture.
-// The exceptions are GoodPush, a whole display push, and the display units it carries (DuData, with
-// the two unit layouts measured in the sim, written out by hand).
+// The exceptions are GoodPush, a whole display push, the display units it carries (DuData, with
+// the two unit layouts measured in the sim, written out by hand) and the ISIS part it carries when
+// a test asks for one.
 
 using System.Buffers.Binary;
 using System.Text;
@@ -132,13 +133,16 @@ internal sealed class FenixChannelProtoWriter
     }
 
     // A whole AircraftDataPush that passes every check of the trust gate: the eleven display units powered as
-    // measured (every display live), the 16 FMA slots (empty), both flight director lights as given, an altitude, a
-    // magnetic heading, the FOB line, and the left upper ECAM column when a test passes one. With displaysOn false
-    // the units are as measured cold and dark: unpowered, and no display live. The field numbers are written out
-    // here on purpose, not read from FenixChannelFields: a wrong number in the app's table must fail a test, not be
-    // copied into the helper that builds the test's input.
+    // measured (every display they carry live), the 16 FMA slots (empty), both flight director lights as given, an
+    // altitude, a magnetic heading, the FOB line, and the left upper ECAM column when a test passes one. With
+    // displaysOn false the units are as measured cold and dark: unpowered, and none of those displays live. The ISIS
+    // is no display unit: its own part (field 182, Powered set) is written only when isisPowered is, so a push has
+    // none by default and the ISIS is off. The field numbers are written out here on purpose, not read from
+    // FenixChannelFields: a wrong number in the app's table must fail a test, not be copied into the helper that
+    // builds the test's input.
     public static byte[] GoodPush(double altitude = 1000, double magHeading = 90, string fob = "wFOB:   g2940 cs KG",
-        bool fdOnCapt = true, bool fdOnFo = true, string[]? upperEcamLeft = null, bool displaysOn = true)
+        bool fdOnCapt = true, bool fdOnFo = true, string[]? upperEcamLeft = null, bool displaysOn = true,
+        bool isisPowered = false)
     {
         var remote = new FenixChannelProtoWriter()
             .Message(12, DuData(Enumerable.Repeat(displaysOn, 11).ToArray(), displaysOn ? PoweredContent : ColdContent))
@@ -151,6 +155,10 @@ internal sealed class FenixChannelProtoWriter
         foreach (string line in upperEcamLeft ?? [])
         {
             remote.Message(173, new FenixChannelProtoWriter().String(1, line));
+        }
+        if (isisPowered)
+        {
+            remote.Message(182, new FenixChannelProtoWriter().Bool(1, true));
         }
         remote.Message(194, new FenixChannelProtoWriter().Double(1, magHeading));
         remote.Double(197, altitude);

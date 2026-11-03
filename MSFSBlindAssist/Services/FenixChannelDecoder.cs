@@ -31,12 +31,16 @@ namespace MSFSBlindAssist.Services;
 /// field 111; one with no slot is not, since protobuf-net leaves out an empty or null array (an unpowered PFD
 /// may have no FMA to send), and the gate judges that for the PFD alone. A field that is not repeated takes
 /// the last value if it is sent twice, and its nested part is merged, as protobuf reads them.</para>
-/// <para>The display units (field 12) say which display is live: the PFD, the E/WD or the SD while a powered unit
-/// shows it (<see cref="FenixChannelFrame.PfdLive"/>, <see cref="FenixChannelFrame.EwdLive"/>,
-/// <see cref="FenixChannelFrame.SdLive"/>). Their Power and Content lists are repeated varints, read in protobuf's
+/// <para>The display units (field 12) say which display is live: the PFD, the ND, the E/WD, the SD or the DCDU while
+/// a powered unit shows it (<see cref="FenixChannelFrame.PfdLive"/>, <see cref="FenixChannelFrame.NdLive"/>,
+/// <see cref="FenixChannelFrame.EwdLive"/>, <see cref="FenixChannelFrame.SdLive"/>,
+/// <see cref="FenixChannelFrame.DcduLive"/>). Their Power and Content lists are repeated varints, read in protobuf's
 /// unpacked form (the Fenix's) or its packed form, both the same contract; any other wire type is a wrong shape
 /// ("12.1", "12.2"). Unit i is Power[i] with Content[i], up to the shorter list. No field 12, or no unit powered,
-/// leaves every display off, and is never a wrong shape.</para>
+/// leaves every one of those displays off, and is never a wrong shape. The ISIS is no display unit: its own
+/// message (field 182) carries a Powered flag (182.1), which is <see cref="FenixChannelFrame.IsisPowered"/>. No field
+/// 182 leaves the ISIS off, and is never a wrong shape; a 182 that is not a part is one ("182"), and so is a 182.1
+/// in another wire type ("182.1").</para>
 /// <para>A push with no display data, that is with no RemoteData or an empty one, is
 /// <see cref="FenixChannelFrame.NoData"/>: it is neither damaged nor reshaped, so it records no wrong shape
 /// (not "111" for an FMA it never had) and the gate skips it. A field 1 in another wire shape than a part
@@ -82,7 +86,10 @@ internal static class FenixChannelDecoder
         {
             PfdLive = draft.Shows(DisplayContent.PfdCapt),
             EwdLive = draft.Shows(DisplayContent.EcamUpper),
-            SdLive = draft.Shows(DisplayContent.EcamLower)
+            SdLive = draft.Shows(DisplayContent.EcamLower),
+            NdLive = draft.Shows(DisplayContent.NdCapt),
+            DcduLive = draft.Shows(DisplayContent.DcduCapt),
+            IsisPowered = draft.IsisPowered
         };
     }
 
@@ -133,6 +140,7 @@ internal static class FenixChannelDecoder
                 Remote.FobString => w.Text(ref d.FobText),
                 Remote.UpperEcamLeft => w.Part(ReadUpperEcamLeft),
                 Remote.UpperEcamRight => w.Part(ReadUpperEcamRight),
+                Remote.Isis => w.Part(ReadIsis),
                 Remote.Heading => w.Part(ReadHeading),
                 Remote.Altitude => w.Double(ref d.Altitude),
                 _ => w.Skip()
@@ -156,6 +164,20 @@ internal static class FenixChannelDecoder
                 DuData.Content => w.Varints(d.UnitContent),
                 _ => w.Skip()
             };
+            if (!ok) return false;
+        }
+
+        return !w.IsMalformed;
+    }
+
+    // The ISIS's own message: whether it is powered. Its other fields belong to the ISIS feature, which reads them from
+    // the push itself, and are skipped here.
+    private static bool ReadIsis(ReadOnlySpan<byte> part, string path, Draft d)
+    {
+        var w = new Walker(part, path, d);
+        while (w.Next(out int field))
+        {
+            bool ok = field == IsisState.Powered ? w.Bool(ref d.IsisPowered) : w.Skip();
             if (!ok) return false;
         }
 
@@ -313,6 +335,9 @@ internal static class FenixChannelDecoder
         // The display units' Power and Content, entry i of each being unit i.
         public readonly List<ulong> UnitPower = [];
         public readonly List<ulong> UnitContent = [];
+
+        // The ISIS's own Powered flag: it is on no display unit.
+        public bool IsisPowered;
 
         public double Pitch, Fpa, Roll, Yawbar;
         public bool FdOnCapt, FdOnFo, TrkFpa, RollGuidance, FdFlash, FdInhibit, InhibitRoll, InhibitPitch;

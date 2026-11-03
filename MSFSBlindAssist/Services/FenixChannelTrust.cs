@@ -6,9 +6,10 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// The displays of the Fenix display channel that can be read to a pilot, each trusted or not on its own: the
-/// primary flight display, the engine and warning display (E/WD) and the system display (SD).
+/// primary flight display (PFD), the engine and warning display (E/WD), the system display (SD), the navigation
+/// display (ND), the integrated standby instrument system (ISIS) and the datalink control and display unit (DCDU).
 /// </summary>
-internal enum FenixChannelDisplay { Pfd, Ewd, Sd }
+internal enum FenixChannelDisplay { Pfd, Ewd, Sd, Nd, Isis, Dcdu }
 
 /// <summary>
 /// The gate's answer for one display: whether the values the channel gave for it may be read to the pilot.
@@ -33,17 +34,21 @@ internal enum FenixComparison { FdLightCapt, FdLightFo, AltitudeFt, MagHeadingDe
 /// <para>A display is trusted only when every channel-wide condition and every condition of its own holds, and
 /// <see cref="VerdictFor"/> gives the first one that fails, in this order: not connected; no data message since
 /// the connection opened; the stream stalled; the build unknown; the build not one the app has checked; a
-/// shape latch; the display off (no powered display unit shows it); the display's cross-checks, in their order;
-/// for the PFD, a frame with no FMA; a text code the app does not know in a line the display covers.</para>
+/// shape latch; the display off (no powered display unit shows it, or for the ISIS its own message does not say it
+/// is powered); the display's cross-checks, in their order; for the PFD, a frame with no FMA; a text code the app
+/// does not know in a line the display covers.</para>
 /// <para>A display is live while a powered unit shows it (<see cref="FenixChannelFrame.PfdLive"/> and the others,
-/// from the latest frame with its shapes); one shown only on another unit (the first officer's PFD, an ECAM on an
-/// ND) counts as off. A dark display reads "display off" whatever its values say: cold and dark the channel still
-/// sends the sim's altitude and heading, which agree. The SD has no other condition of its own. The cross-checks
-/// run on every frame, live or not, so a disagreement or a latch built while a display was off shows as soon as it
-/// is live.</para>
+/// from the latest frame with its shapes); one shown only on another unit (the first officer's PFD or ND, an ECAM
+/// on an ND) counts as off. The ISIS is on no unit: it is live while its own message says it is powered
+/// (<see cref="FenixChannelFrame.IsisPowered"/>). A dark display reads "display off" whatever its values say: cold
+/// and dark the channel still sends the sim's altitude and heading, which agree. The SD, the ISIS and the DCDU have
+/// no other condition of their own. The ND has the heading cross-check the PFD has, the one check and not a copy of
+/// it, so a heading that disagrees untrusts both and a heading that latched holds both; it has no other. The text
+/// of the ND, the ISIS and the DCDU is not judged here, but by each feature's decoder. The cross-checks run on every
+/// frame, live or not, so a disagreement or a latch built while a display was off shows as soon as it is live.</para>
 /// <para>A frame with no FMA slot at all is not a wrong shape: protobuf-net leaves out an empty or null array, so
 /// an unpowered PFD can send none. The PFD alone reads "no FMA" until a frame brings its slots again; it never
-/// latches, and the E/WD and the SD are not touched by it.</para>
+/// latches, and no other display is touched by it.</para>
 /// <para>A malformed message, or a field in the wrong shape, in a data message or an ECAM entries message
 /// latches the whole channel until <see cref="OnConnected"/>: a wrong shape on a checked build means the check
 /// itself cannot be trusted. The latch keeps its first cause. A push with no display data
@@ -115,7 +120,8 @@ internal sealed class FenixChannelTrust
     private static readonly Regex FobPattern =
         new(@"FOB:\s*([0-9]+)\s*(KG|LBS)", RegexOptions.CultureInvariant);
 
-    // The checks of each display, in the order they are judged. The SD has none in this set.
+    // The checks of each display, in the order they are judged. The ND has the PFD's heading check: one Check, so what
+    // it finds holds both. The SD, the ISIS and the DCDU have none in this set.
     private static readonly FenixComparison[] PfdChecks =
     {
         FenixComparison.FdLightCapt, FenixComparison.FdLightFo, FenixComparison.AltitudeFt, FenixComparison.MagHeadingDeg
@@ -123,7 +129,9 @@ internal sealed class FenixChannelTrust
 
     private static readonly FenixComparison[] EwdChecks = { FenixComparison.FuelKg };
 
-    private static readonly FenixComparison[] SdChecks = Array.Empty<FenixComparison>();
+    private static readonly FenixComparison[] NdChecks = { FenixComparison.MagHeadingDeg };
+
+    private static readonly FenixComparison[] NoChecks = Array.Empty<FenixComparison>();
 
     private static readonly int ComparisonCount = Enum.GetValues<FenixComparison>().Length;
 
@@ -158,6 +166,9 @@ internal sealed class FenixChannelTrust
     private bool _pfdLive;                   // a powered unit shows the PFD, in the latest good frame
     private bool _ewdLive;                   // the same for the E/WD
     private bool _sdLive;                    // and for the SD
+    private bool _ndLive;                    // and for the ND
+    private bool _dcduLive;                  // and for the DCDU
+    private bool _isisLive;                  // the ISIS says it is powered, in the latest good frame: it is on no unit
     private bool _noFma;                     // the latest good frame had no FMA slot: the PFD has nothing to read
     private string? _fmaUnknownCode;         // the reason for the first unknown code in the latest good frame's FMA
     private string? _ewdUnknownCode;         // the same for the lines the E/WD covers
@@ -190,6 +201,9 @@ internal sealed class FenixChannelTrust
         _pfdLive = false;
         _ewdLive = false;
         _sdLive = false;
+        _ndLive = false;
+        _dcduLive = false;
+        _isisLive = false;
         _noFma = false;
         _fmaUnknownCode = null;
         _ewdUnknownCode = null;
@@ -392,7 +406,29 @@ internal sealed class FenixChannelTrust
             case FenixChannelDisplay.Sd:
                 // Nothing in this set to cross-check and no text to read: being live is its one condition.
                 live = _sdLive;
-                checks = SdChecks;
+                checks = NoChecks;
+                nothingToRead = null;
+                unknownCode = null;
+                break;
+            case FenixChannelDisplay.Nd:
+                // The heading check the PFD has, and no more: its text is its feature's decoder's to judge, not the
+                // gate's.
+                live = _ndLive;
+                checks = NdChecks;
+                nothingToRead = null;
+                unknownCode = null;
+                break;
+            case FenixChannelDisplay.Isis:
+                // As for the SD: being live (powered) is its one condition, and its text is its feature's.
+                live = _isisLive;
+                checks = NoChecks;
+                nothingToRead = null;
+                unknownCode = null;
+                break;
+            case FenixChannelDisplay.Dcdu:
+                // As for the SD: being live is its one condition, and its text is its feature's.
+                live = _dcduLive;
+                checks = NoChecks;
                 nothingToRead = null;
                 unknownCode = null;
                 break;
@@ -432,6 +468,9 @@ internal sealed class FenixChannelTrust
         _pfdLive = frame.PfdLive;
         _ewdLive = frame.EwdLive;
         _sdLive = frame.SdLive;
+        _ndLive = frame.NdLive;
+        _dcduLive = frame.DcduLive;
+        _isisLive = frame.IsisPowered;
 
         FenixTextLine fob = FenixChannelText.Parse(frame.FobText);
 

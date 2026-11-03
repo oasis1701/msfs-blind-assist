@@ -87,6 +87,7 @@ internal static partial class FenixChannelFields
         public const int IsKg = 154;                // isKg: varint (bool); false, pounds, is left out on the wire, so an absent field means LBS
         public const int UpperEcamLeft = 173;       // upperEcamLeft: repeated nested NullWrapped string, E/WD left
         public const int UpperEcamRight = 174;      // upperEcamRight: repeated nested NullWrapped string, E/WD right
+        public const int Isis = 182;                // isis: nested IsisState
         public const int Heading = 194;             // heading: nested HeadingData
         public const int Altitude = 197;            // altitude: fixed64 (double)
     }
@@ -134,8 +135,21 @@ internal static partial class FenixChannelFields
     public static class DisplayContent
     {
         public const int PfdCapt = 0;               // PFDCapt: the captain's PFD
+        public const int NdCapt = 2;                // NDCapt: the captain's ND
         public const int EcamUpper = 4;             // ECAMUpper: the upper ECAM, the E/WD
         public const int EcamLower = 5;             // ECAMLower: the lower ECAM, the SD
+        public const int DcduCapt = 9;              // DCDUCapt: the captain's DCDU
+    }
+
+    /// <summary>
+    /// IsisState, the ISIS message of a push (<see cref="Remote.Isis"/>). The ISIS is not one of the display units
+    /// <see cref="DuData"/> lists, so this message says whether it is on. Partial: it holds the one member the trust
+    /// gate reads; a feature that reads another member of the message declares it from its own
+    /// <c>FenixChannelFields.&lt;Feature&gt;.cs</c>.
+    /// </summary>
+    public static partial class IsisState
+    {
+        public const int Powered = 1;               // Powered: varint (bool)
     }
 
     /// <summary>

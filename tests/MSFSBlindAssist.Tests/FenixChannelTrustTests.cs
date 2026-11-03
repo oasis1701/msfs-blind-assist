@@ -7,10 +7,13 @@
 // every condition holds, and the verdict is the first one that fails, in this order: the channel is
 // connected; a data message has come since it connected; the stream has not stalled; the build is known;
 // the build is one the app has checked; no message was malformed and no field had the wrong shape since it
-// connected (a latch). Then the display's own conditions: a powered display unit shows it (else "display off");
-// each cross-check with SimConnect has agreed at least once and has no disagreement in force (a disagreement
-// stays in force until a message agrees, and one that lasts three seconds without a break latches until the
-// channel reconnects); and no line the display covers holds a text code the app does not know.
+// connected (a latch). Then the display's own conditions: a powered display unit shows it, or for the ISIS its
+// own message says it is powered (else "display off"); each cross-check with SimConnect has agreed at least
+// once and has no disagreement in force (a disagreement stays in force until a message agrees, and one that
+// lasts three seconds without a break latches until the channel reconnects); and no line the display covers
+// holds a text code the app does not know. The gate judges six displays: the PFD, the E/WD, the SD, the ND, the
+// ISIS and the DCDU. The ND is cross-checked by the heading check the PFD has (one check, shared); the SD, the
+// ISIS and the DCDU have no cross-check; and the ND, the ISIS and the DCDU have no text check of the gate's.
 //
 // SimConnect's batch comes about once a second, so a value of its is compared with the channel as the channel
 // was when the value arrived, not as it is now.
@@ -30,7 +33,10 @@ public class FenixChannelTrustTests
     private static readonly FenixDisplayVerdict Trusted = new(true, "trusted");
 
     private static readonly FenixChannelDisplay[] AllDisplays =
-        { FenixChannelDisplay.Pfd, FenixChannelDisplay.Ewd, FenixChannelDisplay.Sd };
+    {
+        FenixChannelDisplay.Pfd, FenixChannelDisplay.Ewd, FenixChannelDisplay.Sd,
+        FenixChannelDisplay.Nd, FenixChannelDisplay.Isis, FenixChannelDisplay.Dcdu
+    };
 
     // ---- The channel-wide conditions, in the order of the table -----------------------------------
 
@@ -42,6 +48,9 @@ public class FenixChannelTrustTests
         Assert.Equal(Trusted, Pfd(gate, 0));
         Assert.Equal(Trusted, Ewd(gate, 0));
         Assert.Equal(Trusted, Sd(gate, 0));
+        Assert.Equal(Trusted, Nd(gate, 0));
+        Assert.Equal(Trusted, Isis(gate, 0));
+        Assert.Equal(Trusted, Dcdu(gate, 0));
     }
 
     [Fact]
@@ -364,25 +373,23 @@ public class FenixChannelTrustTests
     [Fact]
     public void Each_display_is_live_on_its_own()
     {
+        // One display at a time is live in a frame, the five others off: each verdict follows its own flag only.
         FenixChannelTrust gate = TrustedGate();
 
-        gate.OnFrame(Frame(ewdLive: false, sdLive: false), 100);
+        long nowMs = 100;
+        foreach (FenixChannelDisplay live in AllDisplays)
+        {
+            gate.OnFrame(OnlyLive(live), nowMs);
 
-        Assert.Equal(Trusted, Pfd(gate, 100));
-        Assert.Equal(Untrusted("display off"), Ewd(gate, 100));
-        Assert.Equal(Untrusted("display off"), Sd(gate, 100));
+            foreach (FenixChannelDisplay display in AllDisplays)
+            {
+                Assert.Equal(
+                    display == live ? Trusted : Untrusted("display off"),
+                    gate.VerdictFor(display, nowMs));
+            }
 
-        gate.OnFrame(Frame(pfdLive: false, sdLive: false), 200);
-
-        Assert.Equal(Untrusted("display off"), Pfd(gate, 200));
-        Assert.Equal(Trusted, Ewd(gate, 200));
-        Assert.Equal(Untrusted("display off"), Sd(gate, 200));
-
-        gate.OnFrame(Frame(pfdLive: false, ewdLive: false), 300);
-
-        Assert.Equal(Untrusted("display off"), Pfd(gate, 300));
-        Assert.Equal(Untrusted("display off"), Ewd(gate, 300));
-        Assert.Equal(Trusted, Sd(gate, 300));
+            nowMs += 100;
+        }
     }
 
     [Fact]
@@ -409,7 +416,8 @@ public class FenixChannelTrustTests
         FenixFmaSlot[] noFma = Array.Empty<FenixFmaSlot>();
         string[] unknown = { "xFAULT" };
 
-        gate.OnFrame(Frame(fma: noFma, upperLeft: unknown, pfdLive: false, ewdLive: false, sdLive: false), 0);
+        gate.OnFrame(Frame(fma: noFma, upperLeft: unknown, pfdLive: false, ewdLive: false, sdLive: false,
+            ndLive: false, isisPowered: false, dcduLive: false), 0);
 
         AssertAll(gate, 0, Untrusted("display off"));
 
@@ -418,12 +426,16 @@ public class FenixChannelTrustTests
         Assert.Equal(Untrusted("FD captain not checked yet"), Pfd(gate, 100));
         Assert.Equal(Untrusted("fuel not checked yet"), Ewd(gate, 100));
         Assert.Equal(Trusted, Sd(gate, 100));   // the SD's one condition is being live
+        Assert.Equal(Untrusted("heading not checked yet"), Nd(gate, 100));   // the ND's one check is the heading
+        Assert.Equal(Trusted, Isis(gate, 100));   // the ISIS and the DCDU, like the SD, have being live only
+        Assert.Equal(Trusted, Dcdu(gate, 100));
 
         Compare(gate, atMs: 200);
         gate.OnFrame(Frame(fma: noFma, upperLeft: unknown), 200);
 
         Assert.Equal(Untrusted("no FMA"), Pfd(gate, 200));
         Assert.Equal(Untrusted("unknown code 'x' in the upper ECAM"), Ewd(gate, 200));
+        Assert.Equal(Trusted, Nd(gate, 200));   // neither the FMA nor the upper ECAM is the ND's to judge
     }
 
     [Fact]
@@ -466,13 +478,108 @@ public class FenixChannelTrustTests
     {
         // A RemoteData holding only fields the app does not read decodes to a frame of defaults. Its empty FOB text
         // only makes the fuel check wait, so it read trusted on an E/WD whose fuel check had passed, and on the SD,
-        // which has no cross-check: with no duData, every display is off.
+        // which has no cross-check: with no duData and no ISIS part, every display is off.
         FenixChannelTrust gate = TrustedGate();
 
         gate.OnFrame(new FenixChannelFrame(false, Array.Empty<string>(), FenixFdState.Default,
             Array.Empty<FenixFmaSlot>(), Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, 0, ""), 100);
 
         AssertAll(gate, 100, Untrusted("display off"));
+    }
+
+    // ---- The ND, the ISIS and the DCDU ------------------------------------------------------------
+
+    [Fact]
+    public void The_nd_is_live_on_a_powered_nd_unit_and_checks_the_heading()
+    {
+        // The ND is live while a powered unit shows the captain's ND, and its one cross-check is the heading check the
+        // PFD has. The PFD's altitude and the E/WD's fuel, both disagreeing from the first frame here, are none of its
+        // business. SimConnect's values come first and the frames after them, as in the sim.
+        FenixChannelTrust gate = ConnectedGate();
+        Compare(gate, altitude: 5000, fuelKg: 100);
+
+        gate.OnFrame(Frame(ndLive: false), 0);
+
+        Assert.Equal(Untrusted("display off"), Nd(gate, 0));   // no powered unit shows it, though its heading agrees
+
+        gate.OnFrame(Frame(), 100);
+
+        Assert.Equal(Trusted, Nd(gate, 100));
+        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 100));
+        Assert.Equal(Untrusted("fuel disagrees: channel 2,940 kg, sim 100 kg"), Ewd(gate, 100));
+
+        // The heading is the one value it checks, and the reason is the PFD's.
+        gate.OnComparison(FenixComparison.MagHeadingDeg, 180, 200);
+        gate.OnFrame(Frame(), 200);
+
+        Assert.Equal(Untrusted("heading disagrees: channel 90.0 deg, sim 180.0 deg"), Nd(gate, 200));
+
+        // And a heading never checked keeps it untrusted, as for the PFD: SimConnect has not said the heading yet.
+        FenixChannelTrust fresh = ConnectedGate();
+        fresh.OnFrame(Frame(), 0);
+
+        Assert.Equal(Untrusted("heading not checked yet"), Nd(fresh, 0));
+    }
+
+    [Fact]
+    public void An_nd_heading_disagreement_latches_the_nd_and_the_pfd()
+    {
+        // One heading check, not two: the ND and the PFD read the same disagreement, and the same latch, which lasts
+        // until the channel reconnects. A display with no heading check is not touched.
+        FenixChannelTrust gate = TrustedGate();
+        gate.OnComparison(FenixComparison.MagHeadingDeg, 180, 100);
+
+        Feed(gate, 100, 2_900, Frame());   // disagreeing since t=100: 2,800 ms
+
+        FenixDisplayVerdict disagreeing = Untrusted("heading disagrees: channel 90.0 deg, sim 180.0 deg");
+        Assert.Equal(disagreeing, Nd(gate, 2_900));
+        Assert.Equal(disagreeing, Pfd(gate, 2_900));
+
+        gate.OnFrame(Frame(), 3_100);   // 3,000 ms: it counts
+
+        FenixDisplayVerdict latched = Untrusted("heading latched until reconnect: channel 90.0 deg, sim 180.0 deg");
+        Assert.Equal(latched, Nd(gate, 3_100));
+        Assert.Equal(latched, Pfd(gate, 3_100));
+        Assert.Equal(Trusted, Ewd(gate, 3_100));
+        Assert.Equal(Trusted, Sd(gate, 3_100));
+        Assert.Equal(Trusted, Isis(gate, 3_100));
+        Assert.Equal(Trusted, Dcdu(gate, 3_100));
+
+        // Agreeing again changes nothing.
+        gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 3_200);
+        gate.OnFrame(Frame(), 3_200);
+
+        Assert.Equal(latched, Nd(gate, 3_200));
+        Assert.Equal(latched, Pfd(gate, 3_200));
+
+        // Only a reconnect lifts it, for both.
+        gate.OnConnected(4_000);
+        gate.OnBuild(CheckedBuild);
+        gate.OnFrame(Frame(), 4_000);
+
+        AssertAll(gate, 4_000, Trusted);
+    }
+
+    [Fact]
+    public void The_displays_without_a_cross_check_stay_trusted_while_the_others_latch()
+    {
+        // The SD, the ISIS and the DCDU have no cross-check, and the gate reads no text of theirs: every value
+        // SimConnect disagrees on for longer than the hold, an FMA that is gone and an unknown code in the upper
+        // ECAM take the PFD, the E/WD and the ND down, and these three stay trusted while they are live.
+        FenixChannelTrust gate = TrustedGate();
+        gate.OnComparison(FenixComparison.FdLightCapt, 0, 100);
+        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 100);
+        gate.OnComparison(FenixComparison.MagHeadingDeg, 180, 100);
+        gate.OnComparison(FenixComparison.FuelKg, 100, 100);
+
+        Feed(gate, 100, 5_000, Frame(fma: Array.Empty<FenixFmaSlot>(), upperLeft: new[] { "xFAULT" }));
+
+        Assert.Equal(Untrusted("FD captain latched until reconnect: channel on, sim off"), Pfd(gate, 5_000));
+        Assert.Equal(Untrusted("fuel latched until reconnect: channel 2,940 kg, sim 100 kg"), Ewd(gate, 5_000));
+        Assert.Equal(Untrusted("heading latched until reconnect: channel 90.0 deg, sim 180.0 deg"), Nd(gate, 5_000));
+        Assert.Equal(Trusted, Sd(gate, 5_000));
+        Assert.Equal(Trusted, Isis(gate, 5_000));
+        Assert.Equal(Trusted, Dcdu(gate, 5_000));
     }
 
     // ---- The cross-checks: waiting, disagreeing and latched -----------------------------------------
@@ -1299,6 +1406,9 @@ public class FenixChannelTrustTests
         Assert.Equal(Untrusted("unknown code 'x' in the upper ECAM"), Ewd(gate, 10_000));
         Assert.Equal(Trusted, Pfd(gate, 10_000));
         Assert.Equal(Trusted, Sd(gate, 10_000));
+        Assert.Equal(Trusted, Nd(gate, 10_000));
+        Assert.Equal(Trusted, Isis(gate, 10_000));
+        Assert.Equal(Trusted, Dcdu(gate, 10_000));
 
         gate.OnFrame(Frame(), 10_100);
 
@@ -1317,6 +1427,9 @@ public class FenixChannelTrustTests
         Assert.Equal(Untrusted("unknown code 'd' in the FMA"), Pfd(gate, 100));
         Assert.Equal(Trusted, Ewd(gate, 100));
         Assert.Equal(Trusted, Sd(gate, 100));
+        Assert.Equal(Trusted, Nd(gate, 100));
+        Assert.Equal(Trusted, Isis(gate, 100));
+        Assert.Equal(Trusted, Dcdu(gate, 100));
     }
 
     [Theory]
@@ -1384,8 +1497,8 @@ public class FenixChannelTrustTests
     public void A_frame_with_no_fma_untrusts_only_the_pfd_and_never_latches()
     {
         // protobuf-net leaves out an empty or null array, so an unpowered PFD can send no FMA slot at all. That is
-        // not a reshaped field (the decoder records no "111"): the PFD has nothing to read, and the E/WD and the SD
-        // keep their verdicts.
+        // not a reshaped field (the decoder records no "111"): the PFD has nothing to read, and every other display
+        // keeps its verdict.
         FenixChannelTrust gate = TrustedGate();
 
         // Ten seconds of them, long enough for any latch.
@@ -1394,6 +1507,9 @@ public class FenixChannelTrustTests
         Assert.Equal(Untrusted("no FMA"), Pfd(gate, 10_000));
         Assert.Equal(Trusted, Ewd(gate, 10_000));
         Assert.Equal(Trusted, Sd(gate, 10_000));
+        Assert.Equal(Trusted, Nd(gate, 10_000));
+        Assert.Equal(Trusted, Isis(gate, 10_000));
+        Assert.Equal(Trusted, Dcdu(gate, 10_000));
 
         // The next frame with its 16 slots trusts the PFD again: nothing latched.
         gate.OnFrame(Frame(), 10_100);
@@ -1512,6 +1628,7 @@ public class FenixChannelTrustTests
             Compare(heading, heading: 1.5);
             heading.OnFrame(Frame(heading: 355.5), 0);
             Assert.Equal(Untrusted("heading disagrees: channel 355.5 deg, sim 1.5 deg"), Pfd(heading, 0));
+            Assert.Equal(Untrusted("heading disagrees: channel 355.5 deg, sim 1.5 deg"), Nd(heading, 0));   // the ND's too
 
             FenixChannelTrust fuel = ConnectedGate();
             Compare(fuel, fuelKg: 2700.4);
@@ -1730,12 +1847,13 @@ public class FenixChannelTrustTests
     }
 
     // A frame that passes every check against Compare()'s defaults: every display live (a powered unit shows each
-    // of the three; a test about another condition never repeats the flags), 16 empty FMA slots, both flight
-    // directors on, altitude 1000, heading 90, and the FOB line of a real push.
+    // of the five that units carry, and the ISIS says it is powered; a test about another condition never repeats the
+    // flags), 16 empty FMA slots, both flight directors on, altitude 1000, heading 90, and the FOB line of a real push.
     private static FenixChannelFrame Frame(bool fdCapt = true, bool fdFo = true, double altitude = 1000,
         double heading = 90, string fob = "wFOB:   g2940 cs KG", IReadOnlyList<FenixFmaSlot>? fma = null,
         IReadOnlyList<string>? upperLeft = null, IReadOnlyList<string>? upperRight = null,
-        IReadOnlyList<string>? wrongShape = null, bool pfdLive = true, bool ewdLive = true, bool sdLive = true) =>
+        IReadOnlyList<string>? wrongShape = null, bool pfdLive = true, bool ewdLive = true, bool sdLive = true,
+        bool ndLive = true, bool isisPowered = true, bool dcduLive = true) =>
         new(Malformed: false, WrongShapeFields: wrongShape ?? Array.Empty<string>(),
             Fd: FenixFdState.Default with { FdOnCapt = fdCapt, FdOnFo = fdFo },
             Fma: fma ?? EmptyFma(), UpperEcamLeft: upperLeft ?? Array.Empty<string>(),
@@ -1744,17 +1862,28 @@ public class FenixChannelTrustTests
         {
             PfdLive = pfdLive,
             EwdLive = ewdLive,
-            SdLive = sdLive
+            SdLive = sdLive,
+            NdLive = ndLive,
+            IsisPowered = isisPowered,
+            DcduLive = dcduLive
         };
 
     // A frame as 3.0.0.7613 sent it cold and dark (2026-11-02): no display live, the 16 FMA slots empty, both flight
     // directors off and the FOB amount amber crosses, while the altitude and heading go on tracking the sim's (here
     // Compare()'s defaults), so they agree.
     private static FenixChannelFrame ColdAndDark() =>
-        Frame(fdCapt: false, fdFo: false, fob: "wFOB:    aXXX cs KG", pfdLive: false, ewdLive: false, sdLive: false);
+        Frame(fdCapt: false, fdFo: false, fob: "wFOB:    aXXX cs KG", pfdLive: false, ewdLive: false, sdLive: false,
+            ndLive: false, isisPowered: false, dcduLive: false);
 
     // A frame with every display off and nothing else wrong.
-    private static FenixChannelFrame Dark() => Frame(pfdLive: false, ewdLive: false, sdLive: false);
+    private static FenixChannelFrame Dark() => Frame(pfdLive: false, ewdLive: false, sdLive: false, ndLive: false,
+        isisPowered: false, dcduLive: false);
+
+    // A frame with this one display live and the five others off, and nothing else wrong.
+    private static FenixChannelFrame OnlyLive(FenixChannelDisplay live) => Frame(
+        pfdLive: live == FenixChannelDisplay.Pfd, ewdLive: live == FenixChannelDisplay.Ewd,
+        sdLive: live == FenixChannelDisplay.Sd, ndLive: live == FenixChannelDisplay.Nd,
+        isisPowered: live == FenixChannelDisplay.Isis, dcduLive: live == FenixChannelDisplay.Dcdu);
 
     private static FenixFmaSlot[] EmptyFma() => Enumerable.Repeat(new FenixFmaSlot("", false), 16).ToArray();
 
@@ -1805,6 +1934,15 @@ public class FenixChannelTrustTests
 
     private static FenixDisplayVerdict Sd(FenixChannelTrust gate, long nowMs) =>
         gate.VerdictFor(FenixChannelDisplay.Sd, nowMs);
+
+    private static FenixDisplayVerdict Nd(FenixChannelTrust gate, long nowMs) =>
+        gate.VerdictFor(FenixChannelDisplay.Nd, nowMs);
+
+    private static FenixDisplayVerdict Isis(FenixChannelTrust gate, long nowMs) =>
+        gate.VerdictFor(FenixChannelDisplay.Isis, nowMs);
+
+    private static FenixDisplayVerdict Dcdu(FenixChannelTrust gate, long nowMs) =>
+        gate.VerdictFor(FenixChannelDisplay.Dcdu, nowMs);
 
     private static void AssertAll(FenixChannelTrust gate, long nowMs, FenixDisplayVerdict expected)
     {
