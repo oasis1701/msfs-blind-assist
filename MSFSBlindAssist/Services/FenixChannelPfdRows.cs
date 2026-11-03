@@ -39,6 +39,12 @@ internal static class FenixChannelPfdRows
     internal const bool LocDotsPositiveIsRight = true;
     internal const bool GsDotsPositiveIsAbove = true;
 
+    /// <summary>
+    /// The localizer and glideslope scales hold this many dots on each side of center. A deviation at or past it draws
+    /// the half diamond at the scale's end (2.35 and 4.0 both did), so the row gives no figure from here on.
+    /// </summary>
+    internal const double FullScaleDots = 2;
+
     /// <summary>The metric altitude is drawn to the nearest multiple of this, in meters.</summary>
     internal const double MetricStepMeters = 10;
 
@@ -102,7 +108,10 @@ internal static class FenixChannelPfdRows
         rows.Add(pfd.AltitudeShown ? AltitudeRow(pfd) : AltitudeFlag);
         rows.Add(pfd.VerticalSpeedShown ? VerticalSpeedRow(pfd) : VerticalSpeedFlag);
         rows.Add(pfd.AttitudeShown ? AttitudeRow(pfd) : AttitudeFlag);
-        Add(rows, FlightDirectorRow(frame.Fd, pfd.AttitudeShown, pfd.Pitch, pfd.Bank, pfd.MagHeading));
+        // The yaw bar sits at its commanded heading minus the heading, and the frame's heading can be a stale number while
+        // the PFD draws the HDG flag, so the bar waits for the heading.
+        Add(rows, FlightDirectorRow(frame.Fd, pfd.AttitudeShown, pfd.Pitch, pfd.Bank,
+            pfd.HeadingShown ? pfd.MagHeading : double.NaN));
         rows.Add(pfd.HeadingShown ? HeadingRow(pfd) : HeadingFlag);
 
         if (FenixChannelSpeech.Line(pfd.RadioAltitudeText) is { } radioAltitude) rows.Add($"Radio altitude {radioAltitude}");
@@ -111,8 +120,8 @@ internal static class FenixChannelPfdRows
         if (pfd.Ls)
         {
             Add(rows, Spoken("LS information", pfd.LsIdent, pfd.LsFrequency, pfd.LsDme));
-            Add(rows, Offset("Localizer", pfd.LocDots, "dots", LocDotsPositiveIsRight, "right", "left"));
-            Add(rows, Offset("Glideslope", pfd.GsDots, "dots", GsDotsPositiveIsAbove, "above", "below"));
+            Add(rows, DeviationRow("Localizer", pfd.LocDots, LocDotsPositiveIsRight, "right", "left"));
+            Add(rows, DeviationRow("Glideslope", pfd.GsDots, GsDotsPositiveIsAbove, "above", "below"));
         }
 
         // The labels, the marker and the LS flag are shown whenever the channel sends their text, whatever the LS button
@@ -291,8 +300,9 @@ internal static class FenixChannelPfdRows
     /// <summary>
     /// The flight director as the captain's PFD draws it. The fields hold the commanded attitude, so each bar is read
     /// where it sits: the commanded value minus the attitude ("pitch bar 2.5 degrees up, roll bar 4 degrees left"). The
-    /// yaw bar sits at its commanded heading minus the magnetic heading, and is drawn only while roll guidance is set.
-    /// Null when no bar is drawn: the captain's FD is off, the attitude is not shown, an inhibit covers the bars, the PFD
+    /// yaw bar sits at its commanded heading minus the magnetic heading, and is drawn only while roll guidance is set; a
+    /// <paramref name="magHeading"/> that is not a number (the window passes NaN while the HDG flag shows) leaves it
+    /// out. Null when no bar is drawn: the captain's FD is off, the attitude is not shown, an inhibit covers the bars, the PFD
     /// draws the flight path director instead, or no bar is a number. While the bars flash the row ends ", flashing".
     /// </summary>
     internal static string? FlightDirectorRow(FenixFdState fd, bool attitudeShown, double pitch, double bank,
@@ -383,6 +393,25 @@ internal static class FenixChannelPfdRows
         if (rounded == 0) return $"{label} centered";
 
         return $"{label} {Quantity(Math.Abs(rounded), pluralUnit)} {SideOf(rounded, positiveIsFirst, first, second)}";
+    }
+
+    // An LS deviation worded for the diamond the PFD draws, never the aircraft's side: "<scale> diamond 0.4 dots right".
+    // The figure rounds to a tenth, and one that rounds to 0 is "<scale> centered". From FullScaleDots on the diamond sits
+    // at the scale's end whatever the figure, so the row gives none: "<scale> diamond at full scale, right". Null when the
+    // deviation is not a number (the scale is not drawn).
+    private static string? DeviationRow(string scale, double dots, bool positiveIsFirst, string first, string second)
+    {
+        if (!IsNumber(dots)) return null;
+
+        if (Math.Abs(dots) >= FullScaleDots)
+        {
+            return $"{scale} diamond at full scale, {SideOf(dots, positiveIsFirst, first, second)}";
+        }
+
+        double rounded = Rounded(dots, 1);
+        if (rounded == 0) return $"{scale} centered";
+
+        return $"{scale} diamond {Quantity(Math.Abs(rounded), "dots")} {SideOf(rounded, positiveIsFirst, first, second)}";
     }
 
     // The difference of two headings, from -180 to 180 degrees.

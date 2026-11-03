@@ -574,6 +574,30 @@ public class FenixChannelPfdRowsTests
     }
 
     [Fact]
+    public void The_yaw_bar_is_left_out_while_the_heading_is_flagged()
+    {
+        // With the IR's heading lost (46.1.2 false, the HDG flag) the frame's heading can be a stale number: the yaw bar
+        // sits at its commanded heading minus a heading the PFD does not draw, so it has no place to be read.
+        FenixFdState guided = BarsOn with { Pitch = 3.1, Roll = 0, Yawbar = 67.39, RollGuidance = true };
+        var shown = new PfdPushes.Push { Pitch = 3.1, Bank = 0, MagHeading = 64.91 };
+        var flagged = new PfdPushes.Push { Pitch = 3.1, Bank = 0, MagHeading = 64.91, HeadingShown = false };
+
+        Assert.Equal("Flight director: pitch bar centered, roll bar centered, yaw bar 2.5 degrees right",
+            RowStartingWith(shown, "Flight director", guided));
+
+        // The pitch and roll bars are read as they were, and the heading row is the flag.
+        Assert.Equal("Flight director: pitch bar centered, roll bar centered",
+            RowStartingWith(flagged, "Flight director", guided));
+        Assert.Contains("HDG flag", RowsOf(flagged, fd: guided));
+
+        // With the yaw bar the only one drawn, nothing is left to read: no row.
+        FenixFdState yawOnly = guided with { InhibitPitch = true, InhibitRoll = true };
+        Assert.Equal("Flight director: yaw bar 2.5 degrees right", RowStartingWith(shown, "Flight director", yawOnly));
+        Assert.DoesNotContain(RowsOf(flagged, fd: yawOnly),
+            row => row.StartsWith("Flight director", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Bars_that_are_not_drawn_leave_no_row()
     {
         FenixFdState numbers = BarsOn with { Pitch = 5.56, Roll = -4.04, Yawbar = 67.39, RollGuidance = true };
@@ -708,8 +732,8 @@ public class FenixChannelPfdRowsTests
             CruiseRows.Concat(new[]
             {
                 "LS information: IGWQ, magenta; 111.70, magenta; 4.2, cyan",
-                "Localizer 0.4 dots right",
-                "Glideslope 0.5 dots above",
+                "Localizer diamond 0.4 dots right",
+                "Glideslope diamond 0.5 dots above",
                 "Approach labels: ILS, white; LOC, amber; G/S, red",
                 "Marker beacon: OM, magenta",
                 "LS flag: LS, red"
@@ -742,23 +766,51 @@ public class FenixChannelPfdRowsTests
     {
         PfdPushes.Push Deviations(double loc, double gs) => new() { Efis = { Ls = true }, LocDots = loc, GsDots = gs };
 
-        Assert.Equal(new[] { "Localizer 0.4 dots right", "Glideslope 0.5 dots above" },
+        // The rows name the diamond the PFD draws, so a pilot cannot read them as the aircraft's side.
+        Assert.Equal(new[] { "Localizer diamond 0.4 dots right", "Glideslope diamond 0.5 dots above" },
             RowsOf(Deviations(0.4, 0.5)).Skip(CruiseRows.Length));
-        Assert.Equal(new[] { "Localizer 2.4 dots left", "Glideslope 1.3 dots below" },
-            RowsOf(Deviations(-2.36, -1.3)).Skip(CruiseRows.Length));
+        Assert.Equal(new[] { "Localizer diamond 1.9 dots left", "Glideslope diamond 1.3 dots below" },
+            RowsOf(Deviations(-1.94, -1.3)).Skip(CruiseRows.Length));
 
         // A figure that rounds to 0 is centered, and so is a real 0.0, which the message leaves out of its part.
         Assert.Equal(new[] { "Localizer centered", "Glideslope centered" },
             RowsOf(Deviations(0.04, -0.04)).Skip(CruiseRows.Length));
         Assert.Equal(new[] { "Localizer centered", "Glideslope centered" },
             RowsOf(Deviations(0.0, 0.0)).Skip(CruiseRows.Length));
-        Assert.Equal(new[] { "Localizer 1 dot right", "Glideslope 2 dots below" },
-            RowsOf(Deviations(1.02, -2)).Skip(CruiseRows.Length));
+        Assert.Equal(new[] { "Localizer diamond 1 dot right", "Glideslope diamond 1 dot below" },
+            RowsOf(Deviations(1.02, -1)).Skip(CruiseRows.Length));
 
         // A scale the PFD does not draw is NaN on the wire, and has no row.
-        Assert.Equal(new[] { "Glideslope 0.5 dots above" },
+        Assert.Equal(new[] { "Glideslope diamond 0.5 dots above" },
             RowsOf(Deviations(double.NaN, 0.5)).Skip(CruiseRows.Length));
         Assert.Equal(CruiseRows, RowsOf(Deviations(double.NaN, double.NaN)));
+    }
+
+    [Fact]
+    public void A_deviation_past_the_scale_reads_at_full_scale()
+    {
+        // The scales hold two dots either side, and the diamond sits at the scale's end from there on (2.35 and 4.0 drew
+        // the half diamond at the end): the row says so and gives no figure the scale cannot show.
+        Assert.Equal(2, FenixChannelPfdRows.FullScaleDots);
+
+        PfdPushes.Push Deviations(double loc, double gs) => new() { Efis = { Ls = true }, LocDots = loc, GsDots = gs };
+
+        Assert.Equal(new[] { "Localizer diamond at full scale, right", "Glideslope diamond at full scale, above" },
+            RowsOf(Deviations(2.0, 2.0)).Skip(CruiseRows.Length));
+        Assert.Equal(new[] { "Localizer diamond at full scale, right", "Glideslope diamond at full scale, above" },
+            RowsOf(Deviations(2.35, 2.87)).Skip(CruiseRows.Length));
+        Assert.Equal(new[] { "Localizer diamond at full scale, right", "Glideslope diamond at full scale, above" },
+            RowsOf(Deviations(4.0, 4.0)).Skip(CruiseRows.Length));
+        Assert.Equal(new[] { "Localizer diamond at full scale, left", "Glideslope diamond at full scale, below" },
+            RowsOf(Deviations(-2.35, -2.35)).Skip(CruiseRows.Length));
+        Assert.Equal(new[] { "Localizer diamond at full scale, left", "Glideslope diamond at full scale, below" },
+            RowsOf(Deviations(-2.0, -4.0)).Skip(CruiseRows.Length));
+
+        // Each scale on its own, and just inside the end the figure is still read.
+        Assert.Equal(new[] { "Localizer diamond at full scale, left", "Glideslope diamond 1.9 dots above" },
+            RowsOf(Deviations(-2.35, 1.94)).Skip(CruiseRows.Length));
+        Assert.Equal(new[] { "Glideslope diamond at full scale, below" },
+            RowsOf(Deviations(double.NaN, -2.35)).Skip(CruiseRows.Length));
     }
 
     [Fact]
@@ -840,8 +892,8 @@ public class FenixChannelPfdRowsTests
 
             Assert.Contains("Pitch 3.1 degrees up, wings level", rows);
             Assert.Contains("Altitude 34011 feet, QNH 29.92", rows);
-            Assert.Contains("Localizer 0.4 dots right", rows);
-            Assert.Contains("Glideslope 1.3 dots below", rows);
+            Assert.Contains("Localizer diamond 0.4 dots right", rows);
+            Assert.Contains("Glideslope diamond 1.3 dots below", rows);
             Assert.Contains("Flight director: pitch bar 2.5 degrees up, roll bar 4 degrees left", rows);
             Assert.Contains("Mach .775, green", rows);
 
