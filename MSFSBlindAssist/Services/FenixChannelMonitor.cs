@@ -35,11 +35,42 @@ internal readonly record struct FenixChannelSnapshot(
     long AtMs, int Connection);
 
 /// <summary>
+/// What <see cref="FenixChannelMonitor.Session"/> hands the session notice (<see cref="FenixChannelNotice"/>): the few
+/// facts about one session of the channel that decide whether the pilot is told it cannot be used, taken under the
+/// monitor's one lock at the same instant. It carries no display data and no verdict, and unlike a
+/// <see cref="FenixChannelSnapshot"/> it outlasts a reconnect: the gate forgets the build at each connection and the
+/// latest frame is cleared, while the session keeps what it learned.
+/// </summary>
+/// <param name="Build">
+/// The latest build the build query answered, null before the first answer. It is not cleared by a reconnect, and an
+/// answer from a loop that has ended never reaches it.
+/// </param>
+/// <param name="BuildChecked">
+/// Whether <paramref name="Build"/> is one the channel has been checked against (the monitor's verified set holds it);
+/// false while there is no build.
+/// </param>
+/// <param name="Refused">
+/// Whether either call was refused (grpc-status 7 or 16, or HTTP 401 or 403), which ends the channel for the session
+/// ([FNX-21]). A call that is merely not answering is no refusal.
+/// </param>
+/// <param name="FirstDataAtMs">
+/// The monitor's clock (<see cref="Environment.TickCount64"/>) when the first frame with data and every shape right
+/// arrived, the test that makes a frame the latest one; null while none has. Kept across reconnects, so a gap after the
+/// first data never reads as a channel that said nothing.
+/// </param>
+/// <param name="StartedAtMs">
+/// The monitor's clock when <see cref="FenixChannelMonitor.Start"/> ran; 0 before it.
+/// </param>
+internal readonly record struct FenixChannelSession(
+    string? Build, bool BuildChecked, bool Refused, long? FirstDataAtMs, long StartedAtMs);
+
+/// <summary>
 /// The owner of one session of the Fenix display channel: it runs the client's two calls, decodes each message,
 /// feeds the trust gate under one lock, keeps the latest display frame with the RemoteData message it was decoded
 /// from and the latest ECAM entries, asks for the Fenix build on each connection of the data call, and writes the
 /// channel's log (fenix_channel.log). A reader asks it for a snapshot: a display's verdict, the latest frame, that
-/// frame's message, the latest ECAM entries, the clock and the connection number, taken together. The Fenix aircraft
+/// frame's message, the latest ECAM entries, the clock and the connection number, taken together. The session notice
+/// asks it for the session instead (<see cref="Session"/>): the facts that outlast a reconnect. The Fenix aircraft
 /// definition owns one monitor and disposes it when the pilot switches away.
 /// </summary>
 /// <remarks>
@@ -73,6 +104,14 @@ internal readonly record struct FenixChannelSnapshot(
 /// the first heartbeat the guard is off, so a monitor with no host judges as it always did, and a new connection of
 /// the data call keeps the heartbeat, as it keeps SimConnect's values. A heartbeat that ends a stall longer than that
 /// writes one line for it to the log.</para>
+/// <para>The session. The session notice needs a few facts that the gate and the latest frame cannot give it, because
+/// they start fresh at each connection: <see cref="Session"/> hands them out under the same lock. The build is the
+/// latest one the build query answered, and a reconnect does not clear it (the gate takes the next answer and meanwhile
+/// reads "build unknown"; an answer from a loop that has ended is dropped here by the same generation test that keeps
+/// it from the gate). It is checked when the verified set holds it. The refusal is the flag above. The first data is
+/// the clock reading of the first frame that becomes the latest one (data, every shape right), and the start is the
+/// reading when <see cref="Start"/> ran. None of them is ever cleared, so a gap in the stream, or a reconnect, changes
+/// nothing the notice reads.</para>
 /// <para>The log. A line is written for each change of a call's state, for each build, for each change of a
 /// display's verdict (its Trusted, or the headline of its reason: the text before the first colon, so the
 /// numbers of a disagreement moving every second are one line), for each stall of the UI thread that ends
@@ -169,6 +208,14 @@ internal sealed class FenixChannelMonitor : IDisposable
     private FenixEcamEntries? _lastEntries;
     private FenixEcamEntries? _ecamList;
     private int _connection;
+
+    // What Session hands the session notice, guarded by _lock and never cleared by a connection: the latest build the
+    // query answered, the clock reading of the first frame with data and every shape right, and the clock reading when
+    // Start ran (0 before it).
+    private string? _sessionBuild;
+    private long? _firstDataAtMs;
+    private long _startedAtMs;
+
     private bool _dataConnected;
     private bool _dataMessageSeen;
     private string? _lastDataFailure;
@@ -242,13 +289,14 @@ internal sealed class FenixChannelMonitor : IDisposable
     public FenixChannelFrame? Latest => Volatile.Read(ref _latest);
 
     /// <summary>
-    /// Opens both calls and starts the tick. Once only: a second call, and a call after
-    /// <see cref="Dispose"/>, do nothing.
+    /// Opens both calls and starts the tick, and notes the clock for the session (<see cref="Session"/>), before the
+    /// calls open. Once only: a second call, and a call after <see cref="Dispose"/>, do nothing.
     /// </summary>
     public void Start()
     {
         if (IsDisposed || Interlocked.Exchange(ref _started, 1) != 0) return;
 
+        lock (_lock) _startedAtMs = Now;
         _client.Start(FenixChannelCall.DisplayData, OnDataMessage, OnDataState);
         _client.Start(FenixChannelCall.EcamEntries, OnEcamMessage, OnEcamState);
         try
@@ -291,6 +339,31 @@ internal sealed class FenixChannelMonitor : IDisposable
     /// its verdict come together.
     /// </summary>
     public FenixDisplayVerdict VerdictFor(FenixChannelDisplay display) => Snapshot(display).Verdict;
+
+    /// <summary>
+    /// The facts about this session of the channel that the session notice reads (see
+    /// <see cref="FenixChannelSession"/>), taken under the one lock so that they belong together: the latest build the
+    /// query answered and whether the monitor's verified set holds it, whether either call was refused, the clock
+    /// reading of the first frame with data and every shape right, and the clock reading when <see cref="Start"/> ran.
+    /// None of it is cleared by a reconnect. Callable from any thread; a monitor that has been disposed or refused
+    /// still hands out what it knew.
+    /// </summary>
+    public FenixChannelSession Session
+    {
+        get
+        {
+            lock (_lock)
+            {
+                string? build = _sessionBuild;
+                return new FenixChannelSession(
+                    build,
+                    build is not null && _verifiedBuilds.Contains(build),
+                    Volatile.Read(ref _refused) != 0,
+                    _firstDataAtMs,
+                    _startedAtMs);
+            }
+        }
+    }
 
     /// <summary>
     /// SimConnect's latest value for one comparison (the flight director lights as 0 or 1, the true altitude in feet,
@@ -483,11 +556,14 @@ internal sealed class FenixChannelMonitor : IDisposable
             // none from a malformed or wrong-shaped frame, which latches it instead. The message is kept with the
             // frame, in the same place and by the same test, so it is replaced exactly when the frame is. (A push
             // with field 1 twice would give the frame the merged values of both parts, and the message only the
-            // last part; protobuf-net never sends one.)
+            // last part; protobuf-net never sends one.) The first such frame also stamps the session's first data,
+            // once and for good: a stream that only ever sends frames the test turns away has not delivered, and
+            // after a good frame nothing it sends unsays that.
             if (frame.HasData && frame.ShapesOk)
             {
                 Volatile.Write(ref _latest, frame);
                 _latestMessage = remote;
+                _firstDataAtMs ??= Now;
             }
         }
     }
@@ -745,9 +821,10 @@ internal sealed class FenixChannelMonitor : IDisposable
         {
             // An answer belongs to the connection that asked: after a newer connection, a disconnect, a refusal or
             // Dispose it is no news, and must not reach the gate, where it would stand for a build the channel no
-            // longer runs.
+            // longer runs, nor the session, which names the latest build the channel has answered.
             if (IsStopped || generation != _generation) return;
 
+            _sessionBuild = build;
             _trust.OnBuild(build);
             Write(_verifiedBuilds.Contains(build)
                 ? $"build {build}: checked"

@@ -11,12 +11,14 @@ namespace MSFSBlindAssist.Aircraft;
 // key dispatch, the first look at a channel key, which hands it to the seam of the feature that owns it, and the two
 // ways a display's window opens: a Fenix windows list entry (ShowChannelWindow) and a display key (OpenChannelWindow).
 // It also holds the announcer host (Services/FenixChannelAnnouncers.cs), a timer on the UI thread that, every 100 ms,
-// stamps the monitor's stall guard and runs one sampler for each announcer (the samplers are seams too, declared in
-// FenixA320Definition.Hooks.cs). The host starts with the monitor and ends before it, in the same Start and Stop: the
-// stall guard and the announcers exist exactly while the channel does.
+// stamps the monitor's stall guard and runs the samplers: first the session notice's (SampleChannelNotice, below),
+// then one for each announcer (those are seams too, declared in FenixA320Definition.Hooks.cs). The host starts with
+// the monitor and ends before it, in the same Start and Stop: the stall guard and the announcers exist exactly while
+// the channel does.
 // A seam nothing implements is no call at all, so a key whose feature has not landed behaves as it did before:
-// a display key gives its AI read and the others stay silent, and a sampler says nothing. So does a key whose seam
-// throws.
+// a display key gives its AI read and the others stay silent, and an announcer's sampler says nothing. So does a key
+// whose seam throws. The session notice is the one thing that speaks before any feature has landed, and it is no
+// seam: it says one line per Fenix load, when the channel cannot be used.
 public partial class FenixA320Definition
 {
     // This instance's monitor: made by StartDisplayChannelBackground, disposed and cleared by Stop. Start, Stop,
@@ -51,7 +53,9 @@ public partial class FenixA320Definition
     // with the same lifetime, and gives the announcer to each sampler: it is the samplers' voice. The host beats
     // the monitor's stall guard first in every tick (monitor.OnUiHeartbeat), then runs the samplers in the order of
     // the list below, each a lambda, since C# cannot make a delegate from a partial method nothing implements. A throw
-    // in a sampler is reported through the monitor under the name "announcer" and costs only itself.
+    // in a sampler is reported through the monitor under the name "announcer" and costs only itself. The session
+    // notice is made beside the monitor and lives as long as it: this definition is one Fenix load, and an aircraft
+    // switch and back makes a new definition, so a new monitor and a new notice, which has said nothing yet.
     partial void StartDisplayChannelBackground(Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (_displayChannelMonitor is not null) return;
@@ -60,11 +64,14 @@ public partial class FenixA320Definition
         _displayChannelMonitor = monitor;
         monitor.Start();
 
+        var notice = new Services.FenixChannelNotice();
         var announcers = new Services.FenixChannelAnnouncers(
             monitor.OnUiHeartbeat,
             new Action<long>[]
             {
-                // The session notice's sampler goes first in this list.
+                // The session notice (Services/FenixChannelNotice.cs): first in the list. Its sampler is a method of
+                // its own below, since it is no seam and nothing implements it later.
+                now => SampleChannelNotice(notice, new ChannelAnnounceContext(monitor, announcer, now)),
                 now => SampleChannelFma(new ChannelAnnounceContext(monitor, announcer, now)),
                 now => SampleChannelEwdAlerts(new ChannelAnnounceContext(monitor, announcer, now)),
                 now => SampleChannelDcdu(new ChannelAnnounceContext(monitor, announcer, now)),
@@ -73,6 +80,23 @@ public partial class FenixA320Definition
             () => Environment.TickCount64);
         _channelAnnouncers = announcers;
         announcers.Start();
+    }
+
+    // The session notice's sampler, run by the host on every tick. It hands the notice the monitor's session (the
+    // build, the refusal, the first data) and whether the Fenix is ready: it has published its config, which is when
+    // Variant knows the airframe. The no-data minute is counted from the Fenix being ready and not from the monitor's
+    // start, because the monitor starts with the first sim update, which can come in the sim's main menu before any
+    // Fenix is loaded: a minute with no data counted from there would speak a notice that is false, and spend the one
+    // the load has (FenixChannelNotice.Sample says the rest). The notice returns its text once at most. It is spoken
+    // with Announce, which does not interrupt, and written to the channel's log as "session notice: <text>", so that a
+    // check in the sim can measure whether it spoke without needing ears. Nothing else is logged.
+    private void SampleChannelNotice(Services.FenixChannelNotice notice, ChannelAnnounceContext ctx)
+    {
+        string? text = notice.Sample(ctx.Monitor.Session, Variant.Type != FenixAircraftType.Unknown, ctx.NowMs);
+        if (text is null) return;
+
+        ctx.Announcer.Announce(text);
+        ctx.Monitor.ReportFeatureProblem("session notice", text);
     }
 
     // Stops the channel in OnSwitchedAway, before the data service is disposed: the host first, so that no sampler
