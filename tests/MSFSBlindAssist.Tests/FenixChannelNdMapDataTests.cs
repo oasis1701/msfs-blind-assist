@@ -342,6 +342,60 @@ public class FenixChannelNdMapDataTests
     }
 
     [Fact]
+    public void A_route_that_cannot_be_read_leaves_the_map_points_alone()
+    {
+        // The alternate's ident arrives as a number: the route is in the wrong shape, which is the route layer's
+        // problem. The map points list as with no flight plan (LGC would be left out if the route read) and report nothing.
+        FenixChannelProtoWriter broken = new FenixChannelProtoWriter().Message(7, new FenixChannelProtoWriter()
+            .Double(1, Lgc.Lat).Double(2, Lgc.Lon).Varint(6, 5));
+        Assert.False(FenixChannelRoute.Decode(RoutePush(broken)).IsOk);
+        var reported = new List<string>();
+
+        string[] rows = Compose(Snapshot(route: broken), Points([Lgc, Dob]), reported: reported);
+
+        Assert.Equal(2, rows.Count(row => row.StartsWith("Map: ")));
+        Assert.DoesNotContain(rows, row => row.StartsWith("Map points"));
+        Assert.Empty(reported);
+    }
+
+    [Theory]
+    [InlineData(2, null)]
+    [InlineData(2, 0UL)]
+    [InlineData(3, null)]
+    [InlineData(3, 0UL)]
+    [InlineData(4, null)]
+    [InlineData(4, 0UL)]
+    [InlineData(0, 2UL)]
+    [InlineData(1, 2UL)]
+    public void Where_the_nd_draws_no_map_points_the_layer_is_silent(int mode, ulong? option)
+    {
+        var reported = new List<string>();
+        FenixChannelSnapshot s = Snapshot(mode: (ulong)mode, option: option);
+        FenixNdMapPoints good = Points([Lgc]);
+
+        foreach ((FenixNdMapPoints? points, long receivedAt, string? problem) in new (FenixNdMapPoints?, long, string?)[]
+        {
+            (null, 0, null),
+            (null, 0, "the Fenix is not running"),
+            (good, Now - FenixChannelNdMapData.MaxAgeMs - 1, null),
+            (good, Now, "HTTP 500")
+        })
+        {
+            string[] rows = Compose(s, points, receivedAt, problem, reported);
+
+            Assert.DoesNotContain(rows, row => row.StartsWith("Map"));
+        }
+
+        Assert.Empty(reported);
+    }
+
+    [Fact]
+    public void An_option_that_draws_points_still_says_when_there_is_no_data()
+    {
+        Assert.Contains("Map points: not available, no data", Compose(Snapshot(option: 1), null));
+    }
+
+    [Fact]
     public void Points_read_with_no_flight_plan()
     {
         FenixNdMapPoints points = Points([Lgc, Dob, Elw]);

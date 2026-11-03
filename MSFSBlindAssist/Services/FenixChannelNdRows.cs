@@ -50,12 +50,17 @@ internal static class FenixChannelNdRows
 
     private const string MapPointsName = "Map points";
 
-    // The ND draws map points in ROSE NAV, ARC and PLAN only: in ROSE LS and ROSE VOR the layer gives no rows at all.
+    // The mode and the option decide first: the ND draws map points in ROSE NAV, ARC and PLAN with WPT, VOR.D, NDB or
+    // ARPT only. Anywhere else (ROSE LS, ROSE VOR, CSTR, no option) the layer gives no rows at all, whatever the map
+    // data, its problem or its absence.
     private static FenixNdLayer MapPointsLayer(
         FenixChannelSnapshot s, FenixNdData nd, (FenixNdMapPoints? Points, long ReceivedAtMs, string? Problem) mapPoints,
         long nowMs)
     {
-        if (nd.Mode is not ("NAV" or "ARC" or "PLAN")) return FenixNdLayer.Of([]);
+        if (nd.Mode is not ("NAV" or "ARC" or "PLAN") || nd.MapOption is not ("WPT" or "VOR.D" or "NDB" or "ARPT"))
+        {
+            return FenixNdLayer.Of([]);
+        }
 
         FenixNdFrame? frame = FenixNdFrame.From(nd);
         if (frame is null) return FenixNdLayer.Failed(MapPointsName, "the ND's view is not known");
@@ -66,15 +71,13 @@ internal static class FenixChannelNdRows
             return FenixNdLayer.Failed(MapPointsName, disagrees);
         }
 
-        // No flight plan is no route: every point is listed. A route in the wrong shape is the layer's problem.
+        // A route that cannot be read, for any reason, is no route: every point is listed. The route's own problem is
+        // the route layer's to report; this layer neither reports nor shows it.
         FenixRoute? route = null;
-        FenixChannelSection<FenixRoute> read = s.Push is null
-            ? FenixChannelSection<FenixRoute>.Missing("data")
-            : FenixChannelRoute.Decode(s.Push);
-        if (read.IsOk) route = read.Value;
-        else if (read.Problem is { } problem && !problem.StartsWith("no ", StringComparison.Ordinal))
+        if (s.Push is not null)
         {
-            return FenixNdLayer.Failed(MapPointsName, problem);
+            FenixChannelSection<FenixRoute> read = FenixChannelRoute.Decode(s.Push);
+            if (read.IsOk) route = read.Value;
         }
 
         FenixNdLayer rows = FenixChannelNdMapData.Rows(points, frame, route);
