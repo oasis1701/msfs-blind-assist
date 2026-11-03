@@ -502,10 +502,10 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** not started
-- **Claimed by:** none
-- **Worked by:**
-- **Started:**
+- **Status:** claimed
+- **Claimed by:** Robin Kipp (robin24), 2026-11-03
+- **Worked by:** Robin Kipp with Claude, with subagents (superpowers:subagent-driven-development)
+- **Started:** 2026-11-03, from 1d29a73ee (plan 01's recorded base)
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:**
