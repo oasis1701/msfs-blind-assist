@@ -10,8 +10,13 @@ namespace MSFSBlindAssist.Aircraft;
 // pauses its FD checks, the peek that hands it the five comparison values and the light switch as they arrive, the
 // key dispatch, the first look at a channel key, which hands it to the seam of the feature that owns it, and the two
 // ways a display's window opens: a Fenix windows list entry (ShowChannelWindow) and a display key (OpenChannelWindow).
+// It also holds the announcer host (Services/FenixChannelAnnouncers.cs), a timer on the UI thread that, every 100 ms,
+// stamps the monitor's stall guard and runs one sampler for each announcer (the samplers are seams too, declared in
+// FenixA320Definition.Hooks.cs). The host starts with the monitor and ends before it, in the same Start and Stop: the
+// stall guard and the announcers exist exactly while the channel does.
 // A seam nothing implements is no call at all, so a key whose feature has not landed behaves as it did before:
-// a display key gives its AI read and the others stay silent. So does a key whose seam throws.
+// a display key gives its AI read and the others stay silent, and a sampler says nothing. So does a key whose seam
+// throws.
 public partial class FenixA320Definition
 {
     // This instance's monitor: made by StartDisplayChannelBackground, disposed and cleared by Stop. Start, Stop,
@@ -27,10 +32,26 @@ public partial class FenixA320Definition
     /// </summary>
     internal Services.FenixChannelMonitor? DisplayChannelMonitor => _displayChannelMonitor;
 
+    // This instance's announcer host: made by StartDisplayChannelBackground beside the monitor, disposed and cleared
+    // by Stop before it. UI thread only, like the monitor field.
+    private Services.FenixChannelAnnouncers? _channelAnnouncers;
+
+    /// <summary>
+    /// What an announcer's sampler is given on every tick of the announcer host: this instance's channel monitor, which
+    /// the sampler takes its snapshot from; the announcer it speaks through; and the tick's clock reading in
+    /// milliseconds (<see cref="Environment.TickCount64"/>, the clock of the monitor's snapshots too), the same for every
+    /// sampler of the tick. The monitor is never null here, unlike <see cref="ChannelKeyContext"/>'s: the host is made
+    /// with the monitor and ends before it.
+    /// </summary>
+    internal sealed record ChannelAnnounceContext(
+        Services.FenixChannelMonitor Monitor, Accessibility.ScreenReaderAnnouncer Announcer, long NowMs);
+
     // Starts the channel with the Fenix (EnsureFenixBackground: UI thread, once per definition instance). The
-    // monitor asks the data service for the Fenix build on each connection. The announcer goes unused, because
-    // the channel never speaks: the signature is the cabin pair's, so EnsureFenixBackground starts every
-    // background the same way.
+    // monitor asks the data service for the Fenix build on each connection. The announcer host starts beside it,
+    // with the same lifetime, and gives the announcer to each sampler: it is the samplers' voice. The host beats
+    // the monitor's stall guard first in every tick (monitor.OnUiHeartbeat), then runs the samplers in the order of
+    // the list below, each a lambda, since C# cannot make a delegate from a partial method nothing implements. A throw
+    // in a sampler is reported through the monitor under the name "announcer" and costs only itself.
     partial void StartDisplayChannelBackground(Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (_displayChannelMonitor is not null) return;
@@ -38,12 +59,31 @@ public partial class FenixA320Definition
         var monitor = new Services.FenixChannelMonitor(ct => DataService.GetSoftwareVersionAsync(ct));
         _displayChannelMonitor = monitor;
         monitor.Start();
+
+        var announcers = new Services.FenixChannelAnnouncers(
+            monitor.OnUiHeartbeat,
+            new Action<long>[]
+            {
+                // The session notice's sampler goes first in this list.
+                now => SampleChannelFma(new ChannelAnnounceContext(monitor, announcer, now)),
+                now => SampleChannelEwdAlerts(new ChannelAnnounceContext(monitor, announcer, now)),
+                now => SampleChannelDcdu(new ChannelAnnounceContext(monitor, announcer, now)),
+            },
+            problem => monitor.ReportFeatureProblem("announcer", problem),
+            () => Environment.TickCount64);
+        _channelAnnouncers = announcers;
+        announcers.Start();
     }
 
-    // Stops the channel in OnSwitchedAway, before the data service is disposed. Dispose ends both calls and the
-    // build loop at once, takes no lock and never throws.
+    // Stops the channel in OnSwitchedAway, before the data service is disposed: the host first, so that no sampler
+    // runs against a monitor that is ending, then the monitor. Dispose ends both calls and the build loop at once,
+    // takes no lock and never throws; the host's never throws either, so the monitor is always disposed.
     partial void StopDisplayChannelBackground()
     {
+        Services.FenixChannelAnnouncers? announcers = _channelAnnouncers;
+        _channelAnnouncers = null;
+        announcers?.Dispose();
+
         Services.FenixChannelMonitor? monitor = _displayChannelMonitor;
         _displayChannelMonitor = null;
         monitor?.Dispose();

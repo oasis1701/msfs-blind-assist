@@ -6,8 +6,9 @@ namespace MSFSBlindAssist.Aircraft;
 // with no implementation its call compiles to nothing, so the definition behaves as it did before.
 //   FenixA320Definition.Variants.cs        variant, panel, display and visibility seams, OnFenixSwitchedAway
 //   FenixA320Definition.Cabin.cs           cabin background seams
-//   FenixA320Definition.DisplayChannel.cs  display channel seams: its background pair, the SimConnect keys of
-//                                          its own that its gate reads, the value peek and the key dispatch
+//   FenixA320Definition.DisplayChannel.cs  display channel seams: its background pair (which also starts and
+//                                          stops the announcer host), the SimConnect keys of its own that its gate
+//                                          reads, the value peek and the key dispatch
 // The engine background seams (StartEngineBackground, StopEngineBackground) have no implementation: the Engines
 // window reads its own values while it is open.
 public partial class FenixA320Definition
@@ -72,6 +73,21 @@ public partial class FenixA320Definition
     partial void ChannelDistancesKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
     /// <summary>The DCDU's key: the app-wide Ctrl+Shift+D, ShowDCDU. Plan 11 implements it.</summary>
     partial void ChannelDcduKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+
+    // The announcers' samplers, one per feature. The announcer host (Services/FenixChannelAnnouncers.cs: a timer on
+    // the UI thread, every 100 ms) calls each on every tick, in the order of the list StartDisplayChannelBackground
+    // gives it, with the monitor, the announcer and the tick's one clock reading (ChannelAnnounceContext, in
+    // FenixA320Definition.DisplayChannel.cs). A sampler only reads a snapshot, compares it with what it saw last and
+    // speaks what is due: no I/O, so a tick stays short; it checks its own Ctrl+M row before it speaks
+    // (FenixChannelAnnouncementRows) and keeps tracking while the row is muted. One that throws is logged once and
+    // costs only itself. With no implementation C# drops the call, so the announcer is silent, which is how each one
+    // starts; each plan implements its own in a partial of its own, and only once its in-sim checks pass.
+    /// <summary>The FMA announcer's sampler: a changed mode column. Plan 08 implements it.</summary>
+    partial void SampleChannelFma(ChannelAnnounceContext ctx);
+    /// <summary>The E/WD alert announcer's sampler: warnings, cautions and memos. Plan 09 implements it.</summary>
+    partial void SampleChannelEwdAlerts(ChannelAnnounceContext ctx);
+    /// <summary>The DCDU announcer's sampler: a new message. Plan 11 implements it.</summary>
+    partial void SampleChannelDcdu(ChannelAnnounceContext ctx);
 
     private bool _backgroundStarted;
 
