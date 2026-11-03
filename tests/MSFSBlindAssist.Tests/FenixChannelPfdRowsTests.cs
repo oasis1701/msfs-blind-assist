@@ -697,7 +697,21 @@ public class FenixChannelPfdRowsTests
     [Fact]
     public void Ils_lines_show_only_with_ls_on()
     {
-        Assert.Equal(CruiseRows, RowsOf(IlsPush(false)));
+        // The LS information and the two scales wait for the LS button; the labels, the marker and the LS flag are shown
+        // whenever their text is set.
+        Assert.Equal(
+            CruiseRows.Concat(new[]
+            {
+                "Approach labels: ILS, white; LOC, amber; G/S, red",
+                "Marker beacon: OM, magenta",
+                "LS flag: LS, red"
+            }),
+            RowsOf(IlsPush(false)));
+
+        // With those texts blank too, LS off leaves nothing.
+        PfdPushes.Push bare = IlsPush(false);
+        bare.ApproachCenter = bare.ApproachLoc = bare.ApproachGs = bare.MarkerText = bare.LsFlagText = "";
+        Assert.Equal(CruiseRows, RowsOf(bare));
     }
 
     [Fact]

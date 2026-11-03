@@ -11,7 +11,7 @@ namespace MSFSBlindAssist.Services;
 /// <remarks>
 /// <para>The rows run: the FMA by column, the airspeed and the speed target, the tape's speeds, the Mach, the altitude,
 /// the vertical speed, the attitude, the flight director, the heading, the radio altitude and the DH message, then the LS
-/// rows. A row whose condition fails, or whose value is not a number, is left out. The exception is a primary value
+/// information and the two scales (only while the LS button is on), the approach labels, the marker and the LS flag. A row whose condition fails, or whose value is not a number, is left out. The exception is a primary value
 /// (airspeed, altitude, vertical speed, pitch and bank, heading) of an instrument the PFD draws: it reads "not available"
 /// in its place. An instrument the PFD does not draw reads as its flag, in the PFD's own words, where its rows would be.</para>
 /// <para>A row speaks no color unless it comes from channel text through <see cref="FenixChannelSpeech"/>. Numbers are
@@ -112,10 +112,12 @@ internal static class FenixChannelPfdRows
             Add(rows, Spoken("LS information", pfd.LsIdent, pfd.LsFrequency, pfd.LsDme));
             Add(rows, Offset("Localizer", pfd.LocDots, "dots", LocDotsPositiveIsRight, "right", "left"));
             Add(rows, Offset("Glideslope", pfd.GsDots, "dots", GsDotsPositiveIsAbove, "above", "below"));
-            Add(rows, Spoken("Approach labels", pfd.ApproachCenter, pfd.ApproachLoc, pfd.ApproachGs));
-            Add(rows, Spoken("Marker beacon", pfd.MarkerText));
-            Add(rows, Spoken("LS flag", pfd.LsFlagText));
         }
+
+        // The labels, the marker and the LS flag are drawn whenever the channel sends their text, whatever the LS button says.
+        Add(rows, Spoken("Approach labels", pfd.ApproachCenter, pfd.ApproachLoc, pfd.ApproachGs));
+        Add(rows, Spoken("Marker beacon", pfd.MarkerText));
+        Add(rows, Spoken("LS flag", pfd.LsFlagText));
 
         return FenixChannelRows.Of(rows);
     }
