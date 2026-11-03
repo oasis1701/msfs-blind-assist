@@ -49,9 +49,6 @@ internal sealed class FenixChannelDcduForm : FenixChannelDisplayForm
     // Whether the key message being processed is an auto-repeat: set by ProcessCmdKey just before the base asks the window.
     private bool _autoRepeat;
 
-    // True while the combo is put back on Mid: a display change only, which writes nothing.
-    private bool _returning;
-
     public FenixChannelDcduForm(
         FenixChannelMonitor monitor,
         FenixA320Definition definition,
@@ -117,11 +114,11 @@ internal sealed class FenixChannelDcduForm : FenixChannelDisplayForm
     }
 
     // The pilot's pick: Dim or Bright steps the switch once, and the combo follows it back to the middle. Mid is where the
-    // switch already rests, so a pick of it steps nothing.
+    // switch already rests, so a pick of it steps nothing. SelectionChangeCommitted is raised only for the pilot's own pick,
+    // never when the timer assigns SelectedIndex in ReturnToMid, so the return needs no guard against stepping the switch
+    // again (and the form listens to no SelectedIndexChanged, which is raised for both).
     private void OnBrightnessCommitted(object? sender, EventArgs e)
     {
-        if (_returning) return;
-
         int position = _brightness.SelectedIndex;
         if (position < 0 || position == MidIndex) return;
 
@@ -137,15 +134,8 @@ internal sealed class FenixChannelDcduForm : FenixChannelDisplayForm
         _returnTimer.Stop();
         if (IsDisposed || Disposing) return;
 
-        _returning = true;
-        try
-        {
-            _brightness.SelectedIndex = MidIndex;
-        }
-        finally
-        {
-            _returning = false;
-        }
+        // A display change only: it writes nothing.
+        _brightness.SelectedIndex = MidIndex;
     }
 
     protected override void Dispose(bool disposing)

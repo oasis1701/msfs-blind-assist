@@ -22,7 +22,7 @@ internal sealed record FenixDcduScreen(
 
 /// <summary>
 /// Reads the captain's DCDU from the RemoteData message of a push. Never the first officer's side. The first problem
-/// found is the one given: a field in the wrong shape, then missing content, then a format letter the app does not know
+/// found is the one given: missing content, then a field in the wrong shape, then a format letter the app does not know
 /// ([FNX-24]).
 /// </summary>
 /// <remarks>

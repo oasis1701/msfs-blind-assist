@@ -211,22 +211,38 @@ public class FenixChannelDcduWindowTests : IDisposable
     private static readonly FieldInfo AnnouncerField =
         typeof(FenixA320Definition).GetField("_dcduAnnouncer", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
+    // A DCDU that reads: the header's left half and one message line, nothing else.
+    private static FenixChannelSection<FenixDcduScreen> MessageScreen(string headerLeft, string firstLine)
+        => FenixChannelSection<FenixDcduScreen>.Ok(new FenixDcduScreen(
+            headerLeft, "", [firstLine, "", "", "", ""], ["", "", ""], "", "", "", ""));
+
     [Fact]
     public void Only_a_page_or_message_key_notes_the_navigation()
     {
         // The pilot's own paging and stepping are never announced as news: the page and message keys tell the announcer
-        // first, and the soft keys and print do not.
+        // first, so that a message that comes onto the screen within the quiet is silent, and the soft keys and print do not,
+        // so that a message that comes after one of those is called.
         var speech = new SpeechCapture();
         var sim = new SimConnectManager(IntPtr.Zero);
-        var definition = new FenixA320Definition();
+        FenixChannelSection<FenixDcduScreen> before = MessageScreen("w1426Z FROM EDGG", "cCLIMB TO");
+        FenixChannelSection<FenixDcduScreen> after = MessageScreen("w1431Z FROM EDGG", "cDESCEND TO");
 
         foreach (FenixDcduKey key in Enum.GetValues<FenixDcduKey>())
         {
-            AnnouncerField.SetValue(definition, null);
+            var definition = new FenixA320Definition();
+            var announcer = new FenixChannelDcduAnnouncer();
+            AnnouncerField.SetValue(definition, announcer);
 
+            // The first screen is the baseline; then the key; then a new message, held for the settle, inside the quiet.
+            Assert.Null(announcer.Sample(before, 1, muted: false, nowMs: 0));
             definition.PressDcdu(key, sim, speech);
+            Assert.Null(announcer.Sample(after, 1, muted: false, nowMs: 1000));
+            string? call = announcer.Sample(after, 1, muted: false, nowMs: 1000 + FenixChannelDcduAnnouncer.SettleMs);
 
-            Assert.Equal(FenixChannelDcduKeys.IsNavigation(key), AnnouncerField.GetValue(definition) is not null);
+            if (FenixChannelDcduKeys.IsNavigation(key))
+                Assert.True(call is null, $"{key} is the pilot's own reading, yet its screen was called: {call}");
+            else
+                Assert.True(call is not null, $"{key} is no navigation, yet the message after it was not called");
         }
 
         Assert.Empty(speech.All);
@@ -252,15 +268,17 @@ public class FenixChannelDcduWindowTests : IDisposable
     [Fact]
     public void The_window_judges_each_soft_key_on_a_fresh_snapshot()
     {
-        // The snapshot is taken at the press, then the key is decided on it: a message that arrived after the last refresh
-        // relabels a slot, and a label read before the press would press the wrong answer.
+        // The snapshot is taken at the press and is the one handed to Decide, never one kept from an earlier refresh: a message
+        // that arrived after the last refresh relabels a slot, and Decide asks whether the label it finds on that snapshot is
+        // blank.
         string body = BodyOf(FormPath, "HandleWindowKey");
-        int snapshot = body.IndexOf("Snapshot(FenixChannelDisplay.Dcdu)", StringComparison.Ordinal);
+        Match taken = Regex.Match(body, @"FenixChannelSnapshot\s+(\w+)\s*=\s*_monitor\.Snapshot\(FenixChannelDisplay\.Dcdu\)\s*;");
         int decide = body.IndexOf("FenixChannelDcduKeys.Decide(", StringComparison.Ordinal);
 
-        Assert.True(snapshot >= 0, "HandleWindowKey never takes a snapshot of the DCDU");
+        Assert.True(taken.Success, "HandleWindowKey never takes a snapshot of the DCDU into a local");
         Assert.True(decide >= 0, "HandleWindowKey never decides a key");
-        Assert.True(snapshot < decide, "HandleWindowKey decides a key before it has taken its snapshot");
+        Assert.True(taken.Index < decide, "HandleWindowKey decides a key before it has taken its snapshot");
+        Assert.Matches(@"FenixChannelDcduKeys\.Decide\(\s*key\s*,\s*" + taken.Groups[1].Value + @"\s*\)", body);
 
         // Read only: the window sends nothing itself and never opens the channel.
         string code = CodeOf(FormPath);
@@ -310,17 +328,44 @@ public class FenixChannelDcduWindowTests : IDisposable
     }
 
     [Fact]
+    public void A_refusal_is_spoken_and_only_a_decision_without_one_presses()
+    {
+        // A decision with a refusal says it and stops; the press is the other arm of the same branch, so a refused key can
+        // never also press. Without the else the refused soft key would be announced and pressed.
+        string body = BodyOf(FormPath, "HandleWindowKey");
+        Match refusal = Regex.Match(body, @"if\s*\(\s*decision\.Refusal\s+is\s*\{\s*\}\s+(\w+)\s*\)");
+        Assert.True(refusal.Success, "HandleWindowKey never tests the decision's refusal");
+
+        int speak = body.IndexOf("AnnounceImmediate(" + refusal.Groups[1].Value + ")", refusal.Index, StringComparison.Ordinal);
+        Assert.True(speak >= 0, "HandleWindowKey does not speak the refusal it found");
+
+        Match otherwise = Regex.Match(body[speak..], @"\belse\s+if\s*\(\s*decision\.VariableKey\s+is\s+not\s+null\s*\)");
+        Assert.True(otherwise.Success, "the press is not the else of the refusal: a refused key could press too");
+
+        int press = body.IndexOf("PressDcdu(", StringComparison.Ordinal);
+        Assert.True(press > speak + otherwise.Index, "HandleWindowKey presses before the else that has no refusal");
+        Assert.Equal(press, body.LastIndexOf("PressDcdu(", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void A_brightness_pick_steps_once_and_the_return_to_mid_writes_nothing()
     {
-        string commit = BodyOf(FormPath, "OnBrightnessCommitted");
-        int guard = commit.IndexOf("if (_returning) return;", StringComparison.Ordinal);
-        int step = commit.IndexOf("SetDcduBrightness(", StringComparison.Ordinal);
-        Assert.True(guard >= 0 && step >= 0 && guard < step, "a pick is not guarded before it steps the switch");
+        // The combo is told apart from the switch's return by the event it listens to: SelectionChangeCommitted is raised
+        // for the pilot's pick only, never for the timer assigning SelectedIndex, so the return needs no guard of its own
+        // and the form has no SelectedIndexChanged handler, which would fire for both.
+        string code = CodeOf(FormPath);
+        Assert.Contains("_brightness.SelectionChangeCommitted += OnBrightnessCommitted", code);
+        Assert.DoesNotContain("SelectedIndexChanged", code);
+        Assert.DoesNotContain("_returning", code);
 
-        // The timer shows Mid again DcduSpringBackMs after a pick, and that return never reaches the switch.
-        Assert.Contains("DcduSpringBackMs", CodeOf(FormPath));
+        string commit = BodyOf(FormPath, "OnBrightnessCommitted");
+        Assert.Contains("SetDcduBrightness(", commit);
+
+        // The timer shows Mid again DcduSpringBackMs after a pick, and that return only assigns the selected index: it never
+        // reaches the switch.
+        Assert.Contains("DcduSpringBackMs", code);
         string back = BodyOf(FormPath, "ReturnToMid");
-        Assert.Contains("_returning = true", back);
+        Assert.Contains("_brightness.SelectedIndex = MidIndex;", back);
         foreach (string write in new[] { "SetDcduBrightness(", "PressDcdu(", "HandleUIVariableSet(" })
             Assert.False(back.Contains(write, StringComparison.Ordinal), $"the return to Mid calls {write}");
     }
@@ -428,7 +473,7 @@ public class FenixChannelDcduWindowTests : IDisposable
         Assert.Contains("s.Verdict.Trusted", body);
         Assert.Contains("ReportFeatureProblem(Services.FenixChannelDcdu.DisplayName", body);
 
-        // The row is asked each tick it could speak, and the airframe's own answer is added to it.
+        // The row is asked every tick, and the airframe's own answer is added to it.
         Assert.Contains("IsMuted(Services.FenixChannelAnnouncementRows.DcduKey)", body);
         Assert.Contains("DcduCallMuted(Variant,", body);
 

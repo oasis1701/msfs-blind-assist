@@ -56,6 +56,9 @@ public partial class FenixA320Definition
         bool rowMuted = Services.FenixChannelAnnouncementRows.IsMuted(Services.FenixChannelAnnouncementRows.DcduKey);
         string? call = (_dcduAnnouncer ??= new Services.FenixChannelDcduAnnouncer())
             .Sample(section, s.Connection, DcduCallMuted(Variant, rowMuted), ctx.NowMs);
+
+        // No Suppressed check, unlike the session notice's sampler: on a Fenix only MainForm's synchronous wrap sets it, and
+        // this timer tick cannot run inside that wrap.
         if (call is not null) ctx.Announcer.Announce(call);
     }
 

@@ -185,6 +185,25 @@ public class FenixChannelDcduRowsTests
             FenixChannelDcduRows.RowsOf(screen).ToArray());
     }
 
+    [Fact]
+    public void A_padded_right_key_keeps_its_arrow_on_the_word()
+    {
+        // The empty DCDU pads its info lines with spaces, so a padded label is plausible: the arrow follows the word, not the
+        // padding (speech keeps one space, so it would read "WILCO* >"). The braille blank is padding too (the parser reads
+        // it as a space), written as a cast because it cannot be seen in source.
+        char blank = (char)0x2800;
+
+        Assert.Equal(new[] { "1 WILCO*>, cyan" },
+            FenixChannelDcduRows.RowsOf(Screen(rightKey1: "cWILCO*   ")).ToArray());
+        Assert.Equal(new[] { "2 WILCO*>, cyan" },
+            FenixChannelDcduRows.RowsOf(Screen(rightKey2: "cWILCO*" + blank + blank)).ToArray());
+        Assert.Equal(new[] { "1 WILCO*>, cyan" },
+            FenixChannelDcduRows.RowsOf(Screen(rightKey1: "cWILCO* " + blank + " ")).ToArray());
+
+        // A label that is nothing but padding still makes no row.
+        Assert.Empty(FenixChannelDcduRows.RowsOf(Screen(rightKey1: "c" + blank + blank, rightKey2: "c   ")));
+    }
+
     // ---- The header and the first message line ----------------------------------------------
 
     [Fact]

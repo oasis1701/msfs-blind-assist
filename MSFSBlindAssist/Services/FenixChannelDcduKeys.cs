@@ -132,7 +132,8 @@ internal static class FenixChannelDcduKeys
             FenixDcduKey.LeftKey1 => screen.LeftKey1,
             FenixDcduKey.LeftKey2 => screen.LeftKey2,
             FenixDcduKey.RightKey1 => screen.RightKey1,
-            _ => screen.RightKey2
+            FenixDcduKey.RightKey2 => screen.RightKey2,
+            _ => throw new ArgumentOutOfRangeException(nameof(key), key, null)
         };
 
         return FenixChannelSpeech.Line(label) is null

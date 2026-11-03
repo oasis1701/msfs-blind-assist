@@ -85,11 +85,17 @@ internal static class FenixChannelDcduRows
     private static string? LeftKeyRow(int slot, string label)
         => FenixChannelSpeech.Line(label) is { } spoken ? $"{slot} <{spoken}" : null;
 
+    // U+2800, the blank braille cell the display uses as a spacer, which the parser reads as a space. Written as a cast
+    // because the character cannot be seen in source.
+    private const char BrailleBlank = (char)0x2800;
+
     // "1 WILCO*>, cyan": the slot and the label with the arrow the DCDU draws after a right label. The arrow is added to
     // the coded label so that it is spoken in the label's last stretch, but only to a label that has words: a blank one
-    // makes no row, and the arrow alone never does.
+    // makes no row, and the arrow alone never does. The label's trailing padding (spaces, the braille blank) is left off
+    // first, so that the arrow follows the word: speech keeps one space, so "WILCO*   " + ">" would read "WILCO* >".
     private static string? RightKeyRow(int slot, string label)
-        => FenixChannelSpeech.Line(label) is not null && FenixChannelSpeech.Line(label + ">") is { } spoken
+        => FenixChannelSpeech.Line(label) is not null
+            && FenixChannelSpeech.Line(label.TrimEnd(' ', BrailleBlank) + ">") is { } spoken
             ? $"{slot} {spoken}"
             : null;
 }
