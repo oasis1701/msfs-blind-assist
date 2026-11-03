@@ -84,7 +84,7 @@ public partial class FenixA320Definition
 
     // The session notice's sampler, run by the host on every tick. It hands the notice the monitor's session (the
     // build, the refusal, the first data) and whether the Fenix is ready: it has published its config, which is when
-    // Variant knows the airframe. The no-data minute is counted from the Fenix being ready and not from the monitor's
+    // Variant knows the airframe. The minute is counted from the Fenix being ready and not from the monitor's
     // start, because the monitor starts with the first sim update, which can come in the sim's main menu before any
     // Fenix is loaded: a minute with no data counted from there would speak a notice that is false, and spend the one
     // the load has (FenixChannelNotice.Sample says the rest). The notice returns its text once at most. It is spoken
@@ -92,6 +92,9 @@ public partial class FenixA320Definition
     // check in the sim can measure whether it spoke without needing ears. Nothing else is logged.
     private void SampleChannelNotice(Services.FenixChannelNotice notice, ChannelAnnounceContext ctx)
     {
+        // Announce drops its line while Suppressed, so asking now would spend the notice unheard: wait for a free tick.
+        if (ctx.Announcer.Suppressed) return;
+
         string? text = notice.Sample(ctx.Monitor.Session, Variant.Type != FenixAircraftType.Unknown, ctx.NowMs);
         if (text is null) return;
 

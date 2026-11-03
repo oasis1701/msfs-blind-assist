@@ -9,13 +9,14 @@
 //
 // The contract of Due: the notice is due at once when the build is known and the app has not checked the channel
 // against it, and at once when the channel refused (the Fenix said no), however much data came. It is due when no
-// frame with data has come NoDataAfterMs (60,000 ms) after the session's start: exactly at that moment, not a
-// millisecond before. It names the build when it is known and says "this Fenix build" when it is not, and it gives its
-// text once: never again in that load, whatever the session says next. A channel with a checked build that has
-// delivered data is never news, and neither is a gap after the first data (a stall of a few seconds, a reconnect). A
-// new notice, which is a new load, starts fresh.
+// frame with data has come, or no build has been answered, NoDataAfterMs (60,000 ms) after the session's start:
+// exactly at that moment, not a millisecond before. A stream whose build is never answered leaves every display on
+// "build unknown" and every announcement off, so it is told like a silent one. It names the build when it is known
+// and says "this Fenix build" when it is not, and it gives its text once: never again in that load, whatever the
+// session says next. A channel with a checked build that has delivered data is never news, and neither is a gap after
+// the first data (a stall of a few seconds, a reconnect). A new notice, which is a new load, starts fresh.
 //
-// The contract of Sample: the no-data clock runs from the Fenix being ready, not from the monitor's start, which can
+// The contract of Sample: the minute runs from the Fenix being ready, not from the monitor's start, which can
 // come in the sim's main menu before any Fenix is loaded. The notice remembers the first moment the Fenix was ready
 // and keeps it even if the Fenix stops being ready; while it has never been ready the clock cannot run out. The
 // unchecked-build and refused paths do not wait for ready, since an answer on the channel proves a Fenix is there.
@@ -147,6 +148,58 @@ public class FenixChannelNoticeTests
 
         // And a minute that is not over with no data yet is silent too, down to its last millisecond.
         Assert.Null(notice.Due(answered with { FirstDataAtMs = null }, 59_999));
+    }
+
+    [Fact]
+    public void A_stream_with_no_build_answer_is_announced()
+    {
+        // The channel streams, but the build is never answered (the query keeps failing): every display reads "build
+        // unknown" and every announcement stays off, so the pilot is told a minute after the start, whatever the data
+        // says. A healthy load is nowhere near that long: the build is answered within milliseconds of the first
+        // message, and the build loop asks again every 30 s.
+        var notice = new FenixChannelNotice();
+        FenixChannelSession streaming = NewSession(build: null, firstDataAtMs: 10_500, startedAtMs: 10_000);
+
+        Assert.Null(notice.Due(streaming, 10_500));
+        Assert.Null(notice.Due(streaming, 10_000 + FenixChannelNotice.NoDataAfterMs - 1));
+        Assert.Equal(UnknownSentence, notice.Due(streaming, 10_000 + FenixChannelNotice.NoDataAfterMs));
+
+        // Once: a build answered after the minute, checked or not, changes nothing in this load.
+        Assert.Null(notice.Due(streaming, 10_000 + FenixChannelNotice.NoDataAfterMs));
+        Assert.Null(notice.Due(streaming with { Build = CheckedBuild, BuildChecked = true }, 80_000));
+        Assert.Null(notice.Due(streaming with { Build = UncheckedBuild }, 90_000));
+
+        // Through Sample the minute is the Fenix's own: counted from the moment it is ready.
+        var sampled = new FenixChannelNotice();
+        Assert.Null(sampled.Sample(streaming, fenixReady: false, nowMs: 600_000));
+        Assert.Null(sampled.Sample(streaming, fenixReady: true, nowMs: 600_000));
+        Assert.Null(sampled.Sample(streaming, fenixReady: true, nowMs: 659_999));
+        Assert.Equal(UnknownSentence, sampled.Sample(streaming, fenixReady: true, nowMs: 660_000));
+    }
+
+    [Fact]
+    public void A_build_answered_at_fifty_nine_seconds_announces_nothing()
+    {
+        // The sampler asks every 100 ms. The build is answered at 59 s, checked, with data flowing: the minute is not
+        // over without an answer, so the notice never speaks, neither on the ticks before the answer nor after it.
+        var notice = new FenixChannelNotice();
+        FenixChannelSession unanswered = NewSession(build: null, firstDataAtMs: 100);
+        FenixChannelSession answered = unanswered with { Build = CheckedBuild, BuildChecked = true };
+
+        for (long now = 0; now < 59_000; now += 100)
+        {
+            Assert.Null(notice.Sample(unanswered, fenixReady: true, nowMs: now));
+        }
+
+        for (long now = 59_000; now <= 120_000; now += 100)
+        {
+            Assert.Null(notice.Sample(answered, fenixReady: true, nowMs: now));
+        }
+
+        // The same ticks without the answer would have spoken at 60 s.
+        var control = new FenixChannelNotice();
+        Assert.Null(control.Sample(unanswered, fenixReady: true, nowMs: 0));
+        Assert.Equal(UnknownSentence, control.Sample(unanswered, fenixReady: true, nowMs: 60_000));
     }
 
     [Fact]
