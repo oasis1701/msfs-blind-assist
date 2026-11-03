@@ -176,6 +176,8 @@ MSFSBA from this plan's branch, run from `C:\MSFSBA-FenixChannel`: `791e922cf` f
 
 **The log.** No "E/WD:" line (no problem reported) through either airframe's runs.
 
+**After those runs**, by the owner's ruling, the flap row gained its label ("Flaps: 1+F, green"); the rows above are as they read then.
+
 **A red warning, by accident.** With the IRSs left off and both engines started, `urNAVu rADR 1+2+3 FAULT` and its cyan lines (`c -AP+FD..............OFF` and four more) came with the continuous chime. That was Claude's own omission; IRSs to NAV and Master Warning cleared it. It shows a red E/WD title arriving in the shape the rows test expects.
 
 ## Not measured

@@ -317,7 +317,11 @@ the CFM A320 and the IAE A321; writes only with the owner's go-ahead. Record eac
   `FenixA320Definition.DisplayChannel.cs`, with comments in `ChannelPfd.cs` and `ChannelSd.cs` and tests in plan 01's, 02's and
   05's files, and the sentences on Alt+P and Alt+S in `docs/a32nx.md`'s PFD and SD sections, under the landed-plan exemption.
 - **For plan 12:** the E/WD's fuel check still latches on every landing roll, so after a landing this window shows its status
-  row until reconnect (plan 02's evidence): nothing in plan 04 changes it.
+  row until reconnect (plan 02's evidence): nothing in plan 04 changes it. FNX-22's full text in `docs/invariants/fenix-channel.md`
+  calls "display off" for a display on another unit "the conservative choice, which only falls back to the AI read": since row
+  57 it opens the status row instead, so that sentence needs correcting. Plan 03's and plan 07's cold-and-dark checks ("gives the
+  AI read") yield to row 57; plan 07's `KeyMayOpen` check must stay ahead of `OpenChannelWindow`, or a round-gauge Fenix would
+  get "display off" instead of its AI read.
 - **Also seen on:** the "Engines" window shows N1, EGT, N2 and fuel flow from the 8083 data service; the guide should
   say which to use (the E/WD window for what the display shows, the Engines window for oil and temperatures).
 
@@ -340,4 +344,4 @@ Kept in this file only, so no other plan's push ever touches it.
   `FadecFault` at 31 is `EiuFault` (plan 01's name). The window logs under "E/WD", not "E/WD window", as the other windows log
   under their one name, so Task 6's log check looked for "E/WD:" lines. Row 57 changed Alt+E's dark case from the plan's AI read,
   and with it the other display keys; Task 6 heard Alt+E, Alt+P and Alt+S.
-- **Rulings made while working:** A display key on a dark display opens the window on its status row, every other reason keeps the AI read, on every display key; Robin, spec row 57. IAE row order follows spec 2.4's "top to bottom, left to right" rather than the plan's expected gauges first; Claude, heard by Robin at Task 6. The flap row stays the display's bare words ("1+F, green"); the plan's, Robin heard it and did not ask for a label.
+- **Rulings made while working:** A display key on a dark display opens the window on its status row, every other reason keeps the AI read, on every display key; Robin, spec row 57. "Display off" also covers a display shown only on another unit (the first officer's PFD up, an ECAM on an ND), where the status row stands in for an AI read: accepted as rare, the docs say so, the gate unchanged; Robin, after the whole-plan review. The IAE row order is the screen's, EPR, FF, EGT, N2, N1, not the plan's expected gauges first; Claude, confirmed by Robin. The flap row is labeled, "Flaps: 1+F, green", not the plan's bare words; Robin.
