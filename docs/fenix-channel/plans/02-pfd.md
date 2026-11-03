@@ -609,14 +609,57 @@ With MSFSBA built from `fc-p02-pfd` (Task 8 in), the Fenix on 3.0.0.7613 and Tas
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed
+- **Status:** landed 2026-11-03; every check done in the sim, the last by ear the same day (Robin: "As expected")
 - **Claimed by:** Robin Kipp (robin24), 2026-11-03
 - **Worked by:** Robin Kipp with Claude, with subagents (superpowers:subagent-driven-development)
 - **Started:** 2026-11-03, from 1d29a73ee (plan 01's recorded base)
-- **Landed:**
-- **Tests at landing:**
-- **Tasks:**
-- **Waiting on the owner:**
-- **In-sim results:**
+- **Landed:** 2026-11-03, at bc906d70d: the switch is 35495d27f, the last code change 7a03e0d8f (`x1`); bc906d70d changes one comment and the docs, and this record sits on top of it. The sim ran these commits before the rebase onto a0d3a379f: 71ed92c94 (467526838 now) until 17:38, and 79edf2c0d (7a03e0d8f now) after.
+- **Tests at landing:** 18124 passed, 0 failed, `ClaudeRulesHookTests` excluded as the index says (this plan changes no rule file); solution build 0 errors, 17 warnings.
+- **Tasks:** 0-10 done. Tasks 2 and 3, the measuring, by Claude on the ground and in cruise with the aircraft Robin handed over, and Robin flying the rest of EDDF 07C to 07R. Task 9, by Robin's ears and Claude's reads, over a second flight, EDDF 18 to 07R with a go-around.
+- **Waiting on the owner:** nothing. One question stays open to measure on a later flight: the 5 s UI stall ("For other plans").
+- **In-sim results:** every Task 9 check passed, each in the evidence file with its time, on the A321 IAE on 3.0.0.7613.
+  - At the gate: Alt+P opens the list NVDA calls "PFD display", F5 silent, Escape closes, a second Alt+P the same window; Ctrl+Shift+F "PFD" and Enter the same window. Rows checked against the raw fields and a capture.
+  - The speed keys: all six "not available" with the FMS empty, and rightly with it loaded at the stand, the lever at FULL; VFE next 235 at lever 0, then "VFE next not available" with ADR 1 off; green dot 213, VLS 206, alpha prot 180, VFE next 235 clean; S 193 and VFE next 215, F 149 and 195, F 149 and 190 with flaps 1 to 3, each its row.
+  - Flags: ADR 1 off "SPD flag", "ALT flag", "V/S flag"; IR 1 off "ATT flag", "HDG flag"; the PFD stayed trusted; restored.
+  - In flight: the vertical speed row 1000 up beside 996, 1400 down beside -1358; "bank 25 degrees right"; "selected" after a speed pull; the deviations' sides and "at full scale", drawn so; the radio altitude row from 2490; the bars' sides beside captures in a climb, a turn and a go-around; the captain's FD off removes the row within 2 s and on restores it; both off, and on the ground with no mode, no row; ", flashing" for the 9.6 s of a V/S reversion, the PFD trusted through it.
+  - A pilot's cursor on Altitude stayed there through lift-off, the number climbing on the braille display.
+  - Power-down with the window open: one row "PFD: not available, display off"; Alt+P the AI read with no words first; Shift+1 "Green dot not available".
+  - The check that failed first: `fenix_channel.log` held one "PFD: " line, "unknown code 'x' in the LS flag", at 17:23:51, and the window lost its rows until LS was pressed. Fixed by 7a03e0d8f, deployed in flight at Robin's word and tried on the second approach: all rows kept and "LS flag: ILS, amber" last, 17:45:20 to 17:48:10, no new line.
+  - No PFD captures of the take-off: the camera had moved, nobody knows how. The roll bar on the ground was captured after landing instead (ruling 21).
 - **Changed from the plan:**
-- **Rulings made while working:**
+  - Lines 43 and 72 to 76 read 110 as the bars' positions, an absent bar centered. Measured, 110.1, 110.3 and 110.4 are the commanded pitch, bank and heading: a bar sits at that minus the attitude, and `FlightDirectorRow` takes `fd`, `attitudeShown`, `pitch`, `bank` and `magHeading` (ruling 5). The yaw bar counts only with 110.8 set (Task 3) and a heading shown.
+  - Line 39 and `The_qnh_text_is_never_read`: `x` is known now in the one form seen, `x1` (ruling 20). The baro still never comes from the text; the test uses a bare `x`.
+  - Task 4's deviation rows name the diamond (ruling 16), full scale from 2 dots (`FullScaleDots`), and an absent deviation in a present part is 0 (ruling 15).
+  - Task 4's minimums row is gone, and field 155 is not in `FenixChannelFields` (ruling 8). Added: metric altitude from 122.3 (ruling 9), the "DH" row from 205 (ruling 10), the trend arrow's floor (ruling 14), slot 9 worded "1 FD 2" as drawn.
+  - Added to `FenixChannelText`, which the index moved through this plan: `p`, `d` (rulings 6, 19), `x1` (ruling 20).
+  - Added to `FenixChannelDisplayForm`, under the index's allowance for a landed file: the cursor follows its row (ruling 18).
+  - Tasks 8 and 9 ran twice: the flight found `p` and `d`, and the whole-plan review and the second flight found the rest.
+- **Small findings left**, none changes what a pilot hears:
+  - Rows: 1.95 to 1.99 dots read "2 dots" and 2.00 "at full scale"; "LS information" and "LS flag" share a first word, so a cursor on one can follow to the other; the rows file is 405 lines; `FlightDirectorRow`'s rule line has 3 characters to spare.
+  - Keys: `section.Problem ?? "no data"` is in two places; `Spoken`'s nested loops are more than it needs; its doc does not say the snapshot must be the PFD's.
+  - Tests: no test pins the PFD's own verdict; the registry entry's Open delegate is never invoked by one; `PfdPushes.Snapshot` fills the frame's altitude with 28.4, and `PushWith` does not bound its slice by the declared length; `PfdPushes` could be its own file; the remarks call `p` and `d` attributes though no run keeps them.
+  - A record built by hand reads `QnhHpa` 0, since only the decoder holds the 1013 default.
+- **Rulings made while working:** (Robin's say so; the rest answered by Claude as controller, for the owner to revisit)
+  1. Task 1 first, Tasks 2 and 3 before Task 4, as the plan orders.
+  2. Task 2 also captures the Engagement column's FD row.
+  3. Writes to the sim wait for Robin's word.
+  4. Bank NaN with the attitude shown reads ", bank not available".
+  5. (Robin) The row says where the bars are, commanded minus actual, "centered" at 0.
+  6. (Robin) `p` and `d` join `FenixChannelText` here, as codes never spoken.
+  7. (Robin) The aircraft stays Claude's on the ground.
+  8. No minimums row and no field 155: 155 is not the setting, and slot 13 already says it.
+  9. Metric altitude keys on 122.3, not `Efis.Meters`, which was never set: ", -40 meters".
+  10. A "DH" row from 205 after the radio altitude row; no words for 206 or 122.8.
+  11. The trend threshold stays 2 knots.
+  12. Approach labels, marker and LS flag are not gated on the LS button.
+  13. The implementer's small choices stand: "1 dot", "Altitude not available, STD", STD over QFE, Infinity is no number.
+  14. No trend arrow words under the 30-knot floor ("trend arrow to -5" on a landing roll).
+  15. An absent deviation in a present part 82 is 0, since the channel sends NaN explicitly.
+  16. (Robin) The deviation rows name the diamond; plan 07 takes the same words.
+  17. (Robin) The second flight adds a take-off with no ILS and a go-around.
+  18. A channel window follows its row by leading words (spec 2.4).
+  19. `d` adds a space in the parser; `p` adds nothing.
+  20. `x` with exactly the digit 1 is known and draws nothing, the digit included; a bare `x` or another digit fails closed.
+  21. The take-off's on-ground bars, with no capture, stand on a capture of the same state after landing: HDG pulled, roll bar alone, on the side the row says.
+  22. No word for the amber altitude at a BARO minimum: rows the app builds speak no color. A proposal for plan 12 ("For other plans").
+  23. The 5 s stall stays open rather than being worked around: it held twice with a reader attached, did not reproduce on the ground, and the code it points at is shared. No harness, by Robin's standing rule.
