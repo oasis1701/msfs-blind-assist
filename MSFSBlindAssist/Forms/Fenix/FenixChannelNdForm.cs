@@ -50,7 +50,8 @@ internal sealed class FenixChannelNdForm : FenixChannelDisplayForm
         panel.Controls.Add(RangeCombo);
         foreach ((string name, string key) in FenixChannelNdControls.Buttons)
         {
-            var button = new Button { Text = name, AutoSize = true, AccessibleName = name };
+            // No AccessibleName: the reader takes the button's Text, which changes only when its state does.
+            var button = new Button { Text = name, AutoSize = true };
             button.Click += (_, _) => _writeControl!(key, 1);
             _buttons.Add(button);
             panel.Controls.Add(button);
@@ -109,7 +110,6 @@ internal sealed class FenixChannelNdForm : FenixChannelDisplayForm
             {
                 string text = FenixChannelNdControls.ButtonText(FenixChannelNdControls.Buttons[i].Name, header);
                 if (_buttons[i].Text != text) _buttons[i].Text = text;
-                _buttons[i].AccessibleName = text;
             }
         }
         finally

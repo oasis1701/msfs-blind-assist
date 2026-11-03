@@ -232,6 +232,22 @@ public class FenixChannelNdControlsTests
     }
 
     [Fact]
+    public void A_refresh_that_changes_nothing_leaves_the_buttons_untouched()
+    {
+        using var rig = new Rig();
+        rig.Apply(Trusted(option: 1, ls: true));
+        int changes = 0;
+        foreach (Button button in rig.Buttons) button.TextChanged += (_, _) => changes++;
+
+        rig.Apply(Trusted(option: 1, ls: true));
+
+        Assert.Equal(0, changes);
+        Assert.Equal("WPT: on", rig.Buttons[1].Text);
+        // The reader takes the text: no accessible name is set that could be re-announced.
+        Assert.All(rig.Buttons, b => Assert.True(string.IsNullOrEmpty(b.AccessibleName)));
+    }
+
+    [Fact]
     public void The_list_comes_first_in_the_tab_order()
     {
         using var rig = new Rig();
