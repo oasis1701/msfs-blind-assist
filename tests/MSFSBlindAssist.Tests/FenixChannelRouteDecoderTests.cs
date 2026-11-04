@@ -164,6 +164,7 @@ public class FenixChannelRouteDecoderTests
     [InlineData("2.4.2")]
     [InlineData("2.4.3")]
     [InlineData("2.4.4")]
+    [InlineData("2.4.5")]
     [InlineData("2.4.6")]
     [InlineData("2.4.7")]
     [InlineData("2.4.8")]
@@ -188,6 +189,14 @@ public class FenixChannelRouteDecoderTests
     [InlineData("2.12.6")]
     [InlineData("2.12.7")]
     [InlineData("2.13")]
+    [InlineData("2.13.1")]
+    [InlineData("2.13.1.1")]
+    [InlineData("2.13.1.2")]
+    [InlineData("2.13.1.3")]
+    [InlineData("2.13.1.5")]
+    [InlineData("2.13.2")]
+    [InlineData("2.13.3")]
+    [InlineData("2.13.4")]
     [InlineData("2.1")]
     [InlineData("2.1.1")]
     [InlineData("2.1.3")]
@@ -249,8 +258,16 @@ public class FenixChannelRouteDecoderTests
         bool leg = path.Length >= 2 && path[0] == 2 && path[1] is 4 or 5 or 7 or 8 or 11;
         bool marker = path.Length >= 2 && path[0] == 2 && path[1] == 12;
         bool runway = path.Length >= 2 && path[0] == 2 && path[1] == 1;
+        bool fixInfo = path.Length >= 3 && path[0] == 2 && path[1] == 13;
         if (path.Length == 1 || (path.Length == 2 && path[0] == 2) )
             return (w, n) => w.Varint(n, 1);          // a nested part, or a whole list entry, as a varint
+
+        if (fixInfo)
+        {
+            // 2.13.1 the fix (nested: 1 kind varint, 2 and 3 fixed64, 5 string); 2, 3 and 4 fixed64.
+            if (path.Length == 4) return last == 1 ? (w, n) => w.Double(n, 1) : (w, n) => w.Varint(n, 1);
+            return (w, n) => w.Varint(n, 1);
+        }
 
         if (leg)
         {
@@ -331,8 +348,8 @@ public class FenixChannelRouteDecoderTests
     [Fact]
     public void Unread_members_are_skipped()
     {
-        // Members 5 and 17 (varints), and a member nobody measured, in a leg.
-        var withExtras = Leg(33.7, -84.3, 0, "WPT", l => l.Varint(5, 1).Varint(17, 68).Varint(99, 7));
+        // Member 17 (a varint), and a member nobody measured, in a leg.
+        var withExtras = Leg(33.7, -84.3, 0, "WPT", l => l.Varint(17, 68).Varint(99, 7));
         var plain = Leg(33.7, -84.3, 0, "WPT");
 
         FenixRoute extra = Decoded(Remote(Route((4, withExtras)), Position(1, 2)));
@@ -341,6 +358,40 @@ public class FenixChannelRouteDecoderTests
         Assert.Equal(bare.Legs[0], extra.Legs[0]);
         Assert.Equal(bare.Legs[0].Hold, extra.Legs[0].Hold);
         Assert.False(extra.Legs[0].MissedApproach);
+        Assert.False(extra.Legs[0].RemoveOnDeclutter);
+    }
+
+    [Fact]
+    public void Leg_member_5_removes_the_element_when_decluttered()
+    {
+        // Sitting 1 Step 14: the elements with member 5 lose their symbol, label and constraint at 160 and above.
+        FenixRoute decoded = Decoded(Remote(Route((4, Leg(33.7, -84.3, 4, "NAVPE", l => l.Varint(5, 1).Varint(7, 5)))),
+            Position(1, 2)));
+
+        Assert.True(decoded.Legs[0].RemoveOnDeclutter);
+    }
+
+    [Fact]
+    public void Fix_info_decodes_its_fix_rings_and_radials()
+    {
+        // As sent in flight (21:18): the fix with a map point's shape, the variation at it, the radials, the ring;
+        // an empty entry is no FIX INFO.
+        var entry = new FenixChannelProtoWriter()
+            .Message(1, new FenixChannelProtoWriter().Varint(1, 3).Double(2, 37.03315).Double(3, -84.110075).String(5, "LOZ"))
+            .Double(2, -6.147918701171875).Double(3, 20.0).Double(3, 360.0).Double(4, 20.0);
+        var route = Route((13, entry), (13, new FenixChannelProtoWriter()), (13, new FenixChannelProtoWriter()),
+            (13, new FenixChannelProtoWriter()));
+
+        FenixRoute decoded = Decoded(Remote(route, Position(1, 2)));
+
+        FenixFixInfo fix = Assert.Single(decoded.FixInfos);
+        Assert.Equal("LOZ", fix.Ident);
+        Assert.Equal(3, fix.Kind);
+        Assert.Equal(new FenixLatLon(37.03315, -84.110075), fix.Point);
+        Assert.Equal(-6.147918701171875, fix.MagneticVariation);
+        Assert.Equal([20.0, 360.0], fix.Radials);
+        Assert.Equal([20.0], fix.Rings);
+        Assert.Empty(Decoded(Remote(Route(), Position(1, 2))).FixInfos);
     }
 
     [Fact]

@@ -49,7 +49,18 @@ internal readonly record struct FenixRouteLeg(FenixLatLon Point, int Kind, strin
 
     /// <summary>The element is the destination runway's point, set by the decoder (see <see cref="FenixChannelRoute.IsDestination"/>).</summary>
     public bool Destination { get; init; }
+
+    /// <summary>The element's symbol, label and constraint are removed when the ND declutters (5).</summary>
+    public bool RemoveOnDeclutter { get; init; }
 }
+
+/// <summary>
+/// A FIX INFO entry (2.13): its fix (a point in the shape of a GetMapData point: kind, position, ident), the variation
+/// at the fix, the radials (magnetic degrees, as entered) and the ring radii (nautical miles).
+/// </summary>
+internal sealed record FenixFixInfo(
+    string Ident, int Kind, FenixLatLon Point, double MagneticVariation, IReadOnlyList<double> Radials,
+    IReadOnlyList<double> Rings);
 
 /// <summary>A map marker (2.12): a constraint, a top of descent or another marker the ND draws at a point.</summary>
 internal readonly record struct FenixRouteMarker(FenixLatLon Point, int Type, bool IsGoAround)
@@ -99,6 +110,9 @@ internal sealed record FenixRoute(
 
     /// <summary>The PLAN centre (84); null when not sent.</summary>
     public FenixLatLon? PlanCenter { get; init; }
+
+    /// <summary>The FIX INFO entries that hold a fix (2.13); an empty entry is none.</summary>
+    public IReadOnlyList<FenixFixInfo> FixInfos { get; init; } = [];
 }
 
 /// <summary>
@@ -129,6 +143,7 @@ internal static class FenixChannelRoute
         List<FenixRouteRunway> runways = [];
         List<FenixRouteLeg> active = [], temporary = [], alternate = [], temporaryAlternate = [];
         List<FenixRouteMarker> markers = [];
+        List<FenixFixInfo> fixInfos = [];
         FenixRouteLeg? activeLeg = null;
         if (route is not null)
         {
@@ -151,8 +166,11 @@ internal static class FenixChannelRoute
                 markers.Add(walk.Marker(entry, path));
             }
 
-            // The fix radials are not decoded; each entry is only checked to be a nested part.
-            walk.Entries(route, RouteData.FixRadials, at);
+            // FIX INFO: an entry with no fix (the four empty entries sent with none entered) is none.
+            foreach ((FenixChannelPush entry, string path) in walk.Entries(route, RouteData.FixRadials, at))
+            {
+                if (walk.FixInfo(entry, path) is { } fixInfo) fixInfos.Add(fixInfo);
+            }
         }
 
         if (walk.Wrong is not null) return FenixChannelSection<FenixRoute>.WrongShape(walk.Wrong);
@@ -174,7 +192,8 @@ internal static class FenixChannelRoute
             TemporaryAlternateLegs = temporaryAlternate,
             Runways = runways,
             NdPosition = nd,
-            PlanCenter = center
+            PlanCenter = center,
+            FixInfos = fixInfos
         });
     }
 
@@ -269,8 +288,23 @@ internal static class FenixChannelRoute
                 CourseIn = OptionalSingle(m, RouteLeg.CourseIn, path),
                 CourseOut = OptionalSingle(m, RouteLeg.CourseOut, path),
                 Hold = hold,
-                EndReason = Int(m, RouteLeg.EndReason, path)
+                EndReason = Int(m, RouteLeg.EndReason, path),
+                RemoveOnDeclutter = Flag(m, RouteLeg.RemoveOnDeclutter, path)
             };
+        }
+
+        // A FIX INFO entry; null when it holds no fix.
+        public FenixFixInfo? FixInfo(FenixChannelPush m, string path)
+        {
+            FenixChannelPush? fix = Part(m, FixRadial.Fix, path);
+            double variation = Double(m, FixRadial.MagVar, path);
+            List<double> radials = Doubles(m, FixRadial.Radials, path);
+            List<double> rings = Doubles(m, FixRadial.Radius, path);
+            if (fix is null) return null;
+
+            string at = PathOf(path, FixRadial.Fix);
+            return new FenixFixInfo(Text(fix, MapPoint.Ident, at), Int(fix, MapPoint.Kind, at),
+                Point(fix, at, MapPoint.Latitude, MapPoint.Longitude), variation, radials, rings);
         }
 
         public FenixRouteMarker Marker(FenixChannelPush m, string path)
@@ -302,6 +336,19 @@ internal static class FenixChannelRoute
             }
 
             return field.AsDouble();
+        }
+
+        // A repeated double, each entry a fixed64 of its own (not packed, as sent).
+        private List<double> Doubles(FenixChannelPush m, int number, string path)
+        {
+            var values = new List<double>();
+            foreach (FenixChannelField field in m.All(number))
+            {
+                if (field.Type != FenixWireType.Fixed64) Fail(PathOf(path, number));
+                else values.Add(field.AsDouble());
+            }
+
+            return values;
         }
 
         private double? OptionalSingle(FenixChannelPush m, int number, string path)

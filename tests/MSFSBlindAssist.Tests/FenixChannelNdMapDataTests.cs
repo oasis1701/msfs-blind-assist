@@ -72,8 +72,10 @@ public class FenixChannelNdMapDataTests
     private static FenixChannelSnapshot Snapshot(
         ulong mode = 2, ulong range = 160, ulong? option = 2, FenixChannelProtoWriter? route = null)
     {
+        // The next waypoint reads PPOS: no flight plan, so the route layer lists no route of its own.
         FenixChannelProtoWriter remote = new FenixChannelProtoWriter()
             .Message(1, Efis(mode, range, option)).Message(1, Efis(1, 20, null))
+            .Message(68, new FenixChannelProtoWriter().String(1, "PPOS     "))
             .Message(163, new FenixChannelProtoWriter().String(1, "wsGSlgd  0wsdTASlgd  0").String(2, "g213w / g37"))
             .Message(192, new FenixChannelProtoWriter().Double(1, Gate.Latitude).Double(2, Gate.Longitude))
             .Message(194, new FenixChannelProtoWriter().Double(1, Heading).Double(2, Heading).Double(3, Variation));
@@ -94,7 +96,9 @@ public class FenixChannelNdMapDataTests
         FenixChannelRows rows = FenixChannelNdRows.Compose(
             s, text => reported?.Add(text), (points, receivedAtMs, problem), Now);
         Assert.Null(rows.Problem);
-        return [.. rows.Rows!];
+
+        // The route layer's range rings are drawn in every one of these snapshots; they are not this file's.
+        return [.. rows.Rows!.Where(row => !row.StartsWith("Map: range ring"))];
     }
 
     // ---- Decoding
@@ -345,7 +349,8 @@ public class FenixChannelNdMapDataTests
     public void A_route_that_cannot_be_read_leaves_the_map_points_alone()
     {
         // The alternate's ident arrives as a number: the route is in the wrong shape, which is the route layer's
-        // problem. The map points list as with no flight plan (LGC would be left out if the route read) and report nothing.
+        // problem. The map points list as with no flight plan (LGC would be left out if the route read) and report
+        // nothing; the route layer reports its own.
         FenixChannelProtoWriter broken = new FenixChannelProtoWriter().Message(7, new FenixChannelProtoWriter()
             .Double(1, Lgc.Lat).Double(2, Lgc.Lon).Varint(6, 5));
         Assert.False(FenixChannelRoute.Decode(RoutePush(broken)).IsOk);
@@ -355,7 +360,8 @@ public class FenixChannelNdMapDataTests
 
         Assert.Equal(2, rows.Count(row => row.StartsWith("Map: ")));
         Assert.DoesNotContain(rows, row => row.StartsWith("Map points"));
-        Assert.Empty(reported);
+        Assert.Contains("Route: not available, field 2.7.6 has the wrong shape", rows);
+        Assert.Equal(["Route: field 2.7.6 has the wrong shape"], reported);
     }
 
     [Theory]

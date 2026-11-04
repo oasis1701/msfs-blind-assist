@@ -25,7 +25,7 @@ internal static partial class FenixChannelFields
         public const int ModAltRoute = 8;           // modAltRoute: repeated nested RouteLeg, the temporary alternate
         public const int ActiveLeg = 11;            // activeLeg: nested RouteLeg, the TO waypoint's symbol element
         public const int MapMarkers = 12;           // mapMarkers: repeated nested MapMarker
-        public const int FixRadials = 13;           // fixRadials: repeated nested FixRadial; declared, not decoded (four empty entries with no FIX INFO page)
+        public const int FixRadials = 13;           // fixRadials: repeated nested FixRadial, the FIX INFO page (four entries, empty with none entered)
     }
 
     /// <summary>A runway of <see cref="RouteData.Runways"/>: the departure's first, the arrival's second.</summary>
@@ -44,7 +44,7 @@ internal static partial class FenixChannelFields
     /// <summary>
     /// One element of a route list (<see cref="RouteData.ActRoute"/>, <see cref="RouteData.ModRoute"/>,
     /// <see cref="RouteData.AltRoute"/>, <see cref="RouteData.ModAltRoute"/>) or the active leg
-    /// (<see cref="RouteData.ActiveLeg"/>). Members 5 and 17 (varints) and any other number are not read.
+    /// (<see cref="RouteData.ActiveLeg"/>). Member 17 (a varint) and any other number are not read.
     /// </summary>
     public static partial class RouteLeg
     {
@@ -52,6 +52,7 @@ internal static partial class FenixChannelFields
         public const int Longitude = 2;             // Longitude: fixed64 (double)
         public const int Kind = 3;                  // Kind: varint (an enum of a scrambled type, see RouteLegKind); absent is 0
         public const int MissedApproach = 4;        // MissedApproach: varint (bool), the element is on the missed approach
+        public const int RemoveOnDeclutter = 5;     // (a scrambled type's member): varint (bool); the ND removes the element's symbol, label and constraint at 160 and above (sitting 1, Step 14)
         public const int Ident = 6;                 // Ident: string
         public const int Symbol = 7;                // Symbol: varint (see RouteSymbol), on kind 4 only
         public const int TurnSide = 8;              // TurnSide: string, "L" or "R", on kind 1
@@ -100,14 +101,21 @@ internal static partial class FenixChannelFields
         public const int RemoveOnDeclutter = 7;     // RemoveOnDeclutter: varint (bool)
     }
 
-    /// <summary>The values of <see cref="MapMarker.MapMarkerType"/> (MapMarkerEnum).</summary>
+    /// <summary>
+    /// The values of <see cref="MapMarker.MapMarkerType"/> (MapMarkerEnum), the contract's order as the flight measured it
+    /// (evidence, sitting 2, "The markers (2.12)"). SOC 3, TimeMarker 9 and Debug 10 were never sent.
+    /// </summary>
     public static class MapMarkerKind
     {
-        public const int Tod = 0;                   // top of descent; the enum's first member (inferred: the cruise marker sent no type)
-        public const int AltCstr = 5;               // measured: an altitude constraint, with any speed
-        public const int Cstr = 6;                  // measured: a speed constraint alone ("250KT")
-        public const int SpeedLimit = 8;            // seen once (magenta, no label); the contract's order, to confirm
-        public const int Etp = 11;                  // seen once (green, no label); the contract's order, to confirm
+        public const int Tod = 0;                   // TOD: an arrow level then down (white, or cyan with DES)
+        public const int Toc = 1;                   // TOC: an arrow climbing then level (cyan)
+        public const int Eod = 2;                   // EOD: an arrow descending then level (cyan or magenta)
+        public const int Decel = 4;                 // Decel: a circle with a "D" (magenta)
+        public const int AltCstr = 5;               // AltCstr: an altitude constraint, with any speed: the ring and the label at its waypoint
+        public const int Cstr = 6;                  // Cstr: a speed constraint alone ("250KT"); never seen drawn
+        public const int Cross = 7;                 // Cross: a zigzag ending in an arrow (cyan)
+        public const int SpeedLimit = 8;            // SpeedLimit: a filled dot (magenta; a filled diamond in ROSE NAV)
+        public const int Etp = 11;                  // ETP: a circle with "(ETP)" beside it (green)
     }
 
     /// <summary>A latitude and longitude (<see cref="Remote.TruePos"/>, <see cref="Remote.CduCenterCapt"/>).</summary>
@@ -124,12 +132,15 @@ internal static partial class FenixChannelFields
         public const int Lon = 2;                   // Lon: fixed64 (double)
     }
 
-    /// <summary>A fix radial of <see cref="RouteData.FixRadials"/> (the MCDU FIX INFO page); declared, not decoded.</summary>
+    /// <summary>
+    /// A fix radial of <see cref="RouteData.FixRadials"/> (the MCDU FIX INFO page), as sent in flight on 3.0.0.7613.
+    /// The fix is the GetMapData reply's point type: its members are <see cref="MapPoint"/>'s.
+    /// </summary>
     public static partial class FixRadial
     {
-        public const int Fix = 1;                   // Fix
-        public const int MagVar = 2;                // MagVar: the magnetic variation
-        public const int Radials = 3;               // Radials: repeated doubles
-        public const int Radius = 4;                // Radius: repeated doubles
+        public const int Fix = 1;                   // fix: nested MapPoint (1 kind, 2 latitude, 3 longitude, 5 ident)
+        public const int MagVar = 2;                // magVar: fixed64 (double), the variation at the fix
+        public const int Radials = 3;               // radials: repeated fixed64 (double), not packed; magnetic degrees as entered
+        public const int Radius = 4;                // radius: repeated fixed64 (double), not packed; the rings in nautical miles
     }
 }

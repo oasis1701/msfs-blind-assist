@@ -39,14 +39,21 @@ internal static class FenixChannelNdRows
         => Compose(s, reportProblem, []);
 
     /// <summary>
-    /// The rows for <paramref name="s"/> with the "Map points" layer after the header. <paramref name="mapPoints"/> is the
-    /// poller's latest reply, when it was last confirmed current (on the clock <paramref name="nowMs"/> reads) and its
-    /// problem; the layer uses the points only under <see cref="FenixChannelNdMapData.Check"/> ([FNX-22]).
+    /// The rows for <paramref name="s"/> with the layers after the header, in screen order: "Route" (the route, its
+    /// markers, the heading bug, the rings, FIX INFO), "Map points", then "Terrain and weather" (the bottom right label).
+    /// <paramref name="mapPoints"/> is the poller's latest reply, when it was last confirmed current (on the clock
+    /// <paramref name="nowMs"/> reads) and its problem; the layer uses the points only under
+    /// <see cref="FenixChannelNdMapData.Check"/> ([FNX-22]).
     /// </summary>
     internal static FenixChannelRows Compose(
         FenixChannelSnapshot s, Action<string> reportProblem,
         (FenixNdMapPoints? Points, long ReceivedAtMs, string? Problem) mapPoints, long nowMs)
-        => Compose(s, reportProblem, [(snapshot, nd) => MapPointsLayer(snapshot, nd, mapPoints, nowMs)]);
+        => Compose(s, reportProblem,
+        [
+            FenixChannelNdRoute.Layer,
+            (snapshot, nd) => MapPointsLayer(snapshot, nd, mapPoints, nowMs),
+            FenixChannelNdRoute.LabelsLayer
+        ]);
 
     private const string MapPointsName = "Map points";
 
@@ -91,15 +98,16 @@ internal static class FenixChannelNdRows
         => route.Legs.Concat(route.TemporaryLegs).Concat(route.AlternateLegs).Concat(route.TemporaryAlternateLegs);
 
     /// <summary>
-    /// The ident of the route element within 0.1 NM of the PLAN center, for "of VAKSU"; null when there is none ("of the
-    /// center").
+    /// The ident of the waypoint symbol (a kind 4 element) within 0.1 NM of the PLAN center, for "of VAKSU"; null when
+    /// there is none ("of the center"). Only the symbol elements name what is drawn: a line element's ident can be
+    /// stale (the first element kept "T-P" and "SMTTH" in flight).
     /// </summary>
     internal static string? PlanCenterIdent(FenixNdFrame frame, FenixRoute? route)
     {
         if (route is null) return null;
 
         return RouteLegs(route)
-            .Where(leg => leg.Ident.Length > 0)
+            .Where(leg => leg.Kind == FenixChannelFields.RouteLegKind.Symbol && leg.Ident.Length > 0)
             .Select(leg => (leg.Ident, Away: Navigation.NavigationCalculator.CalculateDistance(
                 frame.Center.Latitude, frame.Center.Longitude, leg.Point.Latitude, leg.Point.Longitude)))
             .Where(entry => entry.Away <= 0.1)

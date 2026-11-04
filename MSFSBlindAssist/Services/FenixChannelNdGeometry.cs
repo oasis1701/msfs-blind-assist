@@ -110,7 +110,7 @@ internal static class FenixChannelNdGeometry
         double bearing = NavigationCalculator.CalculateBearing(f.Center.Latitude, f.Center.Longitude, p.Latitude, p.Longitude);
         double off = ((bearing - f.UpTrueDegrees + 180) % 360 + 360) % 360 - 180;   // -180 up to but not including 180
         if (off == -180) off = 180;
-        double ppn = IsArc(f) ? ArcRangePx / f.RangeNm : RoseRingRadiusPx / (f.RangeNm / 2);
+        double ppn = PixelsPerNm(f);
         double cy = IsArc(f) ? ArcAircraftY : RoseCenterY;
         double rad = off * Math.PI / 180;
         return (distance, off, CenterX + Math.Sin(rad) * distance * ppn, cy - Math.Cos(rad) * distance * ppn);
@@ -145,44 +145,87 @@ internal static class FenixChannelNdGeometry
         return new FenixNdPlace(l.Distance, l.Off, margin < EdgePx);
     }
 
+    /// <summary>The window's size in pixels.</summary>
+    internal const double WindowWidthPx = WindowWidth, WindowHeightPx = WindowBottom;
+
+    /// <summary>
+    /// Whether the ND draws a route item at a pixel (<see cref="PlaceRoute"/>'s clip) and, when it does not, the edge it
+    /// lies beyond: "top" (the ARC's circle or the window's top), "left" (the frame or the ARC's left corner), "right"
+    /// (the frame or the ARC's right corner) or "bottom" (the window's bottom or a message box).
+    /// </summary>
+    internal static (bool Drawn, string Edge) RoutePixel(FenixNdFrame f, double x, double y)
+    {
+        (double margin, string edge) = Margin(f, x, y, route: true);
+        return (margin >= 0, edge);
+    }
+
+    /// <summary>The place a pixel stands for: its distance from the center and its degrees off up; never at an edge.</summary>
+    internal static FenixNdPlace PlaceOfPixel(FenixNdFrame f, double x, double y)
+    {
+        double dx = x - CenterX, dy = (IsArc(f) ? ArcAircraftY : RoseCenterY) - y;
+        double off = Math.Atan2(dx, dy) * 180 / Math.PI;
+        if (off <= -180) off += 360;
+        return new FenixNdPlace(Hypot(dx, dy) / PixelsPerNm(f), off, false);
+    }
+
+    /// <summary>Pixels per nautical mile: the ARC's arc stands for the whole range, the ROSE ring for half of it.</summary>
+    internal static double PixelsPerNm(FenixNdFrame f)
+        => IsArc(f) ? ArcRangePx / f.RangeNm : RoseRingRadiusPx / (f.RangeNm / 2);
+
+    /// <summary>
+    /// Whether a mark on the compass at <paramref name="degreesOffUp"/> is in view: anywhere on the ROSE ring, on the
+    /// ARC's arc only where the arc lies inside the window's sides (about 51 degrees either way).
+    /// </summary>
+    internal static bool OnCompass(string mode, double degreesOffUp)
+    {
+        if (mode != "ARC") return true;
+
+        double rad = degreesOffUp * Math.PI / 180;
+        double x = CenterX + Math.Sin(rad) * ArcRangePx, y = ArcAircraftY - Math.Cos(rad) * ArcRangePx;
+        return x >= ArcLeftX && x <= ArcRightX && y <= WindowBottom;
+    }
+
     // How far a pixel lies inside the area the ND draws in: its distance to the nearest clip line that applies (the
     // circle, a side, the top, the bottom, a corner's edge, a box's edge), negative when it lies beyond one, with the
-    // edge that line is on ("top", "left", "right" or "bottom"; a corner and a box are at the bottom).
+    // edge that line is on ("top", "left", "right" or "bottom"; each corner is on its own side, a box at the bottom).
     private static (double Margin, string Edge) Margin(FenixNdFrame f, double x, double y, bool route)
     {
-        var lines = new List<(double, string)>();
+        double margin = double.PositiveInfinity;
+        string edge = "top";
         if (IsArc(f))
         {
-            lines.Add((ArcClipRadiusPx - Hypot(x - CenterX, y - ArcAircraftY), "top"));
-            lines.Add((x - ArcLeftX, "left"));
-            lines.Add((ArcRightX - x, "right"));
-            lines.Add((WindowBottom - y, "bottom"));
-            lines.Add((OutsideRectangle(x, y, double.NegativeInfinity, LeftCornerX, LeftCornerY), "bottom"));
-            lines.Add((OutsidePolygon(x, y, RightCorner), "bottom"));
+            Nearest(ref margin, ref edge, ArcClipRadiusPx - Hypot(x - CenterX, y - ArcAircraftY), "top");
+            Nearest(ref margin, ref edge, x - ArcLeftX, "left");
+            Nearest(ref margin, ref edge, ArcRightX - x, "right");
+            Nearest(ref margin, ref edge, WindowBottom - y, "bottom");
+            Nearest(ref margin, ref edge, OutsideRectangle(x, y, double.NegativeInfinity, LeftCornerX, LeftCornerY), "left");
+            Nearest(ref margin, ref edge, OutsidePolygon(x, y, RightCorner), "right");
         }
         else if (route)
         {
-            lines.Add((y - RouteTopY, "top"));
-            lines.Add((x, "left"));
-            lines.Add((WindowWidth - x, "right"));
-            lines.Add((WindowBottom - y, "bottom"));
+            Nearest(ref margin, ref edge, y - RouteTopY, "top");
+            Nearest(ref margin, ref edge, x, "left");
+            Nearest(ref margin, ref edge, WindowWidth - x, "right");
+            Nearest(ref margin, ref edge, WindowBottom - y, "bottom");
         }
         else
         {
-            lines.Add((y - MapTopY, "top"));
-            lines.Add((RoseClipRadiusPx - Hypot(x - CenterX, y - RoseCenterY), y < RoseCenterY ? "top" : "bottom"));
+            Nearest(ref margin, ref edge, y - MapTopY, "top");
+            Nearest(ref margin, ref edge, RoseClipRadiusPx - Hypot(x - CenterX, y - RoseCenterY), y < RoseCenterY ? "top" : "bottom");
         }
 
-        if (f.UpperBox) lines.Add((OutsideRectangle(x, y, BoxLeftX, BoxRightX, UpperBoxTopY), "bottom"));
-        if (f.LowerBox) lines.Add((OutsideRectangle(x, y, BoxLeftX, BoxRightX, LowerBoxTopY), "bottom"));
+        if (f.UpperBox) Nearest(ref margin, ref edge, OutsideRectangle(x, y, BoxLeftX, BoxRightX, UpperBoxTopY), "bottom");
+        if (f.LowerBox) Nearest(ref margin, ref edge, OutsideRectangle(x, y, BoxLeftX, BoxRightX, LowerBoxTopY), "bottom");
+        return (margin, edge);
+    }
 
-        (double, string) nearest = lines[0];
-        foreach ((double margin, string edge) line in lines)
+    private static void Nearest(ref double margin, ref string edge, double line, string lineEdge)
+    {
+        if (line < margin)
         {
-            if (line.margin < nearest.Item1) nearest = line;
+            margin = line;
+            edge = lineEdge;
         }
-
-        return nearest;
     }
 
     private static double Hypot(double dx, double dy) => Math.Sqrt(dx * dx + dy * dy);

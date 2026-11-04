@@ -8,12 +8,38 @@ internal static partial class FenixChannelFields
 {
     public static partial class Remote
     {
+        public const int Crosstrack = 52;               // crosstrack: fixed64 (double), the cross-track error in NM, negative left
+        public const int TerrainOnNdCapt = 53;          // terrainOnNDCapt: varint (bool), the captain's TERR ON ND; left out when off
+        public const int NdStatusCapt = 58;             // ndStatusCapt: nested NdStatusData, what the captain's ND draws in HDG
         public const int NdCenterMessageCapt = 62;      // ndCenterMessageCapt: string, the center message (channel text)
         public const int NdWindshearMessageCapt = 64;   // ndWindshearMessageCapt: string, the windshear message (channel text)
         public const int NdTcasMessageCapt = 66;        // ndTcasMessageCapt: string, the TCAS message (channel text)
         public const int NavInfoCapt = 68;              // navInfoCapt: nested NdInfoData, the next waypoint's three lines
         public const int NdMessagesCapt = 103;          // ndMessagesCapt: repeated nested NullWrapped string, the captain's ND messages
         public const int GroundWindCapt = 163;          // groundWindCapt: nested GroundWindData, the ground speed and wind texts
+        public const int WeatherRadarData = 191;        // weatherRadarData: nested WeatherRadarState, the weather radar and PWS
+    }
+
+    /// <summary>
+    /// NdStatusData, what the captain's ND draws (<see cref="Remote.NdStatusCapt"/>), measured in flight on 3.0.0.7613.
+    /// Members 4 to 6 are not read (4, TaOnly, does not follow 103's "TA ONLY").
+    /// </summary>
+    public static partial class NdStatusData
+    {
+        public const int ShowTrackLine = 1;         // ShowTrackLine: varint (bool), the green track line (in HDG)
+        public const int ShowSelectedHeading = 2;   // ShowSelectedHeading: varint (bool), the heading bug at 113.2
+        public const int ShowTrackSolid = 3;        // ShowTrackSolid: varint (bool), the route solid (NAV); left out, dashed (HDG)
+    }
+
+    /// <summary>
+    /// WeatherRadarState (<see cref="Remote.WeatherRadarData"/>): the members the ND's bottom right label follows. The
+    /// others (mode, gain, tilt, the sweep's bearing) are not read.
+    /// </summary>
+    public static partial class WeatherRadarState
+    {
+        public const int SysOn = 4;                 // SysOn: varint (bool), the radar on: "WX+T+H"
+        public const int PredWindshearScan = 8;     // PredWindshearScan: varint (bool), "PWS SCAN"
+        public const int PredWindshearEnabled = 9;  // PredWindshearEnabled: varint (bool), alone: nothing printed
     }
 
     /// <summary>NdInfoData, the next waypoint's lines (<see cref="Remote.NavInfoCapt"/>).</summary>
@@ -80,7 +106,10 @@ internal static partial class FenixChannelFields
         public const int MapOption = 12;            // MapOption: varint (an EfisMapOptionValue); left out for none
     }
 
-    /// <summary>MapPoint, one point of <see cref="MapData"/>. Member 4 (varint 3 on navaids and NDBs) is read for nothing.</summary>
+    /// <summary>
+    /// MapPoint, one point of <see cref="MapData"/>, and the FIX INFO fix (<see cref="FixRadial.Fix"/>, the same contract
+    /// type). Member 4 (varint 3 on navaids and NDBs) is read for nothing.
+    /// </summary>
     public static partial class MapPoint
     {
         public const int Kind = 1;                  // Kind: varint (1 airport, 2, 3 or 4 a navaid, 5 a fix, 7 an NDB)

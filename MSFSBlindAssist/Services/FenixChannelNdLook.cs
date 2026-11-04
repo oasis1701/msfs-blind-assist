@@ -15,7 +15,15 @@ internal sealed record FenixNdLookEntry(string Item, string Symbol, string? Colo
 internal static class FenixChannelNdLook
 {
     private const string MapPointsEvidence = "03-nd.md, Task 1 Part C, the looks of the map points";
+    private const string RouteLooks = "03-nd.md, Task 1 Part B, the route's looks";
+    private const string RouteInFlight = "03-nd.md, sitting 2, the route in flight";
+    private const string Constraints = "03-nd.md, sitting 2, the markers (2.12), the constraints";
+    private const string Markers = "03-nd.md, sitting 2, the markers (2.12)";
+    private const string Rings = "03-nd.md, Task 1 Part B, rings, the bug and FIX INFO";
+    private const string Terrain = "03-nd.md, Task 1 Part B, terrain and weather";
+    private const string HeaderInFlight = "03-nd.md, sitting 2, the header in flight";
 
+    // A marker's color is the channel's (its member 5): its entry holds the symbol only.
     private static readonly FenixNdLookEntry[] Entries =
     [
         new("lubber line", "lubber line", "yellow", "03-nd.md, Task 1 Part A, the header as drawn"),
@@ -24,7 +32,38 @@ internal static class FenixChannelNdLook
         new(FenixChannelNdMapData.LookItem.Dme, "circle", "magenta", MapPointsEvidence),
         new(FenixChannelNdMapData.LookItem.Ndb, "triangle", "magenta", MapPointsEvidence),
         new(FenixChannelNdMapData.LookItem.Airport, "star", "magenta", MapPointsEvidence),
-        new(FenixChannelNdMapData.LookItem.Fix, "diamond", "magenta", MapPointsEvidence)
+        new(FenixChannelNdMapData.LookItem.Fix, "diamond", "magenta", MapPointsEvidence),
+        new(FenixChannelNdRoute.LookItem.ToWaypoint, "diamond", "white", RouteInFlight + "; " + RouteLooks),
+        new(FenixChannelNdRoute.LookItem.Waypoint, "diamond", "green", RouteInFlight + "; " + RouteLooks),
+        new(FenixChannelNdRoute.LookItem.Vor, "VOR symbol", "green", RouteLooks + " (VHP, on the alternate)"),
+        new(FenixChannelNdRoute.LookItem.ToVor, "VOR symbol", null,
+            RouteLooks + " (VHP, on the alternate); a TO waypoint's color on it is not measured"),
+        new(FenixChannelNdRoute.LookItem.Runway, "runway symbol", "white", RouteInFlight + "; " + RouteLooks),
+        new(FenixChannelNdRoute.LookItem.RouteLine, "solid line", "green", RouteInFlight + " (58.3 sent, NAV)"),
+        new(FenixChannelNdRoute.LookItem.DashedRouteLine, "dashed line", "green", RouteInFlight + " (58.3 left out, HDG)"),
+        new(FenixChannelNdRoute.LookItem.TemporaryLine, "dashed line", "yellow", RouteLooks + " (the temporary plan)"),
+        new(FenixChannelNdRoute.LookItem.ConstraintRing, "ring", null, Constraints + " (its color is member 5)"),
+        new(FenixChannelNdRoute.LookItem.ConstraintLabel, "label", "magenta", Constraints + "; " + RouteLooks),
+        new(FenixChannelNdRoute.LookItem.Tod, "arrow level then down", null, Markers),
+        new(FenixChannelNdRoute.LookItem.Toc, "arrow climbing then level", null, Markers),
+        new(FenixChannelNdRoute.LookItem.Eod, "arrow descending then level", null, Markers),
+        new(FenixChannelNdRoute.LookItem.Decel, "circle with a D", null, Markers),
+        new(FenixChannelNdRoute.LookItem.Cross, "zigzag ending in an arrow", null, Markers),
+        new(FenixChannelNdRoute.LookItem.SpeedLimit, "filled dot", null, Markers + "; " + RouteLooks + " (PLAN 320)"),
+        new(FenixChannelNdRoute.LookItem.SpeedLimitRose, "filled diamond", null, RouteLooks + " (ROSE 40)"),
+        new(FenixChannelNdRoute.LookItem.Etp, "circle", null, Markers + "; " + RouteLooks),
+        new(FenixChannelNdRoute.LookItem.HeadingBug, "hollow triangle", "cyan", RouteInFlight + " (58.2)"),
+        new(FenixChannelNdRoute.LookItem.TrackLine, "thin solid line", "green", RouteInFlight + " (58.1)"),
+        new(FenixChannelNdRoute.LookItem.CrossTrack, "figure", "green", RouteInFlight + " (52)"),
+        new(FenixChannelNdRoute.LookItem.RangeRing, "dashed ring", "white", Rings),
+        new(FenixChannelNdRoute.LookItem.CompassRing, "solid ring", "white", Rings),
+        new(FenixChannelNdRoute.LookItem.FixInfoFix, "symbol", "green", RouteInFlight + " (FIX INFO: the fix's own symbol)"),
+        new(FenixChannelNdRoute.LookItem.FixInfoLines, "dashed", "cyan", RouteInFlight + " (FIX INFO)"),
+        new(FenixChannelNdRoute.LookItem.Terr, "TERR", "cyan", Terrain + " (53)"),
+        new(FenixChannelNdRoute.LookItem.WxThH, "WX+T+H", "green", Terrain + " (191.4)"),
+        new(FenixChannelNdRoute.LookItem.PwsScan, "PWS SCAN", "green", HeaderInFlight + " (191.8)"),
+        new(FenixChannelNdRoute.LookItem.WxrOff, "WXR OFF", "white",
+            "03-nd.md, Task 1 Part A, the header as drawn; " + HeaderInFlight)
     ];
 
     /// <summary>Every entry, in the order they were measured.</summary>
