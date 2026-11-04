@@ -5,7 +5,7 @@
 // The contract: the page reads 145 (the surfaces; each a nested message, position 1 a double and fault 2 a bool: 1 left
 // aileron, 2-6 left spoilers 1-5, 7 right aileron, 8-12 right spoilers 1-5, 13 left elevator, 14 right elevator, 15 THS,
 // 16 rudder), 146 (the rudder trim, 2 a double), 147 (3: the FCDC has data) and 148 (the computers, 1-2 ELAC, 3-5 SEC, bools).
-// The signs are inferred until Task 1's flight control check: ailerons and elevators negative = up, the THS negative = nose
+// The signs were measured in flight on 2026-11-03: ailerons and elevators negative = up, the THS negative = nose
 // up, the rudder and its trim positive = right.
 
 using MSFSBlindAssist.Services;
@@ -85,7 +85,7 @@ public class FenixChannelSdFctlTests
         Assert.Equal(
             new[]
             {
-                "SPD BRK left: 0, 0, 0, 0, 0", "SPD BRK right: 0, 0, 0, 0, 0", "L AIL: 0.1° down", "R AIL: 0.1° up",
+                "SPD BRK left: 0°, 0°, 0°, 0°, 0°", "SPD BRK right: 0°, 0°, 0°, 0°, 0°", "L AIL: 0.1° down", "R AIL: 0.1° up",
                 "ELAC 1: normal", "ELAC 2: normal", "SEC 1: normal", "SEC 2: normal", "SEC 3: normal",
                 "PITCH TRIM: 1.6° UP", "L ELEV: 0.0°", "R ELEV: 0.0°", "RUD: 0.1° right", "RUD TRIM: 0.1° right"
             },
@@ -104,8 +104,34 @@ public class FenixChannelSdFctlTests
 
         IReadOnlyList<string> rows = RowsOf(FctlPush(surfaces));
 
-        Assert.Equal("SPD BRK left: 1, 3, 3, 4, 5", RowOf(rows, "SPD BRK left"));
-        Assert.Equal("SPD BRK right: 6, 7, 8, 9, 11", RowOf(rows, "SPD BRK right"));
+        Assert.Equal("SPD BRK left: 1°, 3°, 3°, 4°, 5°", RowOf(rows, "SPD BRK left"));
+        Assert.Equal("SPD BRK right: 6°, 7°, 8°, 9°, 11°", RowOf(rows, "SPD BRK right"));
+    }
+
+    [Fact]
+    public void The_landing_push_reads_the_ground_spoilers()
+    {
+        // The real touchdown push of 22:47:25 (A321, 2026-11-03, CYYZ 24): all ten spoilers at their 50 degree maximum.
+        var surfaces = new Dictionary<int, FenixChannelProtoWriter>
+        {
+            [1] = Surface(-25.0), [2] = Surface(50.0), [3] = Surface(50.0), [4] = Surface(50.0), [5] = Surface(50.0),
+            [6] = Surface(50.0), [7] = Surface(-25.0), [8] = Surface(50.0), [9] = Surface(50.0), [10] = Surface(50.0),
+            [11] = Surface(50.0), [12] = Surface(50.0), [13] = Surface(15.0), [14] = Surface(15.0), [15] = Surface(-0.0078),
+            [16] = Surface(-0.9042)
+        };
+        var reported = new List<string>();
+
+        IReadOnlyList<string> rows = RowsOf(FctlPush(surfaces, rudderTrim: 0), reported);
+
+        Assert.Equal(
+            new[]
+            {
+                "SPD BRK left: 50°, 50°, 50°, 50°, 50°", "SPD BRK right: 50°, 50°, 50°, 50°, 50°", "L AIL: 25.0° up",
+                "R AIL: 25.0° up", "ELAC 1: normal", "ELAC 2: normal", "SEC 1: normal", "SEC 2: normal", "SEC 3: normal",
+                "PITCH TRIM: 0.0°", "L ELEV: 15.0° down", "R ELEV: 15.0° down", "RUD: 0.9° left", "RUD TRIM: 0.0°"
+            },
+            rows);
+        Assert.Empty(reported);
     }
 
     [Fact]
@@ -135,7 +161,7 @@ public class FenixChannelSdFctlTests
     [Fact]
     public void Surface_directions_follow_the_measured_signs()
     {
-        // Inferred until Task 1: surfaces negative = up; the rudder and its trim positive = right.
+        // Measured in flight on 2026-11-03: surfaces negative = up; the rudder and its trim positive = right.
         var surfaces = new Dictionary<int, FenixChannelProtoWriter>
         {
             [1] = Surface(-2.34), [7] = Surface(2.34), [13] = Surface(-11.96), [14] = Surface(11.96), [16] = Surface(-3.25)
@@ -163,7 +189,7 @@ public class FenixChannelSdFctlTests
         IReadOnlyList<string> rows = RowsOf(FctlPush(surfaces));
 
         Assert.Equal("L AIL: 2.3° up, fault", RowOf(rows, "L AIL"));
-        Assert.Equal("SPD BRK left: 0, 12 fault, 0, 0, 0", RowOf(rows, "SPD BRK left"));
+        Assert.Equal("SPD BRK left: 0°, 12° fault, 0°, 0°, 0°", RowOf(rows, "SPD BRK left"));
         Assert.Equal("PITCH TRIM: 1.9° UP, fault", RowOf(rows, "PITCH TRIM"));
         Assert.Equal("RUD: 0.0°, fault", RowOf(rows, "RUD"));
         Assert.Equal("R AIL: 0.0°", RowOf(rows, "R AIL"));
@@ -197,7 +223,7 @@ public class FenixChannelSdFctlTests
         IReadOnlyList<string> rows = RowsOf(FctlPush(surfaces, rudderTrim: double.NaN));
 
         Assert.Equal("L AIL: XX", RowOf(rows, "L AIL"));
-        Assert.Equal("SPD BRK left: 0, 0, XX, 0, 0", RowOf(rows, "SPD BRK left"));
+        Assert.Equal("SPD BRK left: 0°, 0°, XX, 0°, 0°", RowOf(rows, "SPD BRK left"));
         Assert.Equal("PITCH TRIM: XX", RowOf(rows, "PITCH TRIM"));
         Assert.Equal("RUD TRIM: XX", RowOf(rows, "RUD TRIM"));
     }

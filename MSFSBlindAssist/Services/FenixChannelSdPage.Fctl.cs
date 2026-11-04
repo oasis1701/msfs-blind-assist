@@ -6,26 +6,29 @@ namespace MSFSBlindAssist.Services;
 // F/CTL page. Inert: only the tests call FctlRows until a later task wires the ComposeFctl seam.
 internal static partial class FenixChannelSdPages
 {
-    // The signs, inferred, Task 1 measures them; each is one place to change. Ailerons and elevators (as the THS, whose -1.6
-    // in cruise is nose up): negative is up. The rudder (145.16) and its trim (146.2): positive is right.
+    // The signs, MEASURED in flight on 2026-11-03 (A321); each is one place to change. Ailerons and elevators (as the THS, whose
+    // -1.6 in cruise is nose up): negative is up (the ailerons read -25.0 both after touchdown, lift dumping; the elevators -5.0
+    // in the flare). The rudder (145.16) and its trim (146.2): positive is right (-18.75 while the heading fell 236 to 221,
+    // +8.38 while it rose 222 to 232).
     private const bool FctlSurfaceNegativeIsUp = true;
     private const bool FctlRudderPositiveIsRight = true;
 
     /// <summary>
     /// The F/CTL page's rows, top to bottom: <c>SPD BRK left</c> (the spoilers 145.2 to .6) and <c>SPD BRK right</c> (145.8
-    /// to .12), five whole numbers each, no unit until one is measured, a faulted spoiler "&lt;n&gt; fault"; <c>L AIL</c>
-    /// (145.1) and <c>R AIL</c> (145.7), one decimal with "° up" or "° down"; <c>ELAC 1</c>, <c>ELAC 2</c>, <c>SEC 1</c>,
-    /// <c>SEC 2</c> and <c>SEC 3</c> (148.1 to .5), "normal" while set and "fault" while clear; <c>PITCH TRIM</c> (145.15),
-    /// one decimal with "° UP" or "° DN"; <c>L ELEV</c> (145.13) and <c>R ELEV</c> (145.14) as the ailerons; <c>RUD</c>
-    /// (145.16) and <c>RUD TRIM</c> (146.2), one decimal with "° left" or "° right".
+    /// to .12), five whole degrees each ("25°"; measured: the speed brake held 25.0, the ground spoilers 50.0), a faulted
+    /// spoiler "&lt;n&gt;° fault"; <c>L AIL</c> (145.1) and <c>R AIL</c> (145.7), one decimal with "° up" or "° down";
+    /// <c>ELAC 1</c>, <c>ELAC 2</c>, <c>SEC 1</c>, <c>SEC 2</c> and <c>SEC 3</c> (148.1 to .5), "normal" while set and
+    /// "fault" while clear; <c>PITCH TRIM</c> (145.15), one decimal with "° UP" or "° DN"; <c>L ELEV</c> (145.13) and
+    /// <c>R ELEV</c> (145.14) as the ailerons; <c>RUD</c> (145.16) and <c>RUD TRIM</c> (146.2), one decimal with "° left" or
+    /// "° right".
     /// </summary>
     /// <remarks>
     /// <para>A position that rounds to 0.0 reads "0.0°" with no direction. Any other faulted surface (145.n.2) ends with
     /// ", fault". While 147.3 (the FCDC has data) is clear, every 145 surface's value reads "XX", as the SD draws it; the
     /// rudder trim and the computers read as usual. A NaN position reads "XX" too.</para>
-    /// <para>The signs and the spoilers' unit are inferred until Task 1's flight control check measures them. The surfaces'
-    /// unit (degrees) is inferred as well: only the THS (-1.61 in cruise) pins degrees, and the rudder and its trim's
-    /// 0.0524 would be exactly 3.0° if it were radians.</para>
+    /// <para>The signs and the spoilers' unit were MEASURED in flight on 2026-11-03 (A321): the spoilers are degrees, positive
+    /// up (25.0 on the speed brake, 50.0 at touchdown). The surfaces' unit (degrees) is measured too: the ailerons stop at
+    /// +-25.0 and the elevators at 15.0.</para>
     /// </remarks>
     internal static FenixChannelRows FctlRows(FenixChannelSdPageContext ctx)
     {
@@ -76,8 +79,14 @@ internal static partial class FenixChannelSdPages
         if (remote.Problem is { } problem) return FenixChannelRows.NotAvailable(problem);
 
         string Spoiler((double Position, bool Fault) spoiler)
-            => !fcdc ? FenixChannelSd.Crosses
-                : spoiler.Fault ? $"{FenixChannelSd.Whole(spoiler.Position)} fault" : FenixChannelSd.Whole(spoiler.Position);
+        {
+            if (!fcdc) return FenixChannelSd.Crosses;
+
+            string whole = FenixChannelSd.Whole(spoiler.Position);
+            string shown = whole == FenixChannelSd.Crosses ? whole : $"{whole}°";
+
+            return spoiler.Fault ? $"{shown} fault" : shown;
+        }
 
         string Surface((double Position, bool Fault) surface, Func<double, string> value)
             => !fcdc ? FenixChannelSd.Crosses : surface.Fault ? $"{value(surface.Position)}, fault" : value(surface.Position);
@@ -100,11 +109,11 @@ internal static partial class FenixChannelSdPages
         ]);
     }
 
-    // An aileron's or elevator's position: "2.3° up" or "2.3° down" by the inferred sign, "0.0°" when it rounds to zero.
+    // An aileron's or elevator's position: "2.3° up" or "2.3° down" by the measured sign, "0.0°" when it rounds to zero.
     private static string FctlSurfaceDegrees(double position)
         => FctlDegrees(position, FctlSurfaceNegativeIsUp ? "up" : "down", FctlSurfaceNegativeIsUp ? "down" : "up");
 
-    // The rudder's or its trim's position: "3.3° right" or "3.3° left" by the inferred sign.
+    // The rudder's or its trim's position: "3.3° right" or "3.3° left" by the measured sign.
     private static string FctlRudderDegrees(double position)
         => FctlDegrees(position, FctlRudderPositiveIsRight ? "left" : "right", FctlRudderPositiveIsRight ? "right" : "left");
 
