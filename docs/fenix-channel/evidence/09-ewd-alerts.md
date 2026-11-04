@@ -25,7 +25,7 @@ start. GEN 1, TO CONFIG and the parking brake were left for the ground (Robin: n
 ### Memos: the line comes first, by 1.2 to 3.6 s
 
 Every change reached the E/WD's line before the entries, the opposite of what Task 3's wait is for. The line's time is good
-to one push, about 60 ms.
+to one push, about 60 ms. (The ground run found why: the list is sampled every 3.84 s, below.)
 
 | Change | Line changed | Entries changed | Entry behind the line |
 | --- | --- | --- | --- |
@@ -36,8 +36,7 @@ to one push, about 60 ms.
 | No smoking back to Auto | 15:29:58.666 | 15:29:59.876 | 1.21 s |
 | Seat belts off | 15:30:14.024 | 15:30:15.225 | 1.20 s |
 
-The entries' messages did not fall on the heartbeat's beat. Whether a real failure lags the same way is for the ground; if it
-does, a warning is spoken up to about 3.6 s after the E/WD draws it.
+The entries' messages did not fall on the heartbeat's beat. A real failure lags the same way (below).
 
 ### What a memo looks like
 
@@ -45,7 +44,7 @@ does, a warning is spoken up to about 3.6 s after the E/WD draws it.
 - No smoking: `Ata` "01- 0-260", `Name` "MEMO-NO SMOKING", `Title` blank, `IsAlert` absent; line "gNO SMOKING".
 - With both on: two entries in that order, and left column "gSEAT BELTS", "gNO SMOKING".
 - **Both memos' lines were in the left column (173), with the right column empty.** The plan looks in the right column first
-  for a memo, then the left, so it still finds them. Whether a memo moves right when a failure holds the left is for the ground.
+  for a memo, then the left, so it still finds them. They do not move right when a failure holds the left: they are not drawn.
 - A blank `Title` is what rule 2 expects: the text is the name after "MEMO-", and it equals the line's joined text.
 
 ### A line with no entry: RCL
@@ -72,10 +71,118 @@ No entries message came. So:
 ### Also seen
 
 During this flight's refuel at the gate the E/WD went "not trusted: fuel disagrees" for about a second, about every 25 s (the
-log's last five, 13:28:42 to 13:30:23, about 100 kg apart), and trusted again each time, without a latch. Each return is a silent baseline under rule 3, so
-an alert that appears inside one of those seconds would go unsaid.
+log's last five, 13:28:42 to 13:30:23, about 100 kg apart), and trusted again each time, without a latch. That build still
+compared the displays with SimConnect; fe58e5df3 removed the comparison (spec row 58), so this no longer happens.
 
-## Still to measure on the ground
+## Task 1 on the ground: A321 IAE at LPPT, 2026-11-04
 
-GEN 1 off and on; TO CONFIG with the flaps up; the parking brake set and released; a memo beside a failure; `LineWaitMs` from
-the failures' gaps; and, if the owner agrees to a fire drill, the `Title` of LAND ASAP's entry and `*AIR BLEED`.
+At the gate, stopped, both engines running, parking brake set, flaps 0, FWC phase 2, Robin's aircraft handed over. Writes went
+through the simconnect MCP (the definition's L:vars, press and release for a button), failures through the failures window's
+own path. The descent and landing are from the same logger, Robin flying. MSFSBA was closed for the ground run.
+
+### The list is sampled on a beat of 3.84 s
+
+Every list message of the day falls on one beat: 90 of the 93 gaps between them are within 100 ms of a whole number of 3.84 s,
+and the other three are a new stream's first message, sent at once, and the aircraft reload at 18:18. The list is sent only if it
+differs from the last sample, and it is the state at that moment: a line that changed 62 ms before a beat had already changed in
+that beat's list (GEN 1 FAULT clearing, 18:24:42.976 and 18:24:43.038).
+
+So every delay below is simply the wait for the next beat, and it runs from 0 to 3.84 s:
+
+| Change | Line changed | Entries changed | Entry behind the line |
+| --- | --- | --- | --- |
+| AP OFF, red, appears | 17:41:54.427 | 17:41:54.670 | 0.24 s |
+| PARK BRK, released | 17:44:11.734 | 17:44:12.934 | 1.20 s |
+| PARK BRK, set | 18:18:50.128 | 18:18:53.549 | 3.42 s |
+| GEN 1 OFF appears | 18:21:07.428 | 18:21:07.967 | 0.54 s |
+| GEN 1 OFF clears | 18:21:34.313 | 18:21:34.854 | 0.54 s |
+| T.O SPEEDS appears | 18:22:04.555 | 18:22:05.577 | 1.02 s |
+| SLATS and FLAPS CONFIG appear | 18:22:39.121 | 18:22:40.140 | 1.02 s |
+| SLATS and FLAPS CONFIG clear | 18:22:52.562 | 18:22:55.502 | 2.94 s |
+| GEN 1 FAULT appears | 18:24:16.573 | 18:24:19.993 | 3.42 s |
+| GEN 1 FAULT clears | 18:24:42.976 | 18:24:43.038 | 0.06 s |
+| ENG 1 FIRE appears | 18:25:06.499 | 18:25:09.919 | 3.42 s |
+| ENG 1 FIRE clears | 18:27:41.079 | 18:27:43.540 | 2.46 s |
+
+**No entry ever came before its line.** The largest entry-to-line gap is therefore none at all, which gives `LineWaitMs` its floor
+of 500 ms under Task 1's rule. An entry whose line never comes is a line the E/WD is not showing (below), not a late one.
+
+What the beat costs:
+
+- A warning is spoken up to 3.84 s after the E/WD draws it. ENG 1 FIRE was 3.42 s behind here; the master warning does not wait.
+- **A warning shorter than the beat can go unsaid.** One press of T.O CONFIG (two writes, one straight after the other) drew the
+  CONFIG warnings from 18:22:03.597 to 18:22:05.035, 1.44 s between two beats, and they never reached the list. Holding the button
+  12 s did list them. The panel's TO CONFIG verdict ([FNX-4]) does not use this list, so it is not affected.
+
+### A failure leaves the list during a power transfer, with the fire still burning
+
+A generator change blanks both E/WD columns for 2.16 s (every one of the eight timed the same, for example 18:21:01.311 to
+18:21:03.467 and 18:24:09.853 to 18:24:12.012), and the FWC page drops back to the cruise page inside it. If a beat falls in that
+blank, **ENG 1 FIRE is missing from that beat's list and is back on the next one**, 3.84 s later, with the
+fire set throughout. Seen twice, in the only two runs with a beat in a blank while the fire was showing:
+
+| Power change | E/WD blank from | List without the fire | Line back | List with the fire |
+| --- | --- | --- | --- | --- |
+| Generator 1 failed | 18:25:58.886 | 18:25:59.846 | 18:26:01.046 | 18:26:03.687 |
+| Generator 1 failure cleared | 18:27:15.877 | 18:27:16.657 | 18:27:18.036 | 18:27:20.498 |
+
+The other failures stayed in those lists (T.O SPEEDS both times, GEN 1 FAULT in the second). The display units' power and content
+(field 12) did not change through a blank (GEN 1 off, 18:32:59.481 to 18:33:01.641), so `EwdLive` stays true and the E/WD stays
+trusted: Task 3's rules as written would say "ENG 1 FIRE cleared", then "ENG 1 FIRE, red" again and interrupting.
+
+### The warnings and cautions
+
+| Entry | `Name` | `Title` | The E/WD's line |
+| --- | --- | --- | --- |
+| "01-24-  5" | ELEC-GEN 1 OFF | ELEC GEN 1 OFF | "uaELECu aGEN 1 OFF" |
+| "01-24-  1" | ELEC-GEN 1 FAULT | ELEC GEN 1 FAULT | "uaELECu aGEN 1 FAULT", then the action lines |
+| "01-26- 10" | FIRE - ENG 1 FIRE | ENG 1 FIRE | "urENG 1 FIREu ", then the action lines |
+| "01-27-180" | FLT CTL-SLATS CONFIG | SLATS NOT IN T.O CONFIG | "urCONFIGu " over "rSLATS NOT IN T.O CONFIG" |
+| "01-27-185" | FLT CTL-FLAPS CONFIG | FLAPS NOT IN T.O CONFIG | "urCONFIGu " over "rFLAPS NOT IN T.O CONFIG" |
+| "01-22-720" | T.O - SPEEDS NOT INSERTED | T.O SPEEDS NOT INSERTED | "uaT.Ou aSPEEDS NOT INSERTED" |
+| "01-22- 15" | AUTO FLIGHT - AP OFF UNVOLUNTARY | AUTO FLT AP OFF | "urAUTO FLTu rAP OFF" |
+
+All with `IsAlert` set. So:
+
+- **Switching GEN 1 off is "ELEC GEN 1 OFF"**; "ELEC GEN 1 FAULT" is the failure (F_ELEC_DRIVE_FAILURE_L).
+- **The CONFIG warnings are two entries, and neither `Title` holds "CONFIG".** Each finds the red line under its heading on its own,
+  so "SLATS NOT IN T.O CONFIG, red" then "FLAPS NOT IN T.O CONFIG, red"; no title measured so far needs the two-line match.
+- The status items came too: "01-24-190" ELEC-STS-GEN 1 INOP and "01-24-370" ELEC-STS-MAIN GALLEY INOP, 3.3 to 4.3 s ahead of the
+  generator's line, as GEN 1 FAULT takes about 6.7 s from the failure to reach the E/WD. "-STS-" entries are never an item, so this
+  says nothing.
+- **A failure the E/WD is not showing has no line.** With the fire showing, GEN 1 FAULT and T.O SPEEDS were in the list and the
+  right column had only "aELEC" and "aT.O". So a failure arriving under a fire is spoken without a color, as spec 2.7 has it.
+- **Entries with `IsAlert` and no `Title`, and with neither, are real:** AP OFF MW, CAPABILITY CHANGE, ALTITUDE ALERT and ATC AUDIO
+  ALERT (RING) have `IsAlert` and a blank `Title`; HUNDRED ABOVE and RETARD ANNOUNCE have neither. They look like the sounds' own
+  entries, and rule 2 reports them and never speaks them.
+- CLR does not touch the list. Two CLR presses took GEN 1 FAULT and T.O SPEEDS off the E/WD (18:30:45.906, 18:31:05.586) with no
+  entries message; GEN 1 FAULT left at 18:31:30.129, after the failure was cleared. So "cleared" means the fault has gone, not that
+  the pilot has dismissed it, and an item's line can go while it stays (rule 8 keeps its last color).
+- LAND ASAP does not show on the ground (the fire's right column was "aT.O"), so its `Title` is still not measured, nor is
+  `*AIR BLEED` as an entry: both need a flight.
+
+### The memos
+
+All had a blank `Title` except the T.O and LDG memos. The lines were in the left column with no failure showing only for
+GND SPLRS ARMED, SEAT BELTS, NO SMOKING and FOB BELOW 3 T; the others are in the right column. With a failure in the left column,
+those four are not drawn at all, though they stay in the list (17:41:54, 18:21:07).
+
+Found by the name after "MEMO-": SEAT BELTS, NO SMOKING, GND SPLRS ARMED, IGNITION, LDG LT, PARK BRK, PRED W/S OFF (green, amber
+from the T.O CONFIG press on), HYD PTU, APU AVAIL, APU BLEED, GPWS FLAP 3, LDG INHIBIT (magenta), and the T.O memo's `Title`
+"T.O AUTO BRK.....MAX" ("guT.Ou AUTO BRKc.....MAX    ").
+
+**Not found by it, as the entry's words are not the E/WD's:**
+
+| `Name` | `Title` | The E/WD draws |
+| --- | --- | --- |
+| MEMO - COMPANY MSG (spaces round the dash) | blank | "gCOMPANY MSG" |
+| MEMO-FUEL < 3 T | blank | "gFOB BELOW 3 T" |
+| MEMO-T.CAS STBY | blank | "gTCAS STBY" |
+| MEMO-T.O. INHIBIT | blank | "mT.O INHIBIT" |
+| MEMO-SPEED BRAKE | blank | "gSPEED BRK", "paSPEED BRK" |
+| MEMO-AUTO BRK | blank | "gAUTO BRK LO" |
+| MEMO-LDG MEMO | "LDG LDG GEAR......DN" | "guLDGu LDG GEAR DN" (the `Title` does not follow the line) |
+
+## Still to measure in flight
+
+LAND ASAP's entry and `Title`, whether its `Name` changes when the line turns from red to amber, and `*AIR BLEED` as an entry.

@@ -88,18 +88,18 @@ engines running; each press only with the owner's go-ahead, the aircraft handed 
 arrival times by the team's local channel tools (ask the owner for a copy, or ask him to run them). Record each result
 in `docs/fenix-channel/evidence/09-ewd-alerts.md`; commit `docs(fenix-channel): the ECAM entries against the E/WD`.
 
-- [ ] GEN 1 off, then on: each entries message (every entry's Ata, Name, Title and IsAlert, the "-STS-" item
+- [x] GEN 1 off, then on: each entries message (every entry's Ata, Name, Title and IsAlert, the "-STS-" item
   included), the left line "uaELECu aGEN 1 FAULT", and the time between the entry and the line, either way round, as
   it appears and as it clears.
-- [ ] TO CONFIG with the flaps up ([FNX-4]'s test): the CONFIG warning's entry and Title (one line or the two measured,
+- [x] TO CONFIG with the flaps up ([FNX-4]'s test): the CONFIG warning's entry and Title (one line or the two measured,
   "urCONFIGu " over "rFLAPS NOT IN T.O CONFIG"), and the same times.
-- [ ] Seat belts sign on and off, parking brake set and released: each memo entry's Title (text or blank) and the
+- [x] Seat belts sign on and off, parking brake set and released: each memo entry's Title (text or blank) and the
   column its line is in.
 - [x] A quiet minute: whether heartbeat messages come, how often, with Heartbeat set or not, and whether they carry the
   entries.
 - [x] From the 2026-11-02 fire drill's notes, if they hold it: whether "*AIR BLEED" came as an entry; otherwise "not
   measured".
-- [ ] What the code does with each result: `LineWaitMs` is the largest entry-to-line gap measured plus 500 ms, kept
+- [x] What the code does with each result: `LineWaitMs` is the largest entry-to-line gap measured plus 500 ms, kept
   between 500 and 2,000 ms (1,000 ms when no gap could be measured). The other results are covered by Task 2's and
   Task 3's rules (a blank memo title, a wrapped title, heartbeats, a line in the other column); only a result outside
   them changes the plan, and it goes in "Changed from the plan". A heartbeat with no entries and Heartbeat not set would
@@ -284,17 +284,19 @@ only).
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** in progress: Task 1's in-flight part done (2026-11-04); its ground part waits on the owner
+- **Status:** in progress: Task 1 done (2026-11-04); Task 3's rules wait on the owner's rulings below
 - **Claimed by:** Robin Kipp (robin24), 2026-11-04
 - **Worked by:** Robin Kipp with Claude
 - **Started:** 2026-11-04, from 1d29a73ee (plan 01's recorded base)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:** 0 done (claim 13062c072); 1 in part: the quiet minute, the seat belts half of the memo check and the fire drill's
-  notes are done.
-- **Waiting on the owner:** Task 1's ground part, at a gate with both engines running: GEN 1 off and on, TO CONFIG with the
-  flaps up, the parking brake set and released.
-- **In-sim results:** 2026-11-04, A321 IAE in cruise: heartbeats, the seat belts and no smoking memos, RCL:
-  `evidence/09-ewd-alerts.md`.
-- **Changed from the plan:**
+- **Tasks:** 0 done (claim 13062c072); 1 done.
+- **Waiting on the owner:** rulings on what Task 1 found: the "cleared" hold, LAND ASAP's row, and the words of the memos whose
+  entries differ from the E/WD.
+- **In-sim results:** 2026-11-04, A321 IAE: in cruise, then the descent and landing, then at the LPPT gate (GEN 1 off and on, the
+  generator failure, TO CONFIG, an engine fire, CLR): `evidence/09-ewd-alerts.md`.
+- **Changed from the plan:** `LineWaitMs` is 500 ms, Task 1's floor: no entry ever came before its line. Task 5's words change with
+  what was measured: switching GEN 1 off is "ELEC GEN 1 OFF" and the failure F_ELEC_DRIVE_FAILURE_L is "ELEC GEN 1 FAULT"; TO CONFIG's
+  warnings are two titles, "SLATS NOT IN T.O CONFIG" and "FLAPS NOT IN T.O CONFIG", each found on its own red line, and a quick press
+  reaches the list only if a 3.84 s beat falls inside it, so that check holds the button down.
 - **Rulings made while working:**
