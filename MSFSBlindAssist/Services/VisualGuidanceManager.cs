@@ -259,15 +259,40 @@ public class VisualGuidanceManager : IDisposable
     internal static double AoaDegreesFromSimConnect(double radians) => radians * 180.0 / Math.PI;
 
     /// <summary>
-    /// Gets the current target FPM for the approach
+    /// What F says (VG-22): the phase, the sideways position, then the vertical, for example "On
+    /// final, 6.2 miles. On the centreline. 40 feet high, target 750 down."
+    /// (<see cref="VisualGuidanceStatusText"/>). Before the first update has placed the aircraft,
+    /// "Visual guidance starting." The altitude error and target descent rate are the last
+    /// update's; the position is the latest SimConnect gave.
     /// </summary>
-    public double GetTargetFPM() => lastCalculatedTargetFPM;
+    public string GetStatusReadout()
+    {
+        var phase = currentPhase switch
+        {
+            GuidancePhase.Extending => VisualGuidanceReadoutPhase.Extending,
+            GuidancePhase.Intercepting => VisualGuidanceReadoutPhase.Intercepting,
+            GuidancePhase.Final or GuidancePhase.GlideslopeTracking => VisualGuidanceReadoutPhase.OnFinal,
+            GuidancePhase.Flare => VisualGuidanceReadoutPhase.Flare,
+            GuidancePhase.Touchdown => VisualGuidanceReadoutPhase.Touchdown,
+            _ => VisualGuidanceReadoutPhase.Starting,
+        };
+        if (phase == VisualGuidanceReadoutPhase.Starting || runway == null
+            || cachedLatitude is not double lat || cachedLongitude is not double lon || cachedAltMSL is not double altMSL)
+            return VisualGuidanceStatusText.Compose(new VisualGuidanceStatus(VisualGuidanceReadoutPhase.Starting, 0, 0, 0, 0, 0, 0));
 
-    /// <summary>
-    /// Gets the current altitude deviation from the calculated glideslope profile in feet
-    /// (positive = above profile/high, negative = below profile/low)
-    /// </summary>
-    public double GetAltitudeDeviation() => lastCalculatedAltitudeError;
+        // Signed as the lateral law takes it: + right of the centreline facing the runway.
+        double crossTrackNm = Math.Sign(NavigationCalculator.CalculateCrossTrackError(lat, lon, runway.StartLat, runway.StartLon, runway.Heading))
+            * NavigationCalculator.CalculateDistanceToLocalizer(lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
+        var status = new VisualGuidanceStatus(
+            phase,
+            DistanceNm: NavigationCalculator.CalculateDistance(lat, lon, runway.StartLat, runway.StartLon),
+            CrossTrackNm: crossTrackNm,
+            AltitudeErrorFt: lastCalculatedAltitudeError,
+            TargetFpm: lastCalculatedTargetFPM,
+            WheelHeightFt: altMSL - thresholdElevationMSL - flareAltitudeBiasFt,
+            ExtensionHeadingMag: CalculateExtensionHeading());
+        return VisualGuidanceStatusText.Compose(status);
+    }
 
     /// <summary>
     /// Guidance phases from approach to touchdown

@@ -41,6 +41,9 @@ internal sealed class VisualGuidanceTestRig
     public double Bank => _vg.DesiredBankForHarness;
     public double Pitch => _vg.DesiredPitchForHarness;
 
+    /// <summary>What F would say now (<see cref="VisualGuidanceManager.GetStatusReadout"/>).</summary>
+    public string Readout => _vg.GetStatusReadout();
+
     /// <summary>
     /// alongNm back from the threshold, crossNm right of the centreline, heading and track course +
     /// headingRelDeg, 140 kt; bankDeg right wing down positive (fed to the manager as SimConnect's

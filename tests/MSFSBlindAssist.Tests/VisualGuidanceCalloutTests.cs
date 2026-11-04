@@ -36,4 +36,25 @@ public class VisualGuidanceCalloutTests
         rig.FlyFor(20, 30, t => rig.Place(6, 0.3 - 0.03 * t, 0));
         Assert.DoesNotContain(rig.Speech.All, s => s.EndsWith("of center", StringComparison.Ordinal) || s == "on runway center");
     }
+
+    // F pressed in the first moment after Ctrl+V, before any update has placed the aircraft.
+    [Fact]
+    public void Before_the_first_update_the_readout_says_starting()
+    {
+        var rig = new VisualGuidanceTestRig();
+        rig.Place(8, 0, 0);
+        Assert.Equal("Visual guidance starting.", rig.Readout);
+    }
+
+    // Cross-track is positive right of the centreline facing the runway (for runway 09, south).
+    [Theory]
+    [InlineData(0.2, "On final, 6.0 miles. 0.2 miles right of the centreline.")]
+    [InlineData(-0.2, "On final, 6.0 miles. 0.2 miles left of the centreline.")]
+    public void Right_of_the_centreline_reads_right(double crossNm, string expectedStart)
+    {
+        var rig = new VisualGuidanceTestRig();
+        rig.Place(6, crossNm, 0);
+        rig.UpdateAt(0);
+        Assert.StartsWith(expectedStart, rig.Readout);
+    }
 }

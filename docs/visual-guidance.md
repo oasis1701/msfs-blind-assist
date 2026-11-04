@@ -53,7 +53,7 @@ The single-letter no-modifier hotkeys are **shared** between HandFly and visual 
 | B | Read bank angle |
 | P | Read pitch |
 | A | Read altitude (MSL) |
-| F | Read target FPM (visual guidance) |
+| F | Visual guidance status: phase, sideways position, vertical (VG-22) |
 
 Registration is reference-counted inside `HotkeyManager.AcquireQuickAccessHotkeys` / `ReleaseQuickAccessHotkeys`: the first mode (HandFly or VG) to activate registers all 9 keys; the second mode bumps the ref count without re-registering; whichever mode deactivates last releases the keys. Per-key partial-failure tracking means a key that was unavailable on first try (some other app holding it) will be retried on the next acquire. WM_HOTKEY dispatch is unified — same `case` for each key regardless of which mode is active. Pressing F in HandFly-only mode triggers `ReadTargetFPM`, whose handler self-gates on `visualGuidanceManager.IsActive` and announces *"Visual guidance not active"* if appropriate.
 
@@ -71,6 +71,10 @@ The two axes are **independent and continuous** — the pilot is not "first cent
 ### Sign-convention gotcha (bank)
 
 `AudioToneGenerator.UpdateBank` follows the standard convention **positive = right wing down → pan right**. The PID's `desiredBank` output already uses this convention, so the desired tone passes it straight through. SimConnect's `PLANE_BANK_DEGREES`, however, is left-positive — `VisualGuidanceManager.cachedBank` stores the raw SimConnect value. **Always** route `cachedBank` through `VisualGuidanceManager.StandardBank(double)` before passing it to any tone API or computing a bank error. The helper just returns `-simConnectBank` but its name documents the conversion at every call site. `HandFlyManager` does its own inline negation; `AnnounceBankGuidance` and the dual-tone update path both go through `StandardBank`. Forget the conversion and the current tone pans opposite the airplane's actual bank — matching the pans steers the pilot the wrong way.
+
+### F: the status readout
+
+F (`HotkeyAction.ReadTargetFPM`, the name kept from when it read the target descent rate) speaks `GetStatusReadout()`, composed by the pure `VisualGuidanceStatusText.Compose` (VG-22): the phase, the sideways position, then the vertical, e.g. *"On final, 6.2 miles. On the centreline. 40 feet high, target 750 down."* Distance is straight-line to the threshold; cross-track is signed as the lateral law takes it (+ right of the centreline facing the runway); the altitude error and target descent rate are the last update's; the flare reads the wheel height (`altMSL − threshold − FlareAltitudeBiasFt`). "On the centreline" is within 0.05 nm, "On path" within 30 ft; heights round to 10 ft and rates to 50 fpm, all culture-invariant. Before the first update, *"Visual guidance starting."* Whatever visual guidance speaks on its own in a phase belongs in that phase's readout. F stays a quick-access key only: Output mode's F is Fuel Quantity.
 
 ### Bank callouts
 

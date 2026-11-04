@@ -355,15 +355,9 @@ public partial class MainForm
             case HotkeyAction.ReadTargetFPM:
                 if (visualGuidanceManager.IsActive)
                 {
-                    double targetFPM = visualGuidanceManager.GetTargetFPM();
-                    double altitudeDeviation = visualGuidanceManager.GetAltitudeDeviation();
-
-                    // Format: "target -600, 1200 high" or "target -200, 1580 low"
-                    string deviationText = altitudeDeviation >= 0
-                        ? $"{Math.Abs(altitudeDeviation):F0} high"
-                        : $"{Math.Abs(altitudeDeviation):F0} low";
-
-                    announcer.AnnounceImmediate($"target {targetFPM:F0}, {deviationText}");
+                    // The phase, the sideways position, then the vertical (VG-22), e.g.
+                    // "On final, 6.2 miles. On the centreline. 40 feet high, target 750 down."
+                    announcer.AnnounceImmediate(visualGuidanceManager.GetStatusReadout());
                 }
                 else
                 {

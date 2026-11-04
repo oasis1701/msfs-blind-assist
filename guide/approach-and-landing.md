@@ -161,7 +161,15 @@ To switch Visual Guidance off yourself, press Output Ctrl+V again. If you press 
 
 ### Quick-access keys {#land-vg-keys}
 
-While Visual Guidance is on, the single-letter keys of [Hand Fly mode](takeoff-climb-and-cruise.md#hand-fly-quick-keys) (A, S, D, H, P, B, Q and V) work with no bracket key first, plus F. F tells you the descent rate the guidance is asking for and how far you are above or below the ideal glide path, for example *"target -700, 40 high"* (aim for 700 feet per minute down; you are 40 feet above the path) or *"target -500, 120 low"*. If you press F when Visual Guidance is off, BA says *"Visual guidance not active"*.
+While Visual Guidance is on, the single-letter keys of [Hand Fly mode](takeoff-climb-and-cruise.md#hand-fly-quick-keys) (A, S, D, H, P, B, Q and V) work with no bracket key first, plus F.
+
+F tells you where you are: the guidance phase first, then your position left or right of the centreline, then how high or low you are against the glide path and the descent rate the guidance wants. For example:
+
+- *"On final, 4.2 miles. On the centreline. 40 feet high, target 700 down."* You are 4.2 miles from the threshold, lined up, 40 feet above the path; aim for 700 feet per minute down.
+- *"Intercepting final, 8.2 miles out. 1.2 miles right of the centreline. 200 feet low, target level."* You are still joining the centreline from its right, and low, so the guidance wants level flight until the path comes down to you.
+- *"Flare, 20 feet. On the centreline."* Your wheels are 20 feet above the runway.
+
+*"On path"* means within about 30 feet of the glide path, and *"On the centreline"* within about 300 feet of it. Left and right are your aircraft's position relative to the extended centreline as you face the runway. Pressed in the first moment after you switch Visual Guidance on, before BA has your position, F says *"Visual guidance starting."* If you press F when Visual Guidance is off, BA says *"Visual guidance not active"*.
 
 When you press any of these keys, BA holds back its bank callouts for three seconds so your answer is not cut off.
 
