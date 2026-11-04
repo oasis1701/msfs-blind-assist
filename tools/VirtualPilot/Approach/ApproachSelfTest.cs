@@ -39,6 +39,9 @@ static class ApproachSelfTest
             ("noise-feed-only", NoiseFeedOnlyCheck),
             ("noise-deterministic", NoiseDeterministicCheck),
             ("touchdown-sink", TouchdownSinkCheck),
+            ("knock-moves-bank", KnockMovesBankCheck),
+            ("speech-pilot-holds-without-a-callout", SpeechPilotHoldsCheck),
+            ("gust-measured", GustMeasuredCheck),
         };
 
         int failures = 0;
@@ -287,7 +290,57 @@ static class ApproachSelfTest
     {
         var all = ApproachScenarios.All();
         int unique = all.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count();
-        return all.Count == 151 && unique == 151 ? null : $"{all.Count} scenarios, {unique} unique names; expected 151";
+        return all.Count == 159 && unique == 159 ? null : $"{all.Count} scenarios, {unique} unique names; expected 159";
+    }
+
+    // A gust rolls the aircraft; the pilot, holding wings level against a level command, only learns
+    // of it a reaction delay later (1.0 s here), so the next step still shows the full knock, and it
+    // is back level a few seconds on.
+    private static string? KnockMovesBankCheck()
+    {
+        var pilot = JetPilot(1.0, 0, 0);
+        FlyPilot(pilot, 0, 2, 0, 0, NoSpeech);
+        pilot.Knock(-2);
+        double t = 2 + PilotDt;
+        var problems = new List<string>();
+        var next = pilot.Step(t, PilotDt, 0, 0, NoSpeech);
+        if (Math.Abs(next.BankStd - -2.0) > 0.01) problems.Add($"bank on the next step {F(next.BankStd)}, expected -2.0 ±0.01");
+        var later = FlyPilot(pilot, t + PilotDt, t + 4, 0, 0, NoSpeech, t + 4);
+        if (Math.Abs(later[t + 4].Bank) > 0.5) problems.Add($"bank 4 s after the knock {F(later[t + 4].Bank)}, expected within 0.5 of 0");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // The speech-led pilot steers the bank by callouts alone: inside the tone's range, with no
+    // callout, it holds its bank; "3 right" takes it 3° right.
+    private static string? SpeechPilotHoldsCheck()
+    {
+        var profile = new MSFSBlindAssist.Aircraft.VisualGuidanceProfile();
+        TonePilot SpeechPilot() => new(ApproachAircraftKind.Jet, profile, 0.5, 0, 0, bankBySpeech: true);
+        var problems = new List<string>();
+        var quiet = FlyPilot(SpeechPilot(), 0, 3, 3, 0, NoSpeech, 3.0);
+        if (quiet[3.0].Bank != 0) problems.Add($"with no callout the bank at 3 s is {F(quiet[3.0].Bank)}, expected 0");
+        var speech = new List<(double T, string Text, bool Immediate)> { (0.5, "3 right", true) };
+        var told = FlyPilot(SpeechPilot(), 0, 3, 3, 0, speech, 3.0);
+        if (Math.Abs(told[3.0].Bank - 3) > 0.5) problems.Add($"after \"3 right\" the bank at 3 s is {F(told[3.0].Bank)}, expected 3 ±0.5");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // A gust run writes the three gust measures; a run without gusts writes NA for them.
+    private static string? GustMeasuredCheck()
+    {
+        string Field(string line, string key) => line.Split('|').FirstOrDefault(f => f.StartsWith(key + "=", StringComparison.Ordinal))?[(key.Length + 1)..] ?? "missing";
+        var keys = new[] { "gustCalloutDelayS", "gustRecoveryS", "gustXteMaxFt" };
+        var problems = new List<string>();
+        const string gust = "GUST-A-JET-g2-tone", plain = "FINAL-A-JET-x0-h0-d0.5";
+        string g = ApproachRunner.RunOne(Scenario(gust), trace: null).ToResultsLine(gust);
+        string p = ApproachRunner.RunOne(Scenario(plain), trace: null).ToResultsLine(plain);
+        foreach (string key in keys)
+        {
+            string v = Field(g, key);
+            if (!double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out _)) problems.Add($"{gust} {key}={v}, expected a number");
+            if (Field(p, key) != "NA") problems.Add($"{plain} {key}={Field(p, key)}, expected NA");
+        }
+        return problems.Count == 0 ? null : string.Join("; ", problems);
     }
 
     // The rate measure does not depend on the sample rate for a smooth series: a ramp of 2 per

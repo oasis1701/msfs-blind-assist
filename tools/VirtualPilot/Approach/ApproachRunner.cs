@@ -16,6 +16,24 @@ static class ApproachRunner
     private static readonly DateTime ClockStart = new(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+    /// <summary>When a gust scenario's gusts start, in simulated seconds: left, right, left.</summary>
+    public static readonly double[] GustAtS = { 40, 80, 120 };
+    private static readonly int[] GustSigns = { -1, +1, -1 };
+
+    /// <summary>Each gust's knock is spread evenly over this many seconds of frames.</summary>
+    public const double GustRampS = 0.3;
+
+    /// <summary>The first frame of each gust (<see cref="GustAtS"/> rounded to a frame) and its time, as the frame loop computes it.</summary>
+    public static IEnumerable<(long Frame, double T, int Sign)> GustStarts(ApproachScenario sc)
+    {
+        double dt = 1.0 / sc.Fps;
+        for (int k = 0; k < GustAtS.Length; k++)
+        {
+            long frame = (long)Math.Round(GustAtS[k] * sc.Fps);
+            yield return (frame, frame * dt, GustSigns[k]);
+        }
+    }
+
     public static int Run(Options opt)
     {
         if (opt.SelfTest) return ApproachSelfTest.Run();
@@ -82,7 +100,9 @@ static class ApproachRunner
             // wind is relative to the threshold's course.
             var ac = new ApproachAircraft(sc.Kind, rwy, lat, lon, alt, ApproachRunways.LocalCourse(rwy, lat, lon) + sc.HeadingRelDeg,
                 course + sc.WindFromRelDeg, sc.WindKt, sc.TasKt, startGamma);
-            var pilot = new TonePilot(sc.Kind, profile, sc.ReactionDelayS, 0.0, ac.PitchDeg);
+            var pilot = new TonePilot(sc.Kind, profile, sc.ReactionDelayS, 0.0, ac.PitchDeg, sc.BankBySpeech);
+            var gusts = sc.GustBankDeg > 0 ? GustStarts(sc).ToList() : new List<(long Frame, double T, int Sign)>();
+            int rampFrames = Math.Max(1, (int)Math.Round(GustRampS * sc.Fps));
             var metrics = new ApproachMetrics(sc, profile);
             // Noise reaches only what visual guidance reads; the aircraft, metrics and trace stay true.
             var noise = sc.SensorNoise ? new ApproachSensorNoise(ApproachSensorNoise.Seed) : null;
@@ -115,6 +135,13 @@ static class ApproachRunner
                 {
                     pilot.FreezePitch(ac.PitchDeg - PitchStepDeg);
                     stepped = true;
+                }
+                // A gust: its share of the knock this frame, before the pilot steps.
+                foreach (var g in gusts)
+                {
+                    if (frame < g.Frame || frame >= g.Frame + rampFrames) continue;
+                    if (frame == g.Frame) trace?.Invoke($"      gust {(g.Sign * sc.GustBankDeg).ToString("+0;-0", Inv)}° over {GustRampS.ToString("0.0", Inv)} s");
+                    pilot.Knock(g.Sign * sc.GustBankDeg / rampFrames);
                 }
                 var (bank, pitch) = pilot.Step(t, dt, vg.DesiredBankForHarness, vg.DesiredPitchForHarness, speech.Lines);
                 ac.Step(dt, bank, pitch);

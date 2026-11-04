@@ -96,6 +96,14 @@ for name in common:
     rise(name, x, y, 'bankRateRmsDegS', lambda b, a: a > b * 1.2, lambda b, a: a < b * 0.8, '{:.4f}')
     rise(name, x, y, 'bankCalloutsPerMin', lambda b, a: a > b * 1.2, lambda b, a: a < b * 0.8, '{:.2f}')
 
+    # Gust runs: the first callout after a knock later by more than 0.3 s; recovery slower by 20 %;
+    # the cross-track after a knock up by 10 % and 15 ft.
+    rise(name, x, y, 'gustCalloutDelayS', lambda b, a: a - b > 0.3, lambda b, a: b - a > 0.3, '{:.2f}')
+    rise(name, x, y, 'gustRecoveryS', lambda b, a: a > b * 1.2, lambda b, a: a < b * 0.8, '{:.2f}')
+    rise(name, x, y, 'gustXteMaxFt',
+         lambda b, a: a > b * 1.1 and a - b > 15,
+         lambda b, a: a < b / 1.1 and b - a > 15)
+
     # A command that starts running away from the pilot reads as a smaller magnitude, so a sign
     # change is always worse, whatever the magnitudes do.
     b, a = num(x, 'selfFeedback10s'), num(y, 'selfFeedback10s')

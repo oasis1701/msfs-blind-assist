@@ -45,7 +45,7 @@ tools/VirtualPilot/bin/x64/Release/net10.0-windows/VirtualPilot.exe <mode> [opti
 | `wrongturn` | follows a gate → runway route, then deliberately turns into a branch that leads to a runway hold line not on the route; the app must say "off route" first |
 | `all` | landings + taxi |
 | `departures` | per runway end: named (OSM) holding-point departures (`HP`, flown free and on a clearance), intersection departures (`IX`), full-length backtracks where the runway list would say "(backtrack required)" (`BT`); per airport: gate → gate taxis across the field (`G2G`) and ATC clearances with explicit "hold short of runway X" instructions (`HSCLR`) — each also voiced as a written and a spoken-NATO clearance and fed to the SayIntentions import's own parser (`CLR_*`) |
-| `approach` | visual guidance (Output Ctrl+V): 151 simulated approaches through the real `VisualGuidanceManager`, flown by a pilot who follows the two tones and the bank callouts, on two synthetic runways (no navdata database needed). See [Approaches](#approaches-visual-guidance) |
+| `approach` | visual guidance (Output Ctrl+V): 159 simulated approaches through the real `VisualGuidanceManager`, flown by a pilot who follows the two tones and the bank callouts, on two synthetic runways (no navdata database needed). See [Approaches](#approaches-visual-guidance) |
 | `fetchosm` | downloads the raw Overpass answer for each airport into `runs/_osm/ICAO.json` (one polite request at a time — Overpass rate-limits hard, expect ~1 airport a minute). Every mode then builds the app's OWN OSM-augmented graph from that snapshot (names, holding points); `VP_NOOSM=1` flies plain navdata, `VP_OSMDIR` points elsewhere. The snapshot pins the data so a before/after run measures the code, not OSM churn |
 
 Options: `--airports N` (busiest by taxi-path count, default 100), `--icao A,B`, `--shard i/n`
@@ -170,6 +170,14 @@ a reaction delay of 0.5 or 1.0 s, cannot hear a difference under 0.5° of bank o
 and closes the rest with a time constant of 0.5 s (bank) and 0.7 s (pitch), capped at the roll
 and pitch rates above.
 
+The speech-led pilot (`bankBySpeech`, the GUST family's `speech` runs) stands for a pilot who
+leans on the callouts: its bank target is always the latest bank callout of the last 2 s, and with
+none it holds its bank, even inside the tone's range. Its pitch still follows the tone. A gust
+(`TonePilot.Knock`) rolls the aircraft at once, but the pilot learns of it only through what it
+hears after it, a reaction delay later: until then it steers the bank it perceives, the actual bank
+less the knock it has not yet heard. Without a knock the pilot's arithmetic is the same as before
+gusts existed, to the bit.
+
 Each frame the harness feeds visual guidance in MainForm's order (AGL last, which calls
 `ProcessUpdate`), records the aircraft state with the command it produced, then steps the pilot
 and the aircraft.
@@ -191,6 +199,7 @@ and the reaction delay 0.5 and 1.0 s.
 | Step | `STEP-A-{JET,LIGHT}` | 6 nm out on the path; at 40 s the pilot holds 1° below their pitch for 10 s | 2 |
 | Speed | `SPEED-A-{JET160,LIGHT90}-{R45,x0.2R-h+200}-d0.5` | the 45° intercept and an offset final at 160 kt (jet) and 90 kt (light) | 4 |
 | Noise | `NOISE-A-{JET,LIGHT}-f{30,60}` | the `FINAL-A-…-x0.2R-h+200` start with the 0.5 s pilot, at 30 and 60 frames a second, with sensor noise on what visual guidance reads | 4 |
+| Gust | `GUST-A-{JET,LIGHT}-g{2,4}-{tone,speech}` | the `FINAL-A-…-x0-h0` start with the 0.5 s pilot; at 40, 80 and 120 s a gust knocks the aircraft 2° or 4° left, right, left, each spread over 0.3 s of frames; `tone` is the tone-following pilot, `speech` the speech-led one | 8 |
 
 The noise (`ApproachSensorNoise`) adds independent Gaussian noise every frame to the vertical speed
 (σ 30 fpm), the angle of attack (σ 0.2°) and the ground track (σ 0.2°), from one fixed seed per run,
@@ -223,6 +232,9 @@ culture, `NA` where a measure does not apply.
 | `maxDescentFpm` | the largest descent rate of the run |
 | `bankCalloutsPerMin`, `centrelineCalloutsPerMin`, `otherCallouts` | spoken lines by kind |
 | `cutOffCallouts` | lines followed by an interrupting line before their estimated end (words / 2.5 + 0.2 s; a measure only, never an app timing, VG-1) |
+| `gustCalloutDelayS` | gust runs only: the mean over the knocks of the time from a knock's start to the first bank callout after it; a knock with none within 10 s counts 10 |
+| `gustRecoveryS` | gust runs only: the mean over the knocks of the time from a knock's start until the aircraft's bank has stayed within 1° of the commanded bank for 1 s, counted at the start of that second; 30 if it never does within 30 s. The band is twice the pilot's 0.5° deadband: at 0.5° the pilot settles just inside the band's edge, the slowly moving command pushes it out before the second is up, and the measure read 11 s for a jet back level 2 s after a 2° knock |
+| `gustXteMaxFt` | gust runs only: the largest cross-track within 30 s after any knock |
 | `selfFeedback3s`, `selfFeedback10s` | step runs only: how far the command moved, 3 and 10 s after the step, per degree the pilot pitched, against its mean over the 2 s before. Positive means the command followed the pilot down; negative means it moved the other way |
 
 ### Running and comparing
@@ -233,13 +245,15 @@ VirtualPilot.exe approach [--scenario TEXT] [--out file]
 VirtualPilot.exe approach --trace NAME
 ```
 
-`--selftest` runs 26 checks of the harness itself: turn rate and direction, the 3° descent rate,
+`--selftest` runs 29 checks of the harness itself: turn rate and direction, the 3° descent rate,
 wind drift, the SimConnect signs, the north wrap, the runway geometry, great-circle flight, the
 pilot's delay, roll rate, deadband and saturation, speech timestamps, the frame-rate runs, results
 under a Swedish culture, the matrix size, the step measures, wheel contact, the run ending past the
 runway, mirror-image downwinds, the landing classes, the rate measure reading the same at 20, 30
 and 60 Hz, the noise touching only its three values with the stated spreads, a noisy run
-repeating exactly, and the touchdown sink rate written for a landing and `NA` otherwise. The
+repeating exactly, the touchdown sink rate written for a landing and `NA` otherwise, a knock that
+the pilot has not yet heard staying on the bank, the speech-led pilot holding its bank without a
+callout and following "3 right", and the gust measures written for a gust run and `NA` otherwise. The
 downwind mirror check counts passing the runway's far end and touching down within 100 ft of it as
 the same ending, since which line the last frame crosses first is a coincidence of that frame. `--scenario` runs every scenario
 whose name contains the text. `--trace` prints one scenario every half simulated second (phase,
@@ -251,8 +265,9 @@ change counts as worse when `established` goes from True to False, `endReason` l
 `finalXteRmsFt` or `pathRmsFt` rises by more than 10 % and 15 ft, `overshootFt` by 100 ft,
 `maxDescentFpm` by 200, `touchdownVsFpm` by 100, `pitchJitterDeg`, `pitchRateRmsDegS`, `bankRateRmsDegS` or
 `bankCalloutsPerMin` by 20 %, `|selfFeedback10s|` by
-0.1, `selfFeedback10s` changes sign, or the touchdown point moves more than 25 ft farther from the
-centreline. Better is the mirror of each, except that a sign change is always worse. A third list,
+0.1, `selfFeedback10s` changes sign, the touchdown point moves more than 25 ft farther from the
+centreline, `gustCalloutDelayS` rises by more than 0.3 s, `gustRecoveryS` by 20 %, or
+`gustXteMaxFt` by 10 % and 15 ft. Better is the mirror of each, except that a sign change is always worse. A third list,
 `CHANGED`, has the moves with no single right direction: the touchdown point moving more than
 300 ft along the runway, and the end reason changing between two outcomes neither of which is a
 touchdown. The harness is deterministic: two runs of one build compare as `BETTER {}`, `WORSE {}`
@@ -308,7 +323,14 @@ identical to the stage-1 baseline's; `compare_approach.py` prints `BETTER {}`, `
 2 runs past the runway's end (the light aircraft). Stage 2's review then added `touchdownVsFpm`, so
 the baseline was flown once more the same way (`approach_baseline_v3`, at b6f2b03e6's harness): its
 lines are identical to v2's apart from the new key. Sink at touchdown: jet median 377 fpm (69
-landings, at most 564), light median 80 fpm (19 landings). Later stages compare against v3.
+landings, at most 564), light median 80 fpm (19 landings).
+
+Stage 3 added the GUST family and the three gust measures, so the baseline was flown once more
+(`approach_baseline_v4`): a worktree at c2d7510df, whose app code is the stage-1 app's, with the
+stage-3 harness copied in. With the three gust keys left out, its 151 old lines are textually
+identical to v3's; the 8 GUST lines are new. The stage-2 code was flown with the same harness
+(`approach_stage2_v2`), and its 151 old lines are identical to `approach_stage2`'s the same way.
+Later stages compare against v4.
 
 - `pitchRateRmsDegS` on the clean jet final: 0.153, 0.275 and 0.761°/s at 20, 30 and 60 frames a
   second. A command that ran on real time would read about the same at all three.
@@ -432,6 +454,30 @@ Every other `WORSE` and `CHANGED` line, explained:
 - Self-feedback: the jet's command moves 0.18° the other way per degree pitched after 3 s (0.67
   before) and 1.37° after 10 s (1.52); the light aircraft's 0.09 and 0.69 (0.42 and 0.74). The
   vertical-speed law still runs away from the pilot over 10 s; stage 4 replaces it.
+
+### Gusts with today's callouts (2026-11-04)
+
+The GUST runs flown on the stage-2 code (`approach_stage2_v2`), before stage 3 changes when bank
+callouts are spoken. These are the numbers stage 3's callout gate is measured against.
+
+| run | first callout after a knock (s) | recovery (s) | worst cross-track after a knock (ft) | bank callouts a minute | lines cut off |
+|---|---|---|---|---|---|
+| jet, 2°, tone | 0.09 | 1.10 | 26.8 | 29.4 | 85 |
+| jet, 2°, speech | 0.08 | 2.08 | 57.5 | 11.7 | 27 |
+| jet, 4°, tone | 0.07 | 1.57 | 34.0 | 26.0 | 75 |
+| jet, 4°, speech | 0.04 | 10.91 | 50.3 | 14.6 | 38 |
+| light, 2°, tone | 0.12 | 1.13 | 26.1 | 13.9 | 57 |
+| light, 2°, speech | 0.07 | 1.13 | 30.9 | 10.7 | 39 |
+| light, 4°, tone | 0.04 | 1.56 | 25.3 | 19.7 | 83 |
+| light, 4°, speech | 0.04 | 11.28 | 29.2 | 16.8 | 64 |
+
+Today's callouts answer a knock within about a tenth of a second, while it is still building: a 4°
+knock is spoken as "1 right", "2 right", "3 right", "4 right" within 0.27 s, each line cutting off
+the one before. The speech-led pilot takes about 11 s to recover from a 4° knock because of what
+today's callouts leave out: once they have said "1 right", they stay silent while the error rounds
+to the same 1, so in `GUST-A-JET-g4-speech` the pilot held about 1.4° short of the command from
+41.4 to 46.6 s, until "2 right". The light runs end past the runway's far end, as their `FINAL-A`
+twins do (the fixed flare's balloon).
 
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 

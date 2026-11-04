@@ -8,12 +8,15 @@ namespace VirtualPilot.Approach;
 /// cross is + right of the extended centreline facing the runway; the height offset is from the
 /// 3° path's height at the start (<see cref="ApproachRunways.PathMslFt"/>). With
 /// <paramref name="SensorNoise"/>, visual guidance reads its inputs through <see cref="ApproachSensorNoise"/>.
+/// With <paramref name="GustBankDeg"/> above 0, gusts knock the aircraft that many degrees left,
+/// right and left (<see cref="ApproachRunner.GustAtS"/>); with <paramref name="BankBySpeech"/> the
+/// pilot steers the bank by the callouts alone (<see cref="TonePilot"/>).
 /// </summary>
 sealed record ApproachScenario(string Name, ApproachRunway Runway, ApproachAircraftKind Kind, double AlongNm, double CrossNm,
     double HeadingRelDeg, double HeightOffsetFt, double WindFromRelDeg, double WindKt, int Fps, double ReactionDelayS,
-    double? PitchStepAtS, double? TasKt, bool SensorNoise = false);
+    double? PitchStepAtS, double? TasKt, bool SensorNoise = false, double GustBankDeg = 0, bool BankBySpeech = false);
 
-/// <summary>The scenario matrix: 151 approaches in eight families (docs/virtual-pilot.md, "Approaches").</summary>
+/// <summary>The scenario matrix: 159 approaches in nine families (docs/virtual-pilot.md, "Approaches").</summary>
 static class ApproachScenarios
 {
     private static readonly double[] Delays = { 0.5, 1.0 };
@@ -111,6 +114,14 @@ static class ApproachScenarios
         foreach (var k in kinds)
             foreach (int fps in new[] { 30, 60 })
                 list.Add(Final($"NOISE-A-{KindName(k)}-f{fps}", a, k, 0.2, 200, 0.5, fps, noise: true));
+
+        // Gust: on the centreline and the path, knocked 2° and 4° left, right, left on final, with
+        // the tone-following pilot and with one who steers the bank by the callouts alone.
+        foreach (var k in kinds)
+            foreach (double g in new[] { 2.0, 4.0 })
+                foreach (bool bySpeech in new[] { false, true })
+                    list.Add(Final($"GUST-A-{KindName(k)}-g{Inv(g, "0")}-{(bySpeech ? "speech" : "tone")}", a, k, 0, 0, 0.5)
+                        with { GustBankDeg = g, BankBySpeech = bySpeech });
         return list;
     }
 }

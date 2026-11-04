@@ -20,7 +20,14 @@ sealed class ApproachMetrics
     private static readonly Regex BankCallout = new(@"^(\d+ (left|right)|matched|On commanded path)$", RegexOptions.CultureInvariant);
 
     private readonly record struct Sample(double T, double Along, double Cross, double TrackErr, double PathErr, double Vs,
-        double DesiredPitch, double DesiredBank);
+        double DesiredPitch, double DesiredBank, double Bank);
+
+    // Gust measures: a knock with no bank callout within this long counts this long; recovery and
+    // the cross-track are looked for within the window after a knock. The recovered band is 1°, twice
+    // the pilot's 0.5° deadband: at 0.5° the pilot settles just inside the band's edge, the slowly
+    // moving command pushes it out again before the 1 s hold completes, and the measure read the
+    // deadband's limit cycle (11 s for a jet back level 2 s after a 2° knock) instead of the recovery.
+    private const double GustCalloutCapS = 10.0, GustWindowS = 30.0, GustRecoveredBandDeg = 1.0, GustRecoveredHoldS = 1.0;
 
     private readonly ApproachScenario _sc;
     private readonly VisualGuidanceProfile _profile;
@@ -43,7 +50,7 @@ sealed class ApproachMetrics
         var (along, cross) = ApproachRunways.Locate(r, ac.Lat, ac.Lon);
         double trackErr = ((ac.TrackTrueDeg - r.Runway.Heading) % 360 + 540) % 360 - 180;
         double pathErr = ac.AltMslFt - ApproachRunways.PathMslFt(r, along, _profile);
-        _samples.Add(new Sample(t, along, cross, trackErr, pathErr, ac.VsFpm, vg.DesiredPitchForHarness, vg.DesiredBankForHarness));
+        _samples.Add(new Sample(t, along, cross, trackErr, pathErr, ac.VsFpm, vg.DesiredPitchForHarness, vg.DesiredBankForHarness, ac.BankStdDeg));
     }
 
     /// <summary>Ends the run and computes every measure.</summary>
@@ -92,6 +99,15 @@ sealed class ApproachMetrics
         Put("centrelineCalloutsPerMin", centreline / minutes, "0.00");
         Put("otherCallouts", speech.Count - bank - centreline, "0");
         Put("cutOffCallouts", CutOff(speech), "0");
+
+        // Gust runs only: the knocks that started before the run ended.
+        var knocks = _sc.GustBankDeg > 0
+            ? ApproachRunner.GustStarts(_sc).Where(g => g.T < t).Select(g => g.T).ToList()
+            : new List<double>();
+        bool gusty = knocks.Count > 0;
+        Put("gustCalloutDelayS", gusty ? knocks.Average(k => GustCalloutDelay(k, speech)) : null, "0.00");
+        Put("gustRecoveryS", gusty ? knocks.Average(GustRecovery) : null, "0.00");
+        Put("gustXteMaxFt", gusty ? knocks.Max(k => _samples.Where(s => s.T >= k && s.T <= k + GustWindowS).Select(s => Math.Abs(s.Cross)).DefaultIfEmpty(0).Max()) * FtPerNm : null, "0.0");
 
         if (_sc.PitchStepAtS is double step)
         {
@@ -149,6 +165,32 @@ sealed class ApproachMetrics
         var at = _samples.FirstOrDefault(s => s.T >= step + after);
         if (before.Count == 0 || at.T < step + after) return null;
         return (at.DesiredPitch - before.Average(s => s.DesiredPitch)) / -1.0;
+    }
+
+    // From a knock's start to the first bank callout after it (the frame the knock starts on was fed
+    // to visual guidance before the knock, so a line at that instant is not a reply to it).
+    private static double GustCalloutDelay(double knock, IReadOnlyList<(double T, string Text, bool Immediate)> speech)
+    {
+        foreach (var line in speech)
+            if (line.T > knock + 1e-9 && BankCallout.IsMatch(line.Text))
+                return Math.Min(line.T - knock, GustCalloutCapS);
+        return GustCalloutCapS;
+    }
+
+    // From a knock's start to the start of the first second in which the aircraft's bank stayed
+    // within 0.5° of the commanded bank; the window's length if it never did.
+    private double GustRecovery(double knock)
+    {
+        double? holdStart = null;
+        foreach (var s in _samples)
+        {
+            if (s.T < knock) continue;
+            if (s.T > knock + GustWindowS) break;
+            if (Math.Abs(s.Bank - s.DesiredBank) > GustRecoveredBandDeg) { holdStart = null; continue; }
+            holdStart ??= s.T;
+            if (s.T - holdStart.Value >= GustRecoveredHoldS - 1e-9) return holdStart.Value - knock;
+        }
+        return GustWindowS;
     }
 
     // A line counts as cut off when an interrupting line follows before its estimated speaking time
