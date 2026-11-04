@@ -42,7 +42,7 @@ internal static partial class FenixChannelNdRows
     /// <summary>
     /// The rows for <paramref name="s"/> with the layers after the header, in screen order: "Radio" (the top right
     /// block, the center, the right side, the bearing pointers), "Route" (the route, its markers, the heading bug, the
-    /// rings, FIX INFO), "Map points", "Radio corners" (the bottom corners), then "Terrain and weather" (the bottom
+    /// rings, FIX INFO), "Map points", "Traffic", "Radio corners" (the bottom corners), then "Terrain and weather" (the bottom
     /// right label).
     /// <paramref name="mapPoints"/> is the poller's latest reply, when it was last confirmed current (on the clock
     /// <paramref name="nowMs"/> reads) and its problem; the layer uses the points only under
@@ -56,6 +56,7 @@ internal static partial class FenixChannelNdRows
             (snapshot, nd) => snapshot.Push is { } push ? FenixChannelNdRadio.Rows(push, nd) : FenixNdLayer.Of([]),
             FenixChannelNdRoute.Layer,
             (snapshot, nd) => MapPointsLayer(snapshot, nd, mapPoints, nowMs),
+            (snapshot, nd) => snapshot.Push is { } push ? FenixChannelNdTraffic.Rows(push, nd) : FenixNdLayer.Of([]),
             (snapshot, nd) => snapshot.Push is { } push ? FenixChannelNdRadio.CornerRows(push, nd) : FenixNdLayer.Of([]),
             FenixChannelNdRoute.LabelsLayer
         ]);

@@ -299,7 +299,7 @@ internal static class FenixChannelNdRadio
 
     // Reads parts and values, recording the path of the first field that arrived in another wire shape; such a field
     // reads as absent.
-    private sealed class Reader
+    internal sealed class Reader
     {
         public string? Wrong { get; private set; }
 
@@ -333,6 +333,34 @@ internal static class FenixChannelNdRadio
 
             return field.AsDouble();
         }
+
+        public float? Float(FenixChannelPush? parent, int number, string path)
+        {
+            if (parent is null || !parent.TryGet(number, out FenixChannelField field)) return null;
+
+            if (field.Type != FenixWireType.Fixed32)
+            {
+                Wrong ??= path;
+                return null;
+            }
+
+            return field.Fixed32;
+        }
+
+        public bool? Flag(FenixChannelPush? parent, int number, string path)
+        {
+            if (parent is null || !parent.TryGet(number, out FenixChannelField field)) return null;
+
+            if (field.Type != FenixWireType.Varint)
+            {
+                Wrong ??= path;
+                return null;
+            }
+
+            return field.AsBool();
+        }
+
+        public void Fail(string path) => Wrong ??= path;
 
         // The captain's EFIS (the first entry) member 17: one varint per NAV side, unpacked or packed.
         public IReadOnlyList<ulong> Selectors(FenixChannelPush push)

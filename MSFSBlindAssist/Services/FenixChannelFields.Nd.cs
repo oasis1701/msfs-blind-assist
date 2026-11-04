@@ -8,7 +8,8 @@ internal static partial class FenixChannelFields
 {
     public static partial class Remote
     {
-        public const int Crosstrack = 52;               // crosstrack: fixed64 (double), the cross-track error in NM, negative left
+        public const int Traffic = 5;                   // traffic: nested TrafficData, the TCAS traffic the ND draws (sitting 2)
+        public const int Crosstrack = 52;              // crosstrack: fixed64 (double), the cross-track error in NM, negative left
         public const int TerrainOnNdCapt = 53;          // terrainOnNDCapt: varint (bool), the captain's TERR ON ND; left out when off
         public const int NdStatusCapt = 58;             // ndStatusCapt: nested NdStatusData, what the captain's ND draws in HDG
         public const int VorBlockCapt = 70;             // vorBlockCapt: nested NdRadioBlock, ROSE VOR's top right block (the first officer's is 71)
@@ -23,6 +24,36 @@ internal static partial class FenixChannelFields
         public const int NdMessagesCapt = 103;          // ndMessagesCapt: repeated nested NullWrapped string, the captain's ND messages
         public const int GroundWindCapt = 163;          // groundWindCapt: nested GroundWindData, the ground speed and wind texts
         public const int WeatherRadarData = 191;        // weatherRadarData: nested WeatherRadarState, the weather radar and PWS
+    }
+
+    /// <summary>AdirsData, added to the PFD's partial: the pressure altitude the traffic labels are taken from.</summary>
+    public static partial class AdirsData
+    {
+        public const int PressureAltitude = 15;     // PressureAltitude: fixed64 (double), the captain's ADR pressure altitude
+    }
+
+    /// <summary>
+    /// TrafficData (<see cref="Remote.Traffic"/>), measured in flight on 3.0.0.7613. Member 6 (TA only) is not read:
+    /// 103 carries "TA ONLY". Only the targets the Fenix admits are sent; no member carries the selector.
+    /// </summary>
+    public static partial class TrafficData
+    {
+        public const int OtherTraffic = 2;          // OtherTraffic: repeated nested TrafficTarget, a hollow white diamond
+        public const int ProximateTraffic = 3;      // ProximateTraffic: repeated nested TrafficTarget, within 6 NM and 1200 ft: a filled white diamond
+        public const int Standby = 7;               // Standby: varint (bool), the TCAS in standby; left out otherwise
+    }
+
+    /// <summary>
+    /// TrafficTarget, one target of <see cref="TrafficData"/>. Members 5, 6, 7, 10, 12 and 15 (direction, speeds,
+    /// callsign, wake category, id) are never drawn and not read.
+    /// </summary>
+    public static partial class TrafficTarget
+    {
+        public const int Latitude = 1;              // Latitude: fixed32 (float), the symbol's place
+        public const int Longitude = 2;             // Longitude: fixed32 (float)
+        public const int Altitude = 3;              // Altitude: fixed32 (float), feet; the label is taken against AdirsData.PressureAltitude
+        public const int VerticalSpeed = 4;         // VerticalSpeed: fixed32 (float), feet per minute: the arrow
+        public const int DistanceNm = 8;            // DistanceNm: fixed32 (float), the great circle from the aircraft
     }
 
     /// <summary>

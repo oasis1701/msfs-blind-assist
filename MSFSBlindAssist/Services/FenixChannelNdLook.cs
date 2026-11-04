@@ -26,6 +26,7 @@ internal static class FenixChannelNdLook
     private const string TunedCaptures =
         MapDataInFlight + " (disco-arc160-210338, cap/211030: RMG; fixinfo-211836: VXV; efis/215457-restored: CVG)";
     private const string RadioFlight = "03-nd.md, Sitting 2: the radio content and traffic";
+    private const string TrafficFlight = "03-nd.md, Sitting 2: the radio content and traffic, Traffic: other and proximate";
     private const string RadioGate = "03-nd.md, Sitting 1, Part D: the radio content at the gate";
     private const string TunedKind3 = "; measured on kind 3 (DBN, RMG, ODF, VXV, LOZ, CVG)";
     private const string TunedUnmeasured = "; kinds 2 and 4 follow the same rule, unmeasured";
@@ -94,6 +95,12 @@ internal static class FenixChannelNdLook
             RadioFlight + ", the corners (214719: VOR on NAV 1)"),
         new(FenixChannelNdRadio.LookItem.AdfArrowNav2, "double-line arrow", "green",
             RadioFlight + ", the corners (214719: ADF on NAV 2)"),
+        new(FenixChannelNdTraffic.LookItem.OtherTraffic, "diamond", "white",
+            TrafficFlight + " (hollow: appr/214920, sel/203039; AAL626, DAL1959)"),
+        new(FenixChannelNdTraffic.LookItem.ProximateTraffic, "diamond", "white",
+            TrafficFlight + " (filled: appr/214824, sel/203039, sel/203026; AAL626, DAL1959, DAL2997)"),
+        new(FenixChannelNdTraffic.LookItem.TcasRing, "ticks", "white",
+            TrafficFlight + ", the ring (efis/215457-restored, efis/212245)"),
         new(FenixChannelNdRadio.LookItem.FailedVorIdent, "VOR1", "red", RadioGate + ", VOR 1 failed: the top right"),
         new(FenixChannelNdRadio.LookItem.FailedVorFrequency, "---.--", "cyan", RadioGate + ", VOR 1 failed: the top right"),
         new(FenixChannelNdRadio.LookItem.FailedCourseLabel, "CRS", "white", RadioGate + ", VOR 1 failed: the top right"),

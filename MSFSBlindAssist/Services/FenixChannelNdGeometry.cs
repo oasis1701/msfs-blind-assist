@@ -137,6 +137,24 @@ internal static class FenixChannelNdGeometry
     /// </summary>
     public static FenixNdPlace? PlaceRoute(FenixNdFrame f, FenixLatLon p) => PlaceIn(f, p, route: true);
 
+    /// <summary>
+    /// Where the ND draws a traffic symbol, or null when it draws nothing there. Traffic has a clip of its own
+    /// (docs/fenix-channel/evidence/03-nd.md, sitting 2, "Traffic: the ring and the edges"): in ARC, ROSE NAV, ROSE LS
+    /// and ROSE VOR a symbol is drawn while its center lies inside the window (0 &lt;= x &lt;= 752, 0 &lt;= y &lt;= 729), in
+    /// ARC down to the window's bottom, with no half symbol at an edge and nothing under a drawn message box. Not the map
+    /// points' clip: no top line at y 115, no 290 px circle, no ARC circle or bottom corners. PLAN is not measured: null.
+    /// </summary>
+    public static FenixNdPlace? PlaceTraffic(FenixNdFrame f, FenixLatLon p)
+    {
+        if (f.Mode is not ("NAV" or "ARC" or "LS" or "VOR")) return null;
+
+        var l = Locate(f, p);
+        if (!(l.X >= 0 && l.X <= WindowWidth && l.Y >= 0 && l.Y <= WindowBottom)) return null;
+        if (f.UpperBox && OutsideRectangle(l.X, l.Y, BoxLeftX, BoxRightX, UpperBoxTopY) < 0) return null;
+        if (f.LowerBox && OutsideRectangle(l.X, l.Y, BoxLeftX, BoxRightX, LowerBoxTopY) < 0) return null;
+        return new FenixNdPlace(l.Distance, l.Off, false);
+    }
+
     private static FenixNdPlace? PlaceIn(FenixNdFrame f, FenixLatLon p, bool route)
     {
         var l = Locate(f, p);
