@@ -300,43 +300,58 @@ in `docs/fenix-channel/evidence/07-isis.md`.
 
 ## Handoff to plan 12
 
-(Filled in while working. Expected:)
-
 - **For a pilot:** guide `guide/airbus-aircraft.md`, "Fenix A320 CEO", "Special windows": Alt+I opens the ISIS window
-  while the app can read the Fenix's ISIS, the AI read otherwise and always with the round standby gauges; what the
-  rows say; F5 and Escape; the "ISIS" entry of the Fenix windows list and its "This Fenix has no ISIS.". Hotkey
-  guide `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt`: "Alt+I Read the standby instruments" becomes "Alt+I ISIS
-  window (AI read with the round standby gauges)". Changelog `feature`: "On the Fenix, Alt+I opens a live ISIS window:
-  standby speed, altitude, baro setting, attitude, bugs and ILS deviations, exactly as the Fenix shows them. With the
-  round standby gauges, Alt+I reads them with AI as before."
-- **Rule** (one line, 393 characters):
+  while the app can read the Fenix's ISIS (or on its status row while the ISIS is off), the AI read otherwise and
+  always with the round standby gauges; what the rows say (the speed column with the Mach from .50, the attitude, the LS
+  rows while the ISIS's LS scales show, the altitude and baro, the bugs that are on; "INIT 90 seconds" while aligning,
+  "ATT 10 seconds" in a quick realignment, the bugs page); F5 and Escape; the "ISIS" entry of the Fenix windows list
+  and its "This Fenix has no ISIS.". Hotkey guide `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt`: "Alt+I Read the
+  standby instruments" becomes "Alt+I ISIS window (AI read with the round standby gauges)". Changelog `feature`: "On the
+  Fenix, Alt+I opens a live ISIS window: standby speed, Mach, altitude, baro setting, attitude, bugs and ILS deviations,
+  as the Fenix shows them, and its alignment. With the round standby gauges, Alt+I reads them with AI as before."
+- **Rule** (one line, about 395 characters; the spec's "no cross-check" is now [FNX-22]'s for every display):
   ```
-  - [FNX-?] The Fenix ISIS window (`FenixChannelIsisRows`) has no cross-check: it shows values only while the ISIS verdict trusts it, every 182 member it reads has its shape and 182 carries its baro setting or a countdown; it never reads the attitude while 182.16 or 182.17 counts, and a Fenix whose `FenixVariant.HasIsis` is false keeps the AI read. Full: docs/invariants/fenix-channel.md#fnx-?
+  - [FNX-?] The Fenix ISIS window (`FenixChannelIsisRows`) shows values only while the ISIS verdict trusts it, every 182 member it reads has its shape and 182 carries a QNH or a phase length; 182.16 and 182.17 are phase lengths read as drawn, never a countdown, with no attitude row while either shows, and a Fenix whose `FenixVariant.HasIsis` is false keeps the AI read. Full: docs/invariants/fenix-channel.md#fnx-?
   ```
-  Full text: why no cross-check (spec answer 12), what Task 6 measured against the ADRs and the sim, the alignment rows,
-  the variant rule.
+  Full text: what stands in for a cross-check (the build, the live flag, the shapes, the content condition); the
+  measured phases ("INIT 90s", "ATT 10s", constant on the wire); what Task 6 measured against the sim; the variant rule.
 - **Frozen files:** none.
-- **Also seen on:** none expected; Task 6's findings on another display go here.
+- **Also seen on:** not on another display. Two for plan 12 or their own issues, outside this plan's files: (1) the
+  app's ISIS Reset (`S_MIP_ISFD_RST`, `ExecuteButtonTransition`) is one pulse, which starts nothing: a quick
+  realignment needs it held about 2 s (measured with a 3 s hold, evidence file, Step 2); (2) Fenix pitch trim: a trim
+  set by the stock `ELEVATOR TRIM POSITION` left the Fenix's own `A_FC_ELEVATOR_TRIM` at UP 1.7 against the MCDU's
+  UP0.3 (F/CTL PITCH TRIM/MCDU/CG DISAGREE, twice on 2026-11-04), and the panel's "Elevator Trim" steps in 1000s
+  (whole degrees), too coarse for a take-off trim: Daniel takes it as his own fix after this plan.
 
 ## Execution record
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** in progress: Task 2 pushed inert, Task 1 measured but for the slip index, an enabled bug's marker and
-  Step 7, Task 3 pushed inert (2026-11-04); Task 4 next
+- **Status:** landed 2026-11-04 (the switch commit "feat(fenix-channel): Alt+I and the Fenix windows list open the ISIS window"); waiting on the owner: the
+  round-gauge livery in the sim (Task 1 Step 7, Task 6), the slip index and an enabled bug's marker
 - **Claimed by:** Daniel Wolak (danielw97), 2026-11-04
 - **Worked by:** Daniel Wolak with Claude
 - **Started:** 2026-11-04, from `87bf81463` (the branch's head that day)
 - **Landed:**
-- **Tests at landing:**
+- **Tests at landing:** 19169 passed, 0 failed (the suite without `ClaudeRulesHookTests`, on the switch commit rebased onto `a122c8375`); 57 of them plan 07's (`FenixChannelIsisDecoderTests` 20, `FenixChannelIsisRowsTests` 28, `FenixChannelIsisWindowTests` 9)
 - **Tasks:** 0 done (claim `05d5fd0ee`). 2 done, Step 6 included (every number and wire shape matches the installed
   3.0.0.7613, evidence file), `382c1938d`, worked inline with no subagent review; 16 and 17 arrive as a plain varint
   (Task 1 Step 1 saw it). 1 measured on the A321 CFM at CYYZ, in the climb, on the KLAX approach and in a power cycle
   at the KLAX gate (evidence file): Steps 1 to 5 and 8 done, 6 done but `SlipCenteredBelow`, 7 not run. 3 done,
-  `e24e28141`, inline with no subagent review (28 tests). 4 to 8 to do.
+  `e24e28141`, inline with no subagent review (28 tests). 4 done, `68bc13d17`. 5 done, the switch commit (its title above; `6addd7321` before its rebases)
+  (pushed to `fc-p07-isis` until Task 6 passed). 6 done in the sim on the CYYZ to CYOW flight but the round-gauge
+  livery. 7 done (`docs/a32nx.md`, "ISIS window"). 8 done: the whole-plan review inline (the ownership diff lists only
+  this plan's files; each Review Focus line has its tests: `A_wrong_shape_names_its_field`,
+  `A_powered_isis_with_no_content_is_not_available`, `Initializing_draws_flags_and_its_length`,
+  `Realignment_replaces_the_attitude`, `Baro_reads_std_or_qnh_in_its_unit`, `Rows_are_the_same_in_every_culture`,
+  `A_nan_value_is_never_spoken_as_a_number`, `Only_a_fenix_that_may_have_an_isis_opens_the_window`,
+  `A_round_gauge_fenix_keeps_the_ai_read_for_alt_i`, `A_round_gauge_fenix_shows_no_isis`).
 - **Waiting on the owner:** Robin, the stale ISIS altitude (evidence file, "Open"): read as sent unless he rules otherwise.
-  In the sim: the slip index's threshold, an enabled bug on the main display, Step 7.
-- **In-sim results:** Task 1 in the evidence file.
+  In the sim: the round-gauge livery (Alt+I's AI read with the round-gauge prompt, "This Fenix has no ISIS.", whether 182
+  is sent), the slip index's threshold and side (then a slip row), an enabled bug on the main display.
+- **In-sim results:** Tasks 1 and 6 in the evidence file: every row matched the ISIS's captures; speed within 0.1 kt,
+  Mach within 0.001, pitch and bank within 0.5 degrees, altitude within 14 ft level (22 ft once in a 2,000 fpm climb,
+  the reads up to a second apart); the owner heard every row read well with NVDA.
 - **Changed from the plan:** .16 and .17 are the lengths of their phases, constant on the wire and on the ISIS ("INIT
   90s", "ATT 10s"), never a countdown: Task 3 words them as drawn, never "<n> seconds left". The bugs carry their defaults
   (30, 30, 30, 30, 6000, 10000) from cold and dark. The QNH (.18) is always hPa; the ISIS converts it to inches. The Mach
@@ -351,4 +366,5 @@ Kept in this file only, so no other plan's push ever touches it.
   `SlipCenteredBelow` and the slip's side are measured (no `SlipCenteredBelow` or `MachShownFrom` constant either: the
   Mach follows the wire). The PFD rows' word helpers are private to plan 02's landed file, so the ISIS rows keep their
   own copies in the same words rather than change that file.
-- **Rulings made while working:**
+- **Rulings made while working:** Daniel (the claimant), by ear in Task 6: "INIT 90 seconds" and "ATT 10 seconds" (the
+  ISIS's "90s" and "10s" spelled out) and every other row read as written.

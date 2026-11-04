@@ -100,6 +100,40 @@ while the Mach was 0.40 to 0.60, the bank beyond 10 degrees or .19 a number, and
   **INIT 90s, not ATT 10s**: initializing takes precedence, and "ATT 10s" is the quick realignment's alone (.17 with .2
   clear). All came back at 12:10:00.8, 90 s after power-up.
 
+## Task 6: the window in the sim, CYYZ to CYOW, 2026-11-04
+
+MSFSBA built from `fc-p07-isis` with Task 5 (`6addd7321` before its rebases), the Fenix A321 CFM on 3.0.0.7613, `B_CONFIG_STDBY` 0. The
+window was read by the owner with NVDA; the ISIS from captures; the sim from simconnect MCP reads within a second of
+the recorder's line. SimConnect's pitch and bank are reversed against the ISIS's (its pitch positive nose down, its bank
+positive left).
+
+- **Cold and dark:** Alt+I opened the window on its one row, "ISIS: not available, display off", and so did the list's
+  "ISIS" entry (as every channel display does while off: `OpenChannelWindow`).
+- **Alignment (batteries on, window open):** "SPD flag", "ATT flag", "INIT 90 seconds", "ALT flag, QNH 1013", matching
+  the capture (ATT, SPD, ALT, "INIT 90s", 1013); then the normal rows at the end of the 90 s. The altitude was right from
+  power-up this time (546.7 before power), so the stale 367.7 of the morning is not every load.
+- **At the gate:** "Airspeed below 30 knots", "Pitch 0 degrees, wings level", "Altitude 549 feet, QNH 1013": the ISIS
+  548.7 ft against INDICATED ALTITUDE 557.7 at Kohlsman 1013 (9 ft); pitch and bank 0 against 0.17 and 0.01. STD and
+  inches ("QNH 29.91") as set. The bugs page: "Bugs page" and the six bugs, the first selected.
+- **Climb (3,650 ft, about 2,000 fpm):** 219.8 kt against AIRSPEED INDICATED 219.7; pitch +10.9 against -10.9; bank 0; no
+  Mach row at M.36; altitude 22 ft apart with reads up to a second apart in the climb (judged level, below).
+- **Cruise (25,000 ft, level):** 224.9 kt against 224.9; **Mach .548 against AIRSPEED MACH .548**; pitch +4.6 against -4.6;
+  altitude 24,999 against 25,013 at 1012 against Kohlsman 1012.2 (**14 ft**, 0.2 hPa of it the baro).
+- **Descent (11,000 ft, in a left turn):** 250.4 kt against 250.4; Mach .462 against .462 (still shown below .50, the
+  hysteresis); **bank -13.3, "bank 13 degrees left", against +12.8** (left); altitude 10 ft apart at QNH 1014.
+- **ILS (CYOW):** with the LS scales off the window had no LS rows and the ISIS drew none, the wire carrying -0.94 and
+  +2.4; LS on (.4 set): "Localizer centered" and "Glideslope diamond 0.2 dots above" (0.0007 and +0.23), the capture's
+  diamonds centered and just above. The Fenix feeds the stock **NAV 3** (NAV HAS LOCALIZER:3 and GLIDE SLOPE:3 true; NAV 1
+  and 2 read 127 and 0): NAV CDI:3 has the ISIS localizer's sign (-80.7 at -1.55, -5 at 0.0007); **NAV GSI:3 has the
+  opposite sign** (-119 at +2.4, -4.1 at +0.23), while the ISIS's own picture agrees with the row (diamond above, the
+  aircraft below the glide path on the intercept): the sim's GSI counts the other way, recorded as a pass by the capture.
+- **By ear (the owner):** every row read well with NVDA, "INIT 90 seconds" included; no word to change.
+- **Not run:** the round-gauge livery (Alt+I's AI read with the round-gauge prompt, "This Fenix has no ISIS.").
+
+Also seen (not this plan's): the Fenix's pitch trim. Trimming by the stock `ELEVATOR TRIM POSITION` (0.29) left the
+Fenix's own `A_FC_ELEVATOR_TRIM` at 1698 (UP 1.7) against the MCDU's UP0.3, which gave F/CTL PITCH TRIM/MCDU/CG DISAGREE;
+trimmed to 303 it cleared. The panel's "Elevator Trim" control steps in 1000s. A follow-up after this plan.
+
 ### What Task 3 takes from this
 
 - While .2 is set: a row "INIT 90s" (the ISIS's own words, the figure from .16 as sent, never a count), the SPD, ALT and
