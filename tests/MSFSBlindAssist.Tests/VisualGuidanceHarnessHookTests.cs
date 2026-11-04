@@ -56,8 +56,9 @@ public class VisualGuidanceHarnessHookTests
     public void Visual_guidance_reads_time_only_through_SimClock()
     {
         string path = Path.Combine(ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Services", "VisualGuidanceManager.cs");
-        var code = File.ReadLines(path).Select(l => l.Split("//")[0]);
-        Assert.DoesNotContain(code, l => l.Contains("DateTime.UtcNow"));
+        var code = File.ReadLines(path).Select(l => l.Split("//")[0]).ToList();
+        foreach (string clock in new[] { "DateTime.UtcNow", "DateTime.Now", "DateTimeOffset.UtcNow", "DateTimeOffset.Now", "Environment.TickCount", "Stopwatch" })
+            Assert.DoesNotContain(code, l => l.Contains(clock, StringComparison.Ordinal));
     }
 
     private static double BankAfterFrames(double trueHdg, double magVar, double crossNm, double headingRelDeg)

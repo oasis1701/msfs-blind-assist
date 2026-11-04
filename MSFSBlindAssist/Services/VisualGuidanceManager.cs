@@ -56,7 +56,7 @@ public class VisualGuidanceManager : IDisposable
     // when the re-arm in ProcessUpdate fires; cleared when both tones are playing again (and
     // on Initialize/DisposeTones). Needed because a failed restart no longer nulls the tones
     // (they stay registered so the router's next sweep can retry them) — without this latch
-    // the re-arm would see their NeedsDevice again on the very next 1 Hz tick and rebuild the
+    // the re-arm would see their NeedsDevice again on the very next update (every sim frame) and rebuild the
     // pair per tick, a per-tick WASAPI open on the UI thread, i.e. the self-sustaining retry
     // loop docs/audio.md's known-limitations section forbids.
     private bool toneReArmSpent = false;
@@ -82,15 +82,24 @@ public class VisualGuidanceManager : IDisposable
     private double lastCalculatedTargetFPM = 0.0;  // Last calculated target FPM for hotkey announcement
     private double lastCalculatedAltitudeError = 0.0;  // Last calculated altitude error for hotkey announcement (positive = high, negative = low)
 
+    // Real time (VG-20). ProcessUpdate runs on every sim frame, so every rate limit, smoothing
+    // filter and derivative below runs on the measured frame time through VisualGuidanceTiming,
+    // with the numbers the guidance was designed with at one update a second.
+    private DateTime? lastUpdateUtc;      // the clock at the last ProcessUpdate that had data
+    private double frameSeconds;          // seconds since the update before it, capped at 1 s
+    // False until the first update after Initialize has produced a command: that update takes
+    // the guidance's command with no rate limit, since there is nothing yet to be continuous with.
+    private bool hasPreviousCommand;
+
     // State tracking for derivative term and rate limiting (lateral)
     private double previousDesiredBank = 0.0;
     private double? smoothedCrossTrackRate = null;  // Smoothed rate to prevent oscillation during handoff
-    private Queue<(double xte, DateTime timestamp)> crossTrackHistory = new Queue<(double, DateTime)>();
-    private const int CROSS_TRACK_HISTORY_SIZE = 5;  // 5 samples at 1Hz = 4 second window
+    private const double CROSS_TRACK_RATE_WINDOW_S = 4.0;  // the design's 5 samples at 1 Hz
+    private readonly VisualGuidanceWindowedRate crossTrackRateWindow = new(CROSS_TRACK_RATE_WINDOW_S);
 
     // State tracking for derivative term and rate limiting (vertical)
-    private double? previousGlideslopeDeviation = null;  // Reused for FPM error history
-    private DateTime? previousGlideslopeTimestamp = null;
+    private const double FPM_ERROR_RATE_WINDOW_S = 1.0;    // the design's interval between updates
+    private readonly VisualGuidanceWindowedRate fpmErrorRateWindow = new(FPM_ERROR_RATE_WINDOW_S);
     private double previousDesiredPitch = 0.0;
 
     // Flare state tracking
@@ -110,7 +119,7 @@ public class VisualGuidanceManager : IDisposable
     // P pitch, S speed, etc.) while VG is active, the per-second bank-guidance and
     // centerline-deviation callouts — both AnnounceImmediate — would cut the readout
     // off mid-sentence. NotifyManualQuery() sets this timestamp; the two chatty
-    // callouts skip while SimClock.UtcNow is before it. Skipped callouts lose nothing:
+    // callouts skip while ClockForHarness() is before it. Skipped callouts lose nothing:
     // both always reflect CURRENT state, so the next un-suppressed one carries fresh
     // data. One-shot announcements (phase changes, distance callouts) are NOT
     // suppressed — they're rare and important enough to let through.
@@ -175,7 +184,7 @@ public class VisualGuidanceManager : IDisposable
     // frequency around the true trimmed value).
     private double? cachedAoaDeg;
     private double? smoothedAoaDeg;
-    private const double AOA_SMOOTHING_FACTOR = 0.7;     // Same characteristic as FPM smoothing
+    private const double AOA_SMOOTHING_FACTOR_PER_SECOND = 0.7;  // Same characteristic as FPM smoothing
     // Sanity band on the measured AoA. Stabilized-approach AoA sits in ~3–8° band; flare
     // briefly spikes to ~8–10°. Outside [-5°, 20°] we treat the reading as a sim glitch and
     // fall back to typicalApproachAoaDeg. -5° lower bound covers nose-low cruise descent;
@@ -200,10 +209,10 @@ public class VisualGuidanceManager : IDisposable
     // pitch is ~+1.5°). The 6.0 here is only the pre-profile default; the aircraft's
     // VisualGuidanceProfile.FlareTargetPitchDeg overwrites it and is authoritative.
     private double flareTargetPitchDeg = 6.0;
-    private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.85;  // Exponential smoothing for cross-track rate (0.85 = strong filtering to prevent noise spikes)
+    private const double CROSS_TRACK_RATE_SMOOTHING_PER_SECOND = 0.85;  // Exponential smoothing for cross-track rate, per second (strong filtering to prevent noise spikes)
 
     // FPM-based vertical guidance constants
-    private const double FPM_SMOOTHING_FACTOR = 0.7;     // Exponential smoothing for current FPM (0.7 = moderate filtering)
+    private const double FPM_SMOOTHING_FACTOR_PER_SECOND = 0.7;  // Exponential smoothing for current FPM, per second (moderate filtering)
     private const double FPM_P_GAIN = 0.005;             // Pitch correction per FPM error (degrees per FPM)
     private const double FPM_D_GAIN = 0.002;             // Pitch damping per FPM error rate (degrees per FPM/sec)
 
@@ -217,6 +226,13 @@ public class VisualGuidanceManager : IDisposable
     /// <c>init</c> flag rather than a static switch, so parallel tests need no shared collection.
     /// </summary>
     internal bool HeadlessForHarness { get; init; }
+
+    /// <summary>
+    /// VirtualPilot hook (VP-1): every clock read in visual guidance goes through this. The app
+    /// never sets it, so it reads <see cref="SimClock.UtcNow"/> (which the harness overrides);
+    /// unit tests give each manager its own fake clock, so they need no shared override.
+    /// </summary>
+    internal Func<DateTime> ClockForHarness { get; init; } = static () => SimClock.UtcNow;
 
     /// <summary>VirtualPilot hook (VP-1): the pitch (nose-up positive) commanded on the last <see cref="ProcessUpdate"/>, before tone saturation.</summary>
     internal double DesiredPitchForHarness { get; private set; }
@@ -296,11 +312,11 @@ public class VisualGuidanceManager : IDisposable
     public void NotifyManualQuery()
     {
         if (!isActive) return;
-        routineAnnouncementsSuppressedUntil = SimClock.UtcNow.AddSeconds(MANUAL_QUERY_GRACE_SECONDS);
+        routineAnnouncementsSuppressedUntil = ClockForHarness().AddSeconds(MANUAL_QUERY_GRACE_SECONDS);
     }
 
     /// <summary>True while a manual-query grace window is open (see <see cref="NotifyManualQuery"/>).</summary>
-    private bool RoutineAnnouncementsSuppressed => SimClock.UtcNow < routineAnnouncementsSuppressedUntil;
+    private bool RoutineAnnouncementsSuppressed => ClockForHarness() < routineAnnouncementsSuppressedUntil;
 
     /// <summary>
     /// Initializes visual guidance with runway, audio preferences, and aircraft-specific tunables.
@@ -380,14 +396,19 @@ public class VisualGuidanceManager : IDisposable
         cachedAoaDeg = null;
         smoothedAoaDeg = null;
 
+        // Reset the frame clock: the first update after activation has no frame time and no
+        // previous command, so it is not rate-limited (VG-20).
+        lastUpdateUtc = null;
+        frameSeconds = 0.0;
+        hasPreviousCommand = false;
+
         // Reset derivative term tracking (lateral)
         previousDesiredBank = 0.0;
         smoothedCrossTrackRate = null;
-        crossTrackHistory.Clear();  // Clear multi-sample history buffer
+        crossTrackRateWindow.Clear();
 
         // Reset derivative term tracking (vertical)
-        previousGlideslopeDeviation = null;
-        previousGlideslopeTimestamp = null;
+        fpmErrorRateWindow.Clear();
         previousDesiredPitch = 0.0;
         smoothedCurrentFPM = null;
 
@@ -635,8 +656,9 @@ public class VisualGuidanceManager : IDisposable
     public void UpdateVerticalSpeed(double verticalSpeedFPM) => currentVerticalSpeedFPM = verticalSpeedFPM;
 
     /// <summary>
-    /// Processes all cached data when complete position update is available
-    /// Called every second (1 Hz) from MainForm
+    /// Processes all cached data when complete position update is available. Called on every sim
+    /// frame from MainForm (the VISUAL_GUIDANCE data arrives per SIM_FRAME), so every limit and
+    /// filter runs on the measured frame time (VG-20).
     /// </summary>
     public void ProcessUpdate()
     {
@@ -701,7 +723,7 @@ public class VisualGuidanceManager : IDisposable
         // ONE re-arm per device-loss episode (toneReArmSpent). A failed restart KEEPS the pair
         // -- StartTonesIfNeeded no longer disposes or nulls on failure, precisely so the
         // generators stay in the router's registry with NeedsDevice set and a device arriving
-        // restarts them -- which means NeedsDevice can still read true on the next 1 Hz tick.
+        // restarts them -- which means NeedsDevice can still read true on the next update.
         // Without the latch this block would rebuild the pair per tick (a per-tick WASAPI open
         // on the UI thread, the retry loop docs/audio.md forbids); with it, the second and
         // later retries belong to the router's event-driven sweeps. The latch clears once both
@@ -782,6 +804,13 @@ public class VisualGuidanceManager : IDisposable
         double altMSL = cachedAltMSL.Value;
         double heading = cachedHeading.Value;
 
+        // The frame time every limit and filter in this update runs on (VG-20): 0 on the first
+        // update, on a second update at the same instant, or if the clock steps back; at most 1 s
+        // after a pause or a stalled frame stream.
+        DateTime now = ClockForHarness();
+        frameSeconds = VisualGuidanceTiming.FrameSeconds(lastUpdateUtc, now);
+        lastUpdateUtc = now;
+
         try
         {
             // Update phase based on position
@@ -790,6 +819,7 @@ public class VisualGuidanceManager : IDisposable
             // Calculate guidance
             double desiredBank = CalculateDesiredBank(lat, lon, heading);
             double desiredPitch = CalculateDesiredPitch(lat, lon, agl, altMSL);
+            hasPreviousCommand = true;
             DesiredBankForHarness = desiredBank;
             DesiredPitchForHarness = desiredPitch;
             double currentBankStandard = StandardBank(cachedBank ?? 0.0);
@@ -837,6 +867,15 @@ public class VisualGuidanceManager : IDisposable
             Log.Debug("VisualGuidance", $"Error processing update: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Moves a command from its previous value toward <paramref name="raw"/> at no more than
+    /// <paramref name="maxRatePerSecond"/> over this update's frame time (VG-20). The first update
+    /// after <see cref="Initialize"/> takes <paramref name="raw"/> as it is, so the guidance tone
+    /// starts where the guidance says instead of ramping up from level.
+    /// </summary>
+    private double RateLimited(double previous, double raw, double maxRatePerSecond)
+        => hasPreviousCommand ? VisualGuidanceTiming.RateLimit(previous, raw, maxRatePerSecond, frameSeconds) : raw;
 
     /// <summary>
     /// Updates current guidance phase based on position
@@ -989,42 +1028,18 @@ public class VisualGuidanceManager : IDisposable
             // Apply sign to distance (crossTrackError is unsigned distance in NM)
             double signedCrossTrackNM = Math.Sign(signedCrossTrack) * crossTrackError;
 
-            // Calculate cross-track rate (derivative term) for damping using multi-sample averaging
-            // Add current sample to history buffer
-            crossTrackHistory.Enqueue((signedCrossTrackNM, SimClock.UtcNow));
-
-            // Maintain history size limit (rolling window)
-            while (crossTrackHistory.Count > CROSS_TRACK_HISTORY_SIZE)
-            {
-                crossTrackHistory.Dequeue();
-            }
-
-            // Calculate rate over entire history window (oldest to newest)
-            // This filters out single-frame noise that caused 0.000 ↔ 0.020 oscillation
+            // Cross-track rate (derivative term) for damping, over a time window (oldest to newest
+            // sample in the last CROSS_TRACK_RATE_WINDOW_S seconds). This filters out single-frame
+            // noise that caused 0.000 ↔ 0.020 oscillation. No rate yet (one sample, or under
+            // 0.01 s between them): 0 this update, and the smoothed rate is left as it was.
+            crossTrackRateWindow.Add(lastUpdateUtc ?? ClockForHarness(), signedCrossTrackNM);
             double crossTrackRate = 0.0;
-            if (crossTrackHistory.Count >= 2)
+            if (crossTrackRateWindow.Rate is double rawCrossTrackRate)
             {
-                var oldest = crossTrackHistory.First();
-                var newest = crossTrackHistory.Last();
-                double deltaTime = (newest.timestamp - oldest.timestamp).TotalSeconds;
-
-                if (deltaTime > 0.01)  // Avoid division by zero
-                {
-                    double rawCrossTrackRate = (newest.xte - oldest.xte) / deltaTime;
-
-                    // Apply exponential smoothing to reduce noise (prevents oscillation during phase handoff)
-                    if (smoothedCrossTrackRate.HasValue)
-                    {
-                        crossTrackRate = CROSS_TRACK_RATE_SMOOTHING_FACTOR * smoothedCrossTrackRate.Value +
-                                        (1.0 - CROSS_TRACK_RATE_SMOOTHING_FACTOR) * rawCrossTrackRate;
-                    }
-                    else
-                    {
-                        crossTrackRate = rawCrossTrackRate;
-                    }
-
-                    smoothedCrossTrackRate = crossTrackRate;
-                }
+                // Exponential smoothing per second to reduce noise (prevents oscillation during phase handoff)
+                crossTrackRate = VisualGuidanceTiming.Smooth(smoothedCrossTrackRate, rawCrossTrackRate,
+                    CROSS_TRACK_RATE_SMOOTHING_PER_SECOND, frameSeconds);
+                smoothedCrossTrackRate = crossTrackRate;
             }
 
             // Ground track vs heading selection based on altitude
@@ -1109,13 +1124,8 @@ public class VisualGuidanceManager : IDisposable
                 double headingError = NormalizeHeading(targetHeading - actualTrackAngle);
                 double rawDesiredBank = headingError * LATERAL_HEADING_GAIN * speedFactor;
 
-                // Apply bank rate limiting
-                double maxBankChange = maxBankRateDegPerSec * 1.0;
-                double bankChange = rawDesiredBank - previousDesiredBank;
-                if (Math.Abs(bankChange) > maxBankChange)
-                {
-                    rawDesiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
-                }
+                // Apply bank rate limiting (per second of frame time, VG-20)
+                rawDesiredBank = RateLimited(previousDesiredBank, rawDesiredBank, maxBankRateDegPerSec);
 
                 // Apply bank limit for comfort
                 desiredBank = Math.Clamp(rawDesiredBank, -ARC_BANK_LIMIT, ARC_BANK_LIMIT);
@@ -1151,13 +1161,8 @@ public class VisualGuidanceManager : IDisposable
 
                 double rawDesiredBank = proportionalTerm + derivativeTerm + headingTerm;
 
-                // Apply bank rate limiting
-                double maxBankChange = maxBankRateDegPerSec * 1.0;
-                double bankChange = rawDesiredBank - previousDesiredBank;
-                if (Math.Abs(bankChange) > maxBankChange)
-                {
-                    rawDesiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
-                }
+                // Apply bank rate limiting (per second of frame time, VG-20)
+                rawDesiredBank = RateLimited(previousDesiredBank, rawDesiredBank, maxBankRateDegPerSec);
 
                 // Tight bank limit for precision
                 desiredBank = Math.Clamp(rawDesiredBank, -10.0, 10.0);
@@ -1215,15 +1220,8 @@ public class VisualGuidanceManager : IDisposable
         // Clamp to safe bank limits for intercept (±25°)
         double desiredBank = Math.Clamp(baseBank, -25.0, 25.0);
 
-        // Apply bank rate limiting to prevent sudden changes
-        double maxBankChange = maxBankRateDegPerSec * 1.0;  // 1 second update rate
-        double bankChange = desiredBank - previousDesiredBank;
-        if (Math.Abs(bankChange) > maxBankChange)
-        {
-            desiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
-        }
-
-        return desiredBank;
+        // Apply bank rate limiting to prevent sudden changes (per second of frame time, VG-20)
+        return RateLimited(previousDesiredBank, desiredBank, maxBankRateDegPerSec);
     }
 
     /// <summary>
@@ -1244,13 +1242,8 @@ public class VisualGuidanceManager : IDisposable
             // Simplified flare: Command constant +6° pitch
             double targetPitch = flareTargetPitchDeg;
 
-            // Apply rate limiting for smooth transition from approach to flare
-            double maxPitchChange = MAX_FLARE_PITCH_RATE * 1.0;  // 1 second update rate
-            double pitchChange = targetPitch - lastFlarePitch;
-            if (Math.Abs(pitchChange) > maxPitchChange)
-            {
-                targetPitch = lastFlarePitch + Math.Sign(pitchChange) * maxPitchChange;
-            }
+            // Apply rate limiting for smooth transition from approach to flare (per second of frame time, VG-20)
+            targetPitch = RateLimited(lastFlarePitch, targetPitch, MAX_FLARE_PITCH_RATE);
 
             lastFlarePitch = targetPitch;
 
@@ -1285,17 +1278,9 @@ public class VisualGuidanceManager : IDisposable
             // Calculate altitude error (positive = too high, negative = too low)
             double altitudeError = currentAGL - idealAltitudeAGL;
 
-            // Apply exponential smoothing to current FPM to reduce oscillation
-            double smoothedFPM;
-            if (smoothedCurrentFPM.HasValue)
-            {
-                smoothedFPM = FPM_SMOOTHING_FACTOR * smoothedCurrentFPM.Value +
-                             (1.0 - FPM_SMOOTHING_FACTOR) * currentVerticalSpeedFPM;
-            }
-            else
-            {
-                smoothedFPM = currentVerticalSpeedFPM;
-            }
+            // Apply exponential smoothing (per second, VG-20) to current FPM to reduce oscillation
+            double smoothedFPM = VisualGuidanceTiming.Smooth(smoothedCurrentFPM, currentVerticalSpeedFPM,
+                FPM_SMOOTHING_FACTOR_PER_SECOND, frameSeconds);
             smoothedCurrentFPM = smoothedFPM;
 
             // Calculate natural 3° descent rate based on groundspeed
@@ -1344,21 +1329,11 @@ public class VisualGuidanceManager : IDisposable
             // Calculate FPM error (negative = need to descend more, positive = need to descend less)
             double fpmError = targetFPM - smoothedFPM;
 
-            // Calculate FPM error rate for derivative term
-            double fpmErrorRate = 0.0;
-            if (previousGlideslopeDeviation.HasValue && previousGlideslopeTimestamp.HasValue)
-            {
-                double deltaTime = (SimClock.UtcNow - previousGlideslopeTimestamp.Value).TotalSeconds;
-                if (deltaTime > 0.01)
-                {
-                    // Using previousGlideslopeDeviation to store previous FPM error
-                    fpmErrorRate = (fpmError - previousGlideslopeDeviation.Value) / deltaTime;
-                }
-            }
-
-            // Update tracking state for next iteration
-            previousGlideslopeDeviation = fpmError;  // Reusing field for FPM error history
-            previousGlideslopeTimestamp = SimClock.UtcNow;
+            // FPM error rate for the derivative term, over FPM_ERROR_RATE_WINDOW_S (the design's
+            // interval between updates), not frame to frame: a per-frame difference divided by
+            // ~0.03 s magnified jitter about thirty times (VG-20). 0 until the window has a rate.
+            fpmErrorRateWindow.Add(lastUpdateUtc ?? ClockForHarness(), fpmError);
+            double fpmErrorRate = fpmErrorRateWindow.Rate ?? 0.0;
 
             // Calculate nominal pitch for descent.
             // Prefer LIVE angle of attack (SimConnect INCIDENCE ALPHA) over the static profile
@@ -1373,15 +1348,8 @@ public class VisualGuidanceManager : IDisposable
                 cachedAoaDeg.Value >= AOA_MIN_VALID_DEG &&
                 cachedAoaDeg.Value <= AOA_MAX_VALID_DEG)
             {
-                if (smoothedAoaDeg.HasValue)
-                {
-                    smoothedAoaDeg = AOA_SMOOTHING_FACTOR * smoothedAoaDeg.Value +
-                                     (1.0 - AOA_SMOOTHING_FACTOR) * cachedAoaDeg.Value;
-                }
-                else
-                {
-                    smoothedAoaDeg = cachedAoaDeg.Value;
-                }
+                smoothedAoaDeg = VisualGuidanceTiming.Smooth(smoothedAoaDeg, cachedAoaDeg.Value,
+                    AOA_SMOOTHING_FACTOR_PER_SECOND, frameSeconds);
                 effectiveAoaDeg = smoothedAoaDeg.Value;
             }
             else
@@ -1414,13 +1382,8 @@ public class VisualGuidanceManager : IDisposable
 
             double rawDesiredPitch = nominalPitch + proportionalTerm + derivativeTerm;
 
-            // Pitch rate limiting - prevent sudden tone frequency jumps
-            double maxPitchChange = maxPitchRateDegPerSec * 1.0;  // 1 second update rate
-            double pitchChange = rawDesiredPitch - previousDesiredPitch;
-            if (Math.Abs(pitchChange) > maxPitchChange)
-            {
-                rawDesiredPitch = previousDesiredPitch + Math.Sign(pitchChange) * maxPitchChange;
-            }
+            // Pitch rate limiting - prevent sudden tone frequency jumps (per second of frame time, VG-20)
+            rawDesiredPitch = RateLimited(previousDesiredPitch, rawDesiredPitch, maxPitchRateDegPerSec);
 
             // Clamp final command
             double desiredPitch = Math.Clamp(rawDesiredPitch, -12.0, 12.0);
@@ -1476,13 +1439,13 @@ public class VisualGuidanceManager : IDisposable
         if (currentlyBehind != wasBehindLastCheck)
         {
             // State is trying to change - check if enough time has passed
-            if ((SimClock.UtcNow - lastBehindStateChange).TotalMilliseconds < STATE_CHANGE_DELAY_MS)
+            if ((ClockForHarness() - lastBehindStateChange).TotalMilliseconds < STATE_CHANGE_DELAY_MS)
             {
                 // Not enough time passed, return previous state (ignore this change)
                 return wasBehindLastCheck;
             }
             // Enough time passed, allow state change
-            lastBehindStateChange = SimClock.UtcNow;
+            lastBehindStateChange = ClockForHarness();
         }
 
         // Update tracking and return current state
@@ -1523,7 +1486,7 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     private void AnnouncePhaseChange(string message)
     {
-        var now = SimClock.UtcNow;
+        var now = ClockForHarness();
         if ((now - lastPhaseAnnouncement).TotalMilliseconds >= ANNOUNCEMENT_INTERVAL_MS)
         {
             announcer.Announce(message);
@@ -1538,7 +1501,7 @@ public class VisualGuidanceManager : IDisposable
     {
         if (runway == null) return;
 
-        var now = SimClock.UtcNow;
+        var now = ClockForHarness();
         if ((now - lastDistanceAnnouncement).TotalMilliseconds < ANNOUNCEMENT_INTERVAL_MS)
             return;
 
@@ -1567,7 +1530,7 @@ public class VisualGuidanceManager : IDisposable
     {
         if (runway == null || currentPhase != GuidancePhase.Extending) return;
 
-        var now = SimClock.UtcNow;
+        var now = ClockForHarness();
         if ((now - lastExtendingProgressAnnouncement).TotalMilliseconds < EXTENDING_PROGRESS_INTERVAL_MS)
             return;
 

@@ -77,8 +77,18 @@ Corrected 2026-10-08: triangle and sine are the defaults of two user settings, n
 
 ## VG-18
 
-- PID math, phase machine, and lateral arc-capture logic must stay untouched by tone work — VG's failure mode must always be "missing audible reference," never "wrong steering command." → [visual-guidance.md](../visual-guidance.md)
+- Visual guidance must fail as a missing audible reference, never as a wrong steering command. Tone work leaves the guidance math (the vertical law, the phase machine, the lateral arc capture and precision track) alone. → [visual-guidance.md](../visual-guidance.md)
+- Rewritten 2026-11-04 for the visual guidance redesign, which changes the guidance math on purpose. A deliberate change to it keeps left and right as `VisualGuidanceHarnessHookTests` pins them (right of final and parallel banks LEFT toward the line; right of final on an intercept heading banks RIGHT at capture, on two runways), and is measured first in the VirtualPilot approach harness against the baseline with `compare_approach.py` ([virtual-pilot.md](../virtual-pilot.md), "Approaches"). If a sign test fails, never flip the test: work out by hand which way the aircraft has to turn. The original wording ("tone work must leave the PID math, phase machine and lateral arc capture untouched") kept its intent: a broken tone is silence, never a wrong command.
 
 ## VG-19
 
 - VG's manual-query grace window must only suppress the two chatty per-second callouts (bank guidance, centerline deviation) — phase changes and distance callouts must still fire during a manual hotkey readout. → [visual-guidance.md](../visual-guidance.md)
+
+## VG-20
+
+- Every rate limit, smoothing filter and derivative in `VisualGuidanceManager` runs on the measured frame time through `VisualGuidanceTiming`: a rate limit moves at most rate × dt, a smoothing factor is per second (α = factor^dt), and a derivative is a rate over a time window (`VisualGuidanceWindowedRate`), never a frame-to-frame difference or a sample count. → [visual-guidance.md](../visual-guidance.md)
+- Why: `StartVisualGuidanceMonitoring` requests the visual guidance data at `SIMCONNECT_PERIOD.SIM_FRAME`, and MainForm calls `ProcessUpdate` on every frame's AGL event (per-frame since at least 2025-11-16). Every limit and filter had been written for one update a second, so at 30 frames a second the 3°/s bank limit and 2.5°/s pitch limit allowed about 90°/s and 75°/s, the 0.7 vertical-speed smoothing averaged over about 0.1 s instead of 3 s, the vertical-speed damping term divided a frame-to-frame change by about 0.033 s, and the 5-sample cross-track window covered about 0.15 s instead of 4 s.
+- Measured in the VirtualPilot approach harness at the stage 1 baseline: the commanded pitch's RMS rate of change on a clean jet final was 0.153, 0.275 and 0.761°/s at 20, 30 and 60 frames a second, and with assumed sensor noise 27.6°/s at 30 and 90.1°/s at 60. A command on real time reads about the same at every frame rate.
+- The numbers are the 1 Hz design's, now per second: the bank and pitch rates come from `VisualGuidanceProfile` (VG-14), the vertical-speed and AoA smoothing are 0.7 per second, the cross-track rate is taken over 4 s and smoothed at 0.85 per second, and the vertical-speed error's rate over 1 s.
+- `VisualGuidanceTiming.FrameSeconds` caps dt at 1 s, so a pause, a stalled frame stream or a menu moves the command no more than one second's worth, and counts a backwards clock step as 0, never a reverse step. Two updates at the same instant (SimConnect can deliver two frames in one message-pump turn) therefore move nothing the second time.
+- The first update after `Initialize` takes the guidance's command with no rate limit: there is nothing yet to be continuous with, and the guidance tone should start where the guidance says instead of ramping up from level. `VisualGuidanceRealTimeTests` pins all of this, each test on its own fake clock (`ClockForHarness`).
