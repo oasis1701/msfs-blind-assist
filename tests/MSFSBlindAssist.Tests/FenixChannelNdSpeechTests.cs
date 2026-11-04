@@ -63,6 +63,41 @@ public class FenixChannelNdSpeechTests
         }
     }
 
+    // The lines the ND's fields sent in the three sittings (docs/fenix-channel/evidence/03-nd.md and the samples above):
+    // 163, 68, 72, 70, 76, 102.1, 102.2, 103 and 62.
+    public static TheoryData<string> MeasuredLines => new()
+    {
+        "wsGSlgd  0wsdTASlgd---", "wsGSlgd456wsdTASlgd448", "g153w⠀/⠀g32", "g213w / g37", "g---w⠀/⠀g---",
+        "INTCPT g176c°", "INTCPT g084c°", "VAKSU g318c", "PPOS     ", "g2s.3 csNM", "g2s.8 csNM", "g84 csNM", "g99 csNM",
+        "g24 csNM", "g19s.7 csNM", "g01:58", "g17:29",
+        "wILS2 m110.s15 ", "wILS2 m109.s90 ", "CRS m186c°", " mICIZ ", "mIATL",
+        "wVOR1 w113.s40 ", "wVOR1 w113.s10 ", "wVOR1 w108.s00 ", "CRS c---°", "CRS c185°", "lwODF ", "lwCVG ", "lw117.30 ",
+        "wVOR1", "wVOR2", "wCVG   ", "g8s.4⠀⠀scNM", "g10s.0⠀⠀scNM", "g 50⠀⠀scNM", "gADF1", "gADF2", "g     CP", "gCP    ",
+        "rVOR1", "rVOR2", "rADF1", "x1rVOR1", "x1rVOR2", "x1rADF1", "x1rADF2",
+        "gILS18L", "GPS PRIMARY", "aMAP PARTLY DISPLAYED", "TA ONLY", "aTCAS", "aGPS PRIMARY LOST", "wMODE CHANGE ",
+        "RANGE CHANGE"
+    };
+
+    // With no usual colors the ND's speech reads a measured line exactly as plan 01's does, so the ND's copy of the
+    // parse and the merge cannot drift from FenixChannelSpeech's.
+    [Theory]
+    [MemberData(nameof(MeasuredLines))]
+    public void With_no_usual_colors_a_measured_line_reads_as_plan_01_reads_it(string coded)
+    {
+        string? planOne = FenixChannelSpeech.Line(coded);
+
+        Assert.NotNull(planOne);
+        Assert.Equal(planOne, FenixChannelNdSpeech.Line(coded, null));
+    }
+
+    [Fact]
+    public void The_one_difference_is_no_space_before_a_degree_sign()
+    {
+        // A degree sign after a space in the same color, which no measured line has: the ND drops the space.
+        Assert.Equal("CRS 186 °, white", FenixChannelSpeech.Line("wCRS 186 °"));
+        Assert.Equal("CRS 186°, white", FenixChannelNdSpeech.Line("wCRS 186 °", null));
+    }
+
     [Fact]
     public void An_amber_figure_is_spoken_whatever_the_line()
     {
