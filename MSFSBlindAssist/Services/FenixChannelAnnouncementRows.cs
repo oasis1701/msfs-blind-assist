@@ -33,8 +33,11 @@ public static class FenixChannelAnnouncementRows
     /// <summary>The DCDU announcer's row (plan 11).</summary>
     public const string DcduKey = "FENIX_CHANNEL_DCDU";
 
+    /// <summary>The ND messages announcer's row (plan 03). On by default: no seed.</summary>
+    public const string NdKey = "FENIX_CHANNEL_ND";
+
     /// <summary>
-    /// The five Ctrl+M rows, in this order; <c>FenixMonitorManagerForm</c> appends them after the cabin rows.
+    /// The Ctrl+M rows (the ND's was added last), in this order; <c>FenixMonitorManagerForm</c> appends them after the cabin rows.
     /// </summary>
     public static IReadOnlyList<MonitorRow> Rows { get; } = Array.AsReadOnly(new MonitorRow[]
     {
@@ -42,7 +45,8 @@ public static class FenixChannelAnnouncementRows
         new(WarningsKey, "E/WD warnings"),
         new(CautionsKey, "E/WD cautions"),
         new(MemosKey, "E/WD memos"),
-        new(DcduKey, "DCDU messages")
+        new(DcduKey, "DCDU messages"),
+        new(NdKey, "ND messages")
     });
 
     /// <summary>

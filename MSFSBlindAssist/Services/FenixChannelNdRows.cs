@@ -250,16 +250,26 @@ internal static partial class FenixChannelNdRows
     // sides").
     private static IEnumerable<string> MessageRows(FenixNdData nd)
     {
-        foreach (string message in nd.CenterMessages)
+        foreach (string message in DrawnMessages(nd))
         {
             if (FenixChannelSpeech.Line(message) is { } spoken) yield return "Message: " + spoken;
         }
+    }
+
+    /// <summary>
+    /// The messages the glass draws, as sent, in the order the window lists them: the center, windshear and TCAS texts,
+    /// then the upper box ("TA ONLY") and the lower box (the first other 103 entry). Shared with the ND messages
+    /// announcer so that the window and the announcer cannot drift apart.
+    /// </summary>
+    internal static IEnumerable<string> DrawnMessages(FenixNdData nd)
+    {
+        foreach (string message in nd.CenterMessages) yield return message;
 
         string? upper = nd.ListedMessages.FirstOrDefault(entry => PlainText(entry) == TaOnly);
         string? lower = nd.ListedMessages.FirstOrDefault(entry => PlainText(entry) != TaOnly);
         foreach (string? box in new[] { upper, lower })
         {
-            if (box is not null && FenixChannelSpeech.Line(box) is { } spoken) yield return "Message: " + spoken;
+            if (box is not null) yield return box;
         }
     }
 

@@ -76,6 +76,7 @@ public partial class FenixA320Definition
                 now => SampleChannelFma(new ChannelAnnounceContext(monitor, announcer, now)),
                 now => SampleChannelEwdAlerts(new ChannelAnnounceContext(monitor, announcer, now)),
                 now => SampleChannelDcdu(new ChannelAnnounceContext(monitor, announcer, now)),
+                now => SampleChannelNd(new ChannelAnnounceContext(monitor, announcer, now)),
             },
             problem => monitor.ReportFeatureProblem("announcer", problem),
             () => Environment.TickCount64);

@@ -89,6 +89,8 @@ public partial class FenixA320Definition
     partial void SampleChannelEwdAlerts(ChannelAnnounceContext ctx);
     /// <summary>The DCDU announcer's sampler: a new message. Plan 11 implements it.</summary>
     partial void SampleChannelDcdu(ChannelAnnounceContext ctx);
+    /// <summary>The ND messages announcer's sampler: new and gone ND messages, the active waypoint. Plan 03 implements it.</summary>
+    partial void SampleChannelNd(ChannelAnnounceContext ctx);
 
     private bool _backgroundStarted;
 

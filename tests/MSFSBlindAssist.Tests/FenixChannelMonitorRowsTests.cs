@@ -31,7 +31,8 @@ public class FenixChannelMonitorRowsTests
         new("FENIX_CHANNEL_WARNINGS", "E/WD warnings"),
         new("FENIX_CHANNEL_CAUTIONS", "E/WD cautions"),
         new("FENIX_CHANNEL_MEMOS", "E/WD memos"),
-        new("FENIX_CHANNEL_DCDU", "DCDU messages")
+        new("FENIX_CHANNEL_DCDU", "DCDU messages"),
+        new("FENIX_CHANNEL_ND", "ND messages")
     };
 
     [Fact]
@@ -42,6 +43,9 @@ public class FenixChannelMonitorRowsTests
         Assert.Equal("FENIX_CHANNEL_CAUTIONS", FenixChannelAnnouncementRows.CautionsKey);
         Assert.Equal("FENIX_CHANNEL_MEMOS", FenixChannelAnnouncementRows.MemosKey);
         Assert.Equal("FENIX_CHANNEL_DCDU", FenixChannelAnnouncementRows.DcduKey);
+        Assert.Equal("FENIX_CHANNEL_ND", FenixChannelAnnouncementRows.NdKey);
+        Assert.Equal(6, FenixChannelAnnouncementRows.Rows.Count);
+        Assert.Equal(FenixChannelAnnouncementRows.NdKey, FenixChannelAnnouncementRows.Rows[^1].Key);
 
         Assert.Equal(ChannelRows, FenixChannelAnnouncementRows.Rows);
     }
