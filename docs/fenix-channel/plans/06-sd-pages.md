@@ -436,18 +436,34 @@ The local build with Tasks 10 and 12 (and plan 05's switch), in one flight, in t
 
 ## Handoff to plan 12
 
-(Filled in while working. Expected:)
-
 - **What changes for a pilot.** `guide/airbus-aircraft.md`, "Fenix A320 CEO", plan 05's "The SD window" section: the
-  eight pages' rows in a sentence each, with the words for valves, doors, slides and gear. No hotkey line changes (Alt+S
-  is plan 05's). Changelog: none of its own (plan 05's `feature` fragment covers the window); if plan 12 writes one per
-  plan, `feature`: "Fenix: the SD window also reads the APU, BLEED, CAB PRESS, COND, CRUISE, DOOR, WHEEL and F/CTL
-  pages, so every page the System Display shows can be read with exact values."
+  eight pages' rows in a sentence each, with the words for valves, doors, slides and gear; and the lower display's
+  colors: every page now says the colors and pulses the Fenix sends ("NORM BRK, amber", "ΔP: 8.2 PSI, pulsing",
+  "LP valves: open, closed amber"), names what the SD places by position ("wheel 2: brake 204 °C, tire 205 PSI",
+  "SPD BRK left, 1 to 5: …", "nose gear: LGCIU 1 down, LGCIU 2 in transit"), and plan 05's FUEL and ENG pages follow
+  the same rule. No hotkey line changes (Alt+S is plan 05's); the window's ALL key moves one page per press. Changelog:
+  none of its own (plan 05's `feature` fragment covers the window); if plan 12 writes one per plan, `feature`: "Fenix:
+  the SD window also reads the APU, BLEED, CAB PRESS, COND, CRUISE, DOOR, WHEEL and F/CTL pages, so every page the System
+  Display shows can be read with exact values, and every page now says the colors the display draws."
+- **For plan 12 to settle** (from the owner's tour and the ground checks, 2026-11-03):
+  - The A321's doors 2 and 3 say no slide: no safe way to arm one slide for a test ([FNX-14]); 179.18 and .19 follow
+    the overwing slides the A321 lacks. A departure's arming, read with both the channel and the cabin's slide names,
+    would map them.
+  - "LDG ELEV AUTO: 0 FT" at the gate after landing, where the Fenix sends 0: compare with the Fenix's own SD.
+  - The APU bleed valve's 3 s in transit reads "failed open" (plan 01's `ValveWord` for the 3 the Fenix sends).
+  - The upper and lower ECAM display power switches (`S_DISPLAY_POWER_ECAM_U`, `_L`) are on no panel of the app.
+  - The E/WD's own color and flash flags (`RevAmber`, `RevFlashing`, 177's `StatusBlink`) belong to the upper display
+    and were left as they are.
+  - Stale: plan 01's `FenixChannelSdPages.cs` comment calling page 5 CRUISE "by inference" (confirmed in cruise).
+  - Duplication to fold if wanted: APU's read block beside ELEC's, CRUISE's engine rows beside ENG's.
+  - Whether to pass `FenixCabinLayout` into the SD page context, so DOOR's exits follow `emergency_exits_type`.
 - **Proposed rule lines.**
   - `- [FNX-?] An SD page lists only the parts its airframe has, chosen by `FenixChannelSdPageContext.Variant` and the page's own layout flags (179.26, 179.27, 151.8.5, 151.8.6, 137.19), never by a value's presence: an A321 push reported every slide armed, overwing ones included. Full: docs/invariants/fenix-channel.md#fnx-?`
     Full text: the A321 cruise push; Task 1's door and slide map per airframe.
   - `- [FNX-?] An SD value with a measured meaning (`GearUnit`, `GearDoorPosition`, `HotAirStates`, the surfaces' signs) speaks only a measured value; any other reads "not available" and is reported, never a word guessed from a neighbor. Full: docs/invariants/fenix-channel.md#fnx-?`
     Full text: Tasks 1 and 13's measurements.
+  - `- [FNX-?] An SD row speaks a color only where the Fenix sends one (a field named for it, a `...Pulse` as "pulsing"), never a default or guessed color, and never the color of an element the SD is not drawing (the A321's flow amber is set all flight with no flow). Full: docs/invariants/fenix-channel.md#fnx-?`
+    Full text: the owner's ruling of 2026-11-03 and the replay that found the flow amber.
 - **Requests.** None expected for the shared fields (plan 01 declares them); a `ValveStateEnum` value Task 1 finds
   other than plan 01's (its [owner] check confirms them) is told to the owner and its fix written here for plan 12,
   since plan 01's `FenixChannelFields.cs` is frozen. Page 5 named CRUISE and 13 unseen: if Task 13 finds otherwise,
@@ -459,30 +475,44 @@ The local build with Tasks 10 and 12 (and plan 05's switch), in one flight, in t
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** in progress: Tasks 2 to 9 pushed inert (2026-11-03); the switch commits (Tasks 10, 12) wait on the sim
+- **Status:** landed 2026-11-04 (code at `a09d18d70`, then this record's docs commit)
 - **Claimed by:** kn4iee, 2026-11-03
 - **Worked by:** kn4iee with Claude Code (subagents: a fresh implementer and a reviewer per task)
 - **Started:** 2026-11-03, from `9f2eea646` (the branch's head: plan 05 has landed, so the in-sim checks need no merge)
-- **Landed:**
-- **Tests at landing:**
-- **Tasks:** 0 done (claim `0193ea4ed`). 2 done, Step 2 included (all 165 constants match the installed 3.0.0.7613,
-  evidence file). 3 to 9 done, inert, each reviewed. 1 partly: the in-flight reads of a cruise push (evidence file);
-  its ground checks wait. 10 to 14 to do.
-- **Waiting on the owner:** Task 1's ground checks (valves switched, the APU started, doors and slides, ELAC 1, HOT AIR,
-  CAB FANS, the LDG ELEV knob, the captures) and its [owner] surfaces check; Tasks 11 and 13.
-- **In-sim results:** see `docs/fenix-channel/evidence/06-sd-pages.md` (an A321 cruise push, 2026-11-03).
+- **Landed:** 2026-11-04, pushed to `feat/fenix-display-channel` (the pages switched on at `d58a8e17b` and `3fbe3e557`)
+- **Tests at landing:** 18,898 passed, 0 failed (`--filter "FullyQualifiedName!~ClaudeRulesHookTests"`, the
+  controller's own run after rebasing onto plans 03 and 07's pushes, `aea17d9b7`, with this commit's docs on disk;
+  18,800 before the rebase); the solution builds with 0 errors
+- **Tasks:** all done. 0 (claim `0193ea4ed`); 1 in flight (an A321 CFM to CYYZ: cruise, turns, speed brakes, gear
+  extension, landing and taxi, read only) and at the gate (valves, APU stop and start on ground power, every door, HOT
+  AIR, CAB FANS, ELAC 1, the LDG ELEV knob, the ECAM keys), the owner having handed the aircraft over; 2 to 9; the
+  measured fixes (`36ed92a09`, `d4a3935b1`, `23b420398` HOT AIR); 10 and 12, the switches (`d58a8e17b`, `3fbe3e557`);
+  11, the owner's tour by ear, which asked for named positions and the colors; those followed (`5b3447d2a` and
+  `7480f5710` to `a09d18d70`, plan 05's FUEL and ENG pages included); 13 waived by the owner (CRUISE checked against a
+  real cruise push); 14, this record. Every commit reviewed; the whole flight's recording replayed through every page
+  with no problem.
+- **Waiting on the owner:** nothing.
+- **In-sim results:** see `docs/fenix-channel/evidence/06-sd-pages.md` (the flight and the gate, 2026-11-03).
 - **Changed from the plan:**
   - No `SdPageReader`, `SdPageText` or `SdPagesPush`: plan 05 landed `FenixChannelSdReader`, `FenixChannelSd.Whole`,
     `OneDecimal` and `WeightUnit` and the test helper `SdPush`, which meet this plan's contract word for word, so the
     pages use them rather than a copy (the plan copied them only so that two parallel plans stayed independent).
   - APU GEN on the APU page is plan 05's ELEC row (`ElecApuRow`), "APU GEN: OFF" with its pushbutton off included.
   - A value drawn as crosses keeps its unit ("BLEED: XX PSI", "OXY: XX PSI"), as plan 05's pages write "GREEN: XX PSI".
-  - No HOT AIR row: 151.7.10 is a double (the contract), its values not yet measured.
+  - COND has its HOT AIR row: 151.7.10 is a double carrying the valve enum, measured following the button.
+  - The owner (kn4iee, who owns the lower display, plans 05 and 06) replaced the no-color ruling (Q4) for the whole
+    SD: every page speaks the colors and pulses the Fenix sends, never a guessed or default one, never for an element
+    not drawn; positions are named (wheels, spoilers, LGCIUs); plan 05's FUEL and ENG pages follow it too.
+  - WHEEL reads one row per main wheel (brake, tire, released) and the nose tires; a gear is said once while its two
+    LGCIUs agree; F/CTL names the spoilers' order and folds equal ones; COND's trim valves read "n % hot".
+  - The bottom line keeps "--" (the owner: a braille display shows the dashes as drawn).
 - **Rulings made while working:**
   - The A318 and an unknown airframe read DOOR "not available, airframe not known" (no A318 door table in the Fenix).
   - PITCH TRIM that rounds to zero reads "0.0°", like the surfaces.
-  - F/CTL signs inferred until the flight control check: ailerons and elevators negative up, the rudder and its trim
-    positive right; the spoilers read whole numbers with no unit word until the unit is measured; a faulted spoiler
-    reads "<n> fault"; without FCDC data the 145 surfaces read XX, the rudder trim and the computers as usual.
+  - F/CTL signs, measured in flight: ailerons and elevators negative up, the rudder and its trim positive right; the
+    spoilers in whole degrees; a faulted spoiler reads "<n>° fault"; without FCDC data the 145 surfaces read XX, the
+    rudder trim and the computers as usual.
+  - The gear doors' two open values (0 and 2) both read "open": the A320's WHEEL page draws a door not closed one way.
+  - The A321's exits keep no slide row (no safe way to arm one slide for a test).
   - CRUISE builds its LDG ELEV and ΔP rows with PRESS's own builders.
   - Who decided: kn4iee's session (Claude, as the plan's controller); each is the owner's to overrule at Task 11.

@@ -528,3 +528,7 @@ Kept in this file only, so no other plan's push ever touches it.
     CLR, RCL and EMER CANC belong with the E/WD. Plan 04 landed without them, and plan 05 added them there (Task 10c)
     under the landed-plan exemption, with one shared key row and `PressEcamKey` for both windows.
   - Pages 0 and 13: never seen, on the ground or from cold and dark through the self-test; `NameOf` names neither.
+- **Revised by plan 06 (2026-11-04, the owner's ruling for the whole lower display):** FUEL and ENG now speak the colors
+  and pulses the Fenix sends (pumps, LP valves, the A321's center transfer valves and ACT pump, the oil values' pulse),
+  replacing this plan's "rows built from values speak no color"; the rule is in docs/a32nx.md's SD window section and
+  the commits are in plan 06's record.
