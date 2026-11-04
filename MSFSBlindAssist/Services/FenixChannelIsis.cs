@@ -23,9 +23,11 @@ internal readonly record struct FenixIsisBug(bool Enabled, double Value);
 /// <param name="Airspeed">The airspeed (182.12).</param>
 /// <param name="Altitude">The altitude (182.13).</param>
 /// <param name="Mach">The Mach (182.14).</param>
-/// <param name="AlignSeconds">The alignment countdown in seconds (182.16); null when none is running.</param>
-/// <param name="RealignSeconds">The quick realignment countdown in seconds (182.17); null when none is running.</param>
-/// <param name="Qnh">The QNH (182.18), in the unit Task 1 of plan 07 measures.</param>
+/// <param name="AlignSeconds">The length of the alignment in seconds (182.16, 90, constant while it lasts); null when none
+/// is running.</param>
+/// <param name="RealignSeconds">The length of the quick realignment in seconds (182.17, 10, constant while it lasts); null
+/// when none is running.</param>
+/// <param name="Qnh">The QNH (182.18), always in hPa: the ISIS converts it while 182.6 is clear.</param>
 /// <param name="LocDots">The localizer deviation (182.19); NaN while not drawn.</param>
 /// <param name="GsDots">The glideslope deviation (182.20); NaN while not drawn.</param>
 /// <param name="SelectedBug">The selected bug (182.21).</param>
@@ -41,12 +43,13 @@ internal sealed record FenixIsisState(
 /// The decoder of the ISIS from the Fenix display channel. Pure: it reads a RemoteData message and nothing else.
 /// </summary>
 /// <remarks>
-/// What stands between a wrong value and a pilot is the build
-/// check, the live condition (182.1, the trust gate's), the shape of every member read here (the first in another wire
-/// type than the contract gives makes the whole section a wrong shape, named by its path) and the content condition: a
-/// 182 that carries neither a baro setting above 0 nor a countdown is "no ISIS data". A shape problem is reported before
-/// missing content, since a damaged part is what hides the content. 182.1 (the gate's) and 182.15 (Brightness) are not
-/// read here.
+/// What stands between a wrong value and a pilot is the build check, the live condition (182.1, the trust gate's), the
+/// shape of every member read here (the first in another wire type than the contract gives makes the whole section a
+/// wrong shape, named by its path) and the content condition: a 182 that carries neither a baro setting above 0 nor a
+/// phase length (182.16 or 182.17) is "no ISIS data". A shape problem is reported before missing content, since a damaged
+/// part is what hides the content. 182.1 (the gate's) and 182.15 (Brightness) are not read here. 182.16 and 182.17 hold
+/// the lengths of the alignment and the quick realignment (90 and 10), constant while each lasts, not a countdown
+/// (measured 2026-11-04); the record names them AlignSeconds and RealignSeconds for that length.
 /// </remarks>
 internal static class FenixChannelIsis
 {
