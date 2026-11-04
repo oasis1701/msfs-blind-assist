@@ -90,3 +90,43 @@ autopilots went off. The real A320 draws LAND, FLARE and ROLL OUT across the Ver
 lateral mode beside them, and field 112's name says the Fenix does too (this was not checked on the screen). This
 plan's build, flown on this flight, spoke "FMA: Lateral: LOC *, green" on the rollout for a mode the PFD does not draw.
 The owner ruled (2026-11-04): the Lateral column is silent while slot 1 shows LAND, FLARE or ROLL OUT.
+
+## Task 4: the announcements the record gives
+
+These are the readings of `A_recorded_flight_is_announced_as_expected`, each a moment of the record in its settled form
+(pushes under 300 ms apart are one reading). It leaves out the HDG and V/S excursion of 16:22:51 to 16:23:22, the THR
+IDLE and SPEED alternation and MORE DRAG's repeats from 16:27 to 16:38, the levers out of CL at 14:53:26 to 14:53:47,
+OP DES to ALT at 16:48 to 16:50, and the autopilot changes on final at 16:58.
+
+1. 14:37:50.048: FMA: Vertical: SRS green, CLB cyan
+2. 14:37:50.830: FMA: Thrust: MAN FLX white, +52 cyan
+3. 14:38:32.182: FMA: Lateral: NAV, green
+4. 14:39:05.671: FMA: Vertical: CLB green, ALT magenta; FMA message: LVR CLB, white
+5. 14:39:06.810: FMA: Thrust: THR CLB, green
+6. 14:46:18.120: FMA: Thrust: SPEED, green; Vertical: ALT CST* green, CLB cyan
+7. 14:47:05.227: FMA: Vertical: ALT CST green, CLB cyan
+8. 14:47:25.091: FMA: Vertical: OP CLB green, ALT cyan
+9. 14:47:25.332: FMA: Thrust: THR CLB, green
+10. 14:52:43.390: FMA: Vertical: ALT*, green
+11. 14:52:43.810: FMA: Thrust: MACH, green
+12. 14:53:15.076: FMA: Vertical: ALT CRZ, green
+13. 16:19:45.557: FMA: Approach: RADIO white, 200 cyan
+14. 16:21:25.951: FMA: Vertical: DES green, ALT cyan
+15. 16:21:38.071: FMA: Thrust: THR IDLE, green
+16. 16:31:53.460: FMA message: MORE DRAG
+17. 16:39:05.401: FMA: Thrust: SPEED, green; Vertical: ALT*, green
+18. 16:39:30.546: FMA: Vertical: ALT, green
+19. 16:43:30.645: FMA: Lateral: HDG, green
+20. 16:54:37.800: FMA: Vertical: ALT green, G/S cyan; Lateral: HDG green, LOC cyan; Approach: CAT3 SINGLE
+21. 16:54:46.194: FMA: Approach: CAT3 DUAL
+22. 16:55:47.168: FMA: Lateral: LOC *, green
+23. 16:56:27.434: FMA: Lateral: LOC, green
+24. 16:57:25.947: FMA: Vertical: G/S*, green
+25. 16:57:43.351: FMA: Vertical: G/S, green
+26. 16:59:56.519: FMA: Vertical: LAND, green
+27. 17:00:22.866: FMA: Vertical: FLARE, green
+28. 17:00:24.066: FMA: Thrust: THR IDLE, green
+29. 17:00:28.387: FMA: Vertical: ROLL OUT, green
+30. 17:00:52.994: FMA: Approach: CAT1
+
+THR CLB at 14:47:25.332 came 302 ms after OP CLB, so in the aircraft it may be heard with it in one announcement.

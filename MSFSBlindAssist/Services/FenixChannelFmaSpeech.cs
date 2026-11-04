@@ -39,7 +39,8 @@ internal sealed record FenixFmaReading(IReadOnlyList<string?> Columns, IReadOnly
 /// The FMA as a pilot hears it: the Thrust, Vertical, Lateral and Approach columns, each one line through
 /// <see cref="FenixChannelFmaLayout.ColumnPhrase"/>, and the messages of row 3. The Engagement column (AP, FD, A/THR; the
 /// FCU lights already say them) and slots the layout gives no place are in no reading. A change is announced from two
-/// readings, so only what is heard can make a change.
+/// readings, so only what is heard can make a change. While LAND, FLARE or ROLL OUT shows in the Vertical column, the
+/// Lateral column says nothing: the Fenix keeps sending a lateral mode then that the PFD does not draw.
 /// </summary>
 internal static class FenixChannelFmaSpeech
 {
@@ -57,6 +58,24 @@ internal static class FenixChannelFmaSpeech
             .ThenBy(slot => slot)
             .ToArray();
 
+    // The modes the real FMA draws across the Vertical and Lateral columns.
+    private static readonly HashSet<string> CommonModes = new(StringComparer.Ordinal) { "LAND", "FLARE", "ROLL OUT" };
+
+    // The Vertical column's row-1 slot, found through the layout.
+    private static readonly int VerticalModeSlot =
+        Enumerable.Range(0, FenixChannelFields.FmaEntry.SlotCount)
+            .First(slot => FenixChannelFmaLayout.Of(slot) == (1, FenixFmaColumn.Vertical));
+
+    private static bool ShowsCommonMode(IReadOnlyList<FenixFmaSlot> slots)
+    {
+        FenixTextLine line = FenixChannelText.Parse(slots[VerticalModeSlot].Text);
+        if (line.UnknownCodes.Count > 0) return false;
+
+        string mode = string.Join(' ', line.JoinedText.Replace('!', ' ')
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return CommonModes.Contains(mode);
+    }
+
     public static FenixFmaReading Read(IReadOnlyList<FenixFmaSlot> slots)
     {
         if (slots.Count != FenixChannelFields.FmaEntry.SlotCount)
@@ -66,6 +85,13 @@ internal static class FenixChannelFmaSpeech
         }
 
         string?[] columns = SpokenColumns.Select(column => FenixChannelFmaLayout.ColumnPhrase(slots, column)).ToArray();
+
+        // The real A320 draws LAND, FLARE and ROLL OUT across the Vertical and Lateral columns. The Fenix keeps sending
+        // the lateral mode in the lateral slot underneath (its field 112 was 1 exactly while they showed, measured in
+        // flight 2026-11-04), which the PFD does not draw, so the owner ruled it silent. Field 112 is not decoded, so the
+        // three words are the signal. Recognizing the mode reads the parsed text; nothing is spoken from it.
+        if (ShowsCommonMode(slots)) columns[SpokenColumns.ToList().IndexOf(FenixFmaColumn.Lateral)] = null;
+
         string?[] messages = MessageSlots.Select(slot => FenixChannelSpeech.Line(slots[slot].Text)).ToArray();
 
         return new FenixFmaReading(columns, messages);

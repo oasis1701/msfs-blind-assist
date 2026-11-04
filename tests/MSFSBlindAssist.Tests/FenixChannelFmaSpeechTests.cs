@@ -82,6 +82,77 @@ public class FenixChannelFmaSpeechTests
         Assert.NotEqual(Reading(Slots((6, "cALT"))), Reading(Slots((6, "mALT"))));
     }
 
+    private static List<FenixFmaSlot> Boxed(params (int Slot, string Text, bool Box)[] texts)
+    {
+        List<FenixFmaSlot> slots = Blank();
+        foreach ((int slot, string text, bool box) in texts) slots[slot] = new FenixFmaSlot(text, box);
+        return slots;
+    }
+
+    private static string? ColumnOf(List<FenixFmaSlot> slots, FenixFmaColumn column) =>
+        FenixChannelFmaSpeech.Read(slots).Columns[FenixChannelFmaSpeech.SpokenColumns.ToList().IndexOf(column)];
+
+    [Fact]
+    public void The_common_modes_are_heard_once()
+    {
+        List<FenixFmaSlot> before = Slots((0, "gSPEED"), (1, "gG/S"), (2, "gLOC"), (3, "CAT3"), (4, "wAP1+2"),
+            (8, "DUAL"), (9, "w1   2"), (14, "wA/THR"));
+        List<FenixFmaSlot> land = Boxed((0, "gSPEED", false), (1, "gLAND", true), (2, "gLOC", false),
+            (3, "CAT3", false), (4, "wAP1+2", false), (8, "DUAL", false), (9, "w1   2", false), (14, "wA/THR", false));
+        List<FenixFmaSlot> flare = Boxed((0, "gSPEED", false), (1, "gFLARE", true), (2, "gLOC", false),
+            (3, "CAT3", false), (4, "wAP1+2", false), (8, "DUAL", false), (9, "w1   2", false), (14, "wA/THR", false));
+        List<FenixFmaSlot> rollOut = Boxed((0, "", true), (1, "gROLL OUT", true), (2, "gLOC", false),
+            (3, "CAT3", false), (4, "wAP1+2", false), (8, "DUAL", false), (9, "w1   2", false));
+
+        Assert.Equal("FMA: Vertical: LAND, green", Heard(before, land));
+        Assert.Equal("FMA: Vertical: FLARE, green", Heard(land, flare));
+        Assert.Equal("FMA: Vertical: ROLL OUT, green", Heard(flare, rollOut));
+    }
+
+    [Theory]
+    [InlineData("gLAND")]
+    [InlineData("gFLARE")]
+    [InlineData("gROLL OUT")]
+    [InlineData("gROLL!OUT")]
+    public void The_lateral_mode_under_a_common_mode_is_never_spoken(string vertical)
+    {
+        Assert.Null(ColumnOf(Slots((1, vertical), (2, "gLOC")), FenixFmaColumn.Lateral));
+        Assert.Equal("LOC, green", ColumnOf(Slots((1, "gG/S"), (2, "gLOC")), FenixFmaColumn.Lateral));
+    }
+
+    [Fact]
+    public void The_lateral_mode_is_silent_on_the_rollout_as_recorded()
+    {
+        List<FenixFmaSlot> before = Boxed((1, "gROLL OUT", false), (2, "gLOC", false), (3, "CAT1", true),
+            (4, "", true), (9, "w1   2", false));
+        List<FenixFmaSlot> after = Boxed((1, "gROLL OUT", false), (2, "gLOC *", true), (3, "CAT1", true),
+            (4, "", true), (9, "w1   2", false));
+
+        Assert.Null(Heard(before, after));
+    }
+
+    [Fact]
+    public void A_lateral_mode_is_heard_once_the_common_mode_ends()
+    {
+        Assert.Equal("FMA: Vertical: SRS, green; Lateral: GA TRK, green",
+            Heard(Slots((1, "gLAND"), (2, "gLOC")), Slots((1, "gSRS"), (2, "gGA TRK"))));
+        Assert.Equal("FMA: Vertical: G/S, green; Lateral: LOC, green",
+            Heard(Slots((1, "gLAND"), (2, "gLOC")), Slots((1, "gG/S"), (2, "gLOC"))));
+    }
+
+    [Fact]
+    public void The_approach_columns_third_row_follows_the_ruling()
+    {
+        const string radio = "RADIOdc⠀⠀ 200";
+        List<FenixFmaSlot> shown = Slots((3, "CAT3"), (8, "DUAL"), (13, radio));
+        FenixFmaReading reading = FenixChannelFmaSpeech.Read(shown);
+
+        Assert.Equal("CAT3 DUAL, RADIO white, 200 cyan", ColumnOf(shown, FenixFmaColumn.Approach));
+        Assert.DoesNotContain(reading.Messages, line => line is not null && line.Contains("RADIO"));
+        Assert.False(FenixChannelFmaLayout.IsMessage(13));
+        Assert.Equal("FMA: Approach: RADIO white, 200 cyan", Heard(Blank(), Slots((13, radio))));
+    }
+
     [Fact]
     public void Column_five_is_never_spoken()
     {

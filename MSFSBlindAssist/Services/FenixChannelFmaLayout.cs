@@ -12,10 +12,11 @@ internal enum FenixFmaColumn { Thrust, Vertical, Lateral, Approach, Engagement, 
 /// say one column two ways.
 /// </summary>
 /// <remarks>
-/// <para>The layout is inferred, not confirmed. It comes from the slots seen on 3.0.0.7613: the Thrust column's MACH,
-/// MAN, FLX +56 and LVR CLB, the Vertical column's ALT CRZ, the Lateral column's NAV, and the Engagement column's AP1,
-/// 1 FD 2 and A/THR. The Approach column was never seen. Plan 08, the FMA announcer, confirms the layout in the sim and
-/// may change this file.</para>
+/// <para>The layout was measured in flight on 3.0.0.7613 on 2026-11-04, from take-off to an ILS autoland. Every slot
+/// from 0 to 14 that held text (all but slot 12) sat at row x 5 + column, and slot 15 held no text all flight. The
+/// Thrust column showed MAN, THR CLB, SPEED and MACH, the Vertical column SRS, CLB, ALT CRZ, G/S, LAND, FLARE and ROLL
+/// OUT, the Lateral column NAV, HDG and LOC, the Approach column CAT3, CAT1, SINGLE, DUAL and the minimum RADIO 200, and
+/// the Engagement column AP1, AP1+2, FD 1 2 and A/THR.</para>
 /// <para>Slots 0 to 14 are three rows of five, row by row. A slot's row is its number divided by five, plus one (the rows
 /// count from 1), and its column is the remainder, counted along <see cref="FenixFmaColumn"/>. A number outside 0 to 14
 /// has no place: <see cref="Of"/> gives it row 0 and the <see cref="FenixFmaColumn.Unknown"/> column.</para>

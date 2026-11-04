@@ -53,16 +53,22 @@ public class FenixChannelFmaLayoutTests
         Assert.Equal((row, Enum.Parse<FenixFmaColumn>(column)), FenixChannelFmaLayout.Of(slot));
     }
 
-    // Only the slots seen on 3.0.0.7613, each with the mode the display showed there. The Approach column (slots 3, 8
-    // and 13) was never seen, so none of its slots is here.
+    // Every slot seen holding text in the flight of 2026-11-04 on 3.0.0.7613, each with the modes it showed. Slot 12 is
+    // the only one of 0 to 14 never seen, and slot 15 held no text all flight.
     [Theory]
-    [InlineData(0, 1, nameof(FenixFmaColumn.Thrust))]       // MACH and MAN
-    [InlineData(1, 1, nameof(FenixFmaColumn.Vertical))]     // ALT CRZ
-    [InlineData(2, 1, nameof(FenixFmaColumn.Lateral))]      // NAV
-    [InlineData(4, 1, nameof(FenixFmaColumn.Engagement))]   // AP1
-    [InlineData(5, 2, nameof(FenixFmaColumn.Thrust))]       // FLX +56
-    [InlineData(9, 2, nameof(FenixFmaColumn.Engagement))]   // 1 FD 2
+    [InlineData(0, 1, nameof(FenixFmaColumn.Thrust))]       // MAN, THR CLB, SPEED, MACH, THR IDLE
+    [InlineData(1, 1, nameof(FenixFmaColumn.Vertical))]     // SRS, CLB, ALT CST*, OP CLB, ALT*, ALT CRZ, DES, V/S, ALT, OP DES, G/S*, G/S, LAND, FLARE, ROLL OUT
+    [InlineData(2, 1, nameof(FenixFmaColumn.Lateral))]      // NAV, HDG, LOC *, LOC
+    [InlineData(3, 1, nameof(FenixFmaColumn.Approach))]     // CAT3, CAT1
+    [InlineData(4, 1, nameof(FenixFmaColumn.Engagement))]   // AP1, AP2, AP1+2
+    [InlineData(5, 2, nameof(FenixFmaColumn.Thrust))]       // FLX +52, THR, MCT
+    [InlineData(6, 2, nameof(FenixFmaColumn.Vertical))]     // CLB, ALT, G/S armed
+    [InlineData(7, 2, nameof(FenixFmaColumn.Lateral))]      // NAV, LOC armed
+    [InlineData(8, 2, nameof(FenixFmaColumn.Approach))]     // SINGLE, DUAL
+    [InlineData(9, 2, nameof(FenixFmaColumn.Engagement))]   // FD 1 2
     [InlineData(10, 3, nameof(FenixFmaColumn.Thrust))]      // LVR CLB
+    [InlineData(11, 3, nameof(FenixFmaColumn.Vertical))]    // MORE DRAG
+    [InlineData(13, 3, nameof(FenixFmaColumn.Approach))]    // RADIO 200
     [InlineData(14, 3, nameof(FenixFmaColumn.Engagement))]  // A/THR
     public void The_measured_slots_land_in_their_columns(int slot, int row, string column)
     {
@@ -75,6 +81,7 @@ public class FenixChannelFmaLayoutTests
     [Fact]
     public void Slot_fifteen_is_unknown()
     {
+        // Slot 15 held no text through a whole flight, so nothing says where it would draw.
         Assert.Equal((0, FenixFmaColumn.Unknown), FenixChannelFmaLayout.Of(15));
         Assert.False(FenixChannelFmaLayout.IsMessage(15));
 
