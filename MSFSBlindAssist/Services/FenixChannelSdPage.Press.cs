@@ -9,8 +9,8 @@ internal static partial class FenixChannelSdPages
 {
     /// <summary>
     /// The PRESS page's rows, in the SD's order: <c>LDG ELEV AUTO: n FT</c> (MAN while the landing elevation is set by hand),
-    /// <c>ΔP: n.n PSI</c>, <c>V/S: n FT/MIN</c>, <c>CAB ALT: n FT</c>, then <c>SYS 1</c> only while system 1 is active,
-    /// <c>SYS 2</c> only while system 2 is, <c>MAN</c> only in manual mode, then <c>VENT INLET</c>, <c>VENT EXTRACT</c>,
+    /// <c>ΔP: n.n PSI</c>, <c>V/S: n FT/MIN</c>, <c>CAB ALT: n FT</c>, then <c>SYS 1</c> only while system 1 is active
+    /// or drawn amber (151.9.19), <c>SYS 2</c> only while system 2 is active or drawn amber (151.9.20), <c>MAN</c> only in manual mode, then <c>VENT INLET</c>, <c>VENT EXTRACT</c>,
     /// <c>OUTFLOW: n %</c>, <c>SAFETY</c>, <c>PACK 1</c> and <c>PACK 2</c>. The page speaks the colors the Fenix sends: a
     /// value drawn amber or red gains ", amber" or ", red" and one the SD makes pulse ", pulsing" (151.9); <c>VENT, amber</c>
     /// (a row of its own), <c>BLOWER: fault</c> and <c>EXTRACT: fault</c> show only while set.
