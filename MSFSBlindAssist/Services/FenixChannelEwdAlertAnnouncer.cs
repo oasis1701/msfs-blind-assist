@@ -44,8 +44,8 @@ internal readonly record struct FenixEwdAlertLine(string Text, bool Interrupt);
 /// the E/WD while its entry stays (measured): a step with no line keeps the color it had. A color change is never spoken, and an
 /// item spoken with no color is not spoken again when its line appears.</para>
 /// <para>One step's order. The due red failures, the first one spoken interrupting; the other due failures; the cleared lines; the
-/// due memos. LAND ASAP comes last of its group, for its entry sorts ahead (its Ata is a memo's) and the failure that caused it
-/// should be heard first. No other line interrupts. A muted row's line is dropped and never kept: the items move on all the same, so
+/// due memos. LAND ASAP comes last of its group, among the due failures and among the cleared lines, for its entry sorts ahead (its
+/// Ata is a memo's) and the failure that caused it should be heard first. No other line interrupts. A muted row's line is dropped and never kept: the items move on all the same, so
 /// an unmute replays nothing.</para>
 /// <para>Threads. Called on the UI thread only, by the host's timer, so the announcer takes no lock. Every line is the display's
 /// own words, so the PC's culture changes none of it.</para>

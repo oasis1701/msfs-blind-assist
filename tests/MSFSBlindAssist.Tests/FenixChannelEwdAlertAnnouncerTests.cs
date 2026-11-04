@@ -143,8 +143,8 @@ public class FenixChannelEwdAlertAnnouncerTests
         FenixEcamEntries fire = List(EngFire);
         FenixChannelFrame frame = Ewd(left: [EngFireLine, Gen1Line]);
 
-        // A list read while untrusted, and with no frame: remembered all the same.
-        Assert.Empty(rig.At(0, fire, frame, trusted: false));
+        // A list read while untrusted, then another with no frame as well: each remembered all the same.
+        Assert.Empty(rig.At(0, List(Gen1Fault), frame, trusted: false));
         Assert.Empty(rig.At(100, fire, null, trusted: false));
 
         // Then a heartbeat with no entries in the snapshot, and trust: the baseline holds the list.
@@ -153,6 +153,18 @@ public class FenixChannelEwdAlertAnnouncerTests
 
         // Its next change is spoken: the fire stays said, the fault is new.
         Assert.Equal([Queued("ELEC GEN 1 FAULT, amber")], rig.At(1100, List(EngFire, Gen1Fault), frame));
+    }
+
+    [Fact]
+    public void An_item_waiting_for_its_line_when_a_gap_comes_is_not_spoken_after_it()
+    {
+        Rig rig = Baselined(List(), Ewd());
+        FenixEcamEntries fire = List(EngFire);
+
+        // New with no line yet, so it waits; then the gap, and the baseline after it takes the item silently.
+        Assert.Empty(rig.At(1000, fire, Ewd()));
+        Assert.Empty(rig.At(1100, fire, Ewd(), trusted: false));
+        rig.Silent(1200, 3000, fire, Ewd(left: [EngFireLine]));
     }
 
     [Fact]
