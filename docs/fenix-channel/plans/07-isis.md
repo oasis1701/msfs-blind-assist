@@ -322,14 +322,16 @@ in `docs/fenix-channel/evidence/07-isis.md`.
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed
+- **Status:** in progress: Task 2 pushed inert (2026-11-04); Task 1 waits on the sim
 - **Claimed by:** Daniel Wolak (danielw97), 2026-11-04
 - **Worked by:** Daniel Wolak with Claude
 - **Started:** 2026-11-04, from `87bf81463` (the branch's head that day)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:**
-- **Waiting on the owner:**
+- **Tasks:** 0 done (claim `05d5fd0ee`). 2 done, Step 6 included (every number and wire shape matches the installed
+  3.0.0.7613, evidence file), `382c1938d`, worked inline with no subagent review; 16 and 17 read as a plain varint until
+  Task 1 Step 1 sees their wire type. 1 and 3 to 8 to do.
+- **Waiting on the owner:** Task 1 (all of it: the sim).
 - **In-sim results:**
 - **Changed from the plan:**
 - **Rulings made while working:**
