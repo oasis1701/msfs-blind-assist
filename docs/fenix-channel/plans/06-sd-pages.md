@@ -459,14 +459,30 @@ The local build with Tasks 10 and 12 (and plan 05's switch), in one flight, in t
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed
+- **Status:** in progress: Tasks 2 to 9 pushed inert (2026-11-03); the switch commits (Tasks 10, 12) wait on the sim
 - **Claimed by:** kn4iee, 2026-11-03
-- **Worked by:** kn4iee with Claude Code (subagents)
+- **Worked by:** kn4iee with Claude Code (subagents: a fresh implementer and a reviewer per task)
 - **Started:** 2026-11-03, from `9f2eea646` (the branch's head: plan 05 has landed, so the in-sim checks need no merge)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:**
-- **Waiting on the owner:**
-- **In-sim results:**
+- **Tasks:** 0 done (claim `0193ea4ed`). 2 done, Step 2 included (all 165 constants match the installed 3.0.0.7613,
+  evidence file). 3 to 9 done, inert, each reviewed. 1 partly: the in-flight reads of a cruise push (evidence file);
+  its ground checks wait. 10 to 14 to do.
+- **Waiting on the owner:** Task 1's ground checks (valves switched, the APU started, doors and slides, ELAC 1, HOT AIR,
+  CAB FANS, the LDG ELEV knob, the captures) and its [owner] surfaces check; Tasks 11 and 13.
+- **In-sim results:** see `docs/fenix-channel/evidence/06-sd-pages.md` (an A321 cruise push, 2026-11-03).
 - **Changed from the plan:**
+  - No `SdPageReader`, `SdPageText` or `SdPagesPush`: plan 05 landed `FenixChannelSdReader`, `FenixChannelSd.Whole`,
+    `OneDecimal` and `WeightUnit` and the test helper `SdPush`, which meet this plan's contract word for word, so the
+    pages use them rather than a copy (the plan copied them only so that two parallel plans stayed independent).
+  - APU GEN on the APU page is plan 05's ELEC row (`ElecApuRow`), "APU GEN: OFF" with its pushbutton off included.
+  - A value drawn as crosses keeps its unit ("BLEED: XX PSI", "OXY: XX PSI"), as plan 05's pages write "GREEN: XX PSI".
+  - No HOT AIR row: 151.7.10 is a double (the contract), its values not yet measured.
 - **Rulings made while working:**
+  - The A318 and an unknown airframe read DOOR "not available, airframe not known" (no A318 door table in the Fenix).
+  - PITCH TRIM that rounds to zero reads "0.0°", like the surfaces.
+  - F/CTL signs inferred until the flight control check: ailerons and elevators negative up, the rudder and its trim
+    positive right; the spoilers read whole numbers with no unit word until the unit is measured; a faulted spoiler
+    reads "<n> fault"; without FCDC data the 145 surfaces read XX, the rudder trim and the computers as usual.
+  - CRUISE builds its LDG ELEV and ΔP rows with PRESS's own builders.
+  - Who decided: kn4iee's session (Claude, as the plan's controller); each is the owner's to overrule at Task 11.
