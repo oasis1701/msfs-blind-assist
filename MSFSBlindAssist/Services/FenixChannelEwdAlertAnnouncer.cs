@@ -23,7 +23,10 @@ internal readonly record struct FenixEwdAlertLine(string Text, bool Interrupt);
 /// <para>The baseline. Not trusted, no frame, or a connection number other than the last step's says nothing and forgets
 /// everything said, waiting and held, without depending on how quickly the verdict came back. The step that shows it is not the
 /// baseline: the next trusted step with a remembered list is, which takes every item as said, silently, and looks up its line so
-/// that a later "cleared" has its color. A failure that came or went in the gap is never spoken.</para>
+/// that a later "cleared" has its color. A failure the list showed coming or going in the gap is never spoken. The list does not
+/// change while the power is off, so after a blackout the baseline is the list from before it, and the first new list, 18 to 24 s
+/// after the E/WD is trusted (measured), is followed like any other: its start-up failures are spoken and what left it says
+/// "cleared", as a sighted pilot sees them on the display (owner's ruling, spec row 62). Never wait for that list.</para>
 /// <para>What is new. An item in the list that has not been said waits for its E/WD line. No entry ever came before its line in
 /// the measurements, so <see cref="LineWaitMs"/> is the rule's floor. Found, it is due at once with that line; not found by then,
 /// it is due without one and with no color, for an entry with no line is a failure or a memo the E/WD is not showing (one hidden

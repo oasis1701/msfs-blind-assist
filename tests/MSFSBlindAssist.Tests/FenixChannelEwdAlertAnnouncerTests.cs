@@ -155,6 +155,30 @@ public class FenixChannelEwdAlertAnnouncerTests
         Assert.Equal([Queued("ELEC GEN 1 FAULT, amber")], rig.At(1100, List(EngFire, Gen1Fault), frame));
     }
 
+    [Fact]
+    public void After_a_power_up_the_first_new_list_is_heard_like_any_other()
+    {
+        // Measured in two blackouts: the list does not change while the power is off, and the first new one comes 18 to 24 s
+        // after the E/WD is trusted. The owner's ruling (spec row 62): its start-up failures are spoken, as a sighted pilot sees
+        // them on the display, and what left it says "cleared"; no wait for that list.
+        var speeds = new FenixEcamEntry("01-22-720", "T.O - SPEEDS NOT INSERTED", "T.O SPEEDS NOT INSERTED", true);
+        var cids = new FenixEcamEntry("01-23- 30", "COM-CIDS FAULT", "COM CIDS 1+2 FAULT", true);
+        FenixEcamEntries before = List(speeds);
+        Rig rig = Baselined(before, Ewd(left: ["uaT.Ou aSPEEDS NOT INSERTED"]));
+
+        // The blackout, then the E/WD trusted with blank columns: the old list, taken silently.
+        rig.Silent(1000, 2000, before, Ewd(), trusted: false);
+        rig.Silent(2100, 3000, before, Ewd());
+
+        // The first new list, 24 s later.
+        FenixEcamEntries first = List(cids);
+        FenixChannelFrame startUp = Ewd(left: ["uaCOMu aCIDS 1+2 FAULT"]);
+        Assert.Equal([Queued("COM CIDS 1+2 FAULT, amber")], rig.At(27_000, first, startUp));
+
+        rig.Silent(27_100, 31_400, first, startUp);
+        Assert.Equal([Queued("T.O SPEEDS NOT INSERTED cleared")], rig.At(31_500, first, startUp));
+    }
+
     // ---- A new failure ----------------------------------------------------------------------
 
     [Fact]
