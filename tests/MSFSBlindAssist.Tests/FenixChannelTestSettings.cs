@@ -1,12 +1,12 @@
 // The test assembly's settings: what keeps every test of the process away from the real settings file, and the scratch
 // folder a test takes on top of that when it needs a first start of its own.
 //
-// SettingsManager's paths are private static readonly fields, made from %APPDATA%, and its Load calls
-// SeedFenixChannelMonitorDefaults, which saves whenever FenixChannelMonitorDefaultsSeeded is false: that is every
-// settings file on a developer's machine, until they run an app that has the flag. Any test that reaches
-// SettingsManager.Current runs that Load (SpeechCapture is a ScreenReaderAnnouncer, whose constructor reads Current,
-// and dozens of test files build one or call Save). So the first "dotnet test" after pulling the seed would rewrite the
-// real settings of whoever runs it, in the shape of the test build, which loses every key that build does not know.
+// SettingsManager's paths are private static readonly fields, made from %APPDATA%, and its Load runs one-time seeds, each
+// of which saves whenever its flag is false: that is every settings file on a developer's machine, until they run an app
+// that has the flag. Any test that reaches SettingsManager.Current runs that Load (SpeechCapture is a
+// ScreenReaderAnnouncer, whose constructor reads Current, and dozens of test files build one or call Save). So the first
+// "dotnet test" after pulling a new seed would rewrite the real settings of whoever runs it, in the shape of the test
+// build, which loses every key that build does not know.
 //
 // So before any test runs, whatever order they run in, a module initializer (FenixTestHost is the precedent, and an
 // assembly may have several) points the three paths at a scratch folder for the whole test process. The folder is this

@@ -327,11 +327,11 @@ only).
 - **What changes for a pilot.** Guide: `guide/airbus-aircraft.md`, the Fenix chapter's "Aircraft-specific hotkeys and
   callouts" (`#aircraft-specific-hotkeys-and-callouts-2`): new ECAM warnings and cautions spoken with their color ("ENG
   1 FIRE, red" interrupting, up to about 4 s after the master warning; "ELEC GEN 1 FAULT, amber" after what is being
-  said), "<title> cleared" about 5 to 8 s after one goes, LAND ASAP by its color, memos when turned on and in the E/WD's
-  words, the three Ctrl+M rows "E/WD warnings", "E/WD cautions" and "E/WD memos" (memos off by default), that a very short
+  said), "<title> cleared" about 5 to 8 s after one goes, LAND ASAP by its color, memos in the E/WD's words, the three
+  Ctrl+M rows "E/WD warnings", "E/WD cautions" and "E/WD memos" (all on by default, spec row 63), that a very short
   warning can go unsaid, and that they need the display channel (the session notice). No hotkey changes. Changelog category
-  `feature`, draft: "Fenix: new ECAM warnings and cautions are now spoken with their color, red ones interrupting, and you
-  hear when each one clears. ECAM memos can be turned on in the Fenix Monitor Manager."
+  `feature`, draft: "Fenix: new ECAM warnings, cautions and memos are now spoken with their color, red ones interrupting, and
+  you hear when each one clears. Each kind can be turned off in the Fenix Monitor Manager."
 - **Proposed rule line.**
 
   ```text
@@ -353,7 +353,7 @@ only).
   - A title that rewords itself under one key is not spoken again, and its "cleared" says the new words; no entry was seen doing it.
   - A power-up from a fresh cold and dark load with the app already running: the same path should speak its start-up failures (row
     62), so listen to how much it says.
-  - With memos on: how the T.O memo sounds with its dots ("T.O AUTO BRK green, .....MAX cyan" with its line, the same words with no
+  - How the T.O memo sounds with its dots ("T.O AUTO BRK green, .....MAX cyan" with its line, the same words with no
     color when a failure hides it), and whether IRS IN ALIGN 1 and 2, drawn as one "IR IN ALIGN > 7 MN", want a row in the memo words
     table.
 - **Requests for frozen files:** none. (Plan 01 keeps a bare heartbeat from replacing the snapshot's `Entries`; if Task
@@ -373,6 +373,8 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Landed:** 2026-11-04: the switch at 5115f8f99, the docs at 1c3bfb6f6, the final review's fixes at da89dab24, and this record.
 - **Tests at landing:** 19,172 passed, none failed, on the combined code after the rebase onto 268173964 (`ClaudeRulesHookTests` left
   out, as the index says); 45 of them plan 09's (`FenixChannelEwdAlert*`).
+- **After landing:** the owner, 2026-11-04: memos are on by default (spec row 63), so plan 01's one-time seed and its flag are gone.
+  Task 5's memo check above ran with the row unticked by default, as it then was.
 - **Tasks:** all done: 0 (claim 13062c072); 1 (through c26de7d68, the rulings 2e18e87aa); 2 (c75f321b4); 3 (cceca178d); 4 (5115f8f99);
   5 (5d088e210, the ruling's test 1ab2ae82f); 6 (1c3bfb6f6); 7 (this record). Final review: ready to land, none critical, one
   important (the phase inhibits, a question for plan 12's flight), nine minor; two test gaps and two doc slips fixed at da89dab24.

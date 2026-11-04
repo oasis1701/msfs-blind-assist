@@ -76,7 +76,6 @@ public static class SettingsManager
                     MigrateFOGearSplit(defaultSettings);
                     SeedTakeoffAssistToneConvention(defaultSettings, freshInstall: true);
                     SeedFenixMonitorDefaults(defaultSettings); // sets flag + saves
-                    SeedFenixChannelMonitorDefaults(defaultSettings); // sets flag + saves
                     SeedPmdgMonitorDefaults(defaultSettings);
                     return defaultSettings;
                 }
@@ -107,7 +106,6 @@ public static class SettingsManager
                     Save(settings);
                 }
                 SeedFenixMonitorDefaults(settings); // one-time: default-disable the noisy clock counters
-                SeedFenixChannelMonitorDefaults(settings); // one-time: default-silence the display channel's E/WD memos
                 SeedPmdgMonitorDefaults(settings);  // one-time: default-silence the cycling window-heat ON annunciators
                 if (CarryRenamedMonitorMutes(settings)) Save(settings);
                 // Deserialization bypasses the property setters' usual mutation path, so the
@@ -257,23 +255,6 @@ public static class SettingsManager
                 if (!s.FenixDisabledMonitorVariables.Contains(key))
                     s.FenixDisabledMonitorVariables.Add(key);
             }
-            Save(s);
-        }
-
-        /// <summary>
-        /// One-time seed of the Fenix display channel's announcements that should start silent: the E/WD memos
-        /// row (FenixChannelAnnouncementRows.MemosKey) is added to the Fenix disabled-monitor list, so the memos stay
-        /// unspoken until the pilot ticks the row in the Ctrl+M monitor. Guarded by FenixChannelMonitorDefaultsSeeded,
-        /// a flag of its own: FenixMonitorDefaultsSeeded is already true in every settings file written since
-        /// the older Fenix seed ran, so it could never carry this one to an existing install. Runs once, so a
-        /// deliberate re-enable in the Ctrl+M monitor is never overwritten.
-        /// </summary>
-        internal static void SeedFenixChannelMonitorDefaults(UserSettings s)
-        {
-            if (s.FenixChannelMonitorDefaultsSeeded) return;
-            s.FenixChannelMonitorDefaultsSeeded = true;
-            if (!s.FenixDisabledMonitorVariables.Contains(Services.FenixChannelAnnouncementRows.MemosKey))
-                s.FenixDisabledMonitorVariables.Add(Services.FenixChannelAnnouncementRows.MemosKey);
             Save(s);
         }
 

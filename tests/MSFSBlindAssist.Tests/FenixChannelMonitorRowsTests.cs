@@ -2,20 +2,18 @@
 // FMA changes, the E/WD warnings, cautions and memos, and the DCDU messages. They are declared once, by plan 01, for the
 // announcers of later plans to check before they speak; the dialog (FenixMonitorManagerForm) shows them after the cabin's
 // four, an unticked row puts its key in FenixDisabledMonitorVariables, and a row's announcer asks IsMuted as it is about to
-// speak, so a mute applies at once. The memos row starts muted (a one-time seed with a flag of its own, so a settings file
-// whose older Fenix seed already ran still gets it), and ticking it again sticks.
+// speak, so a mute applies at once. Every row starts on, the memos' included (spec row 63, Robin, 2026-11-04).
 //
 // The contract: the keys are stable (a saved mute names them) and no variable's key; the labels answer to no other row's, as
 // Ctrl+M is a flat list read by label; the rows come after the variable rows and the cabin rows, in the order FMA, warnings,
-// cautions, memos, DCDU. The seed puts the memos key in once and leaves everything else as it was; a pilot who unticks it
-// keeps it ticked at the next start, on a fresh install and on a file written before the seed existed alike.
+// cautions, memos, DCDU. Nothing mutes a row but the pilot, on a fresh install and on a file that has run before alike, and
+// a mute a file already holds stays.
 //
-// The first class is pure. The second reaches SettingsManager (the seed saves; IsMuted reads Current), so it is in the
+// The first class is pure. The second reaches SettingsManager (Load seeds and saves; IsMuted reads Current), so it is in the
 // "SettingsManagerGlobalState" collection and every test of it takes a SettingsRedirect (FenixChannelTestSettings.cs,
 // which also keeps the whole test process away from a real settings file): a scratch folder of its own and no current
 // settings, so each test starts as a first start does.
 
-using System.Text.Json;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Services;
@@ -108,7 +106,7 @@ public class FenixChannelMonitorRowsSettingsTests : IDisposable
 {
     private const string MemosKey = FenixChannelAnnouncementRows.MemosKey;
 
-    // A pilot's own mute of an older Fenix row, which the seed must leave as it is.
+    // A pilot's own mute of an older Fenix row, which a load must leave as it is.
     private const string OlderMute = "S_SEAT_HEIGHT_CAPT";
 
     private readonly SettingsRedirect _settings = new();
@@ -116,85 +114,42 @@ public class FenixChannelMonitorRowsSettingsTests : IDisposable
     public void Dispose() => _settings.Dispose();
 
     [Fact]
-    public void Memos_start_muted_once_and_a_re_enable_sticks()
-    {
-        var settings = new UserSettings();
-        settings.FenixDisabledMonitorVariables.Add(OlderMute);
-        Assert.False(settings.FenixChannelMonitorDefaultsSeeded);
-
-        SettingsManager.SeedFenixChannelMonitorDefaults(settings);
-
-        // The memos row starts muted and no other channel row does; what the pilot muted before stays as it was.
-        Assert.True(settings.FenixChannelMonitorDefaultsSeeded);
-        Assert.Equal(new[] { OlderMute, MemosKey }, settings.FenixDisabledMonitorVariables);
-
-        // The pilot ticks the memos row (Ctrl+M takes the key out of the list and saves), and the next start seeds
-        // nothing again: the row stays ticked.
-        settings.FenixDisabledMonitorVariables.Remove(MemosKey);
-        SettingsManager.Save(settings);
-        SettingsManager.SeedFenixChannelMonitorDefaults(settings);
-
-        Assert.Equal(new[] { OlderMute }, settings.FenixDisabledMonitorVariables);
-        Assert.False(FenixChannelAnnouncementRows.IsMuted(MemosKey));
-    }
-
-    [Fact]
-    public void The_seed_does_not_add_a_memos_mute_the_pilot_already_has()
-    {
-        var settings = new UserSettings();
-        settings.FenixDisabledMonitorVariables.Add(MemosKey);
-
-        SettingsManager.SeedFenixChannelMonitorDefaults(settings);
-
-        Assert.True(settings.FenixChannelMonitorDefaultsSeeded);
-        Assert.Equal(new[] { MemosKey }, settings.FenixDisabledMonitorVariables);
-    }
-
-    [Fact]
-    public void A_file_that_was_seeded_is_left_alone()
-    {
-        // The list is deliberately empty: the flag alone says the seed has run, so it adds nothing.
-        var settings = new UserSettings { FenixChannelMonitorDefaultsSeeded = true };
-
-        SettingsManager.SeedFenixChannelMonitorDefaults(settings);
-
-        Assert.True(settings.FenixChannelMonitorDefaultsSeeded);
-        Assert.Empty(settings.FenixDisabledMonitorVariables);
-    }
-
-    [Fact]
-    public void Both_load_paths_seed_the_memos_row()
+    public void No_row_starts_muted_on_either_load_path()
     {
         // A fresh install: no settings file at all.
         UserSettings fresh = SettingsManager.Load();
-        Assert.True(fresh.FenixChannelMonitorDefaultsSeeded);
-        Assert.Contains(MemosKey, fresh.FenixDisabledMonitorVariables);
+        foreach (MonitorRow row in FenixChannelAnnouncementRows.Rows)
+        {
+            Assert.DoesNotContain(row.Key, fresh.FenixDisabledMonitorVariables);
+        }
 
-        // An install that has run before: its file carries the older Fenix seed's flag and a mute of the pilot's own, and
-        // no flag of this seed, since it was written before the seed existed. The older flag is why the older seed
-        // does not run again; it must not stand in the way of this one.
+        // An install that has run before: its file carries the older Fenix seed's flag and a mute of the pilot's own.
         Directory.CreateDirectory(_settings.Folder);
         File.WriteAllText(_settings.SettingsFile,
             $$"""{ "FenixMonitorDefaultsSeeded": true, "FenixDisabledMonitorVariables": [ "{{OlderMute}}" ] }""");
 
         UserSettings upgraded = SettingsManager.Load();
 
-        Assert.True(upgraded.FenixChannelMonitorDefaultsSeeded);
-        Assert.Equal(new[] { OlderMute, MemosKey }, upgraded.FenixDisabledMonitorVariables);
-        // And it was saved: the next start finds the flag in the file, whatever the pilot does in between.
-        UserSettings onDisk = JsonSerializer.Deserialize<UserSettings>(
-            File.ReadAllText(_settings.SettingsFile), SettingsManager.JsonOptions)!;
-        Assert.True(onDisk.FenixChannelMonitorDefaultsSeeded);
-        Assert.Equal(new[] { OlderMute, MemosKey }, onDisk.FenixDisabledMonitorVariables);
+        Assert.Equal(new[] { OlderMute }, upgraded.FenixDisabledMonitorVariables);
+    }
 
-        // The pilot ticks the memos row, and it stays ticked at the next start.
-        upgraded.FenixDisabledMonitorVariables.Remove(MemosKey);
-        SettingsManager.Save(upgraded);
+    [Fact]
+    public void A_memos_mute_the_file_already_holds_stays_until_the_row_is_ticked()
+    {
+        // A file from an earlier build of this branch, which seeded this mute and wrote that seed's flag. The flag is no
+        // setting any more and the file still loads; the row stays as the list says, and a tick sticks at the next start.
+        Directory.CreateDirectory(_settings.Folder);
+        File.WriteAllText(_settings.SettingsFile,
+            $$"""{ "FenixMonitorDefaultsSeeded": true, "FenixChannelMonitorDefaultsSeeded": true, "FenixDisabledMonitorVariables": [ "{{MemosKey}}" ] }""");
+
+        UserSettings earlier = SettingsManager.Load();
+        Assert.Equal(new[] { MemosKey }, earlier.FenixDisabledMonitorVariables);
+
+        earlier.FenixDisabledMonitorVariables.Remove(MemosKey);
+        SettingsManager.Save(earlier);
 
         UserSettings restarted = SettingsManager.Load();
-
-        Assert.True(restarted.FenixChannelMonitorDefaultsSeeded);
-        Assert.Equal(new[] { OlderMute }, restarted.FenixDisabledMonitorVariables);
+        Assert.Empty(restarted.FenixDisabledMonitorVariables);
     }
 
     [Fact]
@@ -203,7 +158,7 @@ public class FenixChannelMonitorRowsSettingsTests : IDisposable
         // The first use of Current loads from the scratch folder, as a first start does: a fresh install.
         UserSettings settings = SettingsManager.Current;
         Assert.False(FenixChannelAnnouncementRows.IsMuted(FenixChannelAnnouncementRows.FmaKey));
-        Assert.True(FenixChannelAnnouncementRows.IsMuted(MemosKey));   // the seeded default
+        Assert.False(FenixChannelAnnouncementRows.IsMuted(MemosKey));
 
         // The Ctrl+M dialog unticks a row: the key goes into the live list and the settings are saved, which rebuilds the
         // set an announcer reads. The very next ask sees it: no reload, no restart.
@@ -218,6 +173,9 @@ public class FenixChannelMonitorRowsSettingsTests : IDisposable
         Assert.False(FenixChannelAnnouncementRows.IsMuted(FenixChannelAnnouncementRows.FmaKey));
 
         // Nothing is copied at the first ask: settings replaced as a whole are seen by the next one.
+        settings.FenixDisabledMonitorVariables.Add(MemosKey);
+        SettingsManager.Save();
+        Assert.True(FenixChannelAnnouncementRows.IsMuted(MemosKey));
         SettingsManager.Save(new UserSettings { FenixDisabledMonitorVariables = { FenixChannelAnnouncementRows.WarningsKey } });
         Assert.True(FenixChannelAnnouncementRows.IsMuted(FenixChannelAnnouncementRows.WarningsKey));
         Assert.False(FenixChannelAnnouncementRows.IsMuted(MemosKey));

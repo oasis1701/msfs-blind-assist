@@ -330,15 +330,6 @@ public class UserSettings
         // after the user deliberately re-enables one.
         public bool FenixMonitorDefaultsSeeded { get; set; } = false;
 
-        // One-time seed marker (SettingsManager.SeedFenixChannelMonitorDefaults). The Fenix display channel's
-        // "E/WD memos" announcements (FenixChannelAnnouncementRows.MemosKey) are added to
-        // FenixDisabledMonitorVariables by default, so the memos row starts unticked in Ctrl+M and the memos stay
-        // silent until the pilot ticks it. It is a flag of its own, never FenixMonitorDefaultsSeeded: a settings
-        // file whose older Fenix seed already ran (every existing install) would never run that seed again, so
-        // anything added to it would never reach that file. This flag stops the memos row being re-seeded after a
-        // deliberate re-enable.
-        public bool FenixChannelMonitorDefaultsSeeded { get; set; } = false;
-
         // One-time seed marker (SettingsManager.SeedPmdgMonitorDefaults). The 737's
         // window-heat ON annunciators (ICE_annunON_0..3) are added to
         // PMDGDisabledMonitorVariables by default: the window-heat controller cycles

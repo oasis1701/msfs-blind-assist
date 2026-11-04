@@ -188,7 +188,7 @@ Shared behavior:
   | FMA changes | on | plan 08 |
   | Warnings | on | plan 09 |
   | Cautions | on | plan 09 |
-  | Memos | off | plan 09 |
+  | Memos | on (row 63) | plan 09 |
   | DCDU messages | on | plan 11 |
   | ND messages | on | plan 03 |
 
@@ -459,6 +459,7 @@ Hadi claimed that day. They change sections 1, 2.1, 2.2, 2.4, 2.6, 2.7, 3.3 and 
 | 60 | 09 | LAND ASAP, whose entry is named "MEMO-LAND ASAP (RED)" (2.7) | a memo, by its name | Changed (Robin, 2026-11-04): heard by its color under the E/WD warnings or cautions row, never the memos row, after the failure that caused it |
 | 61 | 09 | A memo whose entry words differ from the E/WD's: "MEMO-FUEL < 3 T" draws "FOB BELOW 3 T" (2.7) | spoken in the entry's words, with no color | Changed (Robin, 2026-11-04): spoken in the E/WD's words with its color, from a table of the measured pairs in plan 09, and "MEMO - COMPANY MSG" counts as a memo |
 | 62 | 09 | The E/WD coming back from "display off": the list does not change while the power is off, and the first new list comes 18 to 24 s after the E/WD is trusted (2.7) | nothing said about it; a wait for that list was proposed, so it would be taken silently | Decided (Robin, 2026-11-04, having heard it): no wait. The baseline stays the list remembered when the E/WD is trusted, so the start-up failures on the first new list are spoken ("COM CIDS 1+2 FAULT, amber"), which is what a sighted pilot sees on the display during startup, and what left it says "cleared". The displays should only go dark in a serious power failure. A plan's text that says otherwise yields to this row |
+| 63 | 09 | Whether the E/WD memos row starts on (2.7, answer 4) | off, by a one-time seed from plan 01 | Changed (Robin, 2026-11-04): on, like every other row, because the memos are "incredibly helpful". The seed and its flag are gone, as the branch has never shipped; a settings file from an earlier build of the branch keeps the mute that seed wrote until its row is ticked. A plan's text that says otherwise yields to this row |
 
 ## 6. Open checks (each owned by the plan named)
 

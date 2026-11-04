@@ -108,7 +108,7 @@ source plan in brackets in the commit body. Group them by file here before start
 - [ ] **Step 2:** The Fenix chapter, from each plan's "what changes for a pilot": the five live windows (Alt+P, N, E,
   S, I) and that each gives the AI read when the channel cannot read its display; the speed keys (Shift+1 to Shift+6)
   in the PFD's own terms; Ctrl+W; D and Shift+D; the DCDU window (input Ctrl+Shift+D, its keys, "This Fenix has no
-  DCDU."), and that the "DCDU Left" panel is gone; the five announcement rows in Ctrl+M (memos off by default); the
+  DCDU."), and that the "DCDU Left" panel is gone; the announcement rows in Ctrl+M (all on by default); the
   session notice and what it means; that the channel is checked per Fenix build, so a Fenix update can turn it off
   until the app checks the new build.
 - [ ] **Step 3:** The hotkey reference and `Fenix_A320_Hotkeys.txt`: every new key, and the windows list's new entries.

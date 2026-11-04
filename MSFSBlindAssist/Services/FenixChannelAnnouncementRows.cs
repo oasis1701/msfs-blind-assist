@@ -12,9 +12,7 @@ namespace MSFSBlindAssist.Services;
 /// <remarks>
 /// All five rows are declared here, by the plan that built the announcer host, so that each announcing plan finds its
 /// row already in the dialog and only has to check it: the FMA's (plan 08), the E/WD alerts' (plan 09: warnings,
-/// cautions and memos) and the DCDU's (plan 11). The memos row starts muted: a one-time seed
-/// (<c>SettingsManager.SeedFenixChannelMonitorDefaults</c>) puts <see cref="MemosKey"/> in the mute list, and ticking the
-/// row afterwards sticks.
+/// cautions and memos) and the DCDU's (plan 11). Every row starts on: nothing seeds a mute for any of them.
 /// </remarks>
 public static class FenixChannelAnnouncementRows
 {
@@ -27,13 +25,13 @@ public static class FenixChannelAnnouncementRows
     /// <summary>The E/WD alert announcer's cautions row (plan 09).</summary>
     public const string CautionsKey = "FENIX_CHANNEL_CAUTIONS";
 
-    /// <summary>The E/WD alert announcer's memos row (plan 09). The only row that starts muted.</summary>
+    /// <summary>The E/WD alert announcer's memos row (plan 09).</summary>
     public const string MemosKey = "FENIX_CHANNEL_MEMOS";
 
     /// <summary>The DCDU announcer's row (plan 11).</summary>
     public const string DcduKey = "FENIX_CHANNEL_DCDU";
 
-    /// <summary>The ND messages announcer's row (plan 03). On by default: no seed.</summary>
+    /// <summary>The ND messages announcer's row (plan 03).</summary>
     public const string NdKey = "FENIX_CHANNEL_ND";
 
     /// <summary>
