@@ -10,7 +10,9 @@ internal static partial class FenixChannelSdPages
     /// The BLEED page's rows, in the SD's order, every number whole and every pair engine 1 (or pack 1, or left) then
     /// engine 2: <c>RAM AIR</c>, <c>PACK outlet °C</c>, <c>PACK compressor °C</c>, <c>PACK flow valves</c>,
     /// <c>ANTI ICE valves</c> (only while the wing anti-ice switch is on), <c>X BLEED valve</c>, <c>APU valve</c>,
-    /// <c>bleed PSI</c>, <c>bleed °C</c>, <c>bleed valves</c> and <c>HP valves</c>. No row speaks a color.
+    /// <c>bleed PSI</c>, <c>bleed °C</c>, <c>bleed valves</c> and <c>HP valves</c>. The page speaks the colors the Fenix sends: a side drawn amber in a two-sided row
+    /// (ANTI ICE valves, bleed PSI, bleed °C) gains " amber" right after its value, and <c>start air 1, amber</c> and
+    /// <c>start air 2, amber</c> follow the HP valves while set (151.4).
     /// </summary>
     /// <remarks>
     /// <para>The pneumatic state (151) must be in the push with its valves (151.1), bleed pressures (151.2), bleed
@@ -46,8 +48,16 @@ internal static partial class FenixChannelSdPages
         double temp2 = temperatures.Double(FenixChannelFields.BleedTemperatureData.Right);
 
         // The flags decide whether the anti-ice valves show, so they are read on every composition.
-        bool antiIce = pneumatic.Message(FenixChannelFields.PneumaticState.Flags)
-            .Bool(FenixChannelFields.PneumaticFlagsData.WaiSwitchOn);
+        FenixChannelSdReader flags = pneumatic.Message(FenixChannelFields.PneumaticState.Flags);
+        bool antiIce = flags.Bool(FenixChannelFields.PneumaticFlagsData.WaiSwitchOn);
+        bool waiAmberLeft = flags.Bool(FenixChannelFields.PneumaticFlagsData.WaiValveAmberLeft);
+        bool waiAmberRight = flags.Bool(FenixChannelFields.PneumaticFlagsData.WaiValveAmberRight);
+        bool startAir1 = flags.Bool(FenixChannelFields.PneumaticFlagsData.StartAirAmberLeft);
+        bool startAir2 = flags.Bool(FenixChannelFields.PneumaticFlagsData.StartAirAmberRight);
+        bool tempAmberLeft = flags.Bool(FenixChannelFields.PneumaticFlagsData.PrecoolerTempAmberLeft);
+        bool tempAmberRight = flags.Bool(FenixChannelFields.PneumaticFlagsData.PrecoolerTempAmberRight);
+        bool pressAmberLeft = flags.Bool(FenixChannelFields.PneumaticFlagsData.PrecoolerPressAmberLeft);
+        bool pressAmberRight = flags.Bool(FenixChannelFields.PneumaticFlagsData.PrecoolerPressAmberRight);
         string waiLeft = "";
         string waiRight = "";
         if (antiIce)
@@ -73,15 +83,20 @@ internal static partial class FenixChannelSdPages
             $"PACK compressor °C: {FenixChannelSd.Whole(compressor1)}, {FenixChannelSd.Whole(compressor2)}",
             $"PACK flow valves: {flow1}, {flow2}"
         };
-        if (antiIce) rows.Add($"ANTI ICE valves: {waiLeft}, {waiRight}");
+        if (antiIce) rows.Add($"ANTI ICE valves: {waiLeft}{BleedAmber(waiAmberLeft)}, {waiRight}{BleedAmber(waiAmberRight)}");
         rows.Add($"X BLEED valve: {crossBleed}");
         rows.Add($"APU valve: {apuBleed}");
-        rows.Add($"bleed PSI: {FenixChannelSd.Whole(psi1)}, {FenixChannelSd.Whole(psi2)}");
-        rows.Add($"bleed °C: {FenixChannelSd.Whole(temp1)}, {FenixChannelSd.Whole(temp2)}");
+        rows.Add($"bleed PSI: {FenixChannelSd.Whole(psi1)}{BleedAmber(pressAmberLeft)}, {FenixChannelSd.Whole(psi2)}{BleedAmber(pressAmberRight)}");
+        rows.Add($"bleed °C: {FenixChannelSd.Whole(temp1)}{BleedAmber(tempAmberLeft)}, {FenixChannelSd.Whole(temp2)}{BleedAmber(tempAmberRight)}");
         rows.Add($"bleed valves: {bleed1}, {bleed2}");
         rows.Add($"HP valves: {hp1}, {hp2}");
+        if (startAir1) rows.Add("start air 1, amber");
+        if (startAir2) rows.Add("start air 2, amber");
         return FenixChannelRows.Of(rows);
     }
+
+    // " amber" right after a side's value, no comma, while the Fenix draws that side amber.
+    private static string BleedAmber(bool amber) => amber ? " amber" : "";
 
     /// <summary>The BLEED page (2).</summary>
     static partial void ComposeBleed(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows)

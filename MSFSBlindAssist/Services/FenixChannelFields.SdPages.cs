@@ -241,6 +241,16 @@ internal static partial class FenixChannelFields
     public static partial class PneumaticFlagsData
     {
         public const int WaiSwitchOn = 1;           // WaiSwitchOn: varint (bool)
+        // 2, 3 and 9 to 14 are checked against the installed Fenix 3.0.0.7613 on 2026-11-03 with the team's metadata tool
+        // ([FNX-23]): the BLEED page's amber sides and start air lights.
+        public const int WaiValveAmberLeft = 2;     // WaiValveAmberLeft: varint (bool)
+        public const int WaiValveAmberRight = 3;    // WaiValveAmberRight: varint (bool)
+        public const int StartAirAmberLeft = 9;     // StartAirAmberLeft: varint (bool)
+        public const int StartAirAmberRight = 10;   // StartAirAmberRight: varint (bool)
+        public const int PrecoolerTempAmberLeft = 11;   // PrecoolerTempAmberLeft: varint (bool)
+        public const int PrecoolerTempAmberRight = 12;  // PrecoolerTempAmberRight: varint (bool)
+        public const int PrecoolerPressAmberLeft = 13;  // PrecoolerPressAmberLeft: varint (bool)
+        public const int PrecoolerPressAmberRight = 14; // PrecoolerPressAmberRight: varint (bool)
     }
 
     /// <summary>PackStateData, one air conditioning pack (<see cref="PneumaticState.Pack1"/> or <see cref="PneumaticState.Pack2"/>).</summary>

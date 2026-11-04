@@ -96,6 +96,59 @@ public class FenixChannelSdAirTests
         Assert.Equal(11, rows.Count);
     }
 
+    // The flags (151.4) from field numbers: 1 wing anti-ice switch, 2 and 3 the anti-ice valves amber (left, right), 9 and 10
+    // start air amber, 11 and 12 the bleed temperature amber, 13 and 14 the bleed pressure amber.
+    private static FenixChannelProtoWriter BleedFlags(params int[] set)
+    {
+        var flags = new FenixChannelProtoWriter();
+        foreach (int field in set.OrderBy(f => f)) flags.Bool(field, true);
+        return flags;
+    }
+
+    [Fact]
+    public void Bleed_values_speak_the_side_drawn_amber()
+    {
+        IReadOnlyList<string> left = BleedRowsOf(BleedPush(CruiseValves(), flags: BleedFlags(11, 13)));
+        Assert.Contains("bleed PSI: 43 amber, 43", left);
+        Assert.Contains("bleed °C: 200 amber, 200", left);
+
+        IReadOnlyList<string> right = BleedRowsOf(BleedPush(CruiseValves(), flags: BleedFlags(12, 14)));
+        Assert.Contains("bleed PSI: 43, 43 amber", right);
+        Assert.Contains("bleed °C: 200, 200 amber", right);
+
+        IReadOnlyList<string> both = BleedRowsOf(BleedPush(CruiseValves(), pressures: Pair(12, 33), temperatures: Pair(270, 160),
+            flags: BleedFlags(11, 12, 13, 14)));
+        Assert.Contains("bleed PSI: 12 amber, 33 amber", both);
+        Assert.Contains("bleed °C: 270 amber, 160 amber", both);
+
+        IReadOnlyList<string> one = BleedRowsOf(BleedPush(CruiseValves(), pressures: Pair(12, 33), temperatures: Pair(270, 160),
+            flags: BleedFlags(11, 14)));
+        Assert.Contains("bleed PSI: 12, 33 amber", one);
+        Assert.Contains("bleed °C: 270 amber, 160", one);
+    }
+
+    [Fact]
+    public void Anti_ice_valves_speak_the_side_drawn_amber()
+    {
+        Assert.Contains("ANTI ICE valves: closed amber, closed", BleedRowsOf(BleedPush(CruiseValves(), flags: BleedFlags(1, 2))));
+        Assert.Contains("ANTI ICE valves: closed, closed amber", BleedRowsOf(BleedPush(CruiseValves(), flags: BleedFlags(1, 3))));
+        Assert.Contains("ANTI ICE valves: closed amber, closed amber", BleedRowsOf(BleedPush(CruiseValves(), flags: BleedFlags(1, 2, 3))));
+
+        // The row still shows only while the switch is on.
+        Assert.DoesNotContain(BleedRowsOf(BleedPush(CruiseValves(), flags: BleedFlags(2, 3))), row => row.StartsWith("ANTI ICE"));
+    }
+
+    [Fact]
+    public void Start_air_rows_follow_the_hp_valves()
+    {
+        List<string> rows = BleedRowsOf(BleedPush(CruiseValves(), flags: BleedFlags(9, 10))).ToList();
+        Assert.Equal(new[] { "HP valves: closed, closed", "start air 1, amber", "start air 2, amber" }, rows.GetRange(rows.Count - 3, 3));
+
+        Assert.Equal("start air 1, amber", BleedRowsOf(BleedPush(CruiseValves(), flags: BleedFlags(9)))[^1]);
+        Assert.Equal("start air 2, amber", BleedRowsOf(BleedPush(CruiseValves(), flags: BleedFlags(10)))[^1]);
+        Assert.DoesNotContain(BleedRowsOf(BleedPush(CruiseValves())), row => row.StartsWith("start air"));
+    }
+
     [Fact]
     public void An_absent_valve_reads_open()
     {
