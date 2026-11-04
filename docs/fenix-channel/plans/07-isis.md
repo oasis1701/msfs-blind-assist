@@ -323,7 +323,7 @@ in `docs/fenix-channel/evidence/07-isis.md`.
 Kept in this file only, so no other plan's push ever touches it.
 
 - **Status:** in progress: Task 2 pushed inert, Task 1 measured but for the slip index, an enabled bug's marker and
-  Step 7 (2026-11-04); Task 3 next
+  Step 7, Task 3 pushed inert (2026-11-04); Task 4 next
 - **Claimed by:** Daniel Wolak (danielw97), 2026-11-04
 - **Worked by:** Daniel Wolak with Claude
 - **Started:** 2026-11-04, from `87bf81463` (the branch's head that day)
@@ -332,7 +332,8 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Tasks:** 0 done (claim `05d5fd0ee`). 2 done, Step 6 included (every number and wire shape matches the installed
   3.0.0.7613, evidence file), `382c1938d`, worked inline with no subagent review; 16 and 17 arrive as a plain varint
   (Task 1 Step 1 saw it). 1 measured on the A321 CFM at CYYZ, in the climb, on the KLAX approach and in a power cycle
-  at the KLAX gate (evidence file): Steps 1 to 5 and 8 done, 6 done but `SlipCenteredBelow`, 7 not run. 3 to 8 to do.
+  at the KLAX gate (evidence file): Steps 1 to 5 and 8 done, 6 done but `SlipCenteredBelow`, 7 not run. 3 done,
+  `e24e28141`, inline with no subagent review (28 tests). 4 to 8 to do.
 - **Waiting on the owner:** Robin, the stale ISIS altitude (evidence file, "Open"): read as sent unless he rules otherwise.
   In the sim: the slip index's threshold, an enabled bug on the main display, Step 7.
 - **In-sim results:** Task 1 in the evidence file.
@@ -341,5 +342,13 @@ Kept in this file only, so no other plan's push ever touches it.
   (30, 30, 30, 30, 6000, 10000) from cold and dark. The QNH (.18) is always hPa; the ISIS converts it to inches. The Mach
   is on the wire from 0.50 climbing until 0.45 descending, so the window follows the wire with no threshold. The app's
   ISIS Reset pulse cannot reach the quick realignment, which needs a hold of about 2 s (for plan 12: the ISIS panel is
-  not this plan's file).
+  not this plan's file). Task 3, from the evidence: while initializing (.2) the rows are the ISIS's flags, "SPD flag",
+  "ATT flag", "INIT 90 seconds" (the drawn "90s" spelled out for speech), the LOC and G/S flags on the LS scales and
+  "ALT flag, QNH 1015", not "Alignment: 85 seconds"; a quick realignment is "ATT 10 seconds" in place of the attitude
+  row; the bugs page replaces every row, not only the attitude (the ISIS draws only the page). The baro reads in the PFD
+  window's words, "QNH 1016", "QNH 30.00" or "STD", not "1013 HPA" or "29.92 IN": the ISIS draws no unit word. A NaN
+  deviation on a shown scale is "Localizer scale, no diamond" (plan 02's "diamond"). **No slip row** until
+  `SlipCenteredBelow` and the slip's side are measured (no `SlipCenteredBelow` or `MachShownFrom` constant either: the
+  Mach follows the wire). The PFD rows' word helpers are private to plan 02's landed file, so the ISIS rows keep their
+  own copies in the same words rather than change that file.
 - **Rulings made while working:**
