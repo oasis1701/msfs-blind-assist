@@ -28,10 +28,12 @@ internal static partial class FenixChannelSdPages
         FenixChannelSdReader engines = remote.Message(FenixChannelFields.Remote.EngineState);
         FenixChannelSdReader left = engines.Message(FenixChannelFields.EngineControlState.Left);
         double oil1 = left.Double(FenixChannelFields.SingleEngineState.OilQuantity);
+        bool oilPulse1 = left.Bool(FenixChannelFields.SingleEngineState.OilQtyPulse);
         double vibN1a = left.Double(FenixChannelFields.SingleEngineState.VibrationN1);
         double vibN2a = left.Double(FenixChannelFields.SingleEngineState.VibrationN2);
         FenixChannelSdReader right = engines.Message(FenixChannelFields.EngineControlState.Right);
         double oil2 = right.Double(FenixChannelFields.SingleEngineState.OilQuantity);
+        bool oilPulse2 = right.Bool(FenixChannelFields.SingleEngineState.OilQtyPulse);
         double vibN1b = right.Double(FenixChannelFields.SingleEngineState.VibrationN1);
         double vibN2b = right.Double(FenixChannelFields.SingleEngineState.VibrationN2);
 
@@ -63,7 +65,7 @@ internal static partial class FenixChannelSdPages
         {
             $"F.USED {unit}: {FenixChannelSd.Whole(used1)}, {FenixChannelSd.Whole(used2)}",
             $"F.USED 1+2: {FenixChannelSd.Whole(usedTotal)} {unit}",
-            $"OIL QT: {FenixChannelSd.OneDecimal(oil1)}, {FenixChannelSd.OneDecimal(oil2)}",
+            $"OIL QT: {FenixChannelSd.OneDecimal(oil1)}{EngPulsing(oilPulse1)}, {FenixChannelSd.OneDecimal(oil2)}{EngPulsing(oilPulse2)}",
             $"VIB N1: {FenixChannelSd.OneDecimal(vibN1a)}, {FenixChannelSd.OneDecimal(vibN1b)}",
             $"VIB N2: {FenixChannelSd.OneDecimal(vibN2a)}, {FenixChannelSd.OneDecimal(vibN2b)}",
             PressLdgElevRow(manualElev, landing),

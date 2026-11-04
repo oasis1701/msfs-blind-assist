@@ -11,8 +11,9 @@ internal static partial class FenixChannelSdPages
     /// pressure (<c>OIL PSI</c>) and temperature (<c>OIL °C</c>), then the vibration of the N1 and N2 shafts (<c>VIB N1</c>
     /// and <c>VIB N2</c>, to one decimal). While the engine message says the SD draws the nacelle (129.7) the page adds
     /// <c>NAC °C</c>, and while it says the SD draws the start (129.6) the igniters in use (<c>IGN</c>: "A", "B", "A B"
-    /// or "off"), the start valve (<c>start valve</c>, in the valve words) and the starter pressure (<c>PSI</c>). No row
-    /// speaks a color: they are values the app builds.
+    /// or "off"), the start valve (<c>start valve</c>, in the valve words) and the starter pressure (<c>PSI</c>). The rows
+    /// speak what the Fenix sends: an oil quantity or pressure the SD makes pulse (129.n.26, 129.n.29) gains " pulsing"
+    /// right after its value (<c>OIL QT: 12.8 pulsing, 13.0</c>); the other rows are values the app builds.
     /// </summary>
     /// <remarks>
     /// <para>Both engines, and the fuel used, must be in the push: a part left out is "no field 129.2" (or 129.1, 129, 134,
@@ -50,8 +51,10 @@ internal static partial class FenixChannelSdPages
         var rows = new List<string>
         {
             $"F.USED {unit}: {FenixChannelSd.Whole(usedLeft)}, {FenixChannelSd.Whole(usedRight)}",
-            $"OIL QT: {FenixChannelSd.OneDecimal(first.OilQuantity)}, {FenixChannelSd.OneDecimal(second.OilQuantity)}",
-            $"OIL PSI: {FenixChannelSd.Whole(first.OilPressure)}, {FenixChannelSd.Whole(second.OilPressure)}",
+            $"OIL QT: {FenixChannelSd.OneDecimal(first.OilQuantity)}{EngPulsing(first.OilQtyPulse)}, "
+                + $"{FenixChannelSd.OneDecimal(second.OilQuantity)}{EngPulsing(second.OilQtyPulse)}",
+            $"OIL PSI: {FenixChannelSd.Whole(first.OilPressure)}{EngPulsing(first.OilPressPulse)}, "
+                + $"{FenixChannelSd.Whole(second.OilPressure)}{EngPulsing(second.OilPressPulse)}",
             $"OIL °C: {FenixChannelSd.Whole(first.OilTemperature)}, {FenixChannelSd.Whole(second.OilTemperature)}",
             $"VIB N1: {FenixChannelSd.OneDecimal(first.VibrationN1)}, {FenixChannelSd.OneDecimal(second.VibrationN1)}",
             $"VIB N2: {FenixChannelSd.OneDecimal(first.VibrationN2)}, {FenixChannelSd.OneDecimal(second.VibrationN2)}"
@@ -80,7 +83,11 @@ internal static partial class FenixChannelSdPages
     // defaults while the SD does not draw them.
     private readonly record struct EngReading(
         double OilQuantity, double OilPressure, double OilTemperature, double VibrationN1, double VibrationN2,
-        double NacelleTemp, bool IgniterA, bool IgniterB, string StartValve, double StarterPsi);
+        double NacelleTemp, bool IgniterA, bool IgniterB, string StartValve, double StarterPsi, bool OilQtyPulse,
+        bool OilPressPulse);
+
+    // " pulsing" right after an oil value the SD makes pulse, no comma (shared with the CRUISE page's OIL QT).
+    private static string EngPulsing(bool pulse) => pulse ? " pulsing" : "";
 
     private static EngReading ReadEng(FenixChannelSdReader engine, bool showNacelle, bool showStarting)
     {
@@ -89,6 +96,9 @@ internal static partial class FenixChannelSdPages
         double oilTemperature = engine.Double(FenixChannelFields.SingleEngineState.OilTemperature);
         double vibrationN1 = engine.Double(FenixChannelFields.SingleEngineState.VibrationN1);
         double vibrationN2 = engine.Double(FenixChannelFields.SingleEngineState.VibrationN2);
+        // Pulse fields checked against the installed Fenix 3.0.0.7613 on 2026-11-03 with the team's metadata tool ([FNX-23]).
+        bool oilQtyPulse = engine.Bool(FenixChannelFields.SingleEngineState.OilQtyPulse);
+        bool oilPressPulse = engine.Bool(FenixChannelFields.SingleEngineState.OilPressPulse);
 
         double nacelle = showNacelle ? engine.Double(FenixChannelFields.SingleEngineState.NacelleTemp) : 0;
 
@@ -106,7 +116,7 @@ internal static partial class FenixChannelSdPages
 
         return new EngReading(
             oilQuantity, oilPressure, oilTemperature, vibrationN1, vibrationN2, nacelle, igniterA, igniterB, startValve,
-            starterPsi);
+            starterPsi, oilQtyPulse, oilPressPulse);
     }
 
     // The igniters in use as the SD letters them: "A", "B", "A B", or "off" when neither is.

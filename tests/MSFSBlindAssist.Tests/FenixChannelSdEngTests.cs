@@ -37,7 +37,8 @@ public class FenixChannelSdEngTests
     private sealed record EngineValues(
         double? OilQuantity = 13.94, double? OilPressure = 266.4, double? OilTemperature = 101.2,
         double? VibrationN1 = 0.2, double? VibrationN2 = 0.1, double? NacelleTemp = 44.4, double? StarterPsi = 32.2,
-        int? StartValve = null, bool Igniter1 = false, bool Igniter2 = false)
+        int? StartValve = null, bool Igniter1 = false, bool Igniter2 = false, bool OilQtyPulse = false,
+        bool OilPressPulse = false)
     {
         public FenixChannelProtoWriter Write()
         {
@@ -52,6 +53,8 @@ public class FenixChannelSdEngTests
             if (OilQuantity is { } quantity) engine.Double(23, quantity);
             if (OilPressure is { } pressure) engine.Double(24, pressure);
             if (OilTemperature is { } temperature) engine.Double(25, temperature);
+            if (OilQtyPulse) engine.Bool(26, true);
+            if (OilPressPulse) engine.Bool(29, true);
             return engine;
         }
     }
@@ -102,6 +105,27 @@ public class FenixChannelSdEngTests
                 "VIB N1: 0.2, 0.2", "VIB N2: 0.1, 0.1"
             }.Concat(BottomRows),
             RowsOf(TwoEngines()));
+    }
+
+    [Theory]
+    [InlineData(true, false, false, false, "OIL QT: 13.9 pulsing, 14.1", "OIL PSI: 266, 261")]
+    [InlineData(false, false, true, false, "OIL QT: 13.9, 14.1 pulsing", "OIL PSI: 266, 261")]
+    [InlineData(true, false, true, false, "OIL QT: 13.9 pulsing, 14.1 pulsing", "OIL PSI: 266, 261")]
+    [InlineData(false, true, false, false, "OIL QT: 13.9, 14.1", "OIL PSI: 266 pulsing, 261")]
+    [InlineData(false, false, false, true, "OIL QT: 13.9, 14.1", "OIL PSI: 266, 261 pulsing")]
+    [InlineData(false, true, false, true, "OIL QT: 13.9, 14.1", "OIL PSI: 266 pulsing, 261 pulsing")]
+    public void An_oil_value_the_sd_pulses_says_pulsing_after_it(
+        bool qty1, bool press1, bool qty2, bool press2, string qtyRow, string pressRow)
+    {
+        // 129.n.26 pulses the oil quantity and 129.n.29 the oil pressure, each engine on its own.
+        SdPush push = EngPush(
+            new EngineValues(OilQtyPulse: qty1, OilPressPulse: press1).Write(),
+            (RightEngine with { OilQuantity = 14.1, OilPressure = 261, OilQtyPulse = qty2, OilPressPulse = press2 }).Write());
+
+        IReadOnlyList<string> rows = RowsOf(push);
+
+        Assert.Equal(qtyRow, rows[2]);
+        Assert.Equal(pressRow, rows[3]);
     }
 
     [Fact]

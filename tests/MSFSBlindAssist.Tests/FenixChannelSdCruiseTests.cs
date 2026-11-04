@@ -13,15 +13,19 @@ namespace MSFSBlindAssist.Tests;
 
 public class FenixChannelSdCruiseTests
 {
-    private static FenixChannelProtoWriter Engine(double vibN1, double vibN2, double oil)
-        => new FenixChannelProtoWriter().Double(11, vibN1).Double(12, vibN2).Double(23, oil);
+    private static FenixChannelProtoWriter Engine(double vibN1, double vibN2, double oil, bool oilPulse = false)
+    {
+        var engine = new FenixChannelProtoWriter().Double(11, vibN1).Double(12, vibN2).Double(23, oil);
+        if (oilPulse) engine.Bool(26, true);
+        return engine;
+    }
 
     private static FenixChannelProtoWriter Used(double first, double second, double total)
         => new FenixChannelProtoWriter().Double(1, first).Double(2, second).Double(3, total);
 
     // The cruise push of 2026-11-03 (A321, LBS). Parts named in omit are left out of the push.
     private static SdPush CruisePush(bool kg = false, string omit = "", double vs = -0.1665, double deltaP = 7.983,
-        int[]? cabinFlags = null)
+        int[]? cabinFlags = null, bool oilPulse1 = false, bool oilPulse2 = false)
     {
         var pressure = new FenixChannelProtoWriter().Double(1, deltaP).Double(2, vs).Double(3, 6399.74).Varint(4, 1)
             .Varint(5, 1).Varint(9, 1).Double(6, 0.0842).Double(7, 550);
@@ -38,8 +42,8 @@ public class FenixChannelSdCruiseTests
         if (omit != "151.10") pneumatic.Message(10, pressure);
 
         var engines = new FenixChannelProtoWriter();
-        if (omit != "129.1") engines.Message(1, Engine(0.4827, 0.911, 12.79));
-        if (omit != "129.2") engines.Message(2, Engine(0.4471, 0.9402, 12.9838));
+        if (omit != "129.1") engines.Message(1, Engine(0.4827, 0.911, 12.79, oilPulse1));
+        if (omit != "129.2") engines.Message(2, Engine(0.4471, 0.9402, 12.9838, oilPulse2));
 
         return new SdPush { Page = 5, Kg = kg }.With(remote =>
         {
@@ -89,6 +93,15 @@ public class FenixChannelSdCruiseTests
         Assert.Contains("ΔP: 8.0 PSI, amber, pulsing", both);
         Assert.Contains("CAB V/S: 0 FT/MIN, amber, pulsing", both);
         Assert.Contains("CAB ALT: 6400 FT, red, pulsing", both);
+    }
+
+    [Theory]
+    [InlineData(true, false, "OIL QT: 12.8 pulsing, 13.0")]
+    [InlineData(false, true, "OIL QT: 12.8, 13.0 pulsing")]
+    [InlineData(true, true, "OIL QT: 12.8 pulsing, 13.0 pulsing")]
+    public void The_cruise_oil_quantity_says_pulsing_after_the_value_the_sd_pulses(bool first, bool second, string row)
+    {
+        Assert.Equal(row, CruiseRowsOf(CruisePush(oilPulse1: first, oilPulse2: second))[2]);
     }
 
     [Fact]
