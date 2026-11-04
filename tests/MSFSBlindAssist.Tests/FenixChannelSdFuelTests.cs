@@ -123,9 +123,11 @@ public class FenixChannelSdFuelTests
     // drawn amber, 134.1.7 and .8 their flow drawn amber.
     private static FenixChannelProtoWriter JetPumpMessage(
         bool left, bool right, bool leftValveAmber = false, bool rightValveAmber = false, bool leftFlowAmber = false,
-        bool rightFlowAmber = false)
+        bool rightFlowAmber = false, bool leftFlow = false, bool rightFlow = false)
     {
         var jetPumps = new FenixChannelProtoWriter();
+        if (leftFlow) jetPumps.Bool(1, true);
+        if (rightFlow) jetPumps.Bool(2, true);
         if (left) jetPumps.Bool(3, true);
         if (right) jetPumps.Bool(4, true);
         if (leftValveAmber) jetPumps.Bool(5, true);
@@ -822,19 +824,26 @@ public class FenixChannelSdFuelTests
     }
 
     [Theory]
-    [InlineData(true, false, false, false, "center transfer valves: open amber, closed")]
-    [InlineData(false, true, false, false, "center transfer valves: open, closed amber")]
-    [InlineData(false, false, true, false, "center transfer valves: open amber, closed")]
-    [InlineData(false, false, false, true, "center transfer valves: open, closed amber")]
-    [InlineData(true, false, true, false, "center transfer valves: open amber, closed")]
-    [InlineData(true, true, true, true, "center transfer valves: open amber, closed amber")]
-    public void A_center_transfer_valve_or_its_flow_drawn_amber_says_amber_once(
-        bool leftValve, bool rightValve, bool leftFlow, bool rightFlow, string row)
+    // valve amber alone adds it
+    [InlineData(true, false, false, false, false, false, "center transfer valves: open amber, closed")]
+    [InlineData(false, true, false, false, false, false, "center transfer valves: open, closed amber")]
+    // flow amber alone (the cruise push's shape) does not
+    [InlineData(false, false, true, true, false, false, "center transfer valves: open, closed")]
+    // flow and flow amber add it, per side
+    [InlineData(false, false, true, false, true, false, "center transfer valves: open amber, closed")]
+    [InlineData(false, false, false, true, false, true, "center transfer valves: open, closed amber")]
+    // a flow without its color does not
+    [InlineData(false, false, false, false, true, true, "center transfer valves: open, closed")]
+    // valve amber and flow amber together say it once
+    [InlineData(true, false, true, false, true, false, "center transfer valves: open amber, closed")]
+    [InlineData(true, true, true, true, true, true, "center transfer valves: open amber, closed amber")]
+    public void A_center_transfer_valve_or_its_flowing_flow_drawn_amber_says_amber_once(
+        bool leftValve, bool rightValve, bool leftFlowAmber, bool rightFlowAmber, bool leftFlow, bool rightFlow, string row)
     {
         var boxes = new FuelBoxes
         {
             Variant = A321,
-            JetPumps = JetPumpMessage(true, false, leftValve, rightValve, leftFlow, rightFlow)
+            JetPumps = JetPumpMessage(true, false, leftValve, rightValve, leftFlowAmber, rightFlowAmber, leftFlow, rightFlow)
         };
 
         Assert.Equal(Replaced(A321Page(2), ("center transfer valves:", row)), PageOf(FuelPush(boxes)));

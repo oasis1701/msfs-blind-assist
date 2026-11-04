@@ -21,7 +21,7 @@ internal static partial class FenixChannelSdPages
     /// valves: open, closed</c>: "open" while the valve's field is set, else "closed"), then <c>ACT 1</c> while the
     /// variant's ActCount is 1 or more and <c>ACT 2</c> while it is 2 or more (none while the count is unread), then the
     /// right tank, the left and right pumps, the fuel on board and the one pair of temperatures, <c>tanks °C</c>.</para>
-    /// <para>The rows speak the colors the Fenix sends: a pump, an LP valve or a center transfer valve (or its flow) the SD
+    /// <para>The rows speak the colors the Fenix sends: a pump, an LP valve or a center transfer valve (or its flow, while it flows) the SD
     /// draws amber gains " amber" right after its word (<c>left pumps: running amber, LO</c>, <c>LP valves: open,
     /// closed amber</c>), and an ACT pump drawn amber is the row <c>ACT pump, amber</c> after the ACT rows (an A321 with
     /// ACT tanks only; 134.15 is read only there). Fields checked against the installed Fenix 3.0.0.7613 on 2026-11-03
@@ -69,14 +69,19 @@ internal static partial class FenixChannelSdPages
         if (a321)
         {
             FenixChannelSdReader jetPumps = fuel.Message(FenixChannelFields.FuelState.JetPumps);
-            // A side is amber while its valve or its flow is drawn amber, said once.
+            // A side is amber while its valve is drawn amber, or while its flow is drawn AND the flow is amber, said once.
+            // The Fenix sends the flow's color (134.1.7, .8) while no flow is drawn (set all through a cruise with the flow
+            // and the valves never set), and the SD draws the flow arrow only while that side flows, so the color alone
+            // says nothing.
+            bool leftFlowAmber = jetPumps.Bool(FenixChannelFields.JetPumpData.LeftFlow)
+                & jetPumps.Bool(FenixChannelFields.JetPumpData.LeftFlowAmber);
+            bool rightFlowAmber = jetPumps.Bool(FenixChannelFields.JetPumpData.RightFlow)
+                & jetPumps.Bool(FenixChannelFields.JetPumpData.RightFlowAmber);
             centerTransferValves = string.Join(", ",
                 FuelOpenWord(jetPumps.Bool(FenixChannelFields.JetPumpData.LeftValveOpen))
-                    + FuelAmber(jetPumps.Bool(FenixChannelFields.JetPumpData.LeftValveAmber)
-                        | jetPumps.Bool(FenixChannelFields.JetPumpData.LeftFlowAmber)),
+                    + FuelAmber(jetPumps.Bool(FenixChannelFields.JetPumpData.LeftValveAmber) | leftFlowAmber),
                 FuelOpenWord(jetPumps.Bool(FenixChannelFields.JetPumpData.RightValveOpen))
-                    + FuelAmber(jetPumps.Bool(FenixChannelFields.JetPumpData.RightValveAmber)
-                        | jetPumps.Bool(FenixChannelFields.JetPumpData.RightFlowAmber)));
+                    + FuelAmber(jetPumps.Bool(FenixChannelFields.JetPumpData.RightValveAmber) | rightFlowAmber));
         }
 
         // The LP valves drawn amber (134.9, 134.10).
