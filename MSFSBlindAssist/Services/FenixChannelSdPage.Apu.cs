@@ -11,7 +11,8 @@ internal static partial class FenixChannelSdPages
     /// the APU master is on and the GEN pushbutton is not off, <c>APU GEN: OFF</c> while the pushbutton is off, else
     /// <c>APU GEN</c> alone, the very row the ELEC page writes), <c>AVAIL</c> while the APU is available, the bleed
     /// (<c>BLEED: 35 PSI</c>, and <c>BLEED valve: open</c>), <c>N: 100 %</c>, <c>EGT: 412 °C</c>, then the memos
-    /// <c>FLAP OPEN</c>, <c>FUEL LO PR</c> and <c>LOW OIL LEVEL</c>, each only while its flag is set. No row speaks a color.
+    /// <c>FLAP OPEN</c>, <c>FUEL LO PR</c> and <c>LOW OIL LEVEL</c>, each only while its flag is set. <c>APU title, amber</c> comes first while the Fenix draws the title amber (24.13);
+    /// the other rows carry no color because the Fenix sends none for them.
     /// </summary>
     /// <remarks>
     /// <para>The APU (24) and the pneumatic state's valves (151.1) and pressures (151.2) must be in the push: one left out
@@ -43,6 +44,7 @@ internal static partial class FenixChannelSdPages
             }
         }
 
+        bool amberTitle = apu.Bool(FenixChannelFields.ApuData.AmberTitle);
         bool avail = apu.Bool(FenixChannelFields.ApuData.Avail);
         double n1 = apu.Double(FenixChannelFields.ApuData.N1);
         double egt = apu.Double(FenixChannelFields.ApuData.Egt);
@@ -59,7 +61,11 @@ internal static partial class FenixChannelSdPages
         // Every read after a problem gives its default, which must never be spoken.
         if (remote.Problem is { } problem) return FenixChannelRows.NotAvailable(problem);
 
-        var rows = new List<string> { ElecApuRow(master, off, load, volts, frequency) };
+        // The title is drawn amber (24.13) from APU master on until AVAIL in a start, and from the end of the cooldown until
+        // the APU stops (measured 2026-11-03); it is the page's first row, before the generator.
+        var rows = new List<string>();
+        if (amberTitle) rows.Add("APU title, amber");
+        rows.Add(ElecApuRow(master, off, load, volts, frequency));
         if (avail) rows.Add("AVAIL");
 
         rows.Add($"BLEED: {FenixChannelSd.Whole(bleedPressure)} PSI");

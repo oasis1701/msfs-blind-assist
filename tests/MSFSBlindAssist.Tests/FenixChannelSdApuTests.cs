@@ -77,6 +77,20 @@ public class FenixChannelSdApuTests
     }
 
     [Fact]
+    public void The_amber_title_is_the_first_row_while_set()
+    {
+        // 24.13: measured on 2026-11-03, set from APU master on until AVAIL in a start, and from the end of the cooldown
+        // until the APU stopped.
+        IReadOnlyList<string> amber = RowsOf(ApuPush(Apu(master: true).Bool(13, true), Pneumatic()));
+        Assert.Equal("APU title, amber", amber[0]);
+        Assert.StartsWith("APU GEN", amber[1]);
+
+        IReadOnlyList<string> clear = RowsOf(ApuPush(Apu(master: true), Pneumatic()));
+        Assert.DoesNotContain("APU title, amber", clear);
+        Assert.StartsWith("APU GEN", clear[0]);
+    }
+
+    [Fact]
     public void Memos_show_only_while_drawn()
     {
         // AVAIL (24.8), FLAP OPEN (24.10), FUEL LO PR (24.9) and LOW OIL LEVEL (24.11) each show only while their own flag
