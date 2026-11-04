@@ -3,7 +3,7 @@ namespace MSFSBlindAssist.Services;
 // The COND page (4) of the Fenix SD: the cockpit and cabin zones, the cargo compartments and the fans and modes as the SD
 // draws them, top to bottom. Written as the BLEED and PRESS pages are (FenixChannelSdPage.Bleed.cs, .Press.cs): one reader,
 // every field read before any row is built, and the reader's problem returned as the page's one row. Every member added here
-// is named for the COND page. Inert: only the tests call CondRows until a later task wires the ComposeCond seam.
+// is named for the COND page. The ComposeCond seam calls CondRows.
 internal static partial class FenixChannelSdPages
 {
     // What a HOT AIR valve value reads as (151.7.10, measured at the CYYZ gate on 2026-11-03); any other value reads "not
@@ -91,6 +91,10 @@ internal static partial class FenixChannelSdPages
         if (packReg) rows.Add("PACK REG");
         return FenixChannelRows.Of(rows);
     }
+
+    /// <summary>The COND page (4).</summary>
+    static partial void ComposeCond(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows)
+        => rows = CondRows(ctx);
 
     // One zone row. The trim valve is a fraction open (0 to 1), spoken as a percent.
     private static string CondZoneRow(string label, double temperature, double duct, double trimValve)

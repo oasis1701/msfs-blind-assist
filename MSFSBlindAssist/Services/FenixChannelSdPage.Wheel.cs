@@ -5,7 +5,7 @@ namespace MSFSBlindAssist.Services;
 // The WHEEL page (12) of the Fenix SD: the gear and its doors, the brake and steering labels, the brake temperatures, the
 // released brakes and the tire pressures. Written as the COND and DOOR pages are: one reader, every field read before any
 // row is built, and the reader's problem returned as the page's one row. Every member added here is named for the WHEEL
-// page. Inert: only the tests call WheelRows until a later task wires the ComposeWheel seam.
+// page. The ComposeWheel seam calls WheelRows.
 internal static partial class FenixChannelSdPages
 {
     // What a gear's LGCIU value and a gear door's value read as. One line per value measured on the 2026-11-03 gear extension;
@@ -142,6 +142,10 @@ internal static partial class FenixChannelSdPages
 
         return FenixChannelRows.Of(rows);
     }
+
+    /// <summary>The WHEEL page (12).</summary>
+    static partial void ComposeWheel(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows)
+        => rows = WheelRows(ctx);
 
     // One gear's two LGCIU positions.
     private static (double, double) WheelLgcius(FenixChannelSdReader gear)

@@ -2,8 +2,8 @@ namespace MSFSBlindAssist.Services;
 
 // The BLEED page (2) of the Fenix SD: the ram air, the packs, the valves and the engine bleeds as the SD draws them, top to
 // bottom. Written as the APU page is (FenixChannelSdPage.Apu.cs): one reader, every field read before any row is built, and
-// the reader's problem returned as the page's one row. Every member added here is named for the BLEED page. Inert: only the
-// tests call BleedRows until a later task wires the ComposeBleed seam.
+// the reader's problem returned as the page's one row. Every member added here is named for the BLEED page. The seam below calls
+// BleedRows.
 internal static partial class FenixChannelSdPages
 {
     /// <summary>
@@ -82,4 +82,8 @@ internal static partial class FenixChannelSdPages
         rows.Add($"HP valves: {hp1}, {hp2}");
         return FenixChannelRows.Of(rows);
     }
+
+    /// <summary>The BLEED page (2).</summary>
+    static partial void ComposeBleed(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows)
+        => rows = BleedRows(ctx);
 }

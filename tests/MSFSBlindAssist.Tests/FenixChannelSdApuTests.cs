@@ -209,4 +209,68 @@ public class FenixChannelSdApuTests
         Assert.Contains("APU GEN: 38 %, 115 V, 400 HZ", rows);
         Assert.DoesNotContain(rows, row => row.Contains('−'));
     }
+
+    // ---- The seams ------------------------------------------------------------------------------
+
+    // A push whose only field 151 content is the valves message 151.1, with 151.1.1 set and nothing else under 151.
+    private static SdPush ValvesOnlyPush(int page)
+        => new SdPush { Page = page }.With(remote =>
+            remote.Message(151, new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().Bool(1, true))));
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(6)]
+    [InlineData(9)]
+    [InlineData(12)]
+    public void Each_ground_page_seam_gives_its_composers_rows(int page)
+    {
+        // A push that composes for the page (a problem compares just as well as rows: the test compares the results).
+        // Field 151 is present on every page, so BLEED, PRESS and COND each give their own problem, not "no field 151".
+        var push = ValvesOnlyPush(page);
+
+        FenixChannelRows? composed = FenixChannelSdPages.Compose(page, push.Context(_ => { }));
+        FenixChannelRows expected = page switch
+        {
+            1 => FenixChannelSdPages.ApuRows(push.Context(_ => { })),
+            2 => FenixChannelSdPages.BleedRows(push.Context(_ => { })),
+            3 => FenixChannelSdPages.PressRows(push.Context(_ => { })),
+            4 => FenixChannelSdPages.CondRows(push.Context(_ => { })),
+            6 => FenixChannelSdPages.DoorRows(push.Context(_ => { })),
+            9 => FenixChannelSdPages.FctlRows(push.Context(_ => { })),
+            _ => FenixChannelSdPages.WheelRows(push.Context(_ => { })),
+        };
+
+        Assert.NotNull(composed);
+        Assert.Equal(expected.Problem, composed.Value.Problem);
+        Assert.Equal(expected.Rows?.ToArray(), composed.Value.Rows?.ToArray());
+    }
+
+    [Fact]
+    public void The_air_pages_give_three_different_problems_on_a_valves_only_push()
+    {
+        // BLEED, PRESS and COND each read 151.1 first and then their own part of 151, which this push leaves out: each
+        // page's problem must name its own part, so no two of the three can be the same string.
+        SdPush push = ValvesOnlyPush(2);
+
+        FenixChannelRows bleed = FenixChannelSdPages.BleedRows(push.Context(_ => { }));
+        FenixChannelRows press = FenixChannelSdPages.PressRows(push.Context(_ => { }));
+        FenixChannelRows cond = FenixChannelSdPages.CondRows(push.Context(_ => { }));
+
+        Assert.Null(bleed.Rows);
+        Assert.Null(press.Rows);
+        Assert.Null(cond.Rows);
+        Assert.NotNull(bleed.Problem);
+        Assert.NotNull(press.Problem);
+        Assert.NotNull(cond.Problem);
+        Assert.Equal(3, new[] { bleed.Problem, press.Problem, cond.Problem }.Distinct().Count());
+    }
+
+    [Fact]
+    public void The_cruise_seam_stays_unwired_until_its_switch_commit()
+    {
+        Assert.Null(FenixChannelSdPages.Compose(5, new SdPush { Page = 5 }.Context(_ => { })));
+    }
 }

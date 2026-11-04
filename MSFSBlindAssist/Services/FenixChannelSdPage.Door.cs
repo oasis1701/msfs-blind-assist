@@ -2,8 +2,8 @@ namespace MSFSBlindAssist.Services;
 
 // The DOOR page (6) of the Fenix SD: the crew oxygen pressure, then the airframe's doors, exits and slides. Written as the
 // COND page is (FenixChannelSdPage.Cond.cs): one reader, every field read before any row is built, and the reader's problem
-// returned as the page's one row. Every member added here is named for the DOOR page. Inert: only the tests call DoorRows
-// until a later task wires the ComposeDoor seam.
+// returned as the page's one row. Every member added here is named for the DOOR page. The seam below calls DoorRows
+// and nothing else calls it.
 internal static partial class FenixChannelSdPages
 {
     /// <summary>
@@ -106,6 +106,10 @@ internal static partial class FenixChannelSdPages
         rows.Add(DoorRow("Door 4 right", entry4R, slide4R));
         return FenixChannelRows.Of(rows);
     }
+
+    /// <summary>The DOOR page (6).</summary>
+    static partial void ComposeDoor(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows)
+        => rows = DoorRows(ctx);
 
     // One door row: its field set means closed; a slide, when the door has one, is armed while its field is set.
     private static string DoorRow(string label, bool closed, bool? slideArmed = null)

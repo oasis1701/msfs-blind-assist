@@ -3,7 +3,7 @@ namespace MSFSBlindAssist.Services;
 // The F/CTL page (9) of the Fenix SD: the spoilers, the ailerons, the flight control computers, the pitch trim, the elevators
 // and the rudder with its trim. Written as the WHEEL page is (FenixChannelSdPage.Wheel.cs): one reader, every field read
 // before any row is built, and the reader's problem returned as the page's one row. Every member added here is named for the
-// F/CTL page. Inert: only the tests call FctlRows until a later task wires the ComposeFctl seam.
+// F/CTL page. The ComposeFctl seam calls FctlRows.
 internal static partial class FenixChannelSdPages
 {
     // The signs, MEASURED in flight on 2026-11-03 (A321); each is one place to change. Ailerons and elevators (as the THS, whose
@@ -108,6 +108,10 @@ internal static partial class FenixChannelSdPages
             $"RUD TRIM: {FctlRudderDegrees(rudderTrim)}"
         ]);
     }
+
+    /// <summary>The F/CTL page (9).</summary>
+    static partial void ComposeFctl(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows)
+        => rows = FctlRows(ctx);
 
     // An aileron's or elevator's position: "2.3° up" or "2.3° down" by the measured sign, "0.0°" when it rounds to zero.
     private static string FctlSurfaceDegrees(double position)

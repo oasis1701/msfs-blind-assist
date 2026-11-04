@@ -2,8 +2,8 @@ namespace MSFSBlindAssist.Services;
 
 // The APU page (1) of the Fenix SD: the APU's generator, its bleed and its memos as the SD draws them, top to bottom. Written
 // as the ELEC page is (FenixChannelSdPage.Elec.cs): one reader, every field read before any row is built, and the reader's
-// problem returned as the page's one row. Every member added here is named for the APU page. Inert: only the tests call
-// ApuRows until a later task wires the ComposeApu seam.
+// problem returned as the page's one row. Every member added here is named for the APU page. The seam below calls
+// ApuRows.
 internal static partial class FenixChannelSdPages
 {
     /// <summary>
@@ -71,4 +71,8 @@ internal static partial class FenixChannelSdPages
         if (lowOil) rows.Add("LOW OIL LEVEL");
         return FenixChannelRows.Of(rows);
     }
+
+    /// <summary>The APU page (1).</summary>
+    static partial void ComposeApu(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows)
+        => rows = ApuRows(ctx);
 }

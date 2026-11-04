@@ -3,7 +3,7 @@ namespace MSFSBlindAssist.Services;
 // The PRESS page (3) of the Fenix SD: the landing elevation, the cabin and the pressurization valves as the SD draws them,
 // top to bottom. Written as the BLEED page is (FenixChannelSdPage.Bleed.cs): one reader, every field read before any row is
 // built, and the reader's problem returned as the page's one row. Every member added here is named for the PRESS page.
-// Inert: only the tests call PressRows until a later task wires the ComposePress seam. The CRUISE page
+// The ComposePress seam calls PressRows. The CRUISE page
 // (FenixChannelSdPage.Cruise.cs) builds its LDG ELEV and ΔP rows with the same two builders below, so they cannot drift.
 internal static partial class FenixChannelSdPages
 {
@@ -68,6 +68,10 @@ internal static partial class FenixChannelSdPages
         rows.Add($"PACK 2: {pack2}");
         return FenixChannelRows.Of(rows);
     }
+
+    /// <summary>The PRESS page (3).</summary>
+    static partial void ComposePress(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows)
+        => rows = PressRows(ctx);
 
     // The LDG ELEV row, shared by PRESS and CRUISE: "AUTO" until the landing elevation is set by hand, then "MAN".
     // The elevation is 151.10.7, measured in flight on 2026-11-03 (550 approaching CYYZ: 569 ft published, 546.8 ft in the sim).
