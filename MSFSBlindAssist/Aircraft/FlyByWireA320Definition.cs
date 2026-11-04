@@ -7896,7 +7896,9 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 // FBW's script writes the target in feet, stored in metres (FlyByWireStoredUnits).
                 double? tgt = s?.GetCachedVariableValue("A32NX_PFD_TARGET_ALTITUDE");
-                double? alt = s?.GetCachedVariableValue("INDICATED ALTITUDE");
+                // The A32NX's key (BaseAircraftDefinition); "INDICATED ALTITUDE" is the A380's
+                // and is never cached here, which left this row on "active".
+                double? alt = s?.GetCachedVariableValue("INDICATED_ALTITUDE");
                 if (tgt.HasValue && alt.HasValue && tgt.Value != 0)
                 {
                     double dev = alt.Value - Services.FlyByWireStoredUnits.Feet(tgt.Value);

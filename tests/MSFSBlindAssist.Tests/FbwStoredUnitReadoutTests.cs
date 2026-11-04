@@ -6,8 +6,11 @@
 // -0.5144 (2026-11-04). Run under sv-SE, whose decimal comma must not reach the text.
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Tests.FirstOfficer;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -81,6 +84,35 @@ public class FbwStoredUnitReadoutTests : IDisposable
             Assert.Equal("12000 feet", Text(def, "A32NX_PFD_TARGET_ALTITUDE", MetresFromFeet(12000)));
             Assert.Equal("none", Text(def, "A32NX_PFD_TARGET_ALTITUDE", 0));
         }
+    }
+
+    // The Vertical Deviation row reads its siblings from the panel's sim handle (_displaySim):
+    // hand it a seeded cache holding the aircraft's own keys, as the panel's reads would. Both
+    // are reached by UnsafeAccessor, never reflection (SeededSimConnectCache explains why).
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_displaySim")]
+    private static extern ref SimConnectManager? A320DisplaySim(FlyByWireA320Definition def);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_displaySim")]
+    private static extern ref SimConnectManager? A380DisplaySim(FlyByWireA380Definition def);
+
+    private static SimConnectManager Seeded(string altitudeKey, double altitudeFt, double targetFt) =>
+        SeededSimConnectCache.With((altitudeKey, altitudeFt),
+            ("A32NX_PFD_TARGET_ALTITUDE", MetresFromFeet(targetFt)),
+            ("A32NX_RADIO_RECEIVER_GS_IS_VALID", 0));
+
+    [Fact]
+    public void Profile_deviation_reads_feet_on_each_airframe_from_its_own_altitude_key()
+    {
+        // The A32NX and A330 register indicated altitude as INDICATED_ALTITUDE, the A380 as
+        // "INDICATED ALTITUDE"; the A32NX row used the A380's and always read "active".
+        foreach (FlyByWireA320Definition def in new[] { new FlyByWireA320Definition(), new HeadwindA330Definition() })
+        {
+            A320DisplaySim(def) = Seeded("INDICATED_ALTITUDE", 520, 1000);
+            Assert.Equal("480 feet below profile", Text(def, "A32NX_PFD_LINEAR_DEVIATION_ACTIVE", 1));
+        }
+        var a380 = new FlyByWireA380Definition();
+        A380DisplaySim(a380) = Seeded("INDICATED ALTITUDE", 520, 1000);
+        Assert.Equal("480 feet below profile", Text(a380, "A32NX_PFD_LINEAR_DEVIATION_ACTIVE", 1));
     }
 
     [Fact]
