@@ -281,5 +281,128 @@ public class FenixChannelSdAirTests
         Assert.Null(rows.Rows);
     }
 
-    // ================= COND (Task 6): its section goes here =================
+    // ================= COND =================
+    //
+    // COND (FenixChannelSdPages.CondRows, seam ComposeCond): the page reads 151.7 (zones) and 151.8 (conditioning states), all
+    // whole numbers. CKPT: 151.7.1 °C, duct 151.7.4 °C, trim valve 151.7.7 x 100 %; FWD (.2, .5, .8); AFT (.3, .6, .9);
+    // FWD CARGO (.11, .13, .15) only while 151.8.5; AFT CARGO (.12, .14, .16) only while 151.8.6; FAN 1 off (151.8.1) and
+    // FAN 2 off (151.8.7), ALTN MODE (151.8.2) and PACK REG (151.8.3) only while set. HOT AIR (151.7.10) waits for Task 1's
+    // measurement, so there is no HOT AIR row and no test for it.
+
+    // The zone temperatures (151.7): the cruise push of 2026-11-03 by default (cargo values present, as the Fenix sends them).
+    private static FenixChannelProtoWriter CondZone(double fwdCargoTrim = 0.5, double aftCargoTrim = 0.25)
+        => new FenixChannelProtoWriter()
+            .Double(1, 23.9909).Double(2, 23.9866).Double(3, 23.9869).Double(4, 37.5915).Double(5, 33.9229).Double(6, 25.1471)
+            .Double(7, 0.3363).Double(8, 0.4057).Double(9, 0.1143).Double(11, 6.3123).Double(12, 5.8325)
+            .Double(13, 14.4).Double(14, 15.5).Double(15, fwdCargoTrim).Double(16, aftCargoTrim);
+
+    // The conditioning states (151.8): 1 fan 1 off, 2 alternate, 3 pack reg, 5 forward cargo heating, 6 aft cargo heating,
+    // 7 fan 2 off; each written only while set.
+    private static FenixChannelProtoWriter CondStates(
+        bool fan1Off = false, bool alternate = false, bool packReg = false, bool cargoFwd = false, bool cargoAft = false,
+        bool fan2Off = false)
+    {
+        var states = new FenixChannelProtoWriter();
+        if (fan1Off) states.Bool(1, true);
+        if (alternate) states.Bool(2, true);
+        if (packReg) states.Bool(3, true);
+        if (cargoFwd) states.Bool(5, true);
+        if (cargoAft) states.Bool(6, true);
+        if (fan2Off) states.Bool(7, true);
+        return states;
+    }
+
+    // The pneumatic state (151) with the COND page's parts; a null part is left out of the push.
+    private static SdPush CondPush(FenixChannelProtoWriter? zone, FenixChannelProtoWriter? states)
+    {
+        var pneumatic = new FenixChannelProtoWriter();
+        if (zone is not null) pneumatic.Message(7, zone);
+        if (states is not null) pneumatic.Message(8, states);
+        return new SdPush { Page = 4 }.With(remote => remote.Message(151, pneumatic));
+    }
+
+    private static IReadOnlyList<string> CondRowsOf(SdPush push)
+    {
+        var reported = new List<string>();
+        FenixChannelRows rows = FenixChannelSdPages.CondRows(push.Context(reported.Add));
+
+        Assert.Null(rows.Problem);
+        Assert.Empty(reported);
+        return rows.Rows!;
+    }
+
+    [Fact]
+    public void The_cond_page_reads_the_three_zones()
+    {
+        // The cruise push: 151.8 present and empty, so no cargo rows although 151.7.11 and .12 carry values.
+        Assert.Equal(
+            new[]
+            {
+                "CKPT: 24 °C, duct 38 °C, trim valve 34 %", "FWD: 24 °C, duct 34 °C, trim valve 41 %",
+                "AFT: 24 °C, duct 25 °C, trim valve 11 %"
+            },
+            CondRowsOf(CondPush(CondZone(), CondStates())));
+    }
+
+    [Fact]
+    public void Cargo_rows_show_only_with_cargo_heating()
+    {
+        IReadOnlyList<string> fwd = CondRowsOf(CondPush(CondZone(), CondStates(cargoFwd: true)));
+        IReadOnlyList<string> aft = CondRowsOf(CondPush(CondZone(), CondStates(cargoAft: true)));
+        IReadOnlyList<string> both = CondRowsOf(CondPush(CondZone(), CondStates(cargoFwd: true, cargoAft: true)));
+
+        Assert.Equal("FWD CARGO: 6 °C, duct 14 °C, trim valve 50 %", Assert.Single(fwd, row => row.Contains("CARGO")));
+        Assert.Equal("AFT CARGO: 6 °C, duct 16 °C, trim valve 25 %", Assert.Single(aft, row => row.Contains("CARGO")));
+        Assert.Equal(new[] { "FWD CARGO", "AFT CARGO" }, both.Skip(3).Select(row => row.Split(':')[0]));
+    }
+
+    [Fact]
+    public void Fan_and_mode_rows_show_only_while_drawn()
+    {
+        IReadOnlyList<string> none = CondRowsOf(CondPush(CondZone(), CondStates()));
+        IReadOnlyList<string> all = CondRowsOf(CondPush(
+            CondZone(), CondStates(fan1Off: true, alternate: true, packReg: true, cargoFwd: true, cargoAft: true, fan2Off: true)));
+
+        Assert.Equal(3, none.Count);
+        Assert.Equal(new[] { "FAN 1: off", "FAN 2: off", "ALTN MODE", "PACK REG" }, all.Skip(5));
+        Assert.Equal(new[] { "FAN 2: off" }, CondRowsOf(CondPush(CondZone(), CondStates(fan2Off: true))).Skip(3));
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void Cond_rows_are_the_same_in_every_culture(string culture)
+    {
+        // A temperature of -0.4 never reads "-0"; -52.5 rounds away from zero to -53 with an ASCII minus.
+        var zone = new FenixChannelProtoWriter().Double(1, -0.4).Double(2, -52.5).Double(3, 21.5).Double(4, 38.4).Double(7, 0.345);
+        SdPush push = CondPush(zone, CondStates());
+
+        IReadOnlyList<string> rows = TestCulture.Run(culture, () => CondRowsOf(push));
+
+        Assert.Equal("CKPT: 0 °C, duct 38 °C, trim valve 35 %", rows[0]);
+        Assert.StartsWith("FWD: -53 °C", rows[1]);
+        Assert.StartsWith("AFT: 22 °C", rows[2]);
+        Assert.DoesNotContain(rows, row => row.Contains('−') || row.Contains("-0"));
+    }
+
+    [Theory]
+    [InlineData(7, "no field 151.7")]
+    [InlineData(8, "no field 151.8")]
+    public void A_missing_cond_part_is_not_available_with_its_path(int part, string problem)
+    {
+        SdPush push = CondPush(part == 7 ? null : CondZone(), part == 8 ? null : CondStates());
+
+        FenixChannelRows rows = FenixChannelSdPages.CondRows(push.Context(_ => { }));
+
+        Assert.Equal(problem, rows.Problem);
+        Assert.Null(rows.Rows);
+    }
+
+    [Fact]
+    public void A_missing_pneumatic_state_is_not_available()
+    {
+        FenixChannelRows rows = FenixChannelSdPages.CondRows(new SdPush { Page = 4 }.Context(_ => { }));
+
+        Assert.Equal("no field 151", rows.Problem);
+    }
 }
