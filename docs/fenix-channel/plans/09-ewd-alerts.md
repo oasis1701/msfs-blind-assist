@@ -289,29 +289,30 @@ MSFSBA built from this plan's branch with the switch commit (closed before build
 gate, both engines running, `fenix_channel.log` showing "E/WD trusted"; each press only with the owner's go-ahead, the
 aircraft handed over; Robin listens (the [owner] part). Record each result in `docs/fenix-channel/evidence/09-ewd-alerts.md`.
 
-- [ ] At the start, the memos and any failure already shown are silent.
-- [ ] GEN 1 off: "ELEC GEN 1 OFF, amber" once, not cutting other speech, and "GEN 1 INOP" never; GEN 1 on: "ELEC GEN 1 OFF
+- [x] At the start, the memos and any failure already shown are silent.
+- [x] GEN 1 off: "ELEC GEN 1 OFF, amber" once, not cutting other speech, and "GEN 1 INOP" never; GEN 1 on: "ELEC GEN 1 OFF
   cleared". The failure F_ELEC_DRIVE_FAILURE_L: "ELEC GEN 1 FAULT, amber", then its "cleared".
-- [ ] TO CONFIG held down with the flaps up (a quick press reaches the list only if a beat falls inside it):
+- [x] TO CONFIG held down with the flaps up (a quick press reaches the list only if a beat falls inside it):
   "SLATS NOT IN T.O CONFIG, red", interrupting, then "FLAPS NOT IN T.O CONFIG, red", not; released: their "cleared".
-- [ ] An engine fire (F_OH_FIRE_ENG_1_1BOTTLE) with a generator change timed so a beat falls in the E/WD's blank: "ENG 1 FIRE,
+- [x] An engine fire (F_OH_FIRE_ENG_1_1BOTTLE) with a generator change timed so a beat falls in the E/WD's blank: "ENG 1 FIRE,
   red" once, and neither "cleared" nor a repeat through the blank; the failure cleared: "ENG 1 FIRE cleared".
-- [ ] The owner judges by ear whether a red warning's delay, up to 3.84 s, is acceptable; if not, reading it from the lines
-  is a new design and a new ruling.
-- [ ] Ctrl+M, "E/WD cautions" unticked, GEN 1 off: nothing; ticked again: nothing replayed; GEN 1 on: "ELEC GEN 1 OFF
+- [x] The owner judges by ear whether a red warning's delay, up to 3.84 s, is acceptable; if not, reading it from the lines
+  is a new design and a new ruling. Heard at 3.42 s: acceptable.
+- [x] Ctrl+M, "E/WD cautions" unticked, GEN 1 off: nothing; ticked again: nothing replayed; GEN 1 on: "ELEC GEN 1 OFF
   cleared".
-- [ ] Memos, unticked by default: seat belts on, nothing; "E/WD memos" ticked, seat belts off and on: "SEAT BELTS,
-  green"; off: nothing.
-- [ ] A trust gap: cold and dark with GEN 1 off, then powered: nothing about it is said once the E/WD is trusted.
-- [ ] `fenix_channel.log` holds no "E/WD alerts: no line on the E/WD for" line for a title the E/WD showed; record
-  every "entry of no known kind" line.
+- [x] Memos, unticked by default: a memo on, nothing; "E/WD memos" ticked, off and on: "<memo>, green"; off: nothing. GPWS FLAP
+  3 stood in for seat belts, as the T.O memo had replaced that entry on the list.
+- [x] A trust gap: this check expected silence once the E/WD is trusted. It was not silent, and the owner ruled that it stays
+  (spec row 62): the first new list after a blackout is spoken like any other.
+- [x] `fenix_channel.log` holds no "E/WD alerts: no line on the E/WD for" line for a title the E/WD showed; record
+  every "entry of no known kind" line. Recorded in the evidence file.
 
 ### Task 6: The docs section
 
 **Files:** Modify `docs/a32nx.md` (the "E/WD alert announcements" sub-heading of the "Fenix display channel" section
 only).
 
-- [ ] **Step 1.** Replace "(Plan 09 writes this section.)" with a short paragraph: the entries stream decides, the kinds
+- [x] **Step 1.** Replace "(Plan 09 writes this section.)" with a short paragraph: the entries stream decides, the kinds
   (failure, memo, status), the color from the title's own line and how that line is found, the wait for a line, the
   rows and the interrupt rule, heartbeats, the baseline, what goes to `fenix_channel.log`, the files. Commit:
   `docs(fenix-channel): the E/WD alert announcements`.
@@ -325,19 +326,26 @@ only).
 
 - **What changes for a pilot.** Guide: `guide/airbus-aircraft.md`, the Fenix chapter's "Aircraft-specific hotkeys and
   callouts" (`#aircraft-specific-hotkeys-and-callouts-2`): new ECAM warnings and cautions spoken with their color ("ENG
-  1 FIRE, red" at once, "ELEC GEN 1 FAULT, amber" after what is being said), "<title> cleared" when one goes, memos
-  when turned on, the three Ctrl+M rows "E/WD warnings", "E/WD cautions" and "E/WD memos" (memos off by default), and
-  that they need the display channel (the session notice). No hotkey changes. Changelog category `feature`, draft:
-  "Fenix: new ECAM warnings and cautions are now spoken with their color, red ones at once, and you hear when each one
-  clears. ECAM memos can be turned on in the Fenix Monitor Manager."
+  1 FIRE, red" interrupting, up to about 4 s after the master warning; "ELEC GEN 1 FAULT, amber" after what is being
+  said), "<title> cleared" about 5 to 8 s after one goes, LAND ASAP by its color, memos when turned on and in the E/WD's
+  words, the three Ctrl+M rows "E/WD warnings", "E/WD cautions" and "E/WD memos" (memos off by default), that a very short
+  warning can go unsaid, and that they need the display channel (the session notice). No hotkey changes. Changelog category
+  `feature`, draft: "Fenix: new ECAM warnings and cautions are now spoken with their color, red ones interrupting, and you
+  hear when each one clears. ECAM memos can be turned on in the Fenix Monitor Manager."
 - **Proposed rule line.**
 
   ```text
-  - [FNX-?] Fenix E/WD alerts (`FenixChannelEwdAlertAnnouncer`) come only from the ECAM entries stream (IsAlert titles, MEMO- memos; never -STS- items or action lines); a title's color only from its own E/WD line (`FenixChannelEwdAlertLines.Find`), never guessed; one interrupt per step; a heartbeat with no entries clears nothing. Full: docs/invariants/fenix-channel.md#fnx-?
+  - [FNX-?] Fenix E/WD alerts (`FenixChannelEwdAlertAnnouncer`) come only from the ECAM entries stream (IsAlert titles, MEMO- memos; never -STS- items or action lines); a title's color only from its own E/WD line (`FenixChannelEwdAlertLines.Find`), never guessed; one interrupt per step; an item counts as gone only after `LeaveHoldMs`; never wait for the first list after a blackout (spec row 62). Full: docs/invariants/fenix-channel.md#fnx-?
   ```
 
-  Full text: the rules of Task 3 with Task 1's measurements (the entry-to-line gap behind `LineWaitMs`, heartbeats, the
-  memo titles, the wrapped CONFIG title), the owner's rulings on the three open questions, and the tests that pin each.
+  Full text: the rules of Task 3 with Task 1's measurements (the 3.84 s beat, heartbeats, the entry-to-line gap behind
+  `LineWaitMs`, the blank that drops a fire from one list behind `LeaveHoldMs`, the memo titles), the owner's rulings (spec rows
+  59 to 62), and the tests that pin each.
+- **To measure or hear in plan 12's flight.** LAND ASAP's entry and Title, whether its Name changes when its line turns from red
+  to amber, and `*AIR BLEED` as an entry. A power-up from a fresh cold and dark load with the app already running: the same path
+  should speak its start-up failures (row 62), so listen to how much it says. With memos on, how "T.O AUTO BRK.....MAX" sounds
+  with its dots when a failure hides its line, and whether IRS IN ALIGN 1 and 2, drawn as one "IR IN ALIGN > 7 MN", want a row in
+  the memo words table.
 - **Requests for frozen files:** none. (Plan 01 keeps a bare heartbeat from replacing the snapshot's `Entries`; if Task
   1 finds heartbeats that carry a list, or an empty list sent with Heartbeat set, tell the owner: plan 01's rule would
   need a change.)
@@ -366,4 +374,6 @@ Kept in this file only, so no other plan's push ever touches it.
   the list only counts as gone after `LeaveHoldMs`, 4.5 s, one more beat, so "cleared" comes about 4.5 to 8.3 s after the E/WD
   clears it (spec row 59); LAND ASAP is heard by its color under the warnings or cautions row, never as a memo (row 60); memos are
   spoken in the E/WD's words where the entry's differ, from a table of the measured pairs, and "MEMO - " counts as a memo (row 61).
-  The list stays the only source of what appeared and what cleared, the delay of up to 3.84 s to be judged by ear in Task 5.
+  The list stays the only source of what appeared and what cleared, the delay of up to 3.84 s to be judged by ear in Task 5. Task 5,
+  by ear: the delay is acceptable (heard at 3.42 s). A blackout's start-up failures stay spoken, as a sighted pilot sees them, with
+  no wait for the first new list (row 62), so the trust gap check changed.

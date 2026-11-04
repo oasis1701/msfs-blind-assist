@@ -1,6 +1,6 @@
 # Plan 09 evidence: E/WD alert announcements
 
-Fenix build 3.0.0.7613, MSFS 2024. Worked by Robin Kipp with Claude. Robin flew; Claude pressed only what he agreed to,
+Fenix build 3.0.0.7613, MSFS 2024. Worked by Robin Kipp with Claude. Robin flew; Claude pressed only what Robin agreed to,
 through the simconnect MCP with the definition's write paths. Both streams are logged with their arrival times in one
 process by a local read-only logger (never committed), which opens only the two calls the app reads.
 
@@ -182,6 +182,74 @@ from the T.O CONFIG press on), HYD PTU, APU AVAIL, APU BLEED, GPWS FLAP 3, LDG I
 | MEMO-SPEED BRAKE | blank | "gSPEED BRK", "paSPEED BRK" |
 | MEMO-AUTO BRK | blank | "gAUTO BRK LO" |
 | MEMO-LDG MEMO | "LDG LDG GEAR......DN" | "guLDGu LDG GEAR DN" (the `Title` does not follow the line) |
+
+## Task 5: heard at the LPPT gate, 2026-11-04
+
+A321 IAE, stopped, both engines running, the Release build of 27ab63152 from 21:12. Claude pressed and set the failures, Robin
+listened. Fuel had run down to 448 kg with the engines idling, so both wing tanks were set to 900 gallons first (21:11, held on
+read-back).
+
+| Check | Heard | List change | Result |
+| --- | --- | --- | --- |
+| App started with six items on the list | nothing | | pass |
+| GEN 1 off | "ELEC GEN 1 OFF, amber" once; GEN 1 INOP and MAIN GALLEY INOP never | 21:14:13.850 | pass |
+| GEN 1 on | "ELEC GEN 1 OFF cleared" once | 21:15:07.619 | pass |
+| F_ELEC_DRIVE_FAILURE_L set | "ELEC GEN 1 FAULT, amber" once | 21:16:24.432 | pass |
+| The failure cleared | "ELEC GEN 1 FAULT cleared" once | 21:17:10.520 | pass |
+| TO CONFIG held 15 s, flaps up | "SLATS NOT IN T.O CONFIG, red", then "FLAPS NOT IN T.O CONFIG, red" in full | 21:18:08.128 | pass |
+| TO CONFIG released | both "cleared"; SPEEDS NOT INSERTED, redrawn but listed all along, not spoken | 21:18:23.492 | pass |
+| F_OH_FIRE_ENG_1_1BOTTLE | "ENG 1 FIRE, red" once | 21:19:40.304 | pass |
+| The generator failure with a beat in the blank | the fire out of the list 21:19:51.826, back 21:19:55.666: no "cleared", no repeat; "ELEC GEN 1 FAULT" with no color, hidden behind the fire | 21:19:59.508 | pass |
+| Both failures cleared | "ELEC GEN 1 FAULT cleared", "ENG 1 FIRE cleared" | 21:20:37.914, 21:20:49.436 | pass |
+| "E/WD cautions" unticked, GEN 1 off | nothing | 21:24:59.076 | pass |
+| Ticked again | nothing replayed | | pass |
+| GEN 1 on | "ELEC GEN 1 OFF cleared" once | 21:27:21.180 | pass |
+| Memos muted, GPWS FLAP 3 on | nothing | 21:29:58.646 | pass |
+| "E/WD memos" ticked, off, then on | nothing, then "GPWS FLAP 3, green" once | 21:31:00.097, 21:31:23.140 | pass |
+
+- **Other speech.** Robin noticed by accident during these runs that an amber line does not cut NVDA's speech and that a red warning
+  does, and asked for this to be marked as passed. It was not staged.
+- **The delay.** Two fires timed to the beat: spoken 0.06 s after the E/WD line (21:21:31.622 to 21:21:31.683), then 3.42 s after
+  it (21:22:06.668 to 21:22:10.089). Robin: a delay like the second is acceptable, so reading from the lines stays out.
+- **Seat belts could not stand for the memos.** The T.O memo had replaced SEAT BELTS and NO SMOKING on the list since the T.O CONFIG
+  press, so GPWS FLAP 3 stood in. The seat belt entry and line were measured under Task 1.
+
+### A blackout
+
+Both batteries and both generators off with the engines running, twice, then the batteries and GEN 2 on with GEN 1 left off. This
+is the check that expected silence, and it was not silent. Robin heard it and ruled that it stays (spec row 62).
+
+| | First | Second |
+| --- | --- | --- |
+| E/WD "display off" | 21:32:47.227 | 21:38:42.222 |
+| E/WD trusted | 21:33:40.219 | 21:40:10.230 |
+| First new list | 21:34:04.447 | 21:40:28.512 |
+| FWS FWC 2 FAULT leaves, after that list | 3.84 s | 7.68 s |
+| COM CIDS 1+2 FAULT leaves, after that list | 65 s | 73 s |
+| ELEC GEN 1 OFF joins, after that list | 92 s | 92 s |
+
+- The list does not change while the power is off: only heartbeats. A new connection made in the dark is sent the last list, so the
+  server remembers it.
+- From the E/WD trusted to the first new list its columns are blank, then "FWS FWC 1+2 FAULT" and the NOT AVAIL column, none of it
+  on the list.
+- So the baseline is the list from before the blackout. The first run was heard, with memos ticked: "COM CIDS 1+2 FAULT, amber", "FWS
+  FWC 2 FAULT, amber", "IRS IN ALIGN 1", "IRS IN ALIGN 2", "T.O SPEEDS NOT INSERTED cleared", "FWS FWC 2 FAULT cleared", "PRED W/S OFF,
+  green".
+- Not measured: a fresh load from cold and dark with the app already running. The same path should speak its start-up failures too;
+  the next flight from cold and dark will hear it.
+
+### `fenix_channel.log`
+
+No "no line on the E/WD for" line for a title the E/WD showed. All of them from this run:
+
+- ELEC GEN 1 FAULT (21:20:00): hidden behind the fire's procedure.
+- IRS IN ALIGN 1 and 2 (21:34:05): with a failure in the left column the memo is not drawn. Drawn, it reads "aIR IN ALIGN > 7 MN", one
+  amber line with a countdown for the two entries, so these two would find no line either way and are said in the entry's words.
+- T.O AUTO BRK.....MAX (21:36:34): the T.O memo with a failure in the left column, so spoken with its dots. Memos are muted by default.
+
+"Entry of no known kind": FWS-STS FWC 2 FAULT, 01-31- 13 (a status item spelled without the second dash; silent, as a status item
+should be). "Alert entry with no title": AUTO FLIGHT-CAPABILITY CHANGE, 01-22-200 (on the first list after a power-up, gone a beat or
+so later, never drawn).
 
 ## Still to measure in flight
 
