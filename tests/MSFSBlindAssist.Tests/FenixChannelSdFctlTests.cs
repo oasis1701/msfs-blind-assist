@@ -8,7 +8,6 @@
 // The signs are inferred until Task 1's flight control check: ailerons and elevators negative = up, the THS negative = nose
 // up, the rudder and its trim positive = right.
 
-using System.Globalization;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
@@ -242,19 +241,10 @@ public class FenixChannelSdFctlTests
             [1] = Surface(-2.34), [3] = Surface(12.5), [13] = Surface(-0.04), [15] = Surface(-1.94), [16] = Surface(3.25)
         };
         IReadOnlyList<string> expected = RowsOf(FctlPush(surfaces));
-        CultureInfo original = CultureInfo.CurrentCulture;
 
-        try
+        foreach (string name in new[] { "de-DE", "sv-SE" })
         {
-            foreach (string name in new[] { "de-DE", "sv-SE" })
-            {
-                CultureInfo.CurrentCulture = new CultureInfo(name);
-                Assert.Equal(expected, RowsOf(FctlPush(surfaces)));
-            }
-        }
-        finally
-        {
-            CultureInfo.CurrentCulture = original;
+            Assert.Equal(expected, TestCulture.Run(name, () => RowsOf(FctlPush(surfaces))));
         }
 
         Assert.Equal("L AIL: 2.3° up", RowOf(expected, "L AIL"));
