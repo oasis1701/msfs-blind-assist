@@ -25,6 +25,8 @@ internal static class FenixChannelNdLook
     private const string MapDataInFlight = "03-nd.md, Sitting 2, GetMapData in flight";
     private const string TunedCaptures =
         MapDataInFlight + " (disco-arc160-210338, cap/211030: RMG; fixinfo-211836: VXV; efis/215457-restored: CVG)";
+    private const string RadioFlight = "03-nd.md, Sitting 2: the radio content and traffic";
+    private const string RadioGate = "03-nd.md, Sitting 1, Part D: the radio content at the gate";
     private const string TunedKind3 = "; measured on kind 3 (DBN, RMG, ODF, VXV, LOZ, CVG)";
     private const string TunedUnmeasured = "; kinds 2 and 4 follow the same rule, unmeasured";
 
@@ -75,7 +77,28 @@ internal static class FenixChannelNdLook
         new(FenixChannelNdRoute.LookItem.WxThH, "WX+T+H", "green", Terrain + " (191.4)"),
         new(FenixChannelNdRoute.LookItem.PwsScan, "PWS SCAN", "green", HeaderInFlight + " (191.8)"),
         new(FenixChannelNdRoute.LookItem.WxrOff, "WXR OFF", "white",
-            "03-nd.md, Task 1 Part A, the header as drawn; " + HeaderInFlight)
+            "03-nd.md, Task 1 Part A, the header as drawn; " + HeaderInFlight),
+        new(FenixChannelNdRadio.LookItem.CoursePointer, "course pointer", "magenta",
+            RadioFlight + ", ROSE LS: the course pointer (efis/214719-ls20-nav, appr/215104, cap/211159-ls160)"),
+        new(FenixChannelNdRadio.LookItem.LocalizerBar, "localizer bar", "magenta",
+            RadioFlight + ", ROSE LS: the localizer deviation (82.1), the table of bar offsets"),
+        new(FenixChannelNdRadio.LookItem.GlideslopeDiamond, "glideslope diamond", "magenta",
+            RadioFlight + ", ROSE LS: the glideslope deviation (82.2), the whole diamond"),
+        new(FenixChannelNdRadio.LookItem.GlideslopeHalfDiamond, "glideslope half diamond", "magenta",
+            RadioFlight + ", ROSE LS: the glideslope deviation (82.2), the half diamond from 2.02 dots"),
+        new(FenixChannelNdRadio.LookItem.VorPointerNav1, "single line with an open triangle head", "white",
+            RadioFlight + ", the bearing pointers (efis/211245-rose160-vord-nav, appr/215104, 214755, 215413, 211245)"),
+        new(FenixChannelNdRadio.LookItem.AdfPointerNav2, "two lines joined at the head", "green",
+            RadioFlight + ", the bearing pointers (efis/211245-rose160-vord-nav and the appr captures)"),
+        new(FenixChannelNdRadio.LookItem.VorArrowNav1, "single-line arrow", "white",
+            RadioFlight + ", the corners (214719: VOR on NAV 1)"),
+        new(FenixChannelNdRadio.LookItem.AdfArrowNav2, "double-line arrow", "green",
+            RadioFlight + ", the corners (214719: ADF on NAV 2)"),
+        new(FenixChannelNdRadio.LookItem.FailedVorIdent, "VOR1", "red", RadioGate + ", VOR 1 failed: the top right"),
+        new(FenixChannelNdRadio.LookItem.FailedVorFrequency, "---.--", "cyan", RadioGate + ", VOR 1 failed: the top right"),
+        new(FenixChannelNdRadio.LookItem.FailedCourseLabel, "CRS", "white", RadioGate + ", VOR 1 failed: the top right"),
+        new(FenixChannelNdRadio.LookItem.FailedCourseFigure, "XX", "red", RadioGate + ", VOR 1 failed: the top right"),
+        new(FenixChannelNdRadio.LookItem.FailedVorFlag, "VOR", "red", RadioGate + ", VOR 1 failed: the center")
     ];
 
     /// <summary>Every entry, in the order they were measured.</summary>

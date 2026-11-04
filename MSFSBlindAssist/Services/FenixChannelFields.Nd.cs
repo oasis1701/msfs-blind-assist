@@ -11,7 +11,11 @@ internal static partial class FenixChannelFields
         public const int Crosstrack = 52;               // crosstrack: fixed64 (double), the cross-track error in NM, negative left
         public const int TerrainOnNdCapt = 53;          // terrainOnNDCapt: varint (bool), the captain's TERR ON ND; left out when off
         public const int NdStatusCapt = 58;             // ndStatusCapt: nested NdStatusData, what the captain's ND draws in HDG
-        public const int NdFlagLabelsCapt = 102;        // ndFlagLabels: nested NdFlagLabels, the captain's ND flag labels (the approach message at top center)
+        public const int VorBlockCapt = 70;             // vorBlockCapt: nested NdRadioBlock, ROSE VOR's top right block (the first officer's is 71)
+        public const int LsBlockCapt = 72;              // lsBlockCapt: nested NdRadioBlock, ROSE LS's top right block (the first officer's is 73)
+        public const int CornersCapt = 76;              // cornersCapt: nested NdCorners, the bottom left (NAV 1) and bottom right (NAV 2) texts (the first officer's is 77)
+        public const int BearingPointersCapt = 78;      // bearingPointersCapt: nested NdBearingPointers, the VOR and ADF pointers (the first officer's is 79)
+        public const int NdFlagLabelsCapt = 102;       // ndFlagLabels: nested NdFlagLabels, the captain's ND flag labels (the approach message at top center)
         public const int NdCenterMessageCapt = 62;    // ndCenterMessageCapt: string, the center message (channel text)
         public const int NdWindshearMessageCapt = 64;   // ndWindshearMessageCapt: string, the windshear message (channel text)
         public const int NdTcasMessageCapt = 66;        // ndTcasMessageCapt: string, the TCAS message (channel text)
@@ -49,8 +53,64 @@ internal static partial class FenixChannelFields
     /// </summary>
     public static partial class NdFlagLabels
     {
-        public const int CornerFlags = 1;           // nested message, the flags drawn at the corners; its members are not read here
+        public const int CornerFlags = 1;           // nested NdCornerFlags, the flags drawn at the corners (the radio layer reads its members)
         public const int ApproachMessage = 2;       // ApproachMessage: string (channel text), "gILS18L" at top center
+    }
+
+    /// <summary>NdRadioBlock, the top right block of ROSE LS (<see cref="Remote.LsBlockCapt"/>) and ROSE VOR (<see cref="Remote.VorBlockCapt"/>).</summary>
+    public static partial class NdRadioBlock
+    {
+        public const int Line1 = 1;                 // Line1: string (channel text), the receiver and its frequency ("wILS2 m110.s15 ")
+        public const int Line2 = 2;                 // Line2: string (channel text), the course ("CRS m186c°")
+        public const int Line3 = 3;                 // Line3: string (channel text), the frequency, then the ident (" mICIZ "); empty or left out between
+    }
+
+    /// <summary>NdCornerFlags (<see cref="NdFlagLabels.CornerFlags"/>): a flag drawn in place of its corner, spoken as sent.</summary>
+    public static partial class NdCornerFlags
+    {
+        public const int Vor1 = 1;                  // Vor1: string (channel text), the bottom left flag ("rVOR1")
+        public const int Vor2 = 2;                  // Vor2: string (channel text), the bottom right flag; placed by its side, not measured alone
+        public const int Adf1 = 3;                  // Adf1: string (channel text), the bottom left flag; placed by its side, not measured
+        public const int Adf2 = 4;                  // Adf2: string (channel text), the bottom right flag; placed by its side, not measured alone
+    }
+
+    /// <summary>NdCorners (<see cref="Remote.CornersCapt"/>): the two corner texts of the captain's ND.</summary>
+    public static partial class NdCorners
+    {
+        public const int Nav1 = 1;                  // Nav1: nested NdCornerText, the NAV 1 side, drawn bottom left
+        public const int Nav2 = 2;                  // Nav2: nested NdCornerText, the NAV 2 side, drawn bottom right
+    }
+
+    /// <summary>NdCornerText, one corner of <see cref="NdCorners"/>: three lines, an empty entry with its selector at OFF.</summary>
+    public static partial class NdCornerText
+    {
+        public const int Line1 = 1;                 // Line1: string (channel text), the receiver and its number ("wVOR1")
+        public const int Line2 = 2;                 // Line2: string (channel text), the ident ("wCVG"); none for an ADF's number
+        public const int Line3 = 3;                 // Line3: string (channel text), the DME distance ("g8s.4  scNM")
+    }
+
+    /// <summary>NdBearingPointers (<see cref="Remote.BearingPointersCapt"/>): the pointers of NAV 1 and NAV 2.</summary>
+    public static partial class NdBearingPointers
+    {
+        public const int Nav1 = 1;                  // Nav1: fixed64 (double), the magnetic bearing; NaN for no pointer
+        public const int Nav2 = 2;                  // Nav2: fixed64 (double), the magnetic bearing; NaN for no pointer
+    }
+
+    /// <summary>
+    /// The values of <see cref="Efis.EfisSelectors"/>, one entry per NAV side (NAV 1 then NAV 2): what the side's
+    /// selector is set to (docs/fenix-channel/evidence/03-nd.md, sitting 1 Part A).
+    /// </summary>
+    public static class EfisSelectorValue
+    {
+        public const int Off = 0;
+        public const int Vor = 1;
+        public const int Adf = 2;
+    }
+
+    /// <summary>LsInputData, added to the PFD's partial: the course the ND's pointer is drawn at (82.6).</summary>
+    public static partial class LsInputData
+    {
+        public const int Course = 6;                // Course: fixed64 (double), the localizer course; NaN with no ILS tuned (82.7 equals it)
     }
 
     /// <summary>NdInfoData, the next waypoint's lines (<see cref="Remote.NavInfoCapt"/>).</summary>

@@ -40,8 +40,10 @@ internal static partial class FenixChannelNdRows
         => Compose(s, reportProblem, []);
 
     /// <summary>
-    /// The rows for <paramref name="s"/> with the layers after the header, in screen order: "Route" (the route, its
-    /// markers, the heading bug, the rings, FIX INFO), "Map points", then "Terrain and weather" (the bottom right label).
+    /// The rows for <paramref name="s"/> with the layers after the header, in screen order: "Radio" (the top right
+    /// block, the center, the right side, the bearing pointers), "Route" (the route, its markers, the heading bug, the
+    /// rings, FIX INFO), "Map points", "Radio corners" (the bottom corners), then "Terrain and weather" (the bottom
+    /// right label).
     /// <paramref name="mapPoints"/> is the poller's latest reply, when it was last confirmed current (on the clock
     /// <paramref name="nowMs"/> reads) and its problem; the layer uses the points only under
     /// <see cref="FenixChannelNdMapData.Check"/> ([FNX-22]).
@@ -51,8 +53,10 @@ internal static partial class FenixChannelNdRows
         (FenixNdMapPoints? Points, long ReceivedAtMs, string? Problem) mapPoints, long nowMs)
         => Compose(s, reportProblem,
         [
+            (snapshot, nd) => snapshot.Push is { } push ? FenixChannelNdRadio.Rows(push, nd) : FenixNdLayer.Of([]),
             FenixChannelNdRoute.Layer,
             (snapshot, nd) => MapPointsLayer(snapshot, nd, mapPoints, nowMs),
+            (snapshot, nd) => snapshot.Push is { } push ? FenixChannelNdRadio.CornerRows(push, nd) : FenixNdLayer.Of([]),
             FenixChannelNdRoute.LabelsLayer
         ]);
 
