@@ -17,7 +17,7 @@ internal static partial class FenixChannelSdPages
 
     /// <summary>
     /// The COND page's rows, in the SD's order: <c>CKPT</c>, <c>FWD</c> and <c>AFT</c>, each <c>label: n °C, duct n °C, trim
-    /// valve n %</c>; then <c>HOT AIR: open</c>, <c>closed</c> or <c>in transit</c> (151.7.10); then <c>FWD CARGO</c> only while forward cargo heating is fitted (151.8.5) and <c>AFT CARGO</c> only
+    /// valve n % hot</c>; then <c>HOT AIR: open</c>, <c>closed</c> or <c>in transit</c> (151.7.10); then <c>FWD CARGO</c> only while forward cargo heating is fitted (151.8.5) and <c>AFT CARGO</c> only
     /// while aft cargo heating is (151.8.6); then <c>FAN 1: off</c> (151.8.1), <c>FAN 2: off</c> (151.8.7), <c>ALTN MODE</c>
     /// (151.8.2) and <c>PACK REG</c> (151.8.3), each only while its flag is set. All numbers are whole. No row speaks a color.
     /// </summary>
@@ -26,7 +26,8 @@ internal static partial class FenixChannelSdPages
     /// left out is "no field 151.x", never its defaults; the first problem wins, and the page returns it and never reports it.
     /// The cargo fields are read only while their heating flag is set, since the Fenix sends their values with or without
     /// cargo heating.</para>
-    /// <para>The trim valves are a fraction open (0 to 1), spoken as a percent (owner question Q2). HOT AIR (151.7.10) is a
+    /// <para>The trim valves are a fraction open toward hot (0 to 1; the SD's gauge runs from C to H), spoken as a percent
+    /// with "hot" (owner question Q2). HOT AIR (151.7.10) is a
     /// double that follows the HOT AIR pushbutton, measured at the CYYZ gate on 2026-11-03: 1 (closed), then 2 (in transit)
     /// for 3 s, then left out (0, open), and left out in cruise with HOT AIR on. Any other value reads "HOT AIR: not
     /// available" and is reported "field 151.7.10 has an unknown value &lt;v&gt;" without stopping the page.</para>
@@ -96,7 +97,8 @@ internal static partial class FenixChannelSdPages
     static partial void ComposeCond(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows)
         => rows = CondRows(ctx);
 
-    // One zone row. The trim valve is a fraction open (0 to 1), spoken as a percent.
+    // One zone row. The SD draws the trim valve as a gauge from C (cold) to H (hot); the value is a fraction (0 to 1) of how
+    // far open it is toward hot, spoken as a percent with "hot".
     private static string CondZoneRow(string label, double temperature, double duct, double trimValve)
-        => $"{label}: {FenixChannelSd.Whole(temperature)} °C, duct {FenixChannelSd.Whole(duct)} °C, trim valve {FenixChannelSd.Whole(trimValve * 100)} %";
+        => $"{label}: {FenixChannelSd.Whole(temperature)} °C, duct {FenixChannelSd.Whole(duct)} °C, trim valve {FenixChannelSd.Whole(trimValve * 100)} % hot";
 }

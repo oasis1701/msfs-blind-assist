@@ -284,7 +284,7 @@ public class FenixChannelSdAirTests
     // ================= COND =================
     //
     // COND (FenixChannelSdPages.CondRows, seam ComposeCond): the page reads 151.7 (zones) and 151.8 (conditioning states), all
-    // whole numbers. CKPT: 151.7.1 °C, duct 151.7.4 °C, trim valve 151.7.7 x 100 %; FWD (.2, .5, .8); AFT (.3, .6, .9);
+    // whole numbers. CKPT: 151.7.1 °C, duct 151.7.4 °C, trim valve 151.7.7 x 100 % hot (how far open toward hot, on the SD's C to H gauge); FWD (.2, .5, .8); AFT (.3, .6, .9);
     // FWD CARGO (.11, .13, .15) only while 151.8.5; AFT CARGO (.12, .14, .16) only while 151.8.6; FAN 1 off (151.8.1) and
     // FAN 2 off (151.8.7), ALTN MODE (151.8.2) and PACK REG (151.8.3) only while set. HOT AIR (151.7.10, a double: left out
     // 0 open, 1 closed, 2 in transit, measured 2026-11-03) is a row right after AFT.
@@ -338,8 +338,8 @@ public class FenixChannelSdAirTests
         Assert.Equal(
             new[]
             {
-                "CKPT: 24 °C, duct 38 °C, trim valve 34 %", "FWD: 24 °C, duct 34 °C, trim valve 41 %",
-                "AFT: 24 °C, duct 25 °C, trim valve 11 %", "HOT AIR: open"
+                "CKPT: 24 °C, duct 38 °C, trim valve 34 % hot", "FWD: 24 °C, duct 34 °C, trim valve 41 % hot",
+                "AFT: 24 °C, duct 25 °C, trim valve 11 % hot", "HOT AIR: open"
             },
             CondRowsOf(CondPush(CondZone(), CondStates())));
     }
@@ -351,8 +351,8 @@ public class FenixChannelSdAirTests
         IReadOnlyList<string> aft = CondRowsOf(CondPush(CondZone(), CondStates(cargoAft: true)));
         IReadOnlyList<string> both = CondRowsOf(CondPush(CondZone(), CondStates(cargoFwd: true, cargoAft: true)));
 
-        Assert.Equal("FWD CARGO: 6 °C, duct 14 °C, trim valve 50 %", Assert.Single(fwd, row => row.Contains("CARGO")));
-        Assert.Equal("AFT CARGO: 6 °C, duct 16 °C, trim valve 25 %", Assert.Single(aft, row => row.Contains("CARGO")));
+        Assert.Equal("FWD CARGO: 6 °C, duct 14 °C, trim valve 50 % hot", Assert.Single(fwd, row => row.Contains("CARGO")));
+        Assert.Equal("AFT CARGO: 6 °C, duct 16 °C, trim valve 25 % hot", Assert.Single(aft, row => row.Contains("CARGO")));
         Assert.Equal(new[] { "FWD CARGO", "AFT CARGO" }, both.Skip(4).Select(row => row.Split(':')[0]));
     }
 
@@ -379,7 +379,7 @@ public class FenixChannelSdAirTests
 
         IReadOnlyList<string> rows = TestCulture.Run(culture, () => CondRowsOf(push));
 
-        Assert.Equal("CKPT: 0 °C, duct 38 °C, trim valve 35 %", rows[0]);
+        Assert.Equal("CKPT: 0 °C, duct 38 °C, trim valve 35 % hot", rows[0]);
         Assert.StartsWith("FWD: -53 °C", rows[1]);
         Assert.StartsWith("AFT: 22 °C", rows[2]);
         Assert.DoesNotContain(rows, row => row.Contains('−') || row.Contains("-0"));
