@@ -459,10 +459,10 @@ The local build with Tasks 10 and 12 (and plan 05's switch), in one flight, in t
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** not started
-- **Claimed by:** none
-- **Worked by:**
-- **Started:**
+- **Status:** claimed
+- **Claimed by:** kn4iee, 2026-11-03
+- **Worked by:** kn4iee with Claude Code (subagents)
+- **Started:** 2026-11-03, from `9f2eea646` (the branch's head: plan 05 has landed, so the in-sim checks need no merge)
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:**
