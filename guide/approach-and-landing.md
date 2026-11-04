@@ -196,6 +196,7 @@ When they come:
 - A bigger one, where both tones sit fully to one side, is spoken once you stop rolling, so you hear the number you still need, not a string of numbers while you roll.
 - *"matched"* is said once when you get within about half a degree, and BA stays quiet until you are a full degree off again.
 - A small steady error under a degree is spoken after a second and a half.
+- While you stay off, even by a degree or two, the same callout is said again every three seconds until you correct it. *"matched"* is never repeated.
 - There is always at least a second between bank callouts, so none cuts off the one before. A callout that falls inside that second is skipped, and the next one tells you the error as it is then.
 <div class="callout note" role="note" markdown="1">
 

@@ -10,7 +10,9 @@ namespace MSFSBlindAssist.Services;
 /// matched the callout is "On commanded path" when the command is within 0.5° of wings level, else
 /// "matched"; the two count as one callout, so switching between them never speaks.</item>
 /// <item>Otherwise the callout is "N left" or "N right", N the error rounded, at least 1.</item>
-/// <item>A callout is due when it differs from the last one spoken and has held: matched, 0.25 s; a
+/// <item>A callout is due when it differs from the last one spoken, or is the same error callout
+/// ("1 right") and 3 s have passed since it was spoken, so a pilot sitting one or two degrees off
+/// keeps hearing it (the owner, 2026-11-04; "matched" is never repeated); and it has held: matched, 0.25 s; a
 /// steady error under 1° outside matched, 1.5 s; an error the tones can still show (under the
 /// profile's tone bank range), 0.25 s; a larger one, where both tones are pinned and only speech
 /// says how far, once the aircraft's bank has stopped changing (no move over 0.5°) for 1 s.</item>
@@ -28,6 +30,7 @@ internal sealed class VisualGuidanceBankCalloutGate
     public const double LargeSteadySeconds = 1.0;
     public const double BankSteadyBandDeg = 0.5;
     public const double MinGapSeconds = 1.0;
+    public const double RepeatSeconds = 3.0;
 
     // Within this of wings level, a matched command is spoken as "On commanded path".
     private const double OnPathCommandDeg = 0.5;
@@ -76,7 +79,11 @@ internal sealed class VisualGuidanceBankCalloutGate
             _candidateSince = utc;
         }
 
-        if (key == _lastSpokenKey || !Due(utc, size)) return null;
+        // An error callout the pilot is still sitting on is said again every RepeatSeconds: an
+        // aircraft one or two degrees off must be told so (the owner, 2026-11-04). "Matched" is not.
+        bool repeat = key == _lastSpokenKey && !_matched
+            && _lastSpokenUtc is DateTime spokenAt && (utc - spokenAt).TotalSeconds >= RepeatSeconds;
+        if ((key == _lastSpokenKey && !repeat) || !Due(utc, size)) return null;
         if (!maySpeak) return null;
         if (_lastSpokenUtc is DateTime last && (utc - last).TotalSeconds < MinGapSeconds) return null;
 

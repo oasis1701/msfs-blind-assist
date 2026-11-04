@@ -37,13 +37,38 @@ public class VisualGuidanceBankCalloutGateTests
     private static string Show(List<(double T, string Phrase)> said)
         => string.Join(", ", said.Select(s => $"{s.T:0.000} {s.Phrase}"));
 
+    // A steady sub-degree error is first spoken after 1.5 s, then again every RepeatSeconds while it
+    // stays (the owner, 2026-11-04: an aircraft one or two degrees off must be told so).
     [Fact]
-    public void Steady_sub_degree_error_is_spoken_once_after_one_and_a_half_seconds()
+    public void Steady_sub_degree_error_is_spoken_after_one_and_a_half_seconds_and_repeated()
     {
-        var said = Fly(_ => (-0.7, 0), 5);
-        var only = Assert.Single(said);
-        Assert.Equal("1 left", only.Phrase);
-        Assert.InRange(only.T, 1.5, 1.55);
+        double repeat = VisualGuidanceBankCalloutGate.RepeatSeconds;
+        var said = Fly(_ => (-0.7, 0), 1.5 + 2 * repeat + 0.5);
+        Assert.Equal(3, said.Count);
+        Assert.All(said, s => Assert.Equal("1 left", s.Phrase));
+        Assert.InRange(said[0].T, 1.5, 1.55);
+        Assert.InRange(said[1].T - said[0].T, repeat, repeat + 0.04);
+        Assert.InRange(said[2].T - said[1].T, repeat, repeat + 0.04);
+    }
+
+    // The case the speech-led light aircraft drifted on: "2 right" spoken, then the pilot sits 1.2°
+    // off, still "1 right"... here a 1.2° error the pilot never corrects is heard again and again.
+    [Fact]
+    public void An_error_of_a_degree_or_two_that_stays_is_spoken_again()
+    {
+        double repeat = VisualGuidanceBankCalloutGate.RepeatSeconds;
+        var said = Fly(_ => (1.2, 0), 0.3 + 3 * repeat);
+        Assert.Equal(4, said.Count);
+        Assert.All(said, s => Assert.Equal("1 right", s.Phrase));
+        for (int i = 1; i < said.Count; i++)
+            Assert.InRange(said[i].T - said[i - 1].T, repeat, repeat + 0.04);
+    }
+
+    [Fact]
+    public void Matched_is_never_repeated()
+    {
+        var said = Fly(_ => (5, 4.8), 4 * VisualGuidanceBankCalloutGate.RepeatSeconds);
+        Assert.Equal(new[] { "matched" }, said.Select(s => s.Phrase));
     }
 
     [Fact]

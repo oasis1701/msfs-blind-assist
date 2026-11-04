@@ -82,7 +82,7 @@ F (`HotkeyAction.ReadTargetFPM`, the name kept from when it read the target desc
 
 ### Bank callouts
 
-`AnnounceBankGuidance` feeds every update to `VisualGuidanceBankCalloutGate` and speaks what it returns (VG-21). The gate holds a callout until it has lasted: 0.25 s for "matched" and for an error the tones can still show (under the profile's `ToneBankRangeDeg`), 1.5 s for a steady error under 1°, and, past the tone range where both tones are pinned, until the aircraft's bank has not moved more than 0.5° for 1 s. "Matched" is entered at 0.4° and left at 1.0°. Bank callouts are at least 1 s apart; one due inside that second is dropped, and the next speaks the error as it is then. Measured before and after in the harness's GUST runs ([virtual-pilot.md](virtual-pilot.md)).
+`AnnounceBankGuidance` feeds every update to `VisualGuidanceBankCalloutGate` and speaks what it returns (VG-21). The gate holds a callout until it has lasted: 0.25 s for "matched" and for an error the tones can still show (under the profile's `ToneBankRangeDeg`), 1.5 s for a steady error under 1°, and, past the tone range where both tones are pinned, until the aircraft's bank has not moved more than 0.5° for 1 s. "Matched" is entered at 0.4° and left at 1.0°. An error callout the pilot is still sitting on ("1 right") is spoken again every 3 s (`RepeatSeconds`, the owner's decision of 2026-11-04: one or two degrees off must be told); "matched" is never repeated. Bank callouts are at least 1 s apart; one due inside that second is dropped, and the next speaks the error as it is then. Measured before and after in the harness's GUST runs ([virtual-pilot.md](virtual-pilot.md)).
 
 ### Manual-query grace window
 
