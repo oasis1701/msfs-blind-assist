@@ -169,5 +169,117 @@ public class FenixChannelSdAirTests
         Assert.DoesNotContain(rows, row => row.Contains('−') || row.Contains("-0"));
     }
 
-    // ================= PRESS (Task 5) and COND (Task 6): their sections go here =================
+    // ================= PRESS =================
+    //
+    // PRESS (FenixChannelSdPages.PressRows, seam ComposePress): the page reads 151.1 (valves), 151.9 (flags) and 151.10
+    // (pressurization data). LDG ELEV AUTO or MAN (151.9.16): 151.10.7 FT; ΔP 151.10.1 (one decimal) PSI; V/S 151.10.2 FT/MIN;
+    // CAB ALT 151.10.3 FT; SYS 1 (151.9.14), SYS 2 (151.9.15) and MAN (151.9.13) only while set; VENT INLET 151.10.4; VENT
+    // EXTRACT 151.10.5; OUTFLOW 151.10.6 x 100 %; SAFETY 151.10.9; PACK 1 and PACK 2 by the flow valves 151.1.9 and .10.
+
+    // The pressurization flags (151.9): 13 manual, 14 system 1, 15 system 2, 16 manual landing elevation.
+    private static FenixChannelProtoWriter PressFlags(bool manual = false, bool sys1 = false, bool sys2 = false, bool manualElev = false)
+    {
+        var flags = new FenixChannelProtoWriter();
+        if (manual) flags.Bool(13, true);
+        if (sys1) flags.Bool(14, true);
+        if (sys2) flags.Bool(15, true);
+        if (manualElev) flags.Bool(16, true);
+        return flags;
+    }
+
+    // The pressurization data (151.10), the cruise push of 2026-11-03 by default: the inlet, extract and safety valves
+    // (4, 5, 9) closed, which is 1 on the wire.
+    private static FenixChannelProtoWriter PressData(
+        double deltaP = 7.983, double vs = -0.1665, double altitude = 6399.74, double outflow = 0.0842, double landing = 550)
+        => new FenixChannelProtoWriter().Double(1, deltaP).Double(2, vs).Double(3, altitude).Varint(4, 1).Varint(5, 1)
+            .Double(6, outflow).Double(7, landing).Varint(9, 1);
+
+    // The pneumatic state (151) with the PRESS page's parts; a null part is left out of the push.
+    private static SdPush PressPush(
+        FenixChannelProtoWriter? valves, FenixChannelProtoWriter? flags, FenixChannelProtoWriter? data)
+    {
+        var pneumatic = new FenixChannelProtoWriter();
+        if (valves is not null) pneumatic.Message(1, valves);
+        if (flags is not null) pneumatic.Message(9, flags);
+        if (data is not null) pneumatic.Message(10, data);
+        return new SdPush { Page = 3 }.With(remote => remote.Message(151, pneumatic));
+    }
+
+    private static IReadOnlyList<string> PressRowsOf(SdPush push)
+    {
+        var reported = new List<string>();
+        FenixChannelRows rows = FenixChannelSdPages.PressRows(push.Context(reported.Add));
+
+        Assert.Null(rows.Problem);
+        Assert.Empty(reported);
+        return rows.Rows!;
+    }
+
+    [Fact]
+    public void The_press_page_reads_ldg_elev_and_the_cabin()
+    {
+        // The cruise push: both packs' flow valves are left out (open), system 2 active.
+        Assert.Equal(
+            new[]
+            {
+                "LDG ELEV AUTO: 550 FT", "ΔP: 8.0 PSI", "V/S: 0 FT/MIN", "CAB ALT: 6400 FT", "SYS 2", "VENT INLET: closed",
+                "VENT EXTRACT: closed", "OUTFLOW: 8 %", "SAFETY: closed", "PACK 1: open", "PACK 2: open"
+            },
+            PressRowsOf(PressPush(new FenixChannelProtoWriter(), PressFlags(sys2: true), PressData())));
+    }
+
+    [Fact]
+    public void Ldg_elev_reads_man_while_manual()
+    {
+        IReadOnlyList<string> rows = PressRowsOf(PressPush(new FenixChannelProtoWriter(), PressFlags(manualElev: true), PressData(landing: 1250)));
+
+        Assert.Equal("LDG ELEV MAN: 1250 FT", rows[0]);
+    }
+
+    [Fact]
+    public void Systems_and_man_show_only_while_drawn()
+    {
+        IReadOnlyList<string> none = PressRowsOf(PressPush(new FenixChannelProtoWriter(), PressFlags(), PressData()));
+        IReadOnlyList<string> all = PressRowsOf(PressPush(
+            new FenixChannelProtoWriter().Varint(9, 1).Varint(10, 2), PressFlags(manual: true, sys1: true, sys2: true), PressData()));
+
+        Assert.DoesNotContain("SYS 1", none);
+        Assert.DoesNotContain("SYS 2", none);
+        Assert.DoesNotContain("MAN", none);
+        Assert.Equal(new[] { "SYS 1", "SYS 2", "MAN" }, all.Skip(4).Take(3));
+        Assert.Contains("PACK 1: closed", all);
+        Assert.Contains("PACK 2: in transit", all);
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void Cabin_values_are_the_same_in_every_culture(string culture)
+    {
+        // V/S -0.4 never reads "-0"; ΔP 7.86 reads 7.9 with a point, whatever the PC's culture.
+        SdPush push = PressPush(new FenixChannelProtoWriter(), PressFlags(), PressData(deltaP: 7.86, vs: -0.4));
+
+        IReadOnlyList<string> rows = TestCulture.Run(culture, () => PressRowsOf(push));
+
+        Assert.Contains("V/S: 0 FT/MIN", rows);
+        Assert.Contains("ΔP: 7.9 PSI", rows);
+        Assert.DoesNotContain(rows, row => row.Contains('−') || row.Contains("-0"));
+    }
+
+    [Theory]
+    [InlineData(1, "no field 151.1")]
+    [InlineData(9, "no field 151.9")]
+    [InlineData(10, "no field 151.10")]
+    public void A_missing_press_part_is_not_available_with_its_path(int part, string problem)
+    {
+        SdPush push = PressPush(
+            part == 1 ? null : new FenixChannelProtoWriter(), part == 9 ? null : PressFlags(), part == 10 ? null : PressData());
+
+        FenixChannelRows rows = FenixChannelSdPages.PressRows(push.Context(_ => { }));
+
+        Assert.Equal(problem, rows.Problem);
+        Assert.Null(rows.Rows);
+    }
+
+    // ================= COND (Task 6): its section goes here =================
 }
