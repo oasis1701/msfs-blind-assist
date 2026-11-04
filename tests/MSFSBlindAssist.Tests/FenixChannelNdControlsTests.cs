@@ -111,7 +111,7 @@ public class FenixChannelNdControlsTests
 
         string[] keys =
         [
-            "S_FCU_EFIS1_CSTR", "S_FCU_EFIS1_WPT", "S_FCU_EFIS1_VORD", "S_FCU_EFIS1_NDB", "S_FCU_EFIS1_ARPT", "S_FCU_EFIS1_LS"
+            "S_FCU_EFIS1_CSTR", "S_FCU_EFIS1_WPT", "S_FCU_EFIS1_VORD", "S_FCU_EFIS1_NDB", "S_FCU_EFIS1_ARPT", "S_FCU_EFIS1_LS_PRESS"
         ];
         Assert.Equal(6, rig.Buttons.Count);
         for (int i = 0; i < keys.Length; i++)

@@ -28,7 +28,7 @@ internal static class FenixChannelNdControls
         ("VOR.D", "S_FCU_EFIS1_VORD"),
         ("NDB", "S_FCU_EFIS1_NDB"),
         ("ARPT", "S_FCU_EFIS1_ARPT"),
-        ("LS", "S_FCU_EFIS1_LS")
+        ("LS", "S_FCU_EFIS1_LS_PRESS")
     ];
 
     /// <summary>
