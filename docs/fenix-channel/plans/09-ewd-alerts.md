@@ -284,10 +284,10 @@ only).
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** not started
-- **Claimed by:** none
+- **Status:** claimed
+- **Claimed by:** Robin Kipp (robin24), 2026-11-04
 - **Worked by:**
-- **Started:**
+- **Started:** 2026-11-04, from 1d29a73ee (plan 01's recorded base)
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:**
