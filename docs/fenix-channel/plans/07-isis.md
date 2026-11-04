@@ -322,10 +322,10 @@ in `docs/fenix-channel/evidence/07-isis.md`.
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** not started
-- **Claimed by:** none
-- **Worked by:**
-- **Started:**
+- **Status:** claimed
+- **Claimed by:** Daniel Wolak (danielw97), 2026-11-04
+- **Worked by:** Daniel Wolak with Claude
+- **Started:** 2026-11-04, from `87bf81463` (the branch's head that day)
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:**
