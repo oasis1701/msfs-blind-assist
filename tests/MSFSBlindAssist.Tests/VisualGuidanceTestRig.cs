@@ -1,0 +1,92 @@
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.Volanta;
+using MSFSBlindAssist.Settings;
+
+namespace MSFSBlindAssist.Tests;
+
+/// <summary>
+/// A headless visual guidance manager on runway 09 (true 090, no variation, threshold 47.0 N 8.0 E,
+/// elevation 500 ft, 3°) with its own clock and a <see cref="SpeechCapture"/>. The aircraft does
+/// not move between updates; only what a test changes with <see cref="Place"/> changes.
+/// </summary>
+internal sealed class VisualGuidanceTestRig
+{
+    private const double ThrLat = 47.0, ThrLon = 8.0, Elev = 500.0, Course = 90.0;
+    private static readonly DateTime Start = new(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+
+    private readonly VisualGuidanceManager _vg;
+    private DateTime _clock = Start;
+    private double _seconds;
+
+    public VisualGuidanceTestRig()
+    {
+        var (endLat, endLon) = VolantaTrafficCalculator.Project(ThrLat, ThrLon, Course, 2.0);
+        var runway = new Runway
+        {
+            AirportICAO = "ZZVG", RunwayID = "09", Heading = Course, HeadingMag = Course,
+            StartLat = ThrLat, StartLon = ThrLon, EndLat = endLat, EndLon = endLon,
+            ThresholdElevation = Elev, GlideslopeAngleDeg = 3.0,
+        };
+        var airport = new Airport { ICAO = "ZZVG", Name = "Test", Latitude = ThrLat, Longitude = ThrLon, Altitude = Elev, MagVar = 0.0 };
+        _vg = new VisualGuidanceManager(Speech) { HeadlessForHarness = true, ClockForHarness = () => _clock };
+        _vg.Toggle();
+        _vg.Initialize(runway, airport, HandFlyWaveType.Triangle, 0.0, HandFlyWaveType.Sine, 0.0, false, new VisualGuidanceProfile());
+    }
+
+    /// <summary>Everything the manager spoke, from the activation sentence on.</summary>
+    public SpeechCapture Speech { get; } = new();
+
+    public double Bank => _vg.DesiredBankForHarness;
+    public double Pitch => _vg.DesiredPitchForHarness;
+
+    /// <summary>
+    /// alongNm back from the threshold, crossNm right of the centreline, heading and track course +
+    /// headingRelDeg, 140 kt; bankDeg right wing down positive (fed to the manager as SimConnect's
+    /// left-positive bank).
+    /// </summary>
+    public void Place(double alongNm, double crossNm, double headingRelDeg, double vsFpm = -742, double altOffsetFt = 0,
+        double aoaDeg = 5.0, double bankDeg = 0.0)
+    {
+        static double Norm(double d) => (d % 360 + 360) % 360;
+        var back = VolantaTrafficCalculator.Project(ThrLat, ThrLon, Norm(Course + 180), alongNm);
+        var pos = crossNm >= 0
+            ? VolantaTrafficCalculator.Project(back.Latitude, back.Longitude, Norm(Course + 90), crossNm)
+            : VolantaTrafficCalculator.Project(back.Latitude, back.Longitude, Norm(Course - 90), -crossNm);
+        double alt = Elev + alongNm * 6076.12 * Math.Tan(3.0 * Math.PI / 180) + new VisualGuidanceProfile().GlideslopeAltitudeBiasFt + altOffsetFt;
+        double heading = Norm(Course + headingRelDeg);
+
+        _vg.UpdateLatitude(pos.Latitude); _vg.UpdateLongitude(pos.Longitude); _vg.UpdateAltitudeMSL(alt);
+        _vg.UpdateHeading(heading); _vg.UpdateGroundSpeed(140); _vg.UpdateVerticalSpeed(vsFpm);
+        _vg.UpdateGroundTrack(heading);
+        _vg.UpdatePitch(VisualGuidanceManager.PitchDegreesFromSimConnect(-2.0 * Math.PI / 180));
+        _vg.UpdateBank(VisualGuidanceManager.BankDegreesFromSimConnect(-bankDeg * Math.PI / 180));
+        _vg.UpdateAoA(VisualGuidanceManager.AoaDegreesFromSimConnect(aoaDeg * Math.PI / 180));
+        _vg.UpdateAGL(alt - Elev);
+    }
+
+    /// <summary>Sets the clock to <paramref name="seconds"/> after the start and runs one update.</summary>
+    public void UpdateAt(double seconds)
+    {
+        _seconds = seconds;
+        _clock = Start.AddTicks((long)Math.Round(seconds * TimeSpan.TicksPerSecond));
+        _vg.ProcessUpdate();
+    }
+
+    /// <summary>
+    /// Carries on from the current clock with one update every 1/hz s until <paramref name="seconds"/>
+    /// have passed. <paramref name="beforeEach"/>, given the update's time in seconds, can move the aircraft first.
+    /// </summary>
+    public void FlyFor(double seconds, int hz, Action<double>? beforeEach = null)
+    {
+        double from = _seconds;
+        int steps = (int)Math.Round(seconds * hz);
+        for (int i = 1; i <= steps; i++)
+        {
+            double t = from + (double)i / hz;
+            beforeEach?.Invoke(t);
+            UpdateAt(t);
+        }
+    }
+}

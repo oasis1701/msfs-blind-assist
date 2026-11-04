@@ -110,7 +110,8 @@ public class VisualGuidanceManager : IDisposable
     private DateTime lastDistanceAnnouncement = DateTime.MinValue;
     private double lastAnnouncedDistance = double.MaxValue;
     private DateTime lastExtendingProgressAnnouncement = DateTime.MinValue;
-    private int? lastAnnouncedBankError = null;  // Track last announced bank error for error-based announcements
+    // Decides when a bank callout is spoken (VG-21); rebuilt in Initialize with the profile's tone bank range.
+    private VisualGuidanceBankCalloutGate bankCalloutGate = new(new VisualGuidanceProfile().ToneBankRangeDeg);
     private string? lastAnnouncedCenterlineDeviation = null;  // Track last announced centerline deviation
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
     private const int EXTENDING_PROGRESS_INTERVAL_MS = 10000;  // 10 seconds
@@ -389,7 +390,9 @@ public class VisualGuidanceManager : IDisposable
         lastDistanceAnnouncement = DateTime.MinValue;
         lastAnnouncedDistance = double.MaxValue;
         lastExtendingProgressAnnouncement = DateTime.MinValue;
-        lastAnnouncedBankError = null;
+        // A fresh gate (nothing spoken, no holds) on this aircraft's tone bank range: past it both
+        // tones are pinned and only the callouts say how far (VG-21).
+        bankCalloutGate = new VisualGuidanceBankCalloutGate(profile.ToneBankRangeDeg);
         routineAnnouncementsSuppressedUntil = DateTime.MinValue;
         cachedLatitude = null;
         cachedLongitude = null;
@@ -1560,82 +1563,22 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Announces bank error for verbal guidance feedback (error-based announcements)
+    /// Speaks the bank error ("3 right", "matched") when <see cref="VisualGuidanceBankCalloutGate"/>
+    /// says one is due (VG-21). The gate sees every update, including those inside a manual-query
+    /// grace window, where it may not speak (VG-19): when the window ends, a callout that came due
+    /// during it speaks the error as it is then, at once, not timed again from zero.
     /// </summary>
     private void AnnounceBankGuidance(double desiredBankDegrees)
     {
-        // Skip during a manual-query grace window so the pilot's readout isn't cut off.
-        // lastAnnouncedBankError is intentionally NOT updated here — once the window
-        // closes, the next call compares current error against the pre-window value
-        // and announces immediately if it drifted, so the pilot gets fresh data right
-        // after their query finishes.
-        if (RoutineAnnouncementsSuppressed)
+        // No actual bank yet: there is no error to speak.
+        if (!cachedBank.HasValue)
             return;
 
-        string announcement;
-        int roundedError;
-
-        // If actual bank angle is available, use error-based announcements
-        if (cachedBank.HasValue)
-        {
-            // Bank error: positive ⇒ need to roll right, negative ⇒ need to roll left.
-            // Both operands now in the same (right-positive standard) convention via StandardBank().
-            double bankError = desiredBankDegrees - StandardBank(cachedBank.Value);
-            roundedError = (int)Math.Round(bankError);
-
-            // Round commanded bank to check if on correct path
-            int roundedCommandedBank = (int)Math.Round(desiredBankDegrees);
-
-            // Check if we're on the correct path (commanded bank ≈ 0°)
-            bool onCorrectPath = Math.Abs(desiredBankDegrees) < 0.5;  // Within 0.5° of 0 is "on path"
-
-            // Check if actual bank matches commanded bank (within 0.4° tolerance)
-            bool matched = Math.Abs(bankError) <= 0.4;
-
-            if (matched)
-            {
-                // Special announcement if on correct path and wings level
-                if (onCorrectPath)
-                {
-                    announcement = "On commanded path";
-                }
-                else
-                {
-                    announcement = "matched";
-                }
-                roundedError = 0;  // Use 0 for tracking since we're matched
-            }
-            else
-            {
-                // Announce the bank error (how much correction is needed)
-                if (roundedError < 0)
-                {
-                    announcement = $"{Math.Abs(roundedError)} left";
-                }
-                else if (roundedError > 0)
-                {
-                    announcement = $"{roundedError} right";
-                }
-                else
-                {
-                    // Rounded to 0 but not within strict 0.3° tolerance
-                    announcement = "matched";
-                }
-            }
-        }
-        else
-        {
-            // No actual bank data available - cannot provide error-based guidance
-            return;
-        }
-
-        // Only announce if error changed from last announcement
-        if (lastAnnouncedBankError.HasValue && roundedError == lastAnnouncedBankError.Value)
-            return;
-
-        // Announce immediately
-        announcer.AnnounceImmediate(announcement);
-        lastAnnouncedBankError = roundedError;
+        // Both banks right-positive: the command is, SimConnect's bank goes through StandardBank (VG-7).
+        string? callout = bankCalloutGate.Next(ClockForHarness(), desiredBankDegrees, StandardBank(cachedBank.Value),
+            maySpeak: !RoutineAnnouncementsSuppressed);
+        if (callout != null)
+            announcer.AnnounceImmediate(callout);
     }
 
     /// <summary>

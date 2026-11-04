@@ -180,7 +180,15 @@ If another program is already using one of these keys, BA tells you *"Visual gui
 
 **Distance callouts.** *"5 miles"*, *"3 miles"* and *"1 mile"* from the runway threshold.
 
-**Bank callouts.** About once a second, when the bank error changes, BA speaks how much more bank you need: *"3 left"* means roll 3 degrees further to the left than you are now; *"2 right"* means roll 2 degrees further right. *"matched"* means your bank is what the guidance wants. *"On commanded path"* means your bank matches and the guidance wants the wings level: you are tracking the centreline.
+**Bank callouts.** BA speaks how much more bank you need: *"3 left"* means roll 3 degrees further to the left than you are now; *"2 right"* means roll 2 degrees further right. *"matched"* means your bank is what the guidance wants. *"On commanded path"* means your bank matches and the guidance wants the wings level: you are tracking the centreline.
+
+When they come:
+
+- A correction the tones can still show (up to 5 degrees on most aircraft) is spoken after a quarter of a second, so a gust that rolls you 2 or 3 degrees is heard at once.
+- A bigger one, where both tones sit fully to one side, is spoken once you stop rolling, so you hear the number you still need, not a string of numbers while you roll.
+- *"matched"* is said once when you get within about half a degree, and BA stays quiet until you are a full degree off again.
+- A small steady error under a degree is spoken after a second and a half.
+- There is always at least a second between bank callouts, so none cuts off the one before. A callout that falls inside that second is skipped, and the next one tells you the error as it is then.
 
 **Centerline callouts.** When your position changes by a tenth of a mile, BA says how far you are from the centreline, for example *"0.4 nm left of center"*, or *"on runway center"* when you are within about 300 feet of it. Left and right here are your aircraft's position relative to the centreline.
 

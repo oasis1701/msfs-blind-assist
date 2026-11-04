@@ -1,7 +1,6 @@
 ---
 paths:
-  - "MSFSBlindAssist/Services/VisualGuidanceManager.cs"
-  - "MSFSBlindAssist/Services/VisualGuidanceTiming.cs"
+  - "MSFSBlindAssist/Services/VisualGuidance*.cs"
   - "MSFSBlindAssist/Services/HandFlyManager.cs"
   - "MSFSBlindAssist/Services/LiftoffHandoffBreadcrumb.cs"
   - "MSFSBlindAssist/Hotkeys/**"
@@ -34,3 +33,4 @@ Loaded when Claude reads matching code. Background: docs/visual-guidance.md. Ful
 - [VG-18] Visual guidance must fail as a missing audible reference, never as a wrong steering command: tone work leaves the guidance math alone, and a deliberate change to the guidance math keeps left and right as the sign tests pin them and is measured in the VirtualPilot approach harness against the baseline first. Full: docs/invariants/visual-guidance.md#vg-18
 - [VG-19] VG's manual-query grace window may suppress only the two chatty per-second callouts (bank guidance, centerline deviation); phase changes and distance callouts must still fire during a manual readout. Full: docs/invariants/visual-guidance.md#vg-19
 - [VG-20] Every rate limit, smoothing filter and derivative in `VisualGuidanceManager` runs on the measured frame time through `VisualGuidanceTiming` (rate × dt, per-second smoothing factors, rates over a time window, dt capped at 1 s); never a per-update constant, since guidance updates every sim frame. Full: docs/invariants/visual-guidance.md#vg-20
+- [VG-21] Bank callouts speak only through `VisualGuidanceBankCalloutGate`: a fixed 1 s gap (never sized by speaking time, VG-1), a due callout dropped, never queued, "matched" entered at 0.4° and left at 1.0°, an error the tones can show (under the profile's `ToneBankRangeDeg`) spoken after 0.25 s, a larger one once the bank has been steady 1 s. Full: docs/invariants/visual-guidance.md#vg-21

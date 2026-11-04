@@ -773,6 +773,7 @@ public class ClaudeContextBudgetTests
             "FOA-1 FlyByWireA320Definition.ApplyUIVariable",
             "FOA-8 ChecklistItem.LiveValue", "FOA-9 LiveValue", "FOB-1 IsReady", "FOB-2 PmdgSpeedBrakeLever.B777",
             "FOB-6 MOUSE_FLAG_LEFTSINGLE", "FOB-17 IFly737MAXDefinition.ApplyUIVariable",
+            "VG-21 ToneBankRangeDeg",
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
         {
