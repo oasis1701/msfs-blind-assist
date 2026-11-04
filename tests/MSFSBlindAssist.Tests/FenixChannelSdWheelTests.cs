@@ -1,0 +1,230 @@
+// Characterization tests for the Fenix SD's WHEEL page (FenixChannelSdPages.WheelRows, seam ComposeWheel, wired by a later
+// task). The pushes are built with SdPush (FenixChannelSdWindowTests.cs) and the composer is called directly, so every field
+// number is written out here, never read from FenixChannelFields.
+//
+// The contract: the page reads 137 (the labels, varint bools: 12 L/G CTL, 9 N/W STEERING, 16/17 ANTI SKID, 7/8 NORM BRK,
+// 2/15 ALTN BRK, 18 ACCU ONLY, 4/5/6 AUTO BRK LO/MED/MAX, 19 the tire pressure indicators are fitted), 138 (the brake
+// temperatures 1-4, doubles), 139 (the tire pressures 1-6, doubles, read only while 137.19), 141 (the released brakes 1-4,
+// bools), 143 (the gears: 143.1 nose, .2 left, .3 right; each .1 and .2 the LGCIU 1 and 2 position, doubles, 2 is up) and
+// 144 (the gear doors 1-3, doubles, 1 is closed). 135, 136, 140 and 142 are not read. A gear or door value with no word
+// reads "not available" and is reported, never guessed.
+
+using MSFSBlindAssist.Services;
+
+namespace MSFSBlindAssist.Tests;
+
+public class FenixChannelSdWheelTests
+{
+    private static FenixChannelProtoWriter Flags(params int[] set)
+    {
+        var flags = new FenixChannelProtoWriter();
+        foreach (int field in set.OrderBy(f => f)) flags.Bool(field, true);
+        return flags;
+    }
+
+    private static FenixChannelProtoWriter Doubles(params double[] values)
+    {
+        var message = new FenixChannelProtoWriter();
+        for (int i = 0; i < values.Length; i++) message.Double(i + 1, values[i]);
+        return message;
+    }
+
+    // 143: each gear a message of its two LGCIU doubles.
+    private static FenixChannelProtoWriter Gears(double nose1 = 2, double nose2 = 2, double left1 = 2, double left2 = 2,
+        double right1 = 2, double right2 = 2)
+        => new FenixChannelProtoWriter()
+            .Message(1, Doubles(nose1, nose2))
+            .Message(2, Doubles(left1, left2))
+            .Message(3, Doubles(right1, right2));
+
+    private static SdPush WheelPush(
+        FenixChannelProtoWriter? flags = null, FenixChannelProtoWriter? temps = null, FenixChannelProtoWriter? tires = null,
+        FenixChannelProtoWriter? released = null, FenixChannelProtoWriter? gears = null, FenixChannelProtoWriter? doors = null,
+        bool includeTires = true)
+        => new SdPush { Page = 12 }.With(remote =>
+        {
+            remote.Message(137, flags ?? Flags());
+            remote.Message(138, temps ?? Doubles(19.8114, 20.9959, 19.3692, 19.7807));
+            if (includeTires) remote.Message(139, tires ?? Doubles(165, 165, 210, 205, 210, 205));
+            remote.Message(141, released ?? new FenixChannelProtoWriter());
+            remote.Message(143, gears ?? Gears());
+            remote.Message(144, doors ?? Doubles(1, 1, 1));
+        });
+
+    private static IReadOnlyList<string> RowsOf(SdPush push, List<string>? reported = null)
+    {
+        reported ??= [];
+        FenixChannelRows rows = FenixChannelSdPages.WheelRows(push.Context(reported.Add));
+
+        Assert.Null(rows.Problem);
+        return rows.Rows!;
+    }
+
+    [Fact]
+    public void The_wheel_page_reads_gear_brakes_and_labels()
+    {
+        // A real cruise push (2026-11-03, A321, gear up): 137 had only .3 and .19 set.
+        var reported = new List<string>();
+
+        IReadOnlyList<string> rows = RowsOf(WheelPush(Flags(3, 19)), reported);
+
+        Assert.Equal(
+            new[]
+            {
+                "nose gear: up, up", "nose gear door: closed", "left gear: up, up", "left gear door: closed",
+                "right gear: up, up", "right gear door: closed", "brakes °C: 20, 21, 19, 20",
+                "nose tires PSI: 165, 165", "left tires PSI: 210, 205", "right tires PSI: 210, 205"
+            },
+            rows);
+        Assert.Empty(reported);
+    }
+
+    [Fact]
+    public void Labels_show_only_while_drawn()
+    {
+        Assert.Equal(
+            new[]
+            {
+                "L/G CTL", "nose gear: up, up", "nose gear door: closed", "N/W STEERING", "ANTI SKID", "NORM BRK",
+                "ALTN BRK", "ACCU ONLY", "AUTO BRK: LO"
+            },
+            RowsOf(WheelPush(Flags(12, 9, 16, 7, 15, 18, 4))).Take(9));
+
+        // Each label's alternative field draws it too.
+        IReadOnlyList<string> alternatives = RowsOf(WheelPush(Flags(17, 8, 2, 5)));
+        Assert.Contains("ANTI SKID", alternatives);
+        Assert.Contains("NORM BRK", alternatives);
+        Assert.Contains("ALTN BRK", alternatives);
+        Assert.Contains("AUTO BRK: MED", alternatives);
+
+        Assert.Contains("AUTO BRK: MAX", RowsOf(WheelPush(Flags(6))));
+
+        // More than one auto brake field: the first of LO, MED, MAX.
+        Assert.Contains("AUTO BRK: MED", RowsOf(WheelPush(Flags(5, 6))));
+        Assert.Contains("AUTO BRK: LO", RowsOf(WheelPush(Flags(4, 5, 6))));
+
+        // Nothing set: no label rows at all.
+        IReadOnlyList<string> none = RowsOf(WheelPush(Flags()));
+        foreach (string label in new[] { "L/G CTL", "N/W STEERING", "ANTI SKID", "NORM BRK", "ALTN BRK", "ACCU ONLY" })
+        {
+            Assert.DoesNotContain(label, none);
+        }
+        Assert.DoesNotContain(none, row => row.StartsWith("AUTO BRK"));
+    }
+
+    [Fact]
+    public void Each_gear_reads_both_lgcius()
+    {
+        var reported = new List<string>();
+
+        // The second LGCIU of each gear is read, not mirrored from the first.
+        IReadOnlyList<string> rows = RowsOf(WheelPush(gears: Gears(2, 7, 7, 2, 2, 7)), reported);
+
+        Assert.Contains("nose gear: up, LGCIU 2 not available", rows);
+        Assert.Contains("left gear: LGCIU 1 not available, up", rows);
+        Assert.Contains("right gear: up, LGCIU 2 not available", rows);
+        Assert.Equal(
+            new[] { "field 143.1.2 has an unknown value 7", "field 143.2.1 has an unknown value 7", "field 143.3.2 has an unknown value 7" },
+            reported);
+    }
+
+    [Fact]
+    public void An_unmeasured_gear_value_reads_not_available()
+    {
+        var reported = new List<string>();
+
+        IReadOnlyList<string> rows = RowsOf(WheelPush(gears: Gears(nose1: 7)), reported);
+
+        Assert.Contains("nose gear: LGCIU 1 not available, up", rows);
+        Assert.Equal(new[] { "field 143.1.1 has an unknown value 7" }, reported);
+
+        // A decimal value is written as sent, without needless decimals otherwise; the page goes on.
+        var more = new List<string>();
+        IReadOnlyList<string> withDoor = RowsOf(WheelPush(gears: Gears(left2: 2.5), doors: Doubles(0, 1, 3)), more);
+        Assert.Contains("left gear: up, LGCIU 2 not available", withDoor);
+        Assert.Contains("nose gear door: not available", withDoor);
+        Assert.Contains("left gear door: closed", withDoor);
+        Assert.Contains("right gear door: not available", withDoor);
+        Assert.Equal(
+            new[] { "field 144.1 has an unknown value 0", "field 143.2.2 has an unknown value 2.5", "field 144.3 has an unknown value 3" },
+            more);
+        Assert.Contains("brakes °C: 20, 21, 19, 20", withDoor);
+    }
+
+    [Fact]
+    public void Tire_pressures_show_only_with_tpis()
+    {
+        IReadOnlyList<string> without = RowsOf(WheelPush(Flags(), includeTires: false));
+        Assert.DoesNotContain(without, row => row.Contains("tires"));
+
+        // With the indicators fitted, 139 is required.
+        var reported = new List<string>();
+        FenixChannelRows missing = FenixChannelSdPages.WheelRows(WheelPush(Flags(19), includeTires: false).Context(reported.Add));
+        Assert.Equal("no field 139", missing.Problem);
+
+        IReadOnlyList<string> with = RowsOf(WheelPush(Flags(19), tires: Doubles(164.6, 165.4, 210.5, 205, 0, 99.5)));
+        Assert.Equal(
+            new[] { "nose tires PSI: 165, 165", "left tires PSI: 211, 205", "right tires PSI: 0, 100" },
+            with.Where(row => row.Contains("tires")));
+    }
+
+    [Fact]
+    public void Rel_names_the_released_wheels()
+    {
+        IReadOnlyList<string> none = RowsOf(WheelPush());
+        Assert.DoesNotContain(none, row => row.StartsWith("REL"));
+
+        Assert.Contains("REL: 1, 2", RowsOf(WheelPush(released: Flags(1, 2))));
+        Assert.Contains("REL: 2, 4", RowsOf(WheelPush(released: Flags(4, 2))));
+        Assert.Contains("REL: 1, 2, 3, 4", RowsOf(WheelPush(released: Flags(1, 2, 3, 4))));
+
+        // REL follows the brake temperatures.
+        List<string> rows = RowsOf(WheelPush(released: Flags(3))).ToList();
+        Assert.Equal(rows.IndexOf("brakes °C: 20, 21, 19, 20") + 1, rows.IndexOf("REL: 3"));
+    }
+
+    [Fact]
+    public void Missing_messages_are_not_available()
+    {
+        foreach (int field in new[] { 137, 138, 141, 143, 144 })
+        {
+            var reported = new List<string>();
+            SdPush push = new SdPush { Page = 12 }.With(remote =>
+            {
+                if (field != 137) remote.Message(137, Flags());
+                if (field != 138) remote.Message(138, Doubles(1, 2, 3, 4));
+                if (field != 141) remote.Message(141, new FenixChannelProtoWriter());
+                if (field != 143) remote.Message(143, Gears());
+                if (field != 144) remote.Message(144, Doubles(1, 1, 1));
+            });
+
+            Assert.Equal($"no field {field}", FenixChannelSdPages.WheelRows(push.Context(reported.Add)).Problem);
+            Assert.Empty(reported);
+        }
+
+        foreach (int gear in new[] { 1, 2, 3 })
+        {
+            var partial = new FenixChannelProtoWriter();
+            foreach (int other in new[] { 1, 2, 3 }.Where(g => g != gear)) partial.Message(other, Doubles(2, 2));
+            SdPush push = WheelPush(gears: partial);
+
+            Assert.Equal($"no field 143.{gear}", FenixChannelSdPages.WheelRows(push.Context(_ => { })).Problem);
+        }
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void Wheel_rows_are_the_same_in_every_culture(string culture)
+    {
+        var reported = new List<string>();
+        SdPush push = WheelPush(Flags(19), temps: Doubles(-0.4, 20.5, 1234.5, double.NaN), gears: Gears(left2: 2.5));
+
+        IReadOnlyList<string> rows = TestCulture.Run(culture, () => RowsOf(push, reported));
+
+        Assert.Contains("brakes °C: 0, 21, 1235, XX", rows);
+        Assert.Contains("left gear: up, LGCIU 2 not available", rows);
+        Assert.Equal(new[] { "field 143.2.2 has an unknown value 2.5" }, reported);
+        Assert.DoesNotContain(rows, row => row.Contains('−'));
+    }
+}
