@@ -23,7 +23,9 @@ internal static partial class FenixChannelSdPages
     /// <para>A position that rounds to 0.0 reads "0.0°" with no direction. Any other faulted surface (145.n.2) ends with
     /// ", fault". While 147.3 (the FCDC has data) is clear, every 145 surface's value reads "XX", as the SD draws it; the
     /// rudder trim and the computers read as usual. A NaN position reads "XX" too.</para>
-    /// <para>The signs and the spoilers' unit are inferred until Task 1's flight control check measures them.</para>
+    /// <para>The signs and the spoilers' unit are inferred until Task 1's flight control check measures them. The surfaces'
+    /// unit (degrees) is inferred as well: only the THS (-1.61 in cruise) pins degrees, and the rudder and its trim's
+    /// 0.0524 would be exactly 3.0° if it were radians.</para>
     /// </remarks>
     internal static FenixChannelRows FctlRows(FenixChannelSdPageContext ctx)
     {

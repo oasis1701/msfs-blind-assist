@@ -18,7 +18,8 @@ internal static partial class FenixChannelSdPages
     /// (151.10): one left out is "no field 151.x", never its defaults; the first problem wins, and the page returns it and
     /// never reports it. A valve value that is no state reads "not available" and is reported, without stopping the page.</para>
     /// <para>The packs are drawn by their flow valves (151.1.9, .10). The outflow valve (151.10.6) is a fraction open, spoken
-    /// as a percent (owner question Q2). The landing elevation (151.10.7) is inferred, Task 1 measures it.</para>
+    /// as a percent (owner question Q2). The landing elevation (151.10.7) was measured in flight on 2026-11-03: 550 approaching CYYZ
+    /// (elevation 569 ft published, 546.8 ft in the sim), the landing elevation at the SD's 50 ft steps.</para>
     /// </remarks>
     internal static FenixChannelRows PressRows(FenixChannelSdPageContext ctx)
     {
@@ -69,7 +70,7 @@ internal static partial class FenixChannelSdPages
     }
 
     // The LDG ELEV row, shared by PRESS and CRUISE: "AUTO" until the landing elevation is set by hand, then "MAN".
-    // The elevation is 151.10.7, inferred, Task 1 measures it.
+    // The elevation is 151.10.7, measured in flight on 2026-11-03 (550 approaching CYYZ: 569 ft published, 546.8 ft in the sim).
     private static string PressLdgElevRow(bool manualElevation, double feet)
         => $"LDG ELEV {(manualElevation ? "MAN" : "AUTO")}: {FenixChannelSd.Whole(feet)} FT";
 

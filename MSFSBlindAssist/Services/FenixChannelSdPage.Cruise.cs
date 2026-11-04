@@ -17,7 +17,8 @@ internal static partial class FenixChannelSdPages
     /// flags (151.9) and the pressurization data (151.10): one left out is "no field &lt;path&gt;", never its defaults; the
     /// first problem wins, and the page returns it and never reports it. The weight unit (154) follows the label of a pair
     /// and the value of the total; a field left out is pounds.</para>
-    /// <para>The landing elevation (151.10.7) is inferred, Task 1 measures it.</para>
+    /// <para>The landing elevation (151.10.7) was measured in flight on 2026-11-03: 550 approaching CYYZ
+    /// (elevation 569 ft published, 546.8 ft in the sim), the landing elevation at the SD's 50 ft steps.</para>
     /// </remarks>
     internal static FenixChannelRows CruiseRows(FenixChannelSdPageContext ctx)
     {
