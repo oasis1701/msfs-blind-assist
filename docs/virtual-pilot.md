@@ -45,7 +45,7 @@ tools/VirtualPilot/bin/x64/Release/net10.0-windows/VirtualPilot.exe <mode> [opti
 | `wrongturn` | follows a gate → runway route, then deliberately turns into a branch that leads to a runway hold line not on the route; the app must say "off route" first |
 | `all` | landings + taxi |
 | `departures` | per runway end: named (OSM) holding-point departures (`HP`, flown free and on a clearance), intersection departures (`IX`), full-length backtracks where the runway list would say "(backtrack required)" (`BT`); per airport: gate → gate taxis across the field (`G2G`) and ATC clearances with explicit "hold short of runway X" instructions (`HSCLR`) — each also voiced as a written and a spoken-NATO clearance and fed to the SayIntentions import's own parser (`CLR_*`) |
-| `approach` | visual guidance (Output Ctrl+V): 147 simulated approaches through the real `VisualGuidanceManager`, flown by a pilot who follows the two tones and the bank callouts, on two synthetic runways (no navdata database needed). See [Approaches](#approaches-visual-guidance) |
+| `approach` | visual guidance (Output Ctrl+V): 151 simulated approaches through the real `VisualGuidanceManager`, flown by a pilot who follows the two tones and the bank callouts, on two synthetic runways (no navdata database needed). See [Approaches](#approaches-visual-guidance) |
 | `fetchosm` | downloads the raw Overpass answer for each airport into `runs/_osm/ICAO.json` (one polite request at a time — Overpass rate-limits hard, expect ~1 airport a minute). Every mode then builds the app's OWN OSM-augmented graph from that snapshot (names, holding points); `VP_NOOSM=1` flies plain navdata, `VP_OSMDIR` points elsewhere. The snapshot pins the data so a before/after run measures the code, not OSM churn |
 
 Options: `--airports N` (busiest by taxi-path count, default 100), `--icao A,B`, `--shard i/n`
@@ -190,6 +190,13 @@ and the reaction delay 0.5 and 1.0 s.
 | Frame rate | `FPS-A-JET-f{20,30,60}` | the jet final on the centreline and the path, at 20, 30 and 60 frames a second | 3 |
 | Step | `STEP-A-{JET,LIGHT}` | 6 nm out on the path; at 40 s the pilot holds 1° below their pitch for 10 s | 2 |
 | Speed | `SPEED-A-{JET160,LIGHT90}-{R45,x0.2R-h+200}-d0.5` | the 45° intercept and an offset final at 160 kt (jet) and 90 kt (light) | 4 |
+| Noise | `NOISE-A-{JET,LIGHT}-f{30,60}` | the `FINAL-A-…-x0.2R-h+200` start with the 0.5 s pilot, at 30 and 60 frames a second, with sensor noise on what visual guidance reads | 4 |
+
+The noise (`ApproachSensorNoise`) adds independent Gaussian noise every frame to the vertical speed
+(σ 30 fpm), the angle of attack (σ 0.2°) and the ground track (σ 0.2°), from one fixed seed per run,
+so a noisy run repeats exactly. These spreads are assumed for a stress case; nobody has measured
+them in the sim. The noise reaches only what visual guidance reads: the aircraft, the measures and
+the trace keep the true values.
 
 A run ends when the wheels touch, which is the profile's `FlareAltitudeBiasFt` below the datum, as
 visual guidance itself places them. The landing is `touchdown` on the runway (2 nm by 150 ft), or
@@ -211,6 +218,7 @@ culture, `NA` where a measure does not apply.
 | `finalXteRmsFt`, `finalXteMaxFt` | cross-track on the final segment (jet 5.0 to 0.5 nm, light 3.0 to 0.3 nm), counted once established |
 | `pathRmsFt`, `pathMaxHighFt`, `pathMaxLowFt` | height against the 3° path (with the profile's glidepath bias) on the same segment |
 | `pitchJitterDeg`, `bankJitterDeg` | RMS of the frame-to-frame change in the commanded pitch and bank on that segment |
+| `pitchRateRmsDegS`, `bankRateRmsDegS` | RMS of the commanded pitch's (bank's) rate of change on the final segment, in degrees per second. Unlike the jitter keys it does not depend on the frame rate for a smooth command |
 | `maxDescentFpm` | the largest descent rate of the run |
 | `bankCalloutsPerMin`, `centrelineCalloutsPerMin`, `otherCallouts` | spoken lines by kind |
 | `cutOffCallouts` | lines followed by an interrupting line before their estimated end (words / 2.5 + 0.2 s; a measure only, never an app timing, VG-1) |
@@ -224,11 +232,13 @@ VirtualPilot.exe approach [--scenario TEXT] [--out file]
 VirtualPilot.exe approach --trace NAME
 ```
 
-`--selftest` runs 22 checks of the harness itself: turn rate and direction, the 3° descent rate,
+`--selftest` runs 25 checks of the harness itself: turn rate and direction, the 3° descent rate,
 wind drift, the SimConnect signs, the north wrap, the runway geometry, great-circle flight, the
 pilot's delay, roll rate, deadband and saturation, speech timestamps, the frame-rate runs, results
 under a Swedish culture, the matrix size, the step measures, wheel contact, the run ending past the
-runway, mirror-image downwinds, and the landing classes. `--scenario` runs every scenario
+runway, mirror-image downwinds, the landing classes, the rate measure reading the same at 20, 30
+and 60 Hz, the noise touching only its three values with the stated spreads, and a noisy run
+repeating exactly. `--scenario` runs every scenario
 whose name contains the text. `--trace` prints one scenario every half simulated second (phase,
 position, path error, commanded and actual bank and pitch) with each spoken line.
 
@@ -236,7 +246,8 @@ position, path error, commanded and actual bank and pitch) with each spoken line
 runs scenario by scenario and prints `BETTER` and `WORSE` counts with up to six examples each. A
 change counts as worse when `established` goes from True to False, `endReason` leaves `touchdown`,
 `finalXteRmsFt` or `pathRmsFt` rises by more than 10 % and 15 ft, `overshootFt` by 100 ft,
-`maxDescentFpm` by 200, `pitchJitterDeg` or `bankCalloutsPerMin` by 20 %, `|selfFeedback10s|` by
+`maxDescentFpm` by 200, `pitchJitterDeg`, `pitchRateRmsDegS`, `bankRateRmsDegS` or
+`bankCalloutsPerMin` by 20 %, `|selfFeedback10s|` by
 0.1, `selfFeedback10s` changes sign, or the touchdown point moves more than 25 ft farther from the
 centreline. Better is the mirror of each, except that a sign change is always worse. A third list,
 `CHANGED`, has the moves with no single right direction: the touchdown point moving more than
@@ -286,8 +297,25 @@ works while the harness needs no app hooks the stage-1 app lacks.
 - Two quirks in the traces: "5 miles" is spoken on activation when guidance starts inside 5 nm, and
   the activation sentence is cut off by "On commanded path" in the same frame.
 
+Stage 2 added the NOISE family and the two rate measures, so the baseline was flown again with the
+extended harness against the same stage-1 app, at the commit "test(virtualpilot): sensor noise and a
+frame-rate-independent smoothness measure" (`approach_baseline_v2`). Its 147 old lines are
+identical to the stage-1 baseline's; `compare_approach.py` prints `BETTER {}`, `WORSE {}` and
+`CHANGED {}` with 4 scenarios only in the new run. The 4 NOISE runs add 2 touchdowns (the jets) and
+2 runs past the runway's end (the light aircraft).
+
+- `pitchRateRmsDegS` on the clean jet final: 0.153, 0.275 and 0.761°/s at 20, 30 and 60 frames a
+  second. A command that ran on real time would read about the same at all three.
+- With noise, the pitch command moves at 27.6°/s RMS at 30 frames a second and 90.1°/s at 60 (jet;
+  the light aircraft 27.8 and 90.2). The same final without noise reads 0.14°/s (jet) and 1.56°/s
+  (light). Today's damping term divides the vertical speed's change by the frame time, so noise on
+  the vertical speed reaches the tone almost undamped.
+- Tracking with noise, at 30 and 60 frames a second: jet `finalXteRmsFt` 26.0 and 27.2 ft and
+  `pathRmsFt` 23.1 and 23.0 ft (20.3 and 17.8 ft without noise); light 336.7 and 334.0 ft, and 43.9
+  and 44.1 ft (368.5 and 41.0 ft without noise).
+
 The model is simpler than the sim: a point mass, speed held, a fixed trim angle of attack, no ground
-effect, flat terrain, a constant wind, and no turbulence or sensor noise. A real light aircraft at
+effect, flat terrain, a constant wind, no turbulence, and sensor noise only in the NOISE runs. A real light aircraft at
 6° of pitch with the power off would slow down and sink, so the float is larger here than in the
 sim. It is still the finding it is: the fixed-pitch flare is what the redesign replaces.
 

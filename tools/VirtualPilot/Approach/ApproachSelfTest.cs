@@ -35,6 +35,9 @@ static class ApproachSelfTest
             ("far-end-ends-run", FarEndEndsRunCheck),
             ("downwind-mirror", DownwindMirrorCheck),
             ("landing-classified", LandingClassifiedCheck),
+            ("rate-rms", RateRmsCheck),
+            ("noise-feed-only", NoiseFeedOnlyCheck),
+            ("noise-deterministic", NoiseDeterministicCheck),
         };
 
         int failures = 0;
@@ -283,7 +286,74 @@ static class ApproachSelfTest
     {
         var all = ApproachScenarios.All();
         int unique = all.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count();
-        return all.Count == 147 && unique == 147 ? null : $"{all.Count} scenarios, {unique} unique names; expected 147";
+        return all.Count == 151 && unique == 151 ? null : $"{all.Count} scenarios, {unique} unique names; expected 151";
+    }
+
+    // The rate measure does not depend on the sample rate for a smooth series: a ramp of 2 per
+    // second reads 2.0 at 20, 30 and 60 Hz. A series flipping 0, 1, 0, 1 at 30 Hz reads 30 per second.
+    private static string? RateRmsCheck()
+    {
+        var problems = new List<string>();
+        foreach (int hz in new[] { 20, 30, 60 })
+        {
+            var ramp = Enumerable.Range(0, 3 * hz + 1).Select(i => (T: (double)i / hz, V: 2.0 * i / hz)).ToList();
+            double rate = ApproachMetrics.RateRms(ramp);
+            if (!(Math.Abs(rate - 2.0) <= 1e-9)) problems.Add($"ramp at {hz} Hz reads {F(rate)}, expected 2.0");
+        }
+        var flip = Enumerable.Range(0, 90).Select(i => (T: i / 30.0, V: (double)(i % 2))).ToList();
+        double flipRate = ApproachMetrics.RateRms(flip);
+        if (!(Math.Abs(flipRate - 30.0) <= 1e-9)) problems.Add($"0,1,0,1 at 30 Hz reads {F(flipRate)}, expected 30");
+        if (ApproachMetrics.RateRms(new[] { (0.0, 5.0) }) != 0) problems.Add("one point reads non-zero");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // The sensor noise reaches only the three values it is meant for, with the stated spread and no
+    // bias. The frame's track sits next to north so the wrap to 0–360 is exercised.
+    private static string? NoiseFeedOnlyCheck()
+    {
+        var f = new VgSimFrame(Lat: 47.1, Lon: 8.2, AltMslFt: 2500, HeadingMagDeg: 359.0, GroundTrackMagDeg: 359.95,
+            GsKt: 140, VsFpm: -742, AglFt: 2000, PitchRad: -0.01, BankRad: 0.02, AlphaRad: 0.05);
+        var noise = new ApproachSensorNoise(ApproachSensorNoise.Seed);
+        const int n = 20000;
+        var vs = new double[n]; var alpha = new double[n]; var track = new double[n];
+        var problems = new List<string>();
+        for (int i = 0; i < n; i++)
+        {
+            var g = noise.Apply(f);
+            if (g.Lat != f.Lat || g.Lon != f.Lon || g.AltMslFt != f.AltMslFt || g.HeadingMagDeg != f.HeadingMagDeg
+                || g.GsKt != f.GsKt || g.AglFt != f.AglFt || g.PitchRad != f.PitchRad || g.BankRad != f.BankRad)
+            {
+                problems.Add($"sample {i} changed a field the noise must leave alone: {g}");
+                break;
+            }
+            if (g.GroundTrackMagDeg < 0 || g.GroundTrackMagDeg >= 360) { problems.Add($"track {F(g.GroundTrackMagDeg)} outside 0–360"); break; }
+            vs[i] = g.VsFpm - f.VsFpm;
+            alpha[i] = (g.AlphaRad - f.AlphaRad) * 180 / Math.PI;
+            track[i] = HeadingChange(f.GroundTrackMagDeg, g.GroundTrackMagDeg);
+        }
+        void Spread(string name, double[] d, double sigma)
+        {
+            double mean = d.Average();
+            double sd = Math.Sqrt(d.Sum(x => (x - mean) * (x - mean)) / (d.Length - 1));
+            if (Math.Abs(sd - sigma) > 0.05 * sigma) problems.Add($"{name} spread {F(sd)}, expected {F(sigma)} ±5 %");
+            if (Math.Abs(mean) > 0.05 * sigma) problems.Add($"{name} mean {F(mean)}, expected 0 ±{F(0.05 * sigma)}");
+        }
+        if (problems.Count == 0)
+        {
+            Spread("VS", vs, ApproachSensorNoise.VsSigmaFpm);
+            Spread("alpha", alpha, ApproachSensorNoise.AlphaSigmaDeg);
+            Spread("track", track, ApproachSensorNoise.TrackSigmaDeg);
+        }
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // A noisy run is as repeatable as any other: the noise is seeded per run.
+    private static string? NoiseDeterministicCheck()
+    {
+        const string name = "NOISE-A-JET-f30";
+        string a = ApproachRunner.RunOne(Scenario(name), trace: null).ToResultsLine(name);
+        string b = ApproachRunner.RunOne(Scenario(name), trace: null).ToResultsLine(name);
+        return a == b ? null : $"two runs differ:\n  {a}\n  {b}";
     }
 
     // The run ends when the WHEELS reach the ground: visual guidance puts the main gear the profile's

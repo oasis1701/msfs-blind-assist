@@ -84,6 +84,8 @@ static class ApproachRunner
                 course + sc.WindFromRelDeg, sc.WindKt, sc.TasKt, startGamma);
             var pilot = new TonePilot(sc.Kind, profile, sc.ReactionDelayS, 0.0, ac.PitchDeg);
             var metrics = new ApproachMetrics(sc, profile);
+            // Noise reaches only what visual guidance reads; the aircraft, metrics and trace stay true.
+            var noise = sc.SensorNoise ? new ApproachSensorNoise(ApproachSensorNoise.Seed) : null;
 
             double dt = 1.0 / sc.Fps;
             bool stepped = false;
@@ -92,7 +94,8 @@ static class ApproachRunner
             for (long frame = 0; ; frame++)
             {
                 t = frame * dt;
-                VgFeed.Feed(vg, ac.ToSimFrame());
+                var frameIn = ac.ToSimFrame();
+                VgFeed.Feed(vg, noise != null ? noise.Apply(frameIn) : frameIn);
                 metrics.Record(t, ac, vg);   // the state and the command it produced, same frame
                 // Checked after recording, so the step's 10 s sample exists for selfFeedback10s.
                 if (sc.PitchStepAtS is double stepEnd && t >= stepEnd + StepRunAfterS) { endReason = "stepDone"; break; }

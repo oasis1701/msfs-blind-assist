@@ -79,6 +79,8 @@ sealed class ApproachMetrics
         Put("pathMaxLowFt", hasSeg ? Math.Max(0, -seg.Min(s => s.PathErr)) : null, "0.0");
         Put("pitchJitterDeg", seg.Count > 1 ? Rms(Diffs(seg.Select(s => s.DesiredPitch))) : null, "0.0000");
         Put("bankJitterDeg", seg.Count > 1 ? Rms(Diffs(seg.Select(s => s.DesiredBank))) : null, "0.0000");
+        Put("pitchRateRmsDegS", hasSeg ? RateRms(seg.Select(s => (s.T, s.DesiredPitch)).ToList()) : null, "0.0000");
+        Put("bankRateRmsDegS", hasSeg ? RateRms(seg.Select(s => (s.T, s.DesiredBank)).ToList()) : null, "0.0000");
 
         Put("maxDescentFpm", _samples.Count > 0 ? Math.Max(0, _samples.Max(s => -s.Vs)) : 0, "0");
 
@@ -161,6 +163,23 @@ sealed class ApproachMetrics
                 if (speech[j].Immediate) { count++; break; }
         }
         return count;
+    }
+
+    /// <summary>
+    /// The RMS of a series' rate of change, (v[i] − v[i−1]) / (t[i] − t[i−1]), in units per second;
+    /// 0 for fewer than two points. Unlike a per-sample difference, a smooth series reads the same
+    /// at any sample rate.
+    /// </summary>
+    public static double RateRms(IReadOnlyList<(double T, double V)> series)
+    {
+        if (series.Count < 2) return 0;
+        double sum = 0;
+        for (int i = 1; i < series.Count; i++)
+        {
+            double rate = (series[i].V - series[i - 1].V) / (series[i].T - series[i - 1].T);
+            sum += rate * rate;
+        }
+        return Math.Sqrt(sum / (series.Count - 1));
     }
 
     private static double Rms(IEnumerable<double> values)

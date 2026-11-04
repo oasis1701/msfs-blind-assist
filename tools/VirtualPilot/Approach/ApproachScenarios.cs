@@ -6,13 +6,14 @@ namespace VirtualPilot.Approach;
 /// <summary>
 /// One simulated approach. Headings and wind directions are relative to the runway's true course;
 /// cross is + right of the extended centreline facing the runway; the height offset is from the
-/// 3° path's height at the start (<see cref="ApproachRunways.PathMslFt"/>).
+/// 3° path's height at the start (<see cref="ApproachRunways.PathMslFt"/>). With
+/// <paramref name="SensorNoise"/>, visual guidance reads its inputs through <see cref="ApproachSensorNoise"/>.
 /// </summary>
 sealed record ApproachScenario(string Name, ApproachRunway Runway, ApproachAircraftKind Kind, double AlongNm, double CrossNm,
     double HeadingRelDeg, double HeightOffsetFt, double WindFromRelDeg, double WindKt, int Fps, double ReactionDelayS,
-    double? PitchStepAtS, double? TasKt);
+    double? PitchStepAtS, double? TasKt, bool SensorNoise = false);
 
-/// <summary>The scenario matrix: 147 approaches in seven families (docs/virtual-pilot.md, "Approaches").</summary>
+/// <summary>The scenario matrix: 151 approaches in eight families (docs/virtual-pilot.md, "Approaches").</summary>
 static class ApproachScenarios
 {
     private static readonly double[] Delays = { 0.5, 1.0 };
@@ -34,8 +35,8 @@ static class ApproachScenarios
     private static (double Along, double Side) InterceptStart(ApproachAircraftKind k) => k == ApproachAircraftKind.Jet ? (12.0, 3.0) : (6.0, 1.5);
 
     private static ApproachScenario Final(string name, ApproachRunway r, ApproachAircraftKind k, double cross, double height,
-        double delay, int fps = 30, double windFromRel = 0, double windKt = 0, double? tas = null)
-        => new(name, r, k, FinalAlong(k), cross, 0, height, windFromRel, windKt, fps, delay, null, tas);
+        double delay, int fps = 30, double windFromRel = 0, double windKt = 0, double? tas = null, bool noise = false)
+        => new(name, r, k, FinalAlong(k), cross, 0, height, windFromRel, windKt, fps, delay, null, tas, noise);
 
     // Right of final (side +) heads course − angle to cut toward the line; left heads course + angle.
     private static ApproachScenario Intercept(string name, ApproachRunway r, ApproachAircraftKind k, char side, double angle,
@@ -104,6 +105,12 @@ static class ApproachScenarios
             list.Add(Intercept($"SPEED-A-{label}-R45-d0.5", a, k, 'R', 45, 0.5, tas: tas));
             list.Add(Final($"SPEED-A-{label}-x0.2R-h+200-d0.5", a, k, 0.2, 200, 0.5, tas: tas));
         }
+
+        // Noise: the offset final with assumed sensor noise on what visual guidance reads, at 30
+        // and 60 frames a second (ApproachSensorNoise).
+        foreach (var k in kinds)
+            foreach (int fps in new[] { 30, 60 })
+                list.Add(Final($"NOISE-A-{KindName(k)}-f{fps}", a, k, 0.2, 200, 0.5, fps, noise: true));
         return list;
     }
 }

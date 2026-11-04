@@ -90,6 +90,8 @@ for name in common:
     rise(name, x, y, 'maxDescentFpm', lambda b, a: a - b > 200, lambda b, a: b - a > 200, '{:.0f}')
     # Up by 20 %.
     rise(name, x, y, 'pitchJitterDeg', lambda b, a: a > b * 1.2, lambda b, a: a < b * 0.8, '{:.4f}')
+    rise(name, x, y, 'pitchRateRmsDegS', lambda b, a: a > b * 1.2, lambda b, a: a < b * 0.8, '{:.4f}')
+    rise(name, x, y, 'bankRateRmsDegS', lambda b, a: a > b * 1.2, lambda b, a: a < b * 0.8, '{:.4f}')
     rise(name, x, y, 'bankCalloutsPerMin', lambda b, a: a > b * 1.2, lambda b, a: a < b * 0.8, '{:.2f}')
 
     # A command that starts running away from the pilot reads as a smaller magnitude, so a sign
