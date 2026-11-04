@@ -229,7 +229,7 @@ The vertical path is **FPM-based** (target FPM derived from 3° glideslope + alt
 | `AOA_SMOOTHING_FACTOR_PER_SECOND` | 0.7 | Exponential smoothing of the live angle of attack, per second |
 | `FPM_ERROR_RATE_WINDOW_S` | 1.0 s | Time window the VS error's rate (the D term) is measured over |
 | `flareTargetPitchDeg` `[profile]` | 6.0° (A320) | Per-aircraft target pitch commanded in flare. PMDG 777 = 4.5°. |
-| `MAX_FLARE_PITCH_RATE` | 1.5 | Cap on pitch rate during flare (deg/sec) |
+| `MAX_FLARE_PITCH_RATE` | 10 | Cap on pitch rate during flare (deg/sec). Was 1.5 in the 1 Hz design; on real time that took the cue 2.7 s to reach the flare pitch, after a jet's wheels touched, so it is 10 (about 0.4 s), measured in the harness to land as softly as before |
 
 ### Pitch PID sign convention (bug history)
 
@@ -310,7 +310,7 @@ Guidance updates on every sim frame (the visual guidance data arrives per `SIM_F
 - The frame time counts at most one second, so a pause or a stalled frame stream moves the command no more than one second's worth; two updates at the same instant move nothing.
 - A clock that steps back counts as no time, never a reverse step.
 
-The VirtualPilot approach harness measured the change ([virtual-pilot.md](virtual-pilot.md), "Stage 2: real-time limits"): final tracking held, and with assumed sensor noise the pitch command's rate of change fell from 27.6°/s to 0.11°/s at 30 frames a second.
+The VirtualPilot approach harness measured the change ([virtual-pilot.md](virtual-pilot.md), "Stage 2: real-time limits"): final tracking held, and with assumed sensor noise the pitch command's rate of change fell from 27.6°/s to 0.11°/s at 30 frames a second. One design number did not survive real time: the flare's 1.5°/s pitch limit made the flare cue arrive after touchdown, so it is now 10°/s (`MAX_FLARE_PITCH_RATE`).
 
 There is no integral-windup machinery to worry about today: the vertical path is FPM-based PD, and the lateral path uses rate damping rather than an explicit integrator at the precision-track stage. If a future contributor adds an integral term, document the windup strategy alongside it.
 
