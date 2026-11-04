@@ -3,10 +3,11 @@
 // number is written out here, never read from FenixChannelFields.
 //
 // The contract: the page reads 179 (the doors, all varint bools: a set door field is closed, a clear one open, a set slide
-// field armed) and 180 (crew oxygen: 180.2 SDAC has data, 180.5 pressure). OXY: n PSI while 180.2, else OXY: XX. The
-// airframe is the variant's Type, never a field: A319, A320 and A321 have door tables (AVIONIC 1-3 = 179.1-3, CABIN 1L .4
-// slide .16, CABIN 1R .5 slide .17, AVIONIC 4 .6, CARGO FWD .7, the exits, CARGO AFT .12, BULK .13 only while 179.27,
-// CABIN 4L .14 slide .20, CABIN 4R .15 slide .21); the exits are inferred (Task 1 measures them) and read no slide.
+// field armed) and 180 (crew oxygen: 180.2 SDAC has data, 180.5 pressure). OXY: n PSI while 180.2, else OXY: XX PSI. The
+// airframe is the variant's Type, never a field: A319, A320 and A321 have door tables (AVIONIC 1-3 = 179.1-3, Door 1 left
+// .4 slide .16, Door 1 right .5 slide .17, AVIONIC 4 .6, Forward cargo door .7, the exits, Aft cargo door .12, Bulk cargo
+// door .13 only while 179.27, Door 4 left .14 slide .20, Door 4 right .15 slide .21; named as the cabin window names
+// them); the exits are inferred (Task 1 measures them) and read no slide.
 // An unknown airframe and the A318 are "airframe not known", before any field is read.
 
 using MSFSBlindAssist.Aircraft;
@@ -56,9 +57,10 @@ public class FenixChannelSdDoorTests
             new[]
             {
                 "OXY: 1800 PSI", "AVIONIC 1: closed", "AVIONIC 2: closed", "AVIONIC 3: closed",
-                "CABIN 1L: closed, SLIDE armed", "CABIN 1R: closed, SLIDE armed", "AVIONIC 4: closed", "CARGO FWD: closed",
-                "EMER EXIT L: closed", "EMER EXIT R: closed", "CARGO AFT: closed",
-                "CABIN 4L: closed, SLIDE armed", "CABIN 4R: closed, SLIDE armed"
+                "Door 1 left: closed, SLIDE armed", "Door 1 right: closed, SLIDE armed", "AVIONIC 4: closed",
+                "Forward cargo door: closed",
+                "Overwing exit left: closed", "Overwing exit right: closed", "Aft cargo door: closed",
+                "Door 4 left: closed, SLIDE armed", "Door 4 right: closed, SLIDE armed"
             },
             RowsOf(DoorPush(Doors(AllDoorFields), Oxygen())));
     }
@@ -68,25 +70,31 @@ public class FenixChannelSdDoorTests
     {
         // The measured hazard: every field set, every slide armed, overwing slides included.
         IReadOnlyList<string> a321 = RowsOf(DoorPush(Doors(AllDoorFields), Oxygen(), FenixAircraftType.A321));
-        Assert.Contains("EMER EXIT 2L: closed", a321);
-        Assert.Contains("EMER EXIT 2R: closed", a321);
-        Assert.Contains("EMER EXIT 3L: closed", a321);
-        Assert.Contains("EMER EXIT 3R: closed", a321);
-        Assert.DoesNotContain(a321, row => row.StartsWith("EMER EXIT L") || row.StartsWith("EMER EXIT R"));
+        Assert.Contains("Door 2 left: closed", a321);
+        Assert.Contains("Door 2 right: closed", a321);
+        Assert.Contains("Door 3 left: closed", a321);
+        Assert.Contains("Door 3 right: closed", a321);
+        Assert.DoesNotContain(a321, row => row.StartsWith("Overwing exit"));
         Assert.Equal(15, a321.Count);
 
         IReadOnlyList<string> a319 = RowsOf(DoorPush(Doors(AllDoorFields), Oxygen(), FenixAircraftType.A319));
-        Assert.Equal(new[] { "EMER EXIT L: closed", "EMER EXIT R: closed" }, a319.Where(r => r.StartsWith("EMER EXIT")));
+        Assert.Equal(new[] { "Overwing exit left: closed", "Overwing exit right: closed" },
+            a319.Where(r => r.StartsWith("Overwing exit")));
 
         IReadOnlyList<string> doubleExits = RowsOf(DoorPush(Doors(AllDoorFields, doubleOverwing: true), Oxygen(), FenixAircraftType.A319));
         Assert.Equal(
-            new[] { "EMER EXIT L1: closed", "EMER EXIT R1: closed", "EMER EXIT L2: closed", "EMER EXIT R2: closed" },
-            doubleExits.Where(r => r.StartsWith("EMER EXIT")));
+            new[]
+            {
+                "Overwing exit 1 left: closed", "Overwing exit 1 right: closed",
+                "Overwing exit 2 left: closed", "Overwing exit 2 right: closed"
+            },
+            doubleExits.Where(r => r.StartsWith("Overwing exit")));
 
         // The overwing slides (22 to 25) never appear, and no exit reads a slide.
         foreach (IReadOnlyList<string> rows in new[] { a321, a319, doubleExits })
         {
-            Assert.DoesNotContain(rows, row => row.StartsWith("EMER EXIT") && row.Contains("SLIDE"));
+            Assert.DoesNotContain(rows, row => (row.StartsWith("Overwing exit") || row.StartsWith("Door 2") || row.StartsWith("Door 3"))
+                && row.Contains("SLIDE"));
         }
     }
 
@@ -98,31 +106,31 @@ public class FenixChannelSdDoorTests
 
         IReadOnlyList<string> rows = RowsOf(DoorPush(Doors(set), Oxygen()));
 
-        Assert.Contains("CABIN 1L: open, SLIDE armed", rows);
-        Assert.Contains("CARGO FWD: open", rows);
-        Assert.Contains("CABIN 4R: closed, SLIDE disarmed", rows);
-        Assert.Contains("CABIN 1R: closed, SLIDE armed", rows);
+        Assert.Contains("Door 1 left: open, SLIDE armed", rows);
+        Assert.Contains("Forward cargo door: open", rows);
+        Assert.Contains("Door 4 right: closed, SLIDE disarmed", rows);
+        Assert.Contains("Door 1 right: closed, SLIDE armed", rows);
     }
 
     [Fact]
     public void Bulk_shows_only_on_an_airframe_with_one()
     {
         IReadOnlyList<string> without = RowsOf(DoorPush(Doors(AllDoorFields), Oxygen()));
-        Assert.DoesNotContain(without, row => row.StartsWith("BULK"));
+        Assert.DoesNotContain(without, row => row.StartsWith("Bulk"));
 
         IReadOnlyList<string> closed = RowsOf(DoorPush(Doors(AllDoorFields, bulkDoor: true), Oxygen()));
         Assert.Equal(
-            new[] { "CARGO AFT: closed", "BULK: closed", "CABIN 4L: closed, SLIDE armed" },
-            closed.SkipWhile(r => !r.StartsWith("CARGO AFT")).Take(3));
+            new[] { "Aft cargo door: closed", "Bulk cargo door: closed", "Door 4 left: closed, SLIDE armed" },
+            closed.SkipWhile(r => !r.StartsWith("Aft cargo")).Take(3));
 
         IReadOnlyList<string> open = RowsOf(DoorPush(Doors(AllDoorFields.Except([13]), bulkDoor: true), Oxygen()));
-        Assert.Contains("BULK: open", open);
+        Assert.Contains("Bulk cargo door: open", open);
     }
 
     [Fact]
     public void Oxy_reads_XX_without_sdac_data()
     {
-        Assert.Equal("OXY: XX", RowsOf(DoorPush(Doors(AllDoorFields), Oxygen(data: false)))[0]);
+        Assert.Equal("OXY: XX PSI", RowsOf(DoorPush(Doors(AllDoorFields), Oxygen(data: false)))[0]);
         // A NaN pressure with data reads XX as every number does (Whole), keeping the unit.
         Assert.Equal("OXY: XX PSI", RowsOf(DoorPush(Doors(AllDoorFields), Oxygen(pressure: double.NaN)))[0]);
         Assert.Equal("OXY: 1799 PSI", RowsOf(DoorPush(Doors(AllDoorFields), Oxygen(pressure: 1798.6)))[0]);

@@ -7,12 +7,16 @@ namespace MSFSBlindAssist.Services;
 internal static partial class FenixChannelSdPages
 {
     /// <summary>
-    /// The DOOR page's rows: <c>OXY: n PSI</c> (180.5, whole) while the SDAC has data (180.2), else <c>OXY: XX</c>; then the
+    /// The DOOR page's rows: <c>OXY: n PSI</c> (180.5, whole) while the SDAC has data (180.2), else <c>OXY: XX PSI</c>; then the
     /// airframe's doors, nose to tail and left before right, each <c>label: closed</c> (its field set) or <c>label: open</c>,
     /// and for a door with a slide <c>, SLIDE armed</c> (the slide's field set) or <c>, SLIDE disarmed</c>. No row speaks a
     /// color.
     /// </summary>
     /// <remarks>
+    /// <para>Doors are named as the cabin window names them (<c>FenixCabinLines.DoorName</c>, by the FAP's numbering). The
+    /// exits follow <c>ctx.Variant.Type</c> and 179.26 only, never the Fenix's <c>emergency_exits_type</c> setting that the
+    /// cabin window follows (<c>FenixCabinLayout.Resolve</c>, [FNX-15]), because the channel's page context carries no
+    /// settings; a non-default exits setting is not followed yet.</para>
     /// <para>The airframe is <c>ctx.Variant.Type</c>, never a channel field. A319, A320 and A321 have door tables; an
     /// unknown airframe, and the A318, for which the Fenix has no door table and nothing is measured, read "airframe not
     /// known" before anything else, whatever the push holds.</para>
@@ -64,42 +68,42 @@ internal static partial class FenixChannelSdPages
 
         var rows = new List<string>
         {
-            oxygenData ? $"OXY: {FenixChannelSd.Whole(oxygenPressure)} PSI" : $"OXY: {FenixChannelSd.Crosses}",
+            oxygenData ? $"OXY: {FenixChannelSd.Whole(oxygenPressure)} PSI" : $"OXY: {FenixChannelSd.Crosses} PSI",
             DoorRow("AVIONIC 1", avionics1),
             DoorRow("AVIONIC 2", avionics2),
             DoorRow("AVIONIC 3", avionics3),
-            DoorRow("CABIN 1L", entry1L, slide1L),
-            DoorRow("CABIN 1R", entry1R, slide1R),
+            DoorRow("Door 1 left", entry1L, slide1L),
+            DoorRow("Door 1 right", entry1R, slide1R),
             DoorRow("AVIONIC 4", avionics4),
-            DoorRow("CARGO FWD", cargoFwd)
+            DoorRow("Forward cargo door", cargoFwd)
         };
 
         // The exits' names and fields are inferred, Task 1 measures them: wing 1 is fields 8 (left) and 10 (right), wing 2
         // is 9 (left) and 11 (right). No exit reads a slide until Task 1 has mapped one.
         if (type == Aircraft.FenixAircraftType.A321)
         {
-            rows.Add(DoorRow("EMER EXIT 2L", wing1L));
-            rows.Add(DoorRow("EMER EXIT 2R", wing1R));
-            rows.Add(DoorRow("EMER EXIT 3L", wing2L));
-            rows.Add(DoorRow("EMER EXIT 3R", wing2R));
+            rows.Add(DoorRow("Door 2 left", wing1L));
+            rows.Add(DoorRow("Door 2 right", wing1R));
+            rows.Add(DoorRow("Door 3 left", wing2L));
+            rows.Add(DoorRow("Door 3 right", wing2R));
         }
         else if (doubleOverwing)
         {
-            rows.Add(DoorRow("EMER EXIT L1", wing1L));
-            rows.Add(DoorRow("EMER EXIT R1", wing1R));
-            rows.Add(DoorRow("EMER EXIT L2", wing2L));
-            rows.Add(DoorRow("EMER EXIT R2", wing2R));
+            rows.Add(DoorRow("Overwing exit 1 left", wing1L));
+            rows.Add(DoorRow("Overwing exit 1 right", wing1R));
+            rows.Add(DoorRow("Overwing exit 2 left", wing2L));
+            rows.Add(DoorRow("Overwing exit 2 right", wing2R));
         }
         else
         {
-            rows.Add(DoorRow("EMER EXIT L", wing1L));
-            rows.Add(DoorRow("EMER EXIT R", wing1R));
+            rows.Add(DoorRow("Overwing exit left", wing1L));
+            rows.Add(DoorRow("Overwing exit right", wing1R));
         }
 
-        rows.Add(DoorRow("CARGO AFT", cargoAft));
-        if (hasBulk) rows.Add(DoorRow("BULK", bulk));
-        rows.Add(DoorRow("CABIN 4L", entry4L, slide4L));
-        rows.Add(DoorRow("CABIN 4R", entry4R, slide4R));
+        rows.Add(DoorRow("Aft cargo door", cargoAft));
+        if (hasBulk) rows.Add(DoorRow("Bulk cargo door", bulk));
+        rows.Add(DoorRow("Door 4 left", entry4L, slide4L));
+        rows.Add(DoorRow("Door 4 right", entry4R, slide4R));
         return FenixChannelRows.Of(rows);
     }
 
