@@ -61,22 +61,70 @@ public class VisualGuidanceRealTimeTests
         Assert.InRange(rig.Pitch, p0 - 1.25 - 0.05, p0 - 1.25 + 0.05);
     }
 
-    [Fact]
-    public void Vertical_speed_smoothing_has_one_time_constant_at_every_update_rate()
+    // The vertical speed steps 58 fpm deeper. With 0.7 per second, the smoothed value has moved
+    // 1 − 0.7^0.5 = 16.3 % of the step after 0.5 s at any update rate, so the command rises by
+    // P 0.005 × 58 × 0.163 = 0.047° plus D 0.002 × (the same 9.5 fpm over the 1 s window) = 0.019°.
+    // The step is small enough that the 2.5°/s pitch limit never binds: per-update smoothing
+    // (about 0.34° at 10 Hz, 0.40° at 30) would show.
+    [Theory]
+    [InlineData(10)]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void Vertical_speed_smoothing_has_one_time_constant_at_every_update_rate(int hz)
     {
-        var pitches = new List<double>();
-        foreach (int hz in new[] { 10, 30, 60 })
-        {
-            var rig = new Rig();
-            rig.Place(8, 0, 0);
-            rig.UpdateAt(0);
-            rig.FlyFor(2, hz);
-            rig.Place(8, 0, 0, vsFpm: -1000);
-            rig.FlyFor(0.5, hz);
-            pitches.Add(rig.Pitch);
-        }
-        Assert.True(pitches.Max() - pitches.Min() < 0.05,
-            $"pitch after 0.5 s at 10, 30 and 60 Hz: {string.Join(", ", pitches.Select(p => p.ToString("0.000")))}");
+        var rig = new Rig();
+        rig.Place(8, 0, 0);
+        rig.UpdateAt(0);
+        rig.FlyFor(2, hz);
+        double p0 = rig.Pitch;
+        rig.Place(8, 0, 0, vsFpm: -800);
+        rig.FlyFor(0.5, hz);
+        Assert.InRange(rig.Pitch - p0, 0.066 - 0.01, 0.066 + 0.01);
+    }
+
+    // The angle of attack steps 1° up. The nominal pitch follows the smoothed AoA, which has moved
+    // 1 − 0.7^0.5 = 0.163° after 0.5 s at any update rate (per-update smoothing: about 0.83° at 10 Hz).
+    [Theory]
+    [InlineData(10)]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void Angle_of_attack_smoothing_has_one_time_constant_at_every_update_rate(int hz)
+    {
+        var rig = new Rig();
+        rig.Place(8, 0, 0);
+        rig.UpdateAt(0);
+        rig.FlyFor(2, hz);
+        double p0 = rig.Pitch;
+        rig.Place(8, 0, 0, aoaDeg: 6.0);
+        rig.FlyFor(0.5, hz);
+        Assert.InRange(rig.Pitch - p0, 0.163 - 0.01, 0.163 + 0.01);
+    }
+
+    // Still on the centreline for 5 s, then drifting right at 0.02 nm/s for 2 s. The precision
+    // track's damping term is −12 × the cross-track rate, measured over 4 s and smoothed at 0.85 per
+    // second: the raw rate ramps as 0.02 × τ / 4, so the smoothed rate at τ = 2 s is
+    // (0.02 / 4) × (2 − (1 − e^(−2k)) / k), k = ln(1 / 0.85), about 0.00146 nm/s, and the damping
+    // −0.0175°. A rig placed at the same final spot with no history has no damping term, so the
+    // difference between the two banks is the damping alone. Per-update smoothing gives about
+    // −0.09° at 10 Hz and −0.11° at 60.
+    [Theory]
+    [InlineData(10)]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void Cross_track_rate_damping_has_one_time_constant_at_every_update_rate(int hz)
+    {
+        const double rateNmPerS = 0.02;
+        var moving = new Rig();
+        moving.Place(8, 0, 0);
+        moving.UpdateAt(0);
+        moving.FlyFor(5, hz);
+        moving.FlyFor(2, hz, t => moving.Place(8, rateNmPerS * (t - 5), 0));
+
+        var still = new Rig();
+        still.Place(8, rateNmPerS * 2, 0);
+        still.UpdateAt(7);
+
+        Assert.InRange(moving.Bank - still.Bank, -0.0175 - 0.006, -0.0175 + 0.006);
     }
 
     [Fact]
@@ -138,7 +186,7 @@ public class VisualGuidanceRealTimeTests
         public double Pitch => _vg.DesiredPitchForHarness;
 
         /// <summary>alongNm back from the threshold, crossNm right of the centreline, heading and track course + headingRelDeg, 140 kt.</summary>
-        public void Place(double alongNm, double crossNm, double headingRelDeg, double vsFpm = -742, double altOffsetFt = 0)
+        public void Place(double alongNm, double crossNm, double headingRelDeg, double vsFpm = -742, double altOffsetFt = 0, double aoaDeg = 5.0)
         {
             static double Norm(double d) => (d % 360 + 360) % 360;
             var back = VolantaTrafficCalculator.Project(ThrLat, ThrLon, Norm(Course + 180), alongNm);
@@ -153,7 +201,7 @@ public class VisualGuidanceRealTimeTests
             _vg.UpdateGroundTrack(heading);
             _vg.UpdatePitch(VisualGuidanceManager.PitchDegreesFromSimConnect(-2.0 * Math.PI / 180));
             _vg.UpdateBank(VisualGuidanceManager.BankDegreesFromSimConnect(0.0));
-            _vg.UpdateAoA(VisualGuidanceManager.AoaDegreesFromSimConnect(5.0 * Math.PI / 180));
+            _vg.UpdateAoA(VisualGuidanceManager.AoaDegreesFromSimConnect(aoaDeg * Math.PI / 180));
             _vg.UpdateAGL(alt - Elev);
         }
 
@@ -165,12 +213,20 @@ public class VisualGuidanceRealTimeTests
             _vg.ProcessUpdate();
         }
 
-        /// <summary>Carries on from the current clock with one update every 1/hz s until <paramref name="seconds"/> have passed.</summary>
-        public void FlyFor(double seconds, int hz)
+        /// <summary>
+        /// Carries on from the current clock with one update every 1/hz s until <paramref name="seconds"/>
+        /// have passed. <paramref name="beforeEach"/>, given the update's time in seconds, can move the aircraft first.
+        /// </summary>
+        public void FlyFor(double seconds, int hz, Action<double>? beforeEach = null)
         {
             double from = _seconds;
             int steps = (int)Math.Round(seconds * hz);
-            for (int i = 1; i <= steps; i++) UpdateAt(from + (double)i / hz);
+            for (int i = 1; i <= steps; i++)
+            {
+                double t = from + (double)i / hz;
+                beforeEach?.Invoke(t);
+                UpdateAt(t);
+            }
         }
     }
 }
