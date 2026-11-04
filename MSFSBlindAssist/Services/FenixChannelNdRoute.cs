@@ -114,7 +114,7 @@ internal static class FenixChannelNdRoute
         else if (route is not null) rows.AddRange(Rows(frame!, route, header, status.Value!).Rows);
 
         if (status.IsOk) rows.AddRange(StatusRows(header, status.Value!));
-        rows.AddRange(RingRows(header));
+        rows.AddRange(RingRows(header, FenixChannelNdTraffic.TcasRingDrawn(s.Push, header)));
         if (problem is null && route is not null && frame is not null && header.Mode is "ARC" or "NAV")
         {
             rows.AddRange(FixInfoRows(frame, route));
@@ -449,8 +449,10 @@ internal static class FenixChannelNdRoute
 
     // The range rings (sitting 1, Step 12): ARC a ring with no label at a quarter of the range and two labeled at half
     // and three quarters; ROSE NAV and PLAN a dashed ring labeled a quarter of the range and the solid compass ring
-    // labeled half.
-    private static IEnumerable<string> RingRows(FenixNdData header)
+    // labeled half. At range 10 the TCAS ring (2.5 NM) hides the dashed ring at 2.5 NM, the quarter of the range: ARC
+    // draws no ring there with the TCAS on, and ROSE NAV keeps the "2.5" label only (sitting 3). Whether the TCAS ring is
+    // drawn is FenixChannelNdTraffic.TcasRingDrawn's to say.
+    private static IEnumerable<string> RingRows(FenixNdData header, bool tcasRing)
     {
         if (!NumberParsing.TryParseExternal(header.Range, out double range) || !(range > 0) || double.IsInfinity(range))
         {
@@ -459,15 +461,16 @@ internal static class FenixChannelNdRoute
 
         static string Figure(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
         string dashed = Words(LookItem.RangeRing);
+        bool hidden = tcasRing && range == 10;
         if (header.Mode == "ARC")
         {
-            yield return $"Map: range ring with no label, {dashed}";
+            if (!hidden) yield return $"Map: range ring with no label, {dashed}";
             yield return $"Map: range ring {Figure(range / 2)}, {dashed}";
             yield return $"Map: range ring {Figure(range * 3 / 4)}, {dashed}";
         }
         else if (header.Mode is "NAV" or "PLAN")
         {
-            yield return $"Map: range ring {Figure(range / 4)}, {dashed}";
+            if (!hidden) yield return $"Map: range ring {Figure(range / 4)}, {dashed}";
             yield return $"Map: range ring {Figure(range / 2)}, {Words(LookItem.CompassRing)}";
         }
     }

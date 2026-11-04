@@ -52,7 +52,8 @@ internal static partial class FenixChannelFields
     {
         public const int OtherTraffic = 2;          // OtherTraffic: repeated nested TrafficTarget, a hollow white diamond
         public const int ProximateTraffic = 3;      // ProximateTraffic: repeated nested TrafficTarget, within 6 NM and 1200 ft: a filled white diamond
-        public const int Standby = 7;               // Standby: varint (bool), the TCAS in standby; left out otherwise
+        public const int TrafficAdvisory = 4;       // TrafficAdvisory: repeated nested TrafficTarget, the TA list: an amber filled circle (sitting 3, 311 pushes on the ground); 5.1 is sent with it and not read
+        public const int Standby = 7;              // Standby: varint (bool), the TCAS in standby; left out otherwise
     }
 
     /// <summary>

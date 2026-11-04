@@ -123,6 +123,7 @@ public class FenixChannelNdSpeechTests
             FenixChannelNdRoute.LookItem.ToWaypoint, FenixChannelNdRoute.LookItem.Waypoint, FenixChannelNdRoute.LookItem.Vor,
             FenixChannelNdRoute.LookItem.RouteLine, FenixChannelNdRoute.LookItem.DashedRouteLine,
             FenixChannelNdRoute.LookItem.TemporaryLine, FenixChannelNdRoute.LookItem.MissedApproachLine,
+            FenixChannelNdTraffic.LookItem.TrafficAdvisory,
             FenixChannelNdRadio.LookItem.FailedVorIdent, FenixChannelNdRadio.LookItem.FailedCourseFigure,
             FenixChannelNdRadio.LookItem.FailedVorFlag
         ];

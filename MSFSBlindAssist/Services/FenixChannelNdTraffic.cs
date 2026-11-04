@@ -17,8 +17,8 @@ internal static class FenixChannelNdTraffic
     // The trend arrow is drawn from about 600 fpm: seen at -615, not at -562 or +551 (a value chosen inside the gap).
     private const double TrendFpm = 600;
 
-    // The ring is a fixed distance: 62.5 px, which is 2.6 NM at ROSE 20 and 2.64 at ARC 20; at range 10 about 124 px in
-    // ARC (47.8 px per NM) and 120-124 px in ROSE (48.3), 2.6 NM again (sitting 3).
+    // The ring is a fixed distance of 2.5 NM: range 10 resolves it best, 121.2 px in ROSE (2.51 NM at 48.3 px per NM)
+    // and 121.1 px in ARC; range 20's 62.5 px is 2.6 NM within a pixel (sitting 3).
     private const double RingRangeNm = 20;
     private const double InnerRingRangeNm = 10;
 
@@ -27,14 +27,36 @@ internal static class FenixChannelNdTraffic
     {
         public const string OtherTraffic = "other traffic";
         public const string ProximateTraffic = "proximate traffic";
+        public const string TrafficAdvisory = "traffic advisory";
         public const string TcasRing = "TCAS ring";
     }
+
+    /// <summary>
+    /// The TCAS ring is drawn (and so listed): in ARC, ROSE NAV, ROSE LS and ROSE VOR at range 10 or 20, with the TCAS out
+    /// of standby. The ONE place that decides it: the traffic layer lists the ring by it and the route layer drops the
+    /// dashed range ring at 2.5 NM the ring hides at range 10 (sitting 3). False when field 5 is not sent or is in another
+    /// shape.
+    /// </summary>
+    internal static bool TcasRingDrawn(FenixChannelPush push, FenixNdData header)
+    {
+        if (!push.TryGet(Remote.Traffic, out _)) return false;
+
+        var read = new FenixChannelNdRadio.Reader();
+        FenixChannelPush? traffic = read.Part(push, Remote.Traffic, "5");
+        bool standby = read.Flag(traffic, TrafficData.Standby, "5.7") ?? false;
+        return read.Wrong is null && FenixNdFrame.From(header) is { } frame && RingDrawn(header.Mode, frame, standby);
+    }
+
+    private static bool RingDrawn(string? mode, FenixNdFrame frame, bool standby)
+        => mode is "NAV" or "ARC" or "LS" or "VOR" && !standby
+            && (frame.RangeNm == RingRangeNm || frame.RangeNm == InnerRingRangeNm);
 
     private sealed record Target(string? Kind, string? Fill, FenixLatLon At, double? AltitudeFt, double VerticalSpeed, double Distance);
 
     /// <summary>
     /// Layer "Traffic": in ARC, ROSE NAV, ROSE LS and ROSE VOR, the ring first (range 20 or 10, out of standby), then the
-    /// targets nearest first, each as "Map: other traffic, hollow white diamond, 8.1 NM, 103° left, +08, climbing". PLAN is
+    /// targets nearest first, each as "Map: other traffic, hollow white diamond, 8.1 NM, 103° left, +08, climbing"; a
+    /// traffic advisory (5.4) as "Map: traffic advisory, amber filled circle, 0.2 NM, 135° right, -00". PLAN is
     /// not measured: nothing. A field in another shape gives one row in the layer's place.
     /// </summary>
     public static FenixNdLayer Rows(FenixChannelPush push, FenixNdData header)
@@ -55,12 +77,13 @@ internal static class FenixChannelNdTraffic
         {
             Collect(read, traffic, TrafficData.ProximateTraffic, "5.3", LookItem.ProximateTraffic, "filled", targets);
             Collect(read, traffic, TrafficData.OtherTraffic, "5.2", LookItem.OtherTraffic, "hollow", targets);
+            Collect(read, traffic, TrafficData.TrafficAdvisory, "5.4", LookItem.TrafficAdvisory, "", targets);
 
-            // A nested member of 5 other than 2 and 3 was never sent (no TA or RA happened): its targets are drawn, its
-            // look is not measured.
+            // 5.1 is sent exactly while 5.4 has a target and is not read. A nested member of 5 beyond these (5.5, the RA)
+            // was never sent: its targets are drawn, its look is not measured.
             for (int number = 1; number <= 32; number++)
             {
-                if (number is TrafficData.OtherTraffic or TrafficData.ProximateTraffic) continue;
+                if (number is 1 or TrafficData.OtherTraffic or TrafficData.ProximateTraffic or TrafficData.TrafficAdvisory) continue;
                 if (traffic.TryGet(number, out FenixChannelField field) && field.Type == FenixWireType.LengthDelimited)
                 {
                     Collect(read, traffic, number, $"5.{number}", null, null, targets);
@@ -75,7 +98,7 @@ internal static class FenixChannelNdTraffic
         if (frame is null) return FenixNdLayer.Failed(LayerName, "the ND's view is not known");
 
         var rows = new List<string>();
-        if (RingRow(frame) is { } ring) rows.Add(ring);
+        if (RingDrawn(header.Mode, frame, standby)) rows.Add(RingRow());
 
         foreach (Target target in targets.OrderBy(t => t.Distance))
         {
@@ -85,7 +108,8 @@ internal static class FenixChannelNdTraffic
             parts.Add(target.Kind is null ? "traffic" : target.Kind);
             if (target.Fill is { } fill)
             {
-                parts.Add($"{fill} {FenixChannelNdRows.Words(target.Kind!)}");
+                // The TA's look says its own color ("amber filled circle"), so it has no fill word of its own.
+                parts.Add((fill.Length > 0 ? fill + " " : "") + FenixChannelNdRows.Words(target.Kind!));
             }
 
             parts.Add(FenixChannelNdGeometry.Where(frame, place, null));
@@ -130,23 +154,20 @@ internal static class FenixChannelNdTraffic
         }
     }
 
-    // The ring is drawn at ranges 20 and 10, 2.6 NM at both; not at 40 and above.
-    private static string? RingRow(FenixNdFrame frame)
+    // The ring is a fixed 2.5 NM, drawn at ranges 20 and 10; not at 40 and above.
+    private static string RingRow()
     {
-        if (frame.RangeNm != RingRangeNm && frame.RangeNm != InnerRingRangeNm) return null;
-
         string ticks = "12 " + FenixChannelNdRows.Words(LookItem.TcasRing);
-        return $"Map: {LookItem.TcasRing}, {ticks} 2.6 NM around the aircraft";
+        return $"Map: {LookItem.TcasRing}, {ticks} 2.5 NM around the aircraft";
     }
 
-    // round((altitude - pressure altitude) / 100), half away from zero, a sign and two digits; zero is "00".
+    // round((altitude - pressure altitude) / 100), half away from zero, a sign and two digits: "+" only from +1, else "-",
+    // zero included ("-00", drawn below the symbol: sitting 3). Never "00" without a sign.
     private static string? Label(double? altitude, double pressure)
     {
         if (altitude is not { } feet || !double.IsFinite(pressure)) return null;
 
         int hundreds = (int)Math.Round((feet - pressure) / 100, MidpointRounding.AwayFromZero);
-        if (hundreds == 0) return "00";
-
-        return (hundreds > 0 ? "+" : "-") + Math.Abs(hundreds).ToString("D2", CultureInfo.InvariantCulture);
+        return (hundreds >= 1 ? "+" : "-") + Math.Abs(hundreds).ToString("D2", CultureInfo.InvariantCulture);
     }
 }
