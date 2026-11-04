@@ -147,14 +147,32 @@ internal static partial class FenixChannelFields
     /// <summary>JetPumpData, the fuel jet pumps (<see cref="FuelState.JetPumps"/>).</summary>
     public static partial class JetPumpData
     {
+        // Fields 1, 2 and 5 to 8 checked against the installed Fenix 3.0.0.7613 on 2026-11-03 with the team's metadata
+        // tool ([FNX-23]): the center transfer valves' flow and the amber each is drawn in.
+        public const int LeftFlow = 1;              // LeftFlow: varint (bool)
+        public const int RightFlow = 2;             // RightFlow: varint (bool)
         public const int LeftValveOpen = 3;         // LeftValveOpen: varint (bool)
         public const int RightValveOpen = 4;        // RightValveOpen: varint (bool)
+        public const int LeftValveAmber = 5;        // LeftValveAmber: varint (bool)
+        public const int RightValveAmber = 6;       // RightValveAmber: varint (bool)
+        public const int LeftFlowAmber = 7;         // LeftFlowAmber: varint (bool)
+        public const int RightFlowAmber = 8;        // RightFlowAmber: varint (bool)
+    }
+
+    /// <summary>
+    /// ActPumpData, the A321's ACT pump (<see cref="FuelState.ActPump"/>, 134.15). Field 3 checked against the installed
+    /// Fenix 3.0.0.7613 on 2026-11-03 with the team's metadata tool ([FNX-23]).
+    /// </summary>
+    public static partial class ActPumpData
+    {
+        public const int Amber = 3;                 // Amber: varint (bool), the pump drawn amber
     }
 
     /// <summary>FuelPumpState, one fuel pump (<see cref="FuelState.LeftWing1"/> to <see cref="FuelState.RightWing2"/>).</summary>
     public static partial class FuelPumpState
     {
         public const int Switch = 1;                // Switch: varint (bool)
+        public const int Amber = 2;                 // Amber: varint (bool), the pump drawn amber (checked against the installed Fenix 3.0.0.7613 on 2026-11-03 with the team's metadata tool, [FNX-23])
         public const int LowPressure = 3;           // LowPressure: varint (bool)
     }
 

@@ -21,7 +21,11 @@ internal static partial class FenixChannelSdPages
     /// valves: open, closed</c>: "open" while the valve's field is set, else "closed"), then <c>ACT 1</c> while the
     /// variant's ActCount is 1 or more and <c>ACT 2</c> while it is 2 or more (none while the count is unread), then the
     /// right tank, the left and right pumps, the fuel on board and the one pair of temperatures, <c>tanks °C</c>.</para>
-    /// <para>No row speaks a color: they are values the app builds.</para>
+    /// <para>The rows speak the colors the Fenix sends: a pump, an LP valve or a center transfer valve (or its flow) the SD
+    /// draws amber gains " amber" right after its word (<c>left pumps: running amber, LO</c>, <c>LP valves: open,
+    /// closed amber</c>), and an ACT pump drawn amber is the row <c>ACT pump, amber</c> after the ACT rows (an A321 with
+    /// ACT tanks only; 134.15 is read only there). Fields checked against the installed Fenix 3.0.0.7613 on 2026-11-03
+    /// ([FNX-23]).</para>
     /// </summary>
     /// <remarks>
     /// <para>The airframe is decided first. A Type the page has no layout for, <c>Unknown</c> or any other value, is "airframe
@@ -65,10 +69,19 @@ internal static partial class FenixChannelSdPages
         if (a321)
         {
             FenixChannelSdReader jetPumps = fuel.Message(FenixChannelFields.FuelState.JetPumps);
+            // A side is amber while its valve or its flow is drawn amber, said once.
             centerTransferValves = string.Join(", ",
-                FuelOpenWord(jetPumps.Bool(FenixChannelFields.JetPumpData.LeftValveOpen)),
-                FuelOpenWord(jetPumps.Bool(FenixChannelFields.JetPumpData.RightValveOpen)));
+                FuelOpenWord(jetPumps.Bool(FenixChannelFields.JetPumpData.LeftValveOpen))
+                    + FuelAmber(jetPumps.Bool(FenixChannelFields.JetPumpData.LeftValveAmber)
+                        | jetPumps.Bool(FenixChannelFields.JetPumpData.LeftFlowAmber)),
+                FuelOpenWord(jetPumps.Bool(FenixChannelFields.JetPumpData.RightValveOpen))
+                    + FuelAmber(jetPumps.Bool(FenixChannelFields.JetPumpData.RightValveAmber)
+                        | jetPumps.Bool(FenixChannelFields.JetPumpData.RightFlowAmber)));
         }
+
+        // The LP valves drawn amber (134.9, 134.10).
+        bool lp1Amber = fuel.Bool(FenixChannelFields.FuelState.ValveAmberEngine1);
+        bool lp2Amber = fuel.Bool(FenixChannelFields.FuelState.ValveAmberEngine2);
 
         FuelTanksReading tanks = ReadFuelTanks(fuel.Message(FenixChannelFields.FuelState.Quantity), a321, actCount);
 
@@ -84,12 +97,16 @@ internal static partial class FenixChannelSdPages
         FuelTemperaturesReading temperatures = ReadFuelTemperatures(
             fuel.Message(FenixChannelFields.FuelState.Temperature), a321);
 
+        // The ACT pump (134.15) is read only where the page shows ACT rows: an A321 with ACT tanks.
+        bool actPumpAmber = a321 && actCount >= 1
+            && fuel.Message(FenixChannelFields.FuelState.ActPump).Bool(FenixChannelFields.ActPumpData.Amber);
+
         // Every read after a problem gives its default, which must never be spoken.
         if (remote.Problem is { } problem) return FenixChannelRows.NotAvailable(problem);
 
         string used = $"F.USED 1+2: {FenixChannelSd.Whole(usedTotal)} {unit}";
         string onBoard = $"FOB: {FenixChannelSd.Whole(tanks.Total)} {unit}";
-        string lpValves = $"LP valves: {valves.Lp1}, {valves.Lp2}";
+        string lpValves = $"LP valves: {valves.Lp1}{FuelAmber(lp1Amber)}, {valves.Lp2}{FuelAmber(lp2Amber)}";
 
         if (a321)
         {
@@ -106,6 +123,7 @@ internal static partial class FenixChannelSdPages
 
             if (actCount >= 1) a321Rows.Add($"ACT 1: {FenixChannelSd.Whole(tanks.Act1)}");
             if (actCount >= 2) a321Rows.Add($"ACT 2: {FenixChannelSd.Whole(tanks.Act2)}");
+            if (actPumpAmber) a321Rows.Add("ACT pump, amber");
 
             a321Rows.Add($"right tank: {FenixChannelSd.Whole(tanks.RightInner)}");
             a321Rows.Add($"left pumps: {leftPumps}");
@@ -234,8 +252,12 @@ internal static partial class FenixChannelSdPages
         bool switchOn = pump.Bool(FenixChannelFields.FuelPumpState.Switch);
         bool lowPressure = pump.Bool(FenixChannelFields.FuelPumpState.LowPressure);
 
-        return !switchOn ? "off" : lowPressure ? "LO" : "running";
+        string word = !switchOn ? "off" : lowPressure ? "LO" : "running";
+        return word + FuelAmber(pump.Bool(FenixChannelFields.FuelPumpState.Amber));
     }
+
+    // " amber" right after a value the SD draws amber, no comma.
+    private static string FuelAmber(bool amber) => amber ? " amber" : "";
 
     // A valve whose field is a bool: "open" while it is set, else "closed".
     private static string FuelOpenWord(bool open) => open ? "open" : "closed";

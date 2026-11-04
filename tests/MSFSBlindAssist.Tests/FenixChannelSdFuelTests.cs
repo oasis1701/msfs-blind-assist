@@ -109,20 +109,29 @@ public class FenixChannelSdFuelTests
 
     // A fuel pump (134.2 to 134.7): the switch (1) and the low pressure (3), each written only while set, as the Fenix
     // leaves out a false.
-    private static FenixChannelProtoWriter PumpMessage(bool switchOn, bool lowPressure)
+    // The pump drawn amber is field 2.
+    private static FenixChannelProtoWriter PumpMessage(bool switchOn, bool lowPressure, bool amber = false)
     {
         var pump = new FenixChannelProtoWriter();
         if (switchOn) pump.Bool(1, true);
+        if (amber) pump.Bool(2, true);
         if (lowPressure) pump.Bool(3, true);
         return pump;
     }
 
-    // The A321's center transfer valves (134.1.3 and 134.1.4), each written only while set.
-    private static FenixChannelProtoWriter JetPumpMessage(bool left, bool right)
+    // The A321's center transfer valves (134.1.3 and 134.1.4), each written only while set; 134.1.5 and .6 are the valves
+    // drawn amber, 134.1.7 and .8 their flow drawn amber.
+    private static FenixChannelProtoWriter JetPumpMessage(
+        bool left, bool right, bool leftValveAmber = false, bool rightValveAmber = false, bool leftFlowAmber = false,
+        bool rightFlowAmber = false)
     {
         var jetPumps = new FenixChannelProtoWriter();
         if (left) jetPumps.Bool(3, true);
         if (right) jetPumps.Bool(4, true);
+        if (leftValveAmber) jetPumps.Bool(5, true);
+        if (rightValveAmber) jetPumps.Bool(6, true);
+        if (leftFlowAmber) jetPumps.Bool(7, true);
+        if (rightFlowAmber) jetPumps.Bool(8, true);
         return jetPumps;
     }
 
@@ -175,6 +184,12 @@ public class FenixChannelSdFuelTests
         public FenixChannelProtoWriter? RightWing1 { get; init; } = PumpMessage(false, false);
         public FenixChannelProtoWriter? RightWing2 { get; init; } = PumpMessage(true, false);
 
+        // The LP valves drawn amber (134.9, 134.10) and the ACT pump (134.15, its amber is field 3; the Fenix sends the
+        // message empty while nothing is amber).
+        public bool ValveAmber1 { get; init; }
+        public bool ValveAmber2 { get; init; }
+        public FenixChannelProtoWriter? ActPump { get; init; } = new FenixChannelProtoWriter();
+
         // Open, closed, in transit, failed open, failed closed, closed, DataInvalid (XX), open.
         public FenixChannelProtoWriter? Valves { get; init; } = ValveMessage(0, 1, 2, 3, 4, 1, 5, 0);
 
@@ -189,6 +204,7 @@ public class FenixChannelSdFuelTests
         {
             "134" => this with { HasFuelState = false },
             "134.1" => this with { JetPumps = null },
+            "134.15" => this with { ActPump = null },
             "134.11" => this with { Valves = null },
             "134.12" => this with { Quantities = null },
             "134.13" => this with { Used = null },
@@ -235,10 +251,13 @@ public class FenixChannelSdFuelTests
             Write(fuel, 5, b.Center2);
             Write(fuel, 6, b.RightWing1);
             Write(fuel, 7, b.RightWing2);
+            if (b.ValveAmber1) fuel.Bool(9, true);
+            if (b.ValveAmber2) fuel.Bool(10, true);
             Write(fuel, 11, b.Valves);
             Write(fuel, 12, b.Quantities);
             Write(fuel, 13, b.Used);
             Write(fuel, 14, b.Temperatures);
+            Write(fuel, 15, b.ActPump);
             remote.Message(134, fuel);
         });
     }
@@ -731,5 +750,125 @@ public class FenixChannelSdFuelTests
         Assert.Equal(
             new[] { "FUEL: field 134.11.4 has an unknown value -7", "FUEL: field 134.11.4 has an unknown value -7" },
             spoken.Reported);
+    }
+
+    // ---- Colors ---------------------------------------------------------------------------------
+
+    private static FenixChannelProtoWriter ActPumpMessage(bool amber)
+        => amber ? new FenixChannelProtoWriter().Bool(3, true) : new FenixChannelProtoWriter();
+
+    // The pump of 134.<field> as the default boxes have it, drawn amber.
+    private static FenixChannelProtoWriter AmberPump(int field) => field switch
+    {
+        2 => PumpMessage(true, false, amber: true),
+        3 => PumpMessage(true, true, amber: true),
+        4 => PumpMessage(false, true, amber: true),
+        5 => PumpMessage(true, true, amber: true),
+        6 => PumpMessage(false, false, amber: true),
+        _ => PumpMessage(true, false, amber: true)
+    };
+
+    [Theory]
+    [InlineData(2, "left pumps: running amber, LO")]
+    [InlineData(3, "left pumps: running, LO amber")]
+    [InlineData(4, "center pumps: off amber, LO")]
+    [InlineData(5, "center pumps: off, LO amber")]
+    [InlineData(6, "right pumps: off amber, running")]
+    [InlineData(7, "right pumps: off, running amber")]
+    public void A_pump_drawn_amber_says_amber_after_its_word_on_the_a320(int field, string row)
+    {
+        // Each pump on its own (134.n.2); the pump's own state (switch, low pressure) is the word before it.
+        string prefix = row[..(row.IndexOf(':') + 1)];
+
+        IReadOnlyList<string> page = PageOf(FuelPush(new FuelBoxes().WithPump(field, AmberPump(field))));
+
+        Assert.Equal(Replaced(A320Page, (prefix, row)), page);
+    }
+
+    [Theory]
+    [InlineData(2, "left pumps: running amber, LO")]
+    [InlineData(3, "left pumps: running, LO amber")]
+    [InlineData(6, "right pumps: off amber, running")]
+    [InlineData(7, "right pumps: off, running amber")]
+    public void A_pump_drawn_amber_says_amber_after_its_word_on_the_a321(int field, string row)
+    {
+        string prefix = row[..(row.IndexOf(':') + 1)];
+
+        IReadOnlyList<string> page = PageOf(FuelPush(new FuelBoxes { Variant = A321 }.WithPump(field, AmberPump(field))));
+
+        Assert.Equal(Replaced(A321Page(2), (prefix, row)), page);
+    }
+
+    [Fact]
+    public void The_center_pumps_stay_unread_on_the_a321_even_when_amber()
+    {
+        IReadOnlyList<string> page = PageOf(FuelPush(new FuelBoxes { Variant = A321 }.WithPump(4, AmberPump(4))));
+
+        Assert.Equal(A321Page(2), page);
+    }
+
+    [Theory]
+    [InlineData(true, false, "LP valves: open amber, closed")]
+    [InlineData(false, true, "LP valves: open, closed amber")]
+    [InlineData(true, true, "LP valves: open amber, closed amber")]
+    public void An_lp_valve_drawn_amber_says_amber_after_its_word(bool one, bool two, string row)
+    {
+        var boxes = new FuelBoxes { ValveAmber1 = one, ValveAmber2 = two };
+
+        Assert.Equal(Replaced(A320Page, ("LP valves:", row)), PageOf(FuelPush(boxes)));
+        Assert.Equal(
+            Replaced(A321Page(2), ("LP valves:", row)),
+            PageOf(FuelPush(boxes with { Variant = A321 })));
+    }
+
+    [Theory]
+    [InlineData(true, false, false, false, "center transfer valves: open amber, closed")]
+    [InlineData(false, true, false, false, "center transfer valves: open, closed amber")]
+    [InlineData(false, false, true, false, "center transfer valves: open amber, closed")]
+    [InlineData(false, false, false, true, "center transfer valves: open, closed amber")]
+    [InlineData(true, false, true, false, "center transfer valves: open amber, closed")]
+    [InlineData(true, true, true, true, "center transfer valves: open amber, closed amber")]
+    public void A_center_transfer_valve_or_its_flow_drawn_amber_says_amber_once(
+        bool leftValve, bool rightValve, bool leftFlow, bool rightFlow, string row)
+    {
+        var boxes = new FuelBoxes
+        {
+            Variant = A321,
+            JetPumps = JetPumpMessage(true, false, leftValve, rightValve, leftFlow, rightFlow)
+        };
+
+        Assert.Equal(Replaced(A321Page(2), ("center transfer valves:", row)), PageOf(FuelPush(boxes)));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void The_act_pump_drawn_amber_gets_its_own_row_after_the_act_rows(int acts)
+    {
+        FenixVariant variant = A321 with { ActCount = acts };
+        List<string> expected = [.. A321Page(acts)];
+        expected.Insert(expected.IndexOf("right tank: 3790"), "ACT pump, amber");
+
+        Assert.Equal(expected, PageOf(FuelPush(new FuelBoxes { Variant = variant, ActPump = ActPumpMessage(true) })));
+        Assert.Equal(A321Page(acts), PageOf(FuelPush(new FuelBoxes { Variant = variant, ActPump = ActPumpMessage(false) })));
+    }
+
+    [Fact]
+    public void The_act_pump_is_not_read_without_act_tanks_or_on_an_a320()
+    {
+        // No ACT tank: 134.15 is not read, so even a push without it composes, and its amber is never spoken.
+        FenixVariant none = A321 with { ActCount = 0 };
+        Assert.Equal(A321Page(0), PageOf(FuelPush(new FuelBoxes { Variant = none, ActPump = ActPumpMessage(true) })));
+        Assert.Equal(A321Page(0), PageOf(FuelPush(new FuelBoxes { Variant = none }.Without("134.15"))));
+        Assert.Equal(A320Page, PageOf(FuelPush(new FuelBoxes { ActPump = ActPumpMessage(true) })));
+        Assert.Equal(A320Page, PageOf(FuelPush(new FuelBoxes().Without("134.15"))));
+    }
+
+    [Fact]
+    public void A_missing_act_pump_message_stops_an_a321_with_act_tanks()
+    {
+        SdPush push = FuelPush(new FuelBoxes { Variant = A321 }.Without("134.15"));
+
+        Assert.Equal("no field 134.15", FenixChannelSdPages.FuelRows(push.Context(_ => { })).Problem);
     }
 }
