@@ -240,6 +240,21 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     internal Func<DateTime> ClockForHarness { get; init; } = static () => SimClock.UtcNow;
 
+    /// <summary>
+    /// VirtualPilot hook (VP-1, VP-2): where the flight recording's lines go. The app never sets it,
+    /// so they go to <c>visual_guidance_flight.log</c> (<see cref="VisualGuidanceFlightRecord"/>);
+    /// the harness and unit tests give their own sink.
+    /// </summary>
+    internal Action<string> FlightRecordForHarness { get; init; } = static line => FlightRecordLog.Info(line);
+
+    private static readonly LogChannel FlightRecordLog = Log.Channel(VisualGuidanceFlightRecord.LogChannelName);
+
+    // The flight recording's clock zero: the Initialize that started this approach. Recording is
+    // true from that Initialize to the Stop, so an activation that fails before Initialize (Stop
+    // with no runway) writes no stop line without a start.
+    private DateTime recordStartUtc;
+    private bool recording;
+
     /// <summary>VirtualPilot hook (VP-1): the pitch (nose-up positive) commanded on the last <see cref="ProcessUpdate"/>, before tone saturation.</summary>
     internal double DesiredPitchForHarness { get; private set; }
 
@@ -280,13 +295,10 @@ public class VisualGuidanceManager : IDisposable
             || cachedLatitude is not double lat || cachedLongitude is not double lon || cachedAltMSL is not double altMSL)
             return VisualGuidanceStatusText.Compose(new VisualGuidanceStatus(VisualGuidanceReadoutPhase.Starting, 0, 0, 0, 0, 0, 0));
 
-        // Signed as the lateral law takes it: + right of the centreline facing the runway.
-        double crossTrackNm = Math.Sign(NavigationCalculator.CalculateCrossTrackError(lat, lon, runway.StartLat, runway.StartLon, runway.Heading))
-            * NavigationCalculator.CalculateDistanceToLocalizer(lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
         var status = new VisualGuidanceStatus(
             phase,
             DistanceNm: NavigationCalculator.CalculateDistance(lat, lon, runway.StartLat, runway.StartLon),
-            CrossTrackNm: crossTrackNm,
+            CrossTrackNm: SignedCrossTrackNm(runway, lat, lon),
             AltitudeErrorFt: lastCalculatedAltitudeError,
             TargetFpm: lastCalculatedTargetFPM,
             WheelHeightFt: altMSL - thresholdElevationMSL - flareAltitudeBiasFt,
@@ -478,7 +490,13 @@ public class VisualGuidanceManager : IDisposable
             }
         }
 
-        announcer.AnnounceImmediate($"Visual guidance active, runway {runway.RunwayID}");
+        // The flight recording (VP-2): one start line per approach, then a line per update.
+        recordStartUtc = ClockForHarness();
+        recording = true;
+        Record(VisualGuidanceFlightRecord.Start(destinationAirport.ICAO, runway.RunwayID, runway.StartLat, runway.StartLon,
+            runway.Heading, runway.HeadingMag, thresholdElevationMSL, glideslopeAngleDeg, glideslopeAltitudeBiasFt, flareAltitudeBiasFt));
+
+        Say($"Visual guidance active, runway {runway.RunwayID}", immediate: true);
         Log.Debug("VisualGuidance", $"Initialized for runway {runway.RunwayID}");
     }
 
@@ -510,9 +528,39 @@ public class VisualGuidanceManager : IDisposable
 
         VisualGuidanceActiveChanged?.Invoke(this, false);
         if (announce)
-            announcer.Announce("Visual guidance off");
+            Say("Visual guidance off", immediate: false);
+        Record(VisualGuidanceFlightRecord.Stop(RecordSeconds()));
+        recording = false;
         Log.Debug("VisualGuidance", $"Stopped (announce={announce})");
     }
+
+    /// <summary>
+    /// Every line visual guidance speaks goes through here, so the flight recording has it (VP-2).
+    /// <paramref name="immediate"/>: interrupt (AnnounceImmediate), else Announce.
+    /// </summary>
+    private void Say(string text, bool immediate)
+    {
+        if (immediate)
+            announcer.AnnounceImmediate(text);
+        else
+            announcer.Announce(text);
+        Record(VisualGuidanceFlightRecord.Said(RecordSeconds(), text, immediate));
+    }
+
+    private double RecordSeconds() => (ClockForHarness() - recordStartUtc).TotalSeconds;
+
+    // The recording must never disturb guidance: a failing sink loses its line, nothing else.
+    private void Record(string line)
+    {
+        if (!recording) return;
+        try { FlightRecordForHarness(line); }
+        catch (Exception ex) { Log.Debug("VisualGuidance", $"Flight record line lost: {ex.Message}"); }
+    }
+
+    /// <summary>Signed as the lateral law takes it: nautical miles, + right of the centreline facing the runway.</summary>
+    private double SignedCrossTrackNm(Runway rwy, double lat, double lon)
+        => Math.Sign(NavigationCalculator.CalculateCrossTrackError(lat, lon, rwy.StartLat, rwy.StartLon, rwy.Heading))
+           * NavigationCalculator.CalculateDistanceToLocalizer(lat, lon, rwy.StartLat, rwy.StartLon, rwy.Heading);
 
     /// <summary>
     /// Silently dispose both tones and clear the deferred-Start flag. Used by <see cref="Stop"/>
@@ -856,6 +904,20 @@ public class VisualGuidanceManager : IDisposable
             DesiredPitchForHarness = desiredPitch;
             double currentBankStandard = StandardBank(cachedBank ?? 0.0);
 
+            // The flight recording (VP-2): the state this update read and the commands it produced,
+            // before anything it speaks.
+            Record(VisualGuidanceFlightRecord.Frame(new VisualGuidanceFrameRecord(
+                T: (now - recordStartUtc).TotalSeconds, Phase: currentPhase.ToString(),
+                Lat: lat, Lon: lon, AltMslFt: altMSL, AglFt: agl,
+                GsKt: currentGroundSpeedKnots, VsFpm: currentVerticalSpeedFPM,
+                TrackMagDeg: cachedGroundTrack ?? heading, HeadingMagDeg: heading,
+                PitchDeg: currentPitch, BankDeg: cachedBank is double bank ? StandardBank(bank) : double.NaN,
+                AoaDeg: cachedAoaDeg ?? double.NaN,
+                DesiredPitchDeg: desiredPitch, DesiredBankDeg: desiredBank,
+                TargetFpm: lastCalculatedTargetFPM, AltitudeErrorFt: lastCalculatedAltitudeError,
+                CrossTrackNm: SignedCrossTrackNm(runway, lat, lon),
+                DistanceNm: NavigationCalculator.CalculateDistance(lat, lon, runway.StartLat, runway.StartLon))));
+
             // First-frame deferred Start — by the time the 150 ms WasapiOut buffer fills, the
             // phase-continuous oscillator's portamento has reached the target frequency (well
             // under a millisecond, whatever rate the endpoint mixes at), so the very first
@@ -940,7 +1002,7 @@ public class VisualGuidanceManager : IDisposable
             currentPhase = GuidancePhase.Touchdown;
             if (previousPhase != currentPhase)
             {
-                announcer.Announce("Touchdown");
+                Say("Touchdown", immediate: false);
                 // Continue guidance for centerline tracking during rollout
             }
             return;
@@ -1518,7 +1580,7 @@ public class VisualGuidanceManager : IDisposable
         var now = ClockForHarness();
         if ((now - lastPhaseAnnouncement).TotalMilliseconds >= ANNOUNCEMENT_INTERVAL_MS)
         {
-            announcer.Announce(message);
+            Say(message, immediate: false);
             lastPhaseAnnouncement = now;
         }
     }
@@ -1544,7 +1606,7 @@ public class VisualGuidanceManager : IDisposable
         {
             if (distanceNM <= calloutDist && lastAnnouncedDistance > calloutDist)
             {
-                announcer.Announce($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}");
+                Say($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}", immediate: false);
                 lastAnnouncedDistance = calloutDist;
                 lastDistanceAnnouncement = now;
                 break;
@@ -1573,12 +1635,12 @@ public class VisualGuidanceManager : IDisposable
         if (roundedDistance >= 0.5)
         {
             string distanceText = roundedDistance == 1.0 ? "1 mile" : $"{roundedDistance} miles";
-            announcer.Announce($"{distanceText} behind threshold");
+            Say($"{distanceText} behind threshold", immediate: false);
             lastExtendingProgressAnnouncement = now;
         }
         else if (roundedDistance < 0.5 && roundedDistance >= 0.1)
         {
-            announcer.Announce("Approaching threshold");
+            Say("Approaching threshold", immediate: false);
             lastExtendingProgressAnnouncement = now;
         }
     }
@@ -1599,7 +1661,7 @@ public class VisualGuidanceManager : IDisposable
         string? callout = bankCalloutGate.Next(ClockForHarness(), desiredBankDegrees, StandardBank(cachedBank.Value),
             maySpeak: !RoutineAnnouncementsSuppressed);
         if (callout != null)
-            announcer.AnnounceImmediate(callout);
+            Say(callout, immediate: true);
     }
 
     public void Dispose()

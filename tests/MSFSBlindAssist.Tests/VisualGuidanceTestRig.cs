@@ -20,7 +20,8 @@ internal sealed class VisualGuidanceTestRig
     private DateTime _clock = Start;
     private double _seconds;
 
-    public VisualGuidanceTestRig()
+    /// <param name="record">Receives the flight recording's lines (VP-2); by default they go nowhere.</param>
+    public VisualGuidanceTestRig(Action<string>? record = null)
     {
         var (endLat, endLon) = VolantaTrafficCalculator.Project(ThrLat, ThrLon, Course, 2.0);
         var runway = new Runway
@@ -30,7 +31,10 @@ internal sealed class VisualGuidanceTestRig
             ThresholdElevation = Elev, GlideslopeAngleDeg = 3.0,
         };
         var airport = new Airport { ICAO = "ZZVG", Name = "Test", Latitude = ThrLat, Longitude = ThrLon, Altitude = Elev, MagVar = 0.0 };
-        _vg = new VisualGuidanceManager(Speech) { HeadlessForHarness = true, ClockForHarness = () => _clock };
+        _vg = new VisualGuidanceManager(Speech)
+        {
+            HeadlessForHarness = true, ClockForHarness = () => _clock, FlightRecordForHarness = record ?? (_ => { }),
+        };
         _vg.Toggle();
         _vg.Initialize(runway, airport, HandFlyWaveType.Triangle, 0.0, HandFlyWaveType.Sine, 0.0, false, new VisualGuidanceProfile());
     }
@@ -68,6 +72,9 @@ internal sealed class VisualGuidanceTestRig
         _vg.UpdateAoA(VisualGuidanceManager.AoaDegreesFromSimConnect(aoaDeg * Math.PI / 180));
         _vg.UpdateAGL(alt - Elev);
     }
+
+    /// <summary>Switches visual guidance off, as Ctrl+V or a landing does.</summary>
+    public void Stop() => _vg.Stop();
 
     /// <summary>Sets the clock to <paramref name="seconds"/> after the start and runs one update.</summary>
     public void UpdateAt(double seconds)

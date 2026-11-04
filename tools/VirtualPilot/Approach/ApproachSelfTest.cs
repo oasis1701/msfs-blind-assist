@@ -42,6 +42,7 @@ static class ApproachSelfTest
             ("knock-moves-bank", KnockMovesBankCheck),
             ("speech-pilot-holds-without-a-callout", SpeechPilotHoldsCheck),
             ("gust-measured", GustMeasuredCheck),
+            ("record-hook", RecordHookCheck),
         };
 
         int failures = 0;
@@ -322,6 +323,23 @@ static class ApproachSelfTest
         var speech = new List<(double T, string Text, bool Immediate)> { (0.5, "3 right", true) };
         var told = FlyPilot(SpeechPilot(), 0, 3, 3, 0, speech, 3.0);
         if (Math.Abs(told[3.0].Bank - 3) > 0.5) problems.Add($"after \"3 right\" the bank at 3 s is {F(told[3.0].Bank)}, expected 3 ±0.5");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // The flight recording reaches the harness (the hook is set by reflection, so a rename would
+    // otherwise record nothing): a start line, a frame line per update, the spoken lines. Fails, as
+    // expected, against an app from before stage 3, which has no recording.
+    private static string? RecordHookCheck()
+    {
+        if (ApproachRunner.FlightRecordHook == null) return "VisualGuidanceManager has no FlightRecordForHarness";
+        const string name = "FINAL-A-JET-x0-h0-d0.5";
+        var lines = new List<string>();
+        ApproachRunner.RunOne(Scenario(name), trace: null, record: lines.Add);
+        var problems = new List<string>();
+        if (lines.Count == 0 || !lines[0].StartsWith("VGREC start ", StringComparison.Ordinal)) problems.Add("the first line is not a start line");
+        int frames = lines.Count(l => l.StartsWith("VGREC f ", StringComparison.Ordinal));
+        if (frames < 1000) problems.Add($"{frames} frame lines, expected one per update (thousands)");
+        if (!lines.Any(l => l.StartsWith("VGREC say ", StringComparison.Ordinal))) problems.Add("no spoken line");
         return problems.Count == 0 ? null : string.Join("; ", problems);
     }
 

@@ -243,9 +243,14 @@ culture, `NA` where a measure does not apply.
 VirtualPilot.exe approach --selftest
 VirtualPilot.exe approach [--scenario TEXT] [--out file]
 VirtualPilot.exe approach --trace NAME
+VirtualPilot.exe approach --trace NAME --record FILE
+VirtualPilot.exe approach --scenario TEXT --record FILE
 ```
 
-`--selftest` runs 29 checks of the harness itself: turn rate and direction, the 3° descent rate,
+`--record FILE` writes the flight recording (see "Flight recordings" below) of the traced
+scenario, or of every scenario `--scenario` picks, one after another.
+
+`--selftest` runs 30 checks of the harness itself: turn rate and direction, the 3° descent rate,
 wind drift, the SimConnect signs, the north wrap, the runway geometry, great-circle flight, the
 pilot's delay, roll rate, deadband and saturation, speech timestamps, the frame-rate runs, results
 under a Swedish culture, the matrix size, the step measures, wheel contact, the run ending past the
@@ -253,7 +258,9 @@ runway, mirror-image downwinds, the landing classes, the rate measure reading th
 and 60 Hz, the noise touching only its three values with the stated spreads, a noisy run
 repeating exactly, the touchdown sink rate written for a landing and `NA` otherwise, a knock that
 the pilot has not yet heard staying on the bank, the speech-led pilot holding its bank without a
-callout and following "3 right", and the gust measures written for a gust run and `NA` otherwise. The
+callout and following "3 right", the gust measures written for a gust run and `NA` otherwise, and
+the flight recording reaching the harness (`record-hook`: the hook is set by reflection, so this
+check is what catches a rename; against an app from before stage 3 it fails, as expected). The
 downwind mirror check counts passing the runway's far end and touching down within 100 ft of it as
 the same ending, since which line the last frame crosses first is a coincidence of that frame. `--scenario` runs every scenario
 whose name contains the text. `--trace` prints one scenario every half simulated second (phase,
@@ -272,6 +279,64 @@ centreline, `gustCalloutDelayS` rises by more than 0.3 s, `gustRecoveryS` by 20 
 300 ft along the runway, and the end reason changing between two outcomes neither of which is a
 touchdown. The harness is deterministic: two runs of one build compare as `BETTER {}`, `WORSE {}`
 and `CHANGED {}`.
+
+### Flight recordings
+
+Visual guidance records every approach, so a flight in the sim can be measured with the harness's
+own measures instead of judged by feel (VP-2, added in stage 3 of the redesign, 2026-11-04). In the
+app the lines go to `%APPDATA%\MSFSBlindAssist\logs\visual_guidance_flight.log`, through the log
+channel `visual_guidance_flight`, behind the usual time stamp and tags. The file rotates at 5 MB
+into `visual_guidance_flight.1.log` to `.3.log`; a frame line is about 300 bytes, so at 30 frames
+a second that is about every 10 minutes of guidance (5 at 60), and a long approach can span two files. The harness writes the same lines,
+without the log's prefix, with `--record FILE`.
+
+Each line starts `VGREC` and holds space-separated `key=value` fields in the invariant culture:
+
+| line | when | fields |
+|---|---|---|
+| `VGREC start` | Ctrl+V (`Initialize`) | `apt`, `rwy`, threshold `lat` and `lon`, course `crs` (true) and `crsMag`, threshold `elev`, glide path `gp`, `gsBias` and `flareBias` (the profile's glideslope and flare altitude biases) |
+| `VGREC f` | every update | `t` (seconds since Ctrl+V), `ph` (the phase), `lat`, `lon`, `alt` (MSL), `agl`, `gs`, `vs`, `trk` and `hdg` (magnetic), `pitch` (nose up +), `bank` (right +), `aoa`, the commands `dPitch` and `dBank`, the vertical law's target `tFpm` and height error `altErr` (+ high), cross-track `xte` (nm, + right of the centreline facing the runway) and straight-line `dist` (nm) to the threshold |
+| `VGREC say` | everything visual guidance speaks | `t`, `imm` (1: it interrupted), `text` (last, to the end of the line) |
+| `VGREC stop` | visual guidance off | `t` |
+
+Latitude and longitude have 7 decimals, `t` 3, the angles (`pitch`, `bank`, `aoa`, `dPitch`,
+`dBank`) 4, `xte` and `dist` 5, everything else 2. The record holds what visual guidance read, so in
+the harness's NOISE runs `vs`, `aoa` and `trk` carry the noise.
+
+`python tools/VirtualPilot/analyze_vg_flight.py RECORDING [--segment FROM,TO]` reads the file (with
+its rotated older parts first), splits it into approaches at each `start` line and prints for each:
+the runway, the duration and last phase; when it was established (within 0.1 nm and 5° of the course
+for 3 s, as the harness counts it); and on the final segment from then (5.0 to 0.5 nm along the
+course by default; use `--segment 3.0,0.3` for a light aircraft, as the harness does):
+
+- `finalXteRmsFt`, `finalXteMaxFt` and `pathRmsFt`, as in the results line (the path from `altErr`);
+- `pitchRateRmsDegS` and `bankRateRmsDegS`, how fast the commands moved;
+- `followPitchRmsDeg` and `followBankRmsDeg`, the RMS of command minus actual: how closely the pilot,
+  or the autopilot, flew the tones;
+- the sensor noise: the standard deviation of `vs`, `aoa` and `trk` around their centred 1 s moving
+  average, which is how the NOISE family's assumed spreads can be checked against the sim;
+
+and for the whole approach `touchdownVsFpm`, the descent rate at the first frame whose wheels
+(`alt − elev − flareBias`) are at or below the runway. The harness stops a run at wheel contact and
+records no frame there, so when the last frame is above the runway but the next would reach it, that
+next frame is extrapolated from the last two; an approach that never got that low reads NA. Last,
+bank callouts a minute.
+
+Checked against the harness on 2026-11-04, a recording of `--trace` against the results line the
+same run prints:
+
+| run | measure | script | harness |
+|---|---|---|---|
+| `FINAL-A-JET-x0.2R-h+200-d0.5` | `finalXteRmsFt` | 20.7 | 20.7 |
+| | `pathRmsFt` | 18.0 | 18.0 |
+| | `pitchRateRmsDegS` | 0.0085 | 0.0084 |
+| | `bankRateRmsDegS` | 0.0662 | 0.0662 |
+| | `touchdownVsFpm` | 388 | 388 |
+| `NOISE-A-JET-f30` | noise in `vs`, `aoa`, `trk` | 29.5 fpm, 0.197°, 0.198° | assumed 30 fpm, 0.2°, 0.2° |
+
+The pitch rate differs by 1.2 % because the commands are recorded to 4 decimals. A NOISE run's
+touchdown sink from the record (262 fpm) is not the harness's (366): the record has the noisy
+vertical speed visual guidance read, the harness the true one.
 
 ### Baseline: today's visual guidance (2026-11-02)
 

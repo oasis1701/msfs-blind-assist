@@ -37,13 +37,21 @@ static class ApproachRunner
     public static int Run(Options opt)
     {
         if (opt.SelfTest) return ApproachSelfTest.Run();
+        if (opt.Record != null && opt.Trace == null && opt.Scenario == null)
+        {
+            Console.WriteLine("--record needs --trace or --scenario: one recording per run, not the whole matrix");
+            return 2;
+        }
+        // The flight recording (VP-2), as the app writes it to visual_guidance_flight.log.
+        using var recording = opt.Record != null ? new StreamWriter(opt.Record) : null;
+        Action<string>? record = recording != null ? recording.WriteLine : null;
 
         if (opt.Trace != null)
         {
             var sc = ApproachScenarios.All().FirstOrDefault(s => s.Name == opt.Trace)
                   ?? ApproachScenarios.All().FirstOrDefault(s => s.Name.Contains(opt.Trace, StringComparison.OrdinalIgnoreCase));
             if (sc == null) { Console.WriteLine($"no approach scenario matches {opt.Trace}"); return 2; }
-            var m = RunOne(sc, Console.WriteLine);
+            var m = RunOne(sc, Console.WriteLine, record);
             Console.WriteLine(m.ToResultsLine(sc.Name));
             return 0;
         }
@@ -58,7 +66,7 @@ static class ApproachRunner
             int n = 0;
             foreach (var sc in scenarios)
             {
-                var m = RunOne(sc, trace: null);
+                var m = RunOne(sc, trace: null, record);
                 results.WriteLine(m.ToResultsLine(sc.Name));
                 endReasons[m.EndReason] = endReasons.TryGetValue(m.EndReason, out int c) ? c + 1 : 1;
                 if (++n % 25 == 0 || n == scenarios.Count)
@@ -75,8 +83,18 @@ static class ApproachRunner
         return 0;
     }
 
-    /// <summary>Flies one scenario to its end. With <paramref name="trace"/>, prints a frame every 0.5 simulated seconds.</summary>
-    public static ApproachMetrics RunOne(ApproachScenario sc, Action<string>? trace)
+    // Set by reflection, so this harness still builds against an app from before the recording
+    // existed: the baseline procedure flies today's harness against the stage-1 app
+    // (docs/virtual-pilot.md). The self-test's record-hook check fails if the hook is renamed.
+    internal static readonly System.Reflection.PropertyInfo? FlightRecordHook = typeof(VisualGuidanceManager)
+        .GetProperty("FlightRecordForHarness", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    private static readonly Action<string> NoRecord = _ => { };
+
+    /// <summary>
+    /// Flies one scenario to its end. With <paramref name="trace"/>, prints a frame every 0.5 simulated
+    /// seconds; with <paramref name="record"/>, receives the flight recording's lines (VP-2).
+    /// </summary>
+    public static ApproachMetrics RunOne(ApproachScenario sc, Action<string>? trace, Action<string>? record = null)
     {
         var rwy = sc.Runway;
         var profile = new VisualGuidanceProfile();
@@ -87,6 +105,7 @@ static class ApproachRunner
         {
             var speech = new ApproachSpeech(() => t);
             var vg = new VisualGuidanceManager(speech) { HeadlessForHarness = true };
+            FlightRecordHook?.SetValue(vg, record ?? NoRecord);
             vg.Toggle();
             vg.Initialize(rwy.Runway, rwy.Airport, HandFlyWaveType.Triangle, 0.0, HandFlyWaveType.Sine, 0.0, false, profile);
 

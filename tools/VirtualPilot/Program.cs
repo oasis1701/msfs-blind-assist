@@ -1440,7 +1440,7 @@ sealed class Options
 {
     public string Mode = "all"; public int Airports = 100; public List<string>? Icaos;
     public (int i, int n)? Shard; public int TaxiPerAirport = 6; public string Out = ""; public string? Trace;
-    public string? Scenario; public bool SelfTest;   // approach mode
+    public string? Scenario; public bool SelfTest; public string? Record;   // approach mode
     public static Options? Parse(string[] a)
     {
         if (a.Length == 0) { Console.WriteLine("usage: VirtualPilot landings|taxi|all [options] (see source header)"); return null; }
@@ -1457,6 +1457,7 @@ sealed class Options
                 case "--trace": o.Trace = a[++i]; break;
                 case "--scenario": o.Scenario = a[++i]; break;
                 case "--selftest": o.SelfTest = true; break;
+                case "--record": o.Record = a[++i]; break;
                 default: Console.WriteLine($"unknown option {a[i]}"); return null;
             }
         }
