@@ -26,6 +26,9 @@ internal static class FenixChannelNdRoute
     /// <summary>The name the route layer's status row and problems carry.</summary>
     public const string LayerName = "Route";
 
+    /// <summary>The name the missed approach's status row and problem carry (field 44 in another shape).</summary>
+    public const string MissedApproachName = "Missed approach";
+
     /// <summary>The name the bottom right label's layer carries.</summary>
     public const string LabelsLayerName = "Terrain and weather";
 
@@ -113,6 +116,10 @@ internal static class FenixChannelNdRoute
         if (problem is not null) rows.Add($"{LayerName}: not available, {problem}");
         else if (route is not null) rows.AddRange(Rows(frame!, route, header, status.Value!).Rows);
 
+        // Field 44 in another shape: the route reads as if it were absent, and one row says so in the missed approach's place.
+        string? missedProblem = problem is null ? route?.MissedApproachProblem : null;
+        if (missedProblem is not null) rows.Add($"{MissedApproachName}: not available, {missedProblem}");
+
         if (status.IsOk) rows.AddRange(StatusRows(header, status.Value!));
         rows.AddRange(RingRows(header, FenixChannelNdTraffic.TcasRingDrawn(s.Push, header)));
         if (problem is null && route is not null && frame is not null && header.Mode is "ARC" or "NAV")
@@ -120,7 +127,9 @@ internal static class FenixChannelNdRoute
             rows.AddRange(FixInfoRows(frame, route));
         }
 
-        return new FenixNdLayer(rows, problem is null ? null : $"{LayerName}: {problem}", null);
+        string? layerProblem = problem is not null ? $"{LayerName}: {problem}"
+            : missedProblem is not null ? $"{MissedApproachName}: {missedProblem}" : null;
+        return new FenixNdLayer(rows, layerProblem, null);
     }
 
     /// <summary>
@@ -450,8 +459,8 @@ internal static class FenixChannelNdRoute
     // The range rings (sitting 1, Step 12): ARC a ring with no label at a quarter of the range and two labeled at half
     // and three quarters; ROSE NAV and PLAN a dashed ring labeled a quarter of the range and the solid compass ring
     // labeled half. At range 10 the TCAS ring (2.5 NM) hides the dashed ring at 2.5 NM, the quarter of the range: ARC
-    // draws no ring there with the TCAS on, and ROSE NAV keeps the "2.5" label only (sitting 3). Whether the TCAS ring is
-    // drawn is FenixChannelNdTraffic.TcasRingDrawn's to say.
+    // draws nothing there with the TCAS on, and ROSE NAV draws only the ring's "2.5" label, listed as "label only"
+    // (sitting 3). Whether the TCAS ring is drawn is FenixChannelNdTraffic.TcasRingDrawn's to say.
     private static IEnumerable<string> RingRows(FenixNdData header, bool tcasRing)
     {
         if (!NumberParsing.TryParseExternal(header.Range, out double range) || !(range > 0) || double.IsInfinity(range))
@@ -470,7 +479,9 @@ internal static class FenixChannelNdRoute
         }
         else if (header.Mode is "NAV" or "PLAN")
         {
-            if (!hidden) yield return $"Map: range ring {Figure(range / 4)}, {dashed}";
+            yield return hidden
+                ? $"Map: range ring {Figure(range / 4)}, label only"
+                : $"Map: range ring {Figure(range / 4)}, {dashed}";
             yield return $"Map: range ring {Figure(range / 2)}, {Words(LookItem.CompassRing)}";
         }
     }

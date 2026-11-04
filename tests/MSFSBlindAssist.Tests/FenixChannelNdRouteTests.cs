@@ -528,6 +528,27 @@ public class FenixChannelNdRouteTests
             more: r => r.Message(44, new FenixChannelProtoWriter().Varint(1, 0)))));                // 44.1 = 0
     }
 
+    [Theory]
+    [InlineData("44")]
+    [InlineData("44.1")]
+    public void A_wrong_shape_field_44_never_takes_the_route_down(string wrong)
+    {
+        // Ruling 94: 44 is only the missed approach's flag. In another shape the route reads as if it were absent and one
+        // row says so in the missed approach's place, reported like another layer's problem.
+        Action<FenixChannelProtoWriter> more = wrong == "44"
+            ? r => r.Varint(44, 1)
+            : r => r.Message(44, new FenixChannelProtoWriter().Double(1, 1.0));
+        var reported = new List<string>();
+
+        string[] rows = Rows(Snapshot(MissedApproach(), option: 0, more: more), reported);
+
+        Assert.Equal([Line, "Map: ALPHA, white diamond, 10.0 NM ahead"], rows.Where(r => r.StartsWith("Map: ") && !r.StartsWith("Map: range ring")));
+        Assert.Single(rows, r => r.StartsWith("Missed approach:"));
+        Assert.Contains($"Missed approach: not available, field {wrong} has the wrong shape", rows);
+        Assert.DoesNotContain(rows, r => r.StartsWith("Route:"));
+        Assert.Equal([$"Missed approach: field {wrong} has the wrong shape"], reported);
+    }
+
     [Fact]
     public void The_missed_approach_follows_the_route_layers_modes()
     {

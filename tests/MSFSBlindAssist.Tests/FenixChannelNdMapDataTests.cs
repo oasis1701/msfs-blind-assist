@@ -381,6 +381,32 @@ public class FenixChannelNdMapDataTests
         Assert.Single(FenixChannelNdMapData.Rows(Points([Lgc]), RoseNav(), Decode(null)).Rows);
     }
 
+    [Fact]
+    public void A_wrong_shape_field_44_leaves_the_map_points_filtering_as_with_44_absent()
+    {
+        // Ruling 94: the route still decodes, 44 reads as absent, so the missed approach's waypoint is listed as a map point.
+        FenixChannelProtoWriter missedSymbol = new FenixChannelProtoWriter().Message(4,
+            new FenixChannelProtoWriter().Double(1, Lgc.Lat).Double(2, Lgc.Lon).Varint(3, 4).Varint(4, 1).String(6, "LGC"));
+        foreach (Action<FenixChannelProtoWriter> bad in new Action<FenixChannelProtoWriter>[]
+        {
+            r => r.Varint(44, 1), r => r.Message(44, new FenixChannelProtoWriter().Double(1, 1.0))
+        })
+        {
+            var remote = new FenixChannelProtoWriter()
+                .Message(2, missedSymbol)
+                .Message(192, new FenixChannelProtoWriter().Double(1, Gate.Latitude).Double(2, Gate.Longitude));
+            bad(remote);
+            var wrapper = FenixChannelPush.From(new FenixChannelProtoWriter().Message(1, remote).ToArray())!;
+            wrapper.TryGet(1, out FenixChannelField field);
+            FenixChannelSection<FenixRoute> read = FenixChannelRoute.Decode(field.AsMessage()!);
+
+            Assert.True(read.IsOk, read.Problem);
+            Assert.False(read.Value!.MissedApproachDrawn);
+            Assert.NotNull(read.Value.MissedApproachProblem);
+            Assert.Single(FenixChannelNdMapData.Rows(Points([Lgc]), RoseNav(), read.Value).Rows);
+        }
+    }
+
     private static FenixChannelProtoWriter ActiveSymbol(string ident, double lat, double lon)
         => new FenixChannelProtoWriter().Message(4,
             new FenixChannelProtoWriter().Double(1, lat).Double(2, lon).Varint(3, 4).String(6, ident));

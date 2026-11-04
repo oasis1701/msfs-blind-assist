@@ -332,7 +332,7 @@ public class FenixChannelNdTrafficTests
     {
         // Sitting 3: ROSE 10 drew the ticks and the "2.5" label and no dashed ring; ARC 10 drew dashed rings at 5 and 7.5
         // only. Both with the TCAS out of standby.
-        Assert.Equal(["Map: range ring 5, solid ring"], RangeRings(Nav, 10, Traffic([])));
+        Assert.Equal(["Map: range ring 2.5, label only", "Map: range ring 5, solid ring"], RangeRings(Nav, 10, Traffic([])));
         Assert.Equal(["Map: range ring 5, dashed ring", "Map: range ring 7.5, dashed ring"], RangeRings(Arc, 10, Traffic([])));
 
         // In standby (sitting 1's b-rose-10) the dashed ring is drawn, and with no field 5 at all.

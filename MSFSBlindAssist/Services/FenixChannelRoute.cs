@@ -117,6 +117,9 @@ internal sealed record FenixRoute(
     /// </summary>
     public bool MissedApproachDrawn { get; init; }
 
+    /// <summary>Why field 44 could not be read ("field 44.1 has the wrong shape"); null when it was. Never fails the route.</summary>
+    public string? MissedApproachProblem { get; init; }
+
     /// <summary>The FIX INFO entries that hold a fix (2.13); an empty entry is none.</summary>
     public IReadOnlyList<FenixFixInfo> FixInfos { get; init; } = [];
 }
@@ -142,9 +145,14 @@ internal static class FenixChannelRoute
         FenixChannelPush? ndPosition = walk.Part(push, Remote.NdPosCapt, "");
         FenixChannelPush? planCenter = walk.Part(push, Remote.CduCenterCapt, "");
 
-        FenixChannelPush? options = walk.Part(push, Remote.RouteOptionsCapt, "");
+        // 44 is only the missed approach's visibility flag: it is read on a walk of its own, so a wrong shape there (44 or
+        // 44.1) never fails the route; the flag then reads as absent and the problem is carried for the route layer.
+        var optionsWalk = new Walk();
+        FenixChannelPush? options = optionsWalk.Part(push, Remote.RouteOptionsCapt, "");
         bool missedApproachDrawn = options is not null
-            && walk.Flag(options, RouteOptionsData.GoAroundVisible, "44");
+            && optionsWalk.Flag(options, RouteOptionsData.GoAroundVisible, "44");
+        string? missedApproachProblem = optionsWalk.Wrong is { } badOptions ? $"field {badOptions} has the wrong shape" : null;
+        if (missedApproachProblem is not null) missedApproachDrawn = false;
 
         FenixLatLon here = walk.Point(position, "192", LatLon.Latitude, LatLon.Longitude);
         FenixLatLon? nd = ndPosition is null ? null : walk.Point(ndPosition, "56", NdPositionData.Lat, NdPositionData.Lon);
@@ -204,7 +212,8 @@ internal static class FenixChannelRoute
             NdPosition = nd,
             PlanCenter = center,
             FixInfos = fixInfos,
-            MissedApproachDrawn = missedApproachDrawn
+            MissedApproachDrawn = missedApproachDrawn,
+            MissedApproachProblem = missedApproachProblem
         });
     }
 
