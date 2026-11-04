@@ -155,24 +155,35 @@ public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
 
 Every concrete aircraft declares its own `GetVisualGuidanceProfile()` override — `FlyByWireA320Definition`, `FenixA320Definition`, and `PMDG777Definition` each spell out a full profile, so the math is explicitly keyed per airframe and the FBW / Fenix glidepath biases can be calibrated independently. The `BaseAircraftDefinition` default is only a fallback for aircraft with no visual-guidance tuning. The Fenix A320's approach AoA / Vref / rate caps are the values validated in earlier flight testing — left unchanged; only its glidepath biases (60 / 12) are still estimates.
 
-## How PID Control Works
+## How the guidance law works
 
-The controller combines three terms to calculate desired bank (lateral) and pitch (vertical) commands:
+There is no integral term anywhere. Each update computes a desired bank and a desired pitch from the
+aircraft's position, track and vertical speed; the desired tone plays them.
 
-### Proportional (P)
-- **What it does**: Provides correction proportional to the error
-- **Example**: 1 NM off centerline → commands 5.0° bank
-- **Effect**: Stronger values = more aggressive intercept, but can overshoot
+**Lateral (bank)**, by distance from the extended centreline (`CalculateDesiredBank`):
 
-### Integral (I)
-- **What it does**: Accumulates error over time to eliminate steady-state drift
-- **Example**: Aircraft drifting 0.1 NM left in crosswind → integral builds correction until drift stops
-- **Effect**: Stronger values = faster drift elimination, but can cause oscillation
+- Behind the runway (the Extending phase): bank toward the reciprocal heading, 0.5° per degree of
+  heading error, at most 20°.
+- More than 2 nm off: fly a 60° intercept heading; from 1.5 to 2 nm, a 45° one
+  (`CalculateHeadingInterceptBank`: 0.5° of bank per degree of heading error, at most 25°).
+- Arc capture, 1.5 nm down to 0.05 nm: a target heading of the course plus 30° per nm of offset
+  toward the line, less 12 × the cross-track rate (damping), at most 45° off the course. Bank is the
+  track error to that heading × the speed factor √(ground speed / Vref), at most 15°.
+- Precision track, inside 0.05 nm: bank = P on the cross-track (120° per nm) + D on its rate (12) +
+  the track error to the course, each × the speed factor, at most 10°.
 
-### Derivative (D)
-- **What it does**: Resists rapid changes to prevent overshoot
-- **Example**: Approaching centerline quickly → derivative dampens correction to prevent overshoot
-- **Effect**: Stronger values = smoother but slower corrections
+Above 100 ft the track error uses the GPS ground track, so a crab into the wind is not corrected
+away; below 100 ft it uses the heading, to decrab.
+
+**Vertical (pitch)** (`CalculateDesiredPitch`): a target vertical speed is the runway's natural
+descent rate (ground speed × tan of the glide path angle) plus 2 fpm per foot of height error, never
+a climb and never more than `min(−1500, 1.3 × natural)`; inside 1 nm it is the natural rate alone.
+The desired pitch is the nominal pitch (the smoothed live angle of attack minus the glide path
+angle) + P on the vertical-speed error (0.005° per fpm) + D on that error's rate (0.002° per fpm/s).
+In the flare it is the profile's fixed flare pitch.
+
+Every limit, smoothing filter and derivative in both laws runs on the measured frame time (VG-20;
+see [Bank-rate / pitch-rate caps](#bank-rate--pitch-rate-caps)).
 
 ## Current PID Parameters
 
@@ -187,7 +198,9 @@ Constants and instance fields in `VisualGuidanceManager.cs` (defaults shown — 
 | `LATERAL_RATE_DAMPING` | 12.0 | Cross-track rate damping (derivative) |
 | `LATERAL_HEADING_GAIN` | 1.0 | Track-error alignment gain |
 | `airspeedReferenceKnots` `[profile]` | 140 | Reference Vref for `sqrt(GS / Vref)` scaling |
-| `maxBankRateDegPerSec` `[profile]` | 3.0 | Cap on commanded bank change rate (deg/sec) |
+| `maxBankRateDegPerSec` `[profile]` | 3.0 | Cap on commanded bank change rate (deg/sec), applied over the measured frame time |
+| `CROSS_TRACK_RATE_WINDOW_S` | 4.0 s | Time window the cross-track rate (the D term) is measured over, oldest to newest sample |
+| `CROSS_TRACK_RATE_SMOOTHING_PER_SECOND` | 0.85 | Exponential smoothing of that rate, per second (α = 0.85^dt) |
 | `ARC_MODE_ENTRY_NM` | 1.5 | Distance at which arc-capture mode begins |
 | `ARC_INTERCEPT_GAIN` | 30.0 | Intercept-angle gain inside arc capture |
 | `ARC_RATE_DAMPING` | 12.0 | Damping inside arc capture |
@@ -205,14 +218,16 @@ The vertical path is **FPM-based** (target FPM derived from 3° glideslope + alt
 | `GLIDESLOPE_LOCK_DISTANCE_NM` | 1.0 | Inside this distance, lock to steady 3° descent — no altitude correction |
 | `MAX_DESCENT_RATE_FPM` | -1500 | Safety clamp on commanded descent. Applied **dynamically** as `min(-1500, natural × 1.3)` so a legitimate steep-approach natural rate (Aspen 6.59° × 130 kt = ~-1521 fpm) is never clipped — the clamp always allows the natural rate plus correction headroom. |
 | `typicalApproachAoaDeg` `[profile]` | 6.0° | Nominal pitch = -3° + AoA. PMDG 777 overrides to 4.5°. |
-| `maxPitchRateDegPerSec` `[profile]` | 2.5 | Cap on commanded pitch change rate (deg/sec) |
+| `maxPitchRateDegPerSec` `[profile]` | 2.5 | Cap on commanded pitch change rate (deg/sec), applied over the measured frame time |
 | `glideslopeAltitudeBiasFt` `[profile]` | 60 *(est.)* | Added to ideal glidepath so VG matches the real ILS (TCH + datum). PMDG 777 = 80 (measured). |
 | `flareAltitudeBiasFt` `[profile]` | 12 *(est.)* | Subtracted from measured altitude before flare/touchdown checks → true gear height. PMDG 777 = 30 (measured). |
 | `flareTriggerWheelHeightFt` `[profile]` | 30 | True gear height at which the flare cue announces. PMDG 777 = 40 (matches autopilot autoland). |
 | `TOUCHDOWN_ALTITUDE_FT` | 5.0 | Touchdown phase entry — true main-gear height (`wheelHeightAGL`) |
 | `FPM_P_GAIN` | 0.005 | Pitch correction per FPM error (deg per FPM) |
 | `FPM_D_GAIN` | 0.002 | Pitch damping per FPM/sec error rate |
-| `FPM_SMOOTHING_FACTOR` | 0.7 | EMA on raw VS reading |
+| `FPM_SMOOTHING_FACTOR_PER_SECOND` | 0.7 | Exponential smoothing of the raw VS reading, per second (α = 0.7^dt) |
+| `AOA_SMOOTHING_FACTOR_PER_SECOND` | 0.7 | Exponential smoothing of the live angle of attack, per second |
+| `FPM_ERROR_RATE_WINDOW_S` | 1.0 s | Time window the VS error's rate (the D term) is measured over |
 | `flareTargetPitchDeg` `[profile]` | 6.0° (A320) | Per-aircraft target pitch commanded in flare. PMDG 777 = 4.5°. |
 | `MAX_FLARE_PITCH_RATE` | 1.5 | Cap on pitch rate during flare (deg/sec) |
 
@@ -230,7 +245,7 @@ The pitch PID has **positive coefficients on `fpmError` / `fpmErrorRate`** — N
 | Overshoots centerline | Tracking gain too high or damping too low | Decrease `LATERAL_GAIN_TRACKING` or increase `LATERAL_RATE_DAMPING` |
 | Oscillates across centerline at short final | Bank rate cap too loose for the airframe | Lower `maxBankRateDegPerSec` in the airframe's `VisualGuidanceProfile` |
 | Sits 50–100 ft above glideslope and never converges | Vertical gain too low | Increase `GLIDESLOPE_GAIN` |
-| Tone frequency twitches around centre on still air | FPM smoothing too weak | Raise `FPM_SMOOTHING_FACTOR` toward 0.85 |
+| Tone frequency twitches around centre on still air | FPM smoothing too weak | Raise `FPM_SMOOTHING_FACTOR_PER_SECOND` toward 0.85 |
 | Aircraft-specific: 777/747 pitch lag feels jerky | Pitch rate cap too tight or too loose | Tune `maxPitchRateDegPerSec` in the airframe profile |
 
 ### Tuning workflow
@@ -262,7 +277,6 @@ The pitch PID has **positive coefficients on `fpmError` / `fpmErrorRate`** — N
 **With ground track:**
 - PID detects actual movement direction vs. runway heading
 - Immediately sees drift even if nose is pointed correctly
-- Integral term eliminates drift automatically
 
 **Example:**
 ```
@@ -289,6 +303,14 @@ double actualTrackAngle = cachedGroundTrack ?? heading;
 ## Bank-rate / pitch-rate caps
 
 The lateral controller is rate-limited by `maxBankRateDegPerSec` (default 3°/s for A320; aircraft profile overrideable) and the vertical controller by `maxPitchRateDegPerSec` (default 2.5°/s; profile overrideable for heavier airframes). These caps prevent the desired tone from jumping suddenly when the PID computes a large step correction — both the audio and the airplane's response stay smooth.
+
+Guidance updates on every sim frame (the visual guidance data arrives per `SIM_FRAME`), so every limit and filter runs on the measured frame time through `VisualGuidanceTiming` (VG-20): a cap moves the command at most rate × dt, a smoothing factor is per second, and a derivative is a rate over a time window. Until 2026-11-04 they were per-update constants written for one update a second, so at 30 frames a second the 3°/s cap allowed about 90°/s. Three edges:
+
+- The first update after activation is not rate-limited: the tone starts where the guidance says, not ramping up from level.
+- The frame time counts at most one second, so a pause or a stalled frame stream moves the command no more than one second's worth; two updates at the same instant move nothing.
+- A clock that steps back counts as no time, never a reverse step.
+
+The VirtualPilot approach harness measured the change ([virtual-pilot.md](virtual-pilot.md), "Stage 2: real-time limits"): final tracking held, and with assumed sensor noise the pitch command's rate of change fell from 27.6°/s to 0.11°/s at 30 frames a second.
 
 There is no integral-windup machinery to worry about today: the vertical path is FPM-based PD, and the lateral path uses rate damping rather than an explicit integrator at the precision-track stage. If a future contributor adds an integral term, document the windup strategy alongside it.
 

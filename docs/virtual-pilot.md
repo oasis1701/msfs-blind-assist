@@ -315,9 +315,93 @@ identical to the stage-1 baseline's; `compare_approach.py` prints `BETTER {}`, `
   and 44.1 ft (368.5 and 41.0 ft without noise).
 
 The model is simpler than the sim: a point mass, speed held, a fixed trim angle of attack, no ground
-effect, flat terrain, a constant wind, no turbulence, and sensor noise only in the NOISE runs. A real light aircraft at
-6° of pitch with the power off would slow down and sink, so the float is larger here than in the
-sim. It is still the finding it is: the fixed-pitch flare is what the redesign replaces.
+effect, flat terrain, a constant wind, no turbulence, and sensor noise only in the NOISE runs. A real
+light aircraft at 6° of pitch with the power off would slow down and sink, so the float is larger
+here than in the sim. It is still the finding it is: the fixed-pitch flare is what the redesign
+replaces.
+
+### Stage 2: real-time limits (2026-11-04)
+
+Every rate limit, smoothing filter and derivative in visual guidance now runs on the measured frame
+time (VG-20), with the numbers it was designed with at one update a second. Measured at 3a3bac7b1
+against `approach_baseline_v2` (`approach_stage2`): `BETTER` pitchJitterDeg down 111,
+pitchRateRmsDegS down 118, now touches down 20, bankRateRmsDegS down 40, bankCalloutsPerMin down 7,
+|selfFeedback10s| down 1; `WORSE` bankCalloutsPerMin up 17, bankRateRmsDegS up 7, maxDescentFpm up 9;
+`CHANGED` touchdownAlongFt moved 20, endReason 28.
+
+The plan's three acceptance checks:
+
+- **A, lateral: passed.** No `finalXteRmsFt`, `overshootFt` or "no longer established" line, and no
+  touchdown farther from the centreline. Jet `finalXteRmsFt` moved by −3.6 to +2.7 ft (median +0.2)
+  over 70 runs; the median is 21.8 ft against the baseline's 21.2. On the 24 jet finals started
+  0.2 nm off it rose by 0.1 to 0.8 ft, and their worst point on the final segment by up to 20.5 ft
+  (runway A, 0.2 nm left, 1.0 s pilot: 47.3 to 67.8 ft).
+- **B, frame rate: five of six checks passed, one failed.** On `FPS-A-JET-f{20,30,60}`,
+  `bankRateRmsDegS` is 0 at all three, `finalXteRmsFt` 0.0 and `pathRmsFt` 2.4 ft at all three, and
+  the noisy jet's `pitchRateRmsDegS` is 0.1073 and 0.1072 at 30 and 60. The failure:
+  `pitchRateRmsDegS` on the clean finals is 0.0185, 0.0226 and 0.0313°/s (max/min 1.69, limit 1.10).
+  A per-frame dump shows all of it is two steps at 1 nm, where the vertical law switches to holding
+  the natural descent rate (`GLIDESLOPE_LOCK_DISTANCE_NM`): +0.043° entering the lock and −0.012°
+  one second later, when that step leaves the 1 s derivative window. The steps are the same size at
+  every frame rate; a fixed step adds to an RMS rate as the square root of the frame rate (√3 = 1.73,
+  measured 1.69), and without the two steps the measure is 0.0002°/s at all three. Stage 4 removes
+  the lock. A 0.04° step is about 2 Hz on the tone.
+- **C, calmer: passed.** `pitchRateRmsDegS` with noise fell from 27.6 to 0.107°/s (jet, 30 frames a
+  second), 90.1 to 0.107 (jet, 60), 27.8 to 0.135 (light, 30) and 90.2 to 0.136 (light, 60). The
+  bank command with noise also calmed: `bankRateRmsDegS` 8.5 and 17.0 to 2.6 and 2.8°/s (jet), 6.6
+  and 13.0 to 2.5 and 2.8 (light).
+
+Since A passed at the design values (S0), the plan chose S0 and needed no sweep. The sweep was flown
+anyway, for information, with the bank rate in the default profile and the two cross-track
+constants changed:
+
+| id | bank rate (°/s) | cross-track rate window (s) | its smoothing per second | median jet `finalXteRmsFt` | jet 0.2 nm finals: RMS change | worst-point change | noisy jet `bankRateRmsDegS` f30 / f60 |
+|---|---|---|---|---|---|---|---|
+| baseline | 3 (per update) | 5 samples | 0.85 per update | 21.2 | | | 8.49 / 16.97 |
+| **S0** (chosen) | 3 | 4.0 | 0.85 | 21.8 | +0.1 to +0.8 | −0.1 to +20.5 | 2.64 / 2.80 |
+| S1 | 3 | 1.0 | 0.85 | 21.8 | +0.2 to +1.0 | +0.2 to +21.1 | 2.64 / 2.80 |
+| S2 | 3 | 1.0 | 0.5 | 21.4 | +0.1 to +0.4 | +0.2 to +7.7 | 2.64 / 2.80 |
+| S3 | 6 | 1.0 | 0.5 | 21.2 | −0.1 to +0.6 | 0 to +3.0 | 4.64 / 5.27 |
+| S4 | 10 | 1.0 | 0.5 | 21.1 | −0.2 to +0.6 | −0.9 to +1.3 | 6.48 / 8.03 |
+| S5 | 10 | 0.5 | 0.2 | 21.2 | −0.1 to +0.7 | 0 to +14.3 | 6.48 / 8.03 |
+| S6 | 90 | 0.15 | 0.0076 | 21.2 | −0.1 to 0 | 0 | 8.49 / 16.97 |
+
+Every row passes A and C and fails B the same way. S6 reproduces today's lateral behaviour at 30
+frames a second exactly, as expected. S2 keeps the profiles' bank rates and tracks the 0.2 nm finals
+a little tighter than S0; S3 to S5 double or more every aircraft's bank rate, make the bank command
+under noise 1.7 to 3 times rougher, and S3 to S6 leave 4 to 8 light runs floating past the runway's
+end again.
+
+Every other `WORSE` and `CHANGED` line, explained:
+
+- `bankCalloutsPerMin` up (17 light finals): the number of callouts is the same or lower (64–75 to
+  65–66 on the offset finals, 1 to 1 on the centreline ones); the runs are about 90 s shorter
+  because they now land instead of floating past the end.
+- `bankRateRmsDegS` up (7 light intercepts): 0.0012–0.0021 to 0.0016–0.0028°/s, the 20 % rule on
+  values near zero.
+- `maxDescentFpm` up (the 8 jet downwinds, 1,533 and 1,661 to 1,902 and 1,993 fpm, and the 160 kt
+  intercept, 1,079 to 1,340): both start level while the vertical law asks for a descent at once (the
+  downwinds 2,258 ft above the path, target 1,500 fpm; the intercept about 850 fpm). The command is
+  built from the smoothed vertical speed, which now has its designed 3 s smoothing instead of about
+  0.1 s, so it keeps asking for more descent until the smoothed rate catches up, and the pilot passes
+  the target. This is the vertical-speed law stage 4 replaces, and on the downwinds the Extending
+  phase stage 4 replaces too.
+- Now touching down (18 light finals with the 0.5 s pilot, and the 2 light NOISE runs): they still
+  climb out of the first flare (the fixed 6° pitch) and fall back to Final, as before. On the second
+  flare the pitch-up now ramps at the designed 1.5°/s, too slowly to stop a 500 fpm sink, so they
+  land, firmly: 384 fpm in the trace of `FINAL-A-LIGHT-x0-h0-d0.5`, 2,395 ft past the threshold.
+  Stage 6 replaces this flare.
+- `endReason` pastRunwayEnd to offRunway (28): the 12 light intercepts with the 0.5 s pilot now land
+  344 to 372 ft beside the runway, where their 1.0 s twins always landed (339 to 367 ft), with final
+  cross-track unchanged (for example 538.0 to 538.3 ft): the slow light capture, unchanged. The 16
+  downwinds now touch down 2,071 to 2,722 ft beside the runway near its far end, where they used to
+  pass the end in the flare 1,750 to 1,960 ft beside it: today's Extending, which stage 4 replaces.
+- `touchdownAlongFt` moved (20): the light aircraft with the 1.0 s pilot (17 finals, one intercept)
+  and both 90 kt light runs land 300 to 660 ft longer, with the flare's pitch now rising at its
+  designed 1.5°/s. Jets touch down 760 to 1,118 ft past the threshold (761 to 1,299 before).
+- Self-feedback: the jet's command moves 0.18° the other way per degree pitched after 3 s (0.67
+  before) and 1.37° after 10 s (1.52); the light aircraft's 0.09 and 0.69 (0.42 and 0.74). The
+  vertical-speed law still runs away from the pilot over 10 s; stage 4 replaces it.
 
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
