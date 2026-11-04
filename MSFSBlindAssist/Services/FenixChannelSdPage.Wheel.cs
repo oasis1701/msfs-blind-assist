@@ -8,14 +8,15 @@ namespace MSFSBlindAssist.Services;
 // page. Inert: only the tests call WheelRows until a later task wires the ComposeWheel seam.
 internal static partial class FenixChannelSdPages
 {
-    // What a gear's LGCIU value and a gear door's value read as. One line per measured value (Task 13 adds "down" and "in
-    // transit"); any other value reads "not available" in its row and is reported, never guessed.
-    private static readonly IReadOnlyDictionary<double, string> GearUnitWords = new Dictionary<double, string>
+    // What a gear's LGCIU value and a gear door's value read as. One line per measured value: the gear DOWN value (and the
+    // gear door's value with the gear down, if it is not Closed) is measured on the ground or on a gear extension (Task 1),
+    // the gear IN TRANSIT value by Task 13; any other value reads "not available" in its row and is reported, never guessed.
+    private static readonly IReadOnlyDictionary<double, string> WheelGearUnitWords = new Dictionary<double, string>
     {
         [FenixChannelFields.GearUnit.Up] = "up"
     };
 
-    private static readonly IReadOnlyDictionary<double, string> GearDoorWords = new Dictionary<double, string>
+    private static readonly IReadOnlyDictionary<double, string> WheelGearDoorWords = new Dictionary<double, string>
     {
         [FenixChannelFields.GearDoorPosition.Closed] = "closed"
     };
@@ -38,8 +39,8 @@ internal static partial class FenixChannelSdPages
     /// <para>Gear words. A gear value equal to <c>GearUnit.Up</c> reads "up" and a door value equal to
     /// <c>GearDoorPosition.Closed</c> reads "closed"; any other reads "LGCIU &lt;n&gt; not available" (a door:
     /// "not available") and is reported "field &lt;path&gt; has an unknown value &lt;v&gt;" without stopping the page.
-    /// Until "down" is measured (Task 13), a gear down on the ground therefore reads "LGCIU 1 not available, LGCIU 2 not
-    /// available": that is deliberate, and the switch commit waits on Task 13.</para>
+    /// Until "down" is measured (Task 1), a gear down on the ground therefore reads "LGCIU 1 not available, LGCIU 2 not
+    /// available": that is deliberate, and the WHEEL switch waits on Task 11's ground check.</para>
     /// </remarks>
     internal static FenixChannelRows WheelRows(FenixChannelSdPageContext ctx)
     {
@@ -80,9 +81,9 @@ internal static partial class FenixChannelSdPages
         FenixChannelSdReader noseGear = gears.Message(FenixChannelFields.GearPositionData.Nose);
         FenixChannelSdReader leftGear = gears.Message(FenixChannelFields.GearPositionData.Left);
         FenixChannelSdReader rightGear = gears.Message(FenixChannelFields.GearPositionData.Right);
-        (double, double) nose = Lgcius(noseGear);
-        (double, double) left = Lgcius(leftGear);
-        (double, double) right = Lgcius(rightGear);
+        (double, double) nose = WheelLgcius(noseGear);
+        (double, double) left = WheelLgcius(leftGear);
+        (double, double) right = WheelLgcius(rightGear);
 
         double noseDoor = doors.Double(FenixChannelFields.GearDoorData.Nose);
         double leftDoor = doors.Double(FenixChannelFields.GearDoorData.LeftMain);
@@ -108,8 +109,8 @@ internal static partial class FenixChannelSdPages
         string doorPath = $"{FenixChannelFields.Remote.GearDoor}";
         var rows = new List<string>();
         if (landingGearControl) rows.Add("L/G CTL");
-        rows.Add(GearRow(ctx, "nose gear", $"{gearPath}.{FenixChannelFields.GearPositionData.Nose}", nose));
-        rows.Add(DoorWordRow(ctx, "nose gear door", $"{doorPath}.{FenixChannelFields.GearDoorData.Nose}", noseDoor));
+        rows.Add(WheelGearRow(ctx, "nose gear", $"{gearPath}.{FenixChannelFields.GearPositionData.Nose}", nose));
+        rows.Add(WheelGearDoorRow(ctx, "nose gear door", $"{doorPath}.{FenixChannelFields.GearDoorData.Nose}", noseDoor));
         if (steering) rows.Add("N/W STEERING");
         if (antiSkid) rows.Add("ANTI SKID");
         if (normalBrake) rows.Add("NORM BRK");
@@ -118,10 +119,10 @@ internal static partial class FenixChannelSdPages
         if (autoLow) rows.Add("AUTO BRK: LO");
         else if (autoMed) rows.Add("AUTO BRK: MED");
         else if (autoMax) rows.Add("AUTO BRK: MAX");
-        rows.Add(GearRow(ctx, "left gear", $"{gearPath}.{FenixChannelFields.GearPositionData.Left}", left));
-        rows.Add(DoorWordRow(ctx, "left gear door", $"{doorPath}.{FenixChannelFields.GearDoorData.LeftMain}", leftDoor));
-        rows.Add(GearRow(ctx, "right gear", $"{gearPath}.{FenixChannelFields.GearPositionData.Right}", right));
-        rows.Add(DoorWordRow(ctx, "right gear door", $"{doorPath}.{FenixChannelFields.GearDoorData.RightMain}", rightDoor));
+        rows.Add(WheelGearRow(ctx, "left gear", $"{gearPath}.{FenixChannelFields.GearPositionData.Left}", left));
+        rows.Add(WheelGearDoorRow(ctx, "left gear door", $"{doorPath}.{FenixChannelFields.GearDoorData.LeftMain}", leftDoor));
+        rows.Add(WheelGearRow(ctx, "right gear", $"{gearPath}.{FenixChannelFields.GearPositionData.Right}", right));
+        rows.Add(WheelGearDoorRow(ctx, "right gear door", $"{doorPath}.{FenixChannelFields.GearDoorData.RightMain}", rightDoor));
         rows.Add($"brakes °C: {string.Join(", ", brakeTemps.Select(FenixChannelSd.Whole))}");
 
         string[] releasedNames = Enumerable.Range(1, 4).Where(wheel => releasedWheels[wheel - 1])
@@ -139,24 +140,24 @@ internal static partial class FenixChannelSdPages
     }
 
     // One gear's two LGCIU positions.
-    private static (double, double) Lgcius(FenixChannelSdReader gear)
+    private static (double, double) WheelLgcius(FenixChannelSdReader gear)
         => (gear.Double(FenixChannelFields.GearUnitStatus.Lgciu1), gear.Double(FenixChannelFields.GearUnitStatus.Lgciu2));
 
     // "<label>: <LGCIU 1>, <LGCIU 2>": a position with no word reads "LGCIU <n> not available" and is reported.
-    private static string GearRow(FenixChannelSdPageContext ctx, string label, string path, (double, double) lgcius)
+    private static string WheelGearRow(FenixChannelSdPageContext ctx, string label, string path, (double, double) lgcius)
     {
-        string first = GearWord(ctx, GearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu1}", lgcius.Item1, "LGCIU 1 not available");
-        string second = GearWord(ctx, GearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu2}", lgcius.Item2, "LGCIU 2 not available");
+        string first = WheelGearWord(ctx, WheelGearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu1}", lgcius.Item1, "LGCIU 1 not available");
+        string second = WheelGearWord(ctx, WheelGearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu2}", lgcius.Item2, "LGCIU 2 not available");
         return $"{label}: {first}, {second}";
     }
 
     // "<label>: <word>" for a gear door.
-    private static string DoorWordRow(FenixChannelSdPageContext ctx, string label, string path, double value)
-        => $"{label}: {GearWord(ctx, GearDoorWords, path, value, "not available")}";
+    private static string WheelGearDoorRow(FenixChannelSdPageContext ctx, string label, string path, double value)
+        => $"{label}: {WheelGearWord(ctx, WheelGearDoorWords, path, value, "not available")}";
 
     // The word for a measured value (doubles compared exactly: the Fenix sends the enum's whole numbers as doubles), else
     // the unavailable words, with the value reported. 7 reads "7", 2.5 "2.5", in the invariant culture.
-    private static string GearWord(FenixChannelSdPageContext ctx, IReadOnlyDictionary<double, string> words, string path,
+    private static string WheelGearWord(FenixChannelSdPageContext ctx, IReadOnlyDictionary<double, string> words, string path,
         double value, string unavailable)
     {
         if (words.TryGetValue(value, out string? word)) return word;
