@@ -79,13 +79,13 @@ shared behavior and the E/WD alerts), 3.4, 4; answers 2 and 4.
 Who: whoever runs the plan; with subagents, the controller itself, never an implementer. A claim counts only once it is
 on the remote branch.
 
-- [ ] **Step 1: Check the plan is free on the remote.** `git fetch <remote>`, then
+- [x] **Step 1: Check the plan is free on the remote.** `git fetch <remote>`, then
   `git grep -e "^- \*\*Status:\*\*" -e "^- \*\*Claimed by:\*\*" <remote>/feat/fenix-display-channel -- docs/fenix-channel/plans/09-ewd-alerts.md`.
   Anything but "not started" and "none" means the plan is taken: stop.
-- [ ] **Step 2: Branch and claim.** Branch as in the index's workflow step 1 (`fc-p09-ewd-alerts`). In this file's
+- [x] **Step 2: Branch and claim.** Branch as in the index's workflow step 1 (`fc-p09-ewd-alerts`). In this file's
   "Execution record", set **Status** to claimed, **Claimed by** to your name and **Started** to today's date and the
   commit you branched from. Commit only that change: `docs(fenix-channel): claim plan 09`, with the `Plan: 09` trailer.
-- [ ] **Step 3: Push the claim.** `git fetch <remote>`, `git rebase <remote>/feat/fenix-display-channel`,
+- [x] **Step 3: Push the claim.** `git fetch <remote>`, `git rebase <remote>/feat/fenix-display-channel`,
   `git push <remote> HEAD:feat/fenix-display-channel`. If the rebase stops on these lines, someone claimed the plan
   first: `git rebase --abort` and stop. If the push is rejected, repeat this step. Task 1 starts only once the push has
   gone through.
@@ -147,7 +147,7 @@ in `docs/fenix-channel/evidence/09-ewd-alerts.md`; commit `docs(fenix-channel): 
   Only "AUTO BRK LO" was measured; the other two are the knob's other settings, and a text that never matches costs only a
   memo spoken without its color.
 
-- [ ] **Steps 1-5.** The rule of Global Constraints (the other column after the own one: owner question, as
+- [x] **Steps 1-5.** The rule of Global Constraints (the other column after the own one: owner question, as
   recommended); ordinal comparison. Tests with the measured lines: `A_title_is_found_by_its_joined_text` ("ELEC GEN 1
   FAULT" in ["c -GEN 1......OFF THEN ON", "uaELECu aGEN 1 FAULT"] → the second, amber; "ENG 1 FIRE" ↔ "urENG 1 FIREu "
   → red; "ENG 1 SHUT DOWN" ↔ "uaENG 1u afSHUT DOWNf" → amber; "AUTO FLT AP OFF" ↔ "urAUTO FLTu rAP OFF" → red),
@@ -179,7 +179,7 @@ in `docs/fenix-channel/evidence/09-ewd-alerts.md`; commit `docs(fenix-channel): 
   and `static void Speak(IReadOnlyList<FenixEwdAlertLine> lines, Accessibility.ScreenReaderAnnouncer announcer)` (in
   order: an interrupting line with `AnnounceImmediate`, every other with `Announce`).
 
-- [ ] **Steps 1-5.** The rules (spec 2.7):
+- [x] **Steps 1-5.** The rules (spec 2.7):
   1. Every step, whatever the verdict: an entries message other than the last one read (by reference) replaces the
      remembered list, unless it has Heartbeat set and no entries, or is not `ShapesOk` (the gate latches on it anyway).
      Its entries are classified then, once per message.
@@ -275,11 +275,11 @@ in `docs/fenix-channel/evidence/09-ewd-alerts.md`; commit `docs(fenix-channel): 
   call, `Step(snapshot, ctx.NowMs, Services.FenixChannelAnnouncementRows.IsMuted, p => ctx.Monitor.ReportFeatureProblem("E/WD alerts", p))`,
   then `Services.FenixChannelEwdAlertAnnouncer.Speak(lines, ctx.Announcer)`.
 
-- [ ] **Steps 1-4.** Test: `The_seam_takes_one_ewd_snapshot_and_speaks_what_the_announcer_returns` (a source test over
+- [x] **Steps 1-4.** Test: `The_seam_takes_one_ewd_snapshot_and_speaks_what_the_announcer_returns` (a source test over
   the partial: one `Snapshot(` call, naming `FenixChannelDisplay.Ewd`; `FenixChannelAnnouncementRows.IsMuted` passed to
   `Step`; `Speak(` with `ctx.Announcer`). One commit: `feat(fenix-channel): the E/WD alerts speak through the announcer
   host`.
-- [ ] **Step 5.** This is the plan's switch commit: build and test it on your own build, push it to `fc-p09-ewd-alerts`
+- [x] **Step 5.** This is the plan's switch commit: build and test it on your own build, push it to `fc-p09-ewd-alerts`
   on the remote if others should try it, and to `feat/fenix-display-channel` only once Task 5 has passed. If Task 5
   waits on the owner, Tasks 1-3 are pushed and Tasks 4 and 5 go under "Waiting on the owner".
 
@@ -319,7 +319,7 @@ only).
 
 ### Task 7 [controller]: Land
 
-- [ ] Set **Status** to landed with the landing date and commit (or to waiting on owner, naming what waits), fill in
+- [x] Set **Status** to landed with the landing date and commit (or to waiting on owner, naming what waits), fill in
   "Tests at landing", the Execution record and "Handoff to plan 12", and push as in the index's workflow steps 4-6.
 
 ## Handoff to plan 12
@@ -341,11 +341,21 @@ only).
   Full text: the rules of Task 3 with Task 1's measurements (the 3.84 s beat, heartbeats, the entry-to-line gap behind
   `LineWaitMs`, the blank that drops a fire from one list behind `LeaveHoldMs`, the memo titles), the owner's rulings (spec rows
   59 to 62), and the tests that pin each.
-- **To measure or hear in plan 12's flight.** LAND ASAP's entry and Title, whether its Name changes when its line turns from red
-  to amber, and `*AIR BLEED` as an entry. A power-up from a fresh cold and dark load with the app already running: the same path
-  should speak its start-up failures (row 62), so listen to how much it says. With memos on, how "T.O AUTO BRK.....MAX" sounds
-  with its dots when a failure hides its line, and whether IRS IN ALIGN 1 and 2, drawn as one "IR IN ALIGN > 7 MN", want a row in
-  the memo words table.
+- **To measure or hear in plan 12's flight.**
+  - LAND ASAP's entry and Title, whether its Name changes when its line turns from red to amber, and `*AIR BLEED` as an entry.
+  - **T.O INHIBIT and LDG INHIBIT, one takeoff and one landing, read in the entries log.** A new failure with no line is spoken
+    after 500 ms with no color. If the list carries an alert the warning computers are inhibiting, the app would speak it at
+    rotation or in the flare, when the aircraft itself stays silent. Not measured. If it happens, hold a no-line failure while
+    an inhibit memo is listed, so it is said with its color once its line appears; a new owner ruling and one test.
+  - A deliberate autopilot disconnect: Task 1 measured "AUTO FLT AP OFF" on the list 0.24 s after its red line, and the app already
+    announces the disconnect from the panel's own variables. If the voluntary one lists the same entry, it is heard twice, the second
+    interrupting, then "AUTO FLT AP OFF cleared". The owner may want that title left out or the panel's announcement to yield.
+  - A title that rewords itself under one key is not spoken again, and its "cleared" says the new words; no entry was seen doing it.
+  - A power-up from a fresh cold and dark load with the app already running: the same path should speak its start-up failures (row
+    62), so listen to how much it says.
+  - With memos on: how the T.O memo sounds with its dots ("T.O AUTO BRK green, .....MAX cyan" with its line, the same words with no
+    color when a failure hides it), and whether IRS IN ALIGN 1 and 2, drawn as one "IR IN ALIGN > 7 MN", want a row in the memo words
+    table.
 - **Requests for frozen files:** none. (Plan 01 keeps a bare heartbeat from replacing the snapshot's `Entries`; if Task
   1 finds heartbeats that carry a list, or an empty list sent with Heartbeat set, tell the owner: plan 01's rule would
   need a change.)
@@ -355,25 +365,38 @@ only).
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** in progress: Task 1 done (2026-11-04)
+- **Status:** landed 2026-11-04 (switch commit 5115f8f99); every check of Task 5 done in the sim that day, by ear; nothing waits on
+  the owner. What only a flight can settle is in "Handoff to plan 12".
 - **Claimed by:** Robin Kipp (robin24), 2026-11-04
-- **Worked by:** Robin Kipp with Claude
+- **Worked by:** Robin Kipp with Claude, with subagents for Tasks 2, 3 and 4 and the reviews
 - **Started:** 2026-11-04, from 1d29a73ee (plan 01's recorded base)
-- **Landed:**
-- **Tests at landing:**
-- **Tasks:** 0 done (claim 13062c072); 1 done.
-- **Waiting on the owner:**
+- **Landed:** 2026-11-04: the switch at 5115f8f99, the docs at 1c3bfb6f6, the final review's fixes at da89dab24, and this record.
+- **Tests at landing:** 19,172 passed, none failed, on the combined code after the rebase onto 268173964 (`ClaudeRulesHookTests` left
+  out, as the index says); 45 of them plan 09's (`FenixChannelEwdAlert*`).
+- **Tasks:** all done: 0 (claim 13062c072); 1 (through c26de7d68, the rulings 2e18e87aa); 2 (c75f321b4); 3 (cceca178d); 4 (5115f8f99);
+  5 (5d088e210, the ruling's test 1ab2ae82f); 6 (1c3bfb6f6); 7 (this record). Final review: ready to land, none critical, one
+  important (the phase inhibits, a question for plan 12's flight), nine minor; two test gaps and two doc slips fixed at da89dab24.
+- **Waiting on the owner:** nothing.
 - **In-sim results:** 2026-11-04, A321 IAE: in cruise, then the descent and landing, then at the LPPT gate (GEN 1 off and on, the
-  generator failure, TO CONFIG, an engine fire, CLR): `evidence/09-ewd-alerts.md`.
+  generator failure, TO CONFIG, an engine fire, CLR): `evidence/09-ewd-alerts.md`. Task 5 heard at that gate, the same day, on the
+  Release build of the switch commit, with Robin listening and Claude pressing: every check as written but the two changed below.
 - **Changed from the plan:** `LineWaitMs` is 500 ms, Task 1's floor: no entry ever came before its line. Task 5's words change with
   what was measured: switching GEN 1 off is "ELEC GEN 1 OFF" and the failure F_ELEC_DRIVE_FAILURE_L is "ELEC GEN 1 FAULT"; TO CONFIG's
   warnings are two titles, "SLATS NOT IN T.O CONFIG" and "FLAPS NOT IN T.O CONFIG", each found on its own red line, and a quick press
   reaches the list only if a 3.84 s beat falls inside it, so that check holds the button down. Tasks 2, 3 and 5 hold the rulings
-  below, and the comparison counts a run of dots as a space (the LDG memo's Title).
+  below, and the comparison counts a run of dots as a space (the LDG memo's Title). Task 5's memo check used GPWS FLAP 3, and its
+  trust gap check changed with row 62.
 - **Rulings made while working:** the owner, 2026-11-04, on Task 1's results, all as recommended: a failure or memo missing from
   the list only counts as gone after `LeaveHoldMs`, 4.5 s, one more beat, so "cleared" comes about 4.5 to 8.3 s after the E/WD
   clears it (spec row 59); LAND ASAP is heard by its color under the warnings or cautions row, never as a memo (row 60); memos are
   spoken in the E/WD's words where the entry's differ, from a table of the measured pairs, and "MEMO - " counts as a memo (row 61).
   The list stays the only source of what appeared and what cleared, the delay of up to 3.84 s to be judged by ear in Task 5. Task 5,
   by ear: the delay is acceptable (heard at 3.42 s). A blackout's start-up failures stay spoken, as a sighted pilot sees them, with
-  no wait for the first new list (row 62), so the trust gap check changed.
+  no wait for the first new list (row 62), so the trust gap check changed. The controller's own, each with what it costs if wrong:
+  - "Kept identical with plan 04" does not bind the matcher, as plan 04's window has none; plan 04's rows and these titles would
+    differ only in which line they pick, never in its words.
+  - A refused item counts as said; the final review found a lone "cleared" cannot follow, as a refused Title refuses it too.
+  - GPWS FLAP 3 stood in for seat belts, which the T.O memo had replaced on the list; the seat belts memo's speech was not heard,
+    though Task 1 measured its entry and line and it takes the same path.
+  - The blackout used both batteries and generators with the engines running, not a cold and dark start; a fresh cold and dark load
+    is unmeasured and handed to plan 12's flight.
