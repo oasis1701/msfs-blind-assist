@@ -80,8 +80,8 @@ public class FenixChannelSdWheelTests
         Assert.Equal(
             new[]
             {
-                "nose gear: up, up", "nose gear door: closed", "left gear: up, up", "left gear door: closed",
-                "right gear: up, up", "right gear door: closed", "nose tires: left 165 PSI, right 165 PSI",
+                "nose gear: up", "nose gear door: closed", "left gear: up", "left gear door: closed",
+                "right gear: up", "right gear door: closed", "nose tires: left 165 PSI, right 165 PSI",
                 "wheel 1: brake 20 °C, tire 210 PSI", "wheel 2: brake 21 °C, tire 205 PSI",
                 "wheel 3: brake 19 °C, tire 210 PSI", "wheel 4: brake 20 °C, tire 205 PSI"
             },
@@ -95,7 +95,7 @@ public class FenixChannelSdWheelTests
         Assert.Equal(
             new[]
             {
-                "L/G CTL", "nose gear: up, up", "nose gear door: closed", "N/W STEERING", "ANTI SKID, green",
+                "L/G CTL", "nose gear: up", "nose gear door: closed", "N/W STEERING", "ANTI SKID, green",
                 "NORM BRK, green", "ALTN BRK, amber", "ACCU ONLY", "AUTO BRK: LO"
             },
             RowsOf(WheelPush(Flags(12, 9, 16, 7, 15, 18, 4))).Take(9));
@@ -207,12 +207,39 @@ public class FenixChannelSdWheelTests
         // The second LGCIU of each gear is read, not mirrored from the first.
         IReadOnlyList<string> rows = RowsOf(WheelPush(gears: Gears(2, 7, 7, 2, 2, 7)), reported);
 
-        Assert.Contains("nose gear: up, LGCIU 2 not available", rows);
-        Assert.Contains("left gear: LGCIU 1 not available, up", rows);
-        Assert.Contains("right gear: up, LGCIU 2 not available", rows);
+        Assert.Contains("nose gear: LGCIU 1 up, LGCIU 2 not available", rows);
+        Assert.Contains("left gear: LGCIU 1 not available, LGCIU 2 up", rows);
+        Assert.Contains("right gear: LGCIU 1 up, LGCIU 2 not available", rows);
         Assert.Equal(
             new[] { "field 143.1.2 has an unknown value 7", "field 143.2.1 has an unknown value 7", "field 143.3.2 has an unknown value 7" },
             reported);
+    }
+
+    [Fact]
+    public void A_gear_is_said_once_while_both_lgcius_agree()
+    {
+        var reported = new List<string>();
+
+        // Both agree, for each of up, in transit and down (down is the absent field).
+        Assert.Contains("nose gear: up", RowsOf(WheelPush(gears: Gears(2, 2, 1, 1, 0, 0)), reported));
+        IReadOnlyList<string> mixed = RowsOf(WheelPush(gears: Gears(2, 2, 1, 1, 0, 0)), reported);
+        Assert.Contains("left gear: in transit", mixed);
+        Assert.Contains("right gear: down", mixed);
+        Assert.Empty(reported);
+
+        // They differ: each is named.
+        Assert.Contains("nose gear: LGCIU 1 down, LGCIU 2 in transit",
+            RowsOf(WheelPush(gears: Gears(0, 1)), reported));
+        Assert.Empty(reported);
+
+        // One unknown: named, reported once.
+        Assert.Contains("nose gear: LGCIU 1 up, LGCIU 2 not available", RowsOf(WheelPush(gears: Gears(2, 7)), reported));
+        Assert.Equal(new[] { "field 143.1.2 has an unknown value 7" }, reported);
+
+        // Both unknown: one phrase, both fields reported.
+        var both = new List<string>();
+        Assert.Contains("nose gear: not available", RowsOf(WheelPush(gears: Gears(7, 9)), both));
+        Assert.Equal(new[] { "field 143.1.1 has an unknown value 7", "field 143.1.2 has an unknown value 9" }, both);
     }
 
     [Fact]
@@ -222,13 +249,13 @@ public class FenixChannelSdWheelTests
 
         IReadOnlyList<string> rows = RowsOf(WheelPush(gears: Gears(nose1: 7)), reported);
 
-        Assert.Contains("nose gear: LGCIU 1 not available, up", rows);
+        Assert.Contains("nose gear: LGCIU 1 not available, LGCIU 2 up", rows);
         Assert.Equal(new[] { "field 143.1.1 has an unknown value 7" }, reported);
 
         // A decimal value is written as sent, without needless decimals otherwise; the page goes on.
         var more = new List<string>();
         IReadOnlyList<string> withDoor = RowsOf(WheelPush(gears: Gears(left2: 2.5), doors: Doubles(7, 1, 3)), more);
-        Assert.Contains("left gear: up, LGCIU 2 not available", withDoor);
+        Assert.Contains("left gear: LGCIU 1 up, LGCIU 2 not available", withDoor);
         Assert.Contains("nose gear door: not available", withDoor);
         Assert.Contains("left gear door: closed", withDoor);
         Assert.Contains("right gear door: not available", withDoor);
@@ -246,9 +273,9 @@ public class FenixChannelSdWheelTests
         IReadOnlyList<string> transit = RowsOf(
             WheelPush(gears: Gears(1, 1, 1, 1, 1, 1), doors: new FenixChannelProtoWriter()), reported);
 
-        Assert.Contains("nose gear: in transit, in transit", transit);
-        Assert.Contains("left gear: in transit, in transit", transit);
-        Assert.Contains("right gear: in transit, in transit", transit);
+        Assert.Contains("nose gear: in transit", transit);
+        Assert.Contains("left gear: in transit", transit);
+        Assert.Contains("right gear: in transit", transit);
         Assert.Contains("nose gear door: open", transit);
         Assert.Contains("left gear door: open", transit);
         Assert.Contains("right gear door: open", transit);
@@ -256,9 +283,9 @@ public class FenixChannelSdWheelTests
         // The 22:45:05 push shape: 143.1 to .3 EMPTY messages (down is the absent field), the doors closed again.
         IReadOnlyList<string> down = RowsOf(WheelPush(gears: GearsDown(), doors: Doubles(1, 1, 1)), reported);
 
-        Assert.Contains("nose gear: down, down", down);
-        Assert.Contains("left gear: down, down", down);
-        Assert.Contains("right gear: down, down", down);
+        Assert.Contains("nose gear: down", down);
+        Assert.Contains("left gear: down", down);
+        Assert.Contains("right gear: down", down);
         Assert.Contains("nose gear door: closed", down);
         Assert.Contains("left gear door: closed", down);
         Assert.Contains("right gear door: closed", down);
@@ -384,7 +411,7 @@ public class FenixChannelSdWheelTests
         Assert.Contains("wheel 2: brake 21 °C, tire 205 PSI", rows);
         Assert.Contains("wheel 3: brake 1235 °C, tire 210 PSI", rows);
         Assert.Contains("wheel 4: brake XX °C, tire 205 PSI", rows);
-        Assert.Contains("left gear: up, LGCIU 2 not available", rows);
+        Assert.Contains("left gear: LGCIU 1 up, LGCIU 2 not available", rows);
         Assert.Equal(new[] { "field 143.2.2 has an unknown value 2.5" }, reported);
         Assert.DoesNotContain(rows, row => row.Contains('−'));
     }

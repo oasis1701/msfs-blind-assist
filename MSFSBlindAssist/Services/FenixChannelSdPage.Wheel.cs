@@ -26,7 +26,7 @@ internal static partial class FenixChannelSdPages
     };
 
     /// <summary>
-    /// The WHEEL page's rows, top to bottom: <c>L/G CTL</c> (137.12); <c>nose gear: &lt;LGCIU 1&gt;, &lt;LGCIU 2&gt;</c>
+    /// The WHEEL page's rows, top to bottom: <c>L/G CTL</c> (137.12); <c>nose gear: &lt;word&gt;</c>
     /// (143.1.1, 143.1.2) and <c>nose gear door</c> (144.1); <c>N/W STEERING</c> (137.9); <c>ANTI SKID, amber</c> (137.17) or
     /// <c>, green</c> (137.16); <c>BSCU 1, amber</c> (137.10) and <c>BSCU 2, amber</c> (137.11); <c>NORM BRK</c> (137.8 amber,
     /// 137.7 green); <c>ALTN BRK</c> (137.15 amber, 137.2 green); <c>ACCU ONLY</c> (137.18); <c>AUTO BRK: LO</c>, MED or
@@ -50,8 +50,10 @@ internal static partial class FenixChannelSdPages
     /// shows one.</para>
     /// <para>Gear words, measured on the 2026-11-03 gear extension. A gear value reads "up" (2), "in transit" (1) or "down"
     /// (0, the absent field: a gear down is a present, empty message, never a missing one); a door value reads "closed" (1)
-    /// or "open" (0 while it opens, 2 while the gear extends). Any other value reads "LGCIU &lt;n&gt; not available" (a
-    /// door: "not available") and is reported "field &lt;path&gt; has an unknown value &lt;v&gt;" without stopping the
+    /// or "open" (0 while it opens, 2 while the gear extends). A gear row says the word once while both LGCIUs give it
+    /// ("nose gear: down") and names each when they differ ("nose gear: LGCIU 1 down, LGCIU 2 in transit"). Any other
+    /// value reads "not available" (in the named form "LGCIU &lt;n&gt; not available"; both unknown, one "nose gear: not
+    /// available") and is reported "field &lt;path&gt; has an unknown value &lt;v&gt;" without stopping the
     /// page.</para>
     /// </remarks>
     internal static FenixChannelRows WheelRows(FenixChannelSdPageContext ctx)
@@ -177,12 +179,13 @@ internal static partial class FenixChannelSdPages
     private static (double, double) WheelLgcius(FenixChannelSdReader gear)
         => (gear.Double(FenixChannelFields.GearUnitStatus.Lgciu1), gear.Double(FenixChannelFields.GearUnitStatus.Lgciu2));
 
-    // "<label>: <LGCIU 1>, <LGCIU 2>": a position with no word reads "LGCIU <n> not available" and is reported.
+    // "<label>: <word>" while both LGCIUs give the same word, else "<label>: LGCIU 1 <word>, LGCIU 2 <word>". A position with
+    // no word reads "not available" in either form and is reported (once per field, even when both are unknown).
     private static string WheelGearRow(FenixChannelSdPageContext ctx, string label, string path, (double, double) lgcius)
     {
-        string first = SdMeasuredWord(ctx, WheelGearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu1}", lgcius.Item1, "LGCIU 1 not available");
-        string second = SdMeasuredWord(ctx, WheelGearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu2}", lgcius.Item2, "LGCIU 2 not available");
-        return $"{label}: {first}, {second}";
+        string first = SdMeasuredWord(ctx, WheelGearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu1}", lgcius.Item1, "not available");
+        string second = SdMeasuredWord(ctx, WheelGearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu2}", lgcius.Item2, "not available");
+        return first == second ? $"{label}: {first}" : $"{label}: LGCIU 1 {first}, LGCIU 2 {second}";
     }
 
     // "<label>: <word>" for a gear door.
