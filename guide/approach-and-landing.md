@@ -192,12 +192,13 @@ If another program is already using one of these keys, BA tells you *"Visual gui
 
 When they come:
 
-- A correction the tones can still show (up to 5 degrees on most aircraft) is spoken after a quarter of a second, so a gust that rolls you 2 or 3 degrees is heard at once.
+- As soon as you go a degree or more off, for example drifting off on final or hit by a gust, BA says so a quarter of a second later, as long as the tones can still show the error (up to 5 degrees on most aircraft).
 - A bigger one, where both tones sit fully to one side, is spoken once you stop rolling, so you hear the number you still need, not a string of numbers while you roll.
 - *"matched"* is said once when you get within about half a degree, and BA stays quiet until you are a full degree off again.
 - A small steady error under a degree is spoken after a second and a half.
-- While you stay off, even by a degree or two, the same callout is said again every three seconds until you correct it. *"matched"* is never repeated.
-- There is always at least a second between bank callouts, so none cuts off the one before. A callout that falls inside that second is skipped, and the next one tells you the error as it is then.
+- Each callout is said once. BA speaks again when the number changes, not on a timer.
+- There is always at least a second between bank callouts, so none cuts off the one before, and BA waits for its own announcements, such as *"Flare"* or *"5 miles"*, to finish. A callout that falls inside that time is skipped, and the next one tells you the error as it is then.
+
 <div class="callout note" role="note" markdown="1">
 
 **Note:** The vertical guidance is designed for a normal stabilised approach with the autothrust holding your speed. The guidance tone asks for pitch, and pitch controls your rate of descent only while something else holds the speed. If you are managing thrust by hand, keep your speed steady or the vertical guidance will feel inconsistent.

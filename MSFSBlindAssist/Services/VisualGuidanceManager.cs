@@ -124,8 +124,24 @@ public class VisualGuidanceManager : IDisposable
     // suppressed — they're rare and important enough to let through. (The centreline
     // callouts this window also covered were removed in stage 3 of the redesign, 2026-11:
     // F speaks the sideways position in every phase instead.)
+    // Visual guidance's own lines open the same window for their own speaking time (Say's
+    // holdSeconds, VG-21): a bank callout interrupts, and interrupting drops queued speech.
     private DateTime routineAnnouncementsSuppressedUntil = DateTime.MinValue;
     private const double MANUAL_QUERY_GRACE_SECONDS = 3.0;
+
+    // How long each of visual guidance's own lines holds the bank callouts back: the line's
+    // speaking time through System.Speech at Rate = 0 (the only SAPI rate this app produces),
+    // trailing silence trimmed, plus about a fifth, as VG-1 measures. Measured 2026-11-04; a new or
+    // reworded line is measured the same way, never estimated (VG-1, VG-21).
+    private const double HOLD_ACTIVATION_S = 4.0;          // "Visual guidance active, runway 27L" 3.31 s
+    private const double HOLD_LONG_PHASE_S = 4.4;          // "Extending, turn to heading 175" 3.67 s, "Intercepting final, 1.8 miles to final" 3.37 s
+    private const double HOLD_ESTABLISHED_S = 2.0;         // "Established on centerline" 1.67 s
+    private const double HOLD_ON_PROFILE_S = 1.6;          // "On vertical profile" 1.30 s
+    private const double HOLD_FLARE_S = 0.6;               // "Flare" 0.49 s
+    private const double HOLD_TOUCHDOWN_S = 0.9;           // "Touchdown" 0.72 s
+    private const double HOLD_MILES_S = 1.3;               // "5 miles" 1.03 s
+    private const double HOLD_BEHIND_THRESHOLD_S = 2.9;    // "2.5 miles behind threshold" 2.38 s
+    private const double HOLD_APPROACHING_S = 1.5;         // "Approaching threshold" 1.26 s
 
     // Debouncing for behind threshold detection
     private DateTime lastBehindStateChange = DateTime.MinValue;
@@ -496,7 +512,7 @@ public class VisualGuidanceManager : IDisposable
         Record(VisualGuidanceFlightRecord.Start(destinationAirport.ICAO, runway.RunwayID, runway.StartLat, runway.StartLon,
             runway.Heading, runway.HeadingMag, thresholdElevationMSL, glideslopeAngleDeg, glideslopeAltitudeBiasFt, flareAltitudeBiasFt));
 
-        Say($"Visual guidance active, runway {runway.RunwayID}", immediate: true);
+        Say($"Visual guidance active, runway {runway.RunwayID}", immediate: true, HOLD_ACTIVATION_S);
         Log.Debug("VisualGuidance", $"Initialized for runway {runway.RunwayID}");
     }
 
@@ -528,7 +544,7 @@ public class VisualGuidanceManager : IDisposable
 
         VisualGuidanceActiveChanged?.Invoke(this, false);
         if (announce)
-            Say("Visual guidance off", immediate: false);
+            Say("Visual guidance off", immediate: false, holdSeconds: 0);   // guidance has ended
         Record(VisualGuidanceFlightRecord.Stop(RecordSeconds()));
         recording = false;
         Log.Debug("VisualGuidance", $"Stopped (announce={announce})");
@@ -537,13 +553,22 @@ public class VisualGuidanceManager : IDisposable
     /// <summary>
     /// Every line visual guidance speaks goes through here, so the flight recording has it (VP-2).
     /// <paramref name="immediate"/>: interrupt (AnnounceImmediate), else Announce.
+    /// <paramref name="holdSeconds"/>: how long this line holds the bank callouts back, its measured
+    /// speaking time (the HOLD_ constants, VG-21), since a bank callout interrupts and would drop it;
+    /// 0 for the bank callouts themselves. It only ever extends the window, never shortens it.
     /// </summary>
-    private void Say(string text, bool immediate)
+    private void Say(string text, bool immediate, double holdSeconds)
     {
         if (immediate)
             announcer.AnnounceImmediate(text);
         else
             announcer.Announce(text);
+        if (holdSeconds > 0)
+        {
+            DateTime until = ClockForHarness().AddSeconds(holdSeconds);
+            if (until > routineAnnouncementsSuppressedUntil)
+                routineAnnouncementsSuppressedUntil = until;
+        }
         Record(VisualGuidanceFlightRecord.Said(RecordSeconds(), text, immediate));
     }
 
@@ -1002,7 +1027,7 @@ public class VisualGuidanceManager : IDisposable
             currentPhase = GuidancePhase.Touchdown;
             if (previousPhase != currentPhase)
             {
-                Say("Touchdown", immediate: false);
+                Say("Touchdown", immediate: false, HOLD_TOUCHDOWN_S);
                 // Continue guidance for centerline tracking during rollout
             }
             return;
@@ -1017,7 +1042,7 @@ public class VisualGuidanceManager : IDisposable
             {
                 // Capture entry state
                 lastFlarePitch = previousDesiredPitch;  // Start from current guidance pitch
-                AnnouncePhaseChange("Flare");
+                AnnouncePhaseChange("Flare", HOLD_FLARE_S);
             }
             return;
         }
@@ -1037,7 +1062,7 @@ public class VisualGuidanceManager : IDisposable
             if (previousPhase != currentPhase)
             {
                 AnnouncePhaseChange("Extending, turn to heading " +
-                    CalculateExtensionHeading().ToString("F0"));
+                    CalculateExtensionHeading().ToString("F0"), HOLD_LONG_PHASE_S);
             }
             return;
         }
@@ -1055,7 +1080,7 @@ public class VisualGuidanceManager : IDisposable
                     ? $"{crossTrackError:F1} mile"
                     : $"{crossTrackError:F1} miles";
 
-                AnnouncePhaseChange($"Intercepting final, {distanceText} to final");
+                AnnouncePhaseChange($"Intercepting final, {distanceText} to final", HOLD_LONG_PHASE_S);
             }
             return;
         }
@@ -1078,7 +1103,7 @@ public class VisualGuidanceManager : IDisposable
             currentPhase = GuidancePhase.GlideslopeTracking;
             if (previousPhase != currentPhase)
             {
-                AnnouncePhaseChange("On vertical profile");
+                AnnouncePhaseChange("On vertical profile", HOLD_ON_PROFILE_S);
             }
         }
         else
@@ -1086,7 +1111,7 @@ public class VisualGuidanceManager : IDisposable
             currentPhase = GuidancePhase.Final;
             if (previousPhase != currentPhase)
             {
-                AnnouncePhaseChange("Established on centerline");
+                AnnouncePhaseChange("Established on centerline", HOLD_ESTABLISHED_S);
             }
         }
     }
@@ -1573,14 +1598,14 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Announces phase changes
+    /// Announces phase changes; <paramref name="holdSeconds"/> is the line's measured speaking time (VG-21).
     /// </summary>
-    private void AnnouncePhaseChange(string message)
+    private void AnnouncePhaseChange(string message, double holdSeconds)
     {
         var now = ClockForHarness();
         if ((now - lastPhaseAnnouncement).TotalMilliseconds >= ANNOUNCEMENT_INTERVAL_MS)
         {
-            Say(message, immediate: false);
+            Say(message, immediate: false, holdSeconds);
             lastPhaseAnnouncement = now;
         }
     }
@@ -1606,7 +1631,7 @@ public class VisualGuidanceManager : IDisposable
         {
             if (distanceNM <= calloutDist && lastAnnouncedDistance > calloutDist)
             {
-                Say($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}", immediate: false);
+                Say($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}", immediate: false, HOLD_MILES_S);
                 lastAnnouncedDistance = calloutDist;
                 lastDistanceAnnouncement = now;
                 break;
@@ -1635,12 +1660,12 @@ public class VisualGuidanceManager : IDisposable
         if (roundedDistance >= 0.5)
         {
             string distanceText = roundedDistance == 1.0 ? "1 mile" : $"{roundedDistance} miles";
-            Say($"{distanceText} behind threshold", immediate: false);
+            Say($"{distanceText} behind threshold", immediate: false, HOLD_BEHIND_THRESHOLD_S);
             lastExtendingProgressAnnouncement = now;
         }
         else if (roundedDistance < 0.5 && roundedDistance >= 0.1)
         {
-            Say("Approaching threshold", immediate: false);
+            Say("Approaching threshold", immediate: false, HOLD_APPROACHING_S);
             lastExtendingProgressAnnouncement = now;
         }
     }
@@ -1661,7 +1686,7 @@ public class VisualGuidanceManager : IDisposable
         string? callout = bankCalloutGate.Next(ClockForHarness(), desiredBankDegrees, StandardBank(cachedBank.Value),
             maySpeak: !RoutineAnnouncementsSuppressed);
         if (callout != null)
-            Say(callout, immediate: true);
+            Say(callout, immediate: true, holdSeconds: 0);
     }
 
     public void Dispose()

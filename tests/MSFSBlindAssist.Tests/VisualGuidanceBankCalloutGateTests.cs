@@ -37,40 +37,34 @@ public class VisualGuidanceBankCalloutGateTests
     private static string Show(List<(double T, string Phrase)> said)
         => string.Join(", ", said.Select(s => $"{s.T:0.000} {s.Phrase}"));
 
-    // A steady sub-degree error is first spoken after 1.5 s, then again every RepeatSeconds while it
-    // stays (the owner, 2026-11-04: an aircraft one or two degrees off must be told so; "1 left" is
-    // what a pilot 0.7° off hears). Limiting the repeat to 1° or more let the harness's speech-led
-    // light aircraft sit 0.6 to 0.9° off in silence again (final tracking 21 ft RMS against 6).
     [Fact]
-    public void Steady_sub_degree_error_is_spoken_after_one_and_a_half_seconds_and_repeated()
+    public void Steady_sub_degree_error_is_spoken_once_after_one_and_a_half_seconds()
     {
-        double repeat = VisualGuidanceBankCalloutGate.RepeatSeconds;
-        var said = Fly(_ => (-0.7, 0), 1.5 + 2 * repeat + 0.5);
-        Assert.Equal(3, said.Count);
-        Assert.All(said, s => Assert.Equal("1 left", s.Phrase));
-        Assert.InRange(said[0].T, 1.5, 1.55);
-        Assert.InRange(said[1].T - said[0].T, repeat, repeat + 0.04);
-        Assert.InRange(said[2].T - said[1].T, repeat, repeat + 0.04);
+        var said = Fly(_ => (-0.7, 0), 10);
+        var only = Assert.Single(said);
+        Assert.Equal("1 left", only.Phrase);
+        Assert.InRange(only.T, 1.5, 1.55);
     }
 
-    // The case the speech-led light aircraft drifted on: "2 right" spoken, then the pilot sits 1.2°
-    // off, still "1 right"... here a 1.2° error the pilot never corrects is heard again and again.
+    // A callout is said once, when the aircraft goes off, never again on a timer (the owner,
+    // 2026-11-04: "I just want the degree to be announced as soon as plane goes off course").
     [Fact]
-    public void An_error_of_a_degree_or_two_that_stays_is_spoken_again()
+    public void An_error_that_stays_is_spoken_once_at_once()
     {
-        double repeat = VisualGuidanceBankCalloutGate.RepeatSeconds;
-        var said = Fly(_ => (1.2, 0), 0.3 + 3 * repeat);
-        Assert.Equal(4, said.Count);
-        Assert.All(said, s => Assert.Equal("1 right", s.Phrase));
-        for (int i = 1; i < said.Count; i++)
-            Assert.InRange(said[i].T - said[i - 1].T, repeat, repeat + 0.04);
+        var said = Fly(_ => (1.2, 0), 10);
+        var only = Assert.Single(said);
+        Assert.Equal("1 right", only.Phrase);
+        Assert.InRange(only.T, 0.25, 0.3);
     }
 
+    // On final, drifting a degree off after "matched" is spoken a quarter of a second after the
+    // error reaches 1°.
     [Fact]
-    public void Matched_is_never_repeated()
+    public void Drifting_a_degree_off_after_matched_is_spoken_at_once()
     {
-        var said = Fly(_ => (5, 4.8), 4 * VisualGuidanceBankCalloutGate.RepeatSeconds);
-        Assert.Equal(new[] { "matched" }, said.Select(s => s.Phrase));
+        var said = Fly(t => (0, t < 2 ? 0 : -Math.Min(1.3, 0.5 * (t - 2))), 6);
+        Assert.Equal(new[] { "On commanded path", "1 right" }, said.Select(s => s.Phrase));
+        Assert.InRange(said[1].T, 4.0 + 0.25, 4.0 + 0.3);
     }
 
     [Fact]
