@@ -214,10 +214,20 @@ public partial class FlyByWireA380Definition
             displayText = A380FlightDirector.DescribeSide(value, varKey == "FD_1" ? 1 : 2);
             return true;
         }
-        // Managed target speed on the PFD (0 = none shown).
-        if (varKey == "A32NX_SPEEDS_MANAGED_PFD") { displayText = value < 1 ? "none" : $"{value:0} knots"; return true; }
-        // Preselected speed / Mach (set in the MCDU PERF page; -1 = none).
-        if (varKey == "A32NX_SpeedPreselVal") { displayText = value < 0 ? "none" : $"{value:0} knots"; return true; }
+        // Managed target speed on the PFD (0 = none shown) and the preselected speed (MFD PERF;
+        // -1 = none). FBW's script writes both in knots, stored in m/s (FlyByWireStoredUnits).
+        if (varKey == "A32NX_SPEEDS_MANAGED_PFD")
+        {
+            double kt = Services.FlyByWireStoredUnits.Knots(value);
+            displayText = kt < 1 ? "none" : FormattableString.Invariant($"{kt:0} knots");
+            return true;
+        }
+        if (varKey == "A32NX_SpeedPreselVal")
+        {
+            double kt = Services.FlyByWireStoredUnits.Knots(value);
+            displayText = kt < 0 ? "none" : FormattableString.Invariant($"{kt:0} knots");
+            return true;
+        }
         if (varKey == "A32NX_MachPreselVal") { displayText = value < 0 ? "none" : $"{value:0.00}"; return true; }
         // Selected vertical speed (FCU V/S window; 0 = not selected / not in V/S).
         if (varKey == "A32NX_AUTOPILOT_VS_SELECTED")
@@ -259,11 +269,12 @@ public partial class FlyByWireA380Definition
             }
             else if (value > 0.5)
             {
+                // FBW's script writes the target in feet, stored in metres (FlyByWireStoredUnits).
                 double? tgt = s?.GetCachedVariableValue("A32NX_PFD_TARGET_ALTITUDE");
                 double? alt = s?.GetCachedVariableValue("INDICATED ALTITUDE");
                 if (tgt.HasValue && alt.HasValue && tgt.Value != 0)
                 {
-                    double dev = alt.Value - tgt.Value;
+                    double dev = alt.Value - Services.FlyByWireStoredUnits.Feet(tgt.Value);
                     displayText = Math.Abs(dev) < 10 ? "on profile"
                         : $"{Math.Abs(dev):0} feet {(dev >= 0 ? "above" : "below")} profile";
                 }
@@ -272,10 +283,20 @@ public partial class FlyByWireA380Definition
             else displayText = "no vertical guidance";
             return true;
         }
+        // The vertical profile's target altitude (0 = no target). FBW's script writes feet,
+        // stored in metres (FlyByWireStoredUnits).
+        if (varKey == "A32NX_PFD_TARGET_ALTITUDE")
+        {
+            displayText = value == 0 ? "none" : FormattableString.Invariant($"{Services.FlyByWireStoredUnits.Feet(value):0} feet");
+            return true;
+        }
         // Cross-track error — magnitude in NM with left/right of track (FBW sign: positive = right).
+        // FBW's script writes nautical miles, stored in metres (FlyByWireStoredUnits).
         if (varKey == "A32NX_FG_CROSS_TRACK_ERROR")
         {
-            displayText = Math.Abs(value) < 0.01 ? "on track" : $"{Math.Abs(value):0.00} NM {(value > 0 ? "right" : "left")} of track";
+            double nm = Services.FlyByWireStoredUnits.NauticalMiles(value);
+            displayText = Math.Abs(nm) < 0.01 ? "on track"
+                : FormattableString.Invariant($"{Math.Abs(nm):0.00} NM {(nm > 0 ? "right" : "left")} of track");
             return true;
         }
         // EWD thrust limit — the max-N1 % for the current thrust-rating mode.

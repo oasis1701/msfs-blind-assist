@@ -7145,19 +7145,8 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
     private (double value, string unit) WeightUser(double kg)
         => _metricWeight ? (kg, "kilograms") : (kg * 2.204625, "pounds");
 
-    // FBW packs idents/messages 6 bits per char, 8 chars per word (low bits first),
-    // char = code + 31 (matches the old NavigationDisplayForm decoder).
-    private static string UnpackSixBit(double w0, double w1)
-    {
-        double[] words = { w0, w1 };
-        string s = "";
-        for (int i = 0; i < words.Length * 8; i++)
-        {
-            int code = (int)(words[i / 8] / Math.Pow(2, (i % 8) * 6)) & 0x3F;
-            if (code > 0) s += (char)(code + 31);
-        }
-        return s.Trim();
-    }
+    // FBW packs idents/messages 6 bits per char, 8 chars per word: one shared decoder.
+    private static string UnpackSixBit(double w0, double w1) => Services.NdWaypointReadout.UnpackSixBit(w0, w1);
 
     // FBW ND FM message flag bits (EfisNdFmMessageFlags) — same table the deleted
     // NavigationDisplayForm.DecodeFmMessageFlags used, and the same bits
@@ -7905,17 +7894,25 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             else if (value > 0.5)
             {
+                // FBW's script writes the target in feet, stored in metres (FlyByWireStoredUnits).
                 double? tgt = s?.GetCachedVariableValue("A32NX_PFD_TARGET_ALTITUDE");
                 double? alt = s?.GetCachedVariableValue("INDICATED ALTITUDE");
                 if (tgt.HasValue && alt.HasValue && tgt.Value != 0)
                 {
-                    double dev = alt.Value - tgt.Value;
+                    double dev = alt.Value - Services.FlyByWireStoredUnits.Feet(tgt.Value);
                     displayText = Math.Abs(dev) < 10 ? "on profile"
                         : $"{Math.Abs(dev):0} feet {(dev >= 0 ? "above" : "below")} profile";
                 }
                 else displayText = "active";
             }
             else displayText = "no vertical guidance";
+            return true;
+        }
+        // The vertical profile's target altitude (0 = no target). FBW's script writes feet,
+        // stored in metres (FlyByWireStoredUnits).
+        if (varKey == "A32NX_PFD_TARGET_ALTITUDE")
+        {
+            displayText = value == 0 ? "none" : FormattableString.Invariant($"{Services.FlyByWireStoredUnits.Feet(value):0} feet");
             return true;
         }
         // Doors: passenger = INTERACTIVE POINT OPEN 0..1 fraction (Open / Closed /
@@ -8032,11 +8029,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         if (varKey == "A32NX_FG_CROSS_TRACK_ERROR")
         {
-            // FBW writes this L:var in NAUTICAL MILES (LnavDriver), NOT metres — the old
-            // /1852 made it read ~0.00 NM always. Sign: + = right of track.
-            double nm = value;
+            // FBW's script writes nautical miles, which the sim stores in metres; an on-request
+            // L:var is read raw whatever its Units (FlyByWireStoredUnits). Sign: + = right of track.
+            double nm = Services.FlyByWireStoredUnits.NauticalMiles(value);
             displayText = Math.Abs(nm) < 0.01 ? "On track"
-                : $"{Math.Abs(nm):F2} NM {(nm > 0 ? "right" : "left")}";
+                : FormattableString.Invariant($"{Math.Abs(nm):F2} NM {(nm > 0 ? "right" : "left")}");
             return true;
         }
         if (varKey == "A32NX_RADIO_RECEIVER_LOC_DEVIATION" || varKey == "A32NX_RADIO_RECEIVER_GS_DEVIATION")
@@ -8100,8 +8097,14 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             displayText = value < 1 ? "not set" : FlyByWirePfdSpeedTarget.Knots(value);
             return true;
         }
-        // Preselected speed / Mach (set in the MCDU PERF page; -1 = none).
-        if (varKey == "A32NX_SpeedPreselVal") { displayText = value < 0 ? "none" : $"{value:0} knots"; return true; }
+        // Preselected speed / Mach (set in the MCDU PERF page; -1 = none). FBW's script writes
+        // the speed in knots, stored in m/s (FlyByWireStoredUnits).
+        if (varKey == "A32NX_SpeedPreselVal")
+        {
+            double kt = Services.FlyByWireStoredUnits.Knots(value);
+            displayText = kt < 0 ? "none" : FormattableString.Invariant($"{kt:0} knots");
+            return true;
+        }
         if (varKey == "A32NX_MachPreselVal") { displayText = value < 0 ? "none" : $"{value:0.00}"; return true; }
         // Selected vertical speed (FCU V/S window; 0 = not selected / not in V/S).
         if (varKey == "A32NX_AUTOPILOT_VS_SELECTED")
