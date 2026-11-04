@@ -544,6 +544,80 @@ to the same 1, so in `GUST-A-JET-g4-speech` the pilot held about 1.4° short of 
 41.4 to 46.6 s, until "2 right". The light runs end past the runway's far end, as their `FINAL-A`
 twins do (the fixed flare's balloon).
 
+### Stage 3: callouts, F and the recording (2026-11-04)
+
+Bank callouts now speak through `VisualGuidanceBankCalloutGate` (VG-21), the centreline callouts are
+gone, F reads the status (VG-22), and every update is recorded (VP-2). Measured at the commit "a bank
+error the pilot sits on is said again" (`approach_stage3_final`) against the stage-2 code with the same
+harness (`approach_stage2_v2`): `BETTER` bankCalloutsPerMin down 121, bankRateRmsDegS down 4,
+|touchdownXteFt| down 4, gustXteMaxFt down 3, gustRecoveryS down 2; `WORSE` gustCalloutDelayS up 8,
+bankRateRmsDegS up 8, bankCalloutsPerMin up 4, pitchRateRmsDegS up 3, |touchdownXteFt| up 1,
+gustRecoveryS up 1; `CHANGED` touchdownAlongFt moved 5, endReason 3.
+
+The gate was first built as the spec and plan had it, where a callout is never repeated
+(`approach_stage3`). Its acceptance check failed on the speech-led gust runs: after "1 right" an
+error anywhere from about half a degree to 1.4° went unspoken, and `GUST-A-LIGHT-g2-speech` drifted
+to 60 ft. The owner then decided that an aircraft one or two degrees off must be told so: an error
+callout still due is said again every 3 s (`RepeatSeconds`); "matched" never repeats. Limiting the
+repeat to errors of 1° or more (`approach_stage3_r3b`) let the speech-led light aircraft sit 0.6 to
+0.9° off in silence again (21 ft RMS), so the repeat covers every error callout.
+
+The plan's three acceptance checks, on the final code:
+
+- **A, final tracking: passed.** No `finalXteRmsFt`, `overshootFt` or "no longer established" line in
+  any FINAL, FPS, NOISE, WIND-XW, GUST or offset SPEED run. (The gate without the repeat failed here:
+  `GUST-A-LIGHT-g2-speech` 14.5 to 30.9 ft.)
+- **B, quieter: passed.** No centreline callouts in any run. The median bank callouts a minute fell
+  from 14.98 to 5.70 (1.71 without the repeat), and the median number of lines cut off by the next
+  from 50 to 3.
+- **C, gusts heard quickly: passed with two rulings.** Six of the eight GUST runs hear a knock within
+  0.56 s on average (0.50 to 0.56 s; a 2° knock is spoken once, about 0.25 s after it settles). The two
+  light 4° runs average 0.80 s, each because of one knock in three: in the tone run the light pilot
+  rolls back so fast after its 0.5 s reaction that the error passes 4, 3 and 2 quicker than the 0.25 s
+  hold, which costs it nothing (recovery and tracking identical); in the speech run the 4° knock landed
+  on a standing 1.1° error and made 5.3°, past the 5° tone range, where the owner's rule waits for the
+  bank to settle (1.30 s). No GUST run's worst cross-track after a knock is up. `GUST-A-LIGHT-g2-speech`
+  recovers more slowly by the 1° band (1.13 to 2.50 s) while tracking far better (worst cross-track
+  after a knock 30.9 to 11.7 ft, final 14.5 to 6.2 ft RMS).
+
+The GUST runs, today's callouts / the gate without the repeat / the gate with it:
+
+| run | first callout (s) | recovery (s) | worst cross-track after a knock (ft) | final RMS (ft) | bank callouts a minute | lines cut off |
+|---|---|---|---|---|---|---|
+| jet, 2°, tone | 0.09 / 0.50 / 0.50 | 1.10 / 1.10 / 1.10 | 26.8 / 26.8 / 26.8 | 19.2 / 19.2 / 19.2 | 29.4 / 2.9 / 9.1 | 85 / 2 / 2 |
+| jet, 2°, speech | 0.08 / 0.52 / 0.52 | 2.08 / 1.36 / 2.36 | 57.5 / 41.3 / 27.2 | 27.6 / 19.8 / 16.2 | 11.7 / 9.1 / 8.0 | 27 / 2 / 2 |
+| jet, 4°, tone | 0.07 / 0.56 / 0.56 | 1.57 / 1.57 / 1.57 | 34.0 / 34.0 / 34.0 | 19.8 / 19.8 / 19.8 | 26.0 / 2.9 / 4.9 | 75 / 2 / 2 |
+| jet, 4°, speech | 0.04 / 0.78 / 0.54 | 10.91 / 2.80 / 2.20 | 50.3 / 73.8 / 23.8 | 28.5 / 32.1 / 13.8 | 14.6 / 8.6 / 8.3 | 38 / 3 / 3 |
+| light, 2°, tone | 0.12 / 0.53 / 0.53 | 1.13 / 1.13 / 1.13 | 26.1 / 26.1 / 26.1 | 15.6 / 15.6 / 15.6 | 13.9 / 1.8 / 7.0 | 57 / 4 / 4 |
+| light, 2°, speech | 0.07 / 0.51 / 0.53 | 1.13 / 2.09 / 2.50 | 30.9 / 59.6 / 11.7 | 14.5 / 30.9 / 6.2 | 10.7 / 10.3 / 9.4 | 39 / 9 / 6 |
+| light, 4°, tone | 0.04 / 0.80 / 0.80 | 1.56 / 1.56 / 1.56 | 25.3 / 25.3 / 25.3 | 13.5 / 13.5 / 13.5 | 19.7 / 1.4 / 1.4 | 83 / 3 / 3 |
+| light, 4°, speech | 0.04 / 0.79 / 0.80 | 11.28 / 2.50 / 2.46 | 29.2 / 28.0 / 21.1 | 14.5 / 18.4 / 15.7 | 16.8 / 9.8 / 11.6 | 64 / 6 / 11 |
+
+The tone-led runs fly exactly as before; only what they hear changes. The speech-led runs, where
+callout timing can cost something, track better than with today's callouts in every case.
+
+Every other `WORSE` and `CHANGED` line, explained:
+
+- `bankCalloutsPerMin` up (the four light 90° intercepts with the 1.0 s pilot, 15.0 to 20.4): through
+  about 90 s of the capture turn the virtual pilot sits about half a degree short of the command and
+  hears "1 right" every 3 s. The tone pilot ignores callouts inside the tone range by design (it
+  follows the tone); a real pilot hearing "1 right" would roll the half degree and get "matched".
+- `bankRateRmsDegS` and `pitchRateRmsDegS` up on light intercepts (0.0011 to 0.0029 and 0.0000 to
+  0.0002°/s): the 20 % rule on values near zero; the pilot's path through the capture, steered by
+  callouts past the tone range, differs a little, and so does the command on the final segment.
+- `bankRateRmsDegS` up on `INT-B-JET-R30-d0.5` (0.177 to 0.219°/s): the jet intercept is still closing
+  on the centreline at 5 nm (the baseline's finding), and the callouts' new timing in the capture turn
+  shifted its path (final 75.5 to 79.9 ft RMS, under the compare rule); on the two speech-led light gust
+  runs (0.092 to 0.111, 0.124 to 0.185) the pilot corrects more often with the repeat.
+- The jet downwinds (`endReason` 3, `touchdownAlongFt` 5, `|touchdownXteFt|` 4 down and 1 up): today's
+  Extending phase turns them past the tone range, where the pilot steers by callouts, so the new timing
+  moves their path. Three now touch down beside the runway near its far end instead of passing the end
+  in the flare, four touch down about 700 ft farther along and about 150 ft nearer the centreline, and
+  `DW-B-JET-R-d0.5` lands 970 ft earlier and 190 ft farther out (1,638 to 1,827 ft). Stage 4 replaces
+  Extending.
+- `gustCalloutDelayS` up (all 8): by design. Today's callouts answer while the knock is still building
+  and cut each other off; the gate speaks once, after the error has held a quarter of a second.
+
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
 4,857 landing runs, 1,960 taxis, 409 wrong turns.

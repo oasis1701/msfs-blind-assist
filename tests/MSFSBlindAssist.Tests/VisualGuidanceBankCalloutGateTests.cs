@@ -38,7 +38,9 @@ public class VisualGuidanceBankCalloutGateTests
         => string.Join(", ", said.Select(s => $"{s.T:0.000} {s.Phrase}"));
 
     // A steady sub-degree error is first spoken after 1.5 s, then again every RepeatSeconds while it
-    // stays (the owner, 2026-11-04: an aircraft one or two degrees off must be told so).
+    // stays (the owner, 2026-11-04: an aircraft one or two degrees off must be told so; "1 left" is
+    // what a pilot 0.7° off hears). Limiting the repeat to 1° or more let the harness's speech-led
+    // light aircraft sit 0.6 to 0.9° off in silence again (final tracking 21 ft RMS against 6).
     [Fact]
     public void Steady_sub_degree_error_is_spoken_after_one_and_a_half_seconds_and_repeated()
     {
