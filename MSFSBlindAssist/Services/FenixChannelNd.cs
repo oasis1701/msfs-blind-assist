@@ -25,11 +25,12 @@ internal sealed record FenixNdWaypointLines(string Line1, string Line2, string L
 /// <param name="Waypoint">The next-waypoint lines (68); null when absent.</param>
 /// <param name="CenterMessages">The center (62), windshear (64) and TCAS (66) messages when not blank, in that order.</param>
 /// <param name="ListedMessages">The ND messages (103) that are not null or blank, in order, as sent.</param>
+/// <param name="ApproachMessage">The approach label at top center (102.2), as sent ("gILS18L"); null when absent or blank.</param>
 internal sealed record FenixNdData(
     string? Mode, string Range, string? MapOption, bool LsOn, string? GroundSpeedLine, string? WindLine,
     double? MagneticHeading, double? MagneticTrack, double? MagneticVariation, double? SelectedHeading,
     FenixLatLon? Position, FenixLatLon? PlanCenter, FenixNdWaypointLines? Waypoint,
-    IReadOnlyList<string> CenterMessages, IReadOnlyList<string> ListedMessages);
+    IReadOnlyList<string> CenterMessages, IReadOnlyList<string> ListedMessages, string? ApproachMessage = null);
 
 /// <summary>
 /// Reads the captain's ND header from one snapshot. Never the first officer's side. The first problem found is the
@@ -107,6 +108,10 @@ internal static class FenixChannelNd
         FenixChannelPush? planPart = Part(root, Remote.CduCenterCapt, "84");
         FenixLatLon? planCenter = Point(planPart, "84");
 
+        FenixChannelPush? flagLabels = Part(root, Remote.NdFlagLabelsCapt, "102");
+        _ = Part(flagLabels, NdFlagLabels.CornerFlags, "102.1");
+        string? approach = Text(flagLabels, NdFlagLabels.ApproachMessage, "102.2");
+
         List<string> listed = [];
         foreach (FenixChannelField entry in root.All(Remote.NdMessagesCapt))
         {
@@ -147,7 +152,8 @@ internal static class FenixChannelNd
         [
             (groundSpeed, "ground speed line"), (windLine, "wind line"),
             (line1, "next waypoint lines"), (line2, "next waypoint lines"), (line3, "next waypoint lines"),
-            (center, "center message"), (windshear, "windshear message"), (tcas, "TCAS message")
+            (center, "center message"), (windshear, "windshear message"), (tcas, "TCAS message"),
+            (approach, "approach message")
         ];
         foreach ((string? text, string place) in texts)
         {
@@ -170,7 +176,8 @@ internal static class FenixChannelNd
         return FenixChannelSection<FenixNdData>.Ok(new FenixNdData(
             ModeName(mode), RangeName(range), MapOptionName(mapOption), ls is not null && ls != 0,
             groundSpeed, windLine, magHeading, magTrack, magVar, selected, position, planCenter,
-            nav is null ? null : new FenixNdWaypointLines(line1 ?? "", line2 ?? "", line3 ?? ""), centerMessages, listedMessages));
+            nav is null ? null : new FenixNdWaypointLines(line1 ?? "", line2 ?? "", line3 ?? ""), centerMessages, listedMessages,
+            string.IsNullOrWhiteSpace(approach) ? null : approach));
 
         // ---- The reads. A field in another wire shape records its path (the first only) and reads as absent.
 

@@ -11,7 +11,8 @@ internal static partial class FenixChannelFields
         public const int Crosstrack = 52;               // crosstrack: fixed64 (double), the cross-track error in NM, negative left
         public const int TerrainOnNdCapt = 53;          // terrainOnNDCapt: varint (bool), the captain's TERR ON ND; left out when off
         public const int NdStatusCapt = 58;             // ndStatusCapt: nested NdStatusData, what the captain's ND draws in HDG
-        public const int NdCenterMessageCapt = 62;      // ndCenterMessageCapt: string, the center message (channel text)
+        public const int NdFlagLabelsCapt = 102;        // ndFlagLabels: nested NdFlagLabels, the captain's ND flag labels (the approach message at top center)
+        public const int NdCenterMessageCapt = 62;    // ndCenterMessageCapt: string, the center message (channel text)
         public const int NdWindshearMessageCapt = 64;   // ndWindshearMessageCapt: string, the windshear message (channel text)
         public const int NdTcasMessageCapt = 66;        // ndTcasMessageCapt: string, the TCAS message (channel text)
         public const int NavInfoCapt = 68;              // navInfoCapt: nested NdInfoData, the next waypoint's three lines
@@ -40,6 +41,16 @@ internal static partial class FenixChannelFields
         public const int SysOn = 4;                 // SysOn: varint (bool), the radar on: "WX+T+H"
         public const int PredWindshearScan = 8;     // PredWindshearScan: varint (bool), "PWS SCAN"
         public const int PredWindshearEnabled = 9;  // PredWindshearEnabled: varint (bool), alone: nothing printed
+    }
+
+    /// <summary>
+    /// NdFlagLabels, the captain's ND flag labels (<see cref="Remote.NdFlagLabelsCapt"/>), measured in flight on
+    /// 3.0.0.7613. Member 1 is the corner flags' nested message, whose members are not read here.
+    /// </summary>
+    public static partial class NdFlagLabels
+    {
+        public const int CornerFlags = 1;           // nested message, the flags drawn at the corners; its members are not read here
+        public const int ApproachMessage = 2;       // ApproachMessage: string (channel text), "gILS18L" at top center
     }
 
     /// <summary>NdInfoData, the next waypoint's lines (<see cref="Remote.NavInfoCapt"/>).</summary>

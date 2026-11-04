@@ -16,15 +16,20 @@ public class FenixChannelNdRowsTests
 
     // The cruise of spec 3.3: ARC, range 20, next waypoint VAKSU, heading 318.4 and track 322.6.
     private static FenixChannelProtoWriter Cruise(
-        ulong mode = 3, double heading = 318.4, double track = 322.6, params string[] listed)
+        ulong mode = 3, double? heading = 318.4, double track = 322.6, string wind = "g213w / g37",
+        string? approach = null, string line3 = "g17:29", params string[] listed)
     {
+        FenixChannelProtoWriter angles = new FenixChannelProtoWriter();
+        if (heading is { } mag) angles.Double(1, mag);
+        angles.Double(2, track).Double(3, 4.5);
         FenixChannelProtoWriter remote = new FenixChannelProtoWriter()
             .Message(1, Efis(mode))
             .Message(1, Efis(1))
-            .Message(68, new FenixChannelProtoWriter().String(1, "VAKSU g318c").String(2, "g84 csNM").String(3, "g17:29"))
+            .Message(68, new FenixChannelProtoWriter().String(1, "VAKSU g318c").String(2, "g84 csNM").String(3, line3))
             .Message(163, new FenixChannelProtoWriter()
-                .String(1, "wsGSlgd456wsdTASlgd448").String(2, "g213w / g37"))
-            .Message(194, new FenixChannelProtoWriter().Double(1, heading).Double(2, track).Double(3, 4.5));
+                .String(1, "wsGSlgd456wsdTASlgd448").String(2, wind))
+            .Message(194, angles);
+        if (approach is not null) remote.Message(102, new FenixChannelProtoWriter().String(2, approach));
         foreach (string entry in listed) remote.Message(103, new FenixChannelProtoWriter().String(1, entry));
         return remote;
     }
@@ -47,6 +52,7 @@ public class FenixChannelNdRowsTests
     [
         "Top left: GS white, 456 green, TAS white, 448 green",
         "Top left: wind 213 green, / white, 37 green",
+        "Top left: green wind arrow pointing 75° right",
         "Top center: heading 318 under the yellow lubber line, green track diamond 4° right",
         "Top right: VAKSU white, 318 green; 84 green, NM cyan; 17:29, green"
     ];
@@ -83,13 +89,13 @@ public class FenixChannelNdRowsTests
         const string Lubber = "under the yellow lubber line";
         Assert.Equal(
             $"Top center: heading 359 {Lubber}, green track diamond 4° right",
-            Rows(Cruise(heading: -1.44, track: 2.7))[2]);
+            Rows(Cruise(heading: -1.44, track: 2.7))[3]);
         Assert.Equal(
             $"Top center: heading 005 {Lubber}, green track diamond 7° left",
-            Rows(Cruise(heading: 5.2, track: 358.0))[2]);
+            Rows(Cruise(heading: 5.2, track: 358.0))[3]);
         Assert.Equal(
             $"Top center: heading 318 {Lubber}, green track diamond on the heading",
-            Rows(Cruise(heading: 318.4, track: 318.7))[2]);
+            Rows(Cruise(heading: 318.4, track: 318.7))[3]);
     }
 
     [Fact]
@@ -199,6 +205,97 @@ public class FenixChannelNdRowsTests
         Assert.DoesNotContain(rows, row => row.Contains("Messages: none"));
     }
 
+    // ---- The approach label, top center (102.2), and the wind arrow, top left (sitting 2, the header in flight).
+
+    [Fact]
+    public void The_approach_label_reads_above_the_heading_in_every_mode()
+    {
+        foreach (ulong mode in new ulong[] { 3, 2, 0, 1, 4 })
+        {
+            string[] rows = Rows(Cruise(mode: mode, approach: "gILS18L"));
+
+            Assert.Contains("Top center: ILS18L, green", rows);
+            int label = Array.IndexOf(rows, "Top center: ILS18L, green");
+            int heading = Array.FindIndex(rows, row => row.StartsWith("Top center: heading"));
+            if (mode == 4) Assert.Equal(-1, heading);
+            else Assert.True(label < heading, $"mode {mode}");
+        }
+
+        // Absent, empty or blank: no row.
+        Assert.DoesNotContain(Rows(Cruise()), row => row.Contains("ILS18L"));
+        Assert.Equal(CruiseRows, Rows(Cruise(approach: "")));
+        Assert.Equal(CruiseRows, Rows(Cruise(approach: "   ")));
+        Assert.Equal(
+            ["Top left: GS white, 456 green, TAS white, 448 green", "Top left: wind 213 green, / white, 37 green",
+             "Top left: green wind arrow pointing 75° right", "Top center: ILS18L, green"],
+            Rows(Cruise(approach: "gILS18L")).Take(4));
+    }
+
+    [Fact]
+    public void An_unknown_letter_in_the_approach_label_stops_the_nd()
+    {
+        FenixChannelRows rows = FenixChannelNdRows.Compose(Snapshot(Cruise(approach: "qILS18L")), _ => { });
+
+        Assert.NotNull(rows.Problem);
+    }
+
+    // The arrow points along the wind line's figure plus 180 minus the magnetic heading, folded to -180..180.
+    [Theory]
+    [InlineData(228, 18.0, "Top left: green wind arrow pointing 30° right")]     // fixinfo-211836
+    [InlineData(100, 280.0, "Top left: green wind arrow pointing ahead")]
+    [InlineData(10, 10.0, "Top left: green wind arrow pointing back")]
+    [InlineData(350, 10.0, "Top left: green wind arrow pointing 160° right")]    // 350 + 180 - 10 = 520
+    [InlineData(200, 40.0, "Top left: green wind arrow pointing 20° left")]       // 340 folds to -20
+    [InlineData(100, 120.0, "Top left: green wind arrow pointing 160° right")]
+    public void The_wind_arrow_reads_relative_to_the_nose(int figure, double heading, string expected)
+    {
+        string[] rows = Rows(Cruise(heading: heading, wind: $"g{figure}w / g39"));
+
+        Assert.Equal(expected, rows.Single(row => row.Contains("wind arrow")));
+    }
+
+    [Fact]
+    public void The_wind_arrow_rounds_half_away_from_zero_and_folds_the_back_both_ways()
+    {
+        // 100 + 180 - 249.5 = 30.5 -> 31; 100 + 180 - 310.5 = -30.5 -> 31 left; 0 + 180 - 0 and -180 both "back".
+        Assert.Contains("Top left: green wind arrow pointing 31° right", Rows(Cruise(heading: 249.5, wind: "g100w / g39")));
+        Assert.Contains("Top left: green wind arrow pointing 31° left", Rows(Cruise(heading: 310.5, wind: "g100w / g39")));
+        Assert.Contains("Top left: green wind arrow pointing back", Rows(Cruise(heading: 0, wind: "g0w / g39")));
+        Assert.Contains("Top left: green wind arrow pointing back", Rows(Cruise(heading: 360, wind: "g0w / g39")));
+        Assert.Contains("Top left: green wind arrow pointing ahead", Rows(Cruise(heading: 280, wind: "g100w / g39")));
+        Assert.Contains("Top left: green wind arrow pointing ahead", Rows(Cruise(heading: 280.4, wind: "g100w / g39")));
+    }
+
+    [Fact]
+    public void No_wind_arrow_without_a_figure_a_heading_or_in_plan()
+    {
+        // Sitting 2's dashes, as sent (the separator spaces are U+2800).
+        Assert.DoesNotContain(Rows(Cruise(wind: "g---w⠀/⠀g---")), row => row.Contains("wind arrow"));
+        Assert.DoesNotContain(Rows(Cruise(heading: null)), row => row.Contains("wind arrow"));
+        Assert.DoesNotContain(Rows(Cruise(mode: 4)), row => row.Contains("wind arrow"));
+        Assert.DoesNotContain(Rows(Cruise(wind: "")), row => row.Contains("wind arrow"));
+
+        // Heading-up modes list it: ARC, ROSE NAV, ROSE LS and ROSE VOR.
+        foreach (ulong mode in new ulong[] { 3, 2, 0, 1 })
+        {
+            Assert.Contains(Rows(Cruise(mode: mode, wind: "g153w⠀/⠀g32")), row => row.Contains("wind arrow"));
+        }
+    }
+
+    [Fact]
+    public void The_time_line_is_the_third_waypoint_line()
+    {
+        // The flight's lines: 68.1 "wRONII g082c°"-style, 68.2 "g8s.1 csNM", 68.3 "g01:58" (sitting 2, the header).
+        FenixChannelProtoWriter remote = new FenixChannelProtoWriter()
+            .Message(1, Efis(3)).Message(1, Efis(1))
+            .Message(68, new FenixChannelProtoWriter().String(1, "wRONII g082c°").String(2, "g8s.1 csNM").String(3, "g01:58"))
+            .Message(163, new FenixChannelProtoWriter().String(1, "wsGSlgd456wsdTASlgd448").String(2, "g213w / g37"))
+            .Message(194, new FenixChannelProtoWriter().Double(1, 318.4).Double(2, 322.6).Double(3, 4.5));
+
+        Assert.Contains(
+            Rows(remote), row => row == "Top right: RONII white, 082 green, ° cyan; 8.1 green, NM cyan; 01:58, green");
+    }
+
     [Fact]
     public void The_glass_boxes_list_the_messages_the_way_it_draws_them()
     {
@@ -232,6 +329,8 @@ public class FenixChannelNdRowsTests
         Assert.Equal("an unmeasured item", FenixChannelNdRows.Words("an unmeasured item"));
         Assert.Equal("yellow lubber line", FenixChannelNdRows.Words("lubber line"));
         Assert.Equal("green track diamond", FenixChannelNdRows.Words("track diamond"));
+        Assert.Equal("green wind arrow", FenixChannelNdRows.Words("wind arrow"));
+        Assert.Contains("cap/205636, hdg-push-210207, cap/213017", FenixChannelNdLook.For("wind arrow")!.Evidence);
     }
 
     [Fact]
@@ -251,11 +350,15 @@ public class FenixChannelNdRowsTests
     [InlineData("sv-SE")]
     public void Rows_are_the_same_in_every_culture(string culture)
     {
-        string[] invariant = Rows(Cruise(listed: ["GPS PRIMARY", "TA ONLY"]));
+        string[] invariant = Rows(Cruise(approach: "gILS18L", listed: ["GPS PRIMARY", "TA ONLY"]));
 
-        string[] there = TestCulture.Run(culture, () => Rows(Cruise(listed: ["GPS PRIMARY", "TA ONLY"])));
+        string[] there = TestCulture.Run(culture, () => Rows(Cruise(approach: "gILS18L", listed: ["GPS PRIMARY", "TA ONLY"])));
 
         Assert.Equal(invariant, there);
+        Assert.Contains("Top left: green wind arrow pointing 75° right", there);
+        Assert.Contains("Top center: ILS18L, green", there);
+        Assert.Contains("Top left: green wind arrow pointing 31° left", TestCulture.Run(culture,
+            () => Rows(Cruise(heading: 310.5, wind: "g100w / g39"))));
         Assert.Equal("318", TestCulture.Run(culture, () => FenixChannelNdRows.CompassText(318.4)));
         Assert.Equal("359", TestCulture.Run(culture, () => FenixChannelNdRows.CompassText(-1.44)));
     }

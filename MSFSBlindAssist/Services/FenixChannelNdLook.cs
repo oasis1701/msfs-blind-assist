@@ -33,6 +33,8 @@ internal static class FenixChannelNdLook
     [
         new("lubber line", "lubber line", "yellow", "03-nd.md, Task 1 Part A, the header as drawn"),
         new("track diamond", "track diamond", "green", "03-nd.md, Task 1 Part A, the header as drawn"),
+        new("wind arrow", "wind arrow", "green",
+            "03-nd.md, Sitting 2, The header in flight (cap/205636, hdg-push-210207, cap/213017)"),
         new(FenixChannelNdMapData.LookItem.VorDme, "circle with a cross", "magenta", MapPointsEvidence),
         new(FenixChannelNdMapData.LookItem.Dme, "circle", "magenta", MapPointsEvidence),
         new(FenixChannelNdMapData.LookItem.Ndb, "triangle", "magenta", MapPointsEvidence),

@@ -251,6 +251,32 @@ public class FenixChannelNdTests
     }
 
     [Fact]
+    public void The_approach_message_is_102_2_as_sent()
+    {
+        // Sample as sent in flight: gILS18L, with the corner flags (102.1) beside it.
+        FenixChannelProtoWriter flags = new FenixChannelProtoWriter()
+            .Message(1, new FenixChannelProtoWriter().Varint(1, 1)).String(2, "gILS18L");
+
+        Assert.Equal("gILS18L", Value(Cruise().Message(102, flags)).ApproachMessage);
+        Assert.Null(Value(Cruise()).ApproachMessage);
+        Assert.Null(Value(Cruise().Message(102, new FenixChannelProtoWriter())).ApproachMessage);
+        Assert.Null(Value(Cruise().Message(102, new FenixChannelProtoWriter().String(2, ""))).ApproachMessage);
+        Assert.Null(Value(Cruise().Message(102, new FenixChannelProtoWriter().String(2, "   "))).ApproachMessage);
+    }
+
+    [Fact]
+    public void The_approach_message_has_its_shape_and_its_letters()
+    {
+        Assert.Equal("field 102.2 has the wrong shape",
+            Read(Cruise().Message(102, new FenixChannelProtoWriter().Varint(2, 1))).Problem);
+        Assert.Equal("field 102 has the wrong shape", Read(Cruise().Varint(102, 1)).Problem);
+        Assert.Equal("field 102.1 has the wrong shape",
+            Read(Cruise().Message(102, new FenixChannelProtoWriter().Varint(1, 1))).Problem);
+        Assert.Equal("unknown code 'q' in the approach message",
+            Read(Cruise().Message(102, new FenixChannelProtoWriter().String(2, "qILS18L"))).Problem);
+    }
+
+    [Fact]
     public void Blank_and_null_messages_are_skipped()
     {
         FenixChannelProtoWriter remote = Cruise().String(62, "   ").String(64, "")

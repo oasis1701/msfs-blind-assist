@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace MSFSBlindAssist.Services;
 
@@ -27,7 +28,7 @@ internal sealed record FenixNdLayer(IReadOnlyList<string> Rows, string? LayerPro
 /// a color only from <see cref="FenixChannelNdLook"/>; channel text speaks its own through
 /// <see cref="FenixChannelSpeech"/>. Numbers are invariant whatever the PC's culture is.
 /// </summary>
-internal static class FenixChannelNdRows
+internal static partial class FenixChannelNdRows
 {
     /// <summary>What <see cref="FenixChannelMonitor.ReportFeatureProblem"/> logs the window under.</summary>
     public const string Feature = "ND";
@@ -134,7 +135,12 @@ internal static class FenixChannelNdRows
         if (FenixChannelSpeech.Line(nd.GroundSpeedLine) is { } groundSpeed) rows.Add("Top left: " + groundSpeed);
         if (FenixChannelSpeech.Line(nd.WindLine) is { } wind) rows.Add("Top left: wind " + wind);
 
-        // (3): top center. PLAN is north up with no heading under a lubber line.
+        // The wind arrow under the wind line: heading-up modes only (PLAN is north up; unmeasured there).
+        if (nd.Mode != "PLAN" && WindArrowRow(nd) is { } arrow) rows.Add(arrow);
+
+        // (3): top center. The approach label is drawn at the very top, above the compass, in every mode. PLAN is
+        // north up with no heading under a lubber line.
+        if (FenixChannelSpeech.Line(nd.ApproachMessage) is { } approach) rows.Add("Top center: " + approach);
         if (nd.Mode != "PLAN") rows.Add(CompassRow(nd));
 
         // (4): top right. In LS and VOR the glass draws the LS or VOR block there instead.
@@ -190,6 +196,31 @@ internal static class FenixChannelNdRows
         { Color: null } entry => entry.Symbol,
         { } entry => $"{entry.Color} {entry.Symbol}"
     };
+
+    // The green arrow under the wind line points along the wind line's figure (163.2 as drawn: the first number in
+    // its text) plus 180 minus the magnetic heading, so relative to the nose. No row without a figure (the dashes) or a
+    // heading. Evidence: sitting 2, the header in flight.
+    private static string? WindArrowRow(FenixNdData nd)
+    {
+        if (nd.WindLine is null || nd.MagneticHeading is not { } heading) return null;
+
+        Match figure = FirstNumber().Match(FenixChannelText.Parse(nd.WindLine).JoinedText);
+        if (!figure.Success) return null;
+
+        double direction = double.Parse(figure.Value, NumberStyles.None, CultureInfo.InvariantCulture);
+        double relative = (direction + 180 - heading) % 360;
+        if (relative > 180) relative -= 360;
+        if (relative < -180) relative += 360;
+
+        double whole = Math.Round(relative, MidpointRounding.AwayFromZero);
+        string where = Math.Abs(whole) == 180 ? "back"
+            : whole == 0 ? "ahead"
+            : $"{Math.Abs(whole).ToString("0", CultureInfo.InvariantCulture)}° {(whole > 0 ? "right" : "left")}";
+        return $"Top left: {Words("wind arrow")} pointing {where}";
+    }
+
+    [GeneratedRegex(@"[0-9]+")]
+    private static partial Regex FirstNumber();
 
     private static string CompassRow(FenixNdData nd)
     {
