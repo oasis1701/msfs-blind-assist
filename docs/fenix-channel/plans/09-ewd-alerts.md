@@ -4,7 +4,7 @@
 > superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 > Task 0, the claim, is the controller's own, done before Task 1 is dispatched.
 
-**Goal:** Each new ECAM warning and caution is spoken with the color the Fenix's E/WD gives it, red ones at once, each
+**Goal:** Each new ECAM warning and caution is spoken with the color the Fenix's E/WD gives it, red ones interrupting, each
 is said "cleared" when it goes, and memos are spoken when the pilot turns them on, from a trusted E/WD only.
 
 **Architecture:** A pure state machine, `FenixChannelEwdAlertAnnouncer`, compares each snapshot's ECAM entries with the
@@ -44,6 +44,10 @@ shared behavior and the E/WD alerts), 3.4, 4; answers 2 and 4.
   title, as the parts (plan 01), so the announcement and plan 04's rows say the same.
 - Three rules follow the recommendation of an open owner question, marked where they apply: the other column searched
   after the own one, a failure with no color heard unless both rows are muted, and no "cleared" for a memo.
+- What Task 1 measured, and the owner's three rulings on it (2026-11-04, spec rows 59 to 61), are in Tasks 2 and 3's text.
+  The list is sampled every 3.84 s and is sent only when it changed, so an entry is up to 3.84 s behind its line and never
+  ahead of it; a warning spoken from it is that late, and one shorter than the beat can go unsaid (the owner keeps the list
+  as the only source and judges the delay by ear in Task 5).
 - Every line is spoken with `Announce`, except the first red failure of a step, with `AnnounceImmediate` (spec 2.7).
 - Nothing speaks until Task 5's in-sim checks pass: Task 4 is the plan's one switch commit (the sampler seam), pushed to
   `feat/fenix-display-channel` only then (index, "Shared conventions"); Tasks 1-3 are inert there and are pushed as
@@ -58,6 +62,11 @@ shared behavior and the E/WD alerts), 3.4, 4; answers 2 and 4.
 - The entries stream ahead of the E/WD's line: a title waits for its line rather than being spoken without its color,
   and one that comes and goes inside the wait says nothing (Task 3, `A_new_title_waits_for_its_line`,
   `A_title_that_goes_while_waiting_says_nothing`).
+- A failure missing from one list: during a power transfer ENG 1 FIRE left the list for one beat with the fire still set,
+  on a trusted E/WD. It must not be said cleared, nor spoken again when it returns (Task 3,
+  `A_failure_missing_from_one_list_is_not_cleared`, `A_failure_gone_for_the_hold_is_cleared_once`).
+- LAND ASAP's list position: its entry sorts ahead of the failure that caused it, and the failure must still be heard first
+  (Task 3, `Land_asap_follows_a_new_failure`).
 - A trust gap, a reconnect or a mute: nothing that came and went inside it is ever spoken, and an unmute replays
   nothing (Task 3, `A_failure_inside_a_trust_gap_is_never_spoken`, `A_reconnect_takes_the_next_reading_silently`,
   `Unmuting_replays_nothing`).
@@ -114,22 +123,45 @@ in `docs/fenix-channel/evidence/09-ewd-alerts.md`; commit `docs(fenix-channel): 
 - Produces: `internal static class FenixChannelEwdAlertLines` with
   `static IReadOnlyList<string>? Find(string title, IReadOnlyList<string> ownColumn, IReadOnlyList<string> otherColumn)`
   (the matched line as sent, or the two consecutive lines of a title the E/WD wraps, in order; null when nothing
-  matches) and `static FenixTextColor? TitleColor(IReadOnlyList<string> lines)` (each line parsed on its own; the color
-  of the first run whose text is not whitespace; null when there is none). A title's words are
+  matches), `static FenixTextColor? TitleColor(IReadOnlyList<string> lines)` (each line parsed on its own; the color
+  of the first run whose text is not whitespace; null when there is none), and
+  `static FenixEwdMemoWords MemoWords(string name)` with
+  `internal readonly record struct FenixEwdMemoWords(string Text, IReadOnlyList<string> LineTexts)`: what a memo with a blank
+  Title is called and which texts its line may hold, from the name after "MEMO-" (the table below). A title's words are
   `FenixChannelSpeech.Line(parts)` with the found lines as the parts (plan 01), so a color never carries from one line
   to the next and no runs are joined by hand.
+
+  The comparison, on both sides: a run of two or more dots counts as one space, then whitespace is collapsed and trimmed
+  (measured: the LDG memo's Title "LDG LDG GEAR......DN" stayed so while its line was "guLDGu LDG GEAR DN"). A single dot is
+  text ("T.O"). The E/WD's words for a memo whose entry words differ (owner's ruling, spec row 61, measured 2026-11-04):
+
+  | Name after "MEMO-" | `Text` | `LineTexts` |
+  | --- | --- | --- |
+  | FUEL < 3 T | FOB BELOW 3 T | FOB BELOW 3 T |
+  | T.CAS STBY | TCAS STBY | TCAS STBY |
+  | T.O. INHIBIT | T.O INHIBIT | T.O INHIBIT |
+  | SPEED BRAKE | SPEED BRK | SPEED BRK |
+  | AUTO BRK | AUTO BRK | AUTO BRK LO, AUTO BRK MED, AUTO BRK MAX |
+  | any other | the name | the name |
+
+  Only "AUTO BRK LO" was measured; the other two are the knob's other settings, and a text that never matches costs only a
+  memo spoken without its color.
 
 - [ ] **Steps 1-5.** The rule of Global Constraints (the other column after the own one: owner question, as
   recommended); ordinal comparison. Tests with the measured lines: `A_title_is_found_by_its_joined_text` ("ELEC GEN 1
   FAULT" in ["c -GEN 1......OFF THEN ON", "uaELECu aGEN 1 FAULT"] → the second, amber; "ENG 1 FIRE" ↔ "urENG 1 FIREu "
-  → red; "ENG 1 SHUT DOWN" ↔ "uaENG 1u afSHUT DOWNf" → amber), `A_title_on_two_lines_is_found` ("CONFIG FLAPS NOT IN
+  → red; "ENG 1 SHUT DOWN" ↔ "uaENG 1u afSHUT DOWNf" → amber; "AUTO FLT AP OFF" ↔ "urAUTO FLTu rAP OFF" → red),
+  `A_config_title_is_found_on_its_own_line` ("FLAPS NOT IN T.O CONFIG" in ["urCONFIGu ", "rSLATS NOT IN T.O CONFIG",
+  "urCONFIGu ", "rFLAPS NOT IN T.O CONFIG"] → the last line alone, red), `A_title_on_two_lines_is_found` ("CONFIG FLAPS NOT IN
   T.O CONFIG" over "urCONFIGu " and "rFLAPS NOT IN T.O CONFIG" → both lines in order, red, and
   `FenixChannelSpeech.Line` of them as the parts "CONFIG FLAPS NOT IN T.O CONFIG, red"), `Only_a_whole_line_matches`
   ("ENG 1" does not match "uaENG 1u afSHUT DOWNf", nor "GEN 1" "c -GEN 1......OFF THEN ON"), `The_own_column_comes_first` (memo "SEAT BELTS": right "gSEAT BELTS" beats left
-  "wSEAT BELTS" → green; the take-off memo's "T.O AUTO BRK.....MAX", only in the left as "guT.Ou AUTO BRKc.....MAX",
-  found there), `No_line_gives_null`, `The_color_is_the_first_stretch_with_text` ("rLAND ASAP" red, "aLAND ASAP" amber,
-  " rLAND ASAP" with a colorless leading space still red). Commit: `feat(fenix-channel): find an ECAM title's line on
-  the E/WD`.
+  "wSEAT BELTS" → green; the take-off memo's "T.O AUTO BRK.....MAX", only in the left as "guT.Ou AUTO BRKc.....MAX    ",
+  found there), `A_run_of_dots_counts_as_a_space` ("LDG LDG GEAR......DN" ↔ "guLDGu LDG GEAR DN"; "T.O AUTO BRK.....MAX" ↔
+  "guT.Ou AUTO BRK MAX"; a single dot does not: "TO CONFIG" does not match "rT.O CONFIG"),
+  `No_line_gives_null`, `The_color_is_the_first_stretch_with_text` ("rLAND ASAP" red, "aLAND ASAP" amber,
+  " rLAND ASAP" with a colorless leading space still red), `A_memo_has_the_words_the_ewd_draws` (every row of the table),
+  `Any_other_memo_keeps_its_name` ("PARK BRK"). Commit: `feat(fenix-channel): find an ECAM title's line on the E/WD`.
 
 ### Task 3: The announcer
 
@@ -140,7 +172,9 @@ in `docs/fenix-channel/evidence/09-ewd-alerts.md`; commit `docs(fenix-channel): 
   `FenixEcamEntry`, `FenixChannelSpeech.Line` (`Line(coded)` and `Line(parts)`), `FenixChannelAnnouncementRows`'
   three keys, `Accessibility.ScreenReaderAnnouncer.Announce` and `AnnounceImmediate`.
 - Produces: `internal readonly record struct FenixEwdAlertLine(string Text, bool Interrupt)`;
-  `internal sealed class FenixChannelEwdAlertAnnouncer` with `public const long LineWaitMs = 1_000` (Task 1 fixes it),
+  `internal sealed class FenixChannelEwdAlertAnnouncer` with `public const long LineWaitMs = 500` (Task 1: no entry ever
+  came before its line, so this is the rule's floor), `public const long LeaveHoldMs = 4_500` (the list's 3.84 s beat and a
+  margin: rule 7),
   `IReadOnlyList<FenixEwdAlertLine> Step(FenixChannelSnapshot s, long nowMs, Func<string, bool> isMuted, Action<string> report)`
   and `static void Speak(IReadOnlyList<FenixEwdAlertLine> lines, Accessibility.ScreenReaderAnnouncer announcer)` (in
   order: an interrupting line with `AnnounceImmediate`, every other with `Announce`).
@@ -149,31 +183,43 @@ in `docs/fenix-channel/evidence/09-ewd-alerts.md`; commit `docs(fenix-channel): 
   1. Every step, whatever the verdict: an entries message other than the last one read (by reference) replaces the
      remembered list, unless it has Heartbeat set and no entries, or is not `ShapesOk` (the gate latches on it anyway).
      Its entries are classified then, once per message.
-  2. An item is keyed by its Ata and Name. A name holding "-STS-" is never an item. A name starting "MEMO-" is a memo,
-     its text the Title, or the name after "MEMO-" when the Title is blank. Otherwise an entry with IsAlert set is a
-     failure, its text the Title; one with a blank Title is not an item ("alert entry with no title: <Ata> <Name>").
-     Any other entry is not an item ("entry of no known kind: <Ata> <Name>"). Quoted texts go to `report`.
+  2. An item is keyed by its Ata and Name; a key that comes twice in one list counts once, the first. A name holding "-STS-"
+     is never an item. A name starting "MEMO", any spaces, "-", any spaces (measured: "MEMO-PARK BRK", "MEMO - COMPANY MSG")
+     has a name after that prefix. If that name starts "LAND ASAP" (measured: "MEMO-LAND ASAP (RED)") the entry is the one
+     LAND ASAP item, whatever its Ata and the rest of its Name, keyed "LAND ASAP" and with the text "LAND ASAP": a failure in
+     every rule below (owner's ruling, spec row 60). Any other such entry is a memo: with a Title, its text and its one line
+     text are the Title; with a blank Title they are `FenixChannelEwdAlertLines.MemoWords(<the name>)`. Otherwise an entry
+     with IsAlert set is a failure, its text and its one line text the Title; one with a blank Title is not an item
+     ("alert entry with no title: <Ata> <Name>"). Any other entry is not an item ("entry of no known kind: <Ata> <Name>").
+     Quoted texts go to `report`.
   3. Not trusted, no frame, or a `Connection` number other than the last step's (a reconnect, however quickly the
      verdict came back): nothing is said and nothing waits; the next trusted step is a baseline.
   4. The baseline, the first trusted step after a start or rule 3 once a list is remembered, takes every item as said,
      silently; with no list yet it waits, saying nothing.
   5. An item in the list that has not been said is new and waits for its line (failures in the left column first,
-     memos in the right): found, it is due at once with that line; not found within `LineWaitMs`, it is due without
-     one ("no line on the E/WD for <text>; spoken without a color" to `report`). One that leaves before it is due says
-     nothing.
+     memos in the right; `Find` with each of its line texts in turn, LAND ASAP's being "LAND ASAP"): found, it is due at once
+     with that line; not found within `LineWaitMs`, it is due without one ("no line on the E/WD for <text>; spoken without a
+     color" to `report`). One that leaves before it is due says nothing.
   6. A due failure says `FenixChannelSpeech.Line(<its lines>)`, the parts as `Find` gave them ("ENG 1 FIRE, red"), or
      `FenixChannelSpeech.Line(<its text>)` with no line ("ENG 1 FIRE": a text with no color letter stays colorless,
      plan 01). Its row, by `TitleColor`: red `WarningsKey`, amber `CautionsKey`; any other color or none is heard
      unless both rows are muted (owner question, as recommended). A due memo says the same way under `MemosKey`. Text
      the speech function refuses (an unknown letter) is not said and goes to `report`.
-  7. A failure taken as said (by the baseline, or spoken, or due while muted) that leaves the list: "<words of its
-     text> cleared", under the row of its latest color. A memo that leaves says nothing (spec 2.7 gives a cleared line
-     to failure titles only; owner question, as recommended).
-  8. While an item stays, its line is looked up each step and its latest color kept for rule 7. A color change is never
-     spoken ("rLAND ASAP" turning "aLAND ASAP" in the fire drill: neither appeared nor cleared), and an item spoken
-     without a color is not spoken again when its line appears.
+  7. An item taken as said (by the baseline, or spoken, or due while muted) that is missing from the remembered list is
+     held from the step that read that list. It is gone only once it has stayed out for `LeaveHoldMs`: one back in a list
+     before then never left, so nothing is said and it is not new (owner's ruling, spec row 59: during a power transfer ENG 1
+     FIRE was missing from one list, 3.84 s, with the fire still set and the E/WD trusted). A further list without it does not
+     restart the hold. A failure that is gone: "<words of its text> cleared", under the row of its latest color, by
+     `TitleColor` as in rule 6. A memo that is gone says nothing (spec 2.7 gives a cleared line to failure titles only; owner
+     question, as recommended).
+  8. While an item stays or is held, its line is looked up each step and its latest color kept for rule 7; a step with no
+     line keeps the color it had. A color change is never spoken ("rLAND ASAP" turning "aLAND ASAP" in the fire drill: neither
+     appeared nor cleared, and its one key holds if the Name changes with it), and an item spoken without a color is not
+     spoken again when its line appears.
   9. One step's lines, in this order: the due red failures in list order, the first of them that is spoken
-     interrupting; then the other due failures; then the cleared lines; then the due memos. No other line interrupts.
+     interrupting; then the other due failures; then the cleared lines; then the due memos. LAND ASAP comes after the other
+     failures of its own group, so the failure that caused it is heard first (its entry sorts ahead of them: its Ata is a
+     memo's). No other line interrupts.
   10. A muted row's line is dropped, never kept for later; the items move on all the same, so an unmute replays nothing.
 
   Tests (frames built positionally, `FenixChannelFrame` with the two columns and `EwdLive = true`; entries as
@@ -184,12 +230,24 @@ in `docs/fenix-channel/evidence/09-ewd-alerts.md`; commit `docs(fenix-channel): 
   ("01-26- 10" "FIRE - ENG 1 FIRE" title "ENG 1 FIRE" alert, left "urENG 1 FIREu " → ("ENG 1 FIRE, red", true)),
   `A_new_caution_is_queued_with_its_color` ("01-24-  1" "ELEC-GEN 1 FAULT" title "ELEC GEN 1 FAULT" alert, left
   "uaELECu aGEN 1 FAULT" → ("ELEC GEN 1 FAULT, amber", false)), `A_cleared_failure_is_said_once` ("ELEC GEN 1 FAULT
-  cleared", queued, once), `Status_items_and_action_lines_are_never_said` ("01-24-190" "ELEC-STS-GEN 1 INOP" beside the
+  cleared", queued, once, at `LeaveHoldMs` and not a step before),
+  `A_failure_missing_from_one_list_is_not_cleared` ("01-26- 10" "FIRE - ENG 1 FIRE", said; a list without it at t, a list with
+  it again at t + 3,840: nothing said at any step, also after t + `LeaveHoldMs`), `A_failure_gone_for_the_hold_is_cleared_once`
+  (a list without it at t, another without it at t + 3,840: "ENG 1 FIRE cleared" at t + `LeaveHoldMs`, once),
+  `A_memo_back_inside_the_hold_is_not_spoken_again`, `Status_items_and_action_lines_are_never_said` ("01-24-190" "ELEC-STS-GEN 1 INOP" beside the
   GEN 1 fault; the fire drill's lines "c -GEN 1......OFF THEN ON", "w   .IF UNSUCCESSFUL:", "w -AGENT1 AFTER
   4S.DISCH", "rLAND ASAP" beside the fire entry alone: one line spoken), `A_memo_speaks_only_while_its_row_is_on`
   ("01- 0-250" "MEMO-SEAT BELTS", right "gSEAT BELTS": nothing while `MemosKey` is muted, "SEAT BELTS, green" unmuted,
   nothing when it goes), `A_memo_with_a_blank_title_takes_its_name` ("MEMO-PARK BRK", right "gPARK BRK" → "PARK BRK,
-  green"), `A_new_title_waits_for_its_line` (its line 400 ms later: "ELEC GEN 1 FAULT, amber" then; no line by
+  green"), `A_memo_with_spaces_round_its_dash_is_a_memo` ("MEMO - COMPANY MSG", right "gCOMPANY MSG" → "COMPANY MSG, green"),
+  `A_memo_speaks_the_words_the_ewd_draws` ("MEMO-FUEL < 3 T", left "gFOB BELOW 3 T" → "FOB BELOW 3 T, green"; with no line,
+  "FOB BELOW 3 T"; "MEMO-AUTO BRK", right "gAUTO BRK LO" → "AUTO BRK LO, green"; with no line, "AUTO BRK"),
+  `Land_asap_is_heard_by_its_color` ("01- 0-400" "MEMO-LAND ASAP (RED)" with `MemosKey` muted, right "rLAND ASAP" →
+  ("LAND ASAP, red", true); under "aLAND ASAP" queued), `Land_asap_follows_a_new_failure` (it and ENG 1 FIRE new in one step, it
+  first in the list: ("ENG 1 FIRE, red", true) then ("LAND ASAP, red", false)), `Land_asap_changing_its_name_is_only_a_color_change`
+  ("MEMO-LAND ASAP (RED)" to "MEMO-LAND ASAP (AMBER)", the line to "aLAND ASAP": nothing; when it goes, "LAND ASAP cleared" under
+  `CautionsKey`), `Alert_entries_with_no_title_are_reported_not_said` ("01-22-310" "AUTO FLIGHT-ALTITUDE ALERT"),
+  `A_new_title_waits_for_its_line` (its line 400 ms later: "ELEC GEN 1 FAULT, amber" then; no line by
   `LineWaitMs`: "ELEC GEN 1 FAULT", reported once), `A_title_that_goes_while_waiting_says_nothing`,
   `Only_the_first_red_title_of_a_tick_interrupts` (two new red failures and one amber in one step: the first red
   interrupts, the second red and the amber are queued after it; with warnings muted, the amber does not interrupt),
@@ -232,11 +290,16 @@ gate, both engines running, `fenix_channel.log` showing "E/WD trusted"; each pre
 aircraft handed over; Robin listens (the [owner] part). Record each result in `docs/fenix-channel/evidence/09-ewd-alerts.md`.
 
 - [ ] At the start, the memos and any failure already shown are silent.
-- [ ] GEN 1 off: "ELEC GEN 1 FAULT, amber" once, not cutting other speech, and "GEN 1 INOP" never; GEN 1 on: "ELEC GEN
-  1 FAULT cleared".
-- [ ] TO CONFIG with the flaps up: the CONFIG warning with ", red", interrupting; flaps set: its "cleared".
-- [ ] Ctrl+M, "E/WD cautions" unticked, GEN 1 off: nothing; ticked again: nothing replayed; GEN 1 on: "ELEC GEN 1
-  FAULT cleared".
+- [ ] GEN 1 off: "ELEC GEN 1 OFF, amber" once, not cutting other speech, and "GEN 1 INOP" never; GEN 1 on: "ELEC GEN 1 OFF
+  cleared". The failure F_ELEC_DRIVE_FAILURE_L: "ELEC GEN 1 FAULT, amber", then its "cleared".
+- [ ] TO CONFIG held down with the flaps up (a quick press reaches the list only if a beat falls inside it):
+  "SLATS NOT IN T.O CONFIG, red", interrupting, then "FLAPS NOT IN T.O CONFIG, red", not; released: their "cleared".
+- [ ] An engine fire (F_OH_FIRE_ENG_1_1BOTTLE) with a generator change timed so a beat falls in the E/WD's blank: "ENG 1 FIRE,
+  red" once, and neither "cleared" nor a repeat through the blank; the failure cleared: "ENG 1 FIRE cleared".
+- [ ] The owner judges by ear whether a red warning's delay, up to 3.84 s, is acceptable; if not, reading it from the lines
+  is a new design and a new ruling.
+- [ ] Ctrl+M, "E/WD cautions" unticked, GEN 1 off: nothing; ticked again: nothing replayed; GEN 1 on: "ELEC GEN 1 OFF
+  cleared".
 - [ ] Memos, unticked by default: seat belts on, nothing; "E/WD memos" ticked, seat belts off and on: "SEAT BELTS,
   green"; off: nothing.
 - [ ] A trust gap: cold and dark with GEN 1 off, then powered: nothing about it is said once the E/WD is trusted.
@@ -284,19 +347,23 @@ only).
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** in progress: Task 1 done (2026-11-04); Task 3's rules wait on the owner's rulings below
+- **Status:** in progress: Task 1 done (2026-11-04)
 - **Claimed by:** Robin Kipp (robin24), 2026-11-04
 - **Worked by:** Robin Kipp with Claude
 - **Started:** 2026-11-04, from 1d29a73ee (plan 01's recorded base)
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:** 0 done (claim 13062c072); 1 done.
-- **Waiting on the owner:** rulings on what Task 1 found: the "cleared" hold, LAND ASAP's row, and the words of the memos whose
-  entries differ from the E/WD.
+- **Waiting on the owner:**
 - **In-sim results:** 2026-11-04, A321 IAE: in cruise, then the descent and landing, then at the LPPT gate (GEN 1 off and on, the
   generator failure, TO CONFIG, an engine fire, CLR): `evidence/09-ewd-alerts.md`.
 - **Changed from the plan:** `LineWaitMs` is 500 ms, Task 1's floor: no entry ever came before its line. Task 5's words change with
   what was measured: switching GEN 1 off is "ELEC GEN 1 OFF" and the failure F_ELEC_DRIVE_FAILURE_L is "ELEC GEN 1 FAULT"; TO CONFIG's
   warnings are two titles, "SLATS NOT IN T.O CONFIG" and "FLAPS NOT IN T.O CONFIG", each found on its own red line, and a quick press
-  reaches the list only if a 3.84 s beat falls inside it, so that check holds the button down.
-- **Rulings made while working:**
+  reaches the list only if a 3.84 s beat falls inside it, so that check holds the button down. Tasks 2, 3 and 5 hold the rulings
+  below, and the comparison counts a run of dots as a space (the LDG memo's Title).
+- **Rulings made while working:** the owner, 2026-11-04, on Task 1's results, all as recommended: a failure or memo missing from
+  the list only counts as gone after `LeaveHoldMs`, 4.5 s, one more beat, so "cleared" comes about 4.5 to 8.3 s after the E/WD
+  clears it (spec row 59); LAND ASAP is heard by its color under the warnings or cautions row, never as a memo (row 60); memos are
+  spoken in the E/WD's words where the entry's differ, from a table of the measured pairs, and "MEMO - " counts as a memo (row 61).
+  The list stays the only source of what appeared and what cleared, the delay of up to 3.84 s to be judged by ear in Task 5.
