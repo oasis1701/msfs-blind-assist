@@ -122,14 +122,17 @@ internal static partial class FenixChannelFields
     }
 
     /// <summary>
-    /// NdVorCourse (<see cref="Remote.VorCourseCapt"/>), measured at the gate (sitting 3): only member 1 is read, the
-    /// course ROSE VOR's pointer is drawn at, set with nothing received. Member 2 is the candidate for the deviation, unmeasured.
+    /// NdVorCourse (<see cref="Remote.VorCourseCapt"/>), measured at the gate (sitting 3): members 1 (the course ROSE
+    /// VOR's pointer is drawn at, set with nothing received), 2 (the deviation) and 5 (TO/FROM) are read; 2 and 5 were
+    /// measured in sitting 3 with VOR 1 receiving.
     /// </summary>
     public static partial class NdVorCourse
     {
         public const int Course = 1;                // Course: fixed64 (double), the VOR 1 course on RAD NAV (185 read 185.0); NaN with none
+        public const int Deviation = 2;             // Deviation: fixed64 (double), the VOR deviation in dots, negative = bar right of the course pointer, stops at 2.5; NaN with none
         public const int Bearing = 3;               // Bearing: fixed64 (double), the VOR 1 bearing; not read here
         public const int DmeDistance = 4;           // DmeDistance: fixed64 (double), the VOR 1 DME distance in NM; not read here
+        public const int ToFrom = 5;                // ToFrom: fixed64 (double), 1 FROM (arrow toward the pointer's tail), 2 TO (toward its head); absent with none
     }
 
     /// <summary>NdBearingPointers (<see cref="Remote.BearingPointersCapt"/>): the pointers of NAV 1 and NAV 2.</summary>

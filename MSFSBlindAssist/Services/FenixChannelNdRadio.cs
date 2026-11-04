@@ -24,6 +24,9 @@ internal static class FenixChannelNdRadio
     private const double LocalizerFullScaleDots = 2.5;
     private const double GlideslopeFullScaleDots = 2.0;
 
+    // ROSE VOR's bar stops at 2.5 dots too (sitting 3).
+    private const double VorFullScaleDots = 2.5;
+
     /// <summary>The look items of the radio layers, each a <see cref="FenixChannelNdLook"/> entry.</summary>
     internal static class LookItem
     {
@@ -32,6 +35,7 @@ internal static class FenixChannelNdRadio
         public const string GlideslopeDiamond = "glideslope diamond";
         public const string GlideslopeHalfDiamond = "glideslope half diamond";
         public const string VorCoursePointer = "VOR course pointer";
+        public const string VorDeviationBar = "VOR deviation bar";
         public const string PointerNav1 = "bearing pointer on NAV 1";
         public const string PointerNav2 = "bearing pointer on NAV 2";
         public const string ArrowNav1 = "corner arrow on NAV 1";
@@ -50,7 +54,8 @@ internal static class FenixChannelNdRadio
     /// 102.1.1 is set), in ROSE LS the course pointer (82.6), the localizer bar (82.1) and the glideslope diamond (82.2),
     /// in ROSE VOR the failed flag at the center, or the course pointer (80.1); then, in ROSE NAV, ROSE LS and ROSE VOR, a
     /// row for each bearing pointer (78) its selector allows and its receiver's flag (102.1) does not hide. ARC and PLAN
-    /// pointers and ROSE VOR's deviation and TO/FROM are not measured or not drawn, so they are not listed. A field in
+    /// pointers are not measured or not drawn, so they are not listed; ROSE VOR's deviation bar (80.2) and TO/FROM (80.5)
+    /// follow its course pointer on one row. A field in
     /// another shape gives one row in the layer's place; a letter the app does not know stops the ND ([FNX-24]).
     /// </summary>
     public static FenixNdLayer Rows(FenixChannelPush push, FenixNdData header)
@@ -98,11 +103,13 @@ internal static class FenixChannelNdRadio
         }
 
         // ROSE VOR's course pointer: 80.1 only, never 70.2's text (sitting 3: set with nothing received).
-        double vorCourse = double.NaN;
+        double vorCourse = double.NaN, vorDeviation = double.NaN, vorToFrom = double.NaN;
         if (vor)
         {
             FenixChannelPush? courseBlock = read.Part(push, Remote.VorCourseCapt, "80");
             vorCourse = read.Double(courseBlock, NdVorCourse.Course, "80.1") ?? double.NaN;
+            vorDeviation = read.Double(courseBlock, NdVorCourse.Deviation, "80.2") ?? double.NaN;
+            vorToFrom = read.Double(courseBlock, NdVorCourse.ToFrom, "80.5") ?? double.NaN;
         }
 
         FenixChannelPush? bearings = pointers ? read.Part(push, Remote.BearingPointersCapt, "78") : null;
@@ -132,6 +139,7 @@ internal static class FenixChannelNdRadio
         {
             rows.Add($"Center: {FenixChannelNdRows.Words(LookItem.VorCoursePointer)} at "
                 + $"{FenixChannelNdRows.CompassText(vorCourse)} on the compass");
+            rows.Add(VorDeviationRow(vorDeviation, vorToFrom));
         }
 
         if (ls)
@@ -169,6 +177,22 @@ internal static class FenixChannelNdRadio
         return rounded == 0
             ? $"Center: {bar} centered"
             : $"Center: {bar} {rounded.ToString("0.0", CultureInfo.InvariantCulture)} dots {side}";
+    }
+
+    // 80.2 is negative with the bar right of the course pointer, the opposite of the localizer's 82.1; 80.5 is 1 FROM, 2 TO.
+    private static string VorDeviationRow(double dots, double toFrom)
+    {
+        if (double.IsNaN(dots)) return "Center: deviation scale, no bar";
+
+        string bar = FenixChannelNdRows.Words(LookItem.VorDeviationBar);
+        string side = dots < 0 ? "right" : "left";
+        string part = toFrom == 1 ? ", FROM" : toFrom == 2 ? ", TO" : "";
+        if (Math.Abs(dots) >= VorFullScaleDots) return $"Center: {bar}, full scale {side}{part}";
+
+        double rounded = Math.Round(Math.Abs(dots), 1, MidpointRounding.AwayFromZero);
+        return rounded == 0
+            ? $"Center: {bar} centered{part}"
+            : $"Center: {bar} {rounded.ToString("0.0", CultureInfo.InvariantCulture)} dots {side}{part}";
     }
 
     private static string GlideslopeRow(double dots)

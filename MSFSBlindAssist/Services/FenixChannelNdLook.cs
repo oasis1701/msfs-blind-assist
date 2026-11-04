@@ -124,6 +124,8 @@ internal static class FenixChannelNdLook
             + " (crop-adf1-vor2: VOR2, white hollow)"),
         new(FenixChannelNdRadio.LookItem.VorCoursePointer, "course pointer", "cyan",
             RadioGateSitting3 + " (efis-vor20-crs185: 80.1 = 185, the cross bar at the head, the tail toward 005, no reception)"),
+        new(FenixChannelNdRadio.LookItem.VorDeviationBar, "deviation bar", "cyan",
+            "03-nd.md, Sitting 3 (efis-vor20-ape-1, efis-vor20-flm-300, efis-vor20-flm-120)"),
         new(FenixChannelNdTraffic.LookItem.OtherTraffic, "diamond", "white",
             TrafficFlight + " (hollow: appr/214920, sel/203039; AAL626, DAL1959)"),
         new(FenixChannelNdTraffic.LookItem.ProximateTraffic, "diamond", "white",

@@ -291,9 +291,14 @@ public class FenixChannelNdRadioTests
     [Fact]
     public void Rose_vor_lists_its_course_pointer_from_80_1()
     {
-        // Sitting 3: 80.1 = 185 on the ground, 70.2 read CRS c185°; 80.2 to 80.4 NaN; no deviation, no TO/FROM.
+        // Sitting 3: 80.1 = 185 on the ground, 70.2 read CRS c185°; 80.2 to 80.4 NaN; no bar, no TO/FROM.
         string[] rows = Radio(Remote(Vor, 1).Message(70, Block("wVOR1 w113.s40 ", "CRS c185°", "lwODF ")).Message(80, VorCourse(185)));
-        Assert.Equal(["Top right: VOR1 113.40; CRS 185°; ODF", "Center: course pointer at 185 on the compass"], rows);
+        Assert.Equal(
+            [
+                "Top right: VOR1 113.40; CRS 185°; ODF", "Center: course pointer at 185 on the compass",
+                "Center: deviation scale, no bar"
+            ],
+            rows);
 
         // Never from the text: 70.2 says 185 while 80.1 is NaN or 80 is absent.
         Assert.DoesNotContain(
@@ -306,6 +311,72 @@ public class FenixChannelNdRadioTests
         Assert.DoesNotContain(
             Radio(Remote(Ls).Message(72, Block("wILS2", null, null)).Message(80, VorCourse(185))), r => r.Contains("course pointer"));
         Assert.DoesNotContain(Radio(Remote(Nav, 1).Message(80, VorCourse(185))), r => r.Contains("course pointer"));
+    }
+
+    // ---- ROSE VOR's deviation bar (80.2) and TO/FROM (80.5), sitting 3
+
+    private static string[] VorBar(double course, double? deviation, double? toFrom)
+    {
+        var block = new FenixChannelProtoWriter().Double(1, course);
+        if (deviation is { } d) block.Double(2, d);
+        if (toFrom is { } t) block.Double(5, t);
+        return Radio(Remote(Vor, 1).Message(70, Block("wVOR1", null, null)).Message(80, block));
+    }
+
+    [Theory]
+    [InlineData(185, 2.5, 1, "Center: deviation bar, full scale left, FROM")]
+    [InlineData(235, 2.5, 1, "Center: deviation bar, full scale left, FROM")]
+    [InlineData(300, -1.857, 1, "Center: deviation bar 1.9 dots right, FROM")]
+    [InlineData(120, -2.5, 2, "Center: deviation bar, full scale right, TO")]
+    public void Rose_vor_reads_the_deviation_bar_and_to_from_as_measured(double course, double dots, double toFrom, string expected)
+    {
+        string[] rows = VorBar(course, dots, toFrom);
+        Assert.Equal(expected, rows[^1]);
+        Assert.StartsWith("Center: course pointer at ", rows[^2]);
+    }
+
+    [Fact]
+    public void Rose_vor_deviation_edges_centered_and_missing_parts()
+    {
+        Assert.Equal("Center: deviation bar centered, TO", VorBar(120, 0, 2)[^1]);
+        Assert.Equal("Center: deviation bar centered", VorBar(120, 0.04, null)[^1]);
+        Assert.Equal("Center: deviation bar 0.1 dots left", VorBar(120, 0.05, null)[^1]);
+        Assert.Equal("Center: deviation bar 0.1 dots right", VorBar(120, -0.05, 0)[^1]);
+        Assert.Equal("Center: deviation bar 2.4 dots left, TO", VorBar(120, 2.44, 2)[^1]);
+        Assert.Equal("Center: deviation bar, full scale left", VorBar(120, 2.5, 3)[^1]);
+        Assert.Equal("Center: deviation bar, full scale right", VorBar(120, -9, double.NaN)[^1]);
+
+        // Nothing received: no bar, no arrow, whatever 80.5 says; no course: no deviation row.
+        Assert.Equal("Center: deviation scale, no bar", VorBar(185, double.NaN, null)[^1]);
+        Assert.Equal("Center: deviation scale, no bar", VorBar(185, null, 1)[^1]);
+        Assert.DoesNotContain(VorBar(double.NaN, -1, 1), r => r.Contains("deviation"));
+
+        // ROSE LS and NAV draw no VOR bar.
+        Assert.DoesNotContain(
+            Radio(Remote(Nav, 1).Message(80, new FenixChannelProtoWriter().Double(1, 185).Double(2, 1).Double(5, 1))),
+            r => r.Contains("deviation"));
+    }
+
+    [Fact]
+    public void A_wrong_shape_in_80_2_or_80_5_stops_the_radio_layer()
+    {
+        foreach ((int member, string path) in new[] { (2, "80.2"), (5, "80.5") })
+        {
+            FenixChannelProtoWriter bad = Remote(Vor, 1).Message(70, Block("wVOR1", null, null))
+                .Message(80, new FenixChannelProtoWriter().Double(1, 185).String(member, "x"));
+            (FenixChannelPush push, FenixNdData header) = Read(bad);
+            FenixNdLayer layer = FenixChannelNdRadio.Rows(push, header);
+            Assert.Equal($"Radio: field {path} has the wrong shape", layer.LayerProblem);
+        }
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void Rose_vor_deviation_is_the_same_in_every_culture(string culture)
+    {
+        string[] there = TestCulture.Run<string[]>(culture, () => VorBar(300, -1.857, 1));
+        Assert.Equal("Center: deviation bar 1.9 dots right, FROM", there[^1]);
     }
 
     [Fact]
