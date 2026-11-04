@@ -25,8 +25,8 @@ internal sealed record FenixNdLayer(IReadOnlyList<string> Rows, string? LayerPro
 /// The rows of the Fenix ND window: one snapshot of the display channel turned into what the captain's ND draws, in
 /// screen order, each row starting with its place. The header's rows are built here; the route, map, radio and traffic
 /// layers are functions of the snapshot and the header, run in screen order. A row the app builds from values speaks
-/// a color only from <see cref="FenixChannelNdLook"/>; channel text speaks its own through
-/// <see cref="FenixChannelSpeech"/>. Numbers are invariant whatever the PC's culture is.
+/// a color only from <see cref="FenixChannelNdLook"/>, and only where it tells something; channel text speaks its own
+/// through <see cref="FenixChannelNdSpeech"/>. Numbers are invariant whatever the PC's culture is.
 /// </summary>
 internal static partial class FenixChannelNdRows
 {
@@ -137,22 +137,29 @@ internal static partial class FenixChannelNdRows
         var rows = new List<string>();
 
         // (1) and (2): top left.
-        if (FenixChannelSpeech.Line(nd.GroundSpeedLine) is { } groundSpeed) rows.Add("Top left: " + groundSpeed);
-        if (FenixChannelSpeech.Line(nd.WindLine) is { } wind) rows.Add("Top left: wind " + wind);
+        if (FenixChannelNdSpeech.Line(nd.GroundSpeedLine, FenixChannelNdSpeech.GroundWind) is { } groundSpeed)
+        {
+            rows.Add("Top left: " + groundSpeed);
+        }
+
+        if (FenixChannelNdSpeech.Line(nd.WindLine, FenixChannelNdSpeech.GroundWind) is { } wind) rows.Add("Top left: wind " + wind);
 
         // The wind arrow under the wind line: heading-up modes only (PLAN is north up; unmeasured there).
         if (nd.Mode != "PLAN" && WindArrowRow(nd) is { } arrow) rows.Add(arrow);
 
         // (3): top center. The approach label is drawn at the very top, above the compass, in every mode. PLAN is
         // north up with no heading under a lubber line.
-        if (FenixChannelSpeech.Line(nd.ApproachMessage) is { } approach) rows.Add("Top center: " + approach);
+        if (FenixChannelNdSpeech.Line(nd.ApproachMessage, FenixChannelNdSpeech.ApproachLabel) is { } approach)
+        {
+            rows.Add("Top center: " + approach);
+        }
         if (nd.Mode != "PLAN") rows.Add(CompassRow(nd));
 
         // (4): top right. In LS and VOR the glass draws the LS or VOR block there instead.
         if (nd.Mode is "ARC" or "NAV" or "PLAN" && nd.Waypoint is { } waypoint && FenixChannelNdWaypoint.IsShown(waypoint))
         {
             string?[] lines = [waypoint.Line1, waypoint.Line2, waypoint.Line3];
-            string[] spoken = [.. lines.Select(line => FenixChannelSpeech.Line(line)).OfType<string>()];
+            string[] spoken = [.. lines.Select(line => FenixChannelNdSpeech.Line(line, FenixChannelNdSpeech.Waypoint)).OfType<string>()];
             if (spoken.Length > 0) rows.Add("Top right: " + string.Join("; ", spoken));
         }
 
@@ -199,6 +206,7 @@ internal static partial class FenixChannelNdRows
     {
         null => item,
         { Color: null } entry => entry.Symbol,
+        { ColorTellsApart: false } entry => entry.Symbol,
         { } entry => $"{entry.Color} {entry.Symbol}"
     };
 
@@ -250,10 +258,26 @@ internal static partial class FenixChannelNdRows
     // sides").
     private static IEnumerable<string> MessageRows(FenixNdData nd)
     {
-        foreach (string message in DrawnMessages(nd))
+        foreach ((string message, IReadOnlySet<FenixTextColor>? usual) in DrawnMessageFields(nd))
         {
-            if (FenixChannelSpeech.Line(message) is { } spoken) yield return "Message: " + spoken;
+            if (FenixChannelNdSpeech.Line(message, usual) is { } spoken) yield return "Message: " + spoken;
         }
+    }
+
+    /// <summary>
+    /// <see cref="DrawnMessages"/> with each message's usual colors, for <see cref="FenixChannelNdSpeech"/>: white for
+    /// the center message (62) and the listed ones (103); none measured (null, every color spoken) for windshear (64)
+    /// and TCAS (66).
+    /// </summary>
+    internal static IEnumerable<(string Coded, IReadOnlySet<FenixTextColor>? Usual)> DrawnMessageFields(FenixNdData nd)
+    {
+        for (int i = 0; i < nd.CenterMessages.Count; i++)
+        {
+            bool isCenter = i == 0 && nd.FirstCenterIsMessage62;
+            yield return (nd.CenterMessages[i], isCenter ? FenixChannelNdSpeech.CenterMessage : null);
+        }
+
+        foreach (string box in ListedBoxes(nd)) yield return (box, FenixChannelNdSpeech.ListedMessage);
     }
 
     /// <summary>
@@ -264,7 +288,11 @@ internal static partial class FenixChannelNdRows
     internal static IEnumerable<string> DrawnMessages(FenixNdData nd)
     {
         foreach (string message in nd.CenterMessages) yield return message;
+        foreach (string box in ListedBoxes(nd)) yield return box;
+    }
 
+    private static IEnumerable<string> ListedBoxes(FenixNdData nd)
+    {
         string? upper = nd.ListedMessages.FirstOrDefault(entry => PlainText(entry) == TaOnly);
         string? lower = nd.ListedMessages.FirstOrDefault(entry => PlainText(entry) != TaOnly);
         foreach (string? box in new[] { upper, lower })

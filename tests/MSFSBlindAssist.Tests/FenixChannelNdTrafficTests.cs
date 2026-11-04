@@ -99,11 +99,11 @@ public class FenixChannelNdTrafficTests
 
         Assert.Equal(
         [
-            "Map: TCAS ring, 12 white ticks 2.6 NM around the aircraft",
-            "Map: proximate traffic, filled white diamond, 1.5 NM ahead, 00",
-            "Map: other traffic, hollow white diamond, 3.2 NM, 90° left, 00",
-            "Map: other traffic, hollow white diamond, 8.1 NM, 103° right, 00",
-            "Map: other traffic, hollow white diamond, 12.4 NM, 30° right, 00"
+            "Map: TCAS ring, 12 ticks 2.6 NM around the aircraft",
+            "Map: proximate traffic, filled diamond, 1.5 NM ahead, 00",
+            "Map: other traffic, hollow diamond, 3.2 NM, 90° left, 00",
+            "Map: other traffic, hollow diamond, 8.1 NM, 103° right, 00",
+            "Map: other traffic, hollow diamond, 12.4 NM, 30° right, 00"
         ], rows);
     }
 
@@ -114,8 +114,8 @@ public class FenixChannelNdTrafficTests
 
         Assert.Equal(
         [
-            "Map: proximate traffic, filled white diamond, 5.0 NM, 20° left, 00",
-            "Map: other traffic, hollow white diamond, 5.0 NM, 20° right, 00"
+            "Map: proximate traffic, filled diamond, 5.0 NM, 20° left, 00",
+            "Map: other traffic, hollow diamond, 5.0 NM, 20° right, 00"
         ], rows);
     }
 
@@ -124,8 +124,8 @@ public class FenixChannelNdTrafficTests
     {
         string[] rows = Rows(Nav, 40, Traffic([Target(At(10, 0), distance: 10)], [Target(At(4, 0), distance: 4)]));
 
-        Assert.Equal("Map: proximate traffic, filled white diamond, 4.0 NM ahead, 00", rows[0]);
-        Assert.Equal("Map: other traffic, hollow white diamond, 10.0 NM ahead, 00", rows[1]);
+        Assert.Equal("Map: proximate traffic, filled diamond, 4.0 NM ahead, 00", rows[0]);
+        Assert.Equal("Map: other traffic, hollow diamond, 10.0 NM ahead, 00", rows[1]);
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public class FenixChannelNdTrafficTests
         Assert.Equal(
         [
             "Map: traffic, 2.0 NM, 90° right, +03, climbing",
-            "Map: other traffic, hollow white diamond, 9.0 NM ahead, 00"
+            "Map: other traffic, hollow diamond, 9.0 NM ahead, 00"
         ], rows);
     }
 
@@ -161,7 +161,7 @@ public class FenixChannelNdTrafficTests
     {
         string[] rows = Rows(Nav, 40, Traffic([Target(At(5, 0), PressureAltitude + relativeFeet, distance: 5)]));
 
-        Assert.Equal($"Map: other traffic, hollow white diamond, 5.0 NM ahead, {label}", rows[0]);
+        Assert.Equal($"Map: other traffic, hollow diamond, 5.0 NM ahead, {label}", rows[0]);
     }
 
     [Fact]
@@ -172,7 +172,7 @@ public class FenixChannelNdTrafficTests
         FenixChannelProtoWriter air = new FenixChannelProtoWriter().Double(15, 35610).Double(4, 35500);
         FenixNdLayer layer = Layer(Remote(Nav, 40, Traffic([Target(At(5, 0), 33100)]), air: air));
 
-        Assert.Equal("Map: other traffic, hollow white diamond, 5.0 NM ahead, -25", layer.Rows[0]);
+        Assert.Equal("Map: other traffic, hollow diamond, 5.0 NM ahead, -25", layer.Rows[0]);
     }
 
     [Theory]
@@ -189,7 +189,7 @@ public class FenixChannelNdTrafficTests
     {
         string[] rows = Rows(Nav, 40, Traffic([Target(At(5, 0), vertical: verticalSpeed)]));
 
-        Assert.Equal($"Map: other traffic, hollow white diamond, 5.0 NM ahead, 00{trend}", rows[0]);
+        Assert.Equal($"Map: other traffic, hollow diamond, 5.0 NM ahead, 00{trend}", rows[0]);
     }
 
     [Fact]
@@ -197,19 +197,19 @@ public class FenixChannelNdTrafficTests
     {
         string[] rows = Rows(Arc, 40, Traffic([Target(At(6, -30), PressureAltitude + 4020, -704, 6)]));
 
-        Assert.Equal("Map: other traffic, hollow white diamond, 6.0 NM, 30° left, +40, descending", rows[0]);
+        Assert.Equal("Map: other traffic, hollow diamond, 6.0 NM, 30° left, +40, descending", rows[0]);
     }
 
     [Fact]
     public void Without_a_pressure_altitude_a_target_has_no_label()
     {
         string[] rows = Rows(Nav, 40, Traffic([Target(At(5, 0), vertical: 800)]), pressure: false);
-        Assert.Equal(["Map: other traffic, hollow white diamond, 5.0 NM ahead, climbing"], rows);
+        Assert.Equal(["Map: other traffic, hollow diamond, 5.0 NM ahead, climbing"], rows);
 
         FenixChannelProtoWriter nan = new FenixChannelProtoWriter().Double(15, double.NaN);
         FenixNdLayer layer = Layer(Remote(Nav, 40, Traffic([Target(At(5, 0))]), air: nan));
         Assert.Null(layer.LayerProblem);
-        Assert.Equal(["Map: other traffic, hollow white diamond, 5.0 NM ahead"], layer.Rows);
+        Assert.Equal(["Map: other traffic, hollow diamond, 5.0 NM ahead"], layer.Rows);
     }
 
     // ---- The ring.
@@ -221,13 +221,13 @@ public class FenixChannelNdTrafficTests
     [InlineData(Vor)]
     public void The_ring_reads_at_range_20_with_no_traffic(ulong mode)
     {
-        Assert.Equal(["Map: TCAS ring, 12 white ticks 2.6 NM around the aircraft"], Rows(mode, 20, Traffic([])));
+        Assert.Equal(["Map: TCAS ring, 12 ticks 2.6 NM around the aircraft"], Rows(mode, 20, Traffic([])));
     }
 
     [Fact]
     public void The_ring_reads_without_a_distance_at_range_10()
     {
-        Assert.Equal(["Map: TCAS ring, 12 white ticks around the aircraft"], Rows(Nav, 10, Traffic([])));
+        Assert.Equal(["Map: TCAS ring, 12 ticks around the aircraft"], Rows(Nav, 10, Traffic([])));
     }
 
     [Theory]
@@ -322,9 +322,9 @@ public class FenixChannelNdTrafficTests
             string[] actual = [.. Layer(remote).Rows];
 
             Assert.Equal(expected, actual);
-            Assert.Contains("Map: TCAS ring, 12 white ticks 2.6 NM around the aircraft", actual);
-            Assert.Contains("Map: proximate traffic, filled white diamond, 1.5 NM, 90° left, +40, climbing", actual);
-            Assert.Contains("Map: other traffic, hollow white diamond, 12.4 NM, 30° right, -12, descending", actual);
+            Assert.Contains("Map: TCAS ring, 12 ticks 2.6 NM around the aircraft", actual);
+            Assert.Contains("Map: proximate traffic, filled diamond, 1.5 NM, 90° left, +40, climbing", actual);
+            Assert.Contains("Map: other traffic, hollow diamond, 12.4 NM, 30° right, -12, descending", actual);
         }
         finally
         {
@@ -458,6 +458,6 @@ public class FenixChannelNdTrafficTests
 
         Assert.Equal(2, rows.Length);
         Assert.StartsWith("Map: TCAS ring", rows[0], StringComparison.Ordinal);
-        Assert.Equal("Map: other traffic, hollow white diamond, 16.3 NM, 70° right, 00", rows[1]);
+        Assert.Equal("Map: other traffic, hollow diamond, 16.3 NM, 70° right, 00", rows[1]);
     }
 }

@@ -211,7 +211,7 @@ public class FenixChannelNdRouteTests
 
         Assert.Contains("Route: not available, field 2.4.3 has the wrong shape", rows);
         Assert.Contains(rows, row => row.StartsWith("Map: range ring"));
-        Assert.Contains("Bottom right: WXR OFF, white", rows);
+        Assert.Contains("Bottom right: WXR OFF", rows);
         Assert.Equal(["Route: field 2.4.3 has the wrong shape"], reported);
 
         // A wrong shape in the ND status (58) is the route layer's too: the route's look depends on it.
@@ -239,7 +239,7 @@ public class FenixChannelNdRouteTests
         Assert.Equal(
         [
             Line,
-            "Map: KATL 08R, white runway symbol, 7.0 NM behind",
+            "Map: KATL 08R, runway symbol, 7.0 NM behind",
             "Map: PREV, green diamond, 5.0 NM behind",
             "Map: ALPHA, white diamond, 10.0 NM ahead",
             "Map: BRAVO, green diamond, 30.0 NM ahead",
@@ -258,7 +258,7 @@ public class FenixChannelNdRouteTests
             .Symbol("FRAZE", At(3, 180)).To("KCVG18L", At(4)).Runway("KATL", "08R", At(300, 180))
             .Runway("KCVG", "18L", At(4));
         Assert.Equal(
-            [Line, "Map: FRAZE, green diamond, 3.0 NM behind", "Map: KCVG 18L, white runway symbol, 4.0 NM ahead"],
+            [Line, "Map: FRAZE, green diamond, 3.0 NM behind", "Map: KCVG 18L, runway symbol, 4.0 NM ahead"],
             RouteRows(Snapshot(final)));
     }
 
@@ -277,11 +277,11 @@ public class FenixChannelNdRouteTests
         Assert.Equal(
         [
             Line,
-            "Map: ALPHA, white diamond in a magenta ring, 10.0 NM ahead; + 4000 magenta",
-            "Map: JAKIE, green diamond in a white ring, 20.0 NM ahead; +14000 magenta",
-            "Map: OPAVE, green diamond in a magenta ring, 30.0 NM ahead; -12000 magenta",
-            "Map: REENY, green diamond in a magenta ring, 40.0 NM ahead; + 8000 210KT magenta",
-            "Map: NXHAL, green diamond in a magenta ring, 50.0 NM ahead; 6000 210KT magenta",
+            "Map: ALPHA, white diamond in a magenta ring, 10.0 NM ahead; + 4000",
+            "Map: JAKIE, green diamond in a white ring, 20.0 NM ahead; +14000",
+            "Map: OPAVE, green diamond in a magenta ring, 30.0 NM ahead; -12000",
+            "Map: REENY, green diamond in a magenta ring, 40.0 NM ahead; + 8000 210KT",
+            "Map: NXHAL, green diamond in a magenta ring, 50.0 NM ahead; 6000 210KT",
             "Map: HOYYT, green diamond, 60.0 NM ahead"
         ], RouteRows(Snapshot(route, option: 0)));
 
@@ -289,7 +289,7 @@ public class FenixChannelNdRouteTests
         string[] wpt = RouteRows(Snapshot(route, option: 1));
         Assert.Contains("Map: JAKIE, green diamond in a white ring, 20.0 NM ahead", wpt);
         Assert.Contains("Map: OPAVE, green diamond in a magenta ring, 30.0 NM ahead", wpt);
-        Assert.DoesNotContain(wpt, row => row.Contains("magenta", StringComparison.Ordinal) && row.Contains(';'));
+        Assert.DoesNotContain(wpt, row => row.Contains(';'));
         Assert.Contains("Map: JAKIE, green diamond in a white ring, 20.0 NM ahead", RouteRows(Snapshot(route)));
     }
 
@@ -490,14 +490,14 @@ public class FenixChannelNdRouteTests
         [
             Line,
             "Map: ALPHA, white diamond, 10.0 NM ahead",
-            "Map: JAKIE, green diamond in a white ring, 30.0 NM ahead; +14000 magenta",
+            "Map: JAKIE, green diamond in a white ring, 30.0 NM ahead; +14000",
             "Map: BRAVO, green diamond, 45.0 NM ahead",
             "Map: speed limit, magenta filled dot, 50.0 NM ahead"
         ], RouteRows(Snapshot(route, range: 160, option: 0)));
 
         string[] at80 = RouteRows(Snapshot(route, range: 80, option: 0));
-        Assert.Contains("Map: NAVPE, green diamond in a magenta ring, 40.0 NM ahead; +10000 magenta", at80);
-        Assert.Contains("Map: BRAVO, green diamond in a magenta ring, 45.0 NM ahead; + 9000 magenta", at80);
+        Assert.Contains("Map: NAVPE, green diamond in a magenta ring, 40.0 NM ahead; +10000", at80);
+        Assert.Contains("Map: BRAVO, green diamond in a magenta ring, 45.0 NM ahead; + 9000", at80);
         Assert.Contains("Map: OPAVE, green diamond, 60.0 NM ahead", at80);
     }
 
@@ -564,20 +564,20 @@ public class FenixChannelNdRouteTests
         [
             "Map: route line, green dashed line",
             "Map: ALPHA, white diamond, 10.0 NM ahead",
-            "Map: heading bug, cyan hollow triangle, at 030 on the compass",
-            "Map: track line, green thin solid line, 4° right",
-            "Map: cross-track error 4.7L, green, left of the aircraft"
+            "Map: heading bug, hollow triangle, at 030 on the compass",
+            "Map: track line, thin solid line, 4° right",
+            "Map: cross-track error 4.7L, left of the aircraft"
         ], hdg);
 
         // 113.2 alone draws no bug; a bug beyond the arc's view is not drawn; ROSE NAV shows the whole compass.
         Assert.DoesNotContain(RouteRows(Hdg(3, 30, [3])), row => row.Contains("heading bug"));
         Assert.DoesNotContain(RouteRows(Hdg(3, 70, [2])), row => row.Contains("heading bug"));
-        Assert.Contains("Map: heading bug, cyan hollow triangle, at 120 on the compass", RouteRows(Hdg(2, 120, [2])));
-        Assert.Contains("Map: heading bug, cyan hollow triangle, at 360 on the compass", RouteRows(Hdg(2, 0, [2])));
-        Assert.Contains("Map: heading bug, cyan hollow triangle, at 360 on the compass", RouteRows(Hdg(2, 359.6, [2])));
+        Assert.Contains("Map: heading bug, hollow triangle, at 120 on the compass", RouteRows(Hdg(2, 120, [2])));
+        Assert.Contains("Map: heading bug, hollow triangle, at 360 on the compass", RouteRows(Hdg(2, 0, [2])));
+        Assert.Contains("Map: heading bug, hollow triangle, at 360 on the compass", RouteRows(Hdg(2, 359.6, [2])));
 
         // The cross-track error: right of the course reads R; not drawn at 0.05 NM, nor in ROSE.
-        Assert.Contains("Map: cross-track error 0.3R, green, beside the aircraft", RouteRows(Hdg(3, 30, [3], 0.26)));
+        Assert.Contains("Map: cross-track error 0.3R, beside the aircraft", RouteRows(Hdg(3, 30, [3], 0.26)));
         Assert.DoesNotContain(RouteRows(Hdg(3, 30, [3], -0.05)), row => row.Contains("cross-track"));
         Assert.DoesNotContain(RouteRows(Hdg(2, 30, [3], -4.7)), row => row.Contains("cross-track"));
 
@@ -586,13 +586,13 @@ public class FenixChannelNdRouteTests
         string[] Rings(ulong mode, ulong range) => [.. Rows(Snapshot(null, mode, range, line1: "PPOS     "))
             .Where(row => row.StartsWith("Map: range ring"))];
         Assert.Equal(
-            ["Map: range ring with no label, white dashed ring", "Map: range ring 10, white dashed ring",
-             "Map: range ring 15, white dashed ring"], Rings(3, 20));
+            ["Map: range ring with no label, dashed ring", "Map: range ring 10, dashed ring",
+             "Map: range ring 15, dashed ring"], Rings(3, 20));
         Assert.Equal(
-            ["Map: range ring with no label, white dashed ring", "Map: range ring 5, white dashed ring",
-             "Map: range ring 7.5, white dashed ring"], Rings(3, 10));
-        Assert.Equal(["Map: range ring 5, white dashed ring", "Map: range ring 10, white solid ring"], Rings(2, 20));
-        Assert.Equal(["Map: range ring 10, white dashed ring", "Map: range ring 20, white solid ring"], Rings(4, 40));
+            ["Map: range ring with no label, dashed ring", "Map: range ring 5, dashed ring",
+             "Map: range ring 7.5, dashed ring"], Rings(3, 10));
+        Assert.Equal(["Map: range ring 5, dashed ring", "Map: range ring 10, solid ring"], Rings(2, 20));
+        Assert.Equal(["Map: range ring 10, dashed ring", "Map: range ring 20, solid ring"], Rings(4, 40));
         Assert.Empty(Rings(0, 20));
     }
 
@@ -610,19 +610,19 @@ public class FenixChannelNdRouteTests
         Route Plan(FenixChannelProtoWriter entry) => Through(("ALPHA", At(10)))
             .Add(13, entry).Add(13, new()).Add(13, new()).Add(13, new());
 
-        // The fix on the screen: its symbol green, the rings and radials cyan dashed (sitting 2, FIX INFO).
+        // The fix on the screen: its symbol green, the rings and radials dashed (sitting 2, FIX INFO).
         string[] rows = RouteRows(Snapshot(Plan(FixInfo(At(30, 300), 20, 20, 360))));
         Assert.Equal(
         [
             Line,
             "Map: ALPHA, white diamond, 10.0 NM ahead",
-            "Map: FIX INFO LOZ: rings 20 NM, radials 020 and 360, cyan dashed",
-            "Map: LOZ, green circle with a cross, 30.0 NM, 60° left"
+            "Map: FIX INFO LOZ: rings 20 NM, radials 020 and 360, dashed",
+            "Map: LOZ, circle with a cross, 30.0 NM, 60° left"
         ], rows);
 
         // The fix off the window, its ring on it: the ring is listed, the fix is not.
         string[] off = RouteRows(Snapshot(Plan(FixInfo(At(100, 300), 50, 180))));
-        Assert.Contains("Map: FIX INFO LOZ: rings 50 NM, radials 180, cyan dashed", off);
+        Assert.Contains("Map: FIX INFO LOZ: rings 50 NM, radials 180, dashed", off);
         Assert.DoesNotContain(off, row => row.StartsWith("Map: LOZ"));
 
         // Nothing of it on the window: no row.
@@ -643,13 +643,13 @@ public class FenixChannelNdRouteTests
             r.Message(191, w);
         };
 
-        Assert.Equal(["Bottom right: WXR OFF, white"], Bottom());
-        Assert.Equal(["Bottom right: WXR OFF, white"], Bottom(more: Radar()));
+        Assert.Equal(["Bottom right: WXR OFF"], Bottom());
+        Assert.Equal(["Bottom right: WXR OFF"], Bottom(more: Radar()));
         Assert.Empty(Bottom(more: Radar(9)));                                      // PWS enabled, not scanning
-        Assert.Equal(["Bottom right: PWS SCAN, green"], Bottom(more: Radar(8, 9)));
-        Assert.Equal(["Bottom right: WX+T+H, green"], Bottom(more: Radar(4)));
-        Assert.Equal(["Bottom right: TERR, cyan"], Bottom(more: r => r.Bool(53, true)));
-        Assert.Equal(["Bottom right: WXR OFF, white"], Bottom(mode: 2));
+        Assert.Equal(["Bottom right: PWS SCAN"], Bottom(more: Radar(8, 9)));
+        Assert.Equal(["Bottom right: WX+T+H"], Bottom(more: Radar(4)));
+        Assert.Equal(["Bottom right: TERR"], Bottom(more: r => r.Bool(53, true)));
+        Assert.Equal(["Bottom right: WXR OFF"], Bottom(mode: 2));
         Assert.Empty(Bottom(mode: 4));                                             // PLAN prints none
 
         // Two at once was never measured: nothing is said rather than a guess.
@@ -685,9 +685,9 @@ public class FenixChannelNdRouteTests
         string[] there = TestCulture.Run(culture, () => Rows(s));
 
         Assert.Equal(invariant, there);
-        Assert.Contains("Map: range ring 7.5, white dashed ring", there);
+        Assert.Contains("Map: range ring 7.5, dashed ring", there);
         Assert.Contains("Map: ALPHA, white diamond, 5.5 NM, 30° right", there);
-        Assert.Contains(there, row => row.StartsWith("Map: cross-track error 4.8L, green"));
+        Assert.Contains(there, row => row.StartsWith("Map: cross-track error 4.8L"));
         Assert.Contains(there, row => row.StartsWith("Map: route goes off the top edge, toward BRAVO, ") && row.Contains('.'));
     }
 }

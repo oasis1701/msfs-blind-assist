@@ -5,12 +5,21 @@ namespace MSFSBlindAssist.Services;
 /// ND draws in no fixed color. <paramref name="Evidence"/> names the entry of docs/fenix-channel/evidence/03-nd.md that
 /// measured it.
 /// </summary>
-internal sealed record FenixNdLookEntry(string Item, string Symbol, string? Color, string Evidence);
+internal sealed record FenixNdLookEntry(string Item, string Symbol, string? Color, string Evidence)
+{
+    /// <summary>
+    /// The color is spoken: it tells items of one kind apart (the magenta VOR/DME against the cyan tuned one, the TO
+    /// waypoint against a route waypoint) or it is red. For every other entry the color never changes, so it is not
+    /// spoken (the owner's decision, sitting 3); the evidence stays on the entry either way.
+    /// </summary>
+    public bool ColorTellsApart { get; init; }
+}
 
 /// <summary>
 /// The table of looks the captures measured: every symbol and fixed color a row of the ND window speaks that does not
 /// come from the channel's own color letters (spec 2.6, row 52). A row never speaks a color the table does not hold,
-/// so a color is never guessed. Each task that adds a layer adds its entries here, each citing its evidence.
+/// so a color is never guessed, and speaks one only where <see cref="FenixNdLookEntry.ColorTellsApart"/>. Each task
+/// that adds a layer adds its entries here, each citing its evidence.
 /// </summary>
 internal static class FenixChannelNdLook
 {
@@ -31,32 +40,43 @@ internal static class FenixChannelNdLook
     private const string TunedKind3 = "; measured on kind 3 (DBN, RMG, ODF, VXV, LOZ, CVG)";
     private const string TunedUnmeasured = "; kinds 2 and 4 follow the same rule, unmeasured";
 
-    // A marker's color is the channel's (its member 5): its entry holds the symbol only.
+    // A marker's color is the channel's (its member 5): its entry holds the symbol only. An entry's color is spoken only
+    // with ColorTellsApart: where the color tells items of one kind apart, or is red.
     private static readonly FenixNdLookEntry[] Entries =
     [
         new("lubber line", "lubber line", "yellow", "03-nd.md, Task 1 Part A, the header as drawn"),
         new("track diamond", "track diamond", "green", "03-nd.md, Task 1 Part A, the header as drawn"),
         new("wind arrow", "wind arrow", "green",
             "03-nd.md, Sitting 2, The header in flight (cap/205636, hdg-push-210207, cap/213017)"),
-        new(FenixChannelNdMapData.LookItem.VorDme, "circle with a cross", "magenta", MapPointsEvidence),
-        new(FenixChannelNdMapData.LookItem.Dme, "circle", "magenta", MapPointsEvidence),
-        new(FenixChannelNdMapData.LookItem.Ndb, "triangle", "magenta", MapPointsEvidence),
+        new(FenixChannelNdMapData.LookItem.VorDme, "circle with a cross", "magenta", MapPointsEvidence)
+            { ColorTellsApart = true },
+        new(FenixChannelNdMapData.LookItem.Dme, "circle", "magenta", MapPointsEvidence) { ColorTellsApart = true },
+        new(FenixChannelNdMapData.LookItem.Ndb, "triangle", "magenta", MapPointsEvidence) { ColorTellsApart = true },
         new(FenixChannelNdMapData.LookItem.Vor, "cross", "magenta",
-            MapDataInFlight + " (efis/211133-arc320-vord: MYS, FFT, XUB, ODR)"),
-        new(FenixChannelNdMapData.LookItem.TunedVorDme, "circle with a cross", "cyan", TunedCaptures + TunedKind3),
-        new(FenixChannelNdMapData.LookItem.TunedVor, "cross", "cyan", TunedCaptures + TunedKind3 + TunedUnmeasured),
-        new(FenixChannelNdMapData.LookItem.TunedDme, "circle", "cyan", TunedCaptures + TunedKind3 + TunedUnmeasured),
-        new(FenixChannelNdMapData.LookItem.Airport, "star", "magenta", MapPointsEvidence),
-        new(FenixChannelNdMapData.LookItem.Fix, "diamond", "magenta", MapPointsEvidence),
-        new(FenixChannelNdRoute.LookItem.ToWaypoint, "diamond", "white", RouteInFlight + "; " + RouteLooks),
-        new(FenixChannelNdRoute.LookItem.Waypoint, "diamond", "green", RouteInFlight + "; " + RouteLooks),
-        new(FenixChannelNdRoute.LookItem.Vor, "VOR symbol", "green", RouteLooks + " (VHP, on the alternate)"),
+            MapDataInFlight + " (efis/211133-arc320-vord: MYS, FFT, XUB, ODR)") { ColorTellsApart = true },
+        new(FenixChannelNdMapData.LookItem.TunedVorDme, "circle with a cross", "cyan", TunedCaptures + TunedKind3)
+            { ColorTellsApart = true },
+        new(FenixChannelNdMapData.LookItem.TunedVor, "cross", "cyan", TunedCaptures + TunedKind3 + TunedUnmeasured)
+            { ColorTellsApart = true },
+        new(FenixChannelNdMapData.LookItem.TunedDme, "circle", "cyan", TunedCaptures + TunedKind3 + TunedUnmeasured)
+            { ColorTellsApart = true },
+        new(FenixChannelNdMapData.LookItem.Airport, "star", "magenta", MapPointsEvidence) { ColorTellsApart = true },
+        new(FenixChannelNdMapData.LookItem.Fix, "diamond", "magenta", MapPointsEvidence) { ColorTellsApart = true },
+        new(FenixChannelNdRoute.LookItem.ToWaypoint, "diamond", "white", RouteInFlight + "; " + RouteLooks)
+            { ColorTellsApart = true },
+        new(FenixChannelNdRoute.LookItem.Waypoint, "diamond", "green", RouteInFlight + "; " + RouteLooks)
+            { ColorTellsApart = true },
+        new(FenixChannelNdRoute.LookItem.Vor, "VOR symbol", "green", RouteLooks + " (VHP, on the alternate)")
+            { ColorTellsApart = true },
         new(FenixChannelNdRoute.LookItem.ToVor, "VOR symbol", null,
             RouteLooks + " (VHP, on the alternate); a TO waypoint's color on it is not measured"),
         new(FenixChannelNdRoute.LookItem.Runway, "runway symbol", "white", RouteInFlight + "; " + RouteLooks),
-        new(FenixChannelNdRoute.LookItem.RouteLine, "solid line", "green", RouteInFlight + " (58.3 sent, NAV)"),
-        new(FenixChannelNdRoute.LookItem.DashedRouteLine, "dashed line", "green", RouteInFlight + " (58.3 left out, HDG)"),
-        new(FenixChannelNdRoute.LookItem.TemporaryLine, "dashed line", "yellow", RouteLooks + " (the temporary plan)"),
+        new(FenixChannelNdRoute.LookItem.RouteLine, "solid line", "green", RouteInFlight + " (58.3 sent, NAV)")
+            { ColorTellsApart = true },
+        new(FenixChannelNdRoute.LookItem.DashedRouteLine, "dashed line", "green", RouteInFlight + " (58.3 left out, HDG)")
+            { ColorTellsApart = true },
+        new(FenixChannelNdRoute.LookItem.TemporaryLine, "dashed line", "yellow", RouteLooks + " (the temporary plan)")
+            { ColorTellsApart = true },
         new(FenixChannelNdRoute.LookItem.ConstraintRing, "ring", null, Constraints + " (its color is member 5)"),
         new(FenixChannelNdRoute.LookItem.ConstraintLabel, "label", "magenta", Constraints + "; " + RouteLooks),
         new(FenixChannelNdRoute.LookItem.Tod, "arrow level then down", null, Markers),
@@ -101,11 +121,14 @@ internal static class FenixChannelNdLook
             TrafficFlight + " (filled: appr/214824, sel/203039, sel/203026; AAL626, DAL1959, DAL2997)"),
         new(FenixChannelNdTraffic.LookItem.TcasRing, "ticks", "white",
             TrafficFlight + ", the ring (efis/215457-restored, efis/212245)"),
-        new(FenixChannelNdRadio.LookItem.FailedVorIdent, "VOR1", "red", RadioGate + ", VOR 1 failed: the top right"),
+        new(FenixChannelNdRadio.LookItem.FailedVorIdent, "VOR1", "red", RadioGate + ", VOR 1 failed: the top right")
+            { ColorTellsApart = true },
         new(FenixChannelNdRadio.LookItem.FailedVorFrequency, "---.--", "cyan", RadioGate + ", VOR 1 failed: the top right"),
         new(FenixChannelNdRadio.LookItem.FailedCourseLabel, "CRS", "white", RadioGate + ", VOR 1 failed: the top right"),
-        new(FenixChannelNdRadio.LookItem.FailedCourseFigure, "XX", "red", RadioGate + ", VOR 1 failed: the top right"),
+        new(FenixChannelNdRadio.LookItem.FailedCourseFigure, "XX", "red", RadioGate + ", VOR 1 failed: the top right")
+            { ColorTellsApart = true },
         new(FenixChannelNdRadio.LookItem.FailedVorFlag, "VOR", "red", RadioGate + ", VOR 1 failed: the center")
+            { ColorTellsApart = true }
     ];
 
     /// <summary>Every entry, in the order they were measured.</summary>

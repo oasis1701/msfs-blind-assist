@@ -10,7 +10,7 @@ namespace MSFSBlindAssist.Services;
 /// first in the ND window) and <see cref="CornerRows"/> (the bottom corners, after the map). Measured on 3.0.0.7613
 /// (docs/fenix-channel/evidence/03-nd.md, sitting 1 Part D and sitting 2, "the radio content"). Only what the glass
 /// draws is listed; every number is invariant-culture; a color is spoken from the channel's letters or a
-/// <see cref="FenixChannelNdLook"/> entry.
+/// <see cref="FenixChannelNdLook"/> entry, and only where it tells something (<see cref="FenixChannelNdSpeech"/>).
 /// </summary>
 internal static class FenixChannelNdRadio
 {
@@ -108,7 +108,7 @@ internal static class FenixChannelNdRadio
                 + $"{Spoken(LookItem.FailedCourseLabel)}, {Spoken(LookItem.FailedCourseFigure)}");
             rows.Add($"Center: {Spoken(LookItem.FailedVorFlag)}");
         }
-        else if (JoinedLines(block) is { } topRight)
+        else if (JoinedLines(block, ls ? FenixChannelNdSpeech.LsBlock : FenixChannelNdSpeech.VorBlock) is { } topRight)
         {
             rows.Add("Top right: " + topRight);
         }
@@ -233,7 +233,8 @@ internal static class FenixChannelNdRadio
             // Members 1 and 3 are the left side's flags, 2 and 4 the right's, in member order.
             string[] flagged =
             [
-                .. new[] { flags[side], flags[side + 2] }.Select(flag => FenixChannelSpeech.Line(flag)).OfType<string>()
+                .. new[] { flags[side], flags[side + 2] }
+                    .Select(flag => FenixChannelNdSpeech.Line(flag, FenixChannelNdSpeech.CornerFlag)).OfType<string>()
             ];
             if (flagged.Length > 0)
             {
@@ -241,7 +242,7 @@ internal static class FenixChannelNdRadio
                 continue;
             }
 
-            if (JoinedLines(lines[side]) is not { } text) continue;
+            if (JoinedLines(lines[side], FenixChannelNdSpeech.Corner) is not { } text) continue;
 
             string? item = (side, SelectorOf(selectors, side)) switch
             {
@@ -257,20 +258,21 @@ internal static class FenixChannelNdRadio
 
     // ---- Helpers.
 
-    private static bool IsBlank(string? coded) => FenixChannelSpeech.Line(coded) is null;
+    private static bool IsBlank(string? coded) => FenixChannelNdSpeech.Line(coded, null) is null;
 
-    // The lines spoken through FenixChannelSpeech, an absent or empty one skipped, joined by "; ".
-    private static string? JoinedLines(IEnumerable<string?> lines)
+    // The lines spoken through FenixChannelNdSpeech with the field's usual colors, an absent or empty one skipped,
+    // joined by "; ".
+    private static string? JoinedLines(IEnumerable<string?> lines, IReadOnlySet<FenixTextColor> usual)
     {
-        string[] spoken = [.. lines.Select(line => FenixChannelSpeech.Line(line)).OfType<string>()];
+        string[] spoken = [.. lines.Select(line => FenixChannelNdSpeech.Line(line, usual)).OfType<string>()];
         return spoken.Length == 0 ? null : string.Join("; ", spoken);
     }
 
-    // An item the app draws a fixed text for: "text color".
+    // An item the app draws a fixed text for: "text", and its color only where the color tells something (red).
     private static string Spoken(string item)
     {
         FenixNdLookEntry look = FenixChannelNdLook.For(item)!;
-        return look.Color is null ? look.Symbol : $"{look.Symbol} {look.Color}";
+        return look.Color is null || !look.ColorTellsApart ? look.Symbol : $"{look.Symbol} {look.Color}";
     }
 
     private static ulong SelectorOf(IReadOnlyList<ulong> selectors, int side)

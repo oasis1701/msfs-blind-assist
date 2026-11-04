@@ -158,8 +158,7 @@ internal static class FenixChannelNdRoute
         };
         if (item is null) return FenixNdLayer.Of([]);
 
-        FenixNdLookEntry look = FenixChannelNdLook.For(item)!;
-        return FenixNdLayer.Of([$"Bottom right: {look.Symbol}, {look.Color}"]);
+        return FenixNdLayer.Of([$"Bottom right: {Words(item)}"]);
     }
 
     // ---- The route's own rows.
@@ -220,7 +219,7 @@ internal static class FenixChannelNdRoute
                 look += color is null ? $" in a {ringWord}" : $" in a {color} {ringWord}";
                 if (cstr && Printed(marker.Label) is { Length: > 0 } text)
                 {
-                    constraint = $"; {text} {FenixChannelNdLook.For(LookItem.ConstraintLabel)!.Color}";
+                    constraint = $"; {text}";
                 }
             }
 
@@ -383,7 +382,7 @@ internal static class FenixChannelNdRoute
         {
             string figure = Math.Abs(error).ToString("0.0", CultureInfo.InvariantCulture) + (error < 0 ? "L" : "R");
             string place = error < 0 ? "left of the aircraft" : "beside the aircraft";
-            yield return $"Map: cross-track error {figure}, {FenixChannelNdLook.For(LookItem.CrossTrack)!.Color}, {place}";
+            yield return $"Map: cross-track error {figure}, {place}";
         }
     }
 
@@ -434,9 +433,8 @@ internal static class FenixChannelNdRoute
 
             if (place is { } at)
             {
-                FenixNdLookEntry green = FenixChannelNdLook.For(LookItem.FixInfoFix)!;
-                string symbol = FixSymbol(fix.Kind) ?? green.Symbol;
-                yield return $"Map: {fix.Ident}, {green.Color} {symbol}, {FenixChannelNdGeometry.Where(f, at, null)}";
+                string symbol = FixSymbol(fix.Kind) ?? Words(LookItem.FixInfoFix);
+                yield return $"Map: {fix.Ident}, {symbol}, {FenixChannelNdGeometry.Where(f, at, null)}";
             }
         }
     }

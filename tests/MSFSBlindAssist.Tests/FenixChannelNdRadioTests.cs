@@ -102,10 +102,10 @@ public class FenixChannelNdRadioTests
 
         Assert.Equal(
             [
-                "Top right: ILS2 white, 110.15 magenta; CRS white, 186 magenta, ° cyan; ICIZ, magenta",
-                "Center: magenta course pointer at 186 on the compass",
-                "Center: magenta localizer bar 1.2 dots right",
-                "Right side: magenta glideslope diamond 0.9 dots above"
+                "Top right: ILS2 110.15; CRS 186°; ICIZ",
+                "Center: course pointer at 186 on the compass",
+                "Center: localizer bar 1.2 dots right",
+                "Right side: glideslope diamond 0.9 dots above"
             ],
             rows);
 
@@ -113,36 +113,36 @@ public class FenixChannelNdRadioTests
         string[] below = Radio(Remote(Ls)
             .Message(72, Block("wILS2 m110.s15 ", "CRS m186c°", ""))
             .Message(82, Ils(-0.757, -0.558, 186)));
-        Assert.Equal("Top right: ILS2 white, 110.15 magenta; CRS white, 186 magenta, ° cyan", below[0]);
-        Assert.Equal("Center: magenta localizer bar 0.8 dots left", below[2]);
-        Assert.Equal("Right side: magenta glideslope diamond 0.6 dots below", below[3]);
+        Assert.Equal("Top right: ILS2 110.15; CRS 186°", below[0]);
+        Assert.Equal("Center: localizer bar 0.8 dots left", below[2]);
+        Assert.Equal("Right side: glideslope diamond 0.6 dots below", below[3]);
 
         string[] landed = Radio(Remote(Ls).Message(72, Block(null, "CRS m186c°", "")).Message(82, Ils(double.NaN, double.NaN, double.NaN)));
         Assert.Equal(
             [
-                "Top right: CRS white, 186 magenta, ° cyan",
+                "Top right: CRS 186°",
                 "Center: localizer scale, no bar",
                 "Right side: glideslope scale, no diamond"
             ],
             landed);
 
         string[] centered = LsRows(0.04, -0.04);
-        Assert.Equal("Center: magenta localizer bar centered", centered[2]);
-        Assert.Equal("Right side: magenta glideslope diamond centered", centered[3]);
+        Assert.Equal("Center: localizer bar centered", centered[2]);
+        Assert.Equal("Right side: glideslope diamond centered", centered[3]);
     }
 
     [Fact]
     public void The_localizer_and_glideslope_run_to_full_scale_at_their_own_figures()
     {
         // The bar stops at 2.5, the half diamond starts at 2.0 (sitting 2).
-        Assert.Equal("Center: magenta localizer bar 2.4 dots right", LsRows(2.44, 0)[2]);
-        Assert.Equal("Center: magenta localizer bar, full scale right", LsRows(2.5, 0)[2]);
-        Assert.Equal("Center: magenta localizer bar, full scale right", LsRows(4.0, 0)[2]);
-        Assert.Equal("Center: magenta localizer bar, full scale left", LsRows(-2.51, 0)[2]);
-        Assert.Equal("Right side: magenta glideslope diamond 1.8 dots below", LsRows(0, -1.835)[3]);
-        Assert.Equal("Right side: magenta glideslope half diamond, full scale above", LsRows(0, 2.003)[3]);
-        Assert.Equal("Right side: magenta glideslope half diamond, full scale below", LsRows(0, -4.0)[3]);
-        Assert.Equal("Center: magenta localizer bar 0.1 dots right", LsRows(0.05, 0)[2]);
+        Assert.Equal("Center: localizer bar 2.4 dots right", LsRows(2.44, 0)[2]);
+        Assert.Equal("Center: localizer bar, full scale right", LsRows(2.5, 0)[2]);
+        Assert.Equal("Center: localizer bar, full scale right", LsRows(4.0, 0)[2]);
+        Assert.Equal("Center: localizer bar, full scale left", LsRows(-2.51, 0)[2]);
+        Assert.Equal("Right side: glideslope diamond 1.8 dots below", LsRows(0, -1.835)[3]);
+        Assert.Equal("Right side: glideslope half diamond, full scale above", LsRows(0, 2.003)[3]);
+        Assert.Equal("Right side: glideslope half diamond, full scale below", LsRows(0, -4.0)[3]);
+        Assert.Equal("Center: localizer bar 0.1 dots right", LsRows(0.05, 0)[2]);
     }
 
     [Fact]
@@ -151,16 +151,16 @@ public class FenixChannelNdRadioTests
         // After touchdown 72.2 still read CRS 186 with 82.6 NaN and no pointer drawn.
         string[] none = LsRows(double.NaN, double.NaN, double.NaN);
         Assert.DoesNotContain(none, row => row.Contains("course pointer"));
-        Assert.Contains("Top right: ILS2 white, 110.15 magenta; CRS white, 186 magenta, ° cyan; ICIZ, magenta", none);
+        Assert.Contains("Top right: ILS2 110.15; CRS 186°; ICIZ", none);
 
         // No 82.6 at all: no pointer either, and the scales say "no bar".
         string[] absent = LsRows(1.0, 1.0, null);
         Assert.DoesNotContain(absent, row => row.Contains("course pointer"));
-        Assert.Contains("Center: magenta localizer bar 1.0 dots right", absent);
+        Assert.Contains("Center: localizer bar 1.0 dots right", absent);
 
         // In cruise 82.6 held 186 with both deviations NaN: the pointer with no bar.
         string[] cruise = LsRows(double.NaN, double.NaN, 185.6);
-        Assert.Contains("Center: magenta course pointer at 186 on the compass", cruise);
+        Assert.Contains("Center: course pointer at 186 on the compass", cruise);
         Assert.Contains("Center: localizer scale, no bar", cruise);
     }
 
@@ -182,12 +182,12 @@ public class FenixChannelNdRadioTests
         // 70 as sent in sitting 1 and 2: no course was set, and no deviation, TO or FROM is drawn.
         string[] rows = Radio(Remote(Vor, 1).Message(70, Block("wVOR1 w113.s40 ", "CRS c---°", "lwODF ")));
 
-        Assert.Equal(["Top right: VOR1 113.40, white; CRS white, ---° cyan; ODF, white"], rows);
+        Assert.Equal(["Top right: VOR1 113.40; CRS ---°; ODF"], rows);
         Assert.DoesNotContain(rows, row => row.StartsWith("Center") || row.StartsWith("Right side"));
 
         // After a frequency change 70.3 is left out, then the frequency: only the lines sent are spoken.
         Assert.Equal(
-            ["Top right: VOR1 113.40, white; CRS white, ---° cyan"],
+            ["Top right: VOR1 113.40; CRS ---°"],
             Radio(Remote(Vor, 1).Message(70, Block("wVOR1 w113.s40 ", "CRS c---°", null))));
     }
 
@@ -199,7 +199,7 @@ public class FenixChannelNdRadioTests
             .Message(70, Block("wVOR1 w113.s10 ", "CRS c---°", "lwODF "))
             .Message(102, Flags((1, "rVOR1"))));
 
-        Assert.Equal(["Top right: VOR1 red, ---.-- cyan; CRS white, XX red", "Center: VOR red"], rows);
+        Assert.Equal(["Top right: VOR1 red, ---.--; CRS, XX red", "Center: VOR red"], rows);
 
         // The failed block is unmeasured for a failed ILS and other modes: ROSE LS keeps its own block.
         string[] ls = Radio(Remote(Ls).Message(72, Block("wILS2 m110.s15 ", "CRS m186c°", "")).Message(102, Flags((1, "rVOR1"))));
@@ -208,7 +208,7 @@ public class FenixChannelNdRadioTests
 
         // Not the failed block while the flag is empty.
         Assert.Equal(
-            ["Top right: VOR1 113.10, white"],
+            ["Top right: VOR1 113.10"],
             Radio(Remote(Vor, 1).Message(70, Block("wVOR1 w113.s10 ", null, null)).Message(102, Flags((1, "")))));
     }
 
@@ -221,19 +221,19 @@ public class FenixChannelNdRadioTests
         string[] both = Radio(Remote(Nav, 1, 2).Message(78, Pointers(204.6, 270.2)));
         Assert.Equal(
             [
-                "Map: VOR 1 pointer, white single line with an open triangle head, at 205 on the compass",
-                "Map: ADF 2 pointer, green two lines joined at the head, at 270 on the compass"
+                "Map: VOR 1 pointer, single line with an open triangle head, at 205 on the compass",
+                "Map: ADF 2 pointer, two lines joined at the head, at 270 on the compass"
             ],
             both);
 
         // NaN is no pointer; a number with its selector at OFF is none either (the 78 pair stays set).
         Assert.Equal(
-            ["Map: ADF 2 pointer, green two lines joined at the head, at 270 on the compass"],
+            ["Map: ADF 2 pointer, two lines joined at the head, at 270 on the compass"],
             Radio(Remote(Nav, 1, 2).Message(78, Pointers(double.NaN, 270.2))));
         Assert.Empty(Radio(Remote(Nav, 0, 0).Message(78, Pointers(204.6, 270.2))));
         Assert.Empty(Radio(Remote(Nav).Message(78, Pointers(204.6, 270.2))));
         Assert.Equal(
-            ["Map: VOR 1 pointer, white single line with an open triangle head, at 205 on the compass"],
+            ["Map: VOR 1 pointer, single line with an open triangle head, at 205 on the compass"],
             Radio(Remote(Nav, 1, 0).Message(78, Pointers(204.6, 270.2))));
 
         // NAV 1 on ADF and NAV 2 on VOR: the looks are not measured, so the row has none.
@@ -277,8 +277,8 @@ public class FenixChannelNdRadioTests
 
         Assert.Equal(
             [
-                "Bottom left: VOR1, white; CVG, white; 8.4 green, NM cyan; white single-line arrow",
-                "Bottom right: ADF2, green; CP, green; green double-line arrow"
+                "Bottom left: VOR1; CVG; 8.4 NM; single-line arrow",
+                "Bottom right: ADF2; CP; double-line arrow"
             ],
             rows);
 
@@ -304,7 +304,7 @@ public class FenixChannelNdRadioTests
     {
         // Sitting 1: the red VOR1 at the bottom left, no arrow, no other line, while 76 still held wVOR1.
         Assert.Equal(
-            ["Bottom left: VOR1, red", "Bottom right: ADF2, green; CP, green; green double-line arrow"],
+            ["Bottom left: VOR1, red", "Bottom right: ADF2; CP; double-line arrow"],
             Corner(Remote(Nav, 1, 2).Message(76, Corners()).Message(102, Flags((1, "rVOR1")))));
 
         // Members 2 to 4 by their side; both members of one side in member order, in the side's one row.
@@ -318,7 +318,7 @@ public class FenixChannelNdRadioTests
         // A flag with no corner text still reads, and an empty flag is no flag.
         Assert.Equal(["Bottom left: VOR1, red"], Corner(Remote(Nav, 1).Message(102, Flags((1, "rVOR1")))));
         Assert.Equal(
-            "Bottom left: VOR1, white; CVG, white; 8.4 green, NM cyan; white single-line arrow",
+            "Bottom left: VOR1; CVG; 8.4 NM; single-line arrow",
             Corner(Remote(Nav, 1, 2).Message(76, Corners()).Message(102, Flags((1, ""))))[0]);
     }
 
@@ -419,10 +419,10 @@ public class FenixChannelNdRadioTests
         string[] there = TestCulture.Run<string[]>(culture, () => [.. Radio(Build()), .. Corner(Build())]);
 
         Assert.Equal(invariant, there);
-        Assert.Contains("Center: magenta localizer bar 1.2 dots right", there);
-        Assert.Contains("Right side: magenta glideslope diamond 0.9 dots below", there);
-        Assert.Contains("Map: VOR 1 pointer, white single line with an open triangle head, at 205 on the compass", there);
-        Assert.Contains("Bottom left: VOR1, white; CVG, white; 8.4 green, NM cyan; white single-line arrow", there);
+        Assert.Contains("Center: localizer bar 1.2 dots right", there);
+        Assert.Contains("Right side: glideslope diamond 0.9 dots below", there);
+        Assert.Contains("Map: VOR 1 pointer, single line with an open triangle head, at 205 on the compass", there);
+        Assert.Contains("Bottom left: VOR1; CVG; 8.4 NM; single-line arrow", there);
         Assert.DoesNotContain(there, row => row.Contains("1,2") || row.Contains("0,9"));
     }
 

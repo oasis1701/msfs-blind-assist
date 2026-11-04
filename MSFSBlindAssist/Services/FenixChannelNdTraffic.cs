@@ -84,8 +84,7 @@ internal static class FenixChannelNdTraffic
             parts.Add(target.Kind is null ? "traffic" : target.Kind);
             if (target.Fill is { } fill)
             {
-                FenixNdLookEntry look = FenixChannelNdLook.For(target.Kind!)!;
-                parts.Add($"{fill} {look.Color} {look.Symbol}");
+                parts.Add($"{fill} {FenixChannelNdRows.Words(target.Kind!)}");
             }
 
             parts.Add(FenixChannelNdGeometry.Where(frame, place, null));

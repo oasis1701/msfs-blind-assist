@@ -18,7 +18,7 @@ namespace MSFSBlindAssist.Services;
 /// with a problem) is only remembered; the sample that shows the gap or the new connection is not itself the baseline.
 /// Muted, it keeps tracking and says nothing, so unmuting replays nothing.</para>
 /// <para>One line per sample: new messages ("ND message: A, B"), gone ones ("ND message gone: C") and the waypoint
-/// ("ND: ..."), joined with ". " in that order. Text is channel text spoken by <see cref="FenixChannelSpeech"/>; the
+/// ("ND: ..."), joined with ". " in that order. Text is channel text spoken by <see cref="FenixChannelNdSpeech"/> (only the colors that tell something); the
 /// distance is the ND's own digits, so the PC's culture changes none of it. UI thread only.</para>
 /// </remarks>
 internal sealed class FenixChannelNdMessages
@@ -33,7 +33,12 @@ internal sealed class FenixChannelNdMessages
     private bool _baselined;
 
     // The messages on the ND at the last sample: stripped text, and the coded text to speak it from.
-    private Dictionary<string, string> _messages = new(StringComparer.Ordinal);
+    private Dictionary<string, Drawn> _messages = new(StringComparer.Ordinal);
+
+    // A message as drawn: its coded text and the usual colors of its field.
+    private readonly record struct Drawn(string Coded, IReadOnlySet<FenixTextColor>? Usual);
+
+    private static string? Speak(Drawn drawn) => FenixChannelNdSpeech.Line(drawn.Coded, drawn.Usual);
 
     // The ident of the drawn waypoint at the last sample; null while the box is not drawn.
     private string? _ident;
@@ -53,7 +58,7 @@ internal sealed class FenixChannelNdMessages
             return null;
         }
 
-        Dictionary<string, string> messages = MessagesOf(nd);
+        Dictionary<string, Drawn> messages = MessagesOf(nd);
         (string Ident, string Spoken)? waypoint = WaypointOf(nd);
 
         if (!_baselined)
@@ -66,11 +71,11 @@ internal sealed class FenixChannelNdMessages
         var parts = new List<string>();
 
         string[] added = [.. messages.Where(m => !_messages.ContainsKey(m.Key))
-            .Select(m => FenixChannelSpeech.Line(m.Value)).OfType<string>()];
+            .Select(m => Speak(m.Value)).OfType<string>()];
         if (added.Length > 0) parts.Add("ND message: " + string.Join(", ", added));
 
         string[] gone = [.. _messages.Where(m => !messages.ContainsKey(m.Key))
-            .Select(m => FenixChannelSpeech.Line(m.Value)).OfType<string>()];
+            .Select(m => Speak(m.Value)).OfType<string>()];
         if (gone.Length > 0) parts.Add("ND message gone: " + string.Join(", ", gone));
 
         // A waypoint is news only when the box was drawn at the last sample too and its ident moved.
@@ -80,22 +85,22 @@ internal sealed class FenixChannelNdMessages
         return muted || parts.Count == 0 ? null : string.Join(". ", parts);
     }
 
-    private void Remember(Dictionary<string, string> messages, (string Ident, string Spoken)? waypoint)
+    private void Remember(Dictionary<string, Drawn> messages, (string Ident, string Spoken)? waypoint)
     {
         _messages = messages;
         _ident = waypoint?.Ident;
     }
 
     // The drawn messages by stripped text (the first of equal ones), less the two the pilot's own knob turn brings.
-    private static Dictionary<string, string> MessagesOf(FenixNdData nd)
+    private static Dictionary<string, Drawn> MessagesOf(FenixNdData nd)
     {
-        var messages = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (string coded in FenixChannelNdRows.DrawnMessages(nd))
+        var messages = new Dictionary<string, Drawn>(StringComparer.Ordinal);
+        foreach ((string coded, IReadOnlySet<FenixTextColor>? usual) in FenixChannelNdRows.DrawnMessageFields(nd))
         {
             string plain = Plain(coded);
             if (plain.Length == 0 || NotAnnounced.Contains(plain, StringComparer.OrdinalIgnoreCase)) continue;
 
-            messages.TryAdd(plain, coded);
+            messages.TryAdd(plain, new Drawn(coded, usual));
         }
 
         return messages;
