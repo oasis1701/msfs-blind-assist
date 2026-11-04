@@ -67,7 +67,7 @@ public class FenixChannelSdFctlTests
     }
 
     private static string RowOf(IReadOnlyList<string> rows, string label)
-        => Assert.Single(rows, row => row.StartsWith(label + ":"));
+        => Assert.Single(rows, row => row.StartsWith(label + ":") || row.StartsWith(label + ","));
 
     [Fact]
     public void The_fctl_page_reads_spoilers_surfaces_and_computers()
@@ -85,7 +85,7 @@ public class FenixChannelSdFctlTests
         Assert.Equal(
             new[]
             {
-                "SPD BRK left: 0°, 0°, 0°, 0°, 0°", "SPD BRK right: 0°, 0°, 0°, 0°, 0°", "L AIL: 0.1° down", "R AIL: 0.1° up",
+                "SPD BRK left: all 0°", "SPD BRK right: all 0°", "L AIL: 0.1° down", "R AIL: 0.1° up",
                 "ELAC 1: normal", "ELAC 2: normal", "SEC 1: normal", "SEC 2: normal", "SEC 3: normal",
                 "PITCH TRIM: 1.6° UP", "L ELEV: 0.0°", "R ELEV: 0.0°", "RUD: 0.1° right", "RUD TRIM: 0.1° right"
             },
@@ -104,8 +104,35 @@ public class FenixChannelSdFctlTests
 
         IReadOnlyList<string> rows = RowsOf(FctlPush(surfaces));
 
-        Assert.Equal("SPD BRK left: 1°, 3°, 3°, 4°, 5°", RowOf(rows, "SPD BRK left"));
-        Assert.Equal("SPD BRK right: 6°, 7°, 8°, 9°, 11°", RowOf(rows, "SPD BRK right"));
+        Assert.Equal("SPD BRK left, 1 to 5: 1°, 3°, 3°, 4°, 5°", RowOf(rows, "SPD BRK left"));
+        Assert.Equal("SPD BRK right, 1 to 5: 6°, 7°, 8°, 9°, 11°", RowOf(rows, "SPD BRK right"));
+    }
+
+    [Fact]
+    public void Spoilers_name_their_order_or_fold_when_equal()
+    {
+        // Spoiler 1 is the inboard one and 5 the outboard (the A320's numbering; the contract's order).
+        var speedBrake = new Dictionary<int, FenixChannelProtoWriter>
+        {
+            [2] = Surface(0), [3] = Surface(25), [4] = Surface(25), [5] = Surface(25), [6] = Surface(0),
+            [8] = Surface(12, fault: true), [9] = Surface(12, fault: true), [10] = Surface(12, fault: true),
+            [11] = Surface(12, fault: true), [12] = Surface(12, fault: true)
+        };
+
+        IReadOnlyList<string> rows = RowsOf(FctlPush(speedBrake));
+
+        Assert.Equal("SPD BRK left, 1 to 5: 0°, 25°, 25°, 25°, 0°", RowOf(rows, "SPD BRK left"));
+        Assert.Equal("SPD BRK right: all 12° fault", RowOf(rows, "SPD BRK right"));
+
+        // One differing fault is not folded.
+        IReadOnlyList<string> oneFault = RowsOf(FctlPush(new() { [4] = Surface(0, fault: true) }));
+        Assert.Equal("SPD BRK left, 1 to 5: 0°, 0°, 0° fault, 0°, 0°", RowOf(oneFault, "SPD BRK left"));
+        Assert.Equal("SPD BRK right: all 0°", RowOf(oneFault, "SPD BRK right"));
+
+        // No FCDC data: five crosses fold too.
+        IReadOnlyList<string> crosses = RowsOf(FctlPush(fcdc: false));
+        Assert.Equal("SPD BRK left: all XX", RowOf(crosses, "SPD BRK left"));
+        Assert.Equal("SPD BRK right: all XX", RowOf(crosses, "SPD BRK right"));
     }
 
     [Fact]
@@ -126,7 +153,7 @@ public class FenixChannelSdFctlTests
         Assert.Equal(
             new[]
             {
-                "SPD BRK left: 50°, 50°, 50°, 50°, 50°", "SPD BRK right: 50°, 50°, 50°, 50°, 50°", "L AIL: 25.0° up",
+                "SPD BRK left: all 50°", "SPD BRK right: all 50°", "L AIL: 25.0° up",
                 "R AIL: 25.0° up", "ELAC 1: normal", "ELAC 2: normal", "SEC 1: normal", "SEC 2: normal", "SEC 3: normal",
                 "PITCH TRIM: 0.0°", "L ELEV: 15.0° down", "R ELEV: 15.0° down", "RUD: 0.9° left", "RUD TRIM: 0.0°"
             },
@@ -189,7 +216,7 @@ public class FenixChannelSdFctlTests
         IReadOnlyList<string> rows = RowsOf(FctlPush(surfaces));
 
         Assert.Equal("L AIL: 2.3° up, fault", RowOf(rows, "L AIL"));
-        Assert.Equal("SPD BRK left: 0°, 12° fault, 0°, 0°, 0°", RowOf(rows, "SPD BRK left"));
+        Assert.Equal("SPD BRK left, 1 to 5: 0°, 12° fault, 0°, 0°, 0°", RowOf(rows, "SPD BRK left"));
         Assert.Equal("PITCH TRIM: 1.9° UP, fault", RowOf(rows, "PITCH TRIM"));
         Assert.Equal("RUD: 0.0°, fault", RowOf(rows, "RUD"));
         Assert.Equal("R AIL: 0.0°", RowOf(rows, "R AIL"));
@@ -205,7 +232,7 @@ public class FenixChannelSdFctlTests
         Assert.Equal(
             new[]
             {
-                "SPD BRK left: XX, XX, XX, XX, XX", "SPD BRK right: XX, XX, XX, XX, XX", "L AIL: XX", "R AIL: XX",
+                "SPD BRK left: all XX", "SPD BRK right: all XX", "L AIL: XX", "R AIL: XX",
                 "ELAC 1: normal", "ELAC 2: fault", "SEC 1: fault", "SEC 2: fault", "SEC 3: fault",
                 "PITCH TRIM: XX", "L ELEV: XX", "R ELEV: XX", "RUD: XX", "RUD TRIM: 0.1° right"
             },
@@ -223,7 +250,7 @@ public class FenixChannelSdFctlTests
         IReadOnlyList<string> rows = RowsOf(FctlPush(surfaces, rudderTrim: double.NaN));
 
         Assert.Equal("L AIL: XX", RowOf(rows, "L AIL"));
-        Assert.Equal("SPD BRK left: 0°, 0°, XX, 0°, 0°", RowOf(rows, "SPD BRK left"));
+        Assert.Equal("SPD BRK left, 1 to 5: 0°, 0°, XX, 0°, 0°", RowOf(rows, "SPD BRK left"));
         Assert.Equal("PITCH TRIM: XX", RowOf(rows, "PITCH TRIM"));
         Assert.Equal("RUD TRIM: XX", RowOf(rows, "RUD TRIM"));
     }

@@ -16,7 +16,8 @@ internal static partial class FenixChannelSdPages
     /// <summary>
     /// The F/CTL page's rows, top to bottom: <c>SPD BRK left</c> (the spoilers 145.2 to .6) and <c>SPD BRK right</c> (145.8
     /// to .12), five whole degrees each ("25°"; measured: the speed brake held 25.0, the ground spoilers 50.0), a faulted
-    /// spoiler "&lt;n&gt;° fault"; <c>L AIL</c> (145.1) and <c>R AIL</c> (145.7), one decimal with "° up" or "° down";
+    /// spoiler "&lt;n&gt;° fault"; the row names the order, "SPD BRK left, 1 to 5: 0°, 25°, 25°, 25°, 0°" (spoiler 1 is the
+    /// inboard one), and folds to "SPD BRK left: all 0°" when the five texts are equal; <c>L AIL</c> (145.1) and <c>R AIL</c> (145.7), one decimal with "° up" or "° down";
     /// <c>ELAC 1</c>, <c>ELAC 2</c>, <c>SEC 1</c>, <c>SEC 2</c> and <c>SEC 3</c> (148.1 to .5), "normal" while set and
     /// "fault" while clear; <c>PITCH TRIM</c> (145.15), one decimal with "° UP" or "° DN"; <c>L ELEV</c> (145.13) and
     /// <c>R ELEV</c> (145.14) as the ailerons; <c>RUD</c> (145.16) and <c>RUD TRIM</c> (146.2), one decimal with "° left" or
@@ -88,6 +89,17 @@ internal static partial class FenixChannelSdPages
             return spoiler.Fault ? $"{shown} fault" : shown;
         }
 
+        // Spoiler 1 is the inboard one and 5 the outboard (the A320's numbering; the contract's LeftSpoiler1 to 5 order). Five
+        // equal texts fold into "all <text>"; otherwise the row names the order, "1 to 5".
+        string SpoilerRow(string label, (double Position, bool Fault)[] spoilers)
+        {
+            string[] texts = spoilers.Select(Spoiler).ToArray();
+
+            return texts.All(text => text == texts[0])
+                ? $"{label}: all {texts[0]}"
+                : $"{label}, 1 to 5: {string.Join(", ", texts)}";
+        }
+
         string Surface((double Position, bool Fault) surface, Func<double, string> value)
             => !fcdc ? FenixChannelSd.Crosses : surface.Fault ? $"{value(surface.Position)}, fault" : value(surface.Position);
 
@@ -95,8 +107,8 @@ internal static partial class FenixChannelSdPages
 
         return FenixChannelRows.Of(
         [
-            $"SPD BRK left: {string.Join(", ", leftSpoilers.Select(Spoiler))}",
-            $"SPD BRK right: {string.Join(", ", rightSpoilers.Select(Spoiler))}",
+            SpoilerRow("SPD BRK left", leftSpoilers),
+            SpoilerRow("SPD BRK right", rightSpoilers),
             $"L AIL: {Surface(leftAileron, FctlSurfaceDegrees)}",
             $"R AIL: {Surface(rightAileron, FctlSurfaceDegrees)}",
             Computer("ELAC 1", available[0]), Computer("ELAC 2", available[1]), Computer("SEC 1", available[2]),
