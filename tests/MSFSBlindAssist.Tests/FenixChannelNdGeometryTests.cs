@@ -23,7 +23,7 @@ public class FenixChannelNdGeometryTests
         double? variation = Variation, FenixLatLon? position = null, FenixLatLon? planCenter = null,
         string[]? listed = null)
         => new(mode, range, null, false, null, null, heading, null, variation, null, position, planCenter, null,
-            Array.Empty<string>(), listed ?? Array.Empty<string>());
+            Array.Empty<FenixNdCenterMessage>(), listed ?? Array.Empty<string>());
 
     // name, latitude, longitude, distance, off up, ROSE pixel (NaN: far off), ROSE drawn, ROSE edge,
     // ARC pixel, ARC drawn, ARC edge. In ARC the flight's clip applies (a 478 px circle, the corners): LDK at 466.6 px

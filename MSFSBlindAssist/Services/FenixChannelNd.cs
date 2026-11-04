@@ -26,14 +26,15 @@ internal sealed record FenixNdWaypointLines(string Line1, string Line2, string L
 /// <param name="CenterMessages">The center (62), windshear (64) and TCAS (66) messages when not blank, in that order.</param>
 /// <param name="ListedMessages">The ND messages (103) that are not null or blank, in order, as sent.</param>
 /// <param name="ApproachMessage">The approach label at top center (102.2), as sent ("gILS18L"); null when absent or blank.</param>
-/// <param name="FirstCenterIsMessage62">The first of <paramref name="CenterMessages"/> is the center message (62), not
-/// windshear (64) or TCAS (66): the ND speaks 62's usual colors only for it.</param>
 internal sealed record FenixNdData(
     string? Mode, string Range, string? MapOption, bool LsOn, string? GroundSpeedLine, string? WindLine,
     double? MagneticHeading, double? MagneticTrack, double? MagneticVariation, double? SelectedHeading,
     FenixLatLon? Position, FenixLatLon? PlanCenter, FenixNdWaypointLines? Waypoint,
-    IReadOnlyList<string> CenterMessages, IReadOnlyList<string> ListedMessages, string? ApproachMessage = null,
-    bool FirstCenterIsMessage62 = true);
+    IReadOnlyList<FenixNdCenterMessage> CenterMessages, IReadOnlyList<string> ListedMessages,
+    string? ApproachMessage = null);
+
+/// <summary>A center-area ND message as sent (<paramref name="Coded"/>) and the field it came from: 62 center, 64 windshear or 66 TCAS.</summary>
+internal sealed record FenixNdCenterMessage(string Coded, int Field);
 
 /// <summary>
 /// Reads the captain's ND header from one snapshot. Never the first officer's side. The first problem found is the
@@ -168,10 +169,13 @@ internal static class FenixChannelNd
             if (Unknown(message) is char letter) return FenixChannelSection<FenixNdData>.UnknownCode(letter, "ND messages");
         }
 
-        List<string> centerMessages = [];
-        foreach (string? message in new[] { center, windshear, tcas })
+        List<FenixNdCenterMessage> centerMessages = [];
+        foreach ((string? message, int field) in new[]
         {
-            if (!string.IsNullOrWhiteSpace(message)) centerMessages.Add(message);
+            (center, Remote.NdCenterMessageCapt), (windshear, Remote.NdWindshearMessageCapt), (tcas, Remote.NdTcasMessageCapt)
+        })
+        {
+            if (!string.IsNullOrWhiteSpace(message)) centerMessages.Add(new FenixNdCenterMessage(message, field));
         }
 
         List<string> listedMessages = [.. listed.Where(message => !string.IsNullOrWhiteSpace(message))];
@@ -180,7 +184,7 @@ internal static class FenixChannelNd
             ModeName(mode), RangeName(range), MapOptionName(mapOption), ls is not null && ls != 0,
             groundSpeed, windLine, magHeading, magTrack, magVar, selected, position, planCenter,
             nav is null ? null : new FenixNdWaypointLines(line1 ?? "", line2 ?? "", line3 ?? ""), centerMessages, listedMessages,
-            string.IsNullOrWhiteSpace(approach) ? null : approach, !string.IsNullOrWhiteSpace(center)));
+            string.IsNullOrWhiteSpace(approach) ? null : approach));
 
         // ---- The reads. A field in another wire shape records its path (the first only) and reads as absent.
 

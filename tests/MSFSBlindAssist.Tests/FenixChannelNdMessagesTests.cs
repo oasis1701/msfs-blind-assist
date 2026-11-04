@@ -12,12 +12,15 @@ public class FenixChannelNdMessagesTests
 
     private static FenixChannelSnapshot Snap(
         string[]? listed = null, string? center = null, string? waypoint = "VAKSU g318c", string? distance = "g84 csNM",
-        ulong mode = Arc, bool trusted = true, int connection = 1, bool broken = false)
+        ulong mode = Arc, bool trusted = true, int connection = 1, bool broken = false, string? windshear = null,
+        string? tcas = null)
     {
         var remote = new FenixChannelProtoWriter()
             .Message(1, new FenixChannelProtoWriter().Varint(1, mode)).Message(1, new FenixChannelProtoWriter())
             .Message(163, new FenixChannelProtoWriter().String(1, "wsGSlgd456").String(2, "g213w / g37"));
         if (center is not null) remote.String(62, center);
+        if (windshear is not null) remote.String(64, windshear);
+        if (tcas is not null) remote.String(66, tcas);
         if (waypoint is not null)
         {
             var nav = new FenixChannelProtoWriter().String(1, waypoint);
@@ -164,6 +167,39 @@ public class FenixChannelNdMessagesTests
 
         Assert.Null(announcer.Sample(Snap(center: text), false));
         Assert.Null(announcer.Sample(Snap(), false));
+    }
+
+    // Each center message is spoken by the rule of its own field: 62's usual color is white, 64 and 66 have no measured
+    // set, so every color of theirs is spoken.
+    [Theory]
+    [InlineData(null, "gWINDSHEAR", null, "ND message: WINDSHEAR, green")]
+    [InlineData(null, null, "gTCAS FAIL", "ND message: TCAS FAIL, green")]
+    [InlineData("gCENTER", null, null, "ND message: CENTER, green")]
+    [InlineData("wCENTER", null, null, "ND message: CENTER")]
+    [InlineData("wCENTER", "gWINDSHEAR", null, "ND message: CENTER, WINDSHEAR, green")]
+    [InlineData("gCENTER", "wWINDSHEAR", null, "ND message: CENTER, green, WINDSHEAR, white")]
+    public void Each_center_message_follows_its_own_fields_colors(string? center, string? windshear, string? tcas, string said)
+    {
+        FenixChannelNdMessages announcer = Baselined();
+
+        Assert.Equal(said, announcer.Sample(Snap(center: center, windshear: windshear, tcas: tcas), false));
+    }
+
+    [Fact]
+    public void A_windshear_message_keeps_its_color_in_the_window_too()
+    {
+        string[] rows = [.. FenixChannelNdRows.Compose(Snap(windshear: "gWINDSHEAR"), _ => { }).Rows!];
+
+        Assert.Contains("Message: WINDSHEAR, green", rows);
+    }
+
+    [Fact]
+    public void A_center_message_is_white_by_rule_only_as_field_62()
+    {
+        string[] rows = [.. FenixChannelNdRows.Compose(Snap(center: "wCENTER", tcas: "wTCAS"), _ => { }).Rows!];
+
+        Assert.Contains("Message: CENTER", rows);
+        Assert.Contains("Message: TCAS, white", rows);
     }
 
     [Fact]

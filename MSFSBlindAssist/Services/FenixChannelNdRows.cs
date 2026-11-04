@@ -258,37 +258,28 @@ internal static partial class FenixChannelNdRows
     // sides").
     private static IEnumerable<string> MessageRows(FenixNdData nd)
     {
-        foreach ((string message, IReadOnlySet<FenixTextColor>? usual) in DrawnMessageFields(nd))
+        foreach ((string message, IReadOnlySet<FenixTextColor>? usual) in DrawnMessages(nd))
         {
             if (FenixChannelNdSpeech.Line(message, usual) is { } spoken) yield return "Message: " + spoken;
         }
     }
 
     /// <summary>
-    /// <see cref="DrawnMessages"/> with each message's usual colors, for <see cref="FenixChannelNdSpeech"/>: white for
-    /// the center message (62) and the listed ones (103); none measured (null, every color spoken) for windshear (64)
-    /// and TCAS (66).
+    /// The messages the glass draws, as sent, in the order the window lists them: the center, windshear and TCAS texts,
+    /// then the upper box ("TA ONLY") and the lower box (the first other 103 entry), each with the usual colors of its
+    /// own field for <see cref="FenixChannelNdSpeech"/>: 62 and 103 white; 64 and 66 none measured (null, every color
+    /// spoken). The one selection the window's rows and the ND messages announcer both read, so they cannot drift apart.
     /// </summary>
-    internal static IEnumerable<(string Coded, IReadOnlySet<FenixTextColor>? Usual)> DrawnMessageFields(FenixNdData nd)
+    internal static IEnumerable<(string Coded, IReadOnlySet<FenixTextColor>? Usual)> DrawnMessages(FenixNdData nd)
     {
-        for (int i = 0; i < nd.CenterMessages.Count; i++)
+        foreach (FenixNdCenterMessage message in nd.CenterMessages)
         {
-            bool isCenter = i == 0 && nd.FirstCenterIsMessage62;
-            yield return (nd.CenterMessages[i], isCenter ? FenixChannelNdSpeech.CenterMessage : null);
+            yield return (message.Coded, message.Field == FenixChannelFields.Remote.NdCenterMessageCapt
+                ? FenixChannelNdSpeech.CenterMessage
+                : null);
         }
 
         foreach (string box in ListedBoxes(nd)) yield return (box, FenixChannelNdSpeech.ListedMessage);
-    }
-
-    /// <summary>
-    /// The messages the glass draws, as sent, in the order the window lists them: the center, windshear and TCAS texts,
-    /// then the upper box ("TA ONLY") and the lower box (the first other 103 entry). Shared with the ND messages
-    /// announcer so that the window and the announcer cannot drift apart.
-    /// </summary>
-    internal static IEnumerable<string> DrawnMessages(FenixNdData nd)
-    {
-        foreach (string message in nd.CenterMessages) yield return message;
-        foreach (string box in ListedBoxes(nd)) yield return box;
     }
 
     private static IEnumerable<string> ListedBoxes(FenixNdData nd)

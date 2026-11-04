@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.Services;
 /// nothing itself and reads no clock.
 /// </summary>
 /// <remarks>
-/// <para>Which messages: exactly the ones the ND window lists (<see cref="FenixChannelNdRows.DrawnMessages"/>), compared
+/// <para>Which messages: exactly the ones the ND window lists (<see cref="FenixChannelNdRows.DrawnMessages"/>, the one selection), compared
 /// by their text without the format letters, except "RANGE CHANGE" and "MODE CHANGE", which the ND holds for about half a
 /// second at every EFIS mode or range change, the pilot's own, which the screen reader already reads ([CORE-7]).</para>
 /// <para>Which waypoint: a change of the ident in line 1 of the next-waypoint box, only while the ND draws that box (ARC,
@@ -95,7 +95,7 @@ internal sealed class FenixChannelNdMessages
     private static Dictionary<string, Drawn> MessagesOf(FenixNdData nd)
     {
         var messages = new Dictionary<string, Drawn>(StringComparer.Ordinal);
-        foreach ((string coded, IReadOnlySet<FenixTextColor>? usual) in FenixChannelNdRows.DrawnMessageFields(nd))
+        foreach ((string coded, IReadOnlySet<FenixTextColor>? usual) in FenixChannelNdRows.DrawnMessages(nd))
         {
             string plain = Plain(coded);
             if (plain.Length == 0 || NotAnnounced.Contains(plain, StringComparer.OrdinalIgnoreCase)) continue;

@@ -299,7 +299,10 @@ public class FenixChannelNdTests
 
         FenixNdData nd = Value(remote);
 
-        Assert.Equal(["CENTER", "WINDSHEAR", "TCAS FAIL"], nd.CenterMessages);
+        Assert.Equal(
+            [new FenixNdCenterMessage("CENTER", 62), new FenixNdCenterMessage("WINDSHEAR", 64),
+                new FenixNdCenterMessage("TCAS FAIL", 66)],
+            nd.CenterMessages);
         Assert.Equal(["GPS PRIMARY", "TA ONLY"], nd.ListedMessages);
     }
 
