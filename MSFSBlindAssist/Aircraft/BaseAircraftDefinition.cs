@@ -698,6 +698,22 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Variable Update Processing
 
     /// <summary>
+    /// Converts the value <c>MON_ElevatorTrim</c> delivers into degrees, positive = UP, before the
+    /// shared call-out describes and debounces it. The default is the stock <c>ELEVATOR TRIM
+    /// POSITION</c>, already degrees. An airframe that points <c>MON_ElevatorTrim</c> at its own
+    /// variable in another scale converts here (the Fenix: thousandths of a degree), so
+    /// <see cref="TrimHysteresis"/> and <see cref="DescribeElevatorTrim"/> keep working in degrees.
+    /// </summary>
+    protected virtual double ElevatorTrimDegrees(double value) => value;
+
+    /// <summary>
+    /// Records a trim the pilot just set and was told about as already announced, so its arrival
+    /// on <c>MON_ElevatorTrim</c> is not spoken a second time (CORE-7).
+    /// </summary>
+    protected void NoteElevatorTrimAnnounced(double degrees) =>
+        _lastAnnouncedTrimKey = DescribeElevatorTrim(degrees).Key;
+
+    /// <summary>
     /// Renders <c>ELEVATOR TRIM POSITION</c> (degrees) for announcement, returning BOTH the
     /// spoken phrase and the key the debounce compares — the two must move together, or a type
     /// announcing a coarser scale would re-speak the same phrase on every sub-step change.
@@ -746,7 +762,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             if (!_trimAnnouncementsEnabled)
                 return true; // Suppress when toggled off
 
-            var (key, phrase) = DescribeElevatorTrim(value);
+            double degrees = ElevatorTrimDegrees(value);
+            var (key, phrase) = DescribeElevatorTrim(degrees);
 
             // First update: store silently, don't announce initial value on app load
             if (double.IsNaN(_lastAnnouncedTrimKey))
@@ -767,7 +784,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             // flips 1.4 / 1.5 every sample. Done here, on the raw degrees every override receives,
             // so each override's own step gets the same band.
             double pullBack = key > _lastAnnouncedTrimKey ? -TrimHysteresis : TrimHysteresis;
-            if (DescribeElevatorTrim(value + pullBack).Key == _lastAnnouncedTrimKey)
+            if (DescribeElevatorTrim(degrees + pullBack).Key == _lastAnnouncedTrimKey)
                 return true;
 
             _lastAnnouncedTrimKey = key;

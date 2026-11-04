@@ -394,6 +394,8 @@ BA announces stabiliser trim as it changes. On most aircraft it is spoken in deg
 - PMDG 737 and iFly 737 MAX 8: *"Trim 5.3"*.
 - PMDG 777: *"Trim 5.25 units"*.
 
+On the Fenix A320 family the degrees are the Fenix's own stabiliser, the same number as the MCDU's take-off trim and the ECAM, so you can trim until BA says the value on your MCDU.
+
 On every aircraft, press Output Shift+T to turn trim announcements on or off; you hear *"Trim announcements on"* or *"Trim announcements off"*. Trim announcements can also be muted from the Monitor Manager.
 
 ### Thrust lever detents {#flying-thrust-detents}

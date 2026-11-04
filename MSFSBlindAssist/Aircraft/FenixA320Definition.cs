@@ -5271,34 +5271,17 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
             },
-            ["A_FC_ELEVATOR_TRIM"] = new SimConnect.SimVarDefinition
+            // Pitch trim as a typed entry in degrees (0.3 = UP 0.3, -0.8 = DN 0.8), the scale the MCDU's
+            // take-off trim and the ECAM show. It was a dropdown of the raw L:var in 1000 steps, a whole
+            // degree each, which could not reach a real take-off trim. "_SET" makes it a text field.
+            [FenixA320ElevatorTrim.SetKey] = new SimConnect.SimVarDefinition
             {
-                Name = "A_FC_ELEVATOR_TRIM",
-                DisplayName = "Elevator Trim",
+                Name = FenixA320ElevatorTrim.LVar,
+                DisplayName = "Pitch Trim",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [-4000] = "Full Nose Down (-4000)",
-                    [-3000] = "-3000",
-                    [-2000] = "-2000",
-                    [-1000] = "-1000",
-                    [0] = "Neutral (0)",
-                    [1000] = "+1000",
-                    [2000] = "+2000",
-                    [3000] = "+3000",
-                    [4000] = "+4000",
-                    [5000] = "+5000",
-                    [6000] = "+6000",
-                    [7000] = "+7000",
-                    [8000] = "+8000",
-                    [9000] = "+9000",
-                    [10000] = "+10000",
-                    [11000] = "+11000",
-                    [12000] = "+12000",
-                    [13000] = "+13000",
-                    [13500] = "Full Nose Up (+13500)"
-                }
+                UnparseableTextAsNaN = true,
+                HelpText = "Degrees, as the MCDU writes it: 0.3 for up 0.3, minus 0.8 for down 0.8. Range down 4 to up 13.5. Press Enter to set.",
             },
             ["S_FC_FLAPS_LEVER"] = new SimConnect.SimVarDefinition
             {
@@ -8463,6 +8446,21 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             variables[kvp.Key] = kvp.Value;
         }
 
+        // The shared "Trim up 1.7" call-out reads the Fenix's own THS, never the stock ELEVATOR TRIM
+        // POSITION, which the Fenix does not drive (0.29° against a real UP 1.7, 2026-11-04). Same
+        // key, so the Shift+T toggle and the Ctrl+M row are unchanged; ElevatorTrimDegrees converts.
+        // The panel's typed entry reads the same L:var on request only, so the two never share a
+        // continuous batch slot ([VAR-7]).
+        variables["MON_ElevatorTrim"] = new SimConnect.SimVarDefinition
+        {
+            Name = FenixA320ElevatorTrim.LVar,
+            DisplayName = "Elevator Trim",
+            Type = SimConnect.SimVarType.LVar,
+            Units = "number",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+        };
+
         // The readout twins ([A320-41]), copied from their originals so the two can never disagree
         // on the L:var or its units. An original that is missing fails here, at load.
         foreach (string readoutKey in FcuReadoutVariables.Concat(TakeoffConfigReadoutVariables))
@@ -8958,7 +8956,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 "S_FC_RUDDER_TRIM_LEFT",
                 "S_FC_RUDDER_TRIM_RIGHT",
                 "S_FC_RUDDER_TRIM_RESET",
-                "A_FC_ELEVATOR_TRIM",
+                FenixA320ElevatorTrim.SetKey,
                 "S_FC_FLAPS_LEVER",
                 "A_FC_THROTTLE_LEFT_INPUT",
                 "A_FC_THROTTLE_RIGHT_INPUT",
@@ -12093,10 +12091,19 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Elevator Trim - Simple SetLVar
-            if (varKey == "A_FC_ELEVATOR_TRIM")
+            // Pitch trim, typed in degrees (positive = UP). A typed number always confirms (CORE-7); the
+            // call-out is told, so the THS arriving at that value is not spoken again.
+            if (varKey == FenixA320ElevatorTrim.SetKey)
             {
-                simConnect.SetLVar("A_FC_ELEVATOR_TRIM", value);
+                if (!FenixA320ElevatorTrim.TryToRaw(value, out double raw, out string? error))
+                {
+                    announcer.Announce(error!);
+                    return true;
+                }
+                double degrees = FenixA320ElevatorTrim.ToDegrees(raw);
+                simConnect.SetLVar(FenixA320ElevatorTrim.LVar, raw);
+                NoteElevatorTrimAnnounced(degrees);
+                announcer.Announce($"Pitch trim set to {FenixA320ElevatorTrim.Describe(degrees)}");
                 return true;
             }
 
@@ -12231,6 +12238,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// <summary>
     /// Processes SimConnect variable updates, combining the FCU and altimeter readout twins' two legs for the hotkey readouts ([A320-41]).
     /// </summary>
+    /// <summary><c>MON_ElevatorTrim</c> is the Fenix's <c>A_FC_ELEVATOR_TRIM</c> here, thousandths of a degree.</summary>
+    protected override double ElevatorTrimDegrees(double value) => FenixA320ElevatorTrim.ToDegrees(value);
+
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         // Gravity gear walk ([MD11-8]): the walker's own reads of the crank are consumed silently while

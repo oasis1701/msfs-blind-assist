@@ -243,7 +243,7 @@ The Fenix has five sections. Some controls are only on some Fenix aircraft; the 
 
 - **Engines** (engine mode and both masters), **Weather Radar**, and **ECAM**: TO CONFIG, every page key, ALL, STS, both CLR keys, RCL, EMER CANC and the ECAM brightness controls.
 - **DCDU Left**, on liveries with a DCDU: brightness and the DCDU's keys. You can press them, but BA cannot read the DCDU screen on the Fenix.
-- **Flight Controls**: parking brake, speed brake, rudder trim (left, right and reset), elevator trim position, the flap lever, the thrust levers (left, right or both) and the A/THR and AP disconnect buttons for both sides.
+- **Flight Controls**: parking brake, speed brake, rudder trim (left, right and reset), pitch trim (type the trim in degrees as the MCDU shows it, for example 0.3 for UP 0.3 or -0.8 for DN 0.8, and press Enter; BA answers *"Pitch trim set to up 0.3"*), the flap lever, the thrust levers (left, right or both) and the A/THR and AP disconnect buttons for both sides.
 - **ATC TCAS**: TCAS and transponder modes, altitude reporting, traffic display, ident and the squawk code.
 - **Radio Management Panel (RMP)**: COM 1, 2 and 3 standby frequency and transfer, and every RMP's power and mode buttons (VHF, HF, NAV, VOR, ILS, GLS, ADF, BFO and AM).
 - **Audio Control Panel (ACP)**: the captain's volume knobs, transmit keys, reception switches (VHF 1 to 3, HF 1 and 2, interphone, cabin, VOR 1 and 2, marker and others), RESET, VOICE and the INT/RAD switch.
