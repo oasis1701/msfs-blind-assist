@@ -342,10 +342,10 @@ again.
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** not started
-- **Claimed by:** none
+- **Status:** claimed
+- **Claimed by:** kn4iee, 2026-11-04
 - **Worked by:**
-- **Started:**
+- **Started:** 2026-11-04, from `68bc13d17` (the branch's head)
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:**
