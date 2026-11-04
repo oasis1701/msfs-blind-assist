@@ -88,6 +88,8 @@ for name in common:
              lambda b, a: a < b / 1.1 and b - a > 15)
     rise(name, x, y, 'overshootFt', lambda b, a: a - b > 100, lambda b, a: b - a > 100, '{:.0f}')
     rise(name, x, y, 'maxDescentFpm', lambda b, a: a - b > 200, lambda b, a: b - a > 200, '{:.0f}')
+    # A landing firmer by more than 100 fpm at wheel contact.
+    rise(name, x, y, 'touchdownVsFpm', lambda b, a: a - b > 100, lambda b, a: b - a > 100, '{:.0f}')
     # Up by 20 %.
     rise(name, x, y, 'pitchJitterDeg', lambda b, a: a > b * 1.2, lambda b, a: a < b * 0.8, '{:.4f}')
     rise(name, x, y, 'pitchRateRmsDegS', lambda b, a: a > b * 1.2, lambda b, a: a < b * 0.8, '{:.4f}')

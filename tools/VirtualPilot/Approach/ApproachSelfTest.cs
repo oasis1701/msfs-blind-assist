@@ -38,6 +38,7 @@ static class ApproachSelfTest
             ("rate-rms", RateRmsCheck),
             ("noise-feed-only", NoiseFeedOnlyCheck),
             ("noise-deterministic", NoiseDeterministicCheck),
+            ("touchdown-sink", TouchdownSinkCheck),
         };
 
         int failures = 0;
@@ -347,6 +348,22 @@ static class ApproachSelfTest
         return problems.Count == 0 ? null : string.Join("; ", problems);
     }
 
+    // A landing writes its sink rate at wheel contact, in feet per minute down (positive); a run
+    // that never lands writes NA.
+    private static string? TouchdownSinkCheck()
+    {
+        string Field(string line, string key) => line.Split('|').FirstOrDefault(f => f.StartsWith(key + "=", StringComparison.Ordinal))?[(key.Length + 1)..] ?? "missing";
+        var problems = new List<string>();
+        const string landing = "FINAL-A-JET-x0-h0-d0.5", step = "STEP-A-JET";
+        string l = ApproachRunner.RunOne(Scenario(landing), trace: null).ToResultsLine(landing);
+        string v = Field(l, "touchdownVsFpm");
+        if (!double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out double sink) || sink <= 0 || sink > 2000)
+            problems.Add($"{landing} touchdownVsFpm={v}, expected a sink between 0 and 2000 fpm");
+        string s = Field(ApproachRunner.RunOne(Scenario(step), trace: null).ToResultsLine(step), "touchdownVsFpm");
+        if (s != "NA") problems.Add($"{step} touchdownVsFpm={s}, expected NA");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
     // A noisy run is as repeatable as any other: the noise is seeded per run.
     private static string? NoiseDeterministicCheck()
     {
@@ -389,8 +406,13 @@ static class ApproachSelfTest
             string r = ApproachRunner.RunOne(Scenario(right), trace: null).ToResultsLine(right);
             string Field(string line, string key) => line.Split('|').FirstOrDefault(f => f.StartsWith(key + "=", StringComparison.Ordinal))?[(key.Length + 1)..] ?? "NA";
             double Num(string line, string key) => Field(line, key) is var v && v != "NA" ? double.Parse(v, CultureInfo.InvariantCulture) : double.NaN;
-            if (Field(l, "endReason") != Field(r, "endReason"))
-                problems.Add($"runway {rwy}: {Field(l, "endReason")} on the left, {Field(r, "endReason")} on the right");
+            // Passing the runway's far end in the flare and touching down within 100 ft of it are the
+            // same ending: which line the last frame crosses first is a coincidence of that frame.
+            double farEndFt = -ApproachRunways.All.First(x => x.Id == rwy).Runway.Length;
+            string Ending(string line) => Field(line, "endReason") == "pastRunwayEnd" || Math.Abs(Num(line, "touchdownAlongFt") - farEndFt) <= 100
+                ? "at the far end" : Field(line, "endReason");
+            if (Ending(l) != Ending(r))
+                problems.Add($"runway {rwy}: {Ending(l)} on the left, {Ending(r)} on the right");
             if (Math.Abs(Num(l, "durationS") - Num(r, "durationS")) > 10)
                 problems.Add($"runway {rwy}: {F(Num(l, "durationS"))} s on the left, {F(Num(r, "durationS"))} s on the right");
             double xl = Num(l, "touchdownXteFt"), xr = Num(r, "touchdownXteFt");

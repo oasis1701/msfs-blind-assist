@@ -60,6 +60,7 @@ sealed class ApproachMetrics
         bool landed = endReason is "touchdown" or "landedShort" or "landedLong" or "offRunway";
         Put("touchdownAlongFt", landed ? along * FtPerNm : null, "0");
         Put("touchdownXteFt", landed ? cross * FtPerNm : null, "0");
+        Put("touchdownVsFpm", landed ? -ac.VsFpm : null, "0");   // sink at wheel contact, fpm down
 
         double? establishedAt = EstablishedAt();
         Put("established", establishedAt.HasValue ? "True" : "False");
