@@ -10,7 +10,7 @@ internal static partial class FenixChannelSdPages
     /// The CRUISE page's rows, in the SD's order, every pair engine 1 then engine 2: <c>F.USED &lt;unit&gt;</c>,
     /// <c>F.USED 1+2: n &lt;unit&gt;</c>, <c>OIL QT</c> and <c>VIB N1</c> and <c>VIB N2</c> (one decimal), then the PRESS
     /// page's <c>LDG ELEV</c> and <c>ΔP</c> rows, <c>CAB V/S: n FT/MIN</c>, <c>CAB ALT: n FT</c>, and the cabin
-    /// temperatures <c>CKPT</c>, <c>FWD</c> and <c>AFT</c> in °C. No row speaks a color.
+    /// temperatures <c>CKPT</c>, <c>FWD</c> and <c>AFT</c> in °C. The cabin rows speak the colors and pulses the Fenix sends, as on the PRESS page (151.9).
     /// </summary>
     /// <remarks>
     /// <para>Needs the engines (129) with both engines (129.1, 129.2), the fuel used (134.13), the cabin zones (151.7), the
@@ -46,8 +46,9 @@ internal static partial class FenixChannelSdPages
         double cockpit = zone.Double(FenixChannelFields.ZoneTemperatureData.CockpitTemp);
         double forward = zone.Double(FenixChannelFields.ZoneTemperatureData.FwdCabinTemp);
         double aft = zone.Double(FenixChannelFields.ZoneTemperatureData.AftCabinTemp);
-        bool manualElev = pneumatic.Message(FenixChannelFields.PneumaticState.PressFlags)
-            .Bool(FenixChannelFields.PressurizationFlagsData.ManualLandingElev);
+        FenixChannelSdReader flags = pneumatic.Message(FenixChannelFields.PneumaticState.PressFlags);
+        bool manualElev = flags.Bool(FenixChannelFields.PressurizationFlagsData.ManualLandingElev);
+        PressCabinFlags cabin = PressReadCabinFlags(flags);
 
         FenixChannelSdReader press = pneumatic.Message(FenixChannelFields.PneumaticState.PressData);
         double deltaP = press.Double(FenixChannelFields.PressurizationData.DifferentialPressure);
@@ -66,9 +67,9 @@ internal static partial class FenixChannelSdPages
             $"VIB N1: {FenixChannelSd.OneDecimal(vibN1a)}, {FenixChannelSd.OneDecimal(vibN1b)}",
             $"VIB N2: {FenixChannelSd.OneDecimal(vibN2a)}, {FenixChannelSd.OneDecimal(vibN2b)}",
             PressLdgElevRow(manualElev, landing),
-            PressDeltaPRow(deltaP),
-            $"CAB V/S: {FenixChannelSd.Whole(vs)} FT/MIN",
-            $"CAB ALT: {FenixChannelSd.Whole(altitude)} FT",
+            PressDeltaPRow(deltaP, cabin),
+            $"CAB V/S: {FenixChannelSd.Whole(vs)} FT/MIN{PressWords(cabin.VsAmber, "amber", cabin.VsPulse)}",
+            $"CAB ALT: {FenixChannelSd.Whole(altitude)} FT{PressWords(cabin.AltRed, "red", cabin.AltPulse)}",
             $"CKPT: {FenixChannelSd.Whole(cockpit)} °C",
             $"FWD: {FenixChannelSd.Whole(forward)} °C",
             $"AFT: {FenixChannelSd.Whole(aft)} °C"

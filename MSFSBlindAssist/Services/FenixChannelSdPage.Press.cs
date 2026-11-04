@@ -11,7 +11,9 @@ internal static partial class FenixChannelSdPages
     /// The PRESS page's rows, in the SD's order: <c>LDG ELEV AUTO: n FT</c> (MAN while the landing elevation is set by hand),
     /// <c>ΔP: n.n PSI</c>, <c>V/S: n FT/MIN</c>, <c>CAB ALT: n FT</c>, then <c>SYS 1</c> only while system 1 is active,
     /// <c>SYS 2</c> only while system 2 is, <c>MAN</c> only in manual mode, then <c>VENT INLET</c>, <c>VENT EXTRACT</c>,
-    /// <c>OUTFLOW: n %</c>, <c>SAFETY</c>, <c>PACK 1</c> and <c>PACK 2</c>. No row speaks a color.
+    /// <c>OUTFLOW: n %</c>, <c>SAFETY</c>, <c>PACK 1</c> and <c>PACK 2</c>. The page speaks the colors the Fenix sends: a
+    /// value drawn amber or red gains ", amber" or ", red" and one the SD makes pulse ", pulsing" (151.9); <c>VENT, amber</c>
+    /// (a row of its own), <c>BLOWER: fault</c> and <c>EXTRACT: fault</c> show only while set.
     /// </summary>
     /// <remarks>
     /// <para>The pneumatic state (151) must be in the push with its valves (151.1), flags (151.9) and pressurization data
@@ -35,6 +37,17 @@ internal static partial class FenixChannelSdPages
         bool sys1 = flags.Bool(FenixChannelFields.PressurizationFlagsData.Sys1Active);
         bool sys2 = flags.Bool(FenixChannelFields.PressurizationFlagsData.Sys2Active);
         bool manualElev = flags.Bool(FenixChannelFields.PressurizationFlagsData.ManualLandingElev);
+        bool sys1Amber = flags.Bool(FenixChannelFields.PressurizationFlagsData.Sys1Amber);
+        bool sys2Amber = flags.Bool(FenixChannelFields.PressurizationFlagsData.Sys2Amber);
+        bool ventAmber = flags.Bool(FenixChannelFields.PressurizationFlagsData.VentAmber);
+        bool inletAmber = flags.Bool(FenixChannelFields.PressurizationFlagsData.InletAmber);
+        bool extractAmber = flags.Bool(FenixChannelFields.PressurizationFlagsData.ExtractAmber);
+        bool blowerFault = flags.Bool(FenixChannelFields.PressurizationFlagsData.BlowerFault);
+        bool extractFault = flags.Bool(FenixChannelFields.PressurizationFlagsData.ExtractFault);
+        bool outflowAmber = flags.Bool(FenixChannelFields.PressurizationFlagsData.OutflowValveAmber);
+        bool pack1Amber = flags.Bool(FenixChannelFields.PressurizationFlagsData.Pack1Amber);
+        bool pack2Amber = flags.Bool(FenixChannelFields.PressurizationFlagsData.Pack2Amber);
+        PressCabinFlags cabin = PressReadCabinFlags(flags);
 
         FenixChannelSdReader press = pneumatic.Message(FenixChannelFields.PneumaticState.PressData);
         double deltaP = press.Double(FenixChannelFields.PressurizationData.DifferentialPressure);
@@ -52,20 +65,24 @@ internal static partial class FenixChannelSdPages
         var rows = new List<string>
         {
             PressLdgElevRow(manualElev, landing),
-            PressDeltaPRow(deltaP),
-            $"V/S: {FenixChannelSd.Whole(vs)} FT/MIN",
-            $"CAB ALT: {FenixChannelSd.Whole(altitude)} FT"
+            PressDeltaPRow(deltaP, cabin),
+            $"V/S: {FenixChannelSd.Whole(vs)} FT/MIN{PressWords(cabin.VsAmber, "amber", cabin.VsPulse)}",
+            $"CAB ALT: {FenixChannelSd.Whole(altitude)} FT{PressWords(cabin.AltRed, "red", cabin.AltPulse)}"
         };
-        if (sys1) rows.Add("SYS 1");
-        if (sys2) rows.Add("SYS 2");
+        if (sys1 || sys1Amber) rows.Add("SYS 1" + PressWords(sys1Amber, "amber", false));
+        if (sys2 || sys2Amber) rows.Add("SYS 2" + PressWords(sys2Amber, "amber", false));
         if (manual) rows.Add("MAN");
-        rows.Add($"VENT INLET: {inlet}");
-        rows.Add($"VENT EXTRACT: {extract}");
-        // Inferred, Task 1 measures it: the outflow valve is a fraction open (0 to 1), spoken as a percent.
-        rows.Add($"OUTFLOW: {FenixChannelSd.Whole(outflow * 100)} %");
+        if (ventAmber) rows.Add("VENT, amber");
+        rows.Add($"VENT INLET: {inlet}{PressWords(inletAmber, "amber", false)}");
+        rows.Add($"VENT EXTRACT: {extract}{PressWords(extractAmber, "amber", false)}");
+        if (blowerFault) rows.Add("BLOWER: fault");
+        if (extractFault) rows.Add("EXTRACT: fault");
+        // The outflow valve is a fraction open (0 to 1), spoken as a percent. Measured 2026-11-03: 1.0 on the ground (fully
+        // open), 0.5 with RAM AIR on, 0.0842 in cruise.
+        rows.Add($"OUTFLOW: {FenixChannelSd.Whole(outflow * 100)} %{PressWords(outflowAmber, "amber", false)}");
         rows.Add($"SAFETY: {safety}");
-        rows.Add($"PACK 1: {pack1}");
-        rows.Add($"PACK 2: {pack2}");
+        rows.Add($"PACK 1: {pack1}{PressWords(pack1Amber, "amber", false)}");
+        rows.Add($"PACK 2: {pack2}{PressWords(pack2Amber, "amber", false)}");
         return FenixChannelRows.Of(rows);
     }
 
@@ -78,6 +95,24 @@ internal static partial class FenixChannelSdPages
     private static string PressLdgElevRow(bool manualElevation, double feet)
         => $"LDG ELEV {(manualElevation ? "MAN" : "AUTO")}: {FenixChannelSd.Whole(feet)} FT";
 
-    // The ΔP row, shared by PRESS and CRUISE: to one decimal, as the SD draws it.
-    private static string PressDeltaPRow(double psi) => $"ΔP: {FenixChannelSd.OneDecimal(psi)} PSI";
+    // The ΔP row, shared by PRESS and CRUISE: to one decimal, as the SD draws it, with its color and pulse.
+    private static string PressDeltaPRow(double psi, PressCabinFlags cabin)
+        => $"ΔP: {FenixChannelSd.OneDecimal(psi)} PSI{PressWords(cabin.DeltaPAmber, "amber", cabin.DeltaPPulse)}";
+
+    // The six color and pulse flags of the three cabin values (151.9), read by PRESS and CRUISE alike.
+    private readonly record struct PressCabinFlags(
+        bool DeltaPAmber, bool DeltaPPulse, bool VsAmber, bool VsPulse, bool AltRed, bool AltPulse);
+
+    private static PressCabinFlags PressReadCabinFlags(FenixChannelSdReader flags)
+        => new(
+            flags.Bool(FenixChannelFields.PressurizationFlagsData.DeltaPAmber),
+            flags.Bool(FenixChannelFields.PressurizationFlagsData.DeltaPPulse),
+            flags.Bool(FenixChannelFields.PressurizationFlagsData.VsAmber),
+            flags.Bool(FenixChannelFields.PressurizationFlagsData.VsPulse),
+            flags.Bool(FenixChannelFields.PressurizationFlagsData.CabinAltRed),
+            flags.Bool(FenixChannelFields.PressurizationFlagsData.CabinAltPulse));
+
+    // ", amber", ", pulsing" or ", amber, pulsing" after a row's text: the color the Fenix sends, then the SD's flash.
+    private static string PressWords(bool colored, string color, bool pulsing)
+        => (colored ? $", {color}" : "") + (pulsing ? ", pulsing" : "");
 }

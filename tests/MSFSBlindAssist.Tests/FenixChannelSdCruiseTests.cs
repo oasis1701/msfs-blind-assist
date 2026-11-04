@@ -20,14 +20,21 @@ public class FenixChannelSdCruiseTests
         => new FenixChannelProtoWriter().Double(1, first).Double(2, second).Double(3, total);
 
     // The cruise push of 2026-11-03 (A321, LBS). Parts named in omit are left out of the push.
-    private static SdPush CruisePush(bool kg = false, string omit = "", double vs = -0.1665, double deltaP = 7.983)
+    private static SdPush CruisePush(bool kg = false, string omit = "", double vs = -0.1665, double deltaP = 7.983,
+        int[]? cabinFlags = null)
     {
         var pressure = new FenixChannelProtoWriter().Double(1, deltaP).Double(2, vs).Double(3, 6399.74).Varint(4, 1)
             .Varint(5, 1).Varint(9, 1).Double(6, 0.0842).Double(7, 550);
         var zone = new FenixChannelProtoWriter().Double(1, 23.99).Double(2, 23.99).Double(3, 23.99);
         var pneumatic = new FenixChannelProtoWriter();
         if (omit != "151.7") pneumatic.Message(7, zone);
-        if (omit != "151.9") pneumatic.Message(9, new FenixChannelProtoWriter().Bool(15, true));
+        if (omit != "151.9")
+        {
+            var flags = new FenixChannelProtoWriter();
+            foreach (int field in new SortedSet<int>(cabinFlags ?? []) { 15 }) flags.Bool(field, true);
+            pneumatic.Message(9, flags);
+        }
+
         if (omit != "151.10") pneumatic.Message(10, pressure);
 
         var engines = new FenixChannelProtoWriter();
@@ -63,6 +70,25 @@ public class FenixChannelSdCruiseTests
                 "AFT: 24 °C"
             },
             CruiseRowsOf(CruisePush()));
+    }
+
+    [Fact]
+    public void The_cruise_cabin_rows_speak_their_colors_and_pulses()
+    {
+        IReadOnlyList<string> amber = CruiseRowsOf(CruisePush(cabinFlags: [8, 10]));
+        Assert.Contains("ΔP: 8.0 PSI, amber", amber);
+        Assert.Contains("CAB V/S: 0 FT/MIN, amber", amber);
+        Assert.Contains("CAB ALT: 6400 FT", amber);
+
+        IReadOnlyList<string> pulsing = CruiseRowsOf(CruisePush(cabinFlags: [7, 9, 11]));
+        Assert.Contains("ΔP: 8.0 PSI, pulsing", pulsing);
+        Assert.Contains("CAB V/S: 0 FT/MIN, pulsing", pulsing);
+        Assert.Contains("CAB ALT: 6400 FT, pulsing", pulsing);
+
+        IReadOnlyList<string> both = CruiseRowsOf(CruisePush(cabinFlags: [6, 7, 8, 9, 10, 11]));
+        Assert.Contains("ΔP: 8.0 PSI, amber, pulsing", both);
+        Assert.Contains("CAB V/S: 0 FT/MIN, amber, pulsing", both);
+        Assert.Contains("CAB ALT: 6400 FT, red, pulsing", both);
     }
 
     [Fact]

@@ -285,6 +285,24 @@ internal static partial class FenixChannelFields
     /// <summary>PressurizationFlagsData (<see cref="PneumaticState.PressFlags"/>).</summary>
     public static partial class PressurizationFlagsData
     {
+        // 1 to 11, 17 to 20 and 22 are checked against the installed Fenix 3.0.0.7613 on 2026-11-03 with the team's metadata
+        // tool ([FNX-23]). A field named for a color speaks it; a ...Pulse field is the SD's flash ("pulsing").
+        public const int Pack1Amber = 1;            // Pack1Amber: varint (bool)
+        public const int Pack2Amber = 2;            // Pack2Amber: varint (bool)
+        public const int VentAmber = 3;             // VentAmber: varint (bool)
+        public const int InletAmber = 4;            // InletAmber: varint (bool)
+        public const int ExtractAmber = 5;          // ExtractAmber: varint (bool)
+        public const int CabinAltRed = 6;           // CabinAltRed: varint (bool)
+        public const int CabinAltPulse = 7;         // CabinAltPulse: varint (bool)
+        public const int DeltaPAmber = 8;           // DeltaPAmber: varint (bool)
+        public const int DeltaPPulse = 9;           // DeltaPPulse: varint (bool)
+        public const int VsAmber = 10;              // VsAmber: varint (bool)
+        public const int VsPulse = 11;              // VsPulse: varint (bool)
+        public const int BlowerFault = 17;          // BlowerFault: varint (bool)
+        public const int ExtractFault = 18;         // ExtractFault: varint (bool)
+        public const int Sys1Amber = 19;            // Sys1Amber: varint (bool)
+        public const int Sys2Amber = 20;            // Sys2Amber: varint (bool)
+        public const int OutflowValveAmber = 22;    // OutflowValveAmber: varint (bool)
         public const int ManualMode = 13;           // ManualMode: varint (bool)
         public const int Sys1Active = 14;           // Sys1Active: varint (bool)
         public const int Sys2Active = 15;           // Sys2Active: varint (bool)

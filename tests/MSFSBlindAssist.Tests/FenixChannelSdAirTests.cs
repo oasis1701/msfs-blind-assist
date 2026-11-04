@@ -177,15 +177,23 @@ public class FenixChannelSdAirTests
     // EXTRACT 151.10.5; OUTFLOW 151.10.6 x 100 %; SAFETY 151.10.9; PACK 1 and PACK 2 by the flow valves 151.1.9 and .10.
 
     // The pressurization flags (151.9): 13 manual, 14 system 1, 15 system 2, 16 manual landing elevation.
-    private static FenixChannelProtoWriter PressFlags(bool manual = false, bool sys1 = false, bool sys2 = false, bool manualElev = false)
+    // Any other flag (the colors, pulses and faults: 1 to 11, 17 to 20, 22) goes in "also".
+    private static FenixChannelProtoWriter PressFlags(bool manual = false, bool sys1 = false, bool sys2 = false, bool manualElev = false,
+        params int[] also)
     {
+        var set = new SortedSet<int>(also);
+        if (manual) set.Add(13);
+        if (sys1) set.Add(14);
+        if (sys2) set.Add(15);
+        if (manualElev) set.Add(16);
+
         var flags = new FenixChannelProtoWriter();
-        if (manual) flags.Bool(13, true);
-        if (sys1) flags.Bool(14, true);
-        if (sys2) flags.Bool(15, true);
-        if (manualElev) flags.Bool(16, true);
+        foreach (int field in set) flags.Bool(field, true);
         return flags;
     }
+
+    private static IReadOnlyList<string> PressWith(params int[] flags)
+        => PressRowsOf(PressPush(new FenixChannelProtoWriter(), PressFlags(also: flags), PressData()));
 
     // The pressurization data (151.10), the cruise push of 2026-11-03 by default: the inlet, extract and safety valves
     // (4, 5, 9) closed, which is 1 on the wire.
@@ -226,6 +234,70 @@ public class FenixChannelSdAirTests
                 "VENT EXTRACT: closed", "OUTFLOW: 8 %", "SAFETY: closed", "PACK 1: open", "PACK 2: open"
             },
             PressRowsOf(PressPush(new FenixChannelProtoWriter(), PressFlags(sys2: true), PressData())));
+    }
+
+    [Fact]
+    public void Cabin_values_speak_their_colors_and_pulses()
+    {
+        // 151.9: 6 cabin altitude red, 7 its pulse, 8 delta P amber, 9 its pulse, 10 V/S amber, 11 its pulse.
+        Assert.Contains("ΔP: 8.0 PSI, amber", PressWith(8));
+        Assert.Contains("ΔP: 8.0 PSI, pulsing", PressWith(9));
+        Assert.Contains("ΔP: 8.0 PSI, amber, pulsing", PressWith(8, 9));
+        Assert.Contains("V/S: 0 FT/MIN, amber", PressWith(10));
+        Assert.Contains("V/S: 0 FT/MIN, pulsing", PressWith(11));
+        Assert.Contains("V/S: 0 FT/MIN, amber, pulsing", PressWith(10, 11));
+        Assert.Contains("CAB ALT: 6400 FT, red", PressWith(6));
+        Assert.Contains("CAB ALT: 6400 FT, pulsing", PressWith(7));
+        Assert.Contains("CAB ALT: 6400 FT, red, pulsing", PressWith(6, 7));
+
+        // Nothing set: the bare rows.
+        Assert.Contains("ΔP: 8.0 PSI", PressWith());
+    }
+
+    [Fact]
+    public void Systems_speak_amber_even_when_not_active()
+    {
+        IReadOnlyList<string> amber = PressWith(19, 20);
+        Assert.Contains("SYS 1, amber", amber);
+        Assert.Contains("SYS 2, amber", amber);
+
+        IReadOnlyList<string> active = PressRowsOf(PressPush(new FenixChannelProtoWriter(), PressFlags(sys1: true, also: 19), PressData()));
+        Assert.Contains("SYS 1, amber", active);
+        Assert.DoesNotContain("SYS 2", active);
+        Assert.DoesNotContain("SYS 2, amber", PressWith(19));
+    }
+
+    [Fact]
+    public void Vent_valves_blower_and_extract_speak_amber_and_faults()
+    {
+        List<string> rows = PressWith(3, 4, 5, 17, 18).ToList();
+
+        Assert.Equal(
+            new[]
+            {
+                "VENT, amber", "VENT INLET: closed, amber", "VENT EXTRACT: closed, amber", "BLOWER: fault", "EXTRACT: fault",
+                "OUTFLOW: 8 %"
+            },
+            rows.GetRange(rows.IndexOf("VENT, amber"), 6));
+
+        Assert.Contains("VENT, amber", PressWith(3));
+        Assert.DoesNotContain("VENT INLET: closed, amber", PressWith(3));
+        Assert.Contains("VENT INLET: closed, amber", PressWith(4));
+        Assert.Contains("VENT EXTRACT: closed, amber", PressWith(5));
+        Assert.Contains("BLOWER: fault", PressWith(17));
+        Assert.DoesNotContain("EXTRACT: fault", PressWith(17));
+        Assert.Contains("EXTRACT: fault", PressWith(18));
+        Assert.DoesNotContain(PressWith(), row => row.StartsWith("VENT,") || row.StartsWith("BLOWER") || row.StartsWith("EXTRACT"));
+    }
+
+    [Fact]
+    public void Outflow_and_packs_speak_amber()
+    {
+        Assert.Contains("OUTFLOW: 8 %, amber", PressWith(22));
+        Assert.Contains("PACK 1: open, amber", PressWith(1));
+        Assert.DoesNotContain("PACK 2: open, amber", PressWith(1));
+        Assert.Contains("PACK 2: open, amber", PressWith(2));
+        Assert.Contains("OUTFLOW: 8 %", PressWith());
     }
 
     [Fact]
