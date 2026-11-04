@@ -228,7 +228,7 @@ internal static class FenixChannelNdRoute
             {
                 string? color = MarkerColor(marker.Color);
                 string ringWord = FenixChannelNdLook.For(LookItem.ConstraintRing)!.Symbol;
-                look += color is null ? $" in a {ringWord}" : $" in a {color} {ringWord}";
+                look += color is null ? $" in a {ringWord}" : $" in {(color == "amber" ? "an" : "a")} {color} {ringWord}";
                 if (cstr && Printed(marker.Label) is { Length: > 0 } text)
                 {
                     constraint = $"; {text}";
@@ -715,14 +715,18 @@ internal static class FenixChannelNdRoute
         return (name, color is null ? symbol : $"{color} {symbol}");
     }
 
-    // FMCColorEnum as the flight saw it drawn: absent (White, 0) white, 2 green, 3 cyan, 6 magenta. Amber, yellow, red
-    // and the compound color were never seen on a marker: no color is said for them.
+    // The color member by the contract's FMCColorEnum (White 0, Amber 1, Green 2, Cyan 3, Compound 4, Yellow 5, Magenta 6,
+    // Red 7; spec 2.6), whose 0, 2, 3 and 6 the flights saw drawn at their declared places: absent (0) white. Amber and
+    // red, never seen on a marker, are said by their contract names, since the ND says them always (Ruling 98). Compound
+    // has no one color and yellow has no spoken name (FenixChannelNdSpeech): no color is said for them.
     private static string? MarkerColor(int? value) => (value ?? 0) switch
     {
         0 => "white",
+        1 => "amber",
         2 => "green",
         3 => "cyan",
         6 => "magenta",
+        7 => "red",
         _ => null
     };
 

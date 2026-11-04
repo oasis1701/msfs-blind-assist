@@ -434,7 +434,7 @@ public class FenixChannelNdRouteTests
             .Marker(At(25), 4, color: 6)
             .Marker(At(30), 7, color: 3)
             .Marker(At(35), 11, color: 2)
-            .Marker(At(40), 1, color: 1)     // amber: never seen on a marker, so no color is said
+            .Marker(At(40), 1, color: 4)     // Compound: no one color, so none is said
             .Marker(At(45), 6, "250KT")      // a speed constraint alone: never seen drawn
             .Marker(At(50), 3).Marker(At(52), 9).Marker(At(54), 10);
 
@@ -450,6 +450,32 @@ public class FenixChannelNdRouteTests
             "Map: top of climb, arrow climbing then level, 40.0 NM ahead",
             "Map: BRAVO, green diamond, 70.0 NM ahead"
         ], RouteRows(Snapshot(route)));
+    }
+
+    // The color member by the contract's FMCColorEnum: White 0, Amber 1, Green 2, Cyan 3, Compound 4, Yellow 5,
+    // Magenta 6, Red 7. Amber and red are always said (Ruling 98); Compound and yellow never.
+    [Theory]
+    [InlineData(1, "amber ")]
+    [InlineData(7, "red ")]
+    [InlineData(4, "")]
+    [InlineData(5, "")]
+    public void A_markers_color_follows_the_contracts_names(int color, string said)
+    {
+        Route route = Through(("ALPHA", At(10)), ("BRAVO", At(70))).Marker(At(30), 7, color: color);
+
+        Assert.Contains($"Map: cross marker, {said}zigzag ending in an arrow, 30.0 NM ahead", RouteRows(Snapshot(route)));
+    }
+
+    [Theory]
+    [InlineData(1, "in an amber ring")]
+    [InlineData(7, "in a red ring")]
+    [InlineData(4, "in a ring")]
+    [InlineData(5, "in a ring")]
+    public void A_constraint_rings_color_follows_the_contracts_names(int color, string ring)
+    {
+        Route route = Through(("ALPHA", At(10)), ("BRAVO", At(30))).Marker(At(30), 5, "+14000", color: color);
+
+        Assert.Contains($"Map: BRAVO, green diamond {ring}, 30.0 NM ahead; +14000", RouteRows(Snapshot(route, option: 0)));
     }
 
     [Fact]
