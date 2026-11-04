@@ -56,9 +56,15 @@ internal sealed class VisualGuidanceWindowedRate
 
     public VisualGuidanceWindowedRate(double windowSeconds) { _windowSeconds = windowSeconds; }
 
-    /// <summary>Adds a sample, then drops those older than the window (one exactly at its edge stays).</summary>
+    /// <summary>
+    /// Adds a sample, then drops those older than the window (one exactly at its edge stays). A
+    /// sample earlier than the newest (the clock stepped back, a time sync) starts the window
+    /// afresh: the samples stamped after it would otherwise stay at its head and give no rate, then
+    /// a wrong one.
+    /// </summary>
     public void Add(DateTime utc, double value)
     {
+        if (_samples.Count > 0 && utc < _newest.Utc) _samples.Clear();
         _samples.Enqueue((utc, value));
         _newest = (utc, value);
         DateTime oldestKept = utc.AddSeconds(-_windowSeconds);

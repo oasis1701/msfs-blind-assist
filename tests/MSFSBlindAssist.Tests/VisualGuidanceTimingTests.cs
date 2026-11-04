@@ -102,6 +102,32 @@ public class VisualGuidanceTimingTests
         Assert.Null(rate.Rate);
     }
 
+    // A time sync can step the PC clock back. Samples stamped after the new time must not stay at
+    // the head of the window: the rate starts afresh from the new clock and reads the ramp again.
+    [Fact]
+    public void WindowedRate_starts_afresh_after_the_clock_steps_back()
+    {
+        var rate = new VisualGuidanceWindowedRate(1.0);
+        double t = 0;
+        for (int i = 0; i <= 3 * 30; i++)
+        {
+            t = i / 30.0;
+            rate.Add(t0.AddSeconds(t), 2.0 * t);
+        }
+        // The clock steps back 3 s; the value keeps ramping at 2 per second in real time.
+        double value = 2.0 * t;
+        var readings = new List<double?>();
+        for (int i = 1; i <= 2 * 30; i++)
+        {
+            value += 2.0 / 30;
+            rate.Add(t0.AddSeconds(t - 3.0 + i / 30.0), value);
+            readings.Add(rate.Rate);
+        }
+        // Four places: over the first 1/30 s span, DateTime's 100 ns ticks shift the rate by about 2e-6.
+        Assert.All(readings.Where(r => r.HasValue), r => Assert.Equal(2.0, r!.Value, 4));
+        Assert.NotNull(readings[^1]);
+    }
+
     [Fact]
     public void WindowedRate_clear_forgets_every_sample()
     {
