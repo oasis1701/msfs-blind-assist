@@ -431,11 +431,13 @@ fields with the team's tools, the SD from a capture of the sim. Each result into
   `ValveWord`), and `NameOf` passes to this plan. A `ValveStateEnum` value a sim check here finds other than plan 01's
   (its [owner] check confirms them) is told to the owner and its fix written here for plan 12, since plan 01's
   `FenixChannelFields.cs` is frozen; the composers keep using `ValveWord`. Found while working, for their owners:
-  - **For plan 04 and Robin (the claimant's request, 2026-11-03).** The SD window got the ECAM page keys after its list;
-    the claimant asked for the panel's other keys, T.O CONFIG, CLR (left and right), RCL and EMER CANC, in the E/WD
-    window, where their results show (T.O CONFIG's memo or warnings, the warnings CLR and RCL step through). Each would
-    run the panel's own code, `HandleUIVariableSet(<key>, 1, ...)` as plan 05's `PressEcamPageKey` does, so T.O CONFIG
-    keeps `RunTakeoffConfigTestAsync` and its verdict ([FNX-4]). Plan 04's form has "no control after the list" today.
+  - **For Robin: the E/WD window's ECAM keys (done by plan 05, Task 10c).** The claimant asked for the panel's other
+    keys, T.O CONFIG, CLR (left and right), RCL and EMER CANC, in the E/WD window, where their results show. Plan 04
+    landed without them ("no control after the list"), so plan 05 added them to plan 04's files under the landed-plan
+    exemption: one row after the list, built by the SD window's shared `FenixChannelSdForm.BuildEcamKeyRow`, each key
+    running the panel's own code through `FenixA320Definition.PressEcamKey` (`HandleUIVariableSet(<key>, 1, ...)`), so T.O
+    CONFIG keeps `RunTakeoffConfigTestAsync` and its verdict ([FNX-4]). The claimant heard them work in the sim on
+    2026-11-03. The guide's E/WD section (plan 04's handoff text) gains the keys.
   - **For the definition (plan 12, or the owner).** The ALL key (`S_ECAM_ALL`) has no light, and its panel case passes
     no `confirmPress`, so a press from the panel or from the SD window says nothing ([CORE-7] gives a press with no
     readable state "<name> pressed"): one argument in `FenixA320Definition.cs`'s `S_ECAM_ALL` case.
@@ -454,6 +456,15 @@ fields with the team's tools, the SD from a capture of the sim. Each result into
   - **For plan 06 (measured 2026-11-03).** Its APU page has the same APU GEN row as the ELEC page: with the APU running
     and the APU GEN pushbutton off, the Fenix sets `ApuData.Off` (24.14) and the row must read "APU GEN: OFF", not the
     figures (plan 05's `ElecApuRow`). ALL on the ground never showed CRUISE (5), so plan 06's CRUISE check needs a flight.
+  - **The E/WD's fuel check latches during refuelling (seen 2026-11-03, for plan 12 and the owner).** Loading fuel
+    through the Fenix EFB with MSFSBA running on 3.0.0.7613, the channel's fuel and the sim's ran 1 to 2 % apart while
+    the tanks filled (`fenix_channel.log`, 19:09 to 19:18: 3,293 against 3,326 kg up to 12,392 against 12,391), and at
+    19:13:43 "E/WD not trusted: fuel disagrees: channel 7,521 kg, sim 7,694 kg", latched until reconnect at 19:13:46.
+    From then on Alt+E gave the AI read and the windows list's E/WD showed its status row, though the two agreed again
+    once the load ended, until MSFSBA was restarted. Plan 04's handoff reports the same latch on every landing roll: a
+    pilot who refuels at the gate with the app running loses the E/WD window for the session. The check should hold off
+    while the fuel is moving on the ground (as the stall guard holds comparisons off), never be loosened to pass
+    ([FNX-23]); the owner decides.
   - **Plan 05's own follow-ups before it lands (Task 11) or in plan 12's pass:** the ENG tests give NAC and VIB N2 the
     same value on both engines, so an engine swap in those rows would pass; the pump words ("off", "LO", "running") and
     the open/closed words are built twice (HYD, FUEL); the FUEL page keeps 0 or "" for parts it does not read; the test
@@ -492,7 +503,9 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Changed from the plan:** Tasks 2 to 8 ran before Task 1, from the plan's values marked "inferred" in the code, as
   Task 1's own text allows; the evidence file lists every inferred value. Task 10b was added at the claimant's request:
   the UTC row reads "UTC: 18:16" rather than the plan's `UTC: <4> H <5>` (Task 3's text above keeps the old form), and
-  the window has the ECAM page keys after its list (the spec's "then any controls", 2.4).
+  the window has the ECAM page keys after its list (the spec's "then any controls", 2.4). Task 10c, after plan 04
+  landed: the E/WD window has the panel's T.O CONFIG, CLR, RCL and EMER CANC keys after its list, in plan 04's files
+  under the landed-plan exemption (the claimant's request; heard in the sim the same day).
 - **Rulings made while working:** (asked by the plan's text; answered by Claude as controller, for the owner to revisit)
   - `PtuStates` with Task 1 unmeasured: one value, `Idle = 0`, inferred from the cruise push, spoken "PTU: idle"; every
     other value "PTU: not available" and reported "PTU state <n> not known". Replaced on 2026-11-03 by the four measured
@@ -512,5 +525,6 @@ Kept in this file only, so no other plan's push ever touches it.
     though the SD draws an H; the claimant found the H odd by ear.
   - The SD window has the 13 page keys (ENG to F/CTL, ALL, STS) as buttons, not a combo box (a combo would press a key
     at every page the reader arrows past), each running the panel's own code and saying nothing of its own; T.O CONFIG,
-    CLR, RCL and EMER CANC belong with the E/WD, a request to plan 04 (Robin, claimed the same day).
+    CLR, RCL and EMER CANC belong with the E/WD. Plan 04 landed without them, and plan 05 added them there (Task 10c)
+    under the landed-plan exemption, with one shared key row and `PressEcamKey` for both windows.
   - Pages 0 and 13: never seen, on the ground or from cold and dark through the self-test; `NameOf` names neither.
