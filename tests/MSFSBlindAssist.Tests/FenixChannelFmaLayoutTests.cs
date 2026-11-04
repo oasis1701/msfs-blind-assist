@@ -2,10 +2,10 @@
 // as one line. Pure logic: every slot is written here, the measured ones as the display sent them and with the mode it
 // showed in a comment, never read from Fenix's own capture.
 //
-// The layout is inferred from the slots seen on 3.0.0.7613 (the Thrust column's MACH, MAN, FLX +56 and LVR CLB, the
-// Vertical column's ALT CRZ, the Lateral column's NAV, the Engagement column's AP1, 1 FD 2 and A/THR). The Approach
-// column was never seen, so no test here says what it draws: where one needs text in that column, the text is made up
-// and says so. Plan 08 confirms the layout in the sim and may change the file, and these tests with it.
+// The layout was measured in flight on 3.0.0.7613 on 2026-11-04, from take-off to an ILS autoland: every slot from 0
+// to 14 that held text, all but slot 12, sat where these tests put it, and slot 15 held no text all flight
+// (The_measured_slots_land_in_their_columns names the modes seen in each). Where a test needs text the flight never
+// showed, in slot 12 or only to show how the layout joins rows, the text is made up and says so.
 //
 // The contract: slots 0-14 are three rows of five, row 1 first, the columns running Thrust, Vertical, Lateral,
 // Approach, Engagement. Row 3 of the first three columns is the FMA's message and not part of its column. A column's
@@ -183,7 +183,8 @@ public class FenixChannelFmaLayoutTests
         // The column has nothing else, so there is no phrase: the message alone does not make one.
         Assert.Null(Phrase(Fma((10, "wfLVR CLB")), FenixFmaColumn.Thrust));
 
-        // The same for the Vertical and the Lateral column, whose messages were never seen, so this text is made up.
+        // The same for the Vertical and the Lateral column. The flight showed MORE DRAG in slot 11 and nothing in slot
+        // 12, so this text is made up.
         Assert.Equal("ALT, green", Phrase(Fma((1, "gALT"), (11, "wfMSG")), FenixFmaColumn.Vertical));
         Assert.Equal("NAV, green", Phrase(Fma((2, "gNAV"), (12, "wfMSG")), FenixFmaColumn.Lateral));
         Assert.Null(Phrase(Fma((11, "wfMSG")), FenixFmaColumn.Vertical));
@@ -214,8 +215,8 @@ public class FenixChannelFmaLayoutTests
     [Fact]
     public void The_approach_columns_third_row_is_part_of_the_column()
     {
-        // The Approach column was never seen on 3.0.0.7613, so these three rows are made up. They only show that all of
-        // its rows, row 3 included, are in the column, in row order.
+        // The flight showed CAT3, DUAL and RADIO 200 in these three slots; the texts here are made up and only show that
+        // all of the Approach column's rows, row 3 included, are in the column, in row order.
         FenixFmaSlot[] slots = Fma((3, "gA"), (8, "gB"), (13, "gC"));
 
         Assert.Equal("A B C, green", Phrase(slots, FenixFmaColumn.Approach));

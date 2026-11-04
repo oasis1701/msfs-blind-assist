@@ -5,7 +5,6 @@
 // What is compared is what is heard, never the raw slots: the change box, and the b, f, s, l and u letters, are never
 // spoken, so they never make a column speak again. Column 5 and unplaced slots are in no reading.
 
-using System.Globalization;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;

@@ -24,8 +24,9 @@ public class FenixChannelFmaSeamTests
     {
         string code = SeamCode();
 
-        Assert.Matches(@"\bFmaKey\b", code);
-        Assert.Matches(@"\bIsMuted\s*\(", code);
+        // The row the seam asks about is the FMA's own: FmaKey is IsMuted's argument, not merely named nearby.
+        Assert.Matches(
+            @"\bIsMuted\s*\(\s*(?:(?:Services\.)?FenixChannelAnnouncementRows\.)?FmaKey\s*\)", code);
         Assert.Matches(@"\bctx\.Announcer\.Announce\s*\(", code);
         Assert.DoesNotMatch(@"\bAnnounceImmediate\b", code);
     }

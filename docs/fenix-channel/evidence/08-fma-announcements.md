@@ -31,7 +31,7 @@ two pushes. Times are local. Below, a slot is `slot:"coded text"`, and `[B]` mar
   amber), 5 `MCT`, and back to 0 `gMACH`, 14 `wA/THR`.
 - **The minimum (16:19:45.557 to 16:22:41.025).** 13 `RADIOdc⠀⠀ 200`, drawn "RADIO 200" (plan 02's record), in the
   cruise and early descent only: slot 13 held nothing on the approach.
-- **The descent.** 1 `gDES`[B] (16:21:25.902), 49 ms later 6 `cALT`; 2.2 s later 0 `gTHR IDLE`. A short excursion: 2
+- **The descent.** 1 `gDES`[B] (16:21:25.902), 49 ms later 6 `cALT`; 12.2 s later 0 `gTHR IDLE`. A short excursion: 2
   `gHDG` and, 55 ms later, 1 `gV/Sc-2800`, 0 `gMACH` 0.66 s after; NAV, DES and THR IDLE back by 16:23:22. From 16:27 to
   16:38, 0 changed between `gTHR IDLE` and `gSPEED` 17 times (twice only 60 ms apart), and 11 `MORE DRAG` came and went
   seven times. 1 `gALT*`[B] with 6 cleared (16:39:05.281), 120 ms later 0 `gSPEED`; 1 `gALT` at 16:39:30.546. HDG
@@ -59,8 +59,8 @@ two pushes. Times are local. Below, a slot is `slot:"coded text"`, and `[B]` mar
 - **LVR CLB** came as `wfLVR CLB`, the same text in every push that held it: the flash is the `f` letter, drawn by the
   display, not a text that changes.
 - **An armed mode becoming active** came in one push every time (NAV, CLB, ALT CST*, ALT*, LOC*, G/S*: the new row 1
-  and the cleared row 2 together). What follows in another column came 49 ms to 2.2 s later: SPEED 120 to 185 ms after
-  an ALT* or ALT CST*, MACH 420 ms after ALT*, THR CLB 302 ms after OP CLB, THR IDLE 0.54 to 2.2 s after DES and OP DES.
+  and the cleared row 2 together). What follows in another column came 49 ms to 12.2 s later: SPEED 120 to 185 ms after
+  an ALT* or ALT CST*, MACH 420 ms after ALT*, THR CLB 302 ms after OP CLB, THR IDLE 0.54 s after OP DES and 12.2 s after DES.
 - **The letters.** Active modes `g`. Armed modes `c` (CLB, NAV, ALT, G/S, LOC, and A/THR armed in column 5). `m` once:
   ALT armed in the climb (6 `mALT`, 14:39:05.671). `a` once, MAN THR's box (`abwMAN`), its text white. The FLX
   temperature, the V/S target and the minimum's figure `c`. No color letter at all: CAT3, CAT1, SINGLE, DUAL, MORE
@@ -150,3 +150,5 @@ The owner flew this plan's branch (Tasks 2, 3 and 5, before Task 4; the worktree
   (announcement 4, `A_change_box_or_flash_alone_says_nothing`); the "FMA changes" row (`A_muted_row_says_nothing`,
   `Tracking_goes_on_while_muted`, `Unmuting_replays_nothing`); a PFD brightness gap
   (`The_first_good_reading_after_a_trust_gap_is_silent`, `A_trust_gap_drops_a_pending_change`).
+- **For the next flight's power-up:** `The_first_trusted_reading_is_silent` covers only the first reading. If the
+  Fenix fills the FMA over a few pushes after the PFD becomes trusted, each fill after the first is spoken as a change.

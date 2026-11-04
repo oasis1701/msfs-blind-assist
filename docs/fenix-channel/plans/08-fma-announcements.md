@@ -355,7 +355,9 @@ Kept in this file only, so no other plan's push ever touches it.
   whole-branch review before landing)
 - **Started:** 2026-11-04, from `68bc13d17` (the branch's head)
 - **Landed:** 2026-11-04
-- **Tests at landing:** TESTS_AT_LANDING
+- **Tests at landing:** 19205 passed, 0 failed (the suite without `ClaudeRulesHookTests`, on this plan's commits rebased onto
+  `7cb43d936`); 90 of them in the FMA's four test files (`FenixChannelFmaLayoutTests`, `FenixChannelFmaSpeechTests`,
+  `FenixChannelFmaAnnouncerTests`, `FenixChannelFmaSeamTests`)
 - **Tasks:** 0 done (claim `0c3c2c715`). 1 done in flight on 2026-11-04 (evidence file; "the FMA layout measured in
   flight"). 2 done, `4017a7c56`. 3 done, `55b29f56e`. 5 done before 4 (Ruling 6), the switch commit, kept on
   `fc-p08-fma-announcements` until Task 6. 4 done, "the FMA layout as measured in flight": O1, O3c, O4a and O6 held, so
