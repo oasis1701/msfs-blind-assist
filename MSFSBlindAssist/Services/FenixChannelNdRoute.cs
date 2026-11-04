@@ -82,8 +82,8 @@ internal static class FenixChannelNdRoute
 
     /// <summary>
     /// The route layer for a snapshot. The route is drawn in ARC, ROSE NAV and PLAN; ROSE LS and ROSE VOR draw none of
-    /// this layer. No flight plan ("no route data" or "no present position" while the next waypoint reads PPOS, or a route
-    /// with no legs) is no fault: the route lists nothing. A route or ND status that cannot be read gives one status row
+    /// this layer. No flight plan ("no route data" while the next waypoint reads PPOS, or a route with no legs) is no
+    /// fault: the route lists nothing. A route or ND status that cannot be read gives one status row
     /// in the route's place ("Route: not available, field 2.4.3 has the wrong shape"); the rings are listed whatever the
     /// route.
     /// </summary>
@@ -355,13 +355,14 @@ internal static class FenixChannelNdRoute
     {
         if (header.Mode is not ("ARC" or "NAV") || header.MagneticHeading is not { } heading) yield break;
 
-        // 58.2 draws the bug at 113.2; 113.2 alone never does (it stays after the bug has gone).
+        // 58.2 draws the bug at 113.2; 113.2 alone never does (it stays after the bug has gone). The ND prints no number
+        // by the bug: its place is the compass reading it sits at, as the heading row reads the one under the lubber line.
         if (status.HeadingBug && header.SelectedHeading is { } selected)
         {
             double off = Signed(selected - heading);
             if (FenixChannelNdGeometry.OnCompass(header.Mode, off))
             {
-                yield return $"Map: heading bug {FenixChannelNdRows.CompassText(selected)}, {Words(LookItem.HeadingBug)}, {Side(off, "at the top")}";
+                yield return $"Map: heading bug, {Words(LookItem.HeadingBug)}, at {FenixChannelNdRows.CompassText(selected)} on the compass";
             }
         }
 
@@ -710,9 +711,13 @@ internal static class FenixChannelNdRoute
         return FenixChannelSection<FenixNdStatus>.Ok(new FenixNdStatus(trackLine, bug, solid, crosstrack));
     }
 
-    // No flight plan: the route or the position is missing while the next waypoint reads PPOS.
+    // The decoder's problem when field 2 is not sent (plan 10's contract).
+    private const string NoRouteData = "no route data";
+
+    // No flight plan: field 2 is not sent while the next waypoint reads PPOS. Any other problem (a missing present
+    // position included) is a fault.
     private static bool IsNoFlightPlan(string? problem, FenixNdData header)
-        => problem is not null && problem.StartsWith("no ", StringComparison.Ordinal)
+        => problem == NoRouteData
             && header.Waypoint is { } waypoint
             && FenixChannelText.Parse(waypoint.Line1).JoinedText.Trim() == "PPOS";
 }

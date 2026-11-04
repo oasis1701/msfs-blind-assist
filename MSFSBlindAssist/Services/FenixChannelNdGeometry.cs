@@ -87,10 +87,10 @@ internal static class FenixChannelNdGeometry
         [(632, 552), (752, 552), (752, 729), (557, 729), (557, 640)];
 
     // ROSE (NAV, LS, VOR) and PLAN: map points from y 115 and within 290 px of the center; route items in the
-    // window from y 80 down.
+    // window from y 77 down (ARTUR's symbol was drawn centered at y 77; the line itself from about y 80).
     private const double MapTopY = 115;
     private const double RoseClipRadiusPx = 290;
-    private const double RouteTopY = 80;
+    private const double RouteTopY = 77;
 
     // The message boxes: each hides its width from its top to the window's bottom while it is drawn.
     private const double BoxLeftX = 170;
@@ -132,8 +132,8 @@ internal static class FenixChannelNdGeometry
 
     /// <summary>
     /// Where the ND draws a route item (a waypoint, a marker, a point of the route line), or null when it draws
-    /// nothing there. ARC: as <see cref="Place"/>. ROSE and PLAN: the window from y 80 to its bottom (0 &lt;= x &lt;= 752,
-    /// 80 &lt;= y &lt;= 729; PLAN's top measured in ROSE only). Never under a drawn message box.
+    /// nothing there. ARC: as <see cref="Place"/>. ROSE and PLAN: the window from y 77 to its bottom (0 &lt;= x &lt;= 752,
+    /// 77 &lt;= y &lt;= 729; ARTUR drawn at y 77; PLAN's top measured in ROSE only). Never under a drawn message box.
     /// </summary>
     public static FenixNdPlace? PlaceRoute(FenixNdFrame f, FenixLatLon p) => PlaceIn(f, p, route: true);
 

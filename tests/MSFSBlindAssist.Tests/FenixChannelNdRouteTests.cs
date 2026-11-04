@@ -110,7 +110,8 @@ public class FenixChannelNdRouteTests
     // (58.3 by default: the route solid, as in NAV).
     private static FenixChannelSnapshot Snapshot(
         Route? route, ulong mode = 3, ulong range = 80, ulong? option = null, string line1 = "ALPHA g360c°",
-        double heading = 0, double track = 0, int[]? status = null, Action<FenixChannelProtoWriter>? more = null)
+        double heading = 0, double track = 0, int[]? status = null, Action<FenixChannelProtoWriter>? more = null,
+        bool position = true)
     {
         var efis = new FenixChannelProtoWriter().Varint(1, mode).Varint(3, range);
         if (option is not null) efis.Varint(2, option.Value);
@@ -124,8 +125,8 @@ public class FenixChannelNdRouteTests
             .Message(68, new FenixChannelProtoWriter().String(1, line1))
             .Message(84, new FenixChannelProtoWriter().Double(1, Here.Latitude).Double(2, Here.Longitude))
             .Message(163, new FenixChannelProtoWriter().String(1, "wsGSlgd456wsdTASlgd448").String(2, "g213w / g37"))
-            .Message(192, new FenixChannelProtoWriter().Double(1, Here.Latitude).Double(2, Here.Longitude))
             .Message(194, new FenixChannelProtoWriter().Double(1, heading).Double(2, track).Double(3, 0));
+        if (position) remote.Message(192, new FenixChannelProtoWriter().Double(1, Here.Latitude).Double(2, Here.Longitude));
         if (route is not null) remote.Message(2, route.Build());
         more?.Invoke(remote);
 
@@ -173,6 +174,12 @@ public class FenixChannelNdRouteTests
         string[] missing = Rows(Snapshot(null), reported);
         Assert.Contains("Route: not available, no route data", missing);
         Assert.Equal(["Route: no route data"], reported);
+
+        // Field 2 sent but no present position (192) while PPOS shows: a fault, not "no flight plan".
+        var lost = new List<string>();
+        string[] noPosition = Rows(Snapshot(empty, line1: "PPOS     ", position: false), lost);
+        Assert.Contains("Route: not available, no present position", noPosition);
+        Assert.Equal(["Route: no present position"], lost);
     }
 
     [Fact]
@@ -315,7 +322,7 @@ public class FenixChannelNdRouteTests
     // ARC 80 (5.9125 px per NM): the 478 px circle at 80.8 NM; the frame at x 5 (62.7 NM left) and x 745 (72.2 NM at
     // 60 degrees right); at the aircraft's height the right corner's slanted edge at x 594 (36.9 NM: HVS and FLO at
     // y 587 to 595 were not drawn); the window's bottom 132 px behind. ROSE NAV 80 (6.0375 px per NM): the window from
-    // y 80, its right side at x 752.
+    // y 77 (280 px up), its right side at x 752.
     public static IEnumerable<object[]> Edges => new[]
     {
         new object[] { 3UL, 0.0, "Map: route goes off the top edge, toward ECHO, 80.8 NM ahead" },
@@ -323,7 +330,7 @@ public class FenixChannelNdRouteTests
         new object[] { 3UL, 60.0, "Map: route goes off the right edge, toward ECHO, 72.2 NM, 60° right" },
         new object[] { 3UL, 90.0, "Map: route goes off the right edge, toward ECHO, 36.9 NM, 90° right" },
         new object[] { 3UL, 180.0, "Map: route goes off the bottom edge, toward ECHO, 22.3 NM behind" },
-        new object[] { 2UL, 0.0, "Map: route goes off the top edge, toward ECHO, 45.9 NM ahead" },
+        new object[] { 2UL, 0.0, "Map: route goes off the top edge, toward ECHO, 46.4 NM ahead" },
         new object[] { 2UL, 90.0, "Map: route goes off the right edge, toward ECHO, 62.4 NM, 90° right" },
     };
 
@@ -554,7 +561,7 @@ public class FenixChannelNdRouteTests
         [
             "Map: route line, green dashed line",
             "Map: ALPHA, white diamond, 10.0 NM ahead",
-            "Map: heading bug 030, cyan hollow triangle, 30° right",
+            "Map: heading bug, cyan hollow triangle, at 030 on the compass",
             "Map: track line, green thin solid line, 4° right",
             "Map: cross-track error 4.7L, green, left of the aircraft"
         ], hdg);
@@ -562,8 +569,9 @@ public class FenixChannelNdRouteTests
         // 113.2 alone draws no bug; a bug beyond the arc's view is not drawn; ROSE NAV shows the whole compass.
         Assert.DoesNotContain(RouteRows(Hdg(3, 30, [3])), row => row.Contains("heading bug"));
         Assert.DoesNotContain(RouteRows(Hdg(3, 70, [2])), row => row.Contains("heading bug"));
-        Assert.Contains("Map: heading bug 120, cyan hollow triangle, 120° right", RouteRows(Hdg(2, 120, [2])));
-        Assert.Contains("Map: heading bug 360, cyan hollow triangle, at the top", RouteRows(Hdg(2, 0, [2])));
+        Assert.Contains("Map: heading bug, cyan hollow triangle, at 120 on the compass", RouteRows(Hdg(2, 120, [2])));
+        Assert.Contains("Map: heading bug, cyan hollow triangle, at 360 on the compass", RouteRows(Hdg(2, 0, [2])));
+        Assert.Contains("Map: heading bug, cyan hollow triangle, at 360 on the compass", RouteRows(Hdg(2, 359.6, [2])));
 
         // The cross-track error: right of the course reads R; not drawn at 0.05 NM, nor in ROSE.
         Assert.Contains("Map: cross-track error 0.3R, green, beside the aircraft", RouteRows(Hdg(3, 30, [3], 0.26)));

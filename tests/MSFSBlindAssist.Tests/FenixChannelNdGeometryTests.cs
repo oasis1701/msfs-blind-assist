@@ -191,8 +191,8 @@ public class FenixChannelNdGeometryTests
         if (place.HasValue) Assert.Equal(atEdge, place.Value.AtEdge);
     }
 
-    // ARC clips a route item as a map point; ROSE and PLAN clip it to the window from y 80 down (sitting 2: SMTTH at
-    // (363, 688) and the line from about y 80 in ROSE NAV), never under a drawn box.
+    // ARC clips a route item as a map point; ROSE and PLAN clip it to the window from y 77 down (sitting 2: ARTUR drawn
+    // at y 77, SMTTH at (363, 688) in ROSE NAV), never under a drawn box.
     [Theory]
     [InlineData("ARC160", 375.0, 300.0, true, false)]
     [InlineData("NAV40", 375.0, 300.0, true, false)]
@@ -200,13 +200,16 @@ public class FenixChannelNdGeometryTests
     [InlineData("NAV40", 749.0, 300.0, true, true)]     // near x 752
     [InlineData("ARC40", 742.0, 400.0, true, true)]     // near x 745 in ARC
     [InlineData("PLAN160", 375.0, 725.0, true, true)]   // near the window's bottom
-    [InlineData("NAV40", 375.0, 83.0, true, true)]      // near y 80
+    [InlineData("NAV40", 375.0, 83.0, true, true)]      // 6 px below y 77
+    [InlineData("NAV160", 399.0, 77.01, true, true)]    // ARTUR at y 77, r 281 (211242): drawn (a hundredth of a
+                                                        // pixel inside: the round trip through its position is not exact)
+    [InlineData("NAV40", 375.0, 85.0, true, false)]     // 8 px below y 77
     [InlineData("NAV40", 375.0, 100.0, true, false)]    // above y 115 is fine for a route item
     [InlineData("NAV40", 363.0, 688.0, true, false)]    // SMTTH, 331 px from the center
     [InlineData("NAV160", -3.0, 300.0, false, false)]
     [InlineData("NAV40", 756.0, 300.0, false, false)]
     [InlineData("ARC40", 748.0, 300.0, false, false)]   // right of x 745 in ARC
-    [InlineData("NAV160", 375.0, 75.0, false, false)]   // above y 80
+    [InlineData("NAV160", 375.0, 75.0, false, false)]   // above y 77
     [InlineData("PLAN40", 375.0, 733.0, false, false)]  // below the window
     [InlineData("ARC160", 375.0, 3.0, false, false)]    // beyond the ARC's circle
     [InlineData("ARC160", 66.0, 702.0, false, false)]   // the KATL 08R runway in the left corner (cap/205843)
