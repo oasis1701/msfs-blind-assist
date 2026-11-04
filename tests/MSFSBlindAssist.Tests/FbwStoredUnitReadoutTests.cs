@@ -90,5 +90,6 @@ public class FbwStoredUnitReadoutTests : IDisposable
         var def = new HeadwindA330Definition();
         Assert.Equal("0.14 NM right", Text(def, "A32NX_FG_CROSS_TRACK_ERROR", 264.51));
         Assert.Equal("250 knots", Text(def, "A32NX_SpeedPreselVal", MetresPerSecond(250)));
+        Assert.Equal("12000 feet", Text(def, "A32NX_PFD_TARGET_ALTITUDE", MetresFromFeet(12000)));
     }
 }
