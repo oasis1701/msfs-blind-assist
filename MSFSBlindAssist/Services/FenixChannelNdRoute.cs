@@ -88,9 +88,9 @@ internal static class FenixChannelNdRoute
     /// <summary>
     /// The route layer for a snapshot. The route is drawn in ARC, ROSE NAV and PLAN; ROSE LS and ROSE VOR draw none of
     /// this layer. No flight plan ("no route data" while the next waypoint reads PPOS, or a route with no legs) is no
-    /// fault: the route lists nothing. A route or ND status that cannot be read gives one status row
-    /// in the route's place ("Route: not available, field 2.4.3 has the wrong shape"); the rings are listed whatever the
-    /// route.
+    /// fault: the route lists nothing. A route or ND status that cannot be read, a missing active leg or one that matches
+    /// no waypoint gives one status row in the route's place ("Route: not available, field 2.4.3 has the wrong shape"),
+    /// and the layer's problem for the log; the rings are listed whatever the route.
     /// </summary>
     public static FenixNdLayer Layer(FenixChannelSnapshot s, FenixNdData header)
     {
@@ -108,8 +108,9 @@ internal static class FenixChannelNdRoute
 
         if (problem is null && route is not null)
         {
-            if (route.ActiveLeg is null) problem = "no active leg";
+            if (route.ActiveLeg is not { } active) problem = "no active leg";
             else if (frame is null) problem = "the ND's view is not known";
+            else if (ToIndex([.. ListedSymbols(route.Legs, false)], active, route) is null) problem = ActiveLegUnmatched;
         }
 
         var rows = new List<string>();
@@ -180,7 +181,8 @@ internal static class FenixChannelNdRoute
     /// with CSTR, the constraint as printed, the runways, the markers where each lies along the route, holds after their
     /// fix, where the line leaves the screen and where it ends and starts again; then the markers that lie along no leg,
     /// nearest first; then the temporary plan while one is pending. Nothing the frame clips; at 160 and above nothing
-    /// that declutters. A route with no active leg (2.11) gives one status row.
+    /// that declutters. A route with no active leg (2.11), or one whose active leg matches no waypoint
+    /// (<see cref="ToIndex"/>), gives one status row.
     /// </summary>
     public static FenixNdLayer Rows(FenixNdFrame f, FenixRoute r, FenixNdData header, FenixNdStatus status)
     {
@@ -195,8 +197,7 @@ internal static class FenixChannelNdRoute
         // approach's, listed after the route's.
         List<FenixRouteLeg> listedSymbols = [.. ListedSymbols(r.Legs, r.MissedApproachDrawn)];
         List<FenixRouteLeg> symbols = [.. listedSymbols.Where(leg => !leg.MissedApproach)];
-        int to = symbols.FindIndex(leg => leg.Ident == active.Ident && Distance(leg.Point, active.Point) <= SamePointNm);
-        if (to < 0) to = symbols.Count;   // the TO is no symbol of its own (the destination runway): every symbol is passed
+        if (ToIndex(symbols, active, r) is not { } to) return FenixNdLayer.Failed(LayerName, ActiveLegUnmatched);
 
         List<Vertex> path = Path(r.Legs);
         var items = new List<Item>();
@@ -299,6 +300,24 @@ internal static class FenixChannelNdRoute
 
         rows.AddRange(TemporaryRows(f, r, symbols, declutter, centerIdent));
         return FenixNdLayer.Of(rows);
+    }
+
+    // The route's problem when 2.11 names no waypoint the route draws and is not the arrival runway.
+    private const string ActiveLegUnmatched = "the active leg matches no waypoint";
+
+    /// <summary>
+    /// The TO waypoint's index in the active route's <paramref name="symbols"/>: the symbol with the active leg's
+    /// (2.11) ident within 0.1 NM of it. When there is none and 2.11 is the arrival runway, which has no symbol of its own
+    /// (sitting 2: 2.11 read "KCVG18L" from 21:51:20 on the approach), every symbol is passed: their count. Otherwise null:
+    /// the layer says so in its status row and never guesses a TO waypoint.
+    /// </summary>
+    private static int? ToIndex(List<FenixRouteLeg> symbols, FenixRouteLeg active, FenixRoute r)
+    {
+        int to = symbols.FindIndex(leg => leg.Ident == active.Ident && Distance(leg.Point, active.Point) <= SamePointNm);
+        if (to >= 0) return to;
+
+        string arrival = FenixChannelRoute.ArrivalIdent(r.Runways);
+        return arrival.Length > 0 && active.Ident == arrival ? symbols.Count : null;
     }
 
     /// <summary>

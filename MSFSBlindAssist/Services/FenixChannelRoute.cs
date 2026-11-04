@@ -195,8 +195,8 @@ internal static class FenixChannelRoute
         if (route is null) return FenixChannelSection<FenixRoute>.Missing("route data");
         if (position is null) return FenixChannelSection<FenixRoute>.Missing("present position");
 
-        // The destination is the arrival runway's point: the second runway entry, airport and runway together.
-        string arrival = runways.Count >= 2 ? runways[1].Airport + runways[1].Runway : "";
+        // The destination is the arrival runway's point.
+        string arrival = ArrivalIdent(runways);
         List<FenixRouteLeg> MarkDestination(List<FenixRouteLeg> legs)
             => arrival.Length == 0
                 ? legs
@@ -228,6 +228,14 @@ internal static class FenixChannelRoute
     /// the missed approach (<see cref="FenixRouteLeg.Destination"/>).
     /// </summary>
     public static bool IsDestination(FenixRouteLeg leg) => leg.Destination;
+
+    /// <summary>
+    /// The ident the route gives the arrival runway's element: the second runway entry (2.1), airport and runway together
+    /// ("KCVG18L"); "" with fewer than two entries. The one rule for the destination: the decoder marks it by this, and
+    /// the ND's route layer knows an active leg on the runway by it.
+    /// </summary>
+    public static string ArrivalIdent(IReadOnlyList<FenixRouteRunway> runways)
+        => runways.Count >= 2 ? runways[1].Airport + runways[1].Runway : "";
 
     /// <summary>
     /// The line is broken after this element: an end (3) because of an F-PLN discontinuity. An end for the final

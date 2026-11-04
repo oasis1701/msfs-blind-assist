@@ -264,6 +264,38 @@ public class FenixChannelNdRouteTests
     }
 
     [Fact]
+    public void An_active_leg_on_no_waypoint_is_said_and_never_guessed()
+    {
+        // The arrival runway (2.1's second entry, "KCVG" and "18L") is the one TO with no symbol of its own: every symbol
+        // is passed, the FROM is the last one.
+        Route Final(string to) => new Route().Start(At(3, 180), "SMTTH").Line("KCVG18L", At(4))
+            .Symbol("FRAZE", At(3, 180)).To(to, At(4)).Runway("KATL", "08R", At(300, 180)).Runway("KCVG", "18L", At(4));
+        Assert.Equal(
+            [Line, "Map: FRAZE, green diamond, 3.0 NM behind", "Map: KCVG 18L, runway symbol, 4.0 NM ahead"],
+            RouteRows(Snapshot(Final("KCVG18L"))));
+
+        // Any other 2.11 that names no waypoint the route draws, or one too far from its symbol: one status row, reported,
+        // and no waypoint listed as the TO. The rings stay.
+        Route[] unmatched =
+        [
+            Final("ZULU"),
+            Final("KATL08R"),                                                               // the departure runway
+            new Route().Start(Here, "SMTTH").Line("ALPHA", At(10)).Line("BRAVO", At(30))     // 1 NM from BRAVO's symbol
+                .Symbol("ALPHA", At(10)).Symbol("BRAVO", At(30)).To("BRAVO", At(31))
+        ];
+        foreach (Route route in unmatched)
+        {
+            var reported = new List<string>();
+            string[] rows = Rows(Snapshot(route), reported);
+
+            Assert.Contains("Route: not available, the active leg matches no waypoint", rows);
+            Assert.Equal(["Route: the active leg matches no waypoint"], reported);
+            Assert.Empty(RouteRows(Snapshot(route)));
+            Assert.Contains(rows, row => row.StartsWith("Map: range ring"));
+        }
+    }
+
+    [Fact]
     public void A_constraint_reads_as_printed()
     {
         Route route = Through(("ALPHA", At(10)), ("JAKIE", At(20)), ("OPAVE", At(30)), ("REENY", At(40)),
