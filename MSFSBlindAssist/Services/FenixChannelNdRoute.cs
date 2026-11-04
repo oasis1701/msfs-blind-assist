@@ -110,7 +110,7 @@ internal static class FenixChannelNdRoute
         {
             if (route.ActiveLeg is not { } active) problem = "no active leg";
             else if (frame is null) problem = "the ND's view is not known";
-            else if (ToIndex([.. ListedSymbols(route.Legs, false)], active, route) is null) problem = ActiveLegUnmatched;
+            else if (ToIndex(route, active) is null) problem = ActiveLegUnmatched;
         }
 
         var rows = new List<string>();
@@ -193,11 +193,12 @@ internal static class FenixChannelNdRoute
         bool cstr = header.MapOption == "CSTR";
         var rows = new List<string>();
 
-        // The active route's symbols (the TO and FROM logic runs on these) and, while the ND draws it (44.1), the missed
-        // approach's, listed after the route's.
+        // The active route's symbols (the TO and FROM logic runs on these, the same list ToIndex counts in) and, while the
+        // ND draws it (44.1), the missed approach's, listed after the route's in the plain route waypoint look: the look
+        // of an active missed approach's TO is unmeasured, so no TO color is claimed for it.
         List<FenixRouteLeg> listedSymbols = [.. ListedSymbols(r.Legs, r.MissedApproachDrawn)];
         List<FenixRouteLeg> symbols = [.. listedSymbols.Where(leg => !leg.MissedApproach)];
-        if (ToIndex(symbols, active, r) is not { } to) return FenixNdLayer.Failed(LayerName, ActiveLegUnmatched);
+        if (ToIndex(r, active) is not { } to) return FenixNdLayer.Failed(LayerName, ActiveLegUnmatched);
 
         List<Vertex> path = Path(r.Legs);
         var items = new List<Item>();
@@ -302,22 +303,31 @@ internal static class FenixChannelNdRoute
         return FenixNdLayer.Of(rows);
     }
 
-    // The route's problem when 2.11 names no waypoint the route draws and is not the arrival runway.
+    // The route's problem when 2.11 names no route waypoint, no missed approach waypoint and not the arrival runway.
     private const string ActiveLegUnmatched = "the active leg matches no waypoint";
 
     /// <summary>
-    /// The TO waypoint's index in the active route's <paramref name="symbols"/>: the symbol with the active leg's
-    /// (2.11) ident within 0.1 NM of it. When there is none and 2.11 is the arrival runway, which has no symbol of its own
-    /// (sitting 2: 2.11 read "KCVG18L" from 21:51:20 on the approach), every symbol is passed: their count. Otherwise null:
-    /// the layer says so in its status row and never guesses a TO waypoint.
+    /// The TO waypoint's index among the active route's symbols (the active list's <see cref="ListedSymbols"/> without
+    /// the missed approach's), the one answer the layer and its rows both use: the symbol with the active leg's (2.11)
+    /// ident within 0.1 NM of it. With none, 2.11 may lie past the route, and then every route symbol is passed (their
+    /// count, so the last is the FROM): on one of the active list's missed approach symbols (same ident within 0.1 NM,
+    /// whatever 44.1 says; Ruling 99: the landing roll, a go-around), or on the arrival runway, which has no symbol of its
+    /// own (sitting 2: 2.11 read "KCVG18L" from 21:51:20 on the approach). Otherwise null: the layer says so in its status
+    /// row and never guesses a TO waypoint.
     /// </summary>
-    private static int? ToIndex(List<FenixRouteLeg> symbols, FenixRouteLeg active, FenixRoute r)
+    private static int? ToIndex(FenixRoute r, FenixRouteLeg active)
     {
-        int to = symbols.FindIndex(leg => leg.Ident == active.Ident && Distance(leg.Point, active.Point) <= SamePointNm);
+        bool Matches(FenixRouteLeg symbol)
+            => symbol.Ident == active.Ident && Distance(symbol.Point, active.Point) <= SamePointNm;
+
+        List<FenixRouteLeg> symbols = [.. ListedSymbols(r.Legs, false)];
+        int to = symbols.FindIndex(Matches);
         if (to >= 0) return to;
 
+        bool onMissedApproach = r.Legs.Any(leg => leg.Kind == RouteLegKind.Symbol && leg.MissedApproach && Matches(leg));
         string arrival = FenixChannelRoute.ArrivalIdent(r.Runways);
-        return arrival.Length > 0 && active.Ident == arrival ? symbols.Count : null;
+        bool onArrivalRunway = arrival.Length > 0 && active.Ident == arrival;
+        return onMissedApproach || onArrivalRunway ? symbols.Count : null;
     }
 
     /// <summary>

@@ -531,10 +531,15 @@ public class FenixChannelNdRouteTests
     }
 
     // Sitting 3's missed approach (appr\120121): the final approach to the threshold, then 1500, INTCPT and TROYS (the
-    // "+ 3500" marker, 2.12 member 6 = 1) and the hold at TROYS (one element run; the arc is its [20]).
-    private static Route MissedApproach()
+    // "+ 3500" marker, 2.12 member 6 = 1) and the hold at TROYS (one element run; the arc is its [20]). The TO (2.11) is
+    // ALPHA unless `to` names another point of it (ZULU is none).
+    private static Route MissedApproach(string to = "ALPHA")
     {
         FenixLatLon threshold = At(20), troys = At(30);
+        FenixLatLon toPoint = to switch
+        {
+            "1500" => At(22), "INTCPT" => At(26), "TROYS" => troys, "ZULU" => At(40), _ => At(10)
+        };
         return new Route().Start(Here, "SMTTH")
             .Line("ALPHA", At(10)).Line("KATL08L", threshold)
             .Line("1500", At(22), l => l.Bool(4, true))
@@ -545,7 +550,7 @@ public class FenixChannelNdRouteTests
             .Symbol("ALPHA", At(10))
             .Symbol("1500", At(22), l => l.Bool(4, true)).Symbol("INTCPT", At(26), l => l.Bool(4, true))
             .Symbol("TROYS", troys, l => l.Bool(4, true))
-            .To("ALPHA", At(10))
+            .To(to, toPoint)
             .Marker(troys, 5, "+ 3500", color: 6, goAround: true);
     }
 
@@ -573,6 +578,48 @@ public class FenixChannelNdRouteTests
         // CSTR off: the ring stays, the constraint's text goes.
         Assert.Contains("Map: TROYS, green diamond in a magenta ring, 30.0 NM ahead",
             RouteRows(Snapshot(MissedApproach(), option: 1, more: Options(1))));
+    }
+
+    [Theory]
+    [InlineData("1500")]      // the landing roll: sitting 3 from 12:05:34, its first point
+    [InlineData("TROYS")]     // a go-around flown to a later point
+    public void An_active_leg_on_the_missed_approach_keeps_the_route(string to)
+    {
+        // Ruling 99: every route symbol is passed (ALPHA the FROM, green), and the missed approach reads as it does with
+        // 44.1 = 1, its points in the plain route waypoint look (an active missed approach's TO look is unmeasured).
+        var reported = new List<string>();
+        string[] rows = Rows(Snapshot(MissedApproach(to), option: 0, more: Options(1)), reported);
+
+        Assert.Equal(
+        [
+            Line,
+            "Map: ALPHA, green diamond, 10.0 NM ahead",
+            "Map: missed approach line, cyan solid line",
+            "Map: 1500, green diamond, 22.0 NM ahead",
+            "Map: INTCPT, green diamond, 26.0 NM ahead",
+            "Map: TROYS, green diamond in a magenta ring, 30.0 NM ahead; + 3500",
+            "Map: hold at TROYS, arc"
+        ], RouteRows(Snapshot(MissedApproach(to), option: 0, more: Options(1))));
+        Assert.DoesNotContain(rows, row => row.StartsWith("Route:"));
+        Assert.Empty(reported);
+    }
+
+    [Fact]
+    public void An_active_leg_on_the_missed_approach_matches_whatever_44_1_says()
+    {
+        // 44.1 = 0 (44 not sent): the missed approach is not drawn, but 2.11 on its point still keeps the route.
+        var reported = new List<string>();
+        string[] rows = Rows(Snapshot(MissedApproach("1500"), option: 0), reported);
+
+        Assert.Equal([Line, "Map: ALPHA, green diamond, 10.0 NM ahead"], RouteRows(Snapshot(MissedApproach("1500"), option: 0)));
+        Assert.DoesNotContain(rows, row => row.StartsWith("Route:"));
+        Assert.Empty(reported);
+
+        // An ident on neither the route nor the missed approach still gives the status row.
+        var unmatched = new List<string>();
+        Assert.Contains("Route: not available, the active leg matches no waypoint",
+            Rows(Snapshot(MissedApproach("ZULU"), option: 0, more: Options(1)), unmatched));
+        Assert.Equal(["Route: the active leg matches no waypoint"], unmatched);
     }
 
     [Fact]
