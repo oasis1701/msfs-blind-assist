@@ -5,9 +5,10 @@
 // The contract: the page reads 137 (the labels, varint bools: 12 L/G CTL, 9 N/W STEERING, 16/17 ANTI SKID, 7/8 NORM BRK,
 // 2/15 ALTN BRK, 18 ACCU ONLY, 4/5/6 AUTO BRK LO/MED/MAX, 19 the tire pressure indicators are fitted), 138 (the brake
 // temperatures 1-4, doubles), 139 (the tire pressures 1-6, doubles, read only while 137.19), 141 (the released brakes 1-4,
-// bools), 143 (the gears: 143.1 nose, .2 left, .3 right; each .1 and .2 the LGCIU 1 and 2 position, doubles, 2 is up) and
-// 144 (the gear doors 1-3, doubles, 1 is closed). 135, 136, 140 and 142 are not read. A gear or door value with no word
-// reads "not available" and is reported, never guessed.
+// bools), 143 (the gears: 143.1 nose, .2 left, .3 right; each .1 and .2 the LGCIU 1 and 2 position, doubles: measured on the
+// 2026-11-03 gear extension, 2 is up, 1 in transit and the absent field (0) down) and 144 (the gear doors 1-3, doubles,
+// measured: 1 closed, 0 opening, 2 open). 135, 136, 140 and 142 are not read. A gear or door value with no word reads
+// "not available" and is reported, never guessed.
 
 using MSFSBlindAssist.Services;
 
@@ -36,6 +37,13 @@ public class FenixChannelSdWheelTests
             .Message(1, Doubles(nose1, nose2))
             .Message(2, Doubles(left1, left2))
             .Message(3, Doubles(right1, right2));
+
+    // 143 with the gear down: each gear a present, empty message (every LGCIU value is the absent field, 0).
+    private static FenixChannelProtoWriter GearsDown()
+        => new FenixChannelProtoWriter()
+            .Message(1, new FenixChannelProtoWriter())
+            .Message(2, new FenixChannelProtoWriter())
+            .Message(3, new FenixChannelProtoWriter());
 
     private static SdPush WheelPush(
         FenixChannelProtoWriter? flags = null, FenixChannelProtoWriter? temps = null, FenixChannelProtoWriter? tires = null,
@@ -140,15 +148,55 @@ public class FenixChannelSdWheelTests
 
         // A decimal value is written as sent, without needless decimals otherwise; the page goes on.
         var more = new List<string>();
-        IReadOnlyList<string> withDoor = RowsOf(WheelPush(gears: Gears(left2: 2.5), doors: Doubles(0, 1, 3)), more);
+        IReadOnlyList<string> withDoor = RowsOf(WheelPush(gears: Gears(left2: 2.5), doors: Doubles(7, 1, 3)), more);
         Assert.Contains("left gear: up, LGCIU 2 not available", withDoor);
         Assert.Contains("nose gear door: not available", withDoor);
         Assert.Contains("left gear door: closed", withDoor);
         Assert.Contains("right gear door: not available", withDoor);
         Assert.Equal(
-            new[] { "field 144.1 has an unknown value 0", "field 143.2.2 has an unknown value 2.5", "field 144.3 has an unknown value 3" },
+            new[] { "field 144.1 has an unknown value 7", "field 143.2.2 has an unknown value 2.5", "field 144.3 has an unknown value 3" },
             more);
         Assert.Contains("brakes °C: 20, 21, 19, 20", withDoor);
+    }
+
+    [Fact]
+    public void The_gear_extension_reads_in_transit_then_down()
+    {
+        // The 22:44:48 push shape (gear extension, 2026-11-03, A321): every LGCIU 1.0, the doors an EMPTY message (all 0).
+        var reported = new List<string>();
+        IReadOnlyList<string> transit = RowsOf(
+            WheelPush(gears: Gears(1, 1, 1, 1, 1, 1), doors: new FenixChannelProtoWriter()), reported);
+
+        Assert.Contains("nose gear: in transit, in transit", transit);
+        Assert.Contains("left gear: in transit, in transit", transit);
+        Assert.Contains("right gear: in transit, in transit", transit);
+        Assert.Contains("nose gear door: open", transit);
+        Assert.Contains("left gear door: open", transit);
+        Assert.Contains("right gear door: open", transit);
+
+        // The 22:45:05 push shape: 143.1 to .3 EMPTY messages (down is the absent field), the doors closed again.
+        IReadOnlyList<string> down = RowsOf(WheelPush(gears: GearsDown(), doors: Doubles(1, 1, 1)), reported);
+
+        Assert.Contains("nose gear: down, down", down);
+        Assert.Contains("left gear: down, down", down);
+        Assert.Contains("right gear: down, down", down);
+        Assert.Contains("nose gear door: closed", down);
+        Assert.Contains("left gear door: closed", down);
+        Assert.Contains("right gear door: closed", down);
+        Assert.Empty(reported);
+    }
+
+    [Fact]
+    public void A_door_value_of_two_reads_open()
+    {
+        var reported = new List<string>();
+
+        IReadOnlyList<string> rows = RowsOf(WheelPush(doors: Doubles(2, 2, 2)), reported);
+
+        Assert.Contains("nose gear door: open", rows);
+        Assert.Contains("left gear door: open", rows);
+        Assert.Contains("right gear door: open", rows);
+        Assert.Empty(reported);
     }
 
     [Fact]

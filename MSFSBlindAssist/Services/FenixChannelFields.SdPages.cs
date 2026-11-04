@@ -98,7 +98,10 @@ internal static partial class FenixChannelFields
     /// </summary>
     public static class GearUnit
     {
-        public const double Up = 2;                 // inferred from a cruise push (gear up, doors closed); Task 1 measures the others
+        // Measured on the 2026-11-03 gear extension (A321, 22:44:46-22:45:05); the contract names none of these values.
+        public const double Up = 2;                 // every LGCIU value read 2.0 with the gear up, until the gear was selected down
+        public const double InTransit = 1;          // every LGCIU value read 1.0 for 10 s while the gear extended
+        public const double Down = 0;               // the field went absent (0) once the gear was down and stayed so
     }
 
     /// <summary>
@@ -106,7 +109,10 @@ internal static partial class FenixChannelFields
     /// </summary>
     public static class GearDoorPosition
     {
-        public const double Closed = 1;             // inferred from a cruise push (gear up, doors closed); Task 1 measures the others
+        // Measured on the 2026-11-03 gear extension (A321, 22:44:46-22:45:05); the contract does not name what each means.
+        public const double Closed = 1;             // every door read 1.0 with the gear up and again once the doors closed
+        public const double Opening = 0;            // absent (0) for 3-5 s after a door left closed
+        public const double Open = 2;               // 2.0 for 13-15 s while the gear extended, until 8 s after it locked down
     }
 
     /// <summary>FctlSurfaceData, the flight control surfaces (<see cref="Remote.FctlSurfaces"/>); each is a nested SurfaceState.</summary>

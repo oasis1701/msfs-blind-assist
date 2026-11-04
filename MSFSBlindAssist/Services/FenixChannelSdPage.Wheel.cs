@@ -8,17 +8,21 @@ namespace MSFSBlindAssist.Services;
 // page. Inert: only the tests call WheelRows until a later task wires the ComposeWheel seam.
 internal static partial class FenixChannelSdPages
 {
-    // What a gear's LGCIU value and a gear door's value read as. One line per measured value: the gear DOWN value (and the
-    // gear door's value with the gear down, if it is not Closed) is measured on the ground or on a gear extension (Task 1),
-    // the gear IN TRANSIT value by Task 13; any other value reads "not available" in its row and is reported, never guessed.
+    // What a gear's LGCIU value and a gear door's value read as. One line per value measured on the 2026-11-03 gear extension;
+    // any other value reads "not available" in its row and is reported, never guessed. A gear DOWN is the absent field (0).
+    // The A320 WHEEL page draws a door that is not closed one way, amber, so both its not-closed values read "open".
     private static readonly IReadOnlyDictionary<double, string> WheelGearUnitWords = new Dictionary<double, string>
     {
-        [FenixChannelFields.GearUnit.Up] = "up"
+        [FenixChannelFields.GearUnit.Up] = "up",
+        [FenixChannelFields.GearUnit.InTransit] = "in transit",
+        [FenixChannelFields.GearUnit.Down] = "down"
     };
 
     private static readonly IReadOnlyDictionary<double, string> WheelGearDoorWords = new Dictionary<double, string>
     {
-        [FenixChannelFields.GearDoorPosition.Closed] = "closed"
+        [FenixChannelFields.GearDoorPosition.Closed] = "closed",
+        [FenixChannelFields.GearDoorPosition.Opening] = "open",
+        [FenixChannelFields.GearDoorPosition.Open] = "open"
     };
 
     /// <summary>
@@ -36,11 +40,11 @@ internal static partial class FenixChannelSdPages
     /// text). 139 is read only while 137.19, so a push without it and without the indicators is a complete page.</para>
     /// <para>With more than one of 137.4, .5 and .6 set, the AUTO BRK row names the first in LO, MED, MAX order: the SD
     /// shows one.</para>
-    /// <para>Gear words. A gear value equal to <c>GearUnit.Up</c> reads "up" and a door value equal to
-    /// <c>GearDoorPosition.Closed</c> reads "closed"; any other reads "LGCIU &lt;n&gt; not available" (a door:
-    /// "not available") and is reported "field &lt;path&gt; has an unknown value &lt;v&gt;" without stopping the page.
-    /// Until "down" is measured (Task 1), a gear down on the ground therefore reads "LGCIU 1 not available, LGCIU 2 not
-    /// available": that is deliberate, and the WHEEL switch waits on Task 11's ground check.</para>
+    /// <para>Gear words, measured on the 2026-11-03 gear extension. A gear value reads "up" (2), "in transit" (1) or "down"
+    /// (0, the absent field: a gear down is a present, empty message, never a missing one); a door value reads "closed" (1)
+    /// or "open" (0 while it opens, 2 while the gear extends). Any other value reads "LGCIU &lt;n&gt; not available" (a
+    /// door: "not available") and is reported "field &lt;path&gt; has an unknown value &lt;v&gt;" without stopping the
+    /// page.</para>
     /// </remarks>
     internal static FenixChannelRows WheelRows(FenixChannelSdPageContext ctx)
     {
