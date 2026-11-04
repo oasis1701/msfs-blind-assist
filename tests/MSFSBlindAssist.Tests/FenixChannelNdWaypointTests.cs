@@ -9,18 +9,21 @@ namespace MSFSBlindAssist.Tests;
 public class FenixChannelNdWaypointTests
 {
     private static FenixChannelSnapshot Snapshot(string? one, string? two, string? three, bool trusted = true,
-        bool wrongShape = false)
+        bool wrongShape = false, ulong? mode = null, Action<FenixChannelProtoWriter>? more = null)
     {
         var nav = new FenixChannelProtoWriter();
         if (one is not null) nav.String(1, one);
         if (two is not null) nav.String(2, two);
         if (three is not null) nav.String(3, three);
 
+        var efis = new FenixChannelProtoWriter().Varint(3, 3);
+        if (mode is not null) efis.Varint(1, mode.Value);
         var remote = new FenixChannelProtoWriter()
-            .Message(1, new FenixChannelProtoWriter().Varint(3, 3)).Message(1, new FenixChannelProtoWriter())
+            .Message(1, efis).Message(1, new FenixChannelProtoWriter())
             .Message(163, new FenixChannelProtoWriter().String(1, "wsGSlgd456").String(2, "g213w / g37"));
         if (wrongShape) remote.Message(68, new FenixChannelProtoWriter().Double(2, 1));
         else if (one is not null || two is not null || three is not null) remote.Message(68, nav);
+        more?.Invoke(remote);
 
         FenixChannelPush data = FenixChannelPush.From(remote.ToArray())!;
         return new FenixChannelSnapshot(new FenixDisplayVerdict(trusted, trusted ? "trusted" : "off"), null, data, null, 0, 1);
@@ -72,6 +75,32 @@ public class FenixChannelNdWaypointTests
         problems.Clear();
         Assert.Null(Readout(Snapshot("VAKSU q318", "g84 csNM", "g17:29"), problems));
         Assert.Single(problems);
+    }
+
+    [Fact]
+    public void An_unknown_letter_in_a_line_a_layer_reads_gives_not_available()
+    {
+        // ROSE LS reads its block (72), every mode but PLAN the corners (76): a letter the app does not know in either
+        // stops the whole ND, Ctrl+W included, as the window's layers do.
+        static void Ils(FenixChannelProtoWriter remote, string line1)
+            => remote.Message(72, new FenixChannelProtoWriter().String(1, line1));
+        static void Corner(FenixChannelProtoWriter remote, string line1)
+            => remote.Message(76, new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().String(1, line1)));
+        const ulong Ls = 0, Arc = 3;
+
+        var problems = new List<string>();
+        Assert.Null(Readout(Snapshot("VAKSU g318c", "g84 csNM", "g17:29", mode: Ls, more: r => Ils(r, "wILS2 z110")), problems));
+        Assert.Equal(["unknown code 'z' in the ILS block"], problems);
+
+        problems.Clear();
+        Assert.Null(Readout(Snapshot("VAKSU g318c", "g84 csNM", "g17:29", mode: Arc, more: r => Corner(r, "wVOR1z")), problems));
+        Assert.Equal(["unknown code 'z' in the corner text"], problems);
+
+        // The same lines without the letter read; and ARC does not read 72, so its letter stops nothing there.
+        Assert.Equal("VAKSU, 318 degrees, 84 nautical miles, 17:29",
+            Readout(Snapshot("VAKSU g318c", "g84 csNM", "g17:29", mode: Ls, more: r => Ils(r, "wILS2 m110"))));
+        Assert.Equal("VAKSU, 318 degrees, 84 nautical miles, 17:29",
+            Readout(Snapshot("VAKSU g318c", "g84 csNM", "g17:29", mode: Arc, more: r => Ils(r, "wILS2 z110"))));
     }
 
     [Fact]

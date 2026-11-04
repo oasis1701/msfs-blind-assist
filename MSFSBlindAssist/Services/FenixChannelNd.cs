@@ -74,6 +74,28 @@ internal static class FenixChannelNd
         _ => value.Value.ToString(CultureInfo.InvariantCulture)
     };
 
+    /// <summary>
+    /// The ND as the window's composer, Ctrl+W and the ND messages announcer read it: the header (<see cref="Read"/>),
+    /// then the channel text the layers read at its mode, checked by the radio layers' own readers
+    /// (<see cref="FenixChannelNdRadio.UnknownCode"/>): ROSE LS's block (72), ROSE VOR's (70, unless VOR 1's flag
+    /// replaces it), the corners (76) and the corner flags (102.1), the last two in every mode but PLAN. In ARC neither 70
+    /// nor 72 is read. A letter the app does not know in any of them is the problem the window's layers stop on, so the
+    /// three never disagree ([FNX-24]).
+    /// </summary>
+    public static FenixChannelSection<FenixNdData> ReadChecked(FenixChannelSnapshot s)
+    {
+        FenixChannelSection<FenixNdData> header = Read(s);
+        if (!header.IsOk) return header;
+
+        return FenixChannelNdRadio.UnknownCode(s.Push!, header.Value!) is { } unknown
+            ? FenixChannelSection<FenixNdData>.UnknownCode(unknown.Code, unknown.Place)
+            : header;
+    }
+
+    /// <summary>
+    /// The header alone, for what reads only the header (the window's EFIS controls, the layers' tests). The ND's own
+    /// reads go through <see cref="ReadChecked"/>.
+    /// </summary>
     public static FenixChannelSection<FenixNdData> Read(FenixChannelSnapshot s)
     {
         if (s.Push is null) return FenixChannelSection<FenixNdData>.Missing("data");

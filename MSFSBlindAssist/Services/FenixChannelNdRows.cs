@@ -17,7 +17,11 @@ internal sealed record FenixNdLayer(IReadOnlyList<string> Rows, string? LayerPro
     public static FenixNdLayer Failed(string name, string problem)
         => new([$"{name}: not available, {problem}"], $"{name}: {problem}", null);
 
-    /// <summary>A problem that stops the whole ND, the other layers and the header with it.</summary>
+    /// <summary>
+    /// A problem that stops the whole ND, the other layers and the header with it. A layer that stops the ND on its
+    /// channel text also gives that text to <see cref="FenixChannelNd.ReadChecked"/>'s check, through the reader it
+    /// reads it with, so Ctrl+W and the announcer stop on it too (today the two radio layers).
+    /// </summary>
     public static FenixNdLayer StopsNd(string problem) => new([], null, problem);
 }
 
@@ -123,14 +127,14 @@ internal static partial class FenixChannelNdRows
     }
 
     /// <summary>
-    /// The rows for <paramref name="s"/> with <paramref name="layers"/> between the header and the messages. The seam
-    /// later tasks fill: the list is in screen order.
+    /// The rows for <paramref name="s"/> with <paramref name="layers"/> between the header and the messages, in screen
+    /// order. The ND is read with <see cref="FenixChannelNd.ReadChecked"/>, the read Ctrl+W and the announcer share.
     /// </summary>
     internal static FenixChannelRows Compose(
         FenixChannelSnapshot s, Action<string> reportProblem,
         IReadOnlyList<Func<FenixChannelSnapshot, FenixNdData, FenixNdLayer>> layers)
     {
-        FenixChannelSection<FenixNdData> section = FenixChannelNd.Read(s);
+        FenixChannelSection<FenixNdData> section = FenixChannelNd.ReadChecked(s);
         if (!section.IsOk) return Stop(section.Problem ?? "no data");
 
         FenixNdData nd = section.Value!;

@@ -225,9 +225,9 @@ public class FenixChannelNdTests
     {
         static FenixChannelProtoWriter Build(string? speed = null, string? wind = null, string? one = null,
             string? two = null, string? three = null, string? center = null, string? shear = null, string? tcas = null,
-            string? listed = null)
+            string? listed = null, ulong mode = 3, Action<FenixChannelProtoWriter>? more = null)
         {
-            var remote = new FenixChannelProtoWriter().Message(1, Efis()).Message(1, Efis())
+            var remote = new FenixChannelProtoWriter().Message(1, Efis(mode: mode)).Message(1, Efis())
                 .Message(68, new FenixChannelProtoWriter().String(1, one ?? "VAKSU g318c").String(2, two ?? "g84 csNM")
                     .String(3, three ?? "g17:29"))
                 .Message(163, new FenixChannelProtoWriter().String(1, speed ?? "wsGSlgd456").String(2, wind ?? "g213w / g37"));
@@ -235,9 +235,13 @@ public class FenixChannelNdTests
             if (shear is not null) remote.String(64, shear);
             if (tcas is not null) remote.String(66, tcas);
             if (listed is not null) remote.Message(103, new FenixChannelProtoWriter().String(1, listed));
+            more?.Invoke(remote);
             return remote;
         }
 
+        static string? Problem(FenixChannelProtoWriter remote) => FenixChannelNd.ReadChecked(Snapshot(remote)).Problem;
+
+        // The header's lines, which Read checks itself.
         Assert.Equal("unknown code 'q' in the ground speed line", Read(Build(speed: "wsGSlqgd456")).Problem);
         Assert.Equal("unknown code 'q' in the wind line", Read(Build(wind: "q213")).Problem);
         Assert.Equal("unknown code 'q' in the next waypoint lines", Read(Build(one: "VAKSU q318")).Problem);
@@ -247,7 +251,34 @@ public class FenixChannelNdTests
         Assert.Equal("unknown code 'q' in the windshear message", Read(Build(shear: "q")).Problem);
         Assert.Equal("unknown code 'q' in the TCAS message", Read(Build(tcas: "q")).Problem);
         Assert.Equal("unknown code 'q' in the ND messages", Read(Build(listed: "q")).Problem);
+        Assert.Equal("unknown code 'q' in the wind line", Problem(Build(wind: "q213")));
         Assert.True(Read(Build()).IsOk);
+        Assert.True(FenixChannelNd.ReadChecked(Snapshot(Build())).IsOk);
+
+        // The lines the layers read at the mode, which ReadChecked adds: ROSE LS's block (72), ROSE VOR's (70), the
+        // corners (76) and their flags (102.1).
+        static void Lines(FenixChannelProtoWriter remote, int field, string line1)
+            => remote.Message(field, new FenixChannelProtoWriter().String(1, line1));
+        static void Corner(FenixChannelProtoWriter remote, string line1)
+            => remote.Message(76, new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().String(1, line1)));
+        static void Flag(FenixChannelProtoWriter remote, int member, string text)
+            => remote.Message(102, new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().String(member, text)));
+
+        Assert.Equal("unknown code 'q' in the ILS block", Problem(Build(mode: 0, more: r => Lines(r, 72, "wILS2 q110"))));
+        Assert.Equal("unknown code 'q' in the VOR block", Problem(Build(mode: 1, more: r => Lines(r, 70, "wVOR1 q113"))));
+        Assert.Equal("unknown code 'q' in the corner flag", Problem(Build(mode: 2, more: r => Flag(r, 3, "qADF1"))));
+        foreach (ulong mode in new ulong[] { 0, 1, 2, 3 })
+        {
+            Assert.Equal("unknown code 'q' in the corner text", Problem(Build(mode: mode, more: r => Corner(r, "wVOR1q"))));
+        }
+
+        // A line the mode does not read stops nothing: ARC reads neither block, ROSE NAV neither, ROSE VOR not 70 while
+        // VOR 1's flag replaces it, and PLAN no corner or flag. The header's own reader never reads them.
+        Assert.Null(Problem(Build(mode: 3, more: r => { Lines(r, 72, "wILS2 q110"); Lines(r, 70, "wVOR1 q113"); })));
+        Assert.Null(Problem(Build(mode: 2, more: r => { Lines(r, 72, "wILS2 q110"); Lines(r, 70, "wVOR1 q113"); })));
+        Assert.Null(Problem(Build(mode: 1, more: r => { Lines(r, 70, "wVOR1 q113"); Flag(r, 1, "rVOR1"); })));
+        Assert.Null(Problem(Build(mode: 4, more: r => { Corner(r, "wVOR1q"); Flag(r, 3, "qADF1"); Lines(r, 72, "q"); })));
+        Assert.True(Read(Build(mode: 0, more: r => Lines(r, 72, "wILS2 q110"))).IsOk);
     }
 
     [Fact]

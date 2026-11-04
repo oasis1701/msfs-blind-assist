@@ -510,6 +510,64 @@ public class FenixChannelNdRadioTests
         Assert.Equal("unknown code 'z' in the corner text", FenixChannelNdRadio.CornerRows(cornerPush, cornerHeader).NdProblem);
     }
 
+    // The ND's shared check (FenixChannelNd.ReadChecked, which Ctrl+W and the announcer read) must stop exactly where the
+    // radio layers stop the window: the first layer's problem, then the corners', as Compose runs them.
+    public static TheoryData<string> CheckCases => new()
+    {
+        "72 unknown", "72 unknown, 82 wrong", "72.1 unknown, 72.2 wrong", "70 unknown", "70 unknown, VOR 1 flagged",
+        "76.1 unknown", "76.1 unknown, 1.17 wrong", "76.2 wrong, 102.1.3 unknown", "102.1.3 unknown", "clean"
+    };
+
+    private static FenixChannelProtoWriter CheckCase(string name, ulong mode)
+    {
+        FenixChannelProtoWriter remote = name.Contains("1.17")
+            ? new FenixChannelProtoWriter()
+                .Message(1, new FenixChannelProtoWriter().Varint(1, mode).Double(17, 1)).Message(1, Efis(1))
+                .Message(163, new FenixChannelProtoWriter().String(1, "wsGSlgd1").String(2, "g1w / g1"))
+                .Message(194, new FenixChannelProtoWriter().Double(1, 194.1))
+            : Remote(mode, 1, 2);
+        if (name.StartsWith("72 unknown")) remote.Message(72, Block("wILS2 z110", null, null));
+        if (name.StartsWith("72.1")) remote.Message(72, new FenixChannelProtoWriter().String(1, "wILS2 z110").Double(2, 1));
+        if (name.Contains("82 wrong")) remote.Message(82, new FenixChannelProtoWriter().String(6, "x"));
+        if (name.StartsWith("70")) remote.Message(70, Block("wVOR1 z113", null, null));
+        if (name.Contains("VOR 1 flagged")) remote.Message(102, Flags((1, "rVOR1")));
+        if (name.StartsWith("76.1")) remote.Message(76, new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().String(1, "wVOR1z")));
+        if (name.StartsWith("76.2")) remote.Message(76, new FenixChannelProtoWriter().Message(2, new FenixChannelProtoWriter().Double(3, 1)));
+        if (name.Contains("102.1.3")) remote.Message(102, Flags((3, "zADF1")));
+        return remote;
+    }
+
+    [Theory]
+    [MemberData(nameof(CheckCases))]
+    public void The_shared_check_stops_where_the_layers_stop(string name)
+    {
+        foreach (ulong mode in new[] { Ls, Vor, Nav, Arc, Plan })
+        {
+            (FenixChannelPush push, FenixNdData header) = Read(CheckCase(name, mode));
+            string? layers = FenixChannelNdRadio.Rows(push, header).NdProblem ?? FenixChannelNdRadio.CornerRows(push, header).NdProblem;
+            string? shared = FenixChannelNdRadio.UnknownCode(push, header) is { } unknown
+                ? FenixChannelSection<FenixNdData>.UnknownCode(unknown.Code, unknown.Place).Problem
+                : null;
+
+            Assert.True(layers == shared, $"{name}, mode {mode}: the layers '{layers}', the check '{shared}'");
+        }
+    }
+
+    [Fact]
+    public void An_unknown_letter_in_the_text_stops_before_a_later_field_is_read()
+    {
+        // The layer reads its text first: 72's letter stops the ND though 82 is in another shape; a text field in another
+        // shape (72.2) costs the layer its rows and stops nothing.
+        (FenixChannelPush push, FenixNdData header) = Read(CheckCase("72 unknown, 82 wrong", Ls));
+        Assert.Equal("unknown code 'z' in the ILS block", FenixChannelNdRadio.Rows(push, header).NdProblem);
+
+        (FenixChannelPush textPush, FenixNdData textHeader) = Read(CheckCase("72.1 unknown, 72.2 wrong", Ls));
+        FenixNdLayer layer = FenixChannelNdRadio.Rows(textPush, textHeader);
+        Assert.Null(layer.NdProblem);
+        Assert.Equal("Radio: field 72.2 has the wrong shape", layer.LayerProblem);
+        Assert.Null(FenixChannelNdRadio.UnknownCode(textPush, textHeader));
+    }
+
     [Fact]
     public void Compose_lists_the_radio_where_the_glass_draws_it()
     {

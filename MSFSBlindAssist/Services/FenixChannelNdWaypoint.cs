@@ -31,7 +31,8 @@ internal static class FenixChannelNdWaypoint
     }
 
     /// <summary>
-    /// The sentence for <paramref name="s"/>: null when the ND is not trusted, when the header cannot be read (the
+    /// The sentence for <paramref name="s"/>: null when the ND is not trusted, when it cannot be read (the header, or a
+    /// letter the app does not know in any line the ND reads at its mode, <see cref="FenixChannelNd.ReadChecked"/>; the
     /// problem goes to <paramref name="reportProblem"/>), when the box is absent and when line 1 is neither PPOS nor a
     /// waypoint; <see cref="NoActiveWaypoint"/> for PPOS. A line 2 or 3 the ND does not show leaves its part out.
     /// </summary>
@@ -39,7 +40,7 @@ internal static class FenixChannelNdWaypoint
     {
         if (!s.Verdict.Trusted) return null;
 
-        FenixChannelSection<FenixNdData> section = FenixChannelNd.Read(s);
+        FenixChannelSection<FenixNdData> section = FenixChannelNd.ReadChecked(s);
         if (!section.IsOk)
         {
             reportProblem(section.Problem ?? "no data");

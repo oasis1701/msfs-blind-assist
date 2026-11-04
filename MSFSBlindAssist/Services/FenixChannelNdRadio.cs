@@ -55,8 +55,9 @@ internal static class FenixChannelNdRadio
     /// in ROSE VOR the failed flag at the center, or the course pointer (80.1); then, in ROSE NAV, ROSE LS and ROSE VOR, a
     /// row for each bearing pointer (78) its selector allows and its receiver's flag (102.1) does not hide. ARC and PLAN
     /// pointers are not measured or not drawn, so they are not listed; ROSE VOR's deviation bar (80.2) and TO/FROM (80.5)
-    /// follow its course pointer on one row. A field in
-    /// another shape gives one row in the layer's place; a letter the app does not know stops the ND ([FNX-24]).
+    /// follow its course pointer on one row. The layer's channel text is read first (<see cref="ReadTopText"/>): a field
+    /// of it in another shape gives one row in the layer's place, then a letter the app does not know stops the ND
+    /// ([FNX-24]), before any other field is read; a later field in another shape gives the one row.
     /// </summary>
     public static FenixNdLayer Rows(FenixChannelPush push, FenixNdData header)
     {
@@ -64,33 +65,12 @@ internal static class FenixChannelNdRadio
         if (!ls && !vor && !pointers) return FenixNdLayer.Of([]);
 
         var read = new Reader();
-        var coded = new List<(string? Text, string Place)>();
+        TopText text = ReadTopText(read, push, header);
+        if (read.Wrong is { } wrongText) return WrongShape(LayerName, wrongText);
+        if (FirstUnknown(text.Coded) is { } unknown) return StopsNd(unknown);
 
-        // The top right block, or the flag that replaces it.
-        string?[] block = [null, null, null];
-        string?[] flags = [null, null, null, null];
-        if (vor || pointers)
-        {
-            FenixChannelPush? flagLabels = read.Part(push, Remote.NdFlagLabelsCapt, "102");
-            FenixChannelPush? corners = read.Part(flagLabels, NdFlagLabels.CornerFlags, "102.1");
-            flags =
-            [
-                read.Text(corners, NdCornerFlags.Vor1, "102.1.1"), read.Text(corners, NdCornerFlags.Vor2, "102.1.2"),
-                read.Text(corners, NdCornerFlags.Adf1, "102.1.3"), read.Text(corners, NdCornerFlags.Adf2, "102.1.4")
-            ];
-            foreach (string? flag in flags) coded.Add((flag, "corner flag"));
-        }
-
+        string?[] block = text.Block, flags = text.Flags;
         string? vor1Flag = flags[0];
-
-        if (ls || (vor && IsBlank(vor1Flag)))
-        {
-            int field = ls ? Remote.LsBlockCapt : Remote.VorBlockCapt;
-            FenixChannelPush? part = read.Part(push, field, $"{field}");
-            block = [read.Text(part, NdRadioBlock.Line1, $"{field}.1"), read.Text(part, NdRadioBlock.Line2, $"{field}.2"),
-                read.Text(part, NdRadioBlock.Line3, $"{field}.3")];
-            foreach (string? line in block) coded.Add((line, ls ? "ILS block" : "VOR block"));
-        }
 
         // The ILS scales: 82 absent is no ILS (every member NaN); a member left out of a present 82 is protobuf's 0.
         double course = double.NaN, localizer = double.NaN, glideslope = double.NaN;
@@ -120,8 +100,7 @@ internal static class FenixChannelNdRadio
         ];
         IReadOnlyList<ulong> selectors = pointers ? read.Selectors(push) : [];
 
-        if (read.Wrong is { } wrong) return FenixNdLayer.Failed(LayerName, $"field {wrong} has the wrong shape");
-        if (Unknown(coded) is { } unknown) return unknown;
+        if (read.Wrong is { } wrong) return WrongShape(LayerName, wrong);
 
         var rows = new List<string>();
         if (vor && !IsBlank(vor1Flag))
@@ -235,15 +214,97 @@ internal static class FenixChannelNdRadio
     /// (which draws none, flags included) while sent: their lines, then the arrow. An empty entry (its selector at OFF)
     /// gives no row. A flag in 102.1 replaces its side's corner, spoken as sent, with no arrow: members 1 (VOR 1) and 3
     /// (ADF 1) the left, 2 and 4 the right. The arrow's shape follows the side (NAV 1 single line, NAV 2 double line),
-    /// for either receiver.
+    /// for either receiver. The text is read first, as in <see cref="Rows"/> (<see cref="ReadCornerText"/>).
     /// </summary>
     public static FenixNdLayer CornerRows(FenixChannelPush push, FenixNdData header)
     {
         if (header.Mode == "PLAN") return FenixNdLayer.Of([]);
 
         var read = new Reader();
+        CornerText text = ReadCornerText(read, push, header);
+        if (read.Wrong is { } wrongText) return WrongShape(CornersLayerName, wrongText);
+        if (FirstUnknown(text.Coded) is { } unknown) return StopsNd(unknown);
+
+        string?[][] lines = text.Lines;
+        string?[] flags = text.Flags;
+
+        // Read for its shape only: a selector in another shape costs this layer too.
+        _ = read.Selectors(push);
+        if (read.Wrong is { } wrong) return WrongShape(CornersLayerName, wrong);
+
+        var rows = new List<string>();
+        string[] places = ["Bottom left", "Bottom right"];
+        for (int side = 0; side < 2; side++)
+        {
+            // Members 1 and 3 are the left side's flags, 2 and 4 the right's, in member order.
+            string[] flagged =
+            [
+                .. new[] { flags[side], flags[side + 2] }
+                    .Select(flag => FenixChannelNdSpeech.Line(flag, FenixChannelNdSpeech.CornerFlag)).OfType<string>()
+            ];
+            if (flagged.Length > 0)
+            {
+                rows.Add($"{places[side]}: {string.Join("; ", flagged)}");
+                continue;
+            }
+
+            if (JoinedLines(lines[side], FenixChannelNdSpeech.Corner) is not { } spoken) continue;
+
+            rows.Add($"{places[side]}: {spoken}; {FenixChannelNdRows.Words(side == 0 ? LookItem.ArrowNav1 : LookItem.ArrowNav2)}");
+        }
+
+        return FenixNdLayer.Of(rows);
+    }
+
+    // ---- The channel text. Each layer reads its text through one function, and the ND's shared check reads through
+    // the same two, so the window, Ctrl+W and the announcer never disagree on which lines a mode reads.
+
+    // A layer's channel text: the lines it speaks, and every coded line with the place an unknown letter is named by.
+    private sealed record TopText(string?[] Flags, string?[] Block, IReadOnlyList<(string? Text, string Place)> Coded);
+
+    private sealed record CornerText(string?[][] Lines, string?[] Flags, IReadOnlyList<(string? Text, string Place)> Coded);
+
+    // Layer "Radio"'s text at the header's mode, in reading order: the corner flags (102.1) in ROSE NAV, ROSE LS and ROSE
+    // VOR, then ROSE LS's block (72), or ROSE VOR's (70) unless VOR 1's flag replaces it. Nothing in ARC and PLAN.
+    private static TopText ReadTopText(Reader read, FenixChannelPush push, FenixNdData header)
+    {
+        bool ls = header.Mode == "LS", vor = header.Mode == "VOR", pointers = header.Mode is "NAV" or "LS" or "VOR";
         var coded = new List<(string? Text, string Place)>();
 
+        // The top right block, or the flag that replaces it.
+        string?[] block = [null, null, null];
+        string?[] flags = [null, null, null, null];
+        if (vor || pointers)
+        {
+            FenixChannelPush? flagLabels = read.Part(push, Remote.NdFlagLabelsCapt, "102");
+            FenixChannelPush? corners = read.Part(flagLabels, NdFlagLabels.CornerFlags, "102.1");
+            flags =
+            [
+                read.Text(corners, NdCornerFlags.Vor1, "102.1.1"), read.Text(corners, NdCornerFlags.Vor2, "102.1.2"),
+                read.Text(corners, NdCornerFlags.Adf1, "102.1.3"), read.Text(corners, NdCornerFlags.Adf2, "102.1.4")
+            ];
+            foreach (string? flag in flags) coded.Add((flag, "corner flag"));
+        }
+
+        if (ls || (vor && IsBlank(flags[0])))
+        {
+            int field = ls ? Remote.LsBlockCapt : Remote.VorBlockCapt;
+            FenixChannelPush? part = read.Part(push, field, $"{field}");
+            block = [read.Text(part, NdRadioBlock.Line1, $"{field}.1"), read.Text(part, NdRadioBlock.Line2, $"{field}.2"),
+                read.Text(part, NdRadioBlock.Line3, $"{field}.3")];
+            foreach (string? line in block) coded.Add((line, ls ? "ILS block" : "VOR block"));
+        }
+
+        return new TopText(flags, block, coded);
+    }
+
+    // Layer "Radio corners"' text in every mode but PLAN, in reading order: the corners (76.1 and 76.2, three lines each),
+    // then the corner flags (102.1). Nothing in PLAN.
+    private static CornerText ReadCornerText(Reader read, FenixChannelPush push, FenixNdData header)
+    {
+        if (header.Mode == "PLAN") return new CornerText([[null, null, null], [null, null, null]], [null, null, null, null], []);
+
+        var coded = new List<(string? Text, string Place)>();
         FenixChannelPush? corners = read.Part(push, Remote.CornersCapt, "76");
         string?[][] lines = new string?[2][];
         int[] numbers = [NdCorners.Nav1, NdCorners.Nav2];
@@ -267,34 +328,44 @@ internal static class FenixChannelNdRadio
         ];
         foreach (string? flag in flags) coded.Add((flag, "corner flag"));
 
-        IReadOnlyList<ulong> selectors = read.Selectors(push);
+        return new CornerText(lines, flags, coded);
+    }
 
-        if (read.Wrong is { } wrong) return FenixNdLayer.Failed(CornersLayerName, $"field {wrong} has the wrong shape");
-        if (Unknown(coded) is { } unknown) return unknown;
+    /// <summary>
+    /// The letter the app does not know that the radio layers stop the ND on at <paramref name="header"/>'s mode, and
+    /// the line it is in: <see cref="Rows"/>'s text first, then <see cref="CornerRows"/>'s, as <c>Compose</c> runs
+    /// them, each read by the layer's own reader and in the layer's order. A layer whose text has a field in another
+    /// shape stops nothing (that costs the layer its rows). Null when neither layer stops the ND. The ND's shared check,
+    /// <see cref="FenixChannelNd.ReadChecked"/>, asks this.
+    /// </summary>
+    internal static (char Code, string Place)? UnknownCode(FenixChannelPush push, FenixNdData header)
+    {
+        var top = new Reader();
+        TopText topText = ReadTopText(top, push, header);
+        if (top.Wrong is null && FirstUnknown(topText.Coded) is { } inTop) return inTop;
 
-        var rows = new List<string>();
-        string[] places = ["Bottom left", "Bottom right"];
-        for (int side = 0; side < 2; side++)
+        var corners = new Reader();
+        CornerText cornerText = ReadCornerText(corners, push, header);
+        return corners.Wrong is null ? FirstUnknown(cornerText.Coded) : null;
+    }
+
+    // The first letter the app does not know, in reading order, with the line's place.
+    private static (char Code, string Place)? FirstUnknown(IEnumerable<(string? Text, string Place)> texts)
+    {
+        foreach ((string? text, string place) in texts)
         {
-            // Members 1 and 3 are the left side's flags, 2 and 4 the right's, in member order.
-            string[] flagged =
-            [
-                .. new[] { flags[side], flags[side + 2] }
-                    .Select(flag => FenixChannelNdSpeech.Line(flag, FenixChannelNdSpeech.CornerFlag)).OfType<string>()
-            ];
-            if (flagged.Length > 0)
-            {
-                rows.Add($"{places[side]}: {string.Join("; ", flagged)}");
-                continue;
-            }
-
-            if (JoinedLines(lines[side], FenixChannelNdSpeech.Corner) is not { } text) continue;
-
-            rows.Add($"{places[side]}: {text}; {FenixChannelNdRows.Words(side == 0 ? LookItem.ArrowNav1 : LookItem.ArrowNav2)}");
+            FenixTextLine line = FenixChannelText.Parse(text);
+            if (line.UnknownCodes.Count > 0) return (line.UnknownCodes[0], place);
         }
 
-        return FenixNdLayer.Of(rows);
+        return null;
     }
+
+    private static FenixNdLayer StopsNd((char Code, string Place) unknown)
+        => FenixNdLayer.StopsNd(FenixChannelSection<FenixNdData>.UnknownCode(unknown.Code, unknown.Place).Problem!);
+
+    private static FenixNdLayer WrongShape(string layer, string path)
+        => FenixNdLayer.Failed(layer, $"field {path} has the wrong shape");
 
     // ---- Helpers.
 
@@ -324,20 +395,6 @@ internal static class FenixChannelNdRadio
         EfisSelectorValue.Adf => "ADF",
         _ => null
     };
-
-    private static FenixNdLayer? Unknown(IEnumerable<(string? Text, string Place)> texts)
-    {
-        foreach ((string? text, string place) in texts)
-        {
-            FenixTextLine line = FenixChannelText.Parse(text);
-            if (line.UnknownCodes.Count > 0)
-            {
-                return FenixNdLayer.StopsNd($"unknown code '{line.UnknownCodes[0]}' in the {place}");
-            }
-        }
-
-        return null;
-    }
 
     // Reads parts and values, recording the path of the first field that arrived in another wire shape; such a field
     // reads as absent.

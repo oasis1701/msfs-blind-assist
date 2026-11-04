@@ -13,7 +13,7 @@ public class FenixChannelNdMessagesTests
     private static FenixChannelSnapshot Snap(
         string[]? listed = null, string? center = null, string? waypoint = "VAKSU g318c", string? distance = "g84 csNM",
         ulong mode = Arc, bool trusted = true, int connection = 1, bool broken = false, string? windshear = null,
-        string? tcas = null)
+        string? tcas = null, Action<FenixChannelProtoWriter>? more = null)
     {
         var remote = new FenixChannelProtoWriter()
             .Message(1, new FenixChannelProtoWriter().Varint(1, mode)).Message(1, new FenixChannelProtoWriter())
@@ -30,6 +30,7 @@ public class FenixChannelNdMessagesTests
 
         foreach (string entry in listed ?? []) remote.Message(103, new FenixChannelProtoWriter().String(1, entry));
         if (broken) remote.Message(68, new FenixChannelProtoWriter().Double(2, 1));
+        more?.Invoke(remote);
 
         FenixChannelPush data = FenixChannelPush.From(remote.ToArray())!;
         return new FenixChannelSnapshot(
@@ -145,6 +146,25 @@ public class FenixChannelNdMessagesTests
 
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], broken: true), false));
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"]), false));
+    }
+
+    [Fact]
+    public void An_unknown_letter_in_a_line_a_layer_reads_is_a_gap()
+    {
+        // ROSE LS's block (72) and, in ARC, a corner (76.1): the window says "ND: not available", so the announcer is
+        // silent and takes the next good reading as its baseline.
+        Action<FenixChannelProtoWriter> ils = r => r.Message(72, new FenixChannelProtoWriter().String(1, "wILS2 z110"));
+        Action<FenixChannelProtoWriter> corner = r => r.Message(76, new FenixChannelProtoWriter()
+            .Message(1, new FenixChannelProtoWriter().String(1, "wVOR1z")));
+
+        foreach ((ulong mode, Action<FenixChannelProtoWriter> letter) in new[] { (Ls, ils), (Arc, corner) })
+        {
+            FenixChannelNdMessages announcer = Baselined(Snap(mode: mode));
+
+            Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], mode: mode, more: letter), false));
+            Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], mode: mode), false));
+            Assert.Equal("ND message gone: TA ONLY", announcer.Sample(Snap(mode: mode), false));
+        }
     }
 
     [Fact]

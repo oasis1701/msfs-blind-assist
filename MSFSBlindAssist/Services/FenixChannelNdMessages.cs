@@ -15,7 +15,9 @@ namespace MSFSBlindAssist.Services;
 /// ROSE NAV and PLAN, and line 1 PPOS or a waypoint). The waypoint is said as drawn, "ND: 1500, 2.7 NM", PPOS as "ND: no
 /// active waypoint". A waypoint seen when the box becomes drawn again is only remembered.</para>
 /// <para>The baseline: the first good reading after the start, a new connection or a gap (the ND not trusted, or its read
-/// with a problem) is only remembered; the sample that shows the gap or the new connection is not itself the baseline.
+/// with a problem: <see cref="FenixChannelNd.ReadChecked"/>, the window's own read, so a letter the app does not know in
+/// any line the ND reads is a gap too) is only remembered; the sample that shows the gap or the new connection is not
+/// itself the baseline.
 /// Muted, it keeps tracking and says nothing, so unmuting replays nothing.</para>
 /// <para>One line per sample: new messages ("ND message: A, B"), gone ones ("ND message gone: C") and the waypoint
 /// ("ND: ..."), joined with ". " in that order. Text is channel text spoken by <see cref="FenixChannelNdSpeech"/> (only the colors that tell something); the
@@ -51,7 +53,7 @@ internal sealed class FenixChannelNdMessages
         bool reconnected = _lastConnection is { } last && last != s.Connection;
         _lastConnection = s.Connection;
 
-        FenixNdData? read = s.Verdict.Trusted && FenixChannelNd.Read(s) is { IsOk: true } section ? section.Value : null;
+        FenixNdData? read = s.Verdict.Trusted && FenixChannelNd.ReadChecked(s) is { IsOk: true } section ? section.Value : null;
         if (read is not { } nd || reconnected)
         {
             _baselined = false;
