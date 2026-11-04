@@ -9,7 +9,8 @@ internal static partial class FenixChannelFields
     public static partial class Remote
     {
         public const int Traffic = 5;                   // traffic: nested TrafficData, the TCAS traffic the ND draws (sitting 2)
-        public const int Crosstrack = 52;              // crosstrack: fixed64 (double), the cross-track error in NM, negative left
+        public const int RouteOptionsCapt = 44;         // routeOptionsCapt: nested RouteOptionsData, the captain's map visibility flags (the first officer's is 45)
+        public const int Crosstrack = 52;             // crosstrack: fixed64 (double), the cross-track error in NM, negative left
         public const int TerrainOnNdCapt = 53;          // terrainOnNDCapt: varint (bool), the captain's TERR ON ND; left out when off
         public const int NdStatusCapt = 58;             // ndStatusCapt: nested NdStatusData, what the captain's ND draws in HDG
         public const int VorBlockCapt = 70;             // vorBlockCapt: nested NdRadioBlock, ROSE VOR's top right block (the first officer's is 71)
@@ -25,6 +26,16 @@ internal static partial class FenixChannelFields
         public const int NdMessagesCapt = 103;          // ndMessagesCapt: repeated nested NullWrapped string, the captain's ND messages
         public const int GroundWindCapt = 163;          // groundWindCapt: nested GroundWindData, the ground speed and wind texts
         public const int WeatherRadarData = 191;        // weatherRadarData: nested WeatherRadarState, the weather radar and PWS
+    }
+
+    /// <summary>
+    /// RouteOptionsData (<see cref="Remote.RouteOptionsCapt"/>), measured in flight on 3.0.0.7613 (sitting 3): sent empty
+    /// until 44.1 came with the approach; 44.2 was never sent.
+    /// </summary>
+    public static partial class RouteOptionsData
+    {
+        public const int GoAroundVisible = 1;       // GoAroundVisible: varint (bool), the ND draws the missed approach (its elements are sent whether it does or not)
+        public const int AlternateVisible = 2;      // AlternateVisible: varint (bool), the alternate; never sent, the alternate was never drawn in flight
     }
 
     /// <summary>AdirsData, added to the PFD's partial: the pressure altitude the traffic labels are taken from.</summary>

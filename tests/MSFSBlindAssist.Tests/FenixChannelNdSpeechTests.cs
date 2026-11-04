@@ -122,7 +122,7 @@ public class FenixChannelNdSpeechTests
             FenixChannelNdMapData.LookItem.Airport, FenixChannelNdMapData.LookItem.Fix,
             FenixChannelNdRoute.LookItem.ToWaypoint, FenixChannelNdRoute.LookItem.Waypoint, FenixChannelNdRoute.LookItem.Vor,
             FenixChannelNdRoute.LookItem.RouteLine, FenixChannelNdRoute.LookItem.DashedRouteLine,
-            FenixChannelNdRoute.LookItem.TemporaryLine,
+            FenixChannelNdRoute.LookItem.TemporaryLine, FenixChannelNdRoute.LookItem.MissedApproachLine,
             FenixChannelNdRadio.LookItem.FailedVorIdent, FenixChannelNdRadio.LookItem.FailedCourseFigure,
             FenixChannelNdRadio.LookItem.FailedVorFlag
         ];

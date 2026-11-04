@@ -18,8 +18,8 @@ internal sealed record FenixNdStatus(bool TrackLine, bool HeadingBug, bool Solid
 /// temporary plan, the heading bug, the track line, the cross-track error, the range rings and FIX INFO; and the
 /// bottom right label, a layer of its own. Only what the ND draws is listed (spec 2.4), each look from
 /// <see cref="FenixChannelNdLook"/> or the channel's color member. Measured on 3.0.0.7613 (docs/fenix-channel/evidence/
-/// 03-nd.md, sitting 1 Part B and sitting 2). The alternate, the missed approach, its holds and the go-around marker are
-/// not listed: no capture showed when the ND draws them.
+/// 03-nd.md, sitting 1 Part B, sitting 2 and sitting 3). The missed approach is listed only while the ND draws it
+/// (44.1 = 1); the alternate and the go-around marker are not listed (Ruling 43: never seen drawn in flight).
 /// </summary>
 internal static class FenixChannelNdRoute
 {
@@ -54,6 +54,8 @@ internal static class FenixChannelNdRoute
         public const string Runway = "runway";
         public const string RouteLine = "route line";
         public const string DashedRouteLine = "route line in HDG";
+        public const string MissedApproachLine = "missed approach line";
+        public const string MissedApproachHold = "missed approach hold";
         public const string TemporaryLine = "temporary flight plan line";
         public const string ConstraintRing = "constraint ring";
         public const string ConstraintLabel = "constraint label";
@@ -180,8 +182,10 @@ internal static class FenixChannelNdRoute
         bool cstr = header.MapOption == "CSTR";
         var rows = new List<string>();
 
-        // The active route's symbols: never the missed approach's (Ruling 43).
-        List<FenixRouteLeg> symbols = [.. ListedSymbols(r.Legs)];
+        // The active route's symbols (the TO and FROM logic runs on these) and, while the ND draws it (44.1), the missed
+        // approach's, listed after the route's.
+        List<FenixRouteLeg> listedSymbols = [.. ListedSymbols(r.Legs, r.MissedApproachDrawn)];
+        List<FenixRouteLeg> symbols = [.. listedSymbols.Where(leg => !leg.MissedApproach)];
         int to = symbols.FindIndex(leg => leg.Ident == active.Ident && Distance(leg.Point, active.Point) <= SamePointNm);
         if (to < 0) to = symbols.Count;   // the TO is no symbol of its own (the destination runway): every symbol is passed
 
@@ -191,14 +195,13 @@ internal static class FenixChannelNdRoute
             out string lineRow, "route", "route line");
         if (seen) rows.Add(lineRow);
 
-        // The waypoints: the FROM (the last passed), the TO and every later one.
-        for (int i = Math.Max(0, to - 1); i < symbols.Count; i++)
+        // One waypoint symbol's row: its look, its constraint ring and, with CSTR, the constraint as printed. The
+        // missed approach's constraints are the go-around markers (2.12 member 6 = 1), the route's are not.
+        string? SymbolRow(FenixRouteLeg symbol, bool isTo)
         {
-            FenixRouteLeg symbol = symbols[i];
-            if (declutter && symbol.RemoveOnDeclutter) continue;
-            if (FenixChannelNdGeometry.PlaceRoute(f, symbol.Point) is not { } place) continue;
+            if (declutter && symbol.RemoveOnDeclutter) return null;
+            if (FenixChannelNdGeometry.PlaceRoute(f, symbol.Point) is not { } place) return null;
 
-            bool isTo = i == to;
             string look = symbol.Symbol switch
             {
                 RouteSymbol.Waypoint => Words(isTo ? LookItem.ToWaypoint : LookItem.Waypoint),
@@ -208,8 +211,8 @@ internal static class FenixChannelNdRoute
 
             string constraint = "";
             FenixRouteMarker? ring = r.Markers
-                .Where(m => m.Type == MapMarkerKind.AltCstr && !m.IsGoAround && !(declutter && m.RemoveOnDeclutter)
-                    && Distance(m.Point, symbol.Point) <= SamePointNm)
+                .Where(m => m.Type == MapMarkerKind.AltCstr && m.IsGoAround == symbol.MissedApproach
+                    && !(declutter && m.RemoveOnDeclutter) && Distance(m.Point, symbol.Point) <= SamePointNm)
                 .Select(m => (FenixRouteMarker?)m)
                 .FirstOrDefault();
             if (ring is { } marker)
@@ -223,9 +226,16 @@ internal static class FenixChannelNdRoute
                 }
             }
 
-            string where = FenixChannelNdGeometry.Where(f, place, centerIdent);
-            items.Add(new Item(Project(path, symbol.Point).Key, Order.Waypoint,
-                $"Map: {symbol.Ident}, {look}, {where}{constraint}"));
+            return $"Map: {symbol.Ident}, {look}, {FenixChannelNdGeometry.Where(f, place, centerIdent)}{constraint}";
+        }
+
+        // The waypoints: the FROM (the last passed), the TO and every later one.
+        for (int i = Math.Max(0, to - 1); i < symbols.Count; i++)
+        {
+            if (SymbolRow(symbols[i], i == to) is { } row)
+            {
+                items.Add(new Item(Project(path, symbols[i].Point).Key, Order.Waypoint, row));
+            }
         }
 
         // The departure and arrival runways (2.1), where they are drawn.
@@ -273,17 +283,68 @@ internal static class FenixChannelNdRoute
 
         rows.AddRange(Sorted(items));
         rows.AddRange(aside.OrderBy(entry => entry.Distance).Select(entry => entry.Row));
+        if (r.MissedApproachDrawn)
+        {
+            rows.AddRange(MissedApproachRows(f, r, listedSymbols.Where(leg => leg.MissedApproach), SymbolRow, centerIdent));
+        }
+
         rows.AddRange(TemporaryRows(f, r, symbols, declutter, centerIdent));
         return FenixNdLayer.Of(rows);
     }
 
     /// <summary>
-    /// The waypoint symbols of one route list that the ND draws as route waypoints: never the missed approach's (Ruling
-    /// 43). The route layer lists these for the active and the temporary list only, and the map points layer asks the
-    /// same two lists through this helper, so a map point is the route's exactly when this layer lists it (Ruling 53).
+    /// The waypoint symbols of one route list that the ND draws as route waypoints: the missed approach's only while the
+    /// ND draws it (<paramref name="missedApproachDrawn"/>, 44.1; sitting 3). The route layer lists these for the active
+    /// and the temporary list only, and the map points layer asks the same two lists through this helper, so a map point
+    /// is the route's exactly when this layer lists it (Ruling 53).
     /// </summary>
-    internal static IEnumerable<FenixRouteLeg> ListedSymbols(IEnumerable<FenixRouteLeg> legs)
-        => legs.Where(leg => leg.Kind == RouteLegKind.Symbol && !leg.MissedApproach);
+    internal static IEnumerable<FenixRouteLeg> ListedSymbols(IEnumerable<FenixRouteLeg> legs, bool missedApproachDrawn)
+        => legs.Where(leg => leg.Kind == RouteLegKind.Symbol && (missedApproachDrawn || !leg.MissedApproach));
+
+    // The missed approach while the ND draws it (44.1 = 1; Ruling 91, sitting 3): one row for its line, cyan and solid,
+    // from the runway threshold through its waypoints; its waypoints and constraints; a hold as one row for the arc at
+    // its fix (not its legs). The hold's legs are no part of the line: they were not drawn.
+    private static IEnumerable<string> MissedApproachRows(
+        FenixNdFrame f, FenixRoute r, IEnumerable<FenixRouteLeg> symbols, Func<FenixRouteLeg, bool, string?> symbolRow,
+        string? centerIdent)
+    {
+        List<FenixRouteLeg> legs = [.. r.Legs.Where(FenixChannelRoute.IsPath)];
+        int first = legs.FindIndex(leg => leg.MissedApproach);
+        if (first < 0) yield break;
+
+        // The line starts at the last element of the route before it (the runway threshold), unless that one breaks it.
+        var line = new List<FenixRouteLeg>();
+        if (first > 0 && !FenixChannelRoute.BreaksPath(legs[first - 1])) line.Add(legs[first - 1]);
+        line.AddRange(legs.Where(leg => leg.MissedApproach && leg.Hold is null));
+        List<Vertex> path = BuildPath(line);
+
+        var items = new List<Item>();
+        LineRows(f, path, centerIdent, items, out bool seen, Words(LookItem.MissedApproachLine), out string lineRow,
+            "missed approach", "missed approach line");
+        if (seen) yield return lineRow;
+
+        foreach (FenixRouteLeg symbol in symbols)
+        {
+            if (symbolRow(symbol, false) is { } row) items.Add(new Item(Project(path, symbol.Point).Key, Order.Waypoint, row));
+        }
+
+        // A hold: each run of its elements, one row while its fix is on the screen.
+        List<FenixRouteLeg> missed = [.. legs.Where(leg => leg.MissedApproach)];
+        for (int i = 0; i < missed.Count; i++)
+        {
+            if (missed[i].Hold is null) continue;
+
+            if (FenixChannelNdGeometry.PlaceRoute(f, missed[i].Point) is not null)
+            {
+                items.Add(new Item(Project(path, missed[i].Point).Key, Order.Hold,
+                    $"Map: hold at {missed[i].Ident}, {Words(LookItem.MissedApproachHold)}"));
+            }
+
+            while (i + 1 < missed.Count && missed[i + 1].Hold is not null) i++;
+        }
+
+        foreach (string row in Sorted(items)) yield return row;
+    }
 
     // The temporary plan (2.5) while one is pending: its line from where it starts, the waypoints the active route does
     // not draw at the same place, where its line leaves the screen and its gaps. Its waypoints' look was not measured.
@@ -303,7 +364,7 @@ internal static class FenixChannelNdRoute
             yield return $"Map: temporary flight plan, {Words(LookItem.TemporaryLine)}{from}";
         }
 
-        foreach (FenixRouteLeg symbol in ListedSymbols(r.TemporaryLegs))
+        foreach (FenixRouteLeg symbol in ListedSymbols(r.TemporaryLegs, false))
         {
             if (declutter && symbol.RemoveOnDeclutter) continue;
             if (activeSymbols.Any(leg => leg.Ident == symbol.Ident && Distance(leg.Point, symbol.Point) <= SamePointNm)) continue;
@@ -486,11 +547,15 @@ internal static class FenixChannelNdRoute
 
     // The line's vertices in route order: kinds 0 to 3, never the missed approach (Ruling 43).
     private static List<Vertex> Path(IEnumerable<FenixRouteLeg> legs)
+        => BuildPath(legs.Where(leg => FenixChannelRoute.IsPath(leg) && !leg.MissedApproach));
+
+    // The vertices of a run of path elements, each with its distance along the run.
+    private static List<Vertex> BuildPath(IEnumerable<FenixRouteLeg> legs)
     {
         var path = new List<Vertex>();
         double key = 0;
         FenixRouteLeg? previous = null;
-        foreach (FenixRouteLeg leg in legs.Where(leg => FenixChannelRoute.IsPath(leg) && !leg.MissedApproach))
+        foreach (FenixRouteLeg leg in legs)
         {
             if (previous is { } p) key += Distance(p.Point, leg.Point);
             bool joined = previous is not null && leg.Kind is RouteLegKind.Line or RouteLegKind.Arc;

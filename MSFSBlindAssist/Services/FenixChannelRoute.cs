@@ -111,6 +111,12 @@ internal sealed record FenixRoute(
     /// <summary>The PLAN centre (84); null when not sent.</summary>
     public FenixLatLon? PlanCenter { get; init; }
 
+    /// <summary>
+    /// The ND draws the missed approach (44.1 = 1, <see cref="RouteOptionsData.GoAroundVisible"/>): its elements (member 4)
+    /// are sent all flight and drawn only while this holds. False with 44 empty or not sent.
+    /// </summary>
+    public bool MissedApproachDrawn { get; init; }
+
     /// <summary>The FIX INFO entries that hold a fix (2.13); an empty entry is none.</summary>
     public IReadOnlyList<FenixFixInfo> FixInfos { get; init; } = [];
 }
@@ -135,6 +141,10 @@ internal static class FenixChannelRoute
         FenixChannelPush? position = walk.Part(push, Remote.TruePos, "");
         FenixChannelPush? ndPosition = walk.Part(push, Remote.NdPosCapt, "");
         FenixChannelPush? planCenter = walk.Part(push, Remote.CduCenterCapt, "");
+
+        FenixChannelPush? options = walk.Part(push, Remote.RouteOptionsCapt, "");
+        bool missedApproachDrawn = options is not null
+            && walk.Flag(options, RouteOptionsData.GoAroundVisible, "44");
 
         FenixLatLon here = walk.Point(position, "192", LatLon.Latitude, LatLon.Longitude);
         FenixLatLon? nd = ndPosition is null ? null : walk.Point(ndPosition, "56", NdPositionData.Lat, NdPositionData.Lon);
@@ -193,7 +203,8 @@ internal static class FenixChannelRoute
             Runways = runways,
             NdPosition = nd,
             PlanCenter = center,
-            FixInfos = fixInfos
+            FixInfos = fixInfos,
+            MissedApproachDrawn = missedApproachDrawn
         });
     }
 
@@ -375,7 +386,7 @@ internal static class FenixChannelRoute
             return unchecked((int)field.Varint);
         }
 
-        private bool Flag(FenixChannelPush m, int number, string path)
+        public bool Flag(FenixChannelPush m, int number, string path)
         {
             if (!m.TryGet(number, out FenixChannelField field)) return false;
             if (field.Type != FenixWireType.Varint)

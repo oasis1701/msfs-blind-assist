@@ -26,6 +26,7 @@ internal static class FenixChannelNdLook
     private const string MapPointsEvidence = "03-nd.md, Task 1 Part C, the looks of the map points";
     private const string RouteLooks = "03-nd.md, Task 1 Part B, the route's looks";
     private const string RouteInFlight = "03-nd.md, sitting 2, the route in flight";
+    private const string MissedApproach = "03-nd.md, Sitting 3, the missed approach";
     private const string Constraints = "03-nd.md, sitting 2, the markers (2.12), the constraints";
     private const string Markers = "03-nd.md, sitting 2, the markers (2.12)";
     private const string Rings = "03-nd.md, Task 1 Part B, rings, the bug and FIX INFO";
@@ -76,6 +77,9 @@ internal static class FenixChannelNdLook
             { ColorTellsApart = true },
         new(FenixChannelNdRoute.LookItem.DashedRouteLine, "dashed line", "green", RouteInFlight + " (58.3 left out, HDG)")
             { ColorTellsApart = true },
+        new(FenixChannelNdRoute.LookItem.MissedApproachLine, "solid line", "cyan", MissedApproach + " (appr\\120121, appr-arc40-441)")
+            { ColorTellsApart = true },
+        new(FenixChannelNdRoute.LookItem.MissedApproachHold, "arc", "white", MissedApproach + " (the hold at TROYS, ARC 40)"),
         new(FenixChannelNdRoute.LookItem.TemporaryLine, "dashed line", "yellow", RouteLooks + " (the temporary plan)")
             { ColorTellsApart = true },
         new(FenixChannelNdRoute.LookItem.ConstraintRing, "ring", null, Constraints + " (its color is member 5)"),

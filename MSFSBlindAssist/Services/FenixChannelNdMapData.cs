@@ -206,14 +206,14 @@ internal static class FenixChannelNdMapData
     }
 
     // The route layer lists a point (the same ident within 1 NM) when it is a waypoint symbol of the active or the
-    // temporary list (FenixChannelNdRoute.ListedSymbols: never the missed approach's, never the alternate's: VHP, an
+    // temporary list (FenixChannelNdRoute.ListedSymbols: the missed approach's only while the ND draws it (44.1), never the alternate's: VHP, an
     // alternate waypoint, was drawn as a map point), or the FIX INFO fix (LOZ, tuned, was drawn green once).
     private static bool IsOnRoute(FenixNdMapPoint point, FenixRoute? route)
     {
         if (route is null) return false;
 
-        IEnumerable<FenixRouteLeg> listed = FenixChannelNdRoute.ListedSymbols(route.Legs)
-            .Concat(FenixChannelNdRoute.ListedSymbols(route.TemporaryLegs));
+        IEnumerable<FenixRouteLeg> listed = FenixChannelNdRoute.ListedSymbols(route.Legs, route.MissedApproachDrawn)
+            .Concat(FenixChannelNdRoute.ListedSymbols(route.TemporaryLegs, false));
         return listed.Any(leg => Same(leg.Ident, leg.Point, point))
             || route.FixInfos.Any(fix => Same(fix.Ident, fix.Point, point));
     }

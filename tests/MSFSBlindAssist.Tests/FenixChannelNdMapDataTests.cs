@@ -357,6 +357,30 @@ public class FenixChannelNdMapDataTests
         Assert.Single(FenixChannelNdMapData.Rows(Points([Lgc]), RoseNav(), missed).Rows);
     }
 
+    [Fact]
+    public void A_missed_approach_waypoint_is_the_routes_exactly_while_44_1_is_1()
+    {
+        // Sitting 3: the missed approach is drawn (and listed by the route layer) only with 44.1 = 1; the map point is
+        // the route layer's then and only then, so it is never listed twice and never dropped.
+        FenixChannelProtoWriter missedSymbol = new FenixChannelProtoWriter().Message(4,
+            new FenixChannelProtoWriter().Double(1, Lgc.Lat).Double(2, Lgc.Lon).Varint(3, 4).Varint(4, 1).String(6, "LGC"));
+        FenixRoute Decode(FenixChannelProtoWriter? options)
+        {
+            var remote = new FenixChannelProtoWriter()
+                .Message(2, missedSymbol)
+                .Message(192, new FenixChannelProtoWriter().Double(1, Gate.Latitude).Double(2, Gate.Longitude));
+            if (options is not null) remote.Message(44, options);
+            var wrapper = FenixChannelPush.From(new FenixChannelProtoWriter().Message(1, remote).ToArray())!;
+            wrapper.TryGet(1, out FenixChannelField field);
+            return FenixChannelRoute.Decode(field.AsMessage()!).Value!;
+        }
+
+        Assert.Empty(FenixChannelNdMapData.Rows(Points([Lgc]), RoseNav(), Decode(new FenixChannelProtoWriter().Varint(1, 1))).Rows);
+        Assert.Single(FenixChannelNdMapData.Rows(Points([Lgc]), RoseNav(), Decode(new FenixChannelProtoWriter())).Rows);
+        Assert.Single(FenixChannelNdMapData.Rows(Points([Lgc]), RoseNav(), Decode(new FenixChannelProtoWriter().Varint(1, 0))).Rows);
+        Assert.Single(FenixChannelNdMapData.Rows(Points([Lgc]), RoseNav(), Decode(null)).Rows);
+    }
+
     private static FenixChannelProtoWriter ActiveSymbol(string ident, double lat, double lon)
         => new FenixChannelProtoWriter().Message(4,
             new FenixChannelProtoWriter().Double(1, lat).Double(2, lon).Varint(3, 4).String(6, ident));

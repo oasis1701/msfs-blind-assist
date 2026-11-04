@@ -4,6 +4,7 @@
 // (docs/fenix-channel/evidence/03-nd.md, sitting 1 Part B and sitting 2). Each test writes its own RemoteData bytes with
 // FenixChannelProtoWriter: the aircraft at 40 N 80 W heading 000 with no variation, so up on the screen is true north.
 
+using System.Globalization;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
@@ -469,6 +470,100 @@ public class FenixChannelNdRouteTests
             .Marker(At(25), 0, goAround: true);
 
         Assert.Equal([Line, "Map: ALPHA, white diamond, 10.0 NM ahead"], RouteRows(Snapshot(route, option: 0)));
+    }
+
+    // Sitting 3's missed approach (appr\120121): the final approach to the threshold, then 1500, INTCPT and TROYS (the
+    // "+ 3500" marker, 2.12 member 6 = 1) and the hold at TROYS (one element run; the arc is its [20]).
+    private static Route MissedApproach()
+    {
+        FenixLatLon threshold = At(20), troys = At(30);
+        return new Route().Start(Here, "SMTTH")
+            .Line("ALPHA", At(10)).Line("KATL08L", threshold)
+            .Line("1500", At(22), l => l.Bool(4, true))
+            .Line("INTCPT", At(26), l => l.Bool(4, true))
+            .Line("TROYS", troys, l => l.Bool(4, true))
+            .Line("TROYS", troys, l => l.Bool(4, true).Varint(12, 11).Bool(13, false).Double(14, 109.4))
+            .Arc("TROYS", At(2, 90, troys), l => l.Bool(4, true).Varint(12, 11).Bool(13, false).Double(14, 115))
+            .Symbol("ALPHA", At(10))
+            .Symbol("1500", At(22), l => l.Bool(4, true)).Symbol("INTCPT", At(26), l => l.Bool(4, true))
+            .Symbol("TROYS", troys, l => l.Bool(4, true))
+            .To("ALPHA", At(10))
+            .Marker(troys, 5, "+ 3500", color: 6, goAround: true);
+    }
+
+    private static Action<FenixChannelProtoWriter> Options(params int[] members) => remote =>
+    {
+        var options = new FenixChannelProtoWriter();
+        foreach (int member in members) options.Varint(member, 1);
+        remote.Message(44, options);
+    };
+
+    [Fact]
+    public void The_missed_approach_is_listed_while_44_1_is_1()
+    {
+        Assert.Equal(
+        [
+            Line,
+            "Map: ALPHA, white diamond, 10.0 NM ahead",
+            "Map: missed approach line, cyan solid line",
+            "Map: 1500, green diamond, 22.0 NM ahead",
+            "Map: INTCPT, green diamond, 26.0 NM ahead",
+            "Map: TROYS, green diamond in a magenta ring, 30.0 NM ahead; + 3500",
+            "Map: hold at TROYS, arc"
+        ], RouteRows(Snapshot(MissedApproach(), option: 0, more: Options(1))));
+
+        // CSTR off: the ring stays, the constraint's text goes.
+        Assert.Contains("Map: TROYS, green diamond in a magenta ring, 30.0 NM ahead",
+            RouteRows(Snapshot(MissedApproach(), option: 1, more: Options(1))));
+    }
+
+    [Fact]
+    public void The_missed_approach_is_not_listed_without_44_1()
+    {
+        string[] none = [Line, "Map: ALPHA, white diamond, 10.0 NM ahead"];
+        Assert.Equal(none, RouteRows(Snapshot(MissedApproach(), option: 0)));                       // 44 not sent
+        Assert.Equal(none, RouteRows(Snapshot(MissedApproach(), option: 0, more: r => r.Message(44, new()))));   // 44 empty
+        Assert.Equal(none, RouteRows(Snapshot(MissedApproach(), option: 0, more: Options(2))));      // 44.2 alone
+        Assert.Equal(none, RouteRows(Snapshot(MissedApproach(), option: 0,
+            more: r => r.Message(44, new FenixChannelProtoWriter().Varint(1, 0)))));                // 44.1 = 0
+    }
+
+    [Fact]
+    public void The_missed_approach_follows_the_route_layers_modes()
+    {
+        foreach (ulong mode in new ulong[] { 3, 2 })   // ARC and ROSE NAV
+        {
+            Assert.Contains("Map: missed approach line, cyan solid line",
+                RouteRows(Snapshot(MissedApproach(), mode: mode, option: 0, more: Options(1))));
+        }
+
+        Assert.Contains(RouteRows(Snapshot(MissedApproach(), mode: 4, range: 80, option: 0, more: Options(1))),
+            row => row.StartsWith("Map: missed approach line"));
+
+        foreach (ulong mode in new ulong[] { 0, 1 })   // ROSE LS and ROSE VOR draw no route
+        {
+            Assert.DoesNotContain(Rows(Snapshot(MissedApproach(), mode: mode, option: 0, more: Options(1))),
+                row => row.Contains("missed approach") || row.StartsWith("Map: TROYS"));
+        }
+    }
+
+    [Fact]
+    public void The_missed_approach_reads_the_same_under_a_comma_decimal_culture()
+    {
+        CultureInfo before = CultureInfo.CurrentCulture;
+        try
+        {
+            foreach (string name in new[] { "de-DE", "sv-SE" })
+            {
+                CultureInfo.CurrentCulture = new CultureInfo(name);
+                Assert.Contains("Map: 1500, green diamond, 22.0 NM ahead",
+                    RouteRows(Snapshot(MissedApproach(), option: 0, more: Options(1))));
+            }
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = before;
+        }
     }
 
     [Fact]
