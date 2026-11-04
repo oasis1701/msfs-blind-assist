@@ -108,13 +108,15 @@ internal static partial class FenixChannelFields
 
     /// <summary>
     /// MapPoint, one point of <see cref="MapData"/>, and the FIX INFO fix (<see cref="FixRadial.Fix"/>, the same contract
-    /// type). Member 4 (varint 3 on navaids and NDBs) is read for nothing.
+    /// type). Member 4 is the tuned flag: 1 on the one navaid tuned, 3 on every other navaid and NDB, left out on
+    /// airports and fixes (docs/fenix-channel/evidence/03-nd.md, sitting 2, GetMapData in flight).
     /// </summary>
     public static partial class MapPoint
     {
         public const int Kind = 1;                  // Kind: varint (1 airport, 2, 3 or 4 a navaid, 5 a fix, 7 an NDB)
         public const int Latitude = 2;              // Latitude: fixed64 (double)
         public const int Longitude = 3;             // Longitude: fixed64 (double)
+        public const int Tuned = 4;                 // Tuned: varint, 1 for the tuned navaid, 3 for every other navaid and NDB; left out on airports and fixes
         public const int Ident = 5;                 // Ident: string
     }
 

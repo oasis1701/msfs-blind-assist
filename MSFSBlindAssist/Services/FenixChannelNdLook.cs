@@ -22,6 +22,11 @@ internal static class FenixChannelNdLook
     private const string Rings = "03-nd.md, Task 1 Part B, rings, the bug and FIX INFO";
     private const string Terrain = "03-nd.md, Task 1 Part B, terrain and weather";
     private const string HeaderInFlight = "03-nd.md, sitting 2, the header in flight";
+    private const string MapDataInFlight = "03-nd.md, Sitting 2, GetMapData in flight";
+    private const string TunedCaptures =
+        MapDataInFlight + " (disco-arc160-210338, cap/211030: RMG; fixinfo-211836: VXV; efis/215457-restored: CVG)";
+    private const string TunedKind3 = "; measured on kind 3 (DBN, RMG, ODF, VXV, LOZ, CVG)";
+    private const string TunedUnmeasured = "; kinds 2 and 4 follow the same rule, unmeasured";
 
     // A marker's color is the channel's (its member 5): its entry holds the symbol only.
     private static readonly FenixNdLookEntry[] Entries =
@@ -31,6 +36,11 @@ internal static class FenixChannelNdLook
         new(FenixChannelNdMapData.LookItem.VorDme, "circle with a cross", "magenta", MapPointsEvidence),
         new(FenixChannelNdMapData.LookItem.Dme, "circle", "magenta", MapPointsEvidence),
         new(FenixChannelNdMapData.LookItem.Ndb, "triangle", "magenta", MapPointsEvidence),
+        new(FenixChannelNdMapData.LookItem.Vor, "cross", "magenta",
+            MapDataInFlight + " (efis/211133-arc320-vord: MYS, FFT, XUB, ODR)"),
+        new(FenixChannelNdMapData.LookItem.TunedVorDme, "circle with a cross", "cyan", TunedCaptures + TunedKind3),
+        new(FenixChannelNdMapData.LookItem.TunedVor, "cross", "cyan", TunedCaptures + TunedKind3 + TunedUnmeasured),
+        new(FenixChannelNdMapData.LookItem.TunedDme, "circle", "cyan", TunedCaptures + TunedKind3 + TunedUnmeasured),
         new(FenixChannelNdMapData.LookItem.Airport, "star", "magenta", MapPointsEvidence),
         new(FenixChannelNdMapData.LookItem.Fix, "diamond", "magenta", MapPointsEvidence),
         new(FenixChannelNdRoute.LookItem.ToWaypoint, "diamond", "white", RouteInFlight + "; " + RouteLooks),

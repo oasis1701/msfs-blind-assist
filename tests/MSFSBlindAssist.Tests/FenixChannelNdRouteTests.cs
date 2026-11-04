@@ -137,7 +137,10 @@ public class FenixChannelNdRouteTests
 
     private static string[] Rows(FenixChannelSnapshot s, List<string>? reported = null)
     {
-        FenixChannelRows rows = FenixChannelNdRows.Compose(s, text => reported?.Add(text), (null, 0, null), 0);
+        // No map data is given: the map points layer says so in every ROSE NAV, ARC and PLAN (Ruling 50); that is
+        // FenixChannelNdMapDataTests' and not heard here.
+        FenixChannelRows rows = FenixChannelNdRows.Compose(
+            s, text => { if (!text.StartsWith("Map points:")) reported?.Add(text); }, (null, 0, null), 0);
         Assert.Null(rows.Problem);
         return [.. rows.Rows!];
     }

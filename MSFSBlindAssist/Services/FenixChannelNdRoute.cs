@@ -182,7 +182,7 @@ internal static class FenixChannelNdRoute
         var rows = new List<string>();
 
         // The active route's symbols: never the missed approach's (Ruling 43).
-        List<FenixRouteLeg> symbols = [.. r.Legs.Where(leg => leg.Kind == RouteLegKind.Symbol && !leg.MissedApproach)];
+        List<FenixRouteLeg> symbols = [.. ListedSymbols(r.Legs)];
         int to = symbols.FindIndex(leg => leg.Ident == active.Ident && Distance(leg.Point, active.Point) <= SamePointNm);
         if (to < 0) to = symbols.Count;   // the TO is no symbol of its own (the destination runway): every symbol is passed
 
@@ -278,6 +278,14 @@ internal static class FenixChannelNdRoute
         return FenixNdLayer.Of(rows);
     }
 
+    /// <summary>
+    /// The waypoint symbols of one route list that the ND draws as route waypoints: never the missed approach's (Ruling
+    /// 43). The route layer lists these for the active and the temporary list only, and the map points layer asks the
+    /// same two lists through this helper, so a map point is the route's exactly when this layer lists it (Ruling 53).
+    /// </summary>
+    internal static IEnumerable<FenixRouteLeg> ListedSymbols(IEnumerable<FenixRouteLeg> legs)
+        => legs.Where(leg => leg.Kind == RouteLegKind.Symbol && !leg.MissedApproach);
+
     // The temporary plan (2.5) while one is pending: its line from where it starts, the waypoints the active route does
     // not draw at the same place, where its line leaves the screen and its gaps. Its waypoints' look was not measured.
     private static IEnumerable<string> TemporaryRows(
@@ -296,7 +304,7 @@ internal static class FenixChannelNdRoute
             yield return $"Map: temporary flight plan, {Words(LookItem.TemporaryLine)}{from}";
         }
 
-        foreach (FenixRouteLeg symbol in r.TemporaryLegs.Where(leg => leg.Kind == RouteLegKind.Symbol && !leg.MissedApproach))
+        foreach (FenixRouteLeg symbol in ListedSymbols(r.TemporaryLegs))
         {
             if (declutter && symbol.RemoveOnDeclutter) continue;
             if (activeSymbols.Any(leg => leg.Ident == symbol.Ident && Distance(leg.Point, symbol.Point) <= SamePointNm)) continue;

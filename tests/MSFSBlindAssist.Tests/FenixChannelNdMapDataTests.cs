@@ -14,7 +14,7 @@ public class FenixChannelNdMapDataTests
     private const double Variation = -5.597;
     private const long Now = 100_000;
 
-    private sealed record P(int Kind, string Ident, double Lat, double Lon);
+    private sealed record P(int Kind, string Ident, double Lat, double Lon, bool Tuned = false);
 
     private static readonly P Lgc = new(3, "LGC", 33.049118, -85.206223);
     private static readonly P Dob = new(4, "DOB", 33.914654, -84.507309);
@@ -26,7 +26,7 @@ public class FenixChannelNdMapDataTests
     private static readonly P Fix = new(5, "INTCT", 33.6472247, -84.3639034);
 
     private static FenixChannelProtoWriter Point(P p) => new FenixChannelProtoWriter()
-        .Varint(1, (ulong)p.Kind).Double(2, p.Lat).Double(3, p.Lon).Varint(4, 3).String(5, p.Ident);
+        .Varint(1, (ulong)p.Kind).Double(2, p.Lat).Double(3, p.Lon).Varint(4, p.Tuned ? 1UL : 3UL).String(5, p.Ident);
 
     private static int GroupOf(int kind) => kind switch { 1 => 1, 2 or 3 or 4 => 2, 5 => 3, _ => 4 };
 
@@ -136,6 +136,16 @@ public class FenixChannelNdMapDataTests
         Assert.Empty(bare.Points);
     }
 
+    [Fact]
+    public void Member_4_equal_to_1_marks_the_tuned_navaid()
+    {
+        FenixNdMapPoints p = Points([Lgc with { Tuned = true }, Dob, Airport]);
+
+        Assert.True(p.Points.Single(point => point.Ident == "LGC").Tuned);
+        Assert.False(p.Points.Single(point => point.Ident == "DOB").Tuned);     // member 4 = 3
+        Assert.False(p.Points.Single(point => point.Ident == "KFTY").Tuned);
+    }
+
     [Theory]
     [InlineData("navaid ident", "2.5")]
     [InlineData("airport latitude", "1.2")]
@@ -194,7 +204,7 @@ public class FenixChannelNdMapDataTests
             "map mode differs" => Points([Lgc], mode: 3),
             "map option differs" => Points([Lgc], option: 3),
             "map range below the view" => Points([Lgc], range: 40),
-            "map center differs" => Points([Lgc], center: new FenixLatLon(Gate.Latitude + 0.01, Gate.Longitude)),
+            "map center differs" => Points([Lgc], center: new FenixLatLon(Gate.Latitude + 0.2, Gate.Longitude)),
             _ => Points([Lgc])
         };
         long receivedAt = reason == "map data too old" ? Now - FenixChannelNdMapData.MaxAgeMs - 1 : Now;
@@ -231,6 +241,12 @@ public class FenixChannelNdMapDataTests
         Assert.Null(FenixChannelNdMapData.Check(
             Points([Lgc], center: new FenixLatLon(Gate.Latitude + 0.05 / 60, Gate.Longitude)), header, frame, Now, Now));
 
+        // Beyond the tolerance (a tenth of the reply's range and 0.5 NM: 8.5 NM at range 80) the center differs.
+        Assert.Null(FenixChannelNdMapData.Check(
+            Points([Lgc], center: new FenixLatLon(Gate.Latitude + 8.4 / 60, Gate.Longitude)), header, frame, Now, Now));
+        Assert.Equal("map center differs", FenixChannelNdMapData.Check(
+            Points([Lgc], center: new FenixLatLon(Gate.Latitude + 8.6 / 60, Gate.Longitude)), header, frame, Now, Now));
+
         // A reply sent without a mode is not any mode.
         Assert.Equal("map mode differs", FenixChannelNdMapData.Check(Points([Lgc], mode: null), header, frame, Now, Now));
 
@@ -240,6 +256,23 @@ public class FenixChannelNdMapDataTests
         Assert.Equal("map range below the view",
             FenixChannelNdMapData.Check(Points([Lgc], mode: 3, range: 40), arc, arcFrame, Now, Now));
         Assert.Null(FenixChannelNdMapData.Check(Points([Lgc], mode: 3, range: 80), arc, arcFrame, Now, Now));
+    }
+
+    [Theory]
+    [InlineData(160, 16.04, true)]    // sitting 2: up to 16.04 NM from 192 at ARC 160 before a renewal
+    [InlineData(20, 2.01, true)]      // and 2.01 NM at ARC 20
+    [InlineData(20, 3.5, false)]      // well past a tenth of the range and the margin
+    [InlineData(160, 17.0, false)]
+    public void The_center_may_trail_by_a_tenth_of_the_replys_range(int range, double awayNm, bool used)
+    {
+        FenixNdData header = FenixChannelNd.Read(Snapshot(mode: 3, range: (ulong)range)).Value!;
+        FenixNdFrame frame = FenixNdFrame.From(header)!;
+        FenixNdMapPoints reply = Points([Lgc], center: new FenixLatLon(Gate.Latitude + awayNm / 60, Gate.Longitude),
+            range: (ulong)range, mode: 3);
+
+        string? why = FenixChannelNdMapData.Check(reply, header, frame, Now, Now);
+
+        Assert.Equal(used ? null : "map center differs", why);
     }
 
     // ---- The rows
@@ -292,23 +325,41 @@ public class FenixChannelNdMapDataTests
     [Fact]
     public void A_route_waypoint_is_listed_as_the_nd_draws_it()
     {
-        // VHP is on the alternate at the same place: the ND draws it once, in the route's style, and the route layer
-        // lists it. LGC has a route waypoint of the same ident far away: another point, listed here.
+        // Ruling 53: only a waypoint the route layer lists makes a map point the route's. LGC is a symbol of the
+        // active list at the same place: the ND draws it once, in the route's style. VHP is on the alternate, which
+        // the ND does not draw (sitting 2): it is drawn as a map point, so it is listed here. A missed approach
+        // symbol is not listed by the route layer either.
         var vhp = new P(3, "VHP", 33.9, -84.5);
         FenixRoute route = FenixChannelRoute.Decode(RoutePush(
-            AlternateLeg("VHP", 33.9, -84.5).Message(7, new FenixChannelProtoWriter()
-                .Double(1, 36.0).Double(2, -85.0).String(6, "LGC")))).Value!;
+            ActiveSymbol("LGC", Lgc.Lat, Lgc.Lon)
+                .Message(7, new FenixChannelProtoWriter().Double(1, vhp.Lat).Double(2, vhp.Lon).String(6, "VHP")))).Value!;
 
         string[] rows = FenixChannelNdMapData.Rows(Points([Lgc, vhp]), RoseNav(), route).Rows.ToArray();
 
         Assert.Single(rows);
-        Assert.StartsWith("Map: LGC, ", rows[0]);
+        Assert.StartsWith("Map: VHP, magenta circle with a cross, ", rows[0]);
 
         // The same through Compose: a route in the snapshot.
-        string[] composed = Compose(Snapshot(route: AlternateLeg("LGC", Lgc.Lat, Lgc.Lon)), Points([Lgc, Dob]));
+        string[] composed = Compose(Snapshot(route: ActiveSymbol("LGC", Lgc.Lat, Lgc.Lon)), Points([Lgc, Dob]));
         Assert.DoesNotContain(composed, row => row.StartsWith("Map: LGC"));
         Assert.Contains(composed, row => row.StartsWith("Map: DOB"));
+
+        // A waypoint on the alternate only is listed.
+        string[] alternate = Compose(Snapshot(route: AlternateLeg("LGC", Lgc.Lat, Lgc.Lon)), Points([Lgc]));
+        Assert.Contains(alternate, row => row.StartsWith("Map: LGC"));
+
+        // A waypoint of the temporary list is the route layer's too; one of the missed approach is not.
+        FenixRoute temporary = FenixChannelRoute.Decode(RoutePush(new FenixChannelProtoWriter().Message(5,
+            new FenixChannelProtoWriter().Double(1, Lgc.Lat).Double(2, Lgc.Lon).Varint(3, 4).String(6, "LGC")))).Value!;
+        Assert.Empty(FenixChannelNdMapData.Rows(Points([Lgc]), RoseNav(), temporary).Rows);
+        FenixRoute missed = FenixChannelRoute.Decode(RoutePush(new FenixChannelProtoWriter().Message(4,
+            new FenixChannelProtoWriter().Double(1, Lgc.Lat).Double(2, Lgc.Lon).Varint(3, 4).Varint(4, 1).String(6, "LGC")))).Value!;
+        Assert.Single(FenixChannelNdMapData.Rows(Points([Lgc]), RoseNav(), missed).Rows);
     }
+
+    private static FenixChannelProtoWriter ActiveSymbol(string ident, double lat, double lon)
+        => new FenixChannelProtoWriter().Message(4,
+            new FenixChannelProtoWriter().Double(1, lat).Double(2, lon).Varint(3, 4).String(6, ident));
 
     private static FenixChannelPush RoutePush(FenixChannelProtoWriter route)
     {
@@ -321,17 +372,106 @@ public class FenixChannelNdMapDataTests
     }
 
     [Fact]
-    public void An_option_with_nothing_drawn_lists_nothing()
+    public void An_option_with_nothing_drawn_lists_only_the_tuned_navaid()
     {
+        P tuned = Lgc with { Tuned = true };
         foreach (ulong? option in new ulong?[] { 0, null })
         {
-            FenixNdMapPoints points = Points([Lgc, Dob, Airport, Fix, Ndb], option: option);
+            // No tuned navaid in the reply: nothing.
+            FenixNdLayer none = FenixChannelNdMapData.Rows(
+                Points([Lgc, Dob, Airport, Fix, Ndb], option: option), RoseNav(), null);
+            Assert.Empty(none.Rows);
+            Assert.Null(none.LayerProblem);
 
-            FenixNdLayer layer = FenixChannelNdMapData.Rows(points, RoseNav(), null);
-
-            Assert.Empty(layer.Rows);
-            Assert.Null(layer.LayerProblem);
+            // One tuned: it alone, cyan, whatever the option (sitting 2).
+            string[] rows = FenixChannelNdMapData.Rows(
+                Points([tuned, Dob, Airport, Fix, Ndb], option: option), RoseNav(), null).Rows.ToArray();
+            Assert.Single(rows);
+            Assert.StartsWith("Map: LGC, cyan circle with a cross, ", rows[0]);
         }
+    }
+
+    [Theory]
+    [InlineData(3, "cyan circle with a cross")]
+    [InlineData(2, "cyan cross")]
+    [InlineData(4, "cyan circle")]
+    public void A_tuned_navaid_is_cyan_once_with_any_option(int kind, string look)
+    {
+        var tuned = new P(kind, "RMG", Lgc.Lat, Lgc.Lon, Tuned: true);
+        foreach (ulong? option in new ulong?[] { null, 0, 1, 2, 3, 4 })
+        {
+            string[] rows = FenixChannelNdMapData.Rows(Points([tuned], option: option), RoseNav(), null).Rows.ToArray();
+
+            Assert.Single(rows);
+            Assert.StartsWith($"Map: RMG, {look}, ", rows[0]);
+        }
+    }
+
+    [Fact]
+    public void A_tuned_ndb_is_listed_only_with_the_ndb_option()
+    {
+        var tuned = Ndb with { Tuned = true };
+
+        Assert.Empty(FenixChannelNdMapData.Rows(Points([tuned], option: 1), RoseNav(), null).Rows);
+        Assert.Empty(FenixChannelNdMapData.Rows(Points([tuned], option: null), RoseNav(), null).Rows);
+        Assert.StartsWith("Map: ATL, magenta triangle, ",
+            FenixChannelNdMapData.Rows(Points([tuned], option: 3), RoseNav(), null).Rows.Single());
+    }
+
+    [Fact]
+    public void Kind_2_is_a_magenta_cross_with_vor_d()
+    {
+        var vor = new P(2, "MYS", Lgc.Lat, Lgc.Lon);
+
+        Assert.StartsWith("Map: MYS, magenta cross, ",
+            FenixChannelNdMapData.Rows(Points([vor], option: 2), RoseNav(), null).Rows.Single());
+        Assert.Empty(FenixChannelNdMapData.Rows(Points([vor], option: 1), RoseNav(), null).Rows);
+    }
+
+    [Fact]
+    public void The_fix_info_fix_is_the_route_layers()
+    {
+        // LOZ was tuned and drawn green, once (sitting 2): the route layer lists it, whatever the option.
+        var loz = new P(3, "LOZ", Lgc.Lat, Lgc.Lon, Tuned: true);
+        var fixInfo = new FenixChannelProtoWriter().Message(13, new FenixChannelProtoWriter().Message(1,
+            new FenixChannelProtoWriter().Varint(1, 3).Double(2, loz.Lat + 0.002).Double(3, loz.Lon).String(5, "LOZ")));
+        FenixRoute route = FenixChannelRoute.Decode(RoutePush(fixInfo)).Value!;
+        Assert.Single(route.FixInfos);
+
+        foreach (ulong? option in new ulong?[] { null, 2 })
+        {
+            Assert.Empty(FenixChannelNdMapData.Rows(Points([loz], option: option), RoseNav(), route).Rows);
+        }
+
+        // Another point with the same ident far away is another point.
+        var farAway = new P(3, "LOZ", Elw.Lat, Elw.Lon, Tuned: true);
+        Assert.Single(FenixChannelNdMapData.Rows(Points([farAway], option: 2), RoseNav(), route).Rows);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void The_layer_reads_with_any_option_in_nav_and_arc(int mode)
+    {
+        // The reply's range must cover the reach: 80 in ROSE NAV at 160 and in ARC at 80.
+        ulong snapRange = mode == 3 ? 80UL : 160UL;
+        foreach (ulong? option in new ulong?[] { null, 0 })
+        {
+            // No data: the row says so, with no option too.
+            Assert.Contains("Map points: not available, no data",
+                Compose(Snapshot(mode: (ulong)mode, range: snapRange, option: option), null));
+
+            // A reply for another option is not the one the ND draws from.
+            string[] differs = Compose(Snapshot(mode: (ulong)mode, range: snapRange, option: option),
+                Points([Lgc], mode: (ulong)mode, option: 2));
+            Assert.Contains("Map points: not available, map option differs", differs);
+        }
+
+        // With no option and a good reply holding a tuned navaid in view, it alone is listed.
+        FenixNdMapPoints good = Points([Lgc with { Tuned = true }, Dob], mode: (ulong)mode, option: null);
+        string[] rows = Compose(Snapshot(mode: (ulong)mode, range: snapRange, option: null), good);
+        Assert.Single(rows, row => row.StartsWith("Map: "));
+        Assert.Contains(rows, row => row.StartsWith("Map: LGC, cyan circle with a cross, "));
     }
 
     [Fact]
@@ -365,13 +505,9 @@ public class FenixChannelNdMapDataTests
     }
 
     [Theory]
-    [InlineData(2, null)]
-    [InlineData(2, 0UL)]
-    [InlineData(3, null)]
-    [InlineData(3, 0UL)]
-    [InlineData(4, null)]
-    [InlineData(4, 0UL)]
+    [InlineData(0, null)]
     [InlineData(0, 2UL)]
+    [InlineData(1, null)]
     [InlineData(1, 2UL)]
     public void Where_the_nd_draws_no_map_points_the_layer_is_silent(int mode, ulong? option)
     {
@@ -441,10 +577,15 @@ public class FenixChannelNdMapDataTests
     {
         FenixNdMapPoints points = Points([Elw, Lgc, Dob]);
         string[] invariant = Compose(Snapshot(), points);
-
         string[] there = TestCulture.Run(culture, () => Compose(Snapshot(), points));
-
         Assert.Equal(invariant, there);
+
+        // The new looks: a tuned navaid of each kind and kind 2 with VOR.D.
+        FenixNdMapPoints looks = Points(
+            [Lgc with { Tuned = true }, new P(2, "MYS", Dob.Lat, Dob.Lon), new P(4, "RMG", Elw.Lat, Elw.Lon, Tuned: true)]);
+        string[] looksInvariant = Compose(Snapshot(), looks);
+        Assert.Equal(3, looksInvariant.Count(row => row.StartsWith("Map: ")));
+        Assert.Equal(looksInvariant, TestCulture.Run(culture, () => Compose(Snapshot(), looks)));
     }
 
     [Fact]
@@ -460,6 +601,21 @@ public class FenixChannelNdMapDataTests
             Assert.NotNull(entry);
             Assert.Equal("magenta", entry!.Color);
             Assert.Contains("the looks of the map points", entry.Evidence);
+        }
+
+        foreach ((string item, string color, string symbol) in new[]
+        {
+            (FenixChannelNdMapData.LookItem.TunedVorDme, "cyan", "circle with a cross"),
+            (FenixChannelNdMapData.LookItem.TunedVor, "cyan", "cross"),
+            (FenixChannelNdMapData.LookItem.TunedDme, "cyan", "circle"),
+            (FenixChannelNdMapData.LookItem.Vor, "magenta", "cross")
+        })
+        {
+            FenixNdLookEntry? entry = FenixChannelNdLook.For(item);
+            Assert.NotNull(entry);
+            Assert.Equal(color, entry!.Color);
+            Assert.Equal(symbol, entry.Symbol);
+            Assert.Contains("Sitting 2, GetMapData in flight", entry.Evidence);
         }
     }
 }

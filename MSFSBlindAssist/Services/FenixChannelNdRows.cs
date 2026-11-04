@@ -57,14 +57,14 @@ internal static class FenixChannelNdRows
 
     private const string MapPointsName = "Map points";
 
-    // The mode and the option decide first: the ND draws map points in ROSE NAV, ARC and PLAN with WPT, VOR.D, NDB or
-    // ARPT only. Anywhere else (ROSE LS, ROSE VOR, CSTR, no option) the layer gives no rows at all, whatever the map
-    // data, its problem or its absence.
+    // The mode decides first: the ND draws map points in ROSE NAV, ARC and PLAN, and with any option, since the tuned
+    // navaid is drawn with none (sitting 2; Ruling 50). In ROSE LS and ROSE VOR the layer gives no rows at all,
+    // whatever the map data, its problem or its absence.
     private static FenixNdLayer MapPointsLayer(
         FenixChannelSnapshot s, FenixNdData nd, (FenixNdMapPoints? Points, long ReceivedAtMs, string? Problem) mapPoints,
         long nowMs)
     {
-        if (nd.Mode is not ("NAV" or "ARC" or "PLAN") || nd.MapOption is not ("WPT" or "VOR.D" or "NDB" or "ARPT"))
+        if (nd.Mode is not ("NAV" or "ARC" or "PLAN"))
         {
             return FenixNdLayer.Of([]);
         }

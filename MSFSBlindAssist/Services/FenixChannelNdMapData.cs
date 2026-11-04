@@ -4,8 +4,11 @@ using static MSFSBlindAssist.Services.FenixChannelFields;
 
 namespace MSFSBlindAssist.Services;
 
-/// <summary>One point of the GetMapData reply: <see cref="Kind"/> is the channel's kind number (1 airport, 2, 3 or 4 a navaid, 5 a fix, 7 an NDB).</summary>
-internal sealed record FenixNdMapPoint(int Kind, string Ident, FenixLatLon Point);
+/// <summary>
+/// One point of the GetMapData reply: <see cref="Kind"/> is the channel's kind number (1 airport, 2, 3 or 4 a navaid, 5 a
+/// fix, 7 an NDB); <see cref="Tuned"/> says the point is the tuned navaid (member 4 = 1).
+/// </summary>
+internal sealed record FenixNdMapPoint(int Kind, string Ident, FenixLatLon Point, bool Tuned = false);
 
 /// <summary>
 /// The GetMapData reply. <paramref name="Range"/> is the ND's reach the reply covers (0 when left out), <paramref name="Mode"/>
@@ -27,10 +30,17 @@ internal static class FenixChannelNdMapData
     public const long MaxAgeMs = 3000;
 
     /// <summary>
-    /// How far the reply's center may be from the frame's, in nautical miles. PROVISIONAL: measured at rest only; the
-    /// flight (Task 6) checks whether the reply follows the aircraft.
+    /// The reply renews after the aircraft moves this fraction of the reply's range (sitting 2: steps of 2.00 to 2.08 NM
+    /// at 20 and 16.01 to 16.14 NM at 160), so its center trails the frame's by up to that much (2.01 NM at ARC 20 and
+    /// 16.04 NM at ARC 160 before a renewal).
     /// </summary>
-    public const double CenterToleranceNm = 0.1;
+    public const double CenterToleranceRangeFraction = 0.1;
+
+    /// <summary>
+    /// Added to the range fraction: the version is polled once a second, and the center is 0.11 to 0.14 NM from the
+    /// frame's at a renewal (sitting 2, GetMapData in flight).
+    /// </summary>
+    public const double CenterToleranceMarginNm = 0.5;
 
     /// <summary>A route waypoint and a map point with the same ident are one point within this distance.</summary>
     private const double SamePointNm = 1.0;
@@ -45,6 +55,10 @@ internal static class FenixChannelNdMapData
         public const string Ndb = "NDB map point";
         public const string Airport = "airport map point";
         public const string Fix = "fix map point";
+        public const string Vor = "VOR map point";
+        public const string TunedVorDme = "tuned VOR/DME map point";
+        public const string TunedVor = "tuned VOR map point";
+        public const string TunedDme = "tuned DME map point";
     }
 
     /// <summary>The reply, or the field that has the wrong shape ("field 2.5 has the wrong shape").</summary>
@@ -76,7 +90,9 @@ internal static class FenixChannelNdMapData
                     else ident = text;
                 }
 
-                points.Add(new FenixNdMapPoint(kind, ident, new FenixLatLon(latitude, longitude)));
+                ulong tuned = ReadVarint(message, MapPoint.Tuned, $"{path}.{MapPoint.Tuned}", Wrong, 0)!.Value;
+
+                points.Add(new FenixNdMapPoint(kind, ident, new FenixLatLon(latitude, longitude), tuned == 1));
             }
         }
 
@@ -131,7 +147,9 @@ internal static class FenixChannelNdMapData
 
         double away = NavigationCalculator.CalculateDistance(
             frame.Center.Latitude, frame.Center.Longitude, p.Center.Latitude, p.Center.Longitude);
-        if (!(away <= CenterToleranceNm)) return "map center differs";
+        // The frame's center stays the reference (192 in ARC and ROSE NAV, 84 in PLAN); the reply's trails it by up to a
+        // tenth of its own range before it renews.
+        if (!(away <= p.Range * CenterToleranceRangeFraction + CenterToleranceMarginNm)) return "map center differs";
 
         if (nowMs - receivedAtMs > MaxAgeMs) return "map data too old";
         return null;
@@ -148,7 +166,7 @@ internal static class FenixChannelNdMapData
         var listed = new List<(FenixNdPlace Place, FenixNdMapPoint Point, string Item)>();
         foreach (FenixNdMapPoint point in p.Points)
         {
-            if (LookItemFor(p.MapOption, point.Kind) is not { } item) continue;
+            if (LookItemFor(p.MapOption, point) is not { } item) continue;
             if (FenixChannelNdGeometry.Place(f, point.Point) is not { } place) continue;
             if (IsOnRoute(point, route)) continue;
 
@@ -165,20 +183,43 @@ internal static class FenixChannelNdMapData
         return FenixNdLayer.Of(rows);
     }
 
-    // The kinds each option makes the ND draw (Part C's table) and their looks; null for a kind it does not draw.
-    private static string? LookItemFor(string? option, int kind) => (option, kind) switch
+    // The kinds each option makes the ND draw (Part C's table, kind 2 with VOR.D from sitting 2) and their looks; null
+    // for a kind it does not draw. The tuned navaid (kinds 2, 3 and 4, member 4 = 1) is drawn cyan with any option,
+    // none included (sitting 2); an NDB flagged tuned was never seen and stays the NDB option's.
+    private static string? LookItemFor(string? option, FenixNdMapPoint point)
     {
-        ("VOR.D", 3) => LookItem.VorDme,
-        ("VOR.D", 4) => LookItem.Dme,
-        ("NDB", 7) => LookItem.Ndb,
-        ("ARPT", 1) => LookItem.Airport,
-        ("WPT", 5) => LookItem.Fix,
-        _ => null
-    };
+        if (point.Tuned && point.Kind is 2 or 3 or 4)
+        {
+            return point.Kind switch { 2 => LookItem.TunedVor, 3 => LookItem.TunedVorDme, _ => LookItem.TunedDme };
+        }
 
+        return (option, point.Kind) switch
+        {
+            ("VOR.D", 2) => LookItem.Vor,
+            ("VOR.D", 3) => LookItem.VorDme,
+            ("VOR.D", 4) => LookItem.Dme,
+            ("NDB", 7) => LookItem.Ndb,
+            ("ARPT", 1) => LookItem.Airport,
+            ("WPT", 5) => LookItem.Fix,
+            _ => null
+        };
+    }
+
+    // The route layer lists a point (the same ident within 1 NM) when it is a waypoint symbol of the active or the
+    // temporary list (FenixChannelNdRoute.ListedSymbols: never the missed approach's, never the alternate's: VHP, an
+    // alternate waypoint, was drawn as a map point), or the FIX INFO fix (LOZ, tuned, was drawn green once).
     private static bool IsOnRoute(FenixNdMapPoint point, FenixRoute? route)
-        => route is not null && FenixChannelNdRows.RouteLegs(route).Any(leg =>
-            string.Equals(leg.Ident, point.Ident, StringComparison.Ordinal)
+    {
+        if (route is null) return false;
+
+        IEnumerable<FenixRouteLeg> listed = FenixChannelNdRoute.ListedSymbols(route.Legs)
+            .Concat(FenixChannelNdRoute.ListedSymbols(route.TemporaryLegs));
+        return listed.Any(leg => Same(leg.Ident, leg.Point, point))
+            || route.FixInfos.Any(fix => Same(fix.Ident, fix.Point, point));
+    }
+
+    private static bool Same(string ident, FenixLatLon at, FenixNdMapPoint point)
+        => string.Equals(ident, point.Ident, StringComparison.Ordinal)
             && NavigationCalculator.CalculateDistance(
-                leg.Point.Latitude, leg.Point.Longitude, point.Point.Latitude, point.Point.Longitude) <= SamePointNm);
+                at.Latitude, at.Longitude, point.Point.Latitude, point.Point.Longitude) <= SamePointNm;
 }

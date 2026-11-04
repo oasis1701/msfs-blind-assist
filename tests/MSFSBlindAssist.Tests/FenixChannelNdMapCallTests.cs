@@ -87,7 +87,7 @@ public class FenixChannelNdMapCallTests
         Assert.Equal(new byte[] { 7, 8, 9 }, result.Message);
         Assert.Equal("", result.Text);
         var seen = Assert.Single(fake.Requests);
-        Assert.Equal("/ProsimRemoting.GrpcAircraftDataSource/GetMapDataVersion", seen.Uri);
+        Assert.Equal(FenixChannelFields.PathOf(FenixChannelCall.MapDataVersion), seen.Uri);
         Assert.Equal(Frame(1, 2), seen.Body);
     }
 
