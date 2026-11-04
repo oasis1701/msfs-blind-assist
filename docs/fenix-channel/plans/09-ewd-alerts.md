@@ -95,9 +95,9 @@ in `docs/fenix-channel/evidence/09-ewd-alerts.md`; commit `docs(fenix-channel): 
   "urCONFIGu " over "rFLAPS NOT IN T.O CONFIG"), and the same times.
 - [ ] Seat belts sign on and off, parking brake set and released: each memo entry's Title (text or blank) and the
   column its line is in.
-- [ ] A quiet minute: whether heartbeat messages come, how often, with Heartbeat set or not, and whether they carry the
+- [x] A quiet minute: whether heartbeat messages come, how often, with Heartbeat set or not, and whether they carry the
   entries.
-- [ ] From the 2026-11-02 fire drill's notes, if they hold it: whether "*AIR BLEED" came as an entry; otherwise "not
+- [x] From the 2026-11-02 fire drill's notes, if they hold it: whether "*AIR BLEED" came as an entry; otherwise "not
   measured".
 - [ ] What the code does with each result: `LineWaitMs` is the largest entry-to-line gap measured plus 500 ms, kept
   between 500 and 2,000 ms (1,000 ms when no gap could be measured). The other results are covered by Task 2's and
@@ -284,14 +284,17 @@ only).
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed
+- **Status:** in progress: Task 1's in-flight part done (2026-11-04); its ground part waits on the owner
 - **Claimed by:** Robin Kipp (robin24), 2026-11-04
-- **Worked by:**
+- **Worked by:** Robin Kipp with Claude
 - **Started:** 2026-11-04, from 1d29a73ee (plan 01's recorded base)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:**
-- **Waiting on the owner:**
-- **In-sim results:**
+- **Tasks:** 0 done (claim 13062c072); 1 in part: the quiet minute, the seat belts half of the memo check and the fire drill's
+  notes are done.
+- **Waiting on the owner:** Task 1's ground part, at a gate with both engines running: GEN 1 off and on, TO CONFIG with the
+  flaps up, the parking brake set and released.
+- **In-sim results:** 2026-11-04, A321 IAE in cruise: heartbeats, the seat belts and no smoking memos, RCL:
+  `evidence/09-ewd-alerts.md`.
 - **Changed from the plan:**
 - **Rulings made while working:**
