@@ -6,7 +6,8 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// The ND's window ("Fenix ND"): the captain's navigation display as <see cref="FenixChannelNdRows"/> words it, and
 /// under the list the captain's EFIS controls: Mode and Range combos and the CSTR, WPT, VOR.D, NDB, ARPT and LS
 /// buttons (<see cref="FenixChannelNdControls"/>). A class of its own because Fenix windows are tracked one for each
-/// type (<see cref="FenixChannelDisplayForm"/>). Nothing constructs it yet.
+/// type (<see cref="FenixChannelDisplayForm"/>). Alt+N and the Fenix windows list's "ND" entry open it
+/// (Aircraft/FenixA320Definition.ChannelNd.cs, FenixWindowRegistry.ChannelNd.cs).
 /// </summary>
 /// <remarks>
 /// <para>The controls follow every refresh from the snapshot the rows are read from (<see cref="OnRefresh"/>). While

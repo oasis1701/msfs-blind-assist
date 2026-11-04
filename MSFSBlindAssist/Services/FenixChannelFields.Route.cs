@@ -2,8 +2,9 @@ namespace MSFSBlindAssist.Services;
 
 // The fields of the ND's route and positions: the part of RemoteData the route decoder alone reads, and the messages
 // nested in it. Measured on 3.0.0.7613 (2026-11-03). Only the captain's side: the first officer's route (3) and
-// positions (57, 85) are never read. Every nested class is partial, so that a feature that reads another member of the
-// same message adds it from a file of its own and does not declare the message again.
+// positions (57, 85) are never read. The classes that name a message's members are partial, so that a feature that reads
+// another member of the same message adds it from a file of its own and does not declare the message again. The value
+// tables (RouteLegKind, RouteEndReason, RouteSymbol, MapMarkerKind) are not: each holds every value of one member here.
 internal static partial class FenixChannelFields
 {
     public static partial class Remote

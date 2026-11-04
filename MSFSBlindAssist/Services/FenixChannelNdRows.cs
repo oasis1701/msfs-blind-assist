@@ -4,9 +4,8 @@ using System.Text.RegularExpressions;
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// What one layer of the ND gives <see cref="FenixChannelNdRows.Compose(FenixChannelSnapshot, Action{string})"/>: its
-/// rows, a problem of its own that costs only its rows, or a problem that stops the whole ND (a letter the app does not
-/// know, [FNX-24]).
+/// What one layer of the ND gives <c>FenixChannelNdRows.Compose</c>: its rows, a problem of its own that costs only its
+/// rows, or a problem that stops the whole ND (a letter the app does not know, [FNX-24]).
 /// </summary>
 internal sealed record FenixNdLayer(IReadOnlyList<string> Rows, string? LayerProblem, string? NdProblem)
 {
@@ -39,7 +38,10 @@ internal static partial class FenixChannelNdRows
 
     private const string TaOnly = "TA ONLY";
 
-    /// <summary>The rows for <paramref name="s"/>: today the header and the messages, no layer yet.</summary>
+    /// <summary>
+    /// The rows for <paramref name="s"/> with no layer: the header and the messages only. The tests' overload; the window
+    /// composes with the layered one, which takes the map points and the clock.
+    /// </summary>
     public static FenixChannelRows Compose(FenixChannelSnapshot s, Action<string> reportProblem)
         => Compose(s, reportProblem, []);
 

@@ -514,10 +514,12 @@ internal static class FenixChannelNdRoute
         }
     }
 
-    // The fix's own symbol: the map point look of its kind (Part C), without that look's magenta.
+    // The fix's own symbol: the map point look of its kind (Part C; kind 2, a VOR without DME, the cross sitting 2
+    // measured), without that look's magenta.
     private static string? FixSymbol(int kind) => kind switch
     {
         1 => FenixChannelNdLook.For(FenixChannelNdMapData.LookItem.Airport)?.Symbol,
+        2 => FenixChannelNdLook.For(FenixChannelNdMapData.LookItem.Vor)?.Symbol,
         3 => FenixChannelNdLook.For(FenixChannelNdMapData.LookItem.VorDme)?.Symbol,
         4 => FenixChannelNdLook.For(FenixChannelNdMapData.LookItem.Dme)?.Symbol,
         5 => FenixChannelNdLook.For(FenixChannelNdMapData.LookItem.Fix)?.Symbol,
@@ -538,14 +540,20 @@ internal static class FenixChannelNdRoute
         return false;
     }
 
-    // A radial runs from the fix outward on its magnetic bearing (true = magnetic + the variation at the fix).
+    // A radial runs from the fix outward on its magnetic bearing (true = magnetic + the variation at the fix). It is
+    // clipped to the window first (Clip), outside which nothing is drawn, so the walk looks only at the pixels the window
+    // holds however far the fix is; the steps keep their places along the radial, 2 px apart from the fix.
     private static bool RadialSeen(FenixNdFrame f, FenixFixInfo fix, double radial)
     {
+        const double Step = 2;
         (double x, double y) = FenixChannelNdGeometry.Pixel(f, fix.Point);
         double rad = (radial + fix.MagneticVariation - f.UpTrueDegrees) * Math.PI / 180;
         double reach = 2 * (FenixChannelNdGeometry.WindowWidthPx + FenixChannelNdGeometry.WindowHeightPx)
             + Math.Sqrt(x * x + y * y);
-        for (double along = 0; along <= reach; along += 2)
+        double dx = Math.Sin(rad) * reach, dy = -Math.Cos(rad) * reach;
+        if (!Clip(x, y, dx, dy, out double t0, out double t1)) return false;
+
+        for (double along = Math.Ceiling(t0 * reach / Step) * Step; along <= t1 * reach; along += Step)
         {
             if (FenixChannelNdGeometry.RoutePixel(f, x + Math.Sin(rad) * along, y - Math.Cos(rad) * along).Drawn) return true;
         }

@@ -771,6 +771,41 @@ public class FenixChannelNdRouteTests
         Assert.DoesNotContain(RouteRows(Snapshot(Plan(FixInfo(At(500, 300), 20, 300)))), row => row.Contains("LOZ"));
     }
 
+    // A FIX INFO entry of the given kind and variation, its radials and rings in order.
+    private static Route FixInfoPlan(FenixLatLon fix, int kind, double variation, double[] radials, double[] rings)
+    {
+        var entry = new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter()
+            .Varint(1, (ulong)kind).Double(2, fix.Latitude).Double(3, fix.Longitude).String(5, "LOZ")).Double(2, variation);
+        foreach (double radial in radials) entry.Double(3, radial);
+        foreach (double ring in rings) entry.Double(4, ring);
+        return Through(("ALPHA", At(10))).Add(13, entry).Add(13, new()).Add(13, new()).Add(13, new());
+    }
+
+    [Fact]
+    public void A_fix_info_vor_without_dme_reads_as_its_cross()
+    {
+        // Kind 2, a VOR with no DME: the cross the map points' VOR has (sitting 2), never the bare "symbol".
+        string[] rows = RouteRows(Snapshot(FixInfoPlan(At(30, 300), 2, -6.148, [20, 360], [20])));
+
+        Assert.Contains("Map: LOZ, cross, 30.0 NM, 60° left", rows);
+        Assert.DoesNotContain(rows, row => row.StartsWith("Map: LOZ, symbol"));
+    }
+
+    [Fact]
+    public void A_distant_fixs_radials_list_as_they_cross_the_window()
+    {
+        // The fix 1,000 NM north with no variation: radial 180 runs down through the aircraft, 090 east far above the
+        // window. The walk looks at the window's pixels only, so the distance changes nothing.
+        FenixLatLon far = At(1000);
+
+        Assert.Contains("Map: FIX INFO LOZ: radials 180 and 090, dashed",
+            RouteRows(Snapshot(FixInfoPlan(far, 3, 0, [180, 90], []))));
+        Assert.DoesNotContain(RouteRows(Snapshot(FixInfoPlan(far, 3, 0, [90], []))), row => row.Contains("LOZ"));
+        Assert.DoesNotContain(RouteRows(Snapshot(FixInfoPlan(far, 3, 0, [180], []))), row => row.StartsWith("Map: LOZ"));
+        Assert.Contains("Map: FIX INFO LOZ: radials 180, dashed",
+            RouteRows(Snapshot(FixInfoPlan(far, 3, 0, [180], []), mode: 2)));
+    }
+
     // ---- The bottom right
 
     [Fact]
