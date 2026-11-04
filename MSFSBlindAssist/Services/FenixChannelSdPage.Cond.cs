@@ -19,7 +19,7 @@ internal static partial class FenixChannelSdPages
     /// The COND page's rows, in the SD's order: <c>CKPT</c>, <c>FWD</c> and <c>AFT</c>, each <c>label: n °C, duct n °C, trim
     /// valve n % hot</c>; then <c>HOT AIR: open</c>, <c>closed</c> or <c>in transit</c> (151.7.10); then <c>FWD CARGO</c> only while forward cargo heating is fitted (151.8.5) and <c>AFT CARGO</c> only
     /// while aft cargo heating is (151.8.6); then <c>FAN 1: off</c> (151.8.1), <c>FAN 2: off</c> (151.8.7), <c>ALTN MODE</c>
-    /// (151.8.2) and <c>PACK REG</c> (151.8.3), each only while its flag is set. All numbers are whole. No row speaks a color.
+    /// (151.8.2) and <c>PACK REG</c> (151.8.3), each only while its flag is set. All numbers are whole. No row speaks a color because the Fenix sends none for these rows.
     /// </summary>
     /// <remarks>
     /// <para>The pneumatic state (151) must be in the push with its zone data (151.7) and conditioning states (151.8): one
