@@ -3,11 +3,11 @@
 // number is written out here, never read from FenixChannelFields.
 //
 // The contract: the page reads 137 (the labels, varint bools: 12 L/G CTL, 9 N/W STEERING, 16/17 ANTI SKID, 7/8 NORM BRK,
-// 2/15 ALTN BRK, 18 ACCU ONLY, 4/5/6 AUTO BRK LO/MED/MAX, 19 the tire pressure indicators are fitted), 138 (the brake
+// 2/15 ALTN BRK (each with its color: 16, 7 and 2 green; 17, 8 and 15 amber), 10/11 BSCU 1/2 amber, 13 AUTO BRK amber, 18 ACCU ONLY, 4/5/6 AUTO BRK LO/MED/MAX, 19 the tire pressure indicators are fitted), 138 (the brake
 // temperatures 1-4, doubles), 139 (the tire pressures 1-6, doubles, read only while 137.19), 141 (the released brakes 1-4,
-// bools), 143 (the gears: 143.1 nose, .2 left, .3 right; each .1 and .2 the LGCIU 1 and 2 position, doubles: measured on the
+// bools), 140 (the brakes drawn amber 1-4, bools), 143 (the gears: 143.1 nose, .2 left, .3 right; each .1 and .2 the LGCIU 1 and 2 position, doubles: measured on the
 // 2026-11-03 gear extension, 2 is up, 1 in transit and the absent field (0) down) and 144 (the gear doors 1-3, doubles,
-// measured: 1 closed, 0 opening, 2 open). 135, 136, 140 and 142 are not read. A gear or door value with no word reads
+// measured: 1 closed, 0 opening, 2 open). 135, 136 and 142 are not read. A gear or door value with no word reads
 // "not available" and is reported, never guessed.
 
 using MSFSBlindAssist.Services;
@@ -48,12 +48,13 @@ public class FenixChannelSdWheelTests
     private static SdPush WheelPush(
         FenixChannelProtoWriter? flags = null, FenixChannelProtoWriter? temps = null, FenixChannelProtoWriter? tires = null,
         FenixChannelProtoWriter? released = null, FenixChannelProtoWriter? gears = null, FenixChannelProtoWriter? doors = null,
-        bool includeTires = true)
+        bool includeTires = true, FenixChannelProtoWriter? amber = null, bool includeAmber = true)
         => new SdPush { Page = 12 }.With(remote =>
         {
             remote.Message(137, flags ?? Flags());
             remote.Message(138, temps ?? Doubles(19.8114, 20.9959, 19.3692, 19.7807));
             if (includeTires) remote.Message(139, tires ?? Doubles(165, 165, 210, 205, 210, 205));
+            if (includeAmber) remote.Message(140, amber ?? new FenixChannelProtoWriter());
             remote.Message(141, released ?? new FenixChannelProtoWriter());
             remote.Message(143, gears ?? Gears());
             remote.Message(144, doors ?? Doubles(1, 1, 1));
@@ -94,16 +95,16 @@ public class FenixChannelSdWheelTests
         Assert.Equal(
             new[]
             {
-                "L/G CTL", "nose gear: up, up", "nose gear door: closed", "N/W STEERING", "ANTI SKID", "NORM BRK",
-                "ALTN BRK", "ACCU ONLY", "AUTO BRK: LO"
+                "L/G CTL", "nose gear: up, up", "nose gear door: closed", "N/W STEERING", "ANTI SKID, green",
+                "NORM BRK, green", "ALTN BRK, amber", "ACCU ONLY", "AUTO BRK: LO"
             },
             RowsOf(WheelPush(Flags(12, 9, 16, 7, 15, 18, 4))).Take(9));
 
-        // Each label's alternative field draws it too.
+        // Each label's other color field draws it too.
         IReadOnlyList<string> alternatives = RowsOf(WheelPush(Flags(17, 8, 2, 5)));
-        Assert.Contains("ANTI SKID", alternatives);
-        Assert.Contains("NORM BRK", alternatives);
-        Assert.Contains("ALTN BRK", alternatives);
+        Assert.Contains("ANTI SKID, amber", alternatives);
+        Assert.Contains("NORM BRK, amber", alternatives);
+        Assert.Contains("ALTN BRK, green", alternatives);
         Assert.Contains("AUTO BRK: MED", alternatives);
 
         Assert.Contains("AUTO BRK: MAX", RowsOf(WheelPush(Flags(6))));
@@ -114,11 +115,88 @@ public class FenixChannelSdWheelTests
 
         // Nothing set: no label rows at all.
         IReadOnlyList<string> none = RowsOf(WheelPush(Flags()));
-        foreach (string label in new[] { "L/G CTL", "N/W STEERING", "ANTI SKID", "NORM BRK", "ALTN BRK", "ACCU ONLY" })
+        foreach (string label in new[] { "L/G CTL", "N/W STEERING", "ACCU ONLY" })
         {
             Assert.DoesNotContain(label, none);
         }
+        Assert.DoesNotContain(none, row => row.StartsWith("ANTI SKID") || row.StartsWith("NORM BRK")
+            || row.StartsWith("ALTN BRK") || row.StartsWith("BSCU"));
         Assert.DoesNotContain(none, row => row.StartsWith("AUTO BRK"));
+    }
+
+    [Fact]
+    public void Each_label_speaks_the_color_the_fenix_sends()
+    {
+        // Amber wins when both colors are set.
+        IReadOnlyList<string> both = RowsOf(WheelPush(Flags(16, 17, 7, 8, 2, 15)));
+        Assert.Contains("ANTI SKID, amber", both);
+        Assert.Contains("NORM BRK, amber", both);
+        Assert.Contains("ALTN BRK, amber", both);
+        Assert.DoesNotContain(both, row => row.Contains("green"));
+
+        IReadOnlyList<string> green = RowsOf(WheelPush(Flags(16, 7, 2)));
+        Assert.Contains("ANTI SKID, green", green);
+        Assert.Contains("NORM BRK, green", green);
+        Assert.Contains("ALTN BRK, green", green);
+    }
+
+    [Fact]
+    public void The_bscu_amber_labels_follow_the_anti_skid_place()
+    {
+        List<string> list = RowsOf(WheelPush(Flags(9, 16, 10, 11, 7))).ToList();
+
+        Assert.Equal(new[] { "ANTI SKID, green", "BSCU 1, amber", "BSCU 2, amber", "NORM BRK, green" },
+            list.GetRange(list.IndexOf("ANTI SKID, green"), 4));
+        Assert.Contains("BSCU 1, amber", RowsOf(WheelPush(Flags(10))));
+        Assert.DoesNotContain("BSCU 2, amber", RowsOf(WheelPush(Flags(10))));
+        Assert.DoesNotContain("BSCU 1, amber", RowsOf(WheelPush(Flags(11))));
+    }
+
+    [Fact]
+    public void Auto_brake_gains_amber_with_or_without_a_mode()
+    {
+        Assert.Contains("AUTO BRK: LO, amber", RowsOf(WheelPush(Flags(4, 13))));
+        Assert.Contains("AUTO BRK: MED, amber", RowsOf(WheelPush(Flags(5, 13))));
+        Assert.Contains("AUTO BRK: MAX, amber", RowsOf(WheelPush(Flags(6, 13))));
+        Assert.Contains("AUTO BRK, amber", RowsOf(WheelPush(Flags(13))));
+        Assert.Contains("AUTO BRK: MED", RowsOf(WheelPush(Flags(5))));
+    }
+
+    [Fact]
+    public void The_gate_push_reads_its_brake_labels_with_colors()
+    {
+        // The gate push of 2026-11-03: 137 .2, .3, .8, .9, .13, .17, .18 and .19 set; 140 empty.
+        IReadOnlyList<string> rows = RowsOf(WheelPush(Flags(2, 3, 8, 9, 13, 17, 18, 19)));
+
+        Assert.Equal(
+            new[] { "N/W STEERING", "ANTI SKID, amber", "NORM BRK, amber", "ALTN BRK, green", "ACCU ONLY", "AUTO BRK, amber" },
+            rows.Where(row => row.StartsWith("N/W") || row.StartsWith("ANTI") || row.StartsWith("NORM")
+                || row.StartsWith("ALTN") || row.StartsWith("ACCU") || row.StartsWith("AUTO")));
+    }
+
+    [Fact]
+    public void An_amber_brake_reads_amber_after_its_temperature()
+    {
+        var amber = new FenixChannelProtoWriter().Bool(2, true);
+        IReadOnlyList<string> rows = RowsOf(WheelPush(Flags(19), amber: amber));
+
+        Assert.Contains("wheel 1: brake 20 °C, tire 210 PSI", rows);
+        Assert.Contains("wheel 2: brake 21 °C amber, tire 205 PSI", rows);
+        Assert.Contains("wheel 3: brake 19 °C, tire 210 PSI", rows);
+
+        Assert.Contains("wheel 2: brake 21 °C amber, released", RowsOf(WheelPush(Flags(), released: Flags(2), amber: amber)));
+        Assert.Contains("wheel 2: brake XX °C amber",
+            RowsOf(WheelPush(Flags(), temps: Doubles(1, double.NaN, 3, 4), amber: amber)));
+    }
+
+    [Fact]
+    public void A_push_without_the_amber_brakes_is_not_available()
+    {
+        var reported = new List<string>();
+        FenixChannelRows missing = FenixChannelSdPages.WheelRows(WheelPush(includeAmber: false).Context(reported.Add));
+
+        Assert.Equal("no field 140", missing.Problem);
+        Assert.Empty(reported);
     }
 
     [Fact]
@@ -271,6 +349,7 @@ public class FenixChannelSdWheelTests
             {
                 if (field != 137) remote.Message(137, Flags());
                 if (field != 138) remote.Message(138, Doubles(1, 2, 3, 4));
+                remote.Message(140, new FenixChannelProtoWriter());
                 if (field != 141) remote.Message(141, new FenixChannelProtoWriter());
                 if (field != 143) remote.Message(143, Gears());
                 if (field != 144) remote.Message(144, Doubles(1, 1, 1));

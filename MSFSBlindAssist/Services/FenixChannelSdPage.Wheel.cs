@@ -27,21 +27,25 @@ internal static partial class FenixChannelSdPages
 
     /// <summary>
     /// The WHEEL page's rows, top to bottom: <c>L/G CTL</c> (137.12); <c>nose gear: &lt;LGCIU 1&gt;, &lt;LGCIU 2&gt;</c>
-    /// (143.1.1, 143.1.2) and <c>nose gear door</c> (144.1); <c>N/W STEERING</c> (137.9); <c>ANTI SKID</c> (137.16 or .17);
-    /// <c>NORM BRK</c> (137.7 or .8); <c>ALTN BRK</c> (137.2 or .15); <c>ACCU ONLY</c> (137.18); <c>AUTO BRK: LO</c>, MED or
-    /// MAX (137.4, .5, .6); <c>left gear</c> (143.2) and <c>left gear door</c> (144.2); <c>right gear</c> (143.3) and
+    /// (143.1.1, 143.1.2) and <c>nose gear door</c> (144.1); <c>N/W STEERING</c> (137.9); <c>ANTI SKID, amber</c> (137.17) or
+    /// <c>, green</c> (137.16); <c>BSCU 1, amber</c> (137.10) and <c>BSCU 2, amber</c> (137.11); <c>NORM BRK</c> (137.8 amber,
+    /// 137.7 green); <c>ALTN BRK</c> (137.15 amber, 137.2 green); <c>ACCU ONLY</c> (137.18); <c>AUTO BRK: LO</c>, MED or
+    /// MAX (137.4, .5, .6) with <c>, amber</c> after it while 137.13 (<c>AUTO BRK, amber</c> with no mode); <c>left gear</c> (143.2) and <c>left gear door</c> (144.2); <c>right gear</c> (143.3) and
     /// <c>right gear door</c> (144.3); while 137.19 (the tire pressure indicators are fitted), <c>nose tires: left n PSI,
     /// right n PSI</c> (139.1, .2); and one row per main wheel, <c>wheel 1: brake n °C, tire n PSI</c> (138.1 to .4 and
-    /// 139.3 to .6; without the indicators just <c>wheel n: brake n °C</c>), ending <c>, released</c> while that wheel's
-    /// brake is released (141.1 to .4). Numbers are whole. A label row is the bare label: named values speak no color (owner
-    /// question Q4).
+    /// 139.3 to .6; without the indicators just <c>wheel n: brake n °C</c>), with <c>amber</c> right after the temperature
+    /// while the Fenix draws that brake amber (140.1 to .4), ending <c>, released</c> while that wheel's brake is released
+    /// (141.1 to .4). Numbers are whole. Colors: the SD speaks the colors the Fenix sends. A field named for a color speaks
+    /// it, and a label sent as one flag with no color (N/W STEERING, L/G CTL, ACCU ONLY) stays bare, never a guessed color.
     /// </summary>
     /// <remarks>
     /// <para>The wheels are numbered as the A320 numbers them, 1 to 4 left to right facing forward (1 and 2 the left main
     /// gear, 3 and 4 the right). The contract's tire fields <c>LeftMain1</c>/<c>LeftMain2</c> are taken as wheels 1 and 2
     /// and <c>RightMain1</c>/<c>RightMain2</c> as 3 and 4 (its order; the Fenix's own SD drawing is not yet compared).</para>
-    /// <para>Not read: 135, 136, 140 and 142 (a light, the brake pressure gauge and a brake's color, none drawn as SD
-    /// text). 139 is read only while 137.19, so a push without it and without the indicators is a complete page.</para>
+    /// <para>Not read: 135, 136 and 142 (a light, the brake pressure gauge and a brake's color, none drawn as SD
+    /// text). 139 is read only while 137.19, so a push without it and without the indicators is a complete page. 140 is
+    /// always read: the Fenix always sends it, an empty message while no brake is amber, so a push without it is
+    /// "not available, no field 140".</para>
     /// <para>With more than one of 137.4, .5 and .6 set, the AUTO BRK row names the first in LO, MED, MAX order: the SD
     /// shows one.</para>
     /// <para>Gear words, measured on the 2026-11-03 gear extension. A gear value reads "up" (2), "in transit" (1) or "down"
@@ -55,28 +59,38 @@ internal static partial class FenixChannelSdPages
         FenixChannelSdReader remote = FenixChannelSdReader.Of(ctx.Push, ctx.ReportProblem);
         FenixChannelSdReader flags = remote.Message(FenixChannelFields.Remote.WheelBrakeFlags);
         FenixChannelSdReader temps = remote.Message(FenixChannelFields.Remote.WheelTemp);
+        FenixChannelSdReader amberBrakes = remote.Message(FenixChannelFields.Remote.WheelAmber);
         FenixChannelSdReader released = remote.Message(FenixChannelFields.Remote.BrakeReleased);
         FenixChannelSdReader gears = remote.Message(FenixChannelFields.Remote.GearPosition);
         FenixChannelSdReader doors = remote.Message(FenixChannelFields.Remote.GearDoor);
 
         bool landingGearControl = flags.Bool(FenixChannelFields.WheelBrakeFlags.LgCtlLabel);
         bool steering = flags.Bool(FenixChannelFields.WheelBrakeFlags.SteeringLabel);
-        bool antiSkid = flags.Bool(FenixChannelFields.WheelBrakeFlags.AntiSkidGreen)
-            || flags.Bool(FenixChannelFields.WheelBrakeFlags.AntiSkidAmber);
-        bool normalBrake = flags.Bool(FenixChannelFields.WheelBrakeFlags.NormBrakeGreen)
-            || flags.Bool(FenixChannelFields.WheelBrakeFlags.NormBrakeAmber);
-        bool alternateBrake = flags.Bool(FenixChannelFields.WheelBrakeFlags.AlternateBrakeGreen)
-            || flags.Bool(FenixChannelFields.WheelBrakeFlags.AlternateBrakeAmber);
+        bool antiSkidGreen = flags.Bool(FenixChannelFields.WheelBrakeFlags.AntiSkidGreen);
+        bool antiSkidAmber = flags.Bool(FenixChannelFields.WheelBrakeFlags.AntiSkidAmber);
+        bool bscu1 = flags.Bool(FenixChannelFields.WheelBrakeFlags.Bscu1Amber);
+        bool bscu2 = flags.Bool(FenixChannelFields.WheelBrakeFlags.Bscu2Amber);
+        bool normalGreen = flags.Bool(FenixChannelFields.WheelBrakeFlags.NormBrakeGreen);
+        bool normalAmber = flags.Bool(FenixChannelFields.WheelBrakeFlags.NormBrakeAmber);
+        bool alternateGreen = flags.Bool(FenixChannelFields.WheelBrakeFlags.AlternateBrakeGreen);
+        bool alternateAmber = flags.Bool(FenixChannelFields.WheelBrakeFlags.AlternateBrakeAmber);
         bool accumulatorOnly = flags.Bool(FenixChannelFields.WheelBrakeFlags.AccuOnly);
         bool autoLow = flags.Bool(FenixChannelFields.WheelBrakeFlags.AutoBrakeLow);
         bool autoMed = flags.Bool(FenixChannelFields.WheelBrakeFlags.AutoBrakeMed);
         bool autoMax = flags.Bool(FenixChannelFields.WheelBrakeFlags.AutoBrakeMax);
+        bool autoAmber = flags.Bool(FenixChannelFields.WheelBrakeFlags.AutoBrakeAmber);
         bool tpis = flags.Bool(FenixChannelFields.WheelBrakeFlags.TpisFitted);
 
         double[] brakeTemps =
         [
             temps.Double(FenixChannelFields.WheelTempData.Wheel1), temps.Double(FenixChannelFields.WheelTempData.Wheel2),
             temps.Double(FenixChannelFields.WheelTempData.Wheel3), temps.Double(FenixChannelFields.WheelTempData.Wheel4)
+        ];
+
+        bool[] amberWheels =
+        [
+            amberBrakes.Bool(FenixChannelFields.WheelAmberData.Wheel1), amberBrakes.Bool(FenixChannelFields.WheelAmberData.Wheel2),
+            amberBrakes.Bool(FenixChannelFields.WheelAmberData.Wheel3), amberBrakes.Bool(FenixChannelFields.WheelAmberData.Wheel4)
         ];
 
         bool[] releasedWheels =
@@ -120,13 +134,21 @@ internal static partial class FenixChannelSdPages
         rows.Add(WheelGearRow(ctx, "nose gear", $"{gearPath}.{FenixChannelFields.GearPositionData.Nose}", nose));
         rows.Add(WheelGearDoorRow(ctx, "nose gear door", $"{doorPath}.{FenixChannelFields.GearDoorData.Nose}", noseDoor));
         if (steering) rows.Add("N/W STEERING");
-        if (antiSkid) rows.Add("ANTI SKID");
-        if (normalBrake) rows.Add("NORM BRK");
-        if (alternateBrake) rows.Add("ALTN BRK");
+        if (antiSkidAmber) rows.Add("ANTI SKID, amber");
+        else if (antiSkidGreen) rows.Add("ANTI SKID, green");
+        if (bscu1) rows.Add("BSCU 1, amber");
+        if (bscu2) rows.Add("BSCU 2, amber");
+        if (normalAmber) rows.Add("NORM BRK, amber");
+        else if (normalGreen) rows.Add("NORM BRK, green");
+        if (alternateAmber) rows.Add("ALTN BRK, amber");
+        else if (alternateGreen) rows.Add("ALTN BRK, green");
         if (accumulatorOnly) rows.Add("ACCU ONLY");
-        if (autoLow) rows.Add("AUTO BRK: LO");
-        else if (autoMed) rows.Add("AUTO BRK: MED");
-        else if (autoMax) rows.Add("AUTO BRK: MAX");
+        string? autoMode = autoLow ? "LO" : autoMed ? "MED" : autoMax ? "MAX" : null;
+        if (autoMode is not null || autoAmber)
+        {
+            string auto = autoMode is null ? "AUTO BRK" : $"AUTO BRK: {autoMode}";
+            rows.Add(autoAmber ? $"{auto}, amber" : auto);
+        }
         rows.Add(WheelGearRow(ctx, "left gear", $"{gearPath}.{FenixChannelFields.GearPositionData.Left}", left));
         rows.Add(WheelGearDoorRow(ctx, "left gear door", $"{doorPath}.{FenixChannelFields.GearDoorData.LeftMain}", leftDoor));
         rows.Add(WheelGearRow(ctx, "right gear", $"{gearPath}.{FenixChannelFields.GearPositionData.Right}", right));
@@ -138,7 +160,7 @@ internal static partial class FenixChannelSdPages
 
         for (int wheel = 0; wheel < 4; wheel++)
         {
-            string row = $"wheel {wheel + 1}: brake {FenixChannelSd.Whole(brakeTemps[wheel])} °C";
+            string row = $"wheel {wheel + 1}: brake {FenixChannelSd.Whole(brakeTemps[wheel])} °C{(amberWheels[wheel] ? " amber" : "")}";
             if (tpis) row += $", tire {FenixChannelSd.Whole(pressures[wheel + 2])} PSI";
             if (releasedWheels[wheel]) row += ", released";
             rows.Add(row);

@@ -11,6 +11,8 @@ internal static partial class FenixChannelFields
         public const int WheelBrakeFlags = 137;     // wheelBrakeFlags: nested WheelBrakeFlags, the WHEEL page's labels
         public const int WheelTemp = 138;           // wheelTemp: nested WheelTempData, the brake temperatures
         public const int TyrePressure = 139;        // tyrePressure: nested TyrePressureData, the tire pressures
+        // 140 is checked against the installed Fenix 3.0.0.7613 on 2026-11-03 with the team's metadata tool ([FNX-23]).
+        public const int WheelAmber = 140;          // wheelAmber: nested WheelAmberData, the brake temperatures drawn amber
         public const int BrakeReleased = 141;       // brakeReleased: nested BrakeReleasedData, which brakes are released
         public const int GearPosition = 143;        // gearPosition: nested GearPositionData, the three gears
         public const int GearDoor = 144;            // gearDoor: nested GearDoorData, the three gear doors
@@ -30,7 +32,11 @@ internal static partial class FenixChannelFields
         public const int AutoBrakeLow = 4;          // AutoBrakeLow: varint (bool)
         public const int AutoBrakeMed = 5;          // AutoBrakeMed: varint (bool)
         public const int AutoBrakeMax = 6;          // AutoBrakeMax: varint (bool)
-        public const int NormBrakeGreen = 7;        // NormBrakeGreen: varint (bool)
+        // 10, 11 and 13 are checked against the installed Fenix 3.0.0.7613 on 2026-11-03 with the team's metadata tool ([FNX-23]).
+        public const int Bscu1Amber = 10;           // Bscu1Amber: varint (bool)
+        public const int Bscu2Amber = 11;           // Bscu2Amber: varint (bool)
+        public const int AutoBrakeAmber = 13;       // AutoBrakeAmber: varint (bool)
+        public const int NormBrakeGreen = 7;       // NormBrakeGreen: varint (bool)
         public const int NormBrakeAmber = 8;        // NormBrakeAmber: varint (bool)
         public const int SteeringLabel = 9;         // SteeringLabel: varint (bool)
         public const int LgCtlLabel = 12;           // LgCtlLabel: varint (bool)
@@ -48,6 +54,15 @@ internal static partial class FenixChannelFields
         public const int Wheel2 = 2;                // Wheel2: fixed64 (double)
         public const int Wheel3 = 3;                // Wheel3: fixed64 (double)
         public const int Wheel4 = 4;                // Wheel4: fixed64 (double)
+    }
+
+    /// <summary>WheelAmberData, the brake temperatures drawn amber (<see cref="Remote.WheelAmber"/>).</summary>
+    public static partial class WheelAmberData
+    {
+        public const int Wheel1 = 1;                // Wheel1: varint (bool)
+        public const int Wheel2 = 2;                // Wheel2: varint (bool)
+        public const int Wheel3 = 3;                // Wheel3: varint (bool)
+        public const int Wheel4 = 4;                // Wheel4: varint (bool)
     }
 
     /// <summary>TyrePressureData, the tire pressures (<see cref="Remote.TyrePressure"/>).</summary>
