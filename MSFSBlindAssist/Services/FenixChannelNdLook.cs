@@ -108,18 +108,20 @@ internal static class FenixChannelNdLook
             RadioFlight + ", ROSE LS: the glideslope deviation (82.2), the whole diamond"),
         new(FenixChannelNdRadio.LookItem.GlideslopeHalfDiamond, "glideslope half diamond", "magenta",
             RadioFlight + ", ROSE LS: the glideslope deviation (82.2), the half diamond from 2.02 dots"),
-        // The shape follows the side, the color the receiver (VOR white, ADF green); the words VOR and ADF already tell
-        // the receivers apart, so the color is not spoken.
-        new(FenixChannelNdRadio.LookItem.PointerNav1, "single-line pointer", "white on VOR, green on ADF",
-            RadioFlight + ", the bearing pointers (efis/211245-rose160-vord-nav, appr/215104: VOR on NAV 1); "
+        // The shape follows the side, the color the receiver (VOR white, ADF green); one entry covers both receivers, so
+        // its Color is null and the receivers' colors are in the evidence.
+        new(FenixChannelNdRadio.LookItem.PointerNav1, "single-line pointer", null,
+            "VOR white, ADF green: " + RadioFlight + ", the bearing pointers (efis/211245-rose160-vord-nav, appr/215104: VOR on NAV 1); "
             + RadioGateSitting3 + " (efis-rose20-adf1-vor2, efis-vor20-adf1-vor2: ADF on NAV 1, a green single line)"),
-        new(FenixChannelNdRadio.LookItem.PointerNav2, "double-line pointer", "green on ADF, white on VOR",
-            RadioFlight + ", the bearing pointers (efis/211245-rose160-vord-nav and the appr captures: ADF on NAV 2); "
+        new(FenixChannelNdRadio.LookItem.PointerNav2, "double-line pointer", null,
+            "VOR white, ADF green: " + RadioFlight + ", the bearing pointers (efis/211245-rose160-vord-nav and the appr captures: ADF on NAV 2); "
             + RadioGateSitting3 + " (efis-rose20-adf1-vor2, crop-adf1-vor2: VOR on NAV 2, a white double line)"),
-        new(FenixChannelNdRadio.LookItem.ArrowNav1, "single-line arrow", "white on VOR, green on ADF",
-            RadioFlight + ", the corners (214719: VOR on NAV 1); " + RadioGateSitting3 + " (crop-adf1-vor2: ADF1, green)"),
-        new(FenixChannelNdRadio.LookItem.ArrowNav2, "double-line arrow", "green on ADF, white on VOR",
-            RadioFlight + ", the corners (214719: ADF on NAV 2); " + RadioGateSitting3 + " (crop-adf1-vor2: VOR2, white hollow)"),
+        new(FenixChannelNdRadio.LookItem.ArrowNav1, "single-line arrow", null,
+            "VOR white, ADF green: " + RadioFlight + ", the corners (214719: VOR on NAV 1); " + RadioGateSitting3
+            + " (crop-adf1-vor2: ADF1, green)"),
+        new(FenixChannelNdRadio.LookItem.ArrowNav2, "double-line arrow", null,
+            "VOR white, ADF green: " + RadioFlight + ", the corners (214719: ADF on NAV 2); " + RadioGateSitting3
+            + " (crop-adf1-vor2: VOR2, white hollow)"),
         new(FenixChannelNdRadio.LookItem.VorCoursePointer, "course pointer", "cyan",
             RadioGateSitting3 + " (efis-vor20-crs185: 80.1 = 185, the cross bar at the head, the tail toward 005, no reception)"),
         new(FenixChannelNdTraffic.LookItem.OtherTraffic, "diamond", "white",

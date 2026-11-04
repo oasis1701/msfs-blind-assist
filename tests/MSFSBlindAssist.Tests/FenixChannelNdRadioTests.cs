@@ -485,6 +485,34 @@ public class FenixChannelNdRadioTests
     }
 
     [Fact]
+    public void Every_look_entry_holds_no_color_or_one_color_word()
+    {
+        string[] words = ["amber", "cyan", "green", "magenta", "white", "red", "yellow"];
+        foreach (FenixNdLookEntry entry in FenixChannelNdLook.All)
+        {
+            Assert.True(entry.Color is null || words.Contains(entry.Color), $"{entry.Item}: '{entry.Color}'");
+        }
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void Rose_vor_rows_are_the_same_in_every_culture(string culture)
+    {
+        FenixChannelProtoWriter Build() => Remote(Vor, 1, 2)
+            .Message(70, Block("wVOR1 w113.s40 ", "CRS c185°", "lwODF "))
+            .Message(80, VorCourse(185.4)).Message(76, Corners()).Message(78, Pointers(204.6, 270.2));
+
+        string[] invariant = [.. Radio(Build()), .. Corner(Build())];
+        string[] there = TestCulture.Run<string[]>(culture, () => [.. Radio(Build()), .. Corner(Build())]);
+
+        Assert.Equal(invariant, there);
+        Assert.Contains("Center: course pointer at 185 on the compass", there);
+        Assert.Contains("Map: VOR 1 single-line pointer, at 205 on the compass", there);
+        Assert.Contains("Map: ADF 2 double-line pointer, at 270 on the compass", there);
+    }
+
+    [Fact]
     public void Every_radio_look_is_in_the_table_with_its_evidence()
     {
         foreach (string item in new[]
