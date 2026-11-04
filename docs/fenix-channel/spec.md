@@ -51,14 +51,13 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
 ### 2.2 Trust
 
 - The gate judges six displays: PFD, E/WD and SD (today) plus ND, ISIS and DCDU (new). A display is trusted only while
-  the channel streams, the build is checked ([FNX-23]), every field the gate decodes has its shape, the display is live
-  and its cross-checks pass.
+  the channel streams, the build is checked ([FNX-23]), every field the gate decodes has its shape and the display is
+  live.
 - Display live: a powered display unit shows it (duData, field 12): PFD on PFDCapt (0), ND on NDCapt (2), E/WD on
   ECAMUpper (4), SD on ECAMLower (5), DCDU on DCDUCapt (9). The ISIS is live while its own `Powered` flag (field 182.1)
   is set.
-- Cross-checks (answer 12, "fewer"): only the existing ones. PFD: both FD lights, true altitude, heading. E/WD: fuel. ND:
-  the existing heading check, reused. SD, ISIS and DCDU have none: their display-live condition, the shape checks and the
-  build check decide.
+- No cross-check with SimConnect (row 58, which overturns answer 12): the display-live condition, the shape checks and the
+  build check decide, for every display.
 - Features use their display's verdict: the PFD window and the speed keys use the PFD; the ND window, Ctrl+W, D,
   Shift+D and the ND messages announcer use the ND; the E/WD window and the E/WD alert announcer use the E/WD; the SD
   window uses the SD; the ISIS window uses the ISIS; the DCDU window and its announcer use the DCDU. The FMA announcer
@@ -71,9 +70,6 @@ Robin's answers of 2026-11-02 are in section 5; this section is what they mean f
 
 ### 2.3 Safety work that lands before anything speaks (plan 01)
 
-- **Stall guard** (deferred when the client was built, until the first read): a UI-thread heartbeat. While the UI thread has missed its
-  timer for more than 1,000 ms, every comparison waits instead of agreeing or disagreeing (SimConnect values may be
-  stale). Measured on 2026-11-02: the largest SimConnect delivery gap in a whole flight was 1.1 s.
 - **Content conditions** (required of the first read when the client was built): a display needs its own content
   present, so an all-empty RemoteData can never read trusted. Each feature decoder enforces its own; the gate's display-live condition already
   blocks an unpowered screen.
@@ -268,7 +264,7 @@ format letters, fuel, the FMA's take-off and engine-failure lines, the negative 
   "wfLVR MCT", "aLVR ASYM", "CHECK SPEED MODE", "gALT!CRZ", "gTHR CLB".
 - 110 flight director (nested; the gate already decodes it into the frame as `FenixFdState` and checks its shape): 1
   pitch bar, 2 flight path angle, 3 roll bar, 4 yaw bar (doubles; every bar was NaN, not drawn, at power-up with no
-  mode engaged), 5/6 FD on, captain and first officer (the gate's cross-check), 7 TRK/FPA, 8 roll guidance, 9 flash, 10
+  mode engaged), 5/6 FD on, captain and first officer, 7 TRK/FPA, 8 roll guidance, 9 flash, 10
   inhibit, 11/12 inhibit roll and inhibit pitch (varint bools). The bars' unit and signs, the yaw bar, TRK/FPA and what
   each flag does to the bars: to measure (plan 02).
 
@@ -367,7 +363,7 @@ message sample yet (needs a CPDLC uplink). Keys and brightness: the existing "DC
 ## 4. Conventions for every plan
 
 - **Rules that bind**: [FNX-21] read only (buttons stay on L:vars and the 8083 named values); [FNX-22] speak only
-  trusted data; [FNX-23] the build check; [FNX-24] colors, unknown letters; [FNX-25] true altitude; [FNX-2] and
+  trusted data; [FNX-23] the build check; [FNX-24] colors, unknown letters; [FNX-2] and
   [A380C-6] marshal background work with `BeginInvoke` inside try/catch; [FNX-6] and [A320-3] full press-release;
   [CORE-7] never repeat the screen reader; [VAR-8] and [VAR-9] mutes; [A320-15]-[A320-20] the DCDU; [CORE-17] numbers
   the Fenix writes with `NumberParsing.TryParseExternal`; [CORE-14]/[CORE-15] logs through `Log`; US spelling; keep
@@ -458,6 +454,7 @@ Hadi claimed that day. They change sections 1, 2.1, 2.2, 2.4, 2.6, 2.7, 3.3 and 
 | 55 | 03 | Two rows the PMDG 737's ND window has that its ND does not draw: "Captain ND: <mode>, range <n>" and "Messages: none" | keep both, as the 737 | Dropped (Hadi, 2026-11-03): the Fenix ND window lists only what the ND draws; the mode and range are in its controls |
 | 56 | 03 | The route's markers, and a gap the route line leaves (a discontinuity) | markers where each lies along the route; the line's ends at the gap described | Both as recommended (Hadi, 2026-11-03): "Map: route line ends at BRAVO", "Map: route line starts again at CHARLIE", once session 2 confirms the Fenix draws the gap so; the PMDG 737's window does neither (its markers after its waypoints, nothing across a gap), a question for its own issue |
 | 57 | 04 | A display key while its display is off | the AI read, as for any other reason (2.4) | Changed (Robin, 2026-11-03, hearing plan 04's in-sim checks): while the verdict is "display off", every display key (Alt+P, Alt+N, Alt+E, Alt+S, Alt+I) opens the window on its one status row, as its Fenix windows list entry does: a dark screen has nothing for the AI to read. Every other reason a display is not trusted (the channel stopped, refused or silent, a build not checked, a check latched, an unknown letter) keeps the AI read with no extra words, because the screen is live. It lands in the shared `OpenChannelWindow`, so it reaches plans 02 and 05 (landed) and 03 and 07 (open); a plan's text or check that says otherwise yields to this row. "Display off" means no powered unit shows this display, so it also covers a display shown only on another unit (the first officer's PFD up, an ECAM on an ND), where the status row stands in for an AI read that could have seen the other screen: accepted as rare (Robin, the same day) |
+| 58 | all | Comparing a display's values with SimConnect's (2.2, answer 12) | keep the existing checks | Removed (Robin, 2026-11-04): test flights showed that a display can differ from SimConnect's value for no fault of the channel, which untrusted healthy displays, and the checks cost four batched SimConnect keys and a UI-thread heartbeat. The cross-checks, their tolerances and latch, the light test exception and the stall guard are gone; the gate's other conditions stand ([FNX-22]), [FNX-25] is retired, and only the re-check of [FNX-23] now finds a field that moved to another number of the same shape. The log's "UI thread stalled" line went with the stall guard, so the 5 s stall plan 02 left open needs another way to be measured. A plan's text that says otherwise yields to this row |
 
 ## 6. Open checks (each owned by the plan named)
 

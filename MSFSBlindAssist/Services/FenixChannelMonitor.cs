@@ -74,8 +74,8 @@ internal readonly record struct FenixChannelSession(
 /// definition owns one monitor and disposes it when the pilot switches away.
 /// </summary>
 /// <remarks>
-/// <para>Threads. A call's messages and states arrive on the client's pool threads, comparison values, the light
-/// switch, the heartbeat and reads on the UI thread, and the tick on a pool thread. One lock guards the gate and
+/// <para>Threads. A call's messages and states arrive on the client's pool threads, reads on the UI thread, and the
+/// tick on a pool thread. One lock guards the gate and
 /// every field that decides what the log says, so a verdict is always read from one whole state, and the log's lines
 /// come out in the order the gate saw its events. Nothing under the lock waits for anything. A message is decoded
 /// before the lock is taken and fed under it. The latest frame is swapped in whole with the RemoteData message it
@@ -97,13 +97,6 @@ internal readonly record struct FenixChannelSession(
 /// heartbeat set and no entries): the stream sends a heartbeat to say it is alive and a list when its list changes,
 /// so a heartbeat taken for a list would empty it at every beat, and every alert would seem to clear. A connection of
 /// the data call does not clear that list either: that stream sends only when its list changes.</para>
-/// <para>The stall guard. SimConnect's values reach <see cref="OnComparison"/> on the UI thread, so while that thread
-/// is blocked they are stale. The host calls <see cref="OnUiHeartbeat"/> from a timer on that thread, which stamps the
-/// monitor's clock into the gate as its newest heartbeat; while it is more than
-/// <see cref="FenixChannelTrust.StallGuardMs"/> old, the gate makes every comparison wait (see its remarks). Until
-/// the first heartbeat the guard is off, so a monitor with no host judges as it always did, and a new connection of
-/// the data call keeps the heartbeat, as it keeps SimConnect's values. A heartbeat that ends a stall longer than that
-/// writes one line for it to the log.</para>
 /// <para>The session. The session notice needs a few facts that the gate and the latest frame cannot give it, because
 /// they start fresh at each connection: <see cref="Session"/> hands them out under the same lock. The build is the
 /// latest one the build query answered, and a reconnect does not clear it (the gate takes the next answer and meanwhile
@@ -112,11 +105,9 @@ internal readonly record struct FenixChannelSession(
 /// sets (below). The first data is the clock reading of the first frame that becomes the latest one (data, every shape
 /// right), and the start is the reading when <see cref="Start"/> ran. None of them is ever cleared, so a gap in the
 /// stream, or a reconnect, changes nothing the notice reads.</para>
-/// <para>The log. A line is written for each change of a call's state, for each build, for each change of a
-/// display's verdict (its Trusted, or the headline of its reason: the text before the first colon, so the
-/// numbers of a disagreement moving every second are one line), for each stall of the UI thread that ends
-/// ("UI thread stalled 1.6 s; comparisons waited"), and, every 30th tick of a connection, for the
-/// comparison pairs and SimConnect's deliveries since the line before. A feature that cannot decode a section of
+/// <para>The log. A line is written for each change of a call's state, for each build, and for each change of a
+/// display's verdict (its Trusted, or the headline of its reason: the text before the first colon, so the text of a
+/// failure that changes while the channel stays down is one line). A feature that cannot decode a section of
 /// a push reports why with <see cref="ReportFeatureProblem"/>, and the line "&lt;feature&gt;: &lt;problem&gt;" is written
 /// once for each distinct problem. Dispose writes one more, "channel stopped",
 /// the last line the log ever gets (the in-sim check that an aircraft switch ended the channel reads it). A data
@@ -124,9 +115,7 @@ internal readonly record struct FenixChannelSession(
 /// message and not with the response headers, and a call that is not answering is written only when its reason
 /// differs from the last one written since a message arrived: otherwise each try would write two lines. The ECAM
 /// entries call has no such cycle (nothing limits its silence), so its "connected" is written with its headers, but
-/// its failures to answer follow the same rule. A refusal is written once, since it ends the channel (below). This
-/// class formats no number itself: the pairs, the deliveries and the length of a stall come from the gate in the
-/// invariant culture.</para>
+/// its failures to answer follow the same rule. A refusal is written once, since it ends the channel (below).</para>
 /// <para>A refusal of either call (grpc-status 7 or 16, or HTTP 401 or 403, which the client reports as
 /// <see cref="FenixChannelState.Refused"/>) ends the channel for the session ([FNX-21]), not only the call refused:
 /// the gate is told the channel is not answering, with the refusal as the reason, so every display reads "channel
@@ -144,39 +133,6 @@ internal readonly record struct FenixChannelSession(
 /// </remarks>
 internal sealed class FenixChannelMonitor : IDisposable
 {
-    /// <summary>The var key of the magnetic heading the channel asks SimConnect for, in degrees.</summary>
-    public const string HeadingKey = "FENIX_CHANNEL_HEADING";
-
-    /// <summary>The var key of the total fuel the channel asks SimConnect for, in pounds.</summary>
-    public const string FuelKey = "FENIX_CHANNEL_FUEL";
-
-    /// <summary>
-    /// The var key of the true altitude the channel asks SimConnect for, PLANE ALTITUDE, in feet: the channel's
-    /// altitude field is the true altitude too. Never the indicated altitude, which follows the baro setting the
-    /// Fenix writes into the sim's altimeter ([FNX-25]).
-    /// </summary>
-    public const string AltitudeKey = "FENIX_CHANNEL_ALTITUDE";
-
-    /// <summary>
-    /// The var key of the annunciator light switch the channel asks SimConnect for (S_OH_IN_LT_ANN_LT: 0 Dim, 1 Bright,
-    /// 2 Test). No comparison: the light test lights both FD lamps whatever the FD buttons say, so the gate keeps both
-    /// FD checks waiting while the switch reads Test (<see cref="OnLightTestSwitch"/>).
-    /// </summary>
-    public const string LightTestKey = "FENIX_CHANNEL_ANN_LT";
-
-    /// <summary>
-    /// How many ticks of a connection pass between two comparisons lines: 30 of the default one-second tick,
-    /// so the log shows each comparison pair every 30 s while the channel is connected.
-    /// </summary>
-    public const int ComparisonLogEveryTicks = 30;
-
-    // The var keys the Fenix definition already has: the flight director lights.
-    private const string FdCaptainKey = "I_FCU_EFIS1_FD";
-    private const string FdFirstOfficerKey = "I_FCU_EFIS2_FD";
-
-    // The light switch's Test position (S_OH_IN_LT_ANN_LT: 0 Dim, 1 Bright, 2 Test).
-    private const double LightTestPosition = 2;
-
     private const string LogChannelName = "fenix_channel";
     private const string StoppedLine = "channel stopped";
     private const int MaxRememberedProblems = 32;
@@ -216,11 +172,9 @@ internal sealed class FenixChannelMonitor : IDisposable
     private long? _firstDataAtMs;
     private long _startedAtMs;
 
-    private bool _dataConnected;
     private bool _dataMessageSeen;
     private string? _lastDataFailure;
     private string? _lastEcamFailure;
-    private int _connectedTicks;
     private long _generation;
     private readonly (bool Trusted, string Headline)?[] _loggedVerdicts = new (bool, string)?[Displays.Length];
 
@@ -271,7 +225,7 @@ internal sealed class FenixChannelMonitor : IDisposable
         _timer = new System.Threading.Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
-    /// <summary>The one clock of the channel, for frames, SimConnect's values and verdicts alike.</summary>
+    /// <summary>The one clock of the channel, for frames and verdicts alike.</summary>
     private static long Now => Environment.TickCount64;
 
     private bool IsDisposed => Volatile.Read(ref _disposed) != 0;
@@ -399,53 +353,6 @@ internal sealed class FenixChannelMonitor : IDisposable
     }
 
     /// <summary>
-    /// SimConnect's latest value for one comparison (the flight director lights as 0 or 1, the true altitude in feet,
-    /// the magnetic heading in degrees, the fuel in kilograms; see <see cref="TryMapComparison"/>), stamped now. Called
-    /// from the UI thread as the values arrive.
-    /// </summary>
-    public void OnComparison(FenixComparison kind, double value)
-    {
-        lock (_lock)
-        {
-            if (IsDisposed) return;
-            _trust.OnComparison(kind, value, Now);
-        }
-    }
-
-    /// <summary>
-    /// SimConnect's latest position of the annunciator light switch (<see cref="LightTestKey"/>). Exactly 2 is the
-    /// light test, which lights both FD lamps whatever the FD buttons say, so the gate keeps both FD checks waiting
-    /// while it lasts; any other position, one the switch does not have and NaN included, is not the test. Called
-    /// from the UI thread as the values arrive.
-    /// </summary>
-    public void OnLightTestSwitch(double position)
-    {
-        lock (_lock)
-        {
-            if (IsDisposed) return;
-            _trust.OnLightTest(position == LightTestPosition);
-        }
-    }
-
-    /// <summary>
-    /// The UI thread ran its timer: stamps the monitor's clock into the gate as its newest heartbeat (see
-    /// <see cref="FenixChannelTrust.OnUiHeartbeat"/>), and writes the line the gate gives back when this heartbeat ends a
-    /// stall longer than <see cref="FenixChannelTrust.StallGuardMs"/>. Called by the host from a timer on the UI thread,
-    /// the thread the values of <see cref="OnComparison"/> arrive on. Until the first call the gate has no guard; after
-    /// <see cref="Dispose"/> it does nothing.
-    /// </summary>
-    public void OnUiHeartbeat()
-    {
-        lock (_lock)
-        {
-            if (IsDisposed) return;
-
-            string? stalled = _trust.OnUiHeartbeat(Now);
-            if (stalled is not null) Write(stalled);
-        }
-    }
-
-    /// <summary>
     /// A feature that cannot decode a section of a push reports why: the log gets "&lt;feature&gt;: &lt;problem&gt;" once
     /// for each distinct line, with the size limit the monitor's own problems have, so a decoder that finds the same
     /// fault in each of 17 pushes a second writes one line, not 17. Callable from any thread; never throws; after
@@ -471,46 +378,6 @@ internal sealed class FenixChannelMonitor : IDisposable
         WriteToLog(StoppedLine);
     }
 
-    /// <summary>
-    /// Maps a SimConnect var key to the comparison it feeds. The flight director lights are only peeked
-    /// (<paramref name="consume"/> is false, so they carry on to their own handling); the three keys of the channel's
-    /// own, the heading, the fuel and the true altitude, are consumed. The fuel arrives in pounds and leaves in
-    /// kilograms. A key that is none of the five gives false and is never consumed: INDICATED_ALTITUDE among them,
-    /// since the Fenix's baro setting moves it ([FNX-25]).
-    /// </summary>
-    public static bool TryMapComparison(
-        string varKey, double value, out FenixComparison kind, out double converted, out bool consume)
-    {
-        converted = value;
-        consume = false;
-        switch (varKey)
-        {
-            case FdCaptainKey:
-                kind = FenixComparison.FdLightCapt;
-                return true;
-            case FdFirstOfficerKey:
-                kind = FenixComparison.FdLightFo;
-                return true;
-            case AltitudeKey:
-                kind = FenixComparison.AltitudeFt;
-                consume = true;
-                return true;
-            case HeadingKey:
-                kind = FenixComparison.MagHeadingDeg;
-                consume = true;
-                return true;
-            case FuelKey:
-                kind = FenixComparison.FuelKg;
-                converted = value / FenixChannelTrust.PoundsPerKilogram;
-                consume = true;
-                return true;
-            default:
-                kind = default;
-                converted = 0;
-                return false;
-        }
-    }
-
     // ---- The client's callbacks -----------------------------------------------------------------
     // Internal rather than private so a test can deliver a state or a message at an exact moment, twice in a
     // row, or after a refusal or Dispose, which a real stream will not do. After either, each one returns at once.
@@ -529,9 +396,7 @@ internal sealed class FenixChannelMonitor : IDisposable
             switch (state)
             {
                 case FenixChannelState.Connected:
-                    _dataConnected = true;
                     _dataMessageSeen = false;
-                    _connectedTicks = 0;
 
                     // The order matters: see the remarks. No line is written yet: the headers say the call
                     // opened, not that it works. The gate starts fresh, and so does the latest frame with its
@@ -675,10 +540,7 @@ internal sealed class FenixChannelMonitor : IDisposable
 
     /// <summary>
     /// One tick of the timer: writes each display's verdict when its Trusted or the headline of its reason has
-    /// changed since it was last written (the first tick writes all six), and, while the data call is connected,
-    /// every 30th tick of the connection the comparison pairs, followed by SimConnect's deliveries since the last
-    /// such line (how many, and the longest gap between two in a row, a gap that spans a line counting in the next;
-    /// see <see cref="FenixChannelTrust.DescribeSimDeliveries"/>).
+    /// changed since it was last written (the first tick writes all six).
     /// </summary>
     internal void Tick()
     {
@@ -694,12 +556,6 @@ internal sealed class FenixChannelMonitor : IDisposable
                 for (int i = 0; i < Displays.Length; i++)
                 {
                     WriteVerdictChange(i, now);
-                }
-
-                if (_dataConnected && ++_connectedTicks % ComparisonLogEveryTicks == 0)
-                {
-                    Write("comparisons: " + string.Join("; ", _trust.DescribeComparisons()) + "; "
-                        + _trust.DescribeSimDeliveries());
                 }
             }
         }
@@ -723,8 +579,8 @@ internal sealed class FenixChannelMonitor : IDisposable
         Write(verdict.Trusted ? $"{name} trusted" : $"{name} not trusted: {verdict.Reason}");
     }
 
-    // The reason up to its first colon. "altitude disagrees: channel 1,023 ft, sim 2,050 ft" is "altitude
-    // disagrees"; a reason with no colon ("build 3.0.0.7613 not checked") is its own headline.
+    // The reason up to its first colon. "channel not answering: connection reset" is "channel not answering"; a reason
+    // with no colon ("build 3.0.0.7613 not checked") is its own headline.
     private static string Headline(string reason)
     {
         int colon = reason.IndexOf(':');
@@ -752,7 +608,6 @@ internal sealed class FenixChannelMonitor : IDisposable
     private CancellationTokenSource? Refuse(string call, string text)
     {
         Volatile.Write(ref _refused, 1);
-        _dataConnected = false;
         _trust.OnDisconnected(text);
         Write($"{call}: refused ({text}); stopped for this session");
         return EndBuildLoop();
@@ -771,7 +626,6 @@ internal sealed class FenixChannelMonitor : IDisposable
     // that has gone ends. Called with the lock held; returns the source to cancel once it is released.
     private CancellationTokenSource? DataCallDown(string reason)
     {
-        _dataConnected = false;
         _trust.OnDisconnected(reason);
         return EndBuildLoop();
     }

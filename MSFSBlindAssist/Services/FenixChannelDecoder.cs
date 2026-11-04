@@ -80,7 +80,6 @@ internal static class FenixChannelDecoder
             UpperEcamRight: draft.UpperEcamRight,
             FwcPage: draft.FwcPage,
             FwcPhase: draft.FwcPhase,
-            Altitude: draft.Altitude,
             MagHeading: draft.MagHeading,
             FobText: draft.FobText)
         {
@@ -142,7 +141,6 @@ internal static class FenixChannelDecoder
                 Remote.UpperEcamRight => w.Part(ReadUpperEcamRight),
                 Remote.Isis => w.Part(ReadIsis),
                 Remote.Heading => w.Part(ReadHeading),
-                Remote.Altitude => w.Double(ref d.Altitude),
                 _ => w.Skip()
             };
             if (!ok) return false;
@@ -345,7 +343,7 @@ internal static class FenixChannelDecoder
         public readonly List<string> UpperEcamLeft = [];
         public readonly List<string> UpperEcamRight = [];
         public int FwcPage, FwcPhase;
-        public double Altitude, MagHeading;
+        public double MagHeading;
         public string FobText = string.Empty;
 
         public readonly List<FenixEcamEntry> Entries = [];

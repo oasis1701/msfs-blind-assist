@@ -4,26 +4,20 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// The announcer host of the Fenix display channel: one WinForms timer, ticking every 100 ms on the UI thread, that
-/// stamps the stall guard's heartbeat and then runs the sampler of each announcer, in the order they were given. The
+/// runs the sampler of each announcer, in the order they were given. The
 /// announcers are polled here, never driven from the channel's pool thread: a sampler looks at the latest snapshot of the
 /// channel, compares it with what it saw last and speaks if something is due, so everything a pilot hears from the
 /// channel is judged on the thread that speaks. The Fenix definition owns one host beside its
 /// <see cref="FenixChannelMonitor"/>, starts it with the monitor and disposes it first when the pilot switches away.
 /// </summary>
 /// <remarks>
-/// <para>The beat. The heartbeat comes first in every tick, before any sampler. SimConnect's values reach the trust gate on
-/// this same thread, so a thread that has stopped serving its timer has stopped serving them as well, and the gate makes
-/// every comparison wait while the newest beat is older than <see cref="FenixChannelTrust.StallGuardMs"/>. A slow
-/// sampler can therefore only make the next beat late, which is what the guard is there to notice. The host gives the
-/// beat no argument and keeps no time of its own for it: the monitor stamps its own clock.</para>
-/// <para>Isolation. A sampler that throws, and likewise the heartbeat, is reported once for each distinct line
+/// <para>Isolation. A sampler that throws is reported once for each distinct line
 /// ("&lt;exception type&gt;: &lt;message&gt; (at &lt;type&gt;.&lt;method&gt;)", the app's own method it came from: see
 /// <see cref="ProblemLine"/>) and costs nothing else: the other samplers of that tick still run, the timer stays on, and
 /// the next tick runs them all again. The lines remembered are bounded as the monitor's own problems are: 32 distinct
 /// ones, and the line that would be the 33rd empties the memory first, so a fault whose message changes at every tick
-/// cannot grow it. A log that throws is swallowed in its turn. So no announcer's fault silences another, none stops the
-/// heartbeat that keeps the guard alive, and none reaches the timer's tick event, where it would go to the application's
-/// UI-thread handler.</para>
+/// cannot grow it. A log that throws is swallowed in its turn. So no announcer's fault silences another, and none reaches
+/// the timer's tick event, where it would go to the application's UI-thread handler.</para>
 /// <para>Time. The clock is read once for each tick and its reading is handed to every sampler of that tick, so the
 /// samplers agree on when the tick was. In the app it is <see cref="Environment.TickCount64"/>, the one clock of the
 /// channel, so a reading compares with a snapshot's <see cref="FenixChannelSnapshot.AtMs"/>.</para>
@@ -46,7 +40,6 @@ internal sealed class FenixChannelAnnouncers : IDisposable
     // Where the app's own code is, for the method a log line names (ProblemLine).
     private const string AppNamespace = "MSFSBlindAssist";
 
-    private readonly Action _heartbeat;
     private readonly Action<long>[] _samplers;
     private readonly Action<string> _logProblem;
     private readonly Func<long> _clock;
@@ -56,8 +49,6 @@ internal sealed class FenixChannelAnnouncers : IDisposable
     private System.Windows.Forms.Timer? _timer;
     private bool _disposed;
 
-    /// <param name="heartbeat">Stamps the stall guard, for example <see cref="FenixChannelMonitor.OnUiHeartbeat"/>. Run
-    /// first in every tick.</param>
     /// <param name="samplers">One optional sampler for each announcer, in the order they run. Each is handed the tick's
     /// reading of <paramref name="clock"/> in milliseconds. The list is copied, so the host runs the samplers it was
     /// given, whatever happens to the list afterwards.</param>
@@ -65,14 +56,12 @@ internal sealed class FenixChannelAnnouncers : IDisposable
     /// example <see cref="FenixChannelMonitor.ReportFeatureProblem"/> under the name "announcer".</param>
     /// <param name="clock">The time of a tick, read once for each tick: <see cref="Environment.TickCount64"/> in the app.</param>
     public FenixChannelAnnouncers(
-        Action heartbeat, IReadOnlyList<Action<long>> samplers, Action<string> logProblem, Func<long> clock)
+        IReadOnlyList<Action<long>> samplers, Action<string> logProblem, Func<long> clock)
     {
-        ArgumentNullException.ThrowIfNull(heartbeat);
         ArgumentNullException.ThrowIfNull(samplers);
         ArgumentNullException.ThrowIfNull(logProblem);
         ArgumentNullException.ThrowIfNull(clock);
 
-        _heartbeat = heartbeat;
         _samplers = samplers.ToArray();
         _logProblem = logProblem;
         _clock = clock;
@@ -100,24 +89,15 @@ internal sealed class FenixChannelAnnouncers : IDisposable
     }
 
     /// <summary>
-    /// One tick, which is what the timer calls: the heartbeat, then each sampler in order, with one reading of the clock
-    /// handed to all of them. Nothing a sampler or the heartbeat throws escapes (see the remarks). After
-    /// <see cref="Dispose"/> it does nothing. Internal for the tests, which call it themselves with no message pump.
+    /// One tick, which is what the timer calls: each sampler in order, with one reading of the clock handed to all of
+    /// them. Nothing a sampler throws escapes (see the remarks). After <see cref="Dispose"/> it does nothing. Internal
+    /// for the tests, which call it themselves with no message pump.
     /// </summary>
     internal void Tick()
     {
         if (_disposed) return;
 
         long now = _clock();
-
-        try
-        {
-            _heartbeat();
-        }
-        catch (Exception ex)
-        {
-            Report(ex);
-        }
 
         foreach (Action<long> sampler in _samplers)
         {

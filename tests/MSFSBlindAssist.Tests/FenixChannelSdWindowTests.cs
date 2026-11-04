@@ -542,12 +542,11 @@ public class FenixChannelSdWindowTests
         return new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().Raw(remote)).ToArray();
     }
 
-    // A monitor the SD trusts: SimConnect's values agree with the push, the data call is connected, the build is checked
-    // and one good push, with the SD's fields, has arrived.
+    // A monitor the SD trusts: the data call is connected, the build is checked and one good push, with the SD's fields,
+    // has arrived.
     private static FenixChannelMonitor TrustedSdMonitor(MonitorTestKit.Lines lines, SdPush sd)
     {
         FenixChannelMonitor monitor = MonitorTestKit.NewIdleMonitor(lines);
-        MonitorTestKit.AgreeWithGoodPush(monitor);
         monitor.OnDataState(FenixChannelState.Connected, "");
         Assert.True(
             SpinWait.SpinUntil(
@@ -771,7 +770,7 @@ internal sealed partial class SdPush
 
     /// <summary>A frame of a live SD showing <see cref="Page"/>, every shape right, and nothing else in it.</summary>
     public FenixChannelFrame Frame() => new(false, Array.Empty<string>(), FenixFdState.Default,
-        Array.Empty<FenixFmaSlot>(), Array.Empty<string>(), Array.Empty<string>(), Page, 0, 0, 0, "")
+        Array.Empty<FenixFmaSlot>(), Array.Empty<string>(), Array.Empty<string>(), Page, 0, 0, "")
     {
         SdLive = true
     };

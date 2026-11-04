@@ -97,7 +97,6 @@ internal static partial class FenixChannelFields
         public const int UpperEcamRight = 174;      // upperEcamRight: repeated nested NullWrapped string, E/WD right
         public const int Isis = 182;                // isis: nested IsisState
         public const int Heading = 194;             // heading: nested HeadingData
-        public const int Altitude = 197;            // altitude: fixed64 (double)
     }
 
     /// <summary>

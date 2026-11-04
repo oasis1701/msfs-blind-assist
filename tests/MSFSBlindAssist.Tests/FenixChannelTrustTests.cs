@@ -8,20 +8,16 @@
 // connected; a data message has come since it connected; the stream has not stalled; the build is known;
 // the build is one the app has checked; no message was malformed and no field had the wrong shape since it
 // connected (a latch). Then the display's own conditions: a powered display unit shows it, or for the ISIS its
-// own message says it is powered (else "display off"); each cross-check with SimConnect has agreed at least
-// once and has no disagreement in force (a disagreement stays in force until a message agrees, and one that
-// lasts three seconds without a break latches until the channel reconnects); and no line the display covers
-// holds a text code the app does not know. The gate judges six displays: the PFD, the E/WD, the SD, the ND, the
-// ISIS and the DCDU. The ND is cross-checked by the heading check the PFD has (one check, shared); the SD, the
-// ISIS and the DCDU have no cross-check; and the ND, the ISIS and the DCDU have no text check of the gate's. A verdict
-// says that the display itself is dark (IsDisplayOff) only for "display off", which comes after every channel-wide
-// condition: a stopped, silent or latched channel, or a build not checked, never reads as a dark display, whatever
-// the last frame showed.
+// own message says it is powered (else "display off"); for the PFD, its frame has an FMA; and no line the display
+// covers holds a text code the app does not know. The gate judges six displays: the PFD, the E/WD, the SD, the ND,
+// the ISIS and the DCDU; the ND, the ISIS and the DCDU have no text check of the gate's. A verdict says that the
+// display itself is dark (IsDisplayOff) only for "display off", which comes after every channel-wide condition: a
+// stopped, silent or latched channel, or a build not checked, never reads as a dark display, whatever the last frame
+// showed.
 //
-// SimConnect's batch comes about once a second, so a value of its is compared with the channel as the channel
-// was when the value arrived, not as it is now.
+// The gate never compares the channel's values with SimConnect's ([FNX-22]), so no value in a frame can untrust a
+// display.
 
-using System.Globalization;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
@@ -29,9 +25,6 @@ namespace MSFSBlindAssist.Tests;
 public class FenixChannelTrustTests
 {
     private const string CheckedBuild = "3.0.0.7613";
-
-    // U+2800, the blank braille cell the display uses as a spacer. Named because it cannot be seen in source.
-    private const char Spacer = (char)0x2800;
 
     private static readonly FenixDisplayVerdict Trusted = new(true, "trusted");
 
@@ -44,7 +37,7 @@ public class FenixChannelTrustTests
     // ---- The channel-wide conditions, in the order of the table -----------------------------------
 
     [Fact]
-    public void Everything_agreeing_is_trusted()
+    public void A_healthy_channel_with_every_display_live_is_trusted()
     {
         FenixChannelTrust gate = TrustedGate();
 
@@ -54,6 +47,23 @@ public class FenixChannelTrustTests
         Assert.Equal(Trusted, Nd(gate, 0));
         Assert.Equal(Trusted, Isis(gate, 0));
         Assert.Equal(Trusted, Dcdu(gate, 0));
+    }
+
+    [Theory]
+    [InlineData(true, 90.0, "wFOB:   g2940 cs KG")]
+    [InlineData(false, 271.5, "wFOB:   g6480 cs LBS")]
+    [InlineData(false, double.NaN, "")]              // what a display cannot draw yet
+    [InlineData(false, -5.1, "wFOB:    aXXX cs KG")]  // a heading near north goes negative; the crosses of a dark FOB
+    public void No_value_in_a_frame_untrusts_a_display(bool flightDirectors, double heading, string fob)
+    {
+        // The gate never judges a value: what a display draws can differ from SimConnect's for no fault of the channel,
+        // and comparing them untrusted healthy displays in flight ([FNX-22], 2026-11-04). Whatever a frame says, a live
+        // display of a healthy channel is trusted.
+        FenixChannelTrust gate = ConnectedGate();
+
+        gate.OnFrame(Frame(fdOn: flightDirectors, heading: heading, fob: fob), 0);
+
+        AssertAll(gate, 0, Trusted);
     }
 
     [Fact]
@@ -108,7 +118,6 @@ public class FenixChannelTrustTests
     {
         var gate = new FenixChannelTrust(new HashSet<string> { CheckedBuild });
         gate.OnConnected(0);   // no OnBuild: the build query has not answered
-        Compare(gate);
         gate.OnFrame(Frame(), 0);
 
         AssertAll(gate, 0, Untrusted("build unknown"));
@@ -119,7 +128,6 @@ public class FenixChannelTrustTests
     {
         FenixChannelTrust gate = ConnectedGate();
         gate.OnBuild("3.0.0.7700");
-        Compare(gate);
         gate.OnFrame(Frame(), 0);
 
         AssertAll(gate, 0, Untrusted("build 3.0.0.7700 not checked"));
@@ -133,7 +141,6 @@ public class FenixChannelTrustTests
     {
         FenixChannelTrust gate = ConnectedGate();
         gate.OnBuild(build);
-        Compare(gate);
         gate.OnFrame(Frame(), 0);
 
         AssertAll(gate, 0, Untrusted($"build {build} not checked"));
@@ -145,7 +152,6 @@ public class FenixChannelTrustTests
         var gate = new FenixChannelTrust(new HashSet<string>());
         gate.OnConnected(0);
         gate.OnBuild(CheckedBuild);
-        Compare(gate);
         gate.OnFrame(Frame(), 0);
 
         AssertAll(gate, 0, Untrusted("build 3.0.0.7613 not checked"));
@@ -156,7 +162,6 @@ public class FenixChannelTrustTests
     {
         var gate = new FenixChannelTrust(new HashSet<string> { CheckedBuild });
         gate.OnConnected(0);
-        Compare(gate);
 
         // No frame yet outranks the unknown build.
         Assert.Equal(Untrusted("no data yet"), Sd(gate, 5_000));
@@ -233,7 +238,6 @@ public class FenixChannelTrustTests
     {
         // The first message of the connection is malformed: the reason is the latch, not "no data yet".
         FenixChannelTrust fresh = ConnectedGate();
-        Compare(fresh);
 
         fresh.OnFrame(FenixChannelFrame.MalformedFrame, 0);
 
@@ -307,7 +311,6 @@ public class FenixChannelTrustTests
     public void A_push_with_no_data_is_not_a_message()
     {
         FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);
 
         gate.OnFrame(FenixChannelFrame.NoData, 100);
 
@@ -323,8 +326,6 @@ public class FenixChannelTrustTests
     {
         FenixChannelTrust gate = TrustedGate();   // the last push with data came at t=0
 
-        // Their default values (altitude 0, both flight directors off) disagree with every comparison, so
-        // had these pushes been read, five seconds of them would have latched the PFD.
         Feed(gate, 100, 2_000, FenixChannelFrame.NoData);
 
         AssertAll(gate, 2_000, Trusted);
@@ -344,11 +345,9 @@ public class FenixChannelTrustTests
     [Fact]
     public void A_dark_display_is_not_trusted()
     {
-        // Cold and dark the channel still sends the sim's altitude and heading, which agree with SimConnect, so the
-        // PFD and the SD read trusted while dark (3.0.0.7613, 2026-11-02): a read would have spoken what no display
-        // shows. Being live is each display's first condition of its own, the SD's included.
+        // Cold and dark the channel still sends its altitude and heading (3.0.0.7613, 2026-11-02), so a read would speak
+        // what no display shows. Being live is each display's first condition of its own, the SD's included.
         FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, fdCapt: 0, fdFo: 0);
 
         Feed(gate, 0, 5_000, ColdAndDark());
 
@@ -356,11 +355,10 @@ public class FenixChannelTrustTests
     }
 
     [Fact]
-    public void A_display_is_trusted_once_it_is_live_and_checked()
+    public void A_display_is_trusted_once_it_is_live()
     {
         FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);
-        Feed(gate, 0, 1_000, Dark());   // every check passes while the displays are dark
+        Feed(gate, 0, 1_000, Dark());
 
         AssertAll(gate, 1_000, Untrusted("display off"));
 
@@ -396,25 +394,10 @@ public class FenixChannelTrustTests
     }
 
     [Fact]
-    public void Display_off_comes_before_a_disagreement()
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, altitude: 5000);   // the altitude disagrees from the first frame
-
-        gate.OnFrame(Frame(pfdLive: false), 0);
-
-        Assert.Equal(Untrusted("display off"), Pfd(gate, 0));
-
-        gate.OnFrame(Frame(), 100);
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 100));
-    }
-
-    [Fact]
     public void Display_off_comes_before_the_displays_other_conditions()
     {
-        // No SimConnect value yet (every check not checked yet), no FMA and an unknown code in the upper ECAM: a dark
-        // display reads "display off" before any of them, and each shows once the display is live.
+        // No FMA and an unknown code in the upper ECAM: a dark display reads "display off" before either, and each shows
+        // once the display is live.
         FenixChannelTrust gate = ConnectedGate();
         FenixFmaSlot[] noFma = Array.Empty<FenixFmaSlot>();
         string[] unknown = { "xFAULT" };
@@ -426,35 +409,12 @@ public class FenixChannelTrustTests
 
         gate.OnFrame(Frame(fma: noFma, upperLeft: unknown), 100);
 
-        Assert.Equal(Untrusted("FD captain not checked yet"), Pfd(gate, 100));
-        Assert.Equal(Untrusted("fuel not checked yet"), Ewd(gate, 100));
+        Assert.Equal(Untrusted("no FMA"), Pfd(gate, 100));
+        Assert.Equal(Untrusted("unknown code 'x' in the upper ECAM"), Ewd(gate, 100));
         Assert.Equal(Trusted, Sd(gate, 100));   // the SD's one condition is being live
-        Assert.Equal(Untrusted("heading not checked yet"), Nd(gate, 100));   // the ND's one check is the heading
+        Assert.Equal(Trusted, Nd(gate, 100));   // and the ND's: neither the FMA nor the upper ECAM is its to judge
         Assert.Equal(Trusted, Isis(gate, 100));   // the ISIS and the DCDU, like the SD, have being live only
         Assert.Equal(Trusted, Dcdu(gate, 100));
-
-        Compare(gate, atMs: 200);
-        gate.OnFrame(Frame(fma: noFma, upperLeft: unknown), 200);
-
-        Assert.Equal(Untrusted("no FMA"), Pfd(gate, 200));
-        Assert.Equal(Untrusted("unknown code 'x' in the upper ECAM"), Ewd(gate, 200));
-        Assert.Equal(Trusted, Nd(gate, 200));   // neither the FMA nor the upper ECAM is the ND's to judge
-    }
-
-    [Fact]
-    public void A_disagreement_held_while_its_display_is_off_shows_once_it_is_live()
-    {
-        // The cross-checks run on every frame, live or not: a disagreement that lasts MismatchHoldMs while the PFD is
-        // dark latches, and the PFD reads the latch from its first live frame.
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, altitude: 5000);
-        Feed(gate, 0, 3_000, Frame(pfdLive: false));
-
-        Assert.Equal(Untrusted("display off"), Pfd(gate, 3_000));
-
-        gate.OnFrame(Frame(), 3_100);
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 3_100));
     }
 
     [Fact]
@@ -462,7 +422,6 @@ public class FenixChannelTrustTests
     {
         var gate = new FenixChannelTrust(new HashSet<string> { CheckedBuild });
         gate.OnConnected(0);
-        Compare(gate);
         gate.OnFrame(Dark(), 0);
 
         AssertAll(gate, 0, Untrusted("build unknown"));
@@ -479,13 +438,12 @@ public class FenixChannelTrustTests
     [Fact]
     public void A_frame_of_defaults_trusts_no_display()
     {
-        // A RemoteData holding only fields the app does not read decodes to a frame of defaults. Its empty FOB text
-        // only makes the fuel check wait, so it read trusted on an E/WD whose fuel check had passed, and on the SD,
-        // which has no cross-check: with no duData and no ISIS part, every display is off.
+        // A RemoteData holding only fields the app does not read decodes to a frame of defaults: with no duData and no
+        // ISIS part, every display is off, so it can never read trusted.
         FenixChannelTrust gate = TrustedGate();
 
         gate.OnFrame(new FenixChannelFrame(false, Array.Empty<string>(), FenixFdState.Default,
-            Array.Empty<FenixFmaSlot>(), Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, 0, ""), 100);
+            Array.Empty<FenixFmaSlot>(), Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, ""), 100);
 
         AssertAll(gate, 100, Untrusted("display off"));
     }
@@ -498,7 +456,6 @@ public class FenixChannelTrustTests
         // The channel is healthy and no powered unit shows the display: the one verdict whose key opens the window on its
         // status row (spec 2.4) and not its AI read. Each display is dark on its own.
         FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);
         Feed(gate, 0, 1_000, Dark());
 
         foreach (FenixChannelDisplay display in AllDisplays)
@@ -533,38 +490,18 @@ public class FenixChannelTrustTests
     }
 
     [Fact]
-    public void A_lit_display_whose_check_fails_is_not_display_off()
+    public void A_lit_display_whose_own_condition_fails_is_not_display_off()
     {
-        // Every one of these keeps its key on the AI read: the screen is live, and the display's own check says why it
+        // Each of these keeps its key on the AI read: the screen is live, and the display's own condition says why it
         // cannot be read.
         FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, altitude: 5000);
 
-        // A disagreement in force.
-        gate.OnFrame(Frame(), 0);
+        gate.OnFrame(Frame(fma: Array.Empty<FenixFmaSlot>(), upperLeft: new[] { "xFAULT" }), 0);
 
-        FenixDisplayVerdict disagreeing = Pfd(gate, 0);
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), disagreeing);
-        Assert.False(disagreeing.IsDisplayOff);
-
-        // The same disagreement latched until reconnect.
-        Feed(gate, 100, 3_100, Frame());
-
-        FenixDisplayVerdict latched = Pfd(gate, 3_100);
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), latched);
-        Assert.False(latched.IsDisplayOff);
-
-        // A check that has never passed, and a code the display does not know.
-        FenixChannelTrust fresh = ConnectedGate();
-        fresh.OnFrame(Frame(upperLeft: new[] { "xFAULT" }), 0);
-
-        Assert.Equal(Untrusted("FD captain not checked yet"), Pfd(fresh, 0));
-        Assert.False(Pfd(fresh, 0).IsDisplayOff);
-        Compare(fresh, atMs: 100);
-        fresh.OnFrame(Frame(upperLeft: new[] { "xFAULT" }), 100);
-
-        Assert.Equal(Untrusted("unknown code 'x' in the upper ECAM"), Ewd(fresh, 100));
-        Assert.False(Ewd(fresh, 100).IsDisplayOff);
+        Assert.Equal(Untrusted("no FMA"), Pfd(gate, 0));
+        Assert.False(Pfd(gate, 0).IsDisplayOff);
+        Assert.Equal(Untrusted("unknown code 'x' in the upper ECAM"), Ewd(gate, 0));
+        Assert.False(Ewd(gate, 0).IsDisplayOff);
     }
 
     [Fact]
@@ -572,7 +509,6 @@ public class FenixChannelTrustTests
     {
         FenixChannelTrust gate = ConnectedGate();
         gate.OnBuild("3.0.0.7700");
-        Compare(gate);
         gate.OnFrame(Dark(), 0);
 
         foreach (FenixChannelDisplay display in AllDisplays)
@@ -603,7 +539,6 @@ public class FenixChannelTrustTests
 
         // The stream stops answering after the displays went dark.
         FenixChannelTrust stopped = ConnectedGate();
-        Compare(stopped);
         stopped.OnFrame(Dark(), 0);
         Assert.True(Pfd(stopped, 0).IsDisplayOff);
         stopped.OnDisconnected("connection reset");
@@ -619,14 +554,12 @@ public class FenixChannelTrustTests
 
         // The stream stalls after a dark frame.
         FenixChannelTrust stalled = ConnectedGate();
-        Compare(stalled);
         stalled.OnFrame(Dark(), 0);
         Assert.True(Pfd(stalled, 2_000).IsDisplayOff);
         AssertNone(stalled, 2_001, "stream stalled");
 
         // A dark frame, then a malformed message: the latch.
         FenixChannelTrust latched = ConnectedGate();
-        Compare(latched);
         latched.OnFrame(Dark(), 0);
         latched.OnFrame(FenixChannelFrame.MalformedFrame, 100);
         AssertNone(latched, 100, "malformed message");
@@ -636,7 +569,6 @@ public class FenixChannelTrustTests
     public void A_display_the_gate_does_not_know_is_not_display_off()
     {
         FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);
         gate.OnFrame(Dark(), 0);
 
         FenixDisplayVerdict verdict = gate.VerdictFor((FenixChannelDisplay)99, 0);
@@ -648,907 +580,34 @@ public class FenixChannelTrustTests
     // ---- The ND, the ISIS and the DCDU ------------------------------------------------------------
 
     [Fact]
-    public void The_nd_is_live_on_a_powered_nd_unit_and_checks_the_heading()
+    public void The_nd_is_live_on_a_powered_nd_unit()
     {
-        // The ND is live while a powered unit shows the captain's ND, and its one cross-check is the heading check the
-        // PFD has. The PFD's altitude and the E/WD's fuel, both disagreeing from the first frame here, are none of its
-        // business. SimConnect's values come first and the frames after them, as in the sim.
         FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, altitude: 5000, fuelKg: 100);
 
         gate.OnFrame(Frame(ndLive: false), 0);
 
-        Assert.Equal(Untrusted("display off"), Nd(gate, 0));   // no powered unit shows it, though its heading agrees
+        Assert.Equal(Untrusted("display off"), Nd(gate, 0));
 
         gate.OnFrame(Frame(), 100);
 
         Assert.Equal(Trusted, Nd(gate, 100));
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 100));
-        Assert.Equal(Untrusted("fuel disagrees: channel 2,940 kg, sim 100 kg"), Ewd(gate, 100));
-
-        // The heading is the one value it checks, and the reason is the PFD's.
-        gate.OnComparison(FenixComparison.MagHeadingDeg, 180, 200);
-        gate.OnFrame(Frame(), 200);
-
-        Assert.Equal(Untrusted("heading disagrees: channel 90.0 deg, sim 180.0 deg"), Nd(gate, 200));
-
-        // And a heading never checked keeps it untrusted, as for the PFD: SimConnect has not said the heading yet.
-        FenixChannelTrust fresh = ConnectedGate();
-        fresh.OnFrame(Frame(), 0);
-
-        Assert.Equal(Untrusted("heading not checked yet"), Nd(fresh, 0));
     }
 
     [Fact]
-    public void An_nd_heading_disagreement_latches_the_nd_and_the_pfd()
+    public void The_displays_with_no_text_of_the_gates_stay_trusted_while_the_others_are_not()
     {
-        // One heading check, not two: the ND and the PFD read the same disagreement, and the same latch, which lasts
-        // until the channel reconnects. A display with no heading check is not touched.
+        // The gate reads no text of the SD, the ND, the ISIS or the DCDU: an FMA that is gone and an unknown code in the
+        // upper ECAM take the PFD and the E/WD down, and these four stay trusted while they are live.
         FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.MagHeadingDeg, 180, 100);
-
-        Feed(gate, 100, 2_900, Frame());   // disagreeing since t=100: 2,800 ms
-
-        FenixDisplayVerdict disagreeing = Untrusted("heading disagrees: channel 90.0 deg, sim 180.0 deg");
-        Assert.Equal(disagreeing, Nd(gate, 2_900));
-        Assert.Equal(disagreeing, Pfd(gate, 2_900));
-
-        gate.OnFrame(Frame(), 3_100);   // 3,000 ms: it counts
-
-        FenixDisplayVerdict latched = Untrusted("heading latched until reconnect: channel 90.0 deg, sim 180.0 deg");
-        Assert.Equal(latched, Nd(gate, 3_100));
-        Assert.Equal(latched, Pfd(gate, 3_100));
-        Assert.Equal(Trusted, Ewd(gate, 3_100));
-        Assert.Equal(Trusted, Sd(gate, 3_100));
-        Assert.Equal(Trusted, Isis(gate, 3_100));
-        Assert.Equal(Trusted, Dcdu(gate, 3_100));
-
-        // Agreeing again changes nothing.
-        gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 3_200);
-        gate.OnFrame(Frame(), 3_200);
-
-        Assert.Equal(latched, Nd(gate, 3_200));
-        Assert.Equal(latched, Pfd(gate, 3_200));
-
-        // Only a reconnect lifts it, for both.
-        gate.OnConnected(4_000);
-        gate.OnBuild(CheckedBuild);
-        gate.OnFrame(Frame(), 4_000);
-
-        AssertAll(gate, 4_000, Trusted);
-    }
-
-    [Fact]
-    public void The_displays_without_a_cross_check_stay_trusted_while_the_others_latch()
-    {
-        // The SD, the ISIS and the DCDU have no cross-check, and the gate reads no text of theirs: every value
-        // SimConnect disagrees on for longer than the hold, an FMA that is gone and an unknown code in the upper
-        // ECAM take the PFD, the E/WD and the ND down, and these three stay trusted while they are live.
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.FdLightCapt, 0, 100);
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 100);
-        gate.OnComparison(FenixComparison.MagHeadingDeg, 180, 100);
-        gate.OnComparison(FenixComparison.FuelKg, 100, 100);
 
         Feed(gate, 100, 5_000, Frame(fma: Array.Empty<FenixFmaSlot>(), upperLeft: new[] { "xFAULT" }));
 
-        Assert.Equal(Untrusted("FD captain latched until reconnect: channel on, sim off"), Pfd(gate, 5_000));
-        Assert.Equal(Untrusted("fuel latched until reconnect: channel 2,940 kg, sim 100 kg"), Ewd(gate, 5_000));
-        Assert.Equal(Untrusted("heading latched until reconnect: channel 90.0 deg, sim 180.0 deg"), Nd(gate, 5_000));
+        Assert.Equal(Untrusted("no FMA"), Pfd(gate, 5_000));
+        Assert.Equal(Untrusted("unknown code 'x' in the upper ECAM"), Ewd(gate, 5_000));
         Assert.Equal(Trusted, Sd(gate, 5_000));
+        Assert.Equal(Trusted, Nd(gate, 5_000));
         Assert.Equal(Trusted, Isis(gate, 5_000));
         Assert.Equal(Trusted, Dcdu(gate, 5_000));
-    }
-
-    // ---- The cross-checks: waiting, disagreeing and latched -----------------------------------------
-
-    [Fact]
-    public void A_check_not_yet_passed_keeps_its_display_untrusted()
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 0);
-        gate.OnComparison(FenixComparison.FdLightFo, 1, 0);
-        gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 0);
-        gate.OnComparison(FenixComparison.FuelKg, 2938, 0);   // SimConnect has not delivered the altitude
-        gate.OnFrame(Frame(), 0);
-
-        Assert.Equal(Untrusted("altitude not checked yet"), Pfd(gate, 0));
-        Assert.Equal(Trusted, Ewd(gate, 0));
-        Assert.Equal(Trusted, Sd(gate, 0));
-
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 100);
-        gate.OnFrame(Frame(), 100);
-
-        Assert.Equal(Trusted, Pfd(gate, 100));
-    }
-
-    [Fact]
-    public void A_pending_disagreement_untrusts_without_latching()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 100);
-
-        Feed(gate, 100, 2_900, Frame());
-
-        // Not latched: the reason says "disagrees" with both values, and only the PFD is affected.
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 2_900));
-        Assert.Equal(Trusted, Ewd(gate, 2_900));
-        Assert.Equal(Trusted, Sd(gate, 2_900));
-
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 3_000);
-        gate.OnFrame(Frame(), 3_000);
-
-        Assert.Equal(Trusted, Pfd(gate, 3_000));
-    }
-
-    [Fact]
-    public void A_disagreement_lasting_the_hold_latches_until_reconnect()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 4_000);
-
-        Feed(gate, 4_000, 6_900, Frame());   // disagreeing since t=4000: 2,900 ms
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 6_900));
-
-        gate.OnFrame(Frame(), 7_000);   // 3,000 ms: it counts
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 7_000));
-
-        // Agreeing again changes nothing, and the reason keeps the values that latched it.
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 7_200);
-        gate.OnFrame(Frame(), 7_200);
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 7_200));
-        Assert.Equal(Trusted, Ewd(gate, 7_200));
-        Assert.Equal(Trusted, Sd(gate, 7_200));
-
-        // Nor does a different disagreement: a latched check is inert.
-        gate.OnComparison(FenixComparison.AltitudeFt, 6000, 7_300);
-        gate.OnFrame(Frame(), 7_300);
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 7_300));
-
-        // SimConnect's altitude agrees again, and the channel reconnects: it starts fresh. The comparison
-        // values are kept across a reconnect, so the next agreeing frame is enough.
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 8_000);
-        gate.OnConnected(8_000);
-        gate.OnBuild(CheckedBuild);
-        gate.OnFrame(Frame(), 8_000);
-
-        AssertAll(gate, 8_000, Trusted);
-    }
-
-    [Fact]
-    public void A_waiting_value_breaks_a_disagreement()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 0);
-        Feed(gate, 0, 2_000, Frame());   // disagreeing for 2,000 ms
-
-        // SimConnect's value goes missing for one frame. That breaks the run toward the 3,000 ms: it starts
-        // again. It does not end the disagreement, which stays in force until a frame agrees, so the display
-        // is still not trusted.
-        gate.OnComparison(FenixComparison.AltitudeFt, double.NaN, 2_500);
-        gate.OnFrame(Frame(), 2_500);
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 2_500));
-
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 2_600);
-        Feed(gate, 2_600, 5_500, Frame());   // a second run, counted from t=2600
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 5_500));
-
-        gate.OnFrame(Frame(), 5_600);   // 3,000 ms after the second run began
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 5_600));
-    }
-
-    [Fact]
-    public void A_missing_value_does_not_end_a_disagreement()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 100);
-        Feed(gate, 100, 1_000, Frame());   // disagreeing
-
-        // SimConnect stops delivering the altitude: ten seconds of waiting. The disagreement is still in force,
-        // and it never latches, since no run of 3,000 ms can build up.
-        gate.OnComparison(FenixComparison.AltitudeFt, double.NaN, 1_100);
-        Feed(gate, 1_100, 11_000, Frame());
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 11_000));
-
-        // Only a frame that agrees ends it.
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 11_100);
-        gate.OnFrame(Frame(), 11_100);
-
-        Assert.Equal(Trusted, Pfd(gate, 11_100));
-    }
-
-    [Fact]
-    public void A_disagreement_on_a_check_that_never_passed_is_still_a_disagreement()
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, altitude: 5000);
-        gate.OnFrame(Frame(), 0);   // it disagrees at the very first look
-
-        gate.OnComparison(FenixComparison.AltitudeFt, double.NaN, 100);
-        gate.OnFrame(Frame(), 100);   // and then it waits
-
-        // "Disagrees" is the reason, not "not checked yet".
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 100));
-    }
-
-    [Fact]
-    public void A_disagreement_interleaved_with_waiting_frames_never_latches_and_never_reads_trusted()
-    {
-        FenixChannelTrust gate = TrustedGate();   // the captain's flight director is on, and the light says so
-
-        // The light reads 0 on one frame (the channel's flight director is on: a disagreement) and 2 on the
-        // next (waiting), for ten seconds. Each waiting frame restarts the hold clock, so no run ever reaches
-        // 3,000 ms, and the disagreement stays in force through the waiting frames.
-        for (long t = 100; t <= 10_000; t += 100)
-        {
-            gate.OnComparison(FenixComparison.FdLightCapt, t % 200 == 0 ? 2 : 0, t);
-            gate.OnFrame(Frame(), t);
-
-            Assert.Equal(Untrusted("FD captain disagrees: channel on, sim off"), Pfd(gate, t));
-        }
-
-        // A frame that agrees ends it.
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 10_100);
-        gate.OnFrame(Frame(), 10_100);
-
-        Assert.Equal(Trusted, Pfd(gate, 10_100));
-    }
-
-    [Fact]
-    public void An_agreeing_frame_restarts_the_hold_clock()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 100);
-        Feed(gate, 100, 2_900, Frame());   // disagreeing for 2,800 ms
-
-        // One frame agrees: the disagreement is over, and so is the run toward the 3,000 ms.
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 3_000);
-        gate.OnFrame(Frame(), 3_000);
-
-        Assert.Equal(Trusted, Pfd(gate, 3_000));
-
-        // It disagrees again: a new run, counted from its own first frame (t=3100).
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 3_100);
-        Feed(gate, 3_100, 5_900, Frame());
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 5_900));
-
-        gate.OnFrame(Frame(), 6_100);   // 3,000 ms after t=3100
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 6_100));
-    }
-
-    [Fact]
-    public void A_stall_restarts_the_hold_clock()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 0);
-        Feed(gate, 0, 2_000, Frame());   // disagreeing for 2,000 ms, then the stream goes quiet
-
-        AssertAll(gate, 4_001, Untrusted("stream stalled"));
-
-        // It resumes, still disagreeing. A stall is a break in the run toward the 3,000 ms, as a waiting value
-        // is: the run counts from the first frame after it (t=5000), not from t=0, so it is not already over.
-        Feed(gate, 5_000, 7_900, Frame());
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 7_900));
-
-        gate.OnFrame(Frame(), 8_000);   // 3,000 ms after the first frame after the stall
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 8_000));
-    }
-
-    [Fact]
-    public void After_a_stall_a_waiting_frame_leaves_the_disagreement_in_force()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 0);
-        Feed(gate, 0, 2_000, Frame());   // disagreeing, then the stream goes quiet
-
-        // It resumes with a frame whose altitude cannot be read. The stall restarted the hold clock and did
-        // not end the disagreement, and a waiting frame does not either.
-        gate.OnFrame(Frame(altitude: double.NaN), 5_000);
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 5_000));
-
-        // A frame that agrees ends it.
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 5_100);
-        gate.OnFrame(Frame(), 5_100);
-
-        Assert.Equal(Trusted, Pfd(gate, 5_100));
-    }
-
-    [Fact]
-    public void Pushes_with_no_data_do_not_hide_a_stall_from_the_hold_clock()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 0);
-        Feed(gate, 0, 2_000, Frame());   // disagreeing for 2,000 ms
-
-        // Pushes with no data are not messages, so they are not the frame "seen before": the stream is still
-        // stalled when the next push with data comes, and the run counts from that one.
-        Feed(gate, 2_100, 4_900, FenixChannelFrame.NoData);
-        Feed(gate, 5_000, 7_900, Frame());
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 7_900));
-
-        gate.OnFrame(Frame(), 8_000);
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 8_000));
-    }
-
-    [Theory]
-    [InlineData(3_000, "altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft")]   // 2,000 ms of silence: not a stall
-    [InlineData(3_001, "altitude disagrees: channel 1,000 ft, sim 5,000 ft")]   // 2,001 ms: a stall
-    public void A_stall_restarts_the_hold_clock_only_past_the_stale_limit(long nextFrameMs, string reason)
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 0);
-        Feed(gate, 0, 1_000, Frame());   // disagreeing since t=0
-
-        gate.OnFrame(Frame(), nextFrameMs);
-
-        Assert.Equal(Untrusted(reason), Pfd(gate, nextFrameMs));
-    }
-
-    [Fact]
-    public void A_stall_does_not_clear_a_passed_check()
-    {
-        FenixChannelTrust gate = TrustedGate();   // every check has passed
-
-        // Ten seconds of silence, then a frame whose altitude cannot be read: the check had passed, and a
-        // stall is not a reconnect.
-        gate.OnFrame(Frame(altitude: double.NaN), 10_000);
-
-        Assert.Equal(Trusted, Pfd(gate, 10_000));
-    }
-
-    [Fact]
-    public void A_stall_does_not_lift_a_latch()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 100);
-        Feed(gate, 100, 3_100, Frame());   // latched
-
-        // Ten seconds of silence, then a frame that agrees.
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 13_100);
-        gate.OnFrame(Frame(), 13_100);
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 13_100));
-    }
-
-    [Theory]
-    [InlineData(double.NaN)]
-    [InlineData(double.PositiveInfinity)]
-    [InlineData(double.NegativeInfinity)]
-    public void A_non_finite_channel_value_waits_instead_of_latching(double channelAltitude)
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);
-
-        Feed(gate, 0, 10_000, Frame(altitude: channelAltitude));
-
-        // Never passed and never disagreeing: "not checked yet", however long it goes on.
-        Assert.Equal(Untrusted("altitude not checked yet"), Pfd(gate, 10_000));
-        Assert.Equal(Trusted, Ewd(gate, 10_000));
-
-        // And never latched: a frame with a real value passes the check.
-        gate.OnFrame(Frame(), 10_100);
-
-        Assert.Equal(Trusted, Pfd(gate, 10_100));
-    }
-
-    [Theory]
-    [InlineData(double.PositiveInfinity)]
-    [InlineData(double.NegativeInfinity)]
-    public void A_non_finite_simulator_value_waits_instead_of_latching(double simAltitude)
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, altitude: simAltitude);
-
-        Feed(gate, 0, 10_000, Frame());
-
-        Assert.Equal(Untrusted("altitude not checked yet"), Pfd(gate, 10_000));
-    }
-
-    [Fact]
-    public void The_first_check_that_is_not_ok_gives_the_reason()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 100);
-        Feed(gate, 100, 3_100, Frame());
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 3_100));
-
-        // The captain's flight director now starts to disagree as well. It comes first in the PFD's order,
-        // so it gives the reason, though the latched altitude is the heavier fault.
-        gate.OnComparison(FenixComparison.FdLightCapt, 0, 3_200);
-        gate.OnFrame(Frame(), 3_200);
-
-        Assert.Equal(Untrusted("FD captain disagrees: channel on, sim off"), Pfd(gate, 3_200));
-    }
-
-    // ---- SimConnect's value is compared with the channel as it was when the value arrived -----------
-
-    [Theory]
-    [InlineData(3.0)]
-    [InlineData(6.0)]
-    public void A_turn_stays_trusted_although_simconnect_comes_once_a_second(double degreesPerSecond)
-    {
-        // 3 degrees a second is a standard-rate turn. At that rate the second of lag stays just inside the
-        // 3 degree tolerance, so only the row of twice the rate fails when the values are not aligned.
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);   // the flight directors, altitude and fuel agree and stay put
-
-        Fly(gate, FenixComparison.MagHeadingDeg,
-            frameAt: ms => Frame(heading: 90 + degreesPerSecond * ms / 1000.0),
-            simValueAt: ms => 90 + degreesPerSecond * ms / 1000.0,
-            untilMs: 10_000,
-            afterFrame: t => Assert.Equal(Trusted, Pfd(gate, t)));
-    }
-
-    [Theory]
-    [InlineData(100.0)]
-    [InlineData(200.0)]
-    public void A_climb_stays_trusted_although_simconnect_comes_once_a_second(double feetPerSecond)
-    {
-        // 100 feet a second is a strong climb (6,000 feet a minute). At that rate the second of lag stays just
-        // inside the 100 foot tolerance, so only the row of twice the rate fails when the values are not aligned.
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);
-
-        Fly(gate, FenixComparison.AltitudeFt,
-            frameAt: ms => Frame(altitude: 1000 + feetPerSecond * ms / 1000.0),
-            simValueAt: ms => 1000 + feetPerSecond * ms / 1000.0,
-            untilMs: 10_000,
-            afterFrame: t => Assert.Equal(Trusted, Pfd(gate, t)));
-    }
-
-    [Fact]
-    public void A_turn_with_the_channel_heading_ten_degrees_off_still_disagrees_and_latches()
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);
-
-        Fly(gate, FenixComparison.MagHeadingDeg,
-            frameAt: ms => Frame(heading: 100 + 3.0 * ms / 1000.0),   // 10 degrees ahead of SimConnect's
-            simValueAt: ms => 90 + 3.0 * ms / 1000.0,
-            untilMs: 10_000,
-            afterFrame: t =>
-            {
-                // It disagrees from the first frame (t=0) and counts from the frame at t=3000.
-                string expected = t < 3_000 ? "heading disagrees: " : "heading latched until reconnect: ";
-                Assert.StartsWith(expected, Pfd(gate, t).Reason, StringComparison.Ordinal);
-            });
-    }
-
-    [Fact]
-    public void A_flight_director_press_that_the_light_reports_late_never_reads_as_a_disagreement()
-    {
-        // The captain presses the FD button at t=1000. The channel's flag flips at once, and SimConnect's batch
-        // brings the light's new value at t=1800.
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, fdCapt: 0);   // the flight director is off, and the light says so
-
-        for (long t = 0; t <= 4_000; t += 100)
-        {
-            if (t == 800) gate.OnComparison(FenixComparison.FdLightCapt, 0, 800);       // the batch before the press
-            if (t == 1_800) gate.OnComparison(FenixComparison.FdLightCapt, 1, 1_800);   // the batch after it
-
-            gate.OnFrame(Frame(fdCapt: t >= 1_000), t);
-
-            Assert.Equal(Trusted, Pfd(gate, t));
-        }
-    }
-
-    [Fact]
-    public void A_parked_aircraft_stays_trusted_with_simconnect_delivered_once()
-    {
-        // A value that does not change is not delivered again: SimConnect spoke once, at t=0, and the channel
-        // has read the same ever since.
-        FenixChannelTrust gate = TrustedGate();
-
-        for (long t = 100; t <= 20_000; t += 100)
-        {
-            gate.OnFrame(Frame(), t);
-
-            Assert.Equal(Trusted, Pfd(gate, t));
-        }
-
-        AssertAll(gate, 20_000, Trusted);
-    }
-
-    [Fact]
-    public void A_simulator_value_that_has_not_changed_still_judges_the_channel()
-    {
-        FenixChannelTrust gate = TrustedGate();   // SimConnect said 1,000 ft at t=0 and has said nothing since
-        Feed(gate, 100, 4_900, Frame());
-
-        // The channel's altitude jumps. SimConnect's old value, older than the window, is compared with the
-        // channel's value now, so the disagreement counts from t=5000.
-        Feed(gate, 5_000, 7_900, Frame(altitude: 1500));
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,500 ft, sim 1,000 ft"), Pfd(gate, 7_900));
-
-        gate.OnFrame(Frame(altitude: 1500), 8_000);
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,500 ft, sim 1,000 ft"), Pfd(gate, 8_000));
-    }
-
-    [Fact]
-    public void A_simulator_value_is_aligned_with_the_channel_only_within_the_window()
-    {
-        FenixChannelTrust gate = TrustedGate();   // SimConnect's 1,000 ft arrived at t=0, with the channel at 1,000 ft
-
-        // The channel climbs 300 ft while SimConnect has said nothing. Within 1,500 ms of the arrival, the
-        // value is compared with the channel as it was then, at t=0: it agrees.
-        gate.OnFrame(Frame(altitude: 1300), 1_000);
-
-        Assert.Equal(Trusted, Pfd(gate, 1_000));
-
-        gate.OnFrame(Frame(altitude: 1300), 1_500);   // exactly the window: still within it
-
-        Assert.Equal(Trusted, Pfd(gate, 1_500));
-
-        // One millisecond later the value is older than the window: it is compared with the channel now.
-        gate.OnFrame(Frame(altitude: 1300), 1_501);
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,300 ft, sim 1,000 ft"), Pfd(gate, 1_501));
-    }
-
-    [Fact]
-    public void Messages_older_than_the_window_are_not_kept()
-    {
-        FenixChannelTrust gate = TrustedGate();   // a message at t=0 with the altitude at 1,000 ft
-
-        // SimConnect delivers 1,000 ft again at t=400, and the next message comes at t=1900 (no stall), with
-        // the altitude at 1,300 ft. The message at t=0 is older than the window by then, so it is gone, and
-        // the one nearest the arrival that is still kept is the current one.
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 400);
-        gate.OnFrame(Frame(altitude: 1300), 1_900);
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,300 ft, sim 1,000 ft"), Pfd(gate, 1_900));
-    }
-
-    [Fact]
-    public void On_a_tie_the_later_message_is_the_one_compared()
-    {
-        FenixChannelTrust gate = TrustedGate();   // a message at t=0 with the altitude at 1,000 ft
-
-        // SimConnect's value arrives midway between the message at t=0 and the one at t=100.
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 50);
-        gate.OnFrame(Frame(altitude: 1300), 100);
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,300 ft, sim 1,000 ft"), Pfd(gate, 100));
-    }
-
-    [Fact]
-    public void A_reason_names_the_channel_value_that_was_compared()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 100);
-        gate.OnFrame(Frame(altitude: 1000), 100);
-
-        // The channel has moved on by the next message. The reason gives the value that was compared with
-        // SimConnect's (the one from t=100), not the newest.
-        gate.OnFrame(Frame(altitude: 1200), 600);
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 600));
-    }
-
-    [Fact]
-    public void A_kept_channel_value_that_is_missing_makes_the_comparison_wait()
-    {
-        FenixChannelTrust gate = TrustedGate();
-
-        // SimConnect's 1,000 ft arrives with a message whose altitude cannot be read.
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 500);
-        gate.OnFrame(Frame(altitude: double.NaN), 500);
-
-        // The channel reads 1,300 ft at the next message. SimConnect's value is compared with the message
-        // nearest its arrival, which could not be read: the comparison waits, and nothing disagrees.
-        gate.OnFrame(Frame(altitude: 1300), 1_000);
-
-        Assert.Equal(Trusted, Pfd(gate, 1_000));
-
-        // Once the value is older than the window, it is compared with the channel now.
-        gate.OnFrame(Frame(altitude: 1300), 2_100);
-
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,300 ft, sim 1,000 ft"), Pfd(gate, 2_100));
-    }
-
-    [Fact]
-    public void A_reconnect_clears_the_kept_messages()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 4_800);   // delivered again just before the reconnect
-        gate.OnFrame(Frame(), 4_800);   // a kept message that agrees with it
-
-        gate.OnConnected(5_000);
-        gate.OnBuild(CheckedBuild);
-        gate.OnFrame(Frame(altitude: 1300), 5_000);
-
-        // The message at t=4800 belongs to the connection that ended. Only the first message of the new one
-        // is kept, and it disagrees with SimConnect's value (which stays, with its arrival time).
-        Assert.Equal(Untrusted("altitude disagrees: channel 1,300 ft, sim 1,000 ft"), Pfd(gate, 5_000));
-    }
-
-    // ---- Each comparison ----------------------------------------------------------------------------
-
-    [Theory]
-    [InlineData("captain", true, 0.0, "FD captain disagrees: channel on, sim off")]
-    [InlineData("captain", false, 1.0, "FD captain disagrees: channel off, sim on")]
-    [InlineData("first officer", true, 0.0, "FD first officer disagrees: channel on, sim off")]
-    [InlineData("first officer", false, 1.0, "FD first officer disagrees: channel off, sim on")]
-    public void A_flight_director_disagreement_names_its_side(string side, bool channelOn, double light, string reason)
-    {
-        bool captain = side == "captain";
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(captain ? FenixComparison.FdLightCapt : FenixComparison.FdLightFo, light, 100);
-
-        gate.OnFrame(captain ? Frame(fdCapt: channelOn) : Frame(fdFo: channelOn), 100);
-
-        Assert.Equal(Untrusted(reason), Pfd(gate, 100));
-        Assert.Equal(Trusted, Ewd(gate, 100));
-        Assert.Equal(Trusted, Sd(gate, 100));
-    }
-
-    [Theory]
-    [InlineData(2.0)]
-    [InlineData(0.5)]
-    [InlineData(-1.0)]
-    [InlineData(double.NaN)]
-    public void The_fd_check_skips_light_values_other_than_zero_and_one(double light)
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.FdLightCapt, light, 100);   // the annunciator light test, for one
-
-        Feed(gate, 100, 10_000, Frame(fdCapt: false));   // the channel's flight director is off
-
-        Assert.Equal(Trusted, Pfd(gate, 10_000));
-    }
-
-    [Fact]
-    public void The_fd_check_waits_for_a_light_that_reads_zero_or_one()
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, fdCapt: 2);
-
-        Feed(gate, 0, 10_000, Frame());
-
-        Assert.Equal(Untrusted("FD captain not checked yet"), Pfd(gate, 10_000));
-    }
-
-    // ---- The annunciator light test -----------------------------------------------------------------
-
-    [Fact]
-    public void The_light_test_never_reads_as_an_fd_disagreement()
-    {
-        // The annunciator light test lights both FD lamps: they read exactly 1 with both flight directors off, while
-        // the channel's FD flags follow the pushbuttons and stay off (measured on 3.0.0.7613, 2026-11-02, where it
-        // latched the FD captain check 3 s into the test). While the test is on, both FD checks wait.
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, fdCapt: 0, fdFo: 0);
-        gate.OnFrame(Frame(fdCapt: false, fdFo: false), 0);
-        Assert.Equal(Trusted, Pfd(gate, 0));
-
-        gate.OnLightTest(true);
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 100);
-        gate.OnComparison(FenixComparison.FdLightFo, 1, 100);
-
-        // Five seconds of frames, longer than the hold: neither check disagrees, so neither latches.
-        for (long t = 100; t <= 5_100; t += 100)
-        {
-            gate.OnFrame(Frame(fdCapt: false, fdFo: false), t);
-
-            Assert.Equal(Trusted, Pfd(gate, t));
-        }
-    }
-
-    [Fact]
-    public void After_the_light_test_a_real_fd_disagreement_still_latches()
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, fdCapt: 0, fdFo: 0);
-        gate.OnFrame(Frame(fdCapt: false, fdFo: false), 0);   // both FD checks pass, off and off
-        gate.OnLightTest(true);
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 100);
-        gate.OnComparison(FenixComparison.FdLightFo, 1, 100);
-        Feed(gate, 100, 5_000, Frame(fdCapt: false, fdFo: false));
-
-        // The test ends, and the first officer's lamp goes out, but the captain's goes on reading 1 with the flight
-        // director off: a real disagreement, which counts as any other does from the first frame without the test.
-        gate.OnLightTest(false);
-        gate.OnComparison(FenixComparison.FdLightFo, 0, 5_100);
-        Feed(gate, 5_100, 8_000, Frame(fdCapt: false, fdFo: false));
-
-        Assert.Equal(Untrusted("FD captain disagrees: channel off, sim on"), Pfd(gate, 8_000));
-
-        gate.OnFrame(Frame(fdCapt: false, fdFo: false), 8_100);   // MismatchHoldMs after t=5100
-
-        Assert.Equal(Untrusted("FD captain latched until reconnect: channel off, sim on"), Pfd(gate, 8_100));
-    }
-
-    [Fact]
-    public void The_light_test_skips_only_the_fd_checks()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnLightTest(true);
-        gate.OnComparison(FenixComparison.AltitudeFt, 5000, 100);
-
-        Feed(gate, 100, 3_100, Frame());
-
-        Assert.Equal(Untrusted("altitude latched until reconnect: channel 1,000 ft, sim 5,000 ft"), Pfd(gate, 3_100));
-    }
-
-    [Fact]
-    public void A_light_test_leaves_an_fd_disagreement_in_force_without_latching_it()
-    {
-        // As for any waiting value: a disagreement already in force when the test begins stays in force, and each
-        // frame of the test restarts its hold clock, so it never latches. The FD checks wait through the test even
-        // when the lamp would agree. A frame that agrees after the test ends the disagreement.
-        FenixChannelTrust gate = TrustedGate();   // both flight directors on, and both lamps say so
-        gate.OnComparison(FenixComparison.FdLightCapt, 0, 100);
-        Feed(gate, 100, 2_000, Frame());   // the lamp reads 0 with the flight director on: 1,900 ms of disagreement
-
-        gate.OnLightTest(true);
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 2_100);
-        Feed(gate, 2_100, 12_000, Frame());
-
-        Assert.Equal(Untrusted("FD captain disagrees: channel on, sim off"), Pfd(gate, 12_000));
-
-        gate.OnLightTest(false);
-        gate.OnFrame(Frame(), 12_100);   // the lamp reads 1, the flight director is on: it agrees
-
-        Assert.Equal(Trusted, Pfd(gate, 12_100));
-    }
-
-    [Fact]
-    public void The_light_test_outlasts_a_reconnect()
-    {
-        // The switch is SimConnect's value, as the lamps are, and SimConnect does not deliver it again while it stays
-        // at Test: a reconnect in the middle of the test must not forget it.
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, fdCapt: 0, fdFo: 0);
-        gate.OnFrame(Frame(fdCapt: false, fdFo: false), 0);
-        gate.OnLightTest(true);
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 100);
-        gate.OnComparison(FenixComparison.FdLightFo, 1, 100);
-
-        gate.OnConnected(1_000);
-        gate.OnBuild(CheckedBuild);
-        Feed(gate, 1_000, 6_000, Frame(fdCapt: false, fdFo: false));
-
-        // Started fresh, the FD checks have not passed, and while they wait they never disagree or latch.
-        Assert.Equal(Untrusted("FD captain not checked yet"), Pfd(gate, 6_000));
-    }
-
-    [Theory]
-    [InlineData(1100.0, null)]   // exactly 100 ft apart: within the tolerance
-    [InlineData(900.0, null)]
-    [InlineData(1101.0, "altitude disagrees: channel 1,000 ft, sim 1,101 ft")]
-    [InlineData(899.0, "altitude disagrees: channel 1,000 ft, sim 899 ft")]
-    public void Altitude_is_compared_within_one_hundred_feet(double simAltitude, string? reason)
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, altitude: simAltitude);
-
-        gate.OnFrame(Frame(altitude: 1000), 0);
-
-        Assert.Equal(reason is null ? Trusted : Untrusted(reason), Pfd(gate, 0));
-    }
-
-    [Theory]
-    [InlineData(359.0, 1.0, null)]   // 2 apart across north
-    [InlineData(1.0, 359.0, null)]
-    [InlineData(360.0, 0.0, null)]
-    [InlineData(4.0, 1.0, null)]   // exactly 3 degrees: within the tolerance
-    [InlineData(355.0, 1.0, "heading disagrees: channel 355.0 deg, sim 1.0 deg")]   // 6 apart across north
-    [InlineData(4.5, 1.0, "heading disagrees: channel 4.5 deg, sim 1.0 deg")]
-    [InlineData(0.0, 180.0, "heading disagrees: channel 0.0 deg, sim 180.0 deg")]
-    public void Heading_is_compared_across_north(double channelHeading, double simHeading, string? reason)
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, heading: simHeading);
-
-        gate.OnFrame(Frame(heading: channelHeading), 0);
-
-        Assert.Equal(reason is null ? Trusted : Untrusted(reason), Pfd(gate, 0));
-    }
-
-    [Theory]
-    [InlineData("wFOB:   g2940 cs KG", 2938.0, null)]
-    [InlineData("wFOB:   g6480 cs LBS", 2939.0, null)]
-    [InlineData("wFOB:   g2940 cs KG", 2700.0, "fuel disagrees: channel 2,940 kg, sim 2,700 kg")]
-    [InlineData("wFOB:   g6480 cs LBS", 2700.0, "fuel disagrees: channel 2,939 kg, sim 2,700 kg")]
-    public void Fuel_is_compared_in_kilograms(string fob, double simFuelKg, string? reason)
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, fuelKg: simFuelKg);
-
-        gate.OnFrame(Frame(fob: fob), 0);
-
-        Assert.Equal(reason is null ? Trusted : Untrusted(reason), Ewd(gate, 0));
-    }
-
-    [Theory]
-    [InlineData("wFOB:   g10150 cs KG", null)]
-    [InlineData("wFOB:   g10250 cs KG", "fuel disagrees: channel 10,250 kg, sim 10,000 kg")]
-    public void Fuel_tolerance_is_two_percent_above_five_tonnes(string fob, string? reason)
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, fuelKg: 10_000);
-
-        gate.OnFrame(Frame(fob: fob), 0);
-
-        Assert.Equal(reason is null ? Trusted : Untrusted(reason), Ewd(gate, 0));
-    }
-
-    [Theory]
-    [InlineData("wFOB:   g3030 cs KG", null)]   // 92 kg from 2938
-    [InlineData("wFOB:   g3050 cs KG", "fuel disagrees: channel 3,050 kg, sim 2,938 kg")]   // 112 kg: 2 percent of 2938 is only 59
-    public void Fuel_tolerance_is_at_least_one_hundred_kilograms(string fob, string? reason)
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, fuelKg: 2938);
-
-        gate.OnFrame(Frame(fob: fob), 0);
-
-        Assert.Equal(reason is null ? Trusted : Untrusted(reason), Ewd(gate, 0));
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("wFOB:   g--- cs KG")]
-    [InlineData("wFOB:   g2940 cs TONS")]
-    [InlineData("wFUEL   g2940 cs KG")]
-    [InlineData("wFOB:   g12,340 cs KG")]   // a grouping separator: never read as 12.34
-    [InlineData("wFOB:   g12 340 cs KG")]
-    [InlineData("wFOB:   g2940.5 cs KG")]   // nor is a decimal: only whole numbers are read
-    [InlineData("wFOB:   g2940,5 cs KG")]
-    public void A_fob_text_that_does_not_parse_waits_instead_of_latching(string fob)
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);
-
-        Feed(gate, 0, 10_000, Frame(fob: fob));
-
-        Assert.Equal(Untrusted("fuel not checked yet"), Ewd(gate, 10_000));
-        Assert.Equal(Trusted, Pfd(gate, 10_000));
-        Assert.Equal(Trusted, Sd(gate, 10_000));
-    }
-
-    [Fact]
-    public void A_fob_grouped_with_the_braille_spacer_waits_too()
-    {
-        // The display's own spacer reads as a space, so this is "12 340", no more a number than "12,340".
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);
-
-        Feed(gate, 0, 10_000, Frame(fob: "wFOB:   g12" + Spacer + "340 cs KG"));
-
-        Assert.Equal(Untrusted("fuel not checked yet"), Ewd(gate, 10_000));
-    }
-
-    [Fact]
-    public void A_fuel_mismatch_leaves_the_pfd_trusted()
-    {
-        FenixChannelTrust gate = TrustedGate();
-        gate.OnComparison(FenixComparison.FuelKg, 5000, 100);
-
-        Feed(gate, 100, 3_100, Frame());
-
-        Assert.Equal(Untrusted("fuel latched until reconnect: channel 2,940 kg, sim 5,000 kg"), Ewd(gate, 3_100));
-        Assert.Equal(Trusted, Pfd(gate, 3_100));
-        Assert.Equal(Trusted, Sd(gate, 3_100));
     }
 
     // ---- Text codes the app does not know ---------------------------------------------------------
@@ -1598,7 +657,7 @@ public class FenixChannelTrustTests
         FenixChannelTrust gate = TrustedGate();
         FenixChannelFrame frame = line == "right"
             ? Frame(upperRight: new[] { "wOK", "xFAULT" })
-            : Frame(fob: "wFOB:   g2940 cq KG");   // the q is dropped, so the number still parses
+            : Frame(fob: "wFOB:   g2940 cq KG");
 
         gate.OnFrame(frame, 100);
 
@@ -1632,23 +691,6 @@ public class FenixChannelTrustTests
         Assert.Equal(Trusted, Ewd(gate, 100));
     }
 
-    [Fact]
-    public void An_unknown_code_is_judged_after_the_cross_checks()
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 0);
-        gate.OnComparison(FenixComparison.FdLightFo, 1, 0);
-        gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 0);   // no altitude yet
-        gate.OnFrame(Frame(fma: FmaWith(0, "kX")), 0);
-
-        Assert.Equal(Untrusted("altitude not checked yet"), Pfd(gate, 0));
-
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 100);
-        gate.OnFrame(Frame(fma: FmaWith(0, "kX")), 100);
-
-        Assert.Equal(Untrusted("unknown code 'k' in the FMA"), Pfd(gate, 100));
-    }
-
     // ---- A frame with no FMA ----------------------------------------------------------------------
 
     [Fact]
@@ -1675,23 +717,6 @@ public class FenixChannelTrustTests
         AssertAll(gate, 10_100, Trusted);
     }
 
-    [Fact]
-    public void No_fma_is_judged_after_the_cross_checks()
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 0);
-        gate.OnComparison(FenixComparison.FdLightFo, 1, 0);
-        gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 0);   // no altitude yet
-        gate.OnFrame(Frame(fma: Array.Empty<FenixFmaSlot>()), 0);
-
-        Assert.Equal(Untrusted("altitude not checked yet"), Pfd(gate, 0));
-
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 100);
-        gate.OnFrame(Frame(fma: Array.Empty<FenixFmaSlot>()), 100);
-
-        Assert.Equal(Untrusted("no FMA"), Pfd(gate, 100));
-    }
-
     // ---- A reconnect starts fresh -----------------------------------------------------------------
 
     [Fact]
@@ -1709,20 +734,7 @@ public class FenixChannelTrustTests
 
         gate.OnBuild(CheckedBuild);
 
-        // SimConnect's values were kept, so the one agreeing frame is enough.
         AssertAll(gate, 5_000, Trusted);
-    }
-
-    [Fact]
-    public void A_reconnect_clears_the_checks_that_passed()
-    {
-        FenixChannelTrust gate = TrustedGate();   // every check has passed
-
-        gate.OnConnected(5_000);
-        gate.OnBuild(CheckedBuild);
-        gate.OnFrame(Frame(altitude: double.NaN), 5_000);
-
-        Assert.Equal(Untrusted("altitude not checked yet"), Pfd(gate, 5_000));
     }
 
     // ---- Failing closed ---------------------------------------------------------------------------
@@ -1737,245 +749,9 @@ public class FenixChannelTrustTests
         Assert.False(verdict.Trusted);
     }
 
-    [Fact]
-    public void A_comparison_the_gate_does_not_know_is_ignored()
-    {
-        FenixChannelTrust gate = TrustedGate();   // SimConnect delivered the five comparisons at t=0
-
-        Exception? thrown = Record.Exception(() => gate.OnComparison((FenixComparison)99, 1, 0));
-
-        Assert.Null(thrown);
-        AssertAll(gate, 0, Trusted);
-        Assert.Equal("SimConnect: 5 values, longest gap 0.0 s", gate.DescribeSimDeliveries());   // and not counted
-    }
-
-    // ---- Culture: reasons, descriptions and the FOB number never follow the PC's -------------------
-
-    [Theory]
-    [InlineData("de-DE", "wFOB:   g2940 cs KG", 2938.0)]
-    [InlineData("sv-SE", "wFOB:   g2940 cs KG", 2938.0)]
-    [InlineData("de-DE", "wFOB:   g12340 cs KG", 12338.0)]
-    [InlineData("sv-SE", "wFOB:   g12340 cs KG", 12338.0)]
-    public void The_fob_text_parses_under_comma_decimal_cultures(string culture, string fob, double simFuelKg)
-    {
-        InCulture(culture, () =>
-        {
-            // A fuel check that has never passed, so only a number that parsed can make the E/WD trusted.
-            FenixChannelTrust gate = ConnectedGate();
-            Compare(gate, fuelKg: simFuelKg);
-
-            gate.OnFrame(Frame(fob: fob), 0);
-
-            Assert.Equal(Trusted, Ewd(gate, 0));
-        });
-    }
-
-    [Theory]
-    [InlineData("de-DE")]
-    [InlineData("sv-SE")]
-    public void Reasons_give_numbers_in_the_invariant_culture(string culture)
-    {
-        InCulture(culture, () =>
-        {
-            FenixChannelTrust altitude = ConnectedGate();
-            Compare(altitude, altitude: 2050);
-            altitude.OnFrame(Frame(altitude: 1023), 0);
-            Assert.Equal(Untrusted("altitude disagrees: channel 1,023 ft, sim 2,050 ft"), Pfd(altitude, 0));
-
-            FenixChannelTrust heading = ConnectedGate();
-            Compare(heading, heading: 1.5);
-            heading.OnFrame(Frame(heading: 355.5), 0);
-            Assert.Equal(Untrusted("heading disagrees: channel 355.5 deg, sim 1.5 deg"), Pfd(heading, 0));
-            Assert.Equal(Untrusted("heading disagrees: channel 355.5 deg, sim 1.5 deg"), Nd(heading, 0));   // the ND's too
-
-            FenixChannelTrust fuel = ConnectedGate();
-            Compare(fuel, fuelKg: 2700.4);
-            fuel.OnFrame(Frame(), 0);
-            Assert.Equal(Untrusted("fuel disagrees: channel 2,940 kg, sim 2,700 kg"), Ewd(fuel, 0));
-        });
-    }
-
-    [Fact]
-    public void Describes_each_comparison_in_the_invariant_culture()
-    {
-        InCulture("de-DE", () =>
-        {
-            FenixChannelTrust gate = ConnectedGate();
-            Compare(gate, altitude: 1020);
-            gate.OnFrame(Frame(altitude: 1023), 0);
-
-            Assert.Contains("altitude: channel 1,023 ft, sim 1,020 ft", gate.DescribeComparisons());
-        });
-    }
-
-    [Theory]
-    [InlineData("en-US")]
-    [InlineData("de-DE")]
-    [InlineData("sv-SE")]
-    public void Describes_all_five_comparisons_in_order(string culture)
-    {
-        InCulture(culture, () =>
-        {
-            FenixChannelTrust gate = ConnectedGate();
-            Compare(gate, fdCapt: 1, fdFo: 0, altitude: 1020, heading: 90, fuelKg: 2938.2);
-
-            gate.OnFrame(Frame(fdCapt: true, fdFo: false, altitude: 1023, heading: 90.5, fob: "wFOB:   g6480 cs LBS"), 0);
-
-            Assert.Equal(new[]
-            {
-                "FD captain: channel on, sim on",
-                "FD first officer: channel off, sim off",
-                "altitude: channel 1,023 ft, sim 1,020 ft",
-                "heading: channel 90.5 deg, sim 90.0 deg",
-                "fuel: channel 2,939 kg, sim 2,938 kg"
-            }, gate.DescribeComparisons());
-        });
-    }
-
-    [Fact]
-    public void Describes_a_missing_value_as_missing()
-    {
-        var gate = new FenixChannelTrust(new HashSet<string>());
-
-        Assert.Equal(new[]
-        {
-            "FD captain: channel missing, sim missing",
-            "FD first officer: channel missing, sim missing",
-            "altitude: channel missing, sim missing",
-            "heading: channel missing, sim missing",
-            "fuel: channel missing, sim missing"
-        }, gate.DescribeComparisons());
-
-        // A frame has come, but SimConnect has delivered only the altitude, and the frame's altitude and
-        // FOB text cannot be read.
-        gate.OnConnected(0);
-        gate.OnComparison(FenixComparison.AltitudeFt, 1020, 0);
-        gate.OnFrame(Frame(altitude: double.NaN, fob: ""), 0);
-
-        Assert.Equal(new[]
-        {
-            "FD captain: channel on, sim missing",
-            "FD first officer: channel on, sim missing",
-            "altitude: channel missing, sim 1,020 ft",
-            "heading: channel 90.0 deg, sim missing",
-            "fuel: channel missing, sim missing"
-        }, gate.DescribeComparisons());
-    }
-
-    [Fact]
-    public void Describes_a_light_that_reads_neither_zero_nor_one_by_its_raw_value()
-    {
-        FenixChannelTrust gate = ConnectedGate();
-        Compare(gate, fdCapt: 2, fdFo: 0.5);
-
-        gate.OnFrame(Frame(), 0);
-
-        IReadOnlyList<string> lines = gate.DescribeComparisons();
-        Assert.Equal("FD captain: channel on, sim 2", lines[0]);
-        Assert.Equal("FD first officer: channel on, sim 0.5", lines[1]);
-    }
-
-    // ---- SimConnect's deliveries, for the comparisons line ------------------------------------------
-    // The gate treats an old SimConnect value as unchanged, so a long gap in SimConnect's deliveries (a UI stall in
-    // a turn) could become a false disagreement: the log counts the deliveries and their longest gap.
-
-    [Fact]
-    public void Describes_the_simconnect_deliveries_since_the_last_call()
-    {
-        var gate = new FenixChannelTrust(new HashSet<string>());
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 0);
-        gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 1_000);
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 3_500);
-
-        Assert.Equal("SimConnect: 3 values, longest gap 2.5 s", gate.DescribeSimDeliveries());
-
-        // Each call starts a new period: the next one counts only what arrives after it.
-        Assert.Equal("SimConnect: 0 values, no gap", gate.DescribeSimDeliveries());
-    }
-
-    [Fact]
-    public void A_gap_that_spans_a_comparisons_line_counts_in_the_next_one()
-    {
-        var gate = new FenixChannelTrust(new HashSet<string>());
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 28_000);
-
-        // The line written at 30 s: the first delivery ever has no gap before it.
-        Assert.Equal("SimConnect: 1 value, no gap", gate.DescribeSimDeliveries());
-
-        // The next delivery comes 6 s after that one. The stall spans the line, so neither period holds both ends of
-        // it, and the next line counts it from the last delivery of the period before.
-        gate.OnComparison(FenixComparison.AltitudeFt, 1010, 34_000);
-
-        Assert.Equal("SimConnect: 1 value, longest gap 6.0 s", gate.DescribeSimDeliveries());
-    }
-
-    [Fact]
-    public void A_period_without_deliveries_leaves_the_gap_to_the_next_line()
-    {
-        var gate = new FenixChannelTrust(new HashSet<string>());
-        gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 0);
-
-        Assert.Equal("SimConnect: 1 value, no gap", gate.DescribeSimDeliveries());
-
-        // Nothing arrives for a whole period: that line has no delivery, so no gap of its own.
-        Assert.Equal("SimConnect: 0 values, no gap", gate.DescribeSimDeliveries());
-
-        // The next delivery comes 70 s after the last one: the line it falls in reports the whole stall.
-        gate.OnComparison(FenixComparison.MagHeadingDeg, 95, 70_000);
-
-        Assert.Equal("SimConnect: 1 value, longest gap 70.0 s", gate.DescribeSimDeliveries());
-    }
-
-    [Fact]
-    public void The_longest_gap_is_between_two_deliveries_in_a_row_of_any_comparison()
-    {
-        var gate = new FenixChannelTrust(new HashSet<string>());
-        gate.OnComparison(FenixComparison.FuelKg, 2938, 0);
-        gate.DescribeSimDeliveries();
-
-        // Deliveries of all five comparisons count together. The gaps are 500 ms (from the delivery at t=0, in the
-        // period before), 0, 1,200 and 100 ms: the longest is the gap.
-        gate.OnComparison(FenixComparison.FuelKg, 2936, 500);
-        gate.OnComparison(FenixComparison.FdLightFo, 1, 500);
-        gate.OnComparison(FenixComparison.AltitudeFt, 1000, 1_700);
-        gate.OnComparison(FenixComparison.FdLightCapt, 1, 1_800);
-
-        Assert.Equal("SimConnect: 4 values, longest gap 1.2 s", gate.DescribeSimDeliveries());
-    }
-
-    [Theory]
-    [InlineData("de-DE")]
-    [InlineData("sv-SE")]
-    public void Describes_the_simconnect_deliveries_in_the_invariant_culture(string culture)
-    {
-        InCulture(culture, () =>
-        {
-            var gate = new FenixChannelTrust(new HashSet<string>());
-            gate.OnComparison(FenixComparison.AltitudeFt, 1000, 0);
-            gate.OnComparison(FenixComparison.MagHeadingDeg, 90, 1_000);
-            gate.OnComparison(FenixComparison.FdLightCapt, 1, 3_500);
-
-            Assert.Equal("SimConnect: 3 values, longest gap 2.5 s", gate.DescribeSimDeliveries());   // a dot, never a comma
-        });
-    }
-
-    [Fact]
-    public void A_frame_that_fails_its_shape_check_gives_no_values()
-    {
-        FenixChannelTrust gate = TrustedGate();
-
-        // The defaults a malformed frame carries (altitude 0, both flight directors off) are not what the
-        // channel said, so the description keeps the last good values.
-        gate.OnFrame(FenixChannelFrame.MalformedFrame, 100);
-
-        IReadOnlyList<string> lines = gate.DescribeComparisons();
-        Assert.Contains("FD captain: channel on, sim on", lines);
-        Assert.Contains("altitude: channel 1,000 ft, sim 1,000 ft", lines);
-    }
-
     // ---- Helpers ----------------------------------------------------------------------------------
 
-    // A gate that has connected at t=0 and learned a checked build: no comparison value and no frame yet.
+    // A gate that has connected at t=0 and learned a checked build: no frame yet.
     private static FenixChannelTrust ConnectedGate()
     {
         var gate = new FenixChannelTrust(new HashSet<string> { CheckedBuild });
@@ -1984,39 +760,26 @@ public class FenixChannelTrustTests
         return gate;
     }
 
-    // SimConnect's side of the five comparisons, delivered at atMs. The defaults agree with Frame()'s.
-    private static void Compare(FenixChannelTrust gate, double fdCapt = 1, double fdFo = 1, double altitude = 1000,
-        double heading = 90, double fuelKg = 2938, long atMs = 0)
-    {
-        gate.OnComparison(FenixComparison.FdLightCapt, fdCapt, atMs);
-        gate.OnComparison(FenixComparison.FdLightFo, fdFo, atMs);
-        gate.OnComparison(FenixComparison.AltitudeFt, altitude, atMs);
-        gate.OnComparison(FenixComparison.MagHeadingDeg, heading, atMs);
-        gate.OnComparison(FenixComparison.FuelKg, fuelKg, atMs);
-    }
-
-    // A gate that trusts every display: connected, a checked build, every comparison agreeing, one frame at t=0.
+    // A gate that trusts every display: connected, a checked build, one frame at t=0.
     private static FenixChannelTrust TrustedGate()
     {
         FenixChannelTrust gate = ConnectedGate();
-        Compare(gate);
         gate.OnFrame(Frame(), 0);
         return gate;
     }
 
-    // A frame that passes every check against Compare()'s defaults: every display live (a powered unit shows each
-    // of the five that units carry, and the ISIS says it is powered; a test about another condition never repeats the
-    // flags), 16 empty FMA slots, both flight directors on, altitude 1000, heading 90, and the FOB line of a real push.
-    private static FenixChannelFrame Frame(bool fdCapt = true, bool fdFo = true, double altitude = 1000,
-        double heading = 90, string fob = "wFOB:   g2940 cs KG", IReadOnlyList<FenixFmaSlot>? fma = null,
-        IReadOnlyList<string>? upperLeft = null, IReadOnlyList<string>? upperRight = null,
-        IReadOnlyList<string>? wrongShape = null, bool pfdLive = true, bool ewdLive = true, bool sdLive = true,
-        bool ndLive = true, bool isisPowered = true, bool dcduLive = true) =>
+    // A frame with nothing wrong: every display live (a powered unit shows each of the five that units carry, and the
+    // ISIS says it is powered; a test about another condition never repeats the flags), 16 empty FMA slots, both flight
+    // directors on, heading 90, and the FOB line of a real push.
+    private static FenixChannelFrame Frame(bool fdOn = true, double heading = 90, string fob = "wFOB:   g2940 cs KG",
+        IReadOnlyList<FenixFmaSlot>? fma = null, IReadOnlyList<string>? upperLeft = null,
+        IReadOnlyList<string>? upperRight = null, IReadOnlyList<string>? wrongShape = null, bool pfdLive = true,
+        bool ewdLive = true, bool sdLive = true, bool ndLive = true, bool isisPowered = true, bool dcduLive = true) =>
         new(Malformed: false, WrongShapeFields: wrongShape ?? Array.Empty<string>(),
-            Fd: FenixFdState.Default with { FdOnCapt = fdCapt, FdOnFo = fdFo },
+            Fd: FenixFdState.Default with { FdOnCapt = fdOn, FdOnFo = fdOn },
             Fma: fma ?? EmptyFma(), UpperEcamLeft: upperLeft ?? Array.Empty<string>(),
             UpperEcamRight: upperRight ?? Array.Empty<string>(), FwcPage: 0, FwcPhase: 0,
-            Altitude: altitude, MagHeading: heading, FobText: fob)
+            MagHeading: heading, FobText: fob)
         {
             PfdLive = pfdLive,
             EwdLive = ewdLive,
@@ -2027,10 +790,9 @@ public class FenixChannelTrustTests
         };
 
     // A frame as 3.0.0.7613 sent it cold and dark (2026-11-02): no display live, the 16 FMA slots empty, both flight
-    // directors off and the FOB amount amber crosses, while the altitude and heading go on tracking the sim's (here
-    // Compare()'s defaults), so they agree.
+    // directors off and the FOB amount amber crosses, while the heading goes on tracking the sim's.
     private static FenixChannelFrame ColdAndDark() =>
-        Frame(fdCapt: false, fdFo: false, fob: "wFOB:    aXXX cs KG", pfdLive: false, ewdLive: false, sdLive: false,
+        Frame(fdOn: false, fob: "wFOB:    aXXX cs KG", pfdLive: false, ewdLive: false, sdLive: false,
             ndLive: false, isisPowered: false, dcduLive: false);
 
     // A frame with every display off and nothing else wrong.
@@ -2061,27 +823,6 @@ public class FenixChannelTrustTests
         }
     }
 
-    // Flies a channel and a SimConnect that both follow a value over time, from t=0 to untilMs: a frame every
-    // 60 ms (the channel sends about 17 a second), and SimConnect's value once a second, starting at t=0. A
-    // delivery arrives between the frames, at its own second, and carries the value at the moment it arrives.
-    // afterFrame sees the time of each frame once the gate has taken it.
-    private static void Fly(FenixChannelTrust gate, FenixComparison kind, Func<long, FenixChannelFrame> frameAt,
-        Func<long, double> simValueAt, long untilMs, Action<long> afterFrame)
-    {
-        long nextDeliveryMs = 0;
-        for (long t = 0; t <= untilMs; t += 60)
-        {
-            while (nextDeliveryMs <= t)
-            {
-                gate.OnComparison(kind, simValueAt(nextDeliveryMs), nextDeliveryMs);
-                nextDeliveryMs += 1_000;
-            }
-
-            gate.OnFrame(frameAt(t), t);
-            afterFrame(t);
-        }
-    }
-
     private static FenixDisplayVerdict Untrusted(string reason) => new(false, reason);
 
     private static FenixDisplayVerdict Pfd(FenixChannelTrust gate, long nowMs) =>
@@ -2107,24 +848,6 @@ public class FenixChannelTrustTests
         foreach (FenixChannelDisplay display in AllDisplays)
         {
             Assert.Equal(expected, gate.VerdictFor(display, nowMs));
-        }
-    }
-
-    // Runs the action under another culture, current and UI, and puts both back.
-    private static void InCulture(string name, Action action)
-    {
-        CultureInfo savedCulture = CultureInfo.CurrentCulture;
-        CultureInfo savedUiCulture = CultureInfo.CurrentUICulture;
-        try
-        {
-            CultureInfo.CurrentCulture = new CultureInfo(name);
-            CultureInfo.CurrentUICulture = new CultureInfo(name);
-            action();
-        }
-        finally
-        {
-            CultureInfo.CurrentCulture = savedCulture;
-            CultureInfo.CurrentUICulture = savedUiCulture;
         }
     }
 }

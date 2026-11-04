@@ -3,7 +3,7 @@
 **Spec:** `docs/fenix-channel/spec.md` (read it first: section 2 the decisions, 3 the channel's fields per feature, 4
 the conventions, 5 the owner's answers, 6 the open checks and their plans). Evidence: `docs/fenix-channel/evidence/`.
 Background: `docs/a32nx.md` ("Fenix display channel (port 18083, 2026-11)"), the rules `.claude/rules/fenix-channel.md`
-(FNX-21 to FNX-25, full text `docs/invariants/fenix-channel.md`), `fenix-data.md`, `fenix-windows.md`, `a32nx-fenix.md`.
+(FNX-21 to FNX-24, full text `docs/invariants/fenix-channel.md`), `fenix-data.md`, `fenix-windows.md`, `a32nx-fenix.md`.
 **Branch:** `feat/fenix-display-channel` on `origin` (`oasis1701/msfs-blind-assist`; `<remote>` below is your name for
 it, `origin` on Robin's machine). Every plan lands on this one branch. One pull request to `main` at the end (plan 12),
 opened only when the owner says. Contributors rebase onto the branch and push straight to it. Each push runs the Tests workflow
@@ -14,6 +14,12 @@ merges.
 **The owner** rules on what a plan leaves open (spec section 5, and questions found while working). Until the team names
 someone else, that is Robin Kipp. The questions the plans raised while being written are answered in spec section 5,
 rows 14-45 (2026-11-03): a plan's "(owner question)" mark is settled there, as the plan already follows it.
+**The SimConnect comparisons are gone (the owner's ruling, 2026-11-04, spec row 58).** The gate no longer compares
+anything with SimConnect, so a plan's "cross-check", "stall guard" or [FNX-25] no longer applies. If your rebase stops
+building: delete a call to `MonitorTestKit.AgreeWithGoodPush`, `OnComparison`, `OnLightTestSwitch` or `OnUiHeartbeat`, as
+a push alone now trusts its display; `FenixChannelFrame` lost `Altitude` (a positional constructor call has one number
+fewer); `FenixChannelProtoWriter.GoodPush` and `MonitorTestKit.GoodPush` lost `altitude` (the kit's tells pushes apart by
+`heading`, `HeadingOf` replacing `AltitudeOf`); `FenixChannelAnnouncers` lost its first argument, the heartbeat.
 
 ## Order
 
@@ -184,7 +190,7 @@ each); plan 12 is live work, worked with superpowers:executing-plans.
 
 ## Shared conventions
 
-- CLAUDE.md applies in full. Read a file before changing it (CORE-16): the channel's rules (FNX-21 to FNX-25) load with
+- CLAUDE.md applies in full. Read a file before changing it (CORE-16): the channel's rules (FNX-21 to FNX-24) load with
   its code, the Fenix rules (`fenix-data.md`, `fenix-windows.md`, `a32nx-fenix.md`) with the definition and its forms.
   Spec section 4 holds the team's rules.
 - The channel is read only ([FNX-21]): every write (a DCDU key, a brightness change) goes through the definition's

@@ -57,12 +57,12 @@ internal static class MonitorTestKit
         => messages.SelectMany(message => FenixChannelProtoWriter.Frame(message)).ToArray();
 
     /// <summary>
-    /// A whole display push that passes every check of the gate, at the given altitude, with every display unit
-    /// powered. The ISIS, which has a part of its own, says it is powered only when asked: without, the push has none
-    /// and the ISIS is off.
+    /// A whole display push that passes every check of the gate, at the given heading, which is how a test tells one
+    /// push from another, with every display unit powered. The ISIS, which has a part of its own, says it is powered
+    /// only when asked: without, the push has none and the ISIS is off.
     /// </summary>
-    public static byte[] GoodPush(double altitude = 1000, bool isisPowered = false)
-        => FenixChannelProtoWriter.GoodPush(altitude: altitude, isisPowered: isisPowered);
+    public static byte[] GoodPush(double heading = 90, bool isisPowered = false)
+        => FenixChannelProtoWriter.GoodPush(magHeading: heading, isisPowered: isisPowered);
 
     /// <summary>The six displays the gate judges, in the order the log writes them.</summary>
     public static readonly FenixChannelDisplay[] AllDisplays =
@@ -78,7 +78,7 @@ internal static class MonitorTestKit
     /// A display push with its 16 FMA slots whose flight director arrives as a number instead of a nested
     /// message: a wrong shape ("110"), with data in it.
     /// </summary>
-    public static byte[] WrongShapedPush(double altitude = 1000)
+    public static byte[] WrongShapedPush(double heading = 90)
     {
         var remote = new FenixChannelProtoWriter().Varint(110, 1);
         for (int slot = 0; slot < 16; slot++)
@@ -86,7 +86,7 @@ internal static class MonitorTestKit
             remote.Message(111, new FenixChannelProtoWriter());
         }
 
-        remote.Double(197, altitude);
+        remote.Message(194, new FenixChannelProtoWriter().Double(1, heading));
         return new FenixChannelProtoWriter().Message(1, remote).ToArray();
     }
 
@@ -110,15 +110,16 @@ internal static class MonitorTestKit
     }
 
     /// <summary>
-    /// The altitude (field 197) of the RemoteData message of a snapshot: which push that message is, since every
-    /// push the tests send has an altitude of its own.
+    /// The heading (field 194.1) of the RemoteData message of a snapshot, null when it has none: which push that message
+    /// is, since every push the tests tell apart has a heading of its own.
     /// </summary>
-    public static double AltitudeOf(FenixChannelPush? message)
-    {
-        Assert.NotNull(message);
-        Assert.True(message.TryGet(197, out FenixChannelField altitude), "the message has no altitude");
-        return altitude.AsDouble();
-    }
+    public static double? HeadingOf(FenixChannelPush? message)
+        => message is not null
+           && message.TryGet(194, out FenixChannelField part)
+           && part.AsMessage() is { } heading
+           && heading.TryGet(1, out FenixChannelField value)
+            ? value.AsDouble()
+            : null;
 
     /// <summary>
     /// A monitor on the fake network, with the 50 ms tick and build retry of the brief, no wait before a
@@ -177,16 +178,6 @@ internal static class MonitorTestKit
         return line[prefix.Length..^Suffix.Length];
     }
 
-    /// <summary>SimConnect's side of the five comparisons, agreeing with <see cref="GoodPush"/> at that altitude.</summary>
-    public static void AgreeWithGoodPush(FenixChannelMonitor monitor, double altitude = 1000)
-    {
-        monitor.OnComparison(FenixComparison.FdLightCapt, 1);
-        monitor.OnComparison(FenixComparison.FdLightFo, 1);
-        monitor.OnComparison(FenixComparison.AltitudeFt, altitude);
-        monitor.OnComparison(FenixComparison.MagHeadingDeg, 90);
-        monitor.OnComparison(FenixComparison.FuelKg, 2940);   // the FOB line of GoodPush
-    }
-
     /// <summary>Sends <paramref name="message"/> into an open stream every 20 ms until <paramref name="stop"/>.</summary>
     public static Task Feed(OpenStream stream, byte[] message, CancellationToken stop)
         => Task.Run(async () =>
@@ -223,8 +214,6 @@ internal static class MonitorTestKit
         /// <summary>The lines that begin with <paramref name="prefix"/>, in order.</summary>
         public string[] Starting(string prefix)
             => All.Where(line => line.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
-
-        public string[] Comparisons() => Starting("comparisons: ");
 
         /// <summary>
         /// The verdict lines ("PFD trusted", "E/WD not trusted: ..."), in order: those of the display named
@@ -347,96 +336,6 @@ internal static class MonitorTestKit
 
 public class FenixChannelMonitorTests
 {
-    // ---- The comparison keys --------------------------------------------------------------------
-
-    [Theory]
-    [InlineData("I_FCU_EFIS1_FD", 1.0, "FdLightCapt", 1.0, false)]
-    [InlineData("I_FCU_EFIS2_FD", 0.0, "FdLightFo", 0.0, false)]
-    [InlineData(FenixChannelMonitor.AltitudeKey, 1023.0, "AltitudeFt", 1023.0, true)]
-    [InlineData(FenixChannelMonitor.HeadingKey, 271.5, "MagHeadingDeg", 271.5, true)]
-    [InlineData(FenixChannelMonitor.FuelKey, 6480.0, "FuelKg", 2939.3, true)]
-    public void Maps_the_five_comparison_keys(
-        string key, double value, string expectedKind, double expectedValue, bool expectedConsume)
-    {
-        // The flight director lights are peeked: they carry on to their own handling. The three channel keys are
-        // consumed. Fuel comes in pounds and goes to the gate in kilograms.
-        Assert.True(FenixChannelMonitor.TryMapComparison(
-            key, value, out FenixComparison kind, out double converted, out bool consume));
-
-        Assert.Equal(Enum.Parse<FenixComparison>(expectedKind), kind);
-        Assert.Equal(expectedValue, converted, 0.1);
-        Assert.Equal(expectedConsume, consume);
-    }
-
-    [Fact]
-    public void The_altitude_check_reads_the_true_altitude_never_the_indicated_one()
-    {
-        // [FNX-25]: the channel's altitude field is the true altitude, and the Fenix writes its own baro into the
-        // sim's altimeter, so the indicated altitude follows whatever QNH it has set (1013 at power-up against an
-        // actual 1028.8 hPa latched the PFD in the sim on 2026-11-02). The channel's own key carries PLANE ALTITUDE
-        // in feet, which goes to the gate as it came; INDICATED_ALTITUDE feeds the gate no more.
-        Assert.True(FenixChannelMonitor.TryMapComparison(
-            FenixChannelMonitor.AltitudeKey, 352.2, out FenixComparison kind, out double converted, out bool consume));
-        Assert.Equal(FenixComparison.AltitudeFt, kind);
-        Assert.Equal(352.2, converted);
-        Assert.True(consume);
-
-        Assert.False(FenixChannelMonitor.TryMapComparison(
-            "INDICATED_ALTITUDE", -65.0, out _, out _, out bool consumeIndicated));
-        Assert.False(consumeIndicated);   // it carries on to its own handling, the 1,000 ft callouts among it
-    }
-
-    [Theory]
-    [InlineData("SIM_ON_GROUND", 1.0)]
-    [InlineData("i_fcu_efis1_fd", 1.0)]   // a var key is exact: the definition's keys are upper case
-    [InlineData("INDICATED_ALTITUDE", 1023.0)]   // the altitude the Fenix's baro moves ([FNX-25])
-    [InlineData(FenixChannelMonitor.LightTestKey, 2.0)]   // the light switch is no comparison (OnLightTestSwitch)
-    [InlineData("", 0.0)]
-    public void Maps_no_other_key(string key, double value)
-    {
-        Assert.False(FenixChannelMonitor.TryMapComparison(key, value, out _, out _, out bool consume));
-        Assert.False(consume);   // a key that is not the channel's is never consumed
-    }
-
-    // ---- The annunciator light test -------------------------------------------------------------
-
-    [Theory]
-    [InlineData(2.0, true)]           // Test
-    [InlineData(0.0, false)]          // Dim
-    [InlineData(1.0, false)]          // Bright
-    [InlineData(3.0, false)]          // a position the switch does not have
-    [InlineData(1.5, false)]
-    [InlineData(double.NaN, false)]
-    public async Task The_light_switch_makes_the_fd_checks_wait_at_test_only(double position, bool testing)
-    {
-        // The light test lights both FD lamps with both flight directors off. The switch's value reaches the gate
-        // through the monitor, and only exactly 2 is the test: any other position, one the switch does not have
-        // included, leaves the FD checks as they are, and the lit lamp is a disagreement.
-        var lines = new Lines();
-        using var monitor = NewIdleMonitor(lines);
-        monitor.OnComparison(FenixComparison.FdLightCapt, 0);
-        monitor.OnComparison(FenixComparison.FdLightFo, 0);
-        monitor.OnComparison(FenixComparison.AltitudeFt, 1000);
-        monitor.OnComparison(FenixComparison.MagHeadingDeg, 90);
-        monitor.OnComparison(FenixComparison.FuelKg, 2940);
-        monitor.OnDataState(FenixChannelState.Connected, "");
-        await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
-        byte[] fdOff = FenixChannelProtoWriter.GoodPush(fdOnCapt: false, fdOnFo: false);
-        monitor.OnDataMessage(fdOff);
-        Assert.Equal(new FenixDisplayVerdict(true, "trusted"), monitor.VerdictFor(FenixChannelDisplay.Pfd));
-
-        monitor.OnLightTestSwitch(position);
-        monitor.OnComparison(FenixComparison.FdLightCapt, 1);
-        monitor.OnComparison(FenixComparison.FdLightFo, 1);
-        monitor.OnDataMessage(fdOff);
-
-        Assert.Equal(
-            testing
-                ? new FenixDisplayVerdict(true, "trusted")
-                : new FenixDisplayVerdict(false, "FD captain disagrees: channel off, sim on"),
-            monitor.VerdictFor(FenixChannelDisplay.Pfd));
-    }
-
     // ---- The data flow --------------------------------------------------------------------------
 
     [Fact]
@@ -444,22 +343,17 @@ public class FenixChannelMonitorTests
     {
         // The live stream: frames, then nothing, and no end.
         var server = new ChannelServer();
-        server.Data.Enqueue(() => FenixChannelFakeServer.StreamThenHold(Frames(GoodPush(1000), GoodPush(2000))));
+        server.Data.Enqueue(() => FenixChannelFakeServer.StreamThenHold(Frames(GoodPush(100), GoodPush(200))));
         var lines = new Lines();
         using var monitor = NewMonitor(server, lines);
 
         monitor.Start();
 
-        await WaitUntil(() => monitor.Latest?.Altitude == 2000, "the second frame to become the latest", lines);
+        await WaitUntil(() => monitor.Latest?.MagHeading == 200, "the second frame to become the latest", lines);
         await WaitUntil(
             () => monitor.VerdictFor(FenixChannelDisplay.Sd) == new FenixDisplayVerdict(true, "trusted"),
             "SD to be trusted",
             lines);
-
-        // No SimConnect value reached the gate, so the displays that cross-check one are not trusted.
-        Assert.False(monitor.VerdictFor(FenixChannelDisplay.Pfd).Trusted);
-        Assert.False(monitor.VerdictFor(FenixChannelDisplay.Ewd).Trusted);
-        Assert.False(monitor.VerdictFor(FenixChannelDisplay.Nd).Trusted);
 
         // Start opened both calls, each once.
         await server.Ecam.WaitForRequestsAsync(1);
@@ -468,11 +362,10 @@ public class FenixChannelMonitorTests
     }
 
     [Fact]
-    public async Task Trusts_all_six_displays_when_the_five_values_agree()
+    public async Task Trusts_all_six_displays_on_a_good_push()
     {
-        // SimConnect's side comes first and the frames after it, as in the sim: a check runs on a frame. A feeder
-        // keeps the frames fresh, so a slow machine cannot let the stream stall before the poll sees the verdicts.
-        // The push powers the ISIS too, which has a part of its own.
+        // A feeder keeps the frames fresh, so a slow machine cannot let the stream stall before the poll sees the
+        // verdicts. The push powers the ISIS too, which has a part of its own.
         var server = new ChannelServer();
         var stream = new OpenStream();
         server.Data.Enqueue(() => stream.Response);
@@ -483,13 +376,8 @@ public class FenixChannelMonitorTests
         try
         {
             monitor.Start();
-            monitor.OnComparison(FenixComparison.FdLightCapt, 1);
-            monitor.OnComparison(FenixComparison.FdLightFo, 1);
-            monitor.OnComparison(FenixComparison.AltitudeFt, 2000);
-            monitor.OnComparison(FenixComparison.MagHeadingDeg, 90);
-            monitor.OnComparison(FenixComparison.FuelKg, 2940);   // the FOB line of GoodPush
 
-            feeder = Feed(stream, GoodPush(altitude: 2000, isisPowered: true), stop.Token);
+            feeder = Feed(stream, GoodPush(isisPowered: true), stop.Token);
 
             await WaitUntil(() => AllTrusted(monitor), "all six displays to be trusted", lines);
         }
@@ -504,11 +392,10 @@ public class FenixChannelMonitorTests
     public async Task A_push_with_the_displays_dark_trusts_no_display()
     {
         // The display units the decoder reads reach the gate: cold and dark no powered unit shows a display, and
-        // every display reads "display off" though every value agrees (the ISIS, which has a part of its own, because
-        // that push has none); powered up, with the ISIS powered too, all six are trusted.
+        // every display reads "display off" (the ISIS, which has a part of its own, because that push has none);
+        // powered up, with the ISIS powered too, all six are trusted.
         var lines = new Lines();
         using var monitor = NewIdleMonitor(lines);
-        AgreeWithGoodPush(monitor);
         monitor.OnDataState(FenixChannelState.Connected, "");
         await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
 
@@ -549,18 +436,18 @@ public class FenixChannelMonitorTests
         var lines = new Lines();
         using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
         monitor.OnDataState(FenixChannelState.Connected, "");
-        monitor.OnDataMessage(GoodPush(1000));
+        monitor.OnDataMessage(GoodPush(100));
         FenixChannelFrame? first = monitor.Latest;
         Assert.NotNull(first);
-        Assert.Equal(1000, first.Altitude);
+        Assert.Equal(100, first.MagHeading);
 
         monitor.OnDataMessage([]);   // no PrimaryData
         monitor.OnDataMessage(new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter()).ToArray());   // an empty one
         Assert.Same(first, monitor.Latest);
 
         // The next real frame does replace it.
-        monitor.OnDataMessage(GoodPush(2000));
-        Assert.Equal(2000, monitor.Latest?.Altitude);
+        monitor.OnDataMessage(GoodPush(200));
+        Assert.Equal(200, monitor.Latest?.MagHeading);
     }
 
     [Fact]
@@ -625,13 +512,12 @@ public class FenixChannelMonitorTests
 
         using var monitor = new FenixChannelMonitor(
             AnswersTheCheckedBuild, Checked, new ChannelServer(), Log, TickEvery, BuildRetry, (_, _) => TimeSpan.Zero);
-        AgreeWithGoodPush(monitor, altitude: 2000);
         monitor.OnDataState(FenixChannelState.Connected, "");
         monitor.OnEcamMessage(ListedEntries(false, ("22", "AUTOFLT-AP-OFF", "AUTO FLT AP OFF", true)));
         await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
 
         Volatile.Write(ref holdTheNextConnectedLine, 1);
-        Task delivery = Task.Run(() => monitor.OnDataMessage(GoodPush(2000)));
+        Task delivery = Task.Run(() => monitor.OnDataMessage(GoodPush(200)));
         Assert.True(held.Wait(Generous), "the frame never reached its log line");
         Task<FenixChannelSnapshot> snapshot = Task.Run(() => monitor.Snapshot(FenixChannelDisplay.Pfd));
         await Task.Delay(Quiet);
@@ -643,12 +529,12 @@ public class FenixChannelMonitorTests
 
         Assert.Equal(new FenixDisplayVerdict(true, "trusted"), taken.Verdict);
         Assert.NotNull(taken.Frame);
-        Assert.Equal(2000, taken.Frame.Altitude);
+        Assert.Equal(200, taken.Frame.MagHeading);
         Assert.Same(monitor.Latest, taken.Frame);
 
         // The message is there, and it is the one push this monitor was sent. With only one, which push a message
         // belongs to cannot be told here: the test below does.
-        Assert.Equal(taken.Frame.Altitude, AltitudeOf(taken.Push));
+        Assert.Equal(taken.Frame.MagHeading, HeadingOf(taken.Push));
 
         // The list the entries stream gave, the one connection so far, and the clock the verdict was judged at.
         Assert.Equal(new[] { "AUTOFLT-AP-OFF" }, taken.Entries?.Entries.Select(entry => entry.Name));
@@ -660,7 +546,7 @@ public class FenixChannelMonitorTests
     public async Task A_snapshot_never_pairs_a_frame_with_the_message_of_another_push()
     {
         // The test above holds one push inside the lock, so it can only tell that the message is there. Here pushes
-        // of two altitudes follow each other as fast as one thread can deliver them while another takes snapshots,
+        // of two headings follow each other as fast as one thread can deliver them while another takes snapshots,
         // and the message of every snapshot must be the push its frame was decoded from: the two are swapped in
         // together under the lock, and a snapshot takes them under it. A message swapped in before the lock, or in a
         // lock section after the frame's, or read by a snapshot outside the lock, gives a frame beside the message
@@ -669,8 +555,8 @@ public class FenixChannelMonitorTests
         var lines = new Lines();
         using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
         monitor.OnDataState(FenixChannelState.Connected, "");
-        byte[] low = GoodPush(1000);
-        byte[] high = GoodPush(2000);
+        byte[] low = GoodPush(100);
+        byte[] high = GoodPush(200);
         using var stop = new CancellationTokenSource();
         long withFrame = 0;
         string? mismatch = null;
@@ -701,14 +587,14 @@ public class FenixChannelMonitorTests
                     }
 
                     withFrame++;
-                    if (taken.Push is null || !taken.Push.TryGet(197, out FenixChannelField altitude))
+                    if (HeadingOf(taken.Push) is not double heading)
                     {
                         mismatch = "a frame with no message";
                     }
-                    else if (altitude.AsDouble() != taken.Frame.Altitude)
+                    else if (heading != taken.Frame.MagHeading)
                     {
                         mismatch = string.Create(CultureInfo.InvariantCulture,
-                            $"a frame of the push at {taken.Frame.Altitude} ft beside the message of the push at {altitude.AsDouble()} ft");
+                            $"a frame of the push at {taken.Frame.MagHeading} degrees beside the message of the push at {heading} degrees");
                     }
                 }
             }
@@ -737,26 +623,26 @@ public class FenixChannelMonitorTests
         monitor.OnDataMessage(GoodPush()[..20]);   // malformed: cut short
         Assert.Null(monitor.Snapshot(FenixChannelDisplay.Sd).Push);
 
-        monitor.OnDataMessage(GoodPush(1000));
+        monitor.OnDataMessage(GoodPush(100));
         FenixChannelSnapshot good = monitor.Snapshot(FenixChannelDisplay.Sd);
         Assert.NotNull(good.Frame);
-        Assert.Equal(1000, AltitudeOf(good.Push));
+        Assert.Equal(100, HeadingOf(good.Push));
 
-        monitor.OnDataMessage(GoodPush(2000)[..20]);            // malformed
-        monitor.OnDataMessage(WrongShapedPush(altitude: 3000)); // a wrong shape, with data in it
+        monitor.OnDataMessage(GoodPush(200)[..20]);             // malformed
+        monitor.OnDataMessage(WrongShapedPush(heading: 300));   // a wrong shape, with data in it
         monitor.OnDataMessage([]);                              // no RemoteData
         monitor.OnDataMessage(new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter()).ToArray());   // an empty one
 
         FenixChannelSnapshot kept = monitor.Snapshot(FenixChannelDisplay.Sd);
         Assert.Same(good.Frame, kept.Frame);
         Assert.Same(good.Push, kept.Push);
-        Assert.Equal(1000, AltitudeOf(kept.Push));
+        Assert.Equal(100, HeadingOf(kept.Push));
 
         // The next good push replaces both.
-        monitor.OnDataMessage(GoodPush(4000));
+        monitor.OnDataMessage(GoodPush(40));
         FenixChannelSnapshot next = monitor.Snapshot(FenixChannelDisplay.Sd);
-        Assert.Equal(4000, next.Frame?.Altitude);
-        Assert.Equal(4000, AltitudeOf(next.Push));
+        Assert.Equal(40, next.Frame?.MagHeading);
+        Assert.Equal(40, HeadingOf(next.Push));
     }
 
     [Fact]
@@ -766,8 +652,8 @@ public class FenixChannelMonitorTests
         var lines = new Lines();
         using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
         monitor.OnDataState(FenixChannelState.Connected, "");
-        monitor.OnDataMessage(GoodPush(1000));
-        Assert.Equal(1000, AltitudeOf(monitor.Snapshot(FenixChannelDisplay.Sd).Push));
+        monitor.OnDataMessage(GoodPush(100));
+        Assert.Equal(100, HeadingOf(monitor.Snapshot(FenixChannelDisplay.Sd).Push));
 
         monitor.OnDataState(FenixChannelState.NotAnswering, "the stream ended");
         monitor.OnDataState(FenixChannelState.Connected, "");
@@ -776,8 +662,8 @@ public class FenixChannelMonitorTests
         Assert.Null(afterConnect.Push);
         Assert.Null(afterConnect.Frame);
 
-        monitor.OnDataMessage(GoodPush(2000));
-        Assert.Equal(2000, AltitudeOf(monitor.Snapshot(FenixChannelDisplay.Sd).Push));
+        monitor.OnDataMessage(GoodPush(200));
+        Assert.Equal(200, HeadingOf(monitor.Snapshot(FenixChannelDisplay.Sd).Push));
     }
 
     [Fact]
@@ -819,7 +705,6 @@ public class FenixChannelMonitorTests
         // again: each snapshot pairs the verdict with the frame that gave it, and with the message of that frame.
         var lines = new Lines();
         using var monitor = NewIdleMonitor(lines);
-        AgreeWithGoodPush(monitor);
         monitor.OnDataState(FenixChannelState.Connected, "");
         await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
 
@@ -849,8 +734,8 @@ public class FenixChannelMonitorTests
         var lines = new Lines();
         using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
         monitor.OnDataState(FenixChannelState.Connected, "");
-        monitor.OnDataMessage(GoodPush(1000));
-        Assert.Equal(1000, monitor.Latest?.Altitude);
+        monitor.OnDataMessage(GoodPush(100));
+        Assert.Equal(100, monitor.Latest?.MagHeading);
 
         monitor.OnDataState(FenixChannelState.NotAnswering, "the stream ended");
         monitor.OnDataState(FenixChannelState.Connected, "");
@@ -858,8 +743,8 @@ public class FenixChannelMonitorTests
         Assert.Null(monitor.Latest);
         Assert.Null(monitor.Snapshot(FenixChannelDisplay.Sd).Frame);
 
-        monitor.OnDataMessage(GoodPush(2000));
-        Assert.Equal(2000, monitor.Latest?.Altitude);
+        monitor.OnDataMessage(GoodPush(200));
+        Assert.Equal(200, monitor.Latest?.MagHeading);
     }
 
     [Fact]
@@ -874,12 +759,12 @@ public class FenixChannelMonitorTests
         monitor.OnDataMessage(GoodPush()[..20]);   // malformed: cut short
         Assert.Null(monitor.Latest);
 
-        monitor.OnDataMessage(GoodPush(1000));
+        monitor.OnDataMessage(GoodPush(100));
         FenixChannelFrame? good = monitor.Latest;
-        Assert.Equal(1000, good?.Altitude);
+        Assert.Equal(100, good?.MagHeading);
 
-        monitor.OnDataMessage(GoodPush(2000)[..20]);
-        monitor.OnDataMessage(WrongShapedPush(altitude: 3000));
+        monitor.OnDataMessage(GoodPush(200)[..20]);
+        monitor.OnDataMessage(WrongShapedPush(heading: 300));
         Assert.Same(good, monitor.Latest);
     }
 
@@ -1157,9 +1042,9 @@ public class FenixChannelMonitorTests
     [Fact]
     public async Task Writes_a_verdict_when_its_trust_or_its_headline_changes()
     {
-        // The headline is the reason up to its first colon. A reason that changes after it (the numbers of a
-        // disagreement, the text of a refusal) is the same news; a reason with no colon is stable while it holds,
-        // so each distinct one is written once.
+        // The headline is the reason up to its first colon. A reason that changes after it (the text of a failure or a
+        // refusal) is the same news; a reason with no colon is stable while it holds, so each distinct one is written
+        // once.
         var lines = new Lines();
         var queries = new BuildQueries();
         using var monitor = NewIdleMonitor(lines, queries.Read);
@@ -1241,7 +1126,6 @@ public class FenixChannelMonitorTests
         // the display units are dark and the reverse.
         var lines = new Lines();
         using var monitor = NewIdleMonitor(lines);
-        AgreeWithGoodPush(monitor);
         monitor.OnDataState(FenixChannelState.Connected, "");
         await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
 
@@ -1281,80 +1165,6 @@ public class FenixChannelMonitorTests
             lines.Verdicts().Skip(7).ToArray());
         monitor.Tick();
         Assert.Equal(12, lines.Verdicts().Length);
-    }
-
-    [Fact]
-    public async Task A_disagreement_whose_numbers_keep_changing_is_written_once()
-    {
-        // The pair in "altitude disagrees: channel 1,000 ft, sim 5,000 ft" moves with every frame; the line is
-        // written for the first and not again until the headline changes.
-        var lines = new Lines();
-        using var monitor = NewIdleMonitor(lines);
-        monitor.OnDataState(FenixChannelState.Connected, "");
-        await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
-        monitor.OnComparison(FenixComparison.FdLightCapt, 1);
-        monitor.OnComparison(FenixComparison.FdLightFo, 1);
-        monitor.OnComparison(FenixComparison.MagHeadingDeg, 90);
-
-        for (int step = 0; step < 4; step++)
-        {
-            monitor.OnComparison(FenixComparison.AltitudeFt, 5000 + 10 * step);
-            monitor.OnDataMessage(GoodPush(1000 + 10 * step));
-            monitor.Tick();
-        }
-
-        Assert.Equal(
-            new[] { "PFD not trusted: altitude disagrees: channel 1,000 ft, sim 5,000 ft" },
-            lines.Verdicts("PFD"));
-    }
-
-    [Fact]
-    public void Writes_the_comparisons_every_30th_tick_while_connected()
-    {
-        var lines = new Lines();
-        using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
-
-        for (int tick = 0; tick < 35; tick++) monitor.Tick();
-        Assert.Empty(lines.Comparisons());   // not connected: no pairs to show
-
-        monitor.OnDataState(FenixChannelState.Connected, "");
-        for (int tick = 0; tick < 29; tick++) monitor.Tick();
-        Assert.Empty(lines.Comparisons());
-
-        monitor.Tick();   // the 30th tick of the connection
-        Assert.Equal(
-            "comparisons: FD captain: channel missing, sim missing; FD first officer: channel missing, sim missing; "
-            + "altitude: channel missing, sim missing; heading: channel missing, sim missing; "
-            + "fuel: channel missing, sim missing; SimConnect: 0 values, no gap",
-            Assert.Single(lines.Comparisons()));
-
-        for (int tick = 0; tick < 30; tick++) monitor.Tick();
-        Assert.Equal(2, lines.Comparisons().Length);
-
-        monitor.OnDataState(FenixChannelState.NotAnswering, "gone");
-        for (int tick = 0; tick < 60; tick++) monitor.Tick();
-        Assert.Equal(2, lines.Comparisons().Length);
-    }
-
-    [Fact]
-    public void The_comparisons_line_ends_with_the_simconnect_deliveries_since_the_line_before()
-    {
-        // After the five pairs: how many values SimConnect delivered since the last comparisons line, and the longest
-        // gap between two deliveries in a row (the monitor's clock is real, so the gap's digits are not pinned here;
-        // the gate's tests pin the wording, and a gap that spans a line, with a fake clock).
-        var lines = new Lines();
-        using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
-        monitor.OnDataState(FenixChannelState.Connected, "");
-        AgreeWithGoodPush(monitor);   // five values
-
-        for (int tick = 0; tick < 30; tick++) monitor.Tick();
-
-        Assert.Matches(@"; fuel: channel missing, sim 2,940 kg; SimConnect: 5 values, longest gap \d+\.\d s$",
-            Assert.Single(lines.Comparisons()));
-
-        for (int tick = 0; tick < 30; tick++) monitor.Tick();
-
-        Assert.EndsWith("; SimConnect: 0 values, no gap", lines.Comparisons()[1], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1633,7 +1443,7 @@ public class FenixChannelMonitorTests
         var queries = new BuildQueries();
         using var monitor = NewIdleMonitor(lines, queries.Read);
         monitor.OnDataState(FenixChannelState.Connected, "");
-        monitor.OnDataMessage(GoodPush(1000));
+        monitor.OnDataMessage(GoodPush(100));
         monitor.OnEcamMessage(ListedEntries(false, ("22", "AUTOFLT-AP-OFF", "AUTO FLT AP OFF", true)));
         await WaitUntil(() => queries.Asked == 1, "the build query", lines);
         FenixChannelSnapshot beforeRefusal = monitor.Snapshot(FenixChannelDisplay.Pfd);
@@ -1644,7 +1454,7 @@ public class FenixChannelMonitorTests
         monitor.OnEcamState(FenixChannelState.Refused, "no key");
 
         monitor.OnDataState(FenixChannelState.Connected, "");
-        monitor.OnDataMessage(GoodPush(2000));
+        monitor.OnDataMessage(GoodPush(200));
         monitor.OnDataState(FenixChannelState.NotAnswering, "late");
         monitor.OnDataState(FenixChannelState.Refused, "again");
         monitor.OnEcamState(FenixChannelState.Connected, "");
@@ -1657,7 +1467,7 @@ public class FenixChannelMonitorTests
             new[] { "display data: connected", "ECAM entries: refused (no key); stopped for this session" },
             lines.All);
         AssertEveryDisplay(monitor, new FenixDisplayVerdict(false, "channel not answering: no key"));
-        Assert.Equal(1000, monitor.Latest?.Altitude);
+        Assert.Equal(100, monitor.Latest?.MagHeading);
 
         // What a snapshot hands out beside that verdict stays as the refusal found it.
         FenixChannelSnapshot afterRefusal = monitor.Snapshot(FenixChannelDisplay.Pfd);
@@ -1696,7 +1506,7 @@ public class FenixChannelMonitorTests
         var lines = new Lines();
         var monitor = NewMonitor(server, lines);
         monitor.Start();
-        await stream.SendAsync(GoodPush(2000));
+        await stream.SendAsync(GoodPush(200));
         // The DCDU is the last display a tick writes: its line shows that the tick which wrote the others is over, so
         // the count taken below is of a settled log.
         await WaitUntil(() => lines.All.Contains("DCDU trusted"), "DCDU trusted to be logged", lines);
@@ -1711,7 +1521,7 @@ public class FenixChannelMonitorTests
 
         // The client let go of the stream, and what comes after it reaches nobody: a frame, then the end.
         await stream.Response.Disposed.WaitAsync(Generous);
-        await stream.SendAsync(GoodPush(7777));
+        await stream.SendAsync(GoodPush(77));
         stream.End();
         await Task.Delay(Quiet);
 
@@ -1761,9 +1571,9 @@ public class FenixChannelMonitorTests
     [Fact]
     public async Task Nothing_is_written_after_channel_stopped()
     {
-        // Whatever still arrives after Dispose finds the log closed: the callbacks of both calls, the tick,
-        // SimConnect's values, a late build answer, a late frame and the end of the stream. The monitor runs (its
-        // own tick and both calls), so those have to stay quiet too.
+        // Whatever still arrives after Dispose finds the log closed: the callbacks of both calls, the tick, a late
+        // build answer, a late frame and the end of the stream. The monitor runs (its own tick and both calls), so
+        // those have to stay quiet too.
         var server = new ChannelServer();
         var stream = new OpenStream();
         server.Data.Enqueue(() => stream.Response);
@@ -1779,18 +1589,16 @@ public class FenixChannelMonitorTests
         string[] atDispose = lines.All;
 
         monitor.OnDataState(FenixChannelState.Connected, "");
-        monitor.OnDataMessage(GoodPush(9000));
+        monitor.OnDataMessage(GoodPush(350));
         monitor.OnDataState(FenixChannelState.NotAnswering, "late");
         monitor.OnDataState(FenixChannelState.Refused, "late");
         monitor.OnEcamState(FenixChannelState.Connected, "");
         monitor.OnEcamMessage(WrongShapedEntries());
         monitor.OnEcamState(FenixChannelState.NotAnswering, "late");
-        monitor.OnComparison(FenixComparison.AltitudeFt, 1);
-        monitor.OnLightTestSwitch(2);
         monitor.Tick();
         queries.Answer(0, CheckedBuild);
         await stream.Response.Disposed.WaitAsync(Generous);
-        await stream.SendAsync(GoodPush(7777));
+        await stream.SendAsync(GoodPush(77));
         stream.End();
         await Task.Delay(Quiet);
 
@@ -1830,7 +1638,7 @@ public class FenixChannelMonitorTests
             return Task.FromResult<string?>(CheckedBuild);
         });
         monitor.OnDataState(FenixChannelState.Connected, "");
-        monitor.OnDataMessage(GoodPush(1000));
+        monitor.OnDataMessage(GoodPush(100));
         monitor.OnEcamMessage(ListedEntries(false, ("22", "AUTOFLT-AP-OFF", "AUTO FLT AP OFF", true)));
         await WaitUntil(() => lines.All.Contains("build 3.0.0.7613: checked"), "the build", lines);
         FenixChannelFrame? latest = monitor.Latest;
@@ -1841,14 +1649,12 @@ public class FenixChannelMonitorTests
         int linesAtDispose = lines.All.Length;   // Dispose's own line, "channel stopped", is in it
 
         monitor.OnDataState(FenixChannelState.Connected, "");
-        monitor.OnDataMessage(GoodPush(9000));
+        monitor.OnDataMessage(GoodPush(350));
         monitor.OnDataState(FenixChannelState.NotAnswering, "late");
         monitor.OnDataState(FenixChannelState.Refused, "late");
         monitor.OnEcamState(FenixChannelState.Connected, "");
         monitor.OnEcamMessage(WrongShapedEntries());
         monitor.OnEcamState(FenixChannelState.NotAnswering, "late");
-        monitor.OnComparison(FenixComparison.AltitudeFt, 1);
-        monitor.OnLightTestSwitch(2);
         monitor.Tick();
         await Task.Delay(Quiet);
 
@@ -1910,61 +1716,4 @@ public class FenixChannelMonitorTests
         Assert.Equal(new FenixDisplayVerdict(false, "channel not answering"), monitor.VerdictFor(FenixChannelDisplay.Pfd));
         monitor.Dispose();
     }
-
-    // ---- The log's numbers ----------------------------------------------------------------------
-
-    /// <summary>
-    /// Its own class, in a collection that never runs beside another test: the test sets
-    /// <c>CultureInfo.DefaultThreadCurrentCulture</c>, which is process-global, for a moment. xUnit runs such a
-    /// collection after every parallel one, so no other test sees de-DE. Nested, so that a run of
-    /// <c>FenixChannelMonitorTests</c> includes it.
-    /// </summary>
-    [Collection("FenixChannelMonitorCultureState")]
-    public class InvariantCultureTests
-    {
-        [Fact]
-        public async Task Logs_the_comparisons_in_the_invariant_culture()
-        {
-            // The comparisons line is written on the timer's thread, so the test sets the default culture of every
-            // thread as well as its own: under de-DE a number formatted with the PC's culture reads "1.020", and
-            // the log must read "1,020" on every machine.
-            CultureInfo savedCurrent = CultureInfo.CurrentCulture;
-            CultureInfo? savedDefault = CultureInfo.DefaultThreadCurrentCulture;
-            try
-            {
-                var german = new CultureInfo("de-DE");
-                CultureInfo.CurrentCulture = german;
-                CultureInfo.DefaultThreadCurrentCulture = german;
-
-                // The setup works: a thread that inherits nothing formats under de-DE.
-                string? onFreshThread = null;
-                var fresh = new Thread(() => onFreshThread = 1020.ToString("N0"));
-                fresh.Start();
-                fresh.Join();
-                Assert.Equal("1.020", onFreshThread);
-
-                var server = new ChannelServer();
-                server.Data.Enqueue(() => FenixChannelFakeServer.StreamThenHold(Frames(GoodPush(altitude: 1023))));
-                var lines = new Lines();
-                using var monitor = NewMonitor(server, lines);
-
-                monitor.Start();
-                monitor.OnComparison(FenixComparison.AltitudeFt, 1020);
-                await WaitUntil(() => lines.Comparisons().Length > 0, "a comparisons line", lines);
-
-                Assert.Contains("altitude: channel 1,023 ft, sim 1,020 ft", lines.Comparisons()[0]);
-            }
-            finally
-            {
-                CultureInfo.DefaultThreadCurrentCulture = savedDefault;
-                CultureInfo.CurrentCulture = savedCurrent;
-            }
-        }
-    }
-}
-
-/// <summary>The collection of <see cref="FenixChannelMonitorTests.InvariantCultureTests"/>: never beside another test.</summary>
-[CollectionDefinition("FenixChannelMonitorCultureState", DisableParallelization = true)]
-public class FenixChannelMonitorCultureStateCollection
-{
 }

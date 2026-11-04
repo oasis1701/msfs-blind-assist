@@ -71,7 +71,7 @@ public class FenixChannelEwdRowsTests
     {
         FenixChannelPush push = FenixChannelPush.From(remote.ToArray())
             ?? throw new InvalidOperationException("the test's RemoteData is not valid protobuf");
-        var frame = new FenixChannelFrame(false, [], FenixFdState.Default, [], upperLeft ?? [], upperRight ?? [], 0, 0, 0, 0, fob)
+        var frame = new FenixChannelFrame(false, [], FenixFdState.Default, [], upperLeft ?? [], upperRight ?? [], 0, 0, 0, fob)
         {
             EwdLive = true
         };

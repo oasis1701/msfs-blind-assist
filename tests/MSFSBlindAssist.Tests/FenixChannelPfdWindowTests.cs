@@ -16,7 +16,7 @@
 // reported under the window's name, as the window reports it. Any other action is false and silent. The window is a
 // class of its own for the PFD, titled "Fenix PFD", and shows the PFD's rows. Both the keys and the window read the
 // PFD's own verdict, not another display's: with the captain's PFD dark and the other units lit, a speed key says it is
-// not available and the window shows the one status row; with only the PFD's altitude disagreeing and the other
+// not available and the window shows the one status row; with only the PFD's FMA missing and the other
 // displays trusted, Alt+P is false and silent. A flight director field (110) in a real message reaches the flight
 // director row through the decoder, the gate and the window. Every channel window keeps the pilot on their row through
 // a refresh: the row is followed by its words when its figure changes or a row appears above it
@@ -109,7 +109,7 @@ public class FenixChannelPfdWindowTests
 
     // A whole display push that passes the gate (FenixChannelProtoWriter.GoodPush) with the PFD's own fields in the same
     // RemoteData message: the push of a real Fenix, which has both. The PFD's heading is left out, since GoodPush carries
-    // the one the gate cross-checks. A flight director given is written as a second field 110 after GoodPush's, which
+    // one. A flight director given is written as a second field 110 after GoodPush's, which
     // carries the two lights: the decoder reads both into one state.
     private static byte[] PushWith(PfdPushes.Push pfd, FenixChannelProtoWriter? flightDirector = null)
     {
@@ -123,12 +123,10 @@ public class FenixChannelPfdWindowTests
         return new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().Raw(remote)).ToArray();
     }
 
-    // A monitor with SimConnect's values agreeing with GoodPush, the data call connected and the build checked, before
-    // any push has arrived.
+    // A monitor with the data call connected and the build checked, before any push has arrived.
     private static FenixChannelMonitor ConnectedMonitor(MonitorTestKit.Lines lines)
     {
         FenixChannelMonitor monitor = MonitorTestKit.NewIdleMonitor(lines);
-        MonitorTestKit.AgreeWithGoodPush(monitor);
         monitor.OnDataState(FenixChannelState.Connected, "");
         Assert.True(
             SpinWait.SpinUntil(
@@ -137,8 +135,8 @@ public class FenixChannelPfdWindowTests
         return monitor;
     }
 
-    // A monitor the PFD trusts: SimConnect's values agree with the push, the data call is connected, the build is checked
-    // and one good push, with the PFD's fields, has arrived.
+    // A monitor the PFD trusts: the data call is connected, the build is checked and one good push, with the PFD's
+    // fields, has arrived.
     private static FenixChannelMonitor TrustedPfdMonitor(MonitorTestKit.Lines lines, PfdPushes.Push pfd)
     {
         FenixChannelMonitor monitor = ConnectedMonitor(lines);
@@ -378,18 +376,21 @@ public class FenixChannelPfdWindowTests
     [Fact]
     public void Alt_p_reads_the_pfds_own_verdict_and_not_another_displays()
     {
-        // The PFD's altitude disagrees with SimConnect's while the E/WD, the SD and the ND are lit and agree. A key that
-        // read another display's verdict would find it trusted and open a window. Alt+P reads the PFD's: not trusted, and
-        // not dark either, so it is false and silent and goes on to its AI read (the hotkey manager is null, so a call
-        // to it would throw).
+        // A push with every display unit powered and no FMA: the PFD has nothing to read while the E/WD, the SD and the
+        // ND are lit and trusted. A key that read another display's verdict would find it trusted and open a window.
+        // Alt+P reads the PFD's: not trusted, and not dark either, so it is false and silent and goes on to its AI read
+        // (the hotkey manager is null, so a call to it would throw).
         var lines = new MonitorTestKit.Lines();
         using FenixChannelMonitor monitor = TrustedPfdMonitor(lines, Cruise());
-        monitor.OnComparison(FenixComparison.AltitudeFt, 5000);
-        monitor.OnDataMessage(PushWith(Cruise()));
+        bool[] powered = Enumerable.Repeat(true, 11).ToArray();
+        monitor.OnDataMessage(new FenixChannelProtoWriter()
+            .Message(1, new FenixChannelProtoWriter()
+                .Message(12, FenixChannelProtoWriter.DuData(powered, FenixChannelProtoWriter.PoweredContent)))
+            .ToArray());
 
         FenixDisplayVerdict pfd = monitor.VerdictFor(FenixChannelDisplay.Pfd);
         Assert.False(pfd.Trusted, "the PFD should be untrusted. The log: " + lines);
-        Assert.StartsWith("altitude disagrees", pfd.Reason);
+        Assert.Equal("no FMA", pfd.Reason);
         foreach (FenixChannelDisplay lit in new[] { FenixChannelDisplay.Ewd, FenixChannelDisplay.Sd, FenixChannelDisplay.Nd })
         {
             Assert.True(monitor.VerdictFor(lit).Trusted, $"the {lit} should stay lit. The log: " + lines);

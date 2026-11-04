@@ -56,7 +56,7 @@ public class FenixChannelEwdWindowTests
         FenixChannelPush push = FenixChannelPush.From(remote.ToArray())
             ?? throw new InvalidOperationException("the test's RemoteData is not valid protobuf");
         var frame = new FenixChannelFrame(
-            false, [], FenixFdState.Default, [], [], ["gCOMPANY MSG"], 0, 0, 0, 0, "wFOB:   g8140 cs KG")
+            false, [], FenixFdState.Default, [], [], ["gCOMPANY MSG"], 0, 0, 0, "wFOB:   g8140 cs KG")
         {
             EwdLive = true
         };
@@ -145,12 +145,11 @@ public class FenixChannelEwdWindowTests
         return new FenixChannelProtoWriter().Message(1, new FenixChannelProtoWriter().Raw(remote)).ToArray();
     }
 
-    // A monitor the E/WD trusts: SimConnect's values agree with the push, the data call is connected, the build is checked
-    // and one good push, with the E/WD's fields, has arrived.
+    // A monitor the E/WD trusts: the data call is connected, the build is checked and one good push, with the E/WD's
+    // fields, has arrived.
     private static FenixChannelMonitor TrustedEwdMonitor(MonitorTestKit.Lines lines, FenixChannelProtoWriter ewdFields)
     {
         FenixChannelMonitor monitor = MonitorTestKit.NewIdleMonitor(lines);
-        MonitorTestKit.AgreeWithGoodPush(monitor);
         monitor.OnDataState(FenixChannelState.Connected, "");
         Assert.True(
             SpinWait.SpinUntil(

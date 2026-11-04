@@ -620,7 +620,7 @@ public class FenixChannelNoticeTests
         Assert.Null(monitor.Session.FirstDataAtMs);
 
         long before = Environment.TickCount64;
-        monitor.OnDataMessage(GoodPush(1000));
+        monitor.OnDataMessage(GoodPush(100));
         long after = Environment.TickCount64;
 
         long first = monitor.Session.FirstDataAtMs ?? -1;
@@ -629,7 +629,7 @@ public class FenixChannelNoticeTests
         // Later frames do not move it, and neither does a reconnect, which clears the latest frame but not the fact
         // that the channel has delivered. (The clock moves on first, or "not moved" could be the same millisecond.)
         await WaitUntil(() => Environment.TickCount64 > first, "the clock to move", lines);
-        monitor.OnDataMessage(GoodPush(2000));
+        monitor.OnDataMessage(GoodPush(200));
         Assert.Equal(first, monitor.Session.FirstDataAtMs);
 
         monitor.OnDataState(FenixChannelState.NotAnswering, "the stream ended");
@@ -637,7 +637,7 @@ public class FenixChannelNoticeTests
         Assert.Null(monitor.Latest);
         Assert.Equal(first, monitor.Session.FirstDataAtMs);
 
-        monitor.OnDataMessage(GoodPush(3000));
+        monitor.OnDataMessage(GoodPush(300));
         Assert.Equal(first, monitor.Session.FirstDataAtMs);
     }
 

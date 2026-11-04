@@ -44,14 +44,9 @@ public partial class FenixA320Definition
     partial void StartDisplayChannelBackground(Accessibility.ScreenReaderAnnouncer announcer);
     partial void StopDisplayChannelBackground();
 
-    // The display channel's other seams (FenixA320Definition.DisplayChannel.cs). AddDisplayChannelVariables
-    // registers the SimConnect keys of the channel's own that its gate reads. PeekDisplayChannelValue hands each
-    // value the gate reads to the monitor from ProcessSimVarUpdate and sets handled for the keys that are the
-    // channel's own, so they are consumed there. TryChannelDisplayRead is HandleHotkeyAction's first look at
-    // any action: it hands a channel key to the seam of the feature that owns it (the seams below) and leaves
-    // every other key alone.
-    partial void AddDisplayChannelVariables(Dictionary<string, SimConnect.SimVarDefinition> variables);
-    partial void PeekDisplayChannelValue(string varName, double value, ref bool handled);
+    // The display channel's other seam (FenixA320Definition.DisplayChannel.cs). TryChannelDisplayRead is
+    // HandleHotkeyAction's first look at any action: it hands a channel key to the seam of the feature that owns it
+    // (the seams below) and leaves every other key alone.
     partial void TryChannelDisplayRead(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
 
     // The channel keys' seams, one per feature, each called only with the actions that feature owns

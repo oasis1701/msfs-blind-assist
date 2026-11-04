@@ -41,7 +41,7 @@ internal sealed record FenixIsisState(
 /// The decoder of the ISIS from the Fenix display channel. Pure: it reads a RemoteData message and nothing else.
 /// </summary>
 /// <remarks>
-/// The ISIS has no cross-check with SimConnect (spec 2.2), so what stands between a wrong value and a pilot is the build
+/// What stands between a wrong value and a pilot is the build
 /// check, the live condition (182.1, the trust gate's), the shape of every member read here (the first in another wire
 /// type than the contract gives makes the whole section a wrong shape, named by its path) and the content condition: a
 /// 182 that carries neither a baro setting above 0 nor a countdown is "no ISIS data". A shape problem is reported before

@@ -1,7 +1,7 @@
 // Characterization tests for FenixChannelDecoder, which turns one message of the Fenix display channel
 // (the gRPC service on 127.0.0.1:18083) into a frame: which displays a powered unit shows, whether the
-// ISIS says it is powered, the flight director, the FMA, the upper ECAM columns and the fields the trust
-// gate cross-checks, or an ECAM entry list. Pure logic: every message is built here with
+// ISIS says it is powered, the flight director, the FMA, the upper ECAM columns, the heading and the FOB line, or an
+// ECAM entry list. Pure logic: every message is built here with
 // FenixChannelProtoWriter, with the field numbers written as plain numbers (never read from
 // FenixChannelFields, so a wrong number in the app's table fails a test), and never read from Fenix's own
 // capture.
@@ -144,14 +144,13 @@ public class FenixChannelDecoderTests
     public void An_fma_with_no_slots_is_not_a_wrong_shape()
     {
         // protobuf-net leaves out an empty or null array, so a PFD with no FMA to draw (unpowered) can send no slot
-        // at all: nothing reshaped, so no "111", and the gate judges it for the PFD alone ("no FMA"). The altitude
-        // keeps RemoteData from being empty: an empty one is no data at all.
+        // at all: nothing reshaped, so no "111", and the gate judges it for the PFD alone ("no FMA"). A field the app
+        // does not read keeps RemoteData from being empty: an empty one is no data at all.
         FenixChannelFrame frame = Decode(new FenixChannelProtoWriter().Double(197, 1000.0));
 
         Assert.Empty(frame.WrongShapeFields);
         Assert.True(frame.ShapesOk);
         Assert.Empty(frame.Fma);
-        Assert.Equal(1000.0, frame.Altitude);
         Assert.False(frame.Malformed);
         Assert.True(frame.HasData);
     }
@@ -347,10 +346,10 @@ public class FenixChannelDecoderTests
     [Fact]
     public void Display_units_that_are_not_a_part_are_a_wrong_shape()
     {
-        FenixChannelFrame frame = Decode(Remote().Varint(12, 1).Double(197, 352.2));
+        FenixChannelFrame frame = Decode(Remote().Varint(12, 1).Varint(10, 12));
 
         Assert.Equal(new[] { "12" }, frame.WrongShapeFields);
-        Assert.Equal(352.2, frame.Altitude);   // the rest still decodes
+        Assert.Equal(12, frame.FwcPage);   // the rest still decodes
         Assert.False(frame.Malformed);
         Assert.True(frame.HasData);
     }
@@ -407,8 +406,8 @@ public class FenixChannelDecoderTests
     [Fact]
     public void A_missing_isis_field_is_not_a_wrong_shape()
     {
-        // The altitude keeps RemoteData from being empty, which would be no data at all. A push with no field 182
-        // means the ISIS is not powered; so does a field 182 with no Powered in it, whatever else it carries (fields
+        // A field the app does not read keeps RemoteData from being empty, which would be no data at all. A push with no
+        // field 182 means the ISIS is not powered; so does a field 182 with no Powered in it, whatever else it carries (fields
         // the app does not read are skipped).
         FenixChannelFrame none = Decode(new FenixChannelProtoWriter().Double(197, 1000.0));
         FenixChannelFrame empty = Decode(new FenixChannelProtoWriter()
@@ -433,16 +432,16 @@ public class FenixChannelDecoderTests
         // flag took its default, and the rest of the message still decodes.
         FenixChannelFrame[] frames =
         [
-            Decode(Remote().Message(182, new FenixChannelProtoWriter().Double(1, 1.0)).Double(197, 352.2)),
-            Decode(Remote().Message(182, new FenixChannelProtoWriter().Float(1, 1f)).Double(197, 352.2)),
-            Decode(Remote().Message(182, new FenixChannelProtoWriter().String(1, "x")).Double(197, 352.2))
+            Decode(Remote().Message(182, new FenixChannelProtoWriter().Double(1, 1.0)).Varint(10, 12)),
+            Decode(Remote().Message(182, new FenixChannelProtoWriter().Float(1, 1f)).Varint(10, 12)),
+            Decode(Remote().Message(182, new FenixChannelProtoWriter().String(1, "x")).Varint(10, 12))
         ];
 
         foreach (FenixChannelFrame frame in frames)
         {
             Assert.Equal(new[] { "182.1" }, frame.WrongShapeFields);
             Assert.False(frame.IsisPowered);
-            Assert.Equal(352.2, frame.Altitude);
+            Assert.Equal(12, frame.FwcPage);
             Assert.False(frame.Malformed);
             Assert.False(frame.ShapesOk);
         }
@@ -451,11 +450,11 @@ public class FenixChannelDecoderTests
     [Fact]
     public void An_isis_that_is_not_a_part_is_a_wrong_shape()
     {
-        FenixChannelFrame frame = Decode(Remote().Varint(182, 1).Double(197, 352.2));
+        FenixChannelFrame frame = Decode(Remote().Varint(182, 1).Varint(10, 12));
 
         Assert.Equal(new[] { "182" }, frame.WrongShapeFields);
         Assert.False(frame.IsisPowered);
-        Assert.Equal(352.2, frame.Altitude);   // the rest still decodes
+        Assert.Equal(12, frame.FwcPage);   // the rest still decodes
         Assert.False(frame.Malformed);
         Assert.False(frame.ShapesOk);
     }
@@ -490,18 +489,16 @@ public class FenixChannelDecoderTests
     }
 
     [Fact]
-    public void Decodes_page_phase_altitude_heading_and_fob()
+    public void Decodes_page_phase_heading_and_fob()
     {
         FenixChannelFrame frame = Decode(Remote()
             .Varint(10, 12)
             .Varint(11, 2)
-            .Double(197, 1023.5)
             .Message(194, new FenixChannelProtoWriter().Double(1, 271.25).Double(2, 270.0).Double(3, -5.1))
             .String(153, "wFOB:   g2940 cs KG"));
 
         Assert.Equal(12, frame.FwcPage);
         Assert.Equal(2, frame.FwcPhase);
-        Assert.Equal(1023.5, frame.Altitude);
         Assert.Equal(271.25, frame.MagHeading);   // field 1 of the heading, not the track or the variation
         Assert.Equal("wFOB:   g2940 cs KG", frame.FobText);
         Assert.True(frame.ShapesOk);
@@ -629,7 +626,6 @@ public class FenixChannelDecoderTests
         FenixChannelFrame frame = Decode(Remote());
 
         Assert.Equal(FenixFdState.Default, frame.Fd);
-        Assert.Equal(0.0, frame.Altitude);
         Assert.Equal(0.0, frame.MagHeading);
         Assert.Equal("", frame.FobText);
         Assert.Empty(frame.UpperEcamLeft);
@@ -650,10 +646,10 @@ public class FenixChannelDecoderTests
     [Fact]
     public void A_wrong_shaped_field_is_recorded_and_the_rest_still_decode()
     {
-        FenixChannelFrame frame = Decode(Remote().Varint(110, 1).Double(197, 1000.0));
+        FenixChannelFrame frame = Decode(Remote().Varint(110, 1).Varint(10, 12));
 
         Assert.Equal(new[] { "110" }, frame.WrongShapeFields);
-        Assert.Equal(1000.0, frame.Altitude);
+        Assert.Equal(12, frame.FwcPage);
         Assert.Equal(FenixFdState.Default, frame.Fd);   // the wrong-shaped field took its default
         Assert.False(frame.Malformed);
         Assert.False(frame.ShapesOk);
@@ -677,12 +673,12 @@ public class FenixChannelDecoderTests
     {
         // As protobuf reads them: the flight director arrives in two parts, the second with a new Roll.
         FenixChannelFrame frame = Decode(Remote()
-            .Double(197, 1000.0)
+            .Varint(10, 12)
             .Message(110, new FenixChannelProtoWriter().Bool(5, true).Double(3, 1.5))
-            .Double(197, 2000.0)
+            .Varint(10, 8)
             .Message(110, new FenixChannelProtoWriter().Bool(6, true).Double(3, 2.5)));
 
-        Assert.Equal(2000.0, frame.Altitude);
+        Assert.Equal(8, frame.FwcPage);
         Assert.Equal(2.5, frame.Fd.Roll);
         Assert.True(frame.Fd.FdOnCapt);   // only in the first part
         Assert.True(frame.Fd.FdOnFo);     // only in the second
@@ -776,7 +772,7 @@ public class FenixChannelDecoderTests
     public void An_empty_part_beside_a_full_one_does_not_hide_the_data(bool emptyFirst)
     {
         var empty = new FenixChannelProtoWriter();
-        var full = Remote().Double(197, 1000.0);
+        var full = Remote().Varint(10, 12);
         var push = new FenixChannelProtoWriter();
         if (emptyFirst)
         {
@@ -790,7 +786,7 @@ public class FenixChannelDecoderTests
         FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(push.ToArray());
 
         Assert.True(frame.HasData);
-        Assert.Equal(1000.0, frame.Altitude);
+        Assert.Equal(12, frame.FwcPage);
         Assert.True(frame.ShapesOk);
     }
 
@@ -809,7 +805,6 @@ public class FenixChannelDecoderTests
         Assert.Empty(frame.UpperEcamRight);
         Assert.Equal(0, frame.FwcPage);
         Assert.Equal(0, frame.FwcPhase);
-        Assert.Equal(0.0, frame.Altitude);
         Assert.Equal(0.0, frame.MagHeading);
         Assert.Equal("", frame.FobText);
         Assert.False(frame.PfdLive);
@@ -838,7 +833,7 @@ public class FenixChannelDecoderTests
             Assert.True(FenixChannelDecoder.DecodeDisplayData(push).HasData);
         }
         Assert.True(FenixChannelFrame.MalformedFrame.HasData);
-        Assert.True(new FenixChannelFrame(false, [], FenixFdState.Default, [], [], [], 0, 0, 0, 0, "").HasData);
+        Assert.True(new FenixChannelFrame(false, [], FenixFdState.Default, [], [], [], 0, 0, 0, "").HasData);
     }
 
     // ---- Malformed messages ---------------------------------------------------------------------
@@ -854,7 +849,7 @@ public class FenixChannelDecoderTests
         Assert.False(frame.ShapesOk);
         Assert.Equal(FenixFdState.Default, frame.Fd);
         Assert.Empty(frame.Fma);
-        Assert.Equal(0.0, frame.Altitude);
+        Assert.Equal(0.0, frame.MagHeading);
         Assert.Equal("", frame.FobText);
         Assert.False(frame.PfdLive);
         Assert.False(frame.NdLive);
@@ -882,12 +877,12 @@ public class FenixChannelDecoderTests
     public void A_good_push_with_damage_after_it_carries_none_of_its_values()
     {
         // A group tag, which protobuf here never uses, behind a whole good push.
-        byte[] damaged = [.. FenixChannelProtoWriter.GoodPush(altitude: 1234), 0x0B];
+        byte[] damaged = [.. FenixChannelProtoWriter.GoodPush(magHeading: 123), 0x0B];
 
         FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(damaged);
 
         Assert.Same(FenixChannelFrame.MalformedFrame, frame);
-        Assert.Equal(0.0, frame.Altitude);
+        Assert.Equal(0.0, frame.MagHeading);
         Assert.Empty(frame.Fma);
     }
 
@@ -903,11 +898,11 @@ public class FenixChannelDecoderTests
     {
         // The part's own length is right, so the reader of the message around it gets through; only the
         // part's reader finds the cut. The valid field after it must not rescue it.
-        FenixChannelFrame frame = Decode(Remote().Message(field, CutShort(field)).Double(197, 1000.0));
+        FenixChannelFrame frame = Decode(Remote().Message(field, CutShort(field)).Varint(10, 12));
 
         Assert.True(frame.Malformed);
         Assert.False(frame.ShapesOk);
-        Assert.Equal(0.0, frame.Altitude);
+        Assert.Equal(0, frame.FwcPage);
         Assert.Empty(frame.Fma);
     }
 
@@ -924,10 +919,10 @@ public class FenixChannelDecoderTests
         // The part is one byte, a tag cut short: the part's reader never gets as far as a value.
         FenixChannelFrame frame = Decode(Remote()
             .Message(field, new FenixChannelProtoWriter().Raw(0x80))
-            .Double(197, 1000.0));
+            .Varint(10, 12));
 
         Assert.True(frame.Malformed);
-        Assert.Equal(0.0, frame.Altitude);
+        Assert.Equal(0, frame.FwcPage);
     }
 
     [Fact]
@@ -954,7 +949,6 @@ public class FenixChannelDecoderTests
         Assert.True(frame.ShapesOk);
         Assert.True(frame.HasData);
         Assert.Equal(16, frame.Fma.Count);
-        Assert.Equal(1000.0, frame.Altitude);
         Assert.Equal(90.0, frame.MagHeading);
         Assert.Equal("wFOB:   g2940 cs KG", frame.FobText);
         Assert.True(frame.Fd.FdOnCapt);
@@ -971,13 +965,12 @@ public class FenixChannelDecoderTests
     [Fact]
     public void GoodPush_carries_the_values_it_is_given()
     {
-        byte[] push = FenixChannelProtoWriter.GoodPush(altitude: 2500, magHeading: 270.5, fob: "wFOB:   g6480 cs LBS",
+        byte[] push = FenixChannelProtoWriter.GoodPush(magHeading: 270.5, fob: "wFOB:   g6480 cs LBS",
             fdOnCapt: false, fdOnFo: true, upperEcamLeft: ["g    SIGNS ON", "gPARK BRK"], displaysOn: false);
 
         FenixChannelFrame frame = FenixChannelDecoder.DecodeDisplayData(push);
 
         Assert.True(frame.ShapesOk);
-        Assert.Equal(2500.0, frame.Altitude);
         Assert.Equal(270.5, frame.MagHeading);
         Assert.Equal("wFOB:   g6480 cs LBS", frame.FobText);
         Assert.False(frame.Fd.FdOnCapt);

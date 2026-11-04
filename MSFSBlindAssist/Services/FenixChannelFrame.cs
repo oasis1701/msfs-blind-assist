@@ -32,7 +32,7 @@ internal readonly record struct FenixFmaSlot(string Text, bool ChangeBox);
 /// </param>
 internal sealed record FenixChannelFrame(bool Malformed, IReadOnlyList<string> WrongShapeFields, FenixFdState Fd,
     IReadOnlyList<FenixFmaSlot> Fma, IReadOnlyList<string> UpperEcamLeft, IReadOnlyList<string> UpperEcamRight,
-    int FwcPage, int FwcPhase, double Altitude, double MagHeading, string FobText)
+    int FwcPage, int FwcPhase, double MagHeading, string FobText)
 {
     /// <summary>True when the message was valid protobuf and every field it carried had its contract's shape.</summary>
     public bool ShapesOk => !Malformed && WrongShapeFields.Count == 0;
@@ -88,7 +88,7 @@ internal sealed record FenixChannelFrame(bool Malformed, IReadOnlyList<string> W
     /// <summary>The frame of a malformed message: <see cref="Malformed"/> and every value its default.</summary>
     public static readonly FenixChannelFrame MalformedFrame = new(
         true, Array.Empty<string>(), FenixFdState.Default, Array.Empty<FenixFmaSlot>(),
-        Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, 0, "");
+        Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, "");
 
     /// <summary>
     /// The frame of a push with no display data: every value its default, not malformed, no wrong shape,
@@ -96,7 +96,7 @@ internal sealed record FenixChannelFrame(bool Malformed, IReadOnlyList<string> W
     /// </summary>
     public static readonly FenixChannelFrame NoData = new(
         false, Array.Empty<string>(), FenixFdState.Default, Array.Empty<FenixFmaSlot>(),
-        Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, 0, "")
+        Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, "")
     {
         HasData = false
     };

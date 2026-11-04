@@ -100,7 +100,7 @@ public class FenixDefinitionSeamTests
         {
             "AddVariantVariables(", "AddVariantPanelControls(", "AddVariantPanelStructure(",
             "AddVariantPanelDisplayVariables(", "HandleVariantUIVariableSet(", "OnVariantSimVarUpdate(",
-            "AddDisplayChannelVariables(", "PeekDisplayChannelValue(", "TryChannelDisplayRead(",
+            "TryChannelDisplayRead(",
         })
             Assert.True(source.Contains(seam), $"FenixA320Definition.cs never calls {seam}");
     }

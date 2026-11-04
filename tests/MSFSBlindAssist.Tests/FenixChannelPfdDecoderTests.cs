@@ -667,7 +667,7 @@ internal static class PfdPushes
         {
             var frame = new FenixChannelFrame(false, Array.Empty<string>(), fd ?? FenixFdState.Default,
                 fma ?? Enumerable.Repeat(new FenixFmaSlot("", false), 16).ToArray(),
-                Array.Empty<string>(), Array.Empty<string>(), 0, 0, Altitude, MagHeading, "")
+                Array.Empty<string>(), Array.Empty<string>(), 0, 0, MagHeading, "")
             {
                 PfdLive = true
             };

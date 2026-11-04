@@ -8482,7 +8482,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
         AddConfigVariables(variables);
         AddVariantVariables(variables);
-        AddDisplayChannelVariables(variables);
         return variables;
     }
 
@@ -12269,11 +12268,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             lastAnnouncer = announcer;
 
         EnsureFenixBackground(announcer);
-        // The display channel's values (FenixA320Definition.DisplayChannel.cs): the flight director lights are
-        // only peeked and carry on below; the channel's own keys stop here.
-        bool channelHandled = false;
-        PeekDisplayChannelValue(varName, value, ref channelHandled);
-        if (channelHandled) return true;
         if (TryApplyConfigValue(varName, value)) return true;
         bool handled = false;
         OnVariantSimVarUpdate(varName, value, announcer, ref handled);

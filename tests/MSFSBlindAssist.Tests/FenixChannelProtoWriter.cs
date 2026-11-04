@@ -133,14 +133,15 @@ internal sealed class FenixChannelProtoWriter
     }
 
     // A whole AircraftDataPush that passes every check of the trust gate: the eleven display units powered as
-    // measured (every display they carry live), the 16 FMA slots (empty), both flight director lights as given, an
-    // altitude, a magnetic heading, the FOB line, and the left upper ECAM column when a test passes one. With
+    // measured (every display they carry live), the 16 FMA slots (empty), both flight director lights as given, a
+    // magnetic heading, the FOB line, the left upper ECAM column when a test passes one, and field 197, an altitude the
+    // real push carries and the app does not read. With
     // displaysOn false the units are as measured cold and dark: unpowered, and none of those displays live. The ISIS
     // is no display unit: its own part (field 182, Powered set) is written only when isisPowered is, so a push has
     // none by default and the ISIS is off. The field numbers are written out here on purpose, not read from
     // FenixChannelFields: a wrong number in the app's table must fail a test, not be copied into the helper that
     // builds the test's input.
-    public static byte[] GoodPush(double altitude = 1000, double magHeading = 90, string fob = "wFOB:   g2940 cs KG",
+    public static byte[] GoodPush(double magHeading = 90, string fob = "wFOB:   g2940 cs KG",
         bool fdOnCapt = true, bool fdOnFo = true, string[]? upperEcamLeft = null, bool displaysOn = true,
         bool isisPowered = false)
     {
@@ -161,7 +162,7 @@ internal sealed class FenixChannelProtoWriter
             remote.Message(182, new FenixChannelProtoWriter().Bool(1, true));
         }
         remote.Message(194, new FenixChannelProtoWriter().Double(1, magHeading));
-        remote.Double(197, altitude);
+        remote.Double(197, 1000);
 
         return new FenixChannelProtoWriter().Message(1, remote).ToArray();
     }

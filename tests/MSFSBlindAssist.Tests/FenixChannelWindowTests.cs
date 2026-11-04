@@ -220,8 +220,7 @@ public class FenixChannelWindowTests
         => (System.Windows.Forms.Timer)typeof(FenixChannelDisplayForm)
             .GetField("_timer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
 
-    // A monitor the PFD trusts: the five comparison values agree with the push, the data call is connected, the
-    // build is checked, and one good push has arrived.
+    // A monitor the PFD trusts: the data call is connected, the build is checked, and one good push has arrived.
     private static FenixChannelMonitor TrustedPfdMonitor(MonitorTestKit.Lines lines)
     {
         FenixChannelMonitor monitor = ConnectedMonitor(lines);
@@ -236,11 +235,10 @@ public class FenixChannelWindowTests
         return monitor;
     }
 
-    // Connects the data call of a monitor that has been idle, with SimConnect's values agreeing with a good push,
-    // and waits for its build to be checked, which is asked on a pool thread. No push has arrived yet.
+    // Connects the data call of a monitor that has been idle, and waits for its build to be checked, which is asked on
+    // a pool thread. No push has arrived yet.
     private static void Connect(FenixChannelMonitor monitor, MonitorTestKit.Lines lines)
     {
-        MonitorTestKit.AgreeWithGoodPush(monitor);
         monitor.OnDataState(FenixChannelState.Connected, "");
         Assert.True(
             SpinWait.SpinUntil(
@@ -745,16 +743,15 @@ public class FenixChannelWindowTests
             AssertRefused(latched, display, "field 110 has the wrong shape");
         }
 
-        // A reason of the display's own that is not darkness: the PFD's altitude disagrees with SimConnect's while the
-        // others are lit and agree.
-        var disagreeingLines = new MonitorTestKit.Lines();
-        using FenixChannelMonitor disagreeing = TrustedPfdMonitor(disagreeingLines);
-        disagreeing.OnComparison(FenixComparison.AltitudeFt, 5000);
-        disagreeing.OnDataMessage(MonitorTestKit.GoodPush());
-        AssertRefused(disagreeing, FenixChannelDisplay.Pfd, "altitude disagrees");
+        // A reason of the display's own that is not darkness: the E/WD holds a text code the app does not know while
+        // the others are lit and trusted.
+        var unknownCodeLines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor unknownCode = TrustedPfdMonitor(unknownCodeLines);
+        unknownCode.OnDataMessage(FenixChannelProtoWriter.GoodPush(upperEcamLeft: ["xENG 1 FIRE"]));
+        AssertRefused(unknownCode, FenixChannelDisplay.Ewd, "unknown code 'x' in the upper ECAM");
         Assert.True(
-            disagreeing.VerdictFor(FenixChannelDisplay.Ewd).Trusted,
-            "the E/WD should stay lit. The log: " + disagreeingLines);
+            unknownCode.VerdictFor(FenixChannelDisplay.Pfd).Trusted,
+            "the PFD should stay lit. The log: " + unknownCodeLines);
 
         Assert.Equal(0, built);
         Assert.Empty(speech.All);

@@ -1,18 +1,18 @@
 // Characterization tests for the announcer host of the Fenix display channel (Services/FenixChannelAnnouncers.cs): the
-// WinForms timer that ticks every 100 ms on the UI thread, stamps the stall guard's heartbeat and then runs one optional
+// WinForms timer that ticks every 100 ms on the UI thread and runs one optional
 // sampler for each announcer. The host is tested on its own with fake delegates: no monitor, no announcer, no sim. Tick is
 // what the timer calls, so a test calls it itself and no test pumps a message loop; the one timer a test starts never
 // fires without one. The definition never starts a host here, because FenixTestHost keeps every background seam off
 // (BackgroundSeamsEnabled), so what Start and Stop of the definition wire together is checked in the sim ([CORE-5]).
 //
-// The contract: each tick calls the heartbeat first and then every sampler in the order given, with one reading of the
-// clock for the whole tick that every sampler is handed. A sampler, or the heartbeat, that throws is logged once for each
+// The contract: each tick calls every sampler in the order given, with one reading of the
+// clock for the whole tick that every sampler is handed. A sampler that throws is logged once for each
 // distinct "<exception type>: <message> (at <type>.<method>)", the method being the first of the app's own on its stack
 // trace, never a helper of the framework's, so that the log says which of several samplers it was (32 lines are
 // remembered, then forgotten, as the monitor's own problems are), and costs nothing else: the other samplers of the tick
 // still run, the timer stays on and the next tick runs them all again; a log that throws is swallowed as well. Start makes
 // the one timer, at 100 ms, and a second Start does nothing. Dispose stops and disposes it, never throws, and a second
-// Dispose does nothing; after it a tick does nothing at all (no beat, no sampler, no clock reading) and Start makes no
+// Dispose does nothing; after it a tick does nothing at all (no sampler, no clock reading) and Start makes no
 // timer.
 //
 // The host formats no number: a log line is the exception's own type and message and the names of the app's method it
@@ -28,11 +28,10 @@ public class FenixChannelAnnouncerHostTests
 {
     // A host on fakes. Whatever a test does not give is a delegate that does nothing, a clock at 0 and no samplers.
     private static FenixChannelAnnouncers NewHost(
-        Action? heartbeat = null,
         IReadOnlyList<Action<long>>? samplers = null,
         Action<string>? logProblem = null,
         Func<long>? clock = null)
-        => new(heartbeat ?? (() => { }), samplers ?? [], logProblem ?? (_ => { }), clock ?? (() => 0));
+        => new(samplers ?? [], logProblem ?? (_ => { }), clock ?? (() => 0));
 
     private static System.Windows.Forms.Timer TimerOf(FenixChannelAnnouncers host)
         => (System.Windows.Forms.Timer)typeof(FenixChannelAnnouncers)
@@ -59,13 +58,12 @@ public class FenixChannelAnnouncerHostTests
     // ---- The tick -----------------------------------------------------------------------------------
 
     [Fact]
-    public void The_host_beats_then_samples_in_order()
+    public void The_host_samples_in_order()
     {
         var calls = new List<(string Who, long Now)>();
         int clockReads = 0;
         long clockNow = 5_000;
         using FenixChannelAnnouncers host = NewHost(
-            heartbeat: () => calls.Add(("beat", 0)),
             samplers:
             [
                 now => calls.Add(("first", now)),
@@ -81,13 +79,13 @@ public class FenixChannelAnnouncerHostTests
         host.Tick();
         host.Tick();
 
-        // The beat first, then each sampler in the order given. The clock is read once for a tick and every sampler of
-        // that tick gets the same reading, so the samplers agree on when the tick was.
+        // Each sampler in the order given. The clock is read once for a tick and every sampler of that tick gets the
+        // same reading, so the samplers agree on when the tick was.
         Assert.Equal(
             new (string, long)[]
             {
-                ("beat", 0), ("first", 5_100), ("second", 5_100), ("third", 5_100),
-                ("beat", 0), ("first", 5_200), ("second", 5_200), ("third", 5_200),
+                ("first", 5_100), ("second", 5_100), ("third", 5_100),
+                ("first", 5_200), ("second", 5_200), ("third", 5_200),
             },
             calls);
         Assert.Equal(2, clockReads);
@@ -98,7 +96,6 @@ public class FenixChannelAnnouncerHostTests
     {
         var ran = new List<string>();
         using FenixChannelAnnouncers host = NewHost(
-            heartbeat: () => ran.Add("beat"),
             samplers:
             [
                 _ =>
@@ -116,7 +113,7 @@ public class FenixChannelAnnouncerHostTests
             ]);
         host.Start();
         Assert.True(host.IsRunning);
-        string[] everyone = ["beat", "first", "second", "third", "fourth"];
+        string[] everyone = ["first", "second", "third", "fourth"];
 
         // The throw of the first costs nothing: the ones after it run, the one after the second throw too, and the
         // timer is still on, so the next tick runs them all again.
@@ -130,28 +127,6 @@ public class FenixChannelAnnouncerHostTests
         Assert.Null(escaped);
         Assert.Equal(everyone, ran);
         Assert.True(host.IsRunning);
-    }
-
-    [Fact]
-    public void A_throwing_heartbeat_does_not_stop_the_samplers()
-    {
-        // The heartbeat has its own isolation: it is called first, and a throw there must not take the samplers' turn
-        // with it. (The monitor's own heartbeat never throws; this is the host not relying on that.)
-        var ran = new List<string>();
-        var logged = new List<string>();
-        using FenixChannelAnnouncers host = NewHost(
-            heartbeat: () => throw new ObjectDisposedException("monitor"),
-            samplers: [_ => ran.Add("first"), _ => ran.Add("second")],
-            logProblem: logged.Add);
-        host.Start();
-
-        Exception? escaped = Record.Exception(host.Tick);
-
-        Assert.Null(escaped);
-        Assert.Equal(new[] { "first", "second" }, ran);
-        Assert.True(host.IsRunning);
-        Assert.Single(logged);
-        Assert.StartsWith("ObjectDisposedException: ", logged[0], StringComparison.Ordinal);
     }
 
     // ---- The log ------------------------------------------------------------------------------------
@@ -409,7 +384,6 @@ public class FenixChannelAnnouncerHostTests
         var ran = new List<string>();
         int clockReads = 0;
         using FenixChannelAnnouncers host = NewHost(   // disposed again at the end: a second Dispose is harmless
-            heartbeat: () => ran.Add("beat"),
             samplers: [_ => ran.Add("sampler")],
             clock: () =>
             {
@@ -418,7 +392,7 @@ public class FenixChannelAnnouncerHostTests
             });
         host.Start();
         host.Tick();
-        Assert.Equal(new[] { "beat", "sampler" }, ran);
+        Assert.Equal(new[] { "sampler" }, ran);
         Assert.Equal(1, clockReads);
 
         host.Dispose();
