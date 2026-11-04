@@ -150,18 +150,19 @@ internal static partial class FenixChannelSdPages
     // "<label>: <LGCIU 1>, <LGCIU 2>": a position with no word reads "LGCIU <n> not available" and is reported.
     private static string WheelGearRow(FenixChannelSdPageContext ctx, string label, string path, (double, double) lgcius)
     {
-        string first = WheelGearWord(ctx, WheelGearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu1}", lgcius.Item1, "LGCIU 1 not available");
-        string second = WheelGearWord(ctx, WheelGearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu2}", lgcius.Item2, "LGCIU 2 not available");
+        string first = SdMeasuredWord(ctx, WheelGearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu1}", lgcius.Item1, "LGCIU 1 not available");
+        string second = SdMeasuredWord(ctx, WheelGearUnitWords, $"{path}.{FenixChannelFields.GearUnitStatus.Lgciu2}", lgcius.Item2, "LGCIU 2 not available");
         return $"{label}: {first}, {second}";
     }
 
     // "<label>: <word>" for a gear door.
     private static string WheelGearDoorRow(FenixChannelSdPageContext ctx, string label, string path, double value)
-        => $"{label}: {WheelGearWord(ctx, WheelGearDoorWords, path, value, "not available")}";
+        => $"{label}: {SdMeasuredWord(ctx, WheelGearDoorWords, path, value, "not available")}";
 
     // The word for a measured value (doubles compared exactly: the Fenix sends the enum's whole numbers as doubles), else
-    // the unavailable words, with the value reported. 7 reads "7", 2.5 "2.5", in the invariant culture.
-    private static string WheelGearWord(FenixChannelSdPageContext ctx, IReadOnlyDictionary<double, string> words, string path,
+    // the unavailable words, with the value reported. 7 reads "7", 2.5 "2.5", in the invariant culture. WHEEL and COND
+    // share it (controller Ruling 27): the one member of this plan not named for a page, so the two pages never copy it.
+    private static string SdMeasuredWord(FenixChannelSdPageContext ctx, IReadOnlyDictionary<double, string> words, string path,
         double value, string unavailable)
     {
         if (words.TryGetValue(value, out string? word)) return word;

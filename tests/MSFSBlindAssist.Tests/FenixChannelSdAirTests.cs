@@ -286,8 +286,8 @@ public class FenixChannelSdAirTests
     // COND (FenixChannelSdPages.CondRows, seam ComposeCond): the page reads 151.7 (zones) and 151.8 (conditioning states), all
     // whole numbers. CKPT: 151.7.1 °C, duct 151.7.4 °C, trim valve 151.7.7 x 100 %; FWD (.2, .5, .8); AFT (.3, .6, .9);
     // FWD CARGO (.11, .13, .15) only while 151.8.5; AFT CARGO (.12, .14, .16) only while 151.8.6; FAN 1 off (151.8.1) and
-    // FAN 2 off (151.8.7), ALTN MODE (151.8.2) and PACK REG (151.8.3) only while set. HOT AIR (151.7.10) waits for Task 1's
-    // measurement, so there is no HOT AIR row and no test for it.
+    // FAN 2 off (151.8.7), ALTN MODE (151.8.2) and PACK REG (151.8.3) only while set. HOT AIR (151.7.10, a double: left out
+    // 0 open, 1 closed, 2 in transit, measured 2026-11-03) is a row right after AFT.
 
     // The zone temperatures (151.7): the cruise push of 2026-11-03 by default (cargo values present, as the Fenix sends them).
     private static FenixChannelProtoWriter CondZone(double fwdCargoTrim = 0.5, double aftCargoTrim = 0.25)
@@ -339,7 +339,7 @@ public class FenixChannelSdAirTests
             new[]
             {
                 "CKPT: 24 °C, duct 38 °C, trim valve 34 %", "FWD: 24 °C, duct 34 °C, trim valve 41 %",
-                "AFT: 24 °C, duct 25 °C, trim valve 11 %"
+                "AFT: 24 °C, duct 25 °C, trim valve 11 %", "HOT AIR: open"
             },
             CondRowsOf(CondPush(CondZone(), CondStates())));
     }
@@ -353,7 +353,7 @@ public class FenixChannelSdAirTests
 
         Assert.Equal("FWD CARGO: 6 °C, duct 14 °C, trim valve 50 %", Assert.Single(fwd, row => row.Contains("CARGO")));
         Assert.Equal("AFT CARGO: 6 °C, duct 16 °C, trim valve 25 %", Assert.Single(aft, row => row.Contains("CARGO")));
-        Assert.Equal(new[] { "FWD CARGO", "AFT CARGO" }, both.Skip(3).Select(row => row.Split(':')[0]));
+        Assert.Equal(new[] { "FWD CARGO", "AFT CARGO" }, both.Skip(4).Select(row => row.Split(':')[0]));
     }
 
     [Fact]
@@ -363,9 +363,9 @@ public class FenixChannelSdAirTests
         IReadOnlyList<string> all = CondRowsOf(CondPush(
             CondZone(), CondStates(fan1Off: true, alternate: true, packReg: true, cargoFwd: true, cargoAft: true, fan2Off: true)));
 
-        Assert.Equal(3, none.Count);
-        Assert.Equal(new[] { "FAN 1: off", "FAN 2: off", "ALTN MODE", "PACK REG" }, all.Skip(5));
-        Assert.Equal(new[] { "FAN 2: off" }, CondRowsOf(CondPush(CondZone(), CondStates(fan2Off: true))).Skip(3));
+        Assert.Equal(4, none.Count);
+        Assert.Equal(new[] { "FAN 1: off", "FAN 2: off", "ALTN MODE", "PACK REG" }, all.Skip(6));
+        Assert.Equal(new[] { "FAN 2: off" }, CondRowsOf(CondPush(CondZone(), CondStates(fan2Off: true))).Skip(4));
     }
 
     [Theory]
@@ -383,6 +383,26 @@ public class FenixChannelSdAirTests
         Assert.StartsWith("FWD: -53 °C", rows[1]);
         Assert.StartsWith("AFT: 22 °C", rows[2]);
         Assert.DoesNotContain(rows, row => row.Contains('−') || row.Contains("-0"));
+        Assert.Equal("HOT AIR: open", rows[3]);
+    }
+
+    [Theory]
+    [InlineData(null, "HOT AIR: open", null)]
+    [InlineData(1.0, "HOT AIR: closed", null)]
+    [InlineData(2.0, "HOT AIR: in transit", null)]
+    [InlineData(3.0, "HOT AIR: not available", "field 151.7.10 has an unknown value 3")]
+    [InlineData(1.5, "HOT AIR: not available", "field 151.7.10 has an unknown value 1.5")]
+    public void Each_measured_hot_air_value_reads_its_word(double? value, string row, string? reportedProblem)
+    {
+        FenixChannelProtoWriter zone = CondZone();
+        if (value is { } v) zone.Double(10, v);
+        var reported = new List<string>();
+
+        FenixChannelRows rows = FenixChannelSdPages.CondRows(CondPush(zone, CondStates()).Context(reported.Add));
+
+        Assert.Null(rows.Problem);
+        Assert.Equal(row, rows.Rows![3]);
+        Assert.Equal(reportedProblem is null ? new string[0] : new[] { reportedProblem }, reported);
     }
 
     [Theory]

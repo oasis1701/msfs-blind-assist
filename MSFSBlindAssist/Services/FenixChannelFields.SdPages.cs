@@ -115,6 +115,17 @@ internal static partial class FenixChannelFields
         public const double Open = 2;               // 2.0 for 13-15 s while the gear extended, until 8 s after it locked down
     }
 
+    /// <summary>
+    /// The values of a <see cref="ZoneTemperatureData.HotAirValve"/> field the app knows. Any other value reads "not available".
+    /// </summary>
+    public static class HotAirStates
+    {
+        // Measured at the CYYZ gate on 2026-11-03 (A321 CFM, build 3.0.0.7613); the contract names none of these values.
+        public const double Open = 0;               // the field was left out in cruise with HOT AIR on, and after the 2.0 phase at the gate
+        public const double Closed = 1;             // read 1.0 as HOT AIR was turned on
+        public const double InTransit = 2;          // read 2.0 for 3 s after the 1.0, before the field was left out
+    }
+
     /// <summary>FctlSurfaceData, the flight control surfaces (<see cref="Remote.FctlSurfaces"/>); each is a nested SurfaceState.</summary>
     public static partial class FctlSurfaceData
     {
