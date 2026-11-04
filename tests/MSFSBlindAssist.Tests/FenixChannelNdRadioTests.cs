@@ -217,30 +217,30 @@ public class FenixChannelNdRadioTests
     [Fact]
     public void The_pointers_follow_the_selectors()
     {
-        // NAV 1 on VOR, NAV 2 on ADF: both looks measured (the white single line, the two green lines).
+        // NAV 1 on VOR, NAV 2 on ADF: the shape follows the side (sitting 2, sitting 3).
         string[] both = Radio(Remote(Nav, 1, 2).Message(78, Pointers(204.6, 270.2)));
         Assert.Equal(
             [
-                "Map: VOR 1 pointer, single line with an open triangle head, at 205 on the compass",
-                "Map: ADF 2 pointer, two lines joined at the head, at 270 on the compass"
+                "Map: VOR 1 single-line pointer, at 205 on the compass",
+                "Map: ADF 2 double-line pointer, at 270 on the compass"
             ],
             both);
 
         // NaN is no pointer; a number with its selector at OFF is none either (the 78 pair stays set).
         Assert.Equal(
-            ["Map: ADF 2 pointer, two lines joined at the head, at 270 on the compass"],
+            ["Map: ADF 2 double-line pointer, at 270 on the compass"],
             Radio(Remote(Nav, 1, 2).Message(78, Pointers(double.NaN, 270.2))));
         Assert.Empty(Radio(Remote(Nav, 0, 0).Message(78, Pointers(204.6, 270.2))));
         Assert.Empty(Radio(Remote(Nav).Message(78, Pointers(204.6, 270.2))));
         Assert.Equal(
-            ["Map: VOR 1 pointer, single line with an open triangle head, at 205 on the compass"],
+            ["Map: VOR 1 single-line pointer, at 205 on the compass"],
             Radio(Remote(Nav, 1, 0).Message(78, Pointers(204.6, 270.2))));
 
-        // NAV 1 on ADF and NAV 2 on VOR: the looks are not measured, so the row has none.
+        // NAV 1 on ADF and NAV 2 on VOR (sitting 3, the gate): the side still sets the shape.
         Assert.Equal(
             [
-                "Map: ADF 1 pointer, at 270 on the compass",
-                "Map: VOR 2 pointer, at 005 on the compass"
+                "Map: ADF 1 single-line pointer, at 270 on the compass",
+                "Map: VOR 2 double-line pointer, at 005 on the compass"
             ],
             Radio(Remote(Nav, 2, 1).Message(78, Pointers(270.2, 4.6))));
 
@@ -255,7 +255,61 @@ public class FenixChannelNdRadioTests
     }
 
     [Fact]
-    public void The_pointers_are_listed_in_rose_nav_and_rose_ls_only()
+    public void A_flagged_receiver_hides_its_pointer()
+    {
+        // (selectors, flag member, the pointer row's start): NAV 1 VOR 102.1.1, ADF 102.1.3; NAV 2 VOR 102.1.2, ADF 102.1.4.
+        (ulong N1, ulong N2, int Member, string Row)[] cases =
+        [
+            (1, 1, 1, "Map: VOR 1 "), (2, 1, 3, "Map: ADF 1 "), (1, 1, 2, "Map: VOR 2 "), (1, 2, 4, "Map: ADF 2 ")
+        ];
+        foreach ((ulong n1, ulong n2, int member, string row) in cases)
+        {
+            string[] rows = Radio(Remote(Nav, n1, n2).Message(78, Pointers(272, 100)).Message(102, Flags((member, "x1rX"))));
+            Assert.DoesNotContain(rows, r => r.StartsWith(row));
+            Assert.Single(rows);
+            Assert.Equal(2, Radio(Remote(Nav, n1, n2).Message(78, Pointers(272, 100))).Length);
+        }
+
+        // A flag of the receiver NOT selected does not hide it; an empty flag is none.
+        Assert.Equal(2, Radio(Remote(Nav, 1, 2).Message(78, Pointers(272, 100)).Message(102, Flags((3, "x1rADF1"), (2, "")))).Length);
+        // ROSE LS and ROSE VOR hide it too.
+        Assert.DoesNotContain(
+            Radio(Remote(Ls, 2, 1).Message(78, Pointers(272, 100)).Message(72, Block("wILS2", null, null))
+                .Message(102, Flags((3, "x1rADF1")))),
+            r => r.StartsWith("Map: ADF 1 "));
+        Assert.DoesNotContain(
+            Radio(Remote(Vor, 2, 1).Message(78, Pointers(272, 100)).Message(70, Block("wVOR1", null, null))
+                .Message(102, Flags((3, "x1rADF1")))),
+            r => r.StartsWith("Map: ADF 1 "));
+    }
+
+    // ---- ROSE VOR's course pointer (80.1)
+
+    private static FenixChannelProtoWriter VorCourse(double course)
+        => new FenixChannelProtoWriter().Double(1, course).Double(2, double.NaN).Double(3, double.NaN).Double(4, double.NaN);
+
+    [Fact]
+    public void Rose_vor_lists_its_course_pointer_from_80_1()
+    {
+        // Sitting 3: 80.1 = 185 on the ground, 70.2 read CRS c185°; 80.2 to 80.4 NaN; no deviation, no TO/FROM.
+        string[] rows = Radio(Remote(Vor, 1).Message(70, Block("wVOR1 w113.s40 ", "CRS c185°", "lwODF ")).Message(80, VorCourse(185)));
+        Assert.Equal(["Top right: VOR1 113.40; CRS 185°; ODF", "Center: course pointer at 185 on the compass"], rows);
+
+        // Never from the text: 70.2 says 185 while 80.1 is NaN or 80 is absent.
+        Assert.DoesNotContain(
+            Radio(Remote(Vor, 1).Message(70, Block("wVOR1", "CRS c185°", null)).Message(80, VorCourse(double.NaN))),
+            r => r.Contains("course pointer"));
+        Assert.DoesNotContain(
+            Radio(Remote(Vor, 1).Message(70, Block("wVOR1", "CRS c185°", null))), r => r.Contains("course pointer"));
+
+        // ROSE LS keeps 82.6 and never reads 80.1; ROSE NAV draws none.
+        Assert.DoesNotContain(
+            Radio(Remote(Ls).Message(72, Block("wILS2", null, null)).Message(80, VorCourse(185))), r => r.Contains("course pointer"));
+        Assert.DoesNotContain(Radio(Remote(Nav, 1).Message(80, VorCourse(185))), r => r.Contains("course pointer"));
+    }
+
+    [Fact]
+    public void The_pointers_are_listed_in_rose_nav_rose_ls_and_rose_vor_only()
     {
         FenixChannelProtoWriter With(ulong mode)
             => Remote(mode, 1, 2).Message(78, Pointers(204.6, 270.2))
@@ -264,7 +318,7 @@ public class FenixChannelNdRadioTests
         Assert.Equal(2, Radio(With(Nav)).Length);
         Assert.Empty(Radio(With(Arc)));
         Assert.Empty(Radio(With(Plan)));
-        Assert.DoesNotContain(Radio(With(Vor)), row => row.StartsWith("Map:"));
+        Assert.Equal(2, Radio(With(Vor)).Count(row => row.StartsWith("Map:")));
         Assert.Equal(2, Radio(With(Ls)).Count(row => row.StartsWith("Map:")));
     }
 
@@ -282,21 +336,25 @@ public class FenixChannelNdRadioTests
             ],
             rows);
 
-        // Every mode while sent (ARC, ROSE NAV and ROSE LS measured; ROSE VOR and PLAN follow).
-        foreach (ulong mode in new[] { Ls, Vor, Arc, Plan })
+        // Every mode but PLAN (sitting 3: PLAN draws no corners, flags included).
+        foreach (ulong mode in new[] { Ls, Vor, Arc })
         {
             Assert.Equal(rows, Corner(Remote(mode, 1, 2).Message(76, Corners())));
         }
 
-        // An empty entry (its selector at OFF) gives no row; an unmeasured arrow is the word alone.
+        Assert.Empty(Corner(Remote(Plan, 1, 2).Message(76, Corners())));
+        Assert.Empty(Corner(Remote(Plan, 1, 2).Message(76, Corners()).Message(102, Flags((1, "rVOR1"), (4, "rADF2")))));
+
+        // An empty entry (its selector at OFF) gives no row.
         string[] off = Corner(Remote(Nav, 0, 0).Message(76, new FenixChannelProtoWriter()
             .Message(1, new FenixChannelProtoWriter().String(1, "")).Message(2, new FenixChannelProtoWriter().String(1, ""))));
         Assert.Empty(off);
         Assert.Empty(Corner(Remote(Nav, 0, 0)));
 
+        // The shape follows the side, whichever receiver (sitting 3: NAV 1 on ADF, NAV 2 on VOR).
         string[] swapped = Corner(Remote(Nav, 2, 1).Message(76, Corners()));
-        Assert.EndsWith("; arrow", swapped[0]);
-        Assert.EndsWith("; arrow", swapped[1]);
+        Assert.EndsWith("; single-line arrow", swapped[0]);
+        Assert.EndsWith("; double-line arrow", swapped[1]);
     }
 
     [Fact]
@@ -396,7 +454,7 @@ public class FenixChannelNdRadioTests
         Assert.Null(rows.Problem);
         string[] all = [.. rows.Rows!];
         int topRight = Array.FindIndex(all, row => row.StartsWith("Top right"));
-        int pointer = Array.FindIndex(all, row => row.StartsWith("Map: VOR 1 pointer"));
+        int pointer = Array.FindIndex(all, row => row.StartsWith("Map: VOR 1 "));
         int left = Array.FindIndex(all, row => row.StartsWith("Bottom left"));
         int right = Array.FindIndex(all, row => row.StartsWith("Bottom right"));
         Assert.True(topRight >= 0 && topRight < pointer, "the pointers follow the top right");
@@ -421,7 +479,7 @@ public class FenixChannelNdRadioTests
         Assert.Equal(invariant, there);
         Assert.Contains("Center: localizer bar 1.2 dots right", there);
         Assert.Contains("Right side: glideslope diamond 0.9 dots below", there);
-        Assert.Contains("Map: VOR 1 pointer, single line with an open triangle head, at 205 on the compass", there);
+        Assert.Contains("Map: VOR 1 single-line pointer, at 205 on the compass", there);
         Assert.Contains("Bottom left: VOR1; CVG; 8.4 NM; single-line arrow", there);
         Assert.DoesNotContain(there, row => row.Contains("1,2") || row.Contains("0,9"));
     }
@@ -433,8 +491,9 @@ public class FenixChannelNdRadioTests
         {
             FenixChannelNdRadio.LookItem.CoursePointer, FenixChannelNdRadio.LookItem.LocalizerBar,
             FenixChannelNdRadio.LookItem.GlideslopeDiamond, FenixChannelNdRadio.LookItem.GlideslopeHalfDiamond,
-            FenixChannelNdRadio.LookItem.VorPointerNav1, FenixChannelNdRadio.LookItem.AdfPointerNav2,
-            FenixChannelNdRadio.LookItem.VorArrowNav1, FenixChannelNdRadio.LookItem.AdfArrowNav2,
+            FenixChannelNdRadio.LookItem.PointerNav1, FenixChannelNdRadio.LookItem.PointerNav2,
+            FenixChannelNdRadio.LookItem.ArrowNav1, FenixChannelNdRadio.LookItem.ArrowNav2,
+            FenixChannelNdRadio.LookItem.VorCoursePointer,
             FenixChannelNdRadio.LookItem.FailedVorIdent, FenixChannelNdRadio.LookItem.FailedVorFrequency,
             FenixChannelNdRadio.LookItem.FailedCourseLabel, FenixChannelNdRadio.LookItem.FailedCourseFigure,
             FenixChannelNdRadio.LookItem.FailedVorFlag

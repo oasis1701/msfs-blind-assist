@@ -37,7 +37,8 @@ internal static class FenixChannelNdLook
     private const string RadioFlight = "03-nd.md, Sitting 2: the radio content and traffic";
     private const string TrafficFlight = "03-nd.md, Sitting 2: the radio content and traffic, Traffic: other and proximate";
     private const string RadioGate = "03-nd.md, Sitting 1, Part D: the radio content at the gate";
-    private const string TunedKind3 = "; measured on kind 3 (DBN, RMG, ODF, VXV, LOZ, CVG)";
+    private const string RadioGateSitting3 = "03-nd.md, Sitting 3, the gate";
+    private const string TunedKind3= "; measured on kind 3 (DBN, RMG, ODF, VXV, LOZ, CVG)";
     private const string TunedUnmeasured = "; kinds 2 and 4 follow the same rule, unmeasured";
 
     // A marker's color is the channel's (its member 5): its entry holds the symbol only. An entry's color is spoken only
@@ -107,14 +108,20 @@ internal static class FenixChannelNdLook
             RadioFlight + ", ROSE LS: the glideslope deviation (82.2), the whole diamond"),
         new(FenixChannelNdRadio.LookItem.GlideslopeHalfDiamond, "glideslope half diamond", "magenta",
             RadioFlight + ", ROSE LS: the glideslope deviation (82.2), the half diamond from 2.02 dots"),
-        new(FenixChannelNdRadio.LookItem.VorPointerNav1, "single line with an open triangle head", "white",
-            RadioFlight + ", the bearing pointers (efis/211245-rose160-vord-nav, appr/215104, 214755, 215413, 211245)"),
-        new(FenixChannelNdRadio.LookItem.AdfPointerNav2, "two lines joined at the head", "green",
-            RadioFlight + ", the bearing pointers (efis/211245-rose160-vord-nav and the appr captures)"),
-        new(FenixChannelNdRadio.LookItem.VorArrowNav1, "single-line arrow", "white",
-            RadioFlight + ", the corners (214719: VOR on NAV 1)"),
-        new(FenixChannelNdRadio.LookItem.AdfArrowNav2, "double-line arrow", "green",
-            RadioFlight + ", the corners (214719: ADF on NAV 2)"),
+        // The shape follows the side, the color the receiver (VOR white, ADF green); the words VOR and ADF already tell
+        // the receivers apart, so the color is not spoken.
+        new(FenixChannelNdRadio.LookItem.PointerNav1, "single-line pointer", "white on VOR, green on ADF",
+            RadioFlight + ", the bearing pointers (efis/211245-rose160-vord-nav, appr/215104: VOR on NAV 1); "
+            + RadioGateSitting3 + " (efis-rose20-adf1-vor2, efis-vor20-adf1-vor2: ADF on NAV 1, a green single line)"),
+        new(FenixChannelNdRadio.LookItem.PointerNav2, "double-line pointer", "green on ADF, white on VOR",
+            RadioFlight + ", the bearing pointers (efis/211245-rose160-vord-nav and the appr captures: ADF on NAV 2); "
+            + RadioGateSitting3 + " (efis-rose20-adf1-vor2, crop-adf1-vor2: VOR on NAV 2, a white double line)"),
+        new(FenixChannelNdRadio.LookItem.ArrowNav1, "single-line arrow", "white on VOR, green on ADF",
+            RadioFlight + ", the corners (214719: VOR on NAV 1); " + RadioGateSitting3 + " (crop-adf1-vor2: ADF1, green)"),
+        new(FenixChannelNdRadio.LookItem.ArrowNav2, "double-line arrow", "green on ADF, white on VOR",
+            RadioFlight + ", the corners (214719: ADF on NAV 2); " + RadioGateSitting3 + " (crop-adf1-vor2: VOR2, white hollow)"),
+        new(FenixChannelNdRadio.LookItem.VorCoursePointer, "course pointer", "cyan",
+            RadioGateSitting3 + " (efis-vor20-crs185: 80.1 = 185, the cross bar at the head, the tail toward 005, no reception)"),
         new(FenixChannelNdTraffic.LookItem.OtherTraffic, "diamond", "white",
             TrafficFlight + " (hollow: appr/214920, sel/203039; AAL626, DAL1959)"),
         new(FenixChannelNdTraffic.LookItem.ProximateTraffic, "diamond", "white",

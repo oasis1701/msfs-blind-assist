@@ -14,7 +14,8 @@ internal static partial class FenixChannelFields
         public const int NdStatusCapt = 58;             // ndStatusCapt: nested NdStatusData, what the captain's ND draws in HDG
         public const int VorBlockCapt = 70;             // vorBlockCapt: nested NdRadioBlock, ROSE VOR's top right block (the first officer's is 71)
         public const int LsBlockCapt = 72;              // lsBlockCapt: nested NdRadioBlock, ROSE LS's top right block (the first officer's is 73)
-        public const int CornersCapt = 76;              // cornersCapt: nested NdCorners, the bottom left (NAV 1) and bottom right (NAV 2) texts (the first officer's is 77)
+        public const int VorCourseCapt = 80;            // vorCourseCapt: nested NdVorCourse, the captain's VOR 1 course block (81, the first officer's or VOR 2's, is never read)
+        public const int CornersCapt = 76;             // cornersCapt: nested NdCorners, the bottom left (NAV 1) and bottom right (NAV 2) texts (the first officer's is 77)
         public const int BearingPointersCapt = 78;      // bearingPointersCapt: nested NdBearingPointers, the VOR and ADF pointers (the first officer's is 79)
         public const int NdFlagLabelsCapt = 102;       // ndFlagLabels: nested NdFlagLabels, the captain's ND flag labels (the approach message at top center)
         public const int NdCenterMessageCapt = 62;    // ndCenterMessageCapt: string, the center message (channel text)
@@ -118,6 +119,17 @@ internal static partial class FenixChannelFields
         public const int Line1 = 1;                 // Line1: string (channel text), the receiver and its number ("wVOR1")
         public const int Line2 = 2;                 // Line2: string (channel text), the ident ("wCVG"); none for an ADF's number
         public const int Line3 = 3;                 // Line3: string (channel text), the DME distance ("g8s.4  scNM")
+    }
+
+    /// <summary>
+    /// NdVorCourse (<see cref="Remote.VorCourseCapt"/>), measured at the gate (sitting 3): only member 1 is read, the
+    /// course ROSE VOR's pointer is drawn at, set with nothing received. Member 2 is the candidate for the deviation, unmeasured.
+    /// </summary>
+    public static partial class NdVorCourse
+    {
+        public const int Course = 1;                // Course: fixed64 (double), the VOR 1 course on RAD NAV (185 read 185.0); NaN with none
+        public const int Bearing = 3;               // Bearing: fixed64 (double), the VOR 1 bearing; not read here
+        public const int DmeDistance = 4;           // DmeDistance: fixed64 (double), the VOR 1 DME distance in NM; not read here
     }
 
     /// <summary>NdBearingPointers (<see cref="Remote.BearingPointersCapt"/>): the pointers of NAV 1 and NAV 2.</summary>

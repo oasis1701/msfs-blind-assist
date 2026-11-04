@@ -31,10 +31,11 @@ internal static class FenixChannelNdRadio
         public const string LocalizerBar = "localizer bar";
         public const string GlideslopeDiamond = "glideslope diamond";
         public const string GlideslopeHalfDiamond = "glideslope half diamond";
-        public const string VorPointerNav1 = "VOR pointer on NAV 1";
-        public const string AdfPointerNav2 = "ADF pointer on NAV 2";
-        public const string VorArrowNav1 = "VOR corner arrow on NAV 1";
-        public const string AdfArrowNav2 = "ADF corner arrow on NAV 2";
+        public const string VorCoursePointer = "VOR course pointer";
+        public const string PointerNav1 = "bearing pointer on NAV 1";
+        public const string PointerNav2 = "bearing pointer on NAV 2";
+        public const string ArrowNav1 = "corner arrow on NAV 1";
+        public const string ArrowNav2 = "corner arrow on NAV 2";
         public const string FailedVorIdent = "failed VOR block ident";
         public const string FailedVorFrequency = "failed VOR block frequency";
         public const string FailedCourseLabel = "failed VOR block course label";
@@ -47,14 +48,14 @@ internal static class FenixChannelNdRadio
     /// <summary>
     /// Layer "Radio": in ROSE LS and ROSE VOR the top right block (72's lines, 70's lines, or the failed VOR block when
     /// 102.1.1 is set), in ROSE LS the course pointer (82.6), the localizer bar (82.1) and the glideslope diamond (82.2),
-    /// in ROSE VOR the failed flag at the center; then, in ROSE NAV and ROSE LS, a row for each bearing pointer (78) its
-    /// selector allows. ARC, ROSE VOR and PLAN pointers and ROSE VOR's course, deviation and TO/FROM are not measured, so
-    /// they are not listed. A field in another shape gives one row in the layer's place; a letter the app does not know
-    /// stops the ND ([FNX-24]).
+    /// in ROSE VOR the failed flag at the center, or the course pointer (80.1); then, in ROSE NAV, ROSE LS and ROSE VOR, a
+    /// row for each bearing pointer (78) its selector allows and its receiver's flag (102.1) does not hide. ARC and PLAN
+    /// pointers and ROSE VOR's deviation and TO/FROM are not measured or not drawn, so they are not listed. A field in
+    /// another shape gives one row in the layer's place; a letter the app does not know stops the ND ([FNX-24]).
     /// </summary>
     public static FenixNdLayer Rows(FenixChannelPush push, FenixNdData header)
     {
-        bool ls = header.Mode == "LS", vor = header.Mode == "VOR", pointers = header.Mode is "NAV" or "LS";
+        bool ls = header.Mode == "LS", vor = header.Mode == "VOR", pointers = header.Mode is "NAV" or "LS" or "VOR";
         if (!ls && !vor && !pointers) return FenixNdLayer.Of([]);
 
         var read = new Reader();
@@ -62,14 +63,20 @@ internal static class FenixChannelNdRadio
 
         // The top right block, or the flag that replaces it.
         string?[] block = [null, null, null];
-        string? vor1Flag = null;
-        if (vor)
+        string?[] flags = [null, null, null, null];
+        if (vor || pointers)
         {
             FenixChannelPush? flagLabels = read.Part(push, Remote.NdFlagLabelsCapt, "102");
             FenixChannelPush? corners = read.Part(flagLabels, NdFlagLabels.CornerFlags, "102.1");
-            vor1Flag = read.Text(corners, NdCornerFlags.Vor1, "102.1.1");
-            coded.Add((vor1Flag, "VOR 1 flag"));
+            flags =
+            [
+                read.Text(corners, NdCornerFlags.Vor1, "102.1.1"), read.Text(corners, NdCornerFlags.Vor2, "102.1.2"),
+                read.Text(corners, NdCornerFlags.Adf1, "102.1.3"), read.Text(corners, NdCornerFlags.Adf2, "102.1.4")
+            ];
+            foreach (string? flag in flags) coded.Add((flag, "corner flag"));
         }
+
+        string? vor1Flag = flags[0];
 
         if (ls || (vor && IsBlank(vor1Flag)))
         {
@@ -88,6 +95,14 @@ internal static class FenixChannelNdRadio
             course = read.Double(ils, LsInputData.Course, "82.6") ?? double.NaN;
             localizer = read.Double(ils, LsInputData.PfdHorDots, "82.1") ?? 0;
             glideslope = read.Double(ils, LsInputData.PfdVertDots, "82.2") ?? 0;
+        }
+
+        // ROSE VOR's course pointer: 80.1 only, never 70.2's text (sitting 3: set with nothing received).
+        double vorCourse = double.NaN;
+        if (vor)
+        {
+            FenixChannelPush? courseBlock = read.Part(push, Remote.VorCourseCapt, "80");
+            vorCourse = read.Double(courseBlock, NdVorCourse.Course, "80.1") ?? double.NaN;
         }
 
         FenixChannelPush? bearings = pointers ? read.Part(push, Remote.BearingPointersCapt, "78") : null;
@@ -113,6 +128,12 @@ internal static class FenixChannelNdRadio
             rows.Add("Top right: " + topRight);
         }
 
+        if (vor && double.IsFinite(vorCourse))
+        {
+            rows.Add($"Center: {FenixChannelNdRows.Words(LookItem.VorCoursePointer)} at "
+                + $"{FenixChannelNdRows.CompassText(vorCourse)} on the compass");
+        }
+
         if (ls)
         {
             if (double.IsFinite(course))
@@ -129,7 +150,7 @@ internal static class FenixChannelNdRadio
         {
             for (int side = 0; side < 2; side++)
             {
-                if (PointerRow(side, bearing[side], SelectorOf(selectors, side)) is { } row) rows.Add(row);
+                if (PointerRow(side, bearing[side], SelectorOf(selectors, side), flags) is { } row) rows.Add(row);
             }
         }
 
@@ -167,34 +188,35 @@ internal static class FenixChannelNdRadio
             : $"Right side: {diamond} {rounded.ToString("0.0", CultureInfo.InvariantCulture)} dots {side}";
     }
 
-    // A pointer is listed only with a bearing and a selector at VOR or ADF (80 and 81 stay set with it at OFF; 78 does not).
-    private static string? PointerRow(int side, double bearing, ulong selector)
+    // A pointer is listed only with a bearing, a selector at VOR or ADF (80 and 81 stay set with it at OFF; 78 does not)
+    // and no flag on that receiver (102.1: VOR 1, VOR 2, ADF 1, ADF 2 in member order; sitting 3: a failed ADF 1 drew no
+    // pointer while 78.1 held its bearing). The shape follows the side, whichever receiver.
+    private static string? PointerRow(int side, double bearing, ulong selector, string?[] flags)
     {
         if (!double.IsFinite(bearing)) return null;
 
         string? kind = KindOf(selector);
         if (kind is null) return null;
 
-        string? item = (side, selector) switch
-        {
-            (0, EfisSelectorValue.Vor) => LookItem.VorPointerNav1,
-            (1, EfisSelectorValue.Adf) => LookItem.AdfPointerNav2,
-            _ => null
-        };
-        string look = item is null ? "" : $", {FenixChannelNdRows.Words(item)}";
-        return $"Map: {kind} {side + 1} pointer{look}, at {FenixChannelNdRows.CompassText(bearing)} on the compass";
+        if (!IsBlank(flags[(selector == EfisSelectorValue.Vor ? 0 : 2) + side])) return null;
+
+        string words = FenixChannelNdRows.Words(side == 0 ? LookItem.PointerNav1 : LookItem.PointerNav2);
+        return $"Map: {kind} {side + 1} {words}, at {FenixChannelNdRows.CompassText(bearing)} on the compass";
     }
 
     // ---- The bottom corners.
 
     /// <summary>
-    /// Layer "Radio corners": the bottom left (NAV 1, 76.1) and the bottom right (NAV 2, 76.2), in every mode while
-    /// sent: their lines, then the arrow. An empty entry (its selector at OFF) gives no row. A flag in 102.1 replaces its
-    /// side's corner, spoken as sent, with no arrow: members 1 (VOR 1) and 3 (ADF 1) the left, 2 and 4 the right. The
-    /// arrow's look is measured for VOR on NAV 1 and ADF on NAV 2 only; otherwise the row says "arrow" and no look.
+    /// Layer "Radio corners": the bottom left (NAV 1, 76.1) and the bottom right (NAV 2, 76.2), in every mode but PLAN
+    /// (which draws none, flags included) while sent: their lines, then the arrow. An empty entry (its selector at OFF)
+    /// gives no row. A flag in 102.1 replaces its side's corner, spoken as sent, with no arrow: members 1 (VOR 1) and 3
+    /// (ADF 1) the left, 2 and 4 the right. The arrow's shape follows the side (NAV 1 single line, NAV 2 double line),
+    /// for either receiver.
     /// </summary>
     public static FenixNdLayer CornerRows(FenixChannelPush push, FenixNdData header)
     {
+        if (header.Mode == "PLAN") return FenixNdLayer.Of([]);
+
         var read = new Reader();
         var coded = new List<(string? Text, string Place)>();
 
@@ -244,13 +266,7 @@ internal static class FenixChannelNdRadio
 
             if (JoinedLines(lines[side], FenixChannelNdSpeech.Corner) is not { } text) continue;
 
-            string? item = (side, SelectorOf(selectors, side)) switch
-            {
-                (0, EfisSelectorValue.Vor) => LookItem.VorArrowNav1,
-                (1, EfisSelectorValue.Adf) => LookItem.AdfArrowNav2,
-                _ => null
-            };
-            rows.Add($"{places[side]}: {text}; {(item is null ? "arrow" : FenixChannelNdRows.Words(item))}");
+            rows.Add($"{places[side]}: {text}; {FenixChannelNdRows.Words(side == 0 ? LookItem.ArrowNav1 : LookItem.ArrowNav2)}");
         }
 
         return FenixNdLayer.Of(rows);
