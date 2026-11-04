@@ -16,10 +16,17 @@ namespace MSFSBlindAssist.Services;
 /// <param name="MagneticVariation">East positive; true = magnetic + variation.</param>
 internal sealed record FenixNdFrame(string Mode, double RangeNm, double UpTrueDegrees, FenixLatLon Center, double MagneticVariation)
 {
+    /// <summary>The upper message box is drawn (the captain's list holds "TA ONLY"): it hides what lies under it.</summary>
+    public bool UpperBox { get; init; }
+
+    /// <summary>The lower message box is drawn (the captain's list holds an entry other than "TA ONLY").</summary>
+    public bool LowerBox { get; init; }
+
     /// <summary>
     /// The frame of a header, or null when a value it needs is missing: the mode (any of the five), a range that
     /// parses, the center (the PLAN center in PLAN, else the present position), the variation, and outside PLAN the
-    /// heading. ARC, ROSE NAV, ROSE LS and ROSE VOR are heading-up on the true heading; PLAN is magnetic-north-up.
+    /// heading. ARC, ROSE NAV, ROSE LS and ROSE VOR are heading-up on the true heading; PLAN is magnetic-north-up. The
+    /// message boxes drawn follow the captain's list: "TA ONLY" the upper box, any other entry the lower one.
     /// </summary>
     public static FenixNdFrame? From(FenixNdData header)
     {
@@ -34,8 +41,15 @@ internal sealed record FenixNdFrame(string Mode, double RangeNm, double UpTrueDe
         if (plan) up = variation;
         else if (header.MagneticHeading is double heading) up = heading + variation;
         else return null;
-        return new FenixNdFrame(mode, range, ((up % 360) + 360) % 360, c, variation);
+
+        bool upper = header.ListedMessages.Any(entry => PlainText(entry) == TaOnly);
+        bool lower = header.ListedMessages.Any(entry => PlainText(entry) != TaOnly);
+        return new FenixNdFrame(mode, range, ((up % 360) + 360) % 360, c, variation) { UpperBox = upper, LowerBox = lower };
     }
+
+    private const string TaOnly = "TA ONLY";
+
+    private static string PlainText(string coded) => FenixChannelText.Parse(coded).JoinedText.Trim();
 }
 
 /// <summary>Where the ND draws a point: its distance from the center, its degrees off the top of the screen
@@ -44,7 +58,9 @@ internal readonly record struct FenixNdPlace(double DistanceNm, double DegreesOf
 
 /// <summary>
 /// The ND's geometry: where it draws a point, how to say that place, and the along- and cross-track distances.
-/// Works in the measured pixels of the 752 x 729 ND window, in nautical miles and true degrees.
+/// Works in the measured pixels of the 752 x 729 ND window, in nautical miles and true degrees. The clip is the one
+/// the flight measured (evidence, sitting 2, "Where the ND draws: the edges, re-measured"; ROSE and PLAN map points
+/// from sitting 1).
 /// </summary>
 internal static class FenixChannelNdGeometry
 {
@@ -54,11 +70,33 @@ internal static class FenixChannelNdGeometry
     private const double ArcAircraftY = 597;
     private const double ArcRangePx = 473;           // stands for the whole range
     private const double WindowWidth = 752;
-    private const double MapTopY = 115;
-    private const double MapBottomY = 630;
-    private const double RoseClipRadiusPx = 290;
+    private const double WindowBottom = 729;
     private const double EdgePx = 7;                 // half the size of a drawn symbol
     private const double EarthRadiusNm = 3440.065;
+
+    // ARC, map points and route items alike: a circle around the aircraft symbol, the window's sides as far as a
+    // symbol's center is seen, down to the window's bottom, minus the two bottom corners.
+    private const double ArcClipRadiusPx = 478;
+    private const double ArcLeftX = 5;
+    private const double ArcRightX = 745;
+    private const double LeftCornerX = 152;          // the left corner: x < 152 and y > 632
+    private const double LeftCornerY = 632;
+
+    // The right corner, a polygon (clockwise on the screen): nothing is drawn inside it.
+    private static readonly (double X, double Y)[] RightCorner =
+        [(632, 552), (752, 552), (752, 729), (557, 729), (557, 640)];
+
+    // ROSE (NAV, LS, VOR) and PLAN: map points from y 115 and within 290 px of the center; route items in the
+    // window from y 80 down.
+    private const double MapTopY = 115;
+    private const double RoseClipRadiusPx = 290;
+    private const double RouteTopY = 80;
+
+    // The message boxes: each hides its width from its top to the window's bottom while it is drawn.
+    private const double BoxLeftX = 170;
+    private const double BoxRightX = 567;
+    private const double UpperBoxTopY = 646;
+    private const double LowerBoxTopY = 673;
 
     private static readonly string[] CompassPoints =
         { "north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west" };
@@ -86,36 +124,97 @@ internal static class FenixChannelNdGeometry
     }
 
     /// <summary>
-    /// Where the ND draws a map point (a navaid, fix, airport, NDB or traffic), or null when it draws nothing there:
-    /// the pixel must lie in 115 &lt;= y &lt;= 630 and, in ROSE and PLAN, within 290 px of the center, in ARC within
-    /// 473 px of the aircraft and within the window's width.
+    /// Where the ND draws a map point (a navaid, fix, airport, NDB or traffic), or null when it draws nothing there.
+    /// ARC: within 478 px of the aircraft symbol, 5 &lt;= x &lt;= 745, y &lt;= 729, outside the two bottom corners. ROSE
+    /// and PLAN: y &gt;= 115 and within 290 px of the center. Never under a drawn message box.
     /// </summary>
-    public static FenixNdPlace? Place(FenixNdFrame f, FenixLatLon p)
-    {
-        var l = Locate(f, p);
-        double cy = IsArc(f) ? ArcAircraftY : RoseCenterY;
-        double radius = Math.Sqrt((l.X - CenterX) * (l.X - CenterX) + (l.Y - cy) * (l.Y - cy));
-        double limit = IsArc(f) ? ArcRangePx : RoseClipRadiusPx;
-        if (l.Y < MapTopY || l.Y > MapBottomY || radius > limit) return null;
-        bool atEdge = l.Y - MapTopY < EdgePx || MapBottomY - l.Y < EdgePx || limit - radius < EdgePx;
-        if (IsArc(f))
-        {
-            if (l.X < 0 || l.X > WindowWidth) return null;
-            atEdge |= l.X < EdgePx || WindowWidth - l.X < EdgePx;
-        }
-        return new FenixNdPlace(l.Distance, l.Off, atEdge);
-    }
+    public static FenixNdPlace? Place(FenixNdFrame f, FenixLatLon p) => PlaceIn(f, p, route: false);
 
     /// <summary>
-    /// Where the ND draws a route item. Provisional: Task 7 refines it from the flight's crops. The window's sides and
-    /// top (0 &lt;= x &lt;= 752, y &gt;= 0) and the bottom at y 630, in every mode, with no ring.
+    /// Where the ND draws a route item (a waypoint, a marker, a point of the route line), or null when it draws
+    /// nothing there. ARC: as <see cref="Place"/>. ROSE and PLAN: the window from y 80 to its bottom (0 &lt;= x &lt;= 752,
+    /// 80 &lt;= y &lt;= 729; PLAN's top measured in ROSE only). Never under a drawn message box.
     /// </summary>
-    public static FenixNdPlace? PlaceRoute(FenixNdFrame f, FenixLatLon p)
+    public static FenixNdPlace? PlaceRoute(FenixNdFrame f, FenixLatLon p) => PlaceIn(f, p, route: true);
+
+    private static FenixNdPlace? PlaceIn(FenixNdFrame f, FenixLatLon p, bool route)
     {
         var l = Locate(f, p);
-        if (l.X < 0 || l.X > WindowWidth || l.Y < 0 || l.Y > MapBottomY) return null;
-        bool atEdge = l.X < EdgePx || WindowWidth - l.X < EdgePx || l.Y < EdgePx || MapBottomY - l.Y < EdgePx;
-        return new FenixNdPlace(l.Distance, l.Off, atEdge);
+        double margin = Margin(f, l.X, l.Y, route).Margin;
+        if (!(margin >= 0)) return null;
+        return new FenixNdPlace(l.Distance, l.Off, margin < EdgePx);
+    }
+
+    // How far a pixel lies inside the area the ND draws in: its distance to the nearest clip line that applies (the
+    // circle, a side, the top, the bottom, a corner's edge, a box's edge), negative when it lies beyond one, with the
+    // edge that line is on ("top", "left", "right" or "bottom"; a corner and a box are at the bottom).
+    private static (double Margin, string Edge) Margin(FenixNdFrame f, double x, double y, bool route)
+    {
+        var lines = new List<(double, string)>();
+        if (IsArc(f))
+        {
+            lines.Add((ArcClipRadiusPx - Hypot(x - CenterX, y - ArcAircraftY), "top"));
+            lines.Add((x - ArcLeftX, "left"));
+            lines.Add((ArcRightX - x, "right"));
+            lines.Add((WindowBottom - y, "bottom"));
+            lines.Add((OutsideRectangle(x, y, double.NegativeInfinity, LeftCornerX, LeftCornerY), "bottom"));
+            lines.Add((OutsidePolygon(x, y, RightCorner), "bottom"));
+        }
+        else if (route)
+        {
+            lines.Add((y - RouteTopY, "top"));
+            lines.Add((x, "left"));
+            lines.Add((WindowWidth - x, "right"));
+            lines.Add((WindowBottom - y, "bottom"));
+        }
+        else
+        {
+            lines.Add((y - MapTopY, "top"));
+            lines.Add((RoseClipRadiusPx - Hypot(x - CenterX, y - RoseCenterY), y < RoseCenterY ? "top" : "bottom"));
+        }
+
+        if (f.UpperBox) lines.Add((OutsideRectangle(x, y, BoxLeftX, BoxRightX, UpperBoxTopY), "bottom"));
+        if (f.LowerBox) lines.Add((OutsideRectangle(x, y, BoxLeftX, BoxRightX, LowerBoxTopY), "bottom"));
+
+        (double, string) nearest = lines[0];
+        foreach ((double margin, string edge) line in lines)
+        {
+            if (line.margin < nearest.Item1) nearest = line;
+        }
+
+        return nearest;
+    }
+
+    private static double Hypot(double dx, double dy) => Math.Sqrt(dx * dx + dy * dy);
+
+    // The signed distance from a pixel to the region left <= x <= right, y >= top (down to the window's bottom):
+    // positive outside it, negative inside it.
+    private static double OutsideRectangle(double x, double y, double left, double right, double top)
+    {
+        if (x >= left && x <= right && y >= top) return -Math.Min(Math.Min(x - left, right - x), y - top);
+
+        double dx = Math.Max(0, Math.Max(left - x, x - right));
+        double dy = Math.Max(0, top - y);
+        return Hypot(dx, dy);
+    }
+
+    // The signed distance from a pixel to a polygon: positive outside it, negative inside it.
+    private static double OutsidePolygon(double x, double y, (double X, double Y)[] polygon)
+    {
+        bool inside = false;
+        double nearest = double.PositiveInfinity;
+        for (int i = 0, j = polygon.Length - 1; i < polygon.Length; j = i++)
+        {
+            (double xi, double yi) = polygon[i];
+            (double xj, double yj) = polygon[j];
+            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+
+            double ex = xj - xi, ey = yj - yi;
+            double t = Math.Clamp(((x - xi) * ex + (y - yi) * ey) / (ex * ex + ey * ey), 0, 1);
+            nearest = Math.Min(nearest, Hypot(x - (xi + t * ex), y - (yi + t * ey)));
+        }
+
+        return inside ? -nearest : nearest;
     }
 
     /// <summary>

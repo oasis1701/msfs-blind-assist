@@ -1,5 +1,6 @@
-// Characterization tests for FenixChannelNdGeometry (where the ND draws a point). The numbers are the sitting's
-// measurements at the KATL gate on 3.0.0.7613 (docs/fenix-channel/evidence/03-nd.md, Part B); no test reads a file.
+// Characterization tests for FenixChannelNdGeometry (where the ND draws a point). The numbers are the measurements on
+// 3.0.0.7613 (docs/fenix-channel/evidence/03-nd.md): the projection and the ROSE and PLAN clip at the KATL gate (sitting
+// 1, Part B), the ARC clip and the route's edges from the flight (sitting 2, "Where the ND draws"); no test reads a file.
 
 using System.Globalization;
 using MSFSBlindAssist.Services;
@@ -19,12 +20,14 @@ public class FenixChannelNdGeometryTests
         => new("PLAN", range, Variation, new FenixLatLon(39.7173, -86.2946), Variation);
 
     private static FenixNdData Header(string? mode = "ARC", string range = "160", double? heading = Heading,
-        double? variation = Variation, FenixLatLon? position = null, FenixLatLon? planCenter = null)
+        double? variation = Variation, FenixLatLon? position = null, FenixLatLon? planCenter = null,
+        string[]? listed = null)
         => new(mode, range, null, false, null, null, heading, null, variation, null, position, planCenter, null,
-            Array.Empty<string>(), Array.Empty<string>());
+            Array.Empty<string>(), listed ?? Array.Empty<string>());
 
     // name, latitude, longitude, distance, off up, ROSE pixel (NaN: far off), ROSE drawn, ROSE edge,
-    // ARC pixel, ARC drawn, ARC edge
+    // ARC pixel, ARC drawn, ARC edge. In ARC the flight's clip applies (a 478 px circle, the corners): LDK at 466.6 px
+    // is well inside it, and PZD (the symbol sitting 1 saw cut in half at the left corner's top) is drawn at the edge.
     private static object[] S(params object[] row) => row;
 
     public static IEnumerable<object[]> Samples => new[]
@@ -34,9 +37,9 @@ public class FenixChannelNdGeometryTests
         S("ELW", 34.419186, -82.784683, 93.9, 147.0, 529.8, 594.8, true, true, 527.0, 830.0, false, false),
         S("VNA", 32.213440, -83.497253, 97.3, -121.3, 124.5, 509.6, false, false, 130.0, 746.0, false, false),
         S("GAD", 33.976402, -86.083557, 85.5, 11.7, 427.9, 104.3, false, false, 427.0, 350.0, true, false),
-        S("LDK", 33.258873, -87.536888, 157.8, -9.9, double.NaN, double.NaN, false, false, 294.9, 137.5, true, true),
+        S("LDK", 33.258873, -87.536888, 157.8, -9.9, double.NaN, double.NaN, false, false, 294.9, 137.5, true, false),
         S("CBM", 33.641533, -88.438576, 200.9, -1.3, double.NaN, double.NaN, false, false, 362.0, 3.0, false, false),
-        S("PZD", 31.655205, -84.293098, 119.2, -95.6, 17.0, 392.0, false, false, 24.9, 631.6, false, false),
+        S("PZD", 31.655205, -84.293098, 119.2, -95.6, 17.0, 392.0, false, false, 24.9, 631.6, true, true),
         S("SYI", 35.561974, -86.439148, 152.7, 47.2, double.NaN, double.NaN, false, false, 706.8, 290.4, true, false),
         S("HCH", 35.781013, -84.978455, 131.6, 75.5, double.NaN, double.NaN, false, false, 752.3, 499.8, false, false),
     };
@@ -110,30 +113,68 @@ public class FenixChannelNdGeometryTests
     private static FenixNdFrame Named(string name) => name switch
     {
         "ARC40" => Frame("ARC", 40), "ARC160" => Frame("ARC", 160),
+        "ARC40-upper" => Frame("ARC", 40) with { UpperBox = true },
+        "ARC160-lower" => Frame("ARC", 160) with { LowerBox = true },
         "NAV40" => Frame("NAV", 40), "NAV160" => Frame("NAV", 160),
-        "PLAN40" => Plan(40), _ => Plan(160),
+        "NAV40-upper" => Frame("NAV", 40) with { UpperBox = true },
+        "NAV40-lower" => Frame("NAV", 40) with { LowerBox = true },
+        "PLAN40" => Plan(40), "PLAN160" => Plan(160),
+        _ => throw new ArgumentException(name),
     };
 
-    // Each row: the frame, a pixel, whether the ND draws it, and whether it is cut by an edge.
+    // Each row: the frame, a pixel, whether the ND draws it, and whether it is cut by an edge. ARC: the flight's
+    // anchors, named after the point that sat there (the same at ARC 40, 160 and 320).
     [Theory]
     [InlineData("ARC40", 375.0, 400.0, true, false)]    // inside
     [InlineData("ARC160", 375.0, 400.0, true, false)]
-    [InlineData("ARC40", 3.0, 500.0, true, true)]       // near x 0
-    [InlineData("ARC160", 749.0, 500.0, true, true)]    // near x 752
-    [InlineData("ARC40", 375.0, 626.0, true, true)]     // near y 630
-    [InlineData("ARC160", 375.0, 129.0, true, true)]    // 468 px from the aircraft: the arc's edge
-    [InlineData("ARC40", 375.0, 117.0, false, false)]   // 480 px: beyond the arc
-    [InlineData("ARC160", -3.0, 500.0, false, false)]   // left of the window
-    [InlineData("ARC40", 756.0, 500.0, false, false)]   // right of the window
-    [InlineData("ARC160", 375.0, 634.0, false, false)]  // below y 630
+    [InlineData("ARC40", 375.5, 120.0, true, true)]     // 477 px from the aircraft (JN, RQY, ZZV: 476 to 479)
+    [InlineData("ARC160", 375.5, 121.0, true, true)]    // 476 px
+    [InlineData("ARC40", 375.5, 117.0, false, false)]   // 480 px (ROD)
+    [InlineData("ARC160", 375.5, 115.0, false, false)]  // 482 px (APE, MIE)
+    [InlineData("ARC40", 8.0, 500.0, true, true)]       // near x 5
+    [InlineData("ARC160", 3.0, 500.0, false, false)]    // left of x 5 (ENL, MD, CIR at x -11 to 0)
+    [InlineData("ARC40", 742.0, 500.0, true, true)]     // near x 745
+    [InlineData("ARC160", 748.0, 500.0, false, false)]  // right of x 745
+    [InlineData("ARC40", 375.0, 640.0, true, false)]    // no y 630 line any more
+    [InlineData("ARC160", 375.0, 708.0, true, false)]   // GSU, y 708
+    [InlineData("ARC40", 375.0, 728.0, true, true)]     // KANB, y 728: the window's bottom
+    [InlineData("ARC160", 375.0, 732.0, false, false)]  // KASN, y 732: below the window
+    [InlineData("ARC160", 144.0, 644.0, false, false)]  // MSL: the left corner
+    [InlineData("ARC40", 112.0, 693.0, false, false)]   // HAB
+    [InlineData("ARC160", 60.0, 626.0, true, true)]     // UU: just above the left corner
+    [InlineData("ARC40", 33.0, 576.0, true, false)]     // MKL
+    [InlineData("ARC40", 23.0, 613.0, true, false)]     // CRAND
+    [InlineData("ARC160", 723.0, 549.0, true, true)]    // ME: just above the right corner
+    [InlineData("ARC160", 634.0, 541.0, true, false)]   // KEQY
+    [InlineData("ARC160", 604.0, 558.0, true, false)]   // UZ: beside the slanted edge
+    [InlineData("ARC160", 597.0, 569.0, true, false)]   // DCM
+    [InlineData("ARC160", 573.0, 616.0, true, true)]    // EOE: at the slanted edge
+    [InlineData("ARC160", 536.0, 627.0, true, false)]   // GRD
+    [InlineData("ARC160", 544.0, 675.0, true, false)]   // IRQ: left of x 557
+    [InlineData("ARC160", 564.0, 703.0, false, false)]  // KAGS: right of x 557
+    [InlineData("ARC160", 665.0, 568.0, false, false)]  // CTF: beyond the slanted edge
+    [InlineData("ARC160", 680.0, 587.0, false, false)]  // HVS
+    [InlineData("ARC160", 717.0, 595.0, false, false)]  // FLO
+    [InlineData("ARC160", 601.0, 642.0, false, false)]  // ELW
+    [InlineData("ARC160", 375.0, 690.0, true, false)]   // no box: drawn
+    [InlineData("ARC160-lower", 375.0, 690.0, false, false)]  // under the lower box (JIVIM, OSLAE at y 680 to 709)
+    [InlineData("ARC160-lower", 330.0, 707.0, false, false)]  // under it, below its bottom edge (SMKEY, PADGT)
+    [InlineData("ARC160-lower", 160.0, 690.0, true, false)]   // beside it
+    [InlineData("ARC160-lower", 375.0, 668.0, true, true)]    // just above it
+    [InlineData("ARC160-lower", 375.0, 660.0, true, false)]
+    [InlineData("ARC40-upper", 375.0, 650.0, false, false)]   // under the upper box
+    [InlineData("ARC40-upper", 375.0, 640.0, true, true)]     // just above it
     [InlineData("NAV40", 375.0, 300.0, true, false)]
     [InlineData("NAV160", 375.0, 300.0, true, false)]
     [InlineData("NAV40", 375.0, 118.0, true, true)]     // near y 115, inside the circle
-    [InlineData("NAV160", 375.0, 626.0, true, true)]    // near y 630, inside the circle
     [InlineData("NAV40", 661.5, 357.0, true, true)]     // 286 px: the circle's edge
     [InlineData("NAV160", 669.5, 357.0, false, false)]  // 294 px: beyond the circle
     [InlineData("NAV40", 375.0, 110.0, false, false)]   // above y 115
-    [InlineData("NAV160", 375.0, 634.0, false, false)]  // below y 630
+    [InlineData("NAV160", 375.0, 634.0, true, false)]   // no y 630 line any more
+    [InlineData("NAV160", 375.0, 644.0, true, true)]    // 287 px: the circle's bottom
+    [InlineData("NAV40", 375.0, 650.0, false, false)]   // 293 px: beyond it
+    [InlineData("NAV40", 375.5, 646.5, true, true)]     // 289.5 px, no box
+    [InlineData("NAV40-upper", 375.5, 646.5, false, false)]   // the same point under the upper box
     [InlineData("PLAN40", 375.0, 300.0, true, false)]
     [InlineData("PLAN160", 375.0, 300.0, true, false)]
     [InlineData("PLAN40", 661.5, 357.0, true, true)]    // just inside the 290 px circle
@@ -150,18 +191,27 @@ public class FenixChannelNdGeometryTests
         if (place.HasValue) Assert.Equal(atEdge, place.Value.AtEdge);
     }
 
+    // ARC clips a route item as a map point; ROSE and PLAN clip it to the window from y 80 down (sitting 2: SMTTH at
+    // (363, 688) and the line from about y 80 in ROSE NAV), never under a drawn box.
     [Theory]
     [InlineData("ARC160", 375.0, 300.0, true, false)]
     [InlineData("NAV40", 375.0, 300.0, true, false)]
     [InlineData("NAV160", 3.0, 300.0, true, true)]      // near x 0
-    [InlineData("ARC40", 749.0, 300.0, true, true)]     // near x 752
-    [InlineData("PLAN160", 375.0, 626.0, true, true)]   // near y 630
-    [InlineData("ARC160", 375.0, 3.0, true, true)]      // near the top of the window
+    [InlineData("NAV40", 749.0, 300.0, true, true)]     // near x 752
+    [InlineData("ARC40", 742.0, 400.0, true, true)]     // near x 745 in ARC
+    [InlineData("PLAN160", 375.0, 725.0, true, true)]   // near the window's bottom
+    [InlineData("NAV40", 375.0, 83.0, true, true)]      // near y 80
     [InlineData("NAV40", 375.0, 100.0, true, false)]    // above y 115 is fine for a route item
+    [InlineData("NAV40", 363.0, 688.0, true, false)]    // SMTTH, 331 px from the center
     [InlineData("NAV160", -3.0, 300.0, false, false)]
-    [InlineData("ARC40", 756.0, 300.0, false, false)]
-    [InlineData("PLAN40", 375.0, 634.0, false, false)]
-    [InlineData("ARC160", 375.0, -3.0, false, false)]
+    [InlineData("NAV40", 756.0, 300.0, false, false)]
+    [InlineData("ARC40", 748.0, 300.0, false, false)]   // right of x 745 in ARC
+    [InlineData("NAV160", 375.0, 75.0, false, false)]   // above y 80
+    [InlineData("PLAN40", 375.0, 733.0, false, false)]  // below the window
+    [InlineData("ARC160", 375.0, 3.0, false, false)]    // beyond the ARC's circle
+    [InlineData("ARC160", 66.0, 702.0, false, false)]   // the KATL 08R runway in the left corner (cap/205843)
+    [InlineData("NAV40", 375.0, 690.0, true, false)]    // no box
+    [InlineData("NAV40-lower", 375.0, 690.0, false, false)]   // under the lower box
     public void A_route_pixel_is_clipped_by_the_window(string frame, double x, double y, bool drawn, bool atEdge)
     {
         var f = Named(frame);
@@ -240,19 +290,44 @@ public class FenixChannelNdGeometryTests
     }
 
     [Fact]
-    public void The_route_clip_is_the_window_and_the_bottom_line_with_no_ring()
+    public void The_route_clip_follows_the_mode()
     {
         var f = Frame("ARC");
-        // CBM is beyond the 473 px arc but inside the window, at its top edge: the route keeps it.
-        var cbm = FenixChannelNdGeometry.PlaceRoute(f, new FenixLatLon(33.641533, -88.438576));
-        Assert.NotNull(cbm);
-        Assert.True(cbm!.Value.AtEdge);
+        // In ARC a route item is clipped as a map point: CBM, 594 px up, is beyond the circle.
+        Assert.Null(FenixChannelNdGeometry.PlaceRoute(f, new FenixLatLon(33.641533, -88.438576)));
         Assert.Null(FenixChannelNdGeometry.PlaceRoute(Frame("ARC", 40), new FenixLatLon(34.2968250, -84.4011972)));   // PADGT, x 843
         Assert.Null(FenixChannelNdGeometry.PlaceRoute(f, new FenixLatLon(35.781013, -84.978455)));   // HCH, x 752.3
-        Assert.Null(FenixChannelNdGeometry.PlaceRoute(f, new FenixLatLon(31.655205, -84.293098)));   // PZD, y 631.6
+        var pzd = FenixChannelNdGeometry.PlaceRoute(f, new FenixLatLon(31.655205, -84.293098));       // PZD, y 631.6
+        Assert.NotNull(pzd);
+        Assert.True(pzd!.Value.AtEdge);
         Assert.NotNull(FenixChannelNdGeometry.PlaceRoute(f, new FenixLatLon(33.976402, -86.083557))); // GAD, y 350
-        // GAD in ROSE sits at y 104, above the map's 115 but inside the window: a route item is kept.
+        // GAD in ROSE sits at y 104, above the map's 115 but inside the window: a route item is kept, a map point not.
         Assert.NotNull(FenixChannelNdGeometry.PlaceRoute(Frame("NAV"), new FenixLatLon(33.976402, -86.083557)));
+        Assert.Null(FenixChannelNdGeometry.Place(Frame("NAV"), new FenixLatLon(33.976402, -86.083557)));
+    }
+
+    [Fact]
+    public void The_frame_takes_the_drawn_boxes_from_the_captains_list()
+    {
+        FenixNdFrame Of(params string[] listed) => FenixNdFrame.From(Header("ARC", position: Gate, listed: listed))!;
+
+        Assert.False(Of().UpperBox);
+        Assert.False(Of().LowerBox);
+        Assert.True(Of("TA ONLY").UpperBox);
+        Assert.False(Of("TA ONLY").LowerBox);
+        Assert.False(Of("aMAP PARTLY DISPLAYED").UpperBox);
+        Assert.True(Of("aMAP PARTLY DISPLAYED").LowerBox);
+        FenixNdFrame both = Of("GPS PRIMARY", "TA ONLY");
+        Assert.True(both.UpperBox);
+        Assert.True(both.LowerBox);
+
+        // A point under the lower box: drawn with no message, not while one is listed.
+        FenixNdFrame clear = Of();
+        FenixNdFrame boxed = Of("aMAP PARTLY DISPLAYED");
+        FenixLatLon under = AtPixel(clear, 375.0, 690.0);
+        Assert.NotNull(FenixChannelNdGeometry.Place(clear, under));
+        Assert.Null(FenixChannelNdGeometry.Place(boxed, under));
+        Assert.Null(FenixChannelNdGeometry.PlaceRoute(boxed, under));
     }
 
     [Fact]
