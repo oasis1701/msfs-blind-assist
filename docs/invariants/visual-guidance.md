@@ -82,7 +82,9 @@ Corrected 2026-10-08: triangle and sine are the defaults of two user settings, n
 
 ## VG-19
 
-- VG's manual-query grace window must only suppress the two chatty per-second callouts (bank guidance, centerline deviation) — phase changes and distance callouts must still fire during a manual hotkey readout. → [visual-guidance.md](../visual-guidance.md)
+- VG's manual-query grace window must only suppress the bank callouts — phase changes and distance callouts must still fire during a manual hotkey readout. → [visual-guidance.md](../visual-guidance.md)
+- Originally (before 2026-11) the window covered "the two chatty per-second callouts (bank guidance, centerline deviation)". The centreline deviation callouts ("0.4 nm left of center", "on runway center") were removed in stage 3 of the visual guidance redesign, because F now speaks the sideways position in every phase (VG-22; decided with the owner, 2026-11-02, on that condition). `VisualGuidanceCalloutTests.No_centreline_callout_is_ever_spoken` pins the removal.
+- Inside the window the bank callout gate keeps tracking but may not speak (VG-21), so when the window ends a callout that came due during it speaks the error as it is then, at once.
 
 ## VG-20
 

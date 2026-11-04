@@ -163,7 +163,7 @@ To switch Visual Guidance off yourself, press Output Ctrl+V again. If you press 
 
 While Visual Guidance is on, the single-letter keys of [Hand Fly mode](takeoff-climb-and-cruise.md#hand-fly-quick-keys) (A, S, D, H, P, B, Q and V) work with no bracket key first, plus F. F tells you the descent rate the guidance is asking for and how far you are above or below the ideal glide path, for example *"target -700, 40 high"* (aim for 700 feet per minute down; you are 40 feet above the path) or *"target -500, 120 low"*. If you press F when Visual Guidance is off, BA says *"Visual guidance not active"*.
 
-When you press any of these keys, BA holds back its own per-second bank and centreline callouts for three seconds so your answer is not cut off.
+When you press any of these keys, BA holds back its bank callouts for three seconds so your answer is not cut off.
 
 If another program is already using one of these keys, BA tells you *"Visual guidance active. Some quick-access keys unavailable; use output mode."* The same readouts are still available through Output mode.
 
@@ -189,9 +189,6 @@ When they come:
 - *"matched"* is said once when you get within about half a degree, and BA stays quiet until you are a full degree off again.
 - A small steady error under a degree is spoken after a second and a half.
 - There is always at least a second between bank callouts, so none cuts off the one before. A callout that falls inside that second is skipped, and the next one tells you the error as it is then.
-
-**Centerline callouts.** When your position changes by a tenth of a mile, BA says how far you are from the centreline, for example *"0.4 nm left of center"*, or *"on runway center"* when you are within about 300 feet of it. Left and right here are your aircraft's position relative to the centreline.
-
 <div class="callout note" role="note" markdown="1">
 
 **Note:** The vertical guidance is designed for a normal stabilised approach with the autothrust holding your speed. The guidance tone asks for pitch, and pitch controls your rate of descent only while something else holds the speed. If you are managing thrust by hand, keep your speed steady or the vertical guidance will feel inconsistent.

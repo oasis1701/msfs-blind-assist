@@ -78,7 +78,9 @@ The two axes are **independent and continuous** — the pilot is not "first cent
 
 ### Manual-query grace window
 
-When the pilot fires a readout hotkey (the H/V/Q/S/D/B/P/A/F set) while VG is active, `MainForm` calls `visualGuidanceManager.NotifyManualQuery()`, which suppresses the per-second bank-guidance and centerline-deviation callouts (both `AnnounceImmediate`) for 3 s so the readout isn't cut off mid-sentence. Only those two chatty callouts are suppressed — phase changes and distance callouts (rare one-shots) still fire. Skipped callouts lose nothing: both always reflect current state, so the next one carries fresh data. `IsManualReadoutAction` in `MainForm` lists the qualifying hotkey actions.
+When the pilot fires a readout hotkey (the H/V/Q/S/D/B/P/A/F set) while VG is active, `MainForm` calls `visualGuidanceManager.NotifyManualQuery()`, which holds back the bank callouts (`AnnounceImmediate`) for 3 s so the readout isn't cut off mid-sentence (VG-19). Only they are held back — phase changes and distance callouts (rare one-shots) still fire. Held-back callouts lose nothing: the gate keeps tracking, so the first one after the window speaks the error as it is then. `IsManualReadoutAction` in `MainForm` lists the qualifying hotkey actions.
+
+The centreline deviation callouts ("0.4 nm left of center", "on runway center") were removed in stage 3 of the redesign (2026-11): F speaks the sideways position in every phase instead.
 
 Also: the PID math, phase machine, and lateral arc-capture logic are untouched by the dual-tone work; the glidepath altitude calibration above is the one deliberate vertical-guidance change (a constant offset that shifts where "on glideslope" sits, not a gain/dynamics change). Failure mode of the tone is a missing audible reference, never a wrong steering command — keep it that way.
 

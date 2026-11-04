@@ -59,7 +59,7 @@ public partial class MainForm
         }
 
         // If the pilot fired a manual readout query while visual guidance is active, open a
-        // short grace window so VG's per-second bank/centerline callouts don't interrupt the
+        // short grace window so VG's bank callouts don't interrupt the
         // readout mid-sentence. See VisualGuidanceManager.NotifyManualQuery.
         if (visualGuidanceManager.IsActive && IsManualReadoutAction(e.Action))
         {

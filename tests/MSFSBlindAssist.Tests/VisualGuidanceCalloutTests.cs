@@ -23,4 +23,17 @@ public class VisualGuidanceCalloutTests
         string first = rig.Speech.All.First(s => BankErrorCallout.IsMatch(s));
         Assert.EndsWith(" left", first);
     }
+
+    // The centreline callouts were removed in stage 3 of the redesign: F speaks the sideways
+    // position in every phase instead (VG-19, VG-22). Crossing the line from 0.3 nm right to 0.3 nm
+    // left says none of them.
+    [Fact]
+    public void No_centreline_callout_is_ever_spoken()
+    {
+        var rig = new VisualGuidanceTestRig();
+        rig.Place(6, 0.3, 0);
+        rig.UpdateAt(0);
+        rig.FlyFor(20, 30, t => rig.Place(6, 0.3 - 0.03 * t, 0));
+        Assert.DoesNotContain(rig.Speech.All, s => s.EndsWith("of center", StringComparison.Ordinal) || s == "on runway center");
+    }
 }

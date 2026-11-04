@@ -112,18 +112,18 @@ public class VisualGuidanceManager : IDisposable
     private DateTime lastExtendingProgressAnnouncement = DateTime.MinValue;
     // Decides when a bank callout is spoken (VG-21); rebuilt in Initialize with the profile's tone bank range.
     private VisualGuidanceBankCalloutGate bankCalloutGate = new(new VisualGuidanceProfile().ToneBankRangeDeg);
-    private string? lastAnnouncedCenterlineDeviation = null;  // Track last announced centerline deviation
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
     private const int EXTENDING_PROGRESS_INTERVAL_MS = 10000;  // 10 seconds
 
-    // Manual-query grace window. When the pilot fires a readout hotkey (F target FPM,
-    // P pitch, S speed, etc.) while VG is active, the per-second bank-guidance and
-    // centerline-deviation callouts — both AnnounceImmediate — would cut the readout
-    // off mid-sentence. NotifyManualQuery() sets this timestamp; the two chatty
-    // callouts skip while ClockForHarness() is before it. Skipped callouts lose nothing:
-    // both always reflect CURRENT state, so the next un-suppressed one carries fresh
-    // data. One-shot announcements (phase changes, distance callouts) are NOT
-    // suppressed — they're rare and important enough to let through.
+    // Manual-query grace window (VG-19). When the pilot fires a readout hotkey (F status,
+    // P pitch, S speed, etc.) while VG is active, a bank callout (AnnounceImmediate) would
+    // cut the readout off mid-sentence. NotifyManualQuery() sets this timestamp; the bank
+    // callouts may not speak while ClockForHarness() is before it. Held-back callouts lose
+    // nothing: the gate keeps tracking, so the first one after the window speaks the error
+    // as it is then. One-shot announcements (phase changes, distance callouts) are NOT
+    // suppressed — they're rare and important enough to let through. (The centreline
+    // callouts this window also covered were removed in stage 3 of the redesign, 2026-11:
+    // F speaks the sideways position in every phase instead.)
     private DateTime routineAnnouncementsSuppressedUntil = DateTime.MinValue;
     private const double MANUAL_QUERY_GRACE_SECONDS = 3.0;
 
@@ -309,11 +309,10 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Called by MainForm when the pilot fires a manual readout hotkey (F target FPM, P pitch,
-    /// S airspeed, etc.) while VG is active. Opens a short grace window during which the
-    /// per-second bank-guidance and centerline-deviation callouts are suppressed, so the
-    /// readout the pilot asked for plays to completion instead of being cut off. No-op when
-    /// VG is inactive.
+    /// Called by MainForm when the pilot fires a manual readout hotkey (F status, P pitch,
+    /// S airspeed, etc.) while VG is active. Opens a short grace window during which the bank
+    /// callouts may not speak (VG-19), so the readout the pilot asked for plays to completion
+    /// instead of being cut off. No-op when VG is inactive.
     /// </summary>
     public void NotifyManualQuery()
     {
@@ -860,9 +859,6 @@ public class VisualGuidanceManager : IDisposable
 
             // Announce commanded bank angle
             AnnounceBankGuidance(desiredBank);
-
-            // Centerline deviation announcements (for testing)
-            AnnounceCenterlineDeviation(lat, lon);
 
             // Distance callouts
             HandleDistanceCallouts(lat, lon);
@@ -1579,53 +1575,6 @@ public class VisualGuidanceManager : IDisposable
             maySpeak: !RoutineAnnouncementsSuppressed);
         if (callout != null)
             announcer.AnnounceImmediate(callout);
-    }
-
-    /// <summary>
-    /// Announces centerline deviation for testing and situational awareness
-    /// </summary>
-    private void AnnounceCenterlineDeviation(double lat, double lon)
-    {
-        if (runway == null) return;
-
-        // Skip during a manual-query grace window (see AnnounceBankGuidance).
-        if (RoutineAnnouncementsSuppressed)
-            return;
-
-        // Calculate cross-track error (distance from centerline)
-        double crossTrackErrorNM = NavigationCalculator.CalculateDistanceToLocalizer(
-            lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
-
-        // Get signed cross-track error to determine direction
-        double signedCrossTrack = NavigationCalculator.CalculateCrossTrackError(
-            lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
-
-        // Determine direction and format announcement
-        string announcement;
-        const double ON_CENTER_THRESHOLD = 0.05; // Within 0.05 NM considered "on center"
-
-        if (crossTrackErrorNM <= ON_CENTER_THRESHOLD)
-        {
-            announcement = "on runway center";
-        }
-        else
-        {
-            // Round to 0.1 NM precision
-            double roundedDistance = Math.Round(crossTrackErrorNM, 1);
-
-            // Determine direction (positive = right, negative = left)
-            string direction = signedCrossTrack > 0 ? "right" : "left";
-
-            announcement = $"{roundedDistance:F1} nm {direction} of center";
-        }
-
-        // Only announce if changed from last announcement
-        if (lastAnnouncedCenterlineDeviation == announcement)
-            return;
-
-        // Announce immediately for testing feedback
-        announcer.AnnounceImmediate(announcement);
-        lastAnnouncedCenterlineDeviation = announcement;
     }
 
     public void Dispose()
