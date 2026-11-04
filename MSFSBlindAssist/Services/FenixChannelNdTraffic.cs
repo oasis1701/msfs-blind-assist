@@ -17,9 +17,10 @@ internal static class FenixChannelNdTraffic
     // The trend arrow is drawn from about 600 fpm: seen at -615, not at -562 or +551 (a value chosen inside the gap).
     private const double TrendFpm = 600;
 
-    // The ring: 62.5 px, which is 2.6 NM at ROSE 20 and 2.64 at ARC 20. Range 10 is unmeasured.
+    // The ring is a fixed distance: 62.5 px, which is 2.6 NM at ROSE 20 and 2.64 at ARC 20; at range 10 about 124 px in
+    // ARC (47.8 px per NM) and 120-124 px in ROSE (48.3), 2.6 NM again (sitting 3).
     private const double RingRangeNm = 20;
-    private const double UnmeasuredRingRangeNm = 10;
+    private const double InnerRingRangeNm = 10;
 
     /// <summary>The look items of the traffic layer, each a <see cref="FenixChannelNdLook"/> entry.</summary>
     internal static class LookItem
@@ -129,13 +130,13 @@ internal static class FenixChannelNdTraffic
         }
     }
 
-    // The ring is drawn at range 20 (and, unmeasured, 10); not at 40 and above.
+    // The ring is drawn at ranges 20 and 10, 2.6 NM at both; not at 40 and above.
     private static string? RingRow(FenixNdFrame frame)
     {
+        if (frame.RangeNm != RingRangeNm && frame.RangeNm != InnerRingRangeNm) return null;
+
         string ticks = "12 " + FenixChannelNdRows.Words(LookItem.TcasRing);
-        if (frame.RangeNm == RingRangeNm) return $"Map: {LookItem.TcasRing}, {ticks} 2.6 NM around the aircraft";
-        if (frame.RangeNm == UnmeasuredRingRangeNm) return $"Map: {LookItem.TcasRing}, {ticks} around the aircraft";
-        return null;
+        return $"Map: {LookItem.TcasRing}, {ticks} 2.6 NM around the aircraft";
     }
 
     // round((altitude - pressure altitude) / 100), half away from zero, a sign and two digits; zero is "00".

@@ -131,7 +131,8 @@ internal static class FenixChannelNdLook
         new(FenixChannelNdTraffic.LookItem.ProximateTraffic, "diamond", "white",
             TrafficFlight + " (filled: appr/214824, sel/203039, sel/203026; AAL626, DAL1959, DAL2997)"),
         new(FenixChannelNdTraffic.LookItem.TcasRing, "ticks", "white",
-            TrafficFlight + ", the ring (efis/215457-restored, efis/212245)"),
+            TrafficFlight + ", the ring (efis/215457-restored, efis/212245); "
+            + "03-nd.md, Sitting 3 (efis-arc10-ring, efis-rose10-ring)"),
         new(FenixChannelNdRadio.LookItem.FailedVorIdent, "VOR1", "red", RadioGate + ", VOR 1 failed: the top right")
             { ColorTellsApart = true },
         new(FenixChannelNdRadio.LookItem.FailedVorFrequency, "---.--", "cyan", RadioGate + ", VOR 1 failed: the top right"),

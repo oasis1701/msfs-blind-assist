@@ -224,10 +224,15 @@ public class FenixChannelNdTrafficTests
         Assert.Equal(["Map: TCAS ring, 12 ticks 2.6 NM around the aircraft"], Rows(mode, 20, Traffic([])));
     }
 
-    [Fact]
-    public void The_ring_reads_without_a_distance_at_range_10()
+    [Theory]
+    [InlineData(Arc)]
+    [InlineData(Nav)]
+    [InlineData(Ls)]
+    [InlineData(Vor)]
+    public void The_ring_reads_its_distance_at_range_10_as_at_range_20(ulong mode)
     {
-        Assert.Equal(["Map: TCAS ring, 12 ticks around the aircraft"], Rows(Nav, 10, Traffic([])));
+        // Sitting 3 (efis-arc10-ring, efis-rose10-ring): the ring is a fixed 2.6 NM at range 10 too.
+        Assert.Equal(["Map: TCAS ring, 12 ticks 2.6 NM around the aircraft"], Rows(mode, 10, Traffic([])));
     }
 
     [Theory]
