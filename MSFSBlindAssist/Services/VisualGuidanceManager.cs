@@ -137,7 +137,12 @@ public class VisualGuidanceManager : IDisposable
     private const double TOUCHDOWN_ALTITUDE_FT = 5.0;    // Consider touchdown below 5 ft AGL
 
     // Flare rate limiting constant
-    private const double MAX_FLARE_PITCH_RATE = 1.5;        // Maximum pitch change rate during flare (deg/sec)
+    // Maximum pitch change rate during flare (deg/sec). 10, not the 1.5 the 1 Hz design wrote: once
+    // limits ran on real time (VG-20), 1.5°/s took a jet's cue 2.7 s to reach the flare pitch, after
+    // its wheels touched (30 ft is about 2.4 s up), and the harness's jets landed about 230 fpm
+    // firmer. 10°/s reaches it in about 0.4 s, close to the per-frame jump pilots had flown, with
+    // touchdowns within 20 fpm of it (docs/virtual-pilot.md, "Stage 2"). Stage 6 replaces the flare.
+    private const double MAX_FLARE_PITCH_RATE = 10.0;
 
     // ILS glideslope angle — usually 3°, but published per-runway (LCY 5.5°, Aspen 6.59°,
     // Innsbruck 3.8°). Populated in Initialize() from runway.GlideslopeAngleDeg with a 3.0°

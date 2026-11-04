@@ -127,6 +127,28 @@ public class VisualGuidanceRealTimeTests
         Assert.InRange(moving.Bank - still.Bank, -0.0175 - 0.006, -0.0175 + 0.006);
     }
 
+    // A jet passes the 30 ft flare height about 2.4 s before the wheels touch, so the flare cue has
+    // to arrive at once to be any use: within half a second it asks for the full flare pitch (the
+    // default profile's 6°, from about 2° on the approach). At 1.5°/s it took 2.7 s and finished
+    // after touchdown, and the harness's jets landed about 230 fpm firmer.
+    [Theory]
+    [InlineData(20)]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void The_flare_cue_reaches_the_flare_pitch_within_half_a_second(int hz)
+    {
+        var rig = new Rig();
+        rig.Place(0.3, 0, 0);
+        rig.UpdateAt(0);
+        rig.FlyFor(2, hz);
+        Assert.InRange(rig.Pitch, 1.0, 3.0);   // on the approach law, not yet flaring
+
+        // 0.1 nm out and 55 ft below the path: the main gear about 25 ft up, under the 30 ft trigger.
+        rig.Place(0.1, 0, 0, altOffsetFt: -55);
+        rig.FlyFor(0.5, hz);
+        Assert.Equal(new VisualGuidanceProfile().FlareTargetPitchDeg, rig.Pitch, 6);
+    }
+
     [Fact]
     public void Two_updates_at_the_same_instant_leave_the_command_where_it_was()
     {
