@@ -50,12 +50,14 @@ does, a warning is spoken up to about 3.6 s after the E/WD draws it.
 
 ### A line with no entry: RCL
 
-S_ECAM_RCL pressed and released at about 15:30:28, nothing cleared to recall. The left column became blank, blank,
-"           gNORMAL" at 15:30:29.386 and empty again at 15:30:34.188, 4.80 s later. No entries message came. So:
+S_ECAM_RCL pressed with nothing cleared to recall, and released about 5 s later (two separate calls, so the press was held far
+longer than the app's). The left column became blank, blank, "           gNORMAL" at 15:30:29.386 and empty again at
+15:30:34.188, 4.80 s later: that may be the Fenix's own timer or the end of the long press, which this run cannot tell apart.
+No entries message came. So:
 
 - The column can hold blank elements above a line, and spaces before the color letter.
-- The announcer, which works from the entries alone, says nothing for it. The press has its own read-back path, so this is
-  only a note.
+- The announcer, which works from the entries alone, says nothing for it. The plan asks nothing of this line; it is only a
+  note.
 
 ### The 2026-11-02 fire drill's notes
 
@@ -69,8 +71,8 @@ S_ECAM_RCL pressed and released at about 15:30:28, nothing cleared to recall. Th
 
 ### Also seen
 
-During the morning's refuel the E/WD went "not trusted: fuel disagrees" for about a second, about every 25 s (13:28:42 to
-13:30:23, about 100 kg apart), and trusted again each time, without a latch. Each return is a silent baseline under rule 3, so
+During this flight's refuel at the gate the E/WD went "not trusted: fuel disagrees" for about a second, about every 25 s (the
+log's last five, 13:28:42 to 13:30:23, about 100 kg apart), and trusted again each time, without a latch. Each return is a silent baseline under rule 3, so
 an alert that appears inside one of those seconds would go unsaid.
 
 ## Still to measure on the ground
