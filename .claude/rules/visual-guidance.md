@@ -1,6 +1,7 @@
 ---
 paths:
   - "MSFSBlindAssist/Services/VisualGuidanceManager.cs"
+  - "MSFSBlindAssist/Services/VisualGuidanceTiming.cs"
   - "MSFSBlindAssist/Services/HandFlyManager.cs"
   - "MSFSBlindAssist/Services/LiftoffHandoffBreadcrumb.cs"
   - "MSFSBlindAssist/Hotkeys/**"
