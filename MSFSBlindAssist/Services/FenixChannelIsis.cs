@@ -53,6 +53,22 @@ internal sealed record FenixIsisState(
 /// </remarks>
 internal static class FenixChannelIsis
 {
+    /// <summary>What the Fenix windows list says, and opens nothing, on a Fenix with the round standby gauges.</summary>
+    public const string NoIsisSentence = "This Fenix has no ISIS.";
+
+    /// <summary>
+    /// Whether Alt+I may open the ISIS window on <paramref name="variant"/>: not on a Fenix with the round standby gauges
+    /// (<c>HasIsis</c> false), which keeps the AI read with its round-gauge prompt. A standby not yet read leaves it to the
+    /// ISIS verdict, as [FNX-11] leaves a control whose field is unread visible.
+    /// </summary>
+    public static bool KeyMayOpen(Aircraft.FenixVariant variant) => variant.HasIsis != false;
+
+    /// <summary>
+    /// What the windows list's ISIS entry says instead of opening the window on <paramref name="variant"/>:
+    /// <see cref="NoIsisSentence"/> with the round standby gauges, else null (the entry opens the window).
+    /// </summary>
+    public static string? RefusalFor(Aircraft.FenixVariant variant) => variant.HasIsis == false ? NoIsisSentence : null;
+
     /// <summary>The ISIS of the RemoteData message <paramref name="remote"/>.</summary>
     public static FenixChannelSection<FenixIsisState> Decode(FenixChannelPush remote)
     {
