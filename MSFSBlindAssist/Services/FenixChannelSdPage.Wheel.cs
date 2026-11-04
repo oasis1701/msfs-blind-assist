@@ -30,12 +30,16 @@ internal static partial class FenixChannelSdPages
     /// (143.1.1, 143.1.2) and <c>nose gear door</c> (144.1); <c>N/W STEERING</c> (137.9); <c>ANTI SKID</c> (137.16 or .17);
     /// <c>NORM BRK</c> (137.7 or .8); <c>ALTN BRK</c> (137.2 or .15); <c>ACCU ONLY</c> (137.18); <c>AUTO BRK: LO</c>, MED or
     /// MAX (137.4, .5, .6); <c>left gear</c> (143.2) and <c>left gear door</c> (144.2); <c>right gear</c> (143.3) and
-    /// <c>right gear door</c> (144.3); <c>brakes °C: n, n, n, n</c> (138.1 to .4); <c>REL: 1, 2</c> (the wheels of 141.1 to
-    /// .4 that are set, none: no row); and, while 137.19 (the tire pressure indicators are fitted), <c>nose tires PSI</c>
-    /// (139.1, .2), <c>left tires PSI</c> (139.3, .4) and <c>right tires PSI</c> (139.5, .6). Numbers are whole. A label
-    /// row is the bare label: named values speak no color (owner question Q4).
+    /// <c>right gear door</c> (144.3); while 137.19 (the tire pressure indicators are fitted), <c>nose tires: left n PSI,
+    /// right n PSI</c> (139.1, .2); and one row per main wheel, <c>wheel 1: brake n °C, tire n PSI</c> (138.1 to .4 and
+    /// 139.3 to .6; without the indicators just <c>wheel n: brake n °C</c>), ending <c>, released</c> while that wheel's
+    /// brake is released (141.1 to .4). Numbers are whole. A label row is the bare label: named values speak no color (owner
+    /// question Q4).
     /// </summary>
     /// <remarks>
+    /// <para>The wheels are numbered as the A320 numbers them, 1 to 4 left to right facing forward (1 and 2 the left main
+    /// gear, 3 and 4 the right). The contract's tire fields <c>LeftMain1</c>/<c>LeftMain2</c> are taken as wheels 1 and 2
+    /// and <c>RightMain1</c>/<c>RightMain2</c> as 3 and 4 (its order; the Fenix's own SD drawing is not yet compared).</para>
     /// <para>Not read: 135, 136, 140 and 142 (a light, the brake pressure gauge and a brake's color, none drawn as SD
     /// text). 139 is read only while 137.19, so a push without it and without the indicators is a complete page.</para>
     /// <para>With more than one of 137.4, .5 and .6 set, the AUTO BRK row names the first in LO, MED, MAX order: the SD
@@ -127,17 +131,17 @@ internal static partial class FenixChannelSdPages
         rows.Add(WheelGearDoorRow(ctx, "left gear door", $"{doorPath}.{FenixChannelFields.GearDoorData.LeftMain}", leftDoor));
         rows.Add(WheelGearRow(ctx, "right gear", $"{gearPath}.{FenixChannelFields.GearPositionData.Right}", right));
         rows.Add(WheelGearDoorRow(ctx, "right gear door", $"{doorPath}.{FenixChannelFields.GearDoorData.RightMain}", rightDoor));
-        rows.Add($"brakes °C: {string.Join(", ", brakeTemps.Select(FenixChannelSd.Whole))}");
-
-        string[] releasedNames = Enumerable.Range(1, 4).Where(wheel => releasedWheels[wheel - 1])
-            .Select(wheel => wheel.ToString(CultureInfo.InvariantCulture)).ToArray();
-        if (releasedNames.Length > 0) rows.Add($"REL: {string.Join(", ", releasedNames)}");
-
         if (tpis)
         {
-            rows.Add($"nose tires PSI: {FenixChannelSd.Whole(pressures[0])}, {FenixChannelSd.Whole(pressures[1])}");
-            rows.Add($"left tires PSI: {FenixChannelSd.Whole(pressures[2])}, {FenixChannelSd.Whole(pressures[3])}");
-            rows.Add($"right tires PSI: {FenixChannelSd.Whole(pressures[4])}, {FenixChannelSd.Whole(pressures[5])}");
+            rows.Add($"nose tires: left {FenixChannelSd.Whole(pressures[0])} PSI, right {FenixChannelSd.Whole(pressures[1])} PSI");
+        }
+
+        for (int wheel = 0; wheel < 4; wheel++)
+        {
+            string row = $"wheel {wheel + 1}: brake {FenixChannelSd.Whole(brakeTemps[wheel])} °C";
+            if (tpis) row += $", tire {FenixChannelSd.Whole(pressures[wheel + 2])} PSI";
+            if (releasedWheels[wheel]) row += ", released";
+            rows.Add(row);
         }
 
         return FenixChannelRows.Of(rows);

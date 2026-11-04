@@ -80,8 +80,9 @@ public class FenixChannelSdWheelTests
             new[]
             {
                 "nose gear: up, up", "nose gear door: closed", "left gear: up, up", "left gear door: closed",
-                "right gear: up, up", "right gear door: closed", "brakes °C: 20, 21, 19, 20",
-                "nose tires PSI: 165, 165", "left tires PSI: 210, 205", "right tires PSI: 210, 205"
+                "right gear: up, up", "right gear door: closed", "nose tires: left 165 PSI, right 165 PSI",
+                "wheel 1: brake 20 °C, tire 210 PSI", "wheel 2: brake 21 °C, tire 205 PSI",
+                "wheel 3: brake 19 °C, tire 210 PSI", "wheel 4: brake 20 °C, tire 205 PSI"
             },
             rows);
         Assert.Empty(reported);
@@ -156,7 +157,7 @@ public class FenixChannelSdWheelTests
         Assert.Equal(
             new[] { "field 144.1 has an unknown value 7", "field 143.2.2 has an unknown value 2.5", "field 144.3 has an unknown value 3" },
             more);
-        Assert.Contains("brakes °C: 20, 21, 19, 20", withDoor);
+        Assert.Contains("wheel 1: brake 20 °C", withDoor);
     }
 
     [Fact]
@@ -203,7 +204,8 @@ public class FenixChannelSdWheelTests
     public void Tire_pressures_show_only_with_tpis()
     {
         IReadOnlyList<string> without = RowsOf(WheelPush(Flags(), includeTires: false));
-        Assert.DoesNotContain(without, row => row.Contains("tires"));
+        Assert.DoesNotContain(without, row => row.Contains("tire"));
+        Assert.Contains("wheel 1: brake 20 °C", without);
 
         // With the indicators fitted, 139 is required.
         var reported = new List<string>();
@@ -212,23 +214,51 @@ public class FenixChannelSdWheelTests
 
         IReadOnlyList<string> with = RowsOf(WheelPush(Flags(19), tires: Doubles(164.6, 165.4, 210.5, 205, 0, 99.5)));
         Assert.Equal(
-            new[] { "nose tires PSI: 165, 165", "left tires PSI: 211, 205", "right tires PSI: 0, 100" },
-            with.Where(row => row.Contains("tires")));
+            new[]
+            {
+                "nose tires: left 165 PSI, right 165 PSI", "wheel 1: brake 20 °C, tire 211 PSI",
+                "wheel 2: brake 21 °C, tire 205 PSI", "wheel 3: brake 19 °C, tire 0 PSI", "wheel 4: brake 20 °C, tire 100 PSI"
+            },
+            with.Where(row => row.Contains("tire")));
     }
 
     [Fact]
-    public void Rel_names_the_released_wheels()
+    public void A_released_brake_ends_its_wheel_row()
     {
         IReadOnlyList<string> none = RowsOf(WheelPush());
-        Assert.DoesNotContain(none, row => row.StartsWith("REL"));
+        Assert.DoesNotContain(none, row => row.Contains("released") || row.StartsWith("REL"));
 
-        Assert.Contains("REL: 1, 2", RowsOf(WheelPush(released: Flags(1, 2))));
-        Assert.Contains("REL: 2, 4", RowsOf(WheelPush(released: Flags(4, 2))));
-        Assert.Contains("REL: 1, 2, 3, 4", RowsOf(WheelPush(released: Flags(1, 2, 3, 4))));
+        Assert.Contains("wheel 1: brake 20 °C, tire 210 PSI, released", RowsOf(WheelPush(Flags(19), released: Flags(1, 2))));
+        Assert.Contains("wheel 2: brake 21 °C, tire 205 PSI, released", RowsOf(WheelPush(Flags(19), released: Flags(1, 2))));
+        Assert.Equal(2, RowsOf(WheelPush(released: Flags(4, 2))).Count(row => row.EndsWith(", released")));
+        Assert.Equal(4, RowsOf(WheelPush(released: Flags(1, 2, 3, 4))).Count(row => row.EndsWith(", released")));
+        Assert.Contains("wheel 3: brake 19 °C, released", RowsOf(WheelPush(released: Flags(3))));
+    }
 
-        // REL follows the brake temperatures.
-        List<string> rows = RowsOf(WheelPush(released: Flags(3))).ToList();
-        Assert.Equal(rows.IndexOf("brakes °C: 20, 21, 19, 20") + 1, rows.IndexOf("REL: 3"));
+    [Fact]
+    public void Each_wheel_reads_its_own_brake_tire_and_release()
+    {
+        var expected = new[]
+        {
+            "nose tires: left 165 PSI, right 166 PSI", "wheel 1: brake 179 °C, tire 210 PSI",
+            "wheel 2: brake 204 °C, tire 205 PSI, released", "wheel 3: brake 184 °C, tire 211 PSI, released",
+            "wheel 4: brake 193 °C, tire 206 PSI"
+        };
+        IReadOnlyList<string> rows = RowsOf(WheelPush(Flags(19), Doubles(179, 204, 184, 193),
+            Doubles(165, 166, 210, 205, 211, 206), Flags(2, 3)));
+
+        List<string> list = rows.ToList();
+        Assert.Equal(expected, list.GetRange(list.IndexOf(expected[0]), 5));
+        Assert.DoesNotContain(rows, row => row.StartsWith("brakes") || row.StartsWith("REL") || row.EndsWith("tires PSI"));
+
+        IReadOnlyList<string> bare = RowsOf(WheelPush(Flags(), Doubles(179, 204, 184, 193), released: Flags(2, 3), includeTires: false));
+        Assert.Equal(
+            new[]
+            {
+                "wheel 1: brake 179 °C", "wheel 2: brake 204 °C, released", "wheel 3: brake 184 °C, released", "wheel 4: brake 193 °C"
+            },
+            bare.Where(row => row.StartsWith("wheel")));
+        Assert.DoesNotContain(bare, row => row.StartsWith("nose tires"));
     }
 
     [Fact]
@@ -270,7 +300,11 @@ public class FenixChannelSdWheelTests
 
         IReadOnlyList<string> rows = TestCulture.Run(culture, () => RowsOf(push, reported));
 
-        Assert.Contains("brakes °C: 0, 21, 1235, XX", rows);
+        Assert.Contains("nose tires: left 165 PSI, right 165 PSI", rows);
+        Assert.Contains("wheel 1: brake 0 °C, tire 210 PSI", rows);
+        Assert.Contains("wheel 2: brake 21 °C, tire 205 PSI", rows);
+        Assert.Contains("wheel 3: brake 1235 °C, tire 210 PSI", rows);
+        Assert.Contains("wheel 4: brake XX °C, tire 205 PSI", rows);
         Assert.Contains("left gear: up, LGCIU 2 not available", rows);
         Assert.Equal(new[] { "field 143.2.2 has an unknown value 2.5" }, reported);
         Assert.DoesNotContain(rows, row => row.Contains('−'));
