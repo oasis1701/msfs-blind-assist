@@ -3,7 +3,7 @@ namespace MSFSBlindAssist.Services;
 // The CRUISE page (5) of the Fenix SD: the engines' fuel used, oil and vibration, then the cabin, as the SD draws them, top
 // to bottom. Written as the PRESS page is (FenixChannelSdPage.Press.cs), whose LDG ELEV and ΔP row builders it calls. Every
 // member added here is named for the CRUISE page. Inert: only the tests call CruiseRows until a later task wires the
-// ComposeCruise seam.
+// ComposeCruise seam, which calls CruiseRows.
 internal static partial class FenixChannelSdPages
 {
     /// <summary>
@@ -74,4 +74,8 @@ internal static partial class FenixChannelSdPages
             $"AFT: {FenixChannelSd.Whole(aft)} °C"
         });
     }
+
+    /// <summary>The CRUISE page (5).</summary>
+    static partial void ComposeCruise(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows)
+        => rows = CruiseRows(ctx);
 }

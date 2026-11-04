@@ -116,4 +116,35 @@ public class FenixChannelSdCruiseTests
         Assert.Contains("ΔP: 7.9 PSI", rows);
         Assert.Contains("OIL QT: 12.8, 13.0", rows);
     }
+
+    // ---- The seam -------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_cruise_seam_gives_its_composers_rows()
+    {
+        SdPush push = CruisePush();
+
+        FenixChannelRows? composed = FenixChannelSdPages.Compose(5, push.Context(_ => { }));
+        FenixChannelRows expected = FenixChannelSdPages.CruiseRows(push.Context(_ => { }));
+
+        Assert.NotNull(composed);
+        Assert.NotNull(expected.Rows);
+        Assert.NotNull(composed.Value.Rows);
+        Assert.Equal(expected.Rows!, composed.Value.Rows!);
+        Assert.Equal(expected.Problem, composed.Value.Problem);
+    }
+
+    [Fact]
+    public void The_cruise_seam_gives_the_missing_engine_problem()
+    {
+        SdPush push = CruisePush(omit: "129");
+
+        FenixChannelRows? composed = FenixChannelSdPages.Compose(5, push.Context(_ => { }));
+        FenixChannelRows expected = FenixChannelSdPages.CruiseRows(push.Context(_ => { }));
+
+        Assert.NotNull(composed);
+        Assert.Null(composed.Value.Rows);
+        Assert.Equal("no field 129", expected.Problem);
+        Assert.Equal(expected.Problem, composed.Value.Problem);
+    }
 }

@@ -267,10 +267,4 @@ public class FenixChannelSdApuTests
         Assert.NotNull(cond.Problem);
         Assert.Equal(3, new[] { bleed.Problem, press.Problem, cond.Problem }.Distinct().Count());
     }
-
-    [Fact]
-    public void The_cruise_seam_stays_unwired_until_its_switch_commit()
-    {
-        Assert.Null(FenixChannelSdPages.Compose(5, new SdPush { Page = 5 }.Context(_ => { })));
-    }
 }
