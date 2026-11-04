@@ -130,3 +130,23 @@ OP DES to ALT at 16:48 to 16:50, and the autopilot changes on final at 16:58.
 30. 17:00:52.994: FMA: Approach: CAT1
 
 THR CLB at 14:47:25.332 came 302 ms after OP CLB, so in the aircraft it may be heard with it in one announcement.
+
+## Task 6: the check by ear, 2026-11-04
+
+The owner flew this plan's branch (Tasks 2, 3 and 5, before Task 4; the worktree's Release build) from 15:00:10 to
+17:11:43 (startup.log), on Task 1's flight: the build started in the cruise. `fenix_channel.log` shows "PFD trusted" at
+15:00:15 and no PFD line after it until "channel stopped" at 17:11:41, and no FMA problem line (slot 15 stayed empty).
+
+- **Heard, and fine to the owner:** the descent (DES, THR IDLE, SPEED, MORE DRAG), the HDG and V/S excursion, the
+  level-offs (ALT*, ALT), OP DES, APPR, LOC*, LOC, G/S*, G/S, LAND, FLARE and ROLL OUT; the autopilots engaging (AP1+2)
+  gave no FMA announcement. The owner's words: "announcements were fine to me". The app does not log what it speaks, so
+  no phrase was compared one by one with Task 4's list; the list comes from the same record, through the same code.
+- **Heard before Task 4, silent since:** "FMA: Lateral: LOC *, green" on the rollout (17:00:58), for the lateral mode
+  under ROLL OUT that the PFD does not draw. The owner's ruling silences it (Task 4, `The_lateral_mode_is_silent_on_the_rollout_as_recorded`,
+  and reading 35 of the recorded flight); that silence was not flown.
+- **Not heard on this build**, which started in the cruise, and landed on the owner's word (2026-11-04) with the tests
+  that cover each: power-up from cold and dark (`The_first_trusted_reading_is_silent`); take-off thrust (Task 4's
+  announcements 1 and 2: two, since SRS came 782 ms before MAN FLX, where the plan expected one); LVR CLB in the climb
+  (announcement 4, `A_change_box_or_flash_alone_says_nothing`); the "FMA changes" row (`A_muted_row_says_nothing`,
+  `Tracking_goes_on_while_muted`, `Unmuting_replays_nothing`); a PFD brightness gap
+  (`The_first_good_reading_after_a_trust_gap_is_silent`, `A_trust_gap_drops_a_pending_change`).

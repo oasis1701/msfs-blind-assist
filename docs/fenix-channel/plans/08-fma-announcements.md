@@ -315,41 +315,74 @@ again.
 
 ## Handoff to plan 12
 
-(Filled in while working. Expected:)
-
 - **For a pilot:** `guide/airbus-aircraft.md`, Fenix A320 CEO, "Aircraft-specific hotkeys and callouts"
   (`#aircraft-specific-hotkeys-and-callouts-2`), a paragraph after the automatic announcements: FMA changes as "FMA:
-  <column>: <modes, with colors>" and "FMA message: <text>", column 5 never (the FCU lights are), nothing while the PFD
-  cannot be read, the row "FMA changes" in the Fenix Monitor Manager. Hotkey guide: no key, no line. Changelog
-  `feature`: "Fenix A320: changes on the flight mode annunciator are now spoken as they happen, read from the Fenix's own
-  PFD with their colors, for example "FMA: Thrust: THR CLB, green; Vertical: CLB, green". The "FMA changes" row in the
-  Fenix Monitor Manager (Ctrl+M) turns them off."
+  <column>: <modes, with colors>" (for example "FMA: Vertical: ALT*, green", "FMA: Thrust: THR CLB, green") and "FMA
+  message: <text>" ("FMA message: LVR CLB, white"), each once it has settled; column 5 never (the FCU lights are); the
+  Lateral column silent while LAND, FLARE or ROLL OUT shows; nothing while the PFD cannot be read; the row "FMA changes"
+  in the Fenix Monitor Manager (Ctrl+M). Hotkey guide: no key, no line. Changelog `feature`: "Fenix A320: changes on the
+  flight mode annunciator are now spoken as they happen, read from the Fenix's own PFD with their colors, for example
+  "FMA: Thrust: THR CLB, green; Vertical: CLB, green". The "FMA changes" row in the Fenix Monitor Manager (Ctrl+M) turns
+  them off."
 - **Rule:** `- [FNX-?] FenixChannelFmaAnnouncer compares what the pilot would hear (FenixChannelFmaSpeech.Read), never raw
   FMA slots, so the change box and the b/f letters never speak; a change speaks once it has held SettleMs (300 ms),
   column 5 never, and the first trusted PFD reading after a start or a trust gap is a silent baseline. Full:
-  docs/invariants/fenix-channel.md#fnx-?` (names in backticks, 375 characters). Full text: Task 1's layout and change
-  box; why the spoken form is compared; the PMDG 737's settle; a reconnect is a gap (a new connection number); a mute
-  keeps tracking; why column 5 is left out; pinned by `FenixChannelFmaSpeechTests` and `FenixChannelFmaAnnouncerTests`.
-  FNX-23's full text gains: the re-check after an update includes the FMA's slot layout, recorded in flight as Task 1 did.
-- **Plan 02:** its PFD window words the FMA through `FenixChannelFmaLayout.Of`, `IsMessage` and `ColumnPhrase`, so
-  Task 4's changes change its rows too (under O3b it shows the `VerticalLateral` column with no change of its own): the
-  whole-branch review checks the window against Task 1's record.
-- **Frozen files:** none expected. An O7 letter goes to `FenixChannelText` (frozen after plan 03); a yellow confirmed in
-  a mode goes to `FenixChannelSpeech.ColorName`.
-- **Also seen on:** none.
+  docs/invariants/fenix-channel.md#fnx-?` (names in backticks). Full text: Task 1's layout and change box (10 s after a
+  column's last change); why the spoken form is compared; the PMDG 737's settle; a reconnect is a gap (a new connection
+  number); a mute keeps tracking; why column 5 is left out; the Lateral column's silence under LAND, FLARE and ROLL OUT
+  (the owner's ruling, field 112); pinned by `FenixChannelFmaSpeechTests` and `FenixChannelFmaAnnouncerTests`
+  (`A_recorded_flight_is_announced_as_expected`). FNX-23's full text gains: the re-check after an update includes the
+  FMA's slot layout, recorded in flight as Task 1 did.
+- **Plan 02:** Task 4 changed none of `Of`, `IsMessage` and `ColumnPhrase`, so the PFD window's FMA rows are as plan 02
+  landed them. The window still lists the lateral mode under LAND, FLARE and ROLL OUT (Task 1 recorded `gLOC` and
+  `gLOC *` there), which the PFD does not draw: see "Also seen on".
+- **Frozen files:** none changed. Not O7 (no unknown letter, no yellow). For whoever owns `FenixChannelSpeech`, three
+  wordings Task 1's record gives, left as plan 01's rules have them (the owner kept every color as is, 2026-11-04):
+  (1) a part with no color letter is spoken with no color though the display draws it white (CAT3, DUAL, MORE DRAG,
+  row 2's THR and MCT: "MAN white, THR"); (2) stretches of one color merge across a column's rows, so V/S with ALT armed
+  is "V/S green, -2800 ALT cyan"; (3) MAN THR's amber box is not spoken (no box ever is).
+- **Also seen on:** plan 02's PFD window (its FMA rows under LAND, FLARE and ROLL OUT, above): the window's own issue,
+  where field 112 (`fmaPitchRollCombined`, 1 exactly while those three show) is the signal to read.
 
 ## Execution record
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed
+- **Status:** landed 2026-11-04 (the switch commit "feat(fenix-channel): FMA changes are spoken", with Tasks 1 and 4
+  and this record)
 - **Claimed by:** kn4iee, 2026-11-04
-- **Worked by:**
+- **Worked by:** kn4iee with Claude, subagent-driven (an implementer and a reviewer for each of Tasks 2 to 5, a
+  whole-branch review before landing)
 - **Started:** 2026-11-04, from `68bc13d17` (the branch's head)
-- **Landed:**
-- **Tests at landing:**
-- **Tasks:**
-- **Waiting on the owner:**
-- **In-sim results:**
-- **Changed from the plan:**
-- **Rulings made while working:**
+- **Landed:** 2026-11-04
+- **Tests at landing:** TESTS_AT_LANDING
+- **Tasks:** 0 done (claim `0c3c2c715`). 1 done in flight on 2026-11-04 (evidence file; "the FMA layout measured in
+  flight"). 2 done, `4017a7c56`. 3 done, `55b29f56e`. 5 done before 4 (Ruling 6), the switch commit, kept on
+  `fc-p08-fma-announcements` until Task 6. 4 done, "the FMA layout as measured in flight": O1, O3c, O4a and O6 held, so
+  `Of`, `IsMessage` and `ColumnPhrase` did not change; the owner's lateral silence went into `FenixChannelFmaSpeech.Read`;
+  `A_recorded_flight_is_announced_as_expected` gives the record's 30 announcements in en-US and sv-SE. 6 done from the
+  cruise on, the rest landed on the owner's word (evidence file). 7 done (this record).
+- **Waiting on the owner:** none. The checks Task 6 did not hear on this build (power-up, take-off, LVR CLB in the climb,
+  the mute row, a brightness gap) are in the evidence file with the tests that cover them, for a later flight.
+- **In-sim results:** Task 1, one flight on 2026-11-04 (Fenix A319 IAE, take-off to an ILS autoland at KDFW 18R): slots
+  0 to 14 at row x 5 + column, slot 15 never held text, LAND, FLARE and ROLL OUT in slot 1 alone with field 112 set,
+  the minimum in slot 13, every armed mode active in one push, the change box 10 s after a column's last change. Task
+  6: the owner heard the cruise to the rollout on this plan's build and found the announcements fine.
+- **Changed from the plan:** the Lateral column is silent while slot 1 shows LAND, FLARE or ROLL OUT (the owner's
+  ruling on a finding outside the outcome rows: the Fenix keeps the lateral mode in slot 2 under them, and the build
+  spoke "FMA: Lateral: LOC *, green" on the rollout). The take-off is two announcements, SRS 782 ms before MAN FLX, not
+  the one Task 6 expected. Task 5 ran before Task 4. Task 6 heard the flight from the cruise on.
+- **Rulings made while working:** the owner's (kn4iee, 2026-11-04): plan 03's "colors only where they tell something"
+  is not applied to the FMA, which keeps every color (spec 2.6); the Lateral column is silent under LAND, FLARE and ROLL
+  OUT; land with the unheard Task 6 checks covered by tests. The controller's, each with its cost if wrong: (1) the
+  take-off Thrust phrase is "MAN FLX white, +56 cyan", plan 01's rule for text before a color letter (one expected
+  string); (2) a new connection number takes that same reading as the new baseline (the baseline comes one 100 ms
+  sample later; nothing heard changes); (3) the settle runs from the first differing sample, not restarted by a further
+  change (a mode that changes twice in 300 ms is spoken as it stands at 300 ms); (4) Tasks 2 and 3 pushed together (an
+  hour's wait for others to see Task 2); (5) branched from the head, not plan 01's base (none); (6) Task 5 before Task 4
+  (Task 4's layout would have landed after the seam); (7) Task 5's docs sentence named the inferred layout until Task 4
+  (a stale sentence until plan 12); (8) the lateral silence keys on slot 1's words, not field 112, which is not decoded
+  (a combined mode in other words, none seen, would speak its hidden lateral); (9) the silence is in the speech, not
+  the layout, so plan 02's window is unchanged (the window needs its own change); (10) the recorded flight's readings
+  are its moments in their settled form (a few readings split or merge in one test); (11) `JoinedText` recognizes the
+  three modes, since the "log only" constraint guards speech (the compare is rewritten over the runs, same result).
