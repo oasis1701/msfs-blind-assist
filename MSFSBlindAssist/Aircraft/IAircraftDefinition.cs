@@ -114,6 +114,27 @@ public sealed class VisualGuidanceProfile
     /// branch, rate-limited from the previous pitch by <c>MAX_FLARE_PITCH_RATE</c> so the
     /// desired-tone frequency doesn't step. Keep within 3–8°.</summary>
     public double FlareTargetPitchDeg { get; init; } = 6.0;
+
+    /// <summary>The largest bank (degrees) visual guidance asks for while it turns the aircraft onto
+    /// final or vectors it there (<c>VisualGuidanceJoin</c>). Per-aircraft because a light aircraft
+    /// on a tight circuit and an airliner on a wide one have different habitual banks. Default 25°,
+    /// the bank today's intercept already asked for, and the standard-rate figure for an airliner at
+    /// approach speeds; the precision track near the centreline keeps its own 10° limit.</summary>
+    public double MaxApproachBankDeg { get; init; } = 25.0;
+
+    /// <summary>The shortest final (nm from the threshold) visual guidance joins when it picks the
+    /// route itself, and the nearest point at which a heading from ATC may meet final and still
+    /// count as "Joining final" (<c>VisualGuidanceJoin.Decide</c>). Per-aircraft because an airliner
+    /// wants several miles of final to be stable while a light aircraft's circuit joins final at
+    /// about a mile. Default 6.0 nm, the owner's starting value for airliners (2026-11-04), to be
+    /// revisited after testing.</summary>
+    public double MinimumFinalNm { get; init; } = 6.0;
+
+    /// <summary>How far ahead (seconds) along the track the capture law looks when it decides
+    /// where a turn onto a leg starts, so the turn begins that much earlier, allowing for the time
+    /// the pilot takes to roll into it. Per-aircraft because roll rates differ. Default 0 until the
+    /// approach harness picks a value (visual guidance redesign, stage 4).</summary>
+    public double RollInTimeS { get; init; } = 0.0;
 }
 
 /// <summary>
