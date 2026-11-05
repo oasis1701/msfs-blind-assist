@@ -579,6 +579,9 @@ public partial class MainForm : Form
         // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.
         StartIFlySdkBridge();
 
+        // PMDG 737: the display readers wait for the PMDG SDK themselves, so they start with the aircraft.
+        StartPmdg737Displays();
+
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
 
@@ -1375,10 +1378,10 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// True for the quick-access readout hotkeys (the H/V/Q/S/D/B/P/A/F set) — single
-    /// keypresses whose whole purpose is to speak a value. When one of these fires during
-    /// an active visual-guidance session, VG opens a grace window so its per-second
-    /// bank/centerline callouts don't talk over the readout.
+    /// True for the quick-access readout hotkeys (the H/V/Q/S/D/B/P/A/F set)
+    /// — single keypresses whose whole purpose is to speak a value. When
+    /// one of these fires during an active visual-guidance session, VG opens a grace window
+    /// so its per-second bank/centerline callouts don't talk over the readout.
     /// </summary>
     private static bool IsManualReadoutAction(HotkeyAction action) => action switch
     {

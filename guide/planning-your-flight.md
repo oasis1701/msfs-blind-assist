@@ -268,7 +268,7 @@ The STAR tab works exactly like the SID tab: type the arrival airport in **STAR 
 This tab sets the departure airport and runway at the very start of the plan.
 
 1. In **Departure ICAO**, type the airport's code.
-2. The **Departure Runways** list fills with every runway, each with its length, width, surface and, if it has one, its ILS frequency and course. Lengths are shown in the ground distance unit you chose in Settings (**Use feet for distances (default: metres)** on the Taxi Guidance tab).
+2. The **Departure Runways** list fills with every runway, each with its length, width, surface and, if it has one, its localizer: "ILS" (localizer and glideslope), "Localizer" (no glideslope), or "LDA" or "IGS" for an offset approach that does not line up with the runway, with its frequency and magnetic course. Lengths are shown in the ground distance unit you chose in Settings (**Use feet for distances (default: metres)** on the Taxi Guidance tab).
 3. Choose the runway and press **Load Departure**. BA says, for example, *"Loaded departure EGLL runway 27R"*.
 
 The departure runway you set here is also the runway the taxi-out part of the AI briefing plans to.
@@ -303,7 +303,7 @@ This tab is a reference page for any airport in your navigation database. You ca
 
 The **Airport Information** box starts with the airport's code and name, then is grouped under headings: basic information (ident and name), from aircraft (the distance and direction, when connected), location (coordinates, elevation and magnetic variation), frequencies (Tower, ATIS, AWOS, ASOS and UNICOM), status (closed, military, add-on scenery), fuel, a count of facilities (gates, ramps, runways, approaches and so on), a runway summary, parking, the tower position, the transition altitude and level where the navigation data has them, and the scenery file the airport comes from.
 
-The **Runway Information** box starts with the ILS, if the runway has one (ident, frequency, localizer heading and width, glideslope angle and DME), then gives the dimensions, surface, true and magnetic heading, threshold position, displaced threshold, blast pad and overrun, pattern altitude and runway elevation, lighting, markings, whether the runway is used for take-off and landing, and any VASI or PAPI.
+The **Runway Information** box starts with the runway's localizer under **Localizer and glideslope**. Its first line says what it is, in the same words as the runway lists: "ILS 110.10, course 171", "Localizer 108.70, course 152", "LDA 111.35, course 147", or "No localizer". A glideslope that is not 3 degrees is added, and CAT II or CAT III is named. The details follow (ident, frequency, localizer heading and width, glideslope angle and DME). Then it gives the dimensions, surface, true and magnetic heading, threshold position, displaced threshold, blast pad and overrun, pattern altitude and runway elevation, lighting, markings, whether the runway is used for take-off and landing, and any VASI or PAPI.
 
 A localizer heading is marked as a true heading ("0.5° true"), so do not mistake it for the magnetic course. Fields the navigation data leaves empty are left out or read "N/A".
 

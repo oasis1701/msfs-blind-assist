@@ -410,7 +410,8 @@ public partial class SimConnectManager
                 {
                     VarName = "OUTSIDE_TEMP",
                     Value = oatData.value,
-                    Description = $"{oatData.value:0} degrees Celsius"
+                    Description = Utils.ReadoutFormat.OutsideTemperature(oatData.value,
+                        Settings.SettingsManager.Current.UseFahrenheitForOutsideTemperature)
                 });
                 break;
 
