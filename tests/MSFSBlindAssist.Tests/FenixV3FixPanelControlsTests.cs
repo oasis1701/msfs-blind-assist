@@ -100,6 +100,13 @@ public class FenixV3FixPanelControlsTests : IDisposable
         }
     }
 
+    // The ECAM ALL key has no light, and the SD window presses it through this same branch, so both confirm the press.
+    [Fact]
+    public void The_ecam_all_key_confirms_its_press()
+    {
+        Assert.Contains("confirmPress: true", Branch("S_ECAM_ALL"));
+    }
+
     [Fact]
     public void The_press_confirmation_speaks_once_as_the_press_is_sent()
     {

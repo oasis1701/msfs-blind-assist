@@ -11023,7 +11023,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_ECAM_ALL" && value == 1)
             {
-                ExecuteButtonTransition("S_ECAM_ALL", "ECAM ALL", simConnect, announcer);
+                ExecuteButtonTransition("S_ECAM_ALL", "ECAM ALL", simConnect, announcer, confirmPress: true);
                 return true;
             }
 
