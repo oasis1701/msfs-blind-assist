@@ -63,7 +63,7 @@ public partial class LocationInfoForm : Form
     private bool _updatingControls;
 
     private TextBox _whereBox = null!;
-    private NativeAccessibleListView _results = null!;
+    private AccessibleTableView _results = null!;
     private string _status = "";
     private Button _filtersButton = null!;
     private TableLayoutPanel _filtersPanel = null!;
@@ -147,11 +147,10 @@ public partial class LocationInfoForm : Form
         _filtersPanel = BuildFiltersPanel();
         _filtersPanel.TabIndex = 3;
 
-        // The list's name carries the count (or "No places found"), read on arrival in the list. Read as
-        // Windows' own list (CORE-20): Up and Down read the row, Ctrl+Alt+arrows one cell with its header.
-        _results = new NativeAccessibleListView
+        // The table's name carries the count (or "No places found"), read on arrival in it. A table read cell
+        // by cell (CORE-20): Up and Down along a column, Left and Right along a row.
+        _results = new AccessibleTableView
         {
-            View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false,
             VirtualMode = true, Dock = DockStyle.Fill, AccessibleName = "Places", TabIndex = 4,
         };
         _results.RetrieveVirtualItem += Results_RetrieveVirtualItem;
