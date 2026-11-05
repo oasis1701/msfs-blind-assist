@@ -138,6 +138,24 @@ public class FenixChannelPfdRowsTests
             FenixChannelPfdRows.FmaRows(slots));
     }
 
+    [Theory]
+    [InlineData("gLAND", "LAND")]
+    [InlineData("gFLARE", "FLARE")]
+    [InlineData("gROLL OUT", "ROLL OUT")]
+    public void The_lateral_row_is_left_out_while_the_pfd_draws_land_flare_or_roll_out(string coded, string mode)
+    {
+        // The PFD draws these across the Vertical and Lateral columns, and the Fenix keeps sending a lateral mode underneath
+        // that it does not draw (measured in flight, 2026-11-04). The window lists what the glass shows, as the announcer does.
+        Assert.Equal(new[] { $"Vertical: {mode}, green" }, FenixChannelPfdRows.FmaRows(Fma((1, coded), (2, "gLOC"))));
+    }
+
+    [Fact]
+    public void The_lateral_row_stays_under_any_other_vertical_mode()
+    {
+        Assert.Equal(new[] { "Vertical: G/S, green", "Lateral: LOC, green" },
+            FenixChannelPfdRows.FmaRows(Fma((1, "gG/S"), (2, "gLOC"))));
+    }
+
     [Fact]
     public void The_fma_lines_measured_in_flight_read_as_the_pfd_draws_them()
     {

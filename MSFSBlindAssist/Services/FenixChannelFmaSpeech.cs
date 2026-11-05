@@ -66,7 +66,11 @@ internal static class FenixChannelFmaSpeech
         Enumerable.Range(0, FenixChannelFields.FmaEntry.SlotCount)
             .First(slot => FenixChannelFmaLayout.Of(slot) == (1, FenixFmaColumn.Vertical));
 
-    private static bool ShowsCommonMode(IReadOnlyList<FenixFmaSlot> slots)
+    /// <summary>
+    /// Whether the PFD draws LAND, FLARE or ROLL OUT across the Vertical and Lateral columns, so no lateral mode is drawn.
+    /// The announcer and the PFD window both read it, so the two never disagree about that slot.
+    /// </summary>
+    internal static bool ShowsCommonMode(IReadOnlyList<FenixFmaSlot> slots)
     {
         FenixTextLine line = FenixChannelText.Parse(slots[VerticalModeSlot].Text);
         if (line.UnknownCodes.Count > 0) return false;

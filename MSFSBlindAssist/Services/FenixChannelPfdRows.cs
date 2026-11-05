@@ -139,16 +139,20 @@ internal static class FenixChannelPfdRows
     /// The FMA's rows: one for each column with something to say, in column order and worded by
     /// <see cref="FenixChannelFmaLayout.ColumnPhrase"/> ("Thrust: MACH, green"), then one for each message slot, by
     /// column and then by slot ("FMA message: LVR CLB, white"). The Engagement column's flight director row reads as
-    /// the PFD draws it ("1 FD 2").
+    /// the PFD draws it ("1 FD 2"). No Lateral row while the PFD draws LAND, FLARE or ROLL OUT across both columns: the
+    /// Fenix keeps sending a lateral mode underneath that the glass does not show.
     /// </summary>
     internal static IReadOnlyList<string> FmaRows(IReadOnlyList<FenixFmaSlot> fma)
     {
         IReadOnlyList<FenixFmaSlot> slots = WithFdWords(fma);
         FenixFmaColumn[] columns = Enum.GetValues<FenixFmaColumn>().Where(column => column != FenixFmaColumn.Unknown).ToArray();
+        bool commonMode = slots.Count == FenixChannelFields.FmaEntry.SlotCount && FenixChannelFmaSpeech.ShowsCommonMode(slots);
         var rows = new List<string>();
 
         foreach (FenixFmaColumn column in columns)
         {
+            if (commonMode && column == FenixFmaColumn.Lateral) continue;
+
             if (FenixChannelFmaLayout.ColumnPhrase(slots, column) is { } phrase)
             {
                 rows.Add($"{FenixChannelFmaLayout.NameOf(column)}: {phrase}");
