@@ -671,6 +671,19 @@ When BA builds a new route, you hear *"Route changed. Now via C, D, crossing run
 
 If the new route would be exactly the same as the rest of your old one, for example after cutting a corner wide, BA says nothing and simply carries on.
 
+### Asking before switching to a new route {#taxi-confirm-reroute}
+
+If you fly online with a controller, you may not want BA to change your route by itself: the new route is not one ATC gave you, and a slow, wide turn can sometimes look like leaving the route. Switch on **Ask before switching to a new route when off route** on the **Taxi Guidance** tab in Settings. It is off by default.
+
+With it on, BA offers the new route instead of switching to it. You hear *"Off route. New route available via C, D. 900 metres to Runway 27L. Press left bracket, Y to accept."* The tone keeps guiding you along your original route.
+
+- To take the new route, press Input Y. BA plans it again from where you are at that moment and you hear the usual *"Route changed. Now via ..."*, with every runway it crosses.
+- To keep your route, do nothing and follow the tone back onto it. Once you are back on the route line, the offer is dropped without another word.
+- If you leave the route again later, BA offers a new route again. While an offer is waiting it is not repeated, but Output Y (taxi status) ends with *"New route offered. Press left bracket, Y to accept."*
+- If you press Input Y when there is no longer a better route, for example because you are already back on your original taxiways, you hear *"No new route. Continuing on original route."*
+
+At a hold short, Input Y still means "cross" or "line up", and an offer is dropped when you stop at one. When BA has just offered to clear you across a second, close parallel runway, that offer has the key until it ends.
+
 ### When BA cannot recalculate {#when-ba-cannot-recalculate}
 
 - *"Off route. Unable to recalculate."* BA could not find a route from where you are. Stop, check your position with Output Alt+Y, and plan a new route in the planner.
@@ -741,6 +754,7 @@ Open Settings from the File menu and choose the **Taxi Guidance** tab.
 - **Docking guidance** settings — see [Docking Guidance](gates-gsx-and-docking.md#docking).
 - **Refresh Taxiway Names**, **Online taxiway, gate and airport building names (OpenStreetMap + X-Plane)** and **Read installed scenery for airport buildings (offline)** — where BA gets names from. See [Knowing Where You Are](knowing-where-you-are.md).
 - **Announce airport buildings as you taxi past them** and **Tell me when I leave the paved surface** — optional extra callouts while taxiing, such as *"Passing Concourse B, on the left."* and *"Off the pavement, on grass."* See [Callouts While You Taxi](knowing-where-you-are.md#where-taxi-callouts) and [The Off-the-Pavement Alerts](knowing-where-you-are.md#where-off-pavement).
+- **Ask before switching to a new route when off route** — off by default. When on, a new route is offered and only taken when you press Input Y. See [Asking before switching to a new route](#taxi-confirm-reroute).
 - **SayIntentions import starts taxi guidance immediately** — see [SayIntentions Taxi Import](#taxi-sayintentions).
 
 Two related settings live elsewhere:
@@ -874,6 +888,8 @@ This is a reference list of every taxi guidance callout, grouped by when you hea
 | You hear | What it means | What to do |
 |---|---|---|
 | *"Route changed. Now via C, D, crossing runway 26R. 900 metres to Runway 27L."* | A new route from where you are. | Follow it; check it agrees with ATC. |
+| *"Off route. New route available via C, D. 900 metres to Runway 27L. Press left bracket, Y to accept."* | With **Ask before switching to a new route when off route** on: a new route is offered, and the tone keeps your original one. | Press Input Y to take it, or follow the tone back onto your route. |
+| *"No new route. Continuing on original route."* | You pressed Input Y to take an offer, but there is no longer a different route. | Carry on following the tone. |
 | *"Off route. Unable to recalculate."* | No new route could be found. | Stop and plan a route. |
 | *"Off route. Could not follow clearance. recalculated route too long. Continuing on original route."* | The new route would be a big detour, so it kept the old one. | Return to your route or plan a new one. |
 | *"Off route. Unable to recalculate. The way to Gate C 9 crosses runway 13."* | The only way crosses an unmapped runway. | Stop and ask ATC. |
@@ -918,7 +934,7 @@ This is a reference list of every taxi guidance callout, grouped by when you hea
 
 **BA stopped me at a runway ATC had already cleared me across.** That is by design: BA cannot hear ATC. Press Input Y and carry on. For a Progressive leg you can choose **After crossing runway** so it does not stop you there.
 
-**I heard "Route changed" when I didn't expect it.** You strayed far enough from the route for BA to replan. Check the new taxiways against your clearance; if they are wrong, stop and recalculate from the planner with the right ones.
+**I heard "Route changed" when I didn't expect it.** You strayed far enough from the route for BA to replan. Check the new taxiways against your clearance; if they are wrong, stop and recalculate from the planner with the right ones. If you would rather be asked first, switch on **Ask before switching to a new route when off route** (see [Asking before switching to a new route](#taxi-confirm-reroute)).
 
 **I closed the planner and guidance is still running.** Closing the window only hides it. Use Input Ctrl+Y or Stop Guidance to stop.
 

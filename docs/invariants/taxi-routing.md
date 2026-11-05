@@ -121,3 +121,5 @@ Split from RTE-12 on 2026-10-09: one mechanism per ID.
 ## RTE-36
 
 - And a landing-exit handoff route that DETOURS (> 3× and > 500 m over the straight-line distance, `RouteDetoursFromExit`) is retried from every exit-taxiway candidate, keeping the shortest that is not itself a detour (KSLC 17 K4: 2,862 m → 156 m). → [taxi-guidance.md](../taxi-guidance.md) (Split 2026-10 from ROL-40's bullet, words unchanged; the VirtualPilot figure there covered both.)
+
+RTE-37 lives in [taxi-reroute.md](taxi-reroute.md): this area's rule file was full.
