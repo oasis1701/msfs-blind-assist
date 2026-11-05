@@ -276,7 +276,7 @@ Each display key opens a live window read from the Fenix. When the Fenix cannot 
 - **Output Alt+N** — The captain's navigation display window, with its EFIS controls.
 - **Output Alt+E** — The E/WD window, with T.O CONFIG, CLR, RCL and EMER CANC after the list.
 - **Output Alt+S** — The SD window: the System Display's page, its values, STATUS and the bottom line, with the ECAM page keys after the list.
-- **Output Alt+I** — The ISIS window. With the three round standby gauges, always the AI read.
+- **Output Alt+I** — The ISIS window, with the ISIS panel's buttons and baro knob after the list. With the three round standby gauges, always the AI read.
 - **Output Shift+1** to **Shift+6** — Green dot, S, F, VLS, alpha prot or VSW, and VFE next, from the PFD's speed tape.
 - **Output Ctrl+W** — The next waypoint: name, bearing, distance and time.
 - **Output D**, **Output Shift+D** — Distance and time to the destination and to the top of descent, worked out from the Fenix's flight plan.

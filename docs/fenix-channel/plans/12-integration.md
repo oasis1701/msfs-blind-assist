@@ -175,20 +175,33 @@ pull request.
 - Letters still unconfirmed (`x`, `y`, `l`, and `b`/`f` as spoken attributes) and the yellow color.
 - The PFD flags plan 02 measured but did not show, and any flag left unmeasured (plan 02's handoff lists them).
 - Every "also seen on" note and every handoff item the owner ruled out.
+- Shift+D has no answer while the ND draws no top of descent (at the gate, early in the climb), though PERF CRZ prints one (plan 10's evidence; Task 7's climb).
 
 ## Execution record
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed; Tasks 0 to 6 done, Task 7 waits on the owner's flight
+- **Status:** claimed; Tasks 0 to 7 done; the flight's fixes in progress, then Task 8
 - **Claimed by:** Robin Kipp (robin24), 2026-11-05
 - **Worked by:** Robin Kipp with Claude (superpowers:executing-plans); Task 6's review by a separate reviewer on the most capable model
 - **Started:** 2026-11-05, from 6c40b8065 (the branch's head, plans 01 to 11 landed)
 - **Landed:**
 - **Tests at landing:** so far 19,480 passed, none failed, the whole suite, `ClaudeRulesHookTests` included (Task 1: 19,474 at the start)
 - **Tasks:** Task 1, no shared files beyond what the records name. Task 2, nothing to merge: `origin/main` at 8eb77a5b4 is in the branch; re-check before the pull request. Tasks 3 to 5, on the branch. Task 6, reviewed at aea2c7c1f; the fixes below.
-- **Waiting on the owner:** Task 7's flight; then Task 9's go-ahead.
-- **In-sim results:** Task 7's result goes here. Evidence from the owner's logs (fenix_channel.log and debug.log, the flight on 7cb43d936, an A321 IAE from cruise to landing about 01:28 on 2026-11-05): "AUTO FLIGHT - AP OFF MW" is an alert entry with no title, logged and not spoken, so a deliberate autopilot disconnect is not heard twice (plan 09's question); no failure was spoken with no color in the flare.
+- **Waiting on the owner:** Task 9's go-ahead.
+- **In-sim results:** Task 7, 2026-11-05 from 20:38, the owner's flight from cold and dark on eda33f6aa (3.0.0.7613), one check at a time, NVDA by ear, Claude reading `debug.log` and `fenix_channel.log`:
+  1. Cold and dark: Alt+E said "E/WD: not available, display off"; no notice. Passed.
+  2. Power-up with that window focused: the gauge rows came, no freeze, nothing said twice; no slow list update logged. Passed.
+  3. ISIS Reset at the gate: "ISIS Reset pressed" once, "ATT 10 seconds" in the ISIS window, then the attitude. Passed.
+  4. APU BLEED on, the SD's APU page: "in transit", then open, never "failed open". Passed.
+  5. LS from the ND window: the state heard twice, the LS light's "EFIS Left LS: On" and the reader's "LS: on"; one press each in `debug.log` (21:07:01, 21:07:07). Fixed after the flight (below).
+  6. Flaps 1: "Flaps: 1+F, green". Passed.
+  7. Take-off: MAN FLX with SRS, LVR CLB, CLB and the later modes each heard once; no column 5 call. Passed.
+  8. Climb: D matched; Shift+D "Top of descent not available", the ND window listing no top of descent (plan 10's measured gap: the ND draws none at the gate and early in the climb). In cruise, with it drawn, Shift+D matched PERF CRZ's TO (T/D). Passed.
+  9. "FMA changes" unticked: a HDG pull silent; ticked again: no replay; NAV heard. Passed.
+  10. The amber altitude and the lateral row under LAND were not flown (the owner: both proven in the PFD work; the flags were measured in plan 02's flights, the words are pinned by tests).
+  Not flown, by the owner's scope ruling (nothing already proven is flown again): the failure drill, the restart after landing, a DCDU uplink.
+  Evidence from the owner's logs (fenix_channel.log and debug.log, the flight on 7cb43d936, an A321 IAE from cruise to landing about 01:28 on 2026-11-05): "AUTO FLIGHT - AP OFF MW" is an alert entry with no title, logged and not spoken, so a deliberate autopilot disconnect is not heard twice (plan 09's question); no failure was spoken with no color in the flare.
 - **Changed from the plan:** Task 7 is cut, by the owner's word: nothing plans 01 to 11 proved is flown again, his logs count as evidence, and no obscure edge case is measured. Task 4 kept 18 of the 27 proposed rule lines (FNX-26 to FNX-43). The nine left out are pinned by tests with self-explaining names, and the measurements are in `docs/a32nx.md`: the PFD's flag rows, baro reference and flight director row, the E/WD's rounding, the ND's layers and Ctrl+W, the DCDU's message identity, D and Shift+D. The rule file split in two (`fenix-channel-displays.md`). The definition's `Channel*` partials load only `fenix-channel.md`, for the per-file budget.
 - **Rulings made while working:**
   - Plan 07's waiting items are follow-ups (the owner, 2026-11-05: "We'll do the follow-up items"). The stale ISIS altitude stays read as sent.
@@ -196,3 +209,4 @@ Kept in this file only, so no other plan's push ever touches it.
   - Task 6: the lateral mode under LAND, FLARE and ROLL OUT (plan 08's "Plan 02:" line) is fixed: the window now agrees with the announcer. Field 116 (plan 06's note): measured present on approach, read nowhere, nothing to act on.
   - The owner asked on 2026-11-05 to fix the follow-ups before the flight. Fixed: ISIS Reset holds 3 s and confirms the press; the altitude row says amber (122.8); the APU bleed valve's FailedOpen reads "in transit" until it has stayed 4 s; the Mode and Range combos follow the ND while focused, 3 s after a pick; a refresh of a window's controls cannot leave the timer; an ISIS Mach of 0 gives no row; the map poller disposes its cancellation source.
   - Not fixed, and why. The 5 s stall (plan 02): nothing reproduces it, and the status rows that shrank the list came from the comparisons removed since, so a list update over a second is now logged instead. The ECAM display power switches (plan 06): the name is in no file of the Fenix's cockpit, and the real control, each ECAM's brightness knob, is on the ECAM panel. "Top center: heading not available": it follows the plans' convention for a value the channel sends as NaN, with no capture to say otherwise. `FenixA320ElevatorTrim.Describe(0)`, "up 0.0": it matches the shared trim call-out on the other aircraft, and its test pins it.
+  - After the flight, at the owner's word (2026-11-05). The LS press from the ND window (the reviewer's Important, re-graded above) was heard twice, so it is fixed: the window's press marks the light's echo as a panel press does (`MainForm.MarkStateLightEchoForPress`, FD and LS only, as on the panel). Spec row 32 (no controls in the ISIS window) is changed by the owner: every ISIS panel control comes into the window, as the EFIS, ECAM and DCDU keys did into theirs. The owner first asked to drop the baro knob, as Ctrl+B's baro set moves the ISIS baro too (heard in flight); told that on the bugs page the knob is the only way to set a bug's value (plan 07's evidence), he chose to keep it, on the panel and in the window.

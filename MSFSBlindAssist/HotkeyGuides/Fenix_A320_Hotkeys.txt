@@ -18,7 +18,8 @@ Displays and AI Features:
              with its EFIS controls; AI read when it cannot be read
   Alt+E      E/WD window (the AI read when the Fenix cannot share the E/WD)
   Alt+S      SD window (System Display); AI read when not available
-  Alt+I      ISIS window (AI read with the round standby gauges)
+  Alt+I      ISIS window, with the ISIS's buttons and baro knob after the
+             list (AI read with the round standby gauges)
 
   While a display is dark its window opens on one status row, and the rows
   appear by themselves when the display comes on.
