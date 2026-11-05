@@ -242,7 +242,9 @@ internal static class FenixChannelPfdRows
 
     private static string AltitudeRow(FenixChannelPfd pfd)
     {
-        string altitude = IsNumber(pfd.Altitude) ? $"Altitude {Whole(pfd.Altitude)} feet" : "Altitude not available";
+        string altitude = IsNumber(pfd.Altitude)
+            ? $"Altitude {Whole(pfd.Altitude)} feet{(pfd.AltitudeAmber ? ", amber" : "")}"
+            : "Altitude not available";
         string row = $"{altitude}, {BaroReference(pfd.Baro) ?? "baro not read"}";
 
         if (pfd.MetricAltitude && IsNumber(pfd.Altitude))

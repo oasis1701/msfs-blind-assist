@@ -98,6 +98,7 @@ internal static partial class FenixChannelFields
     public static partial class AltStatusData
     {
         public const int Metric = 3;                // Metric: varint (bool), a metric altitude is drawn under the baro box
+        public const int AltAmber = 8;              // AltAmber: varint (bool), the altitude readout is drawn amber
     }
 
     /// <summary>SpeedLimitsData, the speed limits the tape draws (<see cref="Remote.SpeedLimitsCapt"/>).</summary>

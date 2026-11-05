@@ -138,6 +138,18 @@ public class FenixChannelPfdRowsTests
             FenixChannelPfdRows.FmaRows(slots));
     }
 
+    [Fact]
+    public void The_altitude_says_amber_while_the_pfd_draws_it_amber()
+    {
+        // 122.8, measured 2026-11-03: the readout turns amber from a BARO minimum down, the only sign the PFD gives there, and
+        // at a RADIO minimum. The word sits on the altitude, as the baro beside it stays its own color.
+        Assert.Equal("Altitude 700 feet, amber, STD",
+            RowStartingWith(new PfdPushes.Push { Altitude = 700, AltitudeAmber = true }, "Altitude"));
+        Assert.Equal("Altitude 700 feet, STD", RowStartingWith(new PfdPushes.Push { Altitude = 700 }, "Altitude"));
+        Assert.Equal("Altitude not available, STD",
+            RowStartingWith(new PfdPushes.Push { Altitude = double.NaN, AltitudeAmber = true }, "Altitude"));
+    }
+
     [Theory]
     [InlineData("gLAND", "LAND")]
     [InlineData("gFLARE", "FLARE")]

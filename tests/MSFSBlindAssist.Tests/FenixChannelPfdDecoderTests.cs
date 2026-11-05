@@ -130,6 +130,7 @@ public class FenixChannelPfdDecoderTests
         ["Qfe"] = (push, on) => push.Efis.Qfe = on,
         ["Ls"] = (push, on) => push.Efis.Ls = on,
         ["MetricAltitude"] = (push, on) => push.MetricAltitude = on,
+        ["AltitudeAmber"] = (push, on) => push.AltitudeAmber = on,
         ["DhMessage"] = (push, on) => push.DhMessage = on
     };
 
@@ -162,6 +163,7 @@ public class FenixChannelPfdDecoderTests
             ["Qfe"] = pfd.Baro.Qfe,
             ["Ls"] = pfd.Ls,
             ["MetricAltitude"] = pfd.MetricAltitude,
+            ["AltitudeAmber"] = pfd.AltitudeAmber,
             ["DhMessage"] = pfd.DhMessage
         };
         Assert.Equal(flag, Assert.Single(read.Where(entry => entry.Value)).Key);
@@ -287,7 +289,7 @@ public class FenixChannelPfdDecoderTests
             ("107", "varint"), ("107", "utf8"),
             ("113", "varint"), ("113.4", "varint"), ("113.5", "fixed64"), ("113.9", "fixed64"),
             ("117", "varint"), ("117.1", "varint"), ("117.3", "utf8"),
-            ("122", "varint"), ("122.3", "fixed64"),
+            ("122", "varint"), ("122.3", "fixed64"), ("122.8", "fixed64"),
             ("125", "varint"), ("125.1", "varint"), ("125.2", "varint"), ("125.3", "varint"), ("125.5", "varint"),
             ("127", "varint"), ("127.1", "varint"), ("127.2", "varint"), ("127.3", "varint"), ("127.4", "varint"),
             ("127.5", "varint"), ("127.6", "varint"), ("127.7", "varint"),
@@ -622,8 +624,9 @@ internal static class PfdPushes
         public string LsFlagText { get; set; } = "";
         public string QnhText { get; set; } = "";
 
-        // 122.3 the altitude readout also drawn in meters, 205 the DH message
+        // 122.3 the altitude readout also drawn in meters, 122.8 drawn amber, 205 the DH message
         public bool MetricAltitude { get; set; }
+        public bool AltitudeAmber { get; set; }
         public bool DhMessage { get; set; }
 
         // 82 the deviations, NaN (written) while the PFD draws no LS scale; a 0 is left out of the part like any default
@@ -741,7 +744,11 @@ internal static class PfdPushes
                 PutText(flags, at, 1, MarkerText);
                 PutText(flags, at, 3, LsFlagText);
             });
-            PutPart(remote, "", 122, (altStatus, at) => PutFlag(altStatus, at, 3, MetricAltitude));
+            PutPart(remote, "", 122, (altStatus, at) =>
+            {
+                PutFlag(altStatus, at, 3, MetricAltitude);
+                PutFlag(altStatus, at, 8, AltitudeAmber);
+            });
             PutPart(remote, "", 125, (limits, at) =>
             {
                 PutDouble(limits, at, 1, VMax);

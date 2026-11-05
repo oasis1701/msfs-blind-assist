@@ -139,6 +139,12 @@ internal sealed record FenixChannelPfd
     /// <summary>The altitude readout is drawn in meters under the baro box as well (122.3); false when absent.</summary>
     public bool MetricAltitude { get; init; }
 
+    /// <summary>
+    /// The altitude readout is drawn amber (122.8): from a BARO minimum down, where it is the only sign the PFD gives, and
+    /// at a RADIO minimum. False when absent.
+    /// </summary>
+    public bool AltitudeAmber { get; init; }
+
     /// <summary>The PFD draws the DH message above the radio altitude (205); false when absent.</summary>
     public bool DhMessage { get; init; }
 
@@ -244,6 +250,7 @@ internal sealed record FenixChannelPfd
             MarkerText = TextOf(flags, PfdFlagsData.MarkerCapt),
             LsFlagText = TextOf(flags, PfdFlagsData.LsFlagCapt),
             MetricAltitude = FlagOf(altStatus, AltStatusData.Metric),
+            AltitudeAmber = FlagOf(altStatus, AltStatusData.AltAmber),
             DhMessage = FlagOf(root, Remote.DhMessage),
             LocDots = DoubleOf(lsData, LsInputData.PfdHorDots, deviationAbsent),
             GsDots = DoubleOf(lsData, LsInputData.PfdVertDots, deviationAbsent),
