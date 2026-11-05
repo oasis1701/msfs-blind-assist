@@ -126,8 +126,8 @@ public class VisualGuidanceManager : IDisposable
     // Announcement tracking
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
     private DateTime lastDistanceAnnouncement = DateTime.MinValue;
-    private double lastAnnouncedDistance = double.MaxValue;
-    private bool distanceCalloutsPrimed;   // the first update after Ctrl+V notes which marks are already passed
+    private readonly HashSet<double> armedMileMarks = new();   // the mile marks still to be said on the way in
+    private bool distanceCalloutsPrimed;   // the first update after Ctrl+V arms the marks still ahead
     // Decides when a bank callout is spoken (VG-21); rebuilt in Initialize with the profile's tone bank range.
     private VisualGuidanceBankCalloutGate bankCalloutGate = new(new VisualGuidanceProfile().ToneBankRangeDeg);
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
@@ -492,7 +492,7 @@ public class VisualGuidanceManager : IDisposable
         queuedSpeechEndsUtc = DateTime.MinValue;
         lastPhaseAnnouncement = DateTime.MinValue;
         lastDistanceAnnouncement = DateTime.MinValue;
-        lastAnnouncedDistance = double.MaxValue;
+        armedMileMarks.Clear();
         distanceCalloutsPrimed = false;
         // A fresh gate (nothing spoken, no holds) on this aircraft's tone bank range: past it both
         // tones are pinned and only the callouts say how far (VG-21).
@@ -1362,8 +1362,11 @@ public class VisualGuidanceManager : IDisposable
         double clamp = joinPlan.ClampDeg;
         if (joining)
         {
+            // The intercept being flown, as long as the track still meets final ahead of the threshold,
+            // even inside the minimum final (that only decides "Heading does not cross final"); parallel
+            // or diverging, no cue until the aircraft reaches the line.
             var position = new VisualGuidanceApproachPoint(VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm, cross);
-            clamp = VisualGuidanceJoin.CrossesFinal(position, relativeTrack, minimumFinalNm, out _) ? liveIntercept : 0.0;
+            clamp = VisualGuidanceJoin.MeetsFinalAhead(position, relativeTrack) ? liveIntercept : 0.0;
         }
         bool due = (clamp > 0 && Math.Abs(cross) <= VisualGuidanceJoin.TurnCueCrossNm(clamp, currentGroundSpeedKnots,
                        CaptureGainForHarness, LATERAL_HEADING_GAIN * speedFactor))
@@ -1396,21 +1399,25 @@ public class VisualGuidanceManager : IDisposable
         double relativeTrack = VisualGuidanceJoin.Normalize(LateralTrackDeg(heading) - runway.HeadingMag);
         double intercept = VisualGuidanceJoin.InterceptDeg(cross, relativeTrack);
         bool joining = joinPlan.State == VisualGuidanceJoinState.Joining;
-        bool crosses = !joining || VisualGuidanceJoin.CrossesFinal(new VisualGuidanceApproachPoint(along, cross), relativeTrack, minimumFinalNm, out _);
+        var position = new VisualGuidanceApproachPoint(along, cross);
+        bool crosses = !joining || VisualGuidanceJoin.CrossesFinal(position, relativeTrack, minimumFinalNm, out _);
+        // The turn (and so its countdown) comes whenever the track meets final ahead of the threshold,
+        // even when that is inside the minimum final and "crosses" is false for the spoken line.
+        bool turnWillCome = !joining || VisualGuidanceJoin.MeetsFinalAhead(position, relativeTrack);
         double clamp = joining ? intercept : joinPlan.ClampDeg;
         // Vectoring: once the aircraft converges at all, the time is on the angle BA chose, which the
         // guidance is turning it onto; on the few degrees it has so far the time would read far too long
         // (and a countdown started on it would come late). Heading away or parallel: no time yet.
         double timedIntercept = joining ? intercept
             : intercept >= VisualGuidanceJoin.MinTimedInterceptDeg ? joinPlan.ClampDeg : 0.0;
-        double? seconds = crosses && !turnOntoFinalDue
+        double? seconds = turnWillCome && !turnOntoFinalDue
             ? VisualGuidanceJoin.SecondsToTurn(cross, timedIntercept, clamp, currentGroundSpeedKnots, CaptureGainForHarness,
                 LATERAL_HEADING_GAIN * SpeedFactor())
             : null;
         // Where it lines up, counting the turn onto the cut when vectoring, as the decision did (joining
         // flies its own cut, so there is no turn to count). Only F needs it; the countdown skips it.
         double joinAlong = withJoinAlong
-            ? VisualGuidanceJoin.JoinAlongNm(new VisualGuidanceApproachPoint(along, cross), relativeTrack,
+            ? VisualGuidanceJoin.JoinAlongNm(position, relativeTrack,
                 joining ? intercept : joinPlan.ClampDeg, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile)
             : double.NaN;
         // Toward the nearest point of final, in (inbound, right) components, against the track's right normal.
@@ -1660,11 +1667,12 @@ public class VisualGuidanceManager : IDisposable
             // Clamp final command
             double desiredPitch = Math.Clamp(rawDesiredPitch, -12.0, 12.0);
 
-            // Deciding and joining: the altitude is the pilot's or ATC's, so the pitch tone sits on the
-            // aircraft's own pitch (the redesign's piece 4, Waiting), taken without a rate limit. The law
-            // above still runs, so its filters stay warm and F's numbers current, and it starts from the
-            // aircraft's pitch when final begins.
-            if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining)
+            // Deciding, joining and unable to join: the altitude is the pilot's or ATC's, so the pitch tone
+            // sits on the aircraft's own pitch (the redesign's piece 4, Waiting), taken without a rate
+            // limit; unable, the law would aim at a 3° path far below a far-side start and ask for a dive.
+            // The law above still runs, so its filters stay warm and F's numbers current, and it starts
+            // from the aircraft's pitch when final begins.
+            if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining or GuidancePhase.Unable)
                 desiredPitch = currentPitch;
 
             // Update for next iteration
@@ -1716,40 +1724,46 @@ public class VisualGuidanceManager : IDisposable
         if (runway == null) return;
 
         var now = ClockForHarness();
-        if ((now - lastDistanceAnnouncement).TotalMilliseconds < ANNOUNCEMENT_INTERVAL_MS)
-            return;
-
         double distanceNM = NavigationCalculator.CalculateDistance(
             lat, lon, runway.StartLat, runway.StartLon);
 
-        // Announce at 5, 3, 1 miles: "5 miles out" (stage 5 of the redesign adds the path once established).
-        var callouts = new (double Nm, string Line, double Hold)[]
-        {
-            (5.0, "5 miles out", HOLD_5_MILES_S), (3.0, "3 miles out", HOLD_3_MILES_S), (1.0, "1 mile out", HOLD_1_MILE_S),
-        };
-
-        // Pressed inside a mark: the calls start with the next mark crossed. Saying "5 miles out" at
-        // 0.3 nm, then "3 miles out" and "1 mile out" a second apart, was wrong, and the queued lines
-        // would hold the bank callouts for their whole length.
+        // A mark is said when the distance comes down through it, once, and armed again only after the
+        // distance has gone back above it by MILE_CALL_REARM_NM (a pattern flown out past it and back in).
+        // Pressed inside a mark, it is not armed: saying "5 miles out" at 0.3 nm, then "3 miles out" and
+        // "1 mile out" a second apart, was wrong, and the queued lines would hold the bank callouts for
+        // their whole length.
         if (!distanceCalloutsPrimed)
         {
             distanceCalloutsPrimed = true;
-            foreach (var (mark, _, _) in callouts)
-                if (distanceNM <= mark) lastAnnouncedDistance = mark;
+            foreach (var (mark, _, _) in MileCallouts)
+                if (distanceNM > mark) armedMileMarks.Add(mark);
             return;
         }
+        foreach (var (mark, _, _) in MileCallouts)
+            if (distanceNM > mark + MILE_CALL_REARM_NM) armedMileMarks.Add(mark);
 
-        foreach (var (calloutDist, line, hold) in callouts)
+        if ((now - lastDistanceAnnouncement).TotalMilliseconds < ANNOUNCEMENT_INTERVAL_MS)
+            return;
+
+        // The nearest mark passed, if several came at once (a slew): the others are passed too.
+        foreach (var (mark, line, hold) in Enumerable.Reverse(MileCallouts))
         {
-            if (distanceNM <= calloutDist && lastAnnouncedDistance > calloutDist)
+            if (distanceNM <= mark && armedMileMarks.Contains(mark))
             {
                 Say(line, immediate: false, hold);
-                lastAnnouncedDistance = calloutDist;
+                armedMileMarks.RemoveWhere(m => m >= mark && distanceNM <= m);
                 lastDistanceAnnouncement = now;
                 break;
             }
         }
     }
+
+    // Announce at 5, 3, 1 miles: "5 miles out" (stage 5 of the redesign adds the path once established).
+    private static readonly (double Nm, string Line, double Hold)[] MileCallouts =
+    {
+        (5.0, "5 miles out", HOLD_5_MILES_S), (3.0, "3 miles out", HOLD_3_MILES_S), (1.0, "1 mile out", HOLD_1_MILE_S),
+    };
+    private const double MILE_CALL_REARM_NM = 0.3;
 
     /// <summary>
     /// Speaks the bank error ("3 right", "matched") when <see cref="VisualGuidanceBankCalloutGate"/>
@@ -1764,9 +1778,15 @@ public class VisualGuidanceManager : IDisposable
             return;
 
         // Both banks right-positive: the command is, SimConnect's bank goes through StandardBank (VG-7).
-        // Deciding: the command is the aircraft's own bank, so there is nothing to call.
-        string? callout = bankCalloutGate.Next(ClockForHarness(), desiredBankDegrees, StandardBank(cachedBank.Value),
-            maySpeak: !RoutineAnnouncementsSuppressed && currentPhase != GuidancePhase.Deciding);
+        // Deciding: the command is the aircraft's own bank, so there is nothing to call. Joining before the
+        // turn onto final, banked 5° or more: the pilot is turning on purpose (a new heading from ATC), and
+        // BA holds whatever heading they fly, so it does not tell them to roll back (stage-4 checkpoint
+        // review). The tones still show the bank, and the gate keeps tracking.
+        double bankNow = StandardBank(cachedBank.Value);
+        bool deliberateTurn = currentPhase == GuidancePhase.Joining && !turnOntoFinalDue
+            && Math.Abs(bankNow) >= VisualGuidanceJoin.DecideBankDeg;
+        string? callout = bankCalloutGate.Next(ClockForHarness(), desiredBankDegrees, bankNow,
+            maySpeak: !RoutineAnnouncementsSuppressed && currentPhase != GuidancePhase.Deciding && !deliberateTurn);
         if (callout != null)
             Say(callout, immediate: true, holdSeconds: 0);
     }

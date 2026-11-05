@@ -332,6 +332,55 @@ public class VisualGuidanceJoiningTests
         Assert.Equal(expected, rig.Readout);
     }
 
+    // Checkpoint review C1: a join whose crossing point drifts inside the minimum final (a 25° cut from
+    // 3 nm, meeting final 5.57 nm out) still converges, so the turn onto final still comes where the
+    // capture law first asks 5° of bank, not 300 ft from the line with a sudden steep demand.
+    [Fact]
+    public void A_join_that_drifts_inside_the_minimum_final_still_gets_its_turn()
+    {
+        var (rig, lines) = RecordedAt(12, 3, -30);
+        rig.FlyFor(5, 30);
+        double t0 = rig.Now, v = 140.0 / 3600, c = Math.Cos(25 * Math.PI / 180), s = Math.Sin(25 * Math.PI / 180);
+        // 170 s on the 25° cut closes 2.79 nm, ending 0.21 nm off, inside the 0.273 nm cue for 25°.
+        rig.FlyFor(170, 30, beforeEach: t => rig.Place(12 - v * c * (t - t0), 3 - v * s * (t - t0), -25));
+        Assert.True(rig.Bank > 1, $"bank {rig.Bank}");
+        Assert.Contains(Said(lines), x => x.Text == "Turn onto final");
+    }
+
+    // Checkpoint review I1: unable to join, the altitude is the pilot's, as while joining: the pitch
+    // tone sits on the aircraft's own pitch instead of diving for a path far below the far-side start.
+    [Fact]
+    public void Unable_sits_the_pitch_on_the_aircraft()
+    {
+        var (rig, _) = RecordedAt(-1, 3, 180);
+        rig.FlyFor(5, 30, afterEach: _ => Assert.Equal(2.0, rig.Pitch, 0.01));
+    }
+
+    // Checkpoint review I2: a mile call passed once is said again after the distance has risen back
+    // above it: pressed 1.6 nm from the threshold, flown out past 5 nm and back in.
+    [Fact]
+    public void A_mile_call_is_said_again_after_flying_back_out_past_it()
+    {
+        var (rig, lines) = RecordedAt(-1, 1.2, 180);
+        rig.FlyFor(2, 30);
+        rig.FlyFor(2, 30, beforeEach: _ => rig.Place(5.5, 0, 0));
+        rig.FlyFor(2, 30, beforeEach: _ => rig.Place(4.9, 0, 0));
+        rig.FlyFor(2, 30, beforeEach: _ => rig.Place(2.9, 0, 0));
+        var calls = Said(lines).Where(x => x.Text.EndsWith(" out", StringComparison.Ordinal)).Select(x => x.Text).ToList();
+        Assert.Equal(new[] { "5 miles out", "3 miles out" }, calls);
+    }
+
+    // Checkpoint review I3: joining holds the heading being flown, ATC's or the pilot's. A pilot who
+    // turns on purpose (a new heading from ATC) is not told to roll back while banked, as while deciding.
+    [Fact]
+    public void Joining_does_not_call_against_a_deliberate_turn()
+    {
+        var (rig, lines) = RecordedAt(12, 3, -30);
+        rig.FlyFor(6, 30);
+        rig.FlyFor(4, 30, beforeEach: _ => rig.Place(12, 3, -30, bankDeg: -20));
+        Assert.DoesNotContain(Said(lines), x => Regex.IsMatch(x.Text, @"^\d+ (left|right)$"));
+    }
+
     [Fact]
     public void F_while_deciding_says_it_waits_for_wings_level()
     {

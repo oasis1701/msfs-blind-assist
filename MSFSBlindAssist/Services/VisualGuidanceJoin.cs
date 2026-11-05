@@ -262,6 +262,22 @@ internal static class VisualGuidanceJoin
     }
 
     /// <summary>
+    /// True when the track, extended ahead, meets the extended centreline on the approach side, at any
+    /// angle and however close in: converging, with the crossing point before the threshold. While
+    /// joining, the turn onto final still comes then, even when the crossing point has slipped inside the
+    /// minimum final or past <see cref="JoinMaxAngleDeg"/> (those only decide the spoken "Heading does not
+    /// cross final" and F's sentence); otherwise the cue would wait until 0.05 nm and then ask for a
+    /// sudden steep turn (stage-4 checkpoint review).
+    /// </summary>
+    public static bool MeetsFinalAhead(VisualGuidanceApproachPoint p, double relTrackDeg)
+    {
+        double rel = Normalize(relTrackDeg);
+        double s = Math.Sin(rel * D2R);
+        if (!(p.CrossNm * s < 0)) return false;
+        return p.AlongNm + p.CrossNm * Math.Cos(rel * D2R) / s > 0;
+    }
+
+    /// <summary>
     /// What BA does from here: on final; joining on the heading being flown; vectoring straight in at
     /// the shallowest angle from 30° that still leaves the minimum final; or the simple pattern.
     /// </summary>

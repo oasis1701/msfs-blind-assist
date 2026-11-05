@@ -766,17 +766,27 @@ aircraft's countdown was timed on the few degrees it had while still turning ont
 - D: "Turn onto final in 30 seconds" a median 0.07 s off, worst 3.0 s (85 runs); 15 s 0.03, worst 1.23 s.
 - E: the largest commanded bank in any run is 25.0°.
 
-Against `approach_stage3_v2`: `BETTER` finalXteRmsFt down 94, bankRateRmsDegS down 88, establishedAlongNm
-up 42, bankCalloutsPerMin down 38, pitchJitterDeg down 21, pitchRateRmsDegS down 19, now touches down 11,
-now established 10, |touchdownXteFt| down 9, touchdownVsFpm down 4; `WORSE` bankCalloutsPerMin up 89,
+**After the checkpoint review** (a fresh reviewer, the same day) four things were fixed, each with a
+failing test first: the turn onto final now comes whenever a joining track still meets final ahead of
+the threshold, even inside the minimum final (before, the cue waited until 0.05 nm and then asked for a
+sudden steep turn); "Unable" sits the pitch tone on the aircraft's own pitch, as joining does (before, it
+asked for a dive toward the 3° path far below a far-side start); the mile calls are armed again once the
+distance has gone 0.3 nm back above a mark; and while joining, banked 5° or more for a turn the pilot
+makes on purpose, the bank callouts stay quiet. A to E are unchanged; against the run before the fixes
+(`approach_stage4_precheckpoint`) only the pattern runs moved: flying "Unable" level, the 24 downwind and
+far-side runs now fly on to the 900 s limit instead of meeting the ground, with fewer callouts and no
+descent.
+
+Against `approach_stage3_v2`: `BETTER` finalXteRmsFt down 94, bankRateRmsDegS down 88, bankCalloutsPerMin
+down 56, establishedAlongNm up 38, maxDescentFpm down 26, pitchJitterDeg down 21, pitchRateRmsDegS down 19,
+now touches down 11, |touchdownXteFt| down 9, now established 2; `WORSE` bankCalloutsPerMin up 80,
 pitchJitterDeg up 76, pitchRateRmsDegS up 76, maxDescentFpm up 59, pathRmsFt up 50, bankRateRmsDegS up 36,
-no longer touches down 19, |touchdownXteFt| up 11, touchdownVsFpm up 4, no longer established 2,
-overshootFt up 2; `CHANGED` touchdownAlongFt moved 27, endReason 24. Against `approach_baseline_v5`, the
-stage-1 app: `BETTER` bankCalloutsPerMin down 173, pitchJitterDeg and pitchRateRmsDegS down 142,
-finalXteRmsFt down 94, bankRateRmsDegS down 92, establishedAlongNm up 44, now touches down 17; `WORSE`
-maxDescentFpm up 79, pathRmsFt up 50, bankRateRmsDegS up 39, pitchJitterDeg and pitchRateRmsDegS up 32,
-no longer touches down 18, gustCalloutDelayS up 8 (stage 3's, by design), finalXteRmsFt up 1 (stage 3's
-speech-led gust run).
+no longer touches down 19, no longer established 6, overshootFt up 2, |touchdownXteFt| up 1; `CHANGED`
+endReason 28, touchdownAlongFt moved 17. Against `approach_baseline_v5`, the stage-1 app: `BETTER`
+bankCalloutsPerMin down 173, pitchJitterDeg and pitchRateRmsDegS down 142, finalXteRmsFt down 94,
+bankRateRmsDegS down 92, establishedAlongNm up 40, now touches down 17; `WORSE` maxDescentFpm up 65,
+pathRmsFt up 50, bankRateRmsDegS up 39, pitchJitterDeg and pitchRateRmsDegS up 32, no longer touches down
+18, gustCalloutDelayS up 8 (stage 3's, by design), finalXteRmsFt up 1 (stage 3's speech-led gust run).
 
 Every `WORSE` and `CHANGED` line against stage 3, explained:
 
@@ -786,17 +796,19 @@ Every `WORSE` and `CHANGED` line against stage 3, explained:
   own pitch, and the harness's pilot, with no ATC to clear a descent, stays at the height it started:
   the path's height at 12 nm (jet) or 6 nm (light). A jet joining a 30° cut reaches final about 6.8 nm
   out some 1,900 ft above the path; today's vertical law then descends at up to 1,500 fpm and the jet
-  floats past the runway (the 8 jet 30° intercepts, the jet TURN, NOCROSS and SHALLOW runs). The pitch
+  floats past the runway (the 8 jet 30° intercepts, the jet TURN, NOCROSS and SHALLOW runs); the jets
+  joining at 45° land about 3,500 ft past the threshold instead of 1,200 (touchdownAlongFt moved 17, all
+  joining runs). The pitch
   measures rise for the same reason: the final segment starts while the law is still bringing the
   aircraft down. Stage 5's vertical path (the level hold while joining, the descent planned when
   vectoring, "You'll be 600 feet high at final") is the answer; the plan reports these, not judges them.
-- **More bank callouts** (89 runs up; the median over all runs 1.6 to 2.0 a minute, against 16 before
+- **More bank callouts** (80 runs up; the median over all runs 1.6 to about 2 a minute, against 16 before
   stage 3): mostly the offset finals (48 runs, 1.2 to 2.3 a minute), which used to drift onto the line at
   the old arc's 30°/nm and are now vectored onto it with a real turn, and track far tighter for it (A);
   and the light 45° and 90° intercepts, whose capture is now a turn, not a drift. The most outside the
   pattern runs: 4.8 a minute on the short light runs starting too close (a steep turn in under 4
-  minutes) and 3.6 on the jets vectored back from heading away; the pattern runs, flying "Unable", up
-  to 5.5. 38 runs went down.
+  minutes) and 3.6 on the jets vectored back from heading away. 56 runs went down, the pattern runs
+  among them.
 - **Lines cut off**: 33 runs count one line each "cut off" (stage 3: one run). None is: the measure
   estimates a line's length as words / 2.5 + 0.2 s, and "Turn onto final" (17), "Turn onto final in 30
   seconds" (4), "3 miles out" (1) and "1 mile out" (2) are followed by a bank callout exactly when their
@@ -809,12 +821,12 @@ Every `WORSE` and `CHANGED` line against stage 3, explained:
   from 0.30 to 0.005°/s.
 - `pitchJitterDeg` up on the offset finals (jet 0.0002 to 0.0004°, light 0.0002 to 0.0015°): the 20 % rule
   on near-zero values.
-- **The pattern runs** (DW, FAR, CLOSE jet: endReason 20 of the 24, no longer established 2, overshootFt
-  up 2, no longer touches down 2, |touchdownXteFt| up 10, touchdownVsFpm up 4): reported, not judged,
-  until the pattern exists. They fly "Unable", heading held: the downwinds fly away from the field beside
-  final while the vertical law from before the redesign, which is proportional only, settles into a
-  340 fpm descent it never corrects, and meet the ground about 8 nm out (`landedShort`); the far-side
-  light runs land beside the runway; the jets starting too close cut across final and fly on.
+- **The pattern runs** (DW, FAR, CLOSE jet: endReason 24 of the 28, no longer established 6, overshootFt
+  up 2, no longer touches down 2): reported, not judged, until the pattern exists.
+  They fly "Unable", heading and altitude held: the downwinds and far-side runs fly on beside or away
+  from the field to the 900 s limit (`timeout`); the jets starting too close cut across final and fly on
+  past the runway. Before the checkpoint review "Unable" followed the vertical law, which aimed at the
+  path far below, and the downwinds met the ground about 8 nm out.
 - `endReason` on the light 30° intercepts with the 1.0 s pilot (4, offRunway to pastRunwayEnd): they now
   reach final at their start height, as above, and float in the fixed flare (stage 6).
 - `NOISE-A-LIGHT-f60` no longer touches down (Vectoring): a light run landing or floating in the fixed

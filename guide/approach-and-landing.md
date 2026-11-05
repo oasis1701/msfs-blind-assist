@@ -165,9 +165,9 @@ When you press Output Ctrl+V, BA looks once at where you are and which way you a
 - **On final.** Within about 600 feet of the extended centreline and within 5 degrees of its direction: BA says *"On final"* and guides you down it.
 - **Your heading crosses final.** The way you are going crosses the extended centreline ahead of you, at least 6 miles from the threshold, at up to about 100 degrees: BA says *"Joining final"* and keeps you on that heading, ATC's or your own, with the guidance tone's wings level. It never asks you to turn in more steeply than you already are. It counts down *"Turn onto final in 30 seconds"* and *"Turn onto final in 15 seconds"*, then says *"Turn onto final"* when it is time to roll in. From there the guidance tone leads you round onto the centreline, and *"Established on final"* follows once you are on it. Until then your altitude is yours or ATC's, so the pitch tone sits on your own pitch.
 - **Anywhere else on the approach side**, for example flying parallel to final, heading away from it, or cutting toward it too close in: BA says *"Vectoring to final"* and picks the heading itself, the shallowest cut from 30 degrees that puts you on final at least 6 miles out, or straight onto final if you are already close to the centreline. It guides your altitude as well. Then *"Turn onto final"* and *"Established on final"*, as above.
-- **The far side of the field, or too close in to turn straight onto final.** For now BA says *"Unable to join final from here"* and holds your heading, the guidance tone wings level. Fly to a point you can join from, then press Output Ctrl+V twice (off, then on) so BA decides again.
+- **The far side of the field, or too close in to turn straight onto final.** For now BA says *"Unable to join final from here"* and holds your heading, the guidance tone wings level, and leaves your altitude to you: the pitch tone sits on your own pitch. Fly to a point you can join from, then press Output Ctrl+V twice (off, then on) so BA decides again.
 
-BA never switches from joining to vectoring by itself. If your heading stops crossing final, it says *"Heading does not cross final"* once and keeps holding your heading. Pressing Output Ctrl+V twice always makes BA decide again, for example after ATC gives you a new heading.
+BA never switches from joining to vectoring by itself. If your heading stops crossing final, it says *"Heading does not cross final"* once and keeps holding your heading. If you are still cutting toward final, only closer in than 6 miles, BA still says *"Turn onto final"* when it is time. If you roll into a turn while joining, for a new heading from ATC, BA does not call your bank back while you are turning: it holds whatever heading you settle on. Pressing Output Ctrl+V twice always makes BA decide again, for example after ATC gives you a new heading.
 
 ### Quick-access keys {#land-vg-keys}
 
@@ -196,7 +196,7 @@ If another program is already using one of these keys, BA tells you *"Visual gui
 
 - *"Turn onto final in 30 seconds"* and *"Turn onto final in 15 seconds"*: the countdown to the turn onto final, each said once, and only if the turn was further off than that when BA first worked it out.
 - *"Turn onto final"*: roll in now; the guidance tone leads the turn. It is not said if you were already that close to final when you pressed Output Ctrl+V: the guidance tone is already turning you.
-- *"Heading does not cross final"*: while joining, your heading has stopped taking you onto final ahead of you, or now meets it less than 6 miles out. Said once; said again only if your heading crosses final again for a few seconds and then stops.
+- *"Heading does not cross final"*: while joining, your heading has stopped taking you onto final ahead of you, or now meets it less than 6 miles out. Said once; said again only if your heading crosses final again for a few seconds and then stops. If you are still cutting toward final, *"Turn onto final"* still comes.
 - *"Established on final"*: you have been within about 600 feet of the centreline and 5 degrees of its direction for 3 seconds. Not said if you pressed Output Ctrl+V already on final.
 
 **On final:**
@@ -235,7 +235,8 @@ All Visual Guidance sound settings are on the **Hand Fly** tab of the Settings w
 
 ### If something goes wrong {#land-vg-problems}
 
-- **The tones are always fully to one side during the turn onto final, or a turn BA asks for while vectoring.** Normal. The guidance is asking for more bank than the tone can show. Follow the spoken bank callouts until you are close to the centreline.- **The pitch tone feels jumpy.** Make small, smooth pitch changes and give the aircraft a second to respond. Chasing the tone with large inputs makes it worse.
+- **The tones are always fully to one side during the turn onto final, or a turn BA asks for while vectoring.** Normal. The guidance is asking for more bank than the tone can show. Follow the spoken bank callouts until you are close to the centreline.
+- **The pitch tone feels jumpy.** Make small, smooth pitch changes and give the aircraft a second to respond. Chasing the tone with large inputs makes it worse.
 - **You hear three tones.** Visual Guidance mutes Hand Fly's tone automatically; if you hear a third tone, it is probably another BA tone such as taxi or takeoff assist that is still running. Switch it off.
 
 ## Flare and Rollout Tones {#flare-assist}
