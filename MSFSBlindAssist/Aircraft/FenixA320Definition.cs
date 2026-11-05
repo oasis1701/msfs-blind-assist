@@ -10150,7 +10150,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_MIP_ISFD_RST" && value == 1)
             {
-                ExecuteButtonTransition("S_MIP_ISFD_RST", "ISIS Reset", simConnect, announcer);
+                ExecuteButtonTransition("S_MIP_ISFD_RST", "ISIS Reset", simConnect, announcer,
+                    pressHoldMs: IsisResetHoldMs, confirmPress: true);
                 return true;
             }
 
@@ -12839,6 +12840,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// phase 9) → a spurious CONFIG / master-warning alarm on rollout.
     /// </summary>
     private const int ButtonPressHoldMs = 200;
+
+    // The ISIS's reset starts its quick realignment only when held: a normal press starts nothing, and a hold of about 3 s
+    // started it (measured 2026-11-04, "ATT 10s" for 10 s).
+    private const int IsisResetHoldMs = 3000;
 
     // =========================================================================
     // Universal auto-AP engage (UniversalAutomationService)

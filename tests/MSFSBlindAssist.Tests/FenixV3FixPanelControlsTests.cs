@@ -100,6 +100,17 @@ public class FenixV3FixPanelControlsTests : IDisposable
         }
     }
 
+    // A press-release of the ISIS's reset starts nothing; the quick realignment started on a hold of about 3 s (measured
+    // 2026-11-04: "ATT 10s" for 10 s). It has no light, so it confirms the press too.
+    [Fact]
+    public void The_isis_reset_is_held_long_enough_to_start_a_realignment()
+    {
+        string branch = Branch("S_MIP_ISFD_RST");
+        Assert.Contains("pressHoldMs: IsisResetHoldMs", branch);
+        Assert.Contains("confirmPress: true", branch);
+        Assert.Contains("private const int IsisResetHoldMs = 3000;", File.ReadAllText(DefinitionPath));
+    }
+
     // The ECAM ALL key has no light, and the SD window presses it through this same branch, so both confirm the press.
     [Fact]
     public void The_ecam_all_key_confirms_its_press()
