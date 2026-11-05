@@ -531,7 +531,7 @@ public partial class MainForm
 
                 controlButton.Click += (s2, e2) =>
                 {
-                    // A button that flips its own light (the Fenix FD and LS): the reader says the new label,
+                    // A button that flips its own light (the Fenix EFIS FD, LS and map options): the reader says the new label,
                     // so the light is marked before the press goes out and does not repeat it (CORE-7).
                     MarkStateLightEchoForPress(varDef);
                     bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager!, announcer);

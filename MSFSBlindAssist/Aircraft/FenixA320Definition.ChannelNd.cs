@@ -78,8 +78,8 @@ public partial class FenixA320Definition
     /// definition does not know writes and marks nothing.
     /// </summary>
     /// <param name="markPressEcho">The panel's echo mark (<see cref="PanelPressEcho"/>): it marks only a button whose press
-    /// flips its own light (FD and LS), whose button text the reader already reads, so the light does not say it again
-    /// (heard twice on the flight of 2026-11-05, [CORE-7]). Null marks nothing.</param>
+    /// flips its own light (the six buttons; never the combos), whose button text the reader already reads, so the light
+    /// does not say it again (LS and CSTR heard twice on 2026-11-05, [CORE-7]). Null marks nothing.</param>
     internal void WriteNdControl(
         string key, double value, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer,
         Action<SimConnect.SimVarDefinition>? markPressEcho)

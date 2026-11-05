@@ -129,7 +129,7 @@ public class SimVarDefinition
 
     /// <summary>
     /// Opt-in for a pushbutton whose press flips its own <see cref="StateVariable"/> light (the Fenix EFIS
-    /// FD and LS buttons: the light is the button's own "on" light). The panel relabels the button when the
+    /// FD, LS and map option buttons: the light is the button's own "on" light). The panel relabels the button when the
     /// light changes, so the screen reader already reads the button's new state; pressing it from the panel
     /// marks the light in MainForm's UI-set echo gate with the value the press should leave
     /// (<see cref="StateVariableAfterPress"/>), so the light's own announcement is not spoken after it

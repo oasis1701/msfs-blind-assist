@@ -147,8 +147,8 @@ public class FenixChannelNdKeyTests
     [Fact]
     public void Every_nd_window_control_is_marked_as_the_panel_would_mark_it()
     {
-        // The mark is the panel's: it marks only a definition that opts in (FD and LS), so the other five buttons and the
-        // two combos keep the panel's speech, whatever the window passes.
+        // The mark is the panel's: it marks only a definition that opts in (the six buttons since 2026-11-05), so the two
+        // combos keep the panel's speech, whatever the window passes.
         var definition = new FenixA320Definition();
         string[] keys = [FenixChannelNdControls.ModeKey, FenixChannelNdControls.RangeKey,
             .. FenixChannelNdControls.Buttons.Select(b => b.Key)];

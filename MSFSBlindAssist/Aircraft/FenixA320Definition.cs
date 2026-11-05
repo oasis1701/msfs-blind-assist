@@ -2874,7 +2874,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_ARPT"
+                StateVariable = "I_FCU_EFIS1_ARPT",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS1_CSTR"] = new SimConnect.SimVarDefinition
             {
@@ -2883,7 +2884,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_CSTR"
+                StateVariable = "I_FCU_EFIS1_CSTR",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS1_WPT"] = new SimConnect.SimVarDefinition
             {
@@ -2892,7 +2894,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_WPT"
+                StateVariable = "I_FCU_EFIS1_WPT",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS1_VORD"] = new SimConnect.SimVarDefinition
             {
@@ -2901,7 +2904,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_VORD"
+                StateVariable = "I_FCU_EFIS1_VORD",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS1_NDB"] = new SimConnect.SimVarDefinition
             {
@@ -2910,7 +2914,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_NDB"
+                StateVariable = "I_FCU_EFIS1_NDB",
+                PressTogglesStateVariable = true
             },
 
             // Flight Director & ILS Buttons
@@ -3028,7 +3033,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_ARPT"
+                StateVariable = "I_FCU_EFIS2_ARPT",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS2_CSTR"] = new SimConnect.SimVarDefinition
             {
@@ -3037,7 +3043,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_CSTR"
+                StateVariable = "I_FCU_EFIS2_CSTR",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS2_WPT"] = new SimConnect.SimVarDefinition
             {
@@ -3046,7 +3053,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_WPT"
+                StateVariable = "I_FCU_EFIS2_WPT",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS2_VORD"] = new SimConnect.SimVarDefinition
             {
@@ -3055,7 +3063,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_VORD"
+                StateVariable = "I_FCU_EFIS2_VORD",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS2_NDB"] = new SimConnect.SimVarDefinition
             {
@@ -3064,7 +3073,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_NDB"
+                StateVariable = "I_FCU_EFIS2_NDB",
+                PressTogglesStateVariable = true
             },
 
             // Flight Director & ILS Buttons
