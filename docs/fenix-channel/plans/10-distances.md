@@ -256,7 +256,7 @@ value is the press's line in `debug.log`, read straight away (it rotates in abou
 
 ## Handoff to plan 12
 
-(Filled in while working. Expected:)
+(Final, at landing on 2026-11-05.)
 
 - **For a pilot:** guide `guide/airbus-aircraft.md`, "Fenix A320 CEO", "Aircraft-specific hotkeys and callouts": the
   sentence saying Output D and Shift+D are not offered on the Fenix changes (they work, computed from the Fenix's flight
@@ -272,7 +272,8 @@ value is the press's line in `debug.log`, read straight away (it rotates in abou
   ```
   - [FNX-?] Fenix D and Shift+D (`FenixChannelRouteDistances`) sum as the FMS does (9,806 recorded pushes): straight to the TO waypoint, then the drawn line, turns as arcs, a discontinuity crossed straight. Shift+D is past once an end-of-descent marker shows, never from a T/D-type marker alone; no TO, destination or T/D marker is "not available". Full: docs/invariants/fenix-channel.md#fnx-?
   ```
-  Full text: the rules and refusals, the tolerance and its reasons, the replay's numbers and the BAIRE lag.
+  Full text: the rules and refusals (the destination end with fewer than two runways, the hold and two-run refusals
+  among them), the tolerance and its reasons, the replay's numbers and the BAIRE lag.
 - **Frozen files:** none.
 - **Also seen on:** the FBW A32NX and Headwind A330 D (`MainForm.Announcers.cs`) says "Destination distance not
   available", where the base, the PMDG 737 and this plan say "Distance to destination not available": a presentation
