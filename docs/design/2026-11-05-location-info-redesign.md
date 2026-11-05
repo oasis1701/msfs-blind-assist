@@ -67,7 +67,7 @@ the new combo value).
 
 ## Elevation (to test)
 
-Heights for terrain results, especially mountains, hills and islands ("Hättan, island, 31 m").
+Heights for terrain results, especially mountains, hills and islands ("Hättan, island, <height> m").
 Two possible sources, neither checked yet:
 
 - **GeoNames.** The dump has `elevation` (often empty for small places) and `dem` (a height
