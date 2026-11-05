@@ -7,8 +7,8 @@
 // four key labels (12 to 15) are strings, kept as sent with their format letters; a line left out is "" (protobuf-net
 // writes nothing for a null string); the print frame (1) is not read. A 186 that is absent is missing content, a 186 that
 // is not a message or a line in another shape is a wrong shape named by its path, and a format letter the app does not
-// know makes the section an unknown code that names the part ([FNX-24]), except "i", which the DCDU draws on a pressed key
-// and on a chosen answer's status (measured 2026-11-03) and which is known here. A shape problem is reported before a letter.
+// know makes the section an unknown code that names the part ([FNX-24]); "i", which the DCDU draws on a pressed key and on a
+// chosen answer's status (measured 2026-11-03), is a letter the parser knows. A shape problem is reported before a letter.
 // Plain is a line's text for the window and the announcement: no codes, no color names, the end trimmed (owner's ruling).
 
 using MSFSBlindAssist.Services;

@@ -37,7 +37,8 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
     /// <summary>
     /// The runs' text joined, with the colors, underline, box, flashing and size left out. For parsing a number out
     /// of the line, for a key readout's plain value (Ctrl+W speaks plain values parsed from it) and for the log. Never
-    /// for a window or an announcement: a read of channel text says each color (FNX-24).
+    /// for a window or an announcement, where a read of channel text says each color (FNX-24), with one exception: the
+    /// DCDU window and its announcements, which speak no color by the owner's ruling (<see cref="FenixChannelDcdu.Plain"/>).
     /// </summary>
     public string JoinedText => string.Concat(Runs.Select(run => run.Text));
 }
@@ -47,9 +48,9 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 /// runs that keep their colors. A lowercase letter before a run is a format code, not text: the color
 /// letters <c>w g c a m y r</c> (white, green, cyan, amber, magenta, yellow, red), <c>u</c>, <c>b</c> and
 /// <c>f</c> to toggle underline, a box and flashing, and <c>s</c> or <c>l</c> for a small or large size. The
-/// letters <c>p</c> and <c>d</c> are known and draw nothing (<c>d</c> adds a space between the words either side of
-/// it), as is <c>x1</c>, the letter x with the digit 1, which draws nothing either. Display text is uppercase, so an
-/// uppercase letter is never a code.
+/// letters <c>p</c>, <c>i</c> and <c>d</c> are known and draw nothing (<c>d</c> adds a space between the words either
+/// side of it), as is <c>x1</c>, the letter x with the digit 1, which draws nothing either. Display text is uppercase,
+/// so an uppercase letter is never a code.
 /// </summary>
 /// <remarks>
 /// <para>The colors are the meaning, so the codes are parsed into data and never stripped: a read that speaks
@@ -61,11 +62,13 @@ internal sealed record FenixTextLine(IReadOnlyList<FenixTextRun> Runs, IReadOnly
 /// run being built closes whenever a code changes the color, underline, box, flashing or size (<c>u</c>, <c>b</c>
 /// and <c>f</c> always do, as they toggle), so a code that restates what the line is already in does not split it,
 /// and no run is empty.</para>
-/// <para>Two letters are known and are attributes that are never spoken: <c>p</c> and <c>d</c>. Neither is a
-/// toggle, neither closes the run or changes its color, underline, box, flashing or size, and neither is kept on a
+/// <para>Three letters are known and are attributes that are never spoken: <c>p</c>, <c>i</c> and <c>d</c>. None is a
+/// toggle, none closes the run or changes its color, underline, box, flashing or size, and none is kept on a
 /// <see cref="FenixTextRun"/>, so no reader can speak one. <c>p</c> draws nothing and adds nothing to the run. It came
 /// in the FMA's slot 1 (<c>bgpV/Scp+1800</c>) for the ten seconds after each of the two V/S reversions, not with every
-/// flash of the flight director's bars, and in an E/WD memo (<c>pgIR IN ALIGN 1 MN</c>); the text stays drawn. <c>d</c>
+/// flash of the flight director's bars, and in an E/WD memo (<c>pgIR IN ALIGN 1 MN</c>); the text stays drawn. <c>i</c>
+/// adds nothing either: the DCDU draws it on a pressed key (<c>ciWILCO*</c>, for about half a second after the press)
+/// and on a chosen answer's status (<c>ciWILCO</c>). <c>d</c>
 /// moves the drawing position right and draws nothing (the FMA's <c>RADIOdc 200</c>, the ND's ground speed line),
 /// and speech merges stretches by color alone, so it adds a space to the run being built: the words either side of
 /// it stay two words ("GS 456"), and no run closes.</para>
@@ -137,7 +140,8 @@ internal static class FenixChannelText
                 case 's': SetSize(FenixTextSize.Small); break;
                 case 'l': SetSize(FenixTextSize.Large); break;
                 case 'p':
-                    // Known, and nothing to the run: it neither closes it, changes it nor draws a character.
+                case 'i':
+                    // Known, and nothing to the run: neither closes it, changes it nor draws a character.
                     break;
                 case 'd':
                     // Moves the drawing position right and draws nothing, so the words either side of it are two words

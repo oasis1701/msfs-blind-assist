@@ -212,6 +212,20 @@ public class FenixChannelTextTests
     }
 
     [Fact]
+    public void The_i_letter_is_known_and_draws_nothing()
+    {
+        // The DCDU, measured 2026-11-03: a pressed key's label for about half a second, and a chosen answer's status. i
+        // changes nothing on the run and draws no character, so a line with it holds no unknown code on any display.
+        FenixTextLine pressed = FenixChannelText.Parse("ciWILCO*");
+        FenixTextLine status = FenixChannelText.Parse("ciWILCO");
+
+        Assert.Equal(new[] { Run("WILCO*", FenixTextColor.Cyan) }, pressed.Runs);
+        Assert.Empty(pressed.UnknownCodes);
+        Assert.Equal(new[] { Run("WILCO", FenixTextColor.Cyan) }, status.Runs);
+        Assert.Empty(status.UnknownCodes);
+    }
+
+    [Fact]
     public void The_d_letter_is_known_and_keeps_the_words_either_side_apart()
     {
         // The FMA's minimum (RADIO 200, two spacers after the c) and the ND's ground speed line: d moves the drawing

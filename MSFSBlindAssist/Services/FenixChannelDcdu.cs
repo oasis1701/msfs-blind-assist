@@ -25,7 +25,7 @@ internal sealed record FenixDcduScreen(
 /// <summary>
 /// Reads the captain's DCDU from the RemoteData message of a push. Never the first officer's side. The first problem
 /// found is the one given: missing content, then a field in the wrong shape, then a format letter the app does not know
-/// ([FNX-24]), except the answer letter "i", which the DCDU draws and the app does know.
+/// ([FNX-24]).
 /// </summary>
 /// <remarks>
 /// A line the push left out reads as protobuf-net leaves it, "" (it writes nothing for a null string). The print frame
@@ -36,19 +36,12 @@ internal static class FenixChannelDcdu
     /// <summary>What the window and the log call the display.</summary>
     public const string DisplayName = "DCDU";
 
-    // The letter "i", measured on build 3.0.0.7613 (2026-11-03): the DCDU draws it on a pressed key ("ciWILCO*", for about half
-    // a second after the press) and on a chosen answer's status ("ciWILCO"), and it is never spoken. FenixChannelText does not
-    // know it (another plan's file), so Decode ignores it; the parser lists it as an unknown code and leaves it out of the text,
-    // so a line's text (Plain) never has it. Plan 12 moves it into the shared parser, and this constant and its use go.
-    private const char AnswerLetter = 'i';
-
     /// <summary>
     /// The DCDU of <paramref name="push"/>, the RemoteData message. Every line is checked for its wire shape and as valid
     /// UTF-8; the first one in another shape gives a section that names it by its path ("186.4"), and so does a field 186
     /// that is not a valid message ("186"). A push with no field 186 is missing the DCDU's content. The lines are checked
     /// last: the first format letter <see cref="FenixChannelText"/> does not know, in the header, the message, the info
-    /// lines or the key labels, makes the section an unknown code that names the part. The answer letter "i" is known
-    /// here and is passed over, so a line with it and another unknown letter names the other.
+    /// lines or the key labels, makes the section an unknown code that names the part.
     /// </summary>
     public static FenixChannelSection<FenixDcduScreen> Decode(FenixChannelPush push)
     {
@@ -75,10 +68,7 @@ internal static class FenixChannelDcdu
         foreach ((string text, string place) in TextsOf(screen))
         {
             FenixTextLine line = FenixChannelText.Parse(text);
-            foreach (char code in line.UnknownCodes)
-            {
-                if (code != AnswerLetter) return FenixChannelSection<FenixDcduScreen>.UnknownCode(code, place);
-            }
+            if (line.UnknownCodes.Count > 0) return FenixChannelSection<FenixDcduScreen>.UnknownCode(line.UnknownCodes[0], place);
         }
 
         return FenixChannelSection<FenixDcduScreen>.Ok(screen);
