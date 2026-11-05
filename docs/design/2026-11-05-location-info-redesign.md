@@ -1,6 +1,7 @@
 # Location Info window redesign (proposal)
 
-Status: agreed 2026-11-05, after three review rounds with the owner. Nothing is built yet.
+Status: agreed 2026-11-05, after three review rounds with the owner. Built 2026-11-05 on this branch
+(location schema 2), not yet checked live.
 
 **Done when:** everything under Proposed layout, The map position, Refreshing, Filters, Context
 menu on a result and Airports is built, committed, and checked live (by the owner in the sim or
@@ -202,15 +203,10 @@ water depth) follow the same column; population is already stored, depth is not 
   (within 45°, inside the Regional range), which the Towns and Villages filters plus the Direction
   filter cover.
 
-## Open questions
-
-- Readable names for feature types (ISL → "island"). Checked: the database keeps only the codes
-  (`feature_code` table: id and code), and the download fetches `allCountries.zip`,
-  `countryInfo.txt` and `admin1CodesASCII.txt`, not GeoNames' `featureCodes_en.txt`. Fetching that
-  file with the others and storing the names is a schema bump (LOC-7), so every database is rebuilt.
-
 ## Settled
 
+- Readable names for feature types (ISL → "island"): the download now fetches GeoNames'
+  `featureCodes_en.txt` and stores each name in `feature_code.name` (schema 2).
 - The GeoNames tab's ranges: Nearby range (Output C, the area line, Volanta's traffic places) and
   Major Cities range (Major Cities, Volanta) stay. Regional range goes with Cardinal Directions,
   its only user. Landmarks range, used only by today's window boxes, is replaced by the window's

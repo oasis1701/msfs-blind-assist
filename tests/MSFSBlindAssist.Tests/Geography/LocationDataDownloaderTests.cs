@@ -241,6 +241,7 @@ public sealed class LocationDataDownloaderTests : IDisposable
         WriteCompleteDownload(FakeServer.Zip);
         File.WriteAllText(Path.Combine(_store.DownloadFolder, "countryInfo.txt"), GeographyFixtureWorld.CountryInfo);
         File.WriteAllText(Path.Combine(_store.DownloadFolder, "admin1CodesASCII.txt"), GeographyFixtureWorld.Admin1);
+        File.WriteAllText(Path.Combine(_store.DownloadFolder, "featureCodes_en.txt"), GeographyFixtureWorld.FeatureCodes);
         foreach (var (layer, file) in NaturalEarthShapes.LayerFiles)
             File.WriteAllText(Path.Combine(_store.DownloadFolder, file + ".geojson"), GeographyFixtureWorld.Shapes[layer]);
         _server.Offline = true;
@@ -382,6 +383,7 @@ public sealed class LocationDataDownloaderTests : IDisposable
             string url = request.RequestUri!.ToString();
             if (url == LocationDataDownloader.GeoNamesBaseUrl + "countryInfo.txt") return Text(GeographyFixtureWorld.CountryInfo);
             if (url == LocationDataDownloader.GeoNamesBaseUrl + "admin1CodesASCII.txt") return Text(GeographyFixtureWorld.Admin1);
+            if (url == LocationDataDownloader.GeoNamesBaseUrl + "featureCodes_en.txt") return Text(GeographyFixtureWorld.FeatureCodes);
             foreach (var (layer, file) in NaturalEarthShapes.LayerFiles)
                 if (url == LocationDataDownloader.NaturalEarthBaseUrl + file + ".geojson")
                     return Text(Shapes[layer]);

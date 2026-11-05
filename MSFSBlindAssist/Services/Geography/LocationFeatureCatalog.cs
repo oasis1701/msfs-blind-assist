@@ -106,4 +106,20 @@ internal static class LocationFeatureCatalog
             return LocationCategory.Town;
         return LocationCategory.Village;
     }
+
+    /// <summary>Whether the Location Info window lists a category: every one but the undersea class,
+    /// which is stored for later and never shown.</summary>
+    internal static bool IsShown(LocationCategory category) => category != LocationCategory.Undersea;
+
+    /// <summary>A category's heading in the Location Info window's category tree.</summary>
+    internal static string Label(LocationCategory category) => category switch
+    {
+        LocationCategory.Town => "Towns",
+        LocationCategory.Village => "Villages",
+        LocationCategory.Airport => "Airports",
+        LocationCategory.Terrain => "Terrain",
+        LocationCategory.Water => "Water",
+        LocationCategory.Landmark => "Landmarks",
+        _ => category.ToString(),
+    };
 }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using MSFSBlindAssist.Models;
 
 namespace MSFSBlindAssist.Services.Geography;
 
@@ -207,6 +208,46 @@ internal static class LocationPhrases
             lines.Add("Time zone: " + where.TimeZone);
 
         return lines.Count == 0 ? "No details for this position." : string.Join("\r\n", lines);
+    }
+
+    /// <summary>
+    /// The Location Info window's first box: the aircraft's "Where you are" lines; when the map position is
+    /// not the aircraft, a line saying where it is ("Map position: Krokholmen, 23 miles northwest of the
+    /// aircraft"); then the major cities around the map position.
+    /// </summary>
+    internal static string LocationInfoText(WhereYouAre aircraft, string? mapName, double mapNmFromAircraft,
+        double mapBearingFromAircraft, IReadOnlyList<NearbyPlace> majorCities, bool kilometres)
+    {
+        var text = WhereYouAreText(aircraft, kilometres);
+        if (mapName is not null)
+        {
+            string where = ToUnit(mapNmFromAircraft, kilometres) < 0.05 ? "at the aircraft"
+                : DistanceAndDirection(mapNmFromAircraft, mapBearingFromAircraft, kilometres) + " of the aircraft";
+            text += "\r\nMap position: " + mapName + ", " + where;
+        }
+        if (majorCities.Count > 0)
+            text += "\r\nMajor cities" + (mapName is null ? "" : " around the map position") + ":\r\n"
+                + string.Join("\r\n", majorCities.Select(c => c.ToString()));
+        return text;
+    }
+
+    /// <summary>"23 miles northwest": a result's distance and direction, as the window's columns show it.</summary>
+    internal static string DistanceAndDirection(double nm, double bearingTrue, bool kilometres) =>
+        ToUnit(nm, kilometres) < 0.05 ? "here" : EdgeDistance(nm, kilometres) + " " + Direction(bearingTrue);
+
+    /// <summary>"57.93333, 11.66667": decimal degrees, invariant, as the window shows and copies them.</summary>
+    internal static string Coordinates(double lat, double lon) => Inv($"{lat:0.00000}, {lon:0.00000}");
+
+    /// <summary>A result's region column: "Västra Götaland, Sweden".</summary>
+    internal static string Region(string state, string country) => JoinNonEmpty(state, country) ?? "";
+
+    /// <summary>The window's Details column: a town's population; an airport's ident and whether it was found
+    /// in the simulator's navigation database (a likely match, not a certain one); nothing for other places.</summary>
+    internal static string PlaceDetails(LocationCategory category, int population, string? simulatorIdent)
+    {
+        if (category == LocationCategory.Airport)
+            return simulatorIdent is null ? "Not found in simulator" : simulatorIdent + ", in simulator";
+        return population > 0 ? Inv($"Population {population:N0}") : "";
     }
 
     private static string? StateAndCountry(WhereYouAre where)

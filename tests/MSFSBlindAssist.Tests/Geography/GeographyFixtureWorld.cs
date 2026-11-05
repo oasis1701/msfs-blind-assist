@@ -10,15 +10,15 @@ namespace MSFSBlindAssist.Tests.Geography;
 /// </summary>
 internal static class GeographyFixtureWorld
 {
-    private static string Row(int id, string name, double lat, double lon, string cls, string code, string a1, int pop) =>
-        FormattableString.Invariant($"{id}\t{name}\t{name}\t\t{lat}\t{lon}\t{cls}\t{code}\tUS\t\t{a1}\t\t\t\t{pop}\t\t\tAmerica/New_York\t2026-01-01");
+    private static string Row(int id, string name, double lat, double lon, string cls, string code, string a1, int pop, string alternates = "") =>
+        FormattableString.Invariant($"{id}\t{name}\t{name}\t{alternates}\t{lat}\t{lon}\t{cls}\t{code}\tUS\t\t{a1}\t\t\t\t{pop}\t\t\tAmerica/New_York\t2026-01-01");
 
     internal static readonly string[] Rows =
     {
         Row(1, "Bayside", 38.55, -76.48, "P", "PPL", "MD", 1238),
         Row(2, "Hamlet", 38.60, -76.70, "P", "PPL", "MD", 0),
         Row(3, "Bigtown", 39.29, -76.61, "P", "PPLA2", "MD", 600000),
-        Row(4, "Bayside Airport", 38.40, -76.60, "S", "AIRP", "MD", 0),
+        Row(4, "Bayside Airport", 38.40, -76.60, "S", "AIRP", "MD", 0, "KBAY,BYA,Bayside Field"),
         Row(5, "Pond", 38.70, -76.90, "H", "LK", "MD", 0),
         Row(6, "Sugarloaf Mountain", 38.90, -77.00, "T", "MT", "MD", 0),
         Row(7, "Bay Museum", 38.50, -76.50, "S", "MUS", "MD", 0),
@@ -34,6 +34,9 @@ internal static class GeographyFixtureWorld
 
     internal const string CountryInfo = "#ISO\tISO3\tNum\tfips\tCountry\nUS\tUSA\t840\tUS\tUnited States\n";
     internal const string Admin1 = "US.MD\tMaryland\tMaryland\t4361885\nUS.VA\tVirginia\tVirginia\t6254928\n";
+    // MUS is left out on purpose: a code the file does not name keeps the code as its name.
+    internal const string FeatureCodes = "P.PPL\tpopulated place\ta city, town, village\nP.PPLA2\tseat of a second-order administrative division\t\n"
+        + "P.PPLX\tsection of populated place\t\nS.AIRP\tairport\ta place where aircraft regularly land\nH.LK\tlake\t\nT.MT\tmountain\t\nnull\t\t\n";
 
     internal static byte[] DumpZip()
     {
@@ -73,13 +76,15 @@ internal static class GeographyFixtureWorld
         File.WriteAllBytes(zip, DumpZip());
         File.WriteAllText(Path.Combine(dir, "countryInfo.txt"), CountryInfo);
         File.WriteAllText(Path.Combine(dir, "admin1.txt"), Admin1);
+        File.WriteAllText(Path.Combine(dir, "featureCodes.txt"), FeatureCodes);
         var files = Shapes.ToDictionary(kv => kv.Key, kv =>
         {
             string path = Path.Combine(dir, kv.Key + ".geojson");
             File.WriteAllText(path, kv.Value);
             return path;
         });
-        return new LocationBuildInputs(zip, Path.Combine(dir, "countryInfo.txt"), Path.Combine(dir, "admin1.txt"), files, "2026-10-10")
+        return new LocationBuildInputs(zip, Path.Combine(dir, "countryInfo.txt"), Path.Combine(dir, "admin1.txt"),
+            Path.Combine(dir, "featureCodes.txt"), files, "2026-10-10")
         {
             MinimumPlaces = 1,
             MinimumRows = minimumRows,

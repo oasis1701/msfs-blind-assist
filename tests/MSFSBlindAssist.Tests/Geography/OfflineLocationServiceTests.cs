@@ -10,7 +10,7 @@ public sealed class OfflineLocationServiceTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "msfsba-geo-" + Guid.NewGuid().ToString("N"));
     private readonly LocationDataStore _store;
-    private static readonly LocationQuerySettings Miles = new(false, 25, 50, 185, 30, 50000, 10, 10, 8, 8, 8, 8);
+    private static readonly LocationQuerySettings Miles = new(false, 25, 185, 50000, 10);
 
     public OfflineLocationServiceTests()
     {
@@ -88,15 +88,15 @@ public sealed class OfflineLocationServiceTests : IDisposable
         // existed must not make every C press scan a continent.
         var settings = new MSFSBlindAssist.Settings.UserSettings
         {
-            NearbyCitiesRange = 5000, RegionalCitiesRange = 5000, MajorCitiesRange = 1000, LandmarksRange = 5000, CoastRange = 5000,
+            NearbyCitiesRange = 5000, MajorCitiesRange = 1000, CoastRange = 5000,
         };
         var miles = LocationQuerySettings.From(settings);
-        Assert.Equal(new[] { 310, 310, 310, 310 }, new[] { miles.NearbyRange, miles.RegionalRange, miles.MajorRange, miles.LandmarksRange });
+        Assert.Equal(new[] { 310, 310 }, new[] { miles.NearbyRange, miles.MajorRange });
         Assert.Equal(1000, miles.CoastRange);
 
         settings.DistanceUnits = "kilometers";
         var km = LocationQuerySettings.From(settings);
-        Assert.Equal(new[] { 500, 500, 500, 500 }, new[] { km.NearbyRange, km.RegionalRange, km.MajorRange, km.LandmarksRange });
+        Assert.Equal(new[] { 500, 500 }, new[] { km.NearbyRange, km.MajorRange });
     }
 
     [Fact]
@@ -209,17 +209,65 @@ public sealed class OfflineLocationServiceTests : IDisposable
     }
 
     [Fact]
-    public void Location_info_fills_every_list()
+    public void Location_info_lists_the_major_cities()
     {
         var details = Built().GetLocationInfo(38.6, -76.6, Miles)!.Details!;
         Assert.Contains(details.MajorCities, c => c.Name == "Bigtown");
         Assert.DoesNotContain(details.MajorCities, c => c.Name == "Bayside"); // under the 50,000 threshold
-        Assert.Contains(details.NearbyPlaces, p => p.Name == "Hamlet");
-        Assert.Contains(details.CategorizedLandmarks["Airports"], l => l.Name == "Bayside Airport");
-        Assert.Contains(details.CategorizedLandmarks["Water Bodies"], l => l.Name == "Pond");
-        Assert.Contains(details.CategorizedLandmarks["Terrain"], l => l.Name == "Sugarloaf Mountain");
-        Assert.Contains(details.CategorizedLandmarks["Tourist Landmarks"], l => l.Name == "Bay Museum");
-        Assert.DoesNotContain(details.CategorizedLandmarks["Tourist Landmarks"], l => l.Name == "Some School");
+    }
+
+    [Fact]
+    public void A_search_around_a_point_finds_every_shown_kind_with_its_type_name()
+    {
+        var places = Built().SearchAround(38.6, -76.6, 60, CancellationToken.None)!;
+        var mountain = Assert.Single(places, p => p.Name == "Sugarloaf Mountain");
+        Assert.Equal(LocationCategory.Terrain, mountain.Category);
+        Assert.Equal("mountain", mountain.TypeName);          // from featureCodes_en.txt
+        Assert.Equal("Maryland", mountain.State);
+        Assert.Equal("MUS", Assert.Single(places, p => p.Name == "Bay Museum").TypeName); // a code the file lacks keeps the code
+        Assert.Equal("bayside airport", Assert.Single(places, p => p.Name == "Bayside Airport").FoldedName);
+        Assert.Equal("KBAY,BYA,Bayside Field", Assert.Single(places, p => p.Name == "Bayside Airport").AlternateNames);
+        Assert.Equal("", Assert.Single(places, p => p.Name == "Pond").AlternateNames); // airports only
+        Assert.DoesNotContain(places, p => p.Name == "Some School");
+        Assert.DoesNotContain(places, p => p.Name == "Bigtown"); // 77 km away, outside 60 km
+    }
+
+    [Fact]
+    public void The_place_types_come_from_the_database()
+    {
+        var types = Built().GetPlaceTypes()!;
+        Assert.Contains(types, t => t.Key == "Terrain:MT" && t.Name == "mountain");
+        Assert.Contains(types, t => t.Key == "Town:PPLA2");
+        Assert.Contains(types, t => t.Key == "Village:PPL"); // Hamlet, population 0
+        Assert.Contains(types, t => t.Key == "Town:PPL");    // Bayside, 1,238
+    }
+
+    [Fact]
+    public void A_whole_world_search_keeps_the_nearest_and_counts_them_all()
+    {
+        var outcome = Built().SearchWorld("bay", 38.5, -76.5, 2, CancellationToken.None)!;
+        Assert.Equal(3, outcome.TotalMatches); // Bayside, Bayside Airport, Bay Museum
+        Assert.Equal(new[] { "Bay Museum", "Bayside" }, outcome.Places.Select(p => p.Name));
+    }
+
+    [Theory]
+    [InlineData("Göteborg", "goteborg", true)]
+    [InlineData("Trollhättan", "trollhatt", true)]
+    [InlineData("Krokholmen", "holm", true)]
+    [InlineData("Charles-de-Gaulle", "charles de", true)]
+    [InlineData("Krokholmen", "trollh", false)]
+    public void Names_match_folded_queries(string name, string folded, bool expected) =>
+        Assert.Equal(expected, OfflineLocationService.NameMatches(name, folded));
+
+    [Fact]
+    public void Output_c_can_name_the_nearest_place_of_chosen_kinds()
+    {
+        var service = Built();
+        Assert.Equal("Bayside", service.GetNearest(38.55, -76.48, Miles)!.Nearest!.Name);
+        var museum = service.GetNearest(38.55, -76.48, Miles with { PlaceTypes = new[] { "Landmark:MUS" } })!;
+        Assert.Equal("Bay Museum", museum.Nearest!.Name);
+        Assert.Equal("Maryland", museum.Where.State); // the area still comes from the nearest town
+        Assert.Null(service.GetNearest(38.55, -76.48, Miles with { PlaceTypes = new[] { "Terrain:ISL" } })!.Nearest);
     }
 
     [Fact]

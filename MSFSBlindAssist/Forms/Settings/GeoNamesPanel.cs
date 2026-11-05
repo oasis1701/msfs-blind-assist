@@ -14,17 +14,10 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
     private Button _downloadButton = null!;
     private Button _cancelDownloadButton = null!;
     private TextBox _nearbyCitiesTextBox = null!;
-    private TextBox _regionalCitiesTextBox = null!;
     private TextBox _majorCitiesTextBox = null!;
     private TextBox _populationThresholdTextBox = null!;
-    private TextBox _landmarksTextBox = null!;
     private TextBox _coastRangeTextBox = null!;
-    private TextBox _maxNearbyPlacesTextBox = null!;
     private TextBox _maxMajorCitiesTextBox = null!;
-    private TextBox _maxAirportsTextBox = null!;
-    private TextBox _maxTerrainFeaturesTextBox = null!;
-    private TextBox _maxWaterBodiesTextBox = null!;
-    private TextBox _maxTouristLandmarksTextBox = null!;
     private RadioButton _milesRadioButton = null!;
     private RadioButton _kilometersRadioButton = null!;
     private Button _resetDefaultsButton = null!;
@@ -138,26 +131,6 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
 
         yPos += spacing;
 
-        // Cardinal cities
-        var regionalCitiesLabel = new Label
-        {
-            Text = "Cardinal Cities Range:",
-            Location = new System.Drawing.Point(20, yPos),
-            Size = new System.Drawing.Size(150, labelHeight)
-        };
-        Controls.Add(regionalCitiesLabel);
-
-        _regionalCitiesTextBox = new TextBox
-        {
-            Location = new System.Drawing.Point(180, yPos),
-            Size = new System.Drawing.Size(60, textBoxHeight),
-            AccessibleName = "Cardinal cities range",
-            AccessibleDescription = "Distance in miles or kilometers to search for cities in each cardinal direction (N/E/S/W)"
-        };
-        Controls.Add(_regionalCitiesTextBox);
-
-        yPos += spacing;
-
         // Major cities
         var majorCitiesLabel = new Label
         {
@@ -205,26 +178,6 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
             AccessibleName = "Population threshold help"
         };
         Controls.Add(populationHelpLabel);
-
-        yPos += spacing;
-
-        // Landmarks
-        var landmarksLabel = new Label
-        {
-            Text = "Landmarks Range:",
-            Location = new System.Drawing.Point(20, yPos),
-            Size = new System.Drawing.Size(150, labelHeight)
-        };
-        Controls.Add(landmarksLabel);
-
-        _landmarksTextBox = new TextBox
-        {
-            Location = new System.Drawing.Point(180, yPos),
-            Size = new System.Drawing.Size(60, textBoxHeight),
-            AccessibleName = "Landmarks range",
-            AccessibleDescription = "Distance in miles or kilometers for landmarks and points of interest"
-        };
-        Controls.Add(_landmarksTextBox);
 
         yPos += spacing;
 
@@ -279,125 +232,21 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
 
         yPos += spacing + 10;
 
-        // Maximum Results section
-        var maxResultsLabel = new Label
-        {
-            Text = "Maximum Results Per Category:",
-            Location = new System.Drawing.Point(20, yPos),
-            Size = new System.Drawing.Size(450, labelHeight),
-            Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold),
-            AccessibleName = "Maximum results section"
-        };
-        Controls.Add(maxResultsLabel);
-
-        yPos += labelHeight + 10;
-
-        // Create a two-column layout for max results settings
-        int leftColumn = 20;
-        int rightColumn = 300;
-        int labelWidth = 120;
-        int textBoxWidth = 60;
-
-        // Left column - Nearby Places, Major Cities, Airports
-        var maxNearbyLabel = new Label
-        {
-            Text = "Nearby Places:",
-            Location = new System.Drawing.Point(leftColumn, yPos),
-            Size = new System.Drawing.Size(labelWidth, labelHeight)
-        };
-        Controls.Add(maxNearbyLabel);
-
-        _maxNearbyPlacesTextBox = new TextBox
-        {
-            Location = new System.Drawing.Point(leftColumn + labelWidth + 5, yPos),
-            Size = new System.Drawing.Size(textBoxWidth, textBoxHeight),
-            AccessibleName = "Maximum nearby places"
-        };
-        Controls.Add(_maxNearbyPlacesTextBox);
-
         var maxMajorCitiesLabel = new Label
         {
-            Text = "Major Cities:",
-            Location = new System.Drawing.Point(rightColumn, yPos),
-            Size = new System.Drawing.Size(labelWidth, labelHeight)
+            Text = "Maximum Major Cities:",
+            Location = new System.Drawing.Point(20, yPos),
+            Size = new System.Drawing.Size(150, labelHeight)
         };
         Controls.Add(maxMajorCitiesLabel);
 
         _maxMajorCitiesTextBox = new TextBox
         {
-            Location = new System.Drawing.Point(rightColumn + labelWidth + 5, yPos),
-            Size = new System.Drawing.Size(textBoxWidth, textBoxHeight),
+            Location = new System.Drawing.Point(180, yPos),
+            Size = new System.Drawing.Size(60, textBoxHeight),
             AccessibleName = "Maximum major cities"
         };
         Controls.Add(_maxMajorCitiesTextBox);
-
-        yPos += spacing;
-
-        var maxAirportsLabel = new Label
-        {
-            Text = "Airports:",
-            Location = new System.Drawing.Point(leftColumn, yPos),
-            Size = new System.Drawing.Size(labelWidth, labelHeight)
-        };
-        Controls.Add(maxAirportsLabel);
-
-        _maxAirportsTextBox = new TextBox
-        {
-            Location = new System.Drawing.Point(leftColumn + labelWidth + 5, yPos),
-            Size = new System.Drawing.Size(textBoxWidth, textBoxHeight),
-            AccessibleName = "Maximum airports"
-        };
-        Controls.Add(_maxAirportsTextBox);
-
-        var maxTerrainLabel = new Label
-        {
-            Text = "Terrain Features:",
-            Location = new System.Drawing.Point(rightColumn, yPos),
-            Size = new System.Drawing.Size(labelWidth, labelHeight)
-        };
-        Controls.Add(maxTerrainLabel);
-
-        _maxTerrainFeaturesTextBox = new TextBox
-        {
-            Location = new System.Drawing.Point(rightColumn + labelWidth + 5, yPos),
-            Size = new System.Drawing.Size(textBoxWidth, textBoxHeight),
-            AccessibleName = "Maximum terrain features"
-        };
-        Controls.Add(_maxTerrainFeaturesTextBox);
-
-        yPos += spacing;
-
-        var maxWaterLabel = new Label
-        {
-            Text = "Water Bodies:",
-            Location = new System.Drawing.Point(leftColumn, yPos),
-            Size = new System.Drawing.Size(labelWidth, labelHeight)
-        };
-        Controls.Add(maxWaterLabel);
-
-        _maxWaterBodiesTextBox = new TextBox
-        {
-            Location = new System.Drawing.Point(leftColumn + labelWidth + 5, yPos),
-            Size = new System.Drawing.Size(textBoxWidth, textBoxHeight),
-            AccessibleName = "Maximum water bodies"
-        };
-        Controls.Add(_maxWaterBodiesTextBox);
-
-        var maxTouristLabel = new Label
-        {
-            Text = "Tourist Landmarks:",
-            Location = new System.Drawing.Point(rightColumn, yPos),
-            Size = new System.Drawing.Size(labelWidth, labelHeight)
-        };
-        Controls.Add(maxTouristLabel);
-
-        _maxTouristLandmarksTextBox = new TextBox
-        {
-            Location = new System.Drawing.Point(rightColumn + labelWidth + 5, yPos),
-            Size = new System.Drawing.Size(textBoxWidth, textBoxHeight),
-            AccessibleName = "Maximum tourist landmarks"
-        };
-        Controls.Add(_maxTouristLandmarksTextBox);
 
         yPos += spacing + 20;
 
@@ -417,19 +266,11 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
     private void ResetDefaultsButton_Click(object? sender, EventArgs e)
     {
         _nearbyCitiesTextBox.Text = "25";
-        _regionalCitiesTextBox.Text = "50";
         _majorCitiesTextBox.Text = "185";
         _populationThresholdTextBox.Text = "50000";
-        _landmarksTextBox.Text = "30";
         _coastRangeTextBox.Text = "50";
 
-        // Reset maximum results to defaults
-        _maxNearbyPlacesTextBox.Text = "10";
         _maxMajorCitiesTextBox.Text = "10";
-        _maxAirportsTextBox.Text = "8";
-        _maxTerrainFeaturesTextBox.Text = "8";
-        _maxWaterBodiesTextBox.Text = "8";
-        _maxTouristLandmarksTextBox.Text = "8";
 
         _milesRadioButton.Checked = true;
     }
@@ -441,18 +282,11 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         // never meets an error.
         int ceiling = LocationQuerySettings.MaxRange(settings.DistanceUnits == "kilometers");
         _nearbyCitiesTextBox.Text = Math.Clamp(settings.NearbyCitiesRange, 1, ceiling).ToString();
-        _regionalCitiesTextBox.Text = Math.Clamp(settings.RegionalCitiesRange, 1, ceiling).ToString();
         _majorCitiesTextBox.Text = Math.Clamp(settings.MajorCitiesRange, 1, ceiling).ToString();
         _populationThresholdTextBox.Text = settings.MajorCityPopulationThreshold.ToString();
-        _landmarksTextBox.Text = Math.Clamp(settings.LandmarksRange, 1, ceiling).ToString();
         _coastRangeTextBox.Text = Math.Clamp(settings.CoastRange, 1, LocationQuerySettings.MaxCoastRange).ToString();
 
-        _maxNearbyPlacesTextBox.Text = settings.MaxNearbyPlacesToShow.ToString();
         _maxMajorCitiesTextBox.Text = settings.MaxMajorCitiesToShow.ToString();
-        _maxAirportsTextBox.Text = settings.MaxAirportsToShow.ToString();
-        _maxTerrainFeaturesTextBox.Text = settings.MaxTerrainFeaturesToShow.ToString();
-        _maxWaterBodiesTextBox.Text = settings.MaxWaterBodiesToShow.ToString();
-        _maxTouristLandmarksTextBox.Text = settings.MaxTouristLandmarksToShow.ToString();
 
         if (settings.DistanceUnits == "kilometers")
         {
@@ -476,13 +310,6 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
             return false;
         }
 
-        if (!(int.TryParse(_regionalCitiesTextBox.Text, out int regionalCities) && regionalCities > 0 && regionalCities <= ceiling))
-        {
-            error = $"Please enter a number from 1 to {ceiling} ({units}) for Regional Cities Range.";
-            focus = _regionalCitiesTextBox;
-            return false;
-        }
-
         if (!(int.TryParse(_majorCitiesTextBox.Text, out int majorCities) && majorCities > 0 && majorCities <= ceiling))
         {
             error = $"Please enter a number from 1 to {ceiling} ({units}) for Major Cities Range.";
@@ -497,13 +324,6 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
             return false;
         }
 
-        if (!(int.TryParse(_landmarksTextBox.Text, out int landmarks) && landmarks > 0 && landmarks <= ceiling))
-        {
-            error = $"Please enter a number from 1 to {ceiling} ({units}) for Landmarks Range.";
-            focus = _landmarksTextBox;
-            return false;
-        }
-
         if (!(int.TryParse(_coastRangeTextBox.Text, out int coastRange) && coastRange > 0 && coastRange <= LocationQuerySettings.MaxCoastRange))
         {
             error = $"Please enter a number from 1 to {LocationQuerySettings.MaxCoastRange} ({units}) for Coast Range.";
@@ -511,45 +331,10 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
             return false;
         }
 
-        if (!(int.TryParse(_maxNearbyPlacesTextBox.Text, out int maxNearbyPlaces) && maxNearbyPlaces > 0 && maxNearbyPlaces <= 50))
-        {
-            error = "Please enter a valid number (1-50) for Maximum Nearby Places.";
-            focus = _maxNearbyPlacesTextBox;
-            return false;
-        }
-
         if (!(int.TryParse(_maxMajorCitiesTextBox.Text, out int maxMajorCities) && maxMajorCities > 0 && maxMajorCities <= 50))
         {
             error = "Please enter a valid number (1-50) for Maximum Major Cities.";
             focus = _maxMajorCitiesTextBox;
-            return false;
-        }
-
-        if (!(int.TryParse(_maxAirportsTextBox.Text, out int maxAirports) && maxAirports > 0 && maxAirports <= 50))
-        {
-            error = "Please enter a valid number (1-50) for Maximum Airports.";
-            focus = _maxAirportsTextBox;
-            return false;
-        }
-
-        if (!(int.TryParse(_maxTerrainFeaturesTextBox.Text, out int maxTerrain) && maxTerrain > 0 && maxTerrain <= 50))
-        {
-            error = "Please enter a valid number (1-50) for Maximum Terrain Features.";
-            focus = _maxTerrainFeaturesTextBox;
-            return false;
-        }
-
-        if (!(int.TryParse(_maxWaterBodiesTextBox.Text, out int maxWater) && maxWater > 0 && maxWater <= 50))
-        {
-            error = "Please enter a valid number (1-50) for Maximum Water Bodies.";
-            focus = _maxWaterBodiesTextBox;
-            return false;
-        }
-
-        if (!(int.TryParse(_maxTouristLandmarksTextBox.Text, out int maxTourist) && maxTourist > 0 && maxTourist <= 50))
-        {
-            error = "Please enter a valid number (1-50) for Maximum Tourist Landmarks.";
-            focus = _maxTouristLandmarksTextBox;
             return false;
         }
 
@@ -561,18 +346,11 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
     public void ApplyTo(UserSettings settings)
     {
         settings.NearbyCitiesRange = int.Parse(_nearbyCitiesTextBox.Text);
-        settings.RegionalCitiesRange = int.Parse(_regionalCitiesTextBox.Text);
         settings.MajorCitiesRange = int.Parse(_majorCitiesTextBox.Text);
         settings.MajorCityPopulationThreshold = int.Parse(_populationThresholdTextBox.Text);
-        settings.LandmarksRange = int.Parse(_landmarksTextBox.Text);
         settings.CoastRange = int.Parse(_coastRangeTextBox.Text);
 
-        settings.MaxNearbyPlacesToShow = int.Parse(_maxNearbyPlacesTextBox.Text);
         settings.MaxMajorCitiesToShow = int.Parse(_maxMajorCitiesTextBox.Text);
-        settings.MaxAirportsToShow = int.Parse(_maxAirportsTextBox.Text);
-        settings.MaxTerrainFeaturesToShow = int.Parse(_maxTerrainFeaturesTextBox.Text);
-        settings.MaxWaterBodiesToShow = int.Parse(_maxWaterBodiesTextBox.Text);
-        settings.MaxTouristLandmarksToShow = int.Parse(_maxTouristLandmarksTextBox.Text);
 
         settings.DistanceUnits = _kilometersRadioButton.Checked ? "kilometers" : "miles";
     }

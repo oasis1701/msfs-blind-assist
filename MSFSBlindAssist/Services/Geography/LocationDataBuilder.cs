@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.Services.Geography;
 
 /// <summary>The downloaded files a build reads.</summary>
 internal sealed record LocationBuildInputs(
-    string GeoNamesZip, string CountryInfoPath, string Admin1Path,
+    string GeoNamesZip, string CountryInfoPath, string Admin1Path, string FeatureCodesPath,
     IReadOnlyDictionary<NaturalEarthLayer, string> NaturalEarthFiles,
     string GeoNamesDate)
 {
@@ -80,9 +80,10 @@ internal sealed class LocationDataBuilder
 
                 var countries = GeoNamesNameFiles.ParseCountryInfo(File.ReadLines(inputs.CountryInfoPath, Encoding.UTF8));
                 var states = GeoNamesNameFiles.ParseAdmin1(File.ReadLines(inputs.Admin1Path, Encoding.UTF8));
+                var featureNames = GeoNamesNameFiles.ParseFeatureCodes(File.ReadLines(inputs.FeatureCodesPath, Encoding.UTF8));
                 try
                 {
-                    (places, rows) = ImportPlaces(db, inputs.GeoNamesZip, countries, states,
+                    (places, rows) = ImportPlaces(db, inputs.GeoNamesZip, countries, states, featureNames,
                         p => Report(BuildPhase.Places, p * 85 / 100), ct);
                 }
                 catch (InvalidDataException ex)
@@ -152,7 +153,14 @@ internal sealed class LocationDataBuilder
                 PRIMARY KEY(cat, cell, id)) WITHOUT ROWID
             """);
         Exec(db, "CREATE TABLE admin(id INTEGER PRIMARY KEY, cc TEXT NOT NULL, admin1 TEXT NOT NULL, country TEXT NOT NULL, state TEXT NOT NULL)");
-        Exec(db, "CREATE TABLE feature_code(id INTEGER PRIMARY KEY, code TEXT NOT NULL)");
+        // name: featureCodes_en.txt's English name ("island"), the code itself when the file has none.
+        Exec(db, "CREATE TABLE feature_code(id INTEGER PRIMARY KEY, code TEXT NOT NULL, name TEXT NOT NULL)");
+        // An airport's alternate names (ICAO and IATA codes among them), keyed by its GeoNames id:
+        // they match it to the navigation database (AirportMatcher). Airports only, about 42,000.
+        Exec(db, "CREATE TABLE airport_alias(id INTEGER PRIMARY KEY, names TEXT NOT NULL)");
+        // Every (category, feature code) pair the place table holds: the Location Info window builds its
+        // category tree from it, without reading 8 million rows.
+        Exec(db, "CREATE TABLE place_type(cat INTEGER NOT NULL, code INTEGER NOT NULL, PRIMARY KEY(cat, code)) WITHOUT ROWID");
         Exec(db, "CREATE TABLE shape(id INTEGER PRIMARY KEY, layer INTEGER NOT NULL, name TEXT NOT NULL, extra TEXT, is_line INTEGER NOT NULL, blob BLOB NOT NULL)");
         Exec(db, "CREATE VIRTUAL TABLE shape_rt USING rtree(id, min_lon, max_lon, min_lat, max_lat)");
         Exec(db, "CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)");
@@ -165,7 +173,8 @@ internal sealed class LocationDataBuilder
     }
 
     private static (long Places, long Rows) ImportPlaces(SqliteConnection db, string zipPath,
-        Dictionary<string, string> countries, Dictionary<string, string> states, Action<int> percent, CancellationToken ct)
+        Dictionary<string, string> countries, Dictionary<string, string> states, Dictionary<string, string> featureNames,
+        Action<int> percent, CancellationToken ct)
     {
         using var zip = ZipFile.OpenRead(zipPath);
         var entry = zip.GetEntry("allCountries.txt")
@@ -177,6 +186,8 @@ internal sealed class LocationDataBuilder
         var adminIds = new Dictionary<(string Cc, string A1), int>();
         var codeIds = new Dictionary<string, int>(StringComparer.Ordinal);
         var batch = new List<PlaceRow>(BatchRows);
+        var aliases = new List<(int Id, string Names)>();
+        var placeTypes = new HashSet<(byte Cat, int Code)>();
         long places = 0, rows = 0;
 
         using var insert = db.CreateCommand();
@@ -234,6 +245,8 @@ internal sealed class LocationDataBuilder
                 LatOff = latOff, LonOff = lonOff, Pop = row.Population, Code = codeId, Admin = adminId, Name = row.Name,
             });
             places++;
+            if (row.AlternateNames.Length > 0) aliases.Add((row.Id, row.AlternateNames));
+            placeTypes.Add(((byte)row.Category, codeId));
 
             if (batch.Count >= BatchRows)
             {
@@ -268,10 +281,26 @@ internal sealed class LocationDataBuilder
                 cmd.ExecuteNonQuery();
             }
             cmd.Parameters.Clear();
-            cmd.CommandText = "INSERT INTO feature_code(id, code) VALUES ($id, $code)";
+            cmd.CommandText = "INSERT INTO feature_code(id, code, name) VALUES ($id, $code, $name)";
             var cId = cmd.Parameters.Add("$id", SqliteType.Integer);
             var cCode = cmd.Parameters.Add("$code", SqliteType.Text);
-            foreach (var (code, id) in codeIds) { cId.Value = id; cCode.Value = code; cmd.ExecuteNonQuery(); }
+            var cName = cmd.Parameters.Add("$name", SqliteType.Text);
+            foreach (var (code, id) in codeIds)
+            {
+                cId.Value = id; cCode.Value = code; cName.Value = featureNames.GetValueOrDefault(code) ?? code;
+                cmd.ExecuteNonQuery();
+            }
+            cmd.Parameters.Clear();
+            // INSERT OR REPLACE: the dump never repeats an id, but one bad row must not fail the build.
+            cmd.CommandText = "INSERT OR REPLACE INTO airport_alias(id, names) VALUES ($id, $names)";
+            var lId = cmd.Parameters.Add("$id", SqliteType.Integer);
+            var lNames = cmd.Parameters.Add("$names", SqliteType.Text);
+            foreach (var (id, names) in aliases) { lId.Value = id; lNames.Value = names; cmd.ExecuteNonQuery(); }
+            cmd.Parameters.Clear();
+            cmd.CommandText = "INSERT INTO place_type(cat, code) VALUES ($cat, $code)";
+            var tCat = cmd.Parameters.Add("$cat", SqliteType.Integer);
+            var tCode = cmd.Parameters.Add("$code", SqliteType.Integer);
+            foreach (var (cat, code) in placeTypes) { tCat.Value = cat; tCode.Value = code; cmd.ExecuteNonQuery(); }
             tx.Commit();
         }
         return (places, rows);

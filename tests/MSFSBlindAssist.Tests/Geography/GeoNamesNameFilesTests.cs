@@ -33,4 +33,19 @@ public class GeoNamesNameFilesTests
         Assert.Equal("Grisons", names["CH.GR"]);
         Assert.Equal(2, names.Count);
     }
+
+    [Fact]
+    public void Feature_code_names_are_keyed_by_the_code_without_its_class()
+    {
+        var names = GeoNamesNameFiles.ParseFeatureCodes(new[]
+        {
+            "T.ISL	island	a tract of land, smaller than a continent, surrounded by water at high water",
+            "H.LK	lake	a large inland body of standing water",
+            "null		",
+            "S.MUS		no name",
+        });
+        Assert.Equal("island", names["ISL"]);
+        Assert.Equal("lake", names["LK"]);
+        Assert.Equal(2, names.Count);
+    }
 }

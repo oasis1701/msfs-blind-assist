@@ -7,8 +7,7 @@ namespace MSFSBlindAssist.Services.Geography;
 
 /// <summary>The GeoNames tab's ranges and limits, read once per lookup.</summary>
 internal sealed record LocationQuerySettings(
-    bool Kilometres, int NearbyRange, int RegionalRange, int MajorRange, int LandmarksRange, int MajorPopulation,
-    int MaxNearby, int MaxMajor, int MaxAirports, int MaxTerrain, int MaxWater, int MaxLandmarks)
+    bool Kilometres, int NearbyRange, int MajorRange, int MajorPopulation, int MaxMajor)
 {
     internal const double KmPerMile = 1.609344;
 
@@ -29,9 +28,8 @@ internal sealed record LocationQuerySettings(
         bool kilometres = s.DistanceUnits == "kilometers";
         int Range(int value) => Math.Clamp(value, 1, MaxRange(kilometres));
         return new(
-            kilometres, Range(s.NearbyCitiesRange), Range(s.RegionalCitiesRange), Range(s.MajorCitiesRange),
-            Range(s.LandmarksRange), s.MajorCityPopulationThreshold, s.MaxNearbyPlacesToShow, s.MaxMajorCitiesToShow,
-            s.MaxAirportsToShow, s.MaxTerrainFeaturesToShow, s.MaxWaterBodiesToShow, s.MaxTouristLandmarksToShow)
+            kilometres, Range(s.NearbyCitiesRange), Range(s.MajorCitiesRange), s.MajorCityPopulationThreshold,
+            s.MaxMajorCitiesToShow)
         {
             CoastRange = Math.Clamp(s.CoastRange, 1, MaxCoastRange),
         };
@@ -40,6 +38,11 @@ internal sealed record LocationQuerySettings(
     /// <summary>The GeoNames tab's Coast Range, in the tab's units (default 50): over land the sea
     /// coast is mentioned only within it. At sea and over a lake the nearest land or shore is always said.</summary>
     public int CoastRange { get; init; } = 50;
+
+    /// <summary>The kinds of place Output C names ("Terrain:ISL", <see cref="PlaceType.Key"/>), set from the
+    /// Location Info window's "Use for Output C". Empty: towns and villages, C's usual choice. Only a C press
+    /// passes it; the periodic announcement and the window leave it empty.</summary>
+    public IReadOnlyCollection<string> PlaceTypes { get; init; } = Array.Empty<string>();
 
     internal double Km(int range) => Kilometres ? range : range * KmPerMile;
 
@@ -91,7 +94,6 @@ internal sealed class OfflineLocationService
 {
     private static readonly double[] CoastSearchStepsKm = { 50, 100, 200, 400, 800, 1600, 3000 };
     private const double SeaCoastMaxKm = 3000; // Point Nemo, the farthest point from land, is about 2,700 km out
-    private const int CardinalCandidates = 20;
     /// <summary>A "sea" position this close to the coastline is ashore. Natural Earth's coastline is
     /// good to about a kilometre, its seas are simplified further, and its state outlines leave out
     /// many islands and coastal airports: Auckland, St Maarten and Madeira lie within 0.1 km of the
@@ -333,6 +335,9 @@ internal sealed class OfflineLocationService
             .OrderBy(p => p.DistanceNm).ToList();
         var nearest = nearby.FirstOrDefault();
         PlaceHit? place = nearest is null ? null : ToHit(nearest, admins);
+        // The area still comes from the nearest town; only the place C names follows the chosen kinds.
+        if (!details && s.PlaceTypes.Count > 0)
+            place = NearestOfTypes(c, lat, lon, s, admins);
         var (state, country) = AreaOf(hits, land, nearby, nearest, admins);
 
         var where = new WhereYouAre
@@ -349,72 +354,44 @@ internal sealed class OfflineLocationService
             TimeZone = BaseAircraftDefinition.LookupTimeZoneName(lat, lon),
         };
 
-        return new LocationReport(where, place, details ? Details(c, lat, lon, s, nearby, where, admins) : null);
+        return new LocationReport(where, place, details ? Details(c, lat, lon, s, admins) : null);
     }
 
-    private static LocationData Details(SqliteConnection c, double lat, double lon, LocationQuerySettings s,
-        List<FoundPlace> nearby, WhereYouAre where, AdminNames admins)
+    /// <summary>The nearest place of the kinds in <see cref="LocationQuerySettings.PlaceTypes"/> within the
+    /// Nearby range, or null.</summary>
+    private static PlaceHit? NearestOfTypes(SqliteConnection c, double lat, double lon, LocationQuerySettings s, AdminNames admins)
     {
-        var data = new LocationData
+        var codes = FeatureCodes.Load(c);
+        FoundPlace? best = null;
+        foreach (var group in s.PlaceTypes.Select(ParseTypeKey).Where(k => k is not null).GroupBy(k => k!.Value.Category))
         {
-            Regional = new RegionalContext { State = where.State ?? "", Country = where.Country ?? "" },
-        };
-        string unit = LocationPhrases.UnitWord(s.Kilometres);
+            var ids = codes.IdsOf(group.Select(k => k!.Value.Code));
+            if (ids.Count == 0) continue;
+            var hit = Places(c, lat, lon, s.Km(s.NearbyRange), group.Key)
+                .Where(p => ids.Contains(p.Code)).MinBy(p => p.DistanceNm);
+            if (hit is not null && (best is null || hit.DistanceNm < best.DistanceNm)) best = hit;
+        }
+        return best is null ? null : ToHit(best, admins);
+    }
 
-        data.NearbyPlaces = nearby.OrderBy(p => p.DistanceNm).Take(s.MaxNearby)
-            .Select(p => ToNearbyPlace(p, admins, s, p.Population > 50000 ? "city" : "town")).ToList();
+    /// <summary>"Terrain:ISL" back to its category and code; null for a key this version does not know.</summary>
+    internal static (LocationCategory Category, string Code)? ParseTypeKey(string key)
+    {
+        int colon = key.IndexOf(':');
+        if (colon <= 0 || !Enum.TryParse<LocationCategory>(key[..colon], out var category)) return null;
+        return (category, key[(colon + 1)..]);
+    }
 
+    /// <summary>The Location Info window's Major Cities: towns of at least the Minimum Population within the
+    /// Major Cities Range, larger and closer first (the online lookup's ranking).</summary>
+    private static LocationData Details(SqliteConnection c, double lat, double lon, LocationQuerySettings s, AdminNames admins)
+    {
         var major = Places(c, lat, lon, s.Km(s.MajorRange), s.MajorPopulation, LocationCategory.Town)
             .Select(p => ToNearbyPlace(p, admins, s, "major_city")).ToList();
-        // Larger and closer first, the online lookup's ranking.
         major.Sort((a, b) => (a.Distance / Math.Log10(Math.Max(a.Population, 1000)))
             .CompareTo(b.Distance / Math.Log10(Math.Max(b.Population, 1000))));
-        data.MajorCities = major.Take(s.MaxMajor).ToList();
-
-        var candidates = Places(c, lat, lon, s.Km(s.RegionalRange), LocationCategory.Town, LocationCategory.Village)
-            .OrderBy(p => p.DistanceNm).Take(CardinalCandidates).ToList();
-        string Pick(double target, out string distance)
-        {
-            distance = "";
-            foreach (var p in candidates)
-            {
-                double diff = Math.Abs(p.BearingTrue - target);
-                if (diff > 180) diff = 360 - diff;
-                if (diff > 45) continue;
-                distance = string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                    $"{LocationPhrases.ToUnit(p.DistanceNm, s.Kilometres):F0} {unit}");
-                return p.Name;
-            }
-            return "";
-        }
-        data.Directions = new CardinalDirections();
-        data.Directions.North = Pick(0, out var nd); data.Directions.NorthDistance = nd;
-        data.Directions.East = Pick(90, out var ed); data.Directions.EastDistance = ed;
-        data.Directions.South = Pick(180, out var sd); data.Directions.SouthDistance = sd;
-        data.Directions.West = Pick(270, out var wd); data.Directions.WestDistance = wd;
-
-        double landmarksKm = s.Km(s.LandmarksRange);
-        data.CategorizedLandmarks["Airports"] = Landmarks(c, lat, lon, landmarksKm, LocationCategory.Airport, s.MaxAirports, admins, s);
-        data.CategorizedLandmarks["Terrain"] = Landmarks(c, lat, lon, landmarksKm, LocationCategory.Terrain, s.MaxTerrain, admins, s);
-        data.CategorizedLandmarks["Water Bodies"] = Landmarks(c, lat, lon, landmarksKm, LocationCategory.Water, s.MaxWater, admins, s);
-        data.CategorizedLandmarks["Tourist Landmarks"] = Landmarks(c, lat, lon, landmarksKm, LocationCategory.Landmark, s.MaxLandmarks, admins, s);
-        return data;
+        return new LocationData { MajorCities = major.Take(s.MaxMajor).ToList() };
     }
-
-    private static List<Landmark> Landmarks(SqliteConnection c, double lat, double lon, double radiusKm,
-        LocationCategory category, int max, AdminNames admins, LocationQuerySettings s) =>
-        Places(c, lat, lon, radiusKm, category).OrderBy(p => p.DistanceNm).Take(max).Select(p =>
-        {
-            var (state, country) = admins.Of(p.AdminId);
-            return new Landmark
-            {
-                Name = p.Name, State = state, Country = country,
-                Distance = LocationPhrases.ToUnit(p.DistanceNm, s.Kilometres),
-                Unit = LocationPhrases.UnitWord(s.Kilometres),
-                Direction = LocationPhrases.Direction(p.BearingTrue),
-                Type = category.ToString().ToLowerInvariant(),
-            };
-        }).ToList();
 
     private static NearbyPlace ToNearbyPlace(FoundPlace p, AdminNames admins, LocationQuerySettings s, string type)
     {
@@ -432,6 +409,182 @@ internal sealed class OfflineLocationService
     {
         var (state, country) = admins.Of(p.AdminId);
         return new PlaceHit(p.Name, state, country, p.DistanceNm, p.BearingTrue);
+    }
+
+    // ---- the Location Info window's search ----
+
+    /// <summary>Every kind of place the database holds that the window shows (<see cref="LocationFeatureCatalog.IsShown"/>),
+    /// from its <c>place_type</c> table, named by GeoNames' <c>featureCodes_en.txt</c>. Null when no usable
+    /// database is installed.</summary>
+    internal IReadOnlyList<PlaceType>? GetPlaceTypes() =>
+        _store.IsAvailable
+            ? _store.Read(c =>
+            {
+                var codes = FeatureCodes.Load(c);
+                var types = new List<PlaceType>();
+                using var cmd = c.CreateCommand();
+                cmd.CommandText = "SELECT cat, code FROM place_type";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    var category = (LocationCategory)r.GetInt32(0);
+                    if (!LocationFeatureCatalog.IsShown(category)) continue;
+                    var (code, name) = codes.Of(r.GetInt32(1));
+                    types.Add(new PlaceType(category, code, name));
+                }
+                return (IReadOnlyList<PlaceType>)types;
+            })
+            : null;
+
+    /// <summary>Every shown place within <paramref name="radiusKm"/> of a point, in no order (the window sorts
+    /// and filters). Names are folded here, off the UI thread. Null when no usable database is installed.</summary>
+    internal IReadOnlyList<PlaceResult>? SearchAround(double lat, double lon, double radiusKm, CancellationToken ct) =>
+        _store.IsAvailable
+            ? _store.Read(c =>
+            {
+                lon = LocationGrid.NormalizeLon(lon);
+                var admins = AdminNames.Load(c);
+                var codes = FeatureCodes.Load(c);
+                var categories = Enum.GetValues<LocationCategory>().Where(LocationFeatureCatalog.IsShown).ToArray();
+                var found = new List<PlaceResult>();
+                foreach (var p in PlacesWithId(c, lat, lon, radiusKm, categories, ct))
+                    found.Add(ToResult(p, admins, codes));
+                return WithAliases(c, found);
+            })
+            : null;
+
+    /// <summary>
+    /// Every shown place in the world whose folded name contains <paramref name="foldedQuery"/>, the
+    /// <paramref name="max"/> nearest to the point, nearest first. Reads the whole place table (no name
+    /// index: about a second), so it runs off the UI thread. Null when no usable database is installed.
+    /// </summary>
+    internal WorldSearchOutcome? SearchWorld(string foldedQuery, double lat, double lon, int max, CancellationToken ct) =>
+        _store.IsAvailable && foldedQuery.Length > 0
+            ? _store.Read(c =>
+            {
+                var admins = AdminNames.Load(c);
+                var codes = FeatureCodes.Load(c);
+                // The nearest max kept in a max-heap on distance, so a common word never holds millions.
+                var nearest = new PriorityQueue<FoundPlaceWithId, double>(Comparer<double>.Create((a, b) => b.CompareTo(a)));
+                int total = 0;
+                using var cmd = c.CreateCommand();
+                cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, code, id, cat FROM place WHERE cat <> $hidden";
+                cmd.Parameters.AddWithValue("$hidden", (int)LocationCategory.Undersea);
+                using var r = cmd.ExecuteReader();
+                long n = 0;
+                while (r.Read())
+                {
+                    if ((++n & 0xFFFF) == 0) ct.ThrowIfCancellationRequested();
+                    string name = r.GetString(5);
+                    if (!NameMatches(name, foldedQuery)) continue;
+                    total++;
+                    var (pLat, pLon) = LocationGrid.Decode(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2));
+                    double nm = LocationGeometry.GreatCircleNm(lat, lon, pLat, pLon);
+                    if (nearest.Count >= max && nearest.TryPeek(out _, out double worst) && nm >= worst) continue;
+                    nearest.Enqueue(new FoundPlaceWithId(new FoundPlace(name, pLat, pLon, r.GetInt32(3), r.GetInt32(4), nm, 0, r.GetInt32(6)),
+                        r.GetInt32(7), (LocationCategory)r.GetInt32(8)), nm);
+                    if (nearest.Count > max) nearest.Dequeue();
+                }
+                var found = new List<PlaceResult>();
+                while (nearest.TryDequeue(out var p, out _)) found.Add(ToResult(p, admins, codes));
+                found.Reverse();
+                return new WorldSearchOutcome(WithAliases(c, found), total);
+            })
+            : null;
+
+    /// <summary>Whether a stored name holds the folded query. Most names are plain ASCII letters and
+    /// spaces: those are compared case-insensitively as they are, and only a hit is folded to confirm,
+    /// since folding every one of 8 million names costs seconds.</summary>
+    internal static bool NameMatches(string name, string foldedQuery)
+    {
+        bool plain = true;
+        foreach (char ch in name)
+            if (ch > 127 || !(char.IsLetterOrDigit(ch) || ch == ' ')) { plain = false; break; }
+        if (plain) return name.Contains(foldedQuery, StringComparison.OrdinalIgnoreCase);
+        return SearchText.Fold(name).Contains(foldedQuery, StringComparison.Ordinal);
+    }
+
+    private sealed record FoundPlaceWithId(FoundPlace Place, int Id, LocationCategory Category);
+
+    private static PlaceResult ToResult(FoundPlaceWithId f, AdminNames admins, FeatureCodes codes)
+    {
+        var p = f.Place;
+        var (state, country) = admins.Of(p.AdminId);
+        var (code, typeName) = codes.Of(p.Code);
+        return new PlaceResult(f.Id, p.Name, p.Lat, p.Lon, f.Category, code, typeName, p.Population, state, country)
+        {
+            FoldedName = SearchText.Fold(p.Name),
+        };
+    }
+
+    /// <summary>The airports' alternate names, read from <c>airport_alias</c> by id.</summary>
+    private static List<PlaceResult> WithAliases(SqliteConnection c, List<PlaceResult> found)
+    {
+        if (!found.Any(p => p.Category == LocationCategory.Airport)) return found;
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT names FROM airport_alias WHERE id = $id";
+        var pId = cmd.Parameters.Add("$id", SqliteType.Integer);
+        for (int i = 0; i < found.Count; i++)
+        {
+            if (found[i].Category != LocationCategory.Airport) continue;
+            pId.Value = found[i].Id;
+            if (cmd.ExecuteScalar() is string names) found[i] = found[i] with { AlternateNames = names };
+        }
+        return found;
+    }
+
+    private static List<FoundPlaceWithId> PlacesWithId(SqliteConnection c, double lat, double lon, double radiusKm,
+        LocationCategory[] categories, CancellationToken ct)
+    {
+        var found = new List<FoundPlaceWithId>();
+        if (radiusKm <= 0) return found;
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, code, id FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to";
+        var pCat = cmd.Parameters.Add("$cat", SqliteType.Integer);
+        var pFrom = cmd.Parameters.Add("$from", SqliteType.Integer);
+        var pTo = cmd.Parameters.Add("$to", SqliteType.Integer);
+        double radiusNm = radiusKm / LocationPhrases.KmPerNm;
+        foreach (var (from, to) in LocationGrid.RangesForRadius(lat, lon, radiusKm))
+        foreach (var category in categories)
+        {
+            ct.ThrowIfCancellationRequested();
+            pCat.Value = (int)category; pFrom.Value = from; pTo.Value = to;
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var (pLat, pLon) = LocationGrid.Decode(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2));
+                double nm = LocationGeometry.GreatCircleNm(lat, lon, pLat, pLon);
+                if (nm > radiusNm) continue;
+                found.Add(new FoundPlaceWithId(
+                    new FoundPlace(r.GetString(5), pLat, pLon, r.GetInt32(3), r.GetInt32(4), nm, 0, r.GetInt32(6)),
+                    r.GetInt32(7), category));
+            }
+        }
+        return found;
+    }
+
+    /// <summary>The <c>feature_code</c> table: id → (code, readable name).</summary>
+    private sealed class FeatureCodes
+    {
+        private readonly Dictionary<int, (string Code, string Name)> _byId = new();
+
+        internal static FeatureCodes Load(SqliteConnection c)
+        {
+            var codes = new FeatureCodes();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT id, code, name FROM feature_code";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) codes._byId[r.GetInt32(0)] = (r.GetString(1), r.GetString(2));
+            return codes;
+        }
+
+        internal (string Code, string Name) Of(int id) => _byId.GetValueOrDefault(id, ("", ""));
+
+        internal HashSet<int> IdsOf(IEnumerable<string> codes)
+        {
+            var wanted = new HashSet<string>(codes, StringComparer.Ordinal);
+            return _byId.Where(kv => wanted.Contains(kv.Value.Code)).Select(kv => kv.Key).ToHashSet();
+        }
     }
 
     // ---- places ----

@@ -9,6 +9,9 @@ public class WaypointTracker
     private readonly TrackedWaypoint[] _slots;
     private const int MAX_SLOTS = 5;
 
+    /// <summary>How many tracking slots there are (Output 1 to 5).</summary>
+    public int SlotCount => MAX_SLOTS;
+
     public WaypointTracker()
     {
         _slots = new TrackedWaypoint[MAX_SLOTS];

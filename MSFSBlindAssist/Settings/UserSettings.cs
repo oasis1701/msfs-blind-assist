@@ -223,21 +223,32 @@ public class UserSettings
 
         // Range Settings (in selected distance units)
         public int NearbyCitiesRange { get; set; } = 25;
-        public int RegionalCitiesRange { get; set; } = 50;
         public int MajorCitiesRange { get; set; } = 185;
-        // One range for all four landmark lists (airports, terrain, water, tourist landmarks).
-        public int LandmarksRange { get; set; } = 30;
         // Over land, Output C and Location Info mention the sea coast only within this distance.
         // At sea and over lakes the nearest land or shore is always said (owner, 2026-10-10).
         public int CoastRange { get; set; } = 50;
 
         // Display Limits
-        public int MaxNearbyPlacesToShow { get; set; } = 10;
         public int MaxMajorCitiesToShow { get; set; } = 10;
-        public int MaxAirportsToShow { get; set; } = 8;
-        public int MaxTerrainFeaturesToShow { get; set; } = 8;
-        public int MaxWaterBodiesToShow { get; set; } = 8;
-        public int MaxTouristLandmarksToShow { get; set; } = 8;
+
+        // The Location Info window (Shift+L) remembers its own filters between openings and sessions
+        // (owner, 2026-11-05). Its range is one field for every kind of place, in DistanceUnits.
+        public int LocationInfoRange { get; set; } = 30;
+        public bool LocationInfoWholeWorld { get; set; } = false;
+        public string LocationInfoSearch { get; set; } = "";
+        // One of LocationPhrases' compass words ("northwest"), or empty for every direction.
+        public string LocationInfoDirection { get; set; } = "";
+        // Unticked kinds of place, as "Terrain:ISL" keys: a kind a newer database adds starts ticked.
+        public List<string> LocationInfoHiddenTypes { get; set; } = new();
+        public bool LocationInfoFiltersShown { get; set; } = false;
+        // While true the map position is the aircraft; "Set as map position" on a place clears it.
+        public bool LocationInfoFollowAircraft { get; set; } = true;
+        public string LocationInfoMapName { get; set; } = "";
+        public double LocationInfoMapLatitude { get; set; }
+        public double LocationInfoMapLongitude { get; set; }
+        // The kinds of place Output C names, set by the window's "Use for Output C" ("Terrain:ISL"
+        // keys); empty means towns and villages, C's usual choice.
+        public List<string> OutputCPlaceTypes { get; set; } = new();
 
         // City Filtering
         public int MajorCityPopulationThreshold { get; set; } = 50000;

@@ -23,7 +23,8 @@ internal sealed class LocationDataStore
 {
     /// <summary>Bump whenever the schema, <see cref="LocationGrid"/>'s encoding or a stored enum
     /// changes: an older database then reads as "update needed" instead of giving wrong answers.</summary>
-    internal const int SchemaVersion = 1;
+    /// 2 (2026-11): feature_code.name and the airport_alias table, for the Location Info window.
+    internal const int SchemaVersion = 2;
 
     private static readonly Lazy<LocationDataStore> LazyDefault =
         new(() => new LocationDataStore(DatabasePathResolver.GetLocationDataPath()));

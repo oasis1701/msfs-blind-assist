@@ -5,7 +5,12 @@ namespace MSFSBlindAssist.Services.Geography;
 /// <summary>One kept row of GeoNames' <c>allCountries.txt</c>.</summary>
 internal readonly record struct GeoNamesRow(
     int Id, string Name, double Latitude, double Longitude,
-    LocationCategory Category, string FeatureCode, string CountryCode, string Admin1, int Population);
+    LocationCategory Category, string FeatureCode, string CountryCode, string Admin1, int Population)
+{
+    /// <summary>The alternate-names column (comma-separated), kept for airports only: their ICAO
+    /// and IATA codes and other names match them to the navigation database. Empty otherwise.</summary>
+    public string AlternateNames { get; init; } = "";
+}
 
 /// <summary>
 /// Parses one tab-separated line of GeoNames' dump (columns: 0 geonameid, 1 name, 2 asciiname,
@@ -60,7 +65,10 @@ internal static class GeoNamesDumpLine
         row = new GeoNamesRow(
             id, name.Trim().ToString(), lat, lon, category, code.ToString(),
             Field(line, starts, 8).ToString(), Field(line, starts, 10).ToString(),
-            (int)Math.Min(population, int.MaxValue));
+            (int)Math.Min(population, int.MaxValue))
+        {
+            AlternateNames = category == LocationCategory.Airport ? Field(line, starts, 3).Trim().ToString() : "",
+        };
         return true;
     }
 
