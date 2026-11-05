@@ -625,15 +625,15 @@ public partial class LocationInfoForm : Form
         _results.BeginUpdate();
         _results.SelectedIndices.Clear();
         _results.VirtualListSize = _shown.Count;
-        if (selectedId is { } id)
+        // Always a selected row: Tab into a list with none gives the screen reader nothing to read.
+        // The place selected before stays selected while it is still listed; otherwise the nearest.
+        if (_shown.Count > 0)
         {
-            int index = _shown.FindIndex(i => _places[i].Id == id);
-            if (index >= 0)
-            {
-                _results.SelectedIndices.Add(index);
-                _results.FocusedItem = _results.Items[index];
-                _results.EnsureVisible(index);
-            }
+            int index = selectedId is { } id ? _shown.FindIndex(i => _places[i].Id == id) : -1;
+            if (index < 0) index = 0;
+            _results.SelectedIndices.Add(index);
+            _results.FocusedItem = _results.Items[index];
+            _results.EnsureVisible(index);
         }
         _results.Invalidate();
         _results.EndUpdate();
