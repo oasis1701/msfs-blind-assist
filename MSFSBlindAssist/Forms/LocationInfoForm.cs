@@ -61,7 +61,7 @@ public partial class LocationInfoForm : Form
 
     private TextBox _whereBox = null!;
     private ListView _results = null!;
-    private TextBox _statusBox = null!;
+    private string _status = "";
     private Button _filtersButton = null!;
     private TableLayoutPanel _filtersPanel = null!;
     private TextBox _searchBox = null!;
@@ -117,14 +117,16 @@ public partial class LocationInfoForm : Form
         TopMost = true;
         KeyPreview = true;
 
+        // Tab order (owner, 2026-11-05): where you are, the kinds of place, the filters behind their button,
+        // then the places they select; the bottom row last.
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(6) };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 140)); // where you are
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // results
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // status
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 120)); // where you are
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 200)); // kinds of place
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // show/hide filters
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // filters
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // buttons
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // places
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // bottom row
 
         _whereBox = new TextBox
         {
@@ -132,34 +134,39 @@ public partial class LocationInfoForm : Form
             AccessibleName = "Where you are", TabIndex = 0,
         };
 
+        _typeTree = new NativeAccessibleTreeView { CheckBoxes = true, Dock = DockStyle.Fill, AccessibleName = "Kinds of place", TabIndex = 1 };
+        _typeTree.AfterCheck += TypeTree_AfterCheck;
+        _typeTree.ContextMenuStrip = BuildTypeMenu();
+
+        _filtersButton = new Button { AutoSize = true, TabIndex = 2 };
+        _filtersButton.Click += (_, _) => SetFiltersShown(!_filtersPanel.Visible);
+
+        _filtersPanel = BuildFiltersPanel();
+        _filtersPanel.TabIndex = 3;
+
+        // The list's name carries the count (or "No places found"), read on arrival in the list.
         _results = new ListView
         {
             View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false,
-            VirtualMode = true, Dock = DockStyle.Fill, AccessibleName = "Places", TabIndex = 1,
+            VirtualMode = true, Dock = DockStyle.Fill, AccessibleName = "Places", TabIndex = 4,
         };
         _results.RetrieveVirtualItem += Results_RetrieveVirtualItem;
         _results.ContextMenuStrip = BuildResultsMenu();
 
-        _statusBox = new TextBox { ReadOnly = true, Dock = DockStyle.Fill, AccessibleName = "Search status", TabIndex = 2 };
-
-        _filtersButton = new Button { AutoSize = true, TabIndex = 3 };
-        _filtersButton.Click += (_, _) => SetFiltersShown(!_filtersPanel.Visible);
-
-        _filtersPanel = BuildFiltersPanel();
-        _filtersPanel.TabIndex = 4;
-
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, TabIndex = 5 };
         _resetButton = new Button { Text = "Reset filters", AutoSize = true, TabIndex = 0 };
         _resetButton.Click += (_, _) => ResetFilters();
-        _refreshButton = new Button { Text = "Refresh (F5)", AutoSize = true, AccessibleName = "Refresh", TabIndex = 1 };
+        _followCheck = new CheckBox { Text = "Map position follows the aircraft", AutoSize = true, TabIndex = 1 };
+        _followCheck.CheckedChanged += FollowCheck_CheckedChanged;
+        _refreshButton = new Button { Text = "Refresh (F5)", AutoSize = true, AccessibleName = "Refresh", TabIndex = 2 };
         _refreshButton.Click += (_, _) => RefreshFromAircraft();
-        buttons.Controls.AddRange(new Control[] { _resetButton, _refreshButton });
+        buttons.Controls.AddRange(new Control[] { _resetButton, _followCheck, _refreshButton });
 
         layout.Controls.Add(_whereBox, 0, 0);
-        layout.Controls.Add(_results, 0, 1);
-        layout.Controls.Add(_statusBox, 0, 2);
-        layout.Controls.Add(_filtersButton, 0, 3);
-        layout.Controls.Add(_filtersPanel, 0, 4);
+        layout.Controls.Add(_typeTree, 0, 1);
+        layout.Controls.Add(_filtersButton, 0, 2);
+        layout.Controls.Add(_filtersPanel, 0, 3);
+        layout.Controls.Add(_results, 0, 4);
         layout.Controls.Add(buttons, 0, 5);
         Controls.Add(layout);
 
@@ -213,14 +220,6 @@ public partial class LocationInfoForm : Form
         _directionCombo.SelectedIndexChanged += (_, _) => { if (!_updatingControls) ApplyFilters(); };
         Row("Direction from the map position:", _directionCombo);
 
-        _typeTree = new NativeAccessibleTreeView { CheckBoxes = true, Height = 220, Width = 400 };
-        _typeTree.AfterCheck += TypeTree_AfterCheck;
-        _typeTree.ContextMenuStrip = BuildTypeMenu();
-        Row("Kinds of place:", _typeTree);
-
-        _followCheck = new CheckBox { Text = "Map position follows the aircraft", AutoSize = true };
-        _followCheck.CheckedChanged += FollowCheck_CheckedChanged;
-        Row("", _followCheck);
         return panel;
     }
 
@@ -338,7 +337,7 @@ public partial class LocationInfoForm : Form
         _searchDebounce.Stop();
         OnSearchSettled();
         // The count is spoken only here, never on each filter change (CORE-7).
-        if (!_loading) _announcer.AnnounceImmediate(_statusBox.Text);
+        if (!_loading) _announcer.AnnounceImmediate(_status);
         else _speakCountWhenLoaded = true;
     }
 
@@ -525,7 +524,7 @@ public partial class LocationInfoForm : Form
 
         var cts = _loadCts = new CancellationTokenSource();
         _loading = true;
-        _statusBox.Text = world && folded.Length == 0 ? WorldPrompt : "Searching...";
+        SetStatus(world && folded.Length == 0 ? WorldPrompt : "Searching");
         try
         {
             if (world && folded.Length == 0)
@@ -564,7 +563,7 @@ public partial class LocationInfoForm : Form
             if (_speakCountWhenLoaded)
             {
                 _speakCountWhenLoaded = false;
-                _announcer.AnnounceImmediate(_statusBox.Text);
+                _announcer.AnnounceImmediate(_status);
             }
         }
         catch (OperationCanceledException) { }
@@ -572,12 +571,20 @@ public partial class LocationInfoForm : Form
         {
             if (IsDisposed) return;
             _loading = false;
-            _statusBox.Text = "Could not read the location data: " + ex.Message;
+            SetStatus("Could not read the location data: " + ex.Message);
             Log.Warn("LocationInfo", $"Search failed: {ex.Message}");
         }
     }
 
-    private const string WorldPrompt = "Type a name in Search by name to search the whole world.";
+    private const string WorldPrompt = "No places found. Type a name to search the whole world.";
+
+    /// <summary>The count or state, as the list's name: the screen reader reads it on arrival in the list,
+    /// and Enter in the search box speaks it.</summary>
+    private void SetStatus(string text)
+    {
+        _status = text;
+        _results.AccessibleName = "Places, " + text;
+    }
 
     /// <summary>The simulator's airports, read once per window, for the Details column's ident.</summary>
     private async Task EnsureAirportsAsync()
@@ -637,17 +644,18 @@ public partial class LocationInfoForm : Form
         }
         _results.Invalidate();
         _results.EndUpdate();
-        _statusBox.Text = StatusText();
+        SetStatus(StatusText());
     }
 
     private string StatusText()
     {
         // Invariant, as everything the location data shows (LOC-3).
         var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (WholeWorld && _loadedWorldQuery.Length == 0) return WorldPrompt;
+        if (_shown.Count == 0) return "No places found";
         string places = _shown.Count == 1 ? "1 place" : string.Create(inv, $"{_shown.Count:N0} places");
         if (!WholeWorld)
             return string.Create(inv, $"{places} within {(int)_rangeBox.Value} {UnitWord} of the map position");
-        if (_loadedWorldQuery.Length == 0) return WorldPrompt;
         return _worldTotal > _places.Count
             ? string.Create(inv, $"{places} shown, the nearest of {_worldTotal:N0} named like that")
             : $"{places} named like that";
