@@ -65,6 +65,25 @@ Changing any filter updates the list at once. The count of results is spoken onl
 press Enter in the search box, not on every filter change (CORE-7: the screen reader already says
 the new combo value).
 
+## Elevation (to test)
+
+Heights for terrain results, especially mountains, hills and islands ("Hättan, island, 31 m").
+Two possible sources, neither checked yet:
+
+- **GeoNames.** The dump has `elevation` (often empty for small places) and `dem` (a height
+  modelled from satellite terrain data, coarse, so a small summit comes out lower).
+  `LocationDataBuilder` drops both today. Keeping them is a new column and a schema bump (LOC-7).
+  Measure first how many terrain places in the dump have a value and how far off `dem` is for known
+  summits.
+- **The simulator.** SimConnect gives only the ground height under the aircraft (`GROUND
+  ALTITUDE`); there's no call for the height at a chosen position. Idea to try: create an invisible
+  object at the position (`AICreateSimulatedObject`) and read its `GROUND ALTITUDE`. Unknowns:
+  whether terrain loads that far from the aircraft, how long it takes, and whether the mesh
+  flattens small summits. If it works, it gives the height the pilot will actually fly over, which
+  is the one that matters in the sim.
+
+The result line would say which source a height came from (database or simulator).
+
 ## Performance
 
 - Around a point: uses the existing grid search, so it stays as fast as today's window.
