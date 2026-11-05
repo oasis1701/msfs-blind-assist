@@ -10,13 +10,17 @@ namespace VirtualPilot.Approach;
 /// <paramref name="SensorNoise"/>, visual guidance reads its inputs through <see cref="ApproachSensorNoise"/>.
 /// With <paramref name="GustBankDeg"/> above 0, gusts knock the aircraft that many degrees left,
 /// right and left (<see cref="ApproachRunner.GustAtS"/>); with <paramref name="BankBySpeech"/> the
-/// pilot steers the bank by the callouts alone (<see cref="TonePilot"/>).
+/// pilot steers the bank by the callouts alone (<see cref="TonePilot"/>). <paramref name="StartBankDeg"/>
+/// (right positive) starts the aircraft banked; <paramref name="Turns"/> script a pilot obeying ATC
+/// (<see cref="ApproachScriptedTurns"/>); <paramref name="StartLevel"/> starts a course-parallel start
+/// level instead of on the glide path's angle.
 /// </summary>
 sealed record ApproachScenario(string Name, ApproachRunway Runway, ApproachAircraftKind Kind, double AlongNm, double CrossNm,
     double HeadingRelDeg, double HeightOffsetFt, double WindFromRelDeg, double WindKt, int Fps, double ReactionDelayS,
-    double? PitchStepAtS, double? TasKt, bool SensorNoise = false, double GustBankDeg = 0, bool BankBySpeech = false);
+    double? PitchStepAtS, double? TasKt, bool SensorNoise = false, double GustBankDeg = 0, bool BankBySpeech = false,
+    double StartBankDeg = 0, IReadOnlyList<(double AtS, double ToRelHeadingDeg)>? Turns = null, bool StartLevel = false);
 
-/// <summary>The scenario matrix: 159 approaches in nine families (docs/virtual-pilot.md, "Approaches").</summary>
+/// <summary>The scenario matrix: 203 approaches in fifteen families (docs/virtual-pilot.md, "Approaches").</summary>
 static class ApproachScenarios
 {
     private static readonly double[] Delays = { 0.5, 1.0 };
@@ -122,6 +126,71 @@ static class ApproachScenarios
                 foreach (bool bySpeech in new[] { false, true })
                     list.Add(Final($"GUST-A-{KindName(k)}-g{Inv(g, "0")}-{(bySpeech ? "speech" : "tone")}", a, k, 0, 0, 0.5)
                         with { GustBankDeg = g, BankBySpeech = bySpeech });
+
+        AddJoiningFamilies(list, kinds);
         return list;
+    }
+
+    // Joining final (visual guidance stage 4): positions BA must vector from, the far side of the
+    // field, a cut that crosses final too close in, a press in a turn, an ATC heading that stops
+    // crossing final, and a shallow ATC cut. Each side: + right of the centreline facing the runway.
+    private static void AddJoiningFamilies(List<ApproachScenario> list, ApproachAircraftKind[] kinds)
+    {
+        var a = ApproachRunways.A;
+        const double d = 0.5;
+        static double Sign(char side) => side == 'R' ? 1 : -1;
+        ApproachScenario At(string name, ApproachRunway r, ApproachAircraftKind k, double along, double cross, double rel, double height)
+            => new(name, r, k, along, cross, rel, height, 0, 0, 30, d, null, null);
+
+        // Vectoring: level at the path's height beside a long final, flying parallel inbound or outbound.
+        foreach (var r in ApproachRunways.All)
+            foreach (var k in kinds)
+                foreach (char side in new[] { 'L', 'R' })
+                    foreach (var (dir, rel) in new[] { ("par", 0.0), ("away", 180.0) })
+                    {
+                        bool jet = k == ApproachAircraftKind.Jet;
+                        list.Add(At($"VEC-{r.Id}-{KindName(k)}-{side}-{dir}-{DelayName(d)}", r, k, jet ? 10.0 : 5.0,
+                            Sign(side) * (jet ? 2.0 : 1.0), rel, 0) with { StartLevel = true });
+                    }
+
+        // Far side: past the runway's far end, beside it, flying back toward the field, above it.
+        foreach (var r in ApproachRunways.All)
+            foreach (var k in kinds)
+                foreach (char side in new[] { 'L', 'R' })
+                {
+                    bool jet = k == ApproachAircraftKind.Jet;
+                    double along = jet ? -4.0 : -3.0;
+                    list.Add(At($"FAR-{r.Id}-{KindName(k)}-{side}-{DelayName(d)}", r, k, along, Sign(side) * (jet ? 1.0 : 0.5), 180,
+                        AboveField(jet ? 2000 : 1000, along)));
+                }
+
+        foreach (var k in kinds)
+            foreach (char side in new[] { 'L', 'R' })
+            {
+                bool jet = k == ApproachAircraftKind.Jet;
+                double s = Sign(side);
+                var (intAlong, intSide) = InterceptStart(k);
+
+                // Too close: cutting toward the line at 45°, crossing it inside the minimum final (jet 5.5 nm, light 0.8).
+                list.Add(At($"CLOSE-A-{KindName(k)}-{side}-{DelayName(d)}", a, k, jet ? 7.5 : 1.8, s * (jet ? 2.0 : 1.0), -s * 45, 0));
+
+                // Turning: the intercept start, parallel and banked 20° toward the line, turning to a 30° cut.
+                list.Add(At($"TURN-A-{KindName(k)}-{side}-{DelayName(d)}", a, k, intAlong, s * intSide, 0, 0)
+                    with { StartLevel = true, StartBankDeg = -s * 20, Turns = new[] { (0.0, -s * 30) } });
+
+                // Heading change: on the 30° intercept, the pilot turns parallel at 20 s and to a 45° cut at 60 s.
+                list.Add(At($"NOCROSS-A-{KindName(k)}-{side}-{DelayName(d)}", a, k, intAlong, s * intSide, -s * 30, 0)
+                    with { Turns = new[] { (20.0, 0.0), (60.0, -s * 45) } });
+            }
+
+        // Shallow: a 15° cut from far out, crossing final at about 8.8 nm (jet) and 4.4 nm (light).
+        foreach (var r in ApproachRunways.All)
+            foreach (var k in kinds)
+                foreach (char side in new[] { 'L', 'R' })
+                {
+                    bool jet = k == ApproachAircraftKind.Jet;
+                    list.Add(At($"SHALLOW-{r.Id}-{KindName(k)}-{side}-{DelayName(d)}", r, k, jet ? 20.0 : 10.0,
+                        Sign(side) * (jet ? 3.0 : 1.5), -Sign(side) * 15, 0));
+                }
     }
 }

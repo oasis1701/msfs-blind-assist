@@ -20,7 +20,11 @@ sealed class ApproachMetrics
     private static readonly Regex BankCallout = new(@"^(\d+ (left|right)|matched|On commanded path)$", RegexOptions.CultureInvariant);
 
     private readonly record struct Sample(double T, double Along, double Cross, double TrackErr, double PathErr, double Vs,
-        double DesiredPitch, double DesiredBank, double Bank);
+        double DesiredPitch, double DesiredBank, double Bank, string Phase, string? Decision, bool Scripted);
+
+    // Stage 4's spoken lines the joining measures time.
+    private const string TurnOntoFinal = "Turn onto final", Countdown30 = "Turn onto final in 30 seconds",
+        Countdown15 = "Turn onto final in 15 seconds", NotCrossing = "Heading does not cross final";
 
     // Gust measures: a knock with no bank callout within this long counts this long; recovery and
     // the cross-track are looked for within the window after a knock. The recovered band is 1°, twice
@@ -43,14 +47,18 @@ sealed class ApproachMetrics
 
     public ApproachMetrics(ApproachScenario sc, VisualGuidanceProfile profile) { _sc = sc; _profile = profile; }
 
-    /// <summary>One frame: the aircraft state and the command visual guidance produced from it.</summary>
-    public void Record(double t, ApproachAircraft ac, VisualGuidanceManager vg)
+    /// <summary>
+    /// One frame: the aircraft state and the command visual guidance produced from it, its phase and
+    /// decision, and whether a scripted turn (a pilot obeying ATC) flies this frame instead of the tones.
+    /// </summary>
+    public void Record(double t, ApproachAircraft ac, VisualGuidanceManager vg, bool scripted = false)
     {
         var r = _sc.Runway;
         var (along, cross) = ApproachRunways.Locate(r, ac.Lat, ac.Lon);
         double trackErr = ((ac.TrackTrueDeg - r.Runway.Heading) % 360 + 540) % 360 - 180;
         double pathErr = ac.AltMslFt - ApproachRunways.PathMslFt(r, along, _profile);
-        _samples.Add(new Sample(t, along, cross, trackErr, pathErr, ac.VsFpm, vg.DesiredPitchForHarness, vg.DesiredBankForHarness, ac.BankStdDeg));
+        _samples.Add(new Sample(t, along, cross, trackErr, pathErr, ac.VsFpm, vg.DesiredPitchForHarness, vg.DesiredBankForHarness, ac.BankStdDeg,
+            vg.PhaseForHarness, ApproachRunner.DecisionOf(vg), scripted));
     }
 
     /// <summary>Ends the run and computes every measure.</summary>
@@ -114,6 +122,34 @@ sealed class ApproachMetrics
             Put("selfFeedback3s", SelfFeedback(step, 3.0), "0.000");
             Put("selfFeedback10s", SelfFeedback(step, 10.0), "0.000");
         }
+
+        PutJoining(establishedAt, speech);
+    }
+
+    // Joining final (visual guidance stage 4). The keys that need the app's decision are NA against an
+    // app without one; establishedAlongNm and maxBankCmdDeg are measured on any app.
+    private void PutJoining(double? establishedAt, IReadOnlyList<(double T, string Text, bool Immediate)> speech)
+    {
+        bool hasDecision = _samples.Count > 0 && _samples[0].Decision != null;
+        int decidedIndex = hasDecision ? _samples.FindIndex(s => s.Decision != "None") : -1;
+        Put("decided", decidedIndex >= 0 ? _samples[decidedIndex].Decision! : "NA");
+        Put("decidedBankDeg", decidedIndex >= 0 ? Math.Abs(_samples[decidedIndex].Bank) : null, "0.00");
+        Put("establishedAlongNm", establishedAt is double e ? _samples.First(s => s.T >= e).Along : null, "0.00");
+
+        double? Said(string text) => speech.Where(l => l.Text == text).Select(l => (double?)l.T).FirstOrDefault();
+        double? turnAt = Said(TurnOntoFinal);
+        var holding = _samples.Where(s => s.Phase == "Joining" && !s.Scripted && (turnAt == null || s.T < turnAt.Value)).ToList();
+        Put("joinHoldBankMaxDeg", hasDecision && holding.Count > 0 ? holding.Max(s => Math.Abs(s.DesiredBank)) : null, "0.00");
+        double? CountdownErr(string line, double seconds) => hasDecision && turnAt is double turn && Said(line) is double at ? turn - at - seconds : null;
+        Put("countdown30ErrS", CountdownErr(Countdown30, 30), "0.00");
+        Put("countdown15ErrS", CountdownErr(Countdown15, 15), "0.00");
+        Put("turnToEstablishedS", hasDecision && turnAt is double ta && establishedAt is double est && est >= ta ? est - ta : null, "0.0");
+        Put("maxBankCmdDeg", _samples.Count > 0 ? _samples.Max(s => Math.Abs(s.DesiredBank)) : null, "0.00");
+        Put("notCrossingCalls", hasDecision ? speech.Count(l => l.Text == NotCrossing) : null, "0");
+        bool leftJoining = false;
+        for (int i = 1; i < _samples.Count; i++)
+            if (_samples[i - 1].Phase == "Joining" && _samples[i].Phase == "Vectoring") { leftJoining = true; break; }
+        Put("leftJoining", hasDecision ? (leftJoining ? "True" : "False") : "NA");
     }
 
     public string ToResultsLine(string scenarioName)

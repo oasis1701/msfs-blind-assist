@@ -15,7 +15,8 @@ using MSFSBlindAssist.Settings;
 // entered with no hold short, route changes while following the tone, and so on.
 //
 //   dotnet run --project tools/VirtualPilot -p:Platform=x64 -c Release -- <mode> [options]
-//     mode: landings | taxi | all | approach (visual guidance; --selftest, --scenario NAME, --trace NAME)
+//     mode: landings | taxi | all | approach (visual guidance; --selftest, --scenario NAME, --trace NAME,
+//           --capture-gain K, --roll-in S)
 //     --airports N          busiest N airports by taxi-path count (default 100)
 //     --icao A,B,C          explicit airport list (overrides --airports)
 //     --shard i/n           run only airports i, i+n, i+2n … (for parallel processes)
@@ -1441,6 +1442,7 @@ sealed class Options
     public string Mode = "all"; public int Airports = 100; public List<string>? Icaos;
     public (int i, int n)? Shard; public int TaxiPerAirport = 6; public string Out = ""; public string? Trace;
     public string? Scenario; public bool SelfTest; public string? Record;   // approach mode
+    public double? CaptureGain; public double? RollIn;                      // approach mode, stage 4 apps
     public static Options? Parse(string[] a)
     {
         if (a.Length == 0) { Console.WriteLine("usage: VirtualPilot landings|taxi|all [options] (see source header)"); return null; }
@@ -1458,6 +1460,8 @@ sealed class Options
                 case "--scenario": o.Scenario = a[++i]; break;
                 case "--selftest": o.SelfTest = true; break;
                 case "--record": o.Record = a[++i]; break;
+                case "--capture-gain": o.CaptureGain = double.Parse(a[++i], System.Globalization.CultureInfo.InvariantCulture); break;
+                case "--roll-in": o.RollIn = double.Parse(a[++i], System.Globalization.CultureInfo.InvariantCulture); break;
                 default: Console.WriteLine($"unknown option {a[i]}"); return null;
             }
         }

@@ -37,6 +37,18 @@ static class ApproachRunner
     public static int Run(Options opt)
     {
         if (opt.SelfTest) return ApproachSelfTest.Run();
+        if (opt.CaptureGain != null && CaptureGainHook == null)
+        {
+            Console.WriteLine("--capture-gain needs an app with VisualGuidanceManager.CaptureGainForHarness (visual guidance stage 4)");
+            return 2;
+        }
+        if (opt.RollIn != null && RollInProperty == null)
+        {
+            Console.WriteLine("--roll-in needs an app with VisualGuidanceProfile.RollInTimeS (visual guidance stage 4)");
+            return 2;
+        }
+        CaptureGain = opt.CaptureGain;
+        RollInS = opt.RollIn;
         if (opt.Record != null && opt.Trace == null && opt.Scenario == null)
         {
             Console.WriteLine("--record needs --trace or --scenario: one recording per run, not the whole matrix");
@@ -90,14 +102,43 @@ static class ApproachRunner
         .GetProperty("FlightRecordForHarness", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     private static readonly Action<string> NoRecord = _ => { };
 
+    // Stage 4's hooks and profile fields, by reflection for the same reason: null against an older app,
+    // where the profile settings are skipped and --capture-gain and --roll-in refuse to run.
+    private const System.Reflection.BindingFlags Hidden = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+    internal static readonly System.Reflection.PropertyInfo? CaptureGainHook = typeof(VisualGuidanceManager).GetProperty("CaptureGainForHarness", Hidden);
+    internal static readonly System.Reflection.PropertyInfo? DecisionHook = typeof(VisualGuidanceManager).GetProperty("DecisionForHarness", Hidden);
+    private static readonly System.Reflection.PropertyInfo? MinimumFinalProperty = typeof(VisualGuidanceProfile).GetProperty("MinimumFinalNm");
+    private static readonly System.Reflection.PropertyInfo? RollInProperty = typeof(VisualGuidanceProfile).GetProperty("RollInTimeS");
+
+    /// <summary>The light runs' minimum final: the circuit-sized final the spec gives light aircraft.</summary>
+    public const double LightMinimumFinalNm = 1.0;
+
+    /// <summary>--capture-gain and --roll-in, for the whole run; null leaves the app's defaults.</summary>
+    public static double? CaptureGain { get; set; }
+    public static double? RollInS { get; set; }
+
+    /// <summary>The profile a scenario flies with: the A320 default, with the light runs' minimum final and any --roll-in.</summary>
+    public static VisualGuidanceProfile ProfileFor(ApproachScenario sc)
+    {
+        var profile = new VisualGuidanceProfile();
+        if (sc.Kind == ApproachAircraftKind.Light) MinimumFinalProperty?.SetValue(profile, LightMinimumFinalNm);
+        if (RollInS is double rollIn) RollInProperty?.SetValue(profile, rollIn);
+        return profile;
+    }
+
+    /// <summary>The decision visual guidance has made (OnFinal, Joining, Vectoring, Pattern), "None" before it, null against an app without one.</summary>
+    public static string? DecisionOf(VisualGuidanceManager vg) => DecisionHook?.GetValue(vg) as string;
+
     /// <summary>
     /// Flies one scenario to its end. With <paramref name="trace"/>, prints a frame every 0.5 simulated
-    /// seconds; with <paramref name="record"/>, receives the flight recording's lines (VP-2).
+    /// seconds; with <paramref name="record"/>, receives the flight recording's lines (VP-2); with
+    /// <paramref name="onFeed"/>, every frame fed to visual guidance, as fed.
     /// </summary>
-    public static ApproachMetrics RunOne(ApproachScenario sc, Action<string>? trace, Action<string>? record = null)
+    public static ApproachMetrics RunOne(ApproachScenario sc, Action<string>? trace, Action<string>? record = null,
+        Action<VgSimFrame>? onFeed = null)
     {
         var rwy = sc.Runway;
-        var profile = new VisualGuidanceProfile();
+        var profile = ProfileFor(sc);
         double t = 0;
         var savedClock = SimClock.Override;
         SimClock.Override = () => ClockStart.AddSeconds(t);
@@ -106,6 +147,7 @@ static class ApproachRunner
             var speech = new ApproachSpeech(() => t);
             var vg = new VisualGuidanceManager(speech) { HeadlessForHarness = true };
             FlightRecordHook?.SetValue(vg, record ?? NoRecord);
+            if (CaptureGain is double gain) CaptureGainHook?.SetValue(vg, gain);
             vg.Toggle();
             vg.Initialize(rwy.Runway, rwy.Airport, HandFlyWaveType.Triangle, 0.0, HandFlyWaveType.Sine, 0.0, false, profile);
 
@@ -113,13 +155,15 @@ static class ApproachRunner
             double alt = ApproachRunways.PathMslFt(rwy, sc.AlongNm, profile) + sc.HeightOffsetFt;
             double course = rwy.Runway.Heading;
             // A start on the course is already flying final, so it starts descending at the glide
-            // path's angle; every other start (intercept, downwind) is level.
-            double startGamma = sc.HeadingRelDeg == 0 ? -rwy.Runway.GlideslopeAngleDeg : 0.0;
+            // path's angle; every other start (intercept, downwind, a vectoring start flying
+            // parallel) is level.
+            double startGamma = sc.HeadingRelDeg == 0 && !sc.StartLevel ? -rwy.Runway.GlideslopeAngleDeg : 0.0;
             // Headings are relative to the centreline's direction where the aircraft starts; the
             // wind is relative to the threshold's course.
             var ac = new ApproachAircraft(sc.Kind, rwy, lat, lon, alt, ApproachRunways.LocalCourse(rwy, lat, lon) + sc.HeadingRelDeg,
-                course + sc.WindFromRelDeg, sc.WindKt, sc.TasKt, startGamma);
-            var pilot = new TonePilot(sc.Kind, profile, sc.ReactionDelayS, 0.0, ac.PitchDeg, sc.BankBySpeech);
+                course + sc.WindFromRelDeg, sc.WindKt, sc.TasKt, startGamma, sc.StartBankDeg);
+            var pilot = new TonePilot(sc.Kind, profile, sc.ReactionDelayS, sc.StartBankDeg, ac.PitchDeg, sc.BankBySpeech);
+            var turns = sc.Turns != null ? new ApproachScriptedTurns(sc.Turns) : null;
             var gusts = sc.GustBankDeg > 0 ? GustStarts(sc).ToList() : new List<(long Frame, double T, int Sign)>();
             int rampFrames = Math.Max(1, (int)Math.Round(GustRampS * sc.Fps));
             var metrics = new ApproachMetrics(sc, profile);
@@ -128,14 +172,23 @@ static class ApproachRunner
 
             double dt = 1.0 / sc.Fps;
             bool stepped = false;
+            // A run ends past the runway's far end only once the aircraft has been over or before the
+            // runway: a far-side start (the FAR family) begins past the far end, flying back toward it.
+            double farEndNm = -rwy.Runway.Length / FtPerNm;
+            bool reachedField = sc.AlongNm >= farEndNm;
             int printedHalfSeconds = -1, spokenPrinted = 0;
             string endReason;
             for (long frame = 0; ; frame++)
             {
                 t = frame * dt;
                 var frameIn = ac.ToSimFrame();
-                VgFeed.Feed(vg, noise != null ? noise.Apply(frameIn) : frameIn);
-                metrics.Record(t, ac, vg);   // the state and the command it produced, same frame
+                var fed = noise != null ? noise.Apply(frameIn) : frameIn;
+                onFeed?.Invoke(fed);
+                VgFeed.Feed(vg, fed);
+                // A scripted turn (a pilot obeying ATC) replaces the bank the pilot flies this frame.
+                double? scripted = turns?.BankFor(t,
+                    ((ac.HeadingTrueDeg - ApproachRunways.LocalCourse(rwy, ac.Lat, ac.Lon)) % 360 + 540) % 360 - 180);
+                metrics.Record(t, ac, vg, scripted != null);   // the state and the command it produced, same frame
                 // Checked after recording, so the step's 10 s sample exists for selfFeedback10s.
                 if (sc.PitchStepAtS is double stepEnd && t >= stepEnd + StepRunAfterS) { endReason = "stepDone"; break; }
 
@@ -162,7 +215,7 @@ static class ApproachRunner
                     if (frame == g.Frame) trace?.Invoke($"      gust {(g.Sign * sc.GustBankDeg).ToString("+0;-0", Inv)}° over {GustRampS.ToString("0.0", Inv)} s");
                     pilot.Knock(g.Sign * sc.GustBankDeg / rampFrames);
                 }
-                var (bank, pitch) = pilot.Step(t, dt, vg.DesiredBankForHarness, vg.DesiredPitchForHarness, speech.Lines);
+                var (bank, pitch) = pilot.Step(t, dt, vg.DesiredBankForHarness, vg.DesiredPitchForHarness, speech.Lines, scripted);
                 ac.Step(dt, bank, pitch);
                 t = (frame + 1) * dt;
 
@@ -174,7 +227,8 @@ static class ApproachRunner
                     endReason = LandingEndReason(rwy, alongNow, crossNow);
                     break;
                 }
-                if (alongNow < -rwy.Runway.Length / FtPerNm) { endReason = "pastRunwayEnd"; break; }
+                if (alongNow < farEndNm && reachedField) { endReason = "pastRunwayEnd"; break; }
+                if (alongNow >= farEndNm) reachedField = true;
                 if (!vg.IsActive) { endReason = "vgOff"; break; }
                 if (t > MaxRunS) { endReason = "timeout"; break; }
             }
@@ -214,7 +268,8 @@ static class ApproachRunner
         var (along, cross) = ApproachRunways.Locate(sc.Runway, ac.Lat, ac.Lon);
         double pathErr = ac.AltMslFt - ApproachRunways.PathMslFt(sc.Runway, along, profile);
         string N(double v, string f) => v.ToString(f, Inv);
-        return $"t={N(t, "0.0"),6} {vg.PhaseForHarness,-18} along={N(along, "0.00"),6}nm cross={N(cross * 6076.12, "0"),6}ft " +
+        string phase = DecisionOf(vg) is string d && d != "None" ? $"{vg.PhaseForHarness}/{d}" : vg.PhaseForHarness;
+        return $"t={N(t, "0.0"),6} {phase,-18} along={N(along, "0.00"),6}nm cross={N(cross * 6076.12, "0"),6}ft " +
                $"dPath={N(pathErr, "0"),5}ft vs={N(ac.VsFpm, "0"),5} " +
                $"bank {N(vg.DesiredBankForHarness, "0.0"),5}/{N(ac.BankStdDeg, "0.0"),5} " +
                $"pitch {N(vg.DesiredPitchForHarness, "0.00"),6}/{N(ac.PitchDeg, "0.00"),6}";

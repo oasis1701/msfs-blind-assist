@@ -178,6 +178,15 @@ hears after it, a reaction delay later: until then it steers the bank it perceiv
 less the knock it has not yet heard. Without a knock the pilot's arithmetic is the same as before
 gusts existed, to the bit.
 
+A scripted turn (`ApproachScriptedTurns`, a scenario's `Turns`) stands for a pilot obeying ATC: from
+each turn's time the pilot ignores the tones and turns to the heading course + the turn's relative
+heading (relative to the centreline's direction abeam the aircraft), at a bank of twice the heading
+error, at most 20°, at its usual roll rate and with no reaction delay, since it turns by its own
+heading. Once within 1° the turn is over: the pilot rolls level and follows the tones again, acting
+on what it heard while turning. Turns run one at a time, in order. The tones and callouts still
+reach the measures during a turn. A scenario's `StartBankDeg` starts the aircraft and the pilot in
+that bank (a press of Ctrl+V in a turn); with no scripted turn the pilot then follows the tones.
+
 Each frame the harness feeds visual guidance in MainForm's order (AGL last, which calls
 `ProcessUpdate`), records the aircraft state with the command it produced, then steps the pilot
 and the aircraft.
@@ -186,8 +195,10 @@ and the aircraft.
 
 Headings are relative to the centreline's direction where the aircraft starts. "Cross" is positive
 right of the extended centreline, facing the runway. A start on the course is already descending
-on the 3° path; the others start level. Unless a row says otherwise, the frame rate is 30 a second
-and the reaction delay 0.5 and 1.0 s.
+on the 3° path, except the vectoring and turning starts, which fly parallel to it level; the others
+start level. Unless a row says otherwise, the frame rate is 30 a second and the reaction delay 0.5
+and 1.0 s. The light runs fly with a minimum final (`MinimumFinalNm`) of 1.0 nm, the circuit-sized
+final the redesign's spec gives light aircraft, set by reflection where the app has the field.
 
 | family | name pattern | start | count |
 |---|---|---|---|
@@ -200,6 +211,12 @@ and the reaction delay 0.5 and 1.0 s.
 | Speed | `SPEED-A-{JET160,LIGHT90}-{R45,x0.2R-h+200}-d0.5` | the 45° intercept and an offset final at 160 kt (jet) and 90 kt (light) | 4 |
 | Noise | `NOISE-A-{JET,LIGHT}-f{30,60}` | the `FINAL-A-…-x0.2R-h+200` start with the 0.5 s pilot, at 30 and 60 frames a second, with sensor noise on what visual guidance reads | 4 |
 | Gust | `GUST-A-{JET,LIGHT}-g{2,4}-{tone,speech}` | the `FINAL-A-…-x0-h0` start with the 0.5 s pilot; at 40, 80 and 120 s a gust knocks the aircraft 2° or 4° left, right, left, each spread over 0.3 s of frames; `tone` is the tone-following pilot, `speech` the speech-led one | 8 |
+| Vectoring | `VEC-{A,B}-{JET,LIGHT}-{L,R}-{par,away}-d0.5` | jet 10 nm out and 2 nm to the side, light 5 nm and 1 nm; flying parallel inbound (`par`) or outbound (`away`); level at the path's height | 16 |
+| Far side | `FAR-{A,B}-{JET,LIGHT}-{L,R}-d0.5` | past the runway's far end (jet 4 nm, light 3 nm past the threshold), jet 1 nm and light 0.5 nm to the side, flying back toward the field, jet 2,000 ft and light 1,000 ft above it | 8 |
+| Too close | `CLOSE-A-{JET,LIGHT}-{L,R}-d0.5` | jet 7.5 nm out and 2 nm to the side, light 1.8 nm and 1 nm; cutting toward the line at 45°, so crossing it at 5.5 and 0.8 nm, inside the minimum final; at the path's height | 4 |
+| Turning | `TURN-A-{JET,LIGHT}-{L,R}-d0.5` | the intercept start, flying parallel, level, banked 20° toward the line, with a scripted turn at 0 s to a 30° cut (Ctrl+V pressed in the turn ATC gave) | 4 |
+| Heading change | `NOCROSS-A-{JET,LIGHT}-{L,R}-d0.5` | the 30° intercept start; scripted turns parallel to the course at 20 s and to a 45° cut at 60 s (the jet's new track meets final at about 7.2 nm, outside the 6 nm minimum) | 4 |
+| Shallow | `SHALLOW-{A,B}-{JET,LIGHT}-{L,R}-d0.5` | jet 20 nm out and 3 nm to the side, light 10 nm and 1.5 nm; cutting toward the line at 15°, crossing it at about 8.8 and 4.4 nm; at the path's height | 8 |
 
 The noise (`ApproachSensorNoise`) adds independent Gaussian noise every frame to the vertical speed
 (σ 30 fpm), the angle of attack (σ 0.2°) and the ground track (σ 0.2°), from one fixed seed per run,
@@ -211,7 +228,8 @@ A run ends when the wheels touch, which is the profile's `FlareAltitudeBiasFt` b
 visual guidance itself places them. The landing is `touchdown` on the runway (2 nm by 150 ft), or
 `landedShort`, `landedLong` or `offRunway`. A run also ends when the aircraft passes the runway's
 far end still airborne (`pastRunwayEnd`), when visual guidance switches itself off (`vgOff`), after
-900 simulated seconds (`timeout`), or 10 s after a step (`stepDone`).
+900 simulated seconds (`timeout`), or 10 s after a step (`stepDone`). A far-side start begins past
+the far end, so the far end ends a run only once the aircraft has been over or before the runway.
 
 ### Measures
 
@@ -236,6 +254,19 @@ culture, `NA` where a measure does not apply.
 | `gustRecoveryS` | gust runs only: the mean over the knocks of the time from a knock's start until the aircraft's bank has stayed within 1° of the commanded bank for 1 s, counted at the start of that second; 30 if it never does within 30 s. The band is twice the pilot's 0.5° deadband: at 0.5° the pilot settles just inside the band's edge, the slowly moving command pushes it out before the second is up, and the measure read 11 s for a jet back level 2 s after a 2° knock |
 | `gustXteMaxFt` | gust runs only: the largest cross-track within 30 s after any knock |
 | `selfFeedback3s`, `selfFeedback10s` | step runs only: how far the command moved, 3 and 10 s after the step, per degree the pilot pitched, against its mean over the 2 s before. Positive means the command followed the pilot down; negative means it moved the other way |
+| `decided` | the first decision visual guidance made (`OnFinal`, `Joining`, `Vectoring`, `Pattern`; its `DecisionForHarness`, read by reflection) |
+| `decidedBankDeg` | the aircraft's bank, either way, at the first frame with a decision |
+| `establishedAlongNm` | how far out (nm along the course) the aircraft was when established, by the harness's own criteria above; measured on any app |
+| `joinHoldBankMaxDeg` | the largest commanded bank, either way, while the phase is `Joining` and before "Turn onto final" is spoken, outside scripted turns |
+| `countdown30ErrS`, `countdown15ErrS` | the time from "Turn onto final in 30 seconds" (15) to "Turn onto final", less 30 (15) |
+| `turnToEstablishedS` | from "Turn onto final" to established |
+| `maxBankCmdDeg` | the largest commanded bank of the run, either way; measured on any app |
+| `notCrossingCalls` | how many times "Heading does not cross final" was spoken |
+| `leftJoining` | True if the phase ever went from `Joining` to `Vectoring` |
+
+The joining keys are on every line, a value or `NA`. Against an app without a decision (before stage 4
+of the redesign) every one of them is `NA` except `establishedAlongNm` and `maxBankCmdDeg`; on a
+stage-4 app a timing key is `NA` when its line was not spoken.
 
 ### Running and comparing
 
@@ -245,12 +276,16 @@ VirtualPilot.exe approach [--scenario TEXT] [--out file]
 VirtualPilot.exe approach --trace NAME
 VirtualPilot.exe approach --trace NAME --record FILE
 VirtualPilot.exe approach --scenario TEXT --record FILE
+VirtualPilot.exe approach --capture-gain K --roll-in S [--out file]
 ```
 
 `--record FILE` writes the flight recording (see "Flight recordings" below) of the traced
-scenario, or of every scenario `--scenario` picks, one after another.
+scenario, or of every scenario `--scenario` picks, one after another. `--capture-gain K` sets visual
+guidance's capture gain (deg·kt/nm, its `CaptureGainForHarness`) and `--roll-in S` the profile's
+`RollInTimeS` for every run; both are set by reflection and refuse to run against an app from
+before stage 4, which has neither.
 
-`--selftest` runs 30 checks of the harness itself: turn rate and direction, the 3° descent rate,
+`--selftest` runs 33 checks of the harness itself: turn rate and direction, the 3° descent rate,
 wind drift, the SimConnect signs, the north wrap, the runway geometry, great-circle flight, the
 pilot's delay, roll rate, deadband and saturation, speech timestamps, the frame-rate runs, results
 under a Swedish culture, the matrix size, the step measures, wheel contact, the run ending past the
@@ -260,7 +295,10 @@ repeating exactly, the touchdown sink rate written for a landing and `NA` otherw
 the pilot has not yet heard staying on the bank, the speech-led pilot holding its bank without a
 callout and following "3 right", the gust measures written for a gust run and `NA` otherwise, and
 the flight recording reaching the harness (`record-hook`: the hook is set by reflection, so this
-check is what catches a rename; against an app from before stage 3 it fails, as expected). The
+check is what catches a rename; against an app from before stage 3 it fails, as expected), a
+scripted turn ending on its heading and the pilot rolling level after it, a start bank reaching
+visual guidance on the first frame, and every results line carrying the ten joining keys. The
+far-end check also flies a far-side start, which must not end where it starts. The
 downwind mirror check counts passing the runway's far end and touching down within 100 ft of it as
 the same ending, since which line the last frame crosses first is a coincidence of that frame. `--scenario` runs every scenario
 whose name contains the text. `--trace` prints one scenario every half simulated second (phase,
@@ -274,10 +312,13 @@ change counts as worse when `established` goes from True to False, `endReason` l
 `bankCalloutsPerMin` by 20 %, `|selfFeedback10s|` by
 0.1, `selfFeedback10s` changes sign, the touchdown point moves more than 25 ft farther from the
 centreline, `gustCalloutDelayS` rises by more than 0.3 s, `gustRecoveryS` by 20 %, or
-`gustXteMaxFt` by 10 % and 15 ft. Better is the mirror of each, except that a sign change is always worse. A third list,
+`gustXteMaxFt` by 10 % and 15 ft, or `establishedAlongNm` falls by more than 0.5 nm to below the
+minimum final (6.0 nm, 1.0 for a run whose name contains `LIGHT`). Better is the mirror of each,
+except that a sign change of `selfFeedback10s` is always worse when the new value is more than 0.1
+from zero; within 0.1 it is noise, since the vertical path (stage 5) aims at near zero. A third list,
 `CHANGED`, has the moves with no single right direction: the touchdown point moving more than
-300 ft along the runway, and the end reason changing between two outcomes neither of which is a
-touchdown. The harness is deterministic: two runs of one build compare as `BETTER {}`, `WORSE {}`
+300 ft along the runway, the end reason changing between two outcomes neither of which is a
+touchdown, and `decided` changing. The harness is deterministic: two runs of one build compare as `BETTER {}`, `WORSE {}`
 and `CHANGED {}`.
 
 ### Flight recordings
@@ -396,6 +437,36 @@ stage-3 harness copied in. With the three gust keys left out, its 151 old lines 
 identical to v3's; the 8 GUST lines are new. The stage-2 code was flown with the same harness
 (`approach_stage2_v2`), and its 151 old lines are identical to `approach_stage2`'s the same way.
 Later stages compare against v4.
+
+Stage 4 added scripted turns, a start bank, the six joining families and the ten joining keys, so
+both were flown again: `approach_baseline_v5` (a worktree at c2d7510df, the stage-1 app, with the
+stage-4 harness copied in) and `approach_stage3_v2` (a worktree at ca728302f, the stage-3 code).
+With the ten joining keys left out, the 159 old lines of each are textually identical to
+`approach_baseline_v4`'s and `approach_stage3_final`'s; on the old lines the joining keys are `NA`
+apart from `establishedAlongNm` and `maxBankCmdDeg`. Against the stage-1 app the `record-hook` check
+fails, as before. Stage 4 compares against both.
+
+What today's guidance (the stage-3 code) does in the new families:
+
+- Vectoring: all 16 established, but where today's laws happen to deliver them, not where a final
+  would start. The jets flying parallel are established 4.3 nm out, inside the 6 nm minimum; those
+  flying away are turned through about 150° and established 8.2 nm out. The light aircraft are
+  established 0.3 nm (parallel) and 1.7 nm (away) out, and all 8 float past the runway's end.
+- Far side: "Extending" flies the aircraft back toward the field (descending at up to 1,900 fpm on
+  the jets), turns it in once it passes abeam the threshold, and says "On vertical profile" while it
+  is still 1 nm to the side. The jets land 3,400 ft short of the threshold and 1,350 ft beside the
+  centreline on their own side; the light aircraft count as established 1.4 nm past the threshold,
+  over the runway, and float past its end. None is established before the threshold.
+- Too close: the jets are established 2.5 nm out and land; the light aircraft are never established
+  and float past the runway's end.
+- Turning: today's guidance takes over during the scripted turn; the jets are established 5.8 nm out,
+  the light aircraft 0.7 nm.
+- Heading change: the jets are established 5.0 nm out, the light aircraft 0.6 nm; nothing is said
+  when the heading stops crossing final.
+- Shallow: more than 2 nm off, today's intercept law turns the 15° cut into its own 60° one (the
+  owner's first complaint), so the jets are established 14 nm out instead of joining at 8.8 nm; the
+  light aircraft at 4.7 nm.
+- The largest commanded bank is 25° on the jets and 15° on the light aircraft.
 
 - `pitchRateRmsDegS` on the clean jet final: 0.153, 0.275 and 0.761°/s at 20, 30 and 60 frames a
   second. A command that ran on real time would read about the same at all three.

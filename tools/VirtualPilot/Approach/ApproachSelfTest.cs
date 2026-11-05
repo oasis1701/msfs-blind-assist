@@ -43,6 +43,9 @@ static class ApproachSelfTest
             ("speech-pilot-holds-without-a-callout", SpeechPilotHoldsCheck),
             ("gust-measured", GustMeasuredCheck),
             ("record-hook", RecordHookCheck),
+            ("scripted-turn", ScriptedTurnCheck),
+            ("start-bank", StartBankCheck),
+            ("join-keys", JoinKeysCheck),
         };
 
         int failures = 0;
@@ -280,7 +283,7 @@ static class ApproachSelfTest
             int eq = field.IndexOf('=');
             if (eq < 0) { problems.Add($"field without '=': {field}"); continue; }
             string key = field[..eq], value = field[(eq + 1)..];
-            if (key is "endReason" or "established" || value == "NA") continue;
+            if (key is "endReason" or "established" or "decided" or "leftJoining" || value == "NA") continue;
             if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
                 problems.Add($"{key}={value} does not parse");
         }
@@ -291,7 +294,7 @@ static class ApproachSelfTest
     {
         var all = ApproachScenarios.All();
         int unique = all.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count();
-        return all.Count == 159 && unique == 159 ? null : $"{all.Count} scenarios, {unique} unique names; expected 159";
+        return all.Count == 203 && unique == 203 ? null : $"{all.Count} scenarios, {unique} unique names; expected 203";
     }
 
     // A gust rolls the aircraft; the pilot, holding wings level against a level command, only learns
@@ -455,14 +458,19 @@ static class ApproachSelfTest
         return atWheels ? null : $"{name} ended ({m.EndReason}) with the datum at {F(m.EndDatumAglFt)} ft, expected just under {F(bias)} (wheel contact)";
     }
 
-    // A run still airborne past the runway's far end ends there, rather than flying on to the timeout.
+    // A run still airborne past the runway's far end ends there, rather than flying on to the timeout;
+    // but a far-side start, which begins past the far end flying back toward the field, flies on.
     private static string? FarEndEndsRunCheck()
     {
-        const string name = "FINAL-A-LIGHT-x0-h0-d0.5";
+        const string name = "FINAL-A-LIGHT-x0-h0-d0.5", far = "FAR-A-JET-R-d0.5";
         var sc = Scenario(name);
         var m = ApproachRunner.RunOne(sc, trace: null);
         double farEndNm = -sc.Runway.Runway.Length / 6076.12;
-        return m.EndAlongNm >= farEndNm - 0.01 ? null : $"{name} ended ({m.EndReason}) {F(-m.EndAlongNm)} nm past the threshold, beyond the far end at {F(-farEndNm)} nm";
+        var problems = new List<string>();
+        if (m.EndAlongNm < farEndNm - 0.01) problems.Add($"{name} ended ({m.EndReason}) {F(-m.EndAlongNm)} nm past the threshold, beyond the far end at {F(-farEndNm)} nm");
+        var f = ApproachRunner.RunOne(Scenario(far), trace: null);
+        if (f.EndAlongNm < farEndNm) problems.Add($"{far} ended ({f.EndReason}) where it started, past the far end");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
     }
 
     // A downwind from the left and one from the right are mirror images: the same ending, about the
@@ -520,6 +528,70 @@ static class ApproachSelfTest
             foreach (string key in new[] { "selfFeedback3s", "selfFeedback10s" })
                 if (!line.Contains("|" + key + "=", StringComparison.Ordinal) || line.Contains("|" + key + "=NA", StringComparison.Ordinal))
                     problems.Add($"{name} has no {key}");
+        }
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // A pilot obeying ATC (a scripted turn): from 0 s it ignores the tones, which ask for wings level
+    // throughout, turns to the course − 30 at up to 20° of bank, then rolls level and follows the
+    // tones again once within 1°: it ends on course − 30 ±1°, wings level within 0.5° 5 s later.
+    private static string? ScriptedTurnCheck()
+    {
+        var rwy = ApproachRunways.A;
+        var (lat, lon) = ApproachRunways.PointOnApproach(rwy, 12, 3);
+        var ac = new ApproachAircraft(ApproachAircraftKind.Jet, rwy, lat, lon, 4000, ApproachRunways.LocalCourse(rwy, lat, lon), 0, 0);
+        var pilot = JetPilot(0.5, 0, ac.PitchDeg);
+        var turns = new ApproachScriptedTurns(new[] { (0.0, -30.0) });
+        double? doneAt = null;
+        double maxBank = 0;
+        for (int i = 0; i < 30 * 120; i++)
+        {
+            double t = i * PilotDt;
+            double rel = HeadingChange(ApproachRunways.LocalCourse(rwy, ac.Lat, ac.Lon), ac.HeadingTrueDeg);
+            double? scripted = turns.BankFor(t, rel);
+            if (scripted == null) doneAt ??= t;
+            var (bank, pitch) = pilot.Step(t, PilotDt, 0, ac.PitchDeg, NoSpeech, scripted);
+            maxBank = Math.Max(maxBank, Math.Abs(bank));
+            ac.Step(PilotDt, bank, pitch);
+            if (doneAt is double d && t >= d + 5) break;
+        }
+        if (doneAt == null) return "the scripted turn never ended";
+        var problems = new List<string>();
+        double endRel = HeadingChange(ApproachRunways.LocalCourse(rwy, ac.Lat, ac.Lon), ac.HeadingTrueDeg);
+        if (Math.Abs(endRel - -30) > 1) problems.Add($"heading course {F(endRel)}, expected −30 ±1");
+        if (Math.Abs(ac.BankStdDeg) > 0.5) problems.Add($"bank 5 s after the turn {F(ac.BankStdDeg)}, expected 0 ±0.5");
+        if (maxBank < 15 || maxBank > 20 + 1e-9) problems.Add($"largest bank {F(maxBank)}, expected 15 to 20");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // A scenario's start bank reaches visual guidance on the very first frame, in SimConnect's
+    // left-positive radians: 20° right is −20°.
+    private static string? StartBankCheck()
+    {
+        var sc = Scenario("INT-A-JET-R30-d0.5") with { StartBankDeg = 20 };
+        VgSimFrame? first = null;
+        ApproachRunner.RunOne(sc, trace: null, onFeed: f => first ??= f);
+        if (first is not VgSimFrame f0) return "no frame was fed";
+        double expected = -20 * Math.PI / 180;
+        return Math.Abs(f0.BankRad - expected) < 1e-12 ? null : $"first frame bank {F(f0.BankRad)} rad, expected {F(expected)}";
+    }
+
+    /// <summary>The ten joining keys every results line carries, a value or NA.</summary>
+    internal static readonly string[] JoinKeys =
+    {
+        "decided", "decidedBankDeg", "establishedAlongNm", "joinHoldBankMaxDeg", "countdown30ErrS",
+        "countdown15ErrS", "turnToEstablishedS", "maxBankCmdDeg", "notCrossingCalls", "leftJoining",
+    };
+
+    // So a run against an app from before stage 4 still writes a full line.
+    private static string? JoinKeysCheck()
+    {
+        var problems = new List<string>();
+        foreach (string name in new[] { "INT-A-JET-R30-d0.5", "FINAL-A-JET-x0-h0-d0.5" })
+        {
+            string line = ApproachRunner.RunOne(Scenario(name), trace: null).ToResultsLine(name);
+            foreach (string key in JoinKeys)
+                if (!line.Contains("|" + key + "=", StringComparison.Ordinal)) problems.Add($"{name} has no {key}");
         }
         return problems.Count == 0 ? null : string.Join("; ", problems);
     }

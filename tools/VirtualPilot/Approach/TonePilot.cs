@@ -18,6 +18,9 @@ namespace VirtualPilot.Approach;
 /// A gust (<see cref="Knock"/>) rolls the aircraft at once, but the pilot learns of it only
 /// through what it hears after it, a reaction delay later: until then it steers the bank it
 /// perceives, the actual bank less the knock it has not yet heard.
+///
+/// During a scripted turn (<see cref="ApproachScriptedTurns"/>) the pilot flies the turn's bank
+/// instead of the tones; the pitch still follows the tone.
 /// </summary>
 sealed class TonePilot
 {
@@ -64,7 +67,7 @@ sealed class TonePilot
 
     /// <summary>One time step: hears the commands at <paramref name="t"/>, acts on what it heard a reaction delay ago.</summary>
     public (double BankStd, double Pitch) Step(double t, double dt, double desiredBankStd, double desiredPitch,
-        IReadOnlyList<(double T, string Text, bool Immediate)> speech)
+        IReadOnlyList<(double T, string Text, bool Immediate)> speech, double? scriptedBankStd = null)
     {
         _bankHistory.Add((t, _bank));
         _heard.Enqueue((t, BankTarget(t, desiredBankStd, speech), AxisTarget(_pitch, desiredPitch, _pitchRangeDeg), _knockTotal));
@@ -79,11 +82,17 @@ sealed class TonePilot
         {
             // Without a knock still unheard, the same arithmetic as before gusts existed, to the bit.
             double unheard = _knockTotal - _perceivedKnock;
-            _bank = unheard == 0
-                ? Approach(_bank, target.Bank, BankDeadbandDeg, BankTimeConstantS, _rollRateDegS, dt)
-                : Approach(_bank - unheard, target.Bank, BankDeadbandDeg, BankTimeConstantS, _rollRateDegS, dt) + unheard;
+            if (scriptedBankStd == null)
+                _bank = unheard == 0
+                    ? Approach(_bank, target.Bank, BankDeadbandDeg, BankTimeConstantS, _rollRateDegS, dt)
+                    : Approach(_bank - unheard, target.Bank, BankDeadbandDeg, BankTimeConstantS, _rollRateDegS, dt) + unheard;
             if (!_pitchFrozen) _pitch = Approach(_pitch, target.Pitch, PitchDeadbandDeg, PitchTimeConstantS, _pitchRateDegS, dt);
         }
+        // A scripted turn (ApproachScriptedTurns, a pilot obeying ATC): the pilot rolls to the bank the
+        // turn needs at its usual rate, with no reaction delay (it is turning by its own heading), whatever
+        // the tones say. It keeps hearing them, so when the turn is over it acts on what they said.
+        if (scriptedBankStd is double scripted)
+            _bank = Approach(_bank, scripted, BankDeadbandDeg, BankTimeConstantS, _rollRateDegS, dt);
         return (_bank, _pitch);
     }
 

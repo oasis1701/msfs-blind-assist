@@ -50,9 +50,12 @@ sealed class ApproachAircraft
 
     /// <param name="tasKt">Overrides the kind's TAS (the speed scenarios).</param>
     /// <param name="gammaDeg">The flight path it starts on, already settled (0 = level).</param>
+    /// <param name="bankStdDeg">The bank it starts with, right wing down positive (a press in a turn).</param>
     public ApproachAircraft(ApproachAircraftKind kind, ApproachRunway rwy, double lat, double lon, double altMslFt,
-        double headingTrueDeg, double windFromTrueDeg, double windKt, double? tasKt = null, double gammaDeg = 0.0)
+        double headingTrueDeg, double windFromTrueDeg, double windKt, double? tasKt = null, double gammaDeg = 0.0,
+        double bankStdDeg = 0.0)
     {
+        BankStdDeg = bankStdDeg;
         var spec = ApproachAircraftSpecs.For(kind);
         _rwy = rwy;
         _tasKt = tasKt ?? spec.TasKt;

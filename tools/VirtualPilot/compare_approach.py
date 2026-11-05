@@ -5,7 +5,7 @@
 Reads the VG| lines `approach` writes and prints BETTER and WORSE counts per measure, with up to six
 examples each, the way compare.py does for landings, then CHANGED: moves with no single right
 direction (the touchdown point along the runway, an end reason changing between two non-touchdown
-outcomes). Two runs of the same build print BETTER {}, WORSE {} and CHANGED {}: the harness is
+outcomes, the first joining decision). Two runs of the same build print BETTER {}, WORSE {} and CHANGED {}: the harness is
 deterministic. Measures written NA on either side are not compared.
 """
 import collections
@@ -105,16 +105,30 @@ for name in common:
          lambda b, a: a < b / 1.1 and b - a > 15)
 
     # A command that starts running away from the pilot reads as a smaller magnitude, so a sign
-    # change is always worse, whatever the magnitudes do.
+    # change is worse, whatever the magnitudes do, unless the new value is within 0.1 of zero: the
+    # vertical path (visual guidance stage 5) aims at near zero, and a sign flip there is noise.
     b, a = num(x, 'selfFeedback10s'), num(y, 'selfFeedback10s')
     if b is not None and a is not None:
         detail = f'{b:.3f} -> {a:.3f}'
-        if sign(a) != sign(b):
+        if sign(a) != sign(b) and abs(a) > 0.1:
             note(worse, 'selfFeedback10s sign changed', name, detail)
         elif abs(a) - abs(b) > 0.1:
             note(worse, '|selfFeedback10s| up', name, detail)
         elif abs(b) - abs(a) > 0.1:
             note(better, '|selfFeedback10s| down', name, detail)
+
+    # Joining final (stage 4): the first decision changing has no single right direction. Lined up
+    # more than 0.5 nm closer in, ending inside the minimum final (6 nm, 1 nm for a light run), is
+    # worse; the mirror is better.
+    if x.get('decided', 'NA') != 'NA' and y.get('decided', 'NA') != 'NA' and x['decided'] != y['decided']:
+        note(changed, 'decided', name, f"{x['decided']} -> {y['decided']}")
+    minimum_final = 1.0 if 'LIGHT' in name else 6.0
+    b, a = num(x, 'establishedAlongNm'), num(y, 'establishedAlongNm')
+    if b is not None and a is not None:
+        if b - a > 0.5 and a < minimum_final:
+            note(worse, 'establishedAlongNm down', name, f'{b:.2f} -> {a:.2f}')
+        elif a - b > 0.5 and b < minimum_final:
+            note(better, 'establishedAlongNm up', name, f'{b:.2f} -> {a:.2f}')
 
 only_before = [n for n in before if n not in after]
 only_after = [n for n in after if n not in before]
