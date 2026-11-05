@@ -453,7 +453,7 @@ The rows, top of the screen first:
 
 A color is named only where it tells you something: amber and red always, the magenta navaids against the cyan tuned one, the white TO waypoint against the green route, and the green route, yellow temporary and cyan missed approach lines.
 
-Under the list are the captain's EFIS controls: a Mode list (LS, VOR, NAV, ARC, PLAN), a Range list (10 to 320) and the CSTR, WPT, VOR.D, NDB, ARPT and LS buttons, each reading on or off. They work as the panel's own do. The Mode and Range lists follow the ND, so a change made in the cockpit shows there, even with your cursor on the list. A second Alt+N brings the window forward.
+Under the list are the captain's EFIS controls: a Mode list (LS, VOR, NAV, ARC, PLAN), a Range list (10 to 320) and the CSTR, WPT, VOR.D, NDB, ARPT and LS buttons, each reading on or off. They work as the panel's own do, and a press is heard once: your screen reader reads the button's new state, and BA does not repeat it. The Mode and Range lists follow the ND, so a change made in the cockpit shows there, even with your cursor on the list. A second Alt+N brings the window forward.
 
 **Output Ctrl+W** reads the next waypoint, its bearing, distance and time, in the ND's order: *"VAKSU, 318 degrees, 84 nautical miles, 17:29"*, or *"No active waypoint"* with no flight plan.
 
