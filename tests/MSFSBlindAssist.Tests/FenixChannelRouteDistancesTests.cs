@@ -39,6 +39,9 @@ public class FenixChannelRouteDistancesTests
 
     private static Action<FenixChannelProtoWriter> Discontinuity => l => l.Varint(16, 1);
 
+    // A hold (12 to 14), as the decoder's tests write ZIRKE's entry arc.
+    private static Action<FenixChannelProtoWriter> Hold => l => l.Varint(12, 4).Bool(13, true).Double(14, 168.1);
+
     private static FenixChannelProtoWriter Runway(double lat, double lon, string airport, string runway)
         => new FenixChannelProtoWriter().Double(1, lat).Double(2, lon).String(4, runway).String(6, airport);
 
@@ -145,6 +148,24 @@ public class FenixChannelRouteDistancesTests
     }
 
     [Fact]
+    public void The_line_runs_to_the_last_destination_element()
+    {
+        // A turn's second arc carries the next fix's ident: here the arrival's, at (1, 1.5), before the runway's own line
+        // element at (1, 2). Both are destination elements; the line runs to the last.
+        List<FenixChannelProtoWriter> legs =
+        [
+            .. BaseLine().Take(3),
+            Leg(1, 1.5, Arc, "KBBB19", Turn(10, 0, 90)),
+            Leg(1, 2, Line, "KBBB19"),
+            .. Symbols(),
+        ];
+
+        // 60.04 to "A", 60.04 to "B", 15.71 round the turn, 30.02 on to the runway's element. Stopping at the arc would
+        // give 135.79.
+        Assert.Equal(165.80, FenixChannelRouteDistances.ToDestination(Route(legs, ToA()))!.Value, Within);
+    }
+
+    [Fact]
     public void A_turn_piece_counts_as_its_arc()
     {
         // A turn piece of radius 10, 0 to 90 degrees, at (0.5, 1) between "A" and "B": its step is 15.71, where its
@@ -224,7 +245,7 @@ public class FenixChannelRouteDistancesTests
     [InlineData("a TO with no symbol")]
     [InlineData("the TO's ident on no kept point")]
     [InlineData("no destination element")]
-    [InlineData("one runway")]
+    [InlineData("one runway, no destination end")]
     public void An_unfollowable_route_is_not_available(string why)
     {
         FenixRoute route = why switch
@@ -236,11 +257,55 @@ public class FenixChannelRouteDistancesTests
             "a TO with no symbol" => Route([.. BaseLine(), Leg(1, 1, Symbol, "B")], ToA()),
             "the TO's ident on no kept point" => Route([.. BaseLegs(), Leg(5, 5, Symbol, "Z")], To(5, 5, "Z")),
             "no destination element" => Route([.. BaseLine().Take(3), Leg(1, 2, Line, "XYZ"), .. Symbols()], ToA()),
-            "one runway" => Route(BaseLegs(), ToA(), oneRunway: true),
+            "one runway, no destination end" => Route(BaseLegs(), ToA(), oneRunway: true),
             _ => throw new ArgumentOutOfRangeException(nameof(why)),
         };
 
         Assert.Null(FenixChannelRouteDistances.ToDestination(route));
+    }
+
+    [Fact]
+    public void A_hold_on_the_line_is_not_available()
+    {
+        // The base route with a hold on "B", ahead of the TO "A": without it D is 180.11 and Shift+D 150.10.
+        List<FenixChannelProtoWriter> legs =
+            [.. BaseLine().Take(2), Leg(1, 1, Line, "B", Hold), Leg(1, 2, Line, "KBBB19"), .. Symbols()];
+
+        Assert.Null(FenixChannelRouteDistances.ToDestination(Route(legs, ToA())));
+        Assert.Equal(FenixDistanceKind.NotAvailable, FenixChannelRouteDistances.ToTopOfDescent(
+            Route(legs, ToA(), markers: [Marker(1, 1.5, Tod)])).Kind);
+
+        // An end of descent marker is past without the sum.
+        Assert.Equal(FenixDistanceKind.Past, FenixChannelRouteDistances.ToTopOfDescent(
+            Route(legs, ToA(), markers: [Marker(1, 1.8, Eod)])).Kind);
+    }
+
+    [Fact]
+    public void The_to_s_ident_on_two_runs_is_not_available()
+    {
+        // "A", "B", then "A" again at (1, 1.5) before the destination: the last point carrying "A" would skip "B". Taken
+        // from it, D would be 90.06 and Shift+D, with the marker at (1, 1.75), 75.05.
+        List<FenixChannelProtoWriter> legs =
+            [.. BaseLine().Take(3), Leg(1, 1.5, Line, "A"), Leg(1, 2, Line, "KBBB19"), .. Symbols()];
+
+        Assert.Null(FenixChannelRouteDistances.ToDestination(Route(legs, ToA())));
+        Assert.Equal(FenixDistanceKind.NotAvailable, FenixChannelRouteDistances.ToTopOfDescent(
+            Route(legs, ToA(), markers: [Marker(1, 1.75, Tod)])).Kind);
+    }
+
+    [Fact]
+    public void With_no_runways_and_no_legs_d_is_not_available()
+    {
+        Assert.Null(FenixChannelRouteDistances.ToDestination(Route([], ToA(), noRunway: true)));
+    }
+
+    [Fact]
+    public void With_no_runways_the_airport_as_to_is_the_great_circle_to_it()
+    {
+        // The TO is the airport "KBBB", the destination end's symbol: from (0, 0) to (1, 2).
+        FenixRoute route = Route(AirportLegs(), To(1, 2, "KBBB"), noRunway: true);
+
+        Assert.Equal(134.25, FenixChannelRouteDistances.ToDestination(route)!.Value, Within);
     }
 
     [Fact]
