@@ -176,19 +176,20 @@ pull request.
 - The PFD flags plan 02 measured but did not show, and any flag left unmeasured (plan 02's handoff lists them).
 - Every "also seen on" note and every handoff item the owner ruled out.
 - Shift+D has no answer while the ND draws no top of descent (at the gate, early in the climb), though PERF CRZ prints one (plan 10's evidence; Task 7's climb).
+- The EFIS map option lamps' names ("EFIS 1 CSTR Fault" and the rest): rename each after a press in the sim shows its lamp ([FNX-7]); CSTR's was shown on 2026-11-05 (the owner, 2026-11-06: its own session).
 
 ## Execution record
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed; Tasks 0 to 7 done; the flight's fixes in progress, then Task 8
+- **Status:** Tasks 0 to 7 and the flight's fixes done, each fix checked by the owner; Task 8 removes this folder in the next commit and Task 9 opens the pull request (the owner's go-ahead, 2026-11-06)
 - **Claimed by:** Robin Kipp (robin24), 2026-11-05
 - **Worked by:** Robin Kipp with Claude (superpowers:executing-plans); Task 6's review by a separate reviewer on the most capable model
 - **Started:** 2026-11-05, from 6c40b8065 (the branch's head, plans 01 to 11 landed)
-- **Landed:**
-- **Tests at landing:** so far 19,480 passed, none failed, the whole suite, `ClaudeRulesHookTests` included (Task 1: 19,474 at the start)
+- **Landed:** 2026-11-06: the commit of this record is the last that holds the folder; the branch goes to `main` in one pull request, which the owner merges
+- **Tests at landing:** 19,522 passed, none failed, the whole suite at 0ed768ca4, `ClaudeRulesHookTests` included (Task 1: 19,474 at the start)
 - **Tasks:** Task 1, no shared files beyond what the records name. Task 2, nothing to merge: `origin/main` at 8eb77a5b4 is in the branch; re-check before the pull request. Tasks 3 to 5, on the branch. Task 6, reviewed at aea2c7c1f; the fixes below.
-- **Waiting on the owner:** Task 9's go-ahead.
+- **Waiting on the owner:** nothing; the merge is the owner's.
 - **In-sim results:** Task 7, 2026-11-05 from 20:38, the owner's flight from cold and dark on eda33f6aa (3.0.0.7613), one check at a time, NVDA by ear, Claude reading `debug.log` and `fenix_channel.log`:
   1. Cold and dark: Alt+E said "E/WD: not available, display off"; no notice. Passed.
   2. Power-up with that window focused: the gauge rows came, no freeze, nothing said twice; no slow list update logged. Passed.
@@ -211,3 +212,4 @@ Kept in this file only, so no other plan's push ever touches it.
   - Not fixed, and why. The 5 s stall (plan 02): nothing reproduces it, and the status rows that shrank the list came from the comparisons removed since, so a list update over a second is now logged instead. The ECAM display power switches (plan 06): the name is in no file of the Fenix's cockpit, and the real control, each ECAM's brightness knob, is on the ECAM panel. "Top center: heading not available": it follows the plans' convention for a value the channel sends as NaN, with no capture to say otherwise. `FenixA320ElevatorTrim.Describe(0)`, "up 0.0": it matches the shared trim call-out on the other aircraft, and its test pins it.
   - After the flight, at the owner's word (2026-11-05). The LS press from the ND window (the reviewer's Important, re-graded above) was heard twice, so it is fixed: the window's press marks the light's echo as a panel press does (`MainForm.MarkStateLightEchoForPress`, FD and LS only, as on the panel). Spec row 32 (no controls in the ISIS window) is changed by the owner: every ISIS panel control comes into the window, as the EFIS, ECAM and DCDU keys did into theirs. The owner first asked to drop the baro knob, as Ctrl+B's baro set moves the ISIS baro too (heard in flight); told that on the bugs page the knob is the only way to set a bug's value (plan 07's evidence), he chose to keep it, on the panel and in the window.
   - The owner's checks on ae3888fe1 (2026-11-05, 22:54): LS from the ND window heard once; the ISIS window's buttons work. CSTR from the ND window was still heard twice, so the ten map option buttons (both sides) opt in to the same mark (`PressTogglesStateVariable`), which also quiets their lamps after a panel press; their lamps keep their "Fault" names until a press measures each ([FNX-7]). The DCDU window's "KUSA@" after a handover is the station's own name: SayIntentions' ACARS sent the CPDLC messages from "KUSA@" that day ("KUSA" the day before), and the Fenix answers "to=KUSA@" (its `log-System` files), so its DCDU draws the same and the window keeps it.
+  - The owner's check on 0ed768ca4 (2026-11-06): CSTR from the ND window heard once. The option lamps' rename goes to its own session (the owner, 2026-11-06), listed under Follow-ups. Task 9's go-ahead: the owner, 2026-11-06 ("time to close out plan 12 and put up the PR").
