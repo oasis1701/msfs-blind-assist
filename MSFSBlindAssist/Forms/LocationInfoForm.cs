@@ -57,6 +57,10 @@ public partial class LocationInfoForm : Form
     private readonly Dictionary<int, AirportSearchEntry?> _airportMatches = new();
 
     private readonly List<(string Header, int Width, Func<PlaceResult, string> Text)> _columns = new();
+    // The rows handed to the virtual list, one per index until the shown places or the columns change.
+    // A new ListViewItem per RetrieveVirtualItem call gives the row a new accessible object each time, so the
+    // focus events raised on Tab point at objects already gone and NVDA reads nothing (checked 2026-11-05).
+    private readonly Dictionary<int, ListViewItem> _rows = new();
     private bool _updatingControls;
 
     private TextBox _whereBox = null!;
@@ -245,6 +249,7 @@ public partial class LocationInfoForm : Form
         _columns.Add(("Details", 180, Details));
         _columns.Add(("Coordinates", 160, p => LocationPhrases.Coordinates(p.Lat, p.Lon)));
 
+        _rows.Clear();
         _results.BeginUpdate();
         _results.Columns.Clear();
         foreach (var (header, width, _) in _columns) _results.Columns.Add(header, width);
@@ -274,8 +279,12 @@ public partial class LocationInfoForm : Form
             e.Item = new ListViewItem(new string[_columns.Count]);
             return;
         }
-        var place = _places[_shown[e.ItemIndex]];
-        e.Item = new ListViewItem(_columns.Select(c => c.Text(place)).ToArray());
+        if (!_rows.TryGetValue(e.ItemIndex, out var row))
+        {
+            var place = _places[_shown[e.ItemIndex]];
+            _rows[e.ItemIndex] = row = new ListViewItem(_columns.Select(c => c.Text(place)).ToArray());
+        }
+        e.Item = row;
     }
 
     private PlaceResult? SelectedPlace =>
@@ -631,6 +640,7 @@ public partial class LocationInfoForm : Form
         _shown = PlaceFilter.Apply(_places, MapLat, MapLon, HiddenTypes().ToHashSet(StringComparer.Ordinal),
             SearchText.Fold(_searchBox.Text), direction, maxNm);
 
+        _rows.Clear();
         _results.BeginUpdate();
         _results.SelectedIndices.Clear();
         _results.VirtualListSize = _shown.Count;
@@ -696,6 +706,7 @@ public partial class LocationInfoForm : Form
                 if (Following) _majorCities = report.Details?.MajorCities ?? new List<Models.NearbyPlace>();
                 UpdateWhereBox();
                 Reload();
+                _rows.Clear();
                 _results.Invalidate(); // the From aircraft column
                 _announcer.AnnounceImmediate("Refreshed");
             }
