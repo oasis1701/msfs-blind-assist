@@ -698,7 +698,7 @@ public class FenixChannelClientTests
     public void The_default_handler_follows_no_redirect()
     {
         // The tests give the client a fake, so the handler it builds for itself is checked here. It follows no
-        // redirect: one could open a path no FenixChannelCall names, and the client opens only those two calls.
+        // redirect: one could open a path no FenixChannelCall names, and the client opens only those calls.
         using var handler = FenixChannelClient.CreateDefaultHandler();
 
         Assert.False(handler.AllowAutoRedirect);

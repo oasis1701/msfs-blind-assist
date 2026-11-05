@@ -39,7 +39,7 @@ internal readonly record struct FenixChannelUnaryResult(FenixChannelState State,
 
 /// <summary>
 /// The connection to the Fenix display channel, the local gRPC service on 127.0.0.1:18083 (HTTP/2 without TLS).
-/// It opens one of the two read calls (<see cref="FenixChannelCall"/>), splits the answer into messages, hands
+/// It opens one of the two stream calls (<see cref="FenixChannelCall"/>), splits the answer into messages, hands
 /// each to a callback and reports the call's state, and reconnects quietly when the call fails or ends. The
 /// display channel monitor owns the instance and disposes it when the pilot switches away.
 /// </summary>
@@ -107,7 +107,7 @@ internal sealed class FenixChannelClient : IDisposable
     /// <summary>
     /// The handler the client builds when a test gives it none: HTTP/2 over a socket, a 5 s connect timeout, and
     /// no redirects. A followed redirect could open a path <see cref="FenixChannelFields.PathOf"/> never gave, and
-    /// the client opens only the two calls, so a 3xx answer is a failure like any other status that is not 200.
+    /// the client opens only the <see cref="FenixChannelCall"/> paths, so a 3xx answer is a failure like any other status that is not 200.
     /// </summary>
     internal static SocketsHttpHandler CreateDefaultHandler()
         => new()
@@ -127,7 +127,7 @@ internal sealed class FenixChannelClient : IDisposable
 
     /// <summary>
     /// Opens one call and keeps it open until <see cref="Dispose"/> or a refusal: a loop on its own pool thread
-    /// connects, reads, and connects again when the call fails or ends. Start each call once; the two calls
+    /// connects, reads, and connects again when the call fails or ends. Start each call once; the two stream calls
     /// run independently over this one client.
     /// </summary>
     /// <param name="call">The call to open.</param>
@@ -137,7 +137,7 @@ internal sealed class FenixChannelClient : IDisposable
     /// <remarks>
     /// Both callbacks run on a thread-pool thread, never the thread that called Start. An exception from one is
     /// swallowed (the first one per call is logged), and none starts after <see cref="Dispose"/>. A value of
-    /// <paramref name="call"/> that is not one of the two calls throws <see cref="ArgumentOutOfRangeException"/>
+    /// <paramref name="call"/> that is no <see cref="FenixChannelCall"/> throws <see cref="ArgumentOutOfRangeException"/>
     /// here, as a null callback throws <see cref="ArgumentNullException"/>: mistakes in the code, not conditions
     /// of the sim. After Dispose, Start does nothing.
     /// </remarks>

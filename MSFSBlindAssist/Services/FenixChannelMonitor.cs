@@ -65,7 +65,7 @@ internal readonly record struct FenixChannelSession(
     string? Build, bool BuildChecked, bool Refused, long? FirstDataAtMs, long StartedAtMs);
 
 /// <summary>
-/// The owner of one session of the Fenix display channel: it runs the client's two calls, decodes each message,
+/// The owner of one session of the Fenix display channel: it runs the client's two streams, decodes each message,
 /// feeds the trust gate under one lock, keeps the latest display frame with the RemoteData message it was decoded
 /// from and the latest ECAM entries, asks for the Fenix build on each connection of the data call, and writes the
 /// channel's log (fenix_channel.log). A reader asks it for a snapshot: a display's verdict, the latest frame, that

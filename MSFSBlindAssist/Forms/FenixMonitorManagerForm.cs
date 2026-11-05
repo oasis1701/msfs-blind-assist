@@ -12,7 +12,7 @@ namespace MSFSBlindAssist.Forms;
 /// adds are two sets of rows that no variable owns: one per app-wide cabin announcement
 /// (<see cref="FenixCabinAnnouncements.Rows"/>), which FenixCabinReadyMonitor reads the same list for, and one per
 /// display channel announcement (<see cref="FenixChannelAnnouncementRows.Rows"/>: the FMA changes, the E/WD warnings,
-/// cautions and memos, and the DCDU messages), which the channel's announcers read the same list for
+/// cautions and memos, the DCDU messages and the ND messages), which the channel's announcers read the same list for
 /// (<see cref="FenixChannelAnnouncementRows.IsMuted"/>).
 /// </summary>
 public sealed class FenixMonitorManagerForm : MonitorManagerFormBase
