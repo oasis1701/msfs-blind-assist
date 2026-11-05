@@ -276,14 +276,14 @@ VirtualPilot.exe approach [--scenario TEXT] [--out file]
 VirtualPilot.exe approach --trace NAME
 VirtualPilot.exe approach --trace NAME --record FILE
 VirtualPilot.exe approach --scenario TEXT --record FILE
-VirtualPilot.exe approach --capture-gain K --roll-in S [--out file]
+VirtualPilot.exe approach --capture-gain K [--out file]
 ```
 
 `--record FILE` writes the flight recording (see "Flight recordings" below) of the traced
 scenario, or of every scenario `--scenario` picks, one after another. `--capture-gain K` sets visual
-guidance's capture gain (deg·kt/nm, its `CaptureGainForHarness`) and `--roll-in S` the profile's
-`RollInTimeS` for every run; both are set by reflection and refuse to run against an app from
-before stage 4, which has neither.
+guidance's capture gain (deg·kt/nm, its `CaptureGainForHarness`) for every run; it is set by
+reflection and refuses to run against an app from before stage 4. Stage 4's sweep also had
+`--roll-in S` for a profile field `RollInTimeS`; the sweep picked 0 s and both were removed.
 
 `--selftest` runs 33 checks of the harness itself: turn rate and direction, the 3° descent rate,
 wind drift, the SimConnect signs, the north wrap, the runway geometry, great-circle flight, the
@@ -697,6 +697,131 @@ Every other `WORSE` and `CHANGED` line, explained:
   to 1,863 ft). Stage 4 replaces Extending.
 - `gustCalloutDelayS` up (all 8): by design. Today's callouts answer while the knock is still building
   and cut each other off; the gate speaks once, after the error has held a quarter of a second.
+
+### Stage 4: joining final (2026-11-04)
+
+Visual guidance now decides, once the wings are nearly level after Ctrl+V, whether the aircraft is on
+final, joining (its heading crosses final at least the minimum final out: the heading is held until
+the turn onto final, VG-23), vectoring (BA picks the cut), or needs the pattern (flown as "Unable" until
+the pattern is built). One capture law with a speed-scaled gain turns the aircraft onto final; the
+precision track within 0.05 nm is unchanged.
+
+**The sweep.** The capture gain at 4200 (the old 30°/nm at 140 kt), 7000 and 10259 deg·kt/nm
+(FlyByWire's), each with a roll-in time of 0, 2 and 4 s, against `approach_stage3_v2`, on the plan's
+checks: A, final tracking (no `finalXteRmsFt` up, `overshootFt` up or "no longer established" on any
+FINAL, FPS, NOISE, WIND-XW, STEP, GUST or offset SPEED run); B, joining holds the heading (every INT,
+SHALLOW, TURN, NOCROSS, WIND-TW and SPEED R45 run decides Joining, commands under 0.5° of bank before
+"Turn onto final", hears it, is established, never leaves Joining; NOCROSS hears "Heading does not cross
+final" once; TURN decides under 5° of bank); C, vectoring reaches final (VEC and the light CLOSE runs
+established at least the minimum final less 0.5 nm, jet, or 0.3 nm, light; no overshoot over 600 ft
+outside the pattern runs; jet intercepts established 5 nm out or more; the light 90° intercepts
+established sooner than at stage 3); D, the countdown (|error| median ≤ 3 s and worst ≤ 5 s at 30 s,
+2 and 3 s at 15 s); E, no commanded bank over 25°. First round, with BA picking its cut as if the
+aircraft already flew it:
+
+| gain | roll-in | A | B | C | D | E | median time to establish |
+|---|---|---|---|---|---|---|---|
+| 4200 | 0 / 2 / 4 s | fail 1 / 6 / 27 | fail 1 | fail 18 | fail | pass | 174 / 181 / 188 s |
+| 7000 | 0 / 2 / 4 s | pass | pass | fail 2 / 2 / 3 | fail (30 s call 6.6 to 8.6 s off) | pass | 139 / 147 / 144 s |
+| 10259 | 0 s | pass | pass | fail 4 | pass | pass | 129 s |
+| 10259 | 2 s | pass | pass | fail 2 | pass | pass | 129 s |
+| 10259 | 4 s | pass | pass | fail 6 | pass | pass | 132 s |
+
+None passed. At 10259 with no roll-in only the four jets vectored from 2 nm beside a 10 nm final,
+flying parallel, fell short: established 5.43 to 5.46 nm out against 5.5. BA picked its 30° cut from a
+sum (`AlongToEstablishNm`) that assumes the aircraft is already on the cut, and from parallel the turn
+onto it took about 20 s and 0.7 nm along final while closing 0.13 nm. At 4200 the jets on 30° cuts were
+established 4.6 nm out; at 7000 the light aircraft starting too close were never established. The
+stage stopped for the owner, who chose (2026-11-04) to have BA count the turn onto its cut, from the
+aircraft's own speed and bank settings (`VisualGuidanceJoin.TurnOntoCut`: rolling in and out at the
+profile's bank rate to at most its largest approach bank). Second round:
+
+| gain | roll-in | A | B | C | D | E | median time to establish |
+|---|---|---|---|---|---|---|---|
+| 4200 | 0 / 2 / 4 s | fail 1 / 6 / 27 | fail 1 | fail 14 | fail | pass | 170 / 176 / 184 s |
+| 7000 | 0 / 2 / 4 s | pass | pass | fail 2 | fail (5.3 to 7.2 s) | pass | 139 / 147 / 144 s |
+| 10259 | 0 s | **pass** | **pass** | **pass** | **pass** | **pass** | **128 s** |
+| 10259 | 2 s | pass | pass | fail 2 | pass | pass | 129 s |
+| 10259 | 4 s | pass | pass | fail 2 | pass | pass | 132 s |
+
+**The pick: FlyByWire's gain, 10259, with no roll-in**, the only combination that passes all five.
+The roll-in time was removed with its profile field, `--roll-in` with it (plan decision 7). Two
+defects in the first round were fixed before it, each with a failing test: joining's wings-level
+command followed the aircraft's bank down at the rate limit after a press in a turn, and a vectored
+aircraft's countdown was timed on the few degrees it had while still turning onto its cut, which said
+"30 seconds" up to 20 s late on the light 0.2 nm finals.
+
+**The final run** (`approach_stage4`, the same as the pick's sweep run):
+
+- A: no line. Final tracking is far tighter where the old arc capture was slow: the offset finals' median
+  `finalXteRmsFt` 189.9 to 28.9 ft (`FINAL-A-LIGHT-x0.2R-h0-d0.5` 362 to 41 ft), the intercepts' 316.8
+  to 19.3 ft.
+- B: all 67 runs decide Joining; the largest commanded bank before "Turn onto final" is 0.00°; from
+  "Turn onto final" to established a median 35.9 s, at most 56 s; every NOCROSS run hears "Heading does
+  not cross final" once; the TURN runs decide at 4.93 to 5.00° (printed to two decimals; the app decides
+  only under 5°).
+- C: the vectored jets are established 5.64 to 8.53 nm out, the light ones 2.93 to 3.63 nm, the light
+  aircraft starting too close 0.73 nm (need 5.5, 0.7 and 0.7); no overshoot outside the pattern runs; the
+  jet intercepts are established 6.16 nm out or more; the light 90° intercepts in 107 s instead of 300.
+- D: "Turn onto final in 30 seconds" a median 0.07 s off, worst 3.0 s (85 runs); 15 s 0.03, worst 1.23 s.
+- E: the largest commanded bank in any run is 25.0°.
+
+Against `approach_stage3_v2`: `BETTER` finalXteRmsFt down 94, bankRateRmsDegS down 88, establishedAlongNm
+up 42, bankCalloutsPerMin down 38, pitchJitterDeg down 21, pitchRateRmsDegS down 19, now touches down 11,
+now established 10, |touchdownXteFt| down 9, touchdownVsFpm down 4; `WORSE` bankCalloutsPerMin up 89,
+pitchJitterDeg up 76, pitchRateRmsDegS up 76, maxDescentFpm up 59, pathRmsFt up 50, bankRateRmsDegS up 36,
+no longer touches down 19, |touchdownXteFt| up 11, touchdownVsFpm up 4, no longer established 2,
+overshootFt up 2; `CHANGED` touchdownAlongFt moved 27, endReason 24. Against `approach_baseline_v5`, the
+stage-1 app: `BETTER` bankCalloutsPerMin down 173, pitchJitterDeg and pitchRateRmsDegS down 142,
+finalXteRmsFt down 94, bankRateRmsDegS down 92, establishedAlongNm up 44, now touches down 17; `WORSE`
+maxDescentFpm up 79, pathRmsFt up 50, bankRateRmsDegS up 39, pitchJitterDeg and pitchRateRmsDegS up 32,
+no longer touches down 18, gustCalloutDelayS up 8 (stage 3's, by design), finalXteRmsFt up 1 (stage 3's
+speech-led gust run).
+
+Every `WORSE` and `CHANGED` line against stage 3, explained:
+
+- **The vertical side of joining** (pathRmsFt up 50, maxDescentFpm up 59, no longer touches down 16 of the
+  19, pitchJitterDeg and pitchRateRmsDegS up on the INT, TURN, NOCROSS, SHALLOW and SPEED R45 runs): by
+  design. While joining, the altitude is ATC's or the pilot's, so the pitch tone sits on the aircraft's
+  own pitch, and the harness's pilot, with no ATC to clear a descent, stays at the height it started:
+  the path's height at 12 nm (jet) or 6 nm (light). A jet joining a 30° cut reaches final about 6.8 nm
+  out some 1,900 ft above the path; today's vertical law then descends at up to 1,500 fpm and the jet
+  floats past the runway (the 8 jet 30° intercepts, the jet TURN, NOCROSS and SHALLOW runs). The pitch
+  measures rise for the same reason: the final segment starts while the law is still bringing the
+  aircraft down. Stage 5's vertical path (the level hold while joining, the descent planned when
+  vectoring, "You'll be 600 feet high at final") is the answer; the plan reports these, not judges them.
+- **More bank callouts** (89 runs up; the median over all runs 1.6 to 2.0 a minute, against 16 before
+  stage 3): mostly the offset finals (48 runs, 1.2 to 2.3 a minute), which used to drift onto the line at
+  the old arc's 30°/nm and are now vectored onto it with a real turn, and track far tighter for it (A);
+  and the light 45° and 90° intercepts, whose capture is now a turn, not a drift. The most outside the
+  pattern runs: 4.8 a minute on the short light runs starting too close (a steep turn in under 4
+  minutes) and 3.6 on the jets vectored back from heading away; the pattern runs, flying "Unable", up
+  to 5.5. 38 runs went down.
+- **Lines cut off**: 33 runs count one line each "cut off" (stage 3: one run). None is: the measure
+  estimates a line's length as words / 2.5 + 0.2 s, and "Turn onto final" (17), "Turn onto final in 30
+  seconds" (4), "3 miles out" (1) and "1 mile out" (2) are followed by a bank callout exactly when their
+  measured hold ends, which is the estimate or shorter (measured 1.11, 2.13, 0.99 and 0.85 s). The other
+  5 are "On commanded path" followed by the next callout 1.0 to 1.2 s later, stage 3's fixed 1 s gap
+  between callouts (VG-21), seen once at stage 3.
+- `bankRateRmsDegS` up 36: the light intercepts and vectored light runs, from about 0.002 to 0.014°/s:
+  the speed-scaled gain asks 158° of intercept per nm at 65 kt, so the light capture is quicker and its
+  bank moves more near the line; the 20 % rule on near-zero values. The offset light finals went down
+  from 0.30 to 0.005°/s.
+- `pitchJitterDeg` up on the offset finals (jet 0.0002 to 0.0004°, light 0.0002 to 0.0015°): the 20 % rule
+  on near-zero values.
+- **The pattern runs** (DW, FAR, CLOSE jet: endReason 20 of the 24, no longer established 2, overshootFt
+  up 2, no longer touches down 2, |touchdownXteFt| up 10, touchdownVsFpm up 4): reported, not judged,
+  until the pattern exists. They fly "Unable", heading held: the downwinds fly away from the field beside
+  final while the vertical law from before the redesign, which is proportional only, settles into a
+  340 fpm descent it never corrects, and meet the ground about 8 nm out (`landedShort`); the far-side
+  light runs land beside the runway; the jets starting too close cut across final and fly on.
+- `endReason` on the light 30° intercepts with the 1.0 s pilot (4, offRunway to pastRunwayEnd): they now
+  reach final at their start height, as above, and float in the fixed flare (stage 6).
+- `NOISE-A-LIGHT-f60` no longer touches down (Vectoring): a light run landing or floating in the fixed
+  flare depends on timing; its tracking passed A.
+- `WIND-TW-A-JET-d0.5` |touchdownXteFt| 25 to 54 ft: the 90° join with 15 kt behind it, turned onto final
+  by the new law, touches down 54 ft left of the centreline (half the runway's width is 75 ft); established
+  and tracked under A.
 
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 

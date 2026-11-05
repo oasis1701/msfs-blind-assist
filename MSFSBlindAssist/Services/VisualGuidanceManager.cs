@@ -38,7 +38,6 @@ public class VisualGuidanceManager : IDisposable
     private DateTime? establishedSince;               // inside the established criteria since, else null
     private double maxApproachBankDeg = 25.0;         // VisualGuidanceProfile.MaxApproachBankDeg
     private double minimumFinalNm = 6.0;              // VisualGuidanceProfile.MinimumFinalNm
-    private double rollInTimeS = 0.0;                 // VisualGuidanceProfile.RollInTimeS
     // What the join has said: the decision's update (a turn already due then is not announced), the
     // turn line, the countdown (armed only if the turn was further off than its mark when first known),
     // and "Heading does not cross final" (said after 3 s not crossing; again only after 3 s crossing).
@@ -475,7 +474,6 @@ public class VisualGuidanceManager : IDisposable
         flareTargetPitchDeg = profile.FlareTargetPitchDeg;
         maxApproachBankDeg = profile.MaxApproachBankDeg;
         minimumFinalNm = profile.MinimumFinalNm;
-        rollInTimeS = profile.RollInTimeS;
         // Cached for ProcessUpdate's tone-pair re-arm — see the field comment.
         visualGuidanceProfile = profile;
 
@@ -1242,7 +1240,7 @@ public class VisualGuidanceManager : IDisposable
 
             // Vectoring: note when the turn onto final comes (the countdown and its line).
             if (currentPhase == GuidancePhase.Vectoring)
-                TurnOntoFinalIsDue(lat, lon, signedCrossTrackNM, crossTrackRate, relativeTrack, speedFactor);
+                TurnOntoFinalIsDue(lat, lon, signedCrossTrackNM, relativeTrack, speedFactor);
 
             if (currentPhase == GuidancePhase.Deciding)
             {
@@ -1253,7 +1251,7 @@ public class VisualGuidanceManager : IDisposable
             }
             else if (currentPhase == GuidancePhase.Unable
                      || (currentPhase == GuidancePhase.Joining
-                         && !TurnOntoFinalIsDue(lat, lon, signedCrossTrackNM, crossTrackRate, relativeTrack, speedFactor)))
+                         && !TurnOntoFinalIsDue(lat, lon, signedCrossTrackNM, relativeTrack, speedFactor)))
             {
                 // Wings level, the heading held. Joining: the heading ATC (or the pilot) chose, as
                 // FlyByWire's autopilot holds its heading until LOC* engages; the capture law runs only to
@@ -1274,7 +1272,7 @@ public class VisualGuidanceManager : IDisposable
                 guidancePhase = "CAPTURE";
                 double clamp = FinalClampDeg(signedCrossTrackNM, relativeTrack);
                 double desiredTrack = VisualGuidanceJoin.DesiredLegTrackDeg(signedCrossTrackNM, crossTrackRate,
-                    currentGroundSpeedKnots, clamp, CaptureGainForHarness, rollInTimeS);
+                    currentGroundSpeedKnots, clamp, CaptureGainForHarness);
 
                 // Simple heading controller onto the desired track
                 double headingError = VisualGuidanceJoin.Normalize(desiredTrack - relativeTrack);
@@ -1350,12 +1348,12 @@ public class VisualGuidanceManager : IDisposable
     /// <summary>
     /// Whether the turn onto final has come: the capture law, clamped to the intercept (joining: the one
     /// being flown, while the track crosses final; vectoring: the chosen angle), first asks
-    /// <see cref="VisualGuidanceJoin.TurnCueBankDeg"/> of bank toward final, from the cross-track looked the
-    /// profile's roll-in time ahead (<see cref="VisualGuidanceJoin.TurnCueCrossNm"/>); or the aircraft is
-    /// within <see cref="ARC_MODE_EXIT_NM"/> of the line. Once due it stays due, and joining freezes the
+    /// <see cref="VisualGuidanceJoin.TurnCueBankDeg"/> of bank toward final
+    /// (<see cref="VisualGuidanceJoin.TurnCueCrossNm"/>); or the aircraft is within
+    /// <see cref="ARC_MODE_EXIT_NM"/> of the line. Once due it stays due, and joining freezes the
     /// intercept it was flying, which the capture law then keeps as its limit (at least 30°).
     /// </summary>
-    private bool TurnOntoFinalIsDue(double lat, double lon, double cross, double crossRate, double relativeTrack, double speedFactor)
+    private bool TurnOntoFinalIsDue(double lat, double lon, double cross, double relativeTrack, double speedFactor)
     {
         if (turnOntoFinalDue) return true;
         if (runway == null || joinPlan == null) return false;
@@ -1367,14 +1365,13 @@ public class VisualGuidanceManager : IDisposable
             var position = new VisualGuidanceApproachPoint(VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm, cross);
             clamp = VisualGuidanceJoin.CrossesFinal(position, relativeTrack, minimumFinalNm, out _) ? liveIntercept : 0.0;
         }
-        double lead = cross + crossRate * rollInTimeS;
-        bool due = (clamp > 0 && Math.Abs(lead) <= VisualGuidanceJoin.TurnCueCrossNm(clamp, currentGroundSpeedKnots,
+        bool due = (clamp > 0 && Math.Abs(cross) <= VisualGuidanceJoin.TurnCueCrossNm(clamp, currentGroundSpeedKnots,
                        CaptureGainForHarness, LATERAL_HEADING_GAIN * speedFactor))
                    || Math.Abs(cross) <= ARC_MODE_EXIT_NM;
         if (!due) return false;
         turnOntoFinalDue = true;
         if (joining) frozenInterceptDeg = Math.Max(0.0, liveIntercept);
-        Log.Debug("VisualGuidance", $"Turn onto final due: XTE={cross:F3}NM, lead={lead:F3}NM, clamp={clamp:F1}°, intercept={liveIntercept:F1}°");
+        Log.Debug("VisualGuidance", $"Turn onto final due: XTE={cross:F3}NM, clamp={clamp:F1}°, intercept={liveIntercept:F1}°");
         return true;
     }
 
@@ -1408,7 +1405,7 @@ public class VisualGuidanceManager : IDisposable
             : intercept >= VisualGuidanceJoin.MinTimedInterceptDeg ? joinPlan.ClampDeg : 0.0;
         double? seconds = crosses && !turnOntoFinalDue
             ? VisualGuidanceJoin.SecondsToTurn(cross, timedIntercept, clamp, currentGroundSpeedKnots, CaptureGainForHarness,
-                LATERAL_HEADING_GAIN * SpeedFactor(), rollInTimeS)
+                LATERAL_HEADING_GAIN * SpeedFactor())
             : null;
         // Where it lines up, counting the turn onto the cut when vectoring, as the decision did (joining
         // flies its own cut, so there is no turn to count). Only F needs it; the countdown skips it.

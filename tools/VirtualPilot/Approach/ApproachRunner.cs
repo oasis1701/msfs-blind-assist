@@ -42,13 +42,7 @@ static class ApproachRunner
             Console.WriteLine("--capture-gain needs an app with VisualGuidanceManager.CaptureGainForHarness (visual guidance stage 4)");
             return 2;
         }
-        if (opt.RollIn != null && RollInProperty == null)
-        {
-            Console.WriteLine("--roll-in needs an app with VisualGuidanceProfile.RollInTimeS (visual guidance stage 4)");
-            return 2;
-        }
         CaptureGain = opt.CaptureGain;
-        RollInS = opt.RollIn;
         if (opt.Record != null && opt.Trace == null && opt.Scenario == null)
         {
             Console.WriteLine("--record needs --trace or --scenario: one recording per run, not the whole matrix");
@@ -103,26 +97,24 @@ static class ApproachRunner
     private static readonly Action<string> NoRecord = _ => { };
 
     // Stage 4's hooks and profile fields, by reflection for the same reason: null against an older app,
-    // where the profile settings are skipped and --capture-gain and --roll-in refuse to run.
+    // where the profile setting is skipped and --capture-gain refuses to run. (Stage 4's sweep also
+    // had --roll-in, the profile's RollInTimeS; 0 s was picked and the field removed.)
     private const System.Reflection.BindingFlags Hidden = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
     internal static readonly System.Reflection.PropertyInfo? CaptureGainHook = typeof(VisualGuidanceManager).GetProperty("CaptureGainForHarness", Hidden);
     internal static readonly System.Reflection.PropertyInfo? DecisionHook = typeof(VisualGuidanceManager).GetProperty("DecisionForHarness", Hidden);
     private static readonly System.Reflection.PropertyInfo? MinimumFinalProperty = typeof(VisualGuidanceProfile).GetProperty("MinimumFinalNm");
-    private static readonly System.Reflection.PropertyInfo? RollInProperty = typeof(VisualGuidanceProfile).GetProperty("RollInTimeS");
 
     /// <summary>The light runs' minimum final: the circuit-sized final the spec gives light aircraft.</summary>
     public const double LightMinimumFinalNm = 1.0;
 
-    /// <summary>--capture-gain and --roll-in, for the whole run; null leaves the app's defaults.</summary>
+    /// <summary>--capture-gain, for the whole run; null leaves the app's default.</summary>
     public static double? CaptureGain { get; set; }
-    public static double? RollInS { get; set; }
 
-    /// <summary>The profile a scenario flies with: the A320 default, with the light runs' minimum final and any --roll-in.</summary>
+    /// <summary>The profile a scenario flies with: the A320 default, with the light runs' minimum final.</summary>
     public static VisualGuidanceProfile ProfileFor(ApproachScenario sc)
     {
         var profile = new VisualGuidanceProfile();
         if (sc.Kind == ApproachAircraftKind.Light) MinimumFinalProperty?.SetValue(profile, LightMinimumFinalNm);
-        if (RollInS is double rollIn) RollInProperty?.SetValue(profile, rollIn);
         return profile;
     }
 

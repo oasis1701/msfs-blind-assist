@@ -124,16 +124,16 @@ internal static class VisualGuidanceJoin
         => legCrossNm == 0 ? 0 : -Math.Sign(legCrossNm) * Normalize(relTrackToLegDeg);
 
     /// <summary>
-    /// The capture law: the track to fly relative to the leg, from the cross-track looked
-    /// <paramref name="rollInS"/> ahead, damped by the closing rate, clamped to ±<paramref name="clampDeg"/>.
-    /// With a gain of 30°/nm and no roll-in this is today's arc capture exactly.
+    /// The capture law: the track to fly relative to the leg, from the cross-track, damped by the
+    /// closing rate, clamped to ±<paramref name="clampDeg"/>. With a gain of 30°/nm this is the arc
+    /// capture from before stage 4 exactly. (A roll-in time that looked ahead along the track was
+    /// swept in the approach harness at 0, 2 and 4 s; 0 was the only one that passed, so it went.)
     /// </summary>
     public static double DesiredLegTrackDeg(double legCrossNm, double crossRateNmS, double gsKt, double clampDeg,
-        double captureGain, double rollInS)
+        double captureGain)
     {
         double clamp = double.IsFinite(clampDeg) ? Math.Max(0, clampDeg) : 0;
-        double xLead = legCrossNm + crossRateNmS * rollInS;
-        double raw = -CaptureGainDegPerNm(gsKt, captureGain) * xLead - RateDampingDeg * crossRateNmS;
+        double raw = -CaptureGainDegPerNm(gsKt, captureGain) * legCrossNm - RateDampingDeg * crossRateNmS;
         return Math.Clamp(raw, -clamp, clamp);
     }
 
@@ -154,12 +154,12 @@ internal static class VisualGuidanceJoin
     /// already past. Leaves out the rate-damping term (about 0.1 s).
     /// </summary>
     public static double? SecondsToTurn(double legCrossNm, double interceptDeg, double clampDeg, double gsKt,
-        double captureGain, double bankPerDeg, double rollInS)
+        double captureGain, double bankPerDeg)
     {
         if (!(interceptDeg >= MinTimedInterceptDeg) || !(gsKt >= MinGroundSpeedKt)) return null;
         double closingNmS = gsKt * Math.Sin(interceptDeg * D2R) / 3600.0;
         if (!(closingNmS > 0)) return null;
-        double t = (Math.Abs(legCrossNm) - TurnCueCrossNm(clampDeg, gsKt, captureGain, bankPerDeg)) / closingNmS - rollInS;
+        double t = (Math.Abs(legCrossNm) - TurnCueCrossNm(clampDeg, gsKt, captureGain, bankPerDeg)) / closingNmS;
         return t >= 0 && double.IsFinite(t) ? t : null;
     }
 

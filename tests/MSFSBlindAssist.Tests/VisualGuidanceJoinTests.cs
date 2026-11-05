@@ -77,10 +77,10 @@ public class VisualGuidanceJoinTests
     [Fact]
     public void Capture_law_with_todays_gain_is_todays_arc()
     {
-        Assert.Equal(-15.0, VisualGuidanceJoin.DesiredLegTrackDeg(0.5, 0, 140, 45, 4200, 0), 6);
-        Assert.Equal(15.0, VisualGuidanceJoin.DesiredLegTrackDeg(-0.5, 0, 140, 45, 4200, 0), 6);
-        Assert.Equal(-45.0, VisualGuidanceJoin.DesiredLegTrackDeg(2.0, 0, 140, 45, 4200, 0), 6);
-        Assert.Equal(-14.88, VisualGuidanceJoin.DesiredLegTrackDeg(0.5, -0.01, 140, 45, 4200, 0), 6);
+        Assert.Equal(-15.0, VisualGuidanceJoin.DesiredLegTrackDeg(0.5, 0, 140, 45, 4200), 6);
+        Assert.Equal(15.0, VisualGuidanceJoin.DesiredLegTrackDeg(-0.5, 0, 140, 45, 4200), 6);
+        Assert.Equal(-45.0, VisualGuidanceJoin.DesiredLegTrackDeg(2.0, 0, 140, 45, 4200), 6);
+        Assert.Equal(-14.88, VisualGuidanceJoin.DesiredLegTrackDeg(0.5, -0.01, 140, 45, 4200), 6);
     }
 
     [Fact]
@@ -94,8 +94,8 @@ public class VisualGuidanceJoinTests
     public void A_stopped_aircraft_gets_no_countdown_and_a_finite_gain()
     {
         Assert.Equal(256.475, VisualGuidanceJoin.CaptureGainDegPerNm(0, Gain), 3);
-        Assert.Null(VisualGuidanceJoin.SecondsToTurn(2, 30, 30, 0, Gain, 1.0, 0));
-        Assert.True(double.IsFinite(VisualGuidanceJoin.DesiredLegTrackDeg(2, 0, 0, 30, Gain, 0)));
+        Assert.Null(VisualGuidanceJoin.SecondsToTurn(2, 30, 30, 0, Gain, 1.0));
+        Assert.True(double.IsFinite(VisualGuidanceJoin.DesiredLegTrackDeg(2, 0, 0, 30, Gain)));
         Assert.True(double.IsFinite(VisualGuidanceJoin.TurnCueCrossNm(30, 0, Gain, 1.0)));
     }
 
@@ -107,9 +107,8 @@ public class VisualGuidanceJoinTests
     [Fact]
     public void Seconds_to_turn_on_a_30_degree_intercept()
     {
-        Assert.Equal(85.3, VisualGuidanceJoin.SecondsToTurn(2.0, 30, 30, 140, Gain, 1.0, 0)!.Value, 0.1);
-        Assert.Equal(83.3, VisualGuidanceJoin.SecondsToTurn(2.0, 30, 30, 140, Gain, 1.0, 2)!.Value, 0.1);
-        Assert.Null(VisualGuidanceJoin.SecondsToTurn(2.0, 3, 30, 140, Gain, 1.0, 0));
+        Assert.Equal(85.3, VisualGuidanceJoin.SecondsToTurn(2.0, 30, 30, 140, Gain, 1.0)!.Value, 0.1);
+        Assert.Null(VisualGuidanceJoin.SecondsToTurn(2.0, 3, 30, 140, Gain, 1.0));
     }
 
     [Fact]
@@ -287,6 +286,5 @@ public class VisualGuidanceJoinTests
     {
         Assert.Equal(25.0, Profile.MaxApproachBankDeg);
         Assert.Equal(6.0, Profile.MinimumFinalNm);
-        Assert.Equal(0.0, Profile.RollInTimeS);
     }
 }

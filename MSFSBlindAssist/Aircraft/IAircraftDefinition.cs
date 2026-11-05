@@ -129,12 +129,6 @@ public sealed class VisualGuidanceProfile
     /// about a mile. Default 6.0 nm, the owner's starting value for airliners (2026-11-04), to be
     /// revisited after testing.</summary>
     public double MinimumFinalNm { get; init; } = 6.0;
-
-    /// <summary>How far ahead (seconds) along the track the capture law looks when it decides
-    /// where a turn onto a leg starts, so the turn begins that much earlier, allowing for the time
-    /// the pilot takes to roll into it. Per-aircraft because roll rates differ. Default 0 until the
-    /// approach harness picks a value (visual guidance redesign, stage 4).</summary>
-    public double RollInTimeS { get; init; } = 0.0;
 }
 
 /// <summary>

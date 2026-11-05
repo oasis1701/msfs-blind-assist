@@ -164,8 +164,7 @@ public class VisualGuidanceJoiningTests
         var rig = PressedAt(10, 2, 0);
         double cut = VisualGuidanceJoin.Decide(new VisualGuidanceApproachPoint(10, 2), 0, 140, VisualGuidanceJoin.DefaultCaptureGain,
             new VisualGuidanceProfile()).ClampDeg;
-        double seconds = VisualGuidanceJoin.SecondsToTurn(2, cut, cut, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0,
-            new VisualGuidanceProfile().RollInTimeS)!.Value;
+        double seconds = VisualGuidanceJoin.SecondsToTurn(2, cut, cut, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0)!.Value;
         rig.Place(10, 2, -10);
         rig.UpdateAt(1.0 / 30);
         string fives = (Math.Round(seconds / 5, MidpointRounding.AwayFromZero) * 5).ToString("0", CultureInfo.InvariantCulture);
@@ -238,8 +237,7 @@ public class VisualGuidanceJoiningTests
     public void Joining_counts_down_and_turns()
     {
         var (rig, lines) = RecordedAt(12, 3, -30);
-        double tCue = VisualGuidanceJoin.SecondsToTurn(3, 30, 30, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0,
-            new VisualGuidanceProfile().RollInTimeS)!.Value;
+        double tCue = VisualGuidanceJoin.SecondsToTurn(3, 30, 30, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0)!.Value;
         double nmPerS = 140.0 / 3600;
         rig.FlyFor(tCue + 2, 30, beforeEach: t =>
             rig.Place(12 - nmPerS * Math.Cos(30 * Math.PI / 180) * t, 3 - nmPerS * 0.5 * t, -30));
@@ -328,8 +326,7 @@ public class VisualGuidanceJoiningTests
     {
         var (rig, _) = RecordedAt(12, 2.9, -30);
         double join = 12 - VisualGuidanceJoin.AlongToEstablishNm(2.9, 30, 140, VisualGuidanceJoin.DefaultCaptureGain);
-        double seconds = VisualGuidanceJoin.SecondsToTurn(2.9, 30, 30, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0,
-            new VisualGuidanceProfile().RollInTimeS)!.Value;
+        double seconds = VisualGuidanceJoin.SecondsToTurn(2.9, 30, 30, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0)!.Value;
         string expected = $"Joining final {join.ToString("0.0", CultureInfo.InvariantCulture)} miles out. 30 degree intercept, " +
             $"turn in about {(Math.Round(seconds / 5, MidpointRounding.AwayFromZero) * 5).ToString("0", CultureInfo.InvariantCulture)} seconds.";
         Assert.Equal(expected, rig.Readout);
