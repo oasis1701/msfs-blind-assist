@@ -365,6 +365,8 @@ public partial class LocationInfoForm : Form
         root.Checked = root.Nodes.Cast<TreeNode>().All(n => n.Checked);
         _typeTree.Nodes.Add(root);
         root.Expand();
+        // Selected, so Tab into the tree reads an item rather than nothing.
+        _typeTree.SelectedNode = root;
         _typeTree.EndUpdate();
     }
 

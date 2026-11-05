@@ -430,17 +430,24 @@ The automatic nearest-city announcement (Announcements tab) speaks this same sen
 
 Press \] then Shift+L. The window opens already filled in, with the cursor in its first box, **Where you are**. Over land it shows the state or province you are in (for example *"In: Bavaria, Germany"*), the mountain range or desert if you are over one, the named coast if it is within range, and the time zone. Over water it shows the sea or lake, the nearest land or shore, and the nearest region. Then come the major cities around you.
 
-Press Tab to reach **Places**: one table of everything around you, nearest first. Arrow up and down through it. Each row has these columns:
+Press Tab to move through the window. In order:
 
-- **Name**
-- **Type**: what the place is, as GeoNames calls it: island, mountain, lake, airport, populated place and so on
-- **Region**: the state or province and the country
-- **From map position**: distance and direction
-- **From aircraft**: shown only when the map position is not the aircraft (see below)
-- **Details**: a town's population; for an airport its ident and *"in simulator"* when BA found it in the simulator's airports, or *"Not found in simulator"*. The match is made by name and position, so it is very likely right but not guaranteed.
-- **Coordinates**, in decimal degrees
-
-Below the table, **Search status** says how many places are shown.
+1. **Where you are** (described above).
+2. **Kinds of place**: a tree with check boxes: **All places**, then Towns, Villages, Airports, Terrain, Water and Landmarks, then the kinds in each, such as island or mountain under Terrain. Ticking or unticking an item does the same to everything under it, so you can untick Villages in one go, or tick Terrain and then untick only mountains. An item shows ticked only while everything under it is ticked.
+3. **Show filters and search**, which shows the filters below it (the button then reads **Hide filters and search**):
+   - **Search by name**: type part of a name. Accents and capitals do not matter. Press Enter to hear how many places match.
+   - **Search where**: **Around the map position**, or **Whole world, by name**, which finds a name anywhere and lists the nearest matches. A whole-world search takes a second or two.
+   - **Range**: how far around the map position to list places, in your distance unit, up to 310 miles or 500 kilometres.
+   - **Direction from the map position**: all directions, or one of eight (north, northeast and so on).
+4. **Places**: one table of everything the tree and filters let through, nearest first. Arriving in it you hear how many there are, for example *"Places, 1,998 places within 30 miles of the map position"*, or *"No places found"*, then the nearest place. Arrow up and down through it. Each row has these columns:
+   - **Name**
+   - **Type**: what the place is, as GeoNames calls it: island, mountain, lake, airport, populated place and so on
+   - **Region**: the state or province and the country
+   - **From map position**: distance and direction
+   - **From aircraft**: shown only when the map position is not the aircraft (see below)
+   - **Details**: a town's population; for an airport its ident and *"in simulator"* when BA found it in the simulator's airports, or *"Not found in simulator"*. The match is made by name and position, so it is very likely right but not guaranteed.
+   - **Coordinates**, in decimal degrees
+5. **Reset filters**, **Map position follows the aircraft** and **Refresh**.
 
 **Context menu.** On a place, press the Applications key or Shift+F10:
 
@@ -448,16 +455,7 @@ Below the table, **Search status** says how many places are shown.
 - **Set as map position**: measures everything from this place instead of the aircraft (see below).
 - **Copy coordinates**: copies them in decimal degrees, for example *57.93333, 11.66667*.
 
-**The map position.** Everything in the window is measured from one point, the map position. Normally it is the aircraft. **Set as map position** moves it to a place, so you can look around somewhere else: the list is then measured from there, the first box adds a line such as *"Map position: Krokholmen, 23 miles northwest of the aircraft"*, and the table gains the **From aircraft** column. The **Map position follows the aircraft** check box, among the filters, brings it back to the aircraft.
-
-**Filters and search.** Press **Show filters and search** to show them (the button then reads **Hide filters and search**):
-
-- **Search by name**: type part of a name. Accents and capitals do not matter. Press Enter to hear how many places match.
-- **Search where**: **Around the map position**, or **Whole world, by name**, which finds a name anywhere and lists the nearest matches. A whole-world search takes a second or two.
-- **Range**: how far around the map position to list places, in your distance unit, up to 310 miles or 500 kilometres.
-- **Direction from the map position**: all directions, or one of eight (north, northeast and so on).
-- **Kinds of place**: a tree with check boxes: **All places**, then Towns, Villages, Airports, Terrain, Water and Landmarks, then the kinds in each, such as island or mountain under Terrain. Ticking or unticking an item does the same to everything under it, so you can untick Villages in one go, or tick Terrain and then untick only mountains. An item shows ticked only while everything under it is ticked.
-- **Map position follows the aircraft**: see above.
+**The map position.** Everything in the window is measured from one point, the map position. Normally it is the aircraft. **Set as map position** moves it to a place, so you can look around somewhere else: the list is then measured from there, the first box adds a line such as *"Map position: Krokholmen, 23 miles northwest of the aircraft"*, and the table gains the **From aircraft** column. The **Map position follows the aircraft** check box, near the bottom, brings it back to the aircraft.
 
 On an item in the tree, the context menu has **Use for Output C**: from then on Output C names the nearest place of that kind instead of the nearest town, for example the nearest island. On **All places** it names the nearest place of any kind. **Output C back to the nearest town or village** undoes it.
 
