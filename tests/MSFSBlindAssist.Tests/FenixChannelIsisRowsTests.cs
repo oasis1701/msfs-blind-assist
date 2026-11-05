@@ -111,6 +111,9 @@ public class FenixChannelIsisRowsTests
         Assert.Contains("Mach .47", Rows(Cruise() with { Mach = 0.467 }));
         Assert.Contains("Mach .55", Rows(Cruise() with { Mach = 0.5494 }));
         Assert.DoesNotContain(Rows(Cruise() with { Mach = double.NaN }), row => row.StartsWith("Mach"));
+
+        // A Mach left out of the message decodes as 0, and the ISIS draws no Mach below .45.
+        Assert.DoesNotContain(Rows(Cruise() with { Mach = 0 }), row => row.StartsWith("Mach"));
     }
 
     [Fact]

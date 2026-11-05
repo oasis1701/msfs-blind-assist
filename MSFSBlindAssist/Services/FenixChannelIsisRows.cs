@@ -89,7 +89,7 @@ internal static class FenixChannelIsisRows
 
         rows.Add(AirspeedRow(s.Airspeed));
         rows.AddRange(EnabledBugs(s, speed: true).Select(bug => $"Speed bug {Whole(bug.Value)}"));
-        if (IsNumber(s.Mach)) rows.Add($"Mach {Mach(s.Mach)}");
+        if (IsNumber(s.Mach) && s.Mach > 0) rows.Add($"Mach {Mach(s.Mach)}");
 
         rows.Add(s.RealignSeconds is { } realign
             ? $"ATT {Seconds(realign)}"

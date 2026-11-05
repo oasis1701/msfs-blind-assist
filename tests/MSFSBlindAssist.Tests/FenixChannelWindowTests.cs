@@ -122,6 +122,28 @@ public class FenixChannelWindowTests
         Assert.Equal(new[] { "PFD: not available, no data" }, ItemsOf(ListOf(form)));
     }
 
+    // A window whose controls' refresh throws, as a derived window's could.
+    private sealed class ThrowingControlsForm(FenixChannelMonitor monitor)
+        : FenixChannelDisplayForm("PFD", FenixChannelDisplay.Pfd, monitor, _ => FenixChannelRows.Of(["a row"]))
+    {
+        protected override void OnRefresh(FenixChannelSnapshot s) => throw new InvalidOperationException("no header");
+    }
+
+    [Fact]
+    public void A_refresh_of_the_controls_that_throws_costs_only_the_controls_and_is_reported_once()
+    {
+        // It runs on the window's timer: a throw that left it would reach the app's UI-thread handler every second.
+        var lines = new MonitorTestKit.Lines();
+        using FenixChannelMonitor monitor = MonitorTestKit.NewIdleMonitor(lines);
+        using var form = new ThrowingControlsForm(monitor);
+
+        form.StartLive();
+        form.RefreshNow();
+
+        Assert.Equal(new[] { "PFD: not available, channel not answering" }, ItemsOf(ListOf(form)));
+        Assert.Contains("PFD: controls failed: InvalidOperationException: no header", lines.All);
+    }
+
     [Fact]
     public void A_throwing_compose_shows_a_status_row_and_is_reported_once()
     {

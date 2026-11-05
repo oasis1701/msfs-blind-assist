@@ -205,4 +205,46 @@ public class FenixChannelNdMapPollerTests
         Assert.Null(idle.Poller.Loop);
         Assert.Equal(0, idle.Calls(FenixChannelCall.MapDataVersion));
     }
+
+    [Fact]
+    public async Task Dispose_releases_the_cancellation_source_once_the_loop_has_ended()
+    {
+        using var rig = new Rig();
+        rig.Poller.Start();
+        await rig.PollDone();
+
+        rig.Poller.Dispose();
+        rig.Go();
+        try
+        {
+            await rig.Poller.Loop!;
+        }
+        catch (OperationCanceledException)
+        {
+            // The loop was cancelled while it waited.
+        }
+
+        Assert.True(SpinWait.SpinUntil(() => CancelSourceDisposed(rig.Poller), TimeSpan.FromSeconds(5)));
+
+        // With no loop there is nothing to wait for.
+        using var idle = new Rig();
+        idle.Poller.Dispose();
+        Assert.True(CancelSourceDisposed(idle.Poller));
+    }
+
+    private static bool CancelSourceDisposed(FenixChannelNdMapPoller poller)
+    {
+        var source = (CancellationTokenSource)typeof(FenixChannelNdMapPoller)
+            .GetField("_cancel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(poller)!;
+        try
+        {
+            _ = source.Token;
+            return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
+        }
+    }
 }

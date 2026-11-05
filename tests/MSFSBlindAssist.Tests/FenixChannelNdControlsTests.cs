@@ -124,6 +124,18 @@ public class FenixChannelNdControlsTests
         }
     }
 
+    [Theory]
+    [InlineData(false, false, 0, true)]                                       // not focused: always follows the ND
+    [InlineData(true, false, 0, false)]                                       // just picked: the Fenix is still taking it
+    [InlineData(true, false, FenixChannelNdForm.PickSettleMs - 1, false)]
+    [InlineData(true, false, FenixChannelNdForm.PickSettleMs, true)]          // a cockpit change, or a pick not taken
+    [InlineData(true, true, FenixChannelNdForm.PickSettleMs, false)]          // an open list stays as the pilot has it
+    [InlineData(false, true, FenixChannelNdForm.PickSettleMs, false)]
+    public void A_combo_follows_the_nd_unless_the_pilot_is_using_it(bool focused, bool droppedDown, long msSincePick, bool follows)
+    {
+        Assert.Equal(follows, FenixChannelNdForm.FollowsTheNd(focused, droppedDown, msSincePick));
+    }
+
     [Fact]
     public void Without_a_writer_the_window_adds_no_controls()
     {

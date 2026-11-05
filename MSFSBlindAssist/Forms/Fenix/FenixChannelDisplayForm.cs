@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Services;
 
@@ -49,6 +50,9 @@ internal class FenixChannelDisplayForm : Form
     private const long KeyWasDown = 0x40000000;
 
     private const int RefreshIntervalMs = 1000;
+
+    // A list update this long holds up the app's keys and speech, so it is written to the channel's log.
+    private const double SlowListUpdateMs = 1000;
 
     private readonly string _displayName;
     private readonly FenixChannelDisplay _display;
@@ -159,14 +163,31 @@ internal class FenixChannelDisplayForm : Form
         if (!HoldsStatusRow(_list.Items.Cast<string>().ToList())) _followedRow = _list.SelectedItem as string;
 
         FenixChannelSnapshot snapshot = _monitor.Snapshot(_display);
-        OnRefresh(snapshot);
+
+        // A fault in a derived window's controls costs only them: this runs on the timer, every second.
+        try
+        {
+            OnRefresh(snapshot);
+        }
+        catch (Exception ex)
+        {
+            _monitor.ReportFeatureProblem(_displayName, $"controls failed: {ex.GetType().Name}: {ex.Message}");
+        }
 
         IReadOnlyList<string> rows = RowsFor(
             _displayName,
             snapshot,
             _compose,
             problem => _monitor.ReportFeatureProblem(_displayName, problem));
+
+        // Twice in flight a list shrinking to its status row held this thread for 5 s, with a UI Automation reader attached
+        // and the cause never found. The log line that measured it went with the SimConnect checks, so it is measured here.
+        long before = Stopwatch.GetTimestamp();
         _list.SetLines(rows);
+        if (Stopwatch.GetElapsedTime(before).TotalMilliseconds >= SlowListUpdateMs)
+        {
+            _monitor.ReportFeatureProblem(_displayName, "a list update held the UI thread for over a second");
+        }
 
         if (HoldsStatusRow(rows)) return;
 

@@ -29,6 +29,9 @@ internal sealed class FenixChannelNdForm : FenixChannelDisplayForm
     private readonly MapPointsSource _mapPoints;
     private readonly FenixChannelMonitor _channel;
 
+    // When the pilot last picked in a combo (Environment.TickCount64); before any pick, long enough ago to follow the ND.
+    private long _lastPickMs = -PickSettleMs;
+
     /// <summary>
     /// The map points' poller, made on the first show and disposed with the window; "no data" until then (the tests,
     /// which never show the window, read it so).
@@ -136,10 +139,24 @@ internal sealed class FenixChannelNdForm : FenixChannelDisplayForm
         // Only the pilot's own pick raises this; setting SelectedIndex in code does not.
         combo.SelectionChangeCommitted += (_, _) =>
         {
-            if (!_refreshing && combo.SelectedIndex >= 0) _writeControl!(key, combo.SelectedIndex);
+            if (_refreshing || combo.SelectedIndex < 0) return;
+
+            _lastPickMs = Environment.TickCount64;
+            _writeControl!(key, combo.SelectedIndex);
         };
         return combo;
     }
+
+    /// <summary>How long a focused combo keeps the pilot's own pick before it follows the ND again, in milliseconds.</summary>
+    internal const long PickSettleMs = 3000;
+
+    /// <summary>
+    /// Whether a refresh may set a combo to what the ND shows. An open list stays as the pilot has it, and so does a focused
+    /// combo just after a pick, while the Fenix takes it, or arrowing through the list would snap back under the pilot.
+    /// After that a focused combo follows too: a change from the cockpit, or a pick the Fenix did not take, is then read out.
+    /// </summary>
+    internal static bool FollowsTheNd(bool focused, bool droppedDown, long msSincePick)
+        => !droppedDown && (!focused || msSincePick >= PickSettleMs);
 
     protected override void OnRefresh(FenixChannelSnapshot s) => ApplyControls(s);
 
@@ -165,8 +182,8 @@ internal sealed class FenixChannelNdForm : FenixChannelDisplayForm
     /// <summary>
     /// Sets the controls from one snapshot: with the ND trusted and its header read, the combos select the mode and
     /// range (no selection for a value not in the list) and each button reads its state; otherwise the combos show no
-    /// selection (never a stale mode) and the buttons read their bare names. A combo with focus or an open list is
-    /// left as the pilot has it.
+    /// selection (never a stale mode) and the buttons read their bare names. An open list, and a focused combo just after
+    /// the pilot's own pick, are left as the pilot has them (<see cref="FollowsTheNd"/>).
     /// </summary>
     internal void ApplyControls(FenixChannelSnapshot s)
     {
@@ -196,9 +213,9 @@ internal sealed class FenixChannelNdForm : FenixChannelDisplayForm
         }
     }
 
-    private static void Select(ComboBox combo, int index)
+    private void Select(ComboBox combo, int index)
     {
-        if (combo.Focused || combo.DroppedDown) return;
+        if (!FollowsTheNd(combo.Focused, combo.DroppedDown, Environment.TickCount64 - _lastPickMs)) return;
         if (combo.SelectedIndex != index) combo.SelectedIndex = index;
     }
 }

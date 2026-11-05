@@ -67,10 +67,10 @@ internal sealed class FenixChannelNdMapPoller : IDisposable
         {
             if (_started || _disposed) return;
             _started = true;
-        }
 
-        CancellationToken token = _cancel.Token;
-        Loop = Task.Run(() => RunAsync(token), token);
+            CancellationToken token = _cancel.Token;
+            Loop = Task.Run(() => RunAsync(token), token);
+        }
     }
 
     /// <summary>The loop's task, for the tests to await after <see cref="Dispose"/>; null before <see cref="Start"/>.</summary>
@@ -78,13 +78,26 @@ internal sealed class FenixChannelNdMapPoller : IDisposable
 
     public void Dispose()
     {
+        Task? loop;
         lock (_lock)
         {
             if (_disposed) return;
             _disposed = true;
+            loop = Loop;
         }
 
         _cancel.Cancel();
+
+        // The loop may still be reading the token, so the source goes when the loop has ended.
+        if (loop is null)
+        {
+            _cancel.Dispose();
+        }
+        else
+        {
+            loop.ContinueWith(_ => _cancel.Dispose(), CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
     }
 
     private async Task RunAsync(CancellationToken ct)
