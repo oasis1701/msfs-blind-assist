@@ -68,6 +68,8 @@ internal static class VisualGuidanceJoin
     /// <summary>"Heading does not cross final" once the track has not crossed final for this long.</summary>
     public const double NotCrossingHoldS = 3;
     public const double MinDownwindNm = 1.0;
+    /// <summary>Under this intercept the aircraft is not really converging, and there is no time to the turn.</summary>
+    public const double MinTimedInterceptDeg = 5;
     private const double VectorMaxAngleDeg = 90;
     private const double PatternClampDeg = 90;
     // Today's ARC_RATE_DAMPING (degrees of desired track per nm/s of closing), kept.
@@ -154,7 +156,7 @@ internal static class VisualGuidanceJoin
     public static double? SecondsToTurn(double legCrossNm, double interceptDeg, double clampDeg, double gsKt,
         double captureGain, double bankPerDeg, double rollInS)
     {
-        if (!(interceptDeg >= 5) || !(gsKt >= MinGroundSpeedKt)) return null;
+        if (!(interceptDeg >= MinTimedInterceptDeg) || !(gsKt >= MinGroundSpeedKt)) return null;
         double closingNmS = gsKt * Math.Sin(interceptDeg * D2R) / 3600.0;
         if (!(closingNmS > 0)) return null;
         double t = (Math.Abs(legCrossNm) - TurnCueCrossNm(clampDeg, gsKt, captureGain, bankPerDeg)) / closingNmS - rollInS;

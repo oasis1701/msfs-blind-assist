@@ -151,6 +151,29 @@ public class VisualGuidanceJoiningTests
         rig.Place(12, 3, -30, bankDeg: 3);
         rig.UpdateAt(rig.Now + 1.0 / 30);
         Assert.Equal("Joining", rig.Decision);
+        // From the decision the guidance tone asks for wings level at once: following the aircraft's
+        // bank down at the rate limit would ask a pilot rolling out for more bank than they have.
+        Assert.Equal(0.0, rig.Bank, 9);
+    }
+
+    // Vectoring times the turn onto final on the angle BA chose (30° here), which the guidance is
+    // turning the aircraft onto, not on the 10° it is cutting at so far: 85 s, not 245.
+    [Fact]
+    public void Vectoring_times_the_turn_on_the_chosen_intercept()
+    {
+        var rig = PressedAt(10, 2, 0);
+        rig.Place(10, 2, -10);
+        rig.UpdateAt(1.0 / 30);
+        Assert.Contains("turn in about 85 seconds", rig.Readout);
+    }
+
+    // Heading away from final there is no time to the turn yet.
+    [Fact]
+    public void Vectoring_heading_away_gives_no_time_to_the_turn()
+    {
+        var rig = PressedAt(10, 2, 180);
+        Assert.Equal("Vectoring", rig.Decision);
+        Assert.DoesNotContain("turn in about", rig.Readout);
     }
 
     // While joining the altitude is ATC's or the pilot's: the pitch tone sits on the aircraft's own pitch.

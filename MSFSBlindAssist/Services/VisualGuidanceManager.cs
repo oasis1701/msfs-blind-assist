@@ -1258,9 +1258,11 @@ public class VisualGuidanceManager : IDisposable
                 // Wings level, the heading held. Joining: the heading ATC (or the pilot) chose, as
                 // FlyByWire's autopilot holds its heading until LOC* engages; the capture law runs only to
                 // find the turn onto final (VG-23). Flying its small early bank would let a pilot who
-                // follows it shrink their own intercept and keep putting the turn off.
+                // follows it shrink their own intercept and keep putting the turn off. Level at once, not
+                // at the rate limit: after a press in a turn the command was the aircraft's own bank, and
+                // following it down would ask a pilot rolling out for more bank than they have.
                 guidancePhase = "HOLD_HEADING";
-                desiredBank = RateLimited(previousDesiredBank, 0.0, maxBankRateDegPerSec);
+                desiredBank = 0.0;
             }
             else if (absXTE > ARC_MODE_EXIT_NM)  // 0.05 NM
             {
@@ -1399,8 +1401,13 @@ public class VisualGuidanceManager : IDisposable
         bool joining = joinPlan.State == VisualGuidanceJoinState.Joining;
         bool crosses = !joining || VisualGuidanceJoin.CrossesFinal(new VisualGuidanceApproachPoint(along, cross), relativeTrack, minimumFinalNm, out _);
         double clamp = joining ? intercept : joinPlan.ClampDeg;
+        // Vectoring: once the aircraft converges at all, the time is on the angle BA chose, which the
+        // guidance is turning it onto; on the few degrees it has so far the time would read far too long
+        // (and a countdown started on it would come late). Heading away or parallel: no time yet.
+        double timedIntercept = joining ? intercept
+            : intercept >= VisualGuidanceJoin.MinTimedInterceptDeg ? joinPlan.ClampDeg : 0.0;
         double? seconds = crosses && !turnOntoFinalDue
-            ? VisualGuidanceJoin.SecondsToTurn(cross, intercept, clamp, currentGroundSpeedKnots, CaptureGainForHarness,
+            ? VisualGuidanceJoin.SecondsToTurn(cross, timedIntercept, clamp, currentGroundSpeedKnots, CaptureGainForHarness,
                 LATERAL_HEADING_GAIN * SpeedFactor(), rollInTimeS)
             : null;
         double joinAlong = along - VisualGuidanceJoin.AlongToEstablishNm(Math.Abs(cross), joining ? intercept : joinPlan.ClampDeg,
