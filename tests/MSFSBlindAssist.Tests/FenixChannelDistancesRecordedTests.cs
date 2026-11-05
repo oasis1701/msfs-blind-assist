@@ -1,7 +1,8 @@
-// D and Shift+D on recorded flights: fourteen pushes of the Fenix display channel, each kept here as a route table and
+// D and Shift+D on recorded flights: sixteen pushes of the Fenix display channel, each kept here as a route table and
 // checked against the MCDU's figure of the same push (docs/fenix-channel/evidence/10-distances.md, "The recorded
-// cases"). The recordings themselves stay local ([FNX-23]'s tools); a table is the part of one push the sums read:
-// public waypoints, the aircraft's position and the MCDU's figures.
+// cases"; GateNoRunways and GateDepartureRunwayOnly are from the gate check of 2026-11-05). The recordings themselves
+// stay local ([FNX-23]'s tools); a table is the part of one push the sums read: public waypoints, the aircraft's
+// position and the MCDU's figures.
 //
 // A table is one item per line, built into a RemoteData push with FenixChannelProtoWriter (2.1, 2.4, 2.11 and 2.12
 // under field 2, the position under 192) and decoded with FenixChannelRoute.Decode:
@@ -28,6 +29,8 @@ public class FenixChannelDistancesRecordedTests
 {
     [Theory]
     [InlineData(nameof(GateKcvg), "within 398", "not available")]
+    [InlineData(nameof(GateNoRunways), "within 389", "not available")]
+    [InlineData(nameof(GateDepartureRunwayOnly), "within 394", "not available")]
     [InlineData(nameof(ClimbThreeDiscontinuities), "within 346", "not available")]
     [InlineData(nameof(ClimbInHdg), "within 342", "not available")]
     [InlineData(nameof(CruiseManualGapOpen), "within 220", "a distance")]
@@ -162,6 +165,8 @@ public class FenixChannelDistancesRecordedTests
     private static readonly Dictionary<string, string> Tables = new()
     {
         [nameof(GateKcvg)] = GateKcvg,
+        [nameof(GateNoRunways)] = GateNoRunways,
+        [nameof(GateDepartureRunwayOnly)] = GateDepartureRunwayOnly,
         [nameof(ClimbThreeDiscontinuities)] = ClimbThreeDiscontinuities,
         [nameof(ClimbInHdg)] = ClimbInHdg,
         [nameof(CruiseManualGapOpen)] = CruiseManualGapOpen,
@@ -254,6 +259,68 @@ public class FenixChannelDistancesRecordedTests
         mark 33.64928056 -84.64128611 5
         mark 33.87952778 -84.43507222 5 ga
         mark 36.21340577278335 -86.66167537819123 11 color=2
+        """;
+
+    // MCDU: DEST DIST 389, PERF T/D DIST none.
+    private const string GateNoRunways = """
+        # Gate check 2026-11-05 at the KCVG gate, the plan loaded with no runways, IRS aligned (data\gate-20261105-norunways\091437.404.bin)
+        pos 39.04979181062645 -84.65472211610555
+        to 36.9289 -86.44349444 4 RAMRD
+        leg 39.04883889 -84.66782222 3 KCVG end=1
+        leg 36.9289 -86.44349444 2 RAMRD
+        leg 36.13681734713262 -86.68478560283408 0 HITMN
+        leg 36.13679777276002 -86.68478680423753 1 HITMN r=0.0031249646563082933 in=193.68238830566406 out=171.9931182861328
+        leg 36.13677920432669 -86.684778948043 1 NEWBB r=0.0031249646563082933 in=171.9931182861328 out=150.2767791748047
+        leg 35.73629444 -86.40332778 0 NEWBB
+        leg 35.55596944 -86.27543611 0 IHAVE
+        leg 35.43007778 -86.186575 0 MTHEW
+        leg 33.6367 -84.42786389 3 MTHEW end=1
+        leg 39.04883889 -84.66782222 4 KCVG
+        leg 36.9289 -86.44349444 4 RAMRD
+        leg 36.13679722 -86.68479167 4 HITMN
+        leg 35.73629444 -86.40332778 4 NEWBB
+        leg 35.55596944 -86.27543611 4 IHAVE
+        leg 35.43007778 -86.186575 4 MTHEW
+        leg 33.6367 -84.42786389 4 KATL
+        mark 36.21340193846036 -86.66167653601583 11 color=2
+        """;
+
+    // MCDU: DEST DIST 394, PERF T/D DIST none.
+    private const string GateDepartureRunwayOnly = """
+        # Gate check 2026-11-05 at the KCVG gate, the SID entered (KCVG 18L), no arrival (data\gate-20261105-sidonly\091827.261.bin)
+        pos 39.04979181062645 -84.65472211610555
+        rwy 39.05585556 -84.64666667 KCVG 18L
+        to 39.01267460916321 -84.64677090509797 4 INTCPT
+        leg 39.05585556 -84.64666667 2 KCVG18L
+        leg 39.03218903746606 -84.64677301866273 0 INTCPT in=180.1999969482422 out=180.1999969482422
+        leg 39.01333036387269 -84.64677190688936 0 INTCPT
+        leg 39.01267945912707 -84.64672035924323 1 INTCPT r=0.3187776207923889 in=179.99749755859375 out=172.9645233154297
+        leg 39.01204427406428 -84.64656847427928 1 LASNG r=0.3187776207923889 in=172.9645233154297 out=165.9888916015625
+        leg 38.95699167 -84.62890278 0 LASNG
+        leg 38.82895191377985 -84.58546467361636 0 ZEGUL
+        leg 38.82892660889135 -84.58546426710214 1 ZEGUL r=0.0031249646563082933 in=165.2223358154297 out=193.3435821533203
+        leg 38.82890411967791 -84.58547924429176 1 CHCLL r=0.0031249646563082933 in=193.3435821533203 out=221.49757385253906
+        leg 38.48046667 -84.97849444 0 CHCLL
+        leg 38.48046667 -84.97849444 3 CHCLL end=1
+        leg 36.9289 -86.44349444 2 RAMRD
+        leg 36.13681734713262 -86.68478560283408 0 HITMN
+        leg 36.13679777276002 -86.68478680423753 1 HITMN r=0.0031249646563082933 in=193.68238830566406 out=171.9931182861328
+        leg 36.13677920432669 -86.684778948043 1 NEWBB r=0.0031249646563082933 in=171.9931182861328 out=150.2767791748047
+        leg 35.73629444 -86.40332778 0 NEWBB
+        leg 35.55596944 -86.27543611 0 IHAVE
+        leg 35.43007778 -86.186575 0 MTHEW
+        leg 33.6367 -84.42786389 3 MTHEW end=1
+        leg 39.01267460916321 -84.64677090509797 4 INTCPT
+        leg 38.95699167 -84.62890278 4 LASNG
+        leg 38.828925 -84.58545556 4 ZEGUL
+        leg 38.48046667 -84.97849444 4 CHCLL
+        leg 36.9289 -86.44349444 4 RAMRD
+        leg 36.13679722 -86.68479167 4 HITMN
+        leg 35.73629444 -86.40332778 4 NEWBB
+        leg 35.55596944 -86.27543611 4 IHAVE
+        leg 35.43007778 -86.186575 4 MTHEW
+        leg 33.6367 -84.42786389 4 KATL
+        mark 36.21340193846036 -86.66167653601583 11 color=2
         """;
 
     // MCDU: DEST DIST 346, PERF T/D DIST none.

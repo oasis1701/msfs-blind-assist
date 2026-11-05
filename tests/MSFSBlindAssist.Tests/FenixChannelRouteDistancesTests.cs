@@ -68,13 +68,24 @@ public class FenixChannelRouteDistancesTests
 
     private static List<FenixChannelProtoWriter> BaseLegs() => [.. BaseLine(), .. Symbols()];
 
+    // A route with fewer than two runways, as at the KCVG gate (2026-11-05): the base line to "B", then a discontinuity's
+    // end at the airport "KBBB" (1, 2) that carries the last waypoint's ident, "B" (the gate's carried MTHEW's at KATL's
+    // point); the airport's symbol is the route's last.
+    private static List<FenixChannelProtoWriter> AirportLegs() =>
+    [
+        .. BaseLine().Take(3),
+        Leg(1, 2, End, "B", Discontinuity),
+        .. Symbols(),
+        Leg(1, 2, Symbol, "KBBB"),
+    ];
+
     private static FenixChannelPush Push(
         IEnumerable<FenixChannelProtoWriter> legs, FenixChannelProtoWriter? to, double lat = 0, double lon = 0,
-        IEnumerable<FenixChannelProtoWriter>? markers = null, bool oneRunway = false)
+        IEnumerable<FenixChannelProtoWriter>? markers = null, bool oneRunway = false, bool noRunway = false)
     {
         var route = new FenixChannelProtoWriter();
-        route.Message(1, Runway(0, -1, "KAAA", "01"));
-        if (!oneRunway) route.Message(1, Runway(1, 2, "KBBB", "19"));
+        if (!noRunway) route.Message(1, Runway(0, -1, "KAAA", "01"));
+        if (!oneRunway && !noRunway) route.Message(1, Runway(1, 2, "KBBB", "19"));
         foreach (FenixChannelProtoWriter leg in legs) route.Message(4, leg);
         if (to is not null) route.Message(11, to);
         foreach (FenixChannelProtoWriter marker in markers ?? []) route.Message(12, marker);
@@ -87,9 +98,10 @@ public class FenixChannelRouteDistancesTests
 
     private static FenixRoute Route(
         IEnumerable<FenixChannelProtoWriter> legs, FenixChannelProtoWriter? to, double lat = 0, double lon = 0,
-        IEnumerable<FenixChannelProtoWriter>? markers = null, bool oneRunway = false)
+        IEnumerable<FenixChannelProtoWriter>? markers = null, bool oneRunway = false, bool noRunway = false)
     {
-        FenixChannelSection<FenixRoute> section = FenixChannelRoute.Decode(Push(legs, to, lat, lon, markers, oneRunway));
+        FenixChannelSection<FenixRoute> section =
+            FenixChannelRoute.Decode(Push(legs, to, lat, lon, markers, oneRunway, noRunway));
         Assert.True(section.IsOk, section.Problem);
         return section.Value!;
     }
@@ -231,6 +243,63 @@ public class FenixChannelRouteDistancesTests
         Assert.Null(FenixChannelRouteDistances.ToDestination(route));
     }
 
+    [Fact]
+    public void With_no_runways_the_sum_runs_to_the_airport()
+    {
+        // 60.04 to "A", 60.04 to "B", 60.03 to the airport: "B" is kept though the end at the airport carries its ident
+        // (dropping it would give 144.95, straight from "A").
+        FenixRoute route = Route(AirportLegs(), ToA(), noRunway: true);
+
+        Assert.Equal(180.11, FenixChannelRouteDistances.ToDestination(route)!.Value, Within);
+    }
+
+    [Fact]
+    public void With_no_runways_the_last_waypoint_as_to_measures_on_to_the_airport()
+    {
+        // The TO is "B", whose ident the airport's end carries, and the aircraft at (0.5, 1) is between "A" and "B":
+        // 30.02 to "B", then 60.03 to the airport. Never 30.02, the distance to "B" alone.
+        FenixRoute route = Route(AirportLegs(), To(1, 1, "B"), 0.5, 1, noRunway: true);
+
+        Assert.Equal(90.05, FenixChannelRouteDistances.ToDestination(route)!.Value, Within);
+    }
+
+    [Fact]
+    public void With_the_departure_runway_only_the_sum_is_as_with_none()
+    {
+        double none = FenixChannelRouteDistances.ToDestination(Route(AirportLegs(), ToA(), noRunway: true))!.Value;
+        double one = FenixChannelRouteDistances.ToDestination(Route(AirportLegs(), ToA(), oneRunway: true))!.Value;
+
+        Assert.Equal(180.11, one, Within);
+        Assert.Equal(none, one, Within);
+    }
+
+    [Theory]
+    [InlineData("the line's last element not an end")]
+    [InlineData("the end 0.1 NM from the last symbol")]
+    [InlineData("no waypoint symbol off the missed approach")]
+    [InlineData("no waypoint symbol")]
+    public void With_fewer_than_two_runways_a_line_not_ending_at_the_airport_is_not_available(string why)
+    {
+        // Each differs from AirportLegs in one thing. With the symbols all on the missed approach the TO "A" still has
+        // its symbol and the airport has none; with no symbol at all the TO's rule refuses the route too.
+        List<FenixChannelProtoWriter> legs = why switch
+        {
+            "the line's last element not an end" =>
+                [.. BaseLine().Take(3), Leg(1, 2, Line, "KBBB"), .. Symbols(), Leg(1, 2, Symbol, "KBBB")],
+            "the end 0.1 NM from the last symbol" =>
+                [.. BaseLine().Take(3), Leg(1, 2, End, "B", Discontinuity), .. Symbols(),
+                    Leg(1 + 0.1 / 60.0402, 2, Symbol, "KBBB")],
+            "no waypoint symbol off the missed approach" =>
+                [.. BaseLine().Take(3), Leg(1, 2, End, "B", Discontinuity), Leg(0, 1, Symbol, "A", MissedApproach),
+                    Leg(1, 1, Symbol, "B", MissedApproach), Leg(1, 2, Symbol, "KBBB", MissedApproach)],
+            "no waypoint symbol" => [.. BaseLine().Take(3), Leg(1, 2, End, "B", Discontinuity)],
+            _ => throw new ArgumentOutOfRangeException(nameof(why)),
+        };
+
+        Assert.Null(FenixChannelRouteDistances.ToDestination(Route(legs, ToA(), noRunway: true)));
+        Assert.Null(FenixChannelRouteDistances.ToDestination(Route(legs, ToA(), oneRunway: true)));
+    }
+
     // ---- Distance to the top of descent -----------------------------------------------------
 
     [Fact]
@@ -253,6 +322,16 @@ public class FenixChannelRouteDistancesTests
         List<FenixChannelProtoWriter> noDestination = [.. BaseLine().Take(3), Leg(1, 2, Line, "XYZ"), .. Symbols()];
         AssertDistance(150.10, FenixChannelRouteDistances.ToTopOfDescent(
             Route(noDestination, ToA(), markers: [Marker(1, 1.5, Tod)])));
+    }
+
+    [Fact]
+    public void With_no_runways_the_top_of_descent_is_measured_to_the_airport()
+    {
+        // The marker at (1, 1.5), halfway from "B" to the airport: 180.11 less its own 30.01. The walk keeps "B", so the
+        // marker lies on the step from "B" to the airport.
+        FenixRoute route = Route(AirportLegs(), ToA(), markers: [Marker(1, 1.5, Tod)], noRunway: true);
+
+        AssertDistance(150.10, FenixChannelRouteDistances.ToTopOfDescent(route));
     }
 
     [Fact]

@@ -14,7 +14,9 @@ internal readonly record struct FenixDistanceAnswer(FenixDistanceKind Kind, doub
 /// "The rules"). The FMS's own figures are not on the channel, so the sum follows the route the ND draws.
 /// <para>
 /// The line: the elements of the active route that are vertices of the drawn line (<see cref="FenixChannelRoute.IsPath"/>)
-/// and not on the missed approach, in order, up to the destination element or, with none, to the last of them. A turn
+/// and not on the missed approach, in order, up to the destination element or, with none, to the last of them. With
+/// fewer than two runways, a last element that is an end at the route's last waypoint symbol is the destination airport,
+/// taken under that symbol's ident (seen at the KCVG gate, 2026-11-05: the end carried the last waypoint's). A turn
 /// piece counts as its arc; every other element as the great circle from the point before it. A discontinuity's end
 /// first drops the points before it that carry its own ident and lie away from it (a heading leg's drawn far point,
 /// MANUAL's 500 NM out), and the next start follows straight on. The aircraft's distance to the line's end runs straight
@@ -23,8 +25,8 @@ internal readonly record struct FenixDistanceAnswer(FenixDistanceKind Kind, doub
 /// </para>
 /// <para>
 /// A route the sum cannot follow is not available, never a partial sum: no TO, the TO on the missed approach, a TO with
-/// no waypoint symbol (unless it is the arrival runway), the TO's ident on no point of the line; for D also fewer than two
-/// runways or no destination on the line.
+/// no waypoint symbol (unless it is the arrival runway), the TO's ident on no point of the line; for D also, with two or
+/// more runways, no destination element on the line, and with fewer, a line that does not end at the destination airport.
 /// </para>
 /// </summary>
 internal static class FenixChannelRouteDistances
@@ -69,13 +71,20 @@ internal static class FenixChannelRouteDistances
     }
 
     /// <summary>
-    /// The distance from the aircraft to the destination, in nautical miles; null when it is not available. With the
-    /// arrival runway as the TO it is the great circle to its threshold (2.1's second entry); otherwise the aircraft's
-    /// distance to the end of the line, which must reach a destination element.
+    /// The distance from the aircraft to the destination, in nautical miles; null when it is not available. With two or
+    /// more runways (2.1): with the arrival runway as the TO it is the great circle to its threshold (2.1's second
+    /// entry); otherwise the aircraft's distance to the end of the line, which must reach a destination element. With
+    /// fewer, as the FMS gives it: the aircraft's distance to the end of the line, which must end at the destination
+    /// airport (an end at the route's last waypoint symbol); never a partial sum.
     /// </summary>
     public static double? ToDestination(FenixRoute r)
     {
-        if (r.Runways.Count < 2) return null;
+        if (r.Runways.Count < 2)
+        {
+            List<FenixRouteLeg> toAirport = Line(r);
+            return DestinationEnd(r, toAirport) is null ? null : AircraftToEnd(r, Walk(toAirport));
+        }
+
         if (r.ActiveLeg is { } to && to.Ident.Length > 0 && to.Ident == FenixChannelRoute.ArrivalIdent(r.Runways))
             return FenixChannelRouteGeometry.DistanceNm(r.Position, r.Runways[1].Threshold);
 
@@ -126,7 +135,8 @@ internal static class FenixChannelRouteDistances
         }
     }
 
-    // The elements of the line: path elements off the missed approach, in order, to the first destination element.
+    // The elements of the line: path elements off the missed approach, in order, to the first destination element. A
+    // last element at the destination airport (DestinationEnd) is taken under the airport's ident, never its own.
     private static List<FenixRouteLeg> Line(FenixRoute r)
     {
         var line = new List<FenixRouteLeg>();
@@ -138,7 +148,27 @@ internal static class FenixChannelRouteDistances
             if (FenixChannelRoute.IsDestination(leg)) break;
         }
 
+        if (DestinationEnd(r, line) is { } airport) line[^1] = line[^1] with { Ident = airport };
         return line;
+    }
+
+    // With fewer than two runways (2.1), the destination airport's ident when the line's last element is an end within
+    // SamePointNm of the route's last waypoint symbol off the missed approach (the airport's); null otherwise. Seen in
+    // two pushes at the KCVG gate, 2026-11-05: that end, at KATL's point, carried the last waypoint's ident (MTHEW).
+    // Under it, the discontinuity rule in Walk would drop MTHEW's own point, and a TO of MTHEW would measure from the end.
+    private static string? DestinationEnd(FenixRoute r, List<FenixRouteLeg> line)
+    {
+        if (r.Runways.Count >= 2 || line.Count == 0 || line[^1].Kind != RouteLegKind.End) return null;
+
+        for (int i = r.Legs.Count - 1; i >= 0; i--)
+        {
+            FenixRouteLeg symbol = r.Legs[i];
+            if (symbol.Kind != RouteLegKind.Symbol || symbol.MissedApproach) continue;
+
+            return FenixChannelRouteGeometry.DistanceNm(line[^1].Point, symbol.Point) <= SamePointNm ? symbol.Ident : null;
+        }
+
+        return null;
     }
 
     // Keeps the line's points, then measures the steps between the points kept: a discontinuity can drop a point after
