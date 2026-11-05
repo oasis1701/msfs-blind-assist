@@ -184,11 +184,26 @@ public class FenixPressEchoTests
     public void The_mark_goes_through_the_shared_value_matched_gate()
     {
         string main = Src("MainForm.cs");
-        int at = main.IndexOf("private void MarkStateLightEchoForPress", StringComparison.Ordinal);
+        // Internal since 2026-11-05: the Fenix ND window's press marks through it too.
+        int at = main.IndexOf("internal void MarkStateLightEchoForPress", StringComparison.Ordinal);
         Assert.True(at > 0);
         string body = main[at..main.IndexOf("/// <summary>", at, StringComparison.Ordinal)];
         Assert.Contains("MarkUiSet(buttonDef.StateVariable, expected)", body);
         Assert.Contains("StateVariableAfterPress(cached)", body);
         Assert.DoesNotContain("_uiSetEcho[", body);   // never a second, differently matched record
+    }
+
+    [Fact]
+    public void The_nd_window_press_marks_through_the_panel_s_own_method()
+    {
+        // The flight of 2026-11-05 heard an LS press from the ND window twice. Both ways into the window hand its writer the
+        // panel's mark, and the mark is the panel's method, never a second copy of its logic.
+        string nd = Src("Aircraft", "FenixA320Definition.ChannelNd.cs");
+        Assert.Contains("(owner as MainForm)?.MarkStateLightEchoForPress(definition)", nd);
+        Assert.Contains("PanelPressEcho(ctx.ParentForm)", nd);
+        Assert.DoesNotContain("MarkUiSet", nd);
+        Assert.DoesNotContain("SuppressUiEcho", nd);
+
+        Assert.Contains("FenixA320Definition.PanelPressEcho(ctx.Owner)", Src("Forms", "Fenix", "FenixWindowRegistry.ChannelNd.cs"));
     }
 }
