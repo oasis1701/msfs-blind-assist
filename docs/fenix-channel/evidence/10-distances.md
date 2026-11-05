@@ -20,7 +20,8 @@ three F-PLN discontinuities at once (sitting 2: after PADGT and ARTUR until 21:0
 MANUAL until 21:40:53); HDG (sitting 2, 21:00:28 to 21:02:45); a DIR TO; an overfly; a cruise level entered late
 (sitting 3, 11:23:03); an early descent (sitting 3, 11:40:33, with PERF CRZ printing the T/D 40 NM ahead); two ILS approaches; two landing
 rolls. Not held: a step climb or step descent, a go-around flown, a flight without a STAR, a heading leg as the TO
-waypoint, the alternate made active.
+waypoint, the alternate made active, a hold on the active route (holds were on the missed approach only, and on the line
+only on the landing rolls once the missed approach became the active route).
 
 ## The MCDU's figures
 
@@ -86,8 +87,10 @@ The rule kept, on every push with a DEST line (7,935): **7,770 within the tolera
 
 ## The rules (Task 1's outcome, built in Task 2)
 
-The line: the elements of 2.4 that `IsPath` keeps and that are not on the missed approach, in order, to the
-destination element (`IsDestination`) or, with none, to the last of them.
+The line: the elements of 2.4 that `IsPath` keeps and that are not on the missed approach, in order, to the last
+destination element (`IsDestination`) or, with none, to the last of them. (The last, not the first, since the final
+review: a turn's second arc carries the next fix's ident, so an arc carrying the arrival ident could come before the
+runway's own element. Every recorded push has one destination element.)
 
 - The destination end (added after Task 3's gate check). With fewer than two runways in 2.1 there is no destination
   element. In both such pushes at the gate the line ended with an end (kind 3, 16 = 1) at the destination airport's
@@ -113,7 +116,11 @@ destination element (`IsDestination`) or, with none, to the last of them.
   distance.
 - Not available, for both keys: no TO (2.11 absent or no ident); the TO on the missed approach; the TO with no waypoint
   symbol (kind 4) of its ident, unless it is the destination runway (never seen in 16,444 pushes with a TO: a heading leg
-  such as MANUAL would be one, its drawn point 500 NM out); the TO's ident on no kept point. D also: with two or more
+  such as MANUAL would be one, its drawn point 500 NM out); the TO's ident on no kept point, or on kept points in two runs
+with a point of another ident between (never seen in the 17,807 recorded pushes); a hold (2.4.n.12 to 14) on any
+element of the line (seen only on the two landing rolls, 412 pushes, where D is already not available), since what the
+FMS counts in a hold is not measured. Shift+D's "past" and D's great circle to the threshold do not use the sum and are
+not refused by these. D also: with two or more
   runways in 2.1, no destination element in the line; with fewer, no destination end (the line's last element not an
   end, the end farther than 0.05 NM from the last waypoint symbol, or no waypoint symbol off the missed approach).
 

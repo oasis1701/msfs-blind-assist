@@ -151,7 +151,9 @@ Who: the controller, with the local replay scripts over plan 03's recordings; no
   `TurnRadius`, `CourseIn` and `CourseOut`, otherwise `DistanceNm`. Each kept point's distance to the line's end is the
   sum of the steps after it.
 - **The TO.** `r.ActiveLeg`. Not available (both keys): null or an empty ident; `MissedApproach`; no `Symbol`-kind
-  element of its ident in `r.Legs`, unless its ident is `ArrivalIdent(r.Runways)`; its ident on no kept point.
+  element of its ident in `r.Legs`, unless its ident is `ArrivalIdent(r.Runways)`; its ident on no kept point. Added
+  by the final review (2026-11-05): its ident on kept points in two runs with another ident between; a hold on any
+  element of the line.
 - **The aircraft's distance to the line's end:** `DistanceNm(r.Position, TO.Point)` plus the end distance of the last
   kept point carrying the TO's ident.
 - **`ToDestination`:** the TO's ident is `ArrivalIdent(r.Runways)`: `DistanceNm(r.Position, r.Runways[1].Threshold)`.
@@ -169,7 +171,7 @@ Who: the controller, with the local replay scripts over plan 03's recordings; no
 - **`Answer`:** not trusted or no message: NotAvailable; `FenixChannelRoute.Decode` not ok: `reportProblem` with its
   problem, then NotAvailable; otherwise `ToDestination` (null: NotAvailable) or `ToTopOfDescent`.
 
-- [ ] **Step 1: Geometry and the two distances, with their tests.** Geometry tests, each within 0.01 NM:
+- [x] **Step 1: Geometry and the two distances, with their tests.** Geometry tests, each within 0.01 NM:
   `Distances_follow_the_app_s_formula` ((0, 0) to (0, 1): 60.04; (50, 8) to (50, 9): 38.59; a point to itself: 0),
   `A_point_projects_onto_a_leg` (leg (0, 0) to (0, 2), point (0.5, 1): along 60.04, cross -30.02),
   `A_point_behind_a_leg_projects_negative` (leg (0, 0) to (0, 1), point (0, -0.5): along -30.02, cross 0),
@@ -185,7 +187,8 @@ Who: the controller, with the local replay scripts over plan 03's recordings; no
   (9, 1) after "B", then the `End` element "M" at "B"'s point: the sum is as if "M" were not there),
   `The_runway_as_to_is_the_distance_to_its_threshold` (TO "KBBB19": the great circle to the arrival threshold),
   `An_unfollowable_route_is_not_available` (theory, each null: no legs; no TO; a TO with an empty ident; the TO on the
-  missed approach; a TO with no symbol; the TO's ident on no kept point; no destination element; one runway),
+  missed approach; a TO with no symbol; the TO's ident on no kept point; no destination element; one runway, no
+  destination end (since Task 3, one runway alone is no longer a refusal)),
   `An_end_of_descent_marker_is_past` (an `Eod` marker and a `Tod` marker ahead: Past),
   `The_top_of_descent_is_measured_along_the_line` (a `Tod` marker at (1, 1.5): Distance 150.10 within 0.01; the same
   with no destination element: the line's end is its last point, still 150.10),
@@ -202,7 +205,7 @@ Who: the controller, with the local replay scripts over plan 03's recordings; no
   position under 192) and decoded with `FenixChannelRoute.Decode`; `Recorded_routes_match_the_mcdu` (theory over the
   cases, each as the evidence's last table says: within the tolerance of the MCDU's figure, Past or NotAvailable).
   Commit: `feat(fenix-channel): distance to the destination and to the top of descent`.
-- [ ] **Step 2: The sentences.** Tests (`FenixChannelDistancesKeyTests.cs`): `Sentences_follow_the_base` (412 NM at 400
+- [x] **Step 2: The sentences.** Tests (`FenixChannelDistancesKeyTests.cs`): `Sentences_follow_the_base` (412 NM at 400
   knots: "412 miles to destination: 01:01:48"; 96 at 480: "96 miles to top of descent: 00:12:00"; 412 at 25: "412 miles
   to destination"), `The_time_needs_thirty_knots` (29.9 knots: no time; 30: ": HH:MM:SS"),
   `Past_and_not_available_are_the_base_s_words` ("Past top of descent"; `DestinationName + " not available"` is
@@ -212,7 +215,7 @@ Who: the controller, with the local replay scripts over plan 03's recordings; no
   destination: 01:01:48", once), `Sentences_are_the_same_in_every_culture` (de-DE and sv-SE: 412.4 NM at 25 knots gives
   "412 miles to destination"; 1234.6 at 400 gives "1235 miles to destination: 03:05:11"). Commit:
   `feat(fenix-channel): the D and Shift+D sentences`. Inert (no seam yet): pushed with Step 1.
-- [ ] **Step 3: The switch commit.** `ChannelDistancesKey` always sets `handled` (nothing else answers these keys on the
+- [x] **Step 3: The switch commit.** `ChannelDistancesKey` always sets `handled` (nothing else answers these keys on the
   Fenix). No monitor: `SpeakNotAvailable(ctx, name)`. Otherwise `Answer(ctx.Monitor.Snapshot(FenixChannelDisplay.Nd),
   topOfDescent, p => ctx.Monitor.ReportFeatureProblem("D and Shift+D", p))`: Past,
   `AnnounceImmediate(PastTopOfDescent)`; NotAvailable, `SpeakNotAvailable(ctx, name)`; Distance, one
@@ -243,10 +246,10 @@ value is the press's line in `debug.log`, read straight away (it rotates in abou
 
 ### Task 4 [controller]: Docs and landing
 
-- [ ] **Step 1.** `docs/a32nx.md`, in place of "(Plan 10 writes this section.)" under "D and Shift+D": the fields read,
+- [x] **Step 1.** `docs/a32nx.md`, in place of "(Plan 10 writes this section.)" under "D and Shift+D": the fields read,
   the rules, the tolerance and why, the refusals, the measured exception (the MCDU's lag after a sharp turn), and where
   the evidence is. Commit: `docs(fenix-channel): D and Shift+D from the route`.
-- [ ] **Step 2.** The whole-plan review (index, "Running a plan with subagents": the ownership diff, a test for every
+- [x] **Step 2.** The whole-plan review (index, "Running a plan with subagents": the ownership diff, a test for every
   Review Focus line, the handoff and the execution record). Set **Status** to landed with the date and the switch
   commit, fill in "Tests at landing" and "Handoff to plan 12", and push everything, the switch commit included (index
   workflow steps 4-6).
@@ -279,13 +282,15 @@ value is the press's line in `debug.log`, read straight away (it rotates in abou
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed
+- **Status:** landed 2026-11-05 (the switch commit `2855d6911`)
 - **Claimed by:** Hadi (oasis1701), 2026-11-04
 - **Worked by:** Hadi with Claude, with subagents (superpowers:subagent-driven-development)
 - **Started:** 2026-11-04, from 58c25234e (the branch's head; plan 03's route decoder is on it)
-- **Landed:**
-- **Tests at landing:**
-- **Tasks:** 0 and 1 done (1's commit with this change)
+- **Landed:** 2026-11-05, pushed to `feat/fenix-display-channel` with the switch commit and the two fixes (`888d45cd9`
+  after the gate check, `6fabff991` after the final review)
+- **Tests at landing:** the full suite 19,271 passed, 0 failed (ClaudeRulesHookTests filtered out); plan 10 adds 66
+  tests, 16 of them recorded cases
+- **Tasks:** 0 to 4 done
 - **Waiting on the owner:** nothing
 - **In-sim results:** Task 3 at a KCVG gate on 2026-11-05 (the evidence's "Task 3 at the gate"): no flight plan, both
   keys not available; both runways in, D "398 miles to destination" (398.2 against the DEST line's 398), Shift+D not
@@ -299,7 +304,10 @@ Kept in this file only, so no other plan's push ever touches it.
   a heading leg's far point dropped, the top of descent placed on the line, past once an end-of-descent marker shows
   (the old `ShowsPastTopOfDescent` is not needed), the TO-without-a-symbol refusal. Shift+D's tolerance now takes PERF
   CRZ's printed figure as its reference. 2026-11-05, after Task 3: D with fewer than two runways gives the distance to
-  the line's end at the destination airport (the destination end), where it refused before.
+  the line's end at the destination airport (the destination end), where it refused before. 2026-11-05, the final
+  review: a hold on the line and a TO ident on two separate runs are not available (neither measured; over the 17,807
+  recorded pushes the first is only on the landing rolls and the second never), and the line runs to the last
+  destination element.
 - **Rulings made while working:**
   - Can plan 10 skip its flights? Yes, from the recordings, with one gate check; four tasks (Hadi, 2026-11-04).
   - Shift+D after the descent begins: its distance while the T/D marker shows; once past it, "Past top of descent" or
@@ -307,3 +315,7 @@ Kept in this file only, so no other plan's push ever touches it.
     data then holds no point for it, so "Past top of descent".
   - D with fewer than two runways: the FMS still gives a DEST distance, so D gives it too; fixed before landing, with
     no second sitting (Hadi, 2026-11-05).
+  - Shift+D at the gate is not available: the ND draws no T/D marker there; the plan's expectation is corrected and
+    the first check moves to plan 12's flight (controller, 2026-11-05).
+  - A hold on the line and a TO ident on two separate runs: not available, as spec 2.5 asks rather than a guess
+    (controller, on the final review, 2026-11-05).
