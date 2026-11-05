@@ -180,14 +180,17 @@ pull request.
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** claimed
+- **Status:** claimed; Tasks 0 to 6 done, Task 7 waits on the owner's flight
 - **Claimed by:** Robin Kipp (robin24), 2026-11-05
-- **Worked by:** Robin Kipp with Claude (superpowers:executing-plans)
+- **Worked by:** Robin Kipp with Claude (superpowers:executing-plans); Task 6's review by a separate reviewer on the most capable model
 - **Started:** 2026-11-05, from 6c40b8065 (the branch's head, plans 01 to 11 landed)
 - **Landed:**
-- **Tests at landing:**
-- **Tasks:**
-- **Waiting on the owner:**
-- **In-sim results:**
-- **Changed from the plan:**
+- **Tests at landing:** so far 19,480 passed, none failed, the whole suite, `ClaudeRulesHookTests` included (Task 1: 19,474 at the start)
+- **Tasks:** Task 1, no shared files beyond what the records name. Task 2, nothing to merge: `origin/main` at 8eb77a5b4 is in the branch; re-check before the pull request. Tasks 3 to 5, on the branch. Task 6, reviewed at aea2c7c1f; the fixes below.
+- **Waiting on the owner:** Task 7's flight; then Task 9's go-ahead.
+- **In-sim results:** Task 7's result goes here. Evidence from the owner's logs (fenix_channel.log and debug.log, the flight on 7cb43d936, an A321 IAE from cruise to landing about 01:28 on 2026-11-05): "AUTO FLIGHT - AP OFF MW" is an alert entry with no title, logged and not spoken, so a deliberate autopilot disconnect is not heard twice (plan 09's question); no failure was spoken with no color in the flare.
+- **Changed from the plan:** Task 7 is cut, by the owner's word: nothing plans 01 to 11 proved is flown again, his logs count as evidence, and no obscure edge case is measured. Task 4 kept 18 of the 27 proposed rule lines (FNX-26 to FNX-43). The nine left out are pinned by tests with self-explaining names, and the measurements are in `docs/a32nx.md`: the PFD's flag rows, baro reference and flight director row, the E/WD's rounding, the ND's layers and Ctrl+W, the DCDU's message identity, D and Shift+D. The rule file split in two (`fenix-channel-displays.md`). The definition's `Channel*` partials load only `fenix-channel.md`, for the per-file budget.
 - **Rulings made while working:**
+  - Plan 07's waiting items are follow-ups (the owner, 2026-11-05: "We'll do the follow-up items"). The stale ISIS altitude stays read as sent.
+  - Task 6: the reviewer's Important, an LS press from the ND window confirmed twice, is re-graded a by-ear item for the flight: the window speaks nothing by design and each light is its own confirmation, as for the other five option buttons, and suppressing the light could leave no confirmation at all if the reader does not say the button's new text. Cost if wrong: one repeated word on a rare press; one small fix after the flight.
+  - Task 6: the lateral mode under LAND, FLARE and ROLL OUT (plan 08's "Plan 02:" line) is fixed: the window now agrees with the announcer. Field 116 (plan 06's note): measured present on approach, read nowhere, nothing to act on. The 5 s stall (plan 02) is left as a follow-up: the status rows that shrank the list came from the comparisons removed since.
