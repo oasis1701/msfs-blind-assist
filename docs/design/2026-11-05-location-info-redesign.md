@@ -160,7 +160,7 @@ matches a few more): 17,824 of 23,574 GeoNames airports, 6,175 of 13,466 airfiel
 heliports.
 
 This needs the alternate names (or at least the codes and names among them), which the database
-drops today: a new column and a schema bump (LOC-7), the same rebuild as the feature-type names.
+drops today: a new column and a schema bump (LOC-7), the same rebuild as the feature-type names. The owner accepted the one-time rebuild (2026-11-05).
 
 ## Later: heights (not part of this work)
 
