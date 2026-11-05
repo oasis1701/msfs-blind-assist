@@ -39,6 +39,15 @@ public class VisualGuidanceManager : IDisposable
     private double maxApproachBankDeg = 25.0;         // VisualGuidanceProfile.MaxApproachBankDeg
     private double minimumFinalNm = 6.0;              // VisualGuidanceProfile.MinimumFinalNm
     private double rollInTimeS = 0.0;                 // VisualGuidanceProfile.RollInTimeS
+    // What the join has said: the decision's update (a turn already due then is not announced), the
+    // turn line, the countdown (armed only if the turn was further off than its mark when first known),
+    // and "Heading does not cross final" (said after 3 s not crossing; again only after 3 s crossing).
+    private bool decidedThisUpdate;
+    private bool turnLineHandled;
+    private double? firstSecondsToTurn;
+    private bool countdown30Said, countdown15Said;
+    private DateTime? crossingSince, notCrossingSince;
+    private bool notCrossingArmed;
 
     // Audio generators — both always run while guidance is active.
     private AudioToneGenerator? desiredAttitudeTone;  // PID-commanded attitude
@@ -119,6 +128,7 @@ public class VisualGuidanceManager : IDisposable
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
     private DateTime lastDistanceAnnouncement = DateTime.MinValue;
     private double lastAnnouncedDistance = double.MaxValue;
+    private bool distanceCalloutsPrimed;   // the first update after Ctrl+V notes which marks are already passed
     // Decides when a bank callout is spoken (VG-21); rebuilt in Initialize with the profile's tone bank range.
     private VisualGuidanceBankCalloutGate bankCalloutGate = new(new VisualGuidanceProfile().ToneBankRangeDeg);
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
@@ -144,7 +154,24 @@ public class VisualGuidanceManager : IDisposable
     private const double HOLD_ACTIVATION_S = 4.0;          // "Visual guidance active, runway 27L" 3.31 s
     private const double HOLD_FLARE_S = 0.6;               // "Flare" 0.49 s
     private const double HOLD_TOUCHDOWN_S = 0.9;           // "Touchdown" 0.72 s
-    private const double HOLD_MILES_S = 1.3;               // "5 miles" 1.03 s
+    // Joining final's lines, measured 2026-11-04 the same way.
+    private const double HOLD_ON_FINAL_S = 0.9;            // "On final" 0.70 s
+    private const double HOLD_JOINING_S = 1.1;             // "Joining final" 0.90 s
+    private const double HOLD_VECTORING_S = 1.4;           // "Vectoring to final" 1.15 s
+    private const double HOLD_UNABLE_S = 2.3;              // "Unable to join final from here" 1.89 s
+    private const double HOLD_COUNTDOWN_30_S = 2.6;        // "Turn onto final in 30 seconds" 2.13 s
+    private const double HOLD_COUNTDOWN_15_S = 2.7;        // "Turn onto final in 15 seconds" 2.23 s
+    private const double HOLD_TURN_ONTO_FINAL_S = 1.4;     // "Turn onto final" 1.11 s
+    private const double HOLD_NOT_CROSSING_S = 2.1;        // "Heading does not cross final" 1.68 s
+    private const double HOLD_ESTABLISHED_S = 1.7;         // "Established on final" 1.39 s
+    private const double HOLD_5_MILES_S = 1.4;             // "5 miles out" 1.11 s
+    private const double HOLD_3_MILES_S = 1.2;             // "3 miles out" 0.99 s
+    private const double HOLD_1_MILE_S = 1.1;              // "1 mile out" 0.85 s
+
+    // Where BA's own queued lines are expected to finish (decision 11 of the stage-4 plan): a queued
+    // line is spoken after the one before it, so its hold starts where that one's ends. An interrupting
+    // line clears the queue, so its own end replaces this.
+    private DateTime queuedSpeechEndsUtc = DateTime.MinValue;
 
     // Guidance constants
     private const double TOUCHDOWN_ALTITUDE_FT = 5.0;    // Consider touchdown below 5 ft AGL
@@ -301,7 +328,10 @@ public class VisualGuidanceManager : IDisposable
     {
         var phase = currentPhase switch
         {
-            GuidancePhase.Joining or GuidancePhase.Vectoring or GuidancePhase.Unable => VisualGuidanceReadoutPhase.Intercepting,
+            GuidancePhase.Deciding => VisualGuidanceReadoutPhase.Deciding,
+            GuidancePhase.Joining => VisualGuidanceReadoutPhase.Joining,
+            GuidancePhase.Vectoring => VisualGuidanceReadoutPhase.Vectoring,
+            GuidancePhase.Unable => VisualGuidanceReadoutPhase.Unable,
             GuidancePhase.Final => VisualGuidanceReadoutPhase.OnFinal,
             GuidancePhase.Flare => VisualGuidanceReadoutPhase.Flare,
             GuidancePhase.Touchdown => VisualGuidanceReadoutPhase.Touchdown,
@@ -309,16 +339,26 @@ public class VisualGuidanceManager : IDisposable
         };
         if (phase == VisualGuidanceReadoutPhase.Starting || runway == null
             || cachedLatitude is not double lat || cachedLongitude is not double lon || cachedAltMSL is not double altMSL)
-            return VisualGuidanceStatusText.Compose(new VisualGuidanceStatus(VisualGuidanceReadoutPhase.Starting, 0, 0, 0, 0, 0, 0));
+            return VisualGuidanceStatusText.Compose(new VisualGuidanceStatus(VisualGuidanceReadoutPhase.Starting, 0, 0, 0, 0, 0));
 
+        double cross = SignedCrossTrackNm(runway, lat, lon);
         var status = new VisualGuidanceStatus(
             phase,
             DistanceNm: NavigationCalculator.CalculateDistance(lat, lon, runway.StartLat, runway.StartLon),
-            CrossTrackNm: SignedCrossTrackNm(runway, lat, lon),
+            CrossTrackNm: cross,
             AltitudeErrorFt: lastCalculatedAltitudeError,
             TargetFpm: lastCalculatedTargetFPM,
-            WheelHeightFt: altMSL - thresholdElevationMSL - flareAltitudeBiasFt,
-            ExtensionHeadingMag: 0);
+            WheelHeightFt: altMSL - thresholdElevationMSL - flareAltitudeBiasFt);
+        // Joining, vectoring and unable: the join from here (the countdown speaks the same time).
+        if (phase is VisualGuidanceReadoutPhase.Joining or VisualGuidanceReadoutPhase.Vectoring or VisualGuidanceReadoutPhase.Unable
+            && PictureOfTheJoin(lat, lon, cross) is JoinPicture join)
+        {
+            status = status with
+            {
+                InterceptDeg = join.InterceptDeg, Turning = turnOntoFinalDue, CrossesFinal = join.CrossesFinal,
+                JoinAlongNm = join.JoinAlongNm, SecondsToTurn = join.SecondsToTurn, FinalToTheRight = join.FinalToTheRight,
+            };
+        }
         return VisualGuidanceStatusText.Compose(status);
     }
 
@@ -445,9 +485,17 @@ public class VisualGuidanceManager : IDisposable
         turnOntoFinalDue = false;
         frozenInterceptDeg = double.NaN;
         establishedSince = null;
+        decidedThisUpdate = false;
+        turnLineHandled = false;
+        firstSecondsToTurn = null;
+        countdown30Said = countdown15Said = false;
+        crossingSince = notCrossingSince = null;
+        notCrossingArmed = false;
+        queuedSpeechEndsUtc = DateTime.MinValue;
         lastPhaseAnnouncement = DateTime.MinValue;
         lastDistanceAnnouncement = DateTime.MinValue;
         lastAnnouncedDistance = double.MaxValue;
+        distanceCalloutsPrimed = false;
         // A fresh gate (nothing spoken, no holds) on this aircraft's tone bank range: past it both
         // tones are pinned and only the callouts say how far (VG-21).
         bankCalloutGate = new VisualGuidanceBankCalloutGate(profile.ToneBankRangeDeg);
@@ -561,7 +609,9 @@ public class VisualGuidanceManager : IDisposable
     /// <paramref name="immediate"/>: interrupt (AnnounceImmediate), else Announce.
     /// <paramref name="holdSeconds"/>: how long this line holds the bank callouts back, its measured
     /// speaking time (the HOLD_ constants, VG-21), since a bank callout interrupts and would drop it;
-    /// 0 for the bank callouts themselves. It only ever extends the window, never shortens it.
+    /// 0 for the bank callouts themselves. A queued line is spoken after the queued lines before it,
+    /// so its hold starts where theirs ends; an interrupting line's starts at once. It only ever
+    /// extends the window, never shortens it.
     /// </summary>
     private void Say(string text, bool immediate, double holdSeconds)
     {
@@ -569,12 +619,14 @@ public class VisualGuidanceManager : IDisposable
             announcer.AnnounceImmediate(text);
         else
             announcer.Announce(text);
-        if (holdSeconds > 0)
-        {
-            DateTime until = ClockForHarness().AddSeconds(holdSeconds);
-            if (until > routineAnnouncementsSuppressedUntil)
-                routineAnnouncementsSuppressedUntil = until;
-        }
+        DateTime now = ClockForHarness();
+        DateTime start = immediate || queuedSpeechEndsUtc < now ? now : queuedSpeechEndsUtc;
+        DateTime end = start.AddSeconds(Math.Max(0, holdSeconds));
+        // An interrupting line clears the screen reader's queue: what follows it is spoken after it.
+        if (immediate || end > queuedSpeechEndsUtc)
+            queuedSpeechEndsUtc = end;
+        if (holdSeconds > 0 && end > routineAnnouncementsSuppressedUntil)
+            routineAnnouncementsSuppressedUntil = end;
         Record(VisualGuidanceFlightRecord.Said(RecordSeconds(), text, immediate));
     }
 
@@ -925,11 +977,16 @@ public class VisualGuidanceManager : IDisposable
         try
         {
             // Update phase based on position
+            decidedThisUpdate = false;
             UpdatePhase(lat, lon, agl, altMSL);
 
             // Calculate guidance
             double desiredBank = CalculateDesiredBank(lat, lon, heading);
             double desiredPitch = CalculateDesiredPitch(lat, lon, agl, altMSL);
+
+            // The join's own lines (the turn, the countdown, a heading that stops crossing final), before
+            // the bank callouts, so their holds apply in this very update (VG-21).
+            HandleJoinCallouts(lat, lon);
             hasPreviousCommand = true;
             DesiredBankForHarness = desiredBank;
             DesiredPitchForHarness = desiredPitch;
@@ -1087,10 +1144,23 @@ public class VisualGuidanceManager : IDisposable
             VisualGuidanceJoinState.Vectoring => GuidancePhase.Vectoring,
             _ => GuidancePhase.Unable,   // the pattern: stage 4's Task 6
         };
-        // On final there is no turn to make.
+        // On final there is no turn to make. A turn already due at this update is not announced either
+        // (decision 3 of the stage-4 plan): the state line and the tone say it.
         turnOntoFinalDue = joinPlan.State == VisualGuidanceJoinState.OnFinal;
+        turnLineHandled = turnOntoFinalDue;
+        decidedThisUpdate = true;
+        // It crossed final at the decision, so "Heading does not cross final" is armed from now.
+        notCrossingArmed = joinPlan.State == VisualGuidanceJoinState.Joining;
         Log.Debug("VisualGuidance", $"Decided {joinPlan.State} at along {position.AlongNm:F2} nm, cross {position.CrossNm:F2} nm, " +
             $"track {relativeTrack:F1}° from the course, {currentGroundSpeedKnots:F0} kt, clamp {joinPlan.ClampDeg:F0}°");
+        var (line, hold) = joinPlan.State switch
+        {
+            VisualGuidanceJoinState.OnFinal => ("On final", HOLD_ON_FINAL_S),
+            VisualGuidanceJoinState.Joining => ("Joining final", HOLD_JOINING_S),
+            VisualGuidanceJoinState.Vectoring => ("Vectoring to final", HOLD_VECTORING_S),
+            _ => ("Unable to join final from here", HOLD_UNABLE_S),
+        };
+        Say(line, immediate: false, hold);
     }
 
     /// <summary>
@@ -1115,7 +1185,10 @@ public class VisualGuidanceManager : IDisposable
         DateTime now = lastUpdateUtc ?? ClockForHarness();
         establishedSince ??= now;
         if ((now - establishedSince.Value).TotalSeconds >= VisualGuidanceJoin.EstablishedHoldS - 1e-6)
+        {
             currentPhase = GuidancePhase.Final;
+            Say("Established on final", immediate: false, HOLD_ESTABLISHED_S);
+        }
     }
 
     /// <summary>
@@ -1301,6 +1374,105 @@ public class VisualGuidanceManager : IDisposable
         if (joining) frozenInterceptDeg = Math.Max(0.0, liveIntercept);
         Log.Debug("VisualGuidance", $"Turn onto final due: XTE={cross:F3}NM, lead={lead:F3}NM, clamp={clamp:F1}°, intercept={liveIntercept:F1}°");
         return true;
+    }
+
+    /// <summary>What F and the countdown know about the join, from the latest position and track.</summary>
+    private readonly record struct JoinPicture(double InterceptDeg, bool CrossesFinal, double? SecondsToTurn,
+        double JoinAlongNm, bool FinalToTheRight);
+
+    private double SpeedFactor() => Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / airspeedReferenceKnots);
+
+    /// <summary>
+    /// The join from here, for the heading and speed flown now: the intercept toward final; whether the
+    /// track crosses final (joining; vectoring always "does"); the time to the turn onto final
+    /// (<see cref="VisualGuidanceJoin.SecondsToTurn"/>, with the clamp the turn cue uses: the intercept
+    /// flown when joining, the chosen angle when vectoring); where the aircraft will be lined up on
+    /// final (the live intercept when joining, the chosen angle when vectoring); and the side of the
+    /// track the nearest point of final lies on (the threshold, when past it). Null before a decision.
+    /// </summary>
+    private JoinPicture? PictureOfTheJoin(double lat, double lon, double cross)
+    {
+        if (runway == null || joinPlan == null || cachedHeading is not double heading) return null;
+        double along = VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm;
+        double relativeTrack = VisualGuidanceJoin.Normalize(LateralTrackDeg(heading) - runway.HeadingMag);
+        double intercept = VisualGuidanceJoin.InterceptDeg(cross, relativeTrack);
+        bool joining = joinPlan.State == VisualGuidanceJoinState.Joining;
+        bool crosses = !joining || VisualGuidanceJoin.CrossesFinal(new VisualGuidanceApproachPoint(along, cross), relativeTrack, minimumFinalNm, out _);
+        double clamp = joining ? intercept : joinPlan.ClampDeg;
+        double? seconds = crosses && !turnOntoFinalDue
+            ? VisualGuidanceJoin.SecondsToTurn(cross, intercept, clamp, currentGroundSpeedKnots, CaptureGainForHarness,
+                LATERAL_HEADING_GAIN * SpeedFactor(), rollInTimeS)
+            : null;
+        double joinAlong = along - VisualGuidanceJoin.AlongToEstablishNm(Math.Abs(cross), joining ? intercept : joinPlan.ClampDeg,
+            currentGroundSpeedKnots, CaptureGainForHarness);
+        // Toward the nearest point of final, in (inbound, right) components, against the track's right normal.
+        double toX = along > 0 ? 0 : along, toY = -cross;
+        double track = relativeTrack * Math.PI / 180;
+        bool toTheRight = toX * -Math.Sin(track) + toY * Math.Cos(track) > 0;
+        return new JoinPicture(intercept, crosses, seconds, joinAlong, toTheRight);
+    }
+
+    /// <summary>
+    /// The join's own lines, queued, each holding the bank callouts for its measured time (VG-21):
+    /// "Turn onto final" when the turn comes (not when it was already due at the decision); the countdown
+    /// at 30 and 15 s before it, each once and only if the turn was further off than that when its time
+    /// was first known; and, while joining before the turn, "Heading does not cross final" once the
+    /// track has not crossed final for <see cref="VisualGuidanceJoin.NotCrossingHoldS"/>, again only
+    /// after it has crossed for as long and stopped again. Joining never becomes vectoring by itself.
+    /// </summary>
+    private void HandleJoinCallouts(double lat, double lon)
+    {
+        if (runway == null || joinPlan == null) return;
+        if (currentPhase is not (GuidancePhase.Joining or GuidancePhase.Vectoring)) return;
+
+        if (turnOntoFinalDue)
+        {
+            if (!turnLineHandled)
+            {
+                turnLineHandled = true;
+                if (!decidedThisUpdate)
+                    Say("Turn onto final", immediate: false, HOLD_TURN_ONTO_FINAL_S);
+            }
+            return;
+        }
+
+        double cross = SignedCrossTrackNm(runway, lat, lon);
+        if (PictureOfTheJoin(lat, lon, cross) is not JoinPicture picture) return;
+        DateTime now = lastUpdateUtc ?? ClockForHarness();
+
+        if (picture.SecondsToTurn is double seconds)
+        {
+            firstSecondsToTurn ??= seconds;
+            if (!countdown15Said && firstSecondsToTurn > 15 && seconds <= 15)
+            {
+                countdown15Said = countdown30Said = true;
+                Say("Turn onto final in 15 seconds", immediate: false, HOLD_COUNTDOWN_15_S);
+            }
+            else if (!countdown30Said && firstSecondsToTurn > 30 && seconds <= 30)
+            {
+                countdown30Said = true;
+                Say("Turn onto final in 30 seconds", immediate: false, HOLD_COUNTDOWN_30_S);
+            }
+        }
+
+        if (joinPlan.State != VisualGuidanceJoinState.Joining) return;
+        if (picture.CrossesFinal)
+        {
+            notCrossingSince = null;
+            crossingSince ??= now;
+            if ((now - crossingSince.Value).TotalSeconds >= VisualGuidanceJoin.NotCrossingHoldS - 1e-6)
+                notCrossingArmed = true;
+        }
+        else
+        {
+            crossingSince = null;
+            notCrossingSince ??= now;
+            if (notCrossingArmed && (now - notCrossingSince.Value).TotalSeconds >= VisualGuidanceJoin.NotCrossingHoldS - 1e-6)
+            {
+                notCrossingArmed = false;
+                Say("Heading does not cross final", immediate: false, HOLD_NOT_CROSSING_S);
+            }
+        }
     }
 
     /// <summary>
@@ -1542,14 +1714,28 @@ public class VisualGuidanceManager : IDisposable
         double distanceNM = NavigationCalculator.CalculateDistance(
             lat, lon, runway.StartLat, runway.StartLon);
 
-        // Announce at 5, 3, 1 miles
-        double[] calloutDistances = { 5.0, 3.0, 1.0 };
+        // Announce at 5, 3, 1 miles: "5 miles out" (stage 5 of the redesign adds the path once established).
+        var callouts = new (double Nm, string Line, double Hold)[]
+        {
+            (5.0, "5 miles out", HOLD_5_MILES_S), (3.0, "3 miles out", HOLD_3_MILES_S), (1.0, "1 mile out", HOLD_1_MILE_S),
+        };
 
-        foreach (double calloutDist in calloutDistances)
+        // Pressed inside a mark: the calls start with the next mark crossed. Saying "5 miles out" at
+        // 0.3 nm, then "3 miles out" and "1 mile out" a second apart, was wrong, and the queued lines
+        // would hold the bank callouts for their whole length.
+        if (!distanceCalloutsPrimed)
+        {
+            distanceCalloutsPrimed = true;
+            foreach (var (mark, _, _) in callouts)
+                if (distanceNM <= mark) lastAnnouncedDistance = mark;
+            return;
+        }
+
+        foreach (var (calloutDist, line, hold) in callouts)
         {
             if (distanceNM <= calloutDist && lastAnnouncedDistance > calloutDist)
             {
-                Say($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}", immediate: false, HOLD_MILES_S);
+                Say(line, immediate: false, hold);
                 lastAnnouncedDistance = calloutDist;
                 lastDistanceAnnouncement = now;
                 break;

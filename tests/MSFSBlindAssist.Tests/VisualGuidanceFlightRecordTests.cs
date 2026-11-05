@@ -55,11 +55,11 @@ public class VisualGuidanceFlightRecordTests
         var rig = new VisualGuidanceTestRig(record: lines.Add);
         rig.Place(8, 1.0, 0);
         rig.UpdateAt(0);
-        rig.FlyFor(5, 30);   // past the 4.4 s the phase line holds the bank callouts (VG-21)
+        rig.FlyFor(6, 30);   // past the 5.4 s the activation and "Vectoring to final" hold the bank callouts (VG-21)
         rig.Stop();
 
         Assert.StartsWith("VGREC start apt=ZZVG rwy=09", lines[0]);
-        Assert.Equal(151, lines.Count(l => l.StartsWith("VGREC f ", StringComparison.Ordinal)));
+        Assert.Equal(181, lines.Count(l => l.StartsWith("VGREC f ", StringComparison.Ordinal)));
         var bankCallout = new Regex(@"^VGREC say t=\S+ imm=1 text=\d+ (left|right)$", RegexOptions.CultureInvariant);
         Assert.Contains(lines, l => bankCallout.IsMatch(l));
         Assert.StartsWith("VGREC stop", lines[^1]);

@@ -38,8 +38,9 @@ public class VisualGuidanceCalloutTests
     }
 
     // A bank callout interrupts, which drops whatever BA has queued; so BA's own lines hold the bank
-    // callouts back for their measured speaking time (VG-21). Right of final the 15° error is due 1 s
-    // after activation; the activation sentence (4.0 s) and "Intercepting final, ..." (4.4 s) come first.
+    // callouts back for their measured speaking time (VG-21), each queued line's hold starting where
+    // the line before it ends. Right of final and parallel the 25° error is due 1 s after activation;
+    // the activation sentence (4.0 s) and then "Vectoring to final" (1.4 s) come first: 5.4 s.
     [Fact]
     public void A_bank_callout_waits_for_the_activation_and_phase_lines()
     {
@@ -47,11 +48,12 @@ public class VisualGuidanceCalloutTests
         var rig = new VisualGuidanceTestRig(record: lines.Add);
         rig.Place(8, 1.0, 0);
         rig.UpdateAt(0);
-        rig.FlyFor(6, 30);
+        rig.FlyFor(7, 30);
         var said = Said(lines);
-        Assert.Contains(said, s => !s.Immediate && s.Text.StartsWith("Intercepting final", StringComparison.Ordinal));
+        var vectoring = said.Single(s => !s.Immediate && s.Text == "Vectoring to final");
         var firstBank = said.First(s => BankErrorCallout.IsMatch(s.Text));
-        Assert.InRange(firstBank.T, 4.4, 4.45);
+        Assert.True(vectoring.T < firstBank.T);
+        Assert.InRange(firstBank.T, 5.4 - 0.05, 5.4 + 0.05);
     }
 
     // "Flare" (0.49 s spoken) holds a due bank callout for 0.6 s, no longer.
@@ -89,14 +91,17 @@ public class VisualGuidanceCalloutTests
         Assert.Equal("Visual guidance starting.", rig.Readout);
     }
 
-    // Cross-track is positive right of the centreline facing the runway (for runway 09, south).
+    // Cross-track is positive right of the centreline facing the runway (for runway 09, south): on final
+    // (within 0.1 nm) and vectoring to it.
     [Theory]
-    [InlineData(0.2, "On final, 6.0 miles. 0.2 miles right of the centreline.")]
-    [InlineData(-0.2, "On final, 6.0 miles. 0.2 miles left of the centreline.")]
-    public void Right_of_the_centreline_reads_right(double crossNm, string expectedStart)
+    [InlineData(6, 0.08, "On final, 6.0 miles. 0.1 miles right of the centreline.")]
+    [InlineData(6, -0.08, "On final, 6.0 miles. 0.1 miles left of the centreline.")]
+    [InlineData(10, 2.0, "Vectoring to final, joining 6.2 miles out. 2.0 miles right of final.")]
+    [InlineData(10, -2.0, "Vectoring to final, joining 6.2 miles out. 2.0 miles left of final.")]
+    public void Right_of_the_centreline_reads_right(double alongNm, double crossNm, string expectedStart)
     {
         var rig = new VisualGuidanceTestRig();
-        rig.Place(6, crossNm, 0);
+        rig.Place(alongNm, crossNm, 0);
         rig.UpdateAt(0);
         Assert.StartsWith(expectedStart, rig.Readout);
     }
