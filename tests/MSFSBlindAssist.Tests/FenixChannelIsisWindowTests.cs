@@ -40,7 +40,7 @@ public class FenixChannelIsisWindowTests
     public void The_isis_window_is_named_for_its_display()
     {
         using FenixChannelMonitor neverStarted = MonitorTestKit.NewIdleMonitor(new MonitorTestKit.Lines());
-        using var form = new FenixChannelIsisForm(neverStarted, () => FenixVariant.Unknown);
+        using var form = new FenixChannelIsisForm(neverStarted, () => FenixVariant.Unknown, _ => { });
 
         Assert.Equal("Fenix ISIS", form.Text);
         Assert.Equal("ISIS display", ListOf(form).AccessibleName);

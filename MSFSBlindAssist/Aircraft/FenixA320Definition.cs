@@ -3982,7 +3982,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 RenderAsButton = true
             },
 
-            // ISIS Baro Knob Inc/Dec (Counter pattern)
+            // ISIS Baro Knob Inc/Dec (Counter pattern). Ctrl+B sets the ISIS baro too (the owner, 2026-11-05), but the knob
+            // stays: on the ISIS's bugs page it steps the selected bug's value, the only way to set one.
             ["E_MIP_ISFD_BARO_INC"] = new SimConnect.SimVarDefinition
             {
                 Name = "E_MIP_ISFD_BARO_INC",

@@ -12,7 +12,7 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// <para>The keys. One button for each (<see cref="EcamKeys"/>), after the list in tab order: T.O CONFIG, CLR left, CLR
 /// right, RCL and EMER CANC, whose results show on the E/WD, so that a pilot can press one and read what it did in the
 /// one window. The SD's page keys (<see cref="FenixChannelSdForm.PageKeys"/>) are the other half of the panel; both
-/// windows build their row with <see cref="FenixChannelSdForm.BuildEcamKeyRow"/>. A press calls the press delegate with
+/// windows build their row with <see cref="FenixChannelSdForm.BuildKeyRow"/>. A press calls the press delegate with
 /// the key's variable name and nothing else: the definition's own press of that key, the panel's code (T.O CONFIG's
 /// verdict watcher [FNX-4], a full press-release for the others [FNX-6], [A320-3]).</para>
 /// <para>Silence ([CORE-7]). The window holds no announcer and no SimConnect: what the panel's code and the keys' lights
@@ -54,6 +54,6 @@ internal sealed class FenixChannelEwdForm : FenixChannelDisplayForm
         ArgumentNullException.ThrowIfNull(pressKey);
 
         // The tab order is the list, then T.O CONFIG to EMER CANC.
-        AddControlAfterList(FenixChannelSdForm.BuildEcamKeyRow(EcamKeys, pressKey));
+        AddControlAfterList(FenixChannelSdForm.BuildKeyRow(EcamKeys, pressKey));
     }
 }

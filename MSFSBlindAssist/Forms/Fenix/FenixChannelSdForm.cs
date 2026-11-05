@@ -14,7 +14,7 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// else; the delegate is the definition's own press of that key, the panel's code, a full press-release ([FNX-6],
 /// [A320-3]). They are buttons and never a combo box, which changes its selection and so would press a key at every
 /// page the reader arrows past. The panel's T.O CONFIG, CLR, RCL and EMER CANC keys act on the E/WD and are in its window
-/// (<see cref="FenixChannelEwdForm"/>), built by the same <see cref="BuildEcamKeyRow"/>.</para>
+/// (<see cref="FenixChannelEwdForm"/>), built by the same <see cref="BuildKeyRow"/>.</para>
 /// <para>Silence ([CORE-7]). The window holds no announcer and no SimConnect: the screen reader reads a button's label
 /// as it takes focus, and what the panel's code and the key's light announce is the one confirmation of a press, as when
 /// the pilot presses the panel's button. The list shows the new page at its next refresh. A refresh, F5 and opening the
@@ -61,7 +61,7 @@ internal sealed class FenixChannelSdForm : FenixChannelDisplayForm
         ArgumentNullException.ThrowIfNull(pressKey);
 
         // The tab order is the list, then ENG to STS.
-        AddControlAfterList(BuildEcamKeyRow(PageKeys, pressKey));
+        AddControlAfterList(BuildKeyRow(PageKeys, pressKey));
     }
 
     // The window's composer, with the one hold on the APU bleed valve's word it keeps from refresh to refresh.
@@ -73,13 +73,13 @@ internal sealed class FenixChannelSdForm : FenixChannelDisplayForm
     }
 
     /// <summary>
-    /// The ECAM control panel's keys as one row of buttons, shared by the SD window (its page keys) and the E/WD window
-    /// (T.O CONFIG, CLR, RCL and EMER CANC). One container wrapping and sizing itself, holding a button for each of
-    /// <paramref name="keys"/> in the order given, the label as the text and the accessible name (the reader says it and
-    /// "button", and nothing changes it), tab indexes in that order. A click calls <paramref name="press"/> with the
-    /// key's variable name and nothing else. The caller adds the panel after its list.
+    /// A panel's keys as one row of buttons, shared by the SD window (the ECAM page keys), the E/WD window (T.O CONFIG,
+    /// CLR, RCL and EMER CANC) and the ISIS window (its buttons). One container wrapping and sizing itself, holding a
+    /// button for each of <paramref name="keys"/> in the order given, the label as the text and the accessible name (the
+    /// reader says it and "button", and nothing changes it), tab indexes in that order. A click calls
+    /// <paramref name="press"/> with the key's variable name and nothing else. The caller adds the panel after its list.
     /// </summary>
-    internal static FlowLayoutPanel BuildEcamKeyRow(IReadOnlyList<(string Label, string Key)> keys, Action<string> press)
+    internal static FlowLayoutPanel BuildKeyRow(IReadOnlyList<(string Label, string Key)> keys, Action<string> press)
     {
         var panel = new FlowLayoutPanel
         {

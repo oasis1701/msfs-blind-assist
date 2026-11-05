@@ -19,6 +19,6 @@ public static partial class FenixWindowRegistry
                 }
 
                 ctx.Definition.ShowChannelWindow(ctx.Announcer, Services.FenixChannelIsisRows.Feature,
-                    monitor => new FenixChannelIsisForm(monitor, () => ctx.Definition.Variant));
+                    monitor => ctx.Definition.CreateChannelIsisForm(monitor, ctx.SimConnect, ctx.Announcer));
             }));
 }
