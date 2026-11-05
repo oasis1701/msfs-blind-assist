@@ -686,7 +686,7 @@ public class ClaudeContextBudgetTests
         return problems;
     }
 
-    private static readonly string[] ShippedCodeRoots = { "MSFSBlindAssist/", "MSFSBlindAssistUpdater/", "plugins/" };
+    private static readonly string[] ShippedCodeRoots = { "MSFSBlindAssist/", "MSFSBlindAssist.DisplayLayouts/", "MSFSBlindAssistUpdater/", "plugins/" };
 
     /// <summary>The shared aircraft rules glob files in every aircraft's folder under Aircraft/ (every file; every
     /// *Definition*.cs), so they never stand in for an aircraft's own rule file: a ported aircraft whose rule file

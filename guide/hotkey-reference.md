@@ -384,13 +384,16 @@ Full explanations: [PMDG 737 (NG3)](boeing-aircraft-and-the-md-11.md#boeing-pmdg
 ### Output keys {#output-keys-4}
 
 - **Output Shift+1** to **Shift+6** — Flap manoeuvring speeds for flaps up, 1, 5, 10, 15 and 25, at your current weight.
-- **Output Alt+P** — Read the PFD (AI).
-- **Output Alt+N** — Read the navigation display (AI).
-- **Output Alt+E** — Read the upper engine display (AI).
-- **Output Alt+S** — Read the lower display unit (AI): N2, oil and vibration, or whatever it is set to show.
+- **Output Alt+P** — Open the Primary flight display window: the Captain's PFD, read from the aircraft, as a list part by part (the FMA, the speed tape, the attitude, the altitude tape, vertical speed, heading, then the messages), with MINS mode, Minimums, MINS RST, Baro units, Altimeter, STD, FPV, MTRS, Flight director and the speed reference. No AI key needed; if BA cannot read the PFD it reads the PFD with AI instead, and if the classic EFIS display is selected it says so first.
+- **Output Alt+N** — Open the Navigation display window: the Captain's ND, read from the aircraft, as a list from the top of the screen to the bottom, with Mode, Range, CTR, the map buttons and VOR/ADF 1 and 2. No AI key needed; if BA cannot read the ND it reads the ND with AI instead.
+- **Output Ctrl+W** — The active waypoint as the ND shows it: name, arrival time and distance to go.
+- **Output Alt+E** — Open the Engine displays window: the upper and lower engine displays, read from the aircraft, with MFD ENG, MFD SYS, Lower DU, Fuel Flow, N1 SET and the manual N1. No AI key needed; if BA cannot read the displays it reads the upper display with AI instead.
+- **Output Alt+S** — Read the lower display unit (AI), whatever it is set to show.
 - **Output Alt+I** — Read the standby instrument (AI).
 
 F and Shift+F read fuel tank by tank.
+
+In the Engine displays window, **Tab** moves between the two lists and the controls, the arrow keys read a list, and **Escape** closes it. The Navigation display and Primary flight display windows work the same way, with one list.
 
 ### Input keys {#input-keys-4}
 
@@ -409,7 +412,7 @@ The Ctrl+P window is the 737 Autopilot: CMD A, CMD B, CWS A and B, both flight d
 
 ### General keys that differ or don't work here {#general-keys-that-differ-or-don-t-work-here-4}
 
-- **Output Ctrl+W, Ctrl+0, Ctrl+E** do nothing.
+- **Output Ctrl+0, Ctrl+E** do nothing.
 - **Input Shift+A, Ctrl+O, Shift+P, Ctrl+J, Ctrl+L** and the Shift/Ctrl+number knob keys do nothing; use the Ctrl+P window and the MCP windows.
 
 ## PMDG 777 {#hk-pmdg777}
@@ -418,6 +421,7 @@ Full explanations: [PMDG 777](boeing-aircraft-and-the-md-11.md#boeing-pmdg777). 
 
 - **Output Shift+1** to **Shift+5** — Flap manoeuvring speeds for flaps up, 1, 5, 15 and 20. There is no Shift+6.
 - **Output Alt+E** reads the upper EICAS, and **Alt+S** the lower display, whatever page it shows.
+- **Output Alt+N** reads the navigation display with AI; there is no Navigation display window, and **Output Ctrl+W** does nothing.
 - **Output Shift+V** reads vertical speed or flight path angle; the Ctrl+V window has V/S and FPA modes.
 - With **Enhanced distance announcements** on in FMC Settings, **Output D** and **Shift+D** read the CDU's PROG page. This works on the 777 only, not the 737.
 - **Input Ctrl+B** and **Input Ctrl+N** do nothing on the 777.

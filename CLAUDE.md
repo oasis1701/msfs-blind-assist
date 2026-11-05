@@ -13,12 +13,12 @@ dotnet build MSFSBlindAssist.sln -c Debug
 dotnet build MSFSBlindAssist.sln -c Release
 ```
 
-The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds seven projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder`, `tools/GuideBuilder` and the vPilot plugin among them; the other 12 `tools/*` projects (`tools/CDUTest`, the probes and the sweeps) build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
+The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds nine projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder`, `tools/GuideBuilder`, `tools/LayoutBundle`, the vPilot plugin and `MSFSBlindAssist.DisplayLayouts` among them; the other 14 `tools/*` projects (`tools/CDUTest`, the probes and the sweeps) build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
 
 - [CORE-1] Always build the `.sln` or pass `-p:Platform=x64`; never the bare `.csproj`, which defaults to AnyCPU and writes to `bin\Debug\…`, so the x64 exe the app runs from never updates. Full: docs/invariants/core.md#core-1
 - [CORE-2] Keep `RuntimeIdentifier=win-x64` (else the build ships every platform's SQLite binaries) and `AppendRuntimeIdentifierToOutputPath=false` (else it writes to a `win-x64\` folder the app, release.yml and PostBuild never use) in the csproj. `dotnet publish` writes `win-x64\publish\`; other `win-x64\` build output predates 2026-08-25: stale. Full: docs/invariants/core.md#core-2
 - [CORE-3] The exe is file-locked while MSFSBA runs (MSB3021): close the app before building an exe the user will run. Full: docs/invariants/core.md#core-3
-- [CORE-4] `dotnet build MSFSBlindAssist.sln` builds only `tools/PMDGDispatchTester`, `tools/ChangelogBuilder` and `tools/GuideBuilder`; the other 12 `tools/*` projects (`CDUTest`, the probes and the sweeps, listed in docs/development.md) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
+- [CORE-4] `dotnet build MSFSBlindAssist.sln` builds only `tools/PMDGDispatchTester`, `tools/ChangelogBuilder`, `tools/GuideBuilder` and `tools/LayoutBundle`; the other 14 `tools/*` projects (`CDUTest`, the probes and the sweeps, listed in docs/development.md) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
 
 ## Testing
 
@@ -149,6 +149,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [flypad.md](docs/flypad.md) | The shared FlyByWire flyPad EFB (A320 and A380) | flypad |
 | [pmdg-777.md](docs/pmdg-777.md) | PMDG 777: CDA switches, CDU indexing, System Display | pmdg-777 |
 | [pmdg-737.md](docs/pmdg-737.md) | PMDG 737-800 NG3: two CDUs, NG3 struct, EFB parity with the 777 (Shift+T) | pmdg-737 |
+| [wasm-memory.md](docs/wasm-memory.md) | Reading an aircraft's WASM module memory: the PMDG 737 readers, layout files, the layout store | wasm-memory |
 | [pmdg-efb.md](docs/pmdg-efb.md) | The PMDG (and HS787 CDU) Coherent-debugger EFB agent | pmdg-efb |
 | [ifly-737.md](docs/ifly-737.md) | iFly 737 MAX8: SDK shared memory + WM_COPYDATA, no MobiFlight, no L:var writes except named clickspot replays | ifly-737 |
 | [hs787.md](docs/hs787.md) | HorizonSim 787-9: CDU, IRS, EICAS over the Coherent debugger | hs787 |

@@ -251,6 +251,10 @@
   </Target>
 
   <ItemGroup>
+    <ProjectReference Include="..\MSFSBlindAssist.DisplayLayouts\MSFSBlindAssist.DisplayLayouts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Build-order only. ReferenceOutputAssembly=false because a net10 project cannot
          reference a net48 assembly; SkipGetTargetFrameworkProperties stops MSBuild from
          rejecting the cross-framework reference outright. Nothing is linked — the copy
