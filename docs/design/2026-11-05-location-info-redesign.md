@@ -44,9 +44,11 @@ it. The location data has the island (57.93333, 11.66667), but the window has no
 
 ## The map position
 
-The window works around one point, the **map position**. It starts at the aircraft. "Set as map
-position" on a result moves it to that place, and everything measured "from the map position" is
-then measured from there. "Reset to aircraft position" moves it back.
+The window works around one point, the **map position**. A check box, **Map position follows the
+aircraft**, ticked by default, ties the two together: while it's ticked the map position is the
+aircraft. "Set as map position" on a result moves the map position to that place and unticks the
+box; ticking it again brings the map position back to the aircraft. Whether the map position is
+kept between openings is then the pilot's choice: the box is remembered with the other filters.
 
 ## Proposed layout
 
@@ -96,15 +98,24 @@ until asked for, so they don't stand in the way.
    Context menu on a category: **Use for Output C**. Output C then names the nearest place of the
    ticked types instead of its usual choice: "All" gives the nearest place of any kind, Towns only
    towns, island only islands.
-9. **Reset filters** and **Reset to aircraft position**: two buttons at the bottom.
+9. **Map position follows the aircraft**: check box (see The map position).
+10. **Reset filters** and **Refresh** (F5): buttons at the bottom.
+
+## Refreshing
+
+Today's window is a snapshot taken when it opens; nothing in it updates. The new window keeps that:
+no automatic refresh, because a list that re-sorts while you read it moves you off your line.
+F5, or the Refresh button, takes the aircraft's position again and redoes the list, keeping the
+selected place selected if it's still in the list.
+
+## Filters
 
 Changing a filter updates the list at once. The count of results is spoken only when you press
 Enter in the search box, not on every filter change (CORE-7: the screen reader already says the
 new value).
 
-The window remembers its filters, range, scope, search text and the show/hide state between
-openings. The map position resets to the aircraft each time the window opens (to decide; see Open
-questions).
+The window remembers its filters, range, scope, search text, the show/hide state and the
+follow-the-aircraft box between openings and between sessions (saved with the other settings).
 
 ## Context menu on a result
 
@@ -155,12 +166,18 @@ water depth) follow the same column; population is already stored, depth is not 
 - Major Cities stays as it is for now (`MajorCityPopulationThreshold`, default 50,000, and
   `MaxMajorCitiesToShow`, default 10, on the GeoNames tab).
 
+## Dropped
+
+- Cardinal Directions. It shows the nearest town or village roughly north, east, south and west
+  (within 45°, inside the Regional range), which the Towns and Villages filters plus the Direction
+  filter cover.
+
 ## Open questions
 
-- The GeoNames tab's saved ranges: once the window remembers its own range, is the tab's
-  Location Info range still needed, or only as the first-time default?
-- Map position on opening: back to the aircraft each time, or kept from last time?
+- The GeoNames tab's ranges. Nearby range feeds Output C, the area line and Volanta's traffic
+  places, and Major Cities range feeds Major Cities and Volanta, so both stay. Regional range is
+  used only by Cardinal Directions and goes with it. Landmarks range is used only by today's
+  window boxes; the window's own range field replaces it. Possible: one range per category in the
+  window (longer for airports), instead of one field.
 - Readable names for feature types (ISL → "island"): check whether the database or the download
   has GeoNames' feature-code names, or whether they need adding.
-- Owner's own town missing from Major Cities with the 50,000 threshold: to look up (which town,
-  its GeoNames population, the 10-city cap, the range).
