@@ -180,10 +180,10 @@ pull request.
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** not started
-- **Claimed by:** none
-- **Worked by:**
-- **Started:**
+- **Status:** claimed
+- **Claimed by:** Robin Kipp (robin24), 2026-11-05
+- **Worked by:** Robin Kipp with Claude (superpowers:executing-plans)
+- **Started:** 2026-11-05, from 6c40b8065 (the branch's head, plans 01 to 11 landed)
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:**
