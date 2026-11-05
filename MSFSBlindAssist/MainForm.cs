@@ -1292,9 +1292,10 @@ public partial class MainForm : Form
     /// the Fenix EFIS FD and LS buttons): marks the light with the value the press should leave, so the light's
     /// change is not spoken after the screen reader read the button's new label (CORE-7). It rides the same
     /// value-matched gate as a combo pick (CORE-8, CORE-9), so a change the pilot did not cause with this press
-    /// still speaks. Nothing is marked while disconnected (no press is sent) or while the light is unread.
+    /// still speaks. Nothing is marked while disconnected (no press is sent) or while the light is unread. The Fenix
+    /// ND window's EFIS buttons use it too (FenixA320Definition.PanelPressEcho), so their LS press is heard once.
     /// </summary>
-    private void MarkStateLightEchoForPress(SimVarDefinition buttonDef)
+    internal void MarkStateLightEchoForPress(SimVarDefinition buttonDef)
     {
         if (simConnectManager is not { IsConnected: true } || string.IsNullOrEmpty(buttonDef.StateVariable)) return;
         double? cached = currentSimVarValues.TryGetValue(buttonDef.StateVariable, out double lit) ? lit : null;

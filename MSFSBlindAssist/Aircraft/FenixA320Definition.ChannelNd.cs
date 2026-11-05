@@ -28,7 +28,8 @@ public partial class FenixA320Definition
             case Hotkeys.HotkeyAction.ReadDisplayND:
                 return OpenChannelWindow(ctx, Services.FenixChannelDisplay.Nd, "ND",
                     monitor => new Forms.Fenix.FenixChannelNdForm(
-                        monitor, (key, value) => WriteNdControl(key, value, ctx.SimConnect, ctx.Announcer)));
+                        monitor, (key, value) => WriteNdControl(
+                            key, value, ctx.SimConnect, ctx.Announcer, PanelPressEcho(ctx.ParentForm))));
 
             case Hotkeys.HotkeyAction.ReadNDWaypoint:
                 SpeakNextWaypoint(ctx, ctx.Monitor);
@@ -71,12 +72,17 @@ public partial class FenixA320Definition
     }
 
     /// <summary>
-    /// A write from the ND window's EFIS controls, by the panel's own path (MainForm's panel write): the definition's
-    /// HandleUIVariableSet first, and the plain L:var write only when it did not handle the key. A key the definition
-    /// does not know writes nothing.
+    /// A write from the ND window's EFIS controls, by the panel's own path (MainForm's panel write): first
+    /// <paramref name="markPressEcho"/> with the key's definition, as the panel marks a press before it goes out, then the
+    /// definition's HandleUIVariableSet, and the plain L:var write only when it did not handle the key. A key the
+    /// definition does not know writes and marks nothing.
     /// </summary>
+    /// <param name="markPressEcho">The panel's echo mark (<see cref="PanelPressEcho"/>): it marks only a button whose press
+    /// flips its own light (FD and LS), whose button text the reader already reads, so the light does not say it again
+    /// (heard twice on the flight of 2026-11-05, [CORE-7]). Null marks nothing.</param>
     internal void WriteNdControl(
-        string key, double value, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+        string key, double value, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer,
+        Action<SimConnect.SimVarDefinition>? markPressEcho)
     {
         if (!GetVariables().TryGetValue(key, out SimConnect.SimVarDefinition? definition))
         {
@@ -84,7 +90,15 @@ public partial class FenixA320Definition
             return;
         }
 
+        markPressEcho?.Invoke(definition);
         if (!HandleUIVariableSet(key, value, definition, simConnect, announcer))
             simConnect.SetLVar(definition.Name, value);
     }
+
+    /// <summary>
+    /// The panel's own echo mark for a press, from the main form that owns the window (<see cref="MainForm.MarkStateLightEchoForPress"/>);
+    /// nothing for any other form.
+    /// </summary>
+    internal static Action<SimConnect.SimVarDefinition> PanelPressEcho(System.Windows.Forms.Form owner)
+        => definition => (owner as MainForm)?.MarkStateLightEchoForPress(definition);
 }

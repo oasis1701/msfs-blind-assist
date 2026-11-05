@@ -119,7 +119,45 @@ public class FenixChannelNdKeyTests
     [Fact]
     public void A_key_the_definition_does_not_know_writes_nothing()
     {
-        // The sim is null: a write would throw. An unknown key returns before touching it.
-        new FenixA320Definition().WriteNdControl("S_NOT_A_CONTROL", 1, null!, new SpeechCapture());
+        // The sim is null: a write would throw. An unknown key returns before touching it, and marks nothing.
+        new FenixA320Definition().WriteNdControl("S_NOT_A_CONTROL", 1, null!, new SpeechCapture(),
+            _ => throw new InvalidOperationException("marked"));
+    }
+
+    // Thrown by the mark, so that the test stops before the write, which needs a sim.
+    private sealed class Marked(SimConnect.SimVarDefinition definition) : Exception
+    {
+        public SimConnect.SimVarDefinition Definition { get; } = definition;
+    }
+
+    [Fact]
+    public void An_ls_press_marks_its_light_before_the_write_as_a_panel_press_does()
+    {
+        // The flight of 2026-11-05: an LS press from the window was heard twice, the light's announcement and the
+        // reader's new button text. The panel marks the light's echo before its press (MarkStateLightEchoForPress); the
+        // window's press is given the same mark, with the panel's own definition, before anything is written.
+        Marked marked = Assert.Throws<Marked>(() => new FenixA320Definition().WriteNdControl(
+            "S_FCU_EFIS1_LS_PRESS", 1, null!, new SpeechCapture(), d => throw new Marked(d)));
+
+        Assert.Equal("S_FCU_EFIS1_LS_PRESS", marked.Definition.Name);
+        Assert.Equal("I_FCU_EFIS1_LS", marked.Definition.StateVariable);
+        Assert.True(marked.Definition.PressTogglesStateVariable);
+    }
+
+    [Fact]
+    public void Every_nd_window_control_is_marked_as_the_panel_would_mark_it()
+    {
+        // The mark is the panel's: it marks only a definition that opts in (FD and LS), so the other five buttons and the
+        // two combos keep the panel's speech, whatever the window passes.
+        var definition = new FenixA320Definition();
+        string[] keys = [FenixChannelNdControls.ModeKey, FenixChannelNdControls.RangeKey,
+            .. FenixChannelNdControls.Buttons.Select(b => b.Key)];
+
+        foreach (string key in keys)
+        {
+            Marked marked = Assert.Throws<Marked>(() => definition.WriteNdControl(
+                key, 1, null!, new SpeechCapture(), d => throw new Marked(d)));
+            Assert.Same(definition.GetVariables()[key], marked.Definition);
+        }
     }
 }

@@ -13,5 +13,6 @@ public static partial class FenixWindowRegistry
             "The captain's navigation display, live from the Fenix: the map, the route, navaids and traffic, with the EFIS controls",
             ctx => ctx.Definition.ShowChannelWindow(ctx.Announcer, "ND",
                 monitor => new FenixChannelNdForm(
-                    monitor, (key, value) => ctx.Definition.WriteNdControl(key, value, ctx.SimConnect, ctx.Announcer)))));
+                    monitor, (key, value) => ctx.Definition.WriteNdControl(
+                        key, value, ctx.SimConnect, ctx.Announcer, FenixA320Definition.PanelPressEcho(ctx.Owner))))));
 }
