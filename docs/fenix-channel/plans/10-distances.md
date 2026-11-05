@@ -154,9 +154,11 @@ Who: the controller, with the local replay scripts over plan 03's recordings; no
   element of its ident in `r.Legs`, unless its ident is `ArrivalIdent(r.Runways)`; its ident on no kept point.
 - **The aircraft's distance to the line's end:** `DistanceNm(r.Position, TO.Point)` plus the end distance of the last
   kept point carrying the TO's ident.
-- **`ToDestination`:** fewer than two runways: null. The TO's ident is `ArrivalIdent(r.Runways)`:
-  `DistanceNm(r.Position, r.Runways[1].Threshold)`. No `IsDestination` element in the line: null. Any TO rule above:
-  null. Otherwise the aircraft's distance to the line's end.
+- **`ToDestination`:** the TO's ident is `ArrivalIdent(r.Runways)`: `DistanceNm(r.Position, r.Runways[1].Threshold)`.
+  Two or more runways and no `IsDestination` element in the line: null. Fewer than two runways (changed after Task 3,
+  2026-11-05): the line's last element must be an `End` within `SamePointNm` of the last `Symbol`-kind element off the
+  missed approach, and the line takes that `End` under the symbol's ident (for both keys); otherwise null. Any TO rule
+  above: null. Otherwise the aircraft's distance to the line's end.
 - **`ToTopOfDescent`:** any marker of type `MapMarkerKind.Eod`: Past. Otherwise the `Tod` markers that are not
   `IsGoAround`: none or two or more, NotAvailable. One: a TO rule above, NotAvailable; place it on the line: of the
   steps between consecutive kept points where `Project` gives a cross of at most `OnLineNm` and an along between -0.1
@@ -227,14 +229,17 @@ With MSFSBA built from the plan's branch, Task 2 included, the Fenix on 3.0.0.76
 value is the press's line in `debug.log`, read straight away (it rotates in about ten minutes). Record each result in
 `docs/fenix-channel/evidence/10-distances.md`; a check that fails is fixed and run again before Task 4.
 
-- [ ] A flight plan loaded, no cruise level: D says "<n> miles to destination" with no time, within the tolerance of
-  the F-PLN DEST line's DIST; Shift+D says "Top of descent not available".
-- [ ] The cruise level entered on INIT: Shift+D says "<n> miles to top of descent" with no time (recorded beside PERF
-  CRZ's "TO (T/D)" DIST if the page prints one at the gate).
-- [ ] Captain ND Brightness at Off (the app's panel control): `fenix_channel.log` shows the ND "display off"; D says
+- [x] A flight plan loaded, no cruise level: D says "<n> miles to destination" with no time, within the tolerance of
+  the F-PLN DEST line's DIST; Shift+D says "Top of descent not available". (2026-11-05: with both runways, 398.2
+  against 398. With fewer than two runways D was not available where the FMS gave 389 and 394: fixed, see the
+  execution record.)
+- [x] The cruise level entered on INIT: Shift+D says "<n> miles to top of descent" with no time (recorded beside PERF
+  CRZ's "TO (T/D)" DIST if the page prints one at the gate). (2026-11-05: "not available". The ND draws no T/D marker
+  at the gate, while PERF CRZ printed 292. Follows the data; the expectation was not measured before.)
+- [x] Captain ND Brightness at Off (the app's panel control): `fenix_channel.log` shows the ND "display off"; D says
   "Distance to destination not available" and Shift+D "Top of descent not available"; the brightness back.
-- [ ] No flight plan (a fresh power-up, or the flight plan cleared): both keys say "not available".
-- [ ] By ear with NVDA: the sentences read as written.
+- [x] No flight plan (a fresh power-up, or the flight plan cleared): both keys say "not available".
+- [x] By ear with NVDA: the sentences read as written.
 
 ### Task 4 [controller]: Docs and landing
 
@@ -252,8 +257,10 @@ value is the press's line in `debug.log`, read straight away (it rotates in abou
 
 - **For a pilot:** guide `guide/airbus-aircraft.md`, "Fenix A320 CEO", "Aircraft-specific hotkeys and callouts": the
   sentence saying Output D and Shift+D are not offered on the Fenix changes (they work, computed from the Fenix's flight
-  plan; Shift+D says "Past top of descent" once the descent has begun, and "not available" before a cruise level is
-  entered and from glideslope capture on; plan 02 changes the speeds' half of it). Hotkey guide
+  plan; Shift+D says "Past top of descent" once the descent has begun, and "not available" at the gate (the ND draws no
+  top of descent there, measured 2026-11-05), before a cruise level is entered, and from glideslope capture on; plan 02
+  changes the speeds' half of it). Plan 12's flight is the first check of when the top of descent appears after
+  takeoff with the cruise level entered at the gate. Hotkey guide
   `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt`: the output readouts gain "D Distance to destination" and
   "Shift+D Distance to top of descent". Changelog `feature`: "On the Fenix, D and Shift+D now tell you how far it is,
   and how long at your ground speed, to your destination and to the top of descent, worked out from the Fenix's own
@@ -279,17 +286,24 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:** 0 and 1 done (1's commit with this change)
-- **Waiting on the owner:** Task 3, the gate check
-- **In-sim results:**
+- **Waiting on the owner:** nothing
+- **In-sim results:** Task 3 at a KCVG gate on 2026-11-05 (the evidence's "Task 3 at the gate"): no flight plan, both
+  keys not available; both runways in, D "398 miles to destination" (398.2 against the DEST line's 398), Shift+D not
+  available; fewer than two runways, D not available where the FMS gave 389 and 394 (fixed after the sitting; the two
+  pushes are recorded cases, 389.16 and 394.07); the cruise level in, Shift+D not available (no T/D marker on the ND at
+  the gate, PERF CRZ 292); the captain ND off, both not available, and back; by ear, no complaint.
 - **Changed from the plan:** 2026-11-04, the plan rewritten before any code (the note at the top): the old Task 1
   (measure in flight) and Task 7 (check in flight) replaced by the replay over plan 03's recordings and a gate check;
   the old Tasks 3 to 6 merged into Task 2, and 8 and 9 into Task 4. Rules changed by the replay: the start (straight to
   the TO waypoint, then the line from its last kept point), turn pieces as arcs, a discontinuity crossed straight with
   a heading leg's far point dropped, the top of descent placed on the line, past once an end-of-descent marker shows
   (the old `ShowsPastTopOfDescent` is not needed), the TO-without-a-symbol refusal. Shift+D's tolerance now takes PERF
-  CRZ's printed figure as its reference.
+  CRZ's printed figure as its reference. 2026-11-05, after Task 3: D with fewer than two runways gives the distance to
+  the line's end at the destination airport (the destination end), where it refused before.
 - **Rulings made while working:**
   - Can plan 10 skip its flights? Yes, from the recordings, with one gate check; four tasks (Hadi, 2026-11-04).
   - Shift+D after the descent begins: its distance while the T/D marker shows; once past it, "Past top of descent" or
     the distance, whichever the data allows (Hadi, 2026-11-04). The marker goes when the descent phase begins and the
     data then holds no point for it, so "Past top of descent".
+  - D with fewer than two runways: the FMS still gives a DEST distance, so D gives it too; fixed before landing, with
+    no second sitting (Hadi, 2026-11-05).

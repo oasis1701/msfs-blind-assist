@@ -89,6 +89,14 @@ The rule kept, on every push with a DEST line (7,935): **7,770 within the tolera
 The line: the elements of 2.4 that `IsPath` keeps and that are not on the missed approach, in order, to the
 destination element (`IsDestination`) or, with none, to the last of them.
 
+- The destination end (added after Task 3's gate check). With fewer than two runways in 2.1 there is no destination
+  element. In both such pushes at the gate the line ended with an end (kind 3, 16 = 1) at the destination airport's
+  point, carrying the last waypoint's ident (MTHEW), not the airport's; the route's last waypoint symbol (kind 4) was
+  the airport (KATL), 0.0 NM away. When the line's last element is an end within 0.05 NM of the last waypoint symbol
+  off the missed approach, the line takes it under that symbol's ident. Under its own ident the discontinuity rule
+  below would drop the last waypoint's point, and with that waypoint as the TO the sum would start at the airport:
+  138 NM short with MTHEW as the TO.
+
 - A turn piece (kind 1 with its radius, course in and course out) counts as its radius times the course change (the
   smaller angle, in radians); every other element as the great circle from the last kept point.
 - A discontinuity end (`BreaksPath`) first drops the kept points before it that carry its own ident and lie more than
@@ -97,15 +105,17 @@ destination element (`IsDestination`) or, with none, to the last of them.
 - The aircraft's distance to the line's end: the great circle to the TO waypoint's point (2.11), plus the line from the
   last kept point carrying the TO's ident.
 - D: the TO is the destination runway (its ident is the arrival's, `ArrivalIdent`): the great circle to the arrival
-  threshold (2.1[2]). Otherwise the aircraft's distance to the line's end, when the line reaches a destination element.
+  threshold (2.1[2]). Otherwise the aircraft's distance to the line's end, when the line reaches a destination element
+  or, with fewer than two runways, a destination end.
 - Shift+D: any type 2 (EOD) marker: past. Otherwise the type 0 markers without the go-around member: none, or two or
   more, not available; one, placed on the line (within 0.5 NM across, between -0.1 and the step plus 0.1 along; the
   nearest across), its distance to the line's end subtracted from the aircraft's: 0.1 NM or less is past, more is the
   distance.
 - Not available, for both keys: no TO (2.11 absent or no ident); the TO on the missed approach; the TO with no waypoint
   symbol (kind 4) of its ident, unless it is the destination runway (never seen in 16,444 pushes with a TO: a heading leg
-  such as MANUAL would be one, its drawn point 500 NM out); the TO's ident on no kept point. D also: fewer than two
-  runways in 2.1; no destination element in the line.
+  such as MANUAL would be one, its drawn point 500 NM out); the TO's ident on no kept point. D also: with two or more
+  runways in 2.1, no destination element in the line; with fewer, no destination end (the line's last element not an
+  end, the end farther than 0.05 NM from the last waypoint symbol, or no waypoint symbol off the missed approach).
 
 ## The tolerance
 
@@ -115,8 +125,9 @@ F-PLN leg is not needed).
 
 ## The recorded cases (Task 2's tests)
 
-Fourteen pushes, each kept as a route table (the position, 2.1, 2.11, 2.4 and 2.12) in
-`FenixChannelDistancesRecordedTests.cs`, with the MCDU's figure of the same push:
+Sixteen pushes, each kept as a route table (the position, 2.1, 2.11, 2.4 and 2.12) in
+`FenixChannelDistancesRecordedTests.cs`, with the MCDU's figure of the same push. The last two come from Task 3's gate
+check:
 
 | Case | Push | MCDU | Expected |
 |---|---|---|---|
@@ -134,3 +145,31 @@ Fourteen pushes, each kept as a route table (the position, 2.1, 2.11, 2.4 and 2.
 | AfterGlideslope | sitting 3, 12:03:00 | DEST 7 | D within; Shift+D not available |
 | RunwayTo | sitting 3, 12:04:30 | DEST 3 | D within (the runway as the TO) |
 | LandingRoll | sitting 2, 21:53:28 | DEST 0 | D not available |
+| GateNoRunways | gate check, 09:14:37 | DEST 389 | D within (no runways); Shift+D not available |
+| GateDepartureRunwayOnly | gate check, 09:18:27 | DEST 394 | D within (KCVG 18L only); Shift+D not available |
+
+## Task 3 at the gate
+
+2026-11-05, MSFS 2024, Fenix A320 on 3.0.0.7613, at a KCVG gate with the flight plan DAL1022 to KATL. The build was the
+switch commit `2855d6911`. Hadi pressed the keys and listened with NVDA; Claude read `debug.log`, `fenix_channel.log`,
+the captain's MCDU text and short recordings of the channel (read-only, kept local).
+
+| Step | D | Shift+D | The MCDU |
+|---|---|---|---|
+| Powered, no flight plan | not available | not available | no flight plan |
+| Flight plan loaded, the IRS aligning | not available | not available | DEST DIST `----` |
+| IRS aligned, no SID, no STAR (no runways in 2.1) | not available | not available | DEST 389 |
+| The SID entered (KCVG 18L only) | not available | not available | DEST 394 |
+| SID, STAR and KATL 08L | "398 miles to destination", no time (log: 398.2 NM, TO INTCPT, 62 legs) | not available | DEST 398 |
+| Cruise level on INIT, then INIT FUEL PRED and the takeoff page | not checked | not available | PERF CRZ "TO (T/D)" DIST 292 |
+| Captain ND brightness off | not available | not available | `fenix_channel.log`: "ND not trusted: display off" at 09:24:28, "ND trusted" at 09:25:36 after the brightness came back |
+
+- D with fewer than two runways was a gap: the FMS gave a distance and D did not. Hadi ruled that D gives it; the
+  destination end above was added, with the two gate pushes as recorded cases (389.16 against 389, 394.07 against
+  394). Hadi asked for no second sitting.
+- Shift+D at the gate: the ND drew no top of descent marker (type 0) with the cruise level, the weights and the
+  takeoff page filled in and PERF CRZ printing the T/D at 292 NM. Its markers were four constraints (type 5), one type 4
+  and one type 11. So Shift+D is not available at the gate. The plan expected a distance there; that expectation was
+  not measured before. The first check of the T/D distance with the cruise level entered at the gate is plan 12's
+  flight.
+- By ear: Hadi found nothing wrong with the sentences.
