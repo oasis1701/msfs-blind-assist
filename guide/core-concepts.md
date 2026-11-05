@@ -439,7 +439,7 @@ Press Tab to move through the window. In order:
    - **Search where**: **Around the map position**, or **Whole world, by name**, which finds a name anywhere and lists the nearest matches. A whole-world search takes a second or two.
    - **Range**: how far around the map position to list places, in your distance unit, up to 310 miles or 500 kilometres.
    - **Direction from the map position**: all directions, or one of eight (north, northeast and so on).
-4. **Places**: one table of everything the tree and filters let through, nearest first. Arriving in it you hear how many there are, for example *"Places, 1,998 places within 30 miles of the map position"*, or *"No places found"*, then the nearest place. Arrow up and down through it. Each row has these columns:
+4. **Places**: one table of everything the tree and filters let through, nearest first. Arriving in it you hear how many there are, for example *"Places, 1,998 places within 30 miles of the map position"*, or *"No places found"*, then the nearest place. Arrow up and down through it: each row is read whole, every column with its name, and an empty column is left out. To read one column at a time, use the screen reader's table keys: in NVDA, Ctrl+Alt+Left and Ctrl+Alt+Right move along the row, and Ctrl+Alt+Up and Ctrl+Alt+Down along the column. Each row has these columns:
    - **Name**
    - **Type**: what the place is, as GeoNames calls it: island, mountain, lake, airport, populated place and so on
    - **Region**: the state or province and the country

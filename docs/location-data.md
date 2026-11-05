@@ -129,7 +129,8 @@ then sea (inside a named marine polygon) (LOC-6):
   (`LocationPhrases.LocationInfoText`). The window opens already filled and focused on that box, and
   speaks nothing itself. Then the kinds-of-place tree, the filters behind their button, and one
   table of every shown place, its count in the list's name (`OfflineLocationService.SearchAround`,
-  up to about 270,000 rows at the 500 km ceiling, in a virtual `ListView`), filtered in memory
+  up to about 270,000 rows at the 500 km ceiling, in a virtual `NativeAccessibleListView`, read
+  as Windows' own list, CORE-20), filtered in memory
   (`PlaceFilter`: kinds of place, folded name, compass direction, range) and sorted from the map
   position. "Whole world, by name" reads the whole table (`SearchWorld`, no name index; ASCII names
   are compared as they are and only hits folded) and keeps the nearest 2,000. Airports show the

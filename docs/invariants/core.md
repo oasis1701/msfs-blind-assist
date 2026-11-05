@@ -157,6 +157,19 @@ Why a line to fill in, not a checkbox: most PRs here are written with Claude Cod
 
 History. The first draft of this rule (2026-10-19, same PR) asked for a link to a pull request in the website's repo, where the guide then lived; the guide moved into this repo before it merged.
 
+## CORE-20
+
+Added 2026-11-05 (Location Info redesign). On .NET 10 the WinForms `ListView` answers `WM_GETOBJECT` with its own UI Automation provider, and NVDA reads a WinForms list through it. Its cells carry no value (dotnet/winforms #15044, open): in the Location Info Places table, Up and Down read only the place name, Ctrl+Alt+Left and Right read only the column header, and in a virtual list Tab into it could read nothing. Measured with NVDA 2026.2 through `devtools\list-lab` (local, not committed: a window with the Places table's shape in each kind of list, driven by real key presses, NVDA's speech read from its log at Input/output level):
+
+- Plain `ListView`, virtual: NVDA did not follow focus into the list at all.
+- `CreateAccessibilityInstance` returning a plain `ControlAccessibleObject` (the `NativeAccessibleTreeView` trick, CORE-12): silent too, as WinForms still serves UIA for it.
+- Declining only the UIA request (tried in the live window): NVDA got WinForms' MSAA objects under a UIA parent and failed in its column navigation (`NotImplementedError` in `_get_columnCount`).
+- Declining every `WM_GETOBJECT` (passing it to `DefWndProc`), which is what `NativeAccessibleListView` does: NVDA reads Windows' own list view (`NVDAObjects.IAccessible.sysListView32`). Up and Down read the whole row, "Place 1; Type: lake; Region: Västra Götaland, Sweden; ...; 2 of 2000", an empty cell left out; Ctrl+Alt+Left and Right read one cell with its header, Ctrl+Alt+Up and Down move along the column; Tab and Shift+Tab into it read the list's name and the row, virtual or not. Plain Left and Right only scroll, as in any Windows list.
+
+The native list has no name of its own, so `NativeAccessibleListView.AccessibleName` hands it to Windows as a dynamic annotation (`IAccPropServices.SetHwndPropStr`, `PROPID_ACC_NAME`) and raises `EVENT_OBJECT_NAMECHANGE` when it changes; a name written through a `Control` reference is caught up at the next `WM_GETOBJECT` but raises no change. NVDA reads the row twice when focus arrives in the list. A raw Win32 list view made without WinForms did the same in the same measurement: Windows raises focus for the window and then for the item, and NVDA never drops a repeated focus event for a list item (`isDuplicateIAccessibleEvent` returns False for a child ID above 0). It is not ours to fix.
+
+Not yet converted when the rule was written: the Electronic Flight Bag's `NavigableListView` (which speaks Left and Right cells itself through the announcer) and `TrackFixForm`'s duplicate list.
+
 ## Background: the former CLAUDE.md core sections
 
 These sections stood in CLAUDE.md's core until 2026-10; CLAUDE.md now keeps the rules as CORE one-liners. Kept here word for word; where the Screen Reader Announcements text below differs from CORE-7 above, CORE-7 governs.

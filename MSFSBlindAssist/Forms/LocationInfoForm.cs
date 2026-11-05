@@ -57,14 +57,13 @@ public partial class LocationInfoForm : Form
     private readonly Dictionary<int, AirportSearchEntry?> _airportMatches = new();
 
     private readonly List<(string Header, int Width, Func<PlaceResult, string> Text)> _columns = new();
-    // The rows handed to the virtual list, one per index until the shown places or the columns change.
-    // A new ListViewItem per RetrieveVirtualItem call gives the row a new accessible object each time, so the
-    // focus events raised on Tab point at objects already gone and NVDA reads nothing (checked 2026-11-05).
+    // The rows handed to the virtual list, one per index until the shown places or the columns change, so a
+    // row's texts are worked out once however often the list and the screen reader ask for it.
     private readonly Dictionary<int, ListViewItem> _rows = new();
     private bool _updatingControls;
 
     private TextBox _whereBox = null!;
-    private ListView _results = null!;
+    private NativeAccessibleListView _results = null!;
     private string _status = "";
     private Button _filtersButton = null!;
     private TableLayoutPanel _filtersPanel = null!;
@@ -148,8 +147,9 @@ public partial class LocationInfoForm : Form
         _filtersPanel = BuildFiltersPanel();
         _filtersPanel.TabIndex = 3;
 
-        // The list's name carries the count (or "No places found"), read on arrival in the list.
-        _results = new ListView
+        // The list's name carries the count (or "No places found"), read on arrival in the list. Read as
+        // Windows' own list (CORE-20): Up and Down read the row, Ctrl+Alt+arrows one cell with its header.
+        _results = new NativeAccessibleListView
         {
             View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false,
             VirtualMode = true, Dock = DockStyle.Fill, AccessibleName = "Places", TabIndex = 4,
