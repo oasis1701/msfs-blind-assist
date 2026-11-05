@@ -374,10 +374,10 @@ a check that fails is fixed and run again before Task 9.
 
 Kept in this file only, so no other plan's push ever touches it.
 
-- **Status:** not started
-- **Claimed by:** none
-- **Worked by:**
-- **Started:**
+- **Status:** claimed
+- **Claimed by:** Hadi (oasis1701), 2026-11-04
+- **Worked by:** Hadi with Claude, with subagents (superpowers:subagent-driven-development)
+- **Started:** 2026-11-04, from 58c25234e (the branch's head; plan 03's route decoder is on it)
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:**
