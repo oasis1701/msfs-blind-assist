@@ -60,19 +60,6 @@ public class AccessibleTableView : ListView
         MultiSelect = false;
     }
 
-    /// <summary>The table's name as the screen reader reads it; a change raises a name change.</summary>
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public new string? AccessibleName
-    {
-        get => base.AccessibleName;
-        set
-        {
-            if (base.AccessibleName == value) return;
-            base.AccessibleName = value;
-            if (IsHandleCreated) NotifyWinEvent(EVENT_OBJECT_NAMECHANGE, Handle, OBJID_CLIENT, 0);
-        }
-    }
-
     /// <summary>The current column, as a position in display order.</summary>
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -195,7 +182,6 @@ public class AccessibleTableView : ListView
     // Raised straight to Windows: WinForms' AccessibilityNotifyClients sent nothing from this control (no event
     // reached a WinEvent hook, 2026-11-05).
     private const uint EVENT_OBJECT_NAMECHANGE = 0x800C;
-    private const uint EVENT_OBJECT_FOCUS = 0x8005;
     private const int OBJID_CLIENT = -4;
 
     [DllImport("user32.dll")]
