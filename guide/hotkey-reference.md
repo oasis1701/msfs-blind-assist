@@ -74,8 +74,8 @@ These read what the FCU, MCP or flight control panel shows, with its mode. The e
 ### Output: navigation and distance {#output-navigation-and-distance}
 
 - **Output N** — NAV 1 and NAV 2: frequency, ident, localiser, glideslope and DME.
-- **Output D** — Distance to destination, from the aircraft's FMS. Not on: Fenix, MD-11.
-- **Output Shift+D** — Distance and time to top of descent. Not on: Fenix, MD-11.
+- **Output D** — Distance to destination, from the aircraft's FMS. Not on: MD-11.
+- **Output Shift+D** — Distance and time to top of descent. Not on: MD-11.
 - **Output 1** to **Output 5** — Read tracked waypoint slots 1 to 5 (see [Tracking Waypoints](planning-your-flight.md#fix-tracking)).
 - **Output Ctrl+D** — Distance to your selected destination runway.
 - **Output Ctrl+I** — ILS guidance report for the destination runway.
