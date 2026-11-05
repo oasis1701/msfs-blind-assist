@@ -60,6 +60,22 @@ public class FenixChannelSdAirTests
         return new SdPush { Page = 2 }.With(remote => remote.Message(151, pneumatic));
     }
 
+    [Fact]
+    public void The_apu_valve_is_in_transit_for_its_three_seconds_of_failed_open()
+    {
+        // The APU page's rows have the rule's cases; this page words the same valve through the same hold.
+        SdPush push = BleedPush(BleedValves((5, 3)));
+        var hold = new FenixChannelApuBleedHold();
+
+        FenixChannelRows At(long atMs) => FenixChannelSdPages.BleedRows(push.Context(_ => { }) with { ApuBleedHold = hold, AtMs = atMs });
+
+        Assert.Contains("APU valve: in transit", At(10_000).Rows!);
+        At(11_000);
+        At(12_000);
+        At(13_000);
+        Assert.Contains("APU valve: failed open", At(14_000).Rows!);
+    }
+
     private static IReadOnlyList<string> BleedRowsOf(SdPush push)
     {
         var reported = new List<string>();

@@ -54,9 +54,7 @@ internal sealed class FenixChannelSdForm : FenixChannelDisplayForm
     /// and never otherwise. The window has no SimConnect of its own; the definition's factory wires this.
     /// </param>
     public FenixChannelSdForm(FenixChannelMonitor monitor, Func<Aircraft.FenixVariant> variant, Action<string> pressKey)
-        : base(FenixChannelSd.DisplayName, FenixChannelDisplay.Sd, monitor,
-            snapshot => FenixChannelSd.Compose(
-                snapshot, variant(), problem => monitor.ReportFeatureProblem(FenixChannelSd.DisplayName, problem)))
+        : base(FenixChannelSd.DisplayName, FenixChannelDisplay.Sd, monitor, Composer(monitor, variant))
     {
         // The base asks the composer only once the window starts, so the check comes in time.
         ArgumentNullException.ThrowIfNull(variant);
@@ -64,6 +62,14 @@ internal sealed class FenixChannelSdForm : FenixChannelDisplayForm
 
         // The tab order is the list, then ENG to STS.
         AddControlAfterList(BuildEcamKeyRow(PageKeys, pressKey));
+    }
+
+    // The window's composer, with the one hold on the APU bleed valve's word it keeps from refresh to refresh.
+    private static Func<FenixChannelSnapshot, FenixChannelRows> Composer(FenixChannelMonitor monitor, Func<Aircraft.FenixVariant> variant)
+    {
+        var apuBleedHold = new FenixChannelApuBleedHold();
+        return snapshot => FenixChannelSd.Compose(
+            snapshot, variant(), problem => monitor.ReportFeatureProblem(FenixChannelSd.DisplayName, problem), apuBleedHold);
     }
 
     /// <summary>

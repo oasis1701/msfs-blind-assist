@@ -33,7 +33,7 @@ internal static partial class FenixChannelSdPages
         string flow1 = valves.Valve(FenixChannelFields.PneumaticValveData.Pack1Flow);
         string flow2 = valves.Valve(FenixChannelFields.PneumaticValveData.Pack2Flow);
         string crossBleed = valves.Valve(FenixChannelFields.PneumaticValveData.Crossbleed);
-        string apuBleed = valves.Valve(FenixChannelFields.PneumaticValveData.ApuBleed);
+        string apuBleed = ctx.ApuBleedWord(valves.Valve(FenixChannelFields.PneumaticValveData.ApuBleed));
         string bleed1 = valves.Valve(FenixChannelFields.PneumaticValveData.Eng1Bleed);
         string bleed2 = valves.Valve(FenixChannelFields.PneumaticValveData.Eng2Bleed);
         string hp1 = valves.Valve(FenixChannelFields.PneumaticValveData.Eng1Hp);

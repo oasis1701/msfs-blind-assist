@@ -53,8 +53,8 @@ internal static partial class FenixChannelSdPages
         bool lowOil = apu.Bool(FenixChannelFields.ApuData.LowOil);
 
         FenixChannelSdReader pneumatic = remote.Message(FenixChannelFields.Remote.PneumaticState);
-        string bleedValve = pneumatic.Message(FenixChannelFields.PneumaticState.Valves)
-            .Valve(FenixChannelFields.PneumaticValveData.ApuBleed);
+        string bleedValve = ctx.ApuBleedWord(pneumatic.Message(FenixChannelFields.PneumaticState.Valves)
+            .Valve(FenixChannelFields.PneumaticValveData.ApuBleed));
         double bleedPressure = pneumatic.Message(FenixChannelFields.PneumaticState.BleedPressure)
             .Double(FenixChannelFields.BleedPressureData.Apu);
 

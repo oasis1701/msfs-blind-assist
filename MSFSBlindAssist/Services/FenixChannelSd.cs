@@ -268,7 +268,9 @@ internal static class FenixChannelSd
     /// Where each problem goes, the window's own as they are ("no bottom line") and a page's as "&lt;PAGE&gt;:
     /// &lt;problem&gt;"; the window passes the monitor's log under "SD", which writes each distinct line once.
     /// </param>
-    public static FenixChannelRows Compose(FenixChannelSnapshot s, Aircraft.FenixVariant variant, Action<string> report)
+    /// <param name="apuBleedHold">The window's hold on the APU bleed valve's word; with none the word reads as sent.</param>
+    public static FenixChannelRows Compose(
+        FenixChannelSnapshot s, Aircraft.FenixVariant variant, Action<string> report, FenixChannelApuBleedHold? apuBleedHold = null)
     {
         ArgumentNullException.ThrowIfNull(variant);
         ArgumentNullException.ThrowIfNull(report);
@@ -286,7 +288,11 @@ internal static class FenixChannelSd
         if (remote.Problem is { } shape) return Stop(shape);
 
         string name = FenixChannelSdPages.NameOf(page);
-        var ctx = new FenixChannelSdPageContext(push, frame, variant, problem => report($"{name}: {problem}"));
+        var ctx = new FenixChannelSdPageContext(push, frame, variant, problem => report($"{name}: {problem}"))
+        {
+            ApuBleedHold = apuBleedHold,
+            AtMs = s.AtMs
+        };
 
         var rows = new List<string> { name };
         rows.AddRange(PageRows(page, name, ctx));

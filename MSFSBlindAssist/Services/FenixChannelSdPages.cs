@@ -28,7 +28,17 @@ namespace MSFSBlindAssist.Services;
 /// (<see cref="FenixChannelMonitor.ReportFeatureProblem"/>, which writes each distinct line once).
 /// </param>
 internal readonly record struct FenixChannelSdPageContext(
-    FenixChannelPush Push, FenixChannelFrame Frame, Aircraft.FenixVariant Variant, Action<string> ReportProblem);
+    FenixChannelPush Push, FenixChannelFrame Frame, Aircraft.FenixVariant Variant, Action<string> ReportProblem)
+{
+    /// <summary>The window's hold on the APU bleed valve's word; with none the word reads as sent.</summary>
+    public FenixChannelApuBleedHold? ApuBleedHold { get; init; }
+
+    /// <summary>The snapshot's clock, in milliseconds, for <see cref="ApuBleedHold"/>.</summary>
+    public long AtMs { get; init; }
+
+    /// <summary>What to say for the APU bleed valve, whose word as sent is <paramref name="word"/>.</summary>
+    public string ApuBleedWord(string word) => ApuBleedHold?.Word(word, AtMs) ?? word;
+}
 
 /// <summary>
 /// The pages of the Fenix SD as the display channel numbers them, and what every page shares: each page's name, the one

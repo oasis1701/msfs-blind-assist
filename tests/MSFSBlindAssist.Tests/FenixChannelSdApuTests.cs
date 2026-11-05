@@ -63,6 +63,70 @@ public class FenixChannelSdApuTests
         return rows.Rows!;
     }
 
+    // ---- The bleed valve's transit -----------------------------------------------------------------
+
+    private const int FailedOpen = 3;
+    private const int Closed = 1;
+
+    private static string BleedValveRow(int valve, FenixChannelApuBleedHold hold, long atMs)
+    {
+        SdPush push = ApuPush(Apu(avail: true), Pneumatic(apuBleedValve: valve));
+        FenixChannelRows rows = FenixChannelSdPages.ApuRows(push.Context(_ => { }) with { ApuBleedHold = hold, AtMs = atMs });
+        return Assert.Single(rows.Rows!, row => row.StartsWith("BLEED valve", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_bleed_valve_is_in_transit_for_its_three_seconds_of_failed_open()
+    {
+        // Measured 2026-11-03: the Fenix sends FailedOpen for the APU bleed valve's 3 s in transit, both ways.
+        var hold = new FenixChannelApuBleedHold();
+
+        Assert.Equal("BLEED valve: in transit", BleedValveRow(FailedOpen, hold, 10_000));
+        Assert.Equal("BLEED valve: in transit", BleedValveRow(FailedOpen, hold, 13_000));
+        Assert.Equal("BLEED valve: closed", BleedValveRow(Closed, hold, 14_000));
+    }
+
+    [Fact]
+    public void A_bleed_valve_that_stays_failed_open_reads_failed_open()
+    {
+        var hold = new FenixChannelApuBleedHold();
+        long at = 10_000;
+
+        Assert.Equal("BLEED valve: in transit", BleedValveRow(FailedOpen, hold, at));
+        for (int second = 1; second < FenixChannelApuBleedHold.TransitMs / 1000; second++)
+        {
+            BleedValveRow(FailedOpen, hold, at + (second * 1000));
+        }
+
+        Assert.Equal("BLEED valve: failed open", BleedValveRow(FailedOpen, hold, at + FenixChannelApuBleedHold.TransitMs));
+    }
+
+    [Fact]
+    public void A_new_transit_starts_its_own_three_seconds()
+    {
+        var hold = new FenixChannelApuBleedHold();
+
+        BleedValveRow(FailedOpen, hold, 10_000);
+        BleedValveRow(Closed, hold, 14_000);
+        Assert.Equal("BLEED valve: in transit", BleedValveRow(FailedOpen, hold, 15_000));
+    }
+
+    [Fact]
+    public void A_transit_seen_after_the_page_was_away_starts_its_own_three_seconds()
+    {
+        // The page is composed only while the SD shows it: a value seen long ago says nothing about this one.
+        var hold = new FenixChannelApuBleedHold();
+
+        BleedValveRow(FailedOpen, hold, 10_000);
+        Assert.Equal("BLEED valve: in transit", BleedValveRow(FailedOpen, hold, 100_000));
+    }
+
+    [Fact]
+    public void With_no_hold_the_valve_reads_as_sent()
+    {
+        Assert.Contains("BLEED valve: failed open", RowsOf(ApuPush(Apu(avail: true), Pneumatic(apuBleedValve: FailedOpen))));
+    }
+
     // ---- The rows -------------------------------------------------------------------------------
 
     [Fact]
