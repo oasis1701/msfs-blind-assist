@@ -25,10 +25,20 @@ public class VisualGuidanceManager : IDisposable
     private bool isActive = false;
 
     // Guidance state
-    private GuidancePhase currentPhase = GuidancePhase.Intercepting;
+    private GuidancePhase currentPhase = GuidancePhase.NotStarted;
     private Runway? runway;
-    private double magneticVariation = 0.0;
     private double thresholdElevationMSL = 0.0;
+
+    // Joining final (visual guidance redesign, stage 4; VisualGuidanceJoin). Once the wings are nearly
+    // level after Ctrl+V, BA decides once how the aircraft reaches final; pressing Ctrl+V off and on
+    // decides again. Joining holds the heading being flown until the turn onto final is due (VG-23).
+    private VisualGuidanceJoinPlan? joinPlan;
+    private bool turnOntoFinalDue;                    // the turn onto final has come (on final: no turn to make)
+    private double frozenInterceptDeg = double.NaN;   // joining: the intercept being flown when the turn came
+    private DateTime? establishedSince;               // inside the established criteria since, else null
+    private double maxApproachBankDeg = 25.0;         // VisualGuidanceProfile.MaxApproachBankDeg
+    private double minimumFinalNm = 6.0;              // VisualGuidanceProfile.MinimumFinalNm
+    private double rollInTimeS = 0.0;                 // VisualGuidanceProfile.RollInTimeS
 
     // Audio generators — both always run while guidance is active.
     private AudioToneGenerator? desiredAttitudeTone;  // PID-commanded attitude
@@ -109,11 +119,9 @@ public class VisualGuidanceManager : IDisposable
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
     private DateTime lastDistanceAnnouncement = DateTime.MinValue;
     private double lastAnnouncedDistance = double.MaxValue;
-    private DateTime lastExtendingProgressAnnouncement = DateTime.MinValue;
     // Decides when a bank callout is spoken (VG-21); rebuilt in Initialize with the profile's tone bank range.
     private VisualGuidanceBankCalloutGate bankCalloutGate = new(new VisualGuidanceProfile().ToneBankRangeDeg);
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
-    private const int EXTENDING_PROGRESS_INTERVAL_MS = 10000;  // 10 seconds
 
     // Manual-query grace window (VG-19). When the pilot fires a readout hotkey (F status,
     // P pitch, S speed, etc.) while VG is active, a bank callout (AnnounceImmediate) would
@@ -134,23 +142,11 @@ public class VisualGuidanceManager : IDisposable
     // trailing silence trimmed, plus about a fifth, as VG-1 measures. Measured 2026-11-04; a new or
     // reworded line is measured the same way, never estimated (VG-1, VG-21).
     private const double HOLD_ACTIVATION_S = 4.0;          // "Visual guidance active, runway 27L" 3.31 s
-    private const double HOLD_LONG_PHASE_S = 4.4;          // "Extending, turn to heading 175" 3.67 s, "Intercepting final, 1.8 miles to final" 3.37 s
-    private const double HOLD_ESTABLISHED_S = 2.0;         // "Established on centerline" 1.67 s
-    private const double HOLD_ON_PROFILE_S = 1.6;          // "On vertical profile" 1.30 s
     private const double HOLD_FLARE_S = 0.6;               // "Flare" 0.49 s
     private const double HOLD_TOUCHDOWN_S = 0.9;           // "Touchdown" 0.72 s
     private const double HOLD_MILES_S = 1.3;               // "5 miles" 1.03 s
-    private const double HOLD_BEHIND_THRESHOLD_S = 2.9;    // "2.5 miles behind threshold" 2.38 s
-    private const double HOLD_APPROACHING_S = 1.5;         // "Approaching threshold" 1.26 s
-
-    // Debouncing for behind threshold detection
-    private DateTime lastBehindStateChange = DateTime.MinValue;
-    private bool wasBehindLastCheck = false;
-    private const int STATE_CHANGE_DELAY_MS = 5000; // 5 seconds
 
     // Guidance constants
-    private const double CENTERLINE_TOLERANCE_NM = 0.3;  // On centerline if within 0.3 NM
-    private const double GLIDESLOPE_CAPTURE_FT = 100.0;  // Capture glideslope when within 100 ft
     private const double TOUCHDOWN_ALTITUDE_FT = 5.0;    // Consider touchdown below 5 ft AGL
 
     // Flare rate limiting constant
@@ -175,7 +171,6 @@ public class VisualGuidanceManager : IDisposable
     private const double MAX_DESCENT_RATE_FPM = -1500.0;     // Maximum descent rate when high
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
-    private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
     private const double LATERAL_GAIN_TRACKING = 120.0;    // Cross-track error (NM) to bank for tracking (increased for faster convergence)
     private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate damping
     private const double LATERAL_HEADING_GAIN = 1.0;     // Track/heading error to bank for alignment (Boeing 747: 1.0-2.8)
@@ -184,13 +179,10 @@ public class VisualGuidanceManager : IDisposable
     private double airspeedReferenceKnots = 140.0;       // Reference Vref for sqrt(GS/Vref) lateral gain scaling
     private double maxBankRateDegPerSec = 3.0;           // Cap on commanded bank change rate (deg/sec)
 
-    // Arc mode guidance constants (replaces problematic P/H balance in CAPTURE mode)
-    private const double ARC_MODE_ENTRY_NM = 1.5;           // Start arc capture at 1.5 NM (matches INTERCEPT_45 angle)
-    private const double ARC_MODE_EXIT_NM = 0.05;           // End arc at 300 feet, switch to precision
-    private const double ARC_INTERCEPT_GAIN = 30.0;         // Degrees of intercept angle per NM (tunable: 25-40)
-    private const double ARC_MAX_INTERCEPT_ANGLE = 45.0;    // Maximum intercept angle (matches INTERCEPT_45 handoff)
-    private const double ARC_RATE_DAMPING = 12.0;           // Damping to prevent overshoot if pilot overbanks
-    private const double ARC_BANK_LIMIT = 15.0;             // Gentle bank limit for comfort during arc
+    // Within this of the centreline the precision track flies (unchanged from before the redesign);
+    // outside it, the capture law onto final (VisualGuidanceJoin.DesiredLegTrackDeg), which replaced
+    // the 60° and 45° intercepts and the fixed-gain arc in stage 4.
+    private const double ARC_MODE_EXIT_NM = 0.05;
 
     // Vertical guidance — aircraft-specific (set from VisualGuidanceProfile in Initialize).
     // typicalApproachAoaDeg is now only a FALLBACK used when measured AoA is unavailable or
@@ -280,6 +272,15 @@ public class VisualGuidanceManager : IDisposable
     /// <summary>VirtualPilot hook (VP-1): the current guidance phase's name.</summary>
     internal string PhaseForHarness => currentPhase.ToString();
 
+    /// <summary>
+    /// VirtualPilot hook (VP-1): the capture gain, deg·kt/nm (<see cref="VisualGuidanceJoin"/>). The app
+    /// never sets it; the harness sweeps it to pick the default.
+    /// </summary>
+    internal double CaptureGainForHarness { get; init; } = VisualGuidanceJoin.DefaultCaptureGain;
+
+    /// <summary>VirtualPilot hook (VP-1): the decision's name (OnFinal, Joining, Vectoring, Pattern), "None" before it.</summary>
+    internal string DecisionForHarness => joinPlan?.State.ToString() ?? "None";
+
     /// <summary>SimConnect's pitch (radians, nose-down positive, Euler convention) in degrees nose-up positive. MainForm and VirtualPilot both convert through this.</summary>
     internal static double PitchDegreesFromSimConnect(double radians) => -(radians * 180.0 / Math.PI);
 
@@ -300,9 +301,8 @@ public class VisualGuidanceManager : IDisposable
     {
         var phase = currentPhase switch
         {
-            GuidancePhase.Extending => VisualGuidanceReadoutPhase.Extending,
-            GuidancePhase.Intercepting => VisualGuidanceReadoutPhase.Intercepting,
-            GuidancePhase.Final or GuidancePhase.GlideslopeTracking => VisualGuidanceReadoutPhase.OnFinal,
+            GuidancePhase.Joining or GuidancePhase.Vectoring or GuidancePhase.Unable => VisualGuidanceReadoutPhase.Intercepting,
+            GuidancePhase.Final => VisualGuidanceReadoutPhase.OnFinal,
             GuidancePhase.Flare => VisualGuidanceReadoutPhase.Flare,
             GuidancePhase.Touchdown => VisualGuidanceReadoutPhase.Touchdown,
             _ => VisualGuidanceReadoutPhase.Starting,
@@ -318,22 +318,23 @@ public class VisualGuidanceManager : IDisposable
             AltitudeErrorFt: lastCalculatedAltitudeError,
             TargetFpm: lastCalculatedTargetFPM,
             WheelHeightFt: altMSL - thresholdElevationMSL - flareAltitudeBiasFt,
-            ExtensionHeadingMag: CalculateExtensionHeading());
+            ExtensionHeadingMag: 0);
         return VisualGuidanceStatusText.Compose(status);
     }
 
     /// <summary>
-    /// Guidance phases from approach to touchdown
+    /// Guidance phases from Ctrl+V to touchdown.
     /// </summary>
     private enum GuidancePhase
     {
-        NotStarted,         // Initial state before first position update
-        Extending,          // Behind runway, need to extend out
-        Intercepting,       // Off centerline, intercepting
-        Final,              // On centerline, before glideslope capture
-        GlideslopeTracking, // On centerline and glideslope
-        Flare,              // Below 30 ft AGL, flaring
-        Touchdown           // Below 5 ft AGL, landed
+        NotStarted,         // before the first update with a position
+        Deciding,           // banked 5° or more: both tones on the aircraft until the wings are nearly level
+        Joining,            // on a heading that crosses final: held until the turn onto final ("Joining final")
+        Vectoring,          // BA chose the route onto final ("Vectoring to final")
+        Unable,             // the simple pattern is needed and does not exist yet: wings level, heading held
+        Final,              // established on final (or pressed there)
+        Flare,              // the main gear under the profile's flare height
+        Touchdown           // the main gear under 5 ft
     }
 
     public VisualGuidanceManager(ScreenReaderAnnouncer screenReaderAnnouncer)
@@ -405,7 +406,6 @@ public class VisualGuidanceManager : IDisposable
         currentToneWaveType = currentToneWaveform;
         currentToneVolume = currentToneVol;
         hardPanTone = hardPan;
-        magneticVariation = destinationAirport.MagVar;
         // Prefer the runway end's own elevation (runway_end.altitude) over the airport's
         // published field elevation — matters at airports with sloped runways or different
         // threshold elevations between ends (KASE, LSZS, KSEA 16L/34R). Fall back to airport
@@ -433,15 +433,21 @@ public class VisualGuidanceManager : IDisposable
         flareAltitudeBiasFt = profile.FlareAltitudeBiasFt;
         flareTriggerWheelHeightFt = profile.FlareTriggerWheelHeightFt;
         flareTargetPitchDeg = profile.FlareTargetPitchDeg;
+        maxApproachBankDeg = profile.MaxApproachBankDeg;
+        minimumFinalNm = profile.MinimumFinalNm;
+        rollInTimeS = profile.RollInTimeS;
         // Cached for ProcessUpdate's tone-pair re-arm — see the field comment.
         visualGuidanceProfile = profile;
 
-        // Reset state
+        // Reset state: every press of Ctrl+V decides afresh.
         currentPhase = GuidancePhase.NotStarted;
+        joinPlan = null;
+        turnOntoFinalDue = false;
+        frozenInterceptDeg = double.NaN;
+        establishedSince = null;
         lastPhaseAnnouncement = DateTime.MinValue;
         lastDistanceAnnouncement = DateTime.MinValue;
         lastAnnouncedDistance = double.MaxValue;
-        lastExtendingProgressAnnouncement = DateTime.MinValue;
         // A fresh gate (nothing spoken, no holds) on this aircraft's tone bank range: past it both
         // tones are pinned and only the callouts say how far (VG-21).
         bankCalloutGate = new VisualGuidanceBankCalloutGate(profile.ToneBankRangeDeg);
@@ -974,9 +980,6 @@ public class VisualGuidanceManager : IDisposable
 
             // Distance callouts
             HandleDistanceCallouts(lat, lon);
-
-            // Extending phase progress updates
-            HandleExtendingProgress(lat, lon);
         }
         catch (Exception ex)
         {
@@ -1009,9 +1012,7 @@ public class VisualGuidanceManager : IDisposable
         // flare (30 ft) thresholds are true main-gear heights, so test them against the
         // corrected wheel height — otherwise the flare cue fires ~one bias too late and,
         // on a widebody, the datum never gets within 5 ft of the runway so the touchdown
-        // phase would never trigger via altitude at all. Coarser gates further below
-        // (e.g. the 500 ft "behind runway" check) keep using raw calculatedAGL — a ~20 ft
-        // bias is irrelevant there.
+        // phase would never trigger via altitude at all.
         double wheelHeightAGL = calculatedAGL - flareAltitudeBiasFt;
 
         // Diagnostic logging to help identify sensor issues
@@ -1047,102 +1048,96 @@ public class VisualGuidanceManager : IDisposable
             return;
         }
 
-        // Calculate position relative to runway
-        double distance = NavigationCalculator.CalculateDistance(
-            lat, lon, runway.StartLat, runway.StartLon);
-
-        double crossTrackError = NavigationCalculator.CalculateDistanceToLocalizer(
-            lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
-
-        // Check if behind runway (need to extend)
-        // Exclude if below 500 ft AGL - aircraft is landing, continue guidance through touchdown
-        if (calculatedAGL > 500.0 && IsBehindRunway(lat, lon))
-        {
-            currentPhase = GuidancePhase.Extending;
-            if (previousPhase != currentPhase)
-            {
-                AnnouncePhaseChange("Extending, turn to heading " +
-                    CalculateExtensionHeading().ToString("F0"), HOLD_LONG_PHASE_S);
-            }
-            return;
-        }
-
-        // Check if significantly off centerline (only enter Intercepting from initial states)
-        // Once on Final/Glideslope, stay there - tones will guide back to centerline
-        if (crossTrackError > CENTERLINE_TOLERANCE_NM &&
-            (currentPhase == GuidancePhase.NotStarted || currentPhase == GuidancePhase.Intercepting))
-        {
-            currentPhase = GuidancePhase.Intercepting;
-            if (previousPhase != currentPhase)
-            {
-                // Format distance to final (1 decimal place)
-                string distanceText = crossTrackError < 1.0
-                    ? $"{crossTrackError:F1} mile"
-                    : $"{crossTrackError:F1} miles";
-
-                AnnouncePhaseChange($"Intercepting final, {distanceText} to final", HOLD_LONG_PHASE_S);
-            }
-            return;
-        }
-
-        // On centerline - check glideslope.
-        // CalculateGlideslopeDeviation measures against a bare path crossing the threshold at
-        // 0 ft; subtract glideslopeAltitudeBiasFt so this phase-capture test uses the SAME
-        // TCH-corrected reference as the FPM vertical guidance (idealAltitudeAGL above).
-        // Without this the "On vertical profile" capture would be offset by ~one TCH from the
-        // glideslope the tone actually flies — announcing "on profile" while ~80 ft low.
-        double glideslopeDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
-            altMSL,                                      // Aircraft altitude MSL
-            distance,                                     // Distance from threshold in NM
-            glideslopeAngleDeg,                          // per-runway glideslope (3° default)
-            thresholdElevationMSL)                       // Threshold elevation MSL
-            - glideslopeAltitudeBiasFt;
-
-        if (Math.Abs(glideslopeDeviation) < GLIDESLOPE_CAPTURE_FT)
-        {
-            currentPhase = GuidancePhase.GlideslopeTracking;
-            if (previousPhase != currentPhase)
-            {
-                AnnouncePhaseChange("On vertical profile", HOLD_ON_PROFILE_S);
-            }
-        }
-        else
+        // Back above the flare height (a balloon, or a go-around): final again, as before the flare.
+        if (currentPhase is GuidancePhase.Flare or GuidancePhase.Touchdown)
         {
             currentPhase = GuidancePhase.Final;
-            if (previousPhase != currentPhase)
-            {
-                AnnouncePhaseChange("Established on centerline", HOLD_ESTABLISHED_S);
-            }
+            return;
         }
+
+        // Ctrl+V pressed: decide once the wings are nearly level (in a turn the heading being flown is
+        // not yet the one the pilot means to hold).
+        if (currentPhase == GuidancePhase.NotStarted)
+            currentPhase = GuidancePhase.Deciding;
+        if (currentPhase == GuidancePhase.Deciding)
+        {
+            if (Math.Abs(StandardBank(cachedBank ?? 0.0)) >= VisualGuidanceJoin.DecideBankDeg)
+                return;
+            Decide(lat, lon);
+        }
+
+        if (currentPhase is GuidancePhase.Joining or GuidancePhase.Vectoring)
+            UpdateEstablished(lat, lon);
     }
 
     /// <summary>
-    /// Calculates desired bank angle for lateral guidance
+    /// The decision (<see cref="VisualGuidanceJoin.Decide"/>): from the position, the ground track
+    /// (the heading if there is none) relative to the runway's magnetic course, and the ground speed.
+    /// </summary>
+    private void Decide(double lat, double lon)
+    {
+        if (runway == null) return;
+        var position = VisualGuidanceJoin.Locate(lat, lon, runway);
+        double relativeTrack = VisualGuidanceJoin.Normalize((cachedGroundTrack ?? cachedHeading ?? runway.HeadingMag) - runway.HeadingMag);
+        joinPlan = VisualGuidanceJoin.Decide(position, relativeTrack, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile);
+        currentPhase = joinPlan.State switch
+        {
+            VisualGuidanceJoinState.OnFinal => GuidancePhase.Final,
+            VisualGuidanceJoinState.Joining => GuidancePhase.Joining,
+            VisualGuidanceJoinState.Vectoring => GuidancePhase.Vectoring,
+            _ => GuidancePhase.Unable,   // the pattern: stage 4's Task 6
+        };
+        // On final there is no turn to make.
+        turnOntoFinalDue = joinPlan.State == VisualGuidanceJoinState.OnFinal;
+        Log.Debug("VisualGuidance", $"Decided {joinPlan.State} at along {position.AlongNm:F2} nm, cross {position.CrossNm:F2} nm, " +
+            $"track {relativeTrack:F1}° from the course, {currentGroundSpeedKnots:F0} kt, clamp {joinPlan.ClampDeg:F0}°");
+    }
+
+    /// <summary>
+    /// Established: on final within <see cref="VisualGuidanceJoin.EstablishedCrossNm"/> and
+    /// <see cref="VisualGuidanceJoin.EstablishedTrackDeg"/> of the course (the track as the lateral law
+    /// takes it), on the approach side, for <see cref="VisualGuidanceJoin.EstablishedHoldS"/>. Then the
+    /// phase is final for the rest of the approach.
+    /// </summary>
+    private void UpdateEstablished(double lat, double lon)
+    {
+        if (runway == null || cachedHeading is not double heading) return;
+        double cross = SignedCrossTrackNm(runway, lat, lon);
+        double trackError = VisualGuidanceJoin.Normalize(LateralTrackDeg(heading) - runway.HeadingMag);
+        bool inside = Math.Abs(cross) <= VisualGuidanceJoin.EstablishedCrossNm
+            && Math.Abs(trackError) <= VisualGuidanceJoin.EstablishedTrackDeg
+            && VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm > 0;
+        if (!inside)
+        {
+            establishedSince = null;
+            return;
+        }
+        DateTime now = lastUpdateUtc ?? ClockForHarness();
+        establishedSince ??= now;
+        if ((now - establishedSince.Value).TotalSeconds >= VisualGuidanceJoin.EstablishedHoldS - 1e-6)
+            currentPhase = GuidancePhase.Final;
+    }
+
+    /// <summary>
+    /// The track the lateral law steers (magnetic): the ground track, so the aircraft holds the line in a
+    /// crosswind with its crab, but the heading below 100 ft, to line the nose up with the runway.
+    /// </summary>
+    private double LateralTrackDeg(double heading)
+        => cachedAGL.HasValue && cachedAGL.Value <= 100.0 ? heading : cachedGroundTrack ?? heading;
+
+    /// <summary>
+    /// The bank the guidance asks for, right positive. Deciding: the aircraft's own bank. Unable, and
+    /// joining before the turn onto final: wings level, the heading held (VG-23). Otherwise, onto and
+    /// along final: the precision track within <see cref="ARC_MODE_EXIT_NM"/> of the centreline, the
+    /// capture law outside it.
     /// </summary>
     private double CalculateDesiredBank(double lat, double lon, double heading)
     {
         if (runway == null) return 0.0;
 
-        double crossTrackError = NavigationCalculator.CalculateDistanceToLocalizer(
-            lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
-
-        if (currentPhase == GuidancePhase.Extending)
         {
-            // Guide to extension heading
-            double extensionHeading = CalculateExtensionHeading();
-            double headingError = NormalizeHeading(extensionHeading - heading);
-            double desiredBank = Math.Clamp(headingError * LATERAL_GAIN_INTERCEPT, -20.0, 20.0);
-
-            return desiredBank;
-        }
-        else
-        {
-            // Enhanced PD controller with airspeed compensation for centerline tracking
-            // Get signed cross-track error for direction (positive = right, negative = left)
-            double signedCrossTrack = NavigationCalculator.CalculateCrossTrackError(
-                lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
-            // Apply sign to distance (crossTrackError is unsigned distance in NM)
-            double signedCrossTrackNM = Math.Sign(signedCrossTrack) * crossTrackError;
+            // Signed as the lateral law takes it: + right of the centreline facing the runway.
+            double signedCrossTrackNM = SignedCrossTrackNm(runway, lat, lon);
 
             // Cross-track rate (derivative term) for damping, over a time window (oldest to newest
             // sample in the last CROSS_TRACK_RATE_WINDOW_S seconds). This filters out single-frame
@@ -1158,104 +1153,68 @@ public class VisualGuidanceManager : IDisposable
                 smoothedCrossTrackRate = crossTrackRate;
             }
 
-            // Ground track vs heading selection based on altitude
-            // High altitude (>100 ft AGL): Use ground track to maintain centerline (allows crab in wind)
-            // Low altitude (≤100 ft AGL): Use heading to align nose with runway (decrab for landing)
-            double actualTrackAngle;
-            if (cachedAGL.HasValue && cachedAGL.Value <= 100.0)
-            {
-                actualTrackAngle = heading;  // Force heading alignment for decrab below 100 ft
-            }
-            else
-            {
-                actualTrackAngle = cachedGroundTrack ?? heading;  // Normal tracking above 100 ft
-            }
+            // The ground track holds the centreline in a crosswind (with the crab); below 100 ft the
+            // heading lines the nose up with the runway (the decrab).
+            double actualTrackAngle = LateralTrackDeg(heading);
             double trackAngleError = NormalizeHeading(runway.HeadingMag - actualTrackAngle);
+            double relativeTrack = VisualGuidanceJoin.Normalize(actualTrackAngle - runway.HeadingMag);
 
             // Airspeed compensation scaling
             // Higher speeds need stronger corrections (compensates for larger turn radius)
             double speedFactor = Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / airspeedReferenceKnots);
 
-            // **TARGET HEADING INTERCEPT LOGIC**
-            // Phase-based approach matching real autopilot behavior
-            // INTERCEPT phases: Calculate and fly to target intercept heading
-            // ARC MODE: Smooth arc capture from 1.5 to 0.05 NM
-            // PRECISION TRACK: Final PDH control below 0.05 NM
-
             double absXTE = Math.Abs(signedCrossTrackNM);
             double desiredBank;
             string guidancePhase;
 
-            // Phase determination and guidance calculation
-            if (absXTE > 2.0)
-            {
-                // INTERCEPT PHASE 1: Far from centerline - 60° intercept
-                double interceptAngle = 60.0;
-                double targetHeading = signedCrossTrackNM < 0
-                    ? runway.HeadingMag + interceptAngle
-                    : runway.HeadingMag - interceptAngle;
-                targetHeading = NormalizeHeading(targetHeading);
+            // Vectoring: note when the turn onto final comes (the countdown and its line).
+            if (currentPhase == GuidancePhase.Vectoring)
+                TurnOntoFinalIsDue(lat, lon, signedCrossTrackNM, crossTrackRate, relativeTrack, speedFactor);
 
-                desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
-                guidancePhase = "INTERCEPT_60";
+            if (currentPhase == GuidancePhase.Deciding)
+            {
+                // Pressed in a turn: both tones sit on the aircraft's own bank, with no rate limit, until
+                // the wings are nearly level and BA decides.
+                guidancePhase = "DECIDING";
+                desiredBank = StandardBank(cachedBank ?? 0.0);
             }
-            else if (absXTE > ARC_MODE_ENTRY_NM)  // 1.0 NM
+            else if (currentPhase == GuidancePhase.Unable
+                     || (currentPhase == GuidancePhase.Joining
+                         && !TurnOntoFinalIsDue(lat, lon, signedCrossTrackNM, crossTrackRate, relativeTrack, speedFactor)))
             {
-                // INTERCEPT PHASE 2: Medium distance - 45° intercept
-                double interceptAngle = 45.0;
-                double targetHeading = signedCrossTrackNM < 0
-                    ? runway.HeadingMag + interceptAngle
-                    : runway.HeadingMag - interceptAngle;
-                targetHeading = NormalizeHeading(targetHeading);
-
-                desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
-                guidancePhase = "INTERCEPT_45";
+                // Wings level, the heading held. Joining: the heading ATC (or the pilot) chose, as
+                // FlyByWire's autopilot holds its heading until LOC* engages; the capture law runs only to
+                // find the turn onto final (VG-23). Flying its small early bank would let a pilot who
+                // follows it shrink their own intercept and keep putting the turn off.
+                guidancePhase = "HOLD_HEADING";
+                desiredBank = RateLimited(previousDesiredBank, 0.0, maxBankRateDegPerSec);
             }
             else if (absXTE > ARC_MODE_EXIT_NM)  // 0.05 NM
             {
-                // ========== ARC CAPTURE MODE ==========
-                // Calculates target intercept heading that creates smooth arc to centerline
-                // Intercept angle reduces proportionally as aircraft approaches line
-                // At 1.5 NM: 45° intercept (matches INTERCEPT_45) → At 0.05 NM: 1.5° intercept
-                // This naturally aligns heading while approaching centerline
+                // ========== CAPTURE ==========
+                // The capture law onto final (VisualGuidanceJoin): a desired track of gain × offset ÷
+                // ground speed toward the line, damped by the closing rate, clamped to the intercept
+                // (on final 30°; vectoring the chosen angle; joining the one flown at the turn, at least
+                // 30°), so the intercept shrinks to nothing as the aircraft reaches the line.
+                guidancePhase = "CAPTURE";
+                double clamp = FinalClampDeg(signedCrossTrackNM, relativeTrack);
+                double desiredTrack = VisualGuidanceJoin.DesiredLegTrackDeg(signedCrossTrackNM, crossTrackRate,
+                    currentGroundSpeedKnots, clamp, CaptureGainForHarness, rollInTimeS);
 
-                guidancePhase = "ARC_CAPTURE";
-
-                // Calculate intercept angle based on distance from centerline
-                // Negative sign: left of centerline (negative XTE) → positive intercept angle
-                double interceptAngle = -ARC_INTERCEPT_GAIN * signedCrossTrackNM;
-
-                // Add damping to prevent overshoot if approaching too fast
-                // (crossTrackRate already calculated above at line 494)
-                double dampedInterceptAngle = interceptAngle - (ARC_RATE_DAMPING * crossTrackRate);
-
-                // Limit to reasonable range
-                dampedInterceptAngle = Math.Clamp(dampedInterceptAngle, -ARC_MAX_INTERCEPT_ANGLE, ARC_MAX_INTERCEPT_ANGLE);
-
-                // Calculate target heading for the arc
-                double targetHeading = runway.HeadingMag + dampedInterceptAngle;
-                targetHeading = NormalizeHeading(targetHeading);
-
-                // Simple heading controller to fly the arc
-                double headingError = NormalizeHeading(targetHeading - actualTrackAngle);
+                // Simple heading controller onto the desired track
+                double headingError = VisualGuidanceJoin.Normalize(desiredTrack - relativeTrack);
                 double rawDesiredBank = headingError * LATERAL_HEADING_GAIN * speedFactor;
 
                 // Apply bank rate limiting (per second of frame time, VG-20)
                 rawDesiredBank = RateLimited(previousDesiredBank, rawDesiredBank, maxBankRateDegPerSec);
 
-                // Apply bank limit for comfort
-                desiredBank = Math.Clamp(rawDesiredBank, -ARC_BANK_LIMIT, ARC_BANK_LIMIT);
+                // The profile's largest approach bank
+                desiredBank = Math.Clamp(rawDesiredBank, -maxApproachBankDeg, maxApproachBankDeg);
 
-                // Calculate distance to threshold for debugging
-                double distanceNM = NavigationCalculator.CalculateDistance(
-                    lat, lon, runway.StartLat, runway.StartLon);
-
-                // Debug output for arc mode
-                Log.Debug("VisualGuidance", 
-                    $"{guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
-                    $"IntAngle={interceptAngle:F1}°, Damped={dampedInterceptAngle:F1}°, " +
-                    $"TgtHdg={targetHeading:F1}°, ActTrk={actualTrackAngle:F1}°, HdgErr={headingError:F1}°, " +
-                    $"Bank={desiredBank:F1}°, Dist={distanceNM:F1}NM, GS={currentGroundSpeedKnots:F0}kt");
+                Log.Debug("VisualGuidance",
+                    $"{guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, Clamp={clamp:F1}°, " +
+                    $"DesTrk={desiredTrack:F1}°, RelTrk={relativeTrack:F1}°, HdgErr={headingError:F1}°, " +
+                    $"Bank={desiredBank:F1}°, GS={currentGroundSpeedKnots:F0}kt");
             }
             else
             {
@@ -1306,38 +1265,55 @@ public class VisualGuidanceManager : IDisposable
                 $"GroundTrack={cachedGroundTrack?.ToString("F1") ?? "N/A"}° ActualTrack={actualTrackAngle:F1}° " +
                 $"TrackErr={trackAngleError:F1}° ImpliedMagVar={impliedMagVar:F1}°");
 
-            // Phase-specific debug output (INTERCEPT phases only - CAPTURE_TRACK logs inside its block)
-            if (guidancePhase.StartsWith("INTERCEPT"))
-            {
-                Log.Debug("VisualGuidance", 
-                    $"{guidancePhase}: XTE={signedCrossTrackNM:F3}NM, " +
-                    $"ActualTrk={actualTrackAngle:F1}°, TrkErr={trackAngleError:F1}°, " +
-                    $"GS={currentGroundSpeedKnots:F0}kt → Bank={desiredBank:F1}°");
-            }
+            if (guidancePhase is "DECIDING" or "HOLD_HEADING")
+                Log.Debug("VisualGuidance", $"{guidancePhase}: XTE={signedCrossTrackNM:F3}NM, RelTrk={relativeTrack:F1}° → Bank={desiredBank:F1}°");
 
             return desiredBank;
         }
     }
 
     /// <summary>
-    /// Calculates bank angle needed to intercept and hold a target heading
-    /// Used during INTERCEPT phases (>0.5 NM from centerline)
+    /// Whether the turn onto final has come: the capture law, clamped to the intercept (joining: the one
+    /// being flown, while the track crosses final; vectoring: the chosen angle), first asks
+    /// <see cref="VisualGuidanceJoin.TurnCueBankDeg"/> of bank toward final, from the cross-track looked the
+    /// profile's roll-in time ahead (<see cref="VisualGuidanceJoin.TurnCueCrossNm"/>); or the aircraft is
+    /// within <see cref="ARC_MODE_EXIT_NM"/> of the line. Once due it stays due, and joining freezes the
+    /// intercept it was flying, which the capture law then keeps as its limit (at least 30°).
     /// </summary>
-    private double CalculateHeadingInterceptBank(double targetHeading, double actualTrack)
+    private bool TurnOntoFinalIsDue(double lat, double lon, double cross, double crossRate, double relativeTrack, double speedFactor)
     {
-        // Calculate heading error (how far we are from target heading)
-        double headingError = NormalizeHeading(targetHeading - actualTrack);
+        if (turnOntoFinalDue) return true;
+        if (runway == null || joinPlan == null) return false;
+        bool joining = joinPlan.State == VisualGuidanceJoinState.Joining;
+        double liveIntercept = VisualGuidanceJoin.InterceptDeg(cross, relativeTrack);
+        double clamp = joinPlan.ClampDeg;
+        if (joining)
+        {
+            var position = new VisualGuidanceApproachPoint(VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm, cross);
+            clamp = VisualGuidanceJoin.CrossesFinal(position, relativeTrack, minimumFinalNm, out _) ? liveIntercept : 0.0;
+        }
+        double lead = cross + crossRate * rollInTimeS;
+        bool due = (clamp > 0 && Math.Abs(lead) <= VisualGuidanceJoin.TurnCueCrossNm(clamp, currentGroundSpeedKnots,
+                       CaptureGainForHarness, LATERAL_HEADING_GAIN * speedFactor))
+                   || Math.Abs(cross) <= ARC_MODE_EXIT_NM;
+        if (!due) return false;
+        turnOntoFinalDue = true;
+        if (joining) frozenInterceptDeg = Math.Max(0.0, liveIntercept);
+        Log.Debug("VisualGuidance", $"Turn onto final due: XTE={cross:F3}NM, lead={lead:F3}NM, clamp={clamp:F1}°, intercept={liveIntercept:F1}°");
+        return true;
+    }
 
-        // Proportional controller: 0.5° of bank per degree of heading error
-        // This provides smooth turn to reach target heading
-        const double HEADING_GAIN = 0.5;
-        double baseBank = headingError * HEADING_GAIN;
-
-        // Clamp to safe bank limits for intercept (±25°)
-        double desiredBank = Math.Clamp(baseBank, -25.0, 25.0);
-
-        // Apply bank rate limiting to prevent sudden changes (per second of frame time, VG-20)
-        return RateLimited(previousDesiredBank, desiredBank, maxBankRateDegPerSec);
+    /// <summary>
+    /// The capture law's intercept limit onto final: on final 30°, vectoring the chosen angle, joining the
+    /// intercept flown at the turn (at least 30°, so a shallow join can still correct). Before a decision
+    /// (pressed in the flare) 30°.
+    /// </summary>
+    private double FinalClampDeg(double cross, double relativeTrack)
+    {
+        if (joinPlan == null) return VisualGuidanceJoin.OnFinalClampDeg;
+        if (joinPlan.State != VisualGuidanceJoinState.Joining) return joinPlan.ClampDeg;
+        double intercept = turnOntoFinalDue ? frozenInterceptDeg : VisualGuidanceJoin.InterceptDeg(cross, relativeTrack);
+        return Math.Max(intercept, VisualGuidanceJoin.PostTurnMinClampDeg);
     }
 
     /// <summary>
@@ -1504,6 +1480,13 @@ public class VisualGuidanceManager : IDisposable
             // Clamp final command
             double desiredPitch = Math.Clamp(rawDesiredPitch, -12.0, 12.0);
 
+            // Deciding and joining: the altitude is the pilot's or ATC's, so the pitch tone sits on the
+            // aircraft's own pitch (the redesign's piece 4, Waiting), taken without a rate limit. The law
+            // above still runs, so its filters stay warm and F's numbers current, and it starts from the
+            // aircraft's pitch when final begins.
+            if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining)
+                desiredPitch = currentPitch;
+
             // Update for next iteration
             previousDesiredPitch = desiredPitch;
 
@@ -1520,71 +1503,6 @@ public class VisualGuidanceManager : IDisposable
             // Level flight or slight descent
             return 0.0;
         }
-    }
-
-    /// <summary>
-    /// Checks if aircraft is behind the runway threshold
-    /// </summary>
-    private bool IsBehindRunway(double lat, double lon)
-    {
-        if (runway == null) return false;
-
-        // Safety check: Don't make determination if too close (bearing becomes unstable)
-        const double MINIMUM_DISTANCE_NM = 0.1; // ~600 feet
-        double distanceToThreshold = NavigationCalculator.CalculateDistance(
-            lat, lon, runway.StartLat, runway.StartLon);
-
-        if (distanceToThreshold < MINIMUM_DISTANCE_NM)
-        {
-            return false; // Too close to make reliable bearing determination
-        }
-
-        // Calculate bearing from threshold to aircraft (returns true bearing)
-        double bearingToAircraft = NavigationCalculator.CalculateBearing(
-            runway.StartLat, runway.StartLon, lat, lon);
-
-        // Aircraft is behind if bearing matches runway direction (±90°)
-        // Runway heading points in the direction aircraft goes after takeoff/landing
-        double runwayHeading = runway.Heading;
-
-        // If bearing to aircraft is within ±90° of runway heading, aircraft is behind threshold
-        double bearingDiff = Math.Abs(NormalizeHeading(bearingToAircraft - runwayHeading));
-        bool currentlyBehind = bearingDiff < 90.0;
-
-        // Debouncing: Prevent rapid state changes
-        if (currentlyBehind != wasBehindLastCheck)
-        {
-            // State is trying to change - check if enough time has passed
-            if ((ClockForHarness() - lastBehindStateChange).TotalMilliseconds < STATE_CHANGE_DELAY_MS)
-            {
-                // Not enough time passed, return previous state (ignore this change)
-                return wasBehindLastCheck;
-            }
-            // Enough time passed, allow state change
-            lastBehindStateChange = ClockForHarness();
-        }
-
-        // Update tracking and return current state
-        wasBehindLastCheck = currentlyBehind;
-        return currentlyBehind;
-    }
-
-    /// <summary>
-    /// Calculates heading to extend away from runway when behind threshold.
-    /// Returns reciprocal (opposite) heading to fly away and create proper spacing.
-    /// </summary>
-    private double CalculateExtensionHeading()
-    {
-        if (runway == null) return 0.0;
-
-        // Fly reciprocal (opposite direction) to extend away from runway
-        // This creates proper spacing before turning for approach
-        double runwayTrueHeading = runway.Heading;
-        double reciprocalTrueHeading = (runwayTrueHeading + 180.0) % 360.0;
-        double reciprocalMagneticHeading = reciprocalTrueHeading - magneticVariation;
-
-        // Normalize to 0-360
-        return (reciprocalMagneticHeading + 360.0) % 360.0;
     }
 
     /// <summary>
@@ -1640,37 +1558,6 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Handles periodic progress announcements during Extending phase
-    /// </summary>
-    private void HandleExtendingProgress(double lat, double lon)
-    {
-        if (runway == null || currentPhase != GuidancePhase.Extending) return;
-
-        var now = ClockForHarness();
-        if ((now - lastExtendingProgressAnnouncement).TotalMilliseconds < EXTENDING_PROGRESS_INTERVAL_MS)
-            return;
-
-        // Calculate distance to threshold
-        double distanceNM = NavigationCalculator.CalculateDistance(
-            lat, lon, runway.StartLat, runway.StartLon);
-
-        // Round to nearest 0.5 NM for cleaner announcements
-        double roundedDistance = Math.Round(distanceNM * 2.0) / 2.0;
-
-        if (roundedDistance >= 0.5)
-        {
-            string distanceText = roundedDistance == 1.0 ? "1 mile" : $"{roundedDistance} miles";
-            Say($"{distanceText} behind threshold", immediate: false, HOLD_BEHIND_THRESHOLD_S);
-            lastExtendingProgressAnnouncement = now;
-        }
-        else if (roundedDistance < 0.5 && roundedDistance >= 0.1)
-        {
-            Say("Approaching threshold", immediate: false, HOLD_APPROACHING_S);
-            lastExtendingProgressAnnouncement = now;
-        }
-    }
-
-    /// <summary>
     /// Speaks the bank error ("3 right", "matched") when <see cref="VisualGuidanceBankCalloutGate"/>
     /// says one is due (VG-21). The gate sees every update, including those inside a manual-query
     /// grace window, where it may not speak (VG-19): when the window ends, a callout that came due
@@ -1683,8 +1570,9 @@ public class VisualGuidanceManager : IDisposable
             return;
 
         // Both banks right-positive: the command is, SimConnect's bank goes through StandardBank (VG-7).
+        // Deciding: the command is the aircraft's own bank, so there is nothing to call.
         string? callout = bankCalloutGate.Next(ClockForHarness(), desiredBankDegrees, StandardBank(cachedBank.Value),
-            maySpeak: !RoutineAnnouncementsSuppressed);
+            maySpeak: !RoutineAnnouncementsSuppressed && currentPhase != GuidancePhase.Deciding);
         if (callout != null)
             Say(callout, immediate: true, holdSeconds: 0);
     }

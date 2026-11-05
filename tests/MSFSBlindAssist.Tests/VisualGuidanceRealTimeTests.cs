@@ -18,8 +18,9 @@ public class VisualGuidanceRealTimeTests
         var rig = new Rig();
         rig.Place(8, 1.0, 0);
         rig.UpdateAt(0);
-        // Right of final and parallel: the arc capture asks for its full 15° left at once.
-        Assert.Equal(-15.0, rig.Bank, 2);
+        // Right of final and parallel: vectored onto final, the capture law asks for the profile's
+        // full 25° left at once (MaxApproachBankDeg; today's arc capture stopped at 15°).
+        Assert.Equal(-new VisualGuidanceProfile().MaxApproachBankDeg, rig.Bank, 2);
     }
 
     [Theory]

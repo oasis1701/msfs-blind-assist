@@ -45,6 +45,25 @@ public class VisualGuidanceHarnessHookTests
     public void Left_of_final_on_an_intercept_heading_banks_left_at_capture(double trueHdg, double magVar)
         => Assert.True(BankAfterFrames(trueHdg, magVar, crossNm: -0.2, headingRelDeg: 30) < -1.0);
 
+    // Joining final on both runways, so the north wrap (runway 36, magnetic 355) is pinned: ATC's 30°
+    // cut from 3 nm right, 12 nm out, crosses final 6.8 nm out and is held wings level; from 0.3 nm
+    // right the turn onto final is due, and it is a RIGHT turn.
+    [Theory, MemberData(nameof(Runways))]
+    public void Right_of_final_on_an_ATC_heading_holds_it(double trueHdg, double magVar)
+    {
+        var vg = Fly(trueHdg, magVar, crossNm: 3.0, headingRelDeg: -30, frames: 5, alongNm: 12);
+        Assert.Equal("Joining", vg.PhaseForHarness);
+        Assert.InRange(vg.DesiredBankForHarness, -0.1, 0.1);
+    }
+
+    [Theory, MemberData(nameof(Runways))]
+    public void Right_of_final_on_an_ATC_heading_turns_right_onto_final(double trueHdg, double magVar)
+    {
+        var vg = Fly(trueHdg, magVar, crossNm: 0.3, headingRelDeg: -30, frames: 5, alongNm: 12);
+        Assert.Equal("Joining", vg.DecisionForHarness);
+        Assert.True(vg.DesiredBankForHarness > 1.0, $"bank {vg.DesiredBankForHarness}");
+    }
+
     [Fact]
     public void Headless_guidance_runs_with_no_tones()
     {
@@ -64,11 +83,13 @@ public class VisualGuidanceHarnessHookTests
     private static double BankAfterFrames(double trueHdg, double magVar, double crossNm, double headingRelDeg)
         => Fly(trueHdg, magVar, crossNm, headingRelDeg, frames: 5).DesiredBankForHarness;
 
-    // 8 nm back along the extended centreline, crossNm to the side (+ = right facing the runway),
-    // on the 3° path, heading = course + headingRelDeg, wings level, 140 kt, fed in MainForm's order.
-    // Real time: no SimClock.Override here (the harness sets one; these tests must not), so the
-    // frames are microseconds apart and the cross-track rate term stays zero. These assert sign only.
-    private static VisualGuidanceManager Fly(double trueHdg, double magVar, double crossNm, double headingRelDeg, int frames)
+    // alongNm (8 by default) back along the extended centreline, crossNm to the side (+ = right facing
+    // the runway), on the 3° path, heading = course + headingRelDeg, wings level, 140 kt, fed in
+    // MainForm's order. Real time: no SimClock.Override here (the harness sets one; these tests must
+    // not), so the frames are microseconds apart and the cross-track rate term stays zero. These
+    // assert sign only.
+    private static VisualGuidanceManager Fly(double trueHdg, double magVar, double crossNm, double headingRelDeg, int frames,
+        double alongNm = 8.0)
     {
         const double thrLat = 47.0, thrLon = 8.0, elev = 500.0;
         static double Norm(double d) => (d % 360 + 360) % 360;
@@ -84,12 +105,12 @@ public class VisualGuidanceHarnessHookTests
         vg.Toggle();
         vg.Initialize(runway, airport, HandFlyWaveType.Triangle, 0.0, HandFlyWaveType.Sine, 0.0, false, new VisualGuidanceProfile());
 
-        var back = VolantaTrafficCalculator.Project(thrLat, thrLon, Norm(trueHdg + 180), 8.0);
+        var back = VolantaTrafficCalculator.Project(thrLat, thrLon, Norm(trueHdg + 180), alongNm);
         var pos = crossNm >= 0
             ? VolantaTrafficCalculator.Project(back.Latitude, back.Longitude, Norm(trueHdg + 90), crossNm)
             : VolantaTrafficCalculator.Project(back.Latitude, back.Longitude, Norm(trueHdg - 90), -crossNm);
         double headingMag = Norm(trueHdg + headingRelDeg - magVar);
-        double alt = elev + 8.0 * 6076.12 * Math.Tan(3.0 * Math.PI / 180) + 60.0;
+        double alt = elev + alongNm * 6076.12 * Math.Tan(3.0 * Math.PI / 180) + 60.0;
 
         for (int i = 0; i < frames; i++)
         {

@@ -45,16 +45,22 @@ internal sealed class VisualGuidanceTestRig
     public double Bank => _vg.DesiredBankForHarness;
     public double Pitch => _vg.DesiredPitchForHarness;
 
+    /// <summary>The guidance phase's name (Deciding, Joining, Vectoring, Unable, Final, Flare, Touchdown).</summary>
+    public string Phase => _vg.PhaseForHarness;
+
+    /// <summary>The decision visual guidance made (OnFinal, Joining, Vectoring, Pattern), "None" before it.</summary>
+    public string Decision => _vg.DecisionForHarness;
+
     /// <summary>What F would say now (<see cref="VisualGuidanceManager.GetStatusReadout"/>).</summary>
     public string Readout => _vg.GetStatusReadout();
 
     /// <summary>
     /// alongNm back from the threshold, crossNm right of the centreline, heading and track course +
-    /// headingRelDeg, 140 kt; bankDeg right wing down positive (fed to the manager as SimConnect's
-    /// left-positive bank).
+    /// headingRelDeg, at gsKt; bankDeg right wing down positive (fed to the manager as SimConnect's
+    /// left-positive bank). The aircraft's pitch is 2.0° nose up.
     /// </summary>
     public void Place(double alongNm, double crossNm, double headingRelDeg, double vsFpm = -742, double altOffsetFt = 0,
-        double aoaDeg = 5.0, double bankDeg = 0.0)
+        double aoaDeg = 5.0, double bankDeg = 0.0, double gsKt = 140)
     {
         static double Norm(double d) => (d % 360 + 360) % 360;
         var back = VolantaTrafficCalculator.Project(ThrLat, ThrLon, Norm(Course + 180), alongNm);
@@ -65,7 +71,7 @@ internal sealed class VisualGuidanceTestRig
         double heading = Norm(Course + headingRelDeg);
 
         _vg.UpdateLatitude(pos.Latitude); _vg.UpdateLongitude(pos.Longitude); _vg.UpdateAltitudeMSL(alt);
-        _vg.UpdateHeading(heading); _vg.UpdateGroundSpeed(140); _vg.UpdateVerticalSpeed(vsFpm);
+        _vg.UpdateHeading(heading); _vg.UpdateGroundSpeed(gsKt); _vg.UpdateVerticalSpeed(vsFpm);
         _vg.UpdateGroundTrack(heading);
         _vg.UpdatePitch(VisualGuidanceManager.PitchDegreesFromSimConnect(-2.0 * Math.PI / 180));
         _vg.UpdateBank(VisualGuidanceManager.BankDegreesFromSimConnect(-bankDeg * Math.PI / 180));
@@ -86,9 +92,10 @@ internal sealed class VisualGuidanceTestRig
 
     /// <summary>
     /// Carries on from the current clock with one update every 1/hz s until <paramref name="seconds"/>
-    /// have passed. <paramref name="beforeEach"/>, given the update's time in seconds, can move the aircraft first.
+    /// have passed. <paramref name="beforeEach"/>, given the update's time in seconds, can move the aircraft first;
+    /// <paramref name="afterEach"/> sees the result of each update.
     /// </summary>
-    public void FlyFor(double seconds, int hz, Action<double>? beforeEach = null)
+    public void FlyFor(double seconds, int hz, Action<double>? beforeEach = null, Action<double>? afterEach = null)
     {
         double from = _seconds;
         int steps = (int)Math.Round(seconds * hz);
@@ -97,6 +104,10 @@ internal sealed class VisualGuidanceTestRig
             double t = from + (double)i / hz;
             beforeEach?.Invoke(t);
             UpdateAt(t);
+            afterEach?.Invoke(t);
         }
     }
+
+    /// <summary>The time of the last update, seconds after the start.</summary>
+    public double Now => _seconds;
 }
