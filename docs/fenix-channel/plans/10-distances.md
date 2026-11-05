@@ -2,36 +2,38 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-> Task 0, the claim, is the controller's own, done before Task 1 is dispatched.
+> Tasks 0, 1 and 4 are the controller's own; Task 3 is the owner's, in the sim; Task 2 is the one implementer task.
 
 **Goal:** Output D and Shift+D on the Fenix speak the distance and time to the destination and to the top of descent,
-computed along the active route in the Fenix's display channel, and "not available" wherever the computation was not
+computed from the active route in the Fenix's display channel, and "not available" wherever the computation was not
 shown to match the MCDU.
 
 **Changed on 2026-11-03 (spec row 48, the team's decision, while this plan was unclaimed):** plan 03 decodes the route,
 because its ND map reads every field of a leg. Its route decoder (`Services/FenixChannelRoute.cs`,
-`Services/FenixChannelFields.Route.cs`, in the commit `feat(fenix-channel): the route fields and their decoder`) meets
-Task 2's interface below at the least, and also gives the leg rules `IsPath`, `IsDestination` and `BreaksPath`, which
-the map needs too. Plan 03 also does Task 1's Steps 1-3 (the route's structure, the position, a discontinuity) and
-records them in `docs/fenix-channel/evidence/03-nd.md`. This plan starts once that commit is on the shared branch,
-builds on the decoder and keeps everything else: Task 1's Steps 4-6, the geometry, the sums, the sentences, the switch
-commit and the checks.
+`Services/FenixChannelFields.Route.cs`) gives the leg rules `IsPath`, `IsDestination` and `BreaksPath`, and plan 03
+measured the route's structure, the position and a discontinuity (`docs/fenix-channel/evidence/03-nd.md`).
 
-**Architecture:** Plan 03's route decoder reads the captain's route data (field 2: the active route's legs, the active leg and the map
-markers) and the aircraft's position (field 192) out of the snapshot's message. Pure geometry sums great-circle
-distances from the position through the active leg to the destination, and projects the top-of-descent marker onto the
-route ahead. Which legs draw the path, which is the destination and what breaks the path are measured by plan 03; what
-shows a passed top of descent, and whether the sums match, are measured here first (Task 1); a route Task 1 did not show
-matching the MCDU is "not available". The
-switch commit last implements plan 01's `ChannelDistancesKey`: the ND verdict and the route from one snapshot,
-`BaseAircraftDefinition`'s sentences, the time from `FormatEtaFromDistance` at SimConnect's ground speed.
+**Changed on 2026-11-04 (Hadi, the claimant, before any code):** no flight. Plan 03 recorded every push of its two
+flights, and each push holds the route, the position, the markers and the captain's MCDU text, so the sums and the
+MCDU's figures come from the same push. The measurements the old Task 1 and Task 7 were to fly (the sums at four
+points, the top of descent passed, the checks against the MCDU) were replayed over those recordings instead:
+`docs/fenix-channel/evidence/10-distances.md`. The replay changed the rules (the start, the turns, the discontinuities,
+the top of descent once the descent begins) and the plan went from nine tasks with two flights to four with one gate
+check. The old text is in this file's history (the commit `docs(fenix-channel): claim plan 10`).
 
-**Tech Stack:** C# 13 / .NET 10, xUnit; plan 01's `FenixChannelPush`; `NavigationCalculator` (the app's great-circle
-formulas); `FenixChannelProtoWriter` (tests).
+**Architecture:** Plan 03's decoder reads the captain's route (field 2: the active route's elements, the TO waypoint, the
+markers, the runways) and the present position (192) out of the snapshot's message. One line model serves both keys:
+the drawn line to the destination, its turns as arcs, a discontinuity crossed straight. D is the great circle to the TO
+waypoint plus the line from there. Shift+D finds the top-of-descent marker on the line and subtracts its distance to the
+line's end from the aircraft's, and is past once an end-of-descent marker shows. The switch commit implements plan
+01's `ChannelDistancesKey`: the ND verdict and the route from one snapshot, `BaseAircraftDefinition`'s sentences, the
+time from `FormatEtaFromDistance` at SimConnect's ground speed.
+
+**Tech Stack:** C# 13 / .NET 10, xUnit; plan 01's `FenixChannelPush`; plan 03's `FenixChannelRoute`;
+`NavigationCalculator` (the app's great-circle formulas); `FenixChannelProtoWriter` (tests).
 
 **Spec:** `docs/fenix-channel/spec.md` 2.2 (the ND verdict), 2.5 (the keys: computed, checked against the MCDU, "not
-available" rather than a guess), 3.3 (the route fields), 4, 6 (the distance against the MCDU, a passed top of descent;
-the leg fields and the marker types are plan 03's); answers 9, 39-41 and 48.
+available" rather than a guess), 3.3 (the route fields), 4, 6; answers 9, 39-41 and 48.
 
 ## Global Constraints
 
@@ -39,315 +41,210 @@ the leg fields and the marker types are plan 03's); answers 9, 39-41 and 48.
 - Owned files (index): `Aircraft/FenixA320Definition.ChannelDistances.cs`, `Services/FenixChannelRouteGeometry.cs`,
   `Services/FenixChannelRouteDistances.cs`, new tests `tests/MSFSBlindAssist.Tests/FenixChannelRouteGeometryTests.cs`,
   `FenixChannelRouteDistancesTests.cs` and `FenixChannelDistances*Tests.cs`,
-  `docs/fenix-channel/evidence/10-distances.md` (new), and the "D and Shift+D" sub-heading of the "Fenix display
-  channel" section of `docs/a32nx.md`. Not this plan's (spec row 48): the route decoder, `Services/FenixChannelRoute.cs`
-  and `Services/FenixChannelFields.Route.cs`, and its tests `FenixChannelRouteDecoderTests.cs`, which are plan 03's.
-- Plan 03's names consumed (Task 2's interface, which its decoder meets): `FenixChannelRoute.Decode`, `FenixRoute`,
-  `FenixRouteLeg`, `FenixRouteMarker`, `FenixLatLon`, the `RouteLegKind` and `MapMarkerKind` constants, and the leg
-  rules `FenixChannelRoute.IsPath`, `IsDestination` and `BreaksPath`. A member this plan needs that the decoder lacks
-  is a question for plan 03's claimant.
-- Plan 01 seam implemented here, in the switch commit (Task 6): `ChannelDistancesKey`. Plan 01 names consumed as they
-  are: `ChannelKeyContext`, `SpeakNotAvailable`, `FenixChannelSnapshot`, `FenixChannelPush`, `FenixChannelField`,
-  `FenixChannelSection<T>`, `FenixChannelMonitor.ReportFeatureProblem`, `FenixChannelDisplay.Nd`. App names:
-  `BaseAircraftDefinition.FormatEtaFromDistance` (protected static, so the sentences live in the definition),
-  `SimConnectManager.IsConnected` and `RequestAircraftPositionAsync` (`AircraftPosition.GroundSpeedKnots`),
-  `NavigationCalculator.CalculateDistance` and `CalculateBearing`.
+  `docs/fenix-channel/evidence/10-distances.md`, and the "D and Shift+D" sub-heading of the "Fenix display channel"
+  section of `docs/a32nx.md`. Not this plan's: the route decoder and its tests (plan 03's).
+- Plan 03's names consumed as they are: `FenixChannelRoute.Decode`, `IsPath`, `IsDestination`, `BreaksPath`,
+  `ArrivalIdent`; `FenixRoute` (`Position`, `Legs`, `ActiveLeg`, `Markers`, `Runways`), `FenixRouteLeg` (`Point`,
+  `Kind`, `Ident`, `MissedApproach`, `TurnRadius`, `CourseIn`, `CourseOut`, `EndReason`, `Destination`),
+  `FenixRouteMarker` (`Point`, `Type`, `IsGoAround`), `FenixRouteRunway` (`Threshold`), `FenixLatLon`;
+  `FenixChannelFields.RouteLegKind` (`Line`, `Arc`, `Start`, `End`, `Symbol`), `RouteEndReason`, `MapMarkerKind`
+  (`Tod`, `Eod`). A member this plan needs that the decoder lacks is a question for plan 03's claimant (Hadi).
+- Plan 01 seam implemented here, in the switch commit: `ChannelDistancesKey`. Plan 01 names consumed as they are:
+  `ChannelKeyContext`, `SpeakNotAvailable`, `FenixChannelSnapshot`, `FenixChannelPush`, `FenixChannelSection<T>`,
+  `FenixChannelMonitor.ReportFeatureProblem`, `FenixChannelDisplay.Nd`. App names: `BaseAircraftDefinition.FormatEtaFromDistance`
+  (protected static, so the sentences live in the definition), `SimConnectManager.IsConnected` and
+  `RequestAircraftPositionAsync` (`AircraftPosition.GroundSpeedKnots`), `NavigationCalculator.CalculateDistance` and
+  `CalculateBearing`.
 - Both keys take the ND verdict and the route from one snapshot (spec 2.2). The time uses SimConnect's ground speed,
-  never the ND's ground speed text (its `d` letter is plan 03's to measure).
-- The present position is field 192 (truePos, a LatLon: the aircraft's own position by name and type). Field 56
-  (ndPosCapt, an NdPositionData) holds its Lat and Lon beside the ND's map reference point (MrpValid, MrpTrack,
-  MrpDist), so it may follow what the ND shows. Plan 03 checks both against the sim (this plan's former Task 1 Step 2),
-  and its decoder reads the one that matches.
-- **Tolerance**, fixed here; Task 1 measures against it and Task 7 checks it. To the destination: within 1 NM plus 0.5 %
-  of the MCDU F-PLN DEST line's DIST taken at the same instant (Task 1: the same push; Task 7: read straight after the
-  press). To the top of descent: within 1 NM plus 0.5 NM for each F-PLN leg distance summed in the reference (the ND's
-  distance to the TO waypoint plus the F-PLN's leg distances down to "(T/D)"), plus 0.5 %. Why: the MCDU prints whole
-  miles (0.5 NM a figure); a fly-by turn summed as its drawn pieces' chords loses under 0.1 NM; the app's spherical earth
-  (`NavigationCalculator`, 3440.065 NM) and an ellipsoid differ by up to about 0.5 % of a distance; at 450 knots the
-  aircraft flies about 0.25 NM between a press and the reading. A larger difference means the sum follows another path
-  than the FMS (a missing STAR, the missed approach, a discontinuity, a route cut short): the tolerance must catch that,
-  never absorb it.
-- Nothing speaks until its in-sim checks pass: Tasks 1-5 are inert and pushed as usual; Task 6 is the switch commit,
-  tested on your own build in Task 7 and pushed to `feat/fenix-display-channel` only once Task 7 passes (until then it
-  may sit on `fc-p10-distances` on the remote). Until then D and Shift+D stay silent on the Fenix, as today.
+  never the ND's ground speed text.
+- **Tolerance**, checked by Task 2's recorded tests: 1 NM plus 0.5 % of the MCDU's figure at the same push, the F-PLN
+  DEST line's DIST for D and PERF CRZ's "TO (T/D)" DIST for Shift+D. Why: the MCDU prints whole miles (0.5 NM a
+  figure); the app's spherical earth (`NavigationCalculator`, 3440.065 NM) and an ellipsoid differ by up to about 0.5 %
+  of a distance. A larger difference means the sum follows another path than the FMS: the tolerance must catch that,
+  never absorb it. The one measured exception is the MCDU's own lag after a sharp turn is sequenced (evidence: 52 s
+  after BAIRE's 153° turn); no recorded case sits in it.
+- Nothing speaks until Task 3 passes: Task 2's first two commits are inert and pushed as usual; its third is the switch
+  commit, tested on your own build in Task 3 and pushed to `feat/fenix-display-channel` only in Task 4 (until then it may
+  sit on `fc-p10-distances` on the remote). Until then D and Shift+D stay silent on the Fenix, as today.
+- The recordings and the replay scripts stay local and are never committed ([FNX-23]'s local tools). The recorded
+  cases are route tables of public waypoints and positions with the MCDU's figures, written into the tests.
 
 ## Review Focus
 
-- **The destination ends the sum.** The missed approach follows the destination in the active route: the sum must stop
-  at the destination (Task 4, `The_sum_stops_at_the_destination`).
-- **A route the sum cannot follow** (no flight plan, the active leg not in the route, no destination element, a
-  discontinuity before it, each refusal Task 1 found) says "Distance to destination not available", never a partial sum
-  (Task 4, `An_unfollowable_route_is_not_available`).
-- **The top of descent.** A marker behind the aircraft or within 0.1 NM ahead is "Past top of descent"; a marker off the
-  route, two of them, or only go-around ones are "Top of descent not available"; with none, Task 1's indication decides
-  (Task 4, `A_marker_behind_the_aircraft_is_past`, `A_marker_off_the_route_or_twice_is_not_available`,
-  `No_marker_follows_task_one`).
+- **The start.** D runs straight from the aircraft to the TO waypoint's own point, then along the line from the last
+  kept point carrying the TO's ident; never from the first element carrying it, which can lie far behind
+  (`The_sum_runs_straight_to_the_to_waypoint_then_along_the_line`, the recorded `ClimbInHdg` and `RunwayTo`).
+- **Turns and breaks.** A turn piece counts as its arc; a discontinuity is crossed straight, a heading leg's drawn far
+  point dropped (`A_turn_piece_counts_as_its_arc`, `A_discontinuity_is_crossed_straight`,
+  `A_heading_leg_s_drawn_point_is_dropped`, the recorded `CurvedLeg` and `ClimbThreeDiscontinuities`).
+- **The destination ends the sum**, never the missed approach (`The_sum_stops_at_the_destination`, the recorded
+  `LandingRoll`).
+- **A route the sum cannot follow** says "Distance to destination not available", never a partial sum
+  (`An_unfollowable_route_is_not_available`).
+- **The top of descent.** An end-of-descent marker means past, whatever type 0 markers show (the descent restart
+  points); no marker, two, a go-around one only, or one off the line is not available
+  (`An_end_of_descent_marker_is_past`, `Top_of_descent_markers_that_cannot_be_used_are_not_available`, the recorded
+  `DescentRestartMarker`, `EarlyDescent`, `NoCruiseLevel`, `AfterGlideslope`).
+- **The marker on the line**, not on the straight line from the aircraft (`A_marker_is_placed_on_the_line_in_a_turn`,
+  the recorded `TurnAfterArtur`).
 - **The time.** No time under 30 knots (`FormatEtaFromDistance`); with SimConnect disconnected the distance is still
-  spoken, without a time, never silence (Task 5, `The_time_needs_thirty_knots`,
-  `A_disconnected_sim_still_speaks_the_distance`).
+  spoken, without a time, never silence (`The_time_needs_thirty_knots`, `A_disconnected_sim_still_speaks_the_distance`).
 - **One snapshot.** An untrusted ND, no message or a wrong shape gives "not available" for both keys, and the field is
-  logged once (Task 4, `The_answer_takes_one_snapshot`; plan 03's decoder test, `A_wrong_shape_names_its_field`).
+  logged once (`The_answer_takes_one_snapshot`).
 
 ---
 
 ### Task 0 [controller]: Claim this plan
 
-Who: whoever runs the plan; with subagents, the controller itself, never an implementer. A claim counts only once it is
-on the remote branch.
+Done 2026-11-04 (`dba68cd84`, from `58c25234e`).
 
-- [ ] **Step 1: Check the plan is free on the remote.** `git fetch <remote>`, then
-  `git grep -e "^- \*\*Status:\*\*" -e "^- \*\*Claimed by:\*\*" <remote>/feat/fenix-display-channel -- docs/fenix-channel/plans/10-distances.md`.
-  Anything but "not started" and "none" means the plan is taken: stop.
-- [ ] **Step 2: Branch and claim.** Branch as in the index's workflow step 1 (`fc-p10-distances`). In this file's
-  "Execution record", set **Status** to claimed, **Claimed by** to your name and **Started** to today's date and the
-  commit you branched from. Commit only that change: `docs(fenix-channel): claim plan 10`, with the `Plan: 10` trailer.
-- [ ] **Step 3: Push the claim.** `git fetch <remote>`, `git rebase <remote>/feat/fenix-display-channel`,
-  `git push <remote> HEAD:feat/fenix-display-channel`. If the rebase stops on these lines, someone claimed the plan
-  first: `git rebase --abort` and stop. If the push is rejected, repeat this step. Task 1 starts only once the push has
-  gone through.
+- [x] **Step 1: Check the plan is free on the remote.**
+- [x] **Step 2: Branch and claim** (`fc-p10-distances`, worktree `.claude/worktrees/fc-p10`).
+- [x] **Step 3: Push the claim.**
 
-### Task 1 [sim] [in flight]: Measure the route before the code
+### Task 1 [controller]: Settle the rules on the recordings
 
-Who: the controller with the owner, never an implementer. The team's local channel tools capture one push at a time, so
-the route data, the markers, the position and the MCDU's text come from one instant; a distance computed from a capture
-uses a scratch script outside the repo, never committed, with `NavigationCalculator`'s formula and radius. Setup: MSFS
-2024, the Fenix on 3.0.0.7613, powered at a gate; a flight plan with a SID, at least one airway, a STAR, an ILS approach
-with its missed approach and an alternate, loaded the owner's usual way; the captain's EFIS in NAV and the captain's
-MCDU on F-PLN. Record each result with the date and build in `docs/fenix-channel/evidence/10-distances.md`. Steps 1-3
-moved to plan 03 on 2026-11-03 (spec row 48): their text stays below as what plan 03 measures, and their outcomes are in
-`docs/fenix-channel/evidence/03-nd.md`. Task 3 needs no flight (it uses plan 03's `FenixLatLon`); Task 4 waits for
-Step 6.
+Who: the controller, with the local replay scripts over plan 03's recordings; no sim.
 
-- **Step 1 [sim], moved to plan 03: The route's structure.** Capture a push, then page through the F-PLN in the app's MCDU window
-  (input Shift+M), capturing each page. Record every field present in each element of 2.4 (1, 2, 3, 6 and any of 4, 5,
-  7-17), in 2.11 and in each 2.12 marker (1-7). Answer: which kinds (2.4.3) draw the path and which are symbols drawn on
-  it (inferred from one cruise capture: 0 straight, 1 a turn piece, 2 the route's start; 3 an airport, 4 a symbol); which element
-  is the destination (its kind and ident: the runway or the airport), whether the missed approach follows it in 2.4 and
-  what marks its first element; whether 2.4 holds the whole flight plan; whether 2.11 is the TO waypoint and its ident
-  names the first element of its leg in 2.4, also after a DIR TO ("T-P") and on the SID's altitude leg; each marker's
-  type, label, color and go-around flag (T/C, T/D, DECEL; the T/D expected as type 0, MapMarkerEnum's first member), and
-  whether any belongs to the alternate or secondary route.
-- **Step 2 [sim], moved to plan 03: The position.** 192 and 56 beside the sim's PLANE LATITUDE and PLANE LONGITUDE (simconnect MCP
-  reads), with the captain's EFIS in ROSE ILS, ROSE VOR, ROSE NAV, ARC and PLAN (PLAN centered on a far waypoint), and
-  whether 2.4 is still sent in each mode. 192 within 0.05 NM of the sim in every mode: the code reads 192; otherwise the
-  field that is, recorded under plan 03's "Changed from the plan", and plan 03's decoder declares that one instead.
-- **Step 3 [sim], moved to plan 03: A discontinuity.** The owner makes a F-PLN DISCONTINUITY (for example, deleting the STAR's first
-  waypoint in the MCDU window); capture; record how 2.4 shows it; then reload the flight plan.
-- [ ] **Step 4 [in flight]: The sums.** At four points (climbing with the T/C ahead; cruising more than 50 NM before the
-  T/D; within 10 NM after the T/D; on the approach before the final fix), with the captain's MCDU on F-PLN so that the
-  DEST line is in the push, capture one push. Sum from 192 through the path (chords) to each candidate destination
-  element and to the T/D marker's projection; compare with the DEST line's DIST of the same push, and the T/D with the
-  ND's distance to the TO waypoint (68, line 2) plus the F-PLN's leg distances down to "(T/D)". Record each difference
-  beside its tolerance. At the gate too, informative (the DEST line before take-off).
-- [ ] **Step 5 [in flight]: Passing the top of descent.** From 5 NM before the T/D to 5 NM after it, descending at the
-  T/D in managed descent, a push every 30 s: when the T/D marker leaves 2.12, where it sits until then (behind the
-  aircraft or moving with it), and which markers or route fields change at the T/D.
-- [ ] **Step 6.** Record the outcomes below in the evidence file, commit it (`docs(fenix-channel): plan 10's route
-  measurements`) and push.
+- [x] **Step 1.** Replay the plan's rules and the candidates over every push with a DEST line or a PERF CRZ T/D figure;
+  keep the rule that meets the tolerance; explain every miss (evidence: "Distance to destination", "Top of descent").
+- [x] **Step 2.** Pick the recorded cases and dump each push as a route table with the MCDU's figure (the evidence's
+  last table; the tables themselves are handed to Task 2's implementer).
+- [x] **Step 3.** Commit the evidence file and this plan's change together (`docs(fenix-channel): plan 10 settled on the
+  recorded flights`) and push.
 
-The outcomes, which plan 03's decoder and Task 4 follow:
-- Plan 03's (from Steps 1-3), in its decoder: `IsPath`, the kinds that draw the path (the symbol kinds are skipped);
-  `IsDestination`, what names the destination element (its kind, or its ident where the kind does not set it apart);
-  `BreaksPath`, how a discontinuity shows (expected: a start point after the first element).
-- Refusals: each configuration of Steps 1-4 whose sum missed the tolerance and which the snapshot shows becomes a "not
-  available" rule with its own test in Task 4.
-- `ShowsPastTopOfDescent`: what Step 5 found showing a passed T/D once the marker is gone, or nothing (then "Top of
-  descent not available" from there on). An indication outside the route data is a request to plan 03's claimant: it
-  joins the decoder and `FenixRoute` there (a field another open plan declares is a question for its claimant).
-- Turns: if the chord sums miss the tolerance because of the turn pieces alone, plan 03's decoder also reads 2.4.8 (turn side,
-  string) and 2.4.9-11 (fixed32 in the notes; radius and the courses in and out once Step 1 confirms them), and Task 4
-  sums a turn piece as its radius times its turn angle.
-- Stop: a sum that misses the tolerance where the snapshot cannot show it, or a 2.4 that does not reach the destination
-  for most of a flight (a cruise before the arrival is in the flight plan included), stops the plan: Status "waiting on
-  owner", with the numbers. The owner rules whether D ships saying "not available" there, or this plan leaves D silent
-  and ships Shift+D alone.
+### Task 2: The code: geometry, the two distances, the sentences and the switch
 
-### Task 2: The route fields and their decoder (plan 03's since 2026-11-03)
-
-Plan 03 does this task (spec row 48). Its interface below stays here as the contract plan 03's decoder meets: plan 03
-may add members (the map reads every field of a leg) and the leg rules `IsPath`, `IsDestination` and `BreaksPath`,
-never rename or drop these. Its steps are plan 03's; this plan starts once that commit is on the shared branch.
-
-**Files (plan 03's):** Create `Services/FenixChannelFields.Route.cs`, `Services/FenixChannelRoute.cs`; test
-`tests/MSFSBlindAssist.Tests/FenixChannelRouteDecoderTests.cs` (new).
+**Files:** Create `Services/FenixChannelRouteGeometry.cs`, `Services/FenixChannelRouteDistances.cs`,
+`Aircraft/FenixA320Definition.ChannelDistances.cs`; tests `tests/MSFSBlindAssist.Tests/FenixChannelRouteGeometryTests.cs`,
+`FenixChannelRouteDistancesTests.cs`, `FenixChannelDistancesRecordedTests.cs` and `FenixChannelDistancesKeyTests.cs`
+(all new).
 
 **Interfaces:**
-- Consumes: `FenixChannelPush.TryGet` and `All`, `FenixChannelField` (`Type`, `Varint`, `AsDouble`, `AsBool`,
-  `AsString`, `AsMessage`), `FenixChannelSection<T>`.
 - Produces:
-  - In `FenixChannelFields`, each with its contract member name and wire shape in a comment: `Remote.RouteDataCapt = 2`
-    (routeDataCapt: nested RouteData), `Remote.TruePos = 192` (truePos: nested LatLon); `RouteData`: `ActRoute = 4`
-    (actRoute: repeated nested leg, a type whose contract name is scrambled), `ActiveLeg = 11` (activeLeg: nested leg),
-    `MapMarkers = 12` (mapMarkers: repeated nested MapMarker); `RouteLeg`: `Latitude = 1`, `Longitude = 2` (fixed64,
-    double), `Kind = 3` (varint, an enum of a scrambled type), `Ident = 6` (string); `RouteLegKind`: one constant for
-    each kind Task 1 names, with its measured meaning; `MapMarker`: `Lat = 1`, `Lon = 2` (fixed64, double),
-    `MapMarkerType = 4` (varint, MapMarkerEnum), `IsGoAround = 6` (varint, bool); `MapMarkerKind`: `Tod = 0`
-    (MapMarkerEnum.TOD, its first member), and Task 1's past indication if it is a marker type; `LatLon`: `Latitude = 1`,
-    `Longitude = 2` (fixed64, double).
-  - `internal readonly record struct FenixLatLon(double Latitude, double Longitude)`;
-    `internal readonly record struct FenixRouteLeg(FenixLatLon Point, int Kind, string Ident)`;
-    `internal readonly record struct FenixRouteMarker(FenixLatLon Point, int Type, bool IsGoAround)`;
-    `internal sealed record FenixRoute(FenixLatLon Position, IReadOnlyList<FenixRouteLeg> Legs, FenixRouteLeg? ActiveLeg, IReadOnlyList<FenixRouteMarker> Markers)`.
-  - `internal static class FenixChannelRoute` with `FenixChannelSection<FenixRoute> Decode(FenixChannelPush push)`.
+  - `internal static class FenixChannelRouteGeometry`: `double DistanceNm(FenixLatLon a, FenixLatLon b)`
+    (`NavigationCalculator.CalculateDistance`); `(double AlongNm, double CrossNm) Project(FenixLatLon from, FenixLatLon to, FenixLatLon p)`
+    (the aviation formulary's along-track and cross-track distances on the great circle from `from` to `to`; along
+    negative behind `from`, cross negative left); `double ArcNm(double radiusNm, double courseIn, double courseOut)`
+    (the radius times the smaller angle between the two courses, in radians).
+  - `internal enum FenixDistanceKind { Distance, Past, NotAvailable }`;
+    `internal readonly record struct FenixDistanceAnswer(FenixDistanceKind Kind, double Nm)`.
+  - `internal static class FenixChannelRouteDistances` with `double? ToDestination(FenixRoute r)`,
+    `FenixDistanceAnswer ToTopOfDescent(FenixRoute r)`,
+    `FenixDistanceAnswer Answer(FenixChannelSnapshot s, bool topOfDescent, Action<string> reportProblem)`, and
+    `internal const double OnLineNm = 0.5, PastWithinNm = 0.1, SamePointNm = 0.05`.
+  - In `FenixA320Definition`, `internal static` for the tests: `string DistanceSentence(bool topOfDescent, double nm, double groundSpeedKnots)`
+    (`nm` as F0 in the invariant culture, "miles to destination" or "miles to top of descent", then
+    `FormatEtaFromDistance(nm, groundSpeedKnots)`, as `AnnounceDestFromSDK` and `AnnounceTODFromSDK` speak);
+    `const string PastTopOfDescent = "Past top of descent"`, `DestinationName = "Distance to destination"`,
+    `TopOfDescentName = "Top of descent"` (for `SpeakNotAvailable`, which adds " not available");
+    `void SpeakDistance(bool topOfDescent, double nm, bool simConnected, Action<Action<double>> requestGroundSpeed, Action<string> speak)`
+    (connected: ask for the ground speed and speak the sentence with it when it comes; disconnected: speak it at once
+    without a time, since `RequestAircraftPositionAsync` does nothing while disconnected); and the seam.
 
-- **Steps 1-5 (plan 03's).** Rules: 2 absent: `Missing("no route data")`; 192 absent: `Missing("no present position")`; a field
-  in another wire type than above: `WrongShape` with its path ("2", "2.4", "2.4.1", "2.4.2", "2.4.3", "2.4.6", "2.11"
-  and "2.11.<n>", "2.12", "2.12.1", "2.12.2", "2.12.4", "2.12.6", "192", "192.1", "192.2"); an ident that is not valid
-  UTF-8: `WrongShape("2.4.6")` (or "2.11.6"); an absent member reads its default (kind 0, ident "", type 0, go-around
-  false, a coordinate 0); a route with no legs decodes (no flight plan); members not listed are skipped unread. Tests:
-  `A_route_decodes_its_legs_marker_and_position` (2 {4: three legs with 1, 2, 3 and 6; 11: a leg; 12: one marker with
-  no 4}, 192 {1, 2}: the legs in order, the active leg's ident, one marker of type 0, the position),
-  `Absent_members_read_their_defaults`, `No_route_or_no_position_is_missing` ("no route data", "no present position"),
-  `An_empty_route_decodes_with_no_legs`, `A_wrong_shape_names_its_field` (theory over the paths above, each "field
-  <path> has the wrong shape"), `Unread_members_are_skipped` (a leg carrying 8, 9-11 and 16 decodes as one without).
-  Commit: `feat(fenix-channel): the route fields and their decoder`.
-- **Step 6 [owner] (plan 03's).** The numbers and wire shapes this task adds checked against 3.0.0.7613 with the team's local
-  channel tools ([FNX-23]), the scrambled leg type's included; a number that moved is fixed in
-  `FenixChannelFields.Route.cs` alone and recorded in the evidence file.
+**Rules** (measured: `evidence/10-distances.md`, "The rules"):
+- **The line.** The elements of `r.Legs` that `IsPath` keeps and that are not `MissedApproach`, in order, to the first
+  one `IsDestination` names or, with none, to the last of them. Walk them keeping points: a `BreaksPath` element first
+  drops the kept points before it that carry its own ident and lie more than `SamePointNm` from its point (a heading
+  leg's drawn far point), then is kept at its own point unless the last kept point is within `SamePointNm` of it; every
+  other element is kept, its step from the last kept point being `ArcNm` for a `RouteLegKind.Arc` element with
+  `TurnRadius`, `CourseIn` and `CourseOut`, otherwise `DistanceNm`. Each kept point's distance to the line's end is the
+  sum of the steps after it.
+- **The TO.** `r.ActiveLeg`. Not available (both keys): null or an empty ident; `MissedApproach`; no `Symbol`-kind
+  element of its ident in `r.Legs`, unless its ident is `ArrivalIdent(r.Runways)`; its ident on no kept point.
+- **The aircraft's distance to the line's end:** `DistanceNm(r.Position, TO.Point)` plus the end distance of the last
+  kept point carrying the TO's ident.
+- **`ToDestination`:** fewer than two runways: null. The TO's ident is `ArrivalIdent(r.Runways)`:
+  `DistanceNm(r.Position, r.Runways[1].Threshold)`. No `IsDestination` element in the line: null. Any TO rule above:
+  null. Otherwise the aircraft's distance to the line's end.
+- **`ToTopOfDescent`:** any marker of type `MapMarkerKind.Eod`: Past. Otherwise the `Tod` markers that are not
+  `IsGoAround`: none or two or more, NotAvailable. One: a TO rule above, NotAvailable; place it on the line: of the
+  steps between consecutive kept points where `Project` gives a cross of at most `OnLineNm` and an along between -0.1
+  and the step's great-circle length plus 0.1, the one nearest across; its distance to the line's end is the rest of the
+  step (the great-circle length less the along, at least 0, scaled by the step's length over its great-circle length)
+  plus the end distance of the step's far point; on no step, NotAvailable. The answer is the aircraft's distance to the
+  line's end less the marker's: at most `PastWithinNm`, Past; otherwise Distance.
+- **`Answer`:** not trusted or no message: NotAvailable; `FenixChannelRoute.Decode` not ok: `reportProblem` with its
+  problem, then NotAvailable; otherwise `ToDestination` (null: NotAvailable) or `ToTopOfDescent`.
 
-### Task 3: Great-circle geometry
-
-**Files:** Create `Services/FenixChannelRouteGeometry.cs`; test
-`tests/MSFSBlindAssist.Tests/FenixChannelRouteGeometryTests.cs` (new).
-
-**Interfaces:**
-- Consumes: `NavigationCalculator.CalculateDistance` and `CalculateBearing` (a sphere of 3440.065 NM).
-- Produces: `internal static class FenixChannelRouteGeometry` with `double DistanceNm(FenixLatLon a, FenixLatLon b)`;
-  `(double AlongNm, double CrossNm) Project(FenixLatLon from, FenixLatLon to, FenixLatLon p)` (the aviation
-  formulary's along-track and cross-track distances on the leg's great circle; along negative behind `from`, cross
-  negative left of the leg); `double PathNm(IReadOnlyList<FenixLatLon> points)` (consecutive distances summed; 0 for
-  fewer than two points).
-
-- [ ] **Steps 1-5.** Tests, each within 0.01 NM: `Distances_follow_the_app_s_formula` ((0, 0) to (0, 1): 60.04; (50, 8)
-  to (50, 9): 38.59; a point to itself: 0), `A_point_projects_onto_a_leg` (leg (0, 0) to (0, 2), point (0.5, 1): along
-  60.04, cross -30.02), `A_point_behind_a_leg_projects_negative` (leg (0, 0) to (0, 1), point (0, -0.5): along -30.02,
-  cross 0), `A_path_sums_its_legs` ((0, 0), (0, 1), (1, 1), (1, 2): 180.11), `A_path_of_one_point_is_zero`. Commit:
-  `feat(fenix-channel): great-circle distances along a route`.
-
-### Task 4: Distance to the destination and to the top of descent
-
-**Files:** Create `Services/FenixChannelRouteDistances.cs`; test
-`tests/MSFSBlindAssist.Tests/FenixChannelRouteDistancesTests.cs` (new).
-
-**Interfaces:**
-- Consumes: plan 03's decoder (Task 2's interface, with `FenixChannelRoute.IsPath`, `IsDestination` and `BreaksPath`),
-  Task 3; `FenixChannelSnapshot`.
-- Produces: `internal enum FenixDistanceKind { Distance, Past, NotAvailable }`;
-  `internal readonly record struct FenixDistanceAnswer(FenixDistanceKind Kind, double Nm)`;
-  `internal static class FenixChannelRouteDistances` with `double? ToDestination(FenixRoute r)`,
-  `FenixDistanceAnswer ToTopOfDescent(FenixRoute r)`,
-  `FenixDistanceAnswer Answer(FenixChannelSnapshot s, bool topOfDescent, Action<string> reportProblem)`, Task 1's rule
-  as `internal static` `ShowsPastTopOfDescent(FenixRoute)`, and `OnRouteNm = 0.5`, `PastWithinNm = 0.1` (the base's
-  "past" threshold).
-
-- [ ] **Steps 1-5.** Rules:
-  - The path is the legs `IsPath` keeps, in order. The active start is the first path leg whose ident equals the active
-    leg's (ordinal, not empty). No legs, no active leg or no such leg: no distance, and no top of descent.
-  - Destination: the first leg of 2.4 at or after the active start that `IsDestination` names, path or symbol. None, a
-    `BreaksPath` leg between the active start and it, or one of Task 1's refusals: null. Otherwise the position to the
-    active start, then along the path legs between them, then to the destination's point (`PathNm`).
-  - Top of descent: the markers of type `MapMarkerKind.Tod` that are not go-around. None: `Past` when
-    `ShowsPastTopOfDescent`, else NotAvailable. More than one: NotAvailable. One: the route ahead is the position, the
-    active start and every path leg after it; on the first of its legs where the marker lies within `OnRouteNm` across
-    and between -0.1 and the leg's length plus 0.1 along, the answer is Distance (the legs before it plus the along
-    distance), or Past when that is at most `PastWithinNm`. Not ahead but within `OnRouteNm` of the route behind (the
-    path legs before the active start, then the position): Past. Neither: NotAvailable. No destination is needed: the
-    T/D may lie in a route that does not reach the destination.
-  - `Answer`: not trusted or no message: NotAvailable; a section that is not ok: `reportProblem` with its problem, then
-    NotAvailable; otherwise `ToDestination` (null: NotAvailable) or `ToTopOfDescent`.
-  Tests (a helper builds legs with the kinds, the destination and the break as plan 03 found them):
-  `The_sum_runs_from_the_position_through_the_active_leg` (position (0, 0); path: start (0, -1), "A" (0, 1), "B" (1, 1),
-  the destination (1, 2); active leg "A": 180.11 within 0.01), `The_sum_stops_at_the_destination` (two missed approach
-  legs after the destination: still 180.11), `An_unfollowable_route_is_not_available` (theory: no legs; no active leg;
-  an active ident not in the path; no destination; a break between "A" and the destination; each of Task 1's refusals:
-  null), `Symbols_are_not_path` (a symbol between "A" and "B": 180.11),
-  `The_top_of_descent_is_measured_along_the_route` (a T/D marker at (1, 1.5): Distance 150.10 within 0.01; the same with
-  the destination left out of the route), `A_marker_behind_the_aircraft_is_past` (at (0, -0.5): Past; 0.05 NM ahead of
-  the position: Past), `A_marker_off_the_route_or_twice_is_not_available` (2 NM off every leg: NotAvailable; two T/D
-  markers: NotAvailable; only a go-around T/D: as none), `No_marker_follows_task_one` (no T/D marker, with and without
-  `ShowsPastTopOfDescent`'s indication: Past, NotAvailable), `The_answer_takes_one_snapshot` (a snapshot with an untrusted
-  verdict and a good message: NotAvailable; trusted with no message: NotAvailable; a wrong shape: NotAvailable, and
-  `reportProblem` called once with "field 2.4.1 has the wrong shape"). Commit: `feat(fenix-channel): distance to the
-  destination and to the top of descent`.
-
-### Task 5: The sentences
-
-**Files:** Create `Aircraft/FenixA320Definition.ChannelDistances.cs` (the sentences only); test
-`tests/MSFSBlindAssist.Tests/FenixChannelDistancesKeyTests.cs` (new).
-
-**Interfaces:**
-- Consumes: `BaseAircraftDefinition.FormatEtaFromDistance`.
-- Produces, in `FenixA320Definition`, `internal static` for the tests:
-  `string DistanceSentence(bool topOfDescent, double nm, double groundSpeedKnots)` (`nm` as F0 in the invariant culture,
-  "miles to destination" or "miles to top of descent", then `FormatEtaFromDistance(nm, groundSpeedKnots)`, as
-  `AnnounceDestFromSDK` and `AnnounceTODFromSDK` speak); `const string PastTopOfDescent = "Past top of descent"`,
-  `DestinationName = "Distance to destination"`, `TopOfDescentName = "Top of descent"` (for `SpeakNotAvailable`, which
-  adds " not available", the base's words); `void SpeakDistance(bool topOfDescent, double nm, bool simConnected, Action<Action<double>> requestGroundSpeed, Action<string> speak)`
-  (connected: ask for the ground speed and speak the sentence with it when it comes; disconnected: speak it at once
-  without a time, since `RequestAircraftPositionAsync` does nothing while disconnected).
-
-- [ ] **Steps 1-5.** Tests: `Sentences_follow_the_base` (412 NM at 400 knots: "412 miles to destination: 01:01:48"; 96
-  at 480: "96 miles to top of descent: 00:12:00"; 412 at 25: "412 miles to destination"), `The_time_needs_thirty_knots`
-  (29.9 knots: no time; 30: ": HH:MM:SS"), `Past_and_not_available_are_the_base_s_words` ("Past top of descent";
-  `DestinationName + " not available"` is "Distance to destination not available"; "Top of descent not available"),
+- [ ] **Step 1: Geometry and the two distances, with their tests.** Geometry tests, each within 0.01 NM:
+  `Distances_follow_the_app_s_formula` ((0, 0) to (0, 1): 60.04; (50, 8) to (50, 9): 38.59; a point to itself: 0),
+  `A_point_projects_onto_a_leg` (leg (0, 0) to (0, 2), point (0.5, 1): along 60.04, cross -30.02),
+  `A_point_behind_a_leg_projects_negative` (leg (0, 0) to (0, 1), point (0, -0.5): along -30.02, cross 0),
+  `An_arc_is_its_radius_times_its_turn` (radius 10, 0° to 90°: 15.71; 350° to 10°: 3.49; 90° to 90°: 0).
+  Distance tests (a helper builds pushes with `FenixChannelProtoWriter` and decodes them with
+  `FenixChannelRoute.Decode`, runways "KAAA"/"01" and "KBBB"/"19", the destination "KBBB19"):
+  `The_sum_runs_straight_to_the_to_waypoint_then_along_the_line` (position (0, 0); line: start (0, -1) "A", "A" (0, 1),
+  "B" (1, 1), "KBBB19" (1, 2); symbols "A", "B"; TO "A" at (0, 1): 180.11 within 0.01; the same with the position at
+  (-0.5, 1), off the line: 150.09, 30.02 to "A" and 120.07 after it), `The_sum_stops_at_the_destination` (two missed approach elements after it:
+  still 180.11), `A_turn_piece_counts_as_its_arc` (an `Arc` element of radius 10, 0° to 90°, between "A" and "B": its
+  step is 15.71, not its chord), `A_discontinuity_is_crossed_straight` (an `End` element, reason 1, at "B", then a
+  `Start` at (2, 1): the step from "B" to (2, 1) is its great circle), `A_heading_leg_s_drawn_point_is_dropped` ("M" at
+  (9, 1) after "B", then the `End` element "M" at "B"'s point: the sum is as if "M" were not there),
+  `The_runway_as_to_is_the_distance_to_its_threshold` (TO "KBBB19": the great circle to the arrival threshold),
+  `An_unfollowable_route_is_not_available` (theory, each null: no legs; no TO; a TO with an empty ident; the TO on the
+  missed approach; a TO with no symbol; the TO's ident on no kept point; no destination element; one runway),
+  `An_end_of_descent_marker_is_past` (an `Eod` marker and a `Tod` marker ahead: Past),
+  `The_top_of_descent_is_measured_along_the_line` (a `Tod` marker at (1, 1.5): Distance 150.10 within 0.01; the same
+  with no destination element: the line's end is its last point, still 150.10),
+  `A_marker_behind_the_aircraft_is_past` (at (0, -0.5): Past; 0.05 NM ahead: Past),
+  `A_marker_is_placed_on_the_line_in_a_turn` (TO "B", the position (0.2, 0.9) beside the leg from "A" to "B", a `Tod`
+  at (0.5, 1) on that leg, 3.72 NM from the straight line from the aircraft to "B": found on the line, Distance 18.39
+  within 0.01), `Top_of_descent_markers_that_cannot_be_used_are_not_available` (theory: none; two;
+  only a go-around one; one 2 NM off every step: NotAvailable), `The_answer_takes_one_snapshot` (a snapshot with an
+  untrusted verdict and a good message: NotAvailable; trusted with no message: NotAvailable; a wrong shape at 2.4.1:
+  NotAvailable, and `reportProblem` called once with "field 2.4.1 has the wrong shape").
+  Recorded tests (`FenixChannelDistancesRecordedTests.cs`): the fourteen route tables Task 1 dumped, kept verbatim as
+  raw string literals in the file, one line per item (`pos`, `rwy`, `to`, `leg`, `mark`, documented in the file's
+  header comment), built into a push with `FenixChannelProtoWriter` (2.1, 2.4, 2.11 and 2.12 under field 2, the
+  position under 192) and decoded with `FenixChannelRoute.Decode`; `Recorded_routes_match_the_mcdu` (theory over the
+  cases, each as the evidence's last table says: within the tolerance of the MCDU's figure, Past or NotAvailable).
+  Commit: `feat(fenix-channel): distance to the destination and to the top of descent`.
+- [ ] **Step 2: The sentences.** Tests (`FenixChannelDistancesKeyTests.cs`): `Sentences_follow_the_base` (412 NM at 400
+  knots: "412 miles to destination: 01:01:48"; 96 at 480: "96 miles to top of descent: 00:12:00"; 412 at 25: "412 miles
+  to destination"), `The_time_needs_thirty_knots` (29.9 knots: no time; 30: ": HH:MM:SS"),
+  `Past_and_not_available_are_the_base_s_words` ("Past top of descent"; `DestinationName + " not available"` is
+  "Distance to destination not available"; "Top of descent not available"),
   `A_disconnected_sim_still_speaks_the_distance` (one sentence without a time, the request never made),
   `A_connected_sim_speaks_when_the_ground_speed_comes` (nothing before the callback; at 400 knots, "412 miles to
   destination: 01:01:48", once), `Sentences_are_the_same_in_every_culture` (de-DE and sv-SE: 412.4 NM at 25 knots gives
-  "412 miles to destination"; 1234.6 at 400 gives "1235 miles to destination: 03:05:11"). Commit: `feat(fenix-channel):
-  the D and Shift+D sentences`. Inert (no seam yet): pushed as usual.
+  "412 miles to destination"; 1234.6 at 400 gives "1235 miles to destination: 03:05:11"). Commit:
+  `feat(fenix-channel): the D and Shift+D sentences`. Inert (no seam yet): pushed with Step 1.
+- [ ] **Step 3: The switch commit.** `ChannelDistancesKey` always sets `handled` (nothing else answers these keys on the
+  Fenix). No monitor: `SpeakNotAvailable(ctx, name)`. Otherwise `Answer(ctx.Monitor.Snapshot(FenixChannelDisplay.Nd),
+  topOfDescent, p => ctx.Monitor.ReportFeatureProblem("D and Shift+D", p))`: Past,
+  `AnnounceImmediate(PastTopOfDescent)`; NotAvailable, `SpeakNotAvailable(ctx, name)`; Distance, one
+  `Log.Debug("Fenix", ...)` line for Task 3 (the key, the distance to a tenth, the TO's ident, the leg count; invariant
+  culture), then `SpeakDistance(..., ctx.SimConnect.IsConnected, cb => ctx.SimConnect.RequestAircraftPositionAsync(p =>
+  cb(p.GroundSpeedKnots)), ctx.Announcer.AnnounceImmediate)`. Test: `The_seam_reads_one_nd_snapshot` (a source test
+  over `FenixA320Definition.ChannelDistances.cs`: one `Snapshot(` call, with `FenixChannelDisplay.Nd`, and no other
+  display named). Commit: `feat(fenix-channel): D and Shift+D speak from the route`. Build and run it on your own
+  machine for Task 3; push it to `feat/fenix-display-channel` only in Task 4.
 
-### Task 6: The switch commit: D and Shift+D
+### Task 3 [owner] [sim]: The gate check
 
-**Files:** Modify `Aircraft/FenixA320Definition.ChannelDistances.cs`; test
-`tests/MSFSBlindAssist.Tests/FenixChannelDistancesKeyTests.cs`.
+With MSFSBA built from the plan's branch, Task 2 included, the Fenix on 3.0.0.7613, powered at a gate. The computed
+value is the press's line in `debug.log`, read straight away (it rotates in about ten minutes). Record each result in
+`docs/fenix-channel/evidence/10-distances.md`; a check that fails is fixed and run again before Task 4.
 
-**Interfaces:**
-- Consumes: plan 01's `ChannelDistancesKey`, `ChannelKeyContext`, `SpeakNotAvailable`; Task 4's `Answer`; Task 5's
-  sentences.
-- Produces: the seam implementation.
-
-- [ ] **Steps 1-5.** `ChannelDistancesKey` always sets `handled` (nothing else answers these keys on the Fenix). No
-  monitor: `SpeakNotAvailable(ctx, name)`. Otherwise `Answer(ctx.Monitor.Snapshot(FenixChannelDisplay.Nd), topOfDescent,
-  p => ctx.Monitor.ReportFeatureProblem("D and Shift+D", p))`: Past, `AnnounceImmediate(PastTopOfDescent)`;
-  NotAvailable, `SpeakNotAvailable(ctx, name)`; Distance, one `Log.Debug("Fenix", ...)` line for Task 7 (the key, the
-  distance to a tenth, the active and destination idents, the leg count; invariant culture), then `SpeakDistance(...,
-  ctx.SimConnect.IsConnected, cb => ctx.SimConnect.RequestAircraftPositionAsync(p => cb(p.GroundSpeedKnots)),
-  ctx.Announcer.AnnounceImmediate)`. Test: `The_seam_reads_one_nd_snapshot` (a source test over
-  `FenixA320Definition.ChannelDistances.cs`: one `Snapshot(` call, with `FenixChannelDisplay.Nd`, and no other display
-  named). Commit: `feat(fenix-channel): D and Shift+D speak from the route`. This is the switch commit: build and run it
-  on your own machine for Task 7; push it to `feat/fenix-display-channel` only in Task 9.
-
-### Task 7 [in flight]: Check D and Shift+D against the MCDU
-
-With MSFSBA built from the plan's branch, Task 6 included, the Fenix on 3.0.0.7613 and a flight plan as in Task 1 (a
-different one if possible). The reference is the captain's MCDU on F-PLN, read straight after each press (the owner in
-the MCDU window, or the team's tools reading the push); the computed value is the press's line in `debug.log`, read
-straight away (it rotates in about ten minutes). Record each result in `docs/fenix-channel/evidence/10-distances.md`;
-a check that fails is fixed and run again before Task 9.
-
-- [ ] At the gate: D says "<n> miles to destination", with no time; recorded beside the DEST line (within the tolerance,
-  or one of Task 1's refusals saying "Distance to destination not available").
-- [ ] At Task 1's four points: D and Shift+D within the tolerance, each with a time.
-- [ ] After the T/D: Shift+D says "Past top of descent" (or what Task 1's outcome gives).
+- [ ] A flight plan loaded, no cruise level: D says "<n> miles to destination" with no time, within the tolerance of
+  the F-PLN DEST line's DIST; Shift+D says "Top of descent not available".
+- [ ] The cruise level entered on INIT: Shift+D says "<n> miles to top of descent" with no time (recorded beside PERF
+  CRZ's "TO (T/D)" DIST if the page prints one at the gate).
 - [ ] Captain ND Brightness at Off (the app's panel control): `fenix_channel.log` shows the ND "display off"; D says
   "Distance to destination not available" and Shift+D "Top of descent not available"; the brightness back.
-- [ ] A fresh power-up with no flight plan: both keys say "not available".
-- [ ] [owner] By ear with NVDA: the sentences read as written.
+- [ ] No flight plan (a fresh power-up, or the flight plan cleared): both keys say "not available".
+- [ ] By ear with NVDA: the sentences read as written.
 
-### Task 8: D and Shift+D in docs/a32nx.md
+### Task 4 [controller]: Docs and landing
 
-**Files:** Modify `docs/a32nx.md` (only under the "D and Shift+D" sub-heading of "Fenix display channel").
-
-- [ ] **Step 1.** In place of "(Plan 10 writes this section.)": the fields read, the rules (path, destination and break
-  from plan 03's decoder; Task 1's past T/D), the tolerance and why, the refusals, and where the evidence is. Commit: `docs(fenix-channel): D and Shift+D
-  from the route`.
-
-### Task 9 [controller]: Land
-
-- [ ] The whole-plan review (index, "Running a plan with subagents": the ownership diff, a test for every Review Focus
-  line, the handoff and the execution record). Set **Status** to landed with the date and the switch commit (or waiting
-  on owner, under Task 1's stop rule), fill in "Tests at landing" and "Handoff to plan 12", and push everything, the
-  switch commit included (index workflow steps 4-6).
+- [ ] **Step 1.** `docs/a32nx.md`, in place of "(Plan 10 writes this section.)" under "D and Shift+D": the fields read,
+  the rules, the tolerance and why, the refusals, the measured exception (the MCDU's lag after a sharp turn), and where
+  the evidence is. Commit: `docs(fenix-channel): D and Shift+D from the route`.
+- [ ] **Step 2.** The whole-plan review (index, "Running a plan with subagents": the ownership diff, a test for every
+  Review Focus line, the handoff and the execution record). Set **Status** to landed with the date and the switch
+  commit, fill in "Tests at landing" and "Handoff to plan 12", and push everything, the switch commit included (index
+  workflow steps 4-6).
 
 ## Handoff to plan 12
 
@@ -355,16 +252,17 @@ a check that fails is fixed and run again before Task 9.
 
 - **For a pilot:** guide `guide/airbus-aircraft.md`, "Fenix A320 CEO", "Aircraft-specific hotkeys and callouts": the
   sentence saying Output D and Shift+D are not offered on the Fenix changes (they work, computed from the Fenix's flight
-  plan, with what "not available" means; plan 02 changes the speeds' half of it). Hotkey guide
+  plan; Shift+D says "Past top of descent" once the descent has begun, and "not available" before a cruise level is
+  entered and from glideslope capture on; plan 02 changes the speeds' half of it). Hotkey guide
   `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt`: the output readouts gain "D Distance to destination" and
   "Shift+D Distance to top of descent". Changelog `feature`: "On the Fenix, D and Shift+D now tell you how far it is,
   and how long at your ground speed, to your destination and to the top of descent, worked out from the Fenix's own
   flight plan."
-- **Rule** (one line, 397 characters):
+- **Rule** (one line, under 400 characters):
   ```
-  - [FNX-?] Fenix D and Shift+D (`FenixChannelRouteDistances`) speak a distance only where the in-sim check matched the route sum to the MCDU's DEST line within 1 NM plus 0.5 %: the sum stops at the destination, never in the missed approach, a route it cannot follow says "not available", never a partial sum, and the time uses SimConnect's ground speed. Full: docs/invariants/fenix-channel.md#fnx-?
+  - [FNX-?] Fenix D and Shift+D (`FenixChannelRouteDistances`) sum as the FMS does (9,806 recorded pushes): straight to the TO waypoint, then the drawn line, turns as arcs, a discontinuity crossed straight. Shift+D is past once an end-of-descent marker shows, never from a T/D-type marker alone; no TO, destination or T/D marker is "not available". Full: docs/invariants/fenix-channel.md#fnx-?
   ```
-  Full text: Task 1's rules and refusals, the tolerance and its reasons, the measurements behind them.
+  Full text: the rules and refusals, the tolerance and its reasons, the replay's numbers and the BAIRE lag.
 - **Frozen files:** none.
 - **Also seen on:** the FBW A32NX and Headwind A330 D (`MainForm.Announcers.cs`) says "Destination distance not
   available", where the base, the PMDG 737 and this plan say "Distance to destination not available": a presentation
@@ -380,8 +278,18 @@ Kept in this file only, so no other plan's push ever touches it.
 - **Started:** 2026-11-04, from 58c25234e (the branch's head; plan 03's route decoder is on it)
 - **Landed:**
 - **Tests at landing:**
-- **Tasks:**
-- **Waiting on the owner:**
+- **Tasks:** 0 and 1 done (1's commit with this change)
+- **Waiting on the owner:** Task 3, the gate check
 - **In-sim results:**
-- **Changed from the plan:**
+- **Changed from the plan:** 2026-11-04, the plan rewritten before any code (the note at the top): the old Task 1
+  (measure in flight) and Task 7 (check in flight) replaced by the replay over plan 03's recordings and a gate check;
+  the old Tasks 3 to 6 merged into Task 2, and 8 and 9 into Task 4. Rules changed by the replay: the start (straight to
+  the TO waypoint, then the line from its last kept point), turn pieces as arcs, a discontinuity crossed straight with
+  a heading leg's far point dropped, the top of descent placed on the line, past once an end-of-descent marker shows
+  (the old `ShowsPastTopOfDescent` is not needed), the TO-without-a-symbol refusal. Shift+D's tolerance now takes PERF
+  CRZ's printed figure as its reference.
 - **Rulings made while working:**
+  - Can plan 10 skip its flights? Yes, from the recordings, with one gate check; four tasks (Hadi, 2026-11-04).
+  - Shift+D after the descent begins: its distance while the T/D marker shows; once past it, "Past top of descent" or
+    the distance, whichever the data allows (Hadi, 2026-11-04). The marker goes when the descent phase begins and the
+    data then holds no point for it, so "Past top of descent".
