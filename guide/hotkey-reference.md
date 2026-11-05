@@ -270,19 +270,23 @@ Full explanations: [Fenix A320 CEO](airbus-aircraft.md#airbus-fenix).
 
 ### Output keys {#output-keys-2}
 
-All need an AI provider and Fenix v3.
+Each display key opens a live window read from the Fenix. When the Fenix cannot share that display, it gives the AI read instead, which needs an AI provider and Fenix v3.
 
-- **Output Alt+P** — Read the first officer's PFD.
-- **Output Alt+N** — Read the captain's navigation display.
-- **Output Alt+E** — Read the E/WD.
-- **Output Alt+S** — Read the System Display.
-- **Output Alt+I** — Read the standby instruments: the digital ISIS or the three round gauges, whichever your Fenix has.
+- **Output Alt+P** — The captain's PFD window. The AI read looks at the first officer's PFD.
+- **Output Alt+N** — The captain's navigation display window, with its EFIS controls.
+- **Output Alt+E** — The E/WD window, with T.O CONFIG, CLR, RCL and EMER CANC after the list.
+- **Output Alt+S** — The SD window: the System Display's page, its values, STATUS and the bottom line, with the ECAM page keys after the list.
+- **Output Alt+I** — The ISIS window. With the three round standby gauges, always the AI read.
+- **Output Shift+1** to **Shift+6** — Green dot, S, F, VLS, alpha prot or VSW, and VFE next, from the PFD's speed tape.
+- **Output Ctrl+W** — The next waypoint: name, bearing, distance and time.
+- **Output D**, **Output Shift+D** — Distance and time to the destination and to the top of descent, worked out from the Fenix's flight plan.
 
 ### Input keys {#input-keys-2}
 
 - **Input Shift+1** to **Shift+4** — Push the heading, altitude, speed and vertical speed knobs.
 - **Input Ctrl+1** to **Ctrl+4** — Pull the heading, altitude, speed and vertical speed knobs.
-- **Input Ctrl+Shift+F** — Open the Fenix windows list: Engines, Cabin, Failures, Fenix documents and Fenix options. On any other aircraft you hear *"This aircraft has no extra windows."*
+- **Input Ctrl+Shift+D** — Open the DCDU window.
+- **Input Ctrl+Shift+F** — Open the Fenix windows list: Engines, Cabin, Failures, Fenix documents, Fenix options, PFD, ND, E/WD, SD, ISIS and DCDU. On any other aircraft you hear *"This aircraft has no extra windows."*
 
 Ctrl+P opens the autopilot window: AP1, AP2, ATHR, APPR, LOC, EXPED and the disconnect buttons for each side. Input Shift+T opens the Fenix's own EFB web page, where **Alt+Home** goes back to the EFB's home screen.
 
@@ -304,10 +308,12 @@ Ctrl+P opens the autopilot window: AP1, AP2, ATHR, APPR, LOC, EXPED and the disc
 - **Failures**: **Enter** in the search box searches; **Alt+N** Fail now, **Alt+A** (or **Enter** on a failure) Arm, **Alt+C** Clear, each after a Yes or No; **F5** refreshes, **Escape** closes.
 - **Fenix documents**: **Enter** opens a document, **Ctrl+F** the search box, **Ctrl+P** the pinned ECAM procedure, **Ctrl+D** pins or unpins, **F6** and **Shift+F6** move between the document, the list and the search box, **F5** reloads, **Escape** hides the window.
 - **Fenix options**: **Enter** speaks the selected option's details; **F2** changes an on/off or choice option for this simulator session, **Shift+F2** makes an option permanent, **Ctrl+F2** resets your change to the Fenix default; **F5** reads the options again, **Escape** closes.
+- **PFD**, **ND**, **E/WD**, **SD** and **ISIS**: arrow keys read the rows, which update every second; **Tab** reaches the controls after the list; **F5** refreshes without a word, **Escape** closes.
+- **DCDU**: arrow keys read the rows; **Ctrl+1**, **Ctrl+2** the left keys and **Alt+1**, **Alt+2** the right ones (or **F1**, **F2**, **F7**, **F8** with the alternate setting); **Page Down**, **Page Up** scroll the message; **Ctrl+Page Down**, **Ctrl+Page Up** the next and previous message; **Ctrl+P** prints; **Bright** and **Dim** buttons after the list; **F5** refreshes, **Escape** closes.
 
 ### General keys that differ or don't work here {#general-keys-that-differ-or-don-t-work-here-2}
 
-- **Output D, Shift+D, Shift+1 to Shift+6, Ctrl+W, Ctrl+0, Ctrl+E** do nothing.
+- **Output Ctrl+0, Ctrl+E** do nothing.
 - **Input Shift+A, Ctrl+O, Shift+P, Ctrl+J, Ctrl+L** do nothing; use the Ctrl+P window.
 
 ## FlyByWire A380X {#hk-a380}
