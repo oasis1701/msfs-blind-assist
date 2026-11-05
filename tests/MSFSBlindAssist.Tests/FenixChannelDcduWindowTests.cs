@@ -745,8 +745,8 @@ public class FenixChannelDcduWindowTests : IDisposable
     [Fact]
     public void Ctrl_Shift_D_on_a_fenix_without_a_dcdu_is_answered_here()
     {
-        // The key is always answered by the Fenix, so MainForm's "only available on the A32NX and the Headwind A330"
-        // sentence never reaches its pilot. The refusal touches neither the sim, the form nor the hotkey manager.
+        // The key is always answered by the Fenix, so MainForm's "only available on the A32NX, the Headwind A330 and the
+        // Fenix" sentence never reaches its pilot. The refusal touches neither the sim, the form nor the hotkey manager.
         var definition = new FenixA320Definition();
         Assert.True(definition.TryApplyConfigValue(FenixConfigVars.AircraftType, 3));
         definition.TryApplyConfigValue(FenixConfigVars.Dcdu, 0);
