@@ -187,6 +187,57 @@ internal static class VisualGuidanceJoin
             : (Math.Log(Math.Sin(c * x)) - curve0) / c;
     }
 
+    /// <summary>
+    /// Where the turn from <paramref name="relTrackDeg"/> onto <paramref name="targetRelDeg"/> (both
+    /// relative to the final course) takes the aircraft, in nm toward the threshold
+    /// (<c>InboundNm</c>) and to the right of the course (<c>RightNm</c>). The aircraft rolls in at
+    /// <paramref name="bankRateDegS"/> to at most <paramref name="maxBankDeg"/> and rolls out at the
+    /// same rate so as to finish on the target, turning the short way, as the capture law does. Each
+    /// aircraft's own speed and bank settings, so a faster or slower-rolling aircraft covers more ground.
+    /// </summary>
+    public static (double InboundNm, double RightNm) TurnOntoCut(double relTrackDeg, double targetRelDeg, double gsKt,
+        double maxBankDeg, double bankRateDegS)
+    {
+        double delta = Normalize(targetRelDeg - relTrackDeg) * D2R;
+        if (Math.Abs(delta) < 1e-9) return (0.0, 0.0);
+        double gs = Math.Max(double.IsFinite(gsKt) ? gsKt : 0, MinGroundSpeedKt);
+        double speedMs = gs * MetresPerNm / 3600.0, speedNmS = gs / 3600.0;
+        double rate = Math.Max(double.IsFinite(bankRateDegS) ? bankRateDegS : 0, 0.1) * D2R;
+        double maxBank = Math.Clamp(double.IsFinite(maxBankDeg) ? maxBankDeg : 25, 1, 60) * D2R;
+        double direction = Math.Sign(delta), remaining = Math.Abs(delta);
+        double heading = relTrackDeg * D2R, bank = 0, inbound = 0, right = 0;
+        const double Dt = 0.05;
+        for (int i = 0; i < 100_000 && remaining > 1e-9; i++)
+        {
+            // The heading still turned while rolling out from this bank at the same rate: ∫ g·tan(φ)/V.
+            double rollOutTurn = G / speedMs * -Math.Log(Math.Cos(bank)) / rate;
+            bank = remaining <= rollOutTurn ? Math.Max(0, bank - rate * Dt) : Math.Min(maxBank, bank + rate * Dt);
+            double turn = Math.Min(remaining, G * Math.Tan(bank) / speedMs * Dt);
+            if (bank == 0 && turn == 0) break;
+            heading += direction * turn;
+            remaining -= turn;
+            inbound += speedNmS * Math.Cos(heading) * Dt;
+            right += speedNmS * Math.Sin(heading) * Dt;
+        }
+        return (inbound, right);
+    }
+
+    /// <summary>
+    /// Where the aircraft will be lined up on final, nm from the threshold, if it turns from
+    /// <paramref name="relTrackDeg"/> onto a cut of <paramref name="cutDeg"/> toward final
+    /// (<see cref="TurnOntoCut"/>, with the profile's largest approach bank and bank rate), then flies the
+    /// capture law (<see cref="AlongToEstablishNm"/>). Already on the cut, there is no turn to count.
+    /// </summary>
+    public static double JoinAlongNm(VisualGuidanceApproachPoint p, double relTrackDeg, double cutDeg, double gsKt,
+        double captureGain, VisualGuidanceProfile profile)
+    {
+        int side = p.CrossNm >= 0 ? 1 : -1;
+        var (inbound, right) = TurnOntoCut(relTrackDeg, -side * cutDeg, gsKt, profile.MaxApproachBankDeg, profile.MaxBankRateDegPerSec);
+        // A turn that takes the aircraft across the line leaves nothing to capture.
+        double crossAfter = Math.Max(0, side * (p.CrossNm + right));
+        return p.AlongNm - inbound - AlongToEstablishNm(crossAfter, cutDeg, gsKt, captureGain);
+    }
+
     /// <summary>Turn radius, nm, at <paramref name="gsKt"/> and <paramref name="bankDeg"/> of bank.</summary>
     public static double TurnRadiusNm(double gsKt, double bankDeg)
     {
@@ -229,8 +280,11 @@ internal static class VisualGuidanceJoin
 
         if (p.AlongNm > 0)
         {
+            // The shallowest cut that, counting the turn onto it, lines the aircraft up at least the
+            // minimum final out (the owner's choice at the stage-4 checkpoint, 2026-11-04: from parallel
+            // the turn alone took an airliner 0.7 nm along final).
             for (double angle = VectorMinAngleDeg; angle <= VectorMaxAngleDeg; angle += 1)
-                if (p.AlongNm - AlongToEstablishNm(cross, angle, gsKt, captureGain) >= profile.MinimumFinalNm)
+                if (JoinAlongNm(p, rel, angle, gsKt, captureGain, profile) >= profile.MinimumFinalNm)
                     return new(VisualGuidanceJoinState.Vectoring, angle, new[] { final });
             // Inside the minimum final, close to the line and heading in: straight onto final, never a
             // pattern that leads the pilot away from a runway they are about to land on.

@@ -156,15 +156,35 @@ public class VisualGuidanceJoiningTests
         Assert.Equal(0.0, rig.Bank, 9);
     }
 
-    // Vectoring times the turn onto final on the angle BA chose (30° here), which the guidance is
-    // turning the aircraft onto, not on the 10° it is cutting at so far: 85 s, not 245.
+    // Vectoring times the turn onto final on the angle BA chose (about 32° here), which the guidance is
+    // turning the aircraft onto, not on the 10° it is cutting at so far: about 80 s, not 245.
     [Fact]
     public void Vectoring_times_the_turn_on_the_chosen_intercept()
     {
         var rig = PressedAt(10, 2, 0);
+        double cut = VisualGuidanceJoin.Decide(new VisualGuidanceApproachPoint(10, 2), 0, 140, VisualGuidanceJoin.DefaultCaptureGain,
+            new VisualGuidanceProfile()).ClampDeg;
+        double seconds = VisualGuidanceJoin.SecondsToTurn(2, cut, cut, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0,
+            new VisualGuidanceProfile().RollInTimeS)!.Value;
         rig.Place(10, 2, -10);
         rig.UpdateAt(1.0 / 30);
-        Assert.Contains("turn in about 85 seconds", rig.Readout);
+        string fives = (Math.Round(seconds / 5, MidpointRounding.AwayFromZero) * 5).ToString("0", CultureInfo.InvariantCulture);
+        Assert.Contains($"turn in about {fives} seconds", rig.Readout);
+        Assert.InRange(seconds, 70, 90);
+    }
+
+    // F while vectoring says where the aircraft will be lined up counting the turn onto the cut, the
+    // same sum BA picked the cut with: from 1.8 nm beside a 10 nm final, 6.2 nm, not the 6.5 the
+    // straight-cut formula alone gives (both well inside their rounding).
+    [Fact]
+    public void F_while_vectoring_counts_the_turn_in_where_it_joins()
+    {
+        var rig = PressedAt(10, 1.8, 0);
+        var profile = new VisualGuidanceProfile();
+        var at = new VisualGuidanceApproachPoint(10, 1.8);
+        double cut = VisualGuidanceJoin.Decide(at, 0, 140, VisualGuidanceJoin.DefaultCaptureGain, profile).ClampDeg;
+        Assert.Equal(6.19, VisualGuidanceJoin.JoinAlongNm(at, 0, cut, 140, VisualGuidanceJoin.DefaultCaptureGain, profile), 0.01);
+        Assert.StartsWith("Vectoring to final, joining 6.2 miles out.", rig.Readout);
     }
 
     // Heading away from final there is no time to the turn yet.

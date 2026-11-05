@@ -185,15 +185,61 @@ public class VisualGuidanceJoinTests
         {
             var plan = VisualGuidanceJoin.Decide(P(10, 2), rel, 140, Gain, Profile);
             Assert.Equal(VisualGuidanceJoinState.Vectoring, plan.State);
-            Assert.Equal(30.0, plan.ClampDeg);
             Assert.Equal(VisualGuidanceLegKind.Final, Assert.Single(plan.Legs).Kind);
         }
+        // Heading away, the turn back toward final closes most of the 2 nm by itself: the shallowest cut does.
+        Assert.Equal(30.0, VisualGuidanceJoin.Decide(P(10, 2), 180, 140, Gain, Profile).ClampDeg);
     }
 
-    // 1 nm parallel at 8 nm needs 33° to be lined up by 6 nm.
+    // The angle BA picks is the shallowest that, counting the turn onto it, lines the aircraft up at
+    // least the minimum final out (the owner's choice, 2026-11-04): from 2 nm beside a 10 nm final,
+    // flying parallel, 30° would line it up short of 6 nm once the turn is counted.
+    [Theory]
+    [InlineData(10, 2, 0)]
+    [InlineData(8, 1, 0)]
+    [InlineData(10, -2, 0)]
+    public void Decide_vectoring_picks_the_shallowest_angle_that_leaves_the_minimum_final_counting_the_turn(double along, double cross, double rel)
+    {
+        var plan = VisualGuidanceJoin.Decide(P(along, cross), rel, 140, Gain, Profile);
+        Assert.Equal(VisualGuidanceJoinState.Vectoring, plan.State);
+        double cut = plan.ClampDeg;
+        Assert.True(cut > 30, $"cut {cut}");
+        Assert.True(VisualGuidanceJoin.JoinAlongNm(P(along, cross), rel, cut, 140, Gain, Profile) >= Profile.MinimumFinalNm);
+        Assert.True(VisualGuidanceJoin.JoinAlongNm(P(along, cross), rel, cut - 1, 140, Gain, Profile) < Profile.MinimumFinalNm);
+    }
+
+    // Already on the cut there is no turn: the join is the plan's straight-cut formula.
     [Fact]
-    public void Decide_vectoring_picks_the_shallowest_angle_that_leaves_the_minimum_final()
-        => Assert.Equal(33.0, VisualGuidanceJoin.Decide(P(8, 1.0), 0, 140, Gain, Profile).ClampDeg);
+    public void Join_on_the_cut_already_is_the_straight_cut_formula()
+        => Assert.Equal(12 - VisualGuidanceJoin.AlongToEstablishNm(3, 30, 140, Gain),
+            VisualGuidanceJoin.JoinAlongNm(P(12, 3), -30, 30, 140, Gain, Profile), 9);
+
+    // The turn from parallel onto a 30° cut, rolling in at 3°/s to at most 25°: at 140 kt about 17 s,
+    // 0.6 nm along final and 0.15 nm toward it; at 65 kt about 12 s and 0.2 nm. Right of final it moves
+    // left (toward the line), left of final right.
+    [Fact]
+    public void The_turn_onto_the_cut_depends_on_speed_and_bank()
+    {
+        var jet = VisualGuidanceJoin.TurnOntoCut(0, -30, 140, 25, 3);
+        Assert.InRange(jet.InboundNm, 0.55, 0.70);
+        Assert.InRange(jet.RightNm, -0.20, -0.12);
+        var light = VisualGuidanceJoin.TurnOntoCut(0, -30, 65, 25, 3);
+        Assert.InRange(light.InboundNm, 0.15, 0.25);
+        Assert.True(light.RightNm < 0);
+        var mirror = VisualGuidanceJoin.TurnOntoCut(0, 30, 140, 25, 3);
+        Assert.Equal(jet.InboundNm, mirror.InboundNm, 9);
+        Assert.Equal(-jet.RightNm, mirror.RightNm, 9);
+        // A slower roll rate (the A330's 2.5°/s) takes longer, so it covers more ground.
+        Assert.True(VisualGuidanceJoin.TurnOntoCut(0, -30, 140, 25, 2.5).InboundNm > jet.InboundNm);
+        Assert.Equal((0.0, 0.0), VisualGuidanceJoin.TurnOntoCut(-30, -30, 140, 25, 3));
+    }
+
+    [Fact]
+    public void The_turn_onto_the_cut_is_finite_for_a_stopped_aircraft()
+    {
+        var stopped = VisualGuidanceJoin.TurnOntoCut(0, -30, 0, 25, 3);
+        Assert.True(double.IsFinite(stopped.InboundNm) && double.IsFinite(stopped.RightNm));
+    }
 
     // Decision 4: inside the minimum final, close to the line and heading in, BA vectors straight onto final.
     [Fact]

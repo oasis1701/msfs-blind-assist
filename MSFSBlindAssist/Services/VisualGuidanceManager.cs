@@ -1392,7 +1392,7 @@ public class VisualGuidanceManager : IDisposable
     /// final (the live intercept when joining, the chosen angle when vectoring); and the side of the
     /// track the nearest point of final lies on (the threshold, when past it). Null before a decision.
     /// </summary>
-    private JoinPicture? PictureOfTheJoin(double lat, double lon, double cross)
+    private JoinPicture? PictureOfTheJoin(double lat, double lon, double cross, bool withJoinAlong = true)
     {
         if (runway == null || joinPlan == null || cachedHeading is not double heading) return null;
         double along = VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm;
@@ -1410,8 +1410,12 @@ public class VisualGuidanceManager : IDisposable
             ? VisualGuidanceJoin.SecondsToTurn(cross, timedIntercept, clamp, currentGroundSpeedKnots, CaptureGainForHarness,
                 LATERAL_HEADING_GAIN * SpeedFactor(), rollInTimeS)
             : null;
-        double joinAlong = along - VisualGuidanceJoin.AlongToEstablishNm(Math.Abs(cross), joining ? intercept : joinPlan.ClampDeg,
-            currentGroundSpeedKnots, CaptureGainForHarness);
+        // Where it lines up, counting the turn onto the cut when vectoring, as the decision did (joining
+        // flies its own cut, so there is no turn to count). Only F needs it; the countdown skips it.
+        double joinAlong = withJoinAlong
+            ? VisualGuidanceJoin.JoinAlongNm(new VisualGuidanceApproachPoint(along, cross), relativeTrack,
+                joining ? intercept : joinPlan.ClampDeg, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile)
+            : double.NaN;
         // Toward the nearest point of final, in (inbound, right) components, against the track's right normal.
         double toX = along > 0 ? 0 : along, toY = -cross;
         double track = relativeTrack * Math.PI / 180;
@@ -1444,7 +1448,7 @@ public class VisualGuidanceManager : IDisposable
         }
 
         double cross = SignedCrossTrackNm(runway, lat, lon);
-        if (PictureOfTheJoin(lat, lon, cross) is not JoinPicture picture) return;
+        if (PictureOfTheJoin(lat, lon, cross, withJoinAlong: false) is not JoinPicture picture) return;
         DateTime now = lastUpdateUtc ?? ClockForHarness();
 
         if (picture.SecondsToTurn is double seconds)

@@ -96,13 +96,19 @@ public class VisualGuidanceCalloutTests
     [Theory]
     [InlineData(6, 0.08, "On final, 6.0 miles. 0.1 miles right of the centreline.")]
     [InlineData(6, -0.08, "On final, 6.0 miles. 0.1 miles left of the centreline.")]
-    [InlineData(10, 2.0, "Vectoring to final, joining 6.2 miles out. 2.0 miles right of final.")]
-    [InlineData(10, -2.0, "Vectoring to final, joining 6.2 miles out. 2.0 miles left of final.")]
-    public void Right_of_the_centreline_reads_right(double alongNm, double crossNm, string expectedStart)
+    [InlineData(10, 2.0, ". 2.0 miles right of final.")]
+    [InlineData(10, -2.0, ". 2.0 miles left of final.")]
+    public void Right_of_the_centreline_reads_right(double alongNm, double crossNm, string expected)
     {
         var rig = new VisualGuidanceTestRig();
         rig.Place(alongNm, crossNm, 0);
         rig.UpdateAt(0);
-        Assert.StartsWith(expectedStart, rig.Readout);
+        if (expected.StartsWith("On final", StringComparison.Ordinal))
+            Assert.StartsWith(expected, rig.Readout);
+        else
+        {
+            Assert.StartsWith("Vectoring to final, joining ", rig.Readout);
+            Assert.Contains(expected, rig.Readout);
+        }
     }
 }
