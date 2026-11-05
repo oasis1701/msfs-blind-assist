@@ -1,7 +1,12 @@
 # Location Info window redesign (proposal)
 
-Status: proposal, second round. The owner's review notes of 2026-11-05 are worked in. Nothing is
-built yet.
+Status: agreed 2026-11-05, after three review rounds with the owner. Nothing is built yet.
+
+**Done when:** everything under Proposed layout, The map position, Refreshing, Filters, Context
+menu on a result and Airports is built, committed, and checked live (by the owner in the sim or
+over the dev server), with Cardinal Directions dropped. Heights, water depth and any other new
+per-type detail are not part of it: each is its own entry. Population, already stored, stays in
+the Details column.
 
 ## Why
 
@@ -66,11 +71,10 @@ until asked for, so they don't stand in the way.
    - Type: the GeoNames feature type (island, mountain, lake, airport, ...)
    - Region
    - From map position: distance and direction
-   - From aircraft: distance and direction (the same as the column above while the map position
-     is the aircraft; hidden then, or kept, to decide when built)
-   - Details: what this type has. Height for terrain, population for towns, depth for water if
-     the data has it, ICAO code and "in simulator" for airports. A height says its source
-     (database or simulator, see Elevation).
+   - From aircraft: distance and direction. Hidden while the map position follows the aircraft,
+     since it would repeat the column above.
+   - Details: what this type has. Population for towns, ICAO code and "in simulator" for
+     airports. Heights and depths come later (see Later: heights).
    - Coordinates: decimal degrees (57.93333, 11.66667). Converting to a CDU's format is left to
      the pilot.
 3. **Show filters and search** / **Hide filters and search**: one button that shows or hides
@@ -78,8 +82,9 @@ until asked for, so they don't stand in the way.
 4. **Search**: text box. Empty means everything in range. Text filters by name (folded the same
    way as `SearchText.Fold`: case and accents ignored).
 5. **Scope**: combo box. "Around the map position" or "Whole world, by name".
-6. **Range**: numeric field, in the GeoNames tab's distance unit, up to the ceiling (310 miles or
-   500 km).
+6. **Range**: one numeric field for every category, in the GeoNames tab's distance unit, up to
+   the ceiling (310 miles or 500 km). Remembered like the filters. Per-category ranges or saved
+   filter sets are a later idea, only if one range turns out not to be enough.
 7. **Direction**: combo box. All, N, NE, E, SE, S, SW, W, NW (45° sectors, true bearing from the
    map position).
 8. **Categories**: a tree with check boxes (`NativeAccessibleTreeView`, CORE-12/18). Built from
@@ -129,12 +134,37 @@ Applications key or Shift+F10:
 
 The Airports category stays GeoNames' airport list, with two columns filled from BA's navigation
 database where the airport is matched there: its ICAO code, and whether it is in the simulator.
-How a GeoNames airport is matched to a navigation-database airport (by distance, by name, or both)
-is to work out when built.
+A match is shown as likely, not certain.
 
-## Elevation (to test)
+Matching, measured 2026-11-05 (GeoNames dump of that day against the MSFS 2020 navigation
+database, 41,934 airports). Ground truth: GeoNames airports whose alternate names hold a 4-letter
+code that is a navigation-database ident within 5 km of the GeoNames point: 10,378 airports.
+(Another 313 rows list a code belonging to an airport far away, so GeoNames' codes are not
+reliable on their own.)
 
-Heights for terrain results, especially mountains, hills and islands. Two possible sources, neither
+- Distance only, nearest within 5 km: 0.58% wrong, none unmatched.
+- Within 5 km and sharing a name word (generic words like "airport" and "international" ignored),
+  main name only: 0.54% wrong, 7.2% unmatched.
+- The same, with GeoNames' alternate names as well: 0.55% wrong, 3.4% unmatched.
+
+Most of the remaining "wrong" ones are the same airport listed twice in the navigation database
+under an old and a new ident (Kuwait OKKK and OKBK, Dourados SBDO and SSDO, Mangshi ZPMS and
+ZPLX). A few are really another field close by (Brussels matched Melsbroek, Orly matched the
+Orly vertiport).
+
+Rule: if GeoNames lists a code that is a navigation-database ident within 5 km, use it. Otherwise,
+the nearest airport within 5 km that shares a name word, alternate names included. Distance alone
+is not used: it matches every GeoNames airfield to whatever is nearest, about 4,800 more matches
+the name check turns away. Coverage measured with 5 km and the main name only (the rule above
+matches a few more): 17,824 of 23,574 GeoNames airports, 6,175 of 13,466 airfields, 430 of 5,002
+heliports.
+
+This needs the alternate names (or at least the codes and names among them), which the database
+drops today: a new column and a schema bump (LOC-7), the same rebuild as the feature-type names.
+
+## Later: heights (not part of this work)
+
+Worth checking, but each is its own entry after this window is done. Heights for terrain results, especially mountains, hills and islands. Two possible sources, neither
 checked yet:
 
 - **GeoNames.** The dump has `elevation` (often empty for small places) and `dem` (a height
@@ -174,10 +204,14 @@ water depth) follow the same column; population is already stored, depth is not 
 
 ## Open questions
 
-- The GeoNames tab's ranges. Nearby range feeds Output C, the area line and Volanta's traffic
-  places, and Major Cities range feeds Major Cities and Volanta, so both stay. Regional range is
-  used only by Cardinal Directions and goes with it. Landmarks range is used only by today's
-  window boxes; the window's own range field replaces it. Possible: one range per category in the
-  window (longer for airports), instead of one field.
-- Readable names for feature types (ISL → "island"): check whether the database or the download
-  has GeoNames' feature-code names, or whether they need adding.
+- Readable names for feature types (ISL → "island"). Checked: the database keeps only the codes
+  (`feature_code` table: id and code), and the download fetches `allCountries.zip`,
+  `countryInfo.txt` and `admin1CodesASCII.txt`, not GeoNames' `featureCodes_en.txt`. Fetching that
+  file with the others and storing the names is a schema bump (LOC-7), so every database is rebuilt.
+
+## Settled
+
+- The GeoNames tab's ranges: Nearby range (Output C, the area line, Volanta's traffic places) and
+  Major Cities range (Major Cities, Volanta) stay. Regional range goes with Cardinal Directions,
+  its only user. Landmarks range, used only by today's window boxes, is replaced by the window's
+  own range field.
