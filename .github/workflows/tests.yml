@@ -7,10 +7,9 @@ name: Tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  # Post-merge safety net: also run on direct pushes to main. The Fenix display channel's shared
-  # branch runs too, since its plans land by direct push with no pull request; plan 12 takes it out.
+  # Post-merge safety net: also run on direct pushes to main.
   push:
-    branches: [main, feat/fenix-display-channel]
+    branches: [main]
 
 # When a PR branch gets a new push, cancel the still-running test job for the
 # previous commit so only the latest commit's run counts. On push events
