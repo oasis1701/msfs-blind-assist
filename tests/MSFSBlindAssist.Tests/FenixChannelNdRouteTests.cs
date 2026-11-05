@@ -1,7 +1,7 @@
 // Characterization tests for the ND's route layer (FenixChannelNdRoute, the "Route" and "Terrain and weather" layers
 // of FenixChannelNdRows.Compose): the route, its markers, holds, edges and gaps, the temporary plan, the heading bug,
 // the rings, FIX INFO and the bottom right labels. The looks and rules are the measurements on 3.0.0.7613
-// (docs/fenix-channel/evidence/03-nd.md, sitting 1 Part B and sitting 2). Each test writes its own RemoteData bytes with
+// (evidence03-nd.md, sitting 1 Part B and sitting 2). Each test writes its own RemoteData bytes with
 // FenixChannelProtoWriter: the aircraft at 40 N 80 W heading 000 with no variation, so up on the screen is true north.
 
 using System.Globalization;

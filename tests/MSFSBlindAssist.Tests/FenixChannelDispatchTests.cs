@@ -1,20 +1,18 @@
 // Characterization tests for the Fenix display channel's key dispatch (FenixA320Definition.DisplayChannel.cs): which
 // feature owns each hotkey action, that TryChannelDisplayRead sends the keys of each owner to that owner's seam and to
 // no other, and the words of SpeakNotAvailable, which every seam says for a key whose display it cannot read. No sim
-// and no socket: the owner of an action is a pure function. The seams themselves have no implementation in this work
-// (each feature's plan implements one and tests it), and C# drops a call to an unimplemented partial method, so with
-// none implemented every channel key leaves `handled` false and carries on exactly as before: the display keys give
-// their AI read, ShowDCDU reaches MainForm's "only available on the A32NX and the Headwind A330" sentence, and the
-// others do nothing. That is checked in the sim.
+// and no socket: the owner of an action is a pure function. Each feature implements its seam in a partial of its own and
+// tests it there; a seam that leaves `handled` false lets the key carry on: a display key to its AI read, any other to
+// nothing.
 //
 // The contract: the five display keys (Alt+P, N, E, S, I), the six speed reads (Shift+1 to Shift+6), Ctrl+W, D,
 // Shift+D and the app-wide ShowDCDU each have exactly one owner, and every other action has none, so an action outside
 // that table never reaches a seam. TryChannelDisplayRead calls the seam of the action's owner with the action, the
 // context and its own `handled` by reference (so the seam's answer reaches HandleHotkeyAction), and no other seam. It
-// is a private partial method, and a call to a seam nothing implements is no call at all, so which seam each owner
-// reaches is pinned by reading the method's source. The seam runs inside RunChannelKeySeam: one that throws is reported
-// and leaves `handled` false, so the key carries on as it does with no feature (a display key to its AI read, ShowDCDU
-// to MainForm's sentence, any other key to nothing) and costs only itself. No seam can be made to throw from a test, so
+// is a private partial method, so which seam each owner reaches is pinned by reading the method's source. The seam runs
+// inside RunChannelKeySeam: one that throws is reported and leaves `handled` false, so the key carries on as it does with
+// no feature (a display key to its AI read, ShowDCDU to MainForm's sentence, any other key to nothing) and costs only
+// itself. No seam can be made to throw from a test, so
 // that helper is tested with seam calls of the tests' own, and that the dispatch goes through it is pinned by reading
 // its source too.
 

@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 /// <remarks>
 /// The reasons are worded to read after "not available, " in a window's status row and after the feature's name in
-/// the log: "field 125.2 has the wrong shape", "no speed limits", "unknown code 'd' in the ground speed line". Build
+/// the log: "field 125.2 has the wrong shape", "no speed limits", "unknown code 'k' in the ground speed line". Build
 /// a section with the factories, so a reason always has this wording. A section is ok only with a value as well as
 /// no problem, so a decoder that returns <c>default</c> by mistake fails closed: for a reference type that section is
 /// not ok, where it would otherwise read as ok with nothing in it. (A number or a flag has no null to check, and its
@@ -37,7 +37,7 @@ internal readonly record struct FenixChannelSection<T>(T? Value, string? Problem
 
     /// <summary>
     /// A line of channel text has a format letter the app does not know ([FNX-24]), in the wording the trust gate uses
-    /// ("unknown code 'd' in the ground speed line"). The caller names <paramref name="where"/> so that it reads after
+    /// ("unknown code 'k' in the ground speed line"). The caller names <paramref name="where"/> so that it reads after
     /// "the".
     /// </summary>
     public static FenixChannelSection<T> UnknownCode(char code, string where)

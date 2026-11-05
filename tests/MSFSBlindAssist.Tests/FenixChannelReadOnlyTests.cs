@@ -1,9 +1,9 @@
 // Characterization tests for FenixChannelFields and for the rule that keeps the Fenix display channel
 // client read-only (the gRPC service on 127.0.0.1:18083). Pure logic, plus one scan of the app's source.
 //
-// The service has calls that write values, run actions and hand out credentials next to the two that
-// read the displays. The client opens only the two read calls, by FenixChannelCall: no API takes a path.
-// These tests pin the two paths and scan the app's source, so a third path, or a second file that names
+// The service has calls that write values, run actions and hand out credentials next to the four that
+// read the displays. The client opens only the four read calls, by FenixChannelCall: no API takes a path.
+// These tests pin the four paths and scan the app's source, so a fifth path, or a second file that names
 // the service, fails a test instead of reaching a pilot's sim.
 
 using System.Text.RegularExpressions;
@@ -25,7 +25,7 @@ public class FenixChannelReadOnlyTests
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     [Fact]
-    public void PathOf_gives_the_two_allowed_paths()
+    public void PathOf_gives_the_four_allowed_paths()
     {
         Assert.Equal(DisplayDataPath, FenixChannelFields.PathOf(FenixChannelCall.DisplayData));
         Assert.Equal(EcamEntriesPath, FenixChannelFields.PathOf(FenixChannelCall.EcamEntries));
@@ -34,9 +34,9 @@ public class FenixChannelReadOnlyTests
     }
 
     [Fact]
-    public void There_are_exactly_two_calls_and_no_path_for_any_other_value()
+    public void There_are_exactly_four_calls_and_no_path_for_any_other_value()
     {
-        // A third call is a decision, not an edit: adding a member to the enum fails here first
+        // A fifth call is a decision, not an edit: adding a member to the enum fails here first
         // (docs/invariants/fenix-channel.md#fnx-21).
         Assert.Equal(
             new[]
@@ -66,7 +66,7 @@ public class FenixChannelReadOnlyTests
     }
 
     [Fact]
-    public void Only_the_two_allowed_call_paths_exist_in_the_app()
+    public void Only_the_four_allowed_call_paths_exist_in_the_app()
     {
         string root = ClaudeContextBudgetTests.RepoRoot();
         string app = Path.Combine(root, "MSFSBlindAssist");

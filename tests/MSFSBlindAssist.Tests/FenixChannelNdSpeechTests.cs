@@ -1,5 +1,5 @@
 // Characterization tests for FenixChannelNdSpeech (the ND speaks only the colors that tell something) and for the look
-// table's ColorTellsApart. The samples are the lines the sittings 1 and 2 measured (docs/fenix-channel/evidence/03-nd.md).
+// table's ColorTellsApart. The samples are the lines the sittings 1 and 2 measured (evidence03-nd.md).
 
 using MSFSBlindAssist.Services;
 
@@ -63,7 +63,7 @@ public class FenixChannelNdSpeechTests
         }
     }
 
-    // The lines the ND's fields sent in the three sittings (docs/fenix-channel/evidence/03-nd.md and the samples above):
+    // The lines the ND's fields sent in the three sittings (evidence03-nd.md and the samples above):
     // 163, 68, 72, 70, 76, 102.1, 102.2, 103 and 62.
     public static TheoryData<string> MeasuredLines => new()
     {

@@ -2,7 +2,7 @@
 // screen reader, in the ISIS's own layout (speed column, attitude, altitude column) and its own words where it draws
 // words, with plan 02's PFD words for what the PFD also shows. Pure logic: every state is built here.
 //
-// What the rows follow, measured on 3.0.0.7613 (2026-11-04, docs/fenix-channel/evidence/07-isis.md): the speed tape's
+// What the rows follow, measured on 3.0.0.7613 (2026-11-04, evidence07-isis.md): the speed tape's
 // floor is 30 kt; the Mach is on the wire only while the ISIS draws it (from 0.50 climbing until 0.45 descending), two
 // decimals with no leading zero; pitch is positive up and bank positive right; the deviations are positive right and above,
 // two dots full scale; the QNH is always hPa and the ISIS converts it to inches (two places) while 182.6 is clear; STD

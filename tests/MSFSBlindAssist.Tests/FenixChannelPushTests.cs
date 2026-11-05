@@ -279,11 +279,11 @@ public class FenixChannelPushTests
         Assert.Equal("no speed limits", missing.Problem);
         Assert.Null(missing.Value);
 
-        // The gate's wording for a letter it does not know ("unknown code 'd' in the ground speed line"): the
+        // The gate's wording for a letter it does not know ("unknown code 'k' in the ground speed line"): the
         // caller names where, so it reads after "the".
-        FenixChannelSection<int> unknown = FenixChannelSection<int>.UnknownCode('d', "ground speed line");
+        FenixChannelSection<int> unknown = FenixChannelSection<int>.UnknownCode('k', "ground speed line");
         Assert.False(unknown.IsOk);
-        Assert.Equal("unknown code 'd' in the ground speed line", unknown.Problem);
+        Assert.Equal("unknown code 'k' in the ground speed line", unknown.Problem);
         Assert.Equal(0, unknown.Value);
 
         // A decoder that returns default by mistake fails closed: no value is not ok, though it names no problem.
@@ -302,8 +302,8 @@ public class FenixChannelPushTests
             Assert.Equal("field 125.2 has the wrong shape", FenixChannelSection<int>.WrongShape("125.2").Problem);
             Assert.Equal("no speed limits", FenixChannelSection<int>.Missing("speed limits").Problem);
             Assert.Equal(
-                "unknown code 'd' in the ground speed line",
-                FenixChannelSection<int>.UnknownCode('d', "ground speed line").Problem);
+                "unknown code 'k' in the ground speed line",
+                FenixChannelSection<int>.UnknownCode('k', "ground speed line").Problem);
             return true;
         });
     }

@@ -1,5 +1,5 @@
 // D and Shift+D on recorded flights: sixteen pushes of the Fenix display channel, each kept here as a route table and
-// checked against the MCDU's figure of the same push (docs/fenix-channel/evidence/10-distances.md, "The recorded
+// checked against the MCDU's figure of the same push (evidence10-distances.md, "The recorded
 // cases"; GateNoRunways and GateDepartureRunwayOnly are from the gate check of 2026-11-05). The recordings themselves
 // stay local ([FNX-23]'s tools); a table is the part of one push the sums read: public waypoints, the aircraft's
 // position and the MCDU's figures.

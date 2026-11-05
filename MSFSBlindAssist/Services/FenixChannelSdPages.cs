@@ -37,14 +37,11 @@ internal readonly record struct FenixChannelSdPageContext(
 /// and ends them with the bottom line.
 /// </summary>
 /// <remarks>
-/// <para>One seam for each page. A page's composer is a <c>partial void</c> declared below with no implementation here,
-/// so C# drops the call to it, <see cref="Compose"/> gives no rows, and the window shows the page's name and the bottom
-/// line alone. Plan 06 implements the seams of APU, BLEED, PRESS, COND, CRUISE, DOOR, WHEEL and F/CTL, only once their
-/// in-sim checks have passed, and plan 05 those of ENG, ELEC, HYD, FUEL and STATUS, which land inert with their pages
-/// because its window's key is switched on separately. Each plan's are in a partial file of its own.</para>
-/// <para>The pages' field numbers are not here either. They belong to the plans that implement the pages: each declares
-/// the ones only its own pages read in a partial of <see cref="FenixChannelFields"/> of its own, and the ones several
-/// pages read are declared once, in FenixChannelFields.cs.</para>
+/// <para>One seam for each page. A page's composer is a <c>partial void</c> declared below, each implemented in a partial
+/// file of its own (<c>FenixChannelSdPage.Apu.cs</c> and the others).</para>
+/// <para>The pages' field numbers are not here either. Those only one group of pages reads are in a partial of
+/// <see cref="FenixChannelFields"/> (<c>FenixChannelFields.Sd.cs</c>, <c>FenixChannelFields.SdPages.cs</c>), and the
+/// ones several pages read are declared once, in FenixChannelFields.cs.</para>
 /// <para>Nothing here looks at trust. The window asks for a page only from a snapshot whose display is trusted
 /// ([FNX-22]; <c>FenixChannelDisplayForm.RowsFor</c> checks the verdict first). A composer only reads the context it is
 /// given and does no I/O, so a refresh stays short on the UI thread.</para>
@@ -74,9 +71,8 @@ internal static partial class FenixChannelSdPages
     /// still has a name to read.
     /// </summary>
     /// <remarks>
-    /// Pages 0 and 13 are among the others because nobody knows what they draw, and page 5 is CRUISE by inference: it
-    /// is the page the SD showed in cruise. Plan 05 may name pages 0 and 13 here, should its first task find them
-    /// drawn, and plan 06 confirms page 5 in flight.
+    /// Pages 0 and 13 are among the others because nobody knows what they draw. Page 5 is CRUISE, confirmed in cruise
+    /// on 3.0.0.7613 (2026-11-03).
     /// </remarks>
     public static string NameOf(int page) => page switch
     {
@@ -181,47 +177,45 @@ internal static partial class FenixChannelSdPages
     }
 
     // The page seams, one for each page, called by Compose and nowhere else. An implementation sets rows to the page's
-    // rows, or to FenixChannelRows.NotAvailable with the page's problem, and leaves it null to show no content. With no
-    // implementation C# drops the call, so rows stays null and the page shows as its name and the bottom line alone.
-    // Each plan implements its seams in a partial file of its own: plan 06 only once their in-sim checks have passed,
-    // and plan 05 with its pages, inert until its window's key is switched on.
+    // rows, or to FenixChannelRows.NotAvailable with the page's problem, and leaves it null to show no content, so the
+    // page shows as its name and the bottom line alone.
 
-    /// <summary>The APU page (1). Plan 06 implements it.</summary>
+    /// <summary>The APU page (1).</summary>
     static partial void ComposeApu(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The BLEED page (2). Plan 06 implements it.</summary>
+    /// <summary>The BLEED page (2).</summary>
     static partial void ComposeBleed(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The PRESS page (3). Plan 06 implements it.</summary>
+    /// <summary>The PRESS page (3).</summary>
     static partial void ComposePress(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The COND page (4). Plan 06 implements it.</summary>
+    /// <summary>The COND page (4).</summary>
     static partial void ComposeCond(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The CRUISE page (5). Plan 06 implements it.</summary>
+    /// <summary>The CRUISE page (5).</summary>
     static partial void ComposeCruise(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The DOOR page (6). Plan 06 implements it.</summary>
+    /// <summary>The DOOR page (6).</summary>
     static partial void ComposeDoor(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The WHEEL page (12). Plan 06 implements it.</summary>
+    /// <summary>The WHEEL page (12).</summary>
     static partial void ComposeWheel(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The F/CTL page (9). Plan 06 implements it.</summary>
+    /// <summary>The F/CTL page (9).</summary>
     static partial void ComposeFctl(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The ENG page (8). Plan 05 implements it.</summary>
+    /// <summary>The ENG page (8).</summary>
     static partial void ComposeEng(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The ELEC page (7). Plan 05 implements it.</summary>
+    /// <summary>The ELEC page (7).</summary>
     static partial void ComposeElec(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The HYD page (11). Plan 05 implements it.</summary>
+    /// <summary>The HYD page (11).</summary>
     static partial void ComposeHyd(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The FUEL page (10). Plan 05 implements it.</summary>
+    /// <summary>The FUEL page (10).</summary>
     static partial void ComposeFuel(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 
-    /// <summary>The STATUS page (14). Plan 05 implements it.</summary>
+    /// <summary>The STATUS page (14).</summary>
     static partial void ComposeStatus(FenixChannelSdPageContext ctx, ref FenixChannelRows? rows);
 }

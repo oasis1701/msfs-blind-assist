@@ -1,6 +1,6 @@
 // Characterization tests for the ND's map points (FenixChannelNdMapData and the "Map points" layer of
 // FenixChannelNdRows.Compose): the GetMapData reply's decoder, the check that the reply is the one the ND draws from,
-// and the rows. The numbers are the KATL gate sitting on 3.0.0.7613 (docs/fenix-channel/evidence/03-nd.md, Part C):
+// and the rows. The numbers are the KATL gate sitting on 3.0.0.7613 (evidence03-nd.md, Part C):
 // ROSE NAV at 160 reads a reply with range 80. Each test writes its own bytes with FenixChannelProtoWriter.
 
 using MSFSBlindAssist.Services;

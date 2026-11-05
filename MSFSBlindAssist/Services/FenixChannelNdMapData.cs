@@ -22,7 +22,7 @@ internal sealed record FenixNdMapPoints(
 /// <summary>
 /// The ND's map points (navaids, fixes, airports and NDBs) from the GetMapData reply: the decoder, the check that the
 /// reply is the one the ND draws from, and the rows. Measured on 3.0.0.7613 at the KATL gate
-/// (docs/fenix-channel/evidence/03-nd.md, Part C). The reply is used only under <see cref="Check"/> ([FNX-22]).
+/// (evidence03-nd.md, Part C). The reply is used only under <see cref="Check"/> ([FNX-22]).
 /// </summary>
 internal static class FenixChannelNdMapData
 {

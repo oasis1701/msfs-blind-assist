@@ -2,7 +2,7 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// One symbol the ND draws and the color the captures showed it in. <paramref name="Color"/> is null for a symbol the
-/// ND draws in no fixed color. <paramref name="Evidence"/> names the entry of docs/fenix-channel/evidence/03-nd.md that
+/// ND draws in no fixed color. <paramref name="Evidence"/> names the entry of evidence03-nd.md that
 /// measured it.
 /// </summary>
 internal sealed record FenixNdLookEntry(string Item, string Symbol, string? Color, string Evidence)

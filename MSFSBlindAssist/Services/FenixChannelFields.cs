@@ -106,8 +106,8 @@ internal static partial class FenixChannelFields
     /// </summary>
     public static class Efis
     {
-        public const int Mode = 1;                  // Mode: varint (EfisModeEnum), left out at its default: an absent field means that default mode (the ND feature measures which)
-        public const int MapOption = 2;             // MapOption: nested EfisMapOption (nullable)
+        public const int Mode = 1;                  // Mode: varint (EfisModeEnum), left out at its default: an absent field means ROSE NAV (2), and LS is sent as 0
+        public const int MapOption = 2;             // MapOption: varint (EfisMapOption, nullable: 0 CSTR to 4 ARPT), left out for none
         public const int ZoomSelection = 3;         // ZoomSelection: varint (int32), default 40; left out at 40, so an absent field means 40
         public const int Fpv = 4;                   // Fpv: varint (bool)
         public const int Meters = 5;                // Meters: varint (bool)

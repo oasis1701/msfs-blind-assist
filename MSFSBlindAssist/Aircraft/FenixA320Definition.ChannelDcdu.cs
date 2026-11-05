@@ -26,7 +26,7 @@ public partial class FenixA320Definition
 
     /// <summary>
     /// Whether the new-message call is muted: the Ctrl+M row is unticked, or the variant says there is no DCDU, which the
-    /// channel still reads trusted (measured in plan 01). An unread field (null) mutes nothing ([FNX-11]).
+    /// channel still reads trusted (measured 2026-11-03). An unread field (null) mutes nothing ([FNX-11]).
     /// </summary>
     internal static bool DcduCallMuted(FenixVariant variant, bool rowMuted) => rowMuted || variant.HasDcdu == false;
 

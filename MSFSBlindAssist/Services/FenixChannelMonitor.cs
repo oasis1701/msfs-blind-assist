@@ -533,7 +533,7 @@ internal sealed class FenixChannelMonitor : IDisposable
     }
 
     // A heartbeat with no entries in it. The stream sends a heartbeat to say it is alive and a list when its list
-    // changes, so a bare heartbeat is not a list that emptied (plan 09 measures what a heartbeat carries).
+    // changes, so a bare heartbeat is not a list that emptied.
     private static bool IsBareHeartbeat(FenixEcamEntries entries) => entries.Heartbeat && entries.Entries.Count == 0;
 
     // ---- The tick -------------------------------------------------------------------------------

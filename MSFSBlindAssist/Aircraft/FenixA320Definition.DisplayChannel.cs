@@ -12,11 +12,9 @@ namespace MSFSBlindAssist.Aircraft;
 // that, every 100 ms, runs the samplers: first the session notice's (SampleChannelNotice, below), then one for each
 // announcer (those are seams too, declared in FenixA320Definition.Hooks.cs). The host starts with the monitor and ends
 // before it, in the same Start and Stop: the announcers exist exactly while the channel does.
-// A seam nothing implements is no call at all, so a key whose feature has not landed does what it did before: a
-// display key gives its AI read, ShowDCDU reaches MainForm's "only available on the A32NX and the Headwind A330"
-// sentence, and the others do nothing. A key whose seam throws does the same. An announcer's sampler with no
-// implementation says nothing. The session notice is the one thing that speaks before any feature has landed, and it
-// is no seam: it says one line per Fenix load, when the channel cannot be used.
+// A key whose seam throws does what it would with no feature: a display key gives its AI read, ShowDCDU reaches
+// MainForm's sentence for other aircraft, and the others do nothing. The session notice is no seam: it says one line per
+// Fenix load, when the channel cannot be used.
 public partial class FenixA320Definition
 {
     // This instance's monitor: made by StartDisplayChannelBackground, disposed and cleared by Stop. Start, Stop,

@@ -1,7 +1,7 @@
 // Characterization tests for FenixChannelRouteDistances, the sums behind D (distance to the destination) and Shift+D
 // (distance to the top of descent) on the Fenix (Services/FenixChannelRouteDistances.cs). Every route is built here with
 // FenixChannelProtoWriter, the field numbers written out literally, and decoded with FenixChannelRoute.Decode, as the
-// decoder's own tests do. The rules are measured in docs/fenix-channel/evidence/10-distances.md ("The rules"); the
+// decoder's own tests do. The rules are measured in evidence10-distances.md ("The rules"); the
 // recorded flights are FenixChannelDistancesRecordedTests.
 //
 // The base route: runways KAAA 01 and KBBB 19 (2.1), so the destination is "KBBB19"; the line starts at (0, -1) with the

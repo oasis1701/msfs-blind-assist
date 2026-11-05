@@ -1,6 +1,6 @@
 // Characterization tests for FenixChannelNdRows (the ND window's composer), FenixChannelNdLook (the table of measured
 // looks) and FenixChannelNdForm (the window). Each test writes its own RemoteData bytes with FenixChannelProtoWriter and
-// reads them in a snapshot whose verdict is trusted, on connection 1. The rows follow docs/fenix-channel/evidence/03-nd.md.
+// reads them in a snapshot whose verdict is trusted, on connection 1. The rows follow evidence03-nd.md.
 
 using System.Windows.Forms;
 using MSFSBlindAssist.Forms;

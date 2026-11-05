@@ -11,7 +11,7 @@ namespace MSFSBlindAssist.Services;
 /// <para>What the ISIS also shares with the PFD reads in plan 02's PFD words (<see cref="FenixChannelPfdRows"/>): "Airspeed
 /// 251 knots", "Pitch 2.6 degrees up, bank 1 degree left", "Altitude 31012 feet, STD", "QNH 1016", "Localizer diamond 0.4
 /// dots right". What the ISIS alone draws has its own words: its bugs, "INIT 90 seconds" and "ATT 10 seconds".</para>
-/// <para>Measured on 3.0.0.7613 (2026-11-04, docs/fenix-channel/evidence/07-isis.md). While initializing (182.2) the ISIS
+/// <para>Measured on 3.0.0.7613 (2026-11-04, evidence07-isis.md). While initializing (182.2) the ISIS
 /// draws no tapes and no attitude, only the SPD, ATT and ALT flags, "INIT 90s", the baro and, on the LS scales, the LOC and
 /// G/S flags. A quick realignment (182.17 with 182.2 clear) draws "ATT 10s" in place of the attitude. The figures of 182.16
 /// and 182.17 are the lengths of their phases, never a countdown, so they are read as drawn. The bugs page (182.5)

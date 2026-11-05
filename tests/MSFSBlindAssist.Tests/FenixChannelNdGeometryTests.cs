@@ -1,5 +1,5 @@
 // Characterization tests for FenixChannelNdGeometry (where the ND draws a point). The numbers are the measurements on
-// 3.0.0.7613 (docs/fenix-channel/evidence/03-nd.md): the projection and the ROSE and PLAN clip at the KATL gate (sitting
+// 3.0.0.7613 (evidence03-nd.md): the projection and the ROSE and PLAN clip at the KATL gate (sitting
 // 1, Part B), the ARC clip and the route's edges from the flight (sitting 2, "Where the ND draws"); no test reads a file.
 
 using System.Globalization;

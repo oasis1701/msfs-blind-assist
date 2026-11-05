@@ -6,8 +6,8 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// What the ND's picture is drawn around: the mode, the range, the direction at the top of the screen and the point at
-/// its center (the aircraft in every mode but PLAN, the PLAN center in PLAN). Measured on 3.0.0.7613 (docs/fenix-channel/
-/// evidence/03-nd.md, Part B). It never needs a flight plan.
+/// its center (the aircraft in every mode but PLAN, the PLAN center in PLAN). Measured on 3.0.0.7613 (evidence
+/// 03-nd.md, Part B). It never needs a flight plan.
 /// </summary>
 /// <param name="Mode">"LS", "VOR", "NAV", "ARC" or "PLAN".</param>
 /// <param name="RangeNm">The selected range in nautical miles.</param>
@@ -139,7 +139,7 @@ internal static class FenixChannelNdGeometry
 
     /// <summary>
     /// Where the ND draws a traffic symbol, or null when it draws nothing there. Traffic has a clip of its own
-    /// (docs/fenix-channel/evidence/03-nd.md, sitting 2, "Traffic: the ring and the edges"): in ARC, ROSE NAV, ROSE LS
+    /// (evidence03-nd.md, sitting 2, "Traffic: the ring and the edges"): in ARC, ROSE NAV, ROSE LS
     /// and ROSE VOR a symbol is drawn while its center lies inside the window (0 &lt;= x &lt;= 752, 0 &lt;= y &lt;= 729), in
     /// ARC down to the window's bottom, with no half symbol at an edge and nothing under a drawn message box. Not the map
     /// points' clip: no top line at y 115, no 290 px circle, no ARC circle or bottom corners. PLAN is not measured: null.

@@ -1,12 +1,12 @@
-// Characterization tests for the Fenix display channel's five Ctrl+M rows (Services/FenixChannelAnnouncementRows.cs): the
-// FMA changes, the E/WD warnings, cautions and memos, and the DCDU messages. They are declared once, by plan 01, for the
-// announcers of later plans to check before they speak; the dialog (FenixMonitorManagerForm) shows them after the cabin's
-// four, an unticked row puts its key in FenixDisabledMonitorVariables, and a row's announcer asks IsMuted as it is about to
-// speak, so a mute applies at once. Every row starts on, the memos' included (spec row 63, Robin, 2026-11-04).
+// Characterization tests for the Fenix display channel's six Ctrl+M rows (Services/FenixChannelAnnouncementRows.cs): the
+// FMA changes, the E/WD warnings, cautions and memos, the DCDU messages and the ND messages. The dialog
+// (FenixMonitorManagerForm) shows them after the cabin's four, an unticked row puts its key in
+// FenixDisabledMonitorVariables, and a row's announcer asks IsMuted as it is about to speak, so a mute applies at once.
+// Every row starts on, the memos' included (spec row 63, Robin, 2026-11-04).
 //
 // The contract: the keys are stable (a saved mute names them) and no variable's key; the labels answer to no other row's, as
 // Ctrl+M is a flat list read by label; the rows come after the variable rows and the cabin rows, in the order FMA, warnings,
-// cautions, memos, DCDU. Nothing mutes a row but the pilot, on a fresh install and on a file that has run before alike, and
+// cautions, memos, DCDU, ND. Nothing mutes a row but the pilot, on a fresh install and on a file that has run before alike, and
 // a mute a file already holds stays.
 //
 // The first class is pure. The second reaches SettingsManager (Load seeds and saves; IsMuted reads Current), so it is in the
@@ -34,7 +34,7 @@ public class FenixChannelMonitorRowsTests
     };
 
     [Fact]
-    public void The_five_kinds_have_stable_keys_and_their_own_rows()
+    public void The_six_kinds_have_stable_keys_and_their_own_rows()
     {
         Assert.Equal("FENIX_CHANNEL_FMA", FenixChannelAnnouncementRows.FmaKey);
         Assert.Equal("FENIX_CHANNEL_WARNINGS", FenixChannelAnnouncementRows.WarningsKey);
@@ -49,13 +49,13 @@ public class FenixChannelMonitorRowsTests
     }
 
     [Fact]
-    public void The_five_channel_rows_follow_the_cabin_rows()
+    public void The_six_channel_rows_follow_the_cabin_rows()
     {
         var variables = new FenixA320Definition().GetVariables();
 
         List<MonitorRow> rows = FenixMonitorManagerForm.BuildRows(variables);
 
-        // The variable rows first, exactly as before, then the four cabin rows in their order, then the five channel rows
+        // The variable rows first, exactly as before, then the four cabin rows in their order, then the six channel rows
         // in theirs, appended after the sort as the cabin's are, and nothing after them.
         int variableCount = MonitorRowBuilder.Build(variables).Count;
         int cabinCount = FenixCabinAnnouncements.Rows.Count;
@@ -73,7 +73,7 @@ public class FenixChannelMonitorRowsTests
 
         // A saved mute names a key and Ctrl+M is one flat list: a key two rows share, or a variable's key, would put
         // the mute on both, and the variable's own announcement would go quiet with the row.
-        Assert.Equal(ChannelRows.Length, keys.Length);   // five keys to check, not an empty list that checks nothing
+        Assert.Equal(ChannelRows.Length, keys.Length);   // six keys to check, not an empty list that checks nothing
         Assert.Equal(keys.Length, keys.Distinct(StringComparer.Ordinal).Count());
         foreach (string key in keys)
         {
@@ -91,7 +91,7 @@ public class FenixChannelMonitorRowsTests
         string[] labels = FenixChannelAnnouncementRows.Rows.Select(row => row.Label).ToArray();
 
         // The pilot reads the list by label: no channel label may answer to another row's, the cabin's included.
-        Assert.Equal(ChannelRows.Length, labels.Length);   // five labels to check, not an empty list that checks nothing
+        Assert.Equal(ChannelRows.Length, labels.Length);   // six labels to check, not an empty list that checks nothing
         foreach (string label in labels)
         {
             Assert.DoesNotContain(others, other => string.Equals(other.Label, label, StringComparison.OrdinalIgnoreCase));

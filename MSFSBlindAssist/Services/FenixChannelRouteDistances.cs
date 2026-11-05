@@ -10,7 +10,7 @@ internal readonly record struct FenixDistanceAnswer(FenixDistanceKind Kind, doub
 
 /// <summary>
 /// D and Shift+D on the Fenix: the distance to the destination and to the top of descent, summed along the route the
-/// channel sends (<see cref="FenixChannelRoute"/>), as measured in flight (docs/fenix-channel/evidence/10-distances.md,
+/// channel sends (<see cref="FenixChannelRoute"/>), as measured in flight (evidence10-distances.md,
 /// "The rules"). The FMS's own figures are not on the channel, so the sum follows the route the ND draws.
 /// <para>
 /// The line: the elements of the active route that are vertices of the drawn line (<see cref="FenixChannelRoute.IsPath"/>)

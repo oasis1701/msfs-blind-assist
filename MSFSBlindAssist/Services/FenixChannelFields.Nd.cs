@@ -156,7 +156,7 @@ internal static partial class FenixChannelFields
 
     /// <summary>
     /// The values of <see cref="Efis.EfisSelectors"/>, one entry per NAV side (NAV 1 then NAV 2): what the side's
-    /// selector is set to (docs/fenix-channel/evidence/03-nd.md, sitting 1 Part A).
+    /// selector is set to (evidence03-nd.md, sitting 1 Part A).
     /// </summary>
     public static class EfisSelectorValue
     {
@@ -238,7 +238,7 @@ internal static partial class FenixChannelFields
     /// <summary>
     /// MapPoint, one point of <see cref="MapData"/>, and the FIX INFO fix (<see cref="FixRadial.Fix"/>, the same contract
     /// type). Member 4 is the tuned flag: 1 on the one navaid tuned, 3 on every other navaid and NDB, left out on
-    /// airports and fixes (docs/fenix-channel/evidence/03-nd.md, sitting 2, GetMapData in flight).
+    /// airports and fixes (evidence03-nd.md, sitting 2, GetMapData in flight).
     /// </summary>
     public static partial class MapPoint
     {

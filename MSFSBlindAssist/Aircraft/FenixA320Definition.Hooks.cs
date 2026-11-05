@@ -51,23 +51,21 @@ public partial class FenixA320Definition
 
     // The channel keys' seams, one per feature, each called only with the actions that feature owns
     // (ChannelKeyOwnerOf in FenixA320Definition.DisplayChannel.cs). An implementation sets handled when it answered
-    // the key and leaves it false to let the key carry on. With no implementation C# drops the call, so handled
-    // stays false and the key does what it did before the feature: a display key gives its AI read, ShowDCDU reaches
-    // MainForm's "only available on the A32NX and the Headwind A330" sentence, and the others do nothing. Each plan
-    // implements its seam in a partial of its own, and only once its in-sim checks pass.
-    /// <summary>The PFD's keys: Alt+P and the six speed reads, Shift+1 to Shift+6. Plan 02 implements it.</summary>
+    // the key and leaves it false to let the key carry on: a display key then gives its AI read, and the others do
+    // nothing. Each feature implements its seam in a partial of its own (FenixA320Definition.Channel<Feature>.cs).
+    /// <summary>The PFD's keys: Alt+P and the six speed reads, Shift+1 to Shift+6.</summary>
     partial void ChannelPfdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
-    /// <summary>The ND's keys: Alt+N and Ctrl+W. Plan 03 implements it.</summary>
+    /// <summary>The ND's keys: Alt+N and Ctrl+W.</summary>
     partial void ChannelNdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
-    /// <summary>The E/WD's key: Alt+E. Plan 04 implements it.</summary>
+    /// <summary>The E/WD's key: Alt+E.</summary>
     partial void ChannelEwdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
-    /// <summary>The SD's key: Alt+S. Plan 05 implements it.</summary>
+    /// <summary>The SD's key: Alt+S.</summary>
     partial void ChannelSdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
-    /// <summary>The ISIS's key: Alt+I. Plan 07 implements it.</summary>
+    /// <summary>The ISIS's key: Alt+I.</summary>
     partial void ChannelIsisKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
-    /// <summary>The distance keys: D and Shift+D. Plan 10 implements it.</summary>
+    /// <summary>The distance keys: D and Shift+D.</summary>
     partial void ChannelDistancesKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
-    /// <summary>The DCDU's key: the app-wide Ctrl+Shift+D, ShowDCDU. Plan 11 implements it.</summary>
+    /// <summary>The DCDU's key: the app-wide Ctrl+Shift+D, ShowDCDU.</summary>
     partial void ChannelDcduKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
 
     // The announcers' samplers, one per feature. The announcer host (Services/FenixChannelAnnouncers.cs: a timer on
@@ -76,15 +74,14 @@ public partial class FenixA320Definition
     // FenixA320Definition.DisplayChannel.cs). A sampler only reads a snapshot, compares it with what it saw last and
     // speaks what is due: no I/O, so a tick stays short; it checks its own Ctrl+M row before it speaks
     // (FenixChannelAnnouncementRows) and keeps tracking while the row is muted. One that throws is logged once and
-    // costs only itself. With no implementation C# drops the call, so the announcer is silent, which is how each one
-    // starts; each plan implements its own in a partial of its own, and only once its in-sim checks pass.
-    /// <summary>The FMA announcer's sampler: a changed mode column. Plan 08 implements it.</summary>
+    // costs only itself. Each feature implements its own in a partial of its own.
+    /// <summary>The FMA announcer's sampler: a changed mode column.</summary>
     partial void SampleChannelFma(ChannelAnnounceContext ctx);
-    /// <summary>The E/WD alert announcer's sampler: warnings, cautions and memos. Plan 09 implements it.</summary>
+    /// <summary>The E/WD alert announcer's sampler: warnings, cautions and memos.</summary>
     partial void SampleChannelEwdAlerts(ChannelAnnounceContext ctx);
-    /// <summary>The DCDU announcer's sampler: a new message. Plan 11 implements it.</summary>
+    /// <summary>The DCDU announcer's sampler: a new message.</summary>
     partial void SampleChannelDcdu(ChannelAnnounceContext ctx);
-    /// <summary>The ND messages announcer's sampler: new and gone ND messages, the active waypoint. Plan 03 implements it.</summary>
+    /// <summary>The ND messages announcer's sampler: new and gone ND messages, the active waypoint.</summary>
     partial void SampleChannelNd(ChannelAnnounceContext ctx);
 
     private bool _backgroundStarted;

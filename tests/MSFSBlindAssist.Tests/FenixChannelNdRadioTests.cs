@@ -1,6 +1,6 @@
 // Characterization tests for FenixChannelNdRadio (the ND's radio layers: ROSE LS and ROSE VOR top right blocks, the course
 // pointer and deviations, the bearing pointers, the bottom corners and their flags). Each test writes its own RemoteData
-// bytes with FenixChannelProtoWriter. The samples are the fields as sent in docs/fenix-channel/evidence/03-nd.md,
+// bytes with FenixChannelProtoWriter. The samples are the fields as sent in evidence03-nd.md,
 // sitting 1 Part D and sitting 2 "the radio content and traffic".
 
 using MSFSBlindAssist.Services;

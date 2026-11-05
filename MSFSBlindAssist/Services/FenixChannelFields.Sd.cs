@@ -2,7 +2,7 @@ namespace MSFSBlindAssist.Services;
 
 // The fields of the SD window (the lower ECAM): the part of RemoteData the SD feature alone reads, and the messages
 // nested in it. The ELEC, HYD and FUEL pages and the STATUS text and bottom line all read these; the engines (129),
-// the fuel used (134.13), the weight unit (154), the APU (24) and the valve states are declared by plan 01 in
+// the fuel used (134.13), the weight unit (154), the APU (24) and the valve states are declared in
 // FenixChannelFields.cs, and are not repeated here. Every nested class is partial, so that a feature that reads
 // another member of the same message adds it from a file of its own and does not declare the message again.
 internal static partial class FenixChannelFields

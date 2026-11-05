@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.Services;
 /// VOR 1 / VOR 2 / ADF 1 / ADF 2 bearing pointers, and the two bottom corners with their flags. Two layers, because
 /// the glass draws them in two places: <see cref="Rows"/> (the top right, the center, the right side and the pointers,
 /// first in the ND window) and <see cref="CornerRows"/> (the bottom corners, after the map). Measured on 3.0.0.7613
-/// (docs/fenix-channel/evidence/03-nd.md, sitting 1 Part D and sitting 2, "the radio content"). Only what the glass
+/// (evidence03-nd.md, sitting 1 Part D and sitting 2, "the radio content"). Only what the glass
 /// draws is listed; every number is invariant-culture; a color is spoken from the channel's letters or a
 /// <see cref="FenixChannelNdLook"/> entry, and only where it tells something (<see cref="FenixChannelNdSpeech"/>).
 /// </summary>

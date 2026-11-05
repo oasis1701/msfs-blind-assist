@@ -17,7 +17,7 @@ internal sealed record FenixNdStatus(bool TrackLine, bool HeadingBug, bool Solid
 /// their constraints, the markers, holds, where the line leaves the screen and where it ends and starts again), the
 /// temporary plan, the heading bug, the track line, the cross-track error, the range rings and FIX INFO; and the
 /// bottom right label, a layer of its own. Only what the ND draws is listed (spec 2.4), each look from
-/// <see cref="FenixChannelNdLook"/> or the channel's color member. Measured on 3.0.0.7613 (docs/fenix-channel/evidence/
+/// <see cref="FenixChannelNdLook"/> or the channel's color member. Measured on 3.0.0.7613 (evidence
 /// 03-nd.md, sitting 1 Part B, sitting 2 and sitting 3). The missed approach is listed only while the ND draws it
 /// (44.1 = 1); the alternate and the go-around marker are not listed (Ruling 43: never seen drawn in flight).
 /// </summary>

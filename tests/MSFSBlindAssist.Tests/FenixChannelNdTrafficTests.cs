@@ -1,6 +1,6 @@
 // Characterization tests for FenixChannelNdTraffic (the ND's traffic: other and proximate targets, their relative altitude
 // and trend, the TCAS ring) and FenixChannelNdGeometry.PlaceTraffic (the traffic's clip). The numbers are the flight's on
-// 3.0.0.7613 (docs/fenix-channel/evidence/03-nd.md, sitting 2, "Traffic"). Each test writes its own RemoteData bytes with
+// 3.0.0.7613 (evidence03-nd.md, sitting 2, "Traffic"). Each test writes its own RemoteData bytes with
 // FenixChannelProtoWriter: the aircraft at (10, 20) heading north, so a target at 6 NM ahead is 0.1 degree north.
 
 using System.Globalization;

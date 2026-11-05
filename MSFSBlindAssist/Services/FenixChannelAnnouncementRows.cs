@@ -10,32 +10,30 @@ namespace MSFSBlindAssist.Services;
 /// row is muted, so unmuting replays nothing. The keys are stable (a saved mute names them) and are no variable's key.
 /// </summary>
 /// <remarks>
-/// All five rows are declared here, by the plan that built the announcer host, so that each announcing plan finds its
-/// row already in the dialog and only has to check it: the FMA's (plan 08), the E/WD alerts' (plan 09: warnings,
-/// cautions and memos) and the DCDU's (plan 11). Every row starts on: nothing seeds a mute for any of them.
+/// Every row starts on: nothing seeds a mute for any of them.
 /// </remarks>
 public static class FenixChannelAnnouncementRows
 {
-    /// <summary>The FMA announcer's row (plan 08).</summary>
+    /// <summary>The FMA announcer's row.</summary>
     public const string FmaKey = "FENIX_CHANNEL_FMA";
 
-    /// <summary>The E/WD alert announcer's warnings row (plan 09).</summary>
+    /// <summary>The E/WD alert announcer's warnings row.</summary>
     public const string WarningsKey = "FENIX_CHANNEL_WARNINGS";
 
-    /// <summary>The E/WD alert announcer's cautions row (plan 09).</summary>
+    /// <summary>The E/WD alert announcer's cautions row.</summary>
     public const string CautionsKey = "FENIX_CHANNEL_CAUTIONS";
 
-    /// <summary>The E/WD alert announcer's memos row (plan 09).</summary>
+    /// <summary>The E/WD alert announcer's memos row.</summary>
     public const string MemosKey = "FENIX_CHANNEL_MEMOS";
 
-    /// <summary>The DCDU announcer's row (plan 11).</summary>
+    /// <summary>The DCDU announcer's row.</summary>
     public const string DcduKey = "FENIX_CHANNEL_DCDU";
 
-    /// <summary>The ND messages announcer's row (plan 03).</summary>
+    /// <summary>The ND messages announcer's row.</summary>
     public const string NdKey = "FENIX_CHANNEL_ND";
 
     /// <summary>
-    /// The Ctrl+M rows (the ND's was added last), in this order; <c>FenixMonitorManagerForm</c> appends them after the cabin rows.
+    /// The Ctrl+M rows, in this order; <c>FenixMonitorManagerForm</c> appends them after the cabin rows.
     /// </summary>
     public static IReadOnlyList<MonitorRow> Rows { get; } = Array.AsReadOnly(new MonitorRow[]
     {

@@ -1,8 +1,8 @@
 namespace MSFSBlindAssist.Services;
 
-// The fields of the SD window's eight pages that plan 06 alone reads: the APU, BLEED, PRESS, COND, CRUISE, DOOR, WHEEL
-// and F/CTL pages. The APU message (24), the engines (129), the fuel used (134.13), the weight unit (154) and the valve
-// states are declared by plan 01 in FenixChannelFields.cs and are not repeated here. PneumaticState (151) is read by
+// The fields only these eight pages of the SD window read: the APU, BLEED, PRESS, COND, CRUISE, DOOR, WHEEL and F/CTL
+// pages. The APU message (24), the engines (129), the fuel used (134.13), the weight unit (154) and the valve states are
+// declared in FenixChannelFields.cs and are not repeated here. PneumaticState (151) is read by
 // APU, BLEED, PRESS, COND and CRUISE alike. A nested message is a class named for its contract type.
 internal static partial class FenixChannelFields
 {

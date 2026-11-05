@@ -5,7 +5,7 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// The ND's traffic: the targets the Fenix sends (field 5) drawn as white diamonds with a relative altitude label and a
-/// trend arrow, and the TCAS ring. Measured on 3.0.0.7613 (docs/fenix-channel/evidence/03-nd.md, sitting 2, "Traffic").
+/// trend arrow, and the TCAS ring. Measured on 3.0.0.7613 (evidence03-nd.md, sitting 2, "Traffic").
 /// Only what the glass draws is listed: no callsign, no count, no selector, standby or TA-only row (the lists are
 /// already filtered, and 103 carries "TA ONLY"). Every number is invariant-culture.
 /// </summary>
