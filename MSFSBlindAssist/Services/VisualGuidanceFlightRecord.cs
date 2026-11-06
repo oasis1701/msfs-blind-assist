@@ -6,12 +6,14 @@ namespace MSFSBlindAssist.Services;
 /// <summary>
 /// One visual guidance update as the flight recording writes it (VP-2). Pitch nose-up positive, bank
 /// right-positive (<c>StandardBank</c>, VG-7), cross-track + right of the centreline facing the
-/// runway; <paramref name="T"/> is seconds since <c>Initialize</c> on the manager's clock.
+/// runway; <paramref name="T"/> is seconds since <c>Initialize</c> on the manager's clock. Stage 5 of the
+/// redesign added the vertical cue's mode (Follow, Hold, Plan, Path, Flare), its target descent angle
+/// (degrees, + down) and the learned trim (pitch minus flight path).
 /// </summary>
 internal readonly record struct VisualGuidanceFrameRecord(double T, string Phase, double Lat, double Lon, double AltMslFt,
     double AglFt, double GsKt, double VsFpm, double TrackMagDeg, double HeadingMagDeg, double PitchDeg, double BankDeg,
     double AoaDeg, double DesiredPitchDeg, double DesiredBankDeg, double TargetFpm, double AltitudeErrorFt,
-    double CrossTrackNm, double DistanceNm);
+    string VerticalMode, double TargetDescentDeg, double TrimDeg, double CrossTrackNm, double DistanceNm);
 
 /// <summary>
 /// Formats the flight recording's lines: every visual guidance update, everything it spoke, and
@@ -22,8 +24,8 @@ internal readonly record struct VisualGuidanceFrameRecord(double T, string Phase
 /// Each line starts <c>VGREC</c> and holds space-separated <c>key=value</c> fields in the invariant
 /// culture; a spoken line's text comes last and runs to the end of the line. Precision is per field,
 /// so the analysis reproduces the harness's own measures: latitude and longitude 7 decimals, time 3,
-/// angles (pitch, bank, angle of attack and the two commands) 4, cross-track and distance in nautical
-/// miles 5, everything else 2.
+/// angles (pitch, bank, angle of attack, the two commands, the target descent angle and the trim) 4,
+/// cross-track and distance in nautical miles 5, everything else 2.
 /// </summary>
 internal static class VisualGuidanceFlightRecord
 {
@@ -53,6 +55,8 @@ internal static class VisualGuidanceFlightRecord
             .Append(" aoa=").Append(N(r.AoaDeg, "0.0000"))
             .Append(" dPitch=").Append(N(r.DesiredPitchDeg, "0.0000")).Append(" dBank=").Append(N(r.DesiredBankDeg, "0.0000"))
             .Append(" tFpm=").Append(N(r.TargetFpm, "0.00")).Append(" altErr=").Append(N(r.AltitudeErrorFt, "0.00"))
+            .Append(" vmode=").Append(Word(r.VerticalMode))
+            .Append(" tgtDesc=").Append(N(r.TargetDescentDeg, "0.0000")).Append(" trim=").Append(N(r.TrimDeg, "0.0000"))
             .Append(" xte=").Append(N(r.CrossTrackNm, "0.00000")).Append(" dist=").Append(N(r.DistanceNm, "0.00000"))
             .ToString();
 

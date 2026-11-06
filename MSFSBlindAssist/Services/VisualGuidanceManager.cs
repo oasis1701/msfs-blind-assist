@@ -10,7 +10,7 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// Manages visual landing guidance using dual audio tones.
-/// The DESIRED tone encodes the PID-commanded pitch (frequency, 200–800 Hz over the profile's
+/// The DESIRED tone encodes the commanded pitch (frequency, 200–800 Hz over the profile's
 /// TonePitchRangeDeg — ±6° by default, configured SYMMETRICALLY so the mapping stays one
 /// straight line, unlike the generator's own asymmetric −10°/+20° defaults which belong to hand
 /// fly) and commanded bank (stereo pan over ±5° by default). The CURRENT tone plays alongside it, mirroring
@@ -100,9 +100,14 @@ public class VisualGuidanceManager : IDisposable
     private double currentGroundSpeedKnots = 0.0;
     private double currentVerticalSpeedFPM = 0.0;
     private double currentPitch = 0.0;
-    private double? smoothedCurrentFPM = null;  // Smoothed vertical speed for FPM-based guidance
-    private double lastCalculatedTargetFPM = 0.0;  // Last calculated target FPM for hotkey announcement
-    private double lastCalculatedAltitudeError = 0.0;  // Last calculated altitude error for hotkey announcement (positive = high, negative = low)
+    private double lastCalculatedTargetFPM = 0.0;  // the target descent angle as a rate, for F and the record (0 or less)
+    private double lastCalculatedAltitudeError = 0.0;  // the height error against the path, for F and the record (positive = high, negative = low)
+
+    // The vertical path (the redesign's piece 4, stage 5). The cue is desired pitch = learned trim − the
+    // target descent angle (VG-25); the mode says which reference the target comes from.
+    private VisualGuidanceTrimLearner trimLearner = new(6.0, VisualGuidanceVerticalTuning.Default);
+    private VisualGuidanceVerticalMode verticalMode = VisualGuidanceVerticalMode.Follow;
+    private double lastTargetDescentDeg;   // degrees, + down
 
     // Real time (VG-20). ProcessUpdate runs on every sim frame, so every rate limit, smoothing
     // filter and derivative below runs on the measured frame time through VisualGuidanceTiming,
@@ -119,9 +124,7 @@ public class VisualGuidanceManager : IDisposable
     private const double CROSS_TRACK_RATE_WINDOW_S = 4.0;  // the design's 5 samples at 1 Hz
     private readonly VisualGuidanceWindowedRate crossTrackRateWindow = new(CROSS_TRACK_RATE_WINDOW_S);
 
-    // State tracking for derivative term and rate limiting (vertical)
-    private const double FPM_ERROR_RATE_WINDOW_S = 1.0;    // the design's interval between updates
-    private readonly VisualGuidanceWindowedRate fpmErrorRateWindow = new(FPM_ERROR_RATE_WINDOW_S);
+    // Rate limiting (vertical): the pitch commanded on the last update.
     private double previousDesiredPitch = 0.0;
 
     // Flare state tracking
@@ -189,16 +192,10 @@ public class VisualGuidanceManager : IDisposable
 
     // ILS glideslope angle — usually 3°, but published per-runway (LCY 5.5°, Aspen 6.59°,
     // Innsbruck 3.8°). Populated in Initialize() from runway.GlideslopeAngleDeg with a 3.0°
-    // fallback if the runway has no ILS or the navdata doesn't carry the angle. Used by the
-    // ideal-glidepath altitude, the natural-3°-descent-rate FPM target, the phase-capture
-    // deviation test, and the nominal-pitch baseline.
+    // fallback if the runway has no ILS or the navdata doesn't carry the angle. The vertical path's
+    // height, its angle, its 2° limit and the warnings' half degree all use it, never 3°.
     private const double DEFAULT_GLIDESLOPE_ANGLE_DEG = 3.0;
     private double glideslopeAngleDeg = DEFAULT_GLIDESLOPE_ANGLE_DEG;
-
-    // New vertical guidance constants
-    private const double GLIDESLOPE_LOCK_DISTANCE_NM = 1.0;  // Distance at which to lock to steady 3° angle
-    private const double GLIDESLOPE_GAIN = 2.0;              // Proportional gain: fpm correction per foot of deviation
-    private const double MAX_DESCENT_RATE_FPM = -1500.0;     // Maximum descent rate when high
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_TRACKING = 120.0;    // Cross-track error (NM) to bank for tracking (increased for faster convergence)
@@ -215,26 +212,14 @@ public class VisualGuidanceManager : IDisposable
     private const double ARC_MODE_EXIT_NM = 0.05;
 
     // Vertical guidance — aircraft-specific (set from VisualGuidanceProfile in Initialize).
-    // typicalApproachAoaDeg is now only a FALLBACK used when measured AoA is unavailable or
-    // outside the sanity band. Live AoA from SimConnect (INCIDENCE ALPHA) is preferred — it
-    // inherently encodes weight + flap + speed and makes the nominal-pitch baseline converge
-    // on whatever the airplane is actually trimmed for.
+    // typicalApproachAoaDeg is the trim the learner starts from until its first sample.
     private double typicalApproachAoaDeg = 6.0;
     private double maxPitchRateDegPerSec = 2.5;          // Cap on commanded pitch change rate (deg/sec)
 
-    // Live angle of attack (degrees, right-handed: positive = nose pitched above relative
-    // wind). Updated each frame from VISUAL_GUIDANCE_AOA. Smoothed with an EMA to remove
-    // sim/sensor jitter (gust-driven AoA wiggle would otherwise modulate the desired-tone
-    // frequency around the true trimmed value).
+    // Live angle of attack (degrees, SimConnect INCIDENCE ALPHA), for the flight record only: the
+    // vertical cue never uses it (VG-25). The old law built its nominal pitch on it, and a pilot
+    // pitching moved the command away from them.
     private double? cachedAoaDeg;
-    private double? smoothedAoaDeg;
-    private const double AOA_SMOOTHING_FACTOR_PER_SECOND = 0.7;  // Same characteristic as FPM smoothing
-    // Sanity band on the measured AoA. Stabilized-approach AoA sits in ~3–8° band; flare
-    // briefly spikes to ~8–10°. Outside [-5°, 20°] we treat the reading as a sim glitch and
-    // fall back to typicalApproachAoaDeg. -5° lower bound covers nose-low cruise descent;
-    // 20° upper bound is well past stall AoA for any transport airframe.
-    private const double AOA_MIN_VALID_DEG = -5.0;
-    private const double AOA_MAX_VALID_DEG = 20.0;
     // Glidepath/flare altitude calibration — see VisualGuidanceProfile for the full rationale.
     // glideslopeAltitudeBiasFt is ADDED to the ideal distance×tan(3°) glidepath so VG's
     // "on glideslope" matches the real ILS (which crosses the threshold at the ~50 ft TCH).
@@ -254,11 +239,6 @@ public class VisualGuidanceManager : IDisposable
     // VisualGuidanceProfile.FlareTargetPitchDeg overwrites it and is authoritative.
     private double flareTargetPitchDeg = 6.0;
     private const double CROSS_TRACK_RATE_SMOOTHING_PER_SECOND = 0.85;  // Exponential smoothing for cross-track rate, per second (strong filtering to prevent noise spikes)
-
-    // FPM-based vertical guidance constants
-    private const double FPM_SMOOTHING_FACTOR_PER_SECOND = 0.7;  // Exponential smoothing for current FPM, per second (moderate filtering)
-    private const double FPM_P_GAIN = 0.005;             // Pitch correction per FPM error (degrees per FPM)
-    private const double FPM_D_GAIN = 0.002;             // Pitch damping per FPM error rate (degrees per FPM/sec)
 
     public bool IsActive => isActive;
     public event EventHandler<bool>? VisualGuidanceActiveChanged;
@@ -310,6 +290,18 @@ public class VisualGuidanceManager : IDisposable
 
     /// <summary>VirtualPilot hook (VP-1): the decision's name (OnFinal, Joining, Vectoring, Pattern), "None" before it.</summary>
     internal string DecisionForHarness => joinPlan?.State.ToString() ?? "None";
+
+    /// <summary>
+    /// VirtualPilot hook (VP-1): the vertical path's six tuning numbers. The app never sets it; the
+    /// harness's `approach --vertical` sweeps them to pick the defaults.
+    /// </summary>
+    internal VisualGuidanceVerticalTuning VerticalTuningForHarness { get; init; } = VisualGuidanceVerticalTuning.Default;
+
+    /// <summary>VirtualPilot hook (VP-1): the vertical cue's mode on the last update (Follow, Hold, Plan, Path, Flare).</summary>
+    internal string VerticalModeForHarness => verticalMode.ToString();
+
+    /// <summary>VirtualPilot hook (VP-1): the target descent angle (degrees, + down) the vertical cue played on the last update.</summary>
+    internal double TargetDescentForHarness => lastTargetDescentDeg;
 
     /// <summary>SimConnect's pitch (radians, nose-down positive, Euler convention) in degrees nose-up positive. MainForm and VirtualPilot both convert through this.</summary>
     internal static double PitchDegreesFromSimConnect(double radians) => -(radians * 180.0 / Math.PI);
@@ -511,7 +503,6 @@ public class VisualGuidanceManager : IDisposable
         cachedHeading = null;
         cachedGroundTrack = null;
         cachedAoaDeg = null;
-        smoothedAoaDeg = null;
 
         // Reset the frame clock: the first update after activation has no frame time and no
         // previous command, so it is not rate-limited (VG-20).
@@ -524,10 +515,13 @@ public class VisualGuidanceManager : IDisposable
         smoothedCrossTrackRate = null;
         crossTrackRateWindow.Clear();
 
-        // Reset derivative term tracking (vertical)
-        fpmErrorRateWindow.Clear();
+        // The vertical path: a fresh trim learner from the profile's starting guess, and no target yet.
         previousDesiredPitch = 0.0;
-        smoothedCurrentFPM = null;
+        trimLearner = new VisualGuidanceTrimLearner(typicalApproachAoaDeg, VerticalTuningForHarness);
+        verticalMode = VisualGuidanceVerticalMode.Follow;
+        lastTargetDescentDeg = 0.0;
+        lastCalculatedTargetFPM = 0.0;
+        lastCalculatedAltitudeError = 0.0;
 
         // Reset flare state
         lastFlarePitch = 3.0;
@@ -788,10 +782,8 @@ public class VisualGuidanceManager : IDisposable
     public void UpdateBank(double bankDegrees) => cachedBank = bankDegrees;
 
     /// <summary>
-    /// Updates the cached angle of attack (degrees) from SimConnect's INCIDENCE ALPHA. Used
-    /// in <see cref="CalculateDesiredPitch"/> to bias the nominal pitch baseline. Smoothing
-    /// and validity gating are applied at consumption time (not here) so the raw cache stays
-    /// honest about whether a sample exists.
+    /// Updates the cached angle of attack (degrees) from SimConnect's INCIDENCE ALPHA, for the flight
+    /// record: the vertical cue never uses it (VG-25).
     /// </summary>
     public void UpdateAoA(double aoaDegrees) => cachedAoaDeg = aoaDegrees;
 
@@ -1006,6 +998,7 @@ public class VisualGuidanceManager : IDisposable
                 AoaDeg: cachedAoaDeg ?? double.NaN,
                 DesiredPitchDeg: desiredPitch, DesiredBankDeg: desiredBank,
                 TargetFpm: lastCalculatedTargetFPM, AltitudeErrorFt: lastCalculatedAltitudeError,
+                VerticalMode: verticalMode.ToString(), TargetDescentDeg: lastTargetDescentDeg, TrimDeg: trimLearner.TrimDeg,
                 CrossTrackNm: SignedCrossTrackNm(runway, lat, lon),
                 DistanceNm: NavigationCalculator.CalculateDistance(lat, lon, runway.StartLat, runway.StartLon))));
 
@@ -1586,193 +1579,69 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Calculates desired pitch angle for vertical guidance
+    /// The pitch the guidance asks for, nose up positive: the vertical path (the redesign's piece 4,
+    /// stage 5). Desired pitch = the learned trim (<see cref="VisualGuidanceTrimLearner"/>) − the target
+    /// descent angle, rate limited (VG-20, VG-25). The mode says where the target comes from:
+    /// <list type="bullet">
+    /// <item>Flare: the flare's fixed pitch, as before stage 5 (stage 6 replaces it).</item>
+    /// <item>Follow (deciding, joining, the pattern's downwind and base): the aircraft's own pitch, since
+    /// the altitude is the pilot's or ATC's there. Later tasks of stage 5 give joining its level hold and
+    /// the pattern its planned descent.</item>
+    /// <item>Path (final, and vectoring on its final leg): the runway's glide path angle plus a correction
+    /// that removes the height error over about 20 s, between level and the glide path angle + 2°
+    /// (VG-24, VG-26); under 60 ft of wheel height the glide path angle alone. The distance is along the
+    /// final course, not the straight line.</item>
+    /// </list>
     /// </summary>
     private double CalculateDesiredPitch(double lat, double lon, double agl, double altMSL)
     {
-        Log.Debug("VisualGuidance", $"CalculateDesiredPitch called: Phase={currentPhase}, AGL={agl:F0}ft, Runway={(runway != null ? "OK" : "NULL")}, GS={currentGroundSpeedKnots:F1}kt, VS={currentVerticalSpeedFPM:F0}fpm, CurPitch={currentPitch:F2}°");
+        if (runway == null) return 0.0;
+        var tuning = VerticalTuningForHarness;
 
-        if (runway == null)
-        {
-            Log.Debug("VisualGuidance", "Runway is NULL - returning 0.0");
-            return 0.0;
-        }
+        // The trim is learned on every update outside the flare and touchdown, whatever the mode.
+        if (currentPhase is not (GuidancePhase.Flare or GuidancePhase.Touchdown))
+            trimLearner.Update(currentPitch, currentVerticalSpeedFPM, currentGroundSpeedKnots, frameSeconds);
 
         if (currentPhase == GuidancePhase.Flare)
         {
-            // Simplified flare: Command constant +6° pitch
-            double targetPitch = flareTargetPitchDeg;
-
-            // Apply rate limiting for smooth transition from approach to flare (per second of frame time, VG-20)
-            targetPitch = RateLimited(lastFlarePitch, targetPitch, MAX_FLARE_PITCH_RATE);
-
-            lastFlarePitch = targetPitch;
-
-            Log.Debug("VisualGuidance", 
-                $"Flare: AGL={agl:F0}ft, Commanding pitch: {targetPitch:F1}°");
-
-            return targetPitch;
+            // The flare's fixed pitch, rate limited from the approach (per second of frame time, VG-20).
+            verticalMode = VisualGuidanceVerticalMode.Flare;
+            double flarePitch = RateLimited(lastFlarePitch, flareTargetPitchDeg, MAX_FLARE_PITCH_RATE);
+            lastFlarePitch = flarePitch;
+            return flarePitch;
         }
-        else if (currentPhase != GuidancePhase.NotStarted && currentPhase != GuidancePhase.Touchdown)
+        if (currentPhase is GuidancePhase.NotStarted or GuidancePhase.Touchdown)
+            return 0.0;
+
+        // The height error against the path, at the distance along the final course (+ above it).
+        double along = VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm;
+        double heightFt = altMSL - thresholdElevationMSL;
+        double error = heightFt - VisualGuidanceVertical.PathHeightFt(along, glideslopeAngleDeg, glideslopeAltitudeBiasFt);
+        lastCalculatedAltitudeError = error;
+        double trim = trimLearner.TrimDeg;
+
+        double desiredPitch;
+        if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining || OnPatternLeg)
         {
-            // New glideslope-based vertical guidance - enforces 3° glideslope to threshold
-
-            // Calculate direct distance to threshold
-            double distanceToThresholdNM = NavigationCalculator.CalculateDistance(
-                lat, lon, runway.StartLat, runway.StartLon);
-
-            // Get current AGL relative to threshold
-            double currentAGL = altMSL - thresholdElevationMSL;
-
-            // Calculate ideal altitude on 3° glideslope.
-            // A bare distance×tan(3°) path crosses the threshold at 0 ft — but a real ILS
-            // glideslope crosses it at the ~50 ft reference datum height (TCH), and VG's
-            // altitude is the SimConnect reference datum, which sits above the GS antenna.
-            // glideslopeAltitudeBiasFt (per-aircraft, see VisualGuidanceProfile) folds both
-            // terms in, so VG's "on glideslope" coincides with the real ILS path the
-            // autopilot flies — instead of a path one TCH too low, which previously biased
-            // the commanded vertical speed into commanding excess descent.
-            double distanceFt = distanceToThresholdNM * 6076.12;
-            double glideslopeAngleRad = glideslopeAngleDeg * Math.PI / 180.0;
-            double idealAltitudeAGL = distanceFt * Math.Tan(glideslopeAngleRad) + glideslopeAltitudeBiasFt;
-
-            // Calculate altitude error (positive = too high, negative = too low)
-            double altitudeError = currentAGL - idealAltitudeAGL;
-
-            // Apply exponential smoothing (per second, VG-20) to current FPM to reduce oscillation
-            double smoothedFPM = VisualGuidanceTiming.Smooth(smoothedCurrentFPM, currentVerticalSpeedFPM,
-                FPM_SMOOTHING_FACTOR_PER_SECOND, frameSeconds);
-            smoothedCurrentFPM = smoothedFPM;
-
-            // Calculate natural 3° descent rate based on groundspeed
-            // FPM = groundspeed (knots) × tan(angle) × 101.269 (conversion factor)
-            double natural3DegDescentRateFPM = -currentGroundSpeedKnots * Math.Tan(glideslopeAngleRad) * 101.269;
-
-            double targetFPM;
-
-            // Check if we're within 0.5 NM of threshold - lock to steady 3° angle
-            if (distanceToThresholdNM <= GLIDESLOPE_LOCK_DISTANCE_NM)
-            {
-                // LOCK MODE: Maintain steady 3° descent rate, no altitude corrections
-                targetFPM = natural3DegDescentRateFPM;
-
-                Log.Debug("VisualGuidance", 
-                    $"LOCK MODE: Dist={distanceToThresholdNM:F2}nm, " +
-                    $"Maintaining steady 3° descent: {targetFPM:F0}fpm");
-            }
-            else
-            {
-                // CORRECTION MODE: Proportional control on glideslope deviation
-                // Correction is proportional to altitude error, not distance/time dependent
-                // This provides smooth, natural convergence to the glideslope
-                double correctionRateFPM = -altitudeError * GLIDESLOPE_GAIN;
-                targetFPM = natural3DegDescentRateFPM + correctionRateFPM;
-
-                // Apply safety limits (never command climb, limit max descent). The clamp is
-                // dynamic: -1500 fpm is the typical-3°-approach safety ceiling, but at steep
-                // approaches (Aspen 6.59°, London City 5.5°) the natural rate can approach or
-                // exceed it. Allow up to 1.3× the natural rate (whichever is more negative)
-                // so the controller has headroom for catch-up corrections without clipping
-                // the legitimate per-runway descent profile.
-                double effectiveMaxDescent = Math.Min(MAX_DESCENT_RATE_FPM, natural3DegDescentRateFPM * 1.3);
-                targetFPM = Math.Clamp(targetFPM, effectiveMaxDescent, 0.0);
-
-                Log.Debug("VisualGuidance", 
-                    $"CORRECTION MODE: AltErr={altitudeError:F0}ft, " +
-                    $"Natural={natural3DegDescentRateFPM:F0}fpm, Correction={correctionRateFPM:F0}fpm, " +
-                    $"Target={targetFPM:F0}fpm, Dist={distanceToThresholdNM:F2}nm");
-            }
-
-            // Store for hotkey announcement
-            lastCalculatedTargetFPM = targetFPM;
-            lastCalculatedAltitudeError = altitudeError;
-
-            // Calculate FPM error (negative = need to descend more, positive = need to descend less)
-            double fpmError = targetFPM - smoothedFPM;
-
-            // FPM error rate for the derivative term, over FPM_ERROR_RATE_WINDOW_S (the design's
-            // interval between updates), not frame to frame: a per-frame difference divided by
-            // ~0.03 s magnified jitter about thirty times (VG-20). 0 until the window has a rate.
-            fpmErrorRateWindow.Add(lastUpdateUtc ?? ClockForHarness(), fpmError);
-            double fpmErrorRate = fpmErrorRateWindow.Rate ?? 0.0;
-
-            // Calculate nominal pitch for descent.
-            // Prefer LIVE angle of attack (SimConnect INCIDENCE ALPHA) over the static profile
-            // estimate: measured AoA inherently encodes weight + flap + speed, so the nominal
-            // converges on whatever the airplane is actually trimmed for. Fall back to the
-            // profile value when (a) we haven't received an AoA sample yet, or (b) the reading
-            // is outside the sanity band (sim glitches, on-ground oddities).
-            // Smooth the AoA with an EMA to suppress gust-driven jitter that would otherwise
-            // modulate the desired-tone frequency around the true trimmed value.
-            double effectiveAoaDeg;
-            if (cachedAoaDeg.HasValue &&
-                cachedAoaDeg.Value >= AOA_MIN_VALID_DEG &&
-                cachedAoaDeg.Value <= AOA_MAX_VALID_DEG)
-            {
-                smoothedAoaDeg = VisualGuidanceTiming.Smooth(smoothedAoaDeg, cachedAoaDeg.Value,
-                    AOA_SMOOTHING_FACTOR_PER_SECOND, frameSeconds);
-                effectiveAoaDeg = smoothedAoaDeg.Value;
-            }
-            else
-            {
-                // No valid measurement — use the per-aircraft estimate. Do NOT update
-                // smoothedAoaDeg; we want it to resume from the last good value when
-                // measurements come back.
-                effectiveAoaDeg = typicalApproachAoaDeg;
-            }
-            double nominalPitch = -glideslopeAngleDeg + effectiveAoaDeg;  // A320 default ≈ +3°; 777 ≈ +1.5°; LCY steep ≈ +0.5°
-
-            // PD controller on FPM error.
-            // Sign convention (verified): fpmError = targetFPM − actualFPM. Negative fpmError
-            // means actualFPM is more positive than target — the airplane is descending less
-            // than the target rate — so we need to descend MORE, which (with autothrust holding
-            // airspeed) means LESS pitch, i.e. a NEGATIVE correction. So proportionalTerm has
-            // the SAME sign as fpmError: positive coefficient on fpmError. Same logic for the
-            // derivative term: if fpmError is becoming more negative (we're falling further
-            // behind on descent), the rate is negative, and we want the correction to push
-            // pitch further negative — positive coefficient on the rate.
-            //
-            // The previous implementation had `-fpmError * gain` and `-fpmErrorRate * gain`,
-            // which produced wrong-direction guidance: when the airplane was HIGH on glideslope
-            // VG commanded MORE pitch (less descent — staying high). With autopilot active
-            // fpmError stays near zero and the wrong-direction correction was negligible, so
-            // the bug never manifested in autopilot tests; in manual flying it would steer the
-            // pilot away from the glideslope.
-            double proportionalTerm = fpmError * FPM_P_GAIN;
-            double derivativeTerm = fpmErrorRate * FPM_D_GAIN;
-
-            double rawDesiredPitch = nominalPitch + proportionalTerm + derivativeTerm;
-
-            // Pitch rate limiting - prevent sudden tone frequency jumps (per second of frame time, VG-20)
-            rawDesiredPitch = RateLimited(previousDesiredPitch, rawDesiredPitch, maxPitchRateDegPerSec);
-
-            // Clamp final command
-            double desiredPitch = Math.Clamp(rawDesiredPitch, -12.0, 12.0);
-
-            // Deciding, joining and the pattern's downwind and base: the altitude is the pilot's or ATC's, so
-            // the pitch tone sits on the aircraft's own pitch (the redesign's piece 4, Waiting), taken without
-            // a rate limit; on the downwind and base the law would aim at a 3° path far below and ask for a
-            // dive, until stage 5 plans the pattern's descent. The law above still runs, so its filters stay
-            // warm and F's numbers current, and it starts from the aircraft's pitch when final begins.
-            if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining || OnPatternLeg)
-                desiredPitch = currentPitch;
-
-            // Update for next iteration
-            previousDesiredPitch = desiredPitch;
-
-            Log.Debug("VisualGuidance", 
-                $"Vertical: Target={targetFPM:F0}fpm, Current={smoothedFPM:F0}fpm, Error={fpmError:F0}fpm, " +
-                $"AGL={currentAGL:F0}ft, IdealAGL={idealAltitudeAGL:F0}ft, AltErr={altitudeError:F0}ft, " +
-                $"Dist={distanceToThresholdNM:F2}nm, GS={currentGroundSpeedKnots:F0}kt, " +
-                $"P={proportionalTerm:F2}° D={derivativeTerm:F2}° → Pitch={desiredPitch:F1}°");
-
-            return desiredPitch;
+            // The aircraft's own pitch, taken without a rate limit: the target is whatever angle it flies.
+            verticalMode = VisualGuidanceVerticalMode.Follow;
+            desiredPitch = currentPitch;
+            lastTargetDescentDeg = trim - desiredPitch;
         }
         else
         {
-            // Level flight or slight descent
-            return 0.0;
+            verticalMode = VisualGuidanceVerticalMode.Path;
+            double wheelFt = heightFt - flareAltitudeBiasFt;
+            lastTargetDescentDeg = wheelFt <= tuning.CorrectionFloorWheelFt
+                ? glideslopeAngleDeg
+                : VisualGuidanceVertical.TargetDescentDeg(glideslopeAngleDeg, error, currentGroundSpeedKnots,
+                    tuning.CorrectionTimeConstantS, 0.0, glideslopeAngleDeg + tuning.PathLimitDeg);
+            desiredPitch = Math.Clamp(RateLimited(previousDesiredPitch, trim - lastTargetDescentDeg, maxPitchRateDegPerSec), -12.0, 12.0);
         }
+        // F and the record give the target as a descent rate.
+        lastCalculatedTargetFPM = -Math.Max(currentGroundSpeedKnots, 0) * Math.Tan(lastTargetDescentDeg * Math.PI / 180.0) * 101.269;
+        previousDesiredPitch = desiredPitch;
+        return desiredPitch;
     }
 
     /// <summary>

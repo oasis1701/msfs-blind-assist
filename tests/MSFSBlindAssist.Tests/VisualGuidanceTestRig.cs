@@ -54,13 +54,19 @@ internal sealed class VisualGuidanceTestRig
     /// <summary>What F would say now (<see cref="VisualGuidanceManager.GetStatusReadout"/>).</summary>
     public string Readout => _vg.GetStatusReadout();
 
+    /// <summary>The vertical cue's mode (Follow, Hold, Plan, Path, Flare).</summary>
+    public string VerticalMode => _vg.VerticalModeForHarness;
+
+    /// <summary>The target descent angle the vertical cue flies, degrees, + down.</summary>
+    public double TargetDescent => _vg.TargetDescentForHarness;
+
     /// <summary>
     /// alongNm back from the threshold, crossNm right of the centreline, heading and track course +
     /// headingRelDeg, at gsKt; bankDeg right wing down positive (fed to the manager as SimConnect's
-    /// left-positive bank). The aircraft's pitch is 2.0° nose up.
+    /// left-positive bank); pitchDeg nose up.
     /// </summary>
     public void Place(double alongNm, double crossNm, double headingRelDeg, double vsFpm = -742, double altOffsetFt = 0,
-        double aoaDeg = 5.0, double bankDeg = 0.0, double gsKt = 140)
+        double aoaDeg = 5.0, double bankDeg = 0.0, double gsKt = 140, double pitchDeg = 2.0)
     {
         static double Norm(double d) => (d % 360 + 360) % 360;
         // Past the threshold (alongNm negative) is ahead along the course: Project takes no negative distance.
@@ -76,7 +82,7 @@ internal sealed class VisualGuidanceTestRig
         _vg.UpdateLatitude(pos.Latitude); _vg.UpdateLongitude(pos.Longitude); _vg.UpdateAltitudeMSL(alt);
         _vg.UpdateHeading(heading); _vg.UpdateGroundSpeed(gsKt); _vg.UpdateVerticalSpeed(vsFpm);
         _vg.UpdateGroundTrack(heading);
-        _vg.UpdatePitch(VisualGuidanceManager.PitchDegreesFromSimConnect(-2.0 * Math.PI / 180));
+        _vg.UpdatePitch(VisualGuidanceManager.PitchDegreesFromSimConnect(-pitchDeg * Math.PI / 180));
         _vg.UpdateBank(VisualGuidanceManager.BankDegreesFromSimConnect(-bankDeg * Math.PI / 180));
         _vg.UpdateAoA(VisualGuidanceManager.AoaDegreesFromSimConnect(aoaDeg * Math.PI / 180));
         _vg.UpdateAGL(alt - Elev);

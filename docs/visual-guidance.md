@@ -132,7 +132,7 @@ Approach AoA, Vref reference, and the pitch/bank rate caps are aircraft-shaped �
 
 | Field | A320 default | PMDG 777 override | Purpose |
 |-------|-------------|-------------------|---------|
-| `TypicalApproachAoaDeg` | 6.0° | 4.5° | **Fallback only.** VG uses the live SimConnect `INCIDENCE ALPHA` reading (smoothed, sanity-banded `[-5°, 20°]`) for the nominal pitch baseline. This profile value is only used when measured AoA is unavailable or out of band. With live AoA, weight/flap/speed-driven AoA variation is handled automatically — no per-airframe estimate needed. |
+| `TypicalApproachAoaDeg` | 6.0° | 4.5° | The trim (pitch minus flight path) the vertical cue starts from until its first sample: the trim learner replaces it at the first update at 40 kt or more, so it stands for an update or two at most. |
 | `ReferenceVrefKnots` | 140 | 145 | Denominator in lateral airspeed-compensation scaler `sqrt(GS / Vref)`. |
 | `MaxPitchRateDegPerSec` | 2.5 | 2.0 | Cap on commanded-pitch change rate; heavier aircraft = slower authority. |
 | `MaxBankRateDegPerSec` | 3.0 | 3.0 | Cap on commanded-bank change rate. |
@@ -143,6 +143,7 @@ Approach AoA, Vref reference, and the pitch/bank rate caps are aircraft-shaped �
 | `TonePitchRangeDeg` | 6 | 10 | Pitch saturation. 777 widens to 10° (30 Hz/° matching slope) for gentler beat at small errors during a stabilized approach; A320 keeps the precision-oriented 6°. |
 | `MaxApproachBankDeg` | 25.0° | 25.0° | Largest bank the capture law, vectoring and the pattern ask for; with `MaxBankRateDegPerSec` and the ground speed it sizes the turns BA counts (vectoring's cut, the pattern's base and downwind). |
 | `MinimumFinalNm` | 6.0 | 6.0 | Shortest final BA joins (vectoring, the pattern), and the nearest point an ATC heading may meet final and still count as joining. The owner's starting value for airliners (2026-11-04), to be revisited after testing. |
+| `StableGateFt` | 1,000 | 1,000 | The height above the threshold by which the aircraft should be on the path (the airline gate). Light aircraft take about 300 (the owner, 2026-11-06). |
 
 ### Glidepath altitude calibration
 
@@ -223,21 +224,39 @@ it holds the intercept and asks for no turn; it turns in as the line comes near.
 Above 100 ft the track error uses the GPS ground track, so a crab into the wind is not corrected
 away; below 100 ft it uses the heading, to decrab.
 
-**Vertical (pitch)** (`CalculateDesiredPitch`): a target vertical speed is the runway's natural
-descent rate (ground speed × tan of the glide path angle) plus 2 fpm per foot of height error, never
-a climb and never more than `min(−1500, 1.3 × natural)`; inside 1 nm it is the natural rate alone.
-The desired pitch is the nominal pitch (the smoothed live angle of attack minus the glide path
-angle) + P on the vertical-speed error (0.005° per fpm) + D on that error's rate (0.002° per fpm/s).
-In the flare it is the profile's fixed flare pitch. While deciding, joining, and on the pattern's
-downwind and base, the desired pitch is the aircraft's own pitch: the altitude is ATC's or the pilot's
-there until the vertical path (stage 5 of the redesign) replaces this law.
+**Vertical (pitch)** (`CalculateDesiredPitch`, the vertical path, stage 5 of the redesign): the cue
+steers a flight path angle, not a vertical speed, the shape of FlyByWire's A320 glideslope track.
+Desired pitch = the learned trim − the target descent angle, rate limited at the profile's
+`MaxPitchRateDegPerSec`, within ±12°.
+
+- The learned trim (`VisualGuidanceTrimLearner`) is the aircraft's pitch minus its flight path angle
+  (atan(vertical speed / ground speed), smoothed over 1 s), smoothed over 6 s, so a push or a pull
+  barely moves it. The first update at 40 kt or more sets it; before that the profile's
+  `TypicalApproachAoaDeg` stands in. The live angle of attack is not used, nor the vertical speed's
+  rate of change (VG-25): the old law built on them moved the command away from a pilot who
+  followed it.
+- The mode says where the target descent angle comes from, and the flight recording has it per update
+  (`vmode`, VP-2):
+  - **Path** (final, and vectoring once on its final leg): the runway's glide path angle +
+    atan(height error / (20 s × ground speed)), from level up to the glide path angle + 2° (VG-24,
+    VG-26). The height error is against the path at the distance along the final course, not the
+    straight line. Below the path the cue asks for level flight until the path comes down to the
+    aircraft, then follows it. Under 60 ft of wheel height the correction stops and the cue holds the
+    glide path angle. A steep runway uses its own angle throughout (London City 5.5°).
+  - **Follow** (deciding, joining, the pattern's downwind and base): the aircraft's own pitch, since the
+    altitude is ATC's or the pilot's there.
+  - **Flare**: the profile's fixed flare pitch (stage 6 replaces the flare).
+
+The vertical-speed law it replaced (a target rate of the natural descent plus 2 fpm per foot, locked to
+the natural rate inside 1 nm, clamped at `min(−1500, 1.3 × natural)`, flown by a PD controller on the
+vertical speed around the live angle of attack) went in stage 5, with VG-16 and VG-17.
 
 Every limit, smoothing filter and derivative in both laws runs on the measured frame time (VG-20;
 see [Bank-rate / pitch-rate caps](#bank-rate--pitch-rate-caps)).
 
-## Current PID Parameters
+## Guidance constants
 
-Constants and instance fields in `VisualGuidanceManager.cs` (defaults shown — instance fields tagged `[profile]` are overridable per aircraft via `VisualGuidanceProfile`).
+Constants and instance fields in `VisualGuidanceManager.cs` and the pure classes beside it (defaults shown — instance fields tagged `[profile]` are overridable per aircraft via `VisualGuidanceProfile`).
 
 ### Lateral (Bank) Control
 
@@ -260,32 +279,31 @@ redesign (2026-11-04); the capture law above replaced them.
 
 ### Vertical (Pitch) Control
 
-The vertical path is **FPM-based** (target FPM derived from 3° glideslope + altitude-error correction, PD controller on FPM error). It is NOT a classic glideslope-deviation integral controller — the previous documentation in this section was stale.
+The vertical path (stage 5) steers a flight path angle: desired pitch = learned trim − target descent angle. The tuning numbers are angles and seconds, so the aircraft's own speed scales them and they are the same for every aircraft (the owner, 2026-11-06); they live in `VisualGuidanceVerticalTuning`, and the harness sweeps them with `approach --vertical name=value,...`.
 
 | Name | Value | Description |
 |------|-------|-------------|
-| `glideslopeAngleDeg` | per-runway (3.0° default) | Read from `ils.gs_pitch` via `Runway.GlideslopeAngleDeg`; falls back to 3° when navdata lacks the angle. London City = 5.5°, Aspen = 6.59°, Innsbruck = 3.8°. Feeds the ideal glidepath, the natural-descent-rate FPM target, the phase-capture deviation, and the nominal-pitch baseline. |
+| `glideslopeAngleDeg` | per-runway (3.0° default) | Read from `ils.gs_pitch` via `Runway.GlideslopeAngleDeg`; falls back to 3° when navdata lacks the angle. London City = 5.5°, Aspen = 6.59°, Innsbruck = 3.8°. The path's height, the target's feed-forward angle and its 2° limit all use it. |
 | `thresholdElevationMSL` | per-runway-end | Read from `runway_end.altitude` via `Runway.ThresholdElevation`; falls back to `airport.Altitude` when missing. Matters at airports with sloped runways. |
-| `GLIDESLOPE_GAIN` | 2.0 | Proportional: altitude error → FPM correction (FPM per ft) |
-| `GLIDESLOPE_LOCK_DISTANCE_NM` | 1.0 | Inside this distance, lock to steady 3° descent — no altitude correction |
-| `MAX_DESCENT_RATE_FPM` | -1500 | Safety clamp on commanded descent. Applied **dynamically** as `min(-1500, natural × 1.3)` so a legitimate steep-approach natural rate (Aspen 6.59° × 130 kt = ~-1521 fpm) is never clipped — the clamp always allows the natural rate plus correction headroom. |
-| `typicalApproachAoaDeg` `[profile]` | 6.0° | Nominal pitch = -3° + AoA. PMDG 777 overrides to 4.5°. |
+| `CorrectionTimeConstantS` | 20 s | The height error is removed over about this long: the correction is atan(error / (this × ground speed)). FlyByWire's glideslope uses 17 to 27 s |
+| `PathLimitDeg` | 2.0° | The target stays at most this steeper than the glide path angle; on the shallow side it stops at level (VG-26) |
+| `CorrectionFloorWheelFt` | 60 ft | Under this wheel height the correction stops and the target is the glide path angle (FlyByWire's) |
+| `TrimTimeConstantS` | 6 s | The trim learner's smoothing of pitch minus flight path |
+| `PathAngleTimeConstantS` | 1 s | The flight path angle's smoothing |
+| `VisualGuidanceVertical.MinGroundSpeedKt` | 40 kt | Below it the angles use 40 kt, and the trim learner skips the sample (a slew, a pause) |
+| `VisualGuidanceTrimLearner.MinValidDeg`, `MaxValidDeg` | −5°, 20° | A trim sample outside this band is a sim glitch and skipped |
+| `typicalApproachAoaDeg` `[profile]` | 6.0° | The trim the learner starts from until its first sample. PMDG 777 overrides to 4.5°. |
 | `maxPitchRateDegPerSec` `[profile]` | 2.5 | Cap on commanded pitch change rate (deg/sec), applied over the measured frame time |
 | `glideslopeAltitudeBiasFt` `[profile]` | 60 *(est.)* | Added to ideal glidepath so VG matches the real ILS (TCH + datum). PMDG 777 = 80 (measured). |
 | `flareAltitudeBiasFt` `[profile]` | 12 *(est.)* | Subtracted from measured altitude before flare/touchdown checks → true gear height. PMDG 777 = 30 (measured). |
 | `flareTriggerWheelHeightFt` `[profile]` | 30 | True gear height at which the flare cue announces. PMDG 777 = 40 (matches autopilot autoland). |
 | `TOUCHDOWN_ALTITUDE_FT` | 5.0 | Touchdown phase entry — true main-gear height (`wheelHeightAGL`) |
-| `FPM_P_GAIN` | 0.005 | Pitch correction per FPM error (deg per FPM) |
-| `FPM_D_GAIN` | 0.002 | Pitch damping per FPM/sec error rate |
-| `FPM_SMOOTHING_FACTOR_PER_SECOND` | 0.7 | Exponential smoothing of the raw VS reading, per second (α = 0.7^dt) |
-| `AOA_SMOOTHING_FACTOR_PER_SECOND` | 0.7 | Exponential smoothing of the live angle of attack, per second |
-| `FPM_ERROR_RATE_WINDOW_S` | 1.0 s | Time window the VS error's rate (the D term) is measured over |
 | `flareTargetPitchDeg` `[profile]` | 6.0° (A320) | Per-aircraft target pitch commanded in flare. PMDG 777 = 4.5°. |
 | `MAX_FLARE_PITCH_RATE` | 10 | Cap on pitch rate during flare (deg/sec). Was 1.5 in the 1 Hz design; on real time that took the cue 2.7 s to reach the flare pitch, after a jet's wheels touched, so it is 10 (about 0.4 s), measured in the harness to land as softly as before |
 
-### Pitch PID sign convention (bug history)
+### Vertical sign
 
-The pitch PID has **positive coefficients on `fpmError` / `fpmErrorRate`** — NOT the leading `-` that was historically there. Verified sign: with autothrust holding airspeed, MORE pitch ⇒ LESS descent. So negative `fpmError` (descending less than target ⇒ need more descent) calls for a NEGATIVE pitch correction ⇒ the correction has the SAME sign as `fpmError`. The old `-fpmError * gain` produced wrong-direction guidance that was masked by autopilot tests (tight tracking ⇒ `fpmError ≈ 0` ⇒ the wrong-sign correction was negligible) and would have steered a manually-flying pilot away from the glideslope. Do NOT reintroduce the leading minus.
+Above the reference (the path on final) means a larger target descent angle and a lower desired pitch (VG-24). A height error is + above the path, a descent angle + down, the glide path angle + (3.0): with autothrust holding the speed, less pitch is more descent. The old pitch PID once had this backwards (a leading minus, masked by autopilot tests that kept the error near zero) and would have steered a pilot away from the glideslope; the tests that pin the sign today are named in VG-24. If one fails, work out by hand which way the aircraft has to go; never flip the test.
 
 ## Tuning Guide
 
@@ -296,8 +314,8 @@ The pitch PID has **positive coefficients on `fpmError` / `fpmErrorRate`** — N
 | Slow to capture the centreline | Capture gain too low | Sweep `approach --capture-gain K` in the VirtualPilot harness before changing `DefaultCaptureGain` (VG-18) |
 | Overshoots centerline | Tracking gain too high or damping too low | Decrease `LATERAL_GAIN_TRACKING` or increase `LATERAL_RATE_DAMPING` |
 | Oscillates across centerline at short final | Bank rate cap too loose for the airframe | Lower `maxBankRateDegPerSec` in the airframe's `VisualGuidanceProfile` |
-| Sits 50–100 ft above glideslope and never converges | Vertical gain too low | Increase `GLIDESLOPE_GAIN` |
-| Tone frequency twitches around centre on still air | FPM smoothing too weak | Raise `FPM_SMOOTHING_FACTOR_PER_SECOND` toward 0.85 |
+| Sits off the path and converges slowly | Correction too slow | Sweep `approach --vertical CorrectionTimeConstantS=...` in the harness; watch `selfFeedback` and `pathOvershootFt` |
+| The pitch cue moves when the pilot pitches | The trim learner too quick | Sweep `TrimTimeConstantS`; the STEP runs' `selfFeedback` measures it |
 | Aircraft-specific: 777/747 pitch lag feels jerky | Pitch rate cap too tight or too loose | Tune `maxPitchRateDegPerSec` in the airframe profile |
 
 ### Tuning workflow
@@ -364,7 +382,7 @@ Guidance updates on every sim frame (the visual guidance data arrives per `SIM_F
 
 The VirtualPilot approach harness measured the change ([virtual-pilot.md](virtual-pilot.md), "Stage 2: real-time limits"): final tracking held, and with assumed sensor noise the pitch command's rate of change fell from 27.6°/s to 0.11°/s at 30 frames a second. One design number did not survive real time: the flare's 1.5°/s pitch limit made the flare cue arrive after touchdown, so it is now 10°/s (`MAX_FLARE_PITCH_RATE`).
 
-There is no integral-windup machinery to worry about today: the vertical path is FPM-based PD, and the lateral path uses rate damping rather than an explicit integrator at the precision-track stage. If a future contributor adds an integral term, document the windup strategy alongside it.
+There is no integral-windup machinery to worry about today: the vertical path is a path angle with a proportional height correction around a learned trim, and the lateral path uses rate damping rather than an explicit integrator at the precision-track stage. If a future contributor adds an integral term, document the windup strategy alongside it.
 
 ## Related Documentation
 

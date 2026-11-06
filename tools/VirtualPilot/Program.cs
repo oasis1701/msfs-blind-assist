@@ -16,7 +16,7 @@ using MSFSBlindAssist.Settings;
 //
 //   dotnet run --project tools/VirtualPilot -p:Platform=x64 -c Release -- <mode> [options]
 //     mode: landings | taxi | all | approach (visual guidance; --selftest, --scenario NAME, --trace NAME,
-//           --capture-gain K)
+//           --capture-gain K, --vertical name=value[,name=value...])
 //     --airports N          busiest N airports by taxi-path count (default 100)
 //     --icao A,B,C          explicit airport list (overrides --airports)
 //     --shard i/n           run only airports i, i+n, i+2n … (for parallel processes)
@@ -1443,6 +1443,7 @@ sealed class Options
     public (int i, int n)? Shard; public int TaxiPerAirport = 6; public string Out = ""; public string? Trace;
     public string? Scenario; public bool SelfTest; public string? Record;   // approach mode
     public double? CaptureGain;                                             // approach mode, stage 4 apps
+    public string? Vertical;                                                // approach mode, stage 5 apps: name=value[,name=value...]
     public static Options? Parse(string[] a)
     {
         if (a.Length == 0) { Console.WriteLine("usage: VirtualPilot landings|taxi|all [options] (see source header)"); return null; }
@@ -1460,7 +1461,9 @@ sealed class Options
                 case "--scenario": o.Scenario = a[++i]; break;
                 case "--selftest": o.SelfTest = true; break;
                 case "--record": o.Record = a[++i]; break;
-                case "--capture-gain": o.CaptureGain = double.Parse(a[++i], System.Globalization.CultureInfo.InvariantCulture); break;                default: Console.WriteLine($"unknown option {a[i]}"); return null;
+                case "--capture-gain": o.CaptureGain = double.Parse(a[++i], System.Globalization.CultureInfo.InvariantCulture); break;
+                case "--vertical": o.Vertical = a[++i]; break;
+                default: Console.WriteLine($"unknown option {a[i]}"); return null;
             }
         }
         if (o.Out == "") o.Out = $"virtualpilot_{o.Mode}{(o.Shard is { } s ? $"_{s.i}of{s.n}" : "")}.txt";

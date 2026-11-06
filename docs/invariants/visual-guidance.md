@@ -67,13 +67,13 @@ Corrected 2026-10-08: triangle and sine are the defaults of two user settings, n
 
 - `GlideslopeAltitudeBiasFt` and `FlareAltitudeBiasFt` are applied in different code paths (glideslope error vs. phase detection) and were measured separately — never collapse them into one shared constant. → [visual-guidance.md](../visual-guidance.md)
 
-## VG-16
+## VG-16 (retired: the descent clamp went with the vertical-speed law in stage 5; the path angle limit replaced it)
 
-- The `MAX_DESCENT_RATE_FPM` safety clamp must stay dynamic (`min(-1500, natural×1.3)`) so a legitimate steep-approach descent rate (e.g. a 5.5° ILS) is never clipped. → [visual-guidance.md](../visual-guidance.md)
+- Was: the `MAX_DESCENT_RATE_FPM` safety clamp must stay dynamic (`min(-1500, natural×1.3)`) so a legitimate steep-approach descent rate (e.g. a 5.5° ILS) is never clipped. Stage 5 of the visual guidance redesign (2026-11-06) replaced the vertical-speed law with a path angle: the target descent angle stays between level and the runway's own glide path angle + 2° (`VisualGuidanceVerticalTuning.PathLimitDeg`), so a steep runway's descent is never clipped (`VisualGuidanceVerticalTests.Steep_runway_uses_its_own_angle`).
 
-## VG-17
+## VG-17 (retired: the FPM PID went with the vertical-speed law in stage 5; VG-24 pins the vertical sign)
 
-- The pitch PID's `fpmError`/`fpmErrorRate` coefficients must stay POSITIVE (same sign as the error) — never reintroduce the old leading-minus; it produced wrong-direction guidance masked by tight-tracking autopilot tests. → [visual-guidance.md](../visual-guidance.md)
+- Was: the pitch PID's `fpmError`/`fpmErrorRate` coefficients must stay POSITIVE (same sign as the error); the old leading minus produced wrong-direction guidance masked by tight-tracking autopilot tests. The PID went in stage 5 of the visual guidance redesign (2026-11-06); VG-24 pins the sign of its replacement.
 
 ## VG-18
 
@@ -130,3 +130,21 @@ Corrected 2026-10-08: triangle and sine are the defaults of two user settings, n
 - The turn onto final comes whenever the track still meets final ahead of the threshold (`VisualGuidanceJoin.MeetsFinalAhead`), even when the crossing point has slipped inside the minimum final, which only decides the spoken "Heading does not cross final" and F's sentence. Gating the cue on the minimum final too (as first built) held the bank at 0 until 0.05 nm and then asked for a sudden steep turn, the missing-then-violent cue VG-18 exists to prevent (stage-4 checkpoint review; `A_join_that_drifts_inside_the_minimum_final_still_gets_its_turn`).
 - While joining before the turn, banked 5° or more, the bank callouts do not speak: the pilot is turning on purpose, for a new heading from ATC, and BA holds whatever heading they settle on, so "20 right" against that turn would be wrong (`Joining_does_not_call_against_a_deliberate_turn`). The tones still show the bank.
 - Pinned by `VisualGuidanceJoiningTests` (`Right_of_final_on_an_ATC_heading_holds_it`, `A_shallow_ATC_heading_is_never_steepened`, `A_heading_that_stops_crossing_is_held_and_joining_never_becomes_vectoring`, `Right_of_final_on_an_ATC_heading_turns_right_onto_final`, `Pressed_in_a_turn_decides_once_the_wings_are_level`), and on runway 36, where the course wraps through north, by `VisualGuidanceHarnessHookTests`. Measured in the VirtualPilot approach harness: the joining families' `joinHoldBankMaxDeg` and `leftJoining` ([virtual-pilot.md](../virtual-pilot.md), "Stage 4").
+
+## VG-24
+
+- Above the reference means a larger target descent angle and a lower desired pitch: on final the reference is the path, while vectoring and on the pattern BA's planned descent, while joining the held altitude. `VisualGuidanceVertical.TargetDescentDeg` adds the correction (+ steeper for + height error) to the feed-forward angle, and the cue is desired pitch = learned trim − target descent. → [visual-guidance.md](../visual-guidance.md)
+- Why: the sign is the one thing a vertical cue must never get wrong, and it was wrong once (VG-17, retired: the old PID's leading minus steered a pilot away from the glideslope, masked by tight-tracking autopilot tests). The redesign's spec ("Sign conventions") fixes it: height error + above, descent angle + down, the glide path angle + (3.0).
+- Pinned by `VisualGuidanceVerticalTests.Above_the_path_is_steeper` and `VisualGuidanceVerticalPathTests.Above_the_path_asks_for_less_pitch` (on final, 100 ft high: 1.21° less pitch at 140 kt), and in later stage-5 tasks by the joining hold's and the planned descent's own sign tests. If one fails, never flip the test: work out by hand which way the aircraft has to go.
+
+## VG-25
+
+- The desired pitch is the learned trim (`VisualGuidanceTrimLearner`: the aircraft's pitch minus its flight path angle, smoothed over about 6 s; the flight path angle atan(vertical speed / ground speed), smoothed over about 1 s) minus the target descent angle. It never uses the instantaneous vertical-speed derivative or the live angle of attack. → [visual-guidance.md](../visual-guidance.md)
+- Why: the old law was `desiredPitch = (−glideslope + live AoA) + 0.005 × (targetFPM − smoothedFPM) + 0.002 × d/dt(error)`, built from the vertical speed the pilot was changing. At 140 kt each degree of pitch changes the descent rate by about 250 fpm, so each degree the pilot pitched moved the command about 1.2° the other way: the pilot chased a target that came toward them and past them (the owner confirmed hearing it). The approach harness measured the jet's self-feedback at −1.52 after 10 s on the stage-1 app and −1.37 at stage 4; the path law reads about −0.1 (`docs/virtual-pilot.md`, "Stage 5").
+- The live AoA (`UpdateAoA`) is kept for the flight record only. `VisualGuidanceRealTimeTests.The_angle_of_attack_never_moves_the_cue` pins it; `VisualGuidanceVerticalPathTests` runs with a live AoA 2° off the trim, so a cue built on it would sit 2° high.
+
+## VG-26
+
+- On final and while vectoring (and on the pattern) the vertical cue never asks for a climb: below the path, or below BA's plan, the target descent is 0, level flight, until the path comes down to the aircraft, which then follows it (capture from below, as on an ILS). Only the joining level hold asks back up, within 2°, to the altitude it holds. → [visual-guidance.md](../visual-guidance.md)
+- Why: the spec gives both "limited to ±2° of the glide path angle" and "below the path, BA asks for level flight"; the stage-5 plan (decision 1) took level, so the 2° limit binds only on the steep side. A climb cue on final is what a pilot least expects, and being low is spoken instead ("Too low", stage 5).
+- Pinned by `VisualGuidanceVerticalTests.Below_the_path_is_level_not_a_climb` and `VisualGuidanceVerticalPathTests.Below_the_path_never_asks_for_a_climb`; measured in the approach harness as `maxTargetClimbDeg`, which `compare_approach.py` flags above 0.05 ("asks for a climb").

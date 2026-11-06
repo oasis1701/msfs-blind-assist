@@ -374,12 +374,12 @@ Each line starts `VGREC` and holds space-separated `key=value` fields in the inv
 | line | when | fields |
 |---|---|---|
 | `VGREC start` | Ctrl+V (`Initialize`) | `apt`, `rwy`, threshold `lat` and `lon`, course `crs` (true) and `crsMag`, threshold `elev`, glide path `gp`, `gsBias` and `flareBias` (the profile's glideslope and flare altitude biases) |
-| `VGREC f` | every update | `t` (seconds since Ctrl+V), `ph` (the phase), `lat`, `lon`, `alt` (MSL), `agl`, `gs`, `vs`, `trk` and `hdg` (magnetic), `pitch` (nose up +), `bank` (right +), `aoa`, the commands `dPitch` and `dBank`, the vertical law's target `tFpm` and height error `altErr` (+ high), cross-track `xte` (nm, + right of the centreline facing the runway) and straight-line `dist` (nm) to the threshold |
+| `VGREC f` | every update | `t` (seconds since Ctrl+V), `ph` (the phase), `lat`, `lon`, `alt` (MSL), `agl`, `gs`, `vs`, `trk` and `hdg` (magnetic), `pitch` (nose up +), `bank` (right +), `aoa`, the commands `dPitch` and `dBank`, the vertical cue's target as a rate `tFpm` and its height error against the path `altErr` (+ high), the vertical mode `vmode` (Follow, Hold, Plan, Path, Flare), its target descent angle `tgtDesc` (degrees, + down) and the learned trim `trim` (pitch minus flight path; the last three since stage 5), cross-track `xte` (nm, + right of the centreline facing the runway) and straight-line `dist` (nm) to the threshold |
 | `VGREC say` | everything visual guidance speaks | `t`, `imm` (1: it interrupted), `text` (last, to the end of the line) |
 | `VGREC stop` | visual guidance off | `t` |
 
 Latitude and longitude have 7 decimals, `t` 3, the angles (`pitch`, `bank`, `aoa`, `dPitch`,
-`dBank`) 4, `xte` and `dist` 5, everything else 2. The record holds what visual guidance read, so in
+`dBank`, `tgtDesc`, `trim`) 4, `xte` and `dist` 5, everything else 2. The record holds what visual guidance read, so in
 the harness's NOISE runs `vs`, `aoa` and `trk` carry the noise.
 
 `python tools/VirtualPilot/analyze_vg_flight.py RECORDING [--segment FROM,TO]` reads the file (with
@@ -398,8 +398,10 @@ course by default; use `--segment 3.0,0.3` for a light aircraft, as the harness 
 and for the whole approach `touchdownVsFpm`, the descent rate at the first frame whose wheels
 (`alt − elev − flareBias`) are at or below the runway. The harness stops a run at wheel contact and
 records no frame there, so when the last frame is above the runway but the next would reach it, that
-next frame is extrapolated from the last two; an approach that never got that low reads NA. Last,
-bank callouts a minute.
+next frame is extrapolated from the last two; an approach that never got that low reads NA. Then
+bank callouts a minute, and last the seconds the vertical cue spent in each mode with the learned trim
+at the end (`verticalModeS`, `trimDeg`; a recording from before stage 5 has no `vmode` and reads
+`none`).
 
 Checked against the harness on 2026-11-04, a recording of `--trace` against the results line the
 same run prints:

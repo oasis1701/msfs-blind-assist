@@ -59,16 +59,17 @@ public class VisualGuidanceRealTimeTests
         Assert.InRange(rig.Pitch, p0 - 1.25 - 0.05, p0 - 1.25 + 0.05);
     }
 
-    // The vertical speed steps 58 fpm deeper. With 0.7 per second, the smoothed value has moved
-    // 1 − 0.7^0.5 = 16.3 % of the step after 0.5 s at any update rate, so the command rises by
-    // P 0.005 × 58 × 0.163 = 0.047° plus D 0.002 × (the same 9.5 fpm over the 1 s window) = 0.019°.
-    // The step is small enough that the 2.5°/s pitch limit never binds: per-update smoothing
-    // (about 0.34° at 10 Hz, 0.40° at 30) would show.
+    // The vertical speed steps from 742 to 800 fpm (the flight path 3.00° to 3.23°) with the pitch held:
+    // the learned trim (pitch minus flight path) rises by 0.234°, through the flight path's 1 s smoothing
+    // and the trim's 6 s. After 6 s two cascaded lags have passed 1 − (6e^−1 − e^−6) / 5 = 55.9 % of it,
+    // 0.131°, and the cue (trim − target descent) rises by as much, at any update rate. The aircraft does
+    // not move, so the height error, and the target, stay put. (Before stage 5 this pinned the old law's
+    // 0.7-per-second vertical-speed smoothing.)
     [Theory]
     [InlineData(10)]
     [InlineData(30)]
     [InlineData(60)]
-    public void Vertical_speed_smoothing_has_one_time_constant_at_every_update_rate(int hz)
+    public void The_trim_learns_with_its_time_constants_at_every_update_rate(int hz)
     {
         var rig = new Rig();
         rig.Place(8, 0, 0);
@@ -76,17 +77,17 @@ public class VisualGuidanceRealTimeTests
         rig.FlyFor(2, hz);
         double p0 = rig.Pitch;
         rig.Place(8, 0, 0, vsFpm: -800);
-        rig.FlyFor(0.5, hz);
-        Assert.InRange(rig.Pitch - p0, 0.066 - 0.01, 0.066 + 0.01);
+        rig.FlyFor(6, hz);
+        Assert.InRange(rig.Pitch - p0, 0.131 - 0.005, 0.131 + 0.005);
     }
 
-    // The angle of attack steps 1° up. The nominal pitch follows the smoothed AoA, which has moved
-    // 1 − 0.7^0.5 = 0.163° after 0.5 s at any update rate (per-update smoothing: about 0.83° at 10 Hz).
+    // The angle of attack steps 1° up: the cue does not move (VG-25). The old law built its nominal pitch
+    // on the live AoA, and so moved with it.
     [Theory]
     [InlineData(10)]
     [InlineData(30)]
     [InlineData(60)]
-    public void Angle_of_attack_smoothing_has_one_time_constant_at_every_update_rate(int hz)
+    public void The_angle_of_attack_never_moves_the_cue(int hz)
     {
         var rig = new Rig();
         rig.Place(8, 0, 0);
@@ -94,8 +95,8 @@ public class VisualGuidanceRealTimeTests
         rig.FlyFor(2, hz);
         double p0 = rig.Pitch;
         rig.Place(8, 0, 0, aoaDeg: 6.0);
-        rig.FlyFor(0.5, hz);
-        Assert.InRange(rig.Pitch - p0, 0.163 - 0.01, 0.163 + 0.01);
+        rig.FlyFor(2, hz);
+        Assert.Equal(p0, rig.Pitch, 9);
     }
 
     // Still on the centreline for 5 s, then drifting right at 0.02 nm/s for 2 s. The precision

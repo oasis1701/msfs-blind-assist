@@ -43,6 +43,17 @@ static class ApproachRunner
             return 2;
         }
         CaptureGain = opt.CaptureGain;
+        if (opt.Vertical != null)
+        {
+            if (VerticalTuningHook == null)
+            {
+                Console.WriteLine("--vertical needs an app with VisualGuidanceManager.VerticalTuningForHarness (visual guidance stage 5)");
+                return 2;
+            }
+            VerticalTuning = BuildVerticalTuning(opt.Vertical, out string? error);
+            if (VerticalTuning == null) { Console.WriteLine(error); return 2; }
+        }
+        else VerticalTuning = null;
         if (opt.Record != null && opt.Trace == null && opt.Scenario == null)
         {
             Console.WriteLine("--record needs --trace or --scenario: one recording per run, not the whole matrix");
@@ -109,6 +120,41 @@ static class ApproachRunner
     internal static readonly System.Reflection.PropertyInfo? VerticalModeHook = typeof(VisualGuidanceManager).GetProperty("VerticalModeForHarness", Hidden);
     internal static readonly System.Reflection.PropertyInfo? TargetDescentHook = typeof(VisualGuidanceManager).GetProperty("TargetDescentForHarness", Hidden);
     private static readonly System.Reflection.PropertyInfo? StableGateProperty = typeof(VisualGuidanceProfile).GetProperty("StableGateFt");
+    internal static readonly System.Reflection.PropertyInfo? VerticalTuningHook = typeof(VisualGuidanceManager).GetProperty("VerticalTuningForHarness", Hidden);
+
+    /// <summary>--vertical's tuning (a <c>VisualGuidanceVerticalTuning</c>, by reflection), for the whole run; null leaves the app's default.</summary>
+    public static object? VerticalTuning { get; set; }
+
+    /// <summary>
+    /// The app's vertical tuning record with the named init properties set ("CorrectionTimeConstantS=27,
+    /// TrimTimeConstantS=4"), the others at their defaults; null with <paramref name="error"/> for an
+    /// unknown name or a value that is not a number.
+    /// </summary>
+    public static object? BuildVerticalTuning(string spec, out string? error)
+    {
+        error = null;
+        var type = VerticalTuningHook?.PropertyType;
+        if (type == null) { error = "the app has no vertical tuning"; return null; }
+        object tuning = Activator.CreateInstance(type, nonPublic: true)!;
+        var settable = type.GetProperties().Where(p => p.PropertyType == typeof(double) && p.CanWrite).ToDictionary(p => p.Name, StringComparer.Ordinal);
+        foreach (string pair in spec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            int eq = pair.IndexOf('=');
+            string name = eq > 0 ? pair[..eq].Trim() : pair;
+            if (!settable.TryGetValue(name, out var prop))
+            {
+                error = $"--vertical: no tuning number {name}; there are {string.Join(", ", settable.Keys)}";
+                return null;
+            }
+            if (eq < 0 || !double.TryParse(pair[(eq + 1)..], NumberStyles.Float, Inv, out double value))
+            {
+                error = $"--vertical: {pair} has no number";
+                return null;
+            }
+            prop.SetValue(tuning, value);
+        }
+        return tuning;
+    }
 
     /// <summary>The light runs' minimum final: the circuit-sized final the spec gives light aircraft.</summary>
     public const double LightMinimumFinalNm = 1.0;
@@ -181,6 +227,7 @@ static class ApproachRunner
             var vg = new VisualGuidanceManager(speech) { HeadlessForHarness = true };
             FlightRecordHook?.SetValue(vg, record ?? NoRecord);
             if (CaptureGain is double gain) CaptureGainHook?.SetValue(vg, gain);
+            if (VerticalTuning != null) VerticalTuningHook?.SetValue(vg, VerticalTuning);
             vg.Toggle();
             vg.Initialize(rwy.Runway, rwy.Airport, HandFlyWaveType.Triangle, 0.0, HandFlyWaveType.Sine, 0.0, false, profile);
 

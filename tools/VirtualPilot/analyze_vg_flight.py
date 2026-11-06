@@ -26,8 +26,11 @@ along the course, --segment to change it):
 and over the whole approach: touchdownVsFpm (the descent rate at the first frame whose wheel
 height, alt - elev - flareBias, is at or below 0; the harness ends a run at wheel contact and
 records no frame there, so when the last frame is above the runway but the next would reach it,
-that next frame is extrapolated from the last two; NA if the wheels never got that low) and bank
-callouts a minute. Numbers are printed in the invariant style, "12.3".
+that next frame is extrapolated from the last two; NA if the wheels never got that low), bank
+callouts a minute, and the seconds the vertical cue spent in each mode (Follow, Hold, Plan, Path,
+Flare; recordings from before stage 5 of the redesign have no vmode field and read "none"), with
+the learned trim (pitch minus flight path) at the end. Numbers are printed in the invariant style,
+"12.3".
 """
 import math
 import os
@@ -66,8 +69,24 @@ def parse_line(line):
     return rec
 
 
-def num(rec, key):
+def num(rec, key, default=None):
+    """A field as a number; a field an older recording lacks reads `default` when one is given."""
+    if default is not None and key not in rec:
+        return default
     return float(rec[key])
+
+
+VERTICAL_MODES = ('Follow', 'Hold', 'Plan', 'Path', 'Flare')
+
+
+def mode_seconds(frames):
+    """Seconds in each vertical mode: each frame counts until the next one. Recordings from before
+    stage 5 have no vmode field; their frames count as "none"."""
+    seconds = {}
+    for a, b in zip(frames, frames[1:]):
+        mode = a.get('vmode', 'none')
+        seconds[mode] = seconds.get(mode, 0.0) + max(0.0, num(b, 't') - num(a, 't'))
+    return seconds
 
 
 def wrap180(deg):
@@ -201,6 +220,12 @@ def analyze(app, seg_from, seg_to):
     bank = sum(1 for s in says if BANK_CALLOUT.match(s['text']))
     minutes = max(duration, 1e-9) / 60.0
     print(f'  bankCalloutsPerMin={fmt(bank / minutes, 2)} spokenLines={len(says)}')
+
+    seconds = mode_seconds(frames)
+    order = [m for m in VERTICAL_MODES if m in seconds] + sorted(m for m in seconds if m not in VERTICAL_MODES)
+    print('  verticalModeS: ' + (' '.join(f'{m}={fmt(seconds[m])}' for m in order) or 'none'))
+    trim = num(frames[-1], 'trim', float('nan'))
+    print(f'  trimDeg at the end={fmt(trim, 2)}')
 
 
 def main(argv):
