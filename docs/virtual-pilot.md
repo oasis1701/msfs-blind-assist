@@ -956,6 +956,18 @@ reach final about 1,300 ft high and the cue asks for the 2° steeper path at onc
 down about 6°, the flight path lags, pitch minus flight path dips, and the learned trim dips nearly 2°
 with it, so the cue overshoots the 5° for a few seconds.
 
+Limiting how far one sample may move the learned trim (±0.5° from its value, tried and reverted) passed
+E at 1,558 and 860 fpm with A to F and H still passing, but it would have the trim lag every real change
+for 10 to 20 s, and the owner pointed out that real changes are frequent on final: flaps 1 or 2 with the
+gear up 12 nm out on an A320, more flap steps on a 737, the gear, the speed coming back, and the light
+aircraft's hand-flown speed. The owner chose (2026-11-06) to leave the learner as it is and treat E on
+these two runs as a known limit, checked in the sim: the flight recording logs pitch, vertical speed and
+the learned trim every update, from which the aircraft's real flight-path response time can be measured.
+If the overshoot shows in the sim, the fix is to delay the pitch reading by that measured time so it
+lines up with the flight path, not a guessed per-aircraft number. The light runs that no longer touch
+down (G) all floated in the fixed flare at stage 4 too, coming down 3,215 to 6,640 ft along the runway;
+the flare is stage 6.
+
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
 4,857 landing runs, 1,960 taxis, 409 wrong turns.
