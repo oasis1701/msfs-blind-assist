@@ -465,7 +465,7 @@ Press Tab to move through the window. In order:
 
 On an item in the tree, the context menu has **Use for Output C**: from then on Output C names the nearest place of that kind instead of the nearest town, for example the nearest island. On **All places** it names the nearest place of any kind. **Output C back to the nearest town or village** undoes it.
 
-**Reset filters** puts the filters, search and range back to their defaults. The window remembers its filters, range, search and map position, even after BA restarts.
+**Reset filters** puts the filters, search and range back to their defaults. The window remembers its kinds of place, filters, range and map position, even after BA restarts. The search is not remembered: each time the window opens, the search box is empty and **Search where** is **Around the map position**.
 
 **Refreshing.** The window does not update by itself, so the list never moves while you read it. Press **F5**, or **Refresh**, to read the aircraft's position again; the list follows when the map position is the aircraft.
 

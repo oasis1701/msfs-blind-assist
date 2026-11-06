@@ -232,10 +232,9 @@ public class UserSettings
         public int MaxMajorCitiesToShow { get; set; } = 10;
 
         // The Location Info window (Shift+L) remembers its own filters between openings and sessions
-        // (owner, 2026-11-05). Its range is one field for every kind of place, in DistanceUnits.
+        // (owner, 2026-11-05), but never its search: it opens with an empty search around the map position
+        // (owner, 2026-11-06). Its range is one field for every kind of place, in DistanceUnits.
         public int LocationInfoRange { get; set; } = 30;
-        public bool LocationInfoWholeWorld { get; set; } = false;
-        public string LocationInfoSearch { get; set; } = "";
         // One of LocationPhrases' compass words ("northwest"), or empty for every direction.
         public string LocationInfoDirection { get; set; } = "";
         // Unticked kinds of place, as "Terrain:ISL" keys: a kind a newer database adds starts ticked.

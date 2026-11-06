@@ -15,8 +15,8 @@ namespace MSFSBlindAssist.Forms;
 /// From the top: "Where you are" (focused on opening, so the screen reader reads it; the window speaks
 /// nothing itself, LOC-8), the places as one table nearest first, and the filters behind a show/hide
 /// button. Everything is measured from the map position: the aircraft while "Map position follows the
-/// aircraft" is ticked, else a place picked with "Set as map position". The filters, range, search and
-/// map position are remembered between openings and sessions. Nothing refreshes by itself, so the list
+/// aircraft" is ticked, else a place picked with "Set as map position". The filters, range and map position
+/// are remembered between openings and sessions; the search is not: it opens empty, around the map position. Nothing refreshes by itself, so the list
 /// never moves under the pilot; F5 or Refresh reads the aircraft's position again. Design:
 /// docs/design/2026-11-05-location-info-redesign.md.
 /// </summary>
@@ -298,8 +298,9 @@ public partial class LocationInfoForm : Form
         _updatingControls = true;
         try
         {
-            _searchBox.Text = _settings.LocationInfoSearch;
-            _scopeCombo.SelectedIndex = _settings.LocationInfoWholeWorld ? 1 : 0;
+            // The search is never remembered: an empty search around the map position (owner, 2026-11-06).
+            _searchBox.Text = "";
+            _scopeCombo.SelectedIndex = 0;
             _rangeBox.Value = Math.Clamp(_settings.LocationInfoRange, (int)_rangeBox.Minimum, (int)_rangeBox.Maximum);
             int direction = PlaceFilter.Directions.ToList().IndexOf(_settings.LocationInfoDirection);
             _directionCombo.SelectedIndex = direction + 1;
@@ -312,8 +313,6 @@ public partial class LocationInfoForm : Form
 
     private void SaveFilterSettings()
     {
-        _settings.LocationInfoSearch = _searchBox.Text;
-        _settings.LocationInfoWholeWorld = WholeWorld;
         _settings.LocationInfoRange = (int)_rangeBox.Value;
         _settings.LocationInfoDirection = _directionCombo.SelectedIndex > 0 ? PlaceFilter.Directions[_directionCombo.SelectedIndex - 1] : "";
         _settings.LocationInfoHiddenTypes = HiddenTypes().ToList();
@@ -322,8 +321,6 @@ public partial class LocationInfoForm : Form
     private void ResetFilters()
     {
         var defaults = new UserSettings();
-        _settings.LocationInfoSearch = defaults.LocationInfoSearch;
-        _settings.LocationInfoWholeWorld = defaults.LocationInfoWholeWorld;
         _settings.LocationInfoRange = defaults.LocationInfoRange;
         _settings.LocationInfoDirection = defaults.LocationInfoDirection;
         _settings.LocationInfoHiddenTypes = defaults.LocationInfoHiddenTypes;

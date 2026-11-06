@@ -136,7 +136,8 @@ then sea (inside a named marine polygon) (LOC-6):
   are compared as they are and only hits folded) and keeps the nearest 2,000. Airports show the
   navigation database's ident when `AirportMatcher` finds them: a GeoNames-listed ident within 5 km,
   else the nearest within 5 km sharing a name word (0.55% wrong when measured, 2026-11-05). The
-  window's filters, range and map position live in `UserSettings.LocationInfo*`; "Use for Output C"
+  window's filters, range and map position live in `UserSettings.LocationInfo*`, never its search,
+  which opens empty around the map position (owner, 2026-11-06); "Use for Output C"
   sets `OutputCPlaceTypes`, which only a C press passes (`LocationQuerySettings.PlaceTypes`), never
   the periodic announcement. Nothing in the window refreshes by itself; F5 reads the aircraft again.
   Every range is capped at 310 miles or 500 km (the Coast Range at 1,000) where the lookups read it
