@@ -161,5 +161,13 @@ public class PlaceSearchTests
         string away = LocationPhrases.LocationInfoText(where, "Krokholmen", 20.0, 225, cities, false);
         Assert.Contains("\r\nMap position: Krokholmen, 23 miles southwest of the aircraft", away);
         Assert.Contains("Major cities around the map position:", away);
+
+        Assert.Contains("\r\nMap position: Krokholmen, where the aircraft is",
+            LocationPhrases.LocationInfoText(where, "Krokholmen", 0.0, 0, cities, false));
+        // The spot where the aircraft was when following was turned off has no name of its own.
+        Assert.Contains("\r\nMap position: the aircraft's position, not following it",
+            LocationPhrases.LocationInfoText(where, "", 0.0, 0, cities, false));
+        Assert.Contains("\r\nMap position: where the aircraft was, now 2.3 miles south of it",
+            LocationPhrases.LocationInfoText(where, "", 2.0, 180, cities, false));
     }
 }

@@ -211,9 +211,14 @@ internal static class LocationPhrases
     }
 
     /// <summary>
-    /// The Location Info window's first box: the aircraft's "Where you are" lines; when the map position is
-    /// not the aircraft, a line saying where it is ("Map position: Krokholmen, 23 miles northwest of the
-    /// aircraft"); then the major cities around the map position.
+    /// The Location Info window's first box: the aircraft's "Where you are" lines; when the map position does
+    /// not follow the aircraft, a line saying where it is; then the major cities around the map position.
+    /// <paramref name="mapName"/> is null while it follows the aircraft, empty for the spot where the aircraft
+    /// was when following was turned off, else the place picked. The line reads "Map position: Krokholmen,
+    /// 23 miles northwest of the aircraft" or "Map position: Krokholmen, where the aircraft is"; for the spot,
+    /// "Map position: where the aircraft was, now 2 miles south of it" or "Map position: the aircraft's
+    /// position, not following it". (Before 2026-11-06 the spot was named "Where the aircraft was" and read
+    /// "Where the aircraft was, at the aircraft".)
     /// </summary>
     internal static string LocationInfoText(WhereYouAre aircraft, string? mapName, double mapNmFromAircraft,
         double mapBearingFromAircraft, IReadOnlyList<NearbyPlace> majorCities, bool kilometres)
@@ -221,9 +226,12 @@ internal static class LocationPhrases
         var text = WhereYouAreText(aircraft, kilometres);
         if (mapName is not null)
         {
-            string where = ToUnit(mapNmFromAircraft, kilometres) < 0.05 ? "at the aircraft"
-                : DistanceAndDirection(mapNmFromAircraft, mapBearingFromAircraft, kilometres) + " of the aircraft";
-            text += "\r\nMap position: " + mapName + ", " + where;
+            bool atAircraft = ToUnit(mapNmFromAircraft, kilometres) < 0.05;
+            string away = DistanceAndDirection(mapNmFromAircraft, mapBearingFromAircraft, kilometres);
+            string line = mapName.Length == 0
+                ? atAircraft ? "the aircraft's position, not following it" : "where the aircraft was, now " + away + " of it"
+                : mapName + ", " + (atAircraft ? "where the aircraft is" : away + " of the aircraft");
+            text += "\r\nMap position: " + line;
         }
         if (majorCities.Count > 0)
             text += "\r\nMajor cities" + (mapName is null ? "" : " around the map position") + ":\r\n"

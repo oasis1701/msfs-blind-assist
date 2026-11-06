@@ -490,7 +490,7 @@ public partial class LocationInfoForm : Form
         {
             // Unticked by hand: the map position stays where the aircraft is now.
             _settings.LocationInfoFollowAircraft = false;
-            _settings.LocationInfoMapName = "Where the aircraft was";
+            _settings.LocationInfoMapName = ""; // LocationPhrases words it: "where the aircraft was"
             _settings.LocationInfoMapLatitude = _aircraftLat;
             _settings.LocationInfoMapLongitude = _aircraftLon;
         }
