@@ -43,6 +43,7 @@ public class AccessibleTableView : ListView
 {
     private const int WM_GETOBJECT = 0x003D;
     private const int WM_SETFOCUS = 0x0007;
+    private const int WM_CONTEXTMENU = 0x007B;
     private const int UiaRootObjectId = -25;
     private const int LVM_GETSUBITEMRECT = 0x1000 + 56;
     private const int LVM_SCROLL = 0x1000 + 20;
@@ -89,6 +90,20 @@ public class AccessibleTableView : ListView
             _sayPosition = true;
             int row = CurrentRow;
             if (row >= 0 && FocusedItem?.Index != row) Items[row].Focused = true;
+        }
+        if (m.Msg == WM_CONTEXTMENU && (long)m.LParam == -1 && ContextMenuStrip is { } menu)
+        {
+            // The Applications key or Shift+F10: the menu opens at the current cell. WinForms opens it at the
+            // control's middle and not at all when that falls outside the client area, which it did in a table
+            // squeezed to one row (Location Info with its filters shown, 2026-11-06).
+            var cell = CellBounds(CurrentRow);
+            var client = ClientRectangle;
+            var at = cell.IsEmpty
+                ? new Point(client.Left + 4, client.Top + 4)
+                : new Point(Math.Clamp(cell.Left + 4, client.Left, Math.Max(client.Left, client.Right - 1)),
+                            Math.Clamp(cell.Bottom, client.Top, Math.Max(client.Top, client.Bottom - 1)));
+            menu.Show(this, at);
+            return;
         }
         base.WndProc(ref m);
     }

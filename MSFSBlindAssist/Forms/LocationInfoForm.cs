@@ -539,7 +539,7 @@ public partial class LocationInfoForm : Form
         {
             if (world && folded.Length == 0)
             {
-                _places = Array.Empty<PlaceResult>();
+                SetPlaces(Array.Empty<PlaceResult>());
                 _loadedWorld = true;
                 _loadedWorldQuery = "";
                 _worldTotal = 0;
@@ -548,7 +548,7 @@ public partial class LocationInfoForm : Form
             {
                 var outcome = await Task.Run(() => _service.SearchWorld(folded, lat, lon, WorldSearchMax, cts.Token));
                 if (cts.IsCancellationRequested || IsDisposed) return;
-                _places = outcome?.Places ?? Array.Empty<PlaceResult>();
+                SetPlaces(outcome?.Places ?? Array.Empty<PlaceResult>());
                 _worldTotal = outcome?.TotalMatches ?? 0;
                 _loadedWorld = true;
                 _loadedWorldQuery = folded;
@@ -557,7 +557,7 @@ public partial class LocationInfoForm : Form
             {
                 var places = await Task.Run(() => _service.SearchAround(lat, lon, radiusKm, cts.Token));
                 if (cts.IsCancellationRequested || IsDisposed) return;
-                _places = places ?? Array.Empty<PlaceResult>();
+                SetPlaces(places ?? Array.Empty<PlaceResult>());
                 _loadedWorld = false;
                 _loadedRadiusKm = radiusKm;
             }
@@ -628,12 +628,26 @@ public partial class LocationInfoForm : Form
         UpdateWhereBox();
     }
 
+    /// <summary>New places replace the loaded ones. The shown rows index the old list, so they go with it, and the
+    /// selected place is remembered by its id: read through the old rows against the new list, it pointed past
+    /// its end, and the whole-world search and the scope change failed with an index out of range (2026-11-06).</summary>
+    private void SetPlaces(IReadOnlyList<PlaceResult> places)
+    {
+        _keepSelectedId = SelectedPlace?.Id ?? _keepSelectedId;
+        _places = places;
+        _shown = new List<int>();
+        _rows.Clear();
+    }
+
+    private int? _keepSelectedId;
+
     /// <summary>Filters the loaded places in memory and shows them, keeping the selected place selected.</summary>
     private void ApplyFilters()
     {
         if (_loading) return;
         SaveFilterSettings();
-        var selectedId = SelectedPlace?.Id;
+        var selectedId = SelectedPlace?.Id ?? _keepSelectedId;
+        _keepSelectedId = null;
         string? direction = _directionCombo.SelectedIndex > 0 ? PlaceFilter.Directions[_directionCombo.SelectedIndex - 1] : null;
         double? maxNm = WholeWorld ? null : RangeKm / LocationPhrases.KmPerNm;
         _shown = PlaceFilter.Apply(_places, MapLat, MapLon, HiddenTypes().ToHashSet(StringComparer.Ordinal),
