@@ -169,8 +169,9 @@ public partial class FenixA320Definition
             throw new InvalidOperationException("Fenix \"Main Instrument Panel\" has no Landing Gear to place Clock after.");
         list.Insert(i + 1, ClockPanel);
 
-        // A panel whose every control the loaded livery lacks is not listed (DCDU Left without a DCDU, ISIS
-        // with the round standby gauges), so the arrow keys through the panels list never stop on an empty panel. Built on
+        // A panel whose every control the loaded livery lacks is not listed (ISIS with the round standby gauges), so
+        // the arrow keys through the panels list never stop on an empty panel. The DCDU is no panel any more: a livery
+        // without one is refused by the window's way in (TryRefuseNoDcdu) and by IsFitted, not by this list. Built on
         // every call, never cached: the answer follows the variant as it is read, and an unread field hides
         // nothing ([FNX-11]). The section keys stay, so the sections list MainForm builds once never loses one.
         // GetPanelControls is the base class's cached dictionary, not rebuilt here.
@@ -211,7 +212,9 @@ public partial class FenixA320Definition
 
     /// <summary>
     /// True unless the variant's own field for this control says the airframe lacks it. An unread field
-    /// (null, Unknown) never hides anything; a key not listed below is always fitted.
+    /// (null, Unknown) never hides anything; a key not listed below is always fitted. The S_DCDU1_ arm hides no panel
+    /// control any more (the DCDU window replaced the "DCDU Left" panel): it guards the window's presses through
+    /// <see cref="TryRefuseNotFitted"/>. There is no first officer's DCDU control left to hide.
     /// </summary>
     internal static bool IsFitted(string varKey, FenixVariant variant)
     {
@@ -230,7 +233,6 @@ public partial class FenixA320Definition
             "S_OH_NAV_DATA_DISP" or "S_OH_NAV_SYS_DISP" => variant.HasGnadirs != false,
             "S_OH_NAV_IR1_SWITCH" or "S_OH_NAV_IR2_SWITCH" or "S_OH_NAV_IR3_SWITCH"
                 => variant.HasGnadirs != true,
-            "S_DCDU2_DIM_BRT" => variant.HasDcdu != false,
             "S_MIP_ISFD_BUGS" or "S_MIP_ISFD_LS" or "S_MIP_ISFD_PLUS" or "S_MIP_ISFD_MINUS"
                 or "S_MIP_ISFD_RST" or "E_MIP_ISFD_BARO_INC" or "E_MIP_ISFD_BARO_DEC"
                 or IsisBaroPushKey
@@ -257,6 +259,21 @@ public partial class FenixA320Definition
     {
         if (IsFitted(varKey, variant)) return false;
         announcer.AnnounceImmediate(NotFittedMessage);
+        return true;
+    }
+
+    internal const string NoDcduMessage = "This Fenix has no DCDU.";
+
+    /// <summary>
+    /// Speaks "This Fenix has no DCDU." and returns true when the variant says the airframe has none
+    /// (<see cref="FenixVariant.HasDcdu"/> false), for the DCDU window's way in, which is no panel control and so
+    /// has no key for <see cref="TryRefuseNotFitted"/>. A Fenix whose DCDU field is not read yet is silent and false:
+    /// an unread field hides nothing ([FNX-11]), so the window opens.
+    /// </summary>
+    internal static bool TryRefuseNoDcdu(FenixVariant variant, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (variant.HasDcdu != false) return false;
+        announcer.AnnounceImmediate(NoDcduMessage);
         return true;
     }
 

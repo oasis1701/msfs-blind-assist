@@ -129,7 +129,7 @@ public class SimVarDefinition
 
     /// <summary>
     /// Opt-in for a pushbutton whose press flips its own <see cref="StateVariable"/> light (the Fenix EFIS
-    /// FD and LS buttons: the light is the button's own "on" light). The panel relabels the button when the
+    /// FD, LS and map option buttons: the light is the button's own "on" light). The panel relabels the button when the
     /// light changes, so the screen reader already reads the button's new state; pressing it from the panel
     /// marks the light in MainForm's UI-set echo gate with the value the press should leave
     /// (<see cref="StateVariableAfterPress"/>), so the light's own announcement is not spoken after it
@@ -287,6 +287,15 @@ public class SimVarDefinition
     public double Scale { get; set; } = 1.0;
     public double Offset { get; set; } = 0.0;
     public string? HelpText { get; set; }  // Optional help text read by screen reader (overrides default AccessibleDescription)
+
+    /// <summary>
+    /// For a typed <c>_SET</c> field only: what the screen reader says about the field, in place of the default "Type a
+    /// value and press Enter to set". It is the reader's only cue that Enter applies the value, so it must say so. Null for
+    /// every field but one whose entry is not obvious (the Fenix pitch trim, in degrees). <see cref="HelpText"/> is not
+    /// used for a typed field: the MD-11's still says "press Set", for the Set button removed on 2026-10-18, and the PMDG
+    /// 737's say nothing of Enter.
+    /// </summary>
+    public string? EntryHelpText { get; set; }
 
     // MobiFlight WASM support properties
     public bool UseMobiFlight { get; set; }  // Flag to route through MobiFlight WASM

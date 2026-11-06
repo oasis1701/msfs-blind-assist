@@ -215,7 +215,7 @@ Every one of these can be muted in the Monitor Manager (Output Ctrl+M).
 
 ## Fenix A320 CEO {#airbus-fenix}
 
-The Fenix A320 is a payware A320 (the older "CEO" model) with a very deep systems simulation. Fenix v3 also flies as the A319 and the A321, with CFM or IAE engines, and the "Fenix A320 CEO" profile covers them all. BA gives you access to more than 300 switches and knobs, monitors over 470 lights, gauges and switch states, and reads both MCDUs. Its own Fenix windows (Input Ctrl+Shift+F) give you the Fenix's engine readings, the flight attendant panel, failures, documents and options. Because the Fenix draws its main displays in a way BA cannot read directly, the PFD, ND and ECAM screens are read with AI vision instead.
+The Fenix A320 is a payware A320 (the older "CEO" model) with a very deep systems simulation. Fenix v3 also flies as the A319 and the A321, with CFM or IAE engines, and the "Fenix A320 CEO" profile covers them all. BA gives you access to more than 300 switches and knobs, monitors over 470 lights, gauges and switch states, and reads both MCDUs. Its own Fenix windows (Input Ctrl+Shift+F) give you the Fenix's engine readings, the flight attendant panel, failures, documents and options. BA reads the Fenix's main displays, the PFD, navigation display, E/WD, SD, ISIS and DCDU, from the Fenix's own display data into live windows, announces FMA changes, warnings, cautions and memos as they happen, and uses AI vision when it cannot read a display directly.
 
 ### Before you fly {#before-you-fly-2}
 
@@ -223,7 +223,7 @@ You need:
 
 - Fenix v3, loaded and running in the simulator. Older Fenix versions (2.x) are no longer supported, so update the Fenix if you have not. The MCDU, the EFB and the Fenix windows all talk to the Fenix's own data service, which only runs while the aircraft is loaded.
 - The MobiFlight WASM module in your Community folder. BA works the switches through it, and turns, pushes and pulls the FCU and baro knobs through it too.
-- For reading the PFD, ND and ECAM displays: an AI provider set up with your own API key. See [AI Display Reading and Scene Description](core-concepts.md#ai-display-reading).
+- For the AI reads, which BA uses when it cannot read a display directly (see [Special windows](#special-windows-2)): an AI provider set up with your own API key. See [AI Display Reading and Scene Description](core-concepts.md#ai-display-reading).
 - For current navigation data: either your Navigraph account connected in the Fenix's own EFB, on the Settings app's Connections page (see [EFB](#efb-2) below), or a navigation data file you import yourself on the MCDU's DATA, A/C STATUS page.
 
 About a second after the aircraft has loaded, BA says which Fenix it is, for example *"Fenix A321, IAE engines, 2 extra tanks"*. The panels then offer only the controls that aircraft has (see below).
@@ -242,17 +242,16 @@ The Fenix has five sections. Some controls are only on some Fenix aircraft; the 
 **Pedestal**:
 
 - **Engines** (engine mode and both masters), **Weather Radar**, and **ECAM**: TO CONFIG, every page key, ALL, STS, both CLR keys, RCL, EMER CANC and the ECAM brightness controls.
-- **DCDU Left**, on liveries with a DCDU: brightness and the DCDU's keys. You can press them, but BA cannot read the DCDU screen on the Fenix.
-- **Flight Controls**: parking brake, speed brake, rudder trim (left, right and reset), elevator trim position, the flap lever, the thrust levers (left, right or both) and the A/THR and AP disconnect buttons for both sides.
+- **Flight Controls**: parking brake, speed brake, rudder trim (left, right and reset), pitch trim (type the trim in degrees as the MCDU shows it, for example 0.3 for UP 0.3 or -0.8 for DN 0.8, and press Enter; BA answers *"Pitch trim set to up 0.3"*), the flap lever, the thrust levers (left, right or both) and the A/THR and AP disconnect buttons for both sides.
 - **ATC TCAS**: TCAS and transponder modes, altitude reporting, traffic display, ident and the squawk code.
 - **Radio Management Panel (RMP)**: COM 1, 2 and 3 standby frequency and transfer, and every RMP's power and mode buttons (VHF, HF, NAV, VOR, ILS, GLS, ADF, BFO and AM).
 - **Audio Control Panel (ACP)**: the captain's volume knobs, transmit keys, reception switches (VHF 1 to 3, HF 1 and 2, interphone, cabin, VOR 1 and 2, marker and others), RESET, VOICE and the INT/RAD switch.
 
-**Main Instrument Panel**: **Auto Brakes** (Low, Medium, Max, brake fan), **Landing Gear** (gear lever and anti-skid), **Clock** (see below), **Switching**, **Console Floor Lights**, **ISIS** (on aircraft with the digital ISIS: its buttons, its baro knob and ISIS Baro Push, the knob's push), **GPWS/Terrain**, **Warnings/Messages** (master warning, master caution, ATC message and chronometer buttons for both sides), **Autoland**, **Main Instrument Lights** and **Audio** (loudspeakers).
+**Main Instrument Panel**: **Auto Brakes** (Low, Medium, Max, brake fan), **Landing Gear** (gear lever and anti-skid), **Clock** (see below), **Switching**, **Console Floor Lights**, **ISIS** (on aircraft with the digital ISIS: its buttons, its baro knob and ISIS Baro Push, the knob's push; Input Ctrl+B sets the ISIS baro along with both sides, and on the ISIS's bugs page the knob sets the selected bug's value), **GPWS/Terrain**, **Warnings/Messages** (master warning, master caution, ATC message and chronometer buttons for both sides), **Autoland**, **Main Instrument Lights** and **Audio** (loudspeakers).
 
 **Glareshield**: **EFIS Left**, **EFIS Right** (ND mode and range, the baro knob's Pull (STD) and Push (QNH), baro mode and adjust, navaid selectors, map filters, flight director, LS) and **FCU** (every FCU button and the four knobs, each with decrease, increase, push and pull). The flight director and LS buttons read their state in their names, for example *"EFIS Left LS: On"*.
 
-**Cockpit**: **Cockpit Door** (see below), **Captain Seat** and **First Officer Seat** (height, distance and armrests), **Windows and Shades**, **Standby Instruments** (the standby compass, and the attitude cage on aircraft with the round standby gauges) and **Cockpit Other** (Headset first, then the jumpseat and its headrest, the oxygen mask covers, gravity gear extension, and on liveries with a DCDU the First Officer's DCDU brightness).
+**Cockpit**: **Cockpit Door** (see below), **Captain Seat** and **First Officer Seat** (height, distance and armrests), **Windows and Shades**, **Standby Instruments** (the standby compass, and the attitude cage on aircraft with the round standby gauges) and **Cockpit Other** (Headset first, then the jumpseat and its headrest, the oxygen mask covers and gravity gear extension).
 
 **Cockpit Door** holds everything about the door: **Cockpit Door** (Closed or Open; the door the First Officer closes before start and opens at shutdown), **Overhead Video** (the overhead VIDEO pushbutton) and **Pedestal Video** (the video button on the pedestal). As in the Fenix's own cockpit, the door does not open while the jumpseat is out, and the jumpseat does not deploy while the door is open: you hear *"Stow the jumpseat first."* or *"Close the cockpit door first."* The door says when it moves, whoever moves it, for example *"Cockpit Door: Open"*.
 
@@ -268,13 +267,13 @@ The Fenix has five sections. Some controls are only on some Fenix aircraft; the 
 - With extra center tanks: ACT Pump, whose upper and lower lights are announced.
 - With IAE engines: the N1 mode switches, whose lights are announced (*"Engine N1 Mode 1 Lower: On"*). CFM engines have no N1 mode switches.
 - On the GNADIRS panel: the ADIRS keypad and the data and system display selectors. On the plain ADIRS panel: the IR pushbuttons.
-- On liveries with a DCDU: the DCDU controls. With the digital ISIS: the ISIS controls. With the round standby gauges: the standby attitude cage. With aft cargo heat: Aft Cargo Hot Air and Aft Cargo Temperature.
+- With the digital ISIS: the ISIS controls. With the round standby gauges: the standby attitude cage. With aft cargo heat: Aft Cargo Hot Air and Aft Cargo Temperature.
 
-A control your aircraft does not have is left out of its panel. A panel whose controls your aircraft has none of is not listed at all, for example DCDU Left on a livery without a DCDU, or ISIS with the round standby gauges. Until BA knows which Fenix you are flying, it shows everything: a section you opened before then lists every panel until you move to another section and back, and a panel you opened before then shows every control until you open it again. Pressing a control your aircraft does not have says *"Not fitted on this aircraft."*
+A control your aircraft does not have is left out of its panel. A panel whose controls your aircraft has none of is not listed at all, for example ISIS with the round standby gauges. Until BA knows which Fenix you are flying, it shows everything: a section you opened before then lists every panel until you move to another section and back, and a panel you opened before then shows every control until you open it again. Pressing a control your aircraft does not have says *"Not fitted on this aircraft."*
 
 A note on the seats: the height and distance controls are three-position switches, Down, Stop and Up (or Aft, Stop and Forward). Choose Up and the seat keeps moving until it reaches its limit, then the switch returns to Stop by itself. The combo follows that, but quietly; seat movement is not announced by default.
 
-Cargo Discharge 1 and 2 (Cargo Smoke panel) and the DCDU brightness switches spring back to the middle like the real ones: a moment after you choose an end, the control shows Rest (or Mid) again, so you can choose the same end again. DCDU brightness moves one step each time.
+Cargo Discharge 1 and 2 (Cargo Smoke panel) spring back to the middle like the real ones: a moment after you choose an end, the control shows Rest again, so you can choose the same end again.
 
 ### Autopilot / FCU windows {#autopilot-fcu-windows-2}
 
@@ -324,24 +323,47 @@ For documents, failures and options, the Fenix windows below are quicker: they s
 
 ### Special windows {#special-windows-2}
 
-**AI display reading.** The Fenix's PFD, ND, ECAM and standby displays are read with AI vision, in Output mode:
+**The display windows.** BA reads the Fenix's main displays from the Fenix's own display data and lists them in live windows, in Output mode:
 
 <div class="table-wrap" markdown="1">
 
-| Key | Display |
+| Key | Window |
 |---|---|
-| Alt+P | PFD |
-| Alt+N | Navigation display (the captain's) |
+| Alt+P | PFD (the captain's) |
+| Alt+N | Navigation display (the captain's), see [The ND window](#fenix-nd-window) |
 | Alt+E | E/WD (engine and warning display) |
-| Alt+S | SD (system display) |
-| Alt+I | Standby instruments |
-| Alt+D | Describe the outside scene |
+| Alt+S | SD (system display), see [The SD window](#fenix-sd-window) |
+| Alt+I | ISIS (the digital standby instrument) |
 
 </div>
 
-BA moves the camera for you, as described in [AI Display Reading](core-concepts.md#ai-display-reading). These reads need Fenix v3: on an older Fenix the camera frames the wrong displays, so update the Fenix. Three details: Alt+N reads the captain's navigation display, the one whose range and mode you set on the left EFIS. Alt+P reads the First Officer's PFD; the two PFDs differ only in the altimeter setting and in which side's autopilot and flight director are shown. Alt+I knows whether your Fenix has the digital ISIS or the three round standby gauges. For exact engine numbers, use the Engines window below; Alt+E is the way to hear the E/WD's memos and warnings.
+The DCDU window opens with Input Ctrl+Shift+D. All six are in the Fenix windows list too.
 
-**Fenix windows: Input Ctrl+Shift+F.** This opens a list called "Fenix windows". Each row gives a window's name and what it holds, for example "Engines. N1, EGT, N2, fuel flow, oil and air temperatures, from the Fenix's own values". Arrow to a row and press Enter: the list closes and that window opens. Escape closes the list. The five windows, described below, are Engines, Cabin, Failures, Fenix documents and Fenix options. They read the Fenix's own data service, so the Fenix must be loaded. None of them speaks when it opens, each has a read-only status box you can Tab to, and they all close when you change aircraft. On any other aircraft, Input Ctrl+Shift+F says *"This aircraft has no extra windows."*
+Each window is called, for example, "Fenix PFD", and holds a list called "PFD display", one row for each thing the display shows, in the display's own words. Colors are said after the words they belong to, for example *"Thrust: MACH, green"*, and a value the display draws as crosses reads "XX". The list follows the display every second and keeps you on your row. F5 refreshes it without a word, and Escape closes it.
+
+While a display is dark, for example cold and dark, its key opens the window on one row, *"E/WD: not available, display off"*, and the rows appear by themselves when the display comes on.
+
+**When BA cannot read a display.** For any other reason the key reads the display with AI vision instead, so you need an AI provider for it. BA moves the camera for you, as described in [AI Display Reading](core-concepts.md#ai-display-reading). These reads need Fenix v3: on an older Fenix the camera frames the wrong displays, so update the Fenix. Alt+N's AI read is the captain's navigation display, the one whose range and mode you set on the left EFIS. Alt+P's is the First Officer's PFD; the two PFDs differ only in the altimeter setting and in which side's autopilot and flight director are shown. With the three round standby gauges there is no ISIS to read, so Alt+I is always the AI read, and the ISIS entry in the Fenix windows list says *"This Fenix has no ISIS."* Alt+D, describing the outside scene, is always an AI read. In the rare case that a display shows something BA does not recognize, its window opens on one row saying so, rather than leave anything out.
+
+**The Fenix version matters.** A Fenix update can change the display data, so BA reads it only on Fenix versions it has been checked against, and a Fenix update can turn the windows and announcements off until a BA update has checked the new version. When that happens, BA tells you once each time the Fenix loads, for example *"Fenix display channel not available for Fenix build 3.0.0.7613: displays use AI reading; FMA and E/WD announcements are off."* Everything else keeps working, and the display keys give the AI read. `fenix_channel.log`, in BA's logs folder, says why.
+
+**PFD window.** The FMA by column (*"Thrust: MACH, green"*, and a message as *"FMA message: LVR CLB, white"*), the airspeed and its trend arrow, the speed target, the tape's speeds from the highest down, the Mach, the altitude with its baro setting, the vertical speed, the attitude, the flight director bars, the heading and track and the radio altitude. From your minimum down the altitude says amber, as the PFD draws it: *"Altitude 700 feet, amber, QNH 1013"*. At a BARO minimum that is the only sign the PFD gives. An instrument the PFD has lost reads its flag instead, for example *"SPD flag"*. With the LS button on come the LS information and the deviations. These name the diamond, so you cannot read them as the aircraft's side: *"Localizer diamond 0.4 dots right"*, *"Glideslope diamond 1.3 dots above"*, *"Localizer diamond at full scale, left"*, *"Localizer centered"*. With LS off and an ILS approach armed, the window adds *"LS flag: ILS, amber"*, the PFD's own reminder to press LS.
+
+**E/WD window.** The engines, one row per value with engine 1 then engine 2, in the screen's order for your engines (N1, EGT, N2 and FF on the CFM; EPR, FF, EGT, N2 and N1 on the IAE); the thrust limit; the fuel on board; the flaps (*"Flaps: 1+F, green"*); then the warning lines and memos, in their colors. After the list come T.O CONFIG, CLR left, CLR right, RCL and EMER CANC, which press the panel's own keys, so you can press one and read what it did. Use this window for what the E/WD shows, and the Engines window for oil and air temperatures.
+
+**ISIS window.** The speed column with each speed bug that is on and the Mach from .50, the attitude (*"Pitch 2.6 degrees up, bank 1 degree left"*), the localizer and glideslope while the ISIS's LS scales show, and the altitude with the baro setting and each altitude bug that is on. While the ISIS aligns it shows its flags and *"INIT 90 seconds"*, and *"ATT 10 seconds"* in a quick realignment: these are the lengths the ISIS draws, not a countdown. On the ISIS's bugs page, the rows list its bugs. After the list come the ISIS panel's controls: BUGS, LS, Plus, Minus, RST, Baro Inc, Baro Dec and Baro Push, so you can press one and read what it did: the bugs page, the LS scales, the baro setting. On the bugs page, Plus and Minus choose a bug, Baro Inc and Baro Dec step its value (an altitude bug by 100 feet), and Baro Push switches it on. RST holds the button for 3 seconds, as a quick realignment needs, and says *"ISIS Reset pressed"*; Baro Push says *"ISIS Baro Push pressed"*, and the altitude row shows the baro setting it left.
+
+**DCDU window: Input Ctrl+Shift+D.** The DCDU's screen in a window called "Fenix DCDU", laid out like the MCDU and with no colors named: the header, the message and info lines, then a row for each pair of keys. On a Fenix with no DCDU you hear *"This Fenix has no DCDU."*
+
+- **Ctrl+1** and **Ctrl+2** are the left keys, **Alt+1** and **Alt+2** the right ones (or **F1**, **F2**, **F7** and **F8** with the alternate setting in [FMC Settings](planning-your-flight.md#planning-fmc-settings)). A key with no label says *"No action on that key."* A held key presses only once.
+- **Page Down** and **Page Up** scroll within a message; **Ctrl+Page Down** and **Ctrl+Page Up** go to the next and previous message. **Ctrl+P** prints.
+- The **Bright** and **Dim** buttons after the list step the brightness and say the new level, for example *"Brightness 60 percent"*.
+- To answer, press the answer's key twice: once for WILCO and again for SEND. BA reads back the status and each new info line (*"WILCO"*, *"SENDING"*, *"RECEIVD BY ATC"*). CLOSE clears the message.
+- A departure clearance needs your callsign in FLT NBR on the MCDU's INIT page. It comes back on the DCDU as two messages, a status and the clearance, so step to the clearance with Ctrl+Page Down.
+
+With the window open or not, BA calls each new message (*"DCDU: <header>, <first line>"*), a waiting message (*"DCDU: 3 messages"*) and every new info line. A message that arrives within 3 seconds of your own key press is not called, though the count still is. The row "DCDU messages" in the Fenix Monitor Manager mutes these.
+
+**Fenix windows: Input Ctrl+Shift+F.** This opens a list called "Fenix windows". Each row gives a window's name and what it holds, for example "Engines. N1, EGT, N2, fuel flow, oil and air temperatures, from the Fenix's own values". Arrow to a row and press Enter: the list closes and that window opens. Escape closes the list. The list holds the display windows above and the five windows described below: Engines, Cabin, Failures, Fenix documents and Fenix options. Those five read the Fenix's own data service, so the Fenix must be loaded. None of them speaks when it opens, each has a read-only status box you can Tab to, and they all close when you change aircraft. On any other aircraft, Input Ctrl+Shift+F says *"This aircraft has no extra windows."*
 
 **Engines window.** The Fenix's own engine readings, in a window called "Fenix engines": the same numbers its screens show, where the simulator's own engine values do not match the Fenix. The list has one value per line, with the two engines on neighboring lines: first whether each engine is running ("Engine 1: running", "Engine 2: not running"), then each engine's N1, EGT, N2, fuel flow, oil quantity, oil pressure and oil temperature ("Engine 1 N1: 22.4 percent"), then the total and outside air temperatures. Fuel flow is in the weight unit set in the Fenix EFB, kilograms or pounds per hour; oil quantity is in quarts and pressure in psi. A value the Fenix does not give reads "--". The values update every second without moving your place. F5 reads them all again and says *"Engines refreshed"*; if the Fenix gives nothing, you hear *"No engine data from the Fenix. Is the Fenix loaded?"* While the window is open, BA says *"Engine 1 running"* or *"Engine 1 stopped"* when the Fenix's own engine state changes; "running" comes when the start is complete, not at light-up. The status box names your Fenix and the fuel flow unit. Escape closes.
 
@@ -387,15 +409,73 @@ After a change, BA waits for the Fenix to show it, which can take a few seconds,
 
 **First Officer: Output Shift+C.** Flows and checklists. See [The First Officer and Checklists](first-officer.md).
 
+### The SD window {#fenix-sd-window}
+
+Output Alt+S opens the System Display in a window called "Fenix SD". The list starts with the name of the page the SD shows, then that page's values, then the bottom line: *"TAT °C: +17, green"*, *"SAT °C: +17, green"*, *"UTC: 18:16"* and the gross weight. After the list, Tab reaches the ECAM panel's page keys, ENG to F/CTL, ALL and STS. Each presses the panel's own key, and the list shows the new page at its next refresh. ALL moves one page per press and says *"ECAM ALL pressed"*.
+
+- **ENG**: fuel used, oil, vibrations, and the start values during a start.
+- **ELEC**: batteries, generators and transformers, and which buses are powered.
+- **HYD**: the three systems' pressures, pumps and valves, and the PTU.
+- **FUEL**: each tank, the pumps and valves, the fuel on board and the tank temperatures. The rows follow your aircraft: an A321 has no outer tanks, and extra center tanks have their own rows.
+- **STATUS**: the STATUS text, with its colors.
+- **APU**: the APU generator, AVAIL, its bleed pressure and valve, N and EGT.
+- **BLEED**: pack temperatures and flow valves, the cross bleed and APU valves, and each engine's bleed pressure, temperature and valves.
+- **PRESS**: landing elevation, ΔP, cabin V/S and altitude, the outflow valve and the vents.
+- **COND**: each zone's temperature, duct temperature and trim valve (*"24 °C, duct 38 °C, trim valve 34 % hot"*), and hot air.
+- **CRUISE**: the page the SD shows by itself in cruise: fuel used, oil and vibrations, then the cabin's pressure and temperatures.
+- **DOOR**: oxygen, then every door nose to tail for your aircraft, with its slide (*"Door 1 left: closed, SLIDE armed"*).
+- **WHEEL**: the gear and gear doors, steering, anti skid and brakes, auto brake, then each wheel by number (*"wheel 2: brake 204 °C, tire 205 PSI"*).
+- **F/CTL**: spoilers by number from inboard (*"SPD BRK left, 1 to 5: 0°, 25°, 25°, 25°, 0°"*), ailerons and elevators up or down, the flight control computers, pitch trim and rudder.
+
+The words are plain: valves read "open", "closed", "in transit", "failed open" or "failed closed", buses "powered" or "not powered", and pumps "running", "off" or "LO". A row says a color or a pulse only where the Fenix sends one, for example *"NORM BRK, amber"*, *"ΔP: 8.2 PSI, pulsing"* or *"LP valves: open, closed amber"*. A value BA cannot read on a page says "not available" and leaves the rest of the page alone.
+
+### The ND window {#fenix-nd-window}
+
+Output Alt+N opens the captain's navigation display in a window called "Fenix ND". The list says what the screen shows and where, each row starting with its place on the screen: "Top left:", "Top center:", "Top right:", "Center:", "Right side:", "Map:", "Bottom left:" and "Bottom right:". It lists only what the ND draws, so a row comes and goes as the mode and range change. The rows follow the range and mode you have set.
+
+Where a thing is on the map reads as its distance and bearing from your nose: *"10.0 NM ahead"*, *"8.1 NM, 103° left"*, *"8.1 NM behind"*. In PLAN mode, which is north-up, it is a compass point from the center waypoint: *"5.0 NM north-west of VAKSU"*. A symbol the edge of the display cuts off ends *", at the edge"*.
+
+The rows, top of the screen first:
+
+- **Top left**: ground speed and true airspeed (*"GS 456 TAS 448"*), the wind (*"wind 213 / 37"*) and the green wind arrow (*"wind arrow pointing 75° right"*).
+- **Top center**: the tuned ILS, and the heading under the lubber line with the track diamond (*"heading 318 under the lubber line, track diamond 4° right"*).
+- **Top right**: the next waypoint, its bearing, distance and time (*"VAKSU 318; 84 NM; 17:29"*), or *"PPOS"* with no flight plan. ROSE LS and ROSE VOR show the radio block here instead (*"ILS2 110.15; CRS 186°; ICIZ"*).
+- **Center and right side, ROSE LS**: the course pointer, the localizer bar (*"localizer bar 0.4 dots right"*) and the glideslope (*"glideslope diamond 1.3 dots above"*).
+- **Center, ROSE VOR**: the course pointer, and the deviation bar in dots with TO or FROM (*"deviation bar 1.9 dots right, FROM"*).
+- **Map, the route** (ARC, ROSE NAV and PLAN): the route line, then in route order the last waypoint passed, the TO waypoint (*"ALPHA, white diamond, 10.0 NM ahead"*) and every later one (*"green diamond"*). A white or colored ring around a waypoint is its altitude constraint, and with CSTR on the row adds the constraint as printed (*"TROYS, green diamond in a magenta ring, 30.0 NM ahead; + 3500"*). The runways, the top of climb and descent and other markers, and any hold, come where they lie along the route. Where the line leaves the display you hear *"route goes off the top edge, toward PADGT"*, and at a gap in the route *"route line ends at PADGT"* and *"route line starts again at SMTTH"*.
+- **Map, a temporary flight plan**: *"temporary flight plan, yellow dashed line"* and its waypoints.
+- **Map, the missed approach**: *"missed approach line, cyan solid line"* and its waypoints, listed once the ND draws it, as the approach nears.
+- **Map, what needs no flight plan**: the heading bug, the track line, the cross-track error (*"cross-track error 4.7L, left of the aircraft"*), the range rings, FIX INFO, and the bearing pointers (*"VOR 1 single-line pointer, at 205 on the compass"*).
+- **Map, navaids and airports**: with VOR.D, NDB, ARPT or WPT selected, each one nearest first (*"LGC, magenta circle with a cross, 45.2 NM, 103° left"*). They are magenta, and a tuned navaid is cyan.
+- **Map, traffic**: *"other traffic, hollow diamond"*, *"proximate traffic, filled diamond"* and *"traffic advisory, amber filled circle"*, each with where it is, its altitude relative to you in hundreds of feet and its trend (*"3.0 NM, 90° left, +01, climbing"*). At ranges 10 and 20 the TCAS ring is listed too.
+- **Bottom corners**: the radios on the EFIS's selectors (*"Bottom left: VOR1; CVG; 8.4 NM; single-line arrow"*), a failed one in red (*"Bottom right: VOR2, red"*), and at the bottom right TERR, the weather radar's mode or WXR OFF.
+- **Messages**, last: the ND's own messages, for example *"Message: MODE CHANGE"*, and what its two boxes show (*"TA ONLY"*).
+
+A color is named only where it tells you something: amber and red always, the magenta navaids against the cyan tuned one, the white TO waypoint against the green route, and the green route, yellow temporary and cyan missed approach lines.
+
+Under the list are the captain's EFIS controls: a Mode list (LS, VOR, NAV, ARC, PLAN), a Range list (10 to 320) and the CSTR, WPT, VOR.D, NDB, ARPT and LS buttons, each reading on or off. They work as the panel's own do, and a press is heard once: your screen reader reads the button's new state, and BA does not repeat it. The Mode and Range lists follow the ND, so a change made in the cockpit shows there, even with your cursor on the list. A second Alt+N brings the window forward.
+
+**Output Ctrl+W** reads the next waypoint, its bearing, distance and time, in the ND's order: *"VAKSU, 318 degrees, 84 nautical miles, 17:29"*, or *"No active waypoint"* with no flight plan.
+
+With the window open or not, BA announces the ND's messages, *"ND message: GPS PRIMARY"* and *"ND message gone: GPS PRIMARY"*, and a new next waypoint while the ND shows it, *"ND: RONII, 8.1 NM"*. MODE CHANGE and RANGE CHANGE are not announced, because you just made the change. The row "ND messages" in the Fenix Monitor Manager mutes these.
+
 ### Aircraft-specific hotkeys and callouts {#aircraft-specific-hotkeys-and-callouts-2}
 
-The usual [Readout Hotkeys](core-concepts.md#readouts) and FCU readouts work, except Output D and Shift+D (distance to destination and top of descent) and the Shift+1 to Shift+6 speeds, which the Fenix does not offer. Output Ctrl+M opens the Fenix Monitor Manager.
+The usual [Readout Hotkeys](core-concepts.md#readouts) and FCU readouts work. Output Ctrl+M opens the Fenix Monitor Manager.
+
+Output Shift+1 to Shift+6 read the captain's PFD speed tape in whole knots: Shift+1 green dot, Shift+2 S, Shift+3 F, Shift+4 VLS, Shift+5 alpha prot (VSW while the tape draws one) and Shift+6 VFE next, for example *"Green dot 237 knots"*. A speed the tape does not show says, for example, *"Green dot not available"*.
+
+Output D and Shift+D say how far it is, and how long at your ground speed, to your destination and to the top of descent, worked out from the Fenix's flight plan: *"398 miles to destination"*, *"96 miles to top of descent: 00:12:00"*. Shift+D says *"Past top of descent"* once the descent has begun. It says *"Top of descent not available"* at the gate, where the ND draws no top of descent, before a cruise level is entered, and from glideslope capture on. With no flight plan D says *"Distance to destination not available"*.
 
 The TO CONFIG key on the ECAM panel works like the real test. BA presses it, then watches the master warning and master caution lights. The Fenix's warning computer deliberately takes a moment to light them, so *"Takeoff config normal."* comes only once both lights have stayed dark for about two seconds. A bad configuration is announced as soon as a light comes on: *"Takeoff config: check configuration."* for the master warning, or *"Takeoff config: caution. Check the ECAM."* for the master caution. If BA could not read the lights, you hear *"Takeoff config: no result read. Check the ECAM."* The First Officer's takeoff config test says the same.
 
 On the take-off roll, BA calls *"V1"*, *"Rotate"* and *"V2"* from the speeds on the MCDU's PERF TAKE OFF page, whether or not Takeoff Assist is on. You can enter or change the speeds any time before the roll. The Fenix itself also calls V1, so you hear V1 twice. Each call is muted with its speed's row in the Fenix Monitor Manager ("MCDU V1 Speed", "MCDU VR Speed", "MCDU V2 Speed"), which also mutes BA reading that speed when you enter it; a cleared speed is read as "not set". See [Takeoff Speed Callouts](takeoff-climb-and-cruise.md#takeoff-vspeed-callouts).
 
 Automatic announcements cover the master warning and caution, the cockpit's annunciator lights and switch states, COM frequency changes, the altimeter, and the cockpit door (*"Cockpit Door: Open"*). The lights of Econ Flow and ACT Pump, and the lamps of the EFIS flight director and LS buttons, stay quiet right after you change their control in BA's panels, because your screen reader already says the new state. When the change comes from anywhere else, such as a click in the cockpit, the First Officer, or the other side of linked flight directors, you hear it, for example *"EFIS Right FD: On"*. The FCU vertical speed is spoken only while its window shows a selected value, with its sign, for example *"FCU VERTICAL SPEED: +300"*; a managed climb or descent stays quiet. Two things are monitored but kept silent by default: the clock's chronometer and elapsed-time counters (they tick every second) and the four seat switches. You can switch any of them back on in the Monitor Manager.
+
+**FMA changes** are spoken once they have settled, read from the captain's PFD in its own words and colors: *"FMA: Thrust: THR CLB, green"*, *"FMA: Vertical: ALT\*, green"*, and each message as *"FMA message: LVR CLB, white"*. Column 5 (AP, FD and A/THR) is never spoken, because the FCU's lights are. The Lateral column stays silent while LAND, FLARE or ROLL OUT shows. Nothing is spoken while the PFD cannot be read. The row "FMA changes" in the Fenix Monitor Manager turns this off.
+
+**ECAM warnings, cautions and memos** are spoken from the Fenix's own list, with the color of their line on the E/WD. A warning interrupts what is being said (*"ENG 1 FIRE, red"*); a caution waits its turn (*"ELEC GEN 1 FAULT, amber"*). The list updates about every 4 seconds, so a warning can come up to 4 seconds after the master warning, and a very short one can go unsaid. About 5 to 8 seconds after a failure leaves the E/WD you hear *"ENG 1 FIRE cleared"*. LAND ASAP is heard by its color after the failure that caused it, and memos use the E/WD's own words. The rows "E/WD warnings", "E/WD cautions" and "E/WD memos" in the Fenix Monitor Manager turn each kind off. These rows, "FMA changes", "DCDU messages" and "ND messages" all start on, and all need the display data, as [Special windows](#special-windows-2) explains.
 
 With the Fenix loaded, BA also announces these from the cabin, whether or not the Cabin window is open:
 
@@ -410,9 +490,8 @@ Each has its own row at the end of the Fenix Monitor Manager: "Cabin ready", "Ca
 
 - **Panel buttons are pressed and released, like a real finger press.** The aircraft's light shows the result. You do not need to "un-press" anything. Bus Tie, Service Interphone Override, Avionics Compartment Light, the weather radar's GCS, ACP PA Transmit, Calls Mechanic, All, Forward, Aft, Mid and Exit, the clock's Chronometer and Date buttons, ISIS Baro Push and Pedestal Video are buttons you press once, like the real ones. One with a light shows its state on its label and the light announces the change; one without a light says, for example, *"Calls Mechanic pressed"*.
 - **ADR, IR and Bus Tie read the right way round.** Their light is the OFF legend, so the button reads "ADR 1: On" while ADR 1 works and "ADR 1: Off" once you switch it off (Bus Tie reads "Auto" or "Off"), and the light announces the same words, for example *"ADR 1: Off"* or *"Electrical Bus Tie: Off"*. Their Monitor Manager rows are named "ADR 1" to "ADR 3" and "IR 1" to "IR 3".
-- **ISIS Baro Push** says it was pressed, but BA cannot yet read what it changed.
+- **ISIS Baro Push** says it was pressed; the ISIS window's altitude row shows the baro setting it left.
 - **The Fenix does not model MLS reception**, so there is no MLS switch on the audio panel.
-- **The DCDU screen cannot be read** on the Fenix; only its keys are on the panel.
 
 ## FlyByWire A380X {#airbus-a380}
 

@@ -100,6 +100,24 @@ public class FenixV3FixPanelControlsTests : IDisposable
         }
     }
 
+    // A press-release of the ISIS's reset starts nothing; the quick realignment started on a hold of about 3 s (measured
+    // 2026-11-04: "ATT 10s" for 10 s). It has no light, so it confirms the press too.
+    [Fact]
+    public void The_isis_reset_is_held_long_enough_to_start_a_realignment()
+    {
+        string branch = Branch("S_MIP_ISFD_RST");
+        Assert.Contains("pressHoldMs: IsisResetHoldMs", branch);
+        Assert.Contains("confirmPress: true", branch);
+        Assert.Contains("private const int IsisResetHoldMs = 3000;", File.ReadAllText(DefinitionPath));
+    }
+
+    // The ECAM ALL key has no light, and the SD window presses it through this same branch, so both confirm the press.
+    [Fact]
+    public void The_ecam_all_key_confirms_its_press()
+    {
+        Assert.Contains("confirmPress: true", Branch("S_ECAM_ALL"));
+    }
+
     [Fact]
     public void The_press_confirmation_speaks_once_as_the_press_is_sent()
     {
@@ -114,6 +132,30 @@ public class FenixV3FixPanelControlsTests : IDisposable
         Assert.True(say > press && say < release, "the confirmation is not spoken with the press");
         Assert.Equal("}", body.Substring(say).Split('\n')[1].Trim());
         Assert.Single(Regex.Matches(body, "pressed\""));
+    }
+
+    // The DCDU window presses these nine through the panel's own branches (PressDcdu goes through HandleUIVariableSet),
+    // so each must be a full press and release (A320-3), never a bare write that leaves the key held down.
+    private static readonly string[] DcduButtonKeys =
+    [
+        "S_DCDU1_LSK1L", "S_DCDU1_LSK2L", "S_DCDU1_LSK1R", "S_DCDU1_LSK2R",
+        "S_DCDU1_PGDN", "S_DCDU1_PGUP", "S_DCDU1_MSGUP", "S_DCDU1_MSGDWN", "S_DCDU1_PRINT"
+    ];
+
+    [Fact]
+    public void Dcdu_keys_press_and_release_for_the_window()
+    {
+        // The nine keys the window presses are exactly these, so a new key cannot slip in without a branch checked here.
+        Assert.Equal(
+            DcduButtonKeys.Order(),
+            Enum.GetValues<Services.FenixDcduKey>().Select(Services.FenixChannelDcduKeys.VariableOf).Order());
+
+        foreach (string key in DcduButtonKeys)
+        {
+            string branch = Branch(key);
+            Assert.Contains($"ExecuteButtonTransition(\"{key}\"", branch);
+            Assert.DoesNotContain("SetLVar(", branch);
+        }
     }
 
     [Fact]
@@ -215,10 +257,9 @@ public class FenixV3FixPanelControlsTests : IDisposable
     {
         foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT" })
             AssertValues(key, (0, "Agent 2"), (1, "Rest"), (2, "Agent 1"));
-        foreach (var key in new[] { "S_DCDU1_DIM_BRT", "S_DCDU2_DIM_BRT" })
-            AssertValues(key, (0, "Dim"), (1, "Mid"), (2, "Bright"));
+        AssertValues("S_DCDU1_DIM_BRT", (0, "Dim"), (1, "Mid"), (2, "Bright"));
 
-        foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT", "S_DCDU1_DIM_BRT", "S_DCDU2_DIM_BRT" })
+        foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT", "S_DCDU1_DIM_BRT" })
         {
             string branch = Branch(key);
             Assert.Contains($"PulseSpringSwitch(\"{key}\"", branch);
@@ -235,7 +276,7 @@ public class FenixV3FixPanelControlsTests : IDisposable
         // The combo kept showing the picked end after the spring-back, and WinForms ignores a same-index
         // pick, so a second step the same way committed nothing. One forced read after the return write
         // re-syncs it ([MD11-27] pattern), on the L:var each caller passes, which is the panel's var key.
-        foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT", "S_DCDU1_DIM_BRT", "S_DCDU2_DIM_BRT" })
+        foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT", "S_DCDU1_DIM_BRT" })
         {
             Assert.Equal(key, Vars[key].Name);
             Assert.Contains($"PulseSpringSwitch(\"{key}\", value, simConnect)", Branch(key));
