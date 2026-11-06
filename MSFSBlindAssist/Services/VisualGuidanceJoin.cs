@@ -301,7 +301,8 @@ internal static class VisualGuidanceJoin
     /// <paramref name="leg"/>, from the capture law onto it with the pattern's 90° limit, its closing rate
     /// worked out from the ground speed and the track. On the downwind the turn never goes through the
     /// heading straight at the centreline (90° from the downwind, the <see cref="VisualGuidanceLeg.ReversedTurnSign"/>
-    /// side): when the short way would, it turns the other way, away from the runway (the owner's choice,
+    /// side): when the short way would, past its first <see cref="ShortWayAtTheFieldDeg"/>, it turns the
+    /// other way, away from the runway (the owner's choice,
     /// 2026-11-05: an aircraft cutting in at 45° 2 nm beside final turned 135° toward the runway onto its
     /// downwind, which gave up a mile of the room and swung it 3,900 ft past the centreline). Flying the
     /// landing direction, that is the reversed-turn way, so a reversal never swings across the field.
@@ -316,11 +317,20 @@ internal static class VisualGuidanceJoin
         double desired = DesiredLegTrackDeg(cross, closingNmS, gsKt, PatternClampDeg, captureGain);
         double error = Normalize(desired - relToLeg);
         if (leg.ReversedTurnSign == 0 || error == 0) return error;
-        // How far the turn, the short way, has to go before it points straight at the centreline.
+        // How far the turn, the short way, has to go before it points straight at the centreline. Within the
+        // first ShortWayAtTheFieldDeg it keeps the short way: an aircraft already pointing at the field turns
+        // away from pointing at it, and the room that costs is at most R(1 − cos 20°), 0.04 nm at 140 kt (the
+        // final review: at exactly straight at the centreline, a tenth of a degree chose a 90° or a 270° turn).
         double atCentreline = 90.0 * leg.ReversedTurnSign;
         double toCentreline = error > 0 ? Mod360(atCentreline - relToLeg) : Mod360(relToLeg - atCentreline);
-        return toCentreline < Math.Abs(error) ? -Math.Sign(error) * 180.0 : error;
+        return toCentreline >= ShortWayAtTheFieldDeg && toCentreline < Math.Abs(error) ? -Math.Sign(error) * 180.0 : error;
     }
+
+    /// <summary>
+    /// The turn onto the downwind keeps the short way if it would point the aircraft straight at the
+    /// centreline within this many degrees of its start (<see cref="LegHeadingErrorDeg"/>).
+    /// </summary>
+    public const double ShortWayAtTheFieldDeg = 20;
 
     private static double Mod360(double deg) => (deg % 360.0 + 360.0) % 360.0;
 
@@ -392,6 +402,22 @@ internal static class VisualGuidanceJoin
             // pattern that leads the pilot away from a runway they are about to land on.
             if (Math.Abs(rel) < 90 && cross <= TurnCueCrossNm(VectorMinAngleDeg, gsKt, captureGain, 1.0))
                 return new(VisualGuidanceJoinState.Vectoring, VectorMinAngleDeg, new[] { final });
+            // For the same reason, inside the minimum final and heading in, further off the line: the
+            // shallowest cut that still lines the aircraft up before the threshold, as long as the turn onto it
+            // does not carry the aircraft across the line (the final review: from 1.5 nm out and 0.4 nm beside
+            // final the pattern turned a descending aircraft away from the runway). Only where none does, the
+            // pattern.
+            if (p.AlongNm < profile.MinimumFinalNm && Math.Abs(rel) < 90)
+            {
+                int toward = p.CrossNm >= 0 ? 1 : -1;
+                for (double angle = VectorMinAngleDeg; angle <= VectorMaxAngleDeg; angle += 1)
+                {
+                    var turn = TurnOntoCut(rel, -toward * angle, gsKt, profile.MaxApproachBankDeg, profile.MaxBankRateDegPerSec);
+                    if (toward * (p.CrossNm + turn.RightNm) > 0
+                        && JoinAlongNm(p, rel, angle, gsKt, captureGain, profile) > 0)
+                        return new(VisualGuidanceJoinState.Vectoring, angle, new[] { final });
+                }
+            }
         }
 
         // The simple pattern: a downwind on the aircraft's side, a base, final. It mainly serves IFR

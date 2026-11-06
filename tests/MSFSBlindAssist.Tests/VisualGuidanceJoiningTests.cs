@@ -218,6 +218,20 @@ public class VisualGuidanceJoiningTests
         Assert.True(shortWay.Bank < -1, $"short way: bank {shortWay.Bank}");
     }
 
+    // Pressed on a short final a little off the line, heading in: BA turns the pilot toward the runway, not
+    // round the pattern away from it (the final review's C1). Pointing straight at the field from the far
+    // side, the turn onto the downwind is the short one, left on the right side (the review's I1).
+    [Fact]
+    public void A_short_final_off_the_line_turns_toward_the_runway()
+    {
+        var rig = PressedAt(1.5, 0.4, 0);
+        Assert.Equal("Vectoring", rig.Decision);
+        Assert.True(rig.Bank < -1, $"short final: bank {rig.Bank}");
+        var far = PressedAt(-1, 3, -90);
+        Assert.Equal("Pattern", far.Decision);
+        Assert.True(far.Bank < -1, $"pointing at the field: bank {far.Bank}");
+    }
+
     // A far-side start already closer to final than the turn cue (the harness's far-side jets, 1 nm
     // beside the runway): BA flies the downwind first, out to its 1.9 nm (a left turn, away from the
     // runway), not straight onto final.

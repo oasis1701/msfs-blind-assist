@@ -189,7 +189,10 @@ from the position, the ground track and the ground speed. Ctrl+V off and on deci
 - **Vectoring** ("Vectoring to final"): on the approach side, the shallowest whole-degree cut from 30°
   that lines the aircraft up at least the minimum final out, counting the turn onto the cut at the
   profile's bank rate and largest approach bank (`TurnOntoCut`, `JoinAlongNm`); close to the line on
-  short final and heading in, a 30° cut straight onto final.
+  short final and heading in, a 30° cut straight onto final; inside the minimum final and heading in,
+  further off, the shallowest cut that still lines up before the threshold without the turn onto it
+  crossing the line. Never the pattern there, which would lead the pilot away from a runway they are
+  about to land on.
 - **The simple pattern** (also "Vectoring to final"): anything else, such as the far side of the field
   or cutting in too close. A downwind on the aircraft's side, flown away from the runway, at least as
   far out as the aircraft, two turn radii, 1 nm, and the aircraft's own base turn plus the distance from
@@ -198,7 +201,8 @@ from the position, the ground track and the ground speed. Ctrl+V off and on deci
   turn, `PatternTurnOntoFinalNm`: 7.61 nm at 140 kt); then final. The next leg becomes active when the
   capture law onto it first asks 5° of bank toward it (`LegIsDue`): "Turn base", then the countdown and
   "Turn onto final". The turn onto the downwind never passes through the heading straight at the
-  centreline (`LegHeadingErrorDeg`). It mainly serves "cleared visual approach" handovers from the far
+  centreline, except within its first 20°, so an aircraft already pointing at the field turns the short
+  way (`LegHeadingErrorDeg`, `ShortWayAtTheFieldDeg`). It mainly serves "cleared visual approach" handovers from the far
   side today; full VFR circuits come with the general aviation work.
 
 **Lateral (bank)** (`CalculateDesiredBank`). Every turn, onto final, a downwind or a base, is one

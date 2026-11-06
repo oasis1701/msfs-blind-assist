@@ -321,6 +321,51 @@ public class VisualGuidanceJoinTests
         Assert.Equal(plan.Legs[1].AlongNm, left.Legs[1].AlongNm, 9);
     }
 
+    // Inside the minimum final and heading in, BA never sends the pilot round the pattern, away from a
+    // runway they are about to land on (decision 4's purpose; the final review's C1: from 1.5 nm out and
+    // 0.4 nm beside final, the pattern turned a descending aircraft away at 25° of bank). It vectors straight
+    // in at the shallowest cut from 30° that lines the aircraft up before the threshold without the turn onto
+    // the cut carrying it across the line. Outside the minimum final (the CLOSE jets, 7.5 nm out cutting in at
+    // 45°), and where no cut lines up in time, the pattern stays.
+    [Fact]
+    public void Inside_the_minimum_final_heading_in_is_vectored_straight_in()
+    {
+        foreach (var (along, cross, rel) in new[] { (1.5, 0.4, 0.0), (2.0, 0.5, 0.0), (3.0, 1.0, 0.0), (4.0, 1.5, 0.0), (5.0, 1.0, -20.0), (3.0, -1.0, 0.0) })
+        {
+            var plan = VisualGuidanceJoin.Decide(P(along, cross), rel, 140, Gain, Profile);
+            Assert.Equal(VisualGuidanceJoinState.Vectoring, plan.State);
+            Assert.InRange(plan.ClampDeg, 30, 90);
+            double join = VisualGuidanceJoin.JoinAlongNm(P(along, cross), rel, plan.ClampDeg, 140, Gain, Profile);
+            Assert.InRange(join, 0.0001, along);
+            int side = cross >= 0 ? 1 : -1;
+            var turn = VisualGuidanceJoin.TurnOntoCut(rel, -side * plan.ClampDeg, 140, 25, 3);
+            Assert.True(side * (cross + turn.RightNm) > 0, $"({along}, {cross}, {rel}): the turn onto {plan.ClampDeg}° crosses the line");
+        }
+        Assert.Equal(VisualGuidanceJoinState.Pattern, VisualGuidanceJoin.Decide(P(7.5, 2.0), -45, 140, Gain, Profile).State);
+        Assert.Equal(VisualGuidanceJoinState.Pattern, VisualGuidanceJoin.Decide(P(0.3, 1.0), 0, 140, Gain, Profile).State);
+    }
+
+    // The turn onto the downwind keeps the short way when it points the aircraft at the field from the start
+    // or within its first 20° (the final review's I1: pointing straight at the centreline, a tenth of a degree
+    // chose between a 90° turn and a 270° one). Further round, as for the CLOSE jets cutting in at 45°, it
+    // turns away from the runway (the owner's choice).
+    [Fact]
+    public void The_turn_onto_the_downwind_keeps_the_short_way_when_pointing_at_the_field()
+    {
+        var right = new VisualGuidanceLeg(VisualGuidanceLegKind.Downwind, 0, 3, 180, 1);
+        double R(double rel) => VisualGuidanceJoin.LegHeadingErrorDeg(right, P(-1, 3), rel, 140, Gain);
+        Assert.InRange(R(-89.9), -91, -89);
+        Assert.InRange(R(-90), -91, -89);
+        Assert.InRange(R(-90.1), -91, -89);
+        Assert.InRange(R(-80), -101, -99);
+        Assert.Equal(180.0, R(-45), 9);
+        var left = new VisualGuidanceLeg(VisualGuidanceLegKind.Downwind, 0, -3, 180, -1);
+        double L(double rel) => VisualGuidanceJoin.LegHeadingErrorDeg(left, P(-1, -3), rel, 140, Gain);
+        Assert.InRange(L(90), 89, 91);
+        Assert.InRange(L(80), 99, 101);
+        Assert.Equal(-180.0, L(45), 9);
+    }
+
     [Fact]
     public void The_profile_defaults_are_the_airliner_values()
     {
