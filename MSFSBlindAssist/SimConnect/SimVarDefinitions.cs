@@ -288,6 +288,15 @@ public class SimVarDefinition
     public double Offset { get; set; } = 0.0;
     public string? HelpText { get; set; }  // Optional help text read by screen reader (overrides default AccessibleDescription)
 
+    /// <summary>
+    /// For a typed <c>_SET</c> field only: what the screen reader says about the field, in place of the default "Type a
+    /// value and press Enter to set". It is the reader's only cue that Enter applies the value, so it must say so. Null for
+    /// every field but one whose entry is not obvious (the Fenix pitch trim, in degrees). <see cref="HelpText"/> is not
+    /// used for a typed field: the MD-11's still says "press Set", for the Set button removed on 2026-10-18, and the PMDG
+    /// 737's say nothing of Enter.
+    /// </summary>
+    public string? EntryHelpText { get; set; }
+
     // MobiFlight WASM support properties
     public bool UseMobiFlight { get; set; }  // Flag to route through MobiFlight WASM
     public string PressEvent { get; set; } = string.Empty;   // H-variable for button press

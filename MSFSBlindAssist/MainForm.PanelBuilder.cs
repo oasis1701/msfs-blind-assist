@@ -1061,8 +1061,9 @@ public partial class MainForm
                 textBox.Size = new Size(240, 25);
                 textBox.AccessibleName = $"{varDef.DisplayName} value";
                 // With no Set button after the field, this is the reader's only cue that Enter applies it.
-                // A field whose units are not obvious (the Fenix pitch trim, in degrees) says so in its HelpText.
-                textBox.AccessibleDescription = varDef.HelpText ?? "Type a value and press Enter to set";
+                // A field whose entry is not obvious (the Fenix pitch trim, in degrees) opts in with its own
+                // EntryHelpText, never HelpText: the MD-11's still says "press Set" and the PMDG 737's say nothing of Enter.
+                textBox.AccessibleDescription = varDef.EntryHelpText ?? "Type a value and press Enter to set";
 
                 // If this _SET field declares a current-value source, pre-fill it
                 // from the cached value on creation AND on focus-in, then select

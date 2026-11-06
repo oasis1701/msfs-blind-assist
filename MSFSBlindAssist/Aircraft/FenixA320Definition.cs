@@ -5292,7 +5292,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 UnparseableTextAsNaN = true,
-                HelpText = "Degrees, as the MCDU writes it: 0.3 for up 0.3, minus 0.8 for down 0.8. Range down 4 to up 13.5. Press Enter to set.",
+                EntryHelpText = "Degrees, as the MCDU writes it: 0.3 for up 0.3, minus 0.8 for down 0.8. Range down 4 to up 13.5. Press Enter to set.",
             },
             ["S_FC_FLAPS_LEVER"] = new SimConnect.SimVarDefinition
             {
