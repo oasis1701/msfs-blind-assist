@@ -972,24 +972,7 @@ public partial class SimConnectManager
     /// Unpack waypoint name from FlyByWire encoded format
     /// </summary>
     internal string UnpackWaypointName(double ident0, double ident1)
-    {
-        double[] values = { ident0, ident1 };
-        string result = "";
-
-        for (int i = 0; i < values.Length * 8; i++)
-        {
-            int word = i / 8;
-            int charPos = i % 8;
-            int code = (int)(values[word] / Math.Pow(2, charPos * 6)) & 0x3F;
-
-            if (code > 0)
-            {
-                result += (char)(code + 31);
-            }
-        }
-
-        return result.Trim();
-    }
+        => Services.NdWaypointReadout.UnpackSixBit(ident0, ident1);
 
     private void ProcessFCUValues(FCUValues data)
     {
