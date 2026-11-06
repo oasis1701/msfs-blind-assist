@@ -326,7 +326,7 @@ public partial class MainForm
                 }
                 else
                 {
-                    announcer.AnnounceImmediate("The DCDU window is only available on the A32NX and the Headwind A330.");
+                    announcer.AnnounceImmediate("The DCDU window is only available on the A32NX, the Headwind A330 and the Fenix.");
                 }
                 break;
             case HotkeyAction.ShowAircraftWindows:

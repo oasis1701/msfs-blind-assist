@@ -1,0 +1,1 @@
+Fenix A320 family: flight mode annunciator changes and new ECAM warnings, cautions and memos are now spoken as they happen, with their colors, red ones interrupting, and you hear when each one clears. Each kind, like the new DCDU and ND messages, has its own row in the Monitor Manager (Control+M).
