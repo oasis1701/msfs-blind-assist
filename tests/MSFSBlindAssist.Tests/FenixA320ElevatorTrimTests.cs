@@ -1,5 +1,6 @@
 using System.Globalization;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -31,7 +32,7 @@ public sealed class FenixA320ElevatorTrimTests : IDisposable
         var vars = new FenixA320Definition().GetVariables();
 
         Assert.Equal(FenixA320ElevatorTrim.LVar, vars["MON_ElevatorTrim"].Name);
-        Assert.Equal(SimConnect.UpdateFrequency.Continuous, vars["MON_ElevatorTrim"].UpdateFrequency);
+        Assert.Equal(UpdateFrequency.Continuous, vars["MON_ElevatorTrim"].UpdateFrequency);
     }
 
     [Fact]
@@ -93,6 +94,66 @@ public sealed class FenixA320ElevatorTrimTests : IDisposable
         Assert.Equal(expected, FenixA320ElevatorTrim.Describe(degrees));
     }
 
+    // The Fenix with the note its typed pitch trim makes after it writes the trim and speaks "Pitch trim set to ...": the
+    // write itself needs SimConnect, which the tests cannot load.
+    private sealed class TypedTrimFenix : FenixA320Definition
+    {
+        public void Typed(double degrees) => NoteElevatorTrimAnnounced(degrees);
+    }
+
+    [Fact]
+    public void A_typed_trim_is_not_spoken_again_on_its_way_to_the_target()
+    {
+        // At UP 0.3, the pilot types 1.7 and hears the confirmation. The old trim delivered once more, the values the
+        // stabilizer passes and its arrival say nothing (CORE-7). A change after the arrival is spoken as always.
+        var def = new TypedTrimFenix { TrimClockMs = () => 0 };
+        Assert.Empty(Feed(def, 300));
+
+        def.Typed(1.7);
+        Assert.Empty(Feed(def, 300, 500, 900, 1300, 1600, 1698, 1702));
+        Assert.Equal(new[] { "Trim up 2.0" }, Feed(def, 2000));
+    }
+
+    [Fact]
+    public void A_typed_trim_before_the_first_value_keeps_the_old_trim_silent()
+    {
+        // No value delivered yet after the load: the first one, still the old trim, is not spoken over the confirmation.
+        var def = new TypedTrimFenix { TrimClockMs = () => 0 };
+
+        def.Typed(1.7);
+        Assert.Empty(Feed(def, 300, 1700));
+    }
+
+    [Fact]
+    public void A_typed_trim_that_never_arrives_is_spoken_where_it_stopped_once_the_wait_is_over()
+    {
+        long now = 0;
+        var def = new TypedTrimFenix { TrimClockMs = () => now };
+        Assert.Empty(Feed(def, 300));
+        def.Typed(1.7);
+
+        Assert.Empty(Feed(def, 900));
+        now = BaseAircraftDefinition.TypedTrimTravelMs;
+        Assert.Equal(new[] { "Trim up 0.9" }, Feed(def, 900));
+    }
+
+    [Theory]
+    [MemberData(nameof(ComboLabelCollapseTests.AllAircraft), MemberType = typeof(ComboLabelCollapseTests))]
+    public void A_typed_field_says_that_enter_sets_it_on_every_aircraft(BaseAircraftDefinition def)
+    {
+        // The panel's typed field reads EntryHelpText, or the default "Type a value and press Enter to set", never
+        // HelpText (the MD-11's says "press Set", for a button removed on 2026-10-18). Whatever a field says instead
+        // must still say that Enter applies it, and the only field that says something else is the Fenix pitch trim.
+        foreach ((string key, SimVarDefinition variable) in def.GetVariables())
+        {
+            if (variable.EntryHelpText is not { } help) continue;
+
+            Assert.Contains("_SET", key);
+            Assert.Contains("Press Enter to set", help);
+            Assert.Equal(FenixA320ElevatorTrim.SetKey, key);
+        }
+    }
+
     [Fact]
     public void The_panel_entry_is_a_typed_field_on_the_same_lvar_read_on_request()
     {
@@ -100,7 +161,7 @@ public sealed class FenixA320ElevatorTrimTests : IDisposable
         var entry = def.GetVariables()[FenixA320ElevatorTrim.SetKey];
 
         Assert.Equal(FenixA320ElevatorTrim.LVar, entry.Name);
-        Assert.Equal(SimConnect.UpdateFrequency.OnRequest, entry.UpdateFrequency);
+        Assert.Equal(UpdateFrequency.OnRequest, entry.UpdateFrequency);
         Assert.Empty(entry.ValueDescriptions);
         Assert.True(entry.UnparseableTextAsNaN);
         Assert.False(def.GetVariables().ContainsKey(FenixA320ElevatorTrim.LVar));
