@@ -257,8 +257,11 @@ Desired pitch = the learned trim − the target descent angle, rate limited at t
   - **Hold** (joining only, `VisualGuidanceLevelHold`): once the vertical speed has been under 200 fpm
     for 5 s, the altitude of that update is held: atan(height error / (27 s × ground speed)) either way,
     within ±2°, so the cue asks back down from above and back up from below (VG-24). A pitch more than
-    1.5° from the cue the pilot heard (the previous update's) ends the hold at once, so a descent ATC
-    clears is never fought; the next level-off is held the same way. Each decision starts without a
+    1.5° from both the cue the pilot heard (the previous update's) and the learned level attitude ends
+    the hold at once, so a descent ATC clears is never fought, while a pilot who follows the cue, or who
+    keeps the level pitch while the air carries the aircraft off the altitude, is still held (the stage-5
+    final review: the cue alone let go after a 167 ft drift at 140 kt); the next level-off is held the
+    same way. Each decision starts without a
     hold. In the harness the scripted jets level by the altimeter about 30 ft low and climb back
     slowly, so the hold takes an altitude about 28 ft under the cleared one (DESC runs,
     `holdDriftMaxFt`); for about 15 s after a level-off from 1,500 fpm the learned trim reads up to

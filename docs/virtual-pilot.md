@@ -232,6 +232,7 @@ app has the field.
 | Off the path | `VERT-A-JET-{a8-h+600,a4-h+600,a3-h-400,a6-h-250}`, `VERT-A-LIGHT-{a4-h+300,a2-h+400,a1.5-h-150,a3-h-100}` | on the centreline and the course, `a` nm out, `h` ft off the path, descending at the path's angle; "Too high" is due on a4 (jet) and a2 (light), "Too low" on a3-h-400 (jet) and a1.5 (light), neither on the others | 8 |
 | Descend and maintain | `DESC-A-{JET,LIGHT}-{L,R}`, `DESCHIGH-A-{JET,LIGHT}-{L,R}` | the 30° intercept start, the jet 1,000 ft and the light aircraft 500 ft above the path, with a scripted descent at 1,500 fpm (jet) or 700 (light) to a level above the threshold: `DESC` 2,500 ft (jet) or 1,300 (light), about 275 and 160 ft above the path where the cut meets final; `DESCHIGH` 3,500 or 1,900, about 1,275 and 760 ft above it, too high for the 2° steeper path to recover by the stable gate | 8 |
 | Vectoring high | `VECHIGH-A-{JET,LIGHT}-{L,R}-par` | the vectoring start flying parallel inbound, level, the jet 1,000 ft and the light aircraft 400 ft above the path | 4 |
+| Vectoring wide | `VECWIDE-A-{JET,LIGHT}-{L,R}-par` | flying parallel inbound, level at the path's height for the distance along, far abeam: the jet 9 nm out and 4 nm abeam, the light aircraft 4.5 nm out and 2 nm abeam ("cleared visual" from well beside final), where the path at the along-course distance is far under the planned descent; added after the stage-5 final review, so not in the baselines (227 in all) | 4 |
 
 The three stage-5 families (off the path, descend and maintain, vectoring high) fly runway A with
 the 0.5 s pilot; their names carry no delay.
@@ -1014,6 +1015,15 @@ Every WORSE line against `approach_stage4_h5`, by cause:
 
 Two numbers to watch: the pattern jets join at −220 ft against K's −250 (the floor plus the correction's
 lag on the floor's slope), and FINAL-JET x0.2's 1,382 fpm against E's 1,428.
+
+**After the final review** (`approach_stage5_review`, 227 scenarios): the plan's cap at the path now applies
+only past the join point and never under the floor (it had planned a jet 4 nm abeam 120 ft under the floor),
+and the joining hold ends only when the pitch is 1.5° from both the cue and the learned level attitude. The
+223 earlier scenarios read exactly as in `approach_stage5_final` (`BETTER {}`, `WORSE {}`, `CHANGED {}`).
+The four VECWIDE starts, new, are checked by K: the jets join 147 ft under the path, descending at most
+742 fpm and gate error 1 ft; the light aircraft 29 ft above it, gate error 33 ft. A to K pass, 40 accepted.
+The baselines were not re-flown: the harness's earlier scenarios are unchanged, and the new ones have no
+stage-4 counterpart to compare.
 
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 

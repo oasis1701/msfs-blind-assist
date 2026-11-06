@@ -177,6 +177,19 @@ static class ApproachScenarios
                 list.Add(new ApproachScenario($"VECHIGH-A-{KindName(k)}-{side}-par", a, k, isJet ? 10.0 : 5.0,
                     Sign(side) * (isJet ? 2.0 : 1.0), 0, isJet ? 1000 : 400, 0, 0, 30, d, null, null) with { StartLevel = true });
             }
+
+        // The vectoring start far abeam ("cleared visual" from well beside final), flying parallel inbound,
+        // level at the path's height for its distance along: the jet 9 nm out and 4 nm abeam, the light
+        // aircraft 4.5 nm out and 2 nm abeam. Here the path at the along-course distance is far under the
+        // planned descent (the stage-5 final review's finding 1); the VEC starts, 2 nm and 1 nm abeam, never
+        // reach that geometry.
+        foreach (var k in new[] { jet, light })
+            foreach (char side in new[] { 'L', 'R' })
+            {
+                bool isJet = k == jet;
+                list.Add(new ApproachScenario($"VECWIDE-A-{KindName(k)}-{side}-par", a, k, isJet ? 9.0 : 4.5,
+                    Sign(side) * (isJet ? 4.0 : 2.0), 0, 0, 0, 0, 30, d, null, null) with { StartLevel = true });
+            }
     }
 
     // Joining final (visual guidance stage 4): positions BA must vector from, the far side of the

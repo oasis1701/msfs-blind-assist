@@ -1666,7 +1666,7 @@ public class VisualGuidanceManager : IDisposable
 
         // Joining (and only joining): the hold hears the cue the pilot heard, the previous update's.
         if (currentPhase == GuidancePhase.Joining)
-            levelHold.Update(ClockForHarness(), altMSL, currentVerticalSpeedFPM, currentPitch, previousDesiredPitch);
+            levelHold.Update(ClockForHarness(), altMSL, currentVerticalSpeedFPM, currentPitch, previousDesiredPitch, trim);
 
         double desiredPitch;
         if (currentPhase == GuidancePhase.Joining && levelHold.HeldAltitudeFt is double heldFt)
@@ -1696,16 +1696,20 @@ public class VisualGuidanceManager : IDisposable
             double route = VisualGuidanceJoin.RouteToJoinNm(joinPlan, activeLegIndex, position, joinAlong);
             double relativeTrack = cachedHeading is double heading
                 ? VisualGuidanceJoin.Normalize(LateralTrackDeg(heading) - runway.HeadingMag) : double.NaN;
+            double distanceNm = Math.Sqrt(along * along + cross * cross);
             var (plannedFt, feedForwardDeg) = VisualGuidanceVertical.PlannedHeight(route, joinAlong,
-                Math.Sqrt(along * along + cross * cross), VisualGuidanceVertical.ClosingFraction(position, relativeTrack),
+                distanceNm, VisualGuidanceVertical.ClosingFraction(position, relativeTrack),
                 glideslopeAngleDeg, glideslopeAltitudeBiasFt, currentGroundSpeedKnots);
-            // On final the plan never sits above the path: level until the path comes down to the aircraft,
-            // then down it, as the path law does (the pattern's join point is fixed where its base was placed,
-            // and an aircraft still capturing passes it).
-            double pathFt = VisualGuidanceVertical.PathHeightFt(along, glideslopeAngleDeg, glideslopeAltitudeBiasFt);
-            if (ActiveLegKind == VisualGuidanceLegKind.Final && plannedFt > pathFt)
+            // Past the join point on the final leg the plan never sits above the path: level until the path
+            // comes down to the aircraft, then down it, as the path law does (the pattern's join point is
+            // fixed where its base was placed, and an aircraft still capturing passes it). Only past it: before
+            // it the path at the along-course distance is the height of a point beside the aircraft (a jet 4 nm
+            // abeam was planned 120 ft under the floor, the final review). Never under the floor either.
+            double capFt = Math.Max(VisualGuidanceVertical.PathHeightFt(along, glideslopeAngleDeg, glideslopeAltitudeBiasFt),
+                VisualGuidanceVertical.PathHeightFt(distanceNm, glideslopeAngleDeg, glideslopeAltitudeBiasFt) - VisualGuidanceVertical.FloorBelowPathFt);
+            if (ActiveLegKind == VisualGuidanceLegKind.Final && along <= joinAlong && plannedFt > capFt)
             {
-                plannedFt = pathFt;
+                plannedFt = capFt;
                 feedForwardDeg = VisualGuidanceVertical.SlopeDeg(glideslopeAngleDeg,
                     VisualGuidanceVertical.ClosingFraction(new VisualGuidanceApproachPoint(along, 0), relativeTrack));
             }

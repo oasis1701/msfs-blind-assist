@@ -90,6 +90,25 @@ public class VisualGuidancePlannedDescentTests
         Assert.Equal(3.0, rig.TargetDescent, 0.05);
     }
 
+    // The final review's finding 1: vectoring from 9 nm out and 4 nm abeam ("cleared visual", flying
+    // parallel), 10 ft under the floor (150 ft under the path at the straight-line 9.85 nm). The plan is
+    // never below the floor, so this aircraft is under the plan and the cue asks for no more than the
+    // glide path's 3°. The final-leg cap had taken the plan down to the path at 9 nm along the course
+    // (2,926 ft, 120 ft under the floor) and asked 4° at once.
+    [Fact]
+    public void Wide_abeam_the_plan_never_goes_under_the_floor()
+    {
+        double along = 9, cross = 4, dist = Math.Sqrt(along * along + cross * cross);
+        double offset = (dist - along) * 6076.12 * Math.Tan(3.0 * Math.PI / 180) - 150 - 10;
+        var rig = new VisualGuidanceTestRig();
+        rig.Place(along, cross, 0, altOffsetFt: offset);
+        rig.UpdateAt(0);
+        Assert.Equal("Vectoring", rig.Phase);
+        rig.FlyFor(2, 30);
+        Assert.Equal("Plan", rig.VerticalMode);
+        Assert.True(rig.TargetDescent <= 3.0 + 1e-9, $"target descent {rig.TargetDescent:0.000}°");
+    }
+
     // The downwind, the base, and final before established all fly the plan; established, the path.
     [Fact]
     public void Its_mode_is_plan_on_every_leg()

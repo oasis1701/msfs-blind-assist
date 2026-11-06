@@ -111,6 +111,20 @@ public class VisualGuidanceLevelHoldManagerTests
         });
     }
 
+    // The final review's finding 2: held, the air carries the aircraft up 200 fpm for a minute (an updraft, a
+    // power change, a busy readback) while the pilot keeps the level pitch. The cue walks down, asking back,
+    // past 1.5° from the pilot's pitch at about 167 ft; the pilot has not moved, so the hold must not let go
+    // (the spec: "a deliberate pitch change of more than about 1.5° from the held pitch").
+    [Fact]
+    public void Drifting_off_without_pitching_never_lets_go()
+    {
+        var rig = Held();
+        double t0 = rig.Now;
+        rig.FlyFor(60, 30, t => rig.Place(Along, Cross, Rel, vsFpm: 200, pitchDeg: LevelPitch, altOffsetFt: 200.0 / 60 * (t - t0)),
+            _ => Assert.Equal("Hold", rig.VerticalMode));
+        Assert.True(rig.TargetDescent > 1.5, $"target descent {rig.TargetDescent:0.00}° 200 ft above the held altitude");
+    }
+
     // "Descend and maintain" again: held at A, down 1,000 ft at 1,000 fpm, level 5 s: held at A − 1,000.
     // Still held at A, the cue would ask the 2° climb back.
     [Fact]

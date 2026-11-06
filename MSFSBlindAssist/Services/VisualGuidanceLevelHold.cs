@@ -6,9 +6,11 @@ namespace MSFSBlindAssist.Services;
 /// on its own pitch. Once it has been under <see cref="VisualGuidanceVerticalTuning.LevelVsFpm"/> for
 /// <see cref="VisualGuidanceVerticalTuning.LevelHoldS"/>, this holds the altitude of that update, and
 /// the cue asks the pilot back from small drifts. A pitch more than
-/// <see cref="VisualGuidanceVerticalTuning.HoldBreakPitchDeg"/> away from the cue the hold asks for
-/// ends it at once (plan decision 9): following the cue never ends it, pitching away on purpose does,
-/// so a descent ATC clears is never fought. A later level-off is held the same way.
+/// <see cref="VisualGuidanceVerticalTuning.HoldBreakPitchDeg"/> away from both the cue the hold asks for
+/// (plan decision 9) and the learned level attitude (the spec's "held pitch") ends it at once: following
+/// the cue never ends it, nor does the air carrying a pilot who keeps the level pitch off the altitude
+/// (the stage-5 final review), while pitching away on purpose does, so a descent ATC clears is never
+/// fought. A later level-off is held the same way.
 /// </summary>
 internal sealed class VisualGuidanceLevelHold
 {
@@ -22,13 +24,14 @@ internal sealed class VisualGuidanceLevelHold
 
     /// <summary>
     /// One update. <paramref name="desiredPitchDeg"/> is the cue the pilot heard: the previous
-    /// update's desired pitch.
+    /// update's desired pitch; <paramref name="levelAttitudeDeg"/> the learned level attitude (the trim).
     /// </summary>
-    public void Update(DateTime now, double altMslFt, double vsFpm, double pitchDeg, double desiredPitchDeg)
+    public void Update(DateTime now, double altMslFt, double vsFpm, double pitchDeg, double desiredPitchDeg, double levelAttitudeDeg)
     {
         if (HeldAltitudeFt != null)
         {
-            if (Math.Abs(pitchDeg - desiredPitchDeg) > _tuning.HoldBreakPitchDeg) Reset();
+            if (Math.Abs(pitchDeg - desiredPitchDeg) > _tuning.HoldBreakPitchDeg
+                && Math.Abs(pitchDeg - levelAttitudeDeg) > _tuning.HoldBreakPitchDeg) Reset();
             return;
         }
         if (Math.Abs(vsFpm) < _tuning.LevelVsFpm && double.IsFinite(altMslFt))
