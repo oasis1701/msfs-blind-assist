@@ -3,7 +3,7 @@ using System.Globalization;
 namespace MSFSBlindAssist.Services;
 
 /// <summary>The phase F names, in the words visual guidance speaks it.</summary>
-internal enum VisualGuidanceReadoutPhase { Starting, Deciding, Joining, Vectoring, Unable, OnFinal, Flare, Touchdown }
+internal enum VisualGuidanceReadoutPhase { Starting, Deciding, Joining, Vectoring, OnFinal, Flare, Touchdown }
 
 /// <summary>
 /// What F reads (VG-22). <paramref name="CrossTrackNm"/> is positive right of the centreline facing
@@ -25,7 +25,8 @@ internal readonly record struct VisualGuidanceStatus(VisualGuidanceReadoutPhase 
 /// vertically, for example "On final, 6.2 miles. On the centreline. 40 feet high, target 750 down." or
 /// "Joining final 6.4 miles out. 30 degree intercept, turn in about 85 seconds." Every number is
 /// culture-invariant, thousands with a comma ("2,260"). Joining says no vertical half: the altitude is
-/// ATC's or the pilot's there (the vertical path, stage 5 of the redesign, adds one).
+/// ATC's or the pilot's there (the vertical path, stage 5 of the redesign, adds one). Nor do the
+/// pattern's downwind and base, where the pitch tone sits on the aircraft's own pitch until stage 5.
 /// </summary>
 internal static class VisualGuidanceStatusText
 {
@@ -37,10 +38,7 @@ internal static class VisualGuidanceStatusText
     {
         VisualGuidanceReadoutPhase.Deciding => "Visual guidance starting, waiting for wings level.",
         VisualGuidanceReadoutPhase.Joining => Joining(s),
-        VisualGuidanceReadoutPhase.Vectoring => s.Turning
-            ? $"Vectoring to final, turning onto final. {FinalSide(s.CrossTrackNm)}. {Vertical(s)}."
-            : $"Vectoring to final, joining {Tenths(s.JoinAlongNm)} miles out. {FinalSide(s.CrossTrackNm)}{TurnIn(s)}. {Vertical(s)}.",
-        VisualGuidanceReadoutPhase.Unable => $"Unable to join final from here. {WhereFinalIs(s)}.",
+        VisualGuidanceReadoutPhase.Vectoring => Vectoring(s),
         VisualGuidanceReadoutPhase.OnFinal =>
             $"On final, {Tenths(s.DistanceNm)} miles. {Side(s.CrossTrackNm)}. {Vertical(s)}.",
         VisualGuidanceReadoutPhase.Flare =>
@@ -56,6 +54,18 @@ internal static class VisualGuidanceStatusText
         if (!s.CrossesFinal) return $"Joining final. Heading does not cross final. {WhereFinalIs(s)}.";
         return $"Joining final {Tenths(s.JoinAlongNm)} miles out. {FivesAtLeastFive(s.InterceptDeg)} degree intercept{TurnIn(s)}.";
     }
+
+    // The pattern names its leg: the downwind has no time to the turn onto final yet; the base counts down to it.
+    private static string Vectoring(in VisualGuidanceStatus s) => s.Leg switch
+    {
+        VisualGuidanceLegKind.Downwind =>
+            $"Vectoring to final, downwind, joining {Tenths(s.JoinAlongNm)} miles out. {FinalSide(s.CrossTrackNm)}.",
+        VisualGuidanceLegKind.Base =>
+            $"Vectoring to final, base, joining {Tenths(s.JoinAlongNm)} miles out. {FinalSide(s.CrossTrackNm)}{TurnIn(s)}.",
+        _ => s.Turning
+            ? $"Vectoring to final, turning onto final. {FinalSide(s.CrossTrackNm)}. {Vertical(s)}."
+            : $"Vectoring to final, joining {Tenths(s.JoinAlongNm)} miles out. {FinalSide(s.CrossTrackNm)}{TurnIn(s)}. {Vertical(s)}.",
+    };
 
     private static string TurnIn(in VisualGuidanceStatus s)
         => s.SecondsToTurn is double t ? $", turn in about {FivesAtLeastFive(t)} seconds" : "";

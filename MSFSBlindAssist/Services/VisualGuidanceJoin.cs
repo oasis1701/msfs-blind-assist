@@ -238,6 +238,92 @@ internal static class VisualGuidanceJoin
         return p.AlongNm - inbound - AlongToEstablishNm(crossAfter, cutDeg, gsKt, captureGain);
     }
 
+    /// <summary>
+    /// The pattern's turn onto final, nm along final from the base: the wider of the capture law's curve
+    /// from the 90° base (<see cref="AlongToEstablishNm"/>) and the aircraft's own turn onto final at its
+    /// speed and bank settings (<see cref="TurnOntoCut"/>), so the base leaves room for whichever the
+    /// aircraft flies. At 140 kt with 25° of bank the law's curve is the wider (1.61 nm against 0.76); an
+    /// aircraft limited to a shallow bank at a high speed needs its own turn's room. The turn onto the
+    /// base needs no room along final: it is flown beyond the base, and the downwind is at least two turn
+    /// radii out (<see cref="Decide"/>).
+    /// </summary>
+    public static double PatternTurnOntoFinalNm(double downwindOffsetNm, int side, double gsKt, double captureGain,
+        VisualGuidanceProfile profile)
+    {
+        double curve = AlongToEstablishNm(downwindOffsetNm, PatternClampDeg, gsKt, captureGain);
+        double ownTurn = TurnOntoCut(-90.0 * side, 0, gsKt, profile.MaxApproachBankDeg, profile.MaxBankRateDegPerSec).InboundNm;
+        return Math.Max(double.IsFinite(curve) ? curve : 0, ownTurn);
+    }
+
+    /// <summary>
+    /// The narrowest downwind that lets the aircraft finish its turn onto the base before the turn onto
+    /// final comes: the sideways room of its own base turn at its speed and bank (<see cref="TurnOntoCut"/>)
+    /// plus the distance from final where the turn onto final starts on a 90° base
+    /// (<see cref="TurnCueCrossNm"/>, at one degree of bank per degree, as the close-in vectoring test in
+    /// <see cref="Decide"/> takes it; the speed factor moves it by about 0.01 nm). About 1.92 nm at 140 kt
+    /// with 25° of bank. Narrower, the two turns ran into one U-turn at full bank and swung 500 to 640 ft past
+    /// the centreline in the approach harness (the owner chose this width, 2026-11-05).
+    /// </summary>
+    public static double PatternLeastDownwindNm(int side, double gsKt, double captureGain, VisualGuidanceProfile profile)
+        => Math.Abs(TurnOntoCut(180, -90.0 * side, gsKt, profile.MaxApproachBankDeg, profile.MaxBankRateDegPerSec).RightNm)
+           + TurnCueCrossNm(PatternClampDeg, gsKt, captureGain, 1.0);
+
+    /// <summary>
+    /// Where the pattern lines the aircraft up on final, nm from the threshold: the base's distance less
+    /// the turn onto final (<see cref="PatternTurnOntoFinalNm"/>) at this ground speed, the same sum that
+    /// placed the base. NaN for any other plan.
+    /// </summary>
+    public static double PatternJoinAlongNm(VisualGuidanceJoinPlan plan, double gsKt, double captureGain, VisualGuidanceProfile profile)
+    {
+        if (plan.State != VisualGuidanceJoinState.Pattern || plan.Legs.Count < 3) return double.NaN;
+        var downwind = plan.Legs[0];
+        return plan.Legs[1].AlongNm - PatternTurnOntoFinalNm(Math.Abs(downwind.CrossNm), downwind.CrossNm >= 0 ? 1 : -1,
+            gsKt, captureGain, profile);
+    }
+
+    /// <summary>
+    /// Whether the pattern's next leg is due: the capture law onto it, holding the intercept being flown
+    /// toward it (at most the pattern's 90°), first asks <see cref="TurnCueBankDeg"/> of bank toward it,
+    /// that is, converging and within <see cref="TurnCueCrossNm"/>. Downwind to base is "Turn base"; base to
+    /// final is the turn onto final.
+    /// </summary>
+    public static bool LegIsDue(in VisualGuidanceLeg leg, VisualGuidanceApproachPoint p, double relTrackDeg, double gsKt,
+        double captureGain, double bankPerDeg)
+    {
+        double cross = LegCrossNm(leg, p);
+        double intercept = InterceptDeg(cross, Normalize(relTrackDeg - leg.DirectionDeg));
+        return intercept > 0
+            && Math.Abs(cross) <= TurnCueCrossNm(Math.Min(intercept, PatternClampDeg), gsKt, captureGain, bankPerDeg);
+    }
+
+    /// <summary>
+    /// On the pattern's downwind or base: the heading error to turn by (degrees, + right) onto
+    /// <paramref name="leg"/>, from the capture law onto it with the pattern's 90° limit, its closing rate
+    /// worked out from the ground speed and the track. On the downwind the turn never goes through the
+    /// heading straight at the centreline (90° from the downwind, the <see cref="VisualGuidanceLeg.ReversedTurnSign"/>
+    /// side): when the short way would, it turns the other way, away from the runway (the owner's choice,
+    /// 2026-11-05: an aircraft cutting in at 45° 2 nm beside final turned 135° toward the runway onto its
+    /// downwind, which gave up a mile of the room and swung it 3,900 ft past the centreline). Flying the
+    /// landing direction, that is the reversed-turn way, so a reversal never swings across the field.
+    /// </summary>
+    public static double LegHeadingErrorDeg(in VisualGuidanceLeg leg, VisualGuidanceApproachPoint p, double relTrackDeg,
+        double gsKt, double captureGain)
+    {
+        double cross = LegCrossNm(leg, p);
+        double relToLeg = Normalize(relTrackDeg - leg.DirectionDeg);
+        double gs = double.IsFinite(gsKt) ? Math.Max(gsKt, 0) : 0;
+        double closingNmS = gs * Math.Sin(relToLeg * D2R) / 3600.0;
+        double desired = DesiredLegTrackDeg(cross, closingNmS, gsKt, PatternClampDeg, captureGain);
+        double error = Normalize(desired - relToLeg);
+        if (leg.ReversedTurnSign == 0 || error == 0) return error;
+        // How far the turn, the short way, has to go before it points straight at the centreline.
+        double atCentreline = 90.0 * leg.ReversedTurnSign;
+        double toCentreline = error > 0 ? Mod360(atCentreline - relToLeg) : Mod360(relToLeg - atCentreline);
+        return toCentreline < Math.Abs(error) ? -Math.Sign(error) * 180.0 : error;
+    }
+
+    private static double Mod360(double deg) => (deg % 360.0 + 360.0) % 360.0;
+
     /// <summary>Turn radius, nm, at <paramref name="gsKt"/> and <paramref name="bankDeg"/> of bank.</summary>
     public static double TurnRadiusNm(double gsKt, double bankDeg)
     {
@@ -311,9 +397,12 @@ internal static class VisualGuidanceJoin
         // The simple pattern: a downwind on the aircraft's side, a base, final. It mainly serves IFR
         // handovers today ("cleared visual approach" from the far side of the field); full VFR circuits
         // come with the general aviation work (the redesign's piece 7).
+        // The base is placed so the aircraft lines up the minimum final out, counting the turn onto final
+        // from its own speed and bank (PatternTurnOntoFinalNm), as vectoring counts the turn onto its cut.
         int side = p.CrossNm >= 0 ? 1 : -1;
-        double offset = Math.Max(Math.Max(cross, 2 * TurnRadiusNm(gsKt, profile.MaxApproachBankDeg)), MinDownwindNm);
-        double baseAlong = profile.MinimumFinalNm + AlongToEstablishNm(offset, PatternClampDeg, gsKt, captureGain);
+        double offset = Math.Max(Math.Max(cross, 2 * TurnRadiusNm(gsKt, profile.MaxApproachBankDeg)),
+            Math.Max(MinDownwindNm, PatternLeastDownwindNm(side, gsKt, captureGain, profile)));
+        double baseAlong = profile.MinimumFinalNm + PatternTurnOntoFinalNm(offset, side, gsKt, captureGain, profile);
         return new(VisualGuidanceJoinState.Pattern, PatternClampDeg, new[]
         {
             new VisualGuidanceLeg(VisualGuidanceLegKind.Downwind, 0, side * offset, 180, side),

@@ -276,10 +276,50 @@ public class VisualGuidanceJoinTests
         Assert.Equal(90.0, left.Legs[1].DirectionDeg, 9);
     }
 
-    // Twice the 25° turn radius at 140 kt.
+    // A tight downwind is widened until the aircraft can finish its turn onto the base before the turn
+    // onto final starts (the owner's choice, 2026-11-05, after the far-side jets' base and final turns ran
+    // into one U-turn from 1.225 nm and swung 640 ft past the centreline): the sideways room of its own
+    // base turn at its speed and bank, plus the distance from final where the turn onto final comes.
+    // About 1.92 nm at 140 kt and 2.7 at 180; a light aircraft at 65 kt keeps the 1 nm least downwind.
     [Fact]
     public void Decide_pattern_widens_a_tight_downwind()
-        => Assert.Equal(1.225, VisualGuidanceJoin.Decide(P(-1, 0.3), 180, 140, Gain, Profile).Legs[0].CrossNm, 0.001);
+    {
+        double Width(double gs) => Math.Abs(VisualGuidanceJoin.TurnOntoCut(180, -90, gs, 25, 3).RightNm)
+            + VisualGuidanceJoin.TurnCueCrossNm(90, gs, Gain, 1.0);
+        double jet = VisualGuidanceJoin.Decide(P(-1, 0.3), 180, 140, Gain, Profile).Legs[0].CrossNm;
+        Assert.Equal(Width(140), jet, 9);
+        Assert.InRange(jet, 1.91, 1.93);
+        double fast = VisualGuidanceJoin.Decide(P(-1, 0.3), 180, 180, Gain, Profile).Legs[0].CrossNm;
+        Assert.Equal(Width(180), fast, 9);
+        Assert.InRange(fast, 2.6, 2.8);
+        Assert.Equal(-Width(140), VisualGuidanceJoin.Decide(P(-1, -0.3), 180, 140, Gain, Profile).Legs[0].CrossNm, 9);
+        Assert.Equal(VisualGuidanceJoin.MinDownwindNm, VisualGuidanceJoin.Decide(P(-1, 0.3), 180, 65, Gain, Profile).Legs[0].CrossNm, 9);
+        // Already wider than that, the downwind is where the aircraft is.
+        Assert.Equal(3.0, VisualGuidanceJoin.Decide(P(-1, 3), 180, 140, Gain, Profile).Legs[0].CrossNm, 9);
+    }
+
+    // The base is placed the minimum final plus the turn onto final, counted from the aircraft's own speed
+    // and bank (the stage-4 checkpoint): the wider of the capture law's curve from the 90° base and the
+    // aircraft's own turn. At 140 kt with 25° the curve is wider (1.61 nm against 0.76), so the base stays
+    // 7.61 nm out, wide downwind or tight; with 10° of bank at 180 kt the aircraft's own turn is wider and
+    // sets it. Where the aircraft lines up from there is the minimum final.
+    [Fact]
+    public void The_base_counts_the_turn_onto_final()
+    {
+        Assert.Equal(7.61, VisualGuidanceJoin.Decide(P(-1, 3), 180, 140, Gain, Profile).Legs[1].AlongNm, 0.01);
+        Assert.Equal(7.61, VisualGuidanceJoin.Decide(P(-1, 0.3), 180, 140, Gain, Profile).Legs[1].AlongNm, 0.01);
+        Assert.InRange(VisualGuidanceJoin.TurnOntoCut(-90, 0, 140, 25, 3).InboundNm, 0.70, 0.80);
+
+        var shallowBank = new VisualGuidanceProfile { MaxApproachBankDeg = 10 };
+        var plan = VisualGuidanceJoin.Decide(P(-1, 3), 180, 180, Gain, shallowBank);
+        double ownTurn = VisualGuidanceJoin.TurnOntoCut(-90, 0, 180, 10, 3).InboundNm;
+        Assert.True(ownTurn > VisualGuidanceJoin.AlongToEstablishNm(plan.Legs[0].CrossNm, 90, 180, Gain), $"own turn {ownTurn}");
+        Assert.Equal(6.0 + ownTurn, plan.Legs[1].AlongNm, 9);
+        Assert.Equal(6.0, VisualGuidanceJoin.PatternJoinAlongNm(plan, 180, Gain, shallowBank), 9);
+        // The left side's turns are left turns of the same size.
+        var left = VisualGuidanceJoin.Decide(P(-1, -3), 180, 180, Gain, shallowBank);
+        Assert.Equal(plan.Legs[1].AlongNm, left.Legs[1].AlongNm, 9);
+    }
 
     [Fact]
     public void The_profile_defaults_are_the_airliner_values()

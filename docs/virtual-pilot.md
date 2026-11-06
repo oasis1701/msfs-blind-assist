@@ -702,9 +702,9 @@ Every other `WORSE` and `CHANGED` line, explained:
 
 Visual guidance now decides, once the wings are nearly level after Ctrl+V, whether the aircraft is on
 final, joining (its heading crosses final at least the minimum final out: the heading is held until
-the turn onto final, VG-23), vectoring (BA picks the cut), or needs the pattern (flown as "Unable" until
-the pattern is built). One capture law with a speed-scaled gain turns the aircraft onto final; the
-precision track within 0.05 nm is unchanged.
+the turn onto final, VG-23), vectoring (BA picks the cut), or needs the simple pattern (flown as "Unable"
+until the pattern was built, below). One capture law with a speed-scaled gain turns the aircraft onto
+final, and onto the pattern's downwind and base; the precision track within 0.05 nm is unchanged.
 
 **The sweep.** The capture gain at 4200 (the old 30°/nm at 140 kt), 7000 and 10259 deg·kt/nm
 (FlyByWire's), each with a roll-in time of 0, 2 and 4 s, against `approach_stage3_v2`, on the plan's
@@ -834,6 +834,40 @@ Every `WORSE` and `CHANGED` line against stage 3, explained:
 - `WIND-TW-A-JET-d0.5` |touchdownXteFt| 25 to 54 ft: the 90° join with 15 kt behind it, turned onto final
   by the new law, touches down 54 ft left of the centreline (half the runway's width is 75 ft); established
   and tracked under A.
+
+**The pattern** (2026-11-05, `approach_stage4_pattern` against `approach_stage4`). From the far side, or too
+close in to turn straight onto final, BA flies a downwind on the aircraft's side, "Turn base", the
+countdown on the base, "Turn onto final". The pass mark: every DW, FAR and CLOSE-A-JET run decides
+`Pattern` and is established at least the minimum final less 0.5 nm (jet) or 0.3 nm (light), with
+`overshootFt` at most 600 and `maxBankCmdDeg` at most 25.0, and no other scenario changes.
+
+- The first run (`approach_stage4_pattern_v1`) met every join distance and missed on overshoot. The
+  far-side jets, 1 nm beside the runway, got the narrowest downwind, two turn radii (1.225 nm at 140 kt):
+  the base turn and the turn onto final ran into one U-turn at full bank and swung 496 to 643 ft past the
+  centreline. The CLOSE jets, cutting toward final at 45° 2 nm beside it, turned 135° toward the runway
+  onto their downwind, gave up about a mile of the room, met the base and final turns in the same update
+  ("Turn base" never said) and swung 3,853 and 3,910 ft past. The far-side runs on runway A mirrored each
+  other (540 and 643 ft, the same timings): not the north wrap.
+- The owner chose two changes (2026-11-05): the downwind is at least as far out as the aircraft's own
+  base turn plus the distance from final where the turn onto final comes (`PatternLeastDownwindNm`, 1.92 nm
+  at 140 kt, 2.7 at 180, light aircraft still 1 nm); and the turn onto the downwind never passes through
+  the heading straight at the centreline, turning away from the runway instead (`LegHeadingErrorDeg`).
+  The mile calls were also held on the downwind and base (the far-side jets heard "3 miles out" flying
+  over the field away from final).
+- The final run passes. Established: downwind jets 6.15 to 6.18 nm, far-side jets 6.14 to 6.17, CLOSE jets
+  6.16, downwind light 0.77, far-side light 0.74 to 0.75. No overshoot in any of the 26. Largest commanded
+  bank 25.0° (the far-side and CLOSE turns), 23.7° on the downwinds. Every other scenario's result line is
+  unchanged.
+- The downwinds were established in 0 of 16 runs at the baseline (`approach_baseline_v5`), stage 3 and
+  stage 4's "Unable"; now 16 of 16. 14 of the 26 pattern runs touch down (0 before); the 12 light runs end
+  past the runway end, floating in the fixed flare from their start height, as the light joins do (stage 5's
+  vertical path and stage 6's flare). Those floats say "Flare" each time the aircraft climbs back above the
+  flare height, six times in a run; a light 30° join does the same, so it predates the pattern.
+- Not judged by the pass mark: the countdown on the base is within 0.33 s at 30 s and 0.03 s at 15 s on the
+  downwinds and CLOSE runs; on the far-side runs, whose base turn comes later, the 15 s call is up to 2.9 s
+  off (the time is worked out as if the aircraft already flew the base at 90° to final, while it is still
+  turning onto it, and their base is short: about 20 s from the base to the turn onto final). Bank
+  callouts run 4.7 to 8.6 a minute on the pattern runs (median by family), the turns being real turns.
 
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 

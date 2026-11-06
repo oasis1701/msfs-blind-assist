@@ -45,7 +45,7 @@ internal sealed class VisualGuidanceTestRig
     public double Bank => _vg.DesiredBankForHarness;
     public double Pitch => _vg.DesiredPitchForHarness;
 
-    /// <summary>The guidance phase's name (Deciding, Joining, Vectoring, Unable, Final, Flare, Touchdown).</summary>
+    /// <summary>The guidance phase's name (Deciding, Joining, Vectoring, Final, Flare, Touchdown).</summary>
     public string Phase => _vg.PhaseForHarness;
 
     /// <summary>The decision visual guidance made (OnFinal, Joining, Vectoring, Pattern), "None" before it.</summary>
@@ -63,7 +63,10 @@ internal sealed class VisualGuidanceTestRig
         double aoaDeg = 5.0, double bankDeg = 0.0, double gsKt = 140)
     {
         static double Norm(double d) => (d % 360 + 360) % 360;
-        var back = VolantaTrafficCalculator.Project(ThrLat, ThrLon, Norm(Course + 180), alongNm);
+        // Past the threshold (alongNm negative) is ahead along the course: Project takes no negative distance.
+        var back = alongNm >= 0
+            ? VolantaTrafficCalculator.Project(ThrLat, ThrLon, Norm(Course + 180), alongNm)
+            : VolantaTrafficCalculator.Project(ThrLat, ThrLon, Course, -alongNm);
         var pos = crossNm >= 0
             ? VolantaTrafficCalculator.Project(back.Latitude, back.Longitude, Norm(Course + 90), crossNm)
             : VolantaTrafficCalculator.Project(back.Latitude, back.Longitude, Norm(Course - 90), -crossNm);

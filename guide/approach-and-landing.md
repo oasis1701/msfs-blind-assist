@@ -165,7 +165,9 @@ When you press Output Ctrl+V, BA looks once at where you are and which way you a
 - **On final.** Within about 600 feet of the extended centreline and within 5 degrees of its direction: BA says *"On final"* and guides you down it.
 - **Your heading crosses final.** The way you are going crosses the extended centreline ahead of you, at least 6 miles from the threshold, at up to about 100 degrees: BA says *"Joining final"* and keeps you on that heading, ATC's or your own, with the guidance tone's wings level. It never asks you to turn in more steeply than you already are. It counts down *"Turn onto final in 30 seconds"* and *"Turn onto final in 15 seconds"*, then says *"Turn onto final"* when it is time to roll in. From there the guidance tone leads you round onto the centreline, and *"Established on final"* follows once you are on it. Until then your altitude is yours or ATC's, so the pitch tone sits on your own pitch.
 - **Anywhere else on the approach side**, for example flying parallel to final, heading away from it, or cutting toward it too close in: BA says *"Vectoring to final"* and picks the heading itself, the shallowest cut from 30 degrees that puts you on final at least 6 miles out, or straight onto final if you are already close to the centreline. It guides your altitude as well. Then *"Turn onto final"* and *"Established on final"*, as above.
-- **The far side of the field, or too close in to turn straight onto final.** For now BA says *"Unable to join final from here"* and holds your heading, the guidance tone wings level, and leaves your altitude to you: the pitch tone sits on your own pitch. Fly to a point you can join from, then press Output Ctrl+V twice (off, then on) so BA decides again.
+- **The far side of the field, or too close in to turn straight onto final.** BA says *"Vectoring to final"* and leads you round a simple pattern on your side of the runway: a downwind flown away from the runway, a base, then final, lined up at least 6 miles out. BA works out how much room your turns need from your speed and bank, so a faster aircraft gets a wider and longer pattern. With the runway on your right on the downwind, both turns are right turns; with it on your left, left turns. If you are pointing the wrong way for the downwind, BA turns you onto it away from the runway, never across it. BA says *"Turn base"* when it is time to turn onto the base, then counts down to the turn onto final and says *"Turn onto final"*, as above. On the downwind and the base your altitude is yours or ATC's: the pitch tone sits on your own pitch, and F says nothing about height.
+
+  This is a way back to final, not circuit guidance: there is no circuit height, no circuit entry and no traffic. It mainly serves a "cleared visual approach" from the far side of the field. If you turn onto final yourself before BA says *"Turn base"*, BA keeps leading you along the downwind; press Output Ctrl+V twice (off, then on) so it decides again.
 
 BA never switches from joining to vectoring by itself. If your heading stops crossing final, it says *"Heading does not cross final"* once and keeps holding your heading. If you are still cutting toward final, only closer in than 6 miles, BA still says *"Turn onto final"* when it is time. If you roll into a turn while joining, for a new heading from ATC, BA does not call your bank back while you are turning: it holds whatever heading you settle on. Pressing Output Ctrl+V twice always makes BA decide again, for example after ATC gives you a new heading.
 
@@ -179,7 +181,8 @@ F tells you where you are: the guidance phase first, then your position left or 
 - *"Joining final 6.4 miles out. 30 degree intercept, turn in about 85 seconds."* On the heading you are flying, at your speed, you will be lined up on final 6.4 miles from the threshold; you are cutting toward it at 30 degrees, and the turn onto final comes in about 85 seconds. While joining, F says nothing about height: the altitude is yours or ATC's.
 - *"Joining final. Heading does not cross final. Final 2.6 miles to your left."* Your heading no longer takes you onto final; it is 2.6 miles away on your left.
 - *"Vectoring to final, joining 6.2 miles out. 2.0 miles right of final, turn in about 85 seconds. 2,260 feet high, target 1,500 down."* BA is choosing your heading to join final 6.2 miles out; you are 2 miles right of it, and well above the path.
-- *"Unable to join final from here. Final 3.0 miles to your right."*
+- *"Vectoring to final, downwind, joining 6.0 miles out. 3.0 miles right of final."* BA is leading you along the pattern's downwind; you will be lined up on final 6 miles from the threshold.
+- *"Vectoring to final, base, joining 6.0 miles out. 1.5 miles right of final, turn in about 10 seconds."* On the base, the turn onto final comes in about 10 seconds.
 - *"Flare, 20 feet. On the centreline."* Your wheels are 20 feet above the runway.
 
 *"On path"* means within about 30 feet of the glide path, and *"On the centreline"* within about 300 feet of it. Left and right of the centreline, or of final, are your aircraft's position relative to the extended centreline as you face the runway; *"to your left"* and *"to your right"* are relative to the way you are going. Pressed in the first moment after you switch Visual Guidance on, before BA has your position, F says *"Visual guidance starting."* If you press F when Visual Guidance is off, BA says *"Visual guidance not active"*.
@@ -190,10 +193,11 @@ If another program is already using one of these keys, BA tells you *"Visual gui
 
 ### What you will hear {#land-vg-hear}
 
-**When you press Output Ctrl+V.** *"Visual guidance active, runway 27L"*, then, once your wings are nearly level, one of *"On final"*, *"Joining final"*, *"Vectoring to final"* or *"Unable to join final from here"* (see [Where you press it from](#land-vg-joining)).
+**When you press Output Ctrl+V.** *"Visual guidance active, runway 27L"*, then, once your wings are nearly level, one of *"On final"*, *"Joining final"* or *"Vectoring to final"* (see [Where you press it from](#land-vg-joining)).
 
 **On the way to final:**
 
+- *"Turn base"*: on the pattern from the far side, roll in now for the base; the guidance tone leads the turn.
 - *"Turn onto final in 30 seconds"* and *"Turn onto final in 15 seconds"*: the countdown to the turn onto final, each said once, and only if the turn was further off than that when BA first worked it out.
 - *"Turn onto final"*: roll in now; the guidance tone leads the turn. It is not said if you were already that close to final when you pressed Output Ctrl+V: the guidance tone is already turning you.
 - *"Heading does not cross final"*: while joining, your heading has stopped taking you onto final ahead of you, or now meets it less than 6 miles out. Said once; said again only if your heading crosses final again for a few seconds and then stops. If you are still cutting toward final, *"Turn onto final"* still comes.
@@ -204,7 +208,7 @@ If another program is already using one of these keys, BA tells you *"Visual gui
 - *"Flare"*: your wheels are about 30 feet above the runway (40 feet on the Headwind A330 and the PMDG 777, 35 feet on the MD-11). The guidance tone now asks for the flare pitch. Raise the nose smoothly to match.
 - *"Touchdown"*: the wheels are a few feet from the runway.
 
-**Distance callouts.** *"5 miles out"*, *"3 miles out"* and *"1 mile out"* as you pass 5, 3 and 1 miles from the runway threshold. One you are already inside when you press Output Ctrl+V is not said.
+**Distance callouts.** *"5 miles out"*, *"3 miles out"* and *"1 mile out"* as you pass 5, 3 and 1 miles from the runway threshold. One you are already inside when you press Output Ctrl+V is not said. On the pattern's downwind and base none is said; once the pattern has taken you back out past a mark, it is said on final.
 
 **Bank callouts.** BA speaks how much more bank you need: *"3 left"* means roll 3 degrees further to the left than you are now; *"2 right"* means roll 2 degrees further right. *"matched"* means your bank is what the guidance wants. *"On commanded path"* means your bank matches and the guidance wants the wings level: you are tracking the centreline.
 

@@ -65,10 +65,25 @@ public class VisualGuidanceStatusTextTests
         => Assert.Equal("Vectoring to final, turning onto final. On the centreline. On path, target 750 down.",
             Compose(VisualGuidanceReadoutPhase.Vectoring, cross: 0.04, turning: true, altErr: 10, fpm: -750));
 
+    // The pattern's downwind and base: the leg, where the aircraft will be lined up, the side, and on the
+    // base the time to the turn onto final. No vertical half until the vertical path (stage 5): there the
+    // pitch tone sits on the aircraft's own pitch, so the old law's target is not what the tone shows.
     [Fact]
-    public void Unable_says_where_final_is()
-        => Assert.Equal("Unable to join final from here. Final 3.0 miles to your right.",
-            Compose(VisualGuidanceReadoutPhase.Unable, cross: 3.0, finalToTheRight: true));
+    public void Pattern_downwind_says_the_leg_where_it_joins_and_the_side()
+        => Assert.Equal("Vectoring to final, downwind, joining 6.0 miles out. 3.0 miles right of final.",
+            Compose(VisualGuidanceReadoutPhase.Vectoring, cross: 3.0, join: 6.0, leg: VisualGuidanceLegKind.Downwind,
+                altErr: 2258, fpm: -1500));
+
+    [Fact]
+    public void Pattern_base_says_the_turn()
+        => Assert.Equal("Vectoring to final, base, joining 6.0 miles out. 1.5 miles right of final, turn in about 40 seconds.",
+            Compose(VisualGuidanceReadoutPhase.Vectoring, cross: 1.5, join: 6.0, seconds: 40, leg: VisualGuidanceLegKind.Base,
+                altErr: 2258, fpm: -1500));
+
+    [Fact]
+    public void Pattern_base_with_no_time_to_the_turn_leaves_it_out()
+        => Assert.Equal("Vectoring to final, base, joining 6.0 miles out. 2.0 miles left of final.",
+            Compose(VisualGuidanceReadoutPhase.Vectoring, cross: -2.0, join: 6.0, seconds: null, leg: VisualGuidanceLegKind.Base));
 
     // A tiny intercept or time still reads as at least 5.
     [Fact]
@@ -108,8 +123,10 @@ public class VisualGuidanceStatusTextTests
                 Compose(VisualGuidanceReadoutPhase.Joining, cross: 1.5, join: 12.34, intercept: 45, seconds: 1234));
             Assert.Equal("Vectoring to final, joining 6.5 miles out. 1.5 miles left of final, turn in about 40 seconds. 1,230 feet high, target 1,250 down.",
                 Compose(VisualGuidanceReadoutPhase.Vectoring, cross: -1.46, join: 6.46, seconds: 41, altErr: 1234, fpm: -1234));
-            Assert.Equal("Unable to join final from here. Final 2.5 miles to your left.",
-                Compose(VisualGuidanceReadoutPhase.Unable, cross: -2.46, finalToTheRight: false));
+            Assert.Equal("Vectoring to final, base, joining 12.3 miles out. 2.5 miles left of final, turn in about 1,235 seconds.",
+                Compose(VisualGuidanceReadoutPhase.Vectoring, cross: -2.46, join: 12.34, seconds: 1234, leg: VisualGuidanceLegKind.Base));
+            Assert.Equal("Vectoring to final, downwind, joining 6.5 miles out. 1.5 miles right of final.",
+                Compose(VisualGuidanceReadoutPhase.Vectoring, cross: 1.46, join: 6.46, leg: VisualGuidanceLegKind.Downwind));
         }
         finally
         {
@@ -119,8 +136,8 @@ public class VisualGuidanceStatusTextTests
 
     private static string Compose(VisualGuidanceReadoutPhase phase, double cross, double join = 0, double intercept = 30,
         double? seconds = null, bool crosses = true, bool turning = false, bool finalToTheRight = false,
-        double altErr = 0, double fpm = 0)
-        => VisualGuidanceStatusText.Compose(new VisualGuidanceStatus(phase, 10.0, cross, altErr, fpm, 0,
+        double altErr = 0, double fpm = 0, VisualGuidanceLegKind leg = VisualGuidanceLegKind.Final)
+        => VisualGuidanceStatusText.Compose(new VisualGuidanceStatus(phase, 10.0, cross, altErr, fpm, 0, Leg: leg,
             InterceptDeg: intercept, Turning: turning, CrossesFinal: crosses, JoinAlongNm: join, SecondsToTurn: seconds,
             FinalToTheRight: finalToTheRight));
 }

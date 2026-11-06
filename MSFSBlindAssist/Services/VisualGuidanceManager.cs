@@ -33,6 +33,10 @@ public class VisualGuidanceManager : IDisposable
     // level after Ctrl+V, BA decides once how the aircraft reaches final; pressing Ctrl+V off and on
     // decides again. Joining holds the heading being flown until the turn onto final is due (VG-23).
     private VisualGuidanceJoinPlan? joinPlan;
+    // The leg being flown, an index into joinPlan.Legs: the downwind, then the base, then final for the
+    // simple pattern; final at once for every other plan.
+    private int activeLegIndex;
+    private bool turnBaseLinePending;                 // the pattern's base turn has come and "Turn base" is still to say
     private bool turnOntoFinalDue;                    // the turn onto final has come (on final: no turn to make)
     private double frozenInterceptDeg = double.NaN;   // joining: the intercept being flown when the turn came
     private DateTime? establishedSince;               // inside the established criteria since, else null
@@ -157,10 +161,10 @@ public class VisualGuidanceManager : IDisposable
     private const double HOLD_ON_FINAL_S = 0.9;            // "On final" 0.70 s
     private const double HOLD_JOINING_S = 1.1;             // "Joining final" 0.90 s
     private const double HOLD_VECTORING_S = 1.4;           // "Vectoring to final" 1.15 s
-    private const double HOLD_UNABLE_S = 2.3;              // "Unable to join final from here" 1.89 s
     private const double HOLD_COUNTDOWN_30_S = 2.6;        // "Turn onto final in 30 seconds" 2.13 s
     private const double HOLD_COUNTDOWN_15_S = 2.7;        // "Turn onto final in 15 seconds" 2.23 s
     private const double HOLD_TURN_ONTO_FINAL_S = 1.4;     // "Turn onto final" 1.11 s
+    private const double HOLD_TURN_BASE_S = 1.0;           // "Turn base" 0.78 s (measured 2026-11-05)
     private const double HOLD_NOT_CROSSING_S = 2.1;        // "Heading does not cross final" 1.68 s
     private const double HOLD_ESTABLISHED_S = 1.7;         // "Established on final" 1.39 s
     private const double HOLD_5_MILES_S = 1.4;             // "5 miles out" 1.11 s
@@ -330,7 +334,6 @@ public class VisualGuidanceManager : IDisposable
             GuidancePhase.Deciding => VisualGuidanceReadoutPhase.Deciding,
             GuidancePhase.Joining => VisualGuidanceReadoutPhase.Joining,
             GuidancePhase.Vectoring => VisualGuidanceReadoutPhase.Vectoring,
-            GuidancePhase.Unable => VisualGuidanceReadoutPhase.Unable,
             GuidancePhase.Final => VisualGuidanceReadoutPhase.OnFinal,
             GuidancePhase.Flare => VisualGuidanceReadoutPhase.Flare,
             GuidancePhase.Touchdown => VisualGuidanceReadoutPhase.Touchdown,
@@ -348,12 +351,13 @@ public class VisualGuidanceManager : IDisposable
             AltitudeErrorFt: lastCalculatedAltitudeError,
             TargetFpm: lastCalculatedTargetFPM,
             WheelHeightFt: altMSL - thresholdElevationMSL - flareAltitudeBiasFt);
-        // Joining, vectoring and unable: the join from here (the countdown speaks the same time).
-        if (phase is VisualGuidanceReadoutPhase.Joining or VisualGuidanceReadoutPhase.Vectoring or VisualGuidanceReadoutPhase.Unable
+        // Joining and vectoring: the join from here (the countdown speaks the same time), and the pattern's leg.
+        if (phase is VisualGuidanceReadoutPhase.Joining or VisualGuidanceReadoutPhase.Vectoring
             && PictureOfTheJoin(lat, lon, cross) is JoinPicture join)
         {
             status = status with
             {
+                Leg = ActiveLegKind,
                 InterceptDeg = join.InterceptDeg, Turning = turnOntoFinalDue, CrossesFinal = join.CrossesFinal,
                 JoinAlongNm = join.JoinAlongNm, SecondsToTurn = join.SecondsToTurn, FinalToTheRight = join.FinalToTheRight,
             };
@@ -369,8 +373,7 @@ public class VisualGuidanceManager : IDisposable
         NotStarted,         // before the first update with a position
         Deciding,           // banked 5° or more: both tones on the aircraft until the wings are nearly level
         Joining,            // on a heading that crosses final: held until the turn onto final ("Joining final")
-        Vectoring,          // BA chose the route onto final ("Vectoring to final")
-        Unable,             // the simple pattern is needed and does not exist yet: wings level, heading held
+        Vectoring,          // BA chose the route onto final, straight in or by the simple pattern ("Vectoring to final")
         Final,              // established on final (or pressed there)
         Flare,              // the main gear under the profile's flare height
         Touchdown           // the main gear under 5 ft
@@ -480,6 +483,8 @@ public class VisualGuidanceManager : IDisposable
         // Reset state: every press of Ctrl+V decides afresh.
         currentPhase = GuidancePhase.NotStarted;
         joinPlan = null;
+        activeLegIndex = 0;
+        turnBaseLinePending = false;
         turnOntoFinalDue = false;
         frozenInterceptDeg = double.NaN;
         establishedSince = null;
@@ -1135,12 +1140,13 @@ public class VisualGuidanceManager : IDisposable
         var position = VisualGuidanceJoin.Locate(lat, lon, runway);
         double relativeTrack = VisualGuidanceJoin.Normalize((cachedGroundTrack ?? cachedHeading ?? runway.HeadingMag) - runway.HeadingMag);
         joinPlan = VisualGuidanceJoin.Decide(position, relativeTrack, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile);
+        activeLegIndex = 0;
+        // The simple pattern is vectoring too: BA chooses the route, spoken "Vectoring to final" (decision 2).
         currentPhase = joinPlan.State switch
         {
             VisualGuidanceJoinState.OnFinal => GuidancePhase.Final,
             VisualGuidanceJoinState.Joining => GuidancePhase.Joining,
-            VisualGuidanceJoinState.Vectoring => GuidancePhase.Vectoring,
-            _ => GuidancePhase.Unable,   // the pattern: stage 4's Task 6
+            _ => GuidancePhase.Vectoring,
         };
         // On final there is no turn to make. A turn already due at this update is not announced either
         // (decision 3 of the stage-4 plan): the state line and the tone say it.
@@ -1155,21 +1161,61 @@ public class VisualGuidanceManager : IDisposable
         {
             VisualGuidanceJoinState.OnFinal => ("On final", HOLD_ON_FINAL_S),
             VisualGuidanceJoinState.Joining => ("Joining final", HOLD_JOINING_S),
-            VisualGuidanceJoinState.Vectoring => ("Vectoring to final", HOLD_VECTORING_S),
-            _ => ("Unable to join final from here", HOLD_UNABLE_S),
+            _ => ("Vectoring to final", HOLD_VECTORING_S),
         };
         Say(line, immediate: false, hold);
+    }
+
+    /// <summary>The kind of the leg being flown: final for every plan but the simple pattern's downwind and base.</summary>
+    private VisualGuidanceLegKind ActiveLegKind
+        => joinPlan is { } plan && activeLegIndex < plan.Legs.Count ? plan.Legs[activeLegIndex].Kind : VisualGuidanceLegKind.Final;
+
+    /// <summary>True on the simple pattern's downwind or base, before the turn onto final.</summary>
+    private bool OnPatternLeg => currentPhase == GuidancePhase.Vectoring && ActiveLegKind != VisualGuidanceLegKind.Final;
+
+    /// <summary>
+    /// The simple pattern: moves on to the next leg when its turn has come (<see cref="VisualGuidanceJoin.LegIsDue"/>),
+    /// more than one if several came at once. The base asks for "Turn base"; final is the turn onto final,
+    /// spoken and timed as vectoring's. If both came in one update, only the turn onto final is said.
+    /// </summary>
+    private void AdvancePatternLeg(double lat, double lon, double relativeTrack, double speedFactor)
+    {
+        if (runway == null || joinPlan == null) return;
+        var position = VisualGuidanceJoin.Locate(lat, lon, runway);
+        while (activeLegIndex < joinPlan.Legs.Count - 1)
+        {
+            var next = joinPlan.Legs[activeLegIndex + 1];
+            if (!VisualGuidanceJoin.LegIsDue(next, position, relativeTrack, currentGroundSpeedKnots, CaptureGainForHarness,
+                    LATERAL_HEADING_GAIN * speedFactor))
+                break;
+            activeLegIndex++;
+            if (next.Kind == VisualGuidanceLegKind.Base)
+                turnBaseLinePending = true;
+            else if (next.Kind == VisualGuidanceLegKind.Final)
+            {
+                turnBaseLinePending = false;
+                turnOntoFinalDue = true;
+            }
+            Log.Debug("VisualGuidance", $"Pattern: {next.Kind} leg at along {position.AlongNm:F2} nm, cross {position.CrossNm:F2} nm, " +
+                $"track {relativeTrack:F1}° from the course");
+        }
     }
 
     /// <summary>
     /// Established: on final within <see cref="VisualGuidanceJoin.EstablishedCrossNm"/> and
     /// <see cref="VisualGuidanceJoin.EstablishedTrackDeg"/> of the course (the track as the lateral law
     /// takes it), on the approach side, for <see cref="VisualGuidanceJoin.EstablishedHoldS"/>. Then the
-    /// phase is final for the rest of the approach.
+    /// phase is final for the rest of the approach. Only once the final leg is being flown: never on the
+    /// pattern's downwind or base.
     /// </summary>
     private void UpdateEstablished(double lat, double lon)
     {
         if (runway == null || cachedHeading is not double heading) return;
+        if (ActiveLegKind != VisualGuidanceLegKind.Final)
+        {
+            establishedSince = null;
+            return;
+        }
         double cross = SignedCrossTrackNm(runway, lat, lon);
         double trackError = VisualGuidanceJoin.Normalize(LateralTrackDeg(heading) - runway.HeadingMag);
         bool inside = Math.Abs(cross) <= VisualGuidanceJoin.EstablishedCrossNm
@@ -1197,10 +1243,10 @@ public class VisualGuidanceManager : IDisposable
         => cachedAGL.HasValue && cachedAGL.Value <= 100.0 ? heading : cachedGroundTrack ?? heading;
 
     /// <summary>
-    /// The bank the guidance asks for, right positive. Deciding: the aircraft's own bank. Unable, and
-    /// joining before the turn onto final: wings level, the heading held (VG-23). Otherwise, onto and
-    /// along final: the precision track within <see cref="ARC_MODE_EXIT_NM"/> of the centreline, the
-    /// capture law outside it.
+    /// The bank the guidance asks for, right positive. Deciding: the aircraft's own bank. Joining before
+    /// the turn onto final: wings level, the heading held (VG-23). The simple pattern's downwind and base:
+    /// the capture law onto that leg. Otherwise, onto and along final: the precision track within
+    /// <see cref="ARC_MODE_EXIT_NM"/> of the centreline, the capture law outside it.
     /// </summary>
     private double CalculateDesiredBank(double lat, double lon, double heading)
     {
@@ -1238,9 +1284,16 @@ public class VisualGuidanceManager : IDisposable
             double desiredBank;
             string guidancePhase;
 
-            // Vectoring: note when the turn onto final comes (the countdown and its line).
+            // Vectoring: the pattern's legs move on as their turns come; once on the final leg, note when the
+            // turn onto final comes (the countdown and its line). On the downwind and the base the final
+            // leg's cue is not checked: a far-side start can begin closer to final than the cue.
             if (currentPhase == GuidancePhase.Vectoring)
-                TurnOntoFinalIsDue(lat, lon, signedCrossTrackNM, relativeTrack, speedFactor);
+            {
+                if (OnPatternLeg)
+                    AdvancePatternLeg(lat, lon, relativeTrack, speedFactor);
+                if (!OnPatternLeg)
+                    TurnOntoFinalIsDue(lat, lon, signedCrossTrackNM, relativeTrack, speedFactor);
+            }
 
             if (currentPhase == GuidancePhase.Deciding)
             {
@@ -1249,16 +1302,32 @@ public class VisualGuidanceManager : IDisposable
                 guidancePhase = "DECIDING";
                 desiredBank = StandardBank(cachedBank ?? 0.0);
             }
-            else if (currentPhase == GuidancePhase.Unable
-                     || (currentPhase == GuidancePhase.Joining
-                         && !TurnOntoFinalIsDue(lat, lon, signedCrossTrackNM, relativeTrack, speedFactor)))
+            else if (OnPatternLeg && joinPlan != null)
             {
-                // Wings level, the heading held. Joining: the heading ATC (or the pilot) chose, as
-                // FlyByWire's autopilot holds its heading until LOC* engages; the capture law runs only to
-                // find the turn onto final (VG-23). Flying its small early bank would let a pilot who
-                // follows it shrink their own intercept and keep putting the turn off. Level at once, not
-                // at the rate limit: after a press in a turn the command was the aircraft's own bank, and
-                // following it down would ask a pilot rolling out for more bank than they have.
+                // ========== THE SIMPLE PATTERN: DOWNWIND OR BASE ==========
+                // The same capture law onto the leg, with the pattern's 90° limit; past 170° off the leg the
+                // turn is away from the runway (VisualGuidanceJoin.LegHeadingErrorDeg). The pattern mainly
+                // serves IFR handovers today ("cleared visual approach" from the far side of the field);
+                // full VFR circuits come with the general aviation work (the redesign's piece 7).
+                var leg = joinPlan.Legs[activeLegIndex];
+                guidancePhase = leg.Kind == VisualGuidanceLegKind.Downwind ? "PATTERN_DOWNWIND" : "PATTERN_BASE";
+                double headingError = VisualGuidanceJoin.LegHeadingErrorDeg(leg, VisualGuidanceJoin.Locate(lat, lon, runway),
+                    relativeTrack, currentGroundSpeedKnots, CaptureGainForHarness);
+                double rawDesiredBank = RateLimited(previousDesiredBank, headingError * LATERAL_HEADING_GAIN * speedFactor,
+                    maxBankRateDegPerSec);
+                desiredBank = Math.Clamp(rawDesiredBank, -maxApproachBankDeg, maxApproachBankDeg);
+                Log.Debug("VisualGuidance", $"{guidancePhase}: XTE={signedCrossTrackNM:F3}NM, RelTrk={relativeTrack:F1}°, " +
+                    $"HdgErr={headingError:F1}°, Bank={desiredBank:F1}°, GS={currentGroundSpeedKnots:F0}kt");
+            }
+            else if (currentPhase == GuidancePhase.Joining
+                     && !TurnOntoFinalIsDue(lat, lon, signedCrossTrackNM, relativeTrack, speedFactor))
+            {
+                // Wings level, the heading held: the heading ATC (or the pilot) chose, as FlyByWire's
+                // autopilot holds its heading until LOC* engages; the capture law runs only to find the turn
+                // onto final (VG-23). Flying its small early bank would let a pilot who follows it shrink
+                // their own intercept and keep putting the turn off. Level at once, not at the rate limit:
+                // after a press in a turn the command was the aircraft's own bank, and following it down
+                // would ask a pilot rolling out for more bank than they have.
                 guidancePhase = "HOLD_HEADING";
                 desiredBank = 0.0;
             }
@@ -1388,9 +1457,10 @@ public class VisualGuidanceManager : IDisposable
     /// The join from here, for the heading and speed flown now: the intercept toward final; whether the
     /// track crosses final (joining; vectoring always "does"); the time to the turn onto final
     /// (<see cref="VisualGuidanceJoin.SecondsToTurn"/>, with the clamp the turn cue uses: the intercept
-    /// flown when joining, the chosen angle when vectoring); where the aircraft will be lined up on
-    /// final (the live intercept when joining, the chosen angle when vectoring); and the side of the
-    /// track the nearest point of final lies on (the threshold, when past it). Null before a decision.
+    /// flown when joining, the chosen angle when vectoring; none on the pattern's downwind); where the
+    /// aircraft will be lined up on final (the live intercept when joining, the chosen angle when
+    /// vectoring, the sum that placed the base for the pattern); and the side of the track the nearest
+    /// point of final lies on (the threshold, when past it). Null before a decision.
     /// </summary>
     private JoinPicture? PictureOfTheJoin(double lat, double lon, double cross, bool withJoinAlong = true)
     {
@@ -1402,8 +1472,11 @@ public class VisualGuidanceManager : IDisposable
         var position = new VisualGuidanceApproachPoint(along, cross);
         bool crosses = !joining || VisualGuidanceJoin.CrossesFinal(position, relativeTrack, minimumFinalNm, out _);
         // The turn (and so its countdown) comes whenever the track meets final ahead of the threshold,
-        // even when that is inside the minimum final and "crosses" is false for the spoken line.
-        bool turnWillCome = !joining || VisualGuidanceJoin.MeetsFinalAhead(position, relativeTrack);
+        // even when that is inside the minimum final and "crosses" is false for the spoken line. On the
+        // pattern's downwind the base comes first, so there is no time to the turn onto final yet.
+        bool pattern = joinPlan.State == VisualGuidanceJoinState.Pattern;
+        bool turnWillCome = joining ? VisualGuidanceJoin.MeetsFinalAhead(position, relativeTrack)
+            : ActiveLegKind != VisualGuidanceLegKind.Downwind;
         double clamp = joining ? intercept : joinPlan.ClampDeg;
         // Vectoring: once the aircraft converges at all, the time is on the angle BA chose, which the
         // guidance is turning it onto; on the few degrees it has so far the time would read far too long
@@ -1415,11 +1488,12 @@ public class VisualGuidanceManager : IDisposable
                 LATERAL_HEADING_GAIN * SpeedFactor())
             : null;
         // Where it lines up, counting the turn onto the cut when vectoring, as the decision did (joining
-        // flies its own cut, so there is no turn to count). Only F needs it; the countdown skips it.
-        double joinAlong = withJoinAlong
-            ? VisualGuidanceJoin.JoinAlongNm(position, relativeTrack,
-                joining ? intercept : joinPlan.ClampDeg, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile)
-            : double.NaN;
+        // flies its own cut, so there is no turn to count), and for the pattern the sum that placed its
+        // base. Only F needs it; the countdown skips it.
+        double joinAlong = !withJoinAlong ? double.NaN
+            : pattern ? VisualGuidanceJoin.PatternJoinAlongNm(joinPlan, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile)
+            : VisualGuidanceJoin.JoinAlongNm(position, relativeTrack,
+                joining ? intercept : joinPlan.ClampDeg, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile);
         // Toward the nearest point of final, in (inbound, right) components, against the track's right normal.
         double toX = along > 0 ? 0 : along, toY = -cross;
         double track = relativeTrack * Math.PI / 180;
@@ -1428,17 +1502,25 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// The join's own lines, queued, each holding the bank callouts for its measured time (VG-21):
-    /// "Turn onto final" when the turn comes (not when it was already due at the decision); the countdown
-    /// at 30 and 15 s before it, each once and only if the turn was further off than that when its time
-    /// was first known; and, while joining before the turn, "Heading does not cross final" once the
-    /// track has not crossed final for <see cref="VisualGuidanceJoin.NotCrossingHoldS"/>, again only
-    /// after it has crossed for as long and stopped again. Joining never becomes vectoring by itself.
+    /// The join's own lines, queued, each holding the bank callouts for its measured time (VG-21): the
+    /// pattern's "Turn base" when its base turn comes; "Turn onto final" when the turn comes (neither when
+    /// it was already due at the decision); the countdown at 30 and 15 s before it (on the pattern, while on
+    /// the base), each once and only if the turn was further off than that when its time was first known;
+    /// and, while joining before the turn, "Heading does not cross final" once the track has not crossed
+    /// final for <see cref="VisualGuidanceJoin.NotCrossingHoldS"/>, again only after it has crossed for as
+    /// long and stopped again. Joining never becomes vectoring by itself.
     /// </summary>
     private void HandleJoinCallouts(double lat, double lon)
     {
         if (runway == null || joinPlan == null) return;
         if (currentPhase is not (GuidancePhase.Joining or GuidancePhase.Vectoring)) return;
+
+        if (turnBaseLinePending)
+        {
+            turnBaseLinePending = false;
+            if (!decidedThisUpdate)
+                Say("Turn base", immediate: false, HOLD_TURN_BASE_S);
+        }
 
         if (turnOntoFinalDue)
         {
@@ -1667,12 +1749,12 @@ public class VisualGuidanceManager : IDisposable
             // Clamp final command
             double desiredPitch = Math.Clamp(rawDesiredPitch, -12.0, 12.0);
 
-            // Deciding, joining and unable to join: the altitude is the pilot's or ATC's, so the pitch tone
-            // sits on the aircraft's own pitch (the redesign's piece 4, Waiting), taken without a rate
-            // limit; unable, the law would aim at a 3° path far below a far-side start and ask for a dive.
-            // The law above still runs, so its filters stay warm and F's numbers current, and it starts
-            // from the aircraft's pitch when final begins.
-            if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining or GuidancePhase.Unable)
+            // Deciding, joining and the pattern's downwind and base: the altitude is the pilot's or ATC's, so
+            // the pitch tone sits on the aircraft's own pitch (the redesign's piece 4, Waiting), taken without
+            // a rate limit; on the downwind and base the law would aim at a 3° path far below and ask for a
+            // dive, until stage 5 plans the pattern's descent. The law above still runs, so its filters stay
+            // warm and F's numbers current, and it starts from the aircraft's pitch when final begins.
+            if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining || OnPatternLeg)
                 desiredPitch = currentPitch;
 
             // Update for next iteration
@@ -1741,6 +1823,15 @@ public class VisualGuidanceManager : IDisposable
         }
         foreach (var (mark, _, _) in MileCallouts)
             if (distanceNM > mark + MILE_CALL_REARM_NM) armedMileMarks.Add(mark);
+
+        // On the pattern's downwind and base the distance is not a distance out on final (a far-side
+        // downwind passes 3 nm from the threshold flying away from it): a mark passed there is not said,
+        // and is said on final only once the pattern has taken the aircraft back out past it.
+        if (OnPatternLeg)
+        {
+            armedMileMarks.RemoveWhere(m => distanceNM <= m);
+            return;
+        }
 
         if ((now - lastDistanceAnnouncement).TotalMilliseconds < ANNOUNCEMENT_INTERVAL_MS)
             return;

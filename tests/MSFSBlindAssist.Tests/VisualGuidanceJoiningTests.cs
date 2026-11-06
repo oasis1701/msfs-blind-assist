@@ -126,15 +126,160 @@ public class VisualGuidanceJoiningTests
         Assert.True(rig.Bank > 1, $"bank {rig.Bank}");
     }
 
-    // Until the simple pattern exists (stage 4, Task 6), the far side says so and holds the heading.
+    // ── The simple pattern from the far side ───────────────────────────────────────────────────
+    // Right of final is south of runway 09: a downwind there is flown west with the runway on the right,
+    // so the base turn and the turn onto final are both RIGHT turns; the left side mirrors (VG-18).
+
+    // The pattern's base on the default profile at 140 kt (7.61 nm out, VisualGuidanceJoinTests).
+    private static double BaseAlong(double cross = 3)
+        => VisualGuidanceJoin.Decide(new VisualGuidanceApproachPoint(-1, cross), 180, 140, VisualGuidanceJoin.DefaultCaptureGain,
+            new VisualGuidanceProfile()).Legs[1].AlongNm;
+
     [Fact]
-    public void A_position_that_needs_the_pattern_holds_its_heading_for_now()
+    public void A_far_side_start_is_vectored()
     {
-        var rig = PressedAt(-1, 3, 180);
+        var (rig, lines) = RecordedAt(-1, 3, 180);
         rig.FlyFor(5, 30);
         Assert.Equal("Pattern", rig.Decision);
-        Assert.Equal("Unable", rig.Phase);
-        Assert.InRange(rig.Bank, -0.1, 0.1);
+        Assert.Equal("Vectoring", rig.Phase);
+        Assert.Single(Said(lines), s => s.Text == "Vectoring to final");
+    }
+
+    // Lined up with the downwind, BA asks for nothing: wings level.
+    [Fact]
+    public void On_the_downwind_the_guidance_holds_it()
+    {
+        var rig = PressedAt(-1, 3, 180);
+        rig.FlyFor(5, 30, afterEach: _ => Assert.InRange(rig.Bank, -0.1, 0.1));
+    }
+
+    [Fact]
+    public void Right_side_pattern_turns_base_right_and_final_right()
+    {
+        double aB = BaseAlong();
+        var rig = PressedAt(-1, 3, 180);
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB - 0.5, 3, 180));
+        Assert.True(rig.Bank > 1, $"base: bank {rig.Bank}");
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB, 0.5, -90));
+        Assert.True(rig.Bank > 1, $"final: bank {rig.Bank}");
+    }
+
+    [Fact]
+    public void Left_side_pattern_turns_base_left_and_final_left()
+    {
+        double aB = BaseAlong(-3);
+        var rig = PressedAt(-1, -3, 180);
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB - 0.5, -3, 180));
+        Assert.True(rig.Bank < -1, $"base: bank {rig.Bank}");
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB, -0.5, 90));
+        Assert.True(rig.Bank < -1, $"final: bank {rig.Bank}");
+    }
+
+    // On the far side flying the landing direction, the downwind is the other way round: the turn onto
+    // it is away from the runway (right on the right side, left on the left), never across the field.
+    [Fact]
+    public void A_reversed_downwind_turns_away_from_the_runway()
+    {
+        var right = PressedAt(-1, 3, 0);
+        Assert.Equal("Pattern", right.Decision);
+        Assert.True(right.Bank > 1, $"right side: bank {right.Bank}");
+        var left = PressedAt(-1, -3, 0);
+        Assert.True(left.Bank < -1, $"left side: bank {left.Bank}");
+    }
+
+    [Fact]
+    public void Pattern_says_turn_base_then_turn_onto_final()
+    {
+        double aB = BaseAlong();
+        var (rig, lines) = RecordedAt(-1, 3, 180);
+        rig.FlyFor(5, 30);
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB - 0.5, 3, 180));
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB, 0.5, -90));
+        var said = Said(lines).Select(s => s.Text).Where(t => t is "Vectoring to final" or "Turn base" or "Turn onto final").ToList();
+        Assert.Equal(new[] { "Vectoring to final", "Turn base", "Turn onto final" }, said);
+    }
+
+    // Cutting in toward final at 45°, 2 nm beside it and too close in to join (it meets final 5.5 nm out):
+    // the short way onto the downwind is a 135° turn toward the runway, which gave up a mile of the room the
+    // pattern's turns need (the CLOSE jets swung 3,900 ft past the centreline). BA turns the other way,
+    // away from the runway (the owner's choice, 2026-11-05). A turn onto the downwind that does not pass
+    // through the heading straight at the centreline keeps the short way: heading 10° outbound of it, left.
+    [Fact]
+    public void Cutting_in_close_turns_onto_the_downwind_away_from_the_runway()
+    {
+        var right = PressedAt(7.5, 2.0, -45);
+        Assert.Equal("Pattern", right.Decision);
+        Assert.True(right.Bank > 1, $"right side: bank {right.Bank}");
+        var left = PressedAt(7.5, -2.0, 45);
+        Assert.Equal("Pattern", left.Decision);
+        Assert.True(left.Bank < -1, $"left side: bank {left.Bank}");
+        var shortWay = PressedAt(-1, 3, -100);
+        Assert.Equal("Pattern", shortWay.Decision);
+        Assert.True(shortWay.Bank < -1, $"short way: bank {shortWay.Bank}");
+    }
+
+    // A far-side start already closer to final than the turn cue (the harness's far-side jets, 1 nm
+    // beside the runway): BA flies the downwind first, out to its 1.9 nm (a left turn, away from the
+    // runway), not straight onto final.
+    [Fact]
+    public void A_tight_far_side_start_flies_the_downwind_first()
+    {
+        var (rig, lines) = RecordedAt(-4, 1.0, 180);
+        rig.FlyFor(5, 30);
+        Assert.Equal("Pattern", rig.Decision);
+        Assert.True(rig.Bank < -1, $"bank {rig.Bank}");
+        Assert.DoesNotContain(Said(lines), s => s.Text == "Turn onto final");
+    }
+
+    // The countdown to the turn onto final runs on the base (Task 4's rules); on the downwind there is none.
+    [Fact]
+    public void The_base_counts_down_to_the_turn_onto_final()
+    {
+        double aB = BaseAlong();
+        var (rig, lines) = RecordedAt(-1, 3, 180);
+        rig.FlyFor(5, 30);
+        rig.FlyFor(1, 30, beforeEach: _ => rig.Place(aB - 0.5, 3, 180));
+        double v = 140.0 / 3600, t0 = rig.Now;
+        double tCue = (3 - VisualGuidanceJoin.TurnCueCrossNm(90, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0)) / v;
+        rig.FlyFor(tCue + 2, 30, beforeEach: t => rig.Place(aB, 3 - v * (t - t0), -90));
+        var said = Said(lines);
+        Assert.InRange(said.Single(s => s.Text == "Turn onto final in 30 seconds").T - t0, tCue - 30 - 0.5, tCue - 30 + 0.5);
+        Assert.InRange(said.Single(s => s.Text == "Turn onto final in 15 seconds").T - t0, tCue - 15 - 0.5, tCue - 15 + 0.5);
+        Assert.InRange(said.Single(s => s.Text == "Turn onto final").T - t0, tCue - 0.5, tCue + 0.5);
+    }
+
+    // Until the vertical path (stage 5), the downwind and the base leave the altitude to the pilot: the
+    // pitch tone sits on the aircraft's own pitch, where the old law would ask for a dive toward the 3°
+    // path far below. (Moved from "Unable", checkpoint review I1.)
+    [Fact]
+    public void The_pattern_sits_the_pitch_on_the_aircraft_until_final()
+    {
+        double aB = BaseAlong();
+        var (rig, _) = RecordedAt(-1, 3, 180);
+        rig.FlyFor(5, 30, afterEach: _ => Assert.Equal(2.0, rig.Pitch, 0.01));
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB - 0.5, 3, 180, altOffsetFt: 1500),
+            afterEach: _ => Assert.Equal(2.0, rig.Pitch, 0.01));
+    }
+
+    [Fact]
+    public void F_on_the_downwind_says_the_leg_and_where_it_joins()
+    {
+        var (rig, _) = RecordedAt(-1, 3, 180);
+        rig.FlyFor(5, 30);
+        Assert.Equal("Vectoring to final, downwind, joining 6.0 miles out. 3.0 miles right of final.", rig.Readout);
+    }
+
+    // On the base 1.5 nm from final: the turn cue is 1.16 nm out, 8.7 s away at 140 kt.
+    [Fact]
+    public void F_on_the_base_says_the_turn()
+    {
+        double aB = BaseAlong();
+        var (rig, _) = RecordedAt(-1, 3, 180);
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB - 0.5, 3, 180));
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB, 1.5, -90));
+        double seconds = (1.5 - VisualGuidanceJoin.TurnCueCrossNm(90, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0)) / (140.0 / 3600);
+        Assert.InRange(seconds, 8.0, 9.5);
+        Assert.Equal("Vectoring to final, base, joining 6.0 miles out. 1.5 miles right of final, turn in about 10 seconds.", rig.Readout);
     }
 
     // Ctrl+V in a turn: no state until the wings are nearly level; both tones sit on the aircraft.
@@ -285,15 +430,6 @@ public class VisualGuidanceJoiningTests
     }
 
     [Fact]
-    public void Unable_is_said_once_and_F_says_where_final_is()
-    {
-        var (rig, lines) = RecordedAt(-1, 3, 180);
-        rig.FlyFor(5, 30);
-        Assert.Single(Said(lines), s => s.Text == "Unable to join final from here");
-        Assert.Equal("Unable to join final from here. Final 3.0 miles to your right.", rig.Readout);
-    }
-
-    [Fact]
     public void The_mile_calls_say_out()
     {
         var (rig, lines) = RecordedAt(5.3, 0, 0);
@@ -347,23 +483,34 @@ public class VisualGuidanceJoiningTests
         Assert.Contains(Said(lines), x => x.Text == "Turn onto final");
     }
 
-    // Checkpoint review I1: unable to join, the altitude is the pilot's, as while joining: the pitch
-    // tone sits on the aircraft's own pitch instead of diving for a path far below the far-side start.
-    [Fact]
-    public void Unable_sits_the_pitch_on_the_aircraft()
-    {
-        var (rig, _) = RecordedAt(-1, 3, 180);
-        rig.FlyFor(5, 30, afterEach: _ => Assert.Equal(2.0, rig.Pitch, 0.01));
-    }
-
     // Checkpoint review I2: a mile call passed once is said again after the distance has risen back
-    // above it: pressed 1.6 nm from the threshold, flown out past 5 nm and back in.
+    // above it: pressed 1.6 nm from the threshold, flown out past 5 nm and back in. (Pressed on final:
+    // since the pattern exists, the mile calls wait for its final leg.)
     [Fact]
     public void A_mile_call_is_said_again_after_flying_back_out_past_it()
     {
-        var (rig, lines) = RecordedAt(-1, 1.2, 180);
+        var (rig, lines) = RecordedAt(1.6, 0, 0);
         rig.FlyFor(2, 30);
         rig.FlyFor(2, 30, beforeEach: _ => rig.Place(5.5, 0, 0));
+        rig.FlyFor(2, 30, beforeEach: _ => rig.Place(4.9, 0, 0));
+        rig.FlyFor(2, 30, beforeEach: _ => rig.Place(2.9, 0, 0));
+        var calls = Said(lines).Where(x => x.Text.EndsWith(" out", StringComparison.Ordinal)).Select(x => x.Text).ToList();
+        Assert.Equal(new[] { "5 miles out", "3 miles out" }, calls);
+    }
+
+    // On the pattern the mile calls wait for final: a far-side downwind passing 3 nm from the threshold
+    // while flying away from final says nothing; flown out past 5 nm, round the base and onto final, the
+    // calls come on the way in.
+    [Fact]
+    public void The_mile_calls_wait_for_final_on_the_pattern()
+    {
+        double aB = BaseAlong();
+        var (rig, lines) = RecordedAt(-4, 1.0, 180);
+        rig.FlyFor(2, 30);
+        rig.FlyFor(2, 30, beforeEach: _ => rig.Place(-2, 1.9, 180, altOffsetFt: AboveFieldOffset(-2)));
+        rig.FlyFor(2, 30, beforeEach: _ => rig.Place(5.5, 1.9, 180));
+        rig.FlyFor(2, 30, beforeEach: _ => rig.Place(aB - 0.5, 1.9, 180));
+        rig.FlyFor(2, 30, beforeEach: _ => rig.Place(aB, 1.0, -90));
         rig.FlyFor(2, 30, beforeEach: _ => rig.Place(4.9, 0, 0));
         rig.FlyFor(2, 30, beforeEach: _ => rig.Place(2.9, 0, 0));
         var calls = Said(lines).Where(x => x.Text.EndsWith(" out", StringComparison.Ordinal)).Select(x => x.Text).ToList();
