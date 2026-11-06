@@ -284,7 +284,7 @@ culture, `NA` where a measure does not apply.
 
 | `joinPathErrFt` | the path error at established (+ above the path) |
 | `gateErrFt` | the path error when the datum first comes down through the profile's stable gate (`StableGateFt`, 1,000 ft above the threshold, 300 on the light runs; 1,000 against an app without the field) after established; `NA` when established below it |
-| `pathOvershootFt` | for runs more than 50 ft off the path at established: the farthest past the path, on the other side, after first reaching it, before the flare |
+| `pathOvershootFt` | for runs more than 50 ft off the path at established: the farthest past the path, on the other side, after first reaching it, before the flare; `NA` when it never reaches the path before the flare (or was within 50 ft at established) |
 | `maxTargetClimbDeg` | the largest climb angle the vertical cue asked for (− its `TargetDescentForHarness`) while the phase is `Final`; negative when it always asked for a descent |
 | `tooHighCalls`, `tooLowCalls`, `highAtFinalCalls` | how many lines starting "Too high", "Too low" and "You'll be" were spoken |
 | `firstTooHighAlongNm`, `firstTooLowAlongNm` | how far out (nm along the course) the first "Too high" and "Too low" came |

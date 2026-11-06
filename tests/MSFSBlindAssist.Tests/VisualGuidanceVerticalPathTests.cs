@@ -89,4 +89,21 @@ public class VisualGuidanceVerticalPathTests
     [Fact]
     public void Its_mode_is_path()
         => Assert.Equal("Path", OnFinal().VerticalMode);
+
+    // The checkpoint review's finding 2: a balloon or a go-around back above the flare height. In the
+    // flare the cue ramps to the profile's 6°; back on final it must leave from there at the profile's
+    // pitch rate (2.5°/s, 0.083° a frame at 30 Hz), not jump to the pre-flare cue's 2° in one frame.
+    [Fact]
+    public void Back_above_the_flare_the_cue_leaves_from_the_flare_pitch()
+    {
+        var rig = OnFinal();
+        Hold(rig, 1, 0.0, altOffsetFt: -30);           // the datum 30 ft up, the wheels 18: flare
+        Assert.Equal("Flare", rig.Phase);
+        double flarePitch = rig.Pitch;
+        Assert.Equal(6.0, flarePitch, 0.01);
+        Hold(rig, 1.0 / 30, 0.0, altOffsetFt: 10);      // the wheels 58 ft up: final again
+        Assert.Equal("Final", rig.Phase);
+        Assert.True(Math.Abs(rig.Pitch - flarePitch) <= 2.5 / 30 + 1e-6,
+            $"the cue went from {flarePitch:0.00}° to {rig.Pitch:0.00}° in one frame");
+    }
 }

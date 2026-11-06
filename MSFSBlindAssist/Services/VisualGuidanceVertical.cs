@@ -126,16 +126,26 @@ internal static class VisualGuidanceVertical
     /// measured along the route still to fly (<paramref name="routeToJoinNm"/>), level for the last
     /// <see cref="LevelOffLeadS"/> of flight, never below the floor (<see cref="FloorBelowPathFt"/> under
     /// the path at the aircraft's straight-line distance). Returns the planned height above the
-    /// threshold and the feed-forward descent angle: the glide path angle on the sloped part, 0 level.
+    /// threshold and the feed-forward descent angle: the glide path angle on the sloped part, 0 on its
+    /// level part, and on the floor the floor's own slope along the track.
+    ///
+    /// <paramref name="closingFraction"/> is how fast the straight-line distance to the threshold shrinks
+    /// per mile flown: the cosine of the angle between the ground track and the bearing to the threshold.
+    /// The floor comes down at atan(tan(gpa) × closing); flying square to the threshold or away from it (a
+    /// downwind) it stays or rises, and the plan asks for level, never a climb (VG-26). A jet's plan is
+    /// the floor all the way to the join (a 20 s level lead needs 248 ft under the path at 140 kt, the
+    /// floor allows 150), so a jet arrives on the floor still descending, not level (stage 5 checkpoint).
     /// </summary>
     public static (double HeightFt, double FeedForwardDeg) PlannedHeight(double routeToJoinNm, double joinAlongNm,
-        double distanceToThresholdNm, double gpaDeg, double biasFt, double gsKt)
+        double distanceToThresholdNm, double closingFraction, double gpaDeg, double biasFt, double gsKt)
     {
         double target = PathHeightFt(joinAlongNm, gpaDeg, biasFt)
             - joinAlongNm * FtPerNm * (Tan(gpaDeg) - Tan(gpaDeg - ArrivalBelowDeg));
         double leadNm = Gs(gsKt) * LevelOffLeadS / 3600.0;
         double sloped = target + Math.Max(0, routeToJoinNm - leadNm) * FtPerNm * Tan(gpaDeg);
         double floor = PathHeightFt(distanceToThresholdNm, gpaDeg, biasFt) - FloorBelowPathFt;
-        return sloped >= floor && routeToJoinNm > leadNm ? (sloped, gpaDeg) : (Math.Max(sloped, floor), 0.0);
+        if (sloped >= floor) return (sloped, routeToJoinNm > leadNm ? gpaDeg : 0.0);
+        double closing = double.IsFinite(closingFraction) ? Math.Clamp(closingFraction, 0.0, 1.0) : 0.0;
+        return (floor, Math.Atan(Tan(gpaDeg) * closing) / D2R);
     }
 }

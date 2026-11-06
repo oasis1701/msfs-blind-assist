@@ -77,32 +77,49 @@ public class VisualGuidanceVerticalTests
 
     // A 3° line back from the level-off point a quarter of a degree under the path at the join, the
     // level part 20 s long (0.78 nm at 140 kt); never under the floor, 150 ft below the path at the
-    // aircraft's own distance.
+    // aircraft's own distance. On the floor the feed-forward is the floor's own slope along the track:
+    // flying straight at the threshold (closing 1) the floor comes down at the path's angle.
     [Fact]
     public void Planned_height()
     {
-        var sloped = VisualGuidanceVertical.PlannedHeight(5, 6.2, 8, Gpa, Bias, Gs);
+        var sloped = VisualGuidanceVertical.PlannedHeight(5, 6.2, 8, 1.0, Gpa, Bias, Gs);
         Assert.Equal(3214.0, sloped.HeightFt, 5.0);
         Assert.Equal(3.0, sloped.FeedForwardDeg, 9);
-        var floor = VisualGuidanceVertical.PlannedHeight(0.5, 6.2, 8, Gpa, Bias, Gs);
+        var floor = VisualGuidanceVertical.PlannedHeight(0.5, 6.2, 8, 1.0, Gpa, Bias, Gs);
         Assert.Equal(2457.0, floor.HeightFt, 5.0);
-        Assert.Equal(0.0, floor.FeedForwardDeg, 9);
+        Assert.Equal(3.0, floor.FeedForwardDeg, 1e-9);
+    }
+
+    // The checkpoint review's finding 1: a jet's plan is the floor all the way to the join (a 20 s level
+    // lead needs 248 ft under the path, the floor allows 150). With a feed-forward of 0 there, the
+    // correction alone made the descent and settled 334 ft above the floor, 184 ft ABOVE the path.
+    [Fact]
+    public void A_jet_on_the_floor_is_fed_the_path_angle()
+    {
+        Assert.Equal(3.0, VisualGuidanceVertical.PlannedHeight(0.5, 6.2, 8, 1.0, Gpa, Bias, Gs).FeedForwardDeg, 1e-9);
+        // Crossing the line to the threshold at 60°: the floor comes down at half the rate.
+        Assert.Equal(Math.Atan(Math.Tan(3.0 * Math.PI / 180) * 0.5) * 180 / Math.PI,
+            VisualGuidanceVertical.PlannedHeight(0.5, 6.2, 8, 0.5, Gpa, Bias, Gs).FeedForwardDeg, 1e-9);
+        // Square to it, or flying away (a downwind): the floor stays or rises, and the plan never asks for a climb (VG-26).
+        Assert.Equal(0.0, VisualGuidanceVertical.PlannedHeight(0.5, 6.2, 8, 0.0, Gpa, Bias, Gs).FeedForwardDeg, 9);
+        Assert.Equal(0.0, VisualGuidanceVertical.PlannedHeight(0.5, 6.2, 8, -1.0, Gpa, Bias, Gs).FeedForwardDeg, 9);
+        Assert.Equal(0.0, VisualGuidanceVertical.PlannedHeight(0.5, 6.2, 8, double.NaN, Gpa, Bias, Gs).FeedForwardDeg, 9);
     }
 
     [Fact]
     public void A_jet_arrives_on_the_floor()
     {
-        var plan = VisualGuidanceVertical.PlannedHeight(0, 6.2, 6.3, Gpa, Bias, Gs);
+        var plan = VisualGuidanceVertical.PlannedHeight(0, 6.2, 6.3, 1.0, Gpa, Bias, Gs);
         Assert.Equal(1916.0, plan.HeightFt, 5.0);    // the quarter degree would be 1,870
-        Assert.Equal(0.0, plan.FeedForwardDeg, 9);
+        Assert.Equal(3.0, plan.FeedForwardDeg, 1e-9); // still descending along the floor: it cannot arrive level
     }
 
     [Fact]
     public void A_light_aircraft_arrives_a_quarter_degree_low()
     {
-        var plan = VisualGuidanceVertical.PlannedHeight(0, 1.0, 1.0, Gpa, Bias, 65);
+        var plan = VisualGuidanceVertical.PlannedHeight(0, 1.0, 1.0, 1.0, Gpa, Bias, 65);
         Assert.Equal(351.8, plan.HeightFt, 1.0);     // the floor would be 228
-        Assert.Equal(0.0, plan.FeedForwardDeg, 9);
+        Assert.Equal(0.0, plan.FeedForwardDeg, 9);   // the level part: the quarter degree beats the floor
     }
 
     // London City's 5.5°: the path, the 2° limit and the half degree are the runway's own.
@@ -138,7 +155,7 @@ public class VisualGuidanceVerticalTests
         Assert.True(double.IsFinite(VisualGuidanceVertical.FlightPathAngleDeg(-742, 0)));
         Assert.True(double.IsFinite(VisualGuidanceVertical.CorrectionDeg(300, 0, T)));
         Assert.True(double.IsFinite(VisualGuidanceVertical.TargetDescentDeg(3, 300, 0, T, 0, 5)));
-        var plan = VisualGuidanceVertical.PlannedHeight(5, 6.2, 8, Gpa, Bias, 0);
+        var plan = VisualGuidanceVertical.PlannedHeight(5, 6.2, 8, 1.0, Gpa, Bias, 0);
         Assert.True(double.IsFinite(plan.HeightFt));
         Assert.True(double.IsFinite(plan.FeedForwardDeg));
         Assert.True(double.IsFinite(VisualGuidanceVertical.TooLowMarginFt(3, Gpa)));

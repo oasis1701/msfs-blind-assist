@@ -151,7 +151,8 @@ sealed class ApproachMetrics
         Put("gateErrFt", gateErr, "0.0");
 
         // Joining the path from more than 50 ft off it at established: the farthest past it, on the
-        // other side, after first reaching it, before the flare.
+        // other side, after first reaching it, before the flare. NA when it never reaches the path
+        // (a 0 would pass "at most 50" on a run that stays high: the stage 5 checkpoint).
         double? overshoot = null;
         if (estIndex >= 0 && Math.Abs(_samples[estIndex].PathErr) > 50)
         {
@@ -165,7 +166,7 @@ sealed class ApproachMetrics
                 if (Math.Sign(s.PathErr) != side) reached = true;
                 if (reached && Math.Sign(s.PathErr) == -side) worst = Math.Max(worst, Math.Abs(s.PathErr));
             }
-            overshoot = worst;
+            overshoot = reached ? worst : null;
         }
         Put("pathOvershootFt", overshoot, "0.0");
 

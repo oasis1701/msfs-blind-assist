@@ -1608,6 +1608,9 @@ public class VisualGuidanceManager : IDisposable
             verticalMode = VisualGuidanceVerticalMode.Flare;
             double flarePitch = RateLimited(lastFlarePitch, flareTargetPitchDeg, MAX_FLARE_PITCH_RATE);
             lastFlarePitch = flarePitch;
+            // Back above the flare height (a balloon, a go-around), the path's cue leaves from here, not
+            // from the cue before the flare: a 4° jump in one frame otherwise (stage 5 checkpoint).
+            previousDesiredPitch = flarePitch;
             return flarePitch;
         }
         if (currentPhase is GuidancePhase.NotStarted or GuidancePhase.Touchdown)
