@@ -100,13 +100,14 @@ public class VisualGuidanceManager : IDisposable
     private double currentGroundSpeedKnots = 0.0;
     private double currentVerticalSpeedFPM = 0.0;
     private double currentPitch = 0.0;
-    private double lastCalculatedTargetFPM = 0.0;  // the target descent angle as a rate, for F and the record (0 or less)
+    private double lastCalculatedTargetFPM = 0.0;  // the target descent angle as a rate, for F and the record (+ a climb: the hold asking back up, or Follow in a climb)
     private double lastCalculatedAltitudeError = 0.0;  // the height error against the path, for F and the record (positive = high, negative = low)
 
     // The vertical path (the redesign's piece 4, stage 5). The cue is desired pitch = learned trim − the
     // target descent angle (VG-25); the mode says which reference the target comes from.
     private VisualGuidanceTrimLearner trimLearner = new(6.0, VisualGuidanceVerticalTuning.Default);
     private VisualGuidanceVerticalMode verticalMode = VisualGuidanceVerticalMode.Follow;
+    private VisualGuidanceLevelHold levelHold = new(VisualGuidanceVerticalTuning.Default);   // joining only
     private double lastTargetDescentDeg;   // degrees, + down
 
     // Real time (VG-20). ProcessUpdate runs on every sim frame, so every rate limit, smoothing
@@ -515,9 +516,10 @@ public class VisualGuidanceManager : IDisposable
         smoothedCrossTrackRate = null;
         crossTrackRateWindow.Clear();
 
-        // The vertical path: a fresh trim learner from the profile's starting guess, and no target yet.
+        // The vertical path: a fresh trim learner from the profile's starting guess, no hold and no target yet.
         previousDesiredPitch = 0.0;
         trimLearner = new VisualGuidanceTrimLearner(typicalApproachAoaDeg, VerticalTuningForHarness);
+        levelHold = new VisualGuidanceLevelHold(VerticalTuningForHarness);
         verticalMode = VisualGuidanceVerticalMode.Follow;
         lastTargetDescentDeg = 0.0;
         lastCalculatedTargetFPM = 0.0;
@@ -1134,6 +1136,7 @@ public class VisualGuidanceManager : IDisposable
         double relativeTrack = VisualGuidanceJoin.Normalize((cachedGroundTrack ?? cachedHeading ?? runway.HeadingMag) - runway.HeadingMag);
         joinPlan = VisualGuidanceJoin.Decide(position, relativeTrack, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile);
         activeLegIndex = 0;
+        levelHold.Reset();
         // The simple pattern is vectoring too: BA chooses the route, spoken "Vectoring to final" (decision 2).
         currentPhase = joinPlan.State switch
         {
@@ -1584,13 +1587,17 @@ public class VisualGuidanceManager : IDisposable
     /// descent angle, rate limited (VG-20, VG-25). The mode says where the target comes from:
     /// <list type="bullet">
     /// <item>Flare: the flare's fixed pitch, as before stage 5 (stage 6 replaces it).</item>
-    /// <item>Follow (deciding, joining, the pattern's downwind and base): the aircraft's own pitch, since
-    /// the altitude is the pilot's or ATC's there. Later tasks of stage 5 give joining its level hold and
-    /// the pattern its planned descent.</item>
+    /// <item>Follow (deciding, joining while climbing or descending, the pattern's downwind and base): the
+    /// aircraft's own pitch, since the altitude is the pilot's or ATC's there. A later task of stage 5
+    /// gives the pattern its planned descent.</item>
+    /// <item>Hold (joining, once level for <see cref="VisualGuidanceVerticalTuning.LevelHoldS"/>): the
+    /// altitude of that moment (<see cref="VisualGuidanceLevelHold"/>), asking back from either side
+    /// within <see cref="VisualGuidanceVerticalTuning.PathLimitDeg"/>; a pitch more than
+    /// <see cref="VisualGuidanceVerticalTuning.HoldBreakPitchDeg"/> from the cue lets it go (VG-24).</item>
     /// <item>Path (final, and vectoring on its final leg): the runway's glide path angle plus a correction
-    /// that removes the height error over about 20 s, between level and the glide path angle + 2°
-    /// (VG-24, VG-26); under 60 ft of wheel height the glide path angle alone. The distance is along the
-    /// final course, not the straight line.</item>
+    /// that removes the height error over about <see cref="VisualGuidanceVerticalTuning.CorrectionTimeConstantS"/>
+    /// (27 s), between level and the glide path angle + 2° (VG-24, VG-26); under 60 ft of wheel height
+    /// the glide path angle alone. The distance is along the final course, not the straight line.</item>
     /// </list>
     /// </summary>
     private double CalculateDesiredPitch(double lat, double lon, double agl, double altMSL)
@@ -1623,8 +1630,20 @@ public class VisualGuidanceManager : IDisposable
         lastCalculatedAltitudeError = error;
         double trim = trimLearner.TrimDeg;
 
+        // Joining (and only joining): the hold hears the cue the pilot heard, the previous update's.
+        if (currentPhase == GuidancePhase.Joining)
+            levelHold.Update(ClockForHarness(), altMSL, currentVerticalSpeedFPM, currentPitch, previousDesiredPitch);
+
         double desiredPitch;
-        if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining || OnPatternLeg)
+        if (currentPhase == GuidancePhase.Joining && levelHold.HeldAltitudeFt is double heldFt)
+        {
+            // The held altitude, + above it; back toward it from either side, within the 2° limit.
+            verticalMode = VisualGuidanceVerticalMode.Hold;
+            lastTargetDescentDeg = VisualGuidanceVertical.TargetDescentDeg(0.0, altMSL - heldFt, currentGroundSpeedKnots,
+                tuning.CorrectionTimeConstantS, -tuning.PathLimitDeg, tuning.PathLimitDeg);
+            desiredPitch = Math.Clamp(RateLimited(previousDesiredPitch, trim - lastTargetDescentDeg, maxPitchRateDegPerSec), -12.0, 12.0);
+        }
+        else if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining || OnPatternLeg)
         {
             // The aircraft's own pitch, taken without a rate limit: the target is whatever angle it flies.
             verticalMode = VisualGuidanceVerticalMode.Follow;

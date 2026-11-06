@@ -243,8 +243,17 @@ Desired pitch = the learned trim − the target descent angle, rate limited at t
     straight line. Below the path the cue asks for level flight until the path comes down to the
     aircraft, then follows it. Under 60 ft of wheel height the correction stops and the cue holds the
     glide path angle. A steep runway uses its own angle throughout (London City 5.5°).
-  - **Follow** (deciding, joining, the pattern's downwind and base): the aircraft's own pitch, since the
-    altitude is ATC's or the pilot's there.
+  - **Follow** (deciding, joining while climbing or descending, the pattern's downwind and base): the
+    aircraft's own pitch, since the altitude is ATC's or the pilot's there.
+  - **Hold** (joining only, `VisualGuidanceLevelHold`): once the vertical speed has been under 200 fpm
+    for 5 s, the altitude of that update is held: atan(height error / (27 s × ground speed)) either way,
+    within ±2°, so the cue asks back down from above and back up from below (VG-24). A pitch more than
+    1.5° from the cue the pilot heard (the previous update's) ends the hold at once, so a descent ATC
+    clears is never fought; the next level-off is held the same way. Each decision starts without a
+    hold. In the harness the scripted jets level by the altimeter about 30 ft low and climb back
+    slowly, so the hold takes an altitude about 28 ft under the cleared one (DESC runs,
+    `holdDriftMaxFt`); for about 15 s after a level-off from 1,500 fpm the learned trim reads up to
+    0.6° high (the flight path lags the pitch), so the cue sits that much above the aircraft.
   - **Flare**: the profile's fixed flare pitch (stage 6 replaces the flare).
 
 The vertical-speed law it replaced (a target rate of the natural descent plus 2 fpm per foot, locked to
