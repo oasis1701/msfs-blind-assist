@@ -2,7 +2,7 @@
 // HttpMessageHandler that answers the way the gRPC service on 127.0.0.1:18083 would, and records what the
 // client sent. Nothing here opens a socket.
 //
-// Answers come from a queue (Enqueue, Throw). When the queue is empty the server answers Endless(): a stream
+// Answers come from a queue (Enqueue, Throw, HoldAnswer). When the queue is empty the server answers Endless(): a stream
 // that stays open and silent until the client lets go of it. The factory methods build the answers a test
 // needs. A response's trailers show up only once its body has been read to the end, as they do on a real
 // HTTP/2 response, so a client that asks for the status too early finds none. Every response says when the
@@ -20,7 +20,7 @@ internal sealed class FenixChannelFakeServer : HttpMessageHandler
 
     private readonly object _lock = new();
     private readonly List<SeenRequest> _requests = new();
-    private readonly Queue<Func<HttpResponseMessage>> _answers = new();
+    private readonly Queue<Func<CancellationToken, Task<HttpResponseMessage>>> _answers = new();
     private readonly List<(int Count, TaskCompletionSource<int> Signal)> _waiters = new();
 
     /// <summary>One request as the client sent it.</summary>
@@ -47,7 +47,23 @@ internal sealed class FenixChannelFakeServer : HttpMessageHandler
     public void Enqueue(Func<HttpResponseMessage> answer)
     {
         ArgumentNullException.ThrowIfNull(answer);
-        lock (_lock) _answers.Enqueue(answer);
+        lock (_lock) _answers.Enqueue(_ => Task.FromResult(answer()));
+    }
+
+    /// <summary>
+    /// Queues an answer that never comes: the next request without an answer queued before it gets no response
+    /// headers at all, until the client cancels it. A Fenix that took the connection and hangs.
+    /// </summary>
+    public void HoldAnswer()
+    {
+        lock (_lock)
+        {
+            _answers.Enqueue(async ct =>
+            {
+                await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+                throw new InvalidOperationException("An infinite delay ended without a cancellation.");
+            });
+        }
     }
 
     /// <summary>Queues a failure: the next request without an answer queued before it throws this.</summary>
@@ -162,7 +178,7 @@ internal sealed class FenixChannelFakeServer : HttpMessageHandler
             HeaderValue(request, "grpc-accept-encoding"),
             body);
 
-        Func<HttpResponseMessage>? answer;
+        Func<CancellationToken, Task<HttpResponseMessage>>? answer;
         int count;
         var ready = new List<TaskCompletionSource<int>>();
         lock (_lock)
@@ -179,7 +195,7 @@ internal sealed class FenixChannelFakeServer : HttpMessageHandler
         }
 
         foreach (var signal in ready) signal.TrySetResult(count);
-        return answer != null ? answer() : Endless();
+        return answer != null ? await answer(cancellationToken).ConfigureAwait(false) : Endless();
     }
 
     protected override void Dispose(bool disposing)

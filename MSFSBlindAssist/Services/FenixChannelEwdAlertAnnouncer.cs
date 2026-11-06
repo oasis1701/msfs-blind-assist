@@ -26,7 +26,12 @@ internal readonly record struct FenixEwdAlertLine(string Text, bool Interrupt);
 /// that a later "cleared" has its color. A failure the list showed coming or going in the gap is never spoken. The list does not
 /// change while the power is off, so after a blackout the baseline is the list from before it, and the first new list, 18 to 24 s
 /// after the E/WD is trusted (measured), is followed like any other: its start-up failures are spoken and what left it says
-/// "cleared", as a sighted pilot sees them on the display (owner's ruling, spec row 62). Never wait for that list.</para>
+/// "cleared", as a sighted pilot sees them on the display (owner's ruling, spec row 62). Never wait for that list. A list
+/// belongs to the connection of the ECAM entries call that sent it: an ECAM connection number other than the last step's
+/// (<see cref="FenixChannelSnapshot.EcamConnection"/>) forgets the remembered list as well as everything said, waiting and
+/// held, so the first list of the new connection is a silent baseline. Only the stream breaking or the Fenix restarting
+/// reconnects that call (a blackout does not), and a list from a Fenix that has since restarted, followed by the new one's,
+/// would say every failure of the earlier session "cleared".</para>
 /// <para>What is new. An item in the list that has not been said waits for its E/WD line. No entry ever came before its line in
 /// the measurements, so <see cref="LineWaitMs"/> is the rule's floor. Found, it is due at once with that line; not found by then,
 /// it is due without one and with no color, for an entry with no line is a failure or a memo the E/WD is not showing (one hidden
@@ -88,8 +93,9 @@ internal sealed class FenixChannelEwdAlertAnnouncer
     private FenixEcamEntries? _lastRead;
     private IReadOnlyList<Item>? _items;
 
-    // The connection of the last step, whether or not it was trusted; null before the first.
+    // The connection of the last step, and that of the ECAM entries call, whether or not it was trusted; null before the first.
     private int? _lastConnection;
+    private int? _lastEcamConnection;
 
     // Whether the baseline has been taken: false at the start and after a problem or a reconnect.
     private bool _baselined;
@@ -108,12 +114,21 @@ internal sealed class FenixChannelEwdAlertAnnouncer
     public IReadOnlyList<FenixEwdAlertLine> Step(FenixChannelSnapshot s, long nowMs, Func<string, bool> isMuted,
         Action<string> report)
     {
+        // A new ECAM connection first: the list remembered from the connection before is dropped before this step's is read.
+        bool newEcamConnection = _lastEcamConnection is { } lastEcam && lastEcam != s.EcamConnection;
+        _lastEcamConnection = s.EcamConnection;
+        if (newEcamConnection)
+        {
+            _lastRead = null;
+            _items = null;
+        }
+
         bool listRead = ReadEntries(s.Entries, report);
 
         bool reconnected = _lastConnection is { } last && last != s.Connection;
         _lastConnection = s.Connection;
 
-        if (!s.Verdict.Trusted || s.Frame is not { } frame || reconnected)
+        if (!s.Verdict.Trusted || s.Frame is not { } frame || reconnected || newEcamConnection)
         {
             _baselined = false;
             _said.Clear();

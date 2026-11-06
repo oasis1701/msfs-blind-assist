@@ -18,8 +18,8 @@ namespace MSFSBlindAssist.Services;
 /// </param>
 /// <param name="Entries">
 /// The latest ECAM entries message that is not a bare heartbeat (the heartbeat set and no entries), null before the
-/// first. A connection of the data call does not clear it. A feature looks at its
-/// <see cref="FenixEcamEntries.ShapesOk"/> before it reads the entries.
+/// first of the ECAM entries call's connection. A connection of the data call does not clear it; one of the ECAM
+/// entries call does. A feature looks at its <see cref="FenixEcamEntries.ShapesOk"/> before it reads the entries.
 /// </param>
 /// <param name="AtMs">
 /// The monitor's clock when the snapshot was taken (<see cref="Environment.TickCount64"/>): the instant the verdict was
@@ -30,9 +30,14 @@ namespace MSFSBlindAssist.Services;
 /// number other than the one it saw last has a new connection, and takes its next good reading silently, without
 /// depending on how long the client waited before it reconnected.
 /// </param>
+/// <param name="EcamConnection">
+/// The number of the ECAM entries call's connection, counted the same way: 0 before the first connect, and one more
+/// with each. A list belongs to the connection that sent it, so a reader of <paramref name="Entries"/> that sees a
+/// number other than the one it saw last forgets the list it remembered.
+/// </param>
 internal readonly record struct FenixChannelSnapshot(
     FenixDisplayVerdict Verdict, FenixChannelFrame? Frame, FenixChannelPush? Push, FenixEcamEntries? Entries,
-    long AtMs, int Connection);
+    long AtMs, int Connection, int EcamConnection = 0);
 
 /// <summary>
 /// What <see cref="FenixChannelMonitor.Session"/> hands the session notice (<see cref="FenixChannelNotice"/>): the few
@@ -96,7 +101,10 @@ internal readonly record struct FenixChannelSession(
 /// again at each connection. The list a snapshot hands out is the last message that is not a bare heartbeat (the
 /// heartbeat set and no entries): the stream sends a heartbeat to say it is alive and a list when its list changes,
 /// so a heartbeat taken for a list would empty it at every beat, and every alert would seem to clear. A connection of
-/// the data call does not clear that list either: that stream sends only when its list changes.</para>
+/// the data call does not clear that list either: that stream sends only when its list changes. A connection of the
+/// ECAM entries call clears both and counts one more ECAM connection (<see cref="FenixChannelSnapshot.EcamConnection"/>):
+/// what the call said before belongs to the connection that ended, perhaps to a Fenix that has since restarted, and
+/// a list from it compared with the next one would announce every alert of the earlier session as cleared.</para>
 /// <para>The session. The session notice needs a few facts that the gate and the latest frame cannot give it, because
 /// they start fresh at each connection: <see cref="Session"/> hands them out under the same lock. The build is the
 /// latest one the build query answered, and a reconnect does not clear it (the gate takes the next answer and meanwhile
@@ -114,8 +122,8 @@ internal readonly record struct FenixChannelSession(
 /// call that opens and says nothing is dropped and asked again for hours, so "connected" is written with the first
 /// message and not with the response headers, and a call that is not answering is written only when its reason
 /// differs from the last one written since a message arrived: otherwise each try would write two lines. The ECAM
-/// entries call has no such cycle (nothing limits its silence), so its "connected" is written with its headers, but
-/// its failures to answer follow the same rule. A refusal is written once, since it ends the channel (below).</para>
+/// entries call follows the same rules: the client drops it after its own silence limit too, three of its 5 s
+/// heartbeats missed. A refusal is written once, since it ends the channel (below).</para>
 /// <para>A refusal of either call (grpc-status 7 or 16, or HTTP 401 or 403, which the client reports as
 /// <see cref="FenixChannelState.Refused"/>) ends the channel for the session ([FNX-21]), not only the call refused:
 /// the gate is told the channel is not answering, with the refusal as the reason, so every display reads "channel
@@ -158,12 +166,14 @@ internal sealed class FenixChannelMonitor : IDisposable
     // read without it, through Volatile. _latestMessage is the RemoteData message _latest was decoded from, replaced
     // and cleared with it. Of the ECAM entries messages, _lastEntries is the last of any kind, which the gate is given
     // again at each connection of the data call, and _ecamList the last that is not a bare heartbeat, which a snapshot
-    // hands out. _connection counts the connections of the data call.
+    // hands out; a connection of the ECAM entries call clears both. _connection counts the connections of the data
+    // call, and _ecamConnection those of the ECAM entries call.
     private FenixChannelFrame? _latest;
     private FenixChannelPush? _latestMessage;
     private FenixEcamEntries? _lastEntries;
     private FenixEcamEntries? _ecamList;
     private int _connection;
+    private int _ecamConnection;
 
     // What Session hands the session notice, guarded by _lock and never cleared by a connection: the latest build the
     // query answered, the clock reading of the first frame with data and every shape right, and the clock reading when
@@ -173,6 +183,7 @@ internal sealed class FenixChannelMonitor : IDisposable
     private long _startedAtMs;
 
     private bool _dataMessageSeen;
+    private bool _ecamMessageSeen;
     private string? _lastDataFailure;
     private string? _lastEcamFailure;
     private long _generation;
@@ -316,7 +327,7 @@ internal sealed class FenixChannelMonitor : IDisposable
             FenixDisplayVerdict verdict = IsDisposed
                 ? new FenixDisplayVerdict(false, "channel stopped")
                 : _trust.VerdictFor(display, now);
-            return new FenixChannelSnapshot(verdict, _latest, _latestMessage, _ecamList, now, _connection);
+            return new FenixChannelSnapshot(verdict, _latest, _latestMessage, _ecamList, now, _connection, _ecamConnection);
         }
     }
 
@@ -479,8 +490,10 @@ internal sealed class FenixChannelMonitor : IDisposable
     }
 
     /// <summary>
-    /// The ECAM entries call changed state. Only the log hears of its connection: no verdict depends on this call
-    /// being connected until a read uses it. Its refusal ends the whole channel, as one of the data call does.
+    /// The ECAM entries call changed state. No verdict depends on this call being connected. A connection starts its
+    /// list over: the messages of the connection before are dropped and the ECAM connection number goes up (see the
+    /// remarks), and "connected" is written with its first message, as for the data call. Its refusal ends the whole
+    /// channel, as one of the data call does.
     /// </summary>
     internal void OnEcamState(FenixChannelState state, string text)
     {
@@ -495,7 +508,12 @@ internal sealed class FenixChannelMonitor : IDisposable
             switch (state)
             {
                 case FenixChannelState.Connected:
-                    Write("ECAM entries: connected");
+                    // No line yet: the headers say the call opened, not that it works. A gate latch the dropped
+                    // messages set stays until the data call's next connection, as every latch does.
+                    _ecamMessageSeen = false;
+                    _lastEntries = null;
+                    _ecamList = null;
+                    _ecamConnection++;
                     break;
                 case FenixChannelState.NotAnswering:
                     WriteFailure(ref _lastEcamFailure, $"ECAM entries: not answering ({text})");
@@ -525,7 +543,14 @@ internal sealed class FenixChannelMonitor : IDisposable
         {
             if (IsStopped) return;
 
+            // As for the data call: a message shows the call works, so only now is "connected" news.
             _lastEcamFailure = null;
+            if (!_ecamMessageSeen)
+            {
+                _ecamMessageSeen = true;
+                Write("ECAM entries: connected");
+            }
+
             _lastEntries = entries;
             if (!IsBareHeartbeat(entries)) _ecamList = entries;
             _trust.OnEcamEntries(entries);

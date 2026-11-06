@@ -28,6 +28,20 @@ internal static class FenixChannelFraming
     public static byte[] EmptyRequest() => new byte[5];
 
     /// <summary>
+    /// One request message as the one frame of a call's body: a flag byte of 0 (not compressed), the length as four
+    /// big-endian bytes, and the message. A new array each call.
+    /// </summary>
+    public static byte[] Frame(byte[] message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        byte[] framed = new byte[5 + message.Length];
+        BinaryPrimitives.WriteUInt32BigEndian(framed.AsSpan(1), (uint)message.Length);
+        message.CopyTo(framed, 5);
+        return framed;
+    }
+
+    /// <summary>
     /// Reads how a call ended: its <c>grpc-status</c>, and the <c>grpc-message</c> that goes with it. A
     /// normal answer puts them in the trailers, after its last message. A trailers-only answer, which is
     /// an error that sends no message (status 12 for a call Fenix does not offer), puts them in the

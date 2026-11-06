@@ -17,7 +17,7 @@ Each section is the complete text of one rule. Its one-line form, under the same
 - `FenixChannelTrust` is the gate: a pure state machine (the time passed in, no I/O) that answers, display by display (PFD, E/WD, SD, ND, ISIS, DCDU), trusted or not with a reason. Its purpose is that a channel that has gone wrong, or a Fenix build no developer has checked, never reaches a pilot, so in doubt a display is not trusted and its key falls back to the AI read ([FNX-32] has the one exception, a dark display). A display is trusted only when every channel-wide condition and every condition of its own holds, and `VerdictFor` gives the first one that fails, in this order, with this text:
   - not connected: "channel not answering", or "channel not answering: <the client's reason>";
   - no data message yet since the connection opened: "no data yet";
-  - the stream stalled, no data message for more than `StreamStaleMs` (2,000 ms; the client itself drops a data call that is silent for 10 s and reconnects): "stream stalled";
+  - the stream stalled, no data message for more than `StreamStaleMs` (2,000 ms; the client itself drops a data call that is silent for 10 s, or sends no answer within that time, and reconnects; it drops an ECAM entries call after 15 s, three of its 5 s heartbeats missed): "stream stalled";
   - the build unknown, the build query not yet answered on this connection: "build unknown";
   - the build not in `FenixChannelFields.VerifiedBuilds`, an exact match ([FNX-23]): "build <build> not checked";
   - a shape latch, below: "malformed message", "field <path> has the wrong shape", "malformed ECAM entries message" or "ECAM entries field <path> has the wrong shape";

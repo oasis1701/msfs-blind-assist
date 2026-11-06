@@ -59,17 +59,18 @@ public class FenixChannelEwdAlertAnnouncerTests
         public List<string> Reports { get; } = [];
 
         public FenixEwdAlertLine[] At(long ms, FenixEcamEntries? entries, FenixChannelFrame? frame, bool trusted = true,
-            int connection = 1)
-            => _announcer.Step(new FenixChannelSnapshot(trusted ? Trusted : DisplayOff, frame, null, entries, ms, connection),
+            int connection = 1, int ecamConnection = 1)
+            => _announcer.Step(
+                new FenixChannelSnapshot(trusted ? Trusted : DisplayOff, frame, null, entries, ms, connection, ecamConnection),
                 ms, Muted.Contains, Reports.Add).ToArray();
 
         // Steps every 100 ms from one time to another, both included, each step saying nothing.
         public void Silent(long fromMs, long toMs, FenixEcamEntries? entries, FenixChannelFrame? frame, bool trusted = true,
-            int connection = 1)
+            int connection = 1, int ecamConnection = 1)
         {
             for (long ms = fromMs; ms <= toMs; ms += 100)
             {
-                Assert.Empty(At(ms, entries, frame, trusted, connection));
+                Assert.Empty(At(ms, entries, frame, trusted, connection, ecamConnection));
             }
         }
     }
@@ -153,6 +154,38 @@ public class FenixChannelEwdAlertAnnouncerTests
 
         // Its next change is spoken: the fire stays said, the fault is new.
         Assert.Equal([Queued("ELEC GEN 1 FAULT, amber")], rig.At(1100, List(EngFire, Gen1Fault), frame));
+    }
+
+    [Fact]
+    public void A_new_ecam_connection_forgets_the_remembered_list()
+    {
+        // The Fenix restarted: the data call reconnects and the E/WD is trusted again before the ECAM entries call sends
+        // its first list. That list belongs to a new ECAM connection, so it is a silent baseline, and the earlier
+        // session's fire is never said "cleared" nor the new memo said as news.
+        FenixChannelFrame before = Ewd(left: [EngFireLine]);
+        FenixChannelFrame after = Ewd(right: [SeatBeltsLine]);
+        Rig rig = Baselined(List(EngFire), before);
+
+        // The data call reconnects first: the snapshot still holds the old list, with no ECAM reconnect yet.
+        rig.Silent(100, 500, List(EngFire), after, connection: 2);
+
+        // Then the ECAM call reconnects with no list yet, and its first list comes.
+        rig.Silent(600, 1000, null, after, connection: 2, ecamConnection: 2);
+        FenixEcamEntries fresh = List(SeatBelts);
+        rig.Silent(1100, 8000, fresh, after, connection: 2, ecamConnection: 2);
+
+        // What changes after that baseline is spoken as usual.
+        Assert.Equal([Queued("ELEC GEN 1 FAULT, amber")],
+            rig.At(8100, List(SeatBelts, Gen1Fault), Ewd(left: [Gen1Line], right: [SeatBeltsLine]),
+                connection: 2, ecamConnection: 2));
+    }
+
+    [Fact]
+    public void A_new_ecam_connection_whose_first_list_comes_at_once_is_still_a_baseline()
+    {
+        // The step that first shows the new ECAM connection may already hold its first list: it is still not news.
+        Rig rig = Baselined(List(EngFire), Ewd(left: [EngFireLine]));
+        rig.Silent(100, 8000, List(SeatBelts), Ewd(right: [SeatBeltsLine]), ecamConnection: 2);
     }
 
     [Fact]

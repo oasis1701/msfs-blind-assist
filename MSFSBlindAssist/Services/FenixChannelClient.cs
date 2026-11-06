@@ -65,10 +65,17 @@ internal sealed class FenixChannelClient : IDisposable
 
     /// <summary>
     /// How long the display data call may send no byte before the client drops it and reconnects. It streams
-    /// about 17 messages a second, so ten seconds of silence is a stream that died without ending. The ECAM
-    /// entries call has no such limit: it sends only when the list changes.
+    /// about 17 messages a second, so ten seconds of silence is a stream that died without ending.
     /// </summary>
     public static readonly TimeSpan DisplayDataSilence = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// How long the ECAM entries call may send no byte before the client drops it and reconnects. It sends its list
+    /// only when the list changes, but a heartbeat every 5 s says it is alive (measured on the A321 IAE, build
+    /// 3.0.0.7613, 2026-11-04), so fifteen seconds of silence is three beats missed: a stream that died without
+    /// ending, whose last list would otherwise stand for good.
+    /// </summary>
+    public static readonly TimeSpan EcamEntriesSilence = TimeSpan.FromSeconds(15);
 
     private const string LogCategory = "FenixChannel";
     private const int ReadChunkBytes = 16 * 1024;
@@ -76,6 +83,7 @@ internal sealed class FenixChannelClient : IDisposable
     private readonly HttpClient _http;
     private readonly Func<int, bool, TimeSpan> _retryDelay;
     private readonly TimeSpan _displayDataSilence;
+    private readonly TimeSpan _ecamEntriesSilence;
 
     // Canceled by Dispose: ends every loop, and any read, send or wait one is in. Never disposed, as in
     // FenixDataService: it holds no timer and no handle, and a loop may still read its token.
@@ -88,21 +96,29 @@ internal sealed class FenixChannelClient : IDisposable
     /// first) and whether the last answer was grpc-status 12. By default <see cref="DefaultRetryDelay"/>.</param>
     /// <param name="displayDataSilence">For tests: how long the display data call may send no byte. By default
     /// <see cref="DisplayDataSilence"/>.</param>
+    /// <param name="ecamEntriesSilence">For tests: how long the ECAM entries call may send no byte. By default
+    /// <see cref="EcamEntriesSilence"/>.</param>
     public FenixChannelClient(
         HttpMessageHandler? handler = null,
         Func<int, bool, TimeSpan>? retryDelay = null,
-        TimeSpan? displayDataSilence = null)
+        TimeSpan? displayDataSilence = null,
+        TimeSpan? ecamEntriesSilence = null)
     {
         _http = new HttpClient(
             handler ?? CreateDefaultHandler(),
             disposeHandler: handler == null)
         {
-            // A stream has no end to time out: the data call's silence limit and Dispose are what end one.
+            // A stream has no end to time out: each call's silence limit and Dispose are what end one.
             Timeout = Timeout.InfiniteTimeSpan
         };
         _retryDelay = retryDelay ?? DefaultRetryDelay;
         _displayDataSilence = displayDataSilence ?? DisplayDataSilence;
+        _ecamEntriesSilence = ecamEntriesSilence ?? EcamEntriesSilence;
     }
+
+    // The silence limit of a stream call: how long it may go without its answer's headers, and then without a byte.
+    private TimeSpan SilenceOf(FenixChannelCall call)
+        => call == FenixChannelCall.EcamEntries ? _ecamEntriesSilence : _displayDataSilence;
 
     /// <summary>
     /// The handler the client builds when a test gives it none: HTTP/2 over a socket, a 5 s connect timeout, and
@@ -193,40 +209,11 @@ internal sealed class FenixChannelClient : IDisposable
         limit.CancelAfter(timeout);
         try
         {
-            var uri = new Uri(string.Create(
-                CultureInfo.InvariantCulture, $"http://{FenixChannelFields.Host}:{FenixChannelFields.Port}{path}"));
-
-            // One gRPC frame: a flag byte of 0, the length as four big-endian bytes, the message.
-            byte[] framed = new byte[5 + request.Length];
-            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(framed.AsSpan(1), (uint)request.Length);
-            request.CopyTo(framed, 5);
-
-            var content = new ByteArrayContent(framed);
-            content.Headers.ContentType = new MediaTypeHeaderValue("application/grpc");
-            using var message = new HttpRequestMessage(HttpMethod.Post, uri)
-            {
-                Version = HttpVersion.Version20,
-                VersionPolicy = HttpVersionPolicy.RequestVersionExact,
-                Content = content
-            };
-            message.Headers.TryAddWithoutValidation("te", "trailers");
-            message.Headers.TryAddWithoutValidation("grpc-accept-encoding", "identity");
-
+            using HttpRequestMessage message = BuildRequest(UriOf(path), FenixChannelFraming.Frame(request));
             using HttpResponseMessage response = await _http
                 .SendAsync(message, HttpCompletionOption.ResponseHeadersRead, limit.Token).ConfigureAwait(false);
 
-            if (response.StatusCode != HttpStatusCode.OK)
-            {
-                int code = (int)response.StatusCode;
-                if (code is 401 or 403)
-                {
-                    string name = code == 401 ? "Unauthorized" : "Forbidden";
-                    return new(FenixChannelState.Refused, null, string.Create(CultureInfo.InvariantCulture,
-                        $"the Fenix refused {path} (HTTP {code}, {name}); the call stays off for the session"));
-                }
-
-                return UnaryDown(string.Create(CultureInfo.InvariantCulture, $"HTTP {code}"));
-            }
+            if (response.StatusCode != HttpStatusCode.OK) return UnaryResultOf(HttpOutcome(path, (int)response.StatusCode));
 
             await using Stream body = await response.Content.ReadAsStreamAsync(limit.Token).ConfigureAwait(false);
             var reader = new FenixChannelMessageReader();
@@ -245,18 +232,7 @@ internal sealed class FenixChannelClient : IDisposable
             // The trailers come after the body, which has been read to its end; a trailers-only answer has its
             // status in the headers.
             var (status, statusMessage) = FenixChannelFraming.ReadStatus(response);
-            if (status is int s && s != 0)
-            {
-                string why = string.IsNullOrWhiteSpace(statusMessage) ? "" : ": " + statusMessage;
-                return s switch
-                {
-                    7 or 16 => new FenixChannelUnaryResult(FenixChannelState.Refused, null, string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"the Fenix refused {path} (grpc-status {s}{why}); the call stays off for the session")),
-                    12 => UnaryDown($"the Fenix does not offer {path} (did an update change the channel?)"),
-                    _ => UnaryDown(string.Create(CultureInfo.InvariantCulture, $"grpc-status {s}{why}"))
-                };
-            }
+            if (status is int s && s != 0) return UnaryResultOf(StatusOutcome(path, s, statusMessage));
 
             if (reader.Error is { } error) return UnaryDown(error);
             if (reader.HasPartialMessage) return UnaryDown("cut-off message");
@@ -287,6 +263,92 @@ internal sealed class FenixChannelClient : IDisposable
         }
     }
 
+    // A unary call's result for an outcome a stream call would act on: a refusal is still one, and anything else is a
+    // call that did not answer, since a unary call does not ask again by itself.
+    private static FenixChannelUnaryResult UnaryResultOf(Outcome outcome)
+        => outcome.Kind == EndKind.Refused
+            ? new(FenixChannelState.Refused, null, outcome.Text)
+            : UnaryDown(outcome.Text);
+
+    // ---- What every call shares ------------------------------------------------------------------
+
+    // The numeric address, never "localhost" ([A320-40]); the path comes from FenixChannelFields.
+    private static Uri UriOf(string path)
+        => new(string.Create(
+            CultureInfo.InvariantCulture, $"http://{FenixChannelFields.Host}:{FenixChannelFields.Port}{path}"));
+
+    private static HttpRequestMessage BuildRequest(Uri uri, byte[] framedBody)
+    {
+        var content = new ByteArrayContent(framedBody);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/grpc");
+
+        var request = new HttpRequestMessage(HttpMethod.Post, uri)
+        {
+            // HTTP/2 without TLS: the connection starts as HTTP/2 (prior knowledge), with no upgrade.
+            Version = HttpVersion.Version20,
+            VersionPolicy = HttpVersionPolicy.RequestVersionExact,
+            Content = content
+        };
+
+        // "te: trailers" says the client reads the trailers, where the status of a call comes; identity says it
+        // takes no compressed message.
+        request.Headers.TryAddWithoutValidation("te", "trailers");
+        request.Headers.TryAddWithoutValidation("grpc-accept-encoding", "identity");
+        return request;
+    }
+
+    // What an answer whose HTTP status is not 200 means. gRPC maps HTTP 401 and 403 to grpc-status 16 and 7: the Fenix
+    // saying no is a refusal however it says it, and the client never tries to get past one.
+    private static Outcome HttpOutcome(string path, int code)
+    {
+        if (code is not (401 or 403)) return Outcome.Reconnect(string.Create(CultureInfo.InvariantCulture, $"HTTP {code}"));
+
+        string name = code == 401 ? "Unauthorized" : "Forbidden";
+        return Outcome.Refuse(string.Create(
+            CultureInfo.InvariantCulture,
+            $"the Fenix refused {path} (HTTP {code}, {name}); the call stays off for the session"));
+    }
+
+    // What a call that ended with a grpc-status other than 0 means. A status of 0 is never asked here: in a stream's
+    // headers it is no news, and after its messages it is an ordinary end.
+    private static Outcome StatusOutcome(string path, int status, string? message)
+    {
+        string why = string.IsNullOrWhiteSpace(message) ? "" : ": " + message;
+        switch (status)
+        {
+            case 7 or 16:
+                string name = status == 7 ? "PERMISSION_DENIED" : "UNAUTHENTICATED";
+                return Outcome.Refuse(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"the Fenix refused {path} (grpc-status {status}, {name}{why}); the call stays off for the session"));
+            case 12:
+                return Outcome.NotOffered($"the Fenix does not offer {path} (did an update change the channel?)");
+            default:
+                // The number alone: a message that changed from one try to the next would make each try news in the log.
+                return Outcome.Reconnect(string.Create(CultureInfo.InvariantCulture, $"grpc-status {status}"));
+        }
+    }
+
+    private enum EndKind
+    {
+        Reconnect,
+        CallNotOffered,
+        Refused,
+        Stopped
+    }
+
+    // How a call ended: what to do next, and the reason to report.
+    private readonly record struct Outcome(EndKind Kind, string Text)
+    {
+        public static readonly Outcome Stopped = new(EndKind.Stopped, "");
+
+        public static Outcome Reconnect(string text) => new(EndKind.Reconnect, text);
+
+        public static Outcome NotOffered(string text) => new(EndKind.CallNotOffered, text);
+
+        public static Outcome Refuse(string text) => new(EndKind.Refused, text);
+    }
+
     /// <summary>
     /// Ends every loop at once, dropping any stream open, and releases the HTTP client. Never throws and never
     /// waits for a loop, so it is safe on the UI thread; a second call does nothing.
@@ -311,6 +373,7 @@ internal sealed class FenixChannelClient : IDisposable
         private readonly Action<byte[]> _onMessage;
         private readonly Action<FenixChannelState, string> _onState;
         private readonly CancellationToken _lifetime;
+        private readonly TimeSpan _silence;
 
         // Only the loop touches these, one step at a time, so they need no lock.
         private int _attempt;
@@ -330,12 +393,11 @@ internal sealed class FenixChannelClient : IDisposable
             _owner = owner;
             _call = call;
             _path = path;
-            // The numeric address, never "localhost" ([A320-40]); the path comes from FenixChannelFields.
-            _uri = new Uri(string.Create(
-                CultureInfo.InvariantCulture, $"http://{FenixChannelFields.Host}:{FenixChannelFields.Port}{path}"));
+            _uri = UriOf(path);
             _onMessage = onMessage;
             _onState = onState;
             _lifetime = lifetime;
+            _silence = owner.SilenceOf(call);
         }
 
         public async Task RunAsync()
@@ -377,29 +439,26 @@ internal sealed class FenixChannelClient : IDisposable
         {
             try
             {
-                using var request = BuildRequest();
-                using HttpResponseMessage response = await _owner._http
-                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _lifetime)
-                    .ConfigureAwait(false);
-
-                if (response.StatusCode != HttpStatusCode.OK)
+                // The body is the one empty message gRPC sends for a call with no request.
+                using var request = BuildRequest(_uri, FenixChannelFraming.EmptyRequest());
+                if (await SendWithinSilenceAsync(request).ConfigureAwait(false) is not { } response)
                 {
-                    int code = (int)response.StatusCode;
-
-                    // gRPC maps HTTP 401 and 403 to grpc-status 16 and 7: the Fenix saying no is a refusal however
-                    // it says it, and the client never tries to get past one.
-                    if (code is 401 or 403) return Outcome.Refuse(HttpRefusalText(code));
-
-                    return Outcome.Reconnect(string.Create(CultureInfo.InvariantCulture, $"HTTP {code}"));
+                    return Outcome.Reconnect(string.Create(
+                        CultureInfo.InvariantCulture, $"no answer for {_silence.TotalSeconds} s"));
                 }
 
-                // An answer that carries no message (an error) is one block of headers with its status in it. A
-                // normal answer has none yet: its status is in the trailers, after the last message.
-                var (headerStatus, headerMessage) = FenixChannelFraming.ReadStatus(response);
-                if (headerStatus is int status && status != 0) return FromStatus(status, headerMessage);
+                using (response)
+                {
+                    if (response.StatusCode != HttpStatusCode.OK) return HttpOutcome(_path, (int)response.StatusCode);
 
-                Report(FenixChannelState.Connected, "");
-                return await ReadStreamAsync(response).ConfigureAwait(false);
+                    // An answer that carries no message (an error) is one block of headers with its status in it. A
+                    // normal answer has none yet: its status is in the trailers, after the last message.
+                    var (headerStatus, headerMessage) = FenixChannelFraming.ReadStatus(response);
+                    if (headerStatus is int status && status != 0) return StatusOutcome(_path, status, headerMessage);
+
+                    Report(FenixChannelState.Connected, "");
+                    return await ReadStreamAsync(response).ConfigureAwait(false);
+                }
             }
             catch (Exception) when (_lifetime.IsCancellationRequested)
             {
@@ -408,6 +467,26 @@ internal sealed class FenixChannelClient : IDisposable
             catch (Exception ex)
             {
                 return Outcome.Reconnect($"{ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        // Sends the request and waits for the answer's headers, at most the call's silence limit: a Fenix that takes
+        // the connection and never answers is as dead as a stream that stops sending. Null when the limit ran out.
+        // The limit's own source is disposed as soon as the headers are in, so it can never cancel the stream that
+        // follows, which the reads' own limits watch from there (HttpClient's Timeout works the same way).
+        private async Task<HttpResponseMessage?> SendWithinSilenceAsync(HttpRequestMessage request)
+        {
+            using var answer = CancellationTokenSource.CreateLinkedTokenSource(_lifetime);
+            answer.CancelAfter(_silence);
+            try
+            {
+                return await _owner._http
+                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, answer.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (answer.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+            {
+                return null;
             }
         }
 
@@ -421,13 +500,12 @@ internal sealed class FenixChannelClient : IDisposable
 
             while (true)
             {
+                // Each read has its own limit, so a message that arrives just as the time runs out is not taken for
+                // silence.
                 int read;
-                if (_call == FenixChannelCall.DisplayData)
+                using (var silence = CancellationTokenSource.CreateLinkedTokenSource(_lifetime))
                 {
-                    // Each read has its own limit, so a message that arrives just as the time runs out is not
-                    // taken for silence.
-                    using var silence = CancellationTokenSource.CreateLinkedTokenSource(_lifetime);
-                    silence.CancelAfter(_owner._displayDataSilence);
+                    silence.CancelAfter(_silence);
                     try
                     {
                         read = await body.ReadAsync(chunk.AsMemory(), silence.Token).ConfigureAwait(false);
@@ -435,12 +513,8 @@ internal sealed class FenixChannelClient : IDisposable
                     catch (OperationCanceledException) when (silence.IsCancellationRequested && !_lifetime.IsCancellationRequested)
                     {
                         return Outcome.Reconnect(string.Create(
-                            CultureInfo.InvariantCulture, $"no data for {_owner._displayDataSilence.TotalSeconds} s"));
+                            CultureInfo.InvariantCulture, $"no data for {_silence.TotalSeconds} s"));
                     }
-                }
-                else
-                {
-                    read = await body.ReadAsync(chunk.AsMemory(), _lifetime).ConfigureAwait(false);
                 }
 
                 if (read == 0) break;
@@ -477,55 +551,8 @@ internal sealed class FenixChannelClient : IDisposable
             {
                 null => Outcome.Reconnect("the stream ended with no grpc-status"),
                 0 => Outcome.Reconnect("the stream ended"),
-                int other => FromStatus(other, statusMessage)
+                int other => StatusOutcome(_path, other, statusMessage)
             };
-        }
-
-        // What a call that answered with a status goes on to do. A status of 0 is not asked here: in the headers
-        // it is no news, and after the stream it is an ordinary end.
-        private Outcome FromStatus(int status, string? message) => status switch
-        {
-            7 or 16 => Outcome.Refuse(RefusalText(status, message)),
-            12 => Outcome.NotOffered($"the Fenix does not offer {_path} (did an update change the channel?)"),
-            _ => Outcome.Reconnect(string.Create(CultureInfo.InvariantCulture, $"grpc-status {status}"))
-        };
-
-        private string RefusalText(int status, string? message)
-        {
-            string name = status == 7 ? "PERMISSION_DENIED" : "UNAUTHENTICATED";
-            string why = string.IsNullOrWhiteSpace(message) ? "" : ": " + message;
-            return string.Create(
-                CultureInfo.InvariantCulture,
-                $"the Fenix refused {_path} (grpc-status {status}, {name}{why}); the call stays off for the session");
-        }
-
-        private string HttpRefusalText(int code)
-        {
-            string name = code == 401 ? "Unauthorized" : "Forbidden";
-            return string.Create(
-                CultureInfo.InvariantCulture,
-                $"the Fenix refused {_path} (HTTP {code}, {name}); the call stays off for the session");
-        }
-
-        private HttpRequestMessage BuildRequest()
-        {
-            // The body is the one empty message gRPC sends for a call with no request.
-            var content = new ByteArrayContent(FenixChannelFraming.EmptyRequest());
-            content.Headers.ContentType = new MediaTypeHeaderValue("application/grpc");
-
-            var request = new HttpRequestMessage(HttpMethod.Post, _uri)
-            {
-                // HTTP/2 without TLS: the connection starts as HTTP/2 (prior knowledge), with no upgrade.
-                Version = HttpVersion.Version20,
-                VersionPolicy = HttpVersionPolicy.RequestVersionExact,
-                Content = content
-            };
-
-            // "te: trailers" says the client reads the trailers, where the status of a stream comes; identity
-            // says it takes no compressed message.
-            request.Headers.TryAddWithoutValidation("te", "trailers");
-            request.Headers.TryAddWithoutValidation("grpc-accept-encoding", "identity");
-            return request;
         }
 
         // A state is reported when it changes, or its reason does; not after Dispose; and a callback that throws
@@ -568,26 +595,6 @@ internal sealed class FenixChannelClient : IDisposable
 
             _callbackFailureLogged = true;
             Log.Debug(LogCategory, $"{_call} {callback} callback threw: {ex.GetType().Name}: {ex.Message}");
-        }
-
-        private enum EndKind
-        {
-            Reconnect,
-            CallNotOffered,
-            Refused,
-            Stopped
-        }
-
-        // How a connection ended: what to do next, and the reason to report.
-        private readonly record struct Outcome(EndKind Kind, string Text)
-        {
-            public static readonly Outcome Stopped = new(EndKind.Stopped, "");
-
-            public static Outcome Reconnect(string text) => new(EndKind.Reconnect, text);
-
-            public static Outcome NotOffered(string text) => new(EndKind.CallNotOffered, text);
-
-            public static Outcome Refuse(string text) => new(EndKind.Refused, text);
         }
     }
 }

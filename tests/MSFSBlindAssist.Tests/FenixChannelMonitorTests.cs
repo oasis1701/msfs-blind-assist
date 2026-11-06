@@ -824,6 +824,62 @@ public class FenixChannelMonitorTests
     }
 
     [Fact]
+    public void A_connect_of_the_ecam_entries_call_starts_its_list_over()
+    {
+        // A list belongs to the connection that sent it: after a reconnect of the ECAM entries call (its stream broke,
+        // or the Fenix restarted) the snapshot has no list until the new connection sends one, and the ECAM connection
+        // number tells a reader to forget the list it remembered. The data call's connection number is not touched.
+        var lines = new Lines();
+        using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
+        Assert.Equal(0, monitor.Snapshot(FenixChannelDisplay.Ewd).EcamConnection);
+
+        monitor.OnEcamState(FenixChannelState.Connected, "");
+        monitor.OnEcamMessage(ListedEntries(false, ("22", "AUTOFLT-AP-OFF", "AUTO FLT AP OFF", true)));
+        FenixChannelSnapshot first = monitor.Snapshot(FenixChannelDisplay.Ewd);
+        Assert.Equal(1, first.EcamConnection);
+        Assert.NotNull(first.Entries);
+
+        monitor.OnEcamState(FenixChannelState.NotAnswering, "no data for 15 s");
+        Assert.Same(first.Entries, monitor.Snapshot(FenixChannelDisplay.Ewd).Entries);   // a gap alone keeps it
+
+        monitor.OnEcamState(FenixChannelState.Connected, "");
+        FenixChannelSnapshot second = monitor.Snapshot(FenixChannelDisplay.Ewd);
+        Assert.Equal(2, second.EcamConnection);
+        Assert.Null(second.Entries);
+        Assert.Equal(0, second.Connection);
+
+        monitor.OnEcamMessage(GoodEntries());   // a bare heartbeat is still no list
+        Assert.Null(monitor.Snapshot(FenixChannelDisplay.Ewd).Entries);
+
+        monitor.OnEcamMessage(ListedEntries(false, ("31", "MEMO-SEAT-BELTS", "SEAT BELTS", false)));
+        Assert.Equal(new[] { "MEMO-SEAT-BELTS" },
+            monitor.Snapshot(FenixChannelDisplay.Ewd).Entries?.Entries.Select(entry => entry.Name));
+    }
+
+    [Fact]
+    public async Task A_wrong_shaped_ecam_message_of_an_ended_connection_is_not_given_to_the_gate_again()
+    {
+        // The gate is given the last ECAM entries message again at each connect of the data call, but only one of
+        // the ECAM call's current connection: a reconnect of that call drops what the connection before had said.
+        var lines = new Lines();
+        using var monitor = NewIdleMonitor(lines);
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        monitor.OnDataMessage(GoodPush());
+        await WaitUntil(() => monitor.VerdictFor(FenixChannelDisplay.Sd).Trusted, "SD to be trusted", lines);
+
+        monitor.OnEcamState(FenixChannelState.Connected, "");
+        monitor.OnEcamMessage(WrongShapedEntries());
+        Assert.False(monitor.VerdictFor(FenixChannelDisplay.Sd).Trusted);   // latched until the data call reconnects
+        monitor.OnEcamState(FenixChannelState.NotAnswering, "no data for 15 s");
+        monitor.OnEcamState(FenixChannelState.Connected, "");
+
+        monitor.OnDataState(FenixChannelState.NotAnswering, "the stream ended");
+        monitor.OnDataState(FenixChannelState.Connected, "");
+        monitor.OnDataMessage(GoodPush());
+        await WaitUntil(() => monitor.VerdictFor(FenixChannelDisplay.Sd).Trusted, "SD to be trusted again", lines);
+    }
+
+    [Fact]
     public void A_connect_of_the_data_call_keeps_the_entries()
     {
         // The entries stream sends only when its list changes, so what it last listed is still the list after the
@@ -1274,24 +1330,30 @@ public class FenixChannelMonitorTests
     }
 
     [Fact]
-    public void Writes_the_ecam_entries_changes_with_the_same_rule_for_a_repeated_failure()
+    public void Writes_the_ecam_entries_changes_with_the_same_rules_as_the_data_call()
     {
+        // As for the data call: "connected" is written with the first message of a connection, not with its headers,
+        // and a failure is written once until a message shows the call worked. The client drops a silent ECAM call
+        // too, so a call that opens and says nothing must not write two lines each time it is asked again.
         var lines = new Lines();
         using var monitor = NewIdleMonitor(lines, new BuildQueries().Read);
 
+        monitor.OnEcamState(FenixChannelState.Connected, "");             // opened, silent: no line
+        monitor.OnEcamState(FenixChannelState.NotAnswering, "no data for 15 s");
         monitor.OnEcamState(FenixChannelState.Connected, "");
-        monitor.OnEcamState(FenixChannelState.NotAnswering, "refused");
-        monitor.OnEcamState(FenixChannelState.NotAnswering, "refused");   // the same news
-        monitor.OnEcamMessage(GoodEntries());                             // the call worked: the same failure is news again
-        monitor.OnEcamState(FenixChannelState.NotAnswering, "refused");
+        monitor.OnEcamState(FenixChannelState.NotAnswering, "no data for 15 s");   // the same news
+        monitor.OnEcamState(FenixChannelState.Connected, "");
+        monitor.OnEcamMessage(GoodEntries());                             // the call worked: connected, and the failure is news again
+        monitor.OnEcamMessage(GoodEntries());
+        monitor.OnEcamState(FenixChannelState.NotAnswering, "no data for 15 s");
         monitor.OnEcamState(FenixChannelState.Refused, "the Fenix refused it");
 
         Assert.Equal(
             new[]
             {
+                "ECAM entries: not answering (no data for 15 s)",
                 "ECAM entries: connected",
-                "ECAM entries: not answering (refused)",
-                "ECAM entries: not answering (refused)",
+                "ECAM entries: not answering (no data for 15 s)",
                 "ECAM entries: refused (the Fenix refused it); stopped for this session"
             },
             lines.Starting("ECAM entries:"));
@@ -1388,6 +1450,7 @@ public class FenixChannelMonitorTests
         monitor.Start();
         await data.SendAsync(GoodPush());
         await WaitUntil(() => lines.All.Contains("display data: connected"), "the data call to connect", lines);
+        await ecam.SendAsync(GoodEntries());   // "connected" is written with the first message
         await WaitUntil(() => lines.All.Contains("ECAM entries: connected"), "the ECAM entries call to connect", lines);
 
         data.End(grpcStatus: 16);   // the refusal, in the trailers behind the messages
@@ -1418,6 +1481,7 @@ public class FenixChannelMonitorTests
         monitor.Start();
         await data.SendAsync(GoodPush());
         await WaitUntil(() => lines.All.Contains("display data: connected"), "the data call to connect", lines);
+        await ecam.SendAsync(GoodEntries());   // "connected" is written with the first message
         await WaitUntil(() => lines.All.Contains("ECAM entries: connected"), "the ECAM entries call to connect", lines);
 
         ecam.End(grpcStatus: 7);
@@ -1464,7 +1528,11 @@ public class FenixChannelMonitorTests
         await Task.Delay(Quiet);
 
         Assert.Equal(
-            new[] { "display data: connected", "ECAM entries: refused (no key); stopped for this session" },
+            new[]
+            {
+                "display data: connected", "ECAM entries: connected",
+                "ECAM entries: refused (no key); stopped for this session"
+            },
             lines.All);
         AssertEveryDisplay(monitor, new FenixDisplayVerdict(false, "channel not answering: no key"));
         Assert.Equal(100, monitor.Latest?.MagHeading);
@@ -1502,11 +1570,14 @@ public class FenixChannelMonitorTests
     {
         var server = new ChannelServer();
         var stream = new OpenStream();
+        var ecam = new OpenStream();
         server.Data.Enqueue(() => stream.Response);
+        server.Ecam.Enqueue(() => ecam.Response);
         var lines = new Lines();
         var monitor = NewMonitor(server, lines);
         monitor.Start();
         await stream.SendAsync(GoodPush(200));
+        await ecam.SendAsync(GoodEntries());   // "connected" is written with the first message
         // The DCDU is the last display a tick writes: its line shows that the tick which wrote the others is over, so
         // the count taken below is of a settled log.
         await WaitUntil(() => lines.All.Contains("DCDU trusted"), "DCDU trusted to be logged", lines);

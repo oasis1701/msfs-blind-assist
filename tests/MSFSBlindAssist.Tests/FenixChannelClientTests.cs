@@ -32,8 +32,9 @@ public class FenixChannelClientTests
     // A client on the fake server with no wait before a reconnect, and the silence limit of the data call
     // shortened when a test needs it to run out.
     private static FenixChannelClient NewClient(
-        FenixChannelFakeServer server, Func<int, bool, TimeSpan>? retryDelay = null, TimeSpan? silence = null)
-        => new(server, retryDelay ?? ((_, _) => TimeSpan.Zero), silence);
+        FenixChannelFakeServer server, Func<int, bool, TimeSpan>? retryDelay = null, TimeSpan? silence = null,
+        TimeSpan? ecamSilence = null)
+        => new(server, retryDelay ?? ((_, _) => TimeSpan.Zero), silence, ecamSilence);
 
     // Messages as gRPC frames, back to back.
     private static byte[] Frames(params byte[][] messages)
@@ -649,11 +650,11 @@ public class FenixChannelClientTests
     }
 
     [Fact]
-    public async Task Only_the_data_call_is_watched_for_silence()
+    public async Task Each_call_has_its_own_silence_limit()
     {
-        // The ECAM entries come when the list changes, so a quiet stream there is normal. Both calls get an
-        // endless stream; once the data call has dropped two (at least 200 ms of silence), the ECAM call is
-        // still connected, and nothing else has been reported for it.
+        // The ECAM entries come when the list changes and a heartbeat every 5 s, so its limit is longer (15 s by
+        // default). Both calls get an endless stream; once the data call has dropped two (at least 200 ms of silence),
+        // the ECAM call is still connected, and nothing else has been reported for it.
         var server = new FenixChannelFakeServer();
         var data = new Events();
         var ecam = new Events();
@@ -665,6 +666,53 @@ public class FenixChannelClientTests
         await data.WhenStates(4);
 
         Assert.Equal([FenixChannelState.Connected], ecam.States.Select(s => s.State));
+    }
+
+    [Fact]
+    public async Task A_silent_ecam_stream_is_dropped_and_reconnects()
+    {
+        // A stream that died without ending would leave the last list standing for good: past its own limit (100 ms
+        // here) the ECAM call is dropped and asked again, as the data call is.
+        var server = new FenixChannelFakeServer();
+        var events = new Events();
+        using var client = NewClient(server, ecamSilence: TimeSpan.FromMilliseconds(100));
+
+        client.Start(FenixChannelCall.EcamEntries, events.OnMessage, events.OnState);
+        await events.WhenStates(3);
+
+        Assert.Equal(
+            [
+                (FenixChannelState.Connected, ""),
+                (FenixChannelState.NotAnswering, "no data for 0.1 s"),
+                (FenixChannelState.Connected, "")
+            ],
+            events.States.Take(3));
+        Assert.True(server.Requests.Count >= 2);
+    }
+
+    [Fact]
+    public async Task A_call_that_never_answers_is_dropped_and_reconnects()
+    {
+        // The Fenix takes the connection and never sends the answer's headers. Past the call's silence limit (100 ms
+        // here) the client gives up on it and asks again; the next answer streams as usual.
+        byte[] a = [1, 2];
+        var server = new FenixChannelFakeServer();
+        server.HoldAnswer();
+        server.Enqueue(() => FenixChannelFakeServer.StreamThenHold(Frames(a)));
+        var events = new Events();
+        using var client = NewClient(server, silence: TimeSpan.FromMilliseconds(100));
+
+        client.Start(FenixChannelCall.DisplayData, events.OnMessage, events.OnState);
+        await events.WhenStates(2);
+        await events.WhenMessages(1);
+
+        Assert.Equal(
+            [
+                (FenixChannelState.NotAnswering, "no answer for 0.1 s"),
+                (FenixChannelState.Connected, "")
+            ],
+            events.States.Take(2));
+        Assert.Equal(new[] { a }, events.Messages.Take(1));
     }
 
     [Fact]
@@ -692,6 +740,7 @@ public class FenixChannelClientTests
         Assert.Equal(new[] { 3000, 6000, 12000, 30000 }, FenixChannelClient.ReconnectDelaysMs);
         Assert.Equal(30000, FenixChannelClient.CallNotFoundDelayMs);
         Assert.Equal(TimeSpan.FromSeconds(10), FenixChannelClient.DisplayDataSilence);
+        Assert.Equal(TimeSpan.FromSeconds(15), FenixChannelClient.EcamEntriesSilence);
     }
 
     [Fact]
