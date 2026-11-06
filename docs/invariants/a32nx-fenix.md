@@ -63,7 +63,7 @@ Corrected 2026-10-09: "two separate calc calls" was not enough; two calls issued
 
 ## A320-15
 
-- The A32NX DCDU display must be a ListBox, not a multiline TextBox — a right-aligned key label read on a separate braille line from its leading key number in a TextBox. → [a32nx.md](../a32nx.md)
+- A DCDU display (the A32NX's and, since 2026-11, the Fenix's, `FenixChannelDcduForm`) must be a ListBox, not a multiline TextBox — a right-aligned key label read on a separate braille line from its leading key number in a TextBox. → [a32nx.md](../a32nx.md)
 
 ## A320-16
 
@@ -75,7 +75,7 @@ Corrected 2026-10-09: "two separate calc calls" was not enough; two calls issued
 
 ## A320-18
 
-- Unmodified PageUp/PageDown must scroll WITHIN the displayed DCDU message (`POEMINUS`/`POEPLUS`), with Ctrl+PageUp/Down stepping between messages — never the reverse: every other CDU window (A320/A380 MCDU, PMDG 737/777, HS787, iFly 737) binds plain PageUp/Down to scrolling the content being read, and within-message paging is the load-bearing one (it unlocks the answer keys), so it must not sit behind a modifier. → [a32nx.md](../a32nx.md)
+- Unmodified PageUp/PageDown must scroll WITHIN the displayed DCDU message (FBW `POEMINUS`/`POEPLUS`, Fenix `S_DCDU1_PGUP`/`S_DCDU1_PGDN`), with Ctrl+PageUp/Down stepping between messages — never the reverse: every other CDU window (A320/A380 MCDU, PMDG 737/777, HS787, iFly 737) binds plain PageUp/Down to scrolling the content being read, and within-message paging is the load-bearing one (it unlocks the answer keys), so it must not sit behind a modifier. → [a32nx.md](../a32nx.md)
 
 ## A320-19
 

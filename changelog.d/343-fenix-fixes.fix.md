@@ -1,0 +1,3 @@
+On the Fenix A320 family, pitch trim now follows the Fenix's own stabilizer, the number on your MCDU and the ECAM. The trim call-out used to follow a value the Fenix does not move, so trimming by it could leave the real trim well off and give F/CTL PITCH TRIM/MCDU/CG DISAGREE. In the panel, Pitch Trim is now a box you type degrees into (0.3 for UP 0.3, -0.8 for DN 0.8) in place of a list that could not reach a real take-off trim.
+
+Also on the Fenix: a press of an EFIS FD, LS or map option button is heard once, from the panel or the ND window; ISIS Reset holds long enough to start a realignment and confirms its press; and the ECAM ALL key confirms its press.

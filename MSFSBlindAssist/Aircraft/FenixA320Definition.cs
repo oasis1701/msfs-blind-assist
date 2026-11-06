@@ -1139,15 +1139,30 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = OffOn
             },
 
-            // ========== DCDU (10 variables) ==========
+            // ========== DCDU (11 variables) ==========
+            // The captain's DCDU keys and brightness switch, and the brightness itself. No panel lists them: the DCDU window
+            // (Ctrl+Shift+D, and the Fenix windows list) presses the keys and steps the switch through the branches below, and
+            // reads the brightness (FenixA320Definition.ChannelDcdu.cs). There is no first officer's DCDU window, so no
+            // brightness for it.
             ["S_DCDU1_DIM_BRT"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_DCDU1_DIM_BRT",
                 DisplayName = "DCDU Brightness",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                // Spring-loaded both ways: a pick of Dim or Bright is one step, then back to Mid (PulseSpringSwitch).
+                // Spring-loaded both ways: a press of Dim or Bright is one step (about 50 in the Fenix's count behind the level below), then back to Mid
+                // (PulseSpringSwitch).
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Mid", [2] = "Bright"}
+            },
+            // What lights the captain's DCDU (Cockpit_Behavior.xml), the Fenix's count (0 dark, 510 full) over 1023: the window reads it on request, to
+            // say it after a press. Consumed by the window alone, silently, so it stays out of the Ctrl+M list ([VAR-9]).
+            ["N_DCDU1_BRIGHTNESS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "N_DCDU1_BRIGHTNESS",
+                DisplayName = "DCDU Brightness Level",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ExcludeFromMonitorManager = true
             },
             ["S_DCDU1_LSK1L"] = new SimConnect.SimVarDefinition
             {
@@ -2859,7 +2874,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_ARPT"
+                StateVariable = "I_FCU_EFIS1_ARPT",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS1_CSTR"] = new SimConnect.SimVarDefinition
             {
@@ -2868,7 +2884,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_CSTR"
+                StateVariable = "I_FCU_EFIS1_CSTR",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS1_WPT"] = new SimConnect.SimVarDefinition
             {
@@ -2877,7 +2894,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_WPT"
+                StateVariable = "I_FCU_EFIS1_WPT",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS1_VORD"] = new SimConnect.SimVarDefinition
             {
@@ -2886,7 +2904,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_VORD"
+                StateVariable = "I_FCU_EFIS1_VORD",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS1_NDB"] = new SimConnect.SimVarDefinition
             {
@@ -2895,7 +2914,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_NDB"
+                StateVariable = "I_FCU_EFIS1_NDB",
+                PressTogglesStateVariable = true
             },
 
             // Flight Director & ILS Buttons
@@ -3013,7 +3033,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_ARPT"
+                StateVariable = "I_FCU_EFIS2_ARPT",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS2_CSTR"] = new SimConnect.SimVarDefinition
             {
@@ -3022,7 +3043,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_CSTR"
+                StateVariable = "I_FCU_EFIS2_CSTR",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS2_WPT"] = new SimConnect.SimVarDefinition
             {
@@ -3031,7 +3053,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_WPT"
+                StateVariable = "I_FCU_EFIS2_WPT",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS2_VORD"] = new SimConnect.SimVarDefinition
             {
@@ -3040,7 +3063,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_VORD"
+                StateVariable = "I_FCU_EFIS2_VORD",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS2_NDB"] = new SimConnect.SimVarDefinition
             {
@@ -3049,7 +3073,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_NDB"
+                StateVariable = "I_FCU_EFIS2_NDB",
+                PressTogglesStateVariable = true
             },
 
             // Flight Director & ILS Buttons
@@ -3967,7 +3992,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 RenderAsButton = true
             },
 
-            // ISIS Baro Knob Inc/Dec (Counter pattern)
+            // ISIS Baro Knob Inc/Dec (Counter pattern). Ctrl+B sets the ISIS baro too (the owner, 2026-11-05), but the knob
+            // stays: on the ISIS's bugs page it steps the selected bug's value, the only way to set one.
             ["E_MIP_ISFD_BARO_INC"] = new SimConnect.SimVarDefinition
             {
                 Name = "E_MIP_ISFD_BARO_INC",
@@ -5002,7 +5028,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "WX", [1] = "WX+T", [2] = "TURB", [3] = "MAP"}
             },
 
-            // ========== COCKPIT — seats, comfort, standby, gravity gear, DCDU2 brightness ==========
+            // ========== COCKPIT — seats, comfort, standby, gravity gear ==========
             // All live-verified settable via the MobiFlight calculator path (SetLVar). Seats are
             // 3-position direction switches that HOLD the written value: the seat moves while the
             // switch is Up/Down (0/2) and the model auto-centers to Stop (1) at the travel limit.
@@ -5034,7 +5060,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["S_OXYGEN_MASK_COVER_FO"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_FO", DisplayName = "First Officer Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             // NOTE: S_OH_CALLS_EMER_Cover ("Calls Emergency Cover") is already defined+paneled in the overhead Calls panel — not re-added here.
             ["S_HYD_GRAVITY_GEAR_EXTEND"] = new SimConnect.SimVarDefinition { Name = "S_HYD_GRAVITY_GEAR_EXTEND", DisplayName = "Gravity Gear Extension", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [3] = "Extended"}, ValueToDescriptionKey = FenixA320GravityGear.DescriptionKey },
-            ["S_DCDU2_DIM_BRT"] = new SimConnect.SimVarDefinition { Name = "S_DCDU2_DIM_BRT", DisplayName = "First Officer DCDU Brightness", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Mid", [2] = "Bright"} },
 
             // ========== PEDESTAL - ECAM PANEL (20 variables) ==========
             // Brightness Knobs (2 step-based combo boxes)
@@ -5257,34 +5282,17 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
             },
-            ["A_FC_ELEVATOR_TRIM"] = new SimConnect.SimVarDefinition
+            // Pitch trim as a typed entry in degrees (0.3 = UP 0.3, -0.8 = DN 0.8), the scale the MCDU's
+            // take-off trim and the ECAM show. It was a dropdown of the raw L:var in 1000 steps, a whole
+            // degree each, which could not reach a real take-off trim. "_SET" makes it a text field.
+            [FenixA320ElevatorTrim.SetKey] = new SimConnect.SimVarDefinition
             {
-                Name = "A_FC_ELEVATOR_TRIM",
-                DisplayName = "Elevator Trim",
+                Name = FenixA320ElevatorTrim.LVar,
+                DisplayName = "Pitch Trim",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [-4000] = "Full Nose Down (-4000)",
-                    [-3000] = "-3000",
-                    [-2000] = "-2000",
-                    [-1000] = "-1000",
-                    [0] = "Neutral (0)",
-                    [1000] = "+1000",
-                    [2000] = "+2000",
-                    [3000] = "+3000",
-                    [4000] = "+4000",
-                    [5000] = "+5000",
-                    [6000] = "+6000",
-                    [7000] = "+7000",
-                    [8000] = "+8000",
-                    [9000] = "+9000",
-                    [10000] = "+10000",
-                    [11000] = "+11000",
-                    [12000] = "+12000",
-                    [13000] = "+13000",
-                    [13500] = "Full Nose Up (+13500)"
-                }
+                UnparseableTextAsNaN = true,
+                EntryHelpText = "Degrees, as the MCDU writes it: 0.3 for up 0.3, minus 0.8 for down 0.8. Range down 4 to up 13.5. Press Enter to set.",
             },
             ["S_FC_FLAPS_LEVER"] = new SimConnect.SimVarDefinition
             {
@@ -8449,6 +8457,21 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             variables[kvp.Key] = kvp.Value;
         }
 
+        // The shared "Trim up 1.7" call-out reads the Fenix's own THS, never the stock ELEVATOR TRIM
+        // POSITION, which the Fenix does not drive (0.29° against a real UP 1.7, 2026-11-04). Same
+        // key, so the Shift+T toggle and the Ctrl+M row are unchanged; ElevatorTrimDegrees converts.
+        // The panel's typed entry reads the same L:var on request only, so the two never share a
+        // continuous batch slot ([VAR-7]).
+        variables["MON_ElevatorTrim"] = new SimConnect.SimVarDefinition
+        {
+            Name = FenixA320ElevatorTrim.LVar,
+            DisplayName = "Elevator Trim",
+            Type = SimConnect.SimVarType.LVar,
+            Units = "number",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+        };
+
         // The readout twins ([A320-41]), copied from their originals so the two can never disagree
         // on the L:var or its units. An original that is missing fails here, at load.
         foreach (string readoutKey in FcuReadoutVariables.Concat(TakeoffConfigReadoutVariables))
@@ -8504,7 +8527,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 "Engines",
                 "Weather Radar",
                 "ECAM",
-                "DCDU Left",
                 "Flight Controls",
                 "ATC TCAS",
                 "Radio Management Panel (RMP)",
@@ -8907,7 +8929,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["First Officer Seat"] = new List<string> { "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO", "S_ARMREST_LEFT_FO", "S_ARMREST_RIGHT_FO" },
             ["Windows and Shades"] = new List<string> { "S_SUNSHADE_CAPT", "S_SUNSHADE_FO", "S_WINDOW_BLINDS_CAPT", "S_WINDOW_BLINDS_FO", "S_WINDOW_BLINDS_REAR_CAPT", "S_WINDOW_BLINDS_REAR_FO" },
             ["Standby Instruments"] = new List<string> { "S_STANDBY_COMPASS", "S_STANDBY_ATTITUDE_CAGE" },
-            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_HYD_GRAVITY_GEAR_EXTEND", "S_DCDU2_DIM_BRT" },
+            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_HYD_GRAVITY_GEAR_EXTEND" },
 
             ["ECAM"] = new List<string>
             {
@@ -8938,29 +8960,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 "A_DISPLAY_BRIGHTNESS_ECAM_L"
             },
 
-            ["DCDU Left"] = new List<string>
-            {
-                // Brightness Control (3-position switch)
-                "S_DCDU1_DIM_BRT",
-
-                // Line Select Keys (4 buttons)
-                "S_DCDU1_LSK1L",
-                "S_DCDU1_LSK1R",
-                "S_DCDU1_LSK2L",
-                "S_DCDU1_LSK2R",
-
-                // Message Navigation (2 buttons)
-                "S_DCDU1_MSGUP",
-                "S_DCDU1_MSGDWN",
-
-                // Page Navigation (2 buttons)
-                "S_DCDU1_PGUP",
-                "S_DCDU1_PGDN",
-
-                // Print (1 button)
-                "S_DCDU1_PRINT"
-            },
-
             ["Flight Controls"] = new List<string>
             {
                 "S_MIP_PARKING_BRAKE",
@@ -8968,7 +8967,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 "S_FC_RUDDER_TRIM_LEFT",
                 "S_FC_RUDDER_TRIM_RIGHT",
                 "S_FC_RUDDER_TRIM_RESET",
-                "A_FC_ELEVATOR_TRIM",
+                FenixA320ElevatorTrim.SetKey,
                 "S_FC_FLAPS_LEVER",
                 "A_FC_THROTTLE_LEFT_INPUT",
                 "A_FC_THROTTLE_RIGHT_INPUT",
@@ -9396,7 +9395,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             // All hold their written value; SetLVar routes through the MobiFlight calc path.
             // Seats are 3-position direction switches (Down/Stop/Up, Aft/Stop/Forward) that hold —
             // pick Up/Down to start moving, Stop to halt (the model auto-centers at the travel limit).
-            // The cockpit door video button and the DCDU2 brightness switch spring back: see below.
+            // The cockpit door video button and the DCDU brightness switch spring back: see below.
             switch (varKey)
             {
                 case "S_SEAT_HEIGHT_CAPT":
@@ -9432,16 +9431,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // DCDU brightness: spring-loaded both ways, one step per pick, then back to Mid.
+            // DCDU brightness: spring-loaded both ways, one step per press, then back to Mid.
             if (varKey == "S_DCDU1_DIM_BRT")
             {
                 PulseSpringSwitch("S_DCDU1_DIM_BRT", value, simConnect);
-                return true;
-            }
-
-            if (varKey == "S_DCDU2_DIM_BRT")
-            {
-                PulseSpringSwitch("S_DCDU2_DIM_BRT", value, simConnect);
                 return true;
             }
 
@@ -10168,7 +10161,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_MIP_ISFD_RST" && value == 1)
             {
-                ExecuteButtonTransition("S_MIP_ISFD_RST", "ISIS Reset", simConnect, announcer);
+                ExecuteButtonTransition("S_MIP_ISFD_RST", "ISIS Reset", simConnect, announcer,
+                    pressHoldMs: IsisResetHoldMs, confirmPress: true);
                 return true;
             }
 
@@ -11041,7 +11035,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_ECAM_ALL" && value == 1)
             {
-                ExecuteButtonTransition("S_ECAM_ALL", "ECAM ALL", simConnect, announcer);
+                ExecuteButtonTransition("S_ECAM_ALL", "ECAM ALL", simConnect, announcer, confirmPress: true);
                 return true;
             }
 
@@ -11084,9 +11078,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // ========== PEDESTAL - DCDU LEFT PANEL CONTROLS ==========
+            // ========== DCDU WINDOW KEYS ==========
 
-            // DCDU Left Buttons (use ExecuteButtonTransition)
+            // The DCDU window's nine keys (FenixA320Definition.PressDcdu; use ExecuteButtonTransition). The window is
+            // their only way in since the "DCDU Left" panel left, and TryRefuseNotFitted still guards them first.
             if (varKey == "S_DCDU1_LSK1L" && value == 1)
             {
                 ExecuteButtonTransition("S_DCDU1_LSK1L", "DCDU LSK 1 Left", simConnect, announcer);
@@ -12108,10 +12103,19 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Elevator Trim - Simple SetLVar
-            if (varKey == "A_FC_ELEVATOR_TRIM")
+            // Pitch trim, typed in degrees (positive = UP). A typed number always confirms (CORE-7); the
+            // call-out is told, so the THS arriving at that value is not spoken again.
+            if (varKey == FenixA320ElevatorTrim.SetKey)
             {
-                simConnect.SetLVar("A_FC_ELEVATOR_TRIM", value);
+                if (!FenixA320ElevatorTrim.TryToRaw(value, out double raw, out string? error))
+                {
+                    announcer.Announce(error!);
+                    return true;
+                }
+                double degrees = FenixA320ElevatorTrim.ToDegrees(raw);
+                simConnect.SetLVar(FenixA320ElevatorTrim.LVar, raw);
+                NoteElevatorTrimAnnounced(degrees);
+                announcer.Announce($"Pitch trim set to {FenixA320ElevatorTrim.Describe(degrees)}");
                 return true;
             }
 
@@ -12242,6 +12246,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         _fcuVsDashed = null;
         base.OnVariableCacheCleared();
     }
+
+    /// <summary><c>MON_ElevatorTrim</c> is the Fenix's <c>A_FC_ELEVATOR_TRIM</c> here, thousandths of a degree.</summary>
+    protected override double ElevatorTrimDegrees(double value) => FenixA320ElevatorTrim.ToDegrees(value);
 
     /// <summary>
     /// Processes SimConnect variable updates, combining the FCU and altimeter readout twins' two legs for the hotkey readouts ([A320-41]).
@@ -12844,6 +12851,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// phase 9) → a spurious CONFIG / master-warning alarm on rollout.
     /// </summary>
     private const int ButtonPressHoldMs = 200;
+
+    // The ISIS's reset starts its quick realignment only when held: a normal press starts nothing, and a hold of about 3 s
+    // started it (measured 2026-11-04, "ATT 10s" for 10 s).
+    private const int IsisResetHoldMs = 3000;
 
     // =========================================================================
     // Universal auto-AP engage (UniversalAutomationService)
@@ -13526,6 +13537,16 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ShowFenixWindows(simConnect, announcer, parentForm, hotkeyManager);
             return true;
         }
+
+        // The Fenix display channel's key dispatch, asked first for any key (FenixA320Definition.DisplayChannel.cs): a
+        // channel key goes to the seam of the feature that owns it. With no seam implemented, or the seam leaving the
+        // key unhandled (its display not trusted) or throwing, the key does what it did before: a display key gives its
+        // AI read, ShowDCDU reaches MainForm's sentence, and the others do nothing.
+        bool channelHandled = false;
+        TryChannelDisplayRead(action,
+            new ChannelKeyContext(simConnect, announcer, parentForm, hotkeyManager, _displayChannelMonitor),
+            ref channelHandled);
+        if (channelHandled) return true;
 
         // Handle display reading actions
         switch (action)

@@ -21,15 +21,17 @@ public class FenixCabinMonitorRowsTests
     };
 
     [Fact]
-    public void The_fenix_rows_end_with_the_four_cabin_rows()
+    public void The_four_cabin_rows_come_right_after_the_variable_rows()
     {
         var variables = new FenixA320Definition().GetVariables();
 
         List<MonitorRow> rows = FenixMonitorManagerForm.BuildRows(variables);
 
-        // The variable rows first, exactly as before; the cabin rows appended after the sort, in their order.
-        Assert.Equal(MonitorRowBuilder.Build(variables), rows.Take(rows.Count - CabinRows.Length));
-        Assert.Equal(CabinRows, rows.Skip(rows.Count - CabinRows.Length));
+        // The variable rows first, exactly as before; the cabin rows appended after the sort, in their order. The display
+        // channel's five rows follow them (FenixChannelMonitorRowsTests), so the cabin rows are no longer the last.
+        int variableCount = MonitorRowBuilder.Build(variables).Count;
+        Assert.Equal(MonitorRowBuilder.Build(variables), rows.Take(variableCount));
+        Assert.Equal(CabinRows, rows.Skip(variableCount).Take(CabinRows.Length));
     }
 
     [Fact]
