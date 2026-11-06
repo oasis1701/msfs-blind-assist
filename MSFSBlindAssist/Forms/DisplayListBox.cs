@@ -42,8 +42,16 @@ namespace MSFSBlindAssist.Forms
                 e.Handled = true;
         }
 
+        /// <summary>
+        /// When true, the list selects its first row the first time it fills with nothing selected,
+        /// so a live redraw is never read as "nothing selected" (<see cref="DisplayList.UpdateInPlace"/>).
+        /// Read-only displays only: leave false on a list whose selection a button acts on.
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool SelectFirstOnPopulate { get; set; }
+
         /// <summary>Reconcile the items to <paramref name="lines"/> in place. No-ops when unchanged.</summary>
-        public void SetLines(IReadOnlyList<string> lines) => DisplayList.UpdateInPlace(this, lines);
+        public void SetLines(IReadOnlyList<string> lines) => DisplayList.UpdateInPlace(this, lines, SelectFirstOnPopulate);
 
         /// <summary>Split a joined multi-line string into rows and reconcile (same newline split
         /// as MainForm.UpdateDisplayText, so blank separator rows are preserved as items).</summary>

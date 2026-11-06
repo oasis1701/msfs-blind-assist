@@ -15,3 +15,6 @@ MIRRORS: copied word for word from simconnect-data.md, simconnect-events.md, gro
 - [PSDK-2] The PMDG SDK setup check (`OfferPmdgSdkSetupAsync`) runs on an Aircraft-menu pick of the PMDG 737 or 777 and at startup for a restored PMDG profile, after the startup data check and before the update check; never at connect, where its dialog opens behind the simulator unheard; never remember a dismissal. Full: docs/invariants/pmdg-sdk.md#psdk-2
 - [FO-24] Only `FirstOfficerWindows` (exact aircraft code) says which aircraft has a First Officer window; never a per-aircraft field, Show method, menu item or type test in MainForm. Full: docs/invariants/first-officer.md#fo-24
 - [P737-6] The 737 warning-test toggles (stick shaker, overspeed clacker) actuate via transmit LEFTSINGLE (engage, held) / LEFTRELEASE (release), never a CDA write; their state is app-tracked in the def, the keys stay OUT of `_simpleEventMap`, and `SwitchAircraft` and app exit release each engaged test and each hold `BeginHeldPress` recorded (FO, panel). Full: docs/invariants/pmdg-737.md#p737-6
+
+Mirrored from da40-shared-code.md (it governs `MainForm_Load`; change it there and here together):
+- [DA40S-7] A background monitor starts in BOTH `MainForm_Load` and `SwitchAircraft`, or it never runs for the aircraft the app opens with. Full: docs/invariants/da40-shared-code.md#da40s-7
