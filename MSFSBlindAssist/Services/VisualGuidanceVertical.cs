@@ -121,6 +121,21 @@ internal static class VisualGuidanceVertical
     }
 
     /// <summary>
+    /// How fast the straight-line distance to the threshold shrinks per mile flown (1 straight at it, 0
+    /// square to it, −1 straight away), for <see cref="PlannedHeight"/>'s floor: the cosine of the angle
+    /// between the track (<paramref name="relativeTrackDeg"/> from the runway's course) and the bearing
+    /// to the threshold, in the approach frame. 0 at the threshold itself.
+    /// </summary>
+    public static double ClosingFraction(VisualGuidanceApproachPoint p, double relativeTrackDeg)
+    {
+        double distance = Math.Sqrt(p.AlongNm * p.AlongNm + p.CrossNm * p.CrossNm);
+        if (!(distance > 1e-9) || !double.IsFinite(relativeTrackDeg)) return 0.0;
+        // The track is (−cos r, sin r) in (along, cross); toward the threshold is (−along, −cross) / distance.
+        double r = relativeTrackDeg * D2R;
+        return (p.AlongNm * Math.Cos(r) - p.CrossNm * Math.Sin(r)) / distance;
+    }
+
+    /// <summary>
     /// The planned descent while vectoring and on the pattern (plan decisions 6 and 7): a line at the
     /// glide path's angle back from a level-off a quarter of a degree under the path at the join point,
     /// measured along the route still to fly (<paramref name="routeToJoinNm"/>), level for the last
@@ -145,7 +160,17 @@ internal static class VisualGuidanceVertical
         double sloped = target + Math.Max(0, routeToJoinNm - leadNm) * FtPerNm * Tan(gpaDeg);
         double floor = PathHeightFt(distanceToThresholdNm, gpaDeg, biasFt) - FloorBelowPathFt;
         if (sloped >= floor) return (sloped, routeToJoinNm > leadNm ? gpaDeg : 0.0);
+        return (floor, SlopeDeg(gpaDeg, closingFraction));
+    }
+
+    /// <summary>
+    /// How steeply a line that falls at <paramref name="gpaDeg"/> toward the threshold falls along the
+    /// track, degrees, + down: atan(tan(gpa) × closing), level when not closing (never a climb, VG-26) or
+    /// when the closing fraction is unknown.
+    /// </summary>
+    public static double SlopeDeg(double gpaDeg, double closingFraction)
+    {
         double closing = double.IsFinite(closingFraction) ? Math.Clamp(closingFraction, 0.0, 1.0) : 0.0;
-        return (floor, Math.Atan(Tan(gpaDeg) * closing) / D2R);
+        return Math.Atan(Tan(gpaDeg) * closing) / D2R;
     }
 }

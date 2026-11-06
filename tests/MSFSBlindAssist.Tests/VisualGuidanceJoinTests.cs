@@ -394,4 +394,23 @@ public class VisualGuidanceJoinTests
         // On the base, from its middle: down the base, then along final.
         Assert.Equal(1.5 + 1.47, VisualGuidanceJoin.RouteToJoinNm(plan, 1, P(7.61, 1.5), 6.14), 0.02);
     }
+
+    // A leg moves on when its turn comes, half a mile or so before the corner. Measured straight to the next
+    // corner, the route then lost the corner it had counted, and the planned descent stepped down 100 to
+    // 200 ft in one update (the light far-side runs, stage 5 Task 5). Measured to the active leg's line and
+    // along it, the route is the same on both sides of the change.
+    [Fact]
+    public void The_route_does_not_jump_when_a_leg_moves_on()
+    {
+        var plan = VisualGuidanceJoin.Decide(P(-1, 3), 180, 140, Gain, Profile);
+        double baseAlong = plan.Legs[1].AlongNm;
+        var onDownwind = P(baseAlong - 0.5, 3);   // on the downwind line, half a mile before the base corner
+        Assert.Equal(VisualGuidanceJoin.RouteToJoinNm(plan, 0, onDownwind, 6.14),
+            VisualGuidanceJoin.RouteToJoinNm(plan, 1, onDownwind, 6.14), 1e-9);
+        var onBase = P(baseAlong, 0.5);           // on the base line, half a mile before final
+        Assert.Equal(VisualGuidanceJoin.RouteToJoinNm(plan, 1, onBase, 6.14),
+            VisualGuidanceJoin.RouteToJoinNm(plan, 2, onBase, 6.14), 1e-9);
+        // Inside the join point on the pattern's final, nothing is left to fly.
+        Assert.Equal(0.0, VisualGuidanceJoin.RouteToJoinNm(plan, 2, P(5.0, 0), 6.14), 9);
+    }
 }

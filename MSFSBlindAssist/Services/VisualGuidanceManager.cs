@@ -1587,14 +1587,16 @@ public class VisualGuidanceManager : IDisposable
     /// descent angle, rate limited (VG-20, VG-25). The mode says where the target comes from:
     /// <list type="bullet">
     /// <item>Flare: the flare's fixed pitch, as before stage 5 (stage 6 replaces it).</item>
-    /// <item>Follow (deciding, joining while climbing or descending, the pattern's downwind and base): the
-    /// aircraft's own pitch, since the altitude is the pilot's or ATC's there. A later task of stage 5
-    /// gives the pattern its planned descent.</item>
+    /// <item>Follow (deciding, joining while climbing or descending): the aircraft's own pitch, since the
+    /// altitude is the pilot's or ATC's there.</item>
+    /// <item>Plan (vectoring and the pattern, every leg until established): BA's planned descent along the
+    /// route still to fly (<see cref="VisualGuidanceVertical.PlannedHeight"/>), never below the floor 150 ft
+    /// under the path, on final never above the path, between level and the glide path angle + 2°.</item>
     /// <item>Hold (joining, once level for <see cref="VisualGuidanceVerticalTuning.LevelHoldS"/>): the
     /// altitude of that moment (<see cref="VisualGuidanceLevelHold"/>), asking back from either side
     /// within <see cref="VisualGuidanceVerticalTuning.PathLimitDeg"/>; a pitch more than
     /// <see cref="VisualGuidanceVerticalTuning.HoldBreakPitchDeg"/> from the cue lets it go (VG-24).</item>
-    /// <item>Path (final, and vectoring on its final leg): the runway's glide path angle plus a correction
+    /// <item>Path (established on final): the runway's glide path angle plus a correction
     /// that removes the height error over about <see cref="VisualGuidanceVerticalTuning.CorrectionTimeConstantS"/>
     /// (27 s), between level and the glide path angle + 2° (VG-24, VG-26); under 60 ft of wheel height
     /// the glide path angle alone. The distance is along the final course, not the straight line.</item>
@@ -1643,12 +1645,41 @@ public class VisualGuidanceManager : IDisposable
                 tuning.CorrectionTimeConstantS, -tuning.PathLimitDeg, tuning.PathLimitDeg);
             desiredPitch = Math.Clamp(RateLimited(previousDesiredPitch, trim - lastTargetDescentDeg, maxPitchRateDegPerSec), -12.0, 12.0);
         }
-        else if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining || OnPatternLeg)
+        else if (currentPhase is GuidancePhase.Deciding or GuidancePhase.Joining)
         {
             // The aircraft's own pitch, taken without a rate limit: the target is whatever angle it flies.
             verticalMode = VisualGuidanceVerticalMode.Follow;
             desiredPitch = currentPitch;
             lastTargetDescentDeg = trim - desiredPitch;
+        }
+        else if (currentPhase == GuidancePhase.Vectoring && joinPlan != null)
+        {
+            // BA chose the route: the planned descent along what is left of it, on every leg until
+            // established, never below the floor, never a climb (VG-24, VG-26).
+            verticalMode = VisualGuidanceVerticalMode.Plan;
+            double cross = SignedCrossTrackNm(runway, lat, lon);
+            var position = new VisualGuidanceApproachPoint(along, cross);
+            double joinAlong = PictureOfTheJoin(lat, lon, cross)?.JoinAlongNm ?? double.NaN;
+            if (!(joinAlong > 0)) joinAlong = minimumFinalNm;
+            double route = VisualGuidanceJoin.RouteToJoinNm(joinPlan, activeLegIndex, position, joinAlong);
+            double relativeTrack = cachedHeading is double heading
+                ? VisualGuidanceJoin.Normalize(LateralTrackDeg(heading) - runway.HeadingMag) : double.NaN;
+            var (plannedFt, feedForwardDeg) = VisualGuidanceVertical.PlannedHeight(route, joinAlong,
+                Math.Sqrt(along * along + cross * cross), VisualGuidanceVertical.ClosingFraction(position, relativeTrack),
+                glideslopeAngleDeg, glideslopeAltitudeBiasFt, currentGroundSpeedKnots);
+            // On final the plan never sits above the path: level until the path comes down to the aircraft,
+            // then down it, as the path law does (the pattern's join point is fixed where its base was placed,
+            // and an aircraft still capturing passes it).
+            double pathFt = VisualGuidanceVertical.PathHeightFt(along, glideslopeAngleDeg, glideslopeAltitudeBiasFt);
+            if (ActiveLegKind == VisualGuidanceLegKind.Final && plannedFt > pathFt)
+            {
+                plannedFt = pathFt;
+                feedForwardDeg = VisualGuidanceVertical.SlopeDeg(glideslopeAngleDeg,
+                    VisualGuidanceVertical.ClosingFraction(new VisualGuidanceApproachPoint(along, 0), relativeTrack));
+            }
+            lastTargetDescentDeg = VisualGuidanceVertical.TargetDescentDeg(feedForwardDeg, heightFt - plannedFt, currentGroundSpeedKnots,
+                tuning.CorrectionTimeConstantS, 0.0, glideslopeAngleDeg + tuning.PathLimitDeg);
+            desiredPitch = Math.Clamp(RateLimited(previousDesiredPitch, trim - lastTargetDescentDeg, maxPitchRateDegPerSec), -12.0, 12.0);
         }
         else
         {

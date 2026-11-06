@@ -106,6 +106,20 @@ public class VisualGuidanceVerticalTests
         Assert.Equal(0.0, VisualGuidanceVertical.PlannedHeight(0.5, 6.2, 8, double.NaN, Gpa, Bias, Gs).FeedForwardDeg, 9);
     }
 
+    // How fast the straight-line distance to the threshold shrinks per mile flown, in the approach frame
+    // (along out from the threshold, cross right; the track relative to the runway's course).
+    [Fact]
+    public void Closing_fraction()
+    {
+        Assert.Equal(1.0, VisualGuidanceVertical.ClosingFraction(new VisualGuidanceApproachPoint(6, 0), 0), 9);       // inbound on final
+        Assert.Equal(-1.0, VisualGuidanceVertical.ClosingFraction(new VisualGuidanceApproachPoint(6, 0), 180), 9);    // outbound
+        Assert.Equal(0.0, VisualGuidanceVertical.ClosingFraction(new VisualGuidanceApproachPoint(0, 3), 0), 9);       // abeam, square to it
+        // 3 nm right, 4 out, heading 30° left of the course: toward the threshold at 6.87° off, cos 0.993.
+        Assert.Equal((4 * Math.Cos(-30 * Math.PI / 180) - 3 * Math.Sin(-30 * Math.PI / 180)) / 5,
+            VisualGuidanceVertical.ClosingFraction(new VisualGuidanceApproachPoint(4, 3), -30), 9);
+        Assert.Equal(0.0, VisualGuidanceVertical.ClosingFraction(new VisualGuidanceApproachPoint(0, 0), 0), 9);       // at the threshold: no direction
+    }
+
     [Fact]
     public void A_jet_arrives_on_the_floor()
     {

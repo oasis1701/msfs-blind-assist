@@ -237,14 +237,29 @@ Desired pitch = the learned trim − the target descent angle, rate limited at t
   followed it.
 - The mode says where the target descent angle comes from, and the flight recording has it per update
   (`vmode`, VP-2):
-  - **Path** (final, and vectoring once on its final leg): the runway's glide path angle +
+  - **Path** (established on final): the runway's glide path angle +
     atan(height error / (27 s × ground speed)), from level up to the glide path angle + 2° (VG-24,
     VG-26). The height error is against the path at the distance along the final course, not the
     straight line. Below the path the cue asks for level flight until the path comes down to the
     aircraft, then follows it. Under 60 ft of wheel height the correction stops and the cue holds the
     glide path angle. A steep runway uses its own angle throughout (London City 5.5°).
-  - **Follow** (deciding, joining while climbing or descending, the pattern's downwind and base): the
-    aircraft's own pitch, since the altitude is ATC's or the pilot's there.
+  - **Plan** (vectoring and the pattern, every leg until established): BA chose the route, so it plans
+    the descent along it (`VisualGuidanceVertical.PlannedHeight`): a 3° line (the runway's angle) back
+    from a level-off a quarter of a degree under the path at the join point, level for the last 20 s of
+    flight before it, measured along the route still to fly (`VisualGuidanceJoin.RouteToJoinNm`: to the
+    active leg's line and along it, corner to corner, then along final; one straight line when
+    vectoring). Never below the floor, 150 ft under the path at the aircraft's straight-line distance:
+    on the floor the feed-forward is the floor's own slope along the track (`ClosingFraction`,
+    `SlopeDeg`), level when flying away. On the final leg the plan never sits above the path, so an
+    aircraft still capturing past the pattern's fixed join point follows the path down instead of
+    flying level through it. Then the same correction as Path, from level up to the glide path angle +
+    2° (VG-24, VG-26). A jet's plan is the floor all the way in (a 20 s level lead at 140 kt needs 248 ft
+    under the path, the floor allows 150), so jets join 120 to 220 ft under the path, still descending,
+    and the path law takes them up onto it from below; a light aircraft at 65 kt arrives level about
+    30 ft under it. A jet on the path but 0.2 nm off the centreline is vectoring too, so it is taken down
+    to the floor before it is established (up to 1,380 fpm in the harness).
+  - **Follow** (deciding, joining while climbing or descending): the aircraft's own pitch, since the
+    altitude is ATC's or the pilot's there.
   - **Hold** (joining only, `VisualGuidanceLevelHold`): once the vertical speed has been under 200 fpm
     for 5 s, the altitude of that update is held: atan(height error / (27 s × ground speed)) either way,
     within ±2°, so the cue asks back down from above and back up from below (VG-24). A pitch more than

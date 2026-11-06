@@ -262,17 +262,21 @@ public class VisualGuidanceJoiningTests
         Assert.InRange(said.Single(s => s.Text == "Turn onto final").T - t0, tCue - 0.5, tCue + 0.5);
     }
 
-    // Until the vertical path (stage 5), the downwind and the base leave the altitude to the pilot: the
-    // pitch tone sits on the aircraft's own pitch, where the old law would ask for a dive toward the 3°
-    // path far below. (Moved from "Unable", checkpoint review I1.)
+    // The downwind and the base fly BA's planned descent (stage 5, VisualGuidancePlannedDescentTests), not
+    // the 3° path, which the old law dove toward. On the downwind 2,000 ft above the field, far under the
+    // plan, the cue asks for level flight: the learned trim, 5.0° here. On the base 1,500 ft above the path
+    // it asks for no more than the plan's steepest, the glide path + 2°. (Stage 4 sat the pitch on the
+    // aircraft here until the vertical path existed; checkpoint review I1, final review C1(b).)
     [Fact]
-    public void The_pattern_sits_the_pitch_on_the_aircraft_until_final()
+    public void The_pattern_flies_the_plan_not_the_path()
     {
         double aB = BaseAlong();
         var (rig, _) = RecordedAt(-1, 3, 180);
-        rig.FlyFor(5, 30, afterEach: _ => Assert.Equal(2.0, rig.Pitch, 0.01));
+        rig.FlyFor(5, 30, afterEach: _ => Assert.Equal(0.0, rig.TargetDescent, 9));
+        Assert.Equal(5.0, rig.Pitch, 0.05);
         rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB - 0.5, 3, 180, altOffsetFt: 1500),
-            afterEach: _ => Assert.Equal(2.0, rig.Pitch, 0.01));
+            afterEach: _ => Assert.InRange(rig.TargetDescent, 0.0, 5.0 + 1e-9));
+        Assert.Equal("Plan", rig.VerticalMode);
     }
 
     [Fact]

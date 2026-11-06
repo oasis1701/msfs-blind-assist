@@ -1,0 +1,110 @@
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Services;
+using Xunit;
+
+namespace MSFSBlindAssist.Tests;
+
+/// <summary>
+/// The planned descent while vectoring and on the pattern (visual guidance stage 5, plan Task 5), through
+/// the real manager (<see cref="VisualGuidanceTestRig"/>, runway 09, 3°, 140 kt, 30 Hz). The aircraft
+/// descends at 742 fpm with 2° of pitch, a 3° flight path, so its learned trim is 5.0° unless a test says
+/// otherwise. Where the plan puts the aircraft is pinned by <see cref="VisualGuidanceVerticalTests"/>;
+/// these pin the mode and the signs.
+/// </summary>
+public class VisualGuidancePlannedDescentTests
+{
+    private const double Trim = 5.0;
+
+    // The right-side pattern from the far side (Decide at (−1, 3), heading 270, the reverse of runway 09):
+    // pressed 2,000 ft above the field, the harness's far-side height, about 3,400 ft under the plan,
+    // which still has a downwind, a base and a final to descend along.
+    private static VisualGuidanceTestRig OnTheDownwind(double altOffsetFt = 0, double vsFpm = -742, double pitchDeg = 2.0)
+    {
+        var rig = new VisualGuidanceTestRig();
+        double offset = VisualGuidanceJoiningTests.AboveFieldOffset(-1) + altOffsetFt;
+        rig.Place(-1, 3, 180, altOffsetFt: offset, vsFpm: vsFpm, pitchDeg: pitchDeg);
+        rig.UpdateAt(0);
+        Assert.Equal("Pattern", rig.Decision);
+        rig.FlyFor(5, 30);
+        return rig;
+    }
+
+    private static double BaseAlong()
+        => VisualGuidanceJoin.Decide(new VisualGuidanceApproachPoint(-1, 3), 180, 140, VisualGuidanceJoin.DefaultCaptureGain,
+            new VisualGuidanceProfile()).Legs[1].AlongNm;
+
+    // 7,000 ft higher, far above any plan: the steepest the plan allows (the glide path + 2°), so the cue
+    // sits that far under the trim (VG-24).
+    [Fact]
+    public void Above_the_plan_asks_for_less_pitch_on_the_downwind()
+    {
+        var rig = OnTheDownwind(altOffsetFt: 7000);
+        Assert.Equal("Plan", rig.VerticalMode);
+        Assert.Equal(5.0, rig.TargetDescent, 9);
+        Assert.Equal(Trim - 5.0, rig.Pitch, 0.05);
+    }
+
+    // The stage-4 final review's C1(b): a descending aircraft on the downwind heard its own pitch, no
+    // vertical cue at all. Descending at 1,000 fpm (pitch 5° minus its 4.03° flight path, so the trim
+    // stays 5.0) far under the plan, the cue asks for level flight: the trim, not the pilot's pitch.
+    [Fact]
+    public void A_descending_aircraft_on_the_downwind_gets_a_cue()
+    {
+        double pitch = Trim - Math.Atan(1000 / (140 * 101.269)) * 180 / Math.PI;
+        var rig = OnTheDownwind(vsFpm: -1000, pitchDeg: pitch);
+        Assert.Equal("Plan", rig.VerticalMode);
+        Assert.Equal(0.0, rig.TargetDescent, 9);
+        Assert.Equal(Trim, rig.Pitch, 0.05);
+        Assert.True(Math.Abs(rig.Pitch - pitch) > 3.5, $"cue {rig.Pitch:0.00}°, own pitch {pitch:0.00}°");
+    }
+
+    // Vectoring straight in from 8 nm, 0.2 nm off the line: 650 ft under the path, at least 500 under the
+    // plan (the floor, 150 ft under the path, or the higher sloped line): level, never a climb (VG-26).
+    [Fact]
+    public void Below_the_plan_asks_for_level()
+    {
+        var rig = new VisualGuidanceTestRig();
+        rig.Place(8, 0.2, 0, altOffsetFt: -650);
+        rig.UpdateAt(0);
+        Assert.Equal("Vectoring", rig.Phase);
+        rig.FlyFor(3, 30);
+        Assert.Equal("Plan", rig.VerticalMode);
+        Assert.Equal(0.0, rig.TargetDescent, 9);
+    }
+
+    // On the pattern's final, past its join point (fixed where the base was placed, 6.14 nm here) and not
+    // yet established: the plan's level part (1,854 ft, a quarter degree under the path at the join point)
+    // would hold the aircraft level while the path came down through it, so it established above the path
+    // (the light far-side runs, 82 ft). On final the plan never sits above the path: on the path at 5 nm,
+    // the cue follows it down (the glide path's 3°) instead of asking for level.
+    [Fact]
+    public void On_final_the_plan_never_sits_above_the_path()
+    {
+        double aB = BaseAlong();
+        var rig = OnTheDownwind();
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB - 0.5, 3, 180));
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB, 0.5, -90));
+        rig.FlyFor(1, 30, beforeEach: _ => rig.Place(5.0, 0.1, 0));
+        Assert.Equal("Vectoring", rig.Phase);
+        Assert.Equal("Plan", rig.VerticalMode);
+        Assert.Equal(3.0, rig.TargetDescent, 0.05);
+    }
+
+    // The downwind, the base, and final before established all fly the plan; established, the path.
+    [Fact]
+    public void Its_mode_is_plan_on_every_leg()
+    {
+        double aB = BaseAlong();
+        var rig = OnTheDownwind();
+        Assert.Equal("Plan", rig.VerticalMode);
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB - 0.5, 3, 180));
+        Assert.Equal("Vectoring", rig.Phase);
+        Assert.Equal("Plan", rig.VerticalMode);
+        rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB, 0.5, -90));
+        Assert.Equal("Vectoring", rig.Phase);
+        Assert.Equal("Plan", rig.VerticalMode);
+        rig.FlyFor(3.5, 30, beforeEach: _ => rig.Place(aB, 0.02, 0));
+        Assert.Equal("Final", rig.Phase);
+        Assert.Equal("Path", rig.VerticalMode);
+    }
+}

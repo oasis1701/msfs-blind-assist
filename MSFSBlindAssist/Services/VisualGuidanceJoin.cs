@@ -239,25 +239,45 @@ internal static class VisualGuidanceJoin
     }
 
     /// <summary>
-    /// The route still to fly to the join point, nm, for the planned descent (stage 5): in the flat
-    /// approach frame, from the aircraft to the corner of the active leg and the next, corner to corner,
-    /// then along final from the last corner to <paramref name="joinAlongNm"/>. A corner is where the two
-    /// legs' lines meet. On final (the last leg), the straight line to the join point.
+    /// The route still to fly to the join point, nm, for the planned descent (stage 5), in the flat
+    /// approach frame. With one leg (vectoring, final), the straight line to (<paramref name="joinAlongNm"/>, 0).
+    /// With several (the pattern): from the aircraft to the active leg's line and along it to its corner
+    /// with the next leg (a corner is where two legs' lines meet), corner to corner, then along final to
+    /// the join point; on the pattern's final leg, to the line and along it, nothing once inside the join
+    /// point. On a leg's line this is the straight line to its corner; off it, it is what the leg before
+    /// counted, so the route does not jump when a leg moves on half a mile before its corner (a jump
+    /// stepped the plan down 100 to 200 ft at once on the light aircraft's pattern, stage 5 Task 5).
     /// </summary>
     public static double RouteToJoinNm(VisualGuidanceJoinPlan plan, int activeLegIndex, VisualGuidanceApproachPoint p,
         double joinAlongNm)
     {
         int last = plan.Legs.Count - 1;
-        int active = Math.Clamp(activeLegIndex, 0, Math.Max(last, 0));
-        double from = p.AlongNm, fromCross = p.CrossNm, total = 0;
-        for (int i = active; i < last; i++)
+        if (last <= 0)
+            return Math.Sqrt((joinAlongNm - p.AlongNm) * (joinAlongNm - p.AlongNm) + p.CrossNm * p.CrossNm);
+
+        int active = Math.Clamp(activeLegIndex, 0, last);
+        var leg = plan.Legs[active];
+        var end = active < last ? Corner(leg, plan.Legs[active + 1]) : new VisualGuidanceApproachPoint(joinAlongNm, 0);
+        // The leg's direction in (along, cross): inbound is −along, right is +cross.
+        double dx = -Math.Cos(leg.DirectionDeg * D2R), dy = Math.Sin(leg.DirectionDeg * D2R);
+        double offAlong = p.AlongNm - leg.AlongNm, offCross = p.CrossNm - leg.CrossNm;
+        double sideways = Math.Abs(offAlong * dy - offCross * dx);
+        // Along the line from the aircraft's foot on it to the end: past a corner it must come back; past
+        // the join point on final there is nothing left.
+        double ahead = (end.AlongNm - p.AlongNm) * dx + (end.CrossNm - p.CrossNm) * dy;
+        double total = sideways + (active < last ? Math.Abs(ahead) : Math.Max(0, ahead));
+
+        var from = end;
+        for (int i = active + 1; i < last; i++)
         {
             var corner = Corner(plan.Legs[i], plan.Legs[i + 1]);
-            total += Math.Sqrt((corner.AlongNm - from) * (corner.AlongNm - from) + (corner.CrossNm - fromCross) * (corner.CrossNm - fromCross));
-            from = corner.AlongNm;
-            fromCross = corner.CrossNm;
+            total += Math.Sqrt((corner.AlongNm - from.AlongNm) * (corner.AlongNm - from.AlongNm)
+                + (corner.CrossNm - from.CrossNm) * (corner.CrossNm - from.CrossNm));
+            from = corner;
         }
-        return total + Math.Sqrt((joinAlongNm - from) * (joinAlongNm - from) + fromCross * fromCross);
+        if (active < last)
+            total += Math.Sqrt((joinAlongNm - from.AlongNm) * (joinAlongNm - from.AlongNm) + from.CrossNm * from.CrossNm);
+        return total;
     }
 
     // Where two legs' lines meet; the second leg's own point when they are parallel.
