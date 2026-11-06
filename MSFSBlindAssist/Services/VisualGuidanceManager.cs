@@ -174,6 +174,20 @@ public class VisualGuidanceManager : IDisposable
     private const double HOLD_5_MILES_S = 1.4;             // "5 miles out" 1.11 s
     private const double HOLD_3_MILES_S = 1.2;             // "3 miles out" 0.99 s
     private const double HOLD_1_MILE_S = 1.1;              // "1 mile out" 0.85 s
+    // The vertical path's lines (stage 5), measured 2026-11-06 the same way, each at its longest likely
+    // form (a four-digit height); that hold serves every form.
+    private const double HOLD_HIGH_AT_FINAL_S = 3.6;       // "You'll be 1,700 feet high at final" 2.97 s
+    private const double HOLD_TOO_HIGH_S = 4.2;            // "Too high, 1,700 feet above the path" 3.48 s
+    private const double HOLD_TOO_LOW_S = 3.3;             // "Too low, 1,000 feet below the path" 2.72 s
+    private const double HOLD_5_MILES_PATH_S = 3.4;        // "5 miles out, 1,000 feet high" 2.77 s
+    private const double HOLD_3_MILES_PATH_S = 3.2;        // "3 miles out, 1,000 feet high" 2.64 s
+    private const double HOLD_1_MILE_PATH_S = 3.0;         // "1 mile out, 1,000 feet high" 2.50 s
+
+    // The path warnings (plan decisions 3, 5 and 10): each said at most as the plan allows per approach.
+    private bool highAtFinalSaid, tooHighSaid;
+    private bool tooLowArmed = true;
+    private DateTime? tooLowRepeatAt, lastTooLowAt;
+    private double? previousHeightFt;   // above the threshold, to see the datum come down through the stable gate
 
     // Where BA's own queued lines are expected to finish (decision 11 of the stage-4 plan): a queued
     // line is spoken after the one before it, so its hold starts where that one's ends. An interrupting
@@ -337,22 +351,34 @@ public class VisualGuidanceManager : IDisposable
             return VisualGuidanceStatusText.Compose(new VisualGuidanceStatus(VisualGuidanceReadoutPhase.Starting, 0, 0, 0, 0, 0));
 
         double cross = SignedCrossTrackNm(runway, lat, lon);
+        double heightFt = altMSL - thresholdElevationMSL;
         var status = new VisualGuidanceStatus(
             phase,
             DistanceNm: NavigationCalculator.CalculateDistance(lat, lon, runway.StartLat, runway.StartLon),
             CrossTrackNm: cross,
             AltitudeErrorFt: lastCalculatedAltitudeError,
             TargetFpm: lastCalculatedTargetFPM,
-            WheelHeightFt: altMSL - thresholdElevationMSL - flareAltitudeBiasFt);
-        // Joining and vectoring: the join from here (the countdown speaks the same time), and the pattern's leg.
+            WheelHeightFt: heightFt - flareAltitudeBiasFt,
+            Warning: FinalWarning(VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm, heightFt));
+        // Joining and vectoring: the join from here (the countdown speaks the same time), the pattern's leg,
+        // and the path's altitude there (stage 5, plan decision 8): vectoring falls back on the minimum final
+        // as its plan does; joining says it only while its heading crosses final.
         if (phase is VisualGuidanceReadoutPhase.Joining or VisualGuidanceReadoutPhase.Vectoring
             && PictureOfTheJoin(lat, lon, cross) is JoinPicture join)
         {
+            bool vectoring = phase == VisualGuidanceReadoutPhase.Vectoring;
+            double joinAlong = vectoring && !(join.JoinAlongNm > 0) ? minimumFinalNm : join.JoinAlongNm;
+            double? pathThereMsl = (vectoring || join.CrossesFinal || turnOntoFinalDue) && joinAlong > 0
+                ? thresholdElevationMSL + VisualGuidanceVertical.PathHeightFt(joinAlong, glideslopeAngleDeg, glideslopeAltitudeBiasFt)
+                : null;
             status = status with
             {
                 Leg = ActiveLegKind,
                 InterceptDeg = join.InterceptDeg, Turning = turnOntoFinalDue, CrossesFinal = join.CrossesFinal,
                 JoinAlongNm = join.JoinAlongNm, SecondsToTurn = join.SecondsToTurn, FinalToTheRight = join.FinalToTheRight,
+                JoinPathMslFt = pathThereMsl,
+                JoinHeightErrorFt = pathThereMsl is double p ? altMSL - p : 0,
+                Warning = HighAtFinalFt(lat, lon, heightFt) != null ? VisualGuidanceVerticalWarning.HighAtFinal : VisualGuidanceVerticalWarning.None,
             };
         }
         return VisualGuidanceStatusText.Compose(status);
@@ -520,6 +546,10 @@ public class VisualGuidanceManager : IDisposable
         previousDesiredPitch = 0.0;
         trimLearner = new VisualGuidanceTrimLearner(typicalApproachAoaDeg, VerticalTuningForHarness);
         levelHold = new VisualGuidanceLevelHold(VerticalTuningForHarness);
+        highAtFinalSaid = tooHighSaid = false;
+        tooLowArmed = true;
+        tooLowRepeatAt = lastTooLowAt = null;
+        previousHeightFt = null;
         verticalMode = VisualGuidanceVerticalMode.Follow;
         lastTargetDescentDeg = 0.0;
         lastCalculatedTargetFPM = 0.0;
@@ -984,6 +1014,8 @@ public class VisualGuidanceManager : IDisposable
             // The join's own lines (the turn, the countdown, a heading that stops crossing final), before
             // the bank callouts, so their holds apply in this very update (VG-21).
             HandleJoinCallouts(lat, lon);
+            // The path warnings, likewise before the bank callouts.
+            HandleVerticalCallouts(lat, lon, altMSL);
             hasPreviousCommand = true;
             DesiredBankForHarness = desiredBank;
             DesiredPitchForHarness = desiredPitch;
@@ -1721,6 +1753,105 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// What BA says on its own about the path (stage 5, plan decisions 3, 5 and 10), each queued, holding
+    /// the bank callouts for its measured time (VG-21), and repeated by F:
+    /// <list type="bullet">
+    /// <item>Joining, in the level hold, before the turn onto final, once per approach: "You'll be 1,700
+    /// feet high at final" when even 2° steeper from the join point cannot reach the path by the gate.</item>
+    /// <item>On final, once per approach: "Too high, 600 feet above the path" when even 2° steeper cannot
+    /// bring the aircraft within half a degree of the path by the stable gate.</item>
+    /// <item>On final: "Too low, 400 feet below the path" when more than half a degree low (never under
+    /// 60 ft); once more 10 s later if still that low; once as the datum comes down through the stable gate
+    /// if still low, unless said in the last 10 s; armed again back within 80 % of the margin.</item>
+    /// </list>
+    /// None at or under 60 ft of wheel height, where the correction stops.
+    /// </summary>
+    private void HandleVerticalCallouts(double lat, double lon, double altMSL)
+    {
+        if (runway == null) return;
+        var now = ClockForHarness();
+        var tuning = VerticalTuningForHarness;
+        double heightFt = altMSL - thresholdElevationMSL;
+        double gateFt = visualGuidanceProfile.StableGateFt;
+        bool throughTheGate = previousHeightFt is double before && before > gateFt && heightFt <= gateFt;
+        previousHeightFt = heightFt;
+
+        if (currentPhase == GuidancePhase.Joining)
+        {
+            if (!highAtFinalSaid && HighAtFinalFt(lat, lon, heightFt) is double high)
+            {
+                Say(VisualGuidanceStatusText.HighAtFinalLine(high), immediate: false, HOLD_HIGH_AT_FINAL_S);
+                highAtFinalSaid = true;
+            }
+            return;
+        }
+        if (currentPhase != GuidancePhase.Final || heightFt - flareAltitudeBiasFt <= tuning.CorrectionFloorWheelFt) return;
+
+        double along = VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm;
+        double error = lastCalculatedAltitudeError;
+        if (!tooHighSaid && VisualGuidanceVertical.TooHigh(along, error, glideslopeAngleDeg, glideslopeAltitudeBiasFt, gateFt, tuning.PathLimitDeg))
+        {
+            Say(VisualGuidanceStatusText.TooHighLine(error), immediate: false, HOLD_TOO_HIGH_S);
+            tooHighSaid = true;
+        }
+
+        double margin = VisualGuidanceVertical.TooLowMarginFt(along, glideslopeAngleDeg);
+        bool low = error < -margin;
+        if (error > -VisualGuidanceVertical.TooLowRearmFraction * margin)
+        {
+            tooLowArmed = true;
+            tooLowRepeatAt = null;
+        }
+        if (low && tooLowArmed)
+        {
+            SayTooLow(error, now);
+            tooLowArmed = false;
+            tooLowRepeatAt = now.AddSeconds(VisualGuidanceVertical.TooLowRepeatS);
+        }
+        else if (tooLowRepeatAt is DateTime due && now >= due)
+        {
+            if (low) SayTooLow(error, now);
+            tooLowRepeatAt = null;
+        }
+        if (throughTheGate && low && (lastTooLowAt is not DateTime last || (now - last).TotalSeconds >= VisualGuidanceVertical.TooLowRepeatS))
+            SayTooLow(error, now);
+    }
+
+    private void SayTooLow(double errorFt, DateTime now)
+    {
+        Say(VisualGuidanceStatusText.TooLowLine(errorFt), immediate: false, HOLD_TOO_LOW_S);
+        lastTooLowAt = now;
+    }
+
+    /// <summary>
+    /// Joining, in the level hold and before the turn onto final: how far above the path at the join point
+    /// the aircraft will be, when that is more than 2° steeper can remove by the stable gate (plan decision
+    /// 10); otherwise null. While climbing or descending BA does not know where ATC will level it.
+    /// </summary>
+    private double? HighAtFinalFt(double lat, double lon, double heightFt)
+    {
+        if (runway == null || currentPhase != GuidancePhase.Joining || levelHold.HeldAltitudeFt == null || turnOntoFinalDue) return null;
+        if (PictureOfTheJoin(lat, lon, SignedCrossTrackNm(runway, lat, lon)) is not JoinPicture join
+            || !join.CrossesFinal || !(join.JoinAlongNm > 0)) return null;
+        double atJoinFt = heightFt - VisualGuidanceVertical.PathHeightFt(join.JoinAlongNm, glideslopeAngleDeg, glideslopeAltitudeBiasFt);
+        return VisualGuidanceVertical.TooHigh(join.JoinAlongNm, atJoinFt, glideslopeAngleDeg, glideslopeAltitudeBiasFt,
+            visualGuidanceProfile.StableGateFt, VerticalTuningForHarness.PathLimitDeg) ? atJoinFt : null;
+    }
+
+    /// <summary>On final, above 60 ft of wheel height: the warning F says in place of the height, as it stands now.</summary>
+    private VisualGuidanceVerticalWarning FinalWarning(double alongNm, double heightFt)
+    {
+        if (currentPhase != GuidancePhase.Final || heightFt - flareAltitudeBiasFt <= VerticalTuningForHarness.CorrectionFloorWheelFt)
+            return VisualGuidanceVerticalWarning.None;
+        double error = lastCalculatedAltitudeError;
+        if (VisualGuidanceVertical.TooHigh(alongNm, error, glideslopeAngleDeg, glideslopeAltitudeBiasFt,
+                visualGuidanceProfile.StableGateFt, VerticalTuningForHarness.PathLimitDeg))
+            return VisualGuidanceVerticalWarning.TooHigh;
+        return error < -VisualGuidanceVertical.TooLowMarginFt(alongNm, glideslopeAngleDeg)
+            ? VisualGuidanceVerticalWarning.TooLow : VisualGuidanceVerticalWarning.None;
+    }
+
+    /// <summary>
     /// Handles distance callouts (5, 3, 1 miles)
     /// </summary>
     private void HandleDistanceCallouts(double lat, double lon)
@@ -1739,11 +1870,11 @@ public class VisualGuidanceManager : IDisposable
         if (!distanceCalloutsPrimed)
         {
             distanceCalloutsPrimed = true;
-            foreach (var (mark, _, _) in MileCallouts)
+            foreach (var (mark, _, _, _) in MileCallouts)
                 if (distanceNM > mark) armedMileMarks.Add(mark);
             return;
         }
-        foreach (var (mark, _, _) in MileCallouts)
+        foreach (var (mark, _, _, _) in MileCallouts)
             if (distanceNM > mark + MILE_CALL_REARM_NM) armedMileMarks.Add(mark);
 
         // On the pattern's downwind and base the distance is not a distance out on final (a far-side
@@ -1759,11 +1890,15 @@ public class VisualGuidanceManager : IDisposable
             return;
 
         // The nearest mark passed, if several came at once (a slew): the others are passed too.
-        foreach (var (mark, line, hold) in Enumerable.Reverse(MileCallouts))
+        foreach (var (mark, line, hold, pathHold) in Enumerable.Reverse(MileCallouts))
         {
             if (distanceNM <= mark && armedMileMarks.Contains(mark))
             {
-                Say(line, immediate: false, hold);
+                // Once established the call adds the path ("3 miles out, 80 feet high", plan decision 11).
+                if (currentPhase == GuidancePhase.Final)
+                    Say(VisualGuidanceStatusText.MileLine(mark, lastCalculatedAltitudeError), immediate: false, pathHold);
+                else
+                    Say(line, immediate: false, hold);
                 armedMileMarks.RemoveWhere(m => m >= mark && distanceNM <= m);
                 lastDistanceAnnouncement = now;
                 break;
@@ -1771,10 +1906,11 @@ public class VisualGuidanceManager : IDisposable
         }
     }
 
-    // Announce at 5, 3, 1 miles: "5 miles out" (stage 5 of the redesign adds the path once established).
-    private static readonly (double Nm, string Line, double Hold)[] MileCallouts =
+    // Announce at 5, 3, 1 miles: "5 miles out", and once established with the path, "5 miles out, on path".
+    private static readonly (double Nm, string Line, double Hold, double PathHold)[] MileCallouts =
     {
-        (5.0, "5 miles out", HOLD_5_MILES_S), (3.0, "3 miles out", HOLD_3_MILES_S), (1.0, "1 mile out", HOLD_1_MILE_S),
+        (5.0, "5 miles out", HOLD_5_MILES_S, HOLD_5_MILES_PATH_S), (3.0, "3 miles out", HOLD_3_MILES_S, HOLD_3_MILES_PATH_S),
+        (1.0, "1 mile out", HOLD_1_MILE_S, HOLD_1_MILE_PATH_S),
     };
     private const double MILE_CALL_REARM_NM = 0.3;
 

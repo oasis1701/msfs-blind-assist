@@ -279,12 +279,15 @@ public class VisualGuidanceJoiningTests
         Assert.Equal("Plan", rig.VerticalMode);
     }
 
+    // Then the path there (stage 5): 2,000 ft above the 500 ft field is 2,500 ft, within 30 ft of the path's
+    // 2,470 ft at the 6.0 nm join point, and far under BA's plan, so "target level".
     [Fact]
     public void F_on_the_downwind_says_the_leg_and_where_it_joins()
     {
         var (rig, _) = RecordedAt(-1, 3, 180);
         rig.FlyFor(5, 30);
-        Assert.Equal("Vectoring to final, downwind, joining 6.0 miles out. 3.0 miles right of final.", rig.Readout);
+        Assert.Equal("Vectoring to final, downwind, joining 6.0 miles out. 3.0 miles right of final. Path there 2,470 feet, you're on it, target level.",
+            rig.Readout);
     }
 
     // On the base 1.5 nm from final: the turn cue is 1.16 nm out, 8.7 s away at 140 kt.
@@ -297,7 +300,9 @@ public class VisualGuidanceJoiningTests
         rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB, 1.5, -90));
         double seconds = (1.5 - VisualGuidanceJoin.TurnCueCrossNm(90, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0)) / (140.0 / 3600);
         Assert.InRange(seconds, 8.0, 9.5);
-        Assert.Equal("Vectoring to final, base, joining 6.0 miles out. 1.5 miles right of final, turn in about 10 seconds.", rig.Readout);
+        // On the 3° path at 7.6 nm, about 510 ft above the path's altitude at the 6.0 nm join point.
+        Assert.Matches(@"^Vectoring to final, base, joining 6\.0 miles out\. 1\.5 miles right of final, turn in about 10 seconds\. "
+            + @"Path there 2,4[67]0 feet, you're 5[0-2]0 high, target ([0-9,]+ down|level)\.$", rig.Readout);
     }
 
     // Ctrl+V in a turn: no state until the wings are nearly level; both tones sit on the aircraft.
@@ -453,8 +458,10 @@ public class VisualGuidanceJoiningTests
         var (rig, lines) = RecordedAt(5.3, 0, 0);
         double nmPerS = 140.0 / 3600;
         rig.FlyFor(15, 30, beforeEach: t => rig.Place(5.3 - nmPerS * t, 0, 0));
-        Assert.Single(Said(lines), s => s.Text == "5 miles out");
+        Assert.Single(Said(lines), s => s.Text == "5 miles out, on path");   // on final, with the path (stage 5)
     }
+
+    private static bool IsMileCall(string text) => Regex.IsMatch(text, @"^\d+ miles? out", RegexOptions.CultureInvariant);
 
     // Pressed inside a mark, the mile calls start with the next mark crossed: at 0.3 nm, no "5 miles
     // out", "3 miles out" and "1 mile out" one after another; at 4 nm, "3 miles out" when it is.
@@ -463,13 +470,13 @@ public class VisualGuidanceJoiningTests
     {
         var (close, closeLines) = RecordedAt(0.3, 0, 0);
         close.FlyFor(4, 30);
-        Assert.DoesNotContain(Said(closeLines), s => s.Text.EndsWith(" out", StringComparison.Ordinal));
+        Assert.DoesNotContain(Said(closeLines), s => IsMileCall(s.Text));
 
         var (four, fourLines) = RecordedAt(4.0, 0, 0);
         double nmPerS = 140.0 / 3600;
         four.FlyFor(30, 30, beforeEach: t => four.Place(4.0 - nmPerS * t, 0, 0));
-        var calls = Said(fourLines).Where(s => s.Text.EndsWith(" out", StringComparison.Ordinal)).Select(s => s.Text).ToList();
-        Assert.Equal(new[] { "3 miles out" }, calls);
+        var calls = Said(fourLines).Where(s => IsMileCall(s.Text)).Select(s => s.Text).ToList();
+        Assert.Equal(new[] { "3 miles out, on path" }, calls);
     }
 
     // F while joining: where the aircraft will be lined up on final, from the heading flown now. 2.9 nm
@@ -483,7 +490,10 @@ public class VisualGuidanceJoiningTests
         double seconds = VisualGuidanceJoin.SecondsToTurn(2.9, 30, 30, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0)!.Value;
         string expected = $"Joining final {join.ToString("0.0", CultureInfo.InvariantCulture)} miles out. 30 degree intercept, " +
             $"turn in about {(Math.Round(seconds / 5, MidpointRounding.AwayFromZero) * 5).ToString("0", CultureInfo.InvariantCulture)} seconds.";
-        Assert.Equal(expected, rig.Readout);
+        // Then the path there (stage 5): about 2,670 ft at the 6.6 nm join point, the aircraft 1,710 ft above
+        // it (on the path's height for 12 nm); no target, the altitude being ATC's or the pilot's.
+        Assert.StartsWith(expected + " Path there ", rig.Readout);
+        Assert.Matches(@" Path there 2,6[67]0 feet, you're 1,7[012]0 high\.$", rig.Readout);
     }
 
     // Checkpoint review C1: a join whose crossing point drifts inside the minimum final (a 25° cut from
@@ -512,8 +522,8 @@ public class VisualGuidanceJoiningTests
         rig.FlyFor(2, 30, beforeEach: _ => rig.Place(5.5, 0, 0));
         rig.FlyFor(2, 30, beforeEach: _ => rig.Place(4.9, 0, 0));
         rig.FlyFor(2, 30, beforeEach: _ => rig.Place(2.9, 0, 0));
-        var calls = Said(lines).Where(x => x.Text.EndsWith(" out", StringComparison.Ordinal)).Select(x => x.Text).ToList();
-        Assert.Equal(new[] { "5 miles out", "3 miles out" }, calls);
+        var calls = Said(lines).Where(x => IsMileCall(x.Text)).Select(x => x.Text).ToList();
+        Assert.Equal(new[] { "5 miles out, on path", "3 miles out, on path" }, calls);   // on final, with the path (stage 5)
     }
 
     // On the pattern the mile calls wait for final: a far-side downwind passing 3 nm from the threshold
