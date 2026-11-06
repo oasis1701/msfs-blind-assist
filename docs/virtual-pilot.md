@@ -187,6 +187,16 @@ on what it heard while turning. Turns run one at a time, in order. The tones and
 reach the measures during a turn. A scenario's `StartBankDeg` starts the aircraft and the pilot in
 that bank (a press of Ctrl+V in a turn); with no scripted turn the pilot then follows the tones.
 
+A scripted descent (`ApproachVerticalScript`, a scenario's `Descent`, added in stage 5) stands for a
+pilot obeying ATC's "descend and maintain": the run starts on the descent, and the pilot ignores the
+pitch tone and holds the pitch that flies it (the trim angle of attack plus the flight path angle)
+until the level-off lead, |VS| × the flight-path lag, above the level. From there the pilot maintains
+the level as by the altimeter: the trim angle of attack plus 0.02° per foot still to go, at most 1°
+either way (the lead leaves out the pilot's own pitch-up time, so a jet levels about 40 ft low
+without the correction). Once within 20 ft of the level and under 50 fpm for 2 s, the script is done
+and the pilot follows the tones again. Like a scripted turn, it has no reaction delay; the bank still
+follows the tone. Each run flies its own copy of the script (`ApproachVerticalScriptRun`).
+
 Each frame the harness feeds visual guidance in MainForm's order (AGL last, which calls
 `ProcessUpdate`), records the aircraft state with the command it produced, then steps the pilot
 and the aircraft.
@@ -195,10 +205,12 @@ and the aircraft.
 
 Headings are relative to the centreline's direction where the aircraft starts. "Cross" is positive
 right of the extended centreline, facing the runway. A start on the course is already descending
-on the 3° path, except the vectoring and turning starts, which fly parallel to it level; the others
-start level. Unless a row says otherwise, the frame rate is 30 a second and the reaction delay 0.5
+on the 3° path, except the vectoring and turning starts, which fly parallel to it level; a
+descend-and-maintain start is on its scripted descent; the others start level. Unless a row says otherwise, the frame rate is 30 a second and the reaction delay 0.5
 and 1.0 s. The light runs fly with a minimum final (`MinimumFinalNm`) of 1.0 nm, the circuit-sized
-final the redesign's spec gives light aircraft, set by reflection where the app has the field.
+final the redesign's spec gives light aircraft, and a stable gate (`StableGateFt`) of 300 ft above the
+threshold, the light aircraft's gate the owner chose on 2026-11-06, each set by reflection where the
+app has the field.
 
 | family | name pattern | start | count |
 |---|---|---|---|
@@ -217,6 +229,12 @@ final the redesign's spec gives light aircraft, set by reflection where the app 
 | Turning | `TURN-A-{JET,LIGHT}-{L,R}-d0.5` | the intercept start, flying parallel, level, banked 20° toward the line, with a scripted turn at 0 s to a 30° cut (Ctrl+V pressed in the turn ATC gave) | 4 |
 | Heading change | `NOCROSS-A-{JET,LIGHT}-{L,R}-d0.5` | the 30° intercept start; scripted turns parallel to the course at 20 s and to a 45° cut at 60 s (the jet's new track meets final at about 7.2 nm, outside the 6 nm minimum) | 4 |
 | Shallow | `SHALLOW-{A,B}-{JET,LIGHT}-{L,R}-d0.5` | jet 20 nm out and 3 nm to the side, light 10 nm and 1.5 nm; cutting toward the line at 15°, crossing it at about 8.8 and 4.4 nm; at the path's height | 8 |
+| Off the path | `VERT-A-JET-{a8-h+600,a4-h+600,a3-h-400,a6-h-250}`, `VERT-A-LIGHT-{a4-h+300,a2-h+400,a1.5-h-150,a3-h-100}` | on the centreline and the course, `a` nm out, `h` ft off the path, descending at the path's angle; "Too high" is due on a4 (jet) and a2 (light), "Too low" on a3-h-400 (jet) and a1.5 (light), neither on the others | 8 |
+| Descend and maintain | `DESC-A-{JET,LIGHT}-{L,R}`, `DESCHIGH-A-{JET,LIGHT}-{L,R}` | the 30° intercept start, the jet 1,000 ft and the light aircraft 500 ft above the path, with a scripted descent at 1,500 fpm (jet) or 700 (light) to a level above the threshold: `DESC` 2,500 ft (jet) or 1,300 (light), about 275 and 160 ft above the path where the cut meets final; `DESCHIGH` 3,500 or 1,900, about 1,275 and 760 ft above it, too high for the 2° steeper path to recover by the stable gate | 8 |
+| Vectoring high | `VECHIGH-A-{JET,LIGHT}-{L,R}-par` | the vectoring start flying parallel inbound, level, the jet 1,000 ft and the light aircraft 400 ft above the path | 4 |
+
+The three stage-5 families (off the path, descend and maintain, vectoring high) fly runway A with
+the 0.5 s pilot; their names carry no delay.
 
 The noise (`ApproachSensorNoise`) adds independent Gaussian noise every frame to the vertical speed
 (σ 30 fpm), the angle of attack (σ 0.2°) and the ground track (σ 0.2°), from one fixed seed per run,
@@ -264,9 +282,22 @@ culture, `NA` where a measure does not apply.
 | `notCrossingCalls` | how many times "Heading does not cross final" was spoken |
 | `leftJoining` | True if the phase ever went from `Joining` to `Vectoring` |
 
+| `joinPathErrFt` | the path error at established (+ above the path) |
+| `gateErrFt` | the path error when the datum first comes down through the profile's stable gate (`StableGateFt`, 1,000 ft above the threshold, 300 on the light runs; 1,000 against an app without the field) after established; `NA` when established below it |
+| `pathOvershootFt` | for runs more than 50 ft off the path at established: the farthest past the path, on the other side, after first reaching it, before the flare |
+| `maxTargetClimbDeg` | the largest climb angle the vertical cue asked for (− its `TargetDescentForHarness`) while the phase is `Final`; negative when it always asked for a descent |
+| `tooHighCalls`, `tooLowCalls`, `highAtFinalCalls` | how many lines starting "Too high", "Too low" and "You'll be" were spoken |
+| `firstTooHighAlongNm`, `firstTooLowAlongNm` | how far out (nm along the course) the first "Too high" and "Too low" came |
+| `holdEngageS` | descend-and-maintain runs only: from the scripted level-off (the script handing back to the tones) to the first update in the vertical mode `Hold` (negative if the hold came first) |
+| `holdDriftMaxFt` | the largest change of altitude while in `Hold`, from the altitude where each hold began |
+| `holdBreaks` | how many times `Hold` gave way to `Follow` |
+
 The joining keys are on every line, a value or `NA`. Against an app without a decision (before stage 4
 of the redesign) every one of them is `NA` except `establishedAlongNm` and `maxBankCmdDeg`; on a
-stage-4 app a timing key is `NA` when its line was not spoken.
+stage-4 app a timing key is `NA` when its line was not spoken. The vertical keys are on every line
+too. `maxTargetClimbDeg`, `holdEngageS`, `holdDriftMaxFt` and `holdBreaks` need the app's vertical mode
+(`VerticalModeForHarness` and `TargetDescentForHarness`, read by reflection) and are `NA` against an app
+without it (before stage 5); the others are measured on any app.
 
 ### Running and comparing
 
@@ -285,7 +316,7 @@ guidance's capture gain (deg·kt/nm, its `CaptureGainForHarness`) for every run;
 reflection and refuses to run against an app from before stage 4. Stage 4's sweep also had
 `--roll-in S` for a profile field `RollInTimeS`; the sweep picked 0 s and both were removed.
 
-`--selftest` runs 33 checks of the harness itself: turn rate and direction, the 3° descent rate,
+`--selftest` runs 36 checks of the harness itself: turn rate and direction, the 3° descent rate,
 wind drift, the SimConnect signs, the north wrap, the runway geometry, great-circle flight, the
 pilot's delay, roll rate, deadband and saturation, speech timestamps, the frame-rate runs, results
 under a Swedish culture, the matrix size, the step measures, wheel contact, the run ending past the
@@ -297,8 +328,11 @@ callout and following "3 right", the gust measures written for a gust run and `N
 the flight recording reaching the harness (`record-hook`: the hook is set by reflection, so this
 check is what catches a rename; against an app from before stage 3 it fails, as expected), a
 scripted turn ending on its heading and the pilot rolling level after it, a start bank reaching
-visual guidance on the first frame, and every results line carrying the ten joining keys. The
-far-end check also flies a far-side start, which must not end where it starts. The
+visual guidance on the first frame, every results line carrying the ten joining keys, a scripted
+descent levelling within 60 ft of its level and holding it within 20 ft for 10 s once it hands back
+to the tones (with the tones on the aircraft's own pitch), each off-the-path start at the height its
+name gives, and the vertical keys that need the app's vertical mode reading `NA` without it and
+numbers with it. The far-end check also flies a far-side start, which must not end where it starts. The
 downwind mirror check counts passing the runway's far end and touching down within 100 ft of it as
 the same ending, since which line the last frame crosses first is a coincidence of that frame. `--scenario` runs every scenario
 whose name contains the text. `--trace` prints one scenario every half simulated second (phase,
@@ -313,12 +347,16 @@ change counts as worse when `established` goes from True to False, `endReason` l
 0.1, `selfFeedback10s` changes sign, the touchdown point moves more than 25 ft farther from the
 centreline, `gustCalloutDelayS` rises by more than 0.3 s, `gustRecoveryS` by 20 %, or
 `gustXteMaxFt` by 10 % and 15 ft, or `establishedAlongNm` falls by more than 0.5 nm to below the
-minimum final (6.0 nm, 1.0 for a run whose name contains `LIGHT`). Better is the mirror of each,
-except that a sign change of `selfFeedback10s` is always worse when the new value is more than 0.1
-from zero; within 0.1 it is noise, since the vertical path (stage 5) aims at near zero. A third list,
-`CHANGED`, has the moves with no single right direction: the touchdown point moving more than
-300 ft along the runway, the end reason changing between two outcomes neither of which is a
-touchdown, and `decided` changing. The harness is deterministic: two runs of one build compare as `BETTER {}`, `WORSE {}`
+minimum final (6.0 nm, 1.0 for a run whose name contains `LIGHT`), `|joinPathErrFt|`, `|gateErrFt|` or
+`pathOvershootFt` rises by more than 30 ft, or `holdDriftMaxFt` by 20 % and 20 ft. Better is the mirror
+of each, except that a sign change of `selfFeedback10s` is always worse when the new value is more than
+0.1 from zero; within 0.1 it is noise, since the vertical path (stage 5) aims at near zero. A cue that
+asks for a climb on final (`maxTargetClimbDeg` above 0.05, "asks for a climb") is worse whatever it was
+before, even `NA`. A third list, `CHANGED`, has the moves with no single right direction: the
+touchdown point moving more than 300 ft along the runway, the end reason changing between two
+outcomes neither of which is a touchdown, `decided` changing, the counts of "Too high", "Too low" and
+"You'll be" changing, the first of each moving more than 0.1 nm, and `holdEngageS` moving more than
+0.5 s. The harness is deterministic: two runs of one build compare as `BETTER {}`, `WORSE {}`
 and `CHANGED {}`.
 
 ### Flight recordings
@@ -868,6 +906,25 @@ countdown on the base, "Turn onto final". The pass mark: every DW, FAR and CLOSE
   off (the time is worked out as if the aircraft already flew the base at 90° to final, while it is still
   turning onto it, and their base is short: about 20 s from the base to the turn onto final). Bank
   callouts run 4.7 to 8.6 a minute on the pattern runs (median by family), the turns being real turns.
+
+### Stage 5: the vertical path (2026-11-06)
+
+The pitch tone now guides the altitude wherever BA owns it: on final it aims at a path angle, while
+joining it holds the pilot's level-off, and while vectoring and on the pattern it flies a planned
+descent. The harness changed first, so both baselines were flown before the app did:
+
+- Three families (off the path, descend and maintain, vectoring high: 20 scenarios, 223 in all), the
+  scripted descent, the light runs' 300 ft stable gate, and twelve vertical keys (see "Scenarios",
+  "Measures" and "Running and comparing" above).
+- `approach_stage4_h5`: the stage-4 app at 5047ace98 with the stage-5 harness. Against
+  `approach_stage4_final` it compares `BETTER {}`, `WORSE {}`, `CHANGED {}`, and with the twelve new keys
+  left out its 203 old lines are textually identical; the 20 new scenarios are only in the new run.
+- `approach_baseline_v6`: the stage-1 app (a worktree at c2d7510df) with the stage-5 harness copied in.
+  Against `approach_baseline_v5` the same: `BETTER {}`, `WORSE {}`, `CHANGED {}`, the 203 old lines
+  textually identical without the new keys. Against the stage-1 app the `record-hook` check fails, as
+  before.
+
+Stage 5 compares against both from here. Its results come at the end of the stage.
 
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 

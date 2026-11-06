@@ -20,7 +20,9 @@ namespace VirtualPilot.Approach;
 /// perceives, the actual bank less the knock it has not yet heard.
 ///
 /// During a scripted turn (<see cref="ApproachScriptedTurns"/>) the pilot flies the turn's bank
-/// instead of the tones; the pitch still follows the tone.
+/// instead of the tones; the pitch still follows the tone. During a scripted descent
+/// (<see cref="ApproachVerticalScript"/>) the pilot flies the script's pitch instead of the pitch
+/// tone; the bank still follows the tone.
 /// </summary>
 sealed class TonePilot
 {
@@ -67,7 +69,7 @@ sealed class TonePilot
 
     /// <summary>One time step: hears the commands at <paramref name="t"/>, acts on what it heard a reaction delay ago.</summary>
     public (double BankStd, double Pitch) Step(double t, double dt, double desiredBankStd, double desiredPitch,
-        IReadOnlyList<(double T, string Text, bool Immediate)> speech, double? scriptedBankStd = null)
+        IReadOnlyList<(double T, string Text, bool Immediate)> speech, double? scriptedBankStd = null, double? scriptedPitch = null)
     {
         _bankHistory.Add((t, _bank));
         _heard.Enqueue((t, BankTarget(t, desiredBankStd, speech), AxisTarget(_pitch, desiredPitch, _pitchRangeDeg), _knockTotal));
@@ -86,8 +88,13 @@ sealed class TonePilot
                 _bank = unheard == 0
                     ? Approach(_bank, target.Bank, BankDeadbandDeg, BankTimeConstantS, _rollRateDegS, dt)
                     : Approach(_bank - unheard, target.Bank, BankDeadbandDeg, BankTimeConstantS, _rollRateDegS, dt) + unheard;
-            if (!_pitchFrozen) _pitch = Approach(_pitch, target.Pitch, PitchDeadbandDeg, PitchTimeConstantS, _pitchRateDegS, dt);
+            if (!_pitchFrozen && scriptedPitch == null) _pitch = Approach(_pitch, target.Pitch, PitchDeadbandDeg, PitchTimeConstantS, _pitchRateDegS, dt);
         }
+        // A scripted descent (ApproachVerticalScript, a pilot obeying ATC's "descend and maintain"):
+        // the pilot pitches to the script's pitch at its usual rate, with no reaction delay, whatever
+        // the pitch tone says. It keeps hearing the tones, so when the script ends it acts on them.
+        if (scriptedPitch is double scriptedP && !_pitchFrozen)
+            _pitch = Approach(_pitch, scriptedP, PitchDeadbandDeg, PitchTimeConstantS, _pitchRateDegS, dt);
         // A scripted turn (ApproachScriptedTurns, a pilot obeying ATC): the pilot rolls to the bank the
         // turn needs at its usual rate, with no reaction delay (it is turning by its own heading), whatever
         // the tones say. It keeps hearing them, so when the turn is over it acts on what they said.

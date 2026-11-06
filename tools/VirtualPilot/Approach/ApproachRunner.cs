@@ -104,22 +104,63 @@ static class ApproachRunner
     internal static readonly System.Reflection.PropertyInfo? DecisionHook = typeof(VisualGuidanceManager).GetProperty("DecisionForHarness", Hidden);
     private static readonly System.Reflection.PropertyInfo? MinimumFinalProperty = typeof(VisualGuidanceProfile).GetProperty("MinimumFinalNm");
 
+    // Stage 5's hooks and profile field, by reflection for the same reason: null against an older app,
+    // where the vertical measures read NA and the light runs keep the profile's gate.
+    internal static readonly System.Reflection.PropertyInfo? VerticalModeHook = typeof(VisualGuidanceManager).GetProperty("VerticalModeForHarness", Hidden);
+    internal static readonly System.Reflection.PropertyInfo? TargetDescentHook = typeof(VisualGuidanceManager).GetProperty("TargetDescentForHarness", Hidden);
+    private static readonly System.Reflection.PropertyInfo? StableGateProperty = typeof(VisualGuidanceProfile).GetProperty("StableGateFt");
+
     /// <summary>The light runs' minimum final: the circuit-sized final the spec gives light aircraft.</summary>
     public const double LightMinimumFinalNm = 1.0;
+
+    /// <summary>The light runs' stable gate (ft above the threshold): the light aircraft's gate the owner chose on 2026-11-06.</summary>
+    public const double LightStableGateFt = 300.0;
+
+    /// <summary>The airliner gate, where the profile has no <c>StableGateFt</c> (before stage 5).</summary>
+    public const double DefaultStableGateFt = 1000.0;
 
     /// <summary>--capture-gain, for the whole run; null leaves the app's default.</summary>
     public static double? CaptureGain { get; set; }
 
-    /// <summary>The profile a scenario flies with: the A320 default, with the light runs' minimum final.</summary>
+    /// <summary>The profile a scenario flies with: the A320 default, with the light runs' minimum final and stable gate.</summary>
     public static VisualGuidanceProfile ProfileFor(ApproachScenario sc)
     {
         var profile = new VisualGuidanceProfile();
-        if (sc.Kind == ApproachAircraftKind.Light) MinimumFinalProperty?.SetValue(profile, LightMinimumFinalNm);
+        if (sc.Kind == ApproachAircraftKind.Light)
+        {
+            MinimumFinalProperty?.SetValue(profile, LightMinimumFinalNm);
+            StableGateProperty?.SetValue(profile, LightStableGateFt);
+        }
         return profile;
     }
 
     /// <summary>The decision visual guidance has made (OnFinal, Joining, Vectoring, Pattern), "None" before it, null against an app without one.</summary>
     public static string? DecisionOf(VisualGuidanceManager vg) => DecisionHook?.GetValue(vg) as string;
+
+    /// <summary>The vertical mode (Follow, Hold, Plan, Path, Flare), null against an app without one.</summary>
+    public static string? VerticalModeOf(VisualGuidanceManager vg) => VerticalModeHook?.GetValue(vg) as string;
+
+    /// <summary>The target descent angle the vertical cue flies (degrees, + down), null against an app without one.</summary>
+    public static double? TargetDescentOf(VisualGuidanceManager vg) => TargetDescentHook?.GetValue(vg) is double d ? d : null;
+
+    /// <summary>The profile's stable gate, ft above the threshold; the airliner gate against an app without the field.</summary>
+    public static double StableGateOf(VisualGuidanceProfile profile)
+        => StableGateProperty?.GetValue(profile) is double g ? g : DefaultStableGateFt;
+
+    /// <summary>
+    /// The flight path a scenario starts on, degrees (+ climbing): a scripted descent's own; the glide
+    /// path's angle for a start on the course; level for every other start (an intercept, a downwind,
+    /// a vectoring start flying parallel).
+    /// </summary>
+    public static double StartGammaDeg(ApproachScenario sc)
+    {
+        if (sc.Descent is ApproachVerticalScript d)
+        {
+            double tas = sc.TasKt ?? ApproachAircraftSpecs.For(sc.Kind).TasKt;
+            return Math.Asin(Math.Clamp(d.VsFpm / (tas * 101.269), -1, 1)) * 180 / Math.PI;
+        }
+        return sc.HeadingRelDeg == 0 && !sc.StartLevel ? -sc.Runway.Runway.GlideslopeAngleDeg : 0.0;
+    }
 
     /// <summary>
     /// Flies one scenario to its end. With <paramref name="trace"/>, prints a frame every 0.5 simulated
@@ -146,16 +187,16 @@ static class ApproachRunner
             var (lat, lon) = ApproachRunways.PointOnApproach(rwy, sc.AlongNm, sc.CrossNm);
             double alt = ApproachRunways.PathMslFt(rwy, sc.AlongNm, profile) + sc.HeightOffsetFt;
             double course = rwy.Runway.Heading;
-            // A start on the course is already flying final, so it starts descending at the glide
-            // path's angle; every other start (intercept, downwind, a vectoring start flying
-            // parallel) is level.
-            double startGamma = sc.HeadingRelDeg == 0 && !sc.StartLevel ? -rwy.Runway.GlideslopeAngleDeg : 0.0;
+            double startGamma = StartGammaDeg(sc);
             // Headings are relative to the centreline's direction where the aircraft starts; the
             // wind is relative to the threshold's course.
             var ac = new ApproachAircraft(sc.Kind, rwy, lat, lon, alt, ApproachRunways.LocalCourse(rwy, lat, lon) + sc.HeadingRelDeg,
                 course + sc.WindFromRelDeg, sc.WindKt, sc.TasKt, startGamma, sc.StartBankDeg);
             var pilot = new TonePilot(sc.Kind, profile, sc.ReactionDelayS, sc.StartBankDeg, ac.PitchDeg, sc.BankBySpeech);
             var turns = sc.Turns != null ? new ApproachScriptedTurns(sc.Turns) : null;
+            var descent = sc.Descent?.Start();
+            var spec = ApproachAircraftSpecs.For(sc.Kind);
+            double tasKt = sc.TasKt ?? spec.TasKt;
             var gusts = sc.GustBankDeg > 0 ? GustStarts(sc).ToList() : new List<(long Frame, double T, int Sign)>();
             int rampFrames = Math.Max(1, (int)Math.Round(GustRampS * sc.Fps));
             var metrics = new ApproachMetrics(sc, profile);
@@ -180,7 +221,9 @@ static class ApproachRunner
                 // A scripted turn (a pilot obeying ATC) replaces the bank the pilot flies this frame.
                 double? scripted = turns?.BankFor(t,
                     ((ac.HeadingTrueDeg - ApproachRunways.LocalCourse(rwy, ac.Lat, ac.Lon)) % 360 + 540) % 360 - 180);
-                metrics.Record(t, ac, vg, scripted != null);   // the state and the command it produced, same frame
+                // A scripted descent (a pilot obeying ATC's "descend and maintain") replaces the pitch.
+                double? scriptedPitch = descent?.PitchFor(t, ac.AglFt, ac.VsFpm, spec.AlphaTrimDeg, tasKt, spec.TauGammaS);
+                metrics.Record(t, ac, vg, scripted != null, scriptedPitch != null);   // the state and the command it produced, same frame
                 // Checked after recording, so the step's 10 s sample exists for selfFeedback10s.
                 if (sc.PitchStepAtS is double stepEnd && t >= stepEnd + StepRunAfterS) { endReason = "stepDone"; break; }
 
@@ -207,7 +250,7 @@ static class ApproachRunner
                     if (frame == g.Frame) trace?.Invoke($"      gust {(g.Sign * sc.GustBankDeg).ToString("+0;-0", Inv)}° over {GustRampS.ToString("0.0", Inv)} s");
                     pilot.Knock(g.Sign * sc.GustBankDeg / rampFrames);
                 }
-                var (bank, pitch) = pilot.Step(t, dt, vg.DesiredBankForHarness, vg.DesiredPitchForHarness, speech.Lines, scripted);
+                var (bank, pitch) = pilot.Step(t, dt, vg.DesiredBankForHarness, vg.DesiredPitchForHarness, speech.Lines, scripted, scriptedPitch);
                 ac.Step(dt, bank, pitch);
                 t = (frame + 1) * dt;
 
@@ -261,9 +304,11 @@ static class ApproachRunner
         double pathErr = ac.AltMslFt - ApproachRunways.PathMslFt(sc.Runway, along, profile);
         string N(double v, string f) => v.ToString(f, Inv);
         string phase = DecisionOf(vg) is string d && d != "None" ? $"{vg.PhaseForHarness}/{d}" : vg.PhaseForHarness;
+        string vertical = VerticalModeOf(vg) is string mode
+            ? $" {mode,-6} tgt {(TargetDescentOf(vg) is double tg ? N(tg, "0.00") : "NA"),5}" : "";
         return $"t={N(t, "0.0"),6} {phase,-18} along={N(along, "0.00"),6}nm cross={N(cross * 6076.12, "0"),6}ft " +
                $"dPath={N(pathErr, "0"),5}ft vs={N(ac.VsFpm, "0"),5} " +
                $"bank {N(vg.DesiredBankForHarness, "0.0"),5}/{N(ac.BankStdDeg, "0.0"),5} " +
-               $"pitch {N(vg.DesiredPitchForHarness, "0.00"),6}/{N(ac.PitchDeg, "0.00"),6}";
+               $"pitch {N(vg.DesiredPitchForHarness, "0.00"),6}/{N(ac.PitchDeg, "0.00"),6}" + vertical;
     }
 }

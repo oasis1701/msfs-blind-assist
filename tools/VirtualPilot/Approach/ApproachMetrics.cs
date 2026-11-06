@@ -20,7 +20,11 @@ sealed class ApproachMetrics
     private static readonly Regex BankCallout = new(@"^(\d+ (left|right)|matched|On commanded path)$", RegexOptions.CultureInvariant);
 
     private readonly record struct Sample(double T, double Along, double Cross, double TrackErr, double PathErr, double Vs,
-        double DesiredPitch, double DesiredBank, double Bank, string Phase, string? Decision, bool Scripted);
+        double DesiredPitch, double DesiredBank, double Bank, string Phase, string? Decision, bool Scripted,
+        double AglFt, double AltMslFt, string? VerticalMode, double? TargetDescentDeg, bool ScriptedPitch);
+
+    // Stage 5's spoken lines the vertical measures count.
+    private const string TooHigh = "Too high", TooLow = "Too low", HighAtFinal = "You'll be";
 
     // Stage 4's spoken lines the joining measures time.
     private const string TurnOntoFinal = "Turn onto final", Countdown30 = "Turn onto final in 30 seconds",
@@ -48,17 +52,19 @@ sealed class ApproachMetrics
     public ApproachMetrics(ApproachScenario sc, VisualGuidanceProfile profile) { _sc = sc; _profile = profile; }
 
     /// <summary>
-    /// One frame: the aircraft state and the command visual guidance produced from it, its phase and
-    /// decision, and whether a scripted turn (a pilot obeying ATC) flies this frame instead of the tones.
+    /// One frame: the aircraft state and the command visual guidance produced from it, its phase,
+    /// decision and vertical mode, and whether a scripted turn or a scripted descent (a pilot obeying
+    /// ATC) flies this frame instead of the tones.
     /// </summary>
-    public void Record(double t, ApproachAircraft ac, VisualGuidanceManager vg, bool scripted = false)
+    public void Record(double t, ApproachAircraft ac, VisualGuidanceManager vg, bool scripted = false, bool scriptedPitch = false)
     {
         var r = _sc.Runway;
         var (along, cross) = ApproachRunways.Locate(r, ac.Lat, ac.Lon);
         double trackErr = ((ac.TrackTrueDeg - r.Runway.Heading) % 360 + 540) % 360 - 180;
         double pathErr = ac.AltMslFt - ApproachRunways.PathMslFt(r, along, _profile);
         _samples.Add(new Sample(t, along, cross, trackErr, pathErr, ac.VsFpm, vg.DesiredPitchForHarness, vg.DesiredBankForHarness, ac.BankStdDeg,
-            vg.PhaseForHarness, ApproachRunner.DecisionOf(vg), scripted));
+            vg.PhaseForHarness, ApproachRunner.DecisionOf(vg), scripted, ac.AglFt, ac.AltMslFt,
+            ApproachRunner.VerticalModeOf(vg), ApproachRunner.TargetDescentOf(vg), scriptedPitch));
     }
 
     /// <summary>Ends the run and computes every measure.</summary>
@@ -124,6 +130,85 @@ sealed class ApproachMetrics
         }
 
         PutJoining(establishedAt, speech);
+        PutVertical(establishedAt, speech);
+    }
+
+    // The vertical path (visual guidance stage 5). The keys that need the app's vertical mode are NA
+    // against an app without one; the path errors and the call counts are measured on any app.
+    private void PutVertical(double? establishedAt, IReadOnlyList<(double T, string Text, bool Immediate)> speech)
+    {
+        bool hasMode = _samples.Count > 0 && _samples[0].VerticalMode != null;
+        int estIndex = establishedAt is double e ? _samples.FindIndex(s => s.T >= e) : -1;
+        Put("joinPathErrFt", estIndex >= 0 ? _samples[estIndex].PathErr : null, "0.0");
+
+        // The path error when the datum first comes down through the stable gate after established;
+        // NA when established below it.
+        double gate = ApproachRunner.StableGateOf(_profile);
+        double? gateErr = null;
+        if (estIndex >= 0)
+            for (int i = Math.Max(1, estIndex); i < _samples.Count; i++)
+                if (_samples[i - 1].AglFt > gate && _samples[i].AglFt <= gate) { gateErr = _samples[i].PathErr; break; }
+        Put("gateErrFt", gateErr, "0.0");
+
+        // Joining the path from more than 50 ft off it at established: the farthest past it, on the
+        // other side, after first reaching it, before the flare.
+        double? overshoot = null;
+        if (estIndex >= 0 && Math.Abs(_samples[estIndex].PathErr) > 50)
+        {
+            int side = Math.Sign(_samples[estIndex].PathErr);
+            bool reached = false;
+            double worst = 0;
+            for (int i = estIndex; i < _samples.Count; i++)
+            {
+                var s = _samples[i];
+                if (s.Phase is "Flare" or "Touchdown") break;
+                if (Math.Sign(s.PathErr) != side) reached = true;
+                if (reached && Math.Sign(s.PathErr) == -side) worst = Math.Max(worst, Math.Abs(s.PathErr));
+            }
+            overshoot = worst;
+        }
+        Put("pathOvershootFt", overshoot, "0.0");
+
+        // The largest climb the cue asked for on final, above the flare (negative: it always asked for a descent).
+        var onFinal = _samples.Where(s => s.Phase == "Final" && s.TargetDescentDeg.HasValue).ToList();
+        Put("maxTargetClimbDeg", hasMode && onFinal.Count > 0 ? onFinal.Max(s => -s.TargetDescentDeg!.Value) : null, "0.00");
+
+        int Count(string start) => speech.Count(l => l.Text.StartsWith(start, StringComparison.Ordinal));
+        double? FirstAlong(string start) => speech.Where(l => l.Text.StartsWith(start, StringComparison.Ordinal))
+            .Select(l => _samples.Where(s => s.T >= l.T).Select(s => (double?)s.Along).FirstOrDefault()
+                         ?? (_samples.Count > 0 ? _samples[^1].Along : null))
+            .FirstOrDefault();
+        Put("tooHighCalls", Count(TooHigh), "0");
+        Put("tooLowCalls", Count(TooLow), "0");
+        Put("highAtFinalCalls", Count(HighAtFinal), "0");
+        Put("firstTooHighAlongNm", FirstAlong(TooHigh), "0.00");
+        Put("firstTooLowAlongNm", FirstAlong(TooLow), "0.00");
+
+        // A scripted descent's level-off (the script handing back to the tones) to the first Hold.
+        double? levelOffAt = _sc.Descent != null
+            ? _samples.Where(s => !s.ScriptedPitch).Select(s => (double?)s.T).FirstOrDefault() : null;
+        double? firstHold = _samples.Where(s => s.VerticalMode == "Hold").Select(s => (double?)s.T).FirstOrDefault();
+        Put("holdEngageS", hasMode && levelOffAt is double lo && firstHold is double fh ? fh - lo : null, "0.0");
+
+        // Each hold against the altitude it began at; a hold ending in Follow is a break.
+        double? drift = null, holdRef = null;
+        int breaks = 0;
+        for (int i = 0; i < _samples.Count; i++)
+        {
+            var s = _samples[i];
+            if (s.VerticalMode == "Hold")
+            {
+                holdRef ??= s.AltMslFt;
+                drift = Math.Max(drift ?? 0, Math.Abs(s.AltMslFt - holdRef.Value));
+            }
+            else
+            {
+                if (holdRef != null && s.VerticalMode == "Follow") breaks++;
+                holdRef = null;
+            }
+        }
+        Put("holdDriftMaxFt", hasMode ? drift : null, "0.0");
+        Put("holdBreaks", hasMode ? breaks : null, "0");
     }
 
     // Joining final (visual guidance stage 4). The keys that need the app's decision are NA against an

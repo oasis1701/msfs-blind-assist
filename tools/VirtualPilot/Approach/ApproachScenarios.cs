@@ -13,14 +13,16 @@ namespace VirtualPilot.Approach;
 /// pilot steers the bank by the callouts alone (<see cref="TonePilot"/>). <paramref name="StartBankDeg"/>
 /// (right positive) starts the aircraft banked; <paramref name="Turns"/> script a pilot obeying ATC
 /// (<see cref="ApproachScriptedTurns"/>); <paramref name="StartLevel"/> starts a course-parallel start
-/// level instead of on the glide path's angle.
+/// level instead of on the glide path's angle. <paramref name="Descent"/> scripts a pilot obeying ATC's
+/// "descend and maintain" (<see cref="ApproachVerticalScript"/>), and the run starts on its descent.
 /// </summary>
 sealed record ApproachScenario(string Name, ApproachRunway Runway, ApproachAircraftKind Kind, double AlongNm, double CrossNm,
     double HeadingRelDeg, double HeightOffsetFt, double WindFromRelDeg, double WindKt, int Fps, double ReactionDelayS,
     double? PitchStepAtS, double? TasKt, bool SensorNoise = false, double GustBankDeg = 0, bool BankBySpeech = false,
-    double StartBankDeg = 0, IReadOnlyList<(double AtS, double ToRelHeadingDeg)>? Turns = null, bool StartLevel = false);
+    double StartBankDeg = 0, IReadOnlyList<(double AtS, double ToRelHeadingDeg)>? Turns = null, bool StartLevel = false,
+    ApproachVerticalScript? Descent = null);
 
-/// <summary>The scenario matrix: 203 approaches in fifteen families (docs/virtual-pilot.md, "Approaches").</summary>
+/// <summary>The scenario matrix: 223 approaches in nineteen families (docs/virtual-pilot.md, "Approaches").</summary>
 static class ApproachScenarios
 {
     private static readonly double[] Delays = { 0.5, 1.0 };
@@ -128,7 +130,53 @@ static class ApproachScenarios
                         with { GustBankDeg = g, BankBySpeech = bySpeech });
 
         AddJoiningFamilies(list, kinds);
+        AddVerticalFamilies(list);
         return list;
+    }
+
+    // The vertical path (visual guidance stage 5): finals that start high or low, joins after ATC's
+    // "descend and maintain", and a vectoring start well above the path. Runway A, the 0.5 s pilot.
+    private static void AddVerticalFamilies(List<ApproachScenario> list)
+    {
+        var a = ApproachRunways.A;
+        const double d = 0.5;
+        static double Sign(char side) => side == 'R' ? 1 : -1;
+        var jet = ApproachAircraftKind.Jet;
+        var light = ApproachAircraftKind.Light;
+
+        // On the centreline and the course, at that distance and that far off the path, already
+        // descending at the path's angle. "Too high" is due on a4 (jet) and a2 (light), "Too low" on
+        // a3-h-400 (jet) and a1.5 (light), neither on the others.
+        foreach (var (k, along, height) in new[]
+                 {
+                     (jet, 8.0, 600.0), (jet, 4.0, 600.0), (jet, 3.0, -400.0), (jet, 6.0, -250.0),
+                     (light, 4.0, 300.0), (light, 2.0, 400.0), (light, 1.5, -150.0), (light, 3.0, -100.0),
+                 })
+            list.Add(new($"VERT-A-{KindName(k)}-a{Inv(along, "0.##")}-h{Inv(height, "+0;-0")}", a, k, along, 0, 0, height,
+                0, 0, 30, d, null, null));
+
+        // ATC's "descend and maintain" on the 30° intercept: the jet 1,000 ft above the path, the light
+        // aircraft 500, descending to a level near the path at the join (DESC) or well above it (DESCHIGH).
+        foreach (var k in new[] { jet, light })
+            foreach (char side in new[] { 'L', 'R' })
+            {
+                bool isJet = k == jet;
+                var (along, offset) = InterceptStart(k);
+                double s = Sign(side);
+                double above = isJet ? 1000 : 500, vs = isJet ? -1500 : -700;
+                foreach (var (family, levelAt) in new[] { ("DESC", isJet ? 2500.0 : 1300.0), ("DESCHIGH", isJet ? 3500.0 : 1900.0) })
+                    list.Add(new ApproachScenario($"{family}-A-{KindName(k)}-{side}", a, k, along, s * offset, -s * 30, above,
+                        0, 0, 30, d, null, null) with { Descent = new ApproachVerticalScript(vs, levelAt) });
+            }
+
+        // The vectoring start flying parallel inbound, level, the jet 1,000 ft and the light aircraft 400 ft above the path.
+        foreach (var k in new[] { jet, light })
+            foreach (char side in new[] { 'L', 'R' })
+            {
+                bool isJet = k == jet;
+                list.Add(new ApproachScenario($"VECHIGH-A-{KindName(k)}-{side}-par", a, k, isJet ? 10.0 : 5.0,
+                    Sign(side) * (isJet ? 2.0 : 1.0), 0, isJet ? 1000 : 400, 0, 0, 30, d, null, null) with { StartLevel = true });
+            }
     }
 
     // Joining final (visual guidance stage 4): positions BA must vector from, the far side of the

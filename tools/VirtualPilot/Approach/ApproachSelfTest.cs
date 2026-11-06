@@ -46,6 +46,9 @@ static class ApproachSelfTest
             ("scripted-turn", ScriptedTurnCheck),
             ("start-bank", StartBankCheck),
             ("join-keys", JoinKeysCheck),
+            ("vertical-script-levels-off", VerticalScriptLevelsOffCheck),
+            ("vert-start-height", VertStartHeightCheck),
+            ("vertical-measures-follow-the-hooks", VerticalMeasuresFollowTheHooksCheck),
         };
 
         int failures = 0;
@@ -294,7 +297,7 @@ static class ApproachSelfTest
     {
         var all = ApproachScenarios.All();
         int unique = all.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count();
-        return all.Count == 203 && unique == 203 ? null : $"{all.Count} scenarios, {unique} unique names; expected 203";
+        return all.Count == 223 && unique == 223 ? null : $"{all.Count} scenarios, {unique} unique names; expected 223";
     }
 
     // A gust rolls the aircraft; the pilot, holding wings level against a level command, only learns
@@ -592,6 +595,95 @@ static class ApproachSelfTest
             string line = ApproachRunner.RunOne(Scenario(name), trace: null).ToResultsLine(name);
             foreach (string key in JoinKeys)
                 if (!line.Contains("|" + key + "=", StringComparison.Ordinal)) problems.Add($"{name} has no {key}");
+        }
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // ── The vertical path (stage 5) ───────────────────────────────────────────────────────
+
+    // A pilot obeying "descend and maintain 2,500" (the jet DESC start), with the tones sitting on
+    // the aircraft's own pitch, levels within 60 ft of 2,500 ft above the threshold, never sags
+    // more than 60 ft below it, hands back to the tones, and then stays within 20 ft for 10 s.
+    private static string? VerticalScriptLevelsOffCheck()
+    {
+        var sc = Scenario("DESC-A-JET-R");
+        if (sc.Descent is not ApproachVerticalScript descent) return "DESC-A-JET-R has no descent script";
+        var rwy = sc.Runway;
+        var spec = ApproachAircraftSpecs.For(ApproachAircraftKind.Jet);
+        var profile = ApproachRunner.ProfileFor(sc);
+        var (lat, lon) = ApproachRunways.PointOnApproach(rwy, sc.AlongNm, sc.CrossNm);
+        double alt = ApproachRunways.PathMslFt(rwy, sc.AlongNm, profile) + sc.HeightOffsetFt;
+        double gamma = Math.Asin(descent.VsFpm / (spec.TasKt * 101.269)) * 180 / Math.PI;
+        var ac = new ApproachAircraft(ApproachAircraftKind.Jet, rwy, lat, lon, alt,
+            ApproachRunways.LocalCourse(rwy, lat, lon) + sc.HeadingRelDeg, 0, 0, null, gamma);
+        var pilot = JetPilot(0.5, 0, ac.PitchDeg);
+        var run = descent.Start();
+        double? handedBackAt = null, handedBackAgl = null;
+        double lowest = double.MaxValue, driftAfter = 0;
+        for (int i = 0; i < 30 * 300; i++)
+        {
+            double t = i * PilotDt;
+            double? scripted = run.PitchFor(t, ac.AglFt, ac.VsFpm, spec.AlphaTrimDeg, spec.TasKt, spec.TauGammaS);
+            if (scripted == null && handedBackAt == null) { handedBackAt = t; handedBackAgl = ac.AglFt; }
+            lowest = Math.Min(lowest, ac.AglFt);
+            if (handedBackAgl is double h) driftAfter = Math.Max(driftAfter, Math.Abs(ac.AglFt - h));
+            var (bank, pitch) = pilot.Step(t, PilotDt, 0, ac.PitchDeg, NoSpeech, null, scripted);
+            ac.Step(PilotDt, bank, pitch);
+            if (handedBackAt is double d && t >= d + 10) break;
+        }
+        if (handedBackAt is not double back || handedBackAgl is not double level) return $"the script never handed back (lowest {F(lowest)} ft)";
+        var problems = new List<string>();
+        if (Math.Abs(level - descent.LevelAtFt) > 60) problems.Add($"handed back at {F(level)} ft, expected {F(descent.LevelAtFt)} ±60");
+        if (lowest < descent.LevelAtFt - 60) problems.Add($"sagged to {F(lowest)} ft, more than 60 below {F(descent.LevelAtFt)}");
+        if (driftAfter > 20) problems.Add($"drifted {F(driftAfter)} ft in the 10 s after {F(back)} s, expected within 20");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // Each VERT start's datum is the path's height at the distance its name gives (with the
+    // profile's glidepath bias) plus the offset its name gives, ±1 ft.
+    private static string? VertStartHeightCheck()
+    {
+        var rx = new System.Text.RegularExpressions.Regex(@"-a([0-9.]+)-h([+-][0-9]+)$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        var vert = ApproachScenarios.All().Where(s => s.Name.StartsWith("VERT-", StringComparison.Ordinal)).ToList();
+        if (vert.Count != 8) return $"{vert.Count} VERT scenarios, expected 8";
+        var problems = new List<string>();
+        foreach (var sc in vert)
+        {
+            var m = rx.Match(sc.Name);
+            if (!m.Success) { problems.Add($"{sc.Name}: no distance and height in the name"); continue; }
+            double along = double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
+            double offset = double.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
+            double expected = sc.Runway.Runway.ThresholdElevation + along * 6076.12 * Math.Tan(3.0 * Math.PI / 180)
+                + new MSFSBlindAssist.Aircraft.VisualGuidanceProfile().GlideslopeAltitudeBiasFt + offset;
+            VgSimFrame? first = null;
+            ApproachRunner.RunOne(sc, trace: null, onFeed: f => first ??= f);
+            if (first is not VgSimFrame f0) { problems.Add($"{sc.Name}: no frame fed"); continue; }
+            if (Math.Abs(f0.AltMslFt - expected) > 1) problems.Add($"{sc.Name} starts at {F(f0.AltMslFt)} ft, expected {F(expected)} ±1");
+        }
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // The vertical keys that need the app's vertical mode read NA against an app without one
+    // (stage 4 and before), and numbers once it has one (stage 5). holdEngageS is a number exactly
+    // when the run held an altitude (holdDriftMaxFt a number).
+    private static string? VerticalMeasuresFollowTheHooksCheck()
+    {
+        string Field(string line, string key) => line.Split('|').FirstOrDefault(f => f.StartsWith(key + "=", StringComparison.Ordinal))?[(key.Length + 1)..] ?? "missing";
+        bool IsNum(string v) => double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+        const string name = "DESC-A-JET-R";
+        string line = ApproachRunner.RunOne(Scenario(name), trace: null).ToResultsLine(name);
+        var problems = new List<string>();
+        if (ApproachRunner.VerticalModeHook == null)
+        {
+            foreach (string key in new[] { "holdEngageS", "maxTargetClimbDeg", "holdDriftMaxFt", "holdBreaks" })
+                if (Field(line, key) != "NA") problems.Add($"{key}={Field(line, key)} against an app without a vertical mode, expected NA");
+        }
+        else
+        {
+            foreach (string key in new[] { "maxTargetClimbDeg", "holdBreaks" })
+                if (!IsNum(Field(line, key))) problems.Add($"{key}={Field(line, key)}, expected a number");
+            if (IsNum(Field(line, "holdEngageS")) != IsNum(Field(line, "holdDriftMaxFt")))
+                problems.Add($"holdEngageS={Field(line, "holdEngageS")} but holdDriftMaxFt={Field(line, "holdDriftMaxFt")}");
         }
         return problems.Count == 0 ? null : string.Join("; ", problems);
     }
