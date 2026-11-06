@@ -65,13 +65,30 @@ public class FenixChannelFmaAnnouncerTests
     [Fact]
     public void Two_changes_inside_the_settle_are_one_announcement()
     {
+        // The second part restarts the settle: the change is spoken once the reading it ends in has held 300 ms.
         var a = new FenixChannelFmaAnnouncer();
         Sample(a, Blank(), -100);
         Assert.Null(Sample(a, Slots((0, "gTHR CLB")), 0));
         Assert.Null(Sample(a, Slots((0, "gTHR CLB"), (1, "gCLB")), 200));
+        Assert.Null(Sample(a, Slots((0, "gTHR CLB"), (1, "gCLB")), 300));
+        Assert.Null(Sample(a, Slots((0, "gTHR CLB"), (1, "gCLB")), 499));
         Assert.Equal("FMA: Thrust: THR CLB, green; Vertical: CLB, green",
-            Sample(a, Slots((0, "gTHR CLB"), (1, "gCLB")), 300));
-        Assert.Null(Sample(a, Slots((0, "gTHR CLB"), (1, "gCLB")), 600));
+            Sample(a, Slots((0, "gTHR CLB"), (1, "gCLB")), 500));
+        Assert.Null(Sample(a, Slots((0, "gTHR CLB"), (1, "gCLB")), 800));
+    }
+
+    [Fact]
+    public void A_reading_that_passes_inside_the_settle_is_never_spoken()
+    {
+        // ALT* to ALT to ALT CST 250 ms later, then back to ALT: ALT CST held only 50 ms when 300 ms had passed since the
+        // first change, so it is not spoken; ALT is, once it has held the whole settle.
+        var a = new FenixChannelFmaAnnouncer();
+        Sample(a, Slots((1, "gALT*")), 0);
+        Assert.Null(Sample(a, Slots((1, "gALT")), 1000));
+        Assert.Null(Sample(a, Slots((1, "gALT CST")), 1250));
+        Assert.Null(Sample(a, Slots((1, "gALT")), 1300));
+        Assert.Null(Sample(a, Slots((1, "gALT")), 1599));
+        Assert.Equal("FMA: Vertical: ALT, green", Sample(a, Slots((1, "gALT")), 1600));
     }
 
     [Fact]
@@ -85,14 +102,15 @@ public class FenixChannelFmaAnnouncerTests
         Assert.Null(Sample(a, Slots(false, (2, "gLOC*")), 11_300));
         Assert.Null(Sample(a, Slots(false, (2, "gLOC*")), 12_000));
 
-        // Two pushes, row 2 clearing first.
+        // Two pushes, row 2 clearing first: the second starts the settle over, so LOC* is heard 300 ms after it came.
         var b = new FenixChannelFmaAnnouncer();
         Sample(b, Slots((2, "gNAV"), (7, "cLOC")), 0);
         Assert.Null(Sample(b, Slots((2, "gNAV")), 1000));
         Assert.Null(Sample(b, Slots(true, (2, "gLOC*")), 1100));
-        Assert.Null(Sample(b, Slots(true, (2, "gLOC*")), 1299));
-        Assert.Equal("FMA: Lateral: LOC*, green", Sample(b, Slots(true, (2, "gLOC*")), 1300));
-        Assert.Null(Sample(b, Slots(false, (2, "gLOC*")), 11_300));
+        Assert.Null(Sample(b, Slots(true, (2, "gLOC*")), 1300));
+        Assert.Null(Sample(b, Slots(true, (2, "gLOC*")), 1399));
+        Assert.Equal("FMA: Lateral: LOC*, green", Sample(b, Slots(true, (2, "gLOC*")), 1400));
+        Assert.Null(Sample(b, Slots(false, (2, "gLOC*")), 11_400));
         Assert.Null(Sample(b, Slots(false, (2, "gLOC*")), 12_000));
     }
 

@@ -4,17 +4,18 @@ namespace MSFSBlindAssist.Services;
 /// Decides when a change of the Fenix FMA is heard: a pure state machine with the clock passed in. What it compares is
 /// <see cref="FenixFmaReading"/>, the FMA as the pilot would hear it, so the change box and the flash letters never make
 /// a change. The first trusted reading after a start, a trust gap or a reconnect is the silent baseline; a change is
-/// spoken once it has held <see cref="SettleMs"/> from the first sample that differed; a change that reverts inside the
-/// settle says nothing; a muted announcer keeps tracking and speaks nothing. Not thread-safe: the host's UI-thread timer
-/// is its one caller.
+/// spoken once the reading it changed to has held <see cref="SettleMs"/> without a break (<see cref="FenixChannelSettle{T}"/>):
+/// a reading that moves on inside the settle starts it over, so a change through a passing reading speaks only the one
+/// that held; a change that reverts inside the settle says nothing; a muted announcer keeps tracking and speaks nothing.
+/// Not thread-safe: the host's UI-thread timer is its one caller.
 /// </summary>
 internal sealed class FenixChannelFmaAnnouncer
 {
     public const long SettleMs = 300;
 
+    private readonly FenixChannelSettle<FenixFmaReading> _settle = new(SettleMs);
     private FenixFmaReading? _baseline;
     private int _connection;
-    private long? _changeSince;
 
     /// <summary>The text to speak now, or null.</summary>
     public string? Sample(FenixDisplayVerdict verdict, IReadOnlyList<FenixFmaSlot>? slots, int connection, long nowMs, bool muted)
@@ -38,22 +39,20 @@ internal sealed class FenixChannelFmaAnnouncer
 
         if (reading.Equals(_baseline))
         {
-            _changeSince = null;
+            _settle.Clear();
             return null;
         }
 
-        _changeSince ??= nowMs;
-        if (nowMs - _changeSince.Value < SettleMs) return null;
+        if (!_settle.Held(reading, nowMs)) return null;
 
         string? text = FenixChannelFmaSpeech.Change(_baseline, reading);
         _baseline = reading;
-        _changeSince = null;
         return muted ? null : text;
     }
 
     private void Forget()
     {
         _baseline = null;
-        _changeSince = null;
+        _settle.Clear();
     }
 }

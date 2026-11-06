@@ -19,7 +19,8 @@ namespace MSFSBlindAssist.Services;
 /// the problem or the new connection is not itself the baseline: the next ok screen is. What was remembered before the
 /// baseline is forgotten with it, and the total of messages (below) is taken afresh.</para>
 /// <para>After the baseline an identity counts once it has stayed on the screen <see cref="SettleMs"/> without a break, the
-/// settle the FMA announcements use, so a screen that is still being drawn is not called. When it counts it is
+/// settle the FMA announcements use (<see cref="FenixChannelSettle{T}"/>, which the total's hold below uses too), so a
+/// screen that is still being drawn is not called. When it counts it is
 /// remembered, up to <see cref="SeenCapacity"/> of them (the oldest dropped), and an identity already remembered never
 /// counts again: stepping back to an earlier message is silent. Remembering does not depend on being heard, so a
 /// message that was not called is never called later.</para>
@@ -74,18 +75,13 @@ internal sealed class FenixChannelDcduAnnouncer
     // Whether the baseline has been taken: false at the start and after a problem or a reconnect.
     private bool _baselined;
 
-    // The identity on the screen that has not yet counted, since when it has been there, and whether the DCDU was muted at
-    // any sample of that stretch.
-    private string? _candidate;
-    private long _candidateSinceMs;
-    private bool _candidateMuted;
+    // The hold of the identity on the screen that has not yet counted, which also notes whether the DCDU was muted at any
+    // sample of it.
+    private readonly FenixChannelSettle<string> _identitySettle = new(SettleMs, StringComparer.Ordinal);
 
-    // The total that has held the settle (taken at the baseline), and the total on the screen that has not yet, since when
-    // it has been there and whether the DCDU was muted at any sample of that stretch.
+    // The total that has held the settle (taken at the baseline), and the hold of a total on the screen that has not yet.
     private int _total;
-    private int? _totalCandidate;
-    private long _totalCandidateSinceMs;
-    private bool _totalCandidateMuted;
+    private readonly FenixChannelSettle<int> _totalSettle = new(SettleMs);
 
     // NoteOwnPress has been called since the last sample, and the end of the quiet that sample began.
     private bool _ownPressPending;
@@ -121,8 +117,8 @@ internal sealed class FenixChannelDcduAnnouncer
         if (!screen.IsOk || reconnected)
         {
             _baselined = false;
-            _candidate = null;
-            _totalCandidate = null;
+            _identitySettle.Clear();
+            _totalSettle.Clear();
             return null;
         }
 
@@ -202,26 +198,16 @@ internal sealed class FenixChannelDcduAnnouncer
         // Nothing is drawn, or the message is one already counted: no hold to keep.
         if (identity is null || _seen.Contains(identity))
         {
-            _candidate = null;
+            _identitySettle.Clear();
             return null;
         }
 
-        if (identity != _candidate)
-        {
-            _candidate = identity;
-            _candidateSinceMs = nowMs;
-            _candidateMuted = muted;
-            return null;
-        }
-
-        _candidateMuted |= muted;
-        if (nowMs - _candidateSinceMs < SettleMs) return null;
+        if (!_identitySettle.Held(identity, nowMs, muted)) return null;
 
         // It counts: remembered whether or not it is called.
         Remember(identity);
-        _candidate = null;
 
-        if (_candidateMuted || nowMs < _quietUntilMs) return null;
+        if (_identitySettle.HeldMuted || nowMs < _quietUntilMs) return null;
 
         return CallText(screen);
     }
@@ -234,27 +220,17 @@ internal sealed class FenixChannelDcduAnnouncer
     {
         if (total == _total)
         {
-            _totalCandidate = null;
+            _totalSettle.Clear();
             return null;
         }
 
-        if (total != _totalCandidate)
-        {
-            _totalCandidate = total;
-            _totalCandidateSinceMs = nowMs;
-            _totalCandidateMuted = muted;
-            return null;
-        }
-
-        _totalCandidateMuted |= muted;
-        if (nowMs - _totalCandidateSinceMs < SettleMs) return null;
+        if (!_totalSettle.Held(total, nowMs, muted)) return null;
 
         int previous = _total;
         _total = total;
-        _totalCandidate = null;
 
         // A rise to one is a message arriving on an empty DCDU, which its call announces; only two or more are a count.
-        return total > previous && total > 1 && !_totalCandidateMuted ? total : null;
+        return total > previous && total > 1 && !_totalSettle.HeldMuted ? total : null;
     }
 
     // The counter's total, or null when the screen has no counter that reads. The Fenix draws the counter at the first column of
