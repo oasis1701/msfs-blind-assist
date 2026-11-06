@@ -26,6 +26,9 @@ sealed class ApproachMetrics
     // Stage 5's spoken lines the vertical measures count.
     private const string TooHigh = "Too high", TooLow = "Too low", HighAtFinal = "You'll be";
 
+    // Stage 6's: the flare's one word, matched exactly.
+    private const string FlareLine = "Flare";
+
     // Stage 4's spoken lines the joining measures time.
     private const string TurnOntoFinal = "Turn onto final", Countdown30 = "Turn onto final in 30 seconds",
         Countdown15 = "Turn onto final in 15 seconds", NotCrossing = "Heading does not cross final";
@@ -131,6 +134,29 @@ sealed class ApproachMetrics
 
         PutJoining(establishedAt, speech);
         PutVertical(establishedAt, speech);
+        PutFlare(speech);
+    }
+
+    // The flare (visual guidance stage 6). Wheel heights are the datum's height less the profile's
+    // FlareAltitudeBiasFt, as visual guidance computes them. maxFlareClimbDeg needs the app's target
+    // descent and is NA against an app without one; the others are measured on any app.
+    private void PutFlare(IReadOnlyList<(double T, string Text, bool Immediate)> speech)
+    {
+        bool hasMode = _samples.Count > 0 && _samples[0].VerticalMode != null;
+        var flare = _samples.Where(s => s.Phase == "Flare").ToList();
+        Put("flareStartWheelFt", flare.Count > 0 ? flare[0].AglFt - _profile.FlareAltitudeBiasFt : null, "0.0");
+        double? callAt = speech.Where(l => l.Text == FlareLine).Select(l => (double?)l.T).FirstOrDefault();
+        double? callWheel = null;
+        if (callAt is double c && _samples.Count > 0)
+        {
+            var at = _samples.FirstOrDefault(s => s.T >= c);
+            callWheel = (at.T >= c ? at.AglFt : _samples[^1].AglFt) - _profile.FlareAltitudeBiasFt;
+        }
+        Put("flareCallWheelFt", callWheel, "0.0");
+        Put("flareCalls", speech.Count(l => l.Text == FlareLine), "0");
+        // The largest climb the flare's cue asked for (negative: it always asked for a descent).
+        var withTarget = flare.Where(s => s.TargetDescentDeg.HasValue).ToList();
+        Put("maxFlareClimbDeg", hasMode && withTarget.Count > 0 ? withTarget.Max(s => -s.TargetDescentDeg!.Value) : null, "0.00");
     }
 
     // The vertical path (visual guidance stage 5). The keys that need the app's vertical mode are NA

@@ -49,6 +49,7 @@ static class ApproachSelfTest
             ("vertical-script-levels-off", VerticalScriptLevelsOffCheck),
             ("vert-start-height", VertStartHeightCheck),
             ("vertical-measures-follow-the-hooks", VerticalMeasuresFollowTheHooksCheck),
+            ("light-flare-height", LightFlareHeightCheck),
         };
 
         int failures = 0;
@@ -666,7 +667,9 @@ static class ApproachSelfTest
 
     // The vertical keys that need the app's vertical mode read NA against an app without one
     // (stage 4 and before), and numbers once it has one (stage 5). holdEngageS is a number exactly
-    // when the run held an altitude (holdDriftMaxFt a number).
+    // when the run held an altitude (holdDriftMaxFt a number). The flare's (stage 6): this run lands,
+    // so flareStartWheelFt is a number on any app, maxFlareClimbDeg is one exactly when it is and
+    // the app has the hook, and flareCalls is always a count.
     private static string? VerticalMeasuresFollowTheHooksCheck()
     {
         string Field(string line, string key) => line.Split('|').FirstOrDefault(f => f.StartsWith(key + "=", StringComparison.Ordinal))?[(key.Length + 1)..] ?? "missing";
@@ -676,7 +679,7 @@ static class ApproachSelfTest
         var problems = new List<string>();
         if (ApproachRunner.VerticalModeHook == null)
         {
-            foreach (string key in new[] { "holdEngageS", "maxTargetClimbDeg", "holdDriftMaxFt", "holdBreaks" })
+            foreach (string key in new[] { "holdEngageS", "maxTargetClimbDeg", "holdDriftMaxFt", "holdBreaks", "maxFlareClimbDeg" })
                 if (Field(line, key) != "NA") problems.Add($"{key}={Field(line, key)} against an app without a vertical mode, expected NA");
         }
         else
@@ -685,7 +688,27 @@ static class ApproachSelfTest
                 if (!IsNum(Field(line, key))) problems.Add($"{key}={Field(line, key)}, expected a number");
             if (IsNum(Field(line, "holdEngageS")) != IsNum(Field(line, "holdDriftMaxFt")))
                 problems.Add($"holdEngageS={Field(line, "holdEngageS")} but holdDriftMaxFt={Field(line, "holdDriftMaxFt")}");
+            if (IsNum(Field(line, "maxFlareClimbDeg")) != IsNum(Field(line, "flareStartWheelFt")))
+                problems.Add($"maxFlareClimbDeg={Field(line, "maxFlareClimbDeg")} but flareStartWheelFt={Field(line, "flareStartWheelFt")}");
         }
+        if (!IsNum(Field(line, "flareStartWheelFt"))) problems.Add($"flareStartWheelFt={Field(line, "flareStartWheelFt")} on a landing, expected a number");
+        if (Field(line, "flareCallWheelFt") == "missing") problems.Add("no flareCallWheelFt");
+        if (!IsNum(Field(line, "flareCalls"))) problems.Add($"flareCalls={Field(line, "flareCalls")}, expected a count");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // The light runs flare at a light aircraft's height (a C172 rounds out at about 5 to 15 ft, by
+    // eye); the jets keep the A320 default profile's.
+    private static string? LightFlareHeightCheck()
+    {
+        var light = ApproachScenarios.All().First(s => s.Kind == ApproachAircraftKind.Light);
+        var jet = ApproachScenarios.All().First(s => s.Kind == ApproachAircraftKind.Jet);
+        double lightFt = ApproachRunner.ProfileFor(light).FlareTriggerWheelHeightFt;
+        double jetFt = ApproachRunner.ProfileFor(jet).FlareTriggerWheelHeightFt;
+        double defaultFt = new MSFSBlindAssist.Aircraft.VisualGuidanceProfile().FlareTriggerWheelHeightFt;
+        var problems = new List<string>();
+        if (lightFt != 10.0) problems.Add($"{light.Name} flares at {F(lightFt)} ft, expected 10");
+        if (jetFt != defaultFt) problems.Add($"{jet.Name} flares at {F(jetFt)} ft, expected the profile's {F(defaultFt)}");
         return problems.Count == 0 ? null : string.Join("; ", problems);
     }
 }

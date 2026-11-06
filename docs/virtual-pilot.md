@@ -210,7 +210,9 @@ descend-and-maintain start is on its scripted descent; the others start level. U
 and 1.0 s. The light runs fly with a minimum final (`MinimumFinalNm`) of 1.0 nm, the circuit-sized
 final the redesign's spec gives light aircraft, and a stable gate (`StableGateFt`) of 300 ft above the
 threshold, the light aircraft's gate the owner chose on 2026-11-06, each set by reflection where the
-app has the field.
+app has the field, and a flare height (`FlareTriggerWheelHeightFt`) of 10 ft of wheel height, since a
+light aircraft rounds out at about 5 to 15 ft (stage 6; the field is as old as the profile, so it is
+set directly). The jets keep the A320 default's 30 ft.
 
 | family | name pattern | start | count |
 |---|---|---|---|
@@ -292,13 +294,18 @@ culture, `NA` where a measure does not apply.
 | `holdEngageS` | descend-and-maintain runs only: from the scripted level-off (the script handing back to the tones) to the first update in the vertical mode `Hold` (negative if the hold came first) |
 | `holdDriftMaxFt` | the largest change of altitude while in `Hold`, from the altitude where each hold began |
 | `holdBreaks` | how many times `Hold` gave way to `Follow` |
+| `flareStartWheelFt` | the wheel height (the datum's height less the profile's `FlareAltitudeBiasFt`) at the first update in the phase `Flare`; `NA` when the run never flares |
+| `flareCallWheelFt` | the wheel height when "Flare" was first spoken; `NA` when it never was |
+| `flareCalls` | how many lines exactly "Flare" were spoken |
+| `maxFlareClimbDeg` | the largest climb angle the vertical cue asked for (− its `TargetDescentForHarness`) while the phase is `Flare`; negative when it always asked for a descent; `NA` when the run never flares |
 
 The joining keys are on every line, a value or `NA`. Against an app without a decision (before stage 4
 of the redesign) every one of them is `NA` except `establishedAlongNm` and `maxBankCmdDeg`; on a
 stage-4 app a timing key is `NA` when its line was not spoken. The vertical keys are on every line
-too. `maxTargetClimbDeg`, `holdEngageS`, `holdDriftMaxFt` and `holdBreaks` need the app's vertical mode
-(`VerticalModeForHarness` and `TargetDescentForHarness`, read by reflection) and are `NA` against an app
-without it (before stage 5); the others are measured on any app.
+too. `maxTargetClimbDeg`, `holdEngageS`, `holdDriftMaxFt`, `holdBreaks` and `maxFlareClimbDeg` need the
+app's vertical mode (`VerticalModeForHarness` and `TargetDescentForHarness`, read by reflection) and are
+`NA` against an app without it (before stage 5); the others are measured on any app. On a stage-5 app
+`maxFlareClimbDeg` reads the target the cue had before the flare, since the fixed flare pitch sets none.
 
 ### Running and comparing
 
@@ -317,7 +324,7 @@ guidance's capture gain (deg·kt/nm, its `CaptureGainForHarness`) for every run;
 reflection and refuses to run against an app from before stage 4. Stage 4's sweep also had
 `--roll-in S` for a profile field `RollInTimeS`; the sweep picked 0 s and both were removed.
 
-`--selftest` runs 36 checks of the harness itself: turn rate and direction, the 3° descent rate,
+`--selftest` runs 37 checks of the harness itself: turn rate and direction, the 3° descent rate,
 wind drift, the SimConnect signs, the north wrap, the runway geometry, great-circle flight, the
 pilot's delay, roll rate, deadband and saturation, speech timestamps, the frame-rate runs, results
 under a Swedish culture, the matrix size, the step measures, wheel contact, the run ending past the
@@ -332,8 +339,10 @@ scripted turn ending on its heading and the pilot rolling level after it, a star
 visual guidance on the first frame, every results line carrying the ten joining keys, a scripted
 descent levelling within 60 ft of its level and holding it within 20 ft for 10 s once it hands back
 to the tones (with the tones on the aircraft's own pitch), each off-the-path start at the height its
-name gives, and the vertical keys that need the app's vertical mode reading `NA` without it and
-numbers with it. The far-end check also flies a far-side start, which must not end where it starts. The
+name gives, the vertical keys that need the app's vertical mode reading `NA` without it and
+numbers with it (the flare's too: on a landing `flareStartWheelFt` is a number on any app,
+`maxFlareClimbDeg` one exactly when it is and the app has the hook, `flareCalls` always a count), and
+the light runs flaring at 10 ft while the jets keep the profile's 30 (`light-flare-height`). The far-end check also flies a far-side start, which must not end where it starts. The
 downwind mirror check counts passing the runway's far end and touching down within 100 ft of it as
 the same ending, since which line the last frame crosses first is a coincidence of that frame. `--scenario` runs every scenario
 whose name contains the text. `--trace` prints one scenario every half simulated second (phase,
@@ -352,12 +361,13 @@ minimum final (6.0 nm, 1.0 for a run whose name contains `LIGHT`), `|joinPathErr
 `pathOvershootFt` rises by more than 30 ft, or `holdDriftMaxFt` by 20 % and 20 ft. Better is the mirror
 of each, except that a sign change of `selfFeedback10s` is always worse when the new value is more than
 0.1 from zero; within 0.1 it is noise, since the vertical path (stage 5) aims at near zero. A cue that
-asks for a climb on final (`maxTargetClimbDeg` above 0.05, "asks for a climb") is worse whatever it was
-before, even `NA`. A third list, `CHANGED`, has the moves with no single right direction: the
+asks for a climb on final (`maxTargetClimbDeg` above 0.05, "asks for a climb") or in the flare
+(`maxFlareClimbDeg` above 0.05, "flare asks for a climb") is worse whatever it was before, even `NA`.
+A third list, `CHANGED`, has the moves with no single right direction: the
 touchdown point moving more than 300 ft along the runway, the end reason changing between two
-outcomes neither of which is a touchdown, `decided` changing, the counts of "Too high", "Too low" and
-"You'll be" changing, the first of each moving more than 0.1 nm, and `holdEngageS` moving more than
-0.5 s. The harness is deterministic: two runs of one build compare as `BETTER {}`, `WORSE {}`
+outcomes neither of which is a touchdown, `decided` changing, the counts of "Too high", "Too low",
+"You'll be" and "Flare" changing, the first of each warning moving more than 0.1 nm, and `holdEngageS`
+moving more than 0.5 s. The harness is deterministic: two runs of one build compare as `BETTER {}`, `WORSE {}`
 and `CHANGED {}`.
 
 ### Flight recordings
@@ -1037,6 +1047,30 @@ under while cutting in close stayed there, joined 70 ft low and heard "Too low")
 the path at the straight-line distance (higher than the final approach's beside final, so aircraft
 joined lower). A to K pass, 40 accepted. Aircraft vectored from above still join from below (VECHIGH −79,
 DW and FAR jets −220).
+
+### Stage 6: the flare (2026-11-06)
+
+The flare starts by time to touchdown, with the aircraft's flare height as the backstop, and the pitch
+tone asks for a descent rate easing to 150 fpm at touchdown instead of a fixed nose-up attitude. The
+harness changed first, so both baselines were flown before the app did:
+
+- The light runs' flare height (10 ft of wheel height) and four flare keys, `flareStartWheelFt`,
+  `flareCallWheelFt`, `flareCalls` and `maxFlareClimbDeg` (see "Scenarios", "Measures" and "Running and
+  comparing" above); the self-test has 37 checks.
+- `approach_stage5_h6`: the stage-5 app at afd1c9c15 with the stage-6 harness. Against
+  `approach_stage5_onpath`, with the four new keys left out, the 116 jet lines are textually identical. The
+  110 light runs that floated past the runway's end in the fixed 6° flare from 30 ft now flare at 10 ft
+  and touch down (median 237 fpm, at most 413; median 979 ft past the threshold, the farthest 10,397);
+  their `bankCalloutsPerMin` reads higher only because the runs are shorter. The jets touch down at a
+  median 384 fpm (at most 1,043) and 1,151 ft past the threshold; 4 float past the far end.
+- `approach_baseline_v7`: the stage-1 app (`D:\MSFSBA-vgbase`, c2d7510df) with the stage-6 harness copied
+  in. Against `approach_baseline_v6` the jet lines differ only in `pathOvershootFt` (0 to `NA` on 10 runs:
+  the stage-5 checkpoint's harness fix, flown after v6) and in the four VECWIDE starts, new since v6. The
+  light runs change with the 10 ft flare: 50 touch down (19 before), 55 end off the runway, 4 float past
+  the end. The `record-hook` check fails against this app, as before.
+
+Stage 6 is checked by `check_stage6.py` (A, L, M, N, O) against `approach_stage5_h6`. On the stage-5 app
+itself L fails 125 times and M 17: the jets' fixed flare lands firmer than 300 fpm or long.
 
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 

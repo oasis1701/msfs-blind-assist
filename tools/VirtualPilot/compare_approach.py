@@ -5,10 +5,11 @@
 Reads the VG| lines `approach` writes and prints BETTER and WORSE counts per measure, with up to six
 examples each, the way compare.py does for landings, then CHANGED: moves with no single right
 direction (the touchdown point along the runway, an end reason changing between two non-touchdown
-outcomes, the first joining decision, the vertical warnings' counts and where they came, when the
-joining hold began). Two runs of the same build print BETTER {}, WORSE {} and CHANGED {}: the harness is
-deterministic. Measures written NA on either side are not compared, except that a cue asking for a
-climb on final (maxTargetClimbDeg above 0.05) is worse even against NA.
+outcomes, the first joining decision, the vertical warnings' and "Flare" counts and where they came,
+when the joining hold began). Two runs of the same build print BETTER {}, WORSE {} and CHANGED {}: the
+harness is deterministic. Measures written NA on either side are not compared, except that a cue
+asking for a climb on final or in the flare (maxTargetClimbDeg or maxFlareClimbDeg above 0.05) is worse
+even against NA.
 """
 import collections
 import sys
@@ -144,17 +145,20 @@ for name in common:
     rise(name, x, y, 'pathOvershootFt', lambda b, a: a - b > 30, lambda b, a: b - a > 30, '{:.0f}')
     # A cue that asks for a climb on final is worse whatever it was before, so it is flagged even
     # against an app that did not report its target (NA before).
-    b, a = num(x, 'maxTargetClimbDeg'), num(y, 'maxTargetClimbDeg')
-    if a is not None and a > 0.05 and not (b is not None and b > 0.05):
-        note(worse, 'asks for a climb', name, ('NA' if b is None else f'{b:.2f}') + f' -> {a:.2f}')
-    elif b is not None and b > 0.05 and a is not None and a <= 0.05:
-        note(better, 'no longer asks for a climb', name, f'{b:.2f} -> {a:.2f}')
+    # The flare's cue (stage 6) the same way.
+    for key, asks, no_longer in (('maxTargetClimbDeg', 'asks for a climb', 'no longer asks for a climb'),
+                                 ('maxFlareClimbDeg', 'flare asks for a climb', 'flare no longer asks for a climb')):
+        b, a = num(x, key), num(y, key)
+        if a is not None and a > 0.05 and not (b is not None and b > 0.05):
+            note(worse, asks, name, ('NA' if b is None else f'{b:.2f}') + f' -> {a:.2f}')
+        elif b is not None and b > 0.05 and a is not None and a <= 0.05:
+            note(better, no_longer, name, f'{b:.2f} -> {a:.2f}')
     # The joining hold's drift up by 20 % and 20 ft.
     rise(name, x, y, 'holdDriftMaxFt',
          lambda b, a: a > b * 1.2 and a - b > 20,
          lambda b, a: a < b / 1.2 and b - a > 20)
     # The warnings and the hold's start have no single right direction: listed for a person to judge.
-    for key in ('tooHighCalls', 'tooLowCalls', 'highAtFinalCalls'):
+    for key in ('tooHighCalls', 'tooLowCalls', 'highAtFinalCalls', 'flareCalls'):
         b, a = num(x, key), num(y, key)
         if b is not None and a is not None and a != b:
             note(changed, key, name, f'{b:.0f} -> {a:.0f}')

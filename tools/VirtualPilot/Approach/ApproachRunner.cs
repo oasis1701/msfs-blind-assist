@@ -165,13 +165,20 @@ static class ApproachRunner
     /// <summary>The airliner gate, where the profile has no <c>StableGateFt</c> (before stage 5).</summary>
     public const double DefaultStableGateFt = 1000.0;
 
+    /// <summary>The light runs' flare height (wheel height, ft): a light aircraft rounds out at about 5 to 15 ft (visual guidance stage 6).</summary>
+    public const double LightFlareWheelFt = 10.0;
+
     /// <summary>--capture-gain, for the whole run; null leaves the app's default.</summary>
     public static double? CaptureGain { get; set; }
 
-    /// <summary>The profile a scenario flies with: the A320 default, with the light runs' minimum final and stable gate.</summary>
+    /// <summary>The profile a scenario flies with: the A320 default, with the light runs' minimum final, stable gate and flare height.</summary>
     public static VisualGuidanceProfile ProfileFor(ApproachScenario sc)
     {
-        var profile = new VisualGuidanceProfile();
+        // FlareTriggerWheelHeightFt is as old as the profile (stage 1 has it), so it is set directly;
+        // the newer fields go by reflection.
+        var profile = sc.Kind == ApproachAircraftKind.Light
+            ? new VisualGuidanceProfile { FlareTriggerWheelHeightFt = LightFlareWheelFt }
+            : new VisualGuidanceProfile();
         if (sc.Kind == ApproachAircraftKind.Light)
         {
             MinimumFinalProperty?.SetValue(profile, LightMinimumFinalNm);
