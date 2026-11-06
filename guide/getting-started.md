@@ -21,6 +21,7 @@ Chapter 2 of 2 in [Part 1: Getting Started](index.md#part-1-getting-started) of 
 - [Choosing Your Aircraft](#gs-aircraft)
 - [The Main Window](#main-window)
 - [Output Mode and Input Mode](#hotkey-modes)
+- [Controller Buttons](#gs-controller-buttons)
 - [The Hotkey List](#gs-hotkey-list)
 - [The Menus](#gs-menus)
 - [The Settings Window](#settings-overview)
@@ -349,7 +350,7 @@ A few keys are not part of either mode:
 
 ### Suspending hotkeys {#suspending-hotkeys}
 
-If another program needs the bracket keys — for example while you type a chat message to ATC — open the **File** menu and choose **Suspend Hotkeys**. BA says *"Hotkeys suspended"* and stops listening to the brackets entirely. Choose it again to turn hotkeys back on; you hear *"Hotkeys resumed"*. If BA cannot take the keys back because another program is now using them, it warns you: *"Warning: failed to re-register hotkeys. Another application may be using the bracket keys."*
+If another program needs the bracket keys — for example while you type a chat message to ATC — open the **File** menu and choose **Suspend Hotkeys**. BA says *"Hotkeys suspended"* and stops listening to the brackets entirely, and to any [controller buttons](#gs-controller-buttons) you have assigned. Choose it again to turn hotkeys back on; you hear *"Hotkeys resumed"*. If BA cannot take the keys back because another program is now using them, it warns you: *"Warning: failed to re-register hotkeys. Another application may be using the bracket keys."*
 
 ### Different aircraft, different keys {#different-aircraft-different-keys}
 
@@ -360,6 +361,42 @@ The two modes are the same on every aircraft, and many keys are shared. Output A
 **Note:** BA listens for the keys Windows calls the bracket keys on a US or UK keyboard (the two keys to the right of P). On some other keyboard layouts Windows gives those codes to different physical keys. If pressing your bracket keys never turns a mode on, try the two keys to the right of P, or ask for help on the Discord.
 
 </div>
+
+## Controller Buttons {#gs-controller-buttons}
+
+### What it is {#controller-buttons-what-it-is}
+
+You can give any BA command to a button on your yoke, joystick, throttle or gamepad, or to a direction of its hat switch. Pressing that button runs the command at once: no bracket key first, and it works whichever window is in front, the simulator included.
+
+### When to use it {#controller-buttons-when-to-use-it}
+
+Whenever your hands are busy with the controls. While taxiing, for example, a yoke button for Output Y (the next taxiway and how far it is) and another for Output G (ground speed) save you reaching for the keyboard with the tiller in one hand.
+
+### How to use it {#controller-buttons-how-to-use-it}
+
+1. Open **File**, **Settings**, and move to the **Controller Buttons** tab.
+2. Press **Add button**. A window opens with a **Command** list. Every BA command is in it, and each name ends with the keys that run the same command from the keyboard, such as *"Ground speed (] G)"* or *"Taxi status: next taxiway and distance (] Y)"*. Type the first letter to jump through the list.
+3. Press **Capture controller button**, then press the button on your controller within 15 seconds. BA says what it caught, for example *"Captured TCA Yoke Boeing, button 5."* Press Escape to stop waiting.
+4. Press **OK**. The tab lists the new assignment as command, controller and button.
+5. Press **OK** in the Settings window to save. The button works as soon as the window closes.
+
+To remove an assignment, select it in the list and press Delete or the **Remove** button.
+
+<div class="callout tip" role="note" markdown="1">
+
+**Tip:** Choose buttons the simulator does not use, or clear their assignment in the simulator's own control settings. BA does not take the button away from the simulator, so a button with a job in both does both things.
+
+</div>
+
+### What you will hear {#controller-buttons-what-you-will-hear}
+
+Exactly what the keyboard command says: a button for ground speed speaks the ground speed. A button you have not assigned in BA stays silent. If you had pressed a bracket key and then press an assigned controller button, the mode closes quietly and the button's command runs.
+
+### If something goes wrong {#controller-buttons-if-something-goes-wrong}
+
+- **BA says it caught nothing.** Check that the controller is plugged in and appears in Windows' Game Controllers settings, then capture again.
+- **A button does nothing.** While hotkeys are suspended from the File menu, controller buttons are paused too. BA reads only the first 32 buttons of each controller; a button numbered higher cannot be assigned.
+- **Two identical controllers** share their assignments, because Windows reports them with the same identity.
 
 ## The Hotkey List {#gs-hotkey-list}
 
@@ -435,6 +472,7 @@ Open the Settings window from the **File** menu, **Settings…**. It holds nearl
 | Hand Fly | Hand-flying feedback, visual guidance tones, Takeoff Assist and the rollout centreline tone. |
 | Taxi Guidance | The taxi steering tone, taxi callouts, distance units, docking guidance, online taxiway names, airport buildings, and SayIntentions taxi import. |
 | First Officer | The [First Officer](first-officer.md#fo-settings)'s automation (gear, flaps, autopilot, landing lights, altimeters, seat belt signs, center fuel pumps), the PMDG 737 GPWS test type, and whether flows speak each step. |
+| Controller Buttons | Buttons on your yoke, joystick or throttle that run BA commands: see [Controller Buttons](#gs-controller-buttons). |
 | Updates | Release or preview builds, automatic update checks, the startup data check, and the version you are running. |
 
 </div>

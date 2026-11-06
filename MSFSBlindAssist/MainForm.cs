@@ -43,6 +43,9 @@ public partial class MainForm : Form
 
     private HotkeyManager hotkeyManager = null!;
 
+    // Controller buttons bound to hotkey commands (Settings > Controller Buttons).
+    private JoystickButtonMonitor controllerMonitor = null!;
+
     private IAirportDataProvider? airportDataProvider;
     // The database file as it was when airportDataProvider was loaded (DatabaseSelector.CurrentStamp):
     // closing the Database Settings window reloads only when the file or the setting changed since.
@@ -772,6 +775,10 @@ public partial class MainForm : Form
         hotkeyManager.HotkeyTriggered += OnHotkeyTriggered;
         hotkeyManager.OutputHotkeyModeChanged += OnOutputHotkeyModeChanged;
         hotkeyManager.InputHotkeyModeChanged += OnInputHotkeyModeChanged;
+
+        controllerMonitor = new JoystickButtonMonitor();
+        controllerMonitor.ButtonPressed += OnControllerButtonPressed;
+        ApplyControllerBindings();
 
         // Initialize takeoff assist manager
         var takeoffSettings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -1524,6 +1531,7 @@ public partial class MainForm : Form
         if (simConnectManager != null) simConnectManager.ConnectionLost -= OnConnectionLost;
 
         // Clean up managers and resources
+        controllerMonitor?.Dispose();
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();
         announcer?.Cleanup();
