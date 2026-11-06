@@ -1072,6 +1072,41 @@ harness changed first, so both baselines were flown before the app did:
 Stage 6 is checked by `check_stage6.py` (A, L, M, N, O) against `approach_stage5_h6`. On the stage-5 app
 itself L fails 125 times and M 17: the jets' fixed flare lands firmer than 300 fpm or long.
 
+**The flare as designed landed the jets harder** (`approach_stage6_t3spec`, Task 3): a median 518 fpm with
+the 0.5 s pilot and 579 with the 1.0 s pilot, against the fixed flare's 382 and 553; light aircraft 283
+against 237. The trace of `FINAL-A-JET-x0-h0-d0.5` shows why: the cue rises about 0.55°/s (the 2.5°/s
+limit never binds), from 2.0° to 4.1° by touchdown, while the sink falls only from 742 to 519 fpm. The
+cue asks for the attitude that would hold the target sink once settled, and the jet's lag here, the
+pilot's reaction, the pitch (0.7 s) and the flight path (2.5 s), is most of the 4.3 s flare. Starting
+earlier does not supply the lead (`--vertical FlareStartS=5.5`: 439 fpm; 7.0, 86 ft: 363). FlyByWire's
+flare law also corrects for the sink error, so a gain was swept (as an uncommitted `FlareLeadGain`, the same
+law as the committed `FlareCorrectionGain`; `--vertical FlareCorrectionGain=K` reproduces it), jets with the
+0.5 and 1.0 s pilots, the jets' median touchdown point, light aircraft:
+
+| | jets 0.5 s, median / max fpm | jets 1.0 s | jets along, ft | light, median / max fpm |
+|---|---|---|---|---|
+| fixed 6° flare (`stage5_h6`) | 382 / 903 | 553 / 1,043 | 1,151 | 237 / 413 |
+| as designed (no correction) | 518 / 805 | 579 / 922 | 1,178 | 283 / 347 |
+| gain 0.5 | 384 / 531 | 475 / 724 | 1,224 | 257 / 286 |
+| **gain 1** | **246 / 250** | **344 / 473** | **1,325** | **240 / 270** |
+| gain 1.5 | 216 / 304 | 158 / 290 | 1,618 | 238 / 284 |
+| gain 2 | 298 / 326 | 154 / 290 | 1,918 | 240 / 297 |
+| a 2.5 s height lead instead | 297 / 395 | 330 / 540 | 1,428 | 248 / 284 |
+| start 7 s out, no correction | 363 / 725 | 403 / 834 | 1,412 | 259 / 294 |
+
+At gain 1.5 the crosswind and tailwind jets drift 30 to 40 ft further sideways before touching and the
+tailwind one ends off the runway; at 2 the cue overshoots and the jets float. The height lead is the
+harness jet's own lag, a per-aircraft number the owner had turned down for check E. The owner chose gain
+1 (2026-11-06). The maxima are the runs that reach the stable gate 480 to 740 ft high (INT, TURN, NOCROSS
+and DESCHIGH jets, SHALLOW light), which land 3,500 to 10,300 ft along with every flare, as at stage 5.
+
+**With the correction** (`approach_stage6_t3`, identical to the sweep's gain 1): A, L, M, N, O pass with
+48 accepted (check_stage6.py's notes: the 1.0 s pilot's jets at 300 to 349 fpm, all softer than the fixed
+flare's, and the runs already long at stage 5, still landing no firmer or under 300 fpm). check_stage5.py
+A to K pass against `approach_stage4_h5`, 28 accepted: E's two 45° speed intercepts and G's light runs,
+which now land in the zone at about 200 fpm where stage 4's long balloon landings read 76 to 93. The flare
+starts at a median 53 ft on the jets (4.3 s at 742 fpm) and 25 ft on the light runs.
+
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
 4,857 landing runs, 1,960 taxis, 409 wrong turns.

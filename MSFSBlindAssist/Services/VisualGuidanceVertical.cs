@@ -37,6 +37,14 @@ internal sealed record VisualGuidanceVerticalTuning
     public double TouchdownSinkFpm { get; init; } = 150.0;
     /// <summary>The flare's band: it starts by time only under this wheel height and ends only above it (the landing assist's go-around height).</summary>
     public double FlareEndWheelFt { get; init; } = 100.0;
+    /// <summary>
+    /// For each degree the aircraft descends steeper than the flare's target, the flare's cue asks this
+    /// many degrees more nose-up, as FlyByWire's flare corrects for the sink error. Without it a jet's
+    /// lag (the pilot, the nose, then the flight path: about 3.7 s in the harness) landed it at 518 fpm
+    /// against 382 with the old fixed flare; at 1, 246 fpm, with every landing kept. 1.5 and 2 floated
+    /// and drifted; the harness picked 1 and the owner agreed (stage 6, 2026-11-06).
+    /// </summary>
+    public double FlareCorrectionGain { get; init; } = 1.0;
 
     public static VisualGuidanceVerticalTuning Default { get; } = new();
 }

@@ -99,6 +99,19 @@ public class VisualGuidanceFlareTests
         Assert.Equal(double.PositiveInfinity, VisualGuidanceFlare.TauS(0, 740, Touchdown));
     }
 
+    // FlyByWire's flare also corrects for the sink error: descending 1.5° steeper than the target asks
+    // 1.5° more nose-up at gain 1; shallower (floating) asks less; on the target, or at gain 0, the cue
+    // is the level attitude minus the target's angle.
+    [Fact]
+    public void The_cue_corrects_for_the_descent_against_the_target()
+    {
+        Assert.Equal(5.0, VisualGuidanceFlare.CueDeg(5.0, 1.5, 3.0, 1.0), 9);
+        Assert.Equal(3.5, VisualGuidanceFlare.CueDeg(5.0, 1.5, 1.5, 1.0), 9);
+        Assert.Equal(2.5, VisualGuidanceFlare.CueDeg(5.0, 1.5, 0.5, 1.0), 9);
+        Assert.Equal(3.5, VisualGuidanceFlare.CueDeg(5.0, 1.5, 3.0, 0.0), 9);
+        Assert.Equal(3.5, VisualGuidanceFlare.CueDeg(5.0, 1.5, double.NaN, 1.0), 9);   // no reading: no correction
+    }
+
     [Fact]
     public void Sink_rate_from_the_flight_path()
     {

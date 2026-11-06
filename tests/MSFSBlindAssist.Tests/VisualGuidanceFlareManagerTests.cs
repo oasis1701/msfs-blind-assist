@@ -76,6 +76,22 @@ public class VisualGuidanceFlareManagerTests
         Assert.Equal(expected, rig.TargetDescent, 0.1);
     }
 
+    // Still coming down at 742 fpm at 20 ft, where the target is 373 fpm: the cue asks for the target's
+    // attitude plus the difference, as FlyByWire's flare does (gain 1), not the target's attitude alone.
+    [Fact]
+    public void Coming_down_faster_than_the_target_asks_for_more_nose_up()
+    {
+        var rig = OnFinal();
+        Step(rig, 53);
+        Assert.Equal("Flare", rig.Phase);
+        rig.FlyFor(2, 30, _ => AtWheel(rig, 20));
+        double trim = 2.0 - VisualGuidanceVertical.FlightPathAngleDeg(-742, Gs);
+        double target = VisualGuidanceFlare.DescentDeg(VisualGuidanceFlare.TargetSinkFpm(20, VisualGuidanceFlare.TauS(53, 742, Touchdown), Touchdown), Gs);
+        double actual = VisualGuidanceFlare.DescentDeg(742, Gs);
+        Assert.Equal(target, rig.TargetDescent, 0.01);
+        Assert.Equal(trim - target + (actual - target), rig.Pitch, 0.05);
+    }
+
     // The profile starts at the aircraft's own descent, so the cue does not jump at the flare's start.
     [Fact]
     public void It_starts_where_the_aircraft_is()

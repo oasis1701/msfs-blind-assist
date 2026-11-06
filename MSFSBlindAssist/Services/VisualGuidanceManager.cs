@@ -1654,15 +1654,18 @@ public class VisualGuidanceManager : IDisposable
 
         if (currentPhase == GuidancePhase.Flare)
         {
-            // The flare (VG-27): the sink rate eases from the aircraft's own at the flare's start to 150 fpm
-            // at touchdown; the cue is the held level attitude minus its descent angle, at the profile's
-            // pitch rate (VG-20). The target is always a descent, so the cue never asks for a climb.
+            // The flare (VG-27): the target sink rate eases from the aircraft's own at the flare's start to
+            // 150 fpm at touchdown, always a descent. The cue is the held level attitude minus the target's
+            // descent angle, plus the gain times how much steeper the aircraft still descends (its smoothed
+            // descent), so it leads the aircraft's lag; at the profile's pitch rate (VG-20).
             verticalMode = VisualGuidanceVerticalMode.Flare;
             double wheelFt = altMSL - thresholdElevationMSL - flareAltitudeBiasFt;
             double targetSinkFpm = VisualGuidanceFlare.TargetSinkFpm(wheelFt, flareTauS, tuning.TouchdownSinkFpm);
             lastTargetDescentDeg = VisualGuidanceFlare.DescentDeg(targetSinkFpm, currentGroundSpeedKnots);
-            double flarePitch = Math.Clamp(RateLimited(previousDesiredPitch, trimLearner.TrimDeg - lastTargetDescentDeg,
-                maxPitchRateDegPerSec), -12.0, 12.0);
+            double actualDescentDeg = VisualGuidanceFlare.DescentDeg(
+                VisualGuidanceFlare.SinkFpm(trimLearner.PathAngleDeg, currentGroundSpeedKnots), currentGroundSpeedKnots);
+            double cue = VisualGuidanceFlare.CueDeg(trimLearner.TrimDeg, lastTargetDescentDeg, actualDescentDeg, tuning.FlareCorrectionGain);
+            double flarePitch = Math.Clamp(RateLimited(previousDesiredPitch, cue, maxPitchRateDegPerSec), -12.0, 12.0);
             // F and the record give the target as a rate (+ a climb).
             lastCalculatedTargetFPM = -targetSinkFpm;
             // Back above the flare's band (a go-around), the path's cue leaves from here, not from the cue

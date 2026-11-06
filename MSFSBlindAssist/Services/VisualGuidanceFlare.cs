@@ -62,4 +62,15 @@ internal static class VisualGuidanceFlare
     /// <summary>The descent angle (degrees, + down) of a sink rate at the ground speed (at least 40 kt).</summary>
     public static double DescentDeg(double sinkFpm, double gsKt)
         => Math.Atan((double.IsFinite(sinkFpm) ? sinkFpm : 0) / (Gs(gsKt) * FpmPerKt)) / D2R;
+
+    /// <summary>
+    /// The flare's cue, degrees nose up: the level attitude minus the target's descent angle, plus
+    /// <paramref name="gain"/> times how much steeper the aircraft descends than the target (its smoothed
+    /// descent, never the raw vertical speed: VG-25), so the cue leads the aircraft's lag as FlyByWire's
+    /// flare does. At the flare's start the two are equal, so the cue does not jump; with no reading of the
+    /// descent there is no correction.
+    /// </summary>
+    public static double CueDeg(double levelAttitudeDeg, double targetDescentDeg, double actualDescentDeg, double gain)
+        => levelAttitudeDeg - targetDescentDeg
+           + (double.IsFinite(actualDescentDeg) && double.IsFinite(gain) ? gain * (actualDescentDeg - targetDescentDeg) : 0.0);
 }

@@ -153,8 +153,7 @@ Approach AoA, Vref reference, and the pitch/bank rate caps are aircraft-shaped �
 | `MaxBankRateDegPerSec` | 3.0 | 3.0 | Cap on commanded-bank change rate. |
 | `GlideslopeAltitudeBiasFt` | 60 *(est.)* | 80 *(measured)* | Added to the ideal `distance·tan(3°)` glidepath so VG's "on glideslope" matches the real ILS. See below. |
 | `FlareAltitudeBiasFt` | 12 *(est.)* | 30 *(measured)* | Subtracted from measured altitude before the flare/touchdown thresholds so they fire at true main-gear height. See below. |
-| `FlareTriggerWheelHeightFt` | 30 (FCTM) | 40 (autoland) | True main-gear height at which the flare cue announces. A320 follows FCTM 30 ft initiation; PMDG 777 uses 40 to match its autopilot's autoland flare. |
-| `FlareTargetPitchDeg` | 6.0° | 4.5° | Pitch commanded during the Flare phase. A320 FCTM ~+5–6°; Boeing 777 FCTM "2–3° pitch increase from approach attitude" → ~+4–4.5° given the 777's +1.5° approach pitch. |
+| `FlareTriggerWheelHeightFt` | 30 (FCTM) | 40 (autoland) | True main-gear height by which the flare has started: the backstop of the time-based start (about 4.3 s before touchdown, VG-27), and of "Flare". A320 follows FCTM 30 ft initiation; PMDG 777 uses 40 to match its autopilot's autoland flare; a light aircraft rounds out at about 5 to 15 ft. The fixed flare pitch (`FlareTargetPitchDeg`, 6° and 4.5°) went in stage 6. |
 | `TonePitchRangeDeg` | 6 | 10 | Pitch saturation. 777 widens to 10° (30 Hz/° matching slope) for gentler beat at small errors during a stabilized approach; A320 keeps the precision-oriented 6°. |
 | `MaxApproachBankDeg` | 25.0° | 25.0° | Largest bank the capture law, vectoring and the pattern ask for; with `MaxBankRateDegPerSec` and the ground speed it sizes the turns BA counts (vectoring's cut, the pattern's base and downwind). |
 | `MinimumFinalNm` | 6.0 | 6.0 | Shortest final BA joins (vectoring, the pattern), and the nearest point an ATC heading may meet final and still count as joining. The owner's starting value for airliners (2026-11-04), to be revisited after testing. |
@@ -295,7 +294,17 @@ Desired pitch = the learned trim − the target descent angle, rate limited at t
     straight line. Below the path the cue asks for level flight until the path comes down to the
     aircraft, then follows it. Under 60 ft of wheel height the correction stops and the cue holds the
     glide path angle. A steep runway uses its own angle throughout (London City 5.5°).
-  - **Flare**: the profile's fixed flare pitch (stage 6 replaces the flare).
+  - **Flare** (stage 6, VG-27): starts when the time to touchdown, the wheel height over the smoothed
+    descent rate (the 1 s flight path angle times the ground speed), first reaches 4.3 s under 100 ft of
+    wheel height, or at the profile's flare height (30 ft on the A320), whichever comes first. The target
+    descent rate starts at the aircraft's own and eases to 150 fpm at touchdown
+    (`LandingGuidanceLaws.FlareTargetVsFpm` with τ = h0 × 60 / (s0 − 150), set at the start; at 150 fpm or
+    less, 150 throughout). The cue is the level attitude learned before the flare, held, minus the target's
+    descent angle, plus how much steeper the aircraft still descends than the target (`FlareCorrectionGain`,
+    1, as FlyByWire's flare corrects for the sink error), at the profile's pitch rate. So the tone rises as
+    the wheels come down, a little faster at first while the aircraft's descent catches up, and the target
+    never asks for a climb. A balloon or a bounce stays in the flare, asked gently back down; above 100 ft
+    of wheel height (a go-around) it is final again, the path's cue leaving from the flare's pitch.
 
 The vertical-speed law it replaced (a target rate of the natural descent plus 2 fpm per foot, locked to
 the natural rate inside 1 nm, clamped at `min(−1500, 1.3 × natural)`, flown by a PD controller on the
@@ -329,7 +338,7 @@ redesign (2026-11-04); the capture law above replaced them.
 
 ### Vertical (Pitch) Control
 
-The vertical path (stage 5) steers a flight path angle: desired pitch = learned trim − target descent angle. The tuning numbers are angles and seconds, so the aircraft's own speed scales them and they are the same for every aircraft (the owner, 2026-11-06); they live in `VisualGuidanceVerticalTuning`, and the harness sweeps them with `approach --vertical name=value,...`.
+The vertical path (stage 5) steers a flight path angle: desired pitch = learned trim − target descent angle (in the flare, stage 6, plus the correction for the sink error). The tuning numbers are angles, seconds and sink rates, so the aircraft's own speed scales them and they are the same for every aircraft (the owner, 2026-11-06); they live in `VisualGuidanceVerticalTuning`, and the harness sweeps them with `approach --vertical name=value,...`.
 
 | Name | Value | Description |
 |------|-------|-------------|
@@ -355,10 +364,16 @@ The vertical path (stage 5) steers a flight path angle: desired pitch = learned 
 | `maxPitchRateDegPerSec` `[profile]` | 2.5 | Cap on commanded pitch change rate (deg/sec), applied over the measured frame time |
 | `glideslopeAltitudeBiasFt` `[profile]` | 60 *(est.)* | Added to ideal glidepath so VG matches the real ILS (TCH + datum). PMDG 777 = 80 (measured). |
 | `flareAltitudeBiasFt` `[profile]` | 12 *(est.)* | Subtracted from measured altitude before flare/touchdown checks → true gear height. PMDG 777 = 30 (measured). |
-| `flareTriggerWheelHeightFt` `[profile]` | 30 | True gear height at which the flare cue announces. PMDG 777 = 40 (matches autopilot autoland). |
+| `flareTriggerWheelHeightFt` `[profile]` | 30 | True gear height by which the flare has started (the backstop of the 4.3 s start). PMDG 777 = 40 (matches autopilot autoland). |
 | `TOUCHDOWN_ALTITUDE_FT` | 5.0 | Touchdown phase entry — true main-gear height (`wheelHeightAGL`) |
-| `flareTargetPitchDeg` `[profile]` | 6.0° (A320) | Per-aircraft target pitch commanded in flare. PMDG 777 = 4.5°. |
-| `MAX_FLARE_PITCH_RATE` | 10 | Cap on pitch rate during flare (deg/sec). Was 1.5 in the 1 Hz design; on real time that took the cue 2.7 s to reach the flare pitch, after a jet's wheels touched, so it is 10 (about 0.4 s), measured in the harness to land as softly as before |
+| `FlareStartS` | 4.3 s | The flare starts this long before touchdown, under `FlareEndWheelFt` (FlyByWire's flare law) |
+| `FlareCallS` | 2.5 s | "Flare" is due this long before touchdown (30 ft at 740 fpm) |
+| `TouchdownSinkFpm` | 150 fpm | The flare's target sink at touchdown (FlyByWire's) |
+| `FlareEndWheelFt` | 100 ft | The flare starts by time only under this wheel height and ends only above it (the landing assist's go-around height) |
+| `FlareCorrectionGain` | 1 | For each degree the aircraft descends steeper than the flare's target, this many degrees more nose-up. Without it the harness's jets touched down at 518 fpm (the old fixed flare 382); at 1, 246; 1.5 and 2 floated and drifted ([virtual-pilot.md](virtual-pilot.md), "Stage 6"). The owner chose 1 (2026-11-06) |
+
+The fixed flare pitch (`flareTargetPitchDeg`, 6° on the A320, 4.5° on the 777) and its 10°/s pitch-rate
+exception went in stage 6: the flare's cue runs at the profile's pitch rate (VG-20, VG-27).
 
 ### Vertical sign
 
@@ -442,7 +457,7 @@ Guidance updates on every sim frame (the visual guidance data arrives per `SIM_F
 - The frame time counts at most one second, so a pause or a stalled frame stream moves the command no more than one second's worth; two updates at the same instant move nothing.
 - A clock that steps back counts as no time, never a reverse step.
 
-The VirtualPilot approach harness measured the change ([virtual-pilot.md](virtual-pilot.md), "Stage 2: real-time limits"): final tracking held, and with assumed sensor noise the pitch command's rate of change fell from 27.6°/s to 0.11°/s at 30 frames a second. One design number did not survive real time: the flare's 1.5°/s pitch limit made the flare cue arrive after touchdown, so it is now 10°/s (`MAX_FLARE_PITCH_RATE`).
+The VirtualPilot approach harness measured the change ([virtual-pilot.md](virtual-pilot.md), "Stage 2: real-time limits"): final tracking held, and with assumed sensor noise the pitch command's rate of change fell from 27.6°/s to 0.11°/s at 30 frames a second. One design number did not survive real time: the flare's 1.5°/s pitch limit made the fixed flare cue arrive after touchdown, so from stage 2 to stage 5 the flare ran at 10°/s. Stage 6's flare starts from where the aircraft is and runs at the profile's pitch rate, with no exception.
 
 There is no integral-windup machinery to worry about today: the vertical path is a path angle with a proportional height correction around a learned trim, and the lateral path uses rate damping rather than an explicit integrator at the precision-track stage. If a future contributor adds an integral term, document the windup strategy alongside it.
 

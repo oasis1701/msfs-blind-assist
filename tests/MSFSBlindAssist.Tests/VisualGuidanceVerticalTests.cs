@@ -165,6 +165,7 @@ public class VisualGuidanceVerticalTests
         Assert.Equal(2.5, t.FlareCallS);
         Assert.Equal(150.0, t.TouchdownSinkFpm);
         Assert.Equal(100.0, t.FlareEndWheelFt);
+        Assert.Equal(1.0, t.FlareCorrectionGain);   // the harness's pick, the owner's yes (2026-11-06)
     }
 
     // A slew or a pause: every function stays finite at a ground speed of 0.
