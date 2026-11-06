@@ -29,13 +29,24 @@ public partial class PMDG737CDUForm : Form
     private const int MaxClearingPolls = 3; // timeout after ~1500ms (3 × 500ms poll)
     private const uint MOUSE_FLAG_LEFTSINGLE = 0x20000000; // self-contained press+release click
 
-    public PMDG737CDUForm(IPMDGDataManager dataManager, ScreenReaderAnnouncer announcer)
+    // Reads L:cduOptions (null = not delivered yet). Decides which of the two
+    // CDU keyboards the aircraft has — see PMDG737CduKeyboard.
+    private readonly Func<double?> _readCduOptions;
+    private bool _fans2;
+    // Each page button presses ONE SDK event (its position on the keyboard);
+    // only its label changes with the keyboard.
+    private (Button Button, string SdkSuffix)[] _pageButtons = Array.Empty<(Button, string)>();
+
+    public PMDG737CDUForm(IPMDGDataManager dataManager, ScreenReaderAnnouncer announcer,
+                          Func<double?>? readCduOptions = null)
     {
         _dataManager = dataManager;
         _announcer = announcer;
+        _readCduOptions = readCduOptions ?? (() => null);
 
         InitializeComponent();
         SetupEventHandlers();
+        UpdateKeyboardLayout(force: true);
 
         _pollTimer = new System.Windows.Forms.Timer { Interval = 500 };
         _pollTimer.Tick += PollTimer_Tick;
@@ -83,19 +94,17 @@ public partial class PMDG737CDUForm : Form
             _previousScratchpad = "";
         };
 
-        // Page button click handlers
-        btnInitRef.Click  += (s, e) => SendCDUKey("INIT_REF");
-        btnRte.Click      += (s, e) => SendCDUKey("RTE");
-        btnClb.Click      += (s, e) => SendCDUKey("CLB");
-        btnCrz.Click      += (s, e) => SendCDUKey("CRZ");
-        btnDes.Click      += (s, e) => SendCDUKey("DES");
-        btnMenu.Click     += (s, e) => SendCDUKey("MENU");
-        btnLegs.Click     += (s, e) => SendCDUKey("LEGS");
-        btnDepArr.Click   += (s, e) => SendCDUKey("DEP_ARR");
-        btnHold.Click     += (s, e) => SendCDUKey("HOLD");
-        btnProg.Click     += (s, e) => SendCDUKey("PROG");
-        btnN1Limit.Click  += (s, e) => SendCDUKey("N1_LIMIT");
-        btnFix.Click      += (s, e) => SendCDUKey("FIX");
+        // Page button click handlers. A button presses the key at ITS position;
+        // UpdateKeyboardLayout relabels it to that key's name on the fitted
+        // keyboard (the FANS2 CDU has different keys at eight positions).
+        _pageButtons = new (Button, string)[]
+        {
+            (btnInitRef, "INIT_REF"), (btnRte, "RTE"), (btnClb, "CLB"), (btnCrz, "CRZ"),
+            (btnDes, "DES"), (btnMenu, "MENU"), (btnLegs, "LEGS"), (btnDepArr, "DEP_ARR"),
+            (btnHold, "HOLD"), (btnProg, "PROG"), (btnN1Limit, "N1_LIMIT"), (btnFix, "FIX"),
+        };
+        foreach (var (button, sdk) in _pageButtons)
+            button.Click += (s, e) => SendCDUKey(sdk);
         btnPrevPage.Click += (s, e) => SendCDUKey("PREV_PAGE");
         btnNextPage.Click += (s, e) => SendCDUKey("NEXT_PAGE");
 
@@ -110,6 +119,7 @@ public partial class PMDG737CDUForm : Form
 
     private void PollTimer_Tick(object? sender, EventArgs e)
     {
+        UpdateKeyboardLayout(force: false);
         _dataManager.RequestCDUScreen(DataCDUIndex);
         var result = _dataManager.GetCDURowsWithColors(DataCDUIndex);
         if (result != null)
@@ -250,6 +260,47 @@ public partial class PMDG737CDUForm : Form
         // TFM uses for every CDU key and the 777's FMCCOMM/HOLD path uses.
         // Live-verified against the NG3 (CLR + letter entry) via tools/CDUTest.
         _dataManager.SendEventViaTransmitWithTarget((uint)eventId, MOUSE_FLAG_LEFTSINGLE);
+    }
+
+    /// <summary>
+    /// Relabels the page buttons for the fitted keyboard (classic or FANS2).
+    /// Silent: the screen reader reads the new name when the button is focused.
+    /// </summary>
+    private void UpdateKeyboardLayout(bool force)
+    {
+        bool fans2 = PMDG737CduKeyboard.IsFans2(_readCduOptions());
+        if (!force && fans2 == _fans2)
+            return;
+        _fans2 = fans2;
+
+        foreach (var (button, sdk) in _pageButtons)
+        {
+            string key = PMDG737CduKeyboard.KeyAt(sdk, fans2);
+            string name = PMDG737CduKeyboard.DisplayName(key);
+            button.Text = name;
+            button.AccessibleName = PMDG737CduKeyboard.Shortcut(key) is char c
+                ? $"{name} (Alt+{c})"
+                : name;
+        }
+    }
+
+    /// <summary>
+    /// Presses a key by NAME (the Alt+letter shortcuts), translated to the SDK
+    /// event at that key's position on the fitted keyboard.
+    /// </summary>
+    private void PressNamedKey(string key)
+    {
+        UpdateKeyboardLayout(force: false);
+        string? sdk = PMDG737CduKeyboard.SdkSuffixFor(key, _fans2);
+        if (sdk == null)
+        {
+            string name = PMDG737CduKeyboard.DisplayName(key);
+            _announcer.AnnounceImmediate(_fans2
+                ? $"No {name} key on this CDU. Use VNAV."
+                : $"No {name} key on this CDU.");
+            return;
+        }
+        SendCDUKey(sdk);
     }
 
     private void OnLineSelect(string suffix, int lineNumber)
@@ -401,7 +452,9 @@ public partial class PMDG737CDUForm : Form
 
             if (key != null)
             {
-                SendCDUKey(key);
+                // By key NAME — translated to the fitted keyboard so Alt+A opens
+                // DEP ARR on a FANS2 CDU too.
+                PressNamedKey(key);
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 return;
@@ -409,25 +462,11 @@ public partial class PMDG737CDUForm : Form
         }
     }
 
-    /// <summary>The CDU key a plain Alt+letter presses in this window (window-local keys; Output mode's Alt+P, Alt+N
-    /// and Alt+E, which open the PFD, ND and Engine displays, are the global hotkeys), or null.</summary>
-    internal static string? AltPageKey(Keys key) => key switch
-    {
-        Keys.I => "INIT_REF",
-        Keys.R => "RTE",
-        Keys.B => "CLB",
-        Keys.Z => "CRZ",
-        Keys.D => "DES",
-        Keys.M => "MENU",
-        Keys.G => "LEGS",
-        Keys.A => "DEP_ARR",
-        Keys.H => "HOLD",
-        Keys.P => "PROG",
-        Keys.N => "N1_LIMIT",
-        Keys.F => "FIX",
-        Keys.E => "EXEC",
-        _ => null
-    };
+    /// <summary>The CDU key a plain Alt+letter names in this window (window-local keys; Output mode's Alt+P, Alt+N
+    /// and Alt+E, which open the PFD, ND and Engine displays, are the global hotkeys), or null. This is the key's
+    /// NAME; <see cref="PressNamedKey"/> finds where that key sits on the fitted keyboard.</summary>
+    internal static string? AltPageKey(Keys key) =>
+        key is >= Keys.A and <= Keys.Z ? PMDG737CduKeyboard.KeyForShortcut((char)key) : null;
 
     private void ScratchpadInput_KeyDown(object? sender, KeyEventArgs e)
     {

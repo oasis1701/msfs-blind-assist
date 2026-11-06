@@ -18,6 +18,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private const string Code = "PMDG_737";
     public override string AircraftCode => Code;
 
+    /// <summary>Variable key for <c>L:cduOptions</c> (1 = FANS2 CDU keyboard).</summary>
+    public const string CduOptionsKey = "MON_PMDG737_CduOptions";
+
     // EFB accessibility is supported on the 738 — it renders the identical EFB app as the 777,
     // so the same Coherent in-page agent (coherent-pmdg-efb-agent.js) reads it. Opened with
     // Shift+T via the shared FbwEfbForm over CoherentPmdgEfbClient (no Community-folder bridge).
@@ -455,6 +458,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             IsAnnounced = true,  // custom announcement in ProcessSimVarUpdate
             ValueDescriptions = PmdgSpeedBrakeLever.ComboDescriptions(PmdgSpeedBrakeLever.Ng3),
             ValueToDescriptionKey = v => PmdgSpeedBrakeLever.NearestDetentValue(PmdgSpeedBrakeLever.Ng3, v, PmdgSpeedBrakeLever.Ng3SettleTolerance)
+        };
+
+        // Which CDU keyboard is fitted: 1 = FANS2 (the BBJ2's), else classic.
+        // The cockpit model shows the FANS2 key caps on this L-var. The CDU
+        // window relabels and remaps its page keys from it (PMDG737CduKeyboard).
+        // Continuous+IsAnnounced only so it gets a subscription; it is
+        // swallowed silently in ProcessSimVarUpdate.
+        d[CduOptionsKey] = new SimConnect.SimVarDefinition
+        {
+            Name = "cduOptions",
+            DisplayName = "CDU Keyboard",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,  // silent: swallowed in ProcessSimVarUpdate
+            ExcludeFromMonitorManager = true  // never spoken, so no Ctrl+M checkbox
         };
 
         // Ctrl+M row for the FMA announcements (Pmdg737FmaMonitor), which come from PMDG's module
@@ -5464,6 +5482,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // Shift+T trim-announcement toggle; baseline absorbed silently on
             // connect; debounced so sub-0.1-unit electric-trim jitter is quiet.
             // -------------------------------------------------------------
+            // CDU keyboard option — read by the CDU window, never spoken.
+            case CduOptionsKey:
+                return true;
+
             case "MON_PMDG737_StabTrim":
             {
                 if (!_trimAnnouncementsEnabled)
