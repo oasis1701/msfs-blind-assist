@@ -109,6 +109,62 @@ public class VisualGuidancePlannedDescentTests
         Assert.True(rig.TargetDescent <= 3.0 + 1e-9, $"target descent {rig.TargetDescent:0.000}°");
     }
 
+    // The owner's choice (2026-11-06, the final review's finding 3): vectored while already on or below the
+    // glide path, BA keeps the aircraft where it is, descending with the path, instead of taking it down to
+    // the floor, 150 ft under the path, first. On the path 0.2 nm off the line: the glide path's 3°, not the
+    // 4.35° that took it to the floor at 1,100 fpm.
+    [Fact]
+    public void On_the_path_when_vectored_it_rides_the_path()
+    {
+        var rig = new VisualGuidanceTestRig();
+        rig.Place(6, 0.2, 0);
+        rig.UpdateAt(0);
+        Assert.Equal("Vectoring", rig.Phase);
+        rig.FlyFor(3, 30);
+        Assert.Equal("Plan", rig.VerticalMode);
+        Assert.Equal(3.0, rig.TargetDescent, 0.05);
+    }
+
+    // 80 ft under the path when vectored: it stays 80 ft under, descending with the path (the floor would
+    // have asked 3.6°), and joins the path from below once established.
+    [Fact]
+    public void Under_the_path_when_vectored_it_keeps_its_height_under_it()
+    {
+        var rig = new VisualGuidanceTestRig();
+        rig.Place(6, 0.2, 0, altOffsetFt: -80);
+        rig.UpdateAt(0);
+        rig.FlyFor(3, 30);
+        Assert.Equal(3.0, rig.TargetDescent, 0.05);
+    }
+
+    // Kept where it was when BA started vectoring, not wherever it has sunk to since: started on the path,
+    // now 60 ft under it, the cue asks for a shallower descent (the path coming down to it), not the path's
+    // 3° that would keep it 60 ft low (a light aircraft cutting in close joined 70 ft low and heard "Too low").
+    [Fact]
+    public void Sinking_under_where_it_started_asks_back()
+    {
+        var rig = new VisualGuidanceTestRig();
+        rig.Place(6, 0.2, 0);
+        rig.UpdateAt(0);
+        rig.FlyFor(1, 30);
+        rig.FlyFor(3, 30, _ => rig.Place(6, 0.2, 0, altOffsetFt: -60));
+        Assert.True(rig.TargetDescent < 2.7, $"60 ft under where it started: target {rig.TargetDescent:0.00}°");
+    }
+
+    // Vectored from 300 ft above the path, it still joins from below: the plan is the floor, and it stays
+    // the floor after the aircraft has come down through the path (decided once, when BA starts vectoring).
+    [Fact]
+    public void From_above_it_still_joins_from_below()
+    {
+        var rig = new VisualGuidanceTestRig();
+        rig.Place(6, 0.2, 0, altOffsetFt: 300);
+        rig.UpdateAt(0);
+        rig.FlyFor(3, 30);
+        Assert.Equal(5.0, rig.TargetDescent, 9);   // 450 ft over the floor: the steepest, the glide path + 2°
+        rig.FlyFor(3, 30, _ => rig.Place(6, 0.2, 0, altOffsetFt: -10));
+        Assert.True(rig.TargetDescent > 3.5, $"10 ft under the path, 140 over the floor: target {rig.TargetDescent:0.00}°");
+    }
+
     // The downwind, the base, and final before established all fly the plan; established, the path.
     [Fact]
     public void Its_mode_is_plan_on_every_leg()

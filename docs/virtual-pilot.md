@@ -1025,6 +1025,19 @@ The four VECWIDE starts, new, are checked by K: the jets join 147 ft under the p
 The baselines were not re-flown: the harness's earlier scenarios are unchanged, and the new ones have no
 stage-4 counterpart to compare.
 
+**The owner's choice on finding 3** (`approach_stage5_onpath`): vectored on or under the path, the plan
+keeps the aircraft as far under the path as it was at the decision, along the final course, instead of
+taking it down to the floor first. Against `approach_stage5_review` only runs that start on or under the
+path change, and every changed measure is better or level: FINAL-JET x0.2 (on the path, 0.2 nm off) joins
+4 ft under it at 742 fpm (was 123 ft under at 1,117), VEC-JET par +8 (was −145), VEC-LIGHT −32/−47 to
++5/+2, CLOSE-JET −169 to −25, CLOSE-LIGHT +16 to +3, VECWIDE jets −147 to +3 and light +29 to +5; the
+light runs' pitch rate falls from up to 0.43 to under 0.001°/s. Two tries were measured and dropped on
+the way: keeping the aircraft where it is each update (a light aircraft the plan had already taken 125 ft
+under while cutting in close stayed there, joined 70 ft low and heard "Too low"), and measuring against
+the path at the straight-line distance (higher than the final approach's beside final, so aircraft
+joined lower). A to K pass, 40 accepted. Aircraft vectored from above still join from below (VECHIGH −79,
+DW and FAR jets −220).
+
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
 4,857 landing runs, 1,960 taxis, 409 wrong turns.

@@ -108,6 +108,12 @@ public class VisualGuidanceManager : IDisposable
     private VisualGuidanceTrimLearner trimLearner = new(6.0, VisualGuidanceVerticalTuning.Default);
     private VisualGuidanceVerticalMode verticalMode = VisualGuidanceVerticalMode.Follow;
     private VisualGuidanceLevelHold levelHold = new(VisualGuidanceVerticalTuning.Default);   // joining only
+    // At the decision, on the glide path (within OnPathFt above it, counted as 0) or under it, at the
+    // distance along the final course: how far under it, ft. The planned descent then keeps the aircraft
+    // that far under the path, descending with it, instead of taking it down to the floor first (the owner,
+    // 2026-11-06). Null when vectored from above. Decided once, so an aircraft vectored from above still
+    // joins from below after it has come down through the path, and one that sinks lower is asked back.
+    private double? vectoredUnderPathFt;
     private double lastTargetDescentDeg;   // degrees, + down
 
     // Real time (VG-20). ProcessUpdate runs on every sim frame, so every rate limit, smoothing
@@ -547,6 +553,7 @@ public class VisualGuidanceManager : IDisposable
         trimLearner = new VisualGuidanceTrimLearner(typicalApproachAoaDeg, VerticalTuningForHarness);
         levelHold = new VisualGuidanceLevelHold(VerticalTuningForHarness);
         highAtFinalSaid = tooHighSaid = false;
+        vectoredUnderPathFt = null;
         tooLowArmed = true;
         tooLowRepeatAt = lastTooLowAt = null;
         previousHeightFt = null;
@@ -1150,7 +1157,7 @@ public class VisualGuidanceManager : IDisposable
         {
             if (Math.Abs(StandardBank(cachedBank ?? 0.0)) >= VisualGuidanceJoin.DecideBankDeg)
                 return;
-            Decide(lat, lon);
+            Decide(lat, lon, altMSL);
         }
 
         if (currentPhase is GuidancePhase.Joining or GuidancePhase.Vectoring)
@@ -1160,8 +1167,9 @@ public class VisualGuidanceManager : IDisposable
     /// <summary>
     /// The decision (<see cref="VisualGuidanceJoin.Decide"/>): from the position, the ground track
     /// (the heading if there is none) relative to the runway's magnetic course, and the ground speed.
+    /// Also how far under the glide path the aircraft is now (<see cref="vectoredUnderPathFt"/>).
     /// </summary>
-    private void Decide(double lat, double lon)
+    private void Decide(double lat, double lon, double altMSL)
     {
         if (runway == null) return;
         var position = VisualGuidanceJoin.Locate(lat, lon, runway);
@@ -1169,6 +1177,9 @@ public class VisualGuidanceManager : IDisposable
         joinPlan = VisualGuidanceJoin.Decide(position, relativeTrack, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile);
         activeLegIndex = 0;
         levelHold.Reset();
+        double underPathFt = VisualGuidanceVertical.PathHeightFt(position.AlongNm, glideslopeAngleDeg, glideslopeAltitudeBiasFt)
+            - (altMSL - thresholdElevationMSL);
+        vectoredUnderPathFt = underPathFt >= -VisualGuidanceVertical.OnPathFt ? Math.Max(0, underPathFt) : null;
         // The simple pattern is vectoring too: BA chooses the route, spoken "Vectoring to final" (decision 2).
         currentPhase = joinPlan.State switch
         {
@@ -1701,6 +1712,23 @@ public class VisualGuidanceManager : IDisposable
             var (plannedFt, feedForwardDeg) = VisualGuidanceVertical.PlannedHeight(route, joinAlong,
                 distanceNm, VisualGuidanceVertical.ClosingFraction(position, relativeTrack),
                 glideslopeAngleDeg, glideslopeAltitudeBiasFt, currentGroundSpeedKnots);
+            // Vectored on or under the path: never planned lower than it was under the path at the decision,
+            // against the path at the distance along the final course, so it keeps its place, descending as
+            // the along-course distance shrinks, instead of going down to the floor first (the owner,
+            // 2026-11-06). This only ever raises the plan. Measured at the decision, not now: kept where it is
+            // now, a light aircraft that the plan had taken 125 ft under while cutting in close stayed there
+            // and joined 70 ft low. The straight-line distance would not do either: beside final its path is
+            // higher than the final approach's.
+            if (vectoredUnderPathFt is double underFt)
+            {
+                double keepFt = VisualGuidanceVertical.PathHeightFt(along, glideslopeAngleDeg, glideslopeAltitudeBiasFt) - underFt;
+                if (keepFt > plannedFt)
+                {
+                    plannedFt = keepFt;
+                    feedForwardDeg = VisualGuidanceVertical.SlopeDeg(glideslopeAngleDeg,
+                        VisualGuidanceVertical.ClosingFraction(new VisualGuidanceApproachPoint(along, 0), relativeTrack));
+                }
+            }
             // Past the join point on the final leg the plan never sits above the path: level until the path
             // comes down to the aircraft, then down it, as the path law does (the pattern's join point is
             // fixed where its base was placed, and an aircraft still capturing passes it). Only past it: before

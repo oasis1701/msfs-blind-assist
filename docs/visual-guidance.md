@@ -276,12 +276,19 @@ Desired pitch = the learned trim − the target descent angle, rate limited at t
     `SlopeDeg`), level when flying away. Past the join point on the final leg the plan never sits above
     the path (and still never under the floor), so an aircraft still capturing past the pattern's fixed
     join point follows the path down instead of flying level through it; before the join point the path
-    at the along-course distance is the height of a point beside the aircraft, so there it is not used. Then the same correction as Path, from level up to the glide path angle +
+    at the along-course distance is the height of a point beside the aircraft, so there it is not used.
+    Vectored on the path (within 30 ft above it) or under it, at the distance along the final course, at
+    the decision (`vectoredUnderPathFt`): the plan is never lower than that far under the path along the
+    course, with the path's own slope along the track as the feed-forward, so the aircraft keeps its
+    place instead of going down to the floor first (the owner, 2026-11-06, the final review's finding 3).
+    It only raises the plan, and it is the offset at the decision, not now: kept where it was each update,
+    a light aircraft the plan had taken 125 ft under while cutting in close stayed there and joined 70 ft
+    low. Vectored from above, the plan is unchanged and the aircraft still joins from below. Then the same correction as Path, from level up to the glide path angle +
     2° (VG-24, VG-26). A jet's plan is the floor all the way in (a 20 s level lead at 140 kt needs 248 ft
-    under the path, the floor allows 150), so jets join 120 to 220 ft under the path, still descending,
-    and the path law takes them up onto it from below; a light aircraft at 65 kt arrives level about
-    30 ft under it. A jet on the path but 0.2 nm off the centreline is vectoring too, so it is taken down
-    to the floor before it is established (up to 1,380 fpm in the harness).
+    under the path, the floor allows 150), so jets vectored from above join about 80 to 220 ft under the
+    path, still descending, and the path law brings them onto it from below (a gentler descent until the
+    path comes down to them); a light aircraft at 65 kt arrives level about 30 ft under it. A jet on the path but 0.2 nm off the centreline is vectoring too, and keeps to the
+    path (below).
   - **Path** (established on final): the runway's glide path angle +
     atan(height error / (27 s × ground speed)), from level up to the glide path angle + 2° (VG-24,
     VG-26). The height error is against the path at the distance along the final course, not the
