@@ -1623,7 +1623,8 @@ public class VisualGuidanceManager : IDisposable
     /// altitude is the pilot's or ATC's there.</item>
     /// <item>Plan (vectoring and the pattern, every leg until established): BA's planned descent along the
     /// route still to fly (<see cref="VisualGuidanceVertical.PlannedHeight"/>), never below the floor 150 ft
-    /// under the path, on final never above the path, between level and the glide path angle + 2°.</item>
+    /// under the path, past the join point on the final leg never above the path, between level and the
+    /// glide path angle + 2°.</item>
     /// <item>Hold (joining, once level for <see cref="VisualGuidanceVerticalTuning.LevelHoldS"/>): the
     /// altitude of that moment (<see cref="VisualGuidanceLevelHold"/>), asking back from either side
     /// within <see cref="VisualGuidanceVerticalTuning.PathLimitDeg"/>; a pitch more than

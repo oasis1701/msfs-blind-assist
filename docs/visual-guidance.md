@@ -273,9 +273,10 @@ Desired pitch = the learned trim − the target descent angle, rate limited at t
     active leg's line and along it, corner to corner, then along final; one straight line when
     vectoring). Never below the floor, 150 ft under the path at the aircraft's straight-line distance:
     on the floor the feed-forward is the floor's own slope along the track (`ClosingFraction`,
-    `SlopeDeg`), level when flying away. On the final leg the plan never sits above the path, so an
-    aircraft still capturing past the pattern's fixed join point follows the path down instead of
-    flying level through it. Then the same correction as Path, from level up to the glide path angle +
+    `SlopeDeg`), level when flying away. Past the join point on the final leg the plan never sits above
+    the path (and still never under the floor), so an aircraft still capturing past the pattern's fixed
+    join point follows the path down instead of flying level through it; before the join point the path
+    at the along-course distance is the height of a point beside the aircraft, so there it is not used. Then the same correction as Path, from level up to the glide path angle +
     2° (VG-24, VG-26). A jet's plan is the floor all the way in (a 20 s level lead at 140 kt needs 248 ft
     under the path, the floor allows 150), so jets join 120 to 220 ft under the path, still descending,
     and the path law takes them up onto it from below; a light aircraft at 65 kt arrives level about
