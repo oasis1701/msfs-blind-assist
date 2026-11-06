@@ -12247,12 +12247,12 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         base.OnVariableCacheCleared();
     }
 
-    /// <summary>
-    /// Processes SimConnect variable updates, combining the FCU and altimeter readout twins' two legs for the hotkey readouts ([A320-41]).
-    /// </summary>
     /// <summary><c>MON_ElevatorTrim</c> is the Fenix's <c>A_FC_ELEVATOR_TRIM</c> here, thousandths of a degree.</summary>
     protected override double ElevatorTrimDegrees(double value) => FenixA320ElevatorTrim.ToDegrees(value);
 
+    /// <summary>
+    /// Processes SimConnect variable updates, combining the FCU and altimeter readout twins' two legs for the hotkey readouts ([A320-41]).
+    /// </summary>
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         // Gravity gear walk ([MD11-8]): the walker's own reads of the crank are consumed silently while
