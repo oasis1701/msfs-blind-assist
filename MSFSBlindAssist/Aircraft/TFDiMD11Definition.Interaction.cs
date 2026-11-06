@@ -1143,7 +1143,7 @@ public partial class TFDiMD11Definition
         bool taken = false;
         try
         {
-            taken = await bus.TryPressAndHoldAsync(control, Md11TrimButtons.HoldMs, trim.DownEvent, trim.UpEvent!).ConfigureAwait(false);
+            taken = await bus.TryPressAndHoldAsync(control, Md11TrimButtons.HoldMs, trim.DownEvent, trim.UpEvents).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1158,6 +1158,9 @@ public partial class TFDiMD11Definition
             OnUiThread(() => announcer.Announce(Md11Fcp.Unavailable(trim.Label)));
             return;
         }
+        // No readout of its own (Long Trim): the stabiliser trim is already announced from the stock
+        // ELEVATOR TRIM POSITION, so a read-back here would say the same thing twice ([CORE-7]).
+        if (control.Readout == null) return;
         // The UP is queued now; the settle is measured from when it is WRITTEN.
         await ReadBackTrimAsync(control, seq, Md11EventBus.ReadBackDelayMs(Md11TrimButtons.SettleMs, bus.BacklogMs), sim, announcer).ConfigureAwait(false);
     }

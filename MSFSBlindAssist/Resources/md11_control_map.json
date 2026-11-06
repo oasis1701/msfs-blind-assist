@@ -5204,6 +5204,9 @@
     "RIGHT_BUTTON_DOWN": 94725,
     "RIGHT_BUTTON_UP": 94726
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "FlightDeck/CaptainYoke.xml"
   },
@@ -5223,6 +5226,9 @@
     "RIGHT_BUTTON_DOWN": 96002,
     "RIGHT_BUTTON_UP": 96003
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "FlightDeck/FOYoke.xml"
   },
@@ -9141,6 +9147,9 @@
     "RIGHT_BUTTON_DOWN": 102444,
     "RIGHT_BUTTON_UP": 102445
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "Cabin/FreightCabinFrame.xml"
   },
@@ -9236,6 +9245,9 @@
     "RIGHT_BUTTON_DOWN": 102450,
     "RIGHT_BUTTON_UP": 102451
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "Cabin/FreightCabinFrame.xml"
   },
@@ -9283,6 +9295,9 @@
     "RIGHT_BUTTON_DOWN": 102454,
     "RIGHT_BUTTON_UP": 102455
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "Cabin/FreightCabinFrame.xml"
   },
@@ -25786,6 +25801,9 @@
     "RIGHT_BUTTON_DOWN": 90326,
     "RIGHT_BUTTON_UP": 90327
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "FlightDeck/Overhead.xml"
   },
@@ -32303,6 +32321,9 @@
     "RIGHT_BUTTON_DOWN": 69850,
     "RIGHT_BUTTON_UP": 69851
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "FlightDeck/AftFootPedestal.xml"
   },
@@ -33324,6 +33345,10 @@
    "area": "Throttle Quadrant",
    "label": "Elevator Trim (Long Trim)",
    "label_source": "tooltip",
+   "directions": {
+    "RIGHT_BUTTON_DOWN": "Nose Up",
+    "LEFT_BUTTON_DOWN": "Nose Down"
+   },
    "state_var": "MD11_THR_LONG_TRIM_SW",
    "value_map": {},
    "num_states": 2,
@@ -33333,6 +33358,10 @@
     "RIGHT_BUTTON_DOWN": 77842,
     "RIGHT_BUTTON_UP": 77843
    },
+   "release": [
+    "RIGHT_BUTTON_UP",
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "FlightDeck/FootPedestalLower.xml"
   },

@@ -349,6 +349,41 @@ class CuratedGuardTests(unittest.TestCase):
         )
 
 
+class TemplateReleaseTests(unittest.TestCase):
+    """A spring-loaded control is let go by its TEMPLATE's REL_CODE, so the generator copies those
+    fields onto the control as `release` and the app releases a hold exactly as the cockpit does.
+    The rudder knob's template sends LEFT_BUTTON_UP whichever way it was held; the Long Trim
+    handles' sends RIGHT_BUTTON_UP then LEFT_BUTTON_UP."""
+
+    TEMPLATES = (
+        '<Template Name="TFDi_Design_MD11_3Pos_Knob_Hold"><Parameters Type="Default">'
+        '<INC_CODE>#RIGHT_BUTTON_DOWN# (&gt;L:CEVENT)</INC_CODE>'
+        '<REL_CODE>#LEFT_BUTTON_UP# (&gt;L:CEVENT)</REL_CODE></Parameters></Template>'
+        '<Template Name="MD11_Long_Trim_Switch"><Parameters Type="Default">'
+        '<REL_CODE>#RIGHT_BUTTON_UP# (&gt;L:CEVENT) #LEFT_BUTTON_UP# (&gt;L:CEVENT)</REL_CODE>'
+        '</Parameters></Template>'
+        '<Template Name="TFDi_Design_MD11_Knob_Template"><Parameters Type="Default">'
+        '<INC_CODE>#WHEEL_UP# (&gt;L:CEVENT)</INC_CODE></Parameters></Template>'
+    )
+
+    def test_each_hold_template_names_its_release_fields_in_order(self):
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "Templates"))
+            with open(os.path.join(root, "Templates", "FlightDeck.xml"), "w", encoding="utf-8") as fh:
+                fh.write("<ModelBehaviors>" + self.TEMPLATES + "</ModelBehaviors>")
+            self.assertEqual({"TFDi_Design_MD11_3Pos_Knob_Hold": ["LEFT_BUTTON_UP"],
+                              "MD11_Long_Trim_Switch": ["RIGHT_BUTTON_UP", "LEFT_BUTTON_UP"]},
+                             g.template_releases(root))
+
+    def test_no_templates_folder_means_no_releases(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual({}, g.template_releases(root))
+
+    def test_long_trims_measured_directions_are_curated(self):
+        self.assertEqual({"RIGHT_BUTTON_DOWN": "Nose Up", "LEFT_BUTTON_DOWN": "Nose Down"},
+                         g.CURATED["MD11_THR_LONG_TRIM_SW"]["directions"])
+
+
 class ReadoutTests(unittest.TestCase):
     """D17: a tooltip that COMPUTES the control's whole state text from its own var ships that
     expression as `readout`, for the app to evaluate live (Md11TooltipReadout). The trims are the

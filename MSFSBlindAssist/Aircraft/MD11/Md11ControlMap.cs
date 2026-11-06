@@ -213,6 +213,21 @@ public sealed class Md11Control
     [JsonPropertyName("readout")]
     public string? Readout { get; set; }
 
+    /// <summary>
+    /// Present only on a spring-loaded control: the event fields its template's REL_CODE sends to let
+    /// it go (generator: <c>template_releases</c>) — LEFT_BUTTON_UP for the rudder trim knob whichever
+    /// way it was held, RIGHT_BUTTON_UP then LEFT_BUTTON_UP for the Long Trim handles.
+    /// </summary>
+    [JsonPropertyName("release")]
+    public List<string>? Release { get; set; }
+
+    /// <summary>
+    /// Curated, MEASURED direction words for a spring-loaded control with no tooltip state, keyed by
+    /// the DOWN event that moves it that way — the Long Trim handles' "Nose Up" / "Nose Down".
+    /// </summary>
+    [JsonPropertyName("directions")]
+    public Dictionary<string, string>? Directions { get; set; }
+
     /// <summary>The spoken label, never null — falls back to the node id so a control is always identifiable.</summary>
     public string DisplayLabel => string.IsNullOrWhiteSpace(Label) ? NodeId : Label!;
 

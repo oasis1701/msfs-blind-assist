@@ -413,6 +413,13 @@ CURATED = {
     # the Units wheel on a live MD-11F (2026-10-15) -- the selector is likely inert on the
     # freighter -- so a combo could not be proven, and the row stays a read-only digit.
     **{f"MD11_OVHD_{n}_PAX_LOAD_SW": {"state_var": f"MD11_OVHD_{n}_PAX_LOAD_SW"} for n in (1, 10)},
+    # The Long Trim handles: a spring-loaded hold (MD11_Long_Trim_Switch) with no tooltip state, so
+    # nothing in the package says which way is nose up. MEASURED on a live MD-11 (2026-11-06, MSFS
+    # 2020, on the ground, engines off): LEFT_BUTTON_DOWN held 1 s moved the stock ELEVATOR TRIM
+    # POSITION 2.99 -> 1.97 and RIGHT_BUTTON_DOWN moved it back up; TFDi's quick start calls the
+    # resting 3.0 "unit ANU", so up is nose up. MSFSBA's Long Trim buttons are named from these
+    # words (Md11TrimButtons), keyed by the DOWN event that moves that way.
+    "MD11_THR_LONG_TRIM_SW": {"directions": {"RIGHT_BUTTON_DOWN": "Nose Up", "LEFT_BUTTON_DOWN": "Nose Down"}},
 }
 
 # Guard covers TFDi's own XML does not link to the control they cover. The generator never infers
@@ -1961,6 +1968,35 @@ def _nested_template_error(source, tmpl, text, m):
         f"silently; teach collect() nesting before regenerating")
 
 
+TEMPLATE_RE = re.compile(r'<Template\s+Name\s*=\s*"([^"]+)"(.*?)</Template>', re.S)
+REL_CODE_RE = re.compile(r"<REL_CODE>(.*?)</REL_CODE>", re.S)
+
+
+def template_releases(base):
+    """{template name: the event fields its REL_CODE sends}, from the package's Templates folder.
+
+    A spring-loaded control (the rudder trim knob, the yoke trim switches, the Long Trim handles)
+    is released by its template's REL_CODE, not by an event of its own choosing: the rudder knob's
+    sends '#LEFT_BUTTON_UP#' whichever way it was turned, Long Trim's sends RIGHT_BUTTON_UP then
+    LEFT_BUTTON_UP. collect() copies the fields onto each control as `release`, so the app releases
+    a hold exactly as the cockpit does (Md11TrimButtons) instead of guessing an UP per direction.
+    """
+    releases = {}
+    folder = os.path.join(base, "Templates")
+    if not os.path.isdir(folder):
+        return releases
+    for fname in sorted(os.listdir(folder)):
+        if not fname.endswith(".xml"):
+            continue
+        for m in TEMPLATE_RE.finditer(read_xml(os.path.join(folder, fname))):
+            rel = REL_CODE_RE.search(m.group(2))
+            if rel:
+                fields = re.findall(r"#([A-Z_]+)#", rel.group(1))
+                if fields:
+                    releases.setdefault(m.group(1), fields)
+    return releases
+
+
 def collect(pkg_dir):
     base = os.path.join(pkg_dir, md11_paths.PACKAGE_MARKER)
     if not os.path.isdir(base):
@@ -1969,6 +2005,7 @@ def collect(pkg_dir):
     controls = []
     seen = set()
     stats = Counter()
+    releases = template_releases(base)
 
     for root, dirs, files in os.walk(base):
         # Folders in name order as well as files: os.walk lists them in whatever order the file
@@ -2095,6 +2132,10 @@ def collect(pkg_dir):
                         if num_states and num_states.isdigit()
                         else None,
                         "events": events,
+                        # Only on a spring-loaded control: the fields its template's REL_CODE sends
+                        # to let it go (template_releases), each one an event this control carries.
+                        **({"release": [f for f in releases[tmpl] if f in events]}
+                           if tmpl in releases and all(f in events for f in releases[tmpl]) else {}),
                         # TFDi's own link where it declares one; otherwise a measured link from
                         # CURATED_GUARDS, which behaves identically everywhere downstream — the
                         # guard's label, MSFSBA's panel placement and the auto-open all read this

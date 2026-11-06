@@ -112,25 +112,49 @@ public class Md11TrimTests
 
     // ---- the buttons ---------------------------------------------------------------------
 
+    private const string LongTrim = "MD11_THR_LONG_TRIM_SW";
+
+    private static List<Md11TrimButton> ButtonsOf(string nodeId)
+        => Md11TrimButtons.From(Map.Controls).Where(b => b.Control.NodeId == nodeId).ToList();
+
     [Fact]
-    public void TheRudderTrim_IsHeld_AndReleasedByLeftButtonUpEitherWay()
+    public void TheRudderTrim_IsHeld_AndReleasedAsItsTemplateReleasesIt()
     {
-        var buttons = Md11TrimButtons.From(Map.Controls).Where(b => b.Control.NodeId == Rudder).ToList();
-        Assert.Equal(2, buttons.Count);
+        var buttons = ButtonsOf(Rudder);
+        Assert.Equal(new[] { "Left", "Right" }, buttons.Select(b => b.Word));
         Assert.All(buttons, b => Assert.True(b.IsHold));
-        Assert.All(buttons, b => Assert.Equal("LEFT_BUTTON_UP", b.UpEvent));
-        Assert.Equal("LEFT_BUTTON_DOWN", buttons.Single(b => b.Left).DownEvent);
-        Assert.Equal("RIGHT_BUTTON_DOWN", buttons.Single(b => !b.Left).DownEvent);
+        // TFDi_Design_MD11_3Pos_Knob_Hold's REL_CODE: LEFT_BUTTON_UP whichever way it was held.
+        Assert.All(buttons, b => Assert.Equal(new[] { "LEFT_BUTTON_UP" }, b.UpEvents));
+        Assert.Equal(new[] { "LEFT_BUTTON_DOWN", "RIGHT_BUTTON_DOWN" }, buttons.Select(b => b.DownEvent));
     }
 
     [Fact]
     public void TheAileronTrim_IsOneWheelClickPerPress_DownIsLeft()
     {
-        var buttons = Md11TrimButtons.From(Map.Controls).Where(b => b.Control.NodeId == Aileron).ToList();
-        Assert.Equal(2, buttons.Count);
+        var buttons = ButtonsOf(Aileron);
+        Assert.Equal(new[] { "Left", "Right" }, buttons.Select(b => b.Word));
         Assert.All(buttons, b => Assert.False(b.IsHold));
-        Assert.Equal("WHEEL_DOWN", buttons.Single(b => b.Left).DownEvent);
-        Assert.Equal("WHEEL_UP", buttons.Single(b => !b.Left).DownEvent);
+        Assert.Equal(new[] { "WHEEL_DOWN", "WHEEL_UP" }, buttons.Select(b => b.DownEvent));
+    }
+
+    [Fact]
+    public void LongTrim_IsHeldBothWays_NamedByTheMeasuredDirections_ReleasedWithBothUps()
+    {
+        var buttons = ButtonsOf(LongTrim);
+        Assert.Equal(new[] { "Nose Up", "Nose Down" }, buttons.Select(b => b.Word));
+        Assert.Equal(new[] { "RIGHT_BUTTON_DOWN", "LEFT_BUTTON_DOWN" }, buttons.Select(b => b.DownEvent));
+        // MD11_Long_Trim_Switch's REL_CODE sends both, in this order.
+        Assert.All(buttons, b => Assert.Equal(new[] { "RIGHT_BUTTON_UP", "LEFT_BUTTON_UP" }, b.UpEvents));
+        Assert.All(buttons, b => Assert.True(b.IsHold));
+    }
+
+    [Fact]
+    public void NoOtherSpringLoadedControl_GetsButtons()
+    {
+        // The yoke trim switches, the door switches and the climb/descent knob carry a release too, but
+        // neither a readout nor curated directions: they stay as they were.
+        var withButtons = Md11TrimButtons.From(Map.Controls).Select(b => b.Control.NodeId).Distinct().OrderBy(n => n);
+        Assert.Equal(new[] { Aileron, Rudder, LongTrim }.OrderBy(n => n), withButtons);
     }
 
     [Fact]
@@ -139,18 +163,25 @@ public class Md11TrimTests
         var def = new TFDiMD11Definition();
         var vars = def.GetVariables();
         var panel = def.GetPanelControls().Values.Single(keys => keys.Contains(Rudder));
-        foreach (var nodeId in new[] { Rudder, Aileron })
+        foreach (var nodeId in new[] { Rudder, Aileron, LongTrim })
         {
             int at = panel.IndexOf(nodeId);
             var c = Control(nodeId);
-            Assert.Equal(Md11TrimButtons.KeyFor(c, left: true), panel[at + 1]);
-            Assert.Equal(Md11TrimButtons.KeyFor(c, left: false), panel[at + 2]);
-            Assert.Equal($"Left {c.DisplayLabel}", vars[panel[at + 1]].DisplayName);
-            Assert.Equal($"Right {c.DisplayLabel}", vars[panel[at + 2]].DisplayName);
-            Assert.True(vars[panel[at + 1]].RenderAsButton);
-            Assert.Equal(UpdateFrequency.Never, vars[panel[at + 1]].UpdateFrequency);
+            var buttons = ButtonsOf(nodeId);
+            for (int i = 0; i < buttons.Count; i++)
+            {
+                var key = panel[at + 1 + i];
+                Assert.Equal(Md11TrimButtons.KeyFor(c, buttons[i].DownEvent), key);
+                Assert.Equal($"{buttons[i].Word} {c.DisplayLabel}", vars[key].DisplayName);
+                Assert.True(vars[key].RenderAsButton);
+                Assert.Equal(UpdateFrequency.Never, vars[key].UpdateFrequency);
+            }
         }
     }
+
+    [Fact]
+    public void LongTrim_HasNoReadBackOfItsOwn_TheStockTrimAnnouncementSpeaksIt()
+        => Assert.Null(Md11TrimButtons.ReadBackSentence(Control(LongTrim), _ => 3.0));
 
     [Fact]
     public void TheReadBack_NamesTheTrimAndSaysTfdisWords()
