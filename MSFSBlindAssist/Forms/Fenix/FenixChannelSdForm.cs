@@ -71,32 +71,4 @@ internal sealed class FenixChannelSdForm : FenixChannelDisplayForm
         return snapshot => FenixChannelSd.Compose(
             snapshot, variant(), problem => monitor.ReportFeatureProblem(FenixChannelSd.DisplayName, problem), apuBleedHold);
     }
-
-    /// <summary>
-    /// A panel's keys as one row of buttons, shared by the SD window (the ECAM page keys), the E/WD window (T.O CONFIG,
-    /// CLR, RCL and EMER CANC) and the ISIS window (its buttons). One container wrapping and sizing itself, holding a
-    /// button for each of <paramref name="keys"/> in the order given, the label as the text and the accessible name (the
-    /// reader says it and "button", and nothing changes it), tab indexes in that order. A click calls
-    /// <paramref name="press"/> with the key's variable name and nothing else. The caller adds the panel after its list.
-    /// </summary>
-    internal static FlowLayoutPanel BuildKeyRow(IReadOnlyList<(string Label, string Key)> keys, Action<string> press)
-    {
-        var panel = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            WrapContents = true,
-            FlowDirection = FlowDirection.LeftToRight
-        };
-
-        foreach ((string label, string key) in keys)
-        {
-            var button = new Button { Text = label, AccessibleName = label, AutoSize = true };
-            button.Click += (_, _) => press(key);
-            panel.Controls.Add(button);
-        }
-
-        for (int i = 0; i < panel.Controls.Count; i++) panel.Controls[i].TabIndex = i;
-        return panel;
-    }
 }

@@ -263,7 +263,7 @@ internal sealed class FenixChannelDcduAnnouncer
     private static bool IsDigit(char c) => c is >= '0' and <= '9';
 
     // The line's own text, with the codes read out of it and the ends trimmed.
-    private static string TextOf(string coded) => FenixChannelText.Parse(coded).JoinedText.Trim();
+    private static string TextOf(string coded) => FenixChannelText.TrimmedText(coded);
 
     private void Remember(string identity)
     {

@@ -56,6 +56,6 @@ internal sealed class FenixChannelIsisForm : FenixChannelDisplayForm
         ArgumentNullException.ThrowIfNull(pressKey);
 
         // The tab order is the list, then BUGS to Baro Push.
-        AddControlAfterList(FenixChannelSdForm.BuildKeyRow(IsisKeys, pressKey));
+        AddControlAfterList(BuildKeyRow(IsisKeys, pressKey));
     }
 }

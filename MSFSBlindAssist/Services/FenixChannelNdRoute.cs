@@ -845,5 +845,5 @@ internal static class FenixChannelNdRoute
     private static bool IsNoFlightPlan(string? problem, FenixNdData header)
         => problem == NoRouteData
             && header.Waypoint is { } waypoint
-            && FenixChannelText.Parse(waypoint.Line1).JoinedText.Trim() == "PPOS";
+            && FenixChannelText.TrimmedText(waypoint.Line1) == "PPOS";
 }

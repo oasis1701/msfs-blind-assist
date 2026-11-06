@@ -26,7 +26,7 @@ internal static class FenixChannelNdWaypoint
     /// <summary>True when line 1 is PPOS or a waypoint: the box shows something. "-----" and nothing are not shown.</summary>
     public static bool IsShown(FenixNdWaypointLines lines)
     {
-        string one = Plain(lines.Line1);
+        string one = FenixChannelText.TrimmedText(lines.Line1);
         return one == Ppos || Waypoint(one) is not null;
     }
 
@@ -50,7 +50,7 @@ internal static class FenixChannelNdWaypoint
         FenixNdWaypointLines? lines = section.Value!.Waypoint;
         if (lines is null) return null;
 
-        string one = Plain(lines.Line1);
+        string one = FenixChannelText.TrimmedText(lines.Line1);
         if (one == Ppos) return NoActiveWaypoint;
 
         (string Ident, string? Bearing)? waypoint = Waypoint(one);
@@ -59,17 +59,14 @@ internal static class FenixChannelNdWaypoint
         List<string> parts = [waypoint.Value.Ident];
         if (waypoint.Value.Bearing is not null) parts.Add($"{waypoint.Value.Bearing} degrees");
 
-        Match distance = Line2Form.Match(Plain(lines.Line2));
+        Match distance = Line2Form.Match(FenixChannelText.TrimmedText(lines.Line2));
         if (distance.Success) parts.Add($"{distance.Groups[1].Value} nautical miles");
 
-        Match time = Line3Form.Match(Plain(lines.Line3));
+        Match time = Line3Form.Match(FenixChannelText.TrimmedText(lines.Line3));
         if (time.Success) parts.Add(time.Groups[1].Value);
 
         return string.Join(", ", parts);
     }
-
-    // A line as the ND draws it: its text without the format letters, trimmed.
-    private static string Plain(string line) => FenixChannelText.Parse(line).JoinedText.Trim();
 
     // The ident and the bearing (as drawn) of a waypoint line; null when it is not the waypoint form.
     private static (string Ident, string? Bearing)? Waypoint(string line)

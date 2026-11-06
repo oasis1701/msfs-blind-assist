@@ -363,6 +363,28 @@ public class FenixChannelTextTests
         Assert.Equal("", line.JoinedText);
     }
 
+    // ---- The shared text helpers ----------------------------------------------------------------
+
+    [Theory]
+    [InlineData("  GS   456 \t TAS  ", "GS 456 TAS")]
+    [InlineData("A", "A")]
+    [InlineData("   ", "")]
+    [InlineData("", "")]
+    [InlineData("A⠀B", "A⠀B")]   // the braille blank is no white space here: Parse makes it a space first
+    public void Collapse_spaces_makes_each_run_one_space_and_trims_the_ends(string text, string expected)
+    {
+        Assert.Equal(expected, FenixChannelText.CollapseSpaces(text));
+    }
+
+    [Theory]
+    [InlineData("  wVAKSU g318c  ", "VAKSU 318")]
+    [InlineData(null, "")]
+    [InlineData("gPPOS   ", "PPOS")]
+    public void Trimmed_text_drops_the_codes_and_trims_the_ends_only(string? coded, string expected)
+    {
+        Assert.Equal(expected, FenixChannelText.TrimmedText(coded));
+    }
+
     // ---- Helpers --------------------------------------------------------------------------------
 
     private static FenixTextRun Run(string text, FenixTextColor? color, bool underlined = false,

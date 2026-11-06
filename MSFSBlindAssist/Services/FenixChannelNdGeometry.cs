@@ -42,14 +42,12 @@ internal sealed record FenixNdFrame(string Mode, double RangeNm, double UpTrueDe
         else if (header.MagneticHeading is double heading) up = heading + variation;
         else return null;
 
-        bool upper = header.ListedMessages.Any(entry => PlainText(entry) == TaOnly);
-        bool lower = header.ListedMessages.Any(entry => PlainText(entry) != TaOnly);
+        bool upper = header.ListedMessages.Any(entry => FenixChannelText.TrimmedText(entry) == TaOnly);
+        bool lower = header.ListedMessages.Any(entry => FenixChannelText.TrimmedText(entry) != TaOnly);
         return new FenixNdFrame(mode, range, ((up % 360) + 360) % 360, c, variation) { UpperBox = upper, LowerBox = lower };
     }
 
     private const string TaOnly = "TA ONLY";
-
-    private static string PlainText(string coded) => FenixChannelText.Parse(coded).JoinedText.Trim();
 }
 
 /// <summary>Where the ND draws a point: its distance from the center, its degrees off the top of the screen

@@ -151,5 +151,5 @@ internal sealed class FenixChannelNdMessages
         return (ident, distance.Success ? $"{ident}, {distance.Groups[1].Value} NM" : ident);
     }
 
-    private static string Plain(string coded) => FenixChannelText.Parse(coded).JoinedText.Trim();
+    private static string Plain(string coded) => FenixChannelText.TrimmedText(coded);
 }

@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
@@ -129,23 +127,5 @@ internal static class FenixChannelNdSpeech
     }
 
     // Runs of white space become one space, the ends are trimmed, and no space stands before a degree sign.
-    private static string Tidy(string text)
-    {
-        var tidy = new StringBuilder(text.Length);
-        bool spaceBefore = false;
-        foreach (char c in text)
-        {
-            if (char.IsWhiteSpace(c))
-            {
-                spaceBefore = tidy.Length > 0;
-                continue;
-            }
-
-            if (spaceBefore && c != '°') tidy.Append(' ');
-            spaceBefore = false;
-            tidy.Append(c);
-        }
-
-        return tidy.ToString();
-    }
+    private static string Tidy(string text) => FenixChannelText.CollapseSpaces(text).Replace(" °", "°", StringComparison.Ordinal);
 }

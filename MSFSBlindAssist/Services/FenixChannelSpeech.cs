@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
@@ -164,25 +162,5 @@ internal static class FenixChannelSpeech
     private static string NameOf(FenixTextColor? color) => color is { } named ? ColorName(named) : "";
 
     // Runs of white space become one space, and the ends are trimmed.
-    private static string Tidy(string text)
-    {
-        var tidy = new StringBuilder(text.Length);
-        bool spaceBefore = false;
-        foreach (char c in text)
-        {
-            if (char.IsWhiteSpace(c))
-            {
-                // A space is owed only once a character has been written, so white space at the start is dropped, and
-                // white space at the end is owed and never paid.
-                spaceBefore = tidy.Length > 0;
-                continue;
-            }
-
-            if (spaceBefore) tidy.Append(' ');
-            spaceBefore = false;
-            tidy.Append(c);
-        }
-
-        return tidy.ToString();
-    }
+    private static string Tidy(string text) => FenixChannelText.CollapseSpaces(text);
 }

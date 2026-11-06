@@ -87,35 +87,8 @@ internal static class FenixChannelEwdAlertLines
     private static string LineText(string coded) => Normalize(FenixChannelText.Parse(coded).JoinedText);
 
     // A run of two or more dots is one space, then white space is collapsed and trimmed.
-    private static string Normalize(string text)
-    {
-        var result = new System.Text.StringBuilder(text.Length);
-        bool spaceOwed = false;
-        for (int i = 0; i < text.Length; i++)
-        {
-            char c = text[i];
-            if (c == '.')
-            {
-                int end = i;
-                while (end < text.Length && text[end] == '.') end++;
-                if (end - i >= 2)
-                {
-                    spaceOwed = result.Length > 0;
-                    i = end - 1;
-                    continue;
-                }
-            }
-            else if (char.IsWhiteSpace(c))
-            {
-                spaceOwed = result.Length > 0;
-                continue;
-            }
+    private static string Normalize(string text) => FenixChannelText.CollapseSpaces(DotRun.Replace(text, " "));
 
-            if (spaceOwed) result.Append(' ');
-            spaceOwed = false;
-            result.Append(c);
-        }
-
-        return result.ToString();
-    }
+    private static readonly System.Text.RegularExpressions.Regex DotRun =
+        new(@"\.{2,}", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 }

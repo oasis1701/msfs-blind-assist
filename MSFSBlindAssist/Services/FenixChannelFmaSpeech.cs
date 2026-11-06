@@ -75,8 +75,7 @@ internal static class FenixChannelFmaSpeech
         FenixTextLine line = FenixChannelText.Parse(slots[VerticalModeSlot].Text);
         if (line.UnknownCodes.Count > 0) return false;
 
-        string mode = string.Join(' ', line.JoinedText.Replace('!', ' ')
-            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        string mode = FenixChannelText.CollapseSpaces(line.JoinedText.Replace('!', ' '));
         return CommonModes.Contains(mode);
     }
 

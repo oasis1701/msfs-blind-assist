@@ -189,6 +189,38 @@ internal static class FenixChannelText
         }
     }
 
+    /// <summary>
+    /// The line's text with its codes dropped and both ends trimmed (<see cref="FenixTextLine.JoinedText"/>): for comparing
+    /// lines and for reading a figure or an ident out of one, never for speech, which says each run's color (FNX-24).
+    /// </summary>
+    public static string TrimmedText(string? coded) => Parse(coded).JoinedText.Trim();
+
+    /// <summary>
+    /// Runs of white space made one space and both ends trimmed, so the Fenix's column padding is never heard: the one rule
+    /// the channel's speech, the DCDU's sentences, the ND's text, the E/WD's line match and the FMA's common modes share.
+    /// </summary>
+    public static string CollapseSpaces(string text)
+    {
+        var collapsed = new StringBuilder(text.Length);
+        bool spaceBefore = false;
+        foreach (char c in text)
+        {
+            if (char.IsWhiteSpace(c))
+            {
+                // A space is owed only once a character has been written, so white space at the start is dropped, and
+                // white space at the end is owed and never paid.
+                spaceBefore = collapsed.Length > 0;
+                continue;
+            }
+
+            if (spaceBefore) collapsed.Append(' ');
+            spaceBefore = false;
+            collapsed.Append(c);
+        }
+
+        return collapsed.ToString();
+    }
+
     // The x at index is the measured x1: followed by the digit 1 and no further digit. Any other x stays unknown.
     private static bool IsXOne(string raw, int index)
         => index + 1 < raw.Length && raw[index + 1] == '1'

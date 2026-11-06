@@ -290,13 +290,11 @@ internal static partial class FenixChannelNdRows
 
     private static IEnumerable<string> ListedBoxes(FenixNdData nd)
     {
-        string? upper = nd.ListedMessages.FirstOrDefault(entry => PlainText(entry) == TaOnly);
-        string? lower = nd.ListedMessages.FirstOrDefault(entry => PlainText(entry) != TaOnly);
+        string? upper = nd.ListedMessages.FirstOrDefault(entry => FenixChannelText.TrimmedText(entry) == TaOnly);
+        string? lower = nd.ListedMessages.FirstOrDefault(entry => FenixChannelText.TrimmedText(entry) != TaOnly);
         foreach (string? box in new[] { upper, lower })
         {
             if (box is not null) yield return box;
         }
     }
-
-    private static string PlainText(string coded) => FenixChannelText.Parse(coded).JoinedText.Trim();
 }

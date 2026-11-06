@@ -332,6 +332,34 @@ internal class FenixChannelDisplayForm : Form
     }
 
     /// <summary>
+    /// A panel's keys as one row of buttons, for a derived window to add after its list (<see cref="AddControlAfterList"/>):
+    /// the SD window's ECAM page keys, the E/WD window's T.O CONFIG, CLR, RCL and EMER CANC and the ISIS window's buttons.
+    /// One container wrapping and sizing itself, holding a button for each of <paramref name="keys"/> in the order given,
+    /// the label as the text and the accessible name (the reader says it and "button", and nothing changes it), tab indexes
+    /// in that order. A click calls <paramref name="press"/> with the key's variable name and nothing else.
+    /// </summary>
+    internal static FlowLayoutPanel BuildKeyRow(IReadOnlyList<(string Label, string Key)> keys, Action<string> press)
+    {
+        var panel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = true,
+            FlowDirection = FlowDirection.LeftToRight
+        };
+
+        foreach ((string label, string key) in keys)
+        {
+            var button = new Button { Text = label, AccessibleName = label, AutoSize = true };
+            button.Click += (_, _) => press(key);
+            panel.Controls.Add(button);
+        }
+
+        for (int i = 0; i < panel.Controls.Count; i++) panel.Controls[i].TabIndex = i;
+        return panel;
+    }
+
+    /// <summary>
     /// A derived window's chance at a key before the base's own (Escape closes, unless a combo's list is open; F5
     /// refreshes). Asked about every key press: an auto-repeat of a key held down and an Alt chord included, which a
     /// window gets as a system key message. Returns true when the window took the key, which then goes no further; the

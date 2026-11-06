@@ -1,4 +1,3 @@
-using System.Text;
 using static MSFSBlindAssist.Services.FenixChannelFields;
 
 namespace MSFSBlindAssist.Services;
@@ -110,27 +109,7 @@ internal static class FenixChannelDcdu
     /// <see cref="Plain"/> for a sentence: runs of white space made one space and both ends trimmed, so that the Fenix's
     /// column padding is not heard.
     /// </summary>
-    public static string Spoken(string? coded)
-    {
-        string plain = Plain(coded);
-        var spoken = new StringBuilder(plain.Length);
-        bool spaceBefore = false;
-        foreach (char c in plain)
-        {
-            if (char.IsWhiteSpace(c))
-            {
-                // A space is owed only once a character has been written, so the start is dropped, and the end never pays.
-                spaceBefore = spoken.Length > 0;
-                continue;
-            }
-
-            if (spaceBefore) spoken.Append(' ');
-            spaceBefore = false;
-            spoken.Append(c);
-        }
-
-        return spoken.ToString();
-    }
+    public static string Spoken(string? coded) => FenixChannelText.CollapseSpaces(Plain(coded));
 
     // Each line of the DCDU with the part a pilot would call it, in the order the first unknown letter is looked for.
     private static IEnumerable<(string Text, string Place)> TextsOf(FenixDcduScreen screen)
