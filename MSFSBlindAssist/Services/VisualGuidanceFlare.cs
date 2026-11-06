@@ -11,7 +11,9 @@ namespace MSFSBlindAssist.Services;
 /// whichever comes first; "Flare" is due at <see cref="VisualGuidanceVerticalTuning.FlareCallS"/> or the
 /// same height. The target sink eases from the aircraft's own at the flare's start to
 /// <see cref="VisualGuidanceVerticalTuning.TouchdownSinkFpm"/> at touchdown through the landing assist's own
-/// <see cref="LandingGuidanceLaws.FlareTargetVsFpm"/>, so it is always a descent and never asks for a climb.
+/// <see cref="LandingGuidanceLaws.FlareTargetVsFpm"/>, so the target is always a descent. The cue adds a lead while the aircraft still sinks faster than the
+/// target, so it can briefly sit above the level attitude then; floating or ballooning it is the target's
+/// own attitude, asking gently back down (<see cref="CueDeg"/>).
 /// The shape (an exponential sink-rate flare from about 4.3 s, 150 fpm at touchdown) is FlyByWire's A320
 /// flare law's (flybywiresim/aircraft, GPL-3.0, FmgcOuterLoops.cpp; notes in the redesign's spec
 /// folder); we take the idea and its numbers, credited here; the code is ours.
@@ -65,12 +67,15 @@ internal static class VisualGuidanceFlare
 
     /// <summary>
     /// The flare's cue, degrees nose up: the level attitude minus the target's descent angle, plus
-    /// <paramref name="gain"/> times how much steeper the aircraft descends than the target (its smoothed
-    /// descent, never the raw vertical speed: VG-25), so the cue leads the aircraft's lag as FlyByWire's
-    /// flare does. At the flare's start the two are equal, so the cue does not jump; with no reading of the
-    /// descent there is no correction.
+    /// <paramref name="gain"/> times how much steeper the aircraft still descends than the target (its
+    /// smoothed descent, never the raw vertical speed: VG-25), so the cue leads the aircraft's lag as
+    /// FlyByWire's flare does. Only that way: floating or ballooning (shallower than the target, or
+    /// climbing) the cue is the target's own attitude, asking gently back down. Both ways, a balloon at
+    /// 30 ft asked 4.7° below the level attitude, a push near the ground (the stage 6 final review). At the
+    /// flare's start the two descents are equal, so the cue does not jump; with no reading of the descent
+    /// there is no correction.
     /// </summary>
     public static double CueDeg(double levelAttitudeDeg, double targetDescentDeg, double actualDescentDeg, double gain)
         => levelAttitudeDeg - targetDescentDeg
-           + (double.IsFinite(actualDescentDeg) && double.IsFinite(gain) ? gain * (actualDescentDeg - targetDescentDeg) : 0.0);
+           + (double.IsFinite(actualDescentDeg) && double.IsFinite(gain) ? gain * Math.Max(0.0, actualDescentDeg - targetDescentDeg) : 0.0);
 }

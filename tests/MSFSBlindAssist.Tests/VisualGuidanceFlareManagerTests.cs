@@ -138,6 +138,25 @@ public class VisualGuidanceFlareManagerTests
             $"the cue went from {balloonPitch:0.00}° to {rig.Pitch:0.00}° in one frame");
     }
 
+    // A balloon to 30 ft, climbing 200 fpm: the cue asks gently back down, the level attitude less the
+    // target's descent there (about 3.0°), never a push below it, however long the climb lasts (the stage 6
+    // final review: the two-sided correction asked about 0.3°, 4.7° below level, near the ground).
+    [Fact]
+    public void A_balloon_asks_gently_back_down()
+    {
+        var rig = OnFinal();
+        Step(rig, 53);
+        rig.FlyFor(1, 30, _ => AtWheel(rig, 10));
+        double trim = 2.0 - VisualGuidanceVertical.FlightPathAngleDeg(-742, Gs);
+        double gentle = trim - VisualGuidanceFlare.DescentDeg(
+            VisualGuidanceFlare.TargetSinkFpm(30, VisualGuidanceFlare.TauS(53, 742, Touchdown), Touchdown), Gs);
+        double lowest = double.MaxValue;
+        rig.FlyFor(3, 30, _ => AtWheel(rig, 30, +200), _ => lowest = Math.Min(lowest, rig.Pitch));
+        Assert.Equal("Flare", rig.Phase);
+        Assert.Equal(gentle, rig.Pitch, 0.1);
+        Assert.True(lowest >= gentle - 0.1, $"the cue went down to {lowest:0.00}°, below the gentle {gentle:0.00}°");
+    }
+
     // Ctrl+V pressed at 40 ft coming down at 742 fpm (3.2 s out): the flare from the first update, from the
     // aircraft's own descent, a finite cue.
     [Fact]
@@ -235,6 +254,19 @@ public class VisualGuidanceFlareManagerTests
         Step(rig, 53);
         Step(rig, 20);
         Assert.Equal("Flare, 20 feet. On the centreline. Target 350 down.", rig.Readout);
+    }
+
+    // Pressed low, the level attitude is still learned from the first update (pitch 2° minus a −3.0° flight
+    // path: 5.0°), not left at the profile's 6° guess for the whole flare (the stage 6 final review): the
+    // cue starts where the aircraft is.
+    [Fact]
+    public void Pressed_low_learns_the_level_attitude_from_the_first_update()
+    {
+        var rig = new VisualGuidanceTestRig();
+        AtWheel(rig, 40);
+        rig.UpdateAt(0);
+        Assert.Equal("Flare", rig.Phase);
+        Assert.Equal(2.0, rig.Pitch, 0.05);
     }
 
     // The aircraft placed down the profile for 3 s: the cue reads the same at 10, 30 and 60 updates a second.

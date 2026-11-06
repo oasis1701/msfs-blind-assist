@@ -301,11 +301,16 @@ Desired pitch = the learned trim − the target descent angle, rate limited at t
     descent rate starts at the aircraft's own and eases to 150 fpm at touchdown
     (`LandingGuidanceLaws.FlareTargetVsFpm` with τ = h0 × 60 / (s0 − 150), set at the start; at 150 fpm or
     less, 150 throughout). The cue is the level attitude learned before the flare, held, minus the target's
-    descent angle, plus how much steeper the aircraft still descends than the target (`FlareCorrectionGain`,
+    descent angle, plus how much steeper the aircraft still descends than the target, only that way (`FlareCorrectionGain`,
     1, as FlyByWire's flare corrects for the sink error), at the profile's pitch rate. So the tone rises as
     the wheels come down, a little faster at first while the aircraft's descent catches up, and the target
-    never asks for a climb. A balloon or a bounce stays in the flare, asked gently back down; above 100 ft
-    of wheel height (a go-around) it is final again, the path's cue leaving from the flare's pitch.
+    never asks for a climb; the tone itself can briefly sit above the level attitude while the aircraft still sinks
+    faster than the target. Floating or ballooning there is no correction: the cue is the target's own attitude,
+    which is how a balloon or a bounce is asked gently back down (with the correction both ways, a balloon at
+    30 ft climbing 200 fpm was asked 4.7° below the level attitude, a push near the ground: the stage 6 final
+    review). A balloon or a bounce stays in the flare; above 100 ft of wheel height (a go-around) it is final
+    again, the path's cue leaving from the flare's pitch. Ctrl+V pressed in the flare learns the level
+    attitude from its first update, then holds it.
 
 The vertical-speed law it replaced (a target rate of the natural descent plus 2 fpm per foot, locked to
 the natural rate inside 1 nm, clamped at `min(−1500, 1.3 × natural)`, flown by a PD controller on the
@@ -371,7 +376,7 @@ The vertical path (stage 5) steers a flight path angle: desired pitch = learned 
 | `FlareCallS` | 2.5 s | "Flare" is due this long before touchdown (30 ft at 740 fpm) |
 | `TouchdownSinkFpm` | 150 fpm | The flare's target sink at touchdown (FlyByWire's) |
 | `FlareEndWheelFt` | 100 ft | The flare starts by time only under this wheel height and ends only above it (the landing assist's go-around height) |
-| `FlareCorrectionGain` | 1 | For each degree the aircraft descends steeper than the flare's target, this many degrees more nose-up. Without it the harness's jets touched down at 518 fpm (the old fixed flare 382); at 1, 246; 1.5 and 2 floated and drifted ([virtual-pilot.md](virtual-pilot.md), "Stage 6"). The owner chose 1 (2026-11-06) |
+| `FlareCorrectionGain` | 1 | For each degree the aircraft descends steeper than the flare's target, this many degrees more nose-up; nothing when floating or ballooning. Without it the harness's jets touched down at 518 fpm (the old fixed flare 382); at 1, 246; 1.5 and 2 floated and drifted ([virtual-pilot.md](virtual-pilot.md), "Stage 6"). The owner chose 1 (2026-11-06) |
 
 The fixed flare pitch (`flareTargetPitchDeg`, 6° on the A320, 4.5° on the 777) and its 10°/s pitch-rate
 exception went in stage 6: the flare's cue runs at the profile's pitch rate (VG-20, VG-27).

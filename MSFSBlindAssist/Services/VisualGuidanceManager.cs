@@ -1660,14 +1660,16 @@ public class VisualGuidanceManager : IDisposable
 
         // The trim is learned on every update outside the flare and touchdown, whatever the mode, from the
         // flight path ProcessUpdate has just read; in the flare the level attitude learned before it is held.
-        if (currentPhase is not (GuidancePhase.Flare or GuidancePhase.Touchdown))
+        // Ctrl+V pressed in the flare still takes the first sample, so the flare does not run on the
+        // profile's guess (the stage 6 final review).
+        if (currentPhase is not (GuidancePhase.Flare or GuidancePhase.Touchdown) || !trimLearner.HasData)
             trimLearner.UpdateTrim(currentPitch, currentGroundSpeedKnots, frameSeconds);
 
         if (currentPhase == GuidancePhase.Flare)
         {
             // The flare (VG-27): the target sink rate eases from the aircraft's own at the flare's start to
             // 150 fpm at touchdown, always a descent. The cue is the held level attitude minus the target's
-            // descent angle, plus the gain times how much steeper the aircraft still descends (its smoothed
+            // descent angle, plus the gain times how much steeper the aircraft still descends, only that way (its smoothed
             // descent), so it leads the aircraft's lag; at the profile's pitch rate (VG-20).
             verticalMode = VisualGuidanceVerticalMode.Flare;
             double wheelFt = altMSL - thresholdElevationMSL - flareAltitudeBiasFt;
