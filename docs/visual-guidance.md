@@ -141,6 +141,8 @@ Approach AoA, Vref reference, and the pitch/bank rate caps are aircraft-shaped �
 | `FlareTriggerWheelHeightFt` | 30 (FCTM) | 40 (autoland) | True main-gear height at which the flare cue announces. A320 follows FCTM 30 ft initiation; PMDG 777 uses 40 to match its autopilot's autoland flare. |
 | `FlareTargetPitchDeg` | 6.0° | 4.5° | Pitch commanded during the Flare phase. A320 FCTM ~+5–6°; Boeing 777 FCTM "2–3° pitch increase from approach attitude" → ~+4–4.5° given the 777's +1.5° approach pitch. |
 | `TonePitchRangeDeg` | 6 | 10 | Pitch saturation. 777 widens to 10° (30 Hz/° matching slope) for gentler beat at small errors during a stabilized approach; A320 keeps the precision-oriented 6°. |
+| `MaxApproachBankDeg` | 25.0° | 25.0° | Largest bank the capture law, vectoring and the pattern ask for; with `MaxBankRateDegPerSec` and the ground speed it sizes the turns BA counts (vectoring's cut, the pattern's base and downwind). |
+| `MinimumFinalNm` | 6.0 | 6.0 | Shortest final BA joins (vectoring, the pattern), and the nearest point an ATC heading may meet final and still count as joining. The owner's starting value for airliners (2026-11-04), to be revisited after testing. |
 
 ### Glidepath altitude calibration
 
@@ -174,17 +176,45 @@ Every concrete aircraft declares its own `GetVisualGuidanceProfile()` override �
 There is no integral term anywhere. Each update computes a desired bank and a desired pitch from the
 aircraft's position, track and vertical speed; the desired tone plays them.
 
-**Lateral (bank)**, by distance from the extended centreline (`CalculateDesiredBank`):
+**Joining final: the decision** (stage 4 of the redesign, `VisualGuidanceJoin.Decide`). After Ctrl+V,
+BA waits until the bank is under 5° (both tones on the aircraft's own attitude), then decides once,
+from the position, the ground track and the ground speed. Ctrl+V off and on decides again.
 
-- Behind the runway (the Extending phase): bank toward the reciprocal heading, 0.5° per degree of
-  heading error, at most 20°.
-- More than 2 nm off: fly a 60° intercept heading; from 1.5 to 2 nm, a 45° one
-  (`CalculateHeadingInterceptBank`: 0.5° of bank per degree of heading error, at most 25°).
-- Arc capture, 1.5 nm down to 0.05 nm: a target heading of the course plus 30° per nm of offset
-  toward the line, less 12 × the cross-track rate (damping), at most 45° off the course. Bank is the
-  track error to that heading × the speed factor √(ground speed / Vref), at most 15°.
-- Precision track, inside 0.05 nm: bank = P on the cross-track (120° per nm) + D on its rate (12) +
-  the track error to the course, each × the speed factor, at most 10°.
+- **On final**: within 0.1 nm of the extended centreline and 5° of its course, on the approach side.
+- **Joining** ("Joining final"): the track, extended ahead, crosses final at up to 100° and at least the
+  profile's `MinimumFinalNm` from the threshold. The desired bank is 0, holding the heading flown
+  (VG-23), until the capture law, clamped to the intercept being flown, first asks 5° of bank toward
+  final (`TurnCueCrossNm`): "Turn onto final", with a countdown at 30 and 15 s before it
+  (`SecondsToTurn`).
+- **Vectoring** ("Vectoring to final"): on the approach side, the shallowest whole-degree cut from 30°
+  that lines the aircraft up at least the minimum final out, counting the turn onto the cut at the
+  profile's bank rate and largest approach bank (`TurnOntoCut`, `JoinAlongNm`); close to the line on
+  short final and heading in, a 30° cut straight onto final.
+- **The simple pattern** (also "Vectoring to final"): anything else, such as the far side of the field
+  or cutting in too close. A downwind on the aircraft's side, flown away from the runway, at least as
+  far out as the aircraft, two turn radii, 1 nm, and the aircraft's own base turn plus the distance from
+  final where the turn onto final comes (`PatternLeastDownwindNm`, 1.92 nm at 140 kt); a base the
+  minimum final plus the turn onto final out (the wider of the capture law's curve and the aircraft's own
+  turn, `PatternTurnOntoFinalNm`: 7.61 nm at 140 kt); then final. The next leg becomes active when the
+  capture law onto it first asks 5° of bank toward it (`LegIsDue`): "Turn base", then the countdown and
+  "Turn onto final". The turn onto the downwind never passes through the heading straight at the
+  centreline (`LegHeadingErrorDeg`). It mainly serves "cleared visual approach" handovers from the far
+  side today; full VFR circuits come with the general aviation work.
+
+**Lateral (bank)** (`CalculateDesiredBank`). Every turn, onto final, a downwind or a base, is one
+capture law onto a straight line (`VisualGuidanceJoin.DesiredLegTrackDeg`), the shape of FlyByWire's
+A320 localizer capture: a desired track toward the line of the capture gain ÷ the ground speed × the
+offset (`DefaultCaptureGain` 10259 deg·kt/nm, FlyByWire's k1: 73° per nm at 140 kt, 158° at 65 kt),
+less 12 × the closing rate, clamped to the intercept (30° on final, the chosen cut when vectoring, the
+intercept flown when joining and at least 30° after the turn, 90° on the pattern). Far from the line
+it holds the intercept and asks for no turn; it turns in as the line comes near.
+
+- Bank is the track error to that desired track × the speed factor √(ground speed / Vref), rate-limited,
+  at most the profile's `MaxApproachBankDeg`.
+- Precision track, inside 0.05 nm of the centreline: bank = P on the cross-track (120° per nm) + D on
+  its rate (12) + the track error to the course, each × the speed factor, at most 10°. Unchanged by
+  the redesign.
+- Established on final: within 0.1 nm and 5° for 3 s on the final leg, "Established on final".
 
 Above 100 ft the track error uses the GPS ground track, so a crab into the wind is not corrected
 away; below 100 ft it uses the heading, to decrab.
@@ -194,7 +224,9 @@ descent rate (ground speed × tan of the glide path angle) plus 2 fpm per foot o
 a climb and never more than `min(−1500, 1.3 × natural)`; inside 1 nm it is the natural rate alone.
 The desired pitch is the nominal pitch (the smoothed live angle of attack minus the glide path
 angle) + P on the vertical-speed error (0.005° per fpm) + D on that error's rate (0.002° per fpm/s).
-In the flare it is the profile's fixed flare pitch.
+In the flare it is the profile's fixed flare pitch. While deciding, joining, and on the pattern's
+downwind and base, the desired pitch is the aircraft's own pitch: the altitude is ATC's or the pilot's
+there until the vertical path (stage 5 of the redesign) replaces this law.
 
 Every limit, smoothing filter and derivative in both laws runs on the measured frame time (VG-20;
 see [Bank-rate / pitch-rate caps](#bank-rate--pitch-rate-caps)).
@@ -207,7 +239,10 @@ Constants and instance fields in `VisualGuidanceManager.cs` (defaults shown — 
 
 | Name | Value | Description |
 |------|-------|-------------|
-| `LATERAL_GAIN_INTERCEPT` | 0.5 | Heading-error → bank during intercept phase |
+| `VisualGuidanceJoin.DefaultCaptureGain` | 10259 deg·kt/nm | The capture law's gain (FlyByWire's k1), divided by the ground speed (at least 40 kt); picked in the approach harness (`approach --capture-gain K`) |
+| `ARC_MODE_EXIT_NM` | 0.05 | Inside this the precision track flies; outside it the capture law |
+| `maxApproachBankDeg` `[profile]` | 25.0° | Largest bank the capture law, vectoring and the pattern ask for (`MaxApproachBankDeg`) |
+| `minimumFinalNm` `[profile]` | 6.0 | Shortest final BA joins, or accepts ATC's heading for (`MinimumFinalNm`) |
 | `LATERAL_GAIN_TRACKING` | 120.0 | Cross-track error (NM) → bank during precision tracking |
 | `LATERAL_RATE_DAMPING` | 12.0 | Cross-track rate damping (derivative) |
 | `LATERAL_HEADING_GAIN` | 1.0 | Track-error alignment gain |
@@ -215,10 +250,9 @@ Constants and instance fields in `VisualGuidanceManager.cs` (defaults shown — 
 | `maxBankRateDegPerSec` `[profile]` | 3.0 | Cap on commanded bank change rate (deg/sec), applied over the measured frame time |
 | `CROSS_TRACK_RATE_WINDOW_S` | 4.0 s | Time window the cross-track rate (the D term) is measured over, oldest to newest sample |
 | `CROSS_TRACK_RATE_SMOOTHING_PER_SECOND` | 0.85 | Exponential smoothing of that rate, per second (α = 0.85^dt) |
-| `ARC_MODE_ENTRY_NM` | 1.5 | Distance at which arc-capture mode begins |
-| `ARC_INTERCEPT_GAIN` | 30.0 | Intercept-angle gain inside arc capture |
-| `ARC_RATE_DAMPING` | 12.0 | Damping inside arc capture |
-| `ARC_BANK_LIMIT` | 15.0° | Bank limit inside arc capture |
+
+The fixed 60° and 45° intercepts, the Extending phase and the 30°/nm arc capture went in stage 4 of the
+redesign (2026-11-04); the capture law above replaced them.
 
 ### Vertical (Pitch) Control
 
@@ -255,7 +289,7 @@ The pitch PID has **positive coefficients on `fpmError` / `fpmErrorRate`** — N
 
 | Symptom | Likely cause | Solution |
 |---------|--------------|----------|
-| Slow to intercept centerline at long range | Intercept gain too low | Increase `LATERAL_GAIN_INTERCEPT`, or widen `ARC_MODE_ENTRY_NM` |
+| Slow to capture the centreline | Capture gain too low | Sweep `approach --capture-gain K` in the VirtualPilot harness before changing `DefaultCaptureGain` (VG-18) |
 | Overshoots centerline | Tracking gain too high or damping too low | Decrease `LATERAL_GAIN_TRACKING` or increase `LATERAL_RATE_DAMPING` |
 | Oscillates across centerline at short final | Bank rate cap too loose for the airframe | Lower `maxBankRateDegPerSec` in the airframe's `VisualGuidanceProfile` |
 | Sits 50–100 ft above glideslope and never converges | Vertical gain too low | Increase `GLIDESLOPE_GAIN` |
