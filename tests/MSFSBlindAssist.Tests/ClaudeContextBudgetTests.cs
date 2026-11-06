@@ -816,7 +816,7 @@ public class ClaudeContextBudgetTests
             "A380F-12 ExcludeFromBatch", "ARINC-2 ValueDescriptions", "MD11-11 ExcludeFromMonitorManager",
             "MD11-22 SimVarDefinition.ValueToDescriptionKey", "FOA-6 IsAnnounced",
             "FNX-7 StateVariable", "FNX-7 StateLitText",
-            "DA40-7 HelpText", "DA40-9 IsAnnounced", "DA40-23 SimVarType.LVar", "DA40S-3 SimVarDefinition.Scale",
+            "DA40-7 HelpText", "DA40-9 IsAnnounced", "DA40S-3 SimVarDefinition.Scale",
             "DA40S-6 HelpText", "DA40S-6 RenderAsSlider",
         },
         ["a MainForm field declared in MainForm.cs and used by the partial the rule loads on"] = new[]
