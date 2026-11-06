@@ -36,8 +36,10 @@ public class Md11DefinitionStateTests
         // The one exception is a COMPOSITE row (the engine fire handles and the Elevator Feel knob):
         // it composes from its two positions alone, with no power term — a position is not an
         // annunciator — so it watches exactly its two keys (pinned in Md11FireHandleTests and
-        // Md11ElevatorFeelTests).
-        var composites = Md11ControlMap.Load().Controls.Where(c => c.Composite != null)
+        // Md11ElevatorFeelTests). A READOUT row (the trims, Md11TooltipReadout) is a position too:
+        // TFDi's tooltip over its own var, no power term (pinned in Md11TrimTests).
+        var composites = Md11ControlMap.Load().Controls
+            .Where(c => c.Composite != null || Md11TooltipReadout.CanEvaluate(c.Readout))
             .Select(c => c.NodeId).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var missing = Vars.Where(kv => kv.Value.StateVariables != null && !composites.Contains(kv.Key))
             .Where(kv => !kv.Value.StateVariables!.Contains(TFDiMD11Definition.DcPowerKey)

@@ -200,6 +200,19 @@ public sealed class Md11Control
     [JsonPropertyName("continuous")]
     public bool Continuous { get; set; }
 
+    /// <summary>The ModelBehaviorDefs template the control was generated from (<c>TFDi_Design_MD11_3Pos_Knob_Hold</c>, …).</summary>
+    [JsonPropertyName("template")]
+    public string Template { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Present only where TFDi's tooltip COMPUTES the state text from the state var and names no
+    /// positions — the rudder and aileron trims (generator: <c>readout_expression</c>). The
+    /// tooltip's own markup, entities decoded and the degree sign spelt out, evaluated live by
+    /// <see cref="Md11TooltipReadout"/> so the scale stays TFDi's.
+    /// </summary>
+    [JsonPropertyName("readout")]
+    public string? Readout { get; set; }
+
     /// <summary>The spoken label, never null — falls back to the node id so a control is always identifiable.</summary>
     public string DisplayLabel => string.IsNullOrWhiteSpace(Label) ? NodeId : Label!;
 

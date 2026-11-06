@@ -368,10 +368,19 @@ public sealed class Md11EventBus : IDisposable
     /// queue still takes it, <see cref="ReleaseReserve"/>). For a caller that must never report a
     /// dropped test done (the First Officer).
     /// </summary>
-    public async Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs)
+    public Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs)
+        => TryPressAndHoldAsync(control, holdMs, "LEFT_BUTTON_DOWN", "LEFT_BUTTON_UP");
+
+    /// <summary>
+    /// <see cref="TryPressAndHoldAsync(Md11Control, int)"/> on a named DOWN/UP pair — the rudder trim
+    /// knob is held right with RIGHT_BUTTON_DOWN and released, as TFDi's template releases it either
+    /// way, with LEFT_BUTTON_UP (<see cref="Md11TrimButtons"/>). The same guarantees: an UP only for
+    /// a DOWN that was taken, never before it.
+    /// </summary>
+    public async Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs, string downField, string upField)
     {
-        var down = control.Event("LEFT_BUTTON_DOWN");
-        var up = control.Event("LEFT_BUTTON_UP");
+        var down = control.Event(downField);
+        var up = control.Event(upField);
         // A button with no DOWN was never pressed, so it cannot be released: writing its UP alone
         // sends the aircraft a release for a press that never happened. (Nothing is tracked either
         // — Dispose must not release, or log, a button it never held.)

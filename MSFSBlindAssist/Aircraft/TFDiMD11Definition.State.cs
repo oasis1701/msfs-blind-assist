@@ -43,6 +43,8 @@ public partial class TFDiMD11Definition
                 _sim.GetCachedVariableValue(Md11CompositeState.InnerKeyFor(c.NodeId)));
         else if (c.State != null)
             text = Md11ControlState.Compose(c.State, ReadStateVar, IsDcPowered());
+        else if (HasReadout(c))
+            text = Md11TooltipReadout.Evaluate(c.Readout, ReadStateVar);   // TFDi's own words: "Neutral", "0.4 degrees Left Wing Down"
         else
             return false;
         if (text == null) return false;

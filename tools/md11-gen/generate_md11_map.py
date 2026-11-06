@@ -1604,8 +1604,45 @@ def _if_composite_block(outer_var, body, node_id, found):
     }
 
 
+def readout_expression(expr, state_var):
+    """TFDi's computed readout for a control with no positions, as the app evaluates it, or None.
+
+    D17. Some tooltips compute their whole state text from the control's var rather than naming
+    positions: the rudder and aileron trims read '%((L:..._TRIM_IND) 25 - abs 0.1 <)%{if}Neutral
+    %{else}...%!1.1f!° Nose Left...' -- a scale (25 is neutral, 2.5 units a degree) stated nowhere
+    else, TFDi's Variables page lists the vars with no unit. No value_map can carry that, so the
+    expression itself is shipped and the app evaluates it against the live var
+    (Md11TooltipReadout), which keeps the scale TFDi's own instead of a copy typed into C#.
+
+    Only where the expression reads the STATE VAR alone (any number of times): a second var is a
+    companion's words (the EFIS minimums caps), a variant flag the airframe's (LABEL_ONLY_VARS).
+    The entities are decoded (read_xml keeps '&lt;') and '°' is spelled out as speakable() does,
+    outside any RPN -- RPN carries no degree sign, so the plain replace is safe.
+    """
+    if not expr or "%!" not in expr or not state_var:
+        return None
+    names = set(_lvars(expr))
+    if names != {state_var} or names & LABEL_ONLY_VARS:
+        return None
+    return html.unescape(expr).replace("°", " degrees")
+
+
+def drop_export_readouts(controls, export_vars):
+    """D17's export rule: no readout on a control whose state var is one of TFDi's exports.
+
+    The altimeter knobs' tooltips compute their setting from MD11_CAP/FO/STBY_ALTIMETER, but those
+    are documented exports the app already reads and words itself (Md11StatusRow, the B key), and
+    their rows are read-only for that reason (Md11ExportBacked). A second wording would only compete.
+    The wasm is read after collect(), so this runs then.
+    """
+    exports = set(export_vars)
+    for c in controls:
+        if "readout" in c and c.get("state_var") in exports:
+            del c["readout"]
+
+
 def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, source=None,
-                  threshold=None, withheld=None):
+                  threshold=None, withheld=None, readout=None):
     """Split a TOOLTIPID into (label, state_var, value_map).
 
     TFDi tooltips come in two shapes.
@@ -1695,6 +1732,7 @@ def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, sourc
     # A composite (D10, D13) takes no value_map, from its state or from its label (_inline_if and
     # _inline_case below): its words describe TWO vars (_composite_block).
     block = _composite_block(expr, node_id, empty_cases, source) if expr and node_id else None
+    is_composite = block is not None   # `block` is reused for a threshold below
     if block is not None:
         if composite is not None:
             composite.update(block)
@@ -1802,6 +1840,12 @@ def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, sourc
     label = re.sub(r"\s+([,/])", r"\1", label)
     label = speakable(label)
     value_map = {k: speakable(v) for k, v in value_map.items()}
+
+    # D17: a computed readout, only where nothing else describes the state.
+    if readout is not None and not value_map and not is_composite and not threshold:
+        text = readout_expression(expr, state_var)
+        if text:
+            readout["expr"] = text
 
     return (label or None), state_var, value_map
 
@@ -1972,9 +2016,11 @@ def collect(pkg_dir):
                 composite = {}
                 threshold = {}
                 withheld = []
+                readout = {}
                 label, state_var, value_map = parse_tooltip(
                     fields.get("TOOLTIPID"), node_id=node_id, empty_cases=empty_cases,
-                    composite=composite, source=source, threshold=threshold, withheld=withheld)
+                    composite=composite, source=source, threshold=threshold, withheld=withheld,
+                    readout=readout)
 
                 key = (node_id, kind, tuple(sorted(events.items())))
                 if key in seen:
@@ -2041,6 +2087,10 @@ def collect(pkg_dir):
                         # variable's value (D16): the rule the aircraft applies, so one reader can
                         # serve every such control instead of a hand-written class per casualty.
                         **({"threshold": threshold} if threshold else {}),
+                        # Only where TFDi's tooltip COMPUTES the state text from the state var
+                        # (D17, readout_expression): the trims. The app evaluates it live.
+                        **({"readout": readout["expr"]}
+                           if readout and not percent and not curated else {}),
                         "num_states": int(num_states)
                         if num_states and num_states.isdigit()
                         else None,
@@ -2274,6 +2324,7 @@ def main():
     controls, stats = collect(pkg)
     # The wasm is read BEFORE the curated lamps, which are gated on its control table.
     all_vars, export_vars = wasm_vars(wasm)
+    drop_export_readouts(controls, export_vars)
     controls = add_curated_lamps(controls, all_vars, stats)
     controls = finalize_controls(controls)
     controls = apply_state(controls)

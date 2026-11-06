@@ -349,6 +349,63 @@ class CuratedGuardTests(unittest.TestCase):
         )
 
 
+class ReadoutTests(unittest.TestCase):
+    """D17: a tooltip that COMPUTES the control's whole state text from its own var ships that
+    expression as `readout`, for the app to evaluate live (Md11TooltipReadout). The trims are the
+    casualty: their scale (25 = neutral, 2.5 units a degree) is stated nowhere but the tooltip, and
+    the rows read a bare "25" while TFDi's cockpit said "Neutral"."""
+
+    # Verbatim from AftFootPedestal.xml, entities and degree sign as read_xml returns them.
+    RUDDER = ("Rudder Trim (%((L:MD11_PED_RUD_TRIM_IND) 25 - abs 0.1 &lt;)%{if}Neutral%{else}"
+              "%((L:MD11_PED_RUD_TRIM_IND) 25 &lt;)%{if}%(25 (L:MD11_PED_RUD_TRIM_IND) - 2.5 /)"
+              "%!1.1f!\u00b0 Nose Left%{else}%((L:MD11_PED_RUD_TRIM_IND) 25 - 2.5 /)%!1.1f!\u00b0 "
+              "Nose Right%{end}%{end})")
+    MINIMUMS = ("Captain Minimums Setting (%((L:MD11_CAP_MINIMUMS))%!d! "
+                "%((L:MD11_LECP_MINIMUMS_KB))%{if}Baro%{else}Radio%{end})")
+
+    def test_the_rudder_trims_expression_is_shipped_decoded_with_degrees_spelt_out(self):
+        readout = {}
+        label, var, value_map = g.parse_tooltip(self.RUDDER, node_id="MD11_PED_RUD_TRIM_SW",
+                                                readout=readout)
+        self.assertEqual("Rudder Trim", label)
+        self.assertEqual("MD11_PED_RUD_TRIM_IND", var)
+        self.assertEqual({}, value_map)
+        self.assertEqual(
+            "%((L:MD11_PED_RUD_TRIM_IND) 25 - abs 0.1 <)%{if}Neutral%{else}"
+            "%((L:MD11_PED_RUD_TRIM_IND) 25 <)%{if}%(25 (L:MD11_PED_RUD_TRIM_IND) - 2.5 /)"
+            "%!1.1f! degrees Nose Left%{else}%((L:MD11_PED_RUD_TRIM_IND) 25 - 2.5 /)%!1.1f! degrees "
+            "Nose Right%{end}%{end}", readout["expr"])
+
+    def test_an_expression_reading_a_second_var_ships_no_readout(self):
+        # The minimums caps: a companion's words (the mode switch) are not this control's state.
+        readout = {}
+        g.parse_tooltip(self.MINIMUMS, node_id="MD11_LECP_MINIMUMS_CAP", readout=readout)
+        self.assertEqual({}, readout)
+
+    def test_a_control_with_positions_ships_no_readout(self):
+        readout = {}
+        _, _, value_map = g.parse_tooltip(ComputedHeadTests.WXR_GAIN, node_id="MD11_PED_WXR_GAIN_KB",
+                                          readout=readout)
+        self.assertTrue(value_map)
+        self.assertEqual({}, readout)
+
+    def test_a_plain_label_ships_no_readout(self):
+        readout = {}
+        g.parse_tooltip("Elevator Trim (Long Trim)", node_id="MD11_THR_LONG_TRIM_SW", readout=readout)
+        self.assertEqual({}, readout)
+
+    def test_an_export_backed_control_loses_its_readout(self):
+        # The altimeter knobs compute their setting from TFDi's documented exports, which the app
+        # already reads and words itself; a second wording would only compete.
+        knob = ctl("MD11_LECP_BAROSET_CAP", kind="knob_push", state_var="MD11_CAP_ALTIMETER")
+        knob["readout"] = "%((L:MD11_CAP_ALTIMETER))%!1.2f!"
+        trim = ctl("MD11_PED_RUD_TRIM_SW", kind="switch", state_var="MD11_PED_RUD_TRIM_IND")
+        trim["readout"] = "x"
+        g.drop_export_readouts([knob, trim], ["MD11_CAP_ALTIMETER"])
+        self.assertNotIn("readout", knob)
+        self.assertEqual("x", trim["readout"])
+
+
 class ComputedHeadTests(unittest.TestCase):
     """D16: a block's words describe the value of the RPN in front of it, so they are the
     VARIABLE's positions only when that RPN is a BARE READ -- '(L:NAME)' and nothing else.

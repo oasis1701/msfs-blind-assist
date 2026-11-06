@@ -26996,6 +26996,7 @@
    "label_source": "tooltip",
    "state_var": "MD11_PED_AIL_TRIM_IND",
    "value_map": {},
+   "readout": "%((L:MD11_PED_AIL_TRIM_IND) 25 - abs 0.1 <)%{if}Neutral%{else}%((L:MD11_PED_AIL_TRIM_IND) 25 <)%{if}%(25 (L:MD11_PED_AIL_TRIM_IND) - 2.5 /)%!1.1f! degrees Left Wing Down%{else}%((L:MD11_PED_AIL_TRIM_IND) 25 - 2.5 /)%!1.1f! degrees Right Wing Down%{end}%{end}",
    "num_states": null,
    "events": {
     "WHEEL_UP": 69852,
@@ -32294,6 +32295,7 @@
    "label_source": "tooltip",
    "state_var": "MD11_PED_RUD_TRIM_IND",
    "value_map": {},
+   "readout": "%((L:MD11_PED_RUD_TRIM_IND) 25 - abs 0.1 <)%{if}Neutral%{else}%((L:MD11_PED_RUD_TRIM_IND) 25 <)%{if}%(25 (L:MD11_PED_RUD_TRIM_IND) - 2.5 /)%!1.1f! degrees Nose Left%{else}%((L:MD11_PED_RUD_TRIM_IND) 25 - 2.5 /)%!1.1f! degrees Nose Right%{end}%{end}",
    "num_states": 2,
    "events": {
     "LEFT_BUTTON_DOWN": 69848,
@@ -32837,6 +32839,7 @@
    "label_source": "tooltip",
    "state_var": "MD11_PED_WXR_TILT_KB",
    "value_map": {},
+   "readout": "%((L:MD11_PED_WXR_TILT_KB) 5 <)%{if}%(15 (L:MD11_PED_WXR_TILT_KB) 1 + /)%!d! degrees DN%{else}%((L:MD11_PED_WXR_TILT_KB) 5 >)%{if}%((L:MD11_PED_WXR_TILT_KB) 5 - 3 *)%!d! degrees UP%{else}Neutral%{end}%{end}",
    "num_states": 2,
    "events": {
     "WHEEL_UP": 69902,
