@@ -160,6 +160,11 @@ public class VisualGuidanceVerticalTests
         Assert.Equal(200.0, t.LevelVsFpm);
         Assert.Equal(5.0, t.LevelHoldS);
         Assert.Equal(1.5, t.HoldBreakPitchDeg);
+        // The flare's (stage 6): the owner's starting values.
+        Assert.Equal(4.3, t.FlareStartS);
+        Assert.Equal(2.5, t.FlareCallS);
+        Assert.Equal(150.0, t.TouchdownSinkFpm);
+        Assert.Equal(100.0, t.FlareEndWheelFt);
     }
 
     // A slew or a pause: every function stays finite at a ground speed of 0.

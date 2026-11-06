@@ -1,10 +1,11 @@
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// The vertical path's six tuning numbers (visual guidance redesign, piece 4). They are angles and
-/// seconds, so the aircraft's own speed scales them and they are the same for every aircraft (the
-/// owner, 2026-11-06); what differs between aircraft is in <c>VisualGuidanceProfile</c>. The harness
-/// (`approach --vertical`) picks them, starting from these, the spec's values.
+/// The vertical path's tuning numbers (visual guidance redesign, pieces 4 and 6). They are angles,
+/// seconds and sink rates, so the aircraft's own speed scales them and they are the same for every
+/// aircraft (the owner, 2026-11-06); what differs between aircraft is in <c>VisualGuidanceProfile</c>.
+/// The harness (`approach --vertical`) picks them, starting from these, the spec's values; the flare's
+/// four are the owner's starting values (stage 6).
 /// </summary>
 internal sealed record VisualGuidanceVerticalTuning
 {
@@ -28,6 +29,14 @@ internal sealed record VisualGuidanceVerticalTuning
     public double LevelHoldS { get; init; } = 5.0;
     /// <summary>While holding, a pitch this far from the cue ends the hold: the pilot means it.</summary>
     public double HoldBreakPitchDeg { get; init; } = 1.5;
+    /// <summary>The flare starts this long before touchdown: FlyByWire's flare law starts at about 4.3 s.</summary>
+    public double FlareStartS { get; init; } = 4.3;
+    /// <summary>"Flare" is said this long before touchdown: 30 ft, the A320's manual flare height, at 740 fpm.</summary>
+    public double FlareCallS { get; init; } = 2.5;
+    /// <summary>The flare's sink rate at touchdown, fpm: FlyByWire's flare law's.</summary>
+    public double TouchdownSinkFpm { get; init; } = 150.0;
+    /// <summary>The flare's band: it starts by time only under this wheel height and ends only above it (the landing assist's go-around height).</summary>
+    public double FlareEndWheelFt { get; init; } = 100.0;
 
     public static VisualGuidanceVerticalTuning Default { get; } = new();
 }
