@@ -75,6 +75,9 @@ class ParenthesisTests(unittest.TestCase):
     def test_balanced_trailing_parenthetical_is_kept(self):
         label, _, _ = g.parse_tooltip("APU Generator (APU Panel)")
         self.assertEqual("APU Generator (APU Panel)", label)
+        # The Long Trim tooltip is the same shape (its shipped row is curated to "Stabilizer Trim").
+        label, _, _ = g.parse_tooltip("Elevator Trim (Long Trim)")
+        self.assertEqual("Elevator Trim (Long Trim)", label)
 
     def test_wrapping_parens_are_stripped_as_a_pair(self):
         self.assertEqual("Strobes", g.strip_outer_parens("(Strobes)"))

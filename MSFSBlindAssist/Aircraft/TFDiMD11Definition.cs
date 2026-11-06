@@ -513,8 +513,8 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
                 UpdateFrequency = UpdateFrequency.Never,
                 RenderAsButton = true,
                 HelpText = trim.IsHold
-                    ? $"Holds {trim.Control.DisplayLabel} {trim.Word.ToLowerInvariant()} briefly"
-                    : $"Turns the {trim.Control.DisplayLabel} knob one click {trim.Word.ToLowerInvariant()}",
+                    ? $"Holds {trim.Control.ButtonName} {trim.Word.ToLowerInvariant()} briefly"
+                    : $"Turns the {trim.Control.ButtonName} knob one click {trim.Word.ToLowerInvariant()}",
             };
 
         AddFirstOfficerReadVariables(vars);

@@ -422,7 +422,7 @@ CURATED = {
     # the handle's spring-back centre (1), so the row shows what the handles MOVE instead: the stock
     # ELEVATOR TRIM POSITION TFDi drives (`stock_readout`), in the shared trim announcement's words.
     "MD11_THR_LONG_TRIM_SW": {"directions": {"RIGHT_BUTTON_DOWN": "Nose Up", "LEFT_BUTTON_DOWN": "Nose Down"},
-                              "stock_readout": "ELEVATOR TRIM POSITION"},
+                              "stock_readout": "ELEVATOR TRIM POSITION", "control_name": "Long Trim"},
 }
 
 # Guard covers TFDi's own XML does not link to the control they cover. The generator never infers
@@ -447,6 +447,10 @@ CURATED_GUARDS = {
 # otherwise the cockpit's own placard wording. Discriminator first ("Left Rain Repellent").
 LABEL_FIXES = {
     "MD11_OVHD_AICE_AUTO_BT": "Anti-Ice Auto",
+    # TFDi's "Elevator Trim (Long Trim)" names the HANDLES, but the row shows the stabiliser trim
+    # they move (CURATED `stock_readout`); the handles' own name stays on their buttons
+    # (CURATED `control_name`: "Nose Up Long Trim").
+    "MD11_THR_LONG_TRIM_SW": "Stabilizer Trim",
     "MD11_OVHD_L_RAIN_REPLNT_BT": "Left Rain Repellent",
     "MD11_OVHD_R_RAIN_REPLNT_BT": "Right Rain Repellent",
     "MD11_OVHD_PNEU_OUTFLOW_VALVE_POS_SW": "Outflow Valve Position",

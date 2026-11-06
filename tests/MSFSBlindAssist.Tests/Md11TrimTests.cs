@@ -172,11 +172,19 @@ public class Md11TrimTests
             {
                 var key = panel[at + 1 + i];
                 Assert.Equal(Md11TrimButtons.KeyFor(c, buttons[i].DownEvent), key);
-                Assert.Equal($"{buttons[i].Word} {c.DisplayLabel}", vars[key].DisplayName);
+                Assert.Equal($"{buttons[i].Word} {c.ButtonName}", vars[key].DisplayName);
                 Assert.True(vars[key].RenderAsButton);
                 Assert.Equal(UpdateFrequency.Never, vars[key].UpdateFrequency);
             }
         }
+    }
+
+    [Fact]
+    public void TheLongTrimRow_IsNamedForTheTrimItShows_ItsButtonsForTheHandles()
+    {
+        var vars = new TFDiMD11Definition().GetVariables();
+        Assert.Equal("Stabilizer Trim", vars[LongTrim].DisplayName);
+        Assert.Equal(new[] { "Nose Up Long Trim", "Nose Down Long Trim" }, ButtonsOf(LongTrim).Select(b => vars[b.Key].DisplayName));
     }
 
     [Fact]

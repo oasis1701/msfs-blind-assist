@@ -92,8 +92,8 @@ public static class Md11TrimButtons
     /// <summary>The row key: an MSFSBA row, not a map control, named by the control and the DOWN event it sends.</summary>
     public static string KeyFor(Md11Control c, string downEvent) => $"MD11_MSFSBA_{c.NodeId}_{downEvent}";
 
-    /// <summary>"Left Rudder Trim", "Nose Up Elevator Trim (Long Trim)" — the discriminator first ([VAR-1]), the control's own label after it.</summary>
-    public static string LabelFor(Md11Control c, string word) => $"{word} {c.DisplayLabel}";
+    /// <summary>"Left Rudder Trim", "Nose Up Long Trim" — the discriminator first ([VAR-1]), the control's own name after it (<see cref="Md11Control.ButtonName"/>).</summary>
+    public static string LabelFor(Md11Control c, string word) => $"{word} {c.ButtonName}";
 
     /// <summary>The read-back after a press: the control's label and its readout, "Rudder Trim: 0.3 degrees Nose Left". Null with no readout.</summary>
     public static string? ReadBackSentence(Md11Control c, Func<string, double?> readLVar)
