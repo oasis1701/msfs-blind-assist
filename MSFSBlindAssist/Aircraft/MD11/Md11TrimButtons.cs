@@ -37,8 +37,22 @@ public static class Md11TrimButtons
     /// <summary>How long one press holds a spring-loaded trim knob: about 0.25° of rudder trim.</summary>
     public const int HoldMs = 500;
 
-    /// <summary>After the release (or the click) is written, how long the trim is left to come to rest before it is read back.</summary>
+    /// <summary>After the release (or the click) is written, how long before the first read-back read.</summary>
     public const int SettleMs = 400;
+
+    /// <summary>
+    /// The trim GLIDES to its new value — an aileron click took about a second live, read mid-move at
+    /// 25.457 on its way to 26 — so the read-back re-reads every <see cref="SettlePollMs"/> until two
+    /// reads agree (<see cref="HasSettled"/>), and gives up at <see cref="SettleCeilingMs"/> after the
+    /// first read, speaking the last value it got.
+    /// </summary>
+    public const int SettlePollMs = 150;
+
+    /// <inheritdoc cref="SettlePollMs"/>
+    public const int SettleCeilingMs = 4000;
+
+    /// <summary>Two successive reads agree: far below the readout's 0.1° (0.25 units) resolution.</summary>
+    public static bool HasSettled(double previous, double current) => Math.Abs(current - previous) < 0.001;
 
     private const string HoldTemplateSuffix = "_Hold";
 

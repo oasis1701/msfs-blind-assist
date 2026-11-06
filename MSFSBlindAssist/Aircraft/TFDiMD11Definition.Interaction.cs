@@ -1088,8 +1088,8 @@ public partial class TFDiMD11Definition
     /// <summary>The trim knobs a hold is still turning: a press while one runs is dropped, so a held-down key cannot queue holds that outlast it.</summary>
     private readonly HashSet<string> _trimHolding = new(StringComparer.Ordinal);
 
-    /// <summary>Per trim knob, the latest press — only its read-back speaks.</summary>
-    private readonly Dictionary<string, int> _trimReadBackSeq = new(StringComparer.Ordinal);
+    /// <summary>Per trim knob, the latest press — only its read-back speaks. Written on the UI thread, also read by the settle loop off it.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _trimReadBackSeq = new(StringComparer.Ordinal);
 
     /// <summary>
     /// One trim button press (<see cref="Md11TrimButtons"/>): the knob held or clicked through its own
@@ -1166,8 +1166,24 @@ public partial class TFDiMD11Definition
     private Task ReadBackTrimAsync(Md11Control control, int seq, int delayMs, SimConnectManager sim, ScreenReaderAnnouncer announcer)
         => DeferToUiThreadAsync(delayMs, async () =>
         {
-            var read = await sim.ReadFreshAsync(control.NodeId, BatchReadBackTimeoutMs).ConfigureAwait(false);
-            Log.Debug("MD11", $"Trim read-back: {control.StateVar}={read?.ToString("0.###", CultureInfo.InvariantCulture) ?? "null"} (press {seq}).");
+            // The trim GLIDES to its new value (an aileron click takes about a second), so one read
+            // after a fixed wait caught it mid-move: 25.457 on its way to 26 was spoken "0.2 degrees
+            // Right Wing Down" (live, 2026-11-06). Read until two deliveries in a row agree, bounded.
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            double? read = await sim.ReadFreshAsync(control.NodeId, BatchReadBackTimeoutMs).ConfigureAwait(false);
+            int reads = 1;
+            while (read is double previous && sw.ElapsedMilliseconds < Md11TrimButtons.SettleCeilingMs)
+            {
+                await Task.Delay(Md11TrimButtons.SettlePollMs).ConfigureAwait(false);
+                if (_trimReadBackSeq.TryGetValue(control.NodeId, out var newer) && newer != seq) return null;   // a newer press reads instead
+                var next = await sim.ReadFreshAsync(control.NodeId, BatchReadBackTimeoutMs).ConfigureAwait(false);
+                reads++;
+                if (next is not double now) break;
+                read = now;
+                if (Md11TrimButtons.HasSettled(previous, now)) break;
+            }
+            Log.Debug("MD11", $"Trim read-back: {control.StateVar}={read?.ToString("0.###", CultureInfo.InvariantCulture) ?? "null"} "
+                + $"(press {seq}, {reads} reads, {sw.ElapsedMilliseconds} ms).");
             if (read is not double value) return null;
             var sentence = Md11TrimButtons.ReadBackSentence(control,
                 name => string.Equals(name, control.StateVar, StringComparison.OrdinalIgnoreCase) ? value : ReadStateVar(name));
