@@ -408,6 +408,7 @@ The Ctrl+P window is the 737 Autopilot: CMD A, CMD B, CWS A and B, both flight d
 - **Page Up**, **Page Down**, or **Alt+Up**, **Alt+Down** — Previous or next CDU page.
 - **Backspace** — CLR when the scratchpad has text, DEL when it is empty.
 - **Alt+I** Init Ref, **Alt+R** RTE, **Alt+A** Dep/Arr, **Alt+F** Fix, **Alt+G** Legs, **Alt+H** Hold, **Alt+P** Prog, **Alt+M** Menu, **Alt+B** CLB, **Alt+Z** CRZ, **Alt+D** DES, **Alt+N** N1 Limit, **Alt+E** or **Ctrl+Enter** Execute, **Alt+C** CLR/DEL.
+- On a 737 with the FANS2 CDU keyboard (such as the BBJ2): **Alt+V** VNAV, **Alt+T** ATC, **Alt+O** FMC Comm. There are no CLB, CRZ or DES keys, so Alt+B, Alt+Z and Alt+D say so instead. Not yet tested in the simulator.
 
 ### General keys that differ or don't work here {#general-keys-that-differ-or-don-t-work-here-4}
 

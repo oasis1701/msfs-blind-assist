@@ -54,6 +54,33 @@ needed for CDU keys. Live-verified against the NG3 (CLR + letter entry) with
 CDA (`PMDG_NG3_Control` / `PMDG_777X_Control`) and fires one event via either
 `cda` or `transmit`, for confirming which dispatch shape a given switch accepts.
 
+## Two CDU keyboards: classic and FANS2
+
+The SDK names its CDU key events after the CLASSIC keyboard, and the events are
+POSITIONAL. PMDG's "FANS2 CDU Installed" option (per tail, in `work\Aircraft\<tail>.ini`;
+the BBJ2 ships with it) fits the newer keyboard, which the cockpit model shows while
+`L:cduOptions` = 1 (`cdu_show_fans` in `73X_Cockpit_Behavior.xml`). On it, eight positions
+carry a different key (read off the `ngx_switch_5xx_fans` tooltips):
+
+| SDK event (classic key) | FANS2 key |
+|---|---|
+| 548 CLB | DEP ARR |
+| 549 CRZ | ATC |
+| 550 DES | VNAV |
+| 551 MENU | FIX |
+| 553 DEP ARR | HOLD |
+| 554 HOLD | FMC COMM |
+| 557 N1 LIMIT | MENU |
+| 558 FIX | N1 LIMIT |
+
+The SDK has no separate FANS2 events. Sending the classic NAME on a FANS2 CDU opens the
+wrong page (reported on the BBJ2: DEP ARR opened HOLD, MENU opened FIX). The definition
+registers `L:cduOptions` silently (`PMDG737Definition.CduOptionsKey`), and
+`PMDG737CDUForm` uses `PMDG737CduKeyboard`: each page button presses its POSITION and is
+relabelled for the fitted keyboard; each Alt shortcut names a KEY and is translated to that
+key's position (Alt+V VNAV, Alt+T ATC, Alt+O FMC Comm, matching the iFly MAX window). A
+key the fitted keyboard lacks is refused out loud. Pinned by `Pmdg737CduKeyboardTests`.
+
 ## No FPA mode
 
 NG3 has no `MCP_FPA` field, no `MCP_annunVS_FPA`, and the VS dialog drops the FPA toggle the 777 dialog has. The VS dialog gates input on `MCP_annunVS` (not `MCP_annunVS_FPA`).

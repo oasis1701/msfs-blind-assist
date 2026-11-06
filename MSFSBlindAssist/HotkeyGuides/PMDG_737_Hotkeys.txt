@@ -296,19 +296,28 @@ Text Input:
 CDU Page Buttons:
   Alt+I          Init Ref
   Alt+R          RTE (Route)
-  Alt+D          Dep/Arr (Departure/Arrival)
-  Alt+V          VNAV
+  Alt+A          Dep/Arr (Departure/Arrival)
   Alt+F          Fix
   Alt+G          Legs
   Alt+H          Hold
   Alt+P          Prog (Progress)
   Alt+M          Menu
-  Alt+B          CLB (Climb)
-  Alt+Z          CRZ (Cruise)
-  Alt+X          DES (Descent)
   Alt+N          N1 Limit
+  Alt+B          CLB (Climb) - standard CDU only
+  Alt+Z          CRZ (Cruise) - standard CDU only
+  Alt+D          DES (Descent) - standard CDU only
+  Alt+V          VNAV - FANS2 CDU only
+  Alt+T          ATC - FANS2 CDU only
+  Alt+O          FMC Comm - FANS2 CDU only
   Alt+E          Execute
   Alt+C          CLR/DEL (Clear or Delete)
+
+FANS2 CDU: some 737s, such as the BBJ2, have the newer FANS2 CDU keyboard,
+which has VNAV, ATC and FMC Comm keys instead of CLB, CRZ and DES, with
+several keys in different places. The CDU window detects which keyboard
+your aircraft has and names its page buttons to match. The shortcuts
+above always open the page they name. A shortcut for a key your CDU does
+not have tells you so.
 
 Note: in FMC Settings (File > FMC Settings) you can switch to alternate
 line-select keys: F1-F6 for L1-L6 and F7-F12 for R1-R6. With this on,
