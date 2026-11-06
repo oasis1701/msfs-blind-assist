@@ -1106,11 +1106,10 @@ public partial class TFDiMD11Definition
             return;
         }
         var control = trim.Control;
-        int seq = _trimReadBackSeq.TryGetValue(control.NodeId, out var last) ? last + 1 : 1;
-        _trimReadBackSeq[control.NodeId] = seq;
 
         if (!trim.IsHold)
         {
+            int seq = NextTrimReadBack(control);
             int backlogMs = bus.BacklogMs;   // sampled before the click joins the queue
             if (!FireControlEvent(control.NodeId, trim.DownEvent))
             {
@@ -1129,8 +1128,14 @@ public partial class TFDiMD11Definition
                 return;
             }
         }
-        _ = HoldTrimAsync(trim, seq, bus, sim, announcer);
+        // Only an ACCEPTED press takes the read-back: a dropped one moved nothing, and taking it before
+        // the busy check silenced the hold that did run (key repeat drops the last press every time).
+        _ = HoldTrimAsync(trim, NextTrimReadBack(control), bus, sim, announcer);
     }
+
+    /// <summary>Marks a press of <paramref name="control"/> as the latest, whose read-back is the one that speaks. UI thread.</summary>
+    private int NextTrimReadBack(Md11Control control)
+        => _trimReadBackSeq.AddOrUpdate(control.NodeId, 1, (_, last) => last + 1);
 
     private async Task HoldTrimAsync(Md11TrimButton trim, int seq, Md11EventBus bus, SimConnectManager sim, ScreenReaderAnnouncer announcer)
     {
