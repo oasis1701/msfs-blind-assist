@@ -238,7 +238,7 @@ Desired pitch = the learned trim − the target descent angle, rate limited at t
 - The mode says where the target descent angle comes from, and the flight recording has it per update
   (`vmode`, VP-2):
   - **Path** (final, and vectoring once on its final leg): the runway's glide path angle +
-    atan(height error / (20 s × ground speed)), from level up to the glide path angle + 2° (VG-24,
+    atan(height error / (27 s × ground speed)), from level up to the glide path angle + 2° (VG-24,
     VG-26). The height error is against the path at the distance along the final course, not the
     straight line. Below the path the cue asks for level flight until the path comes down to the
     aircraft, then follows it. Under 60 ft of wheel height the correction stops and the cue holds the
@@ -285,7 +285,7 @@ The vertical path (stage 5) steers a flight path angle: desired pitch = learned 
 |------|-------|-------------|
 | `glideslopeAngleDeg` | per-runway (3.0° default) | Read from `ils.gs_pitch` via `Runway.GlideslopeAngleDeg`; falls back to 3° when navdata lacks the angle. London City = 5.5°, Aspen = 6.59°, Innsbruck = 3.8°. The path's height, the target's feed-forward angle and its 2° limit all use it. |
 | `thresholdElevationMSL` | per-runway-end | Read from `runway_end.altitude` via `Runway.ThresholdElevation`; falls back to `airport.Altitude` when missing. Matters at airports with sloped runways. |
-| `CorrectionTimeConstantS` | 20 s | The height error is removed over about this long: the correction is atan(error / (this × ground speed)). FlyByWire's glideslope uses 17 to 27 s |
+| `CorrectionTimeConstantS` | 27 s | The height error is removed over about this long: the correction is atan(error / (this × ground speed)). FlyByWire's glideslope uses 17 to 27 s; the spec said 20, and the harness picked 27, where a light aircraft's cue moves less with the pilot ([virtual-pilot.md](virtual-pilot.md), "Stage 5") |
 | `PathLimitDeg` | 2.0° | The target stays at most this steeper than the glide path angle; on the shallow side it stops at level (VG-26) |
 | `CorrectionFloorWheelFt` | 60 ft | Under this wheel height the correction stops and the target is the glide path angle (FlyByWire's) |
 | `TrimTimeConstantS` | 6 s | The trim learner's smoothing of pitch minus flight path |

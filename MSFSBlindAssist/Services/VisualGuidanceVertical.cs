@@ -8,8 +8,12 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 internal sealed record VisualGuidanceVerticalTuning
 {
-    /// <summary>The height error is removed over about this long (FlyByWire's glideslope: 17 to 27 s).</summary>
-    public double CorrectionTimeConstantS { get; init; } = 20.0;
+    /// <summary>
+    /// The height error is removed over about this long (FlyByWire's glideslope: 17 to 27 s). The
+    /// approach harness picked 27 over the spec's 20 (stage 5): at 20 a light aircraft's cue moved 0.31°
+    /// per degree the pilot pitched, 10 s on, against the 0.3 allowed; at 27, 0.20.
+    /// </summary>
+    public double CorrectionTimeConstantS { get; init; } = 27.0;
     /// <summary>The target path angle stays within this of the runway's glide path angle on the steep side.</summary>
     public double PathLimitDeg { get; init; } = 2.0;
     /// <summary>Under this wheel height the correction stops and the cue holds the glide path angle.</summary>

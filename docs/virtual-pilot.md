@@ -928,6 +928,34 @@ descent. The harness changed first, so both baselines were flown before the app 
 
 Stage 5 compares against both from here. Its results come at the end of the stage.
 
+**The vertical numbers on final** (the plan's Task 3, `approach --vertical`, the whole matrix each time,
+checked by the stage's A to H against `approach_stage4_h5`). A spec value stays unless it fails a check
+another value passes, or another passes every check and lowers the median `pathRmsFt` over the FINAL
+h±200 and VERT runs by 10 % without raising any |selfFeedback|. B is |selfFeedback| at most 0.3 on the
+STEP runs; E the largest descent at most 1.15 × the 5° rate on the FINAL, VERT and SPEED runs. G (a
+stage-4 touchdown still touches down) failed 38 light runs at every setting: the flare, below.
+
+| correction | trim | path angle | B | E | median pathRmsFt | selfFeedback10s jet / light |
+|---|---|---|---|---|---|---|
+| 15 s | 4 / 6 / 10 s | 1 s | fail 2 | fail 2 | 5.1 / 5.5 / 5.1 | −0.34 / −0.47 |
+| 20 s (spec) | 4 s | 1 s | fail 2 | fail 2 | 7.1 | −0.22 / −0.33 |
+| 20 s (spec) | 6 s (spec) | 1 s | fail 1 | fail 2 | 7.0 | −0.20 / −0.31 |
+| 20 s (spec) | 10 s | 1 s | fail 1 | fail 2 | 7.0 | −0.21 / −0.31 |
+| 27 s | 4 s | 1 s | fail 1 | fail 2 | 8.2 | −0.12 / −0.22 |
+| **27 s** | **6 s** | **1 s** | **pass** | fail 2 | **8.4** | **−0.10 / −0.20** |
+| 27 s | 10 s | 1 s | pass | fail 2 | 8.3 | −0.11 / −0.20 |
+| 27 s | 6 s | 0.5 / 2 s | pass | fail 2 / 4 | 8.5 / 7.8 | −0.13 / −0.23, −0.03 / −0.14 |
+| 27 s | 10 s | 0.5 / 2 s | pass | fail 1 / 2 | 8.5 / 8.1 | −0.14 / −0.23, −0.06 / −0.15 |
+
+A, C, D, F and H passed at every setting. The pick: **a 27 s correction**, since the spec's 20 s fails B
+on the light aircraft (−0.31) where 27 passes; 27 is 1.35 times 20, inside the two-thirds to one and a
+half the owner allowed. The trim's 6 s and the path angle's 1 s stay: no other value passes a check they
+fail, and none lowers the path error by 10 %. E fails at every setting on the two 45° speed intercepts
+(160 kt 1,832 fpm against 1,630; 90 kt 989 against 917; stage 4's law reached 2,074 and 1,379): they
+reach final about 1,300 ft high and the cue asks for the 2° steeper path at once; as the pilot pitches
+down about 6°, the flight path lags, pitch minus flight path dips, and the learned trim dips nearly 2°
+with it, so the cue overshoots the 5° for a few seconds.
+
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
 4,857 landing runs, 1,960 taxis, 409 wrong turns.

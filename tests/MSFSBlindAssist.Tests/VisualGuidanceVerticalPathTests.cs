@@ -31,14 +31,18 @@ public class VisualGuidanceVerticalPathTests
     public void On_the_path_the_cue_is_trim_minus_the_glide_path()
         => Assert.Equal(2.0, OnFinal().Pitch, 0.05);
 
-    // 100 ft above the path at 140 kt: atan(100 / (20 s × 236.3 ft/s)) = 1.21° steeper.
+    // 100 ft above the path at 140 kt: atan(100 / (the correction time × 236.3 ft/s)) steeper, 0.90° at
+    // the default 27 s (1.21° at the spec's 20).
     [Fact]
     public void Above_the_path_asks_for_less_pitch()
     {
         var rig = OnFinal();
         double onPath = rig.Pitch;
         Hold(rig, 5, 6.0, altOffsetFt: 100);
-        Assert.Equal(onPath - 1.21, rig.Pitch, 0.05);
+        double steeper = Math.Atan(100.0 / (MSFSBlindAssist.Services.VisualGuidanceVerticalTuning.Default.CorrectionTimeConstantS * 140 * 1.68781))
+            * 180 / Math.PI;
+        Assert.Equal(onPath - steeper, rig.Pitch, 0.05);
+        Assert.True(steeper > 0.5);
     }
 
     // 1,000 ft below: level flight (target descent 0), the trim itself, never a climb.

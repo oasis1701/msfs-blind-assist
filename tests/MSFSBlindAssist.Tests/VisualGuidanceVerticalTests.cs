@@ -115,6 +115,22 @@ public class VisualGuidanceVerticalTests
         Assert.Equal(160.4, VisualGuidanceVertical.TooLowMarginFt(3, 5.5), 1.0);
     }
 
+    // The approach harness's picks (docs/virtual-pilot.md, "Stage 5"): the correction 27 s, since at the
+    // spec's 20 s the light aircraft's self-feedback read −0.31 against 0.3; the rest the spec's values.
+    [Fact]
+    public void The_tuning_defaults_are_the_harness_picks()
+    {
+        var t = VisualGuidanceVerticalTuning.Default;
+        Assert.Equal(27.0, t.CorrectionTimeConstantS);
+        Assert.Equal(2.0, t.PathLimitDeg);
+        Assert.Equal(60.0, t.CorrectionFloorWheelFt);
+        Assert.Equal(6.0, t.TrimTimeConstantS);
+        Assert.Equal(1.0, t.PathAngleTimeConstantS);
+        Assert.Equal(200.0, t.LevelVsFpm);
+        Assert.Equal(5.0, t.LevelHoldS);
+        Assert.Equal(1.5, t.HoldBreakPitchDeg);
+    }
+
     // A slew or a pause: every function stays finite at a ground speed of 0.
     [Fact]
     public void A_stopped_aircraft_gets_finite_vertical_numbers()
