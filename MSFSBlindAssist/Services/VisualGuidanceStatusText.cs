@@ -50,7 +50,7 @@ internal static class VisualGuidanceStatusText
         VisualGuidanceReadoutPhase.OnFinal =>
             $"On final, {Tenths(s.DistanceNm)} miles. {Side(s.CrossTrackNm)}. {Vertical(s)}.",
         VisualGuidanceReadoutPhase.Flare =>
-            $"Flare, {Math.Max(0, Math.Round(s.WheelHeightFt, MidpointRounding.AwayFromZero)).ToString("0", Inv)} feet. {Side(s.CrossTrackNm)}.",
+            $"Flare, {Math.Max(0, Math.Round(s.WheelHeightFt, MidpointRounding.AwayFromZero)).ToString("0", Inv)} feet. {Side(s.CrossTrackNm)}. {Capitalised(Target(s.TargetFpm))}.",
         VisualGuidanceReadoutPhase.Touchdown =>
             $"Touchdown. {Side(s.CrossTrackNm)}.",
         _ => "Visual guidance starting.",
@@ -150,6 +150,9 @@ internal static class VisualGuidanceStatusText
         double fpm = RoundTo(Math.Abs(targetFpm), 50);
         return fpm == 0 ? "target level" : $"target {fpm.ToString("#,0", Inv)} down";
     }
+
+    // The flare's target starts its own sentence (stage 6): "Target 350 down".
+    private static string Capitalised(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     // A height to 10 ft, thousands with a comma.
     private static string Feet(double ft) => RoundTo(Math.Abs(ft), 10).ToString("#,0", Inv);

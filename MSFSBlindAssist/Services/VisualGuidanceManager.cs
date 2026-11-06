@@ -137,6 +137,9 @@ public class VisualGuidanceManager : IDisposable
     // The flare's time constant (stage 6, VisualGuidanceFlare.TauS), set once when the flare starts so its
     // sink profile starts at the aircraft's own descent rate; +∞ asks for the touchdown rate from the start.
     private double flareTauS = double.PositiveInfinity;
+    // "Flare" has been said this approach; armed again only above the flare's band (a go-around), so a
+    // balloon or a bounce is not said again (stage 6).
+    private bool flareCalled;
 
     // Announcement tracking
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
@@ -552,6 +555,7 @@ public class VisualGuidanceManager : IDisposable
 
         // Reset flare state
         flareTauS = double.PositiveInfinity;
+        flareCalled = false;
 
         // Instantiate both generators and apply the aircraft's pitch→frequency mapping. We do
         // NOT Start() them yet — the first ProcessUpdate call kicks off audio output once real
@@ -1121,25 +1125,32 @@ public class VisualGuidanceManager : IDisposable
         }
 
         var tuning = VerticalTuningForHarness;
+        // The smoothed descent rate, never the raw vertical speed (VG-25), so a gust starts nothing early.
+        double sinkFpm = VisualGuidanceFlare.SinkFpm(trimLearner.PathAngleDeg, currentGroundSpeedKnots);
+        if (wheelHeightAGL > tuning.FlareEndWheelFt) flareCalled = false;
+
         // A balloon or a bounce stays in the flare with the profile it started with; only above the
         // flare's band (100 ft, a go-around) is it final again, the path's cue leaving from the flare's
         // pitch (stage 6, plan decision 7).
         if (currentPhase is GuidancePhase.Flare or GuidancePhase.Touchdown)
         {
-            currentPhase = wheelHeightAGL <= tuning.FlareEndWheelFt ? GuidancePhase.Flare : GuidancePhase.Final;
+            if (wheelHeightAGL <= tuning.FlareEndWheelFt)
+            {
+                currentPhase = GuidancePhase.Flare;
+                SayFlareWhenDue(wheelHeightAGL, sinkFpm, tuning);
+            }
+            else currentPhase = GuidancePhase.Final;
             return;
         }
 
-        // The flare starts by time to touchdown (4.3 s, on the smoothed descent rate, never the raw
-        // vertical speed: VG-25), or at the aircraft's own flare height (777 = 40 to match the autopilot's
-        // autoland; A320 = 30 from FCTM), whichever comes first (VG-27). From any phase: Ctrl+V pressed
-        // low starts it on the first update, from the aircraft's own descent.
-        double sinkFpm = VisualGuidanceFlare.SinkFpm(trimLearner.PathAngleDeg, currentGroundSpeedKnots);
+        // The flare starts by time to touchdown (4.3 s), or at the aircraft's own flare height (777 = 40 to
+        // match the autopilot's autoland; A320 = 30 from FCTM), whichever comes first (VG-27). From any
+        // phase: Ctrl+V pressed low starts it on the first update, from the aircraft's own descent.
         if (VisualGuidanceFlare.Starts(wheelHeightAGL, sinkFpm, flareTriggerWheelHeightFt, tuning))
         {
             currentPhase = GuidancePhase.Flare;
             flareTauS = VisualGuidanceFlare.TauS(wheelHeightAGL, sinkFpm, tuning.TouchdownSinkFpm);
-            AnnouncePhaseChange("Flare", HOLD_FLARE_S);
+            SayFlareWhenDue(wheelHeightAGL, sinkFpm, tuning);
             return;
         }
 
@@ -1782,6 +1793,20 @@ public class VisualGuidanceManager : IDisposable
     /// <summary>
     /// Announces phase changes; <paramref name="holdSeconds"/> is the line's measured speaking time (VG-21).
     /// </summary>
+    /// <summary>
+    /// "Flare" (stage 6, VG-27): once per approach, queued with its measured hold, on the first update in
+    /// the flare when touchdown is <see cref="VisualGuidanceVerticalTuning.FlareCallS"/> away at the smoothed
+    /// descent rate (30 ft at 740 fpm) or the wheels are at the aircraft's flare height, whichever comes
+    /// first; so earlier when coming down faster, and never before the flare has started. Said through
+    /// <see cref="Say"/>, not <see cref="AnnouncePhaseChange"/>, whose one-second gap could drop it for good.
+    /// </summary>
+    private void SayFlareWhenDue(double wheelFt, double sinkFpm, VisualGuidanceVerticalTuning tuning)
+    {
+        if (flareCalled || !VisualGuidanceFlare.CallDue(wheelFt, sinkFpm, flareTriggerWheelHeightFt, tuning)) return;
+        flareCalled = true;
+        Say("Flare", immediate: false, HOLD_FLARE_S);
+    }
+
     private void AnnouncePhaseChange(string message, double holdSeconds)
     {
         var now = ClockForHarness();

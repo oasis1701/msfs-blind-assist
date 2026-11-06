@@ -1107,6 +1107,12 @@ A to K pass against `approach_stage4_h5`, 28 accepted: E's two 45° speed interc
 which now land in the zone at about 200 fpm where stage 4's long balloon landings read 76 to 93. The flare
 starts at a median 53 ft on the jets (4.3 s at 742 fpm) and 25 ft on the light runs.
 
+**"Flare" by time, once** (`approach_stage6_t4`, Task 4): the word comes 2.5 s before touchdown or at the
+flare height, at a median 30 ft on the jets and 14 ft on the light runs (2.5 s at about 345 fpm, above
+their 10 ft backstop), once on every landing (N). Against `approach_stage6_t3` every measure reads the
+same (`BETTER {}`, `WORSE {}`, `CHANGED {}`): only when the word is said moved. A to K and A, L, M, N, O
+pass, as at Task 3.
+
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
 4,857 landing runs, 1,960 taxis, 409 wrong turns.
