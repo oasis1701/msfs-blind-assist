@@ -433,7 +433,7 @@ Press \] then Shift+L. The window opens already filled in, with the cursor in it
 Press Tab to move through the window. In order:
 
 1. **Where you are** (described above).
-2. **Kinds of place**: a tree with check boxes: **All places**, then Towns, Villages, Airports, Terrain, Water and Landmarks, then the kinds in each, such as island or mountain under Terrain. Ticking or unticking an item does the same to everything under it, so you can untick Villages in one go, or tick Terrain and then untick only mountains. An item shows ticked only while everything under it is ticked.
+2. **Kinds of place**: a tree with check boxes: **All places**, then Towns, Villages, Airports, Terrain, Water and Landmarks, then the kinds in each, such as Islands or Mountains under Terrain, or Capitals, Regional capitals, Towns and Neighborhoods under Towns. Ticking or unticking an item does the same to everything under it, so you can untick Villages in one go, or tick Terrain and then untick only mountains. An item shows ticked only while everything under it is ticked.
 3. **Show filters and search**, which shows the filters below it (the button then reads **Hide filters and search**):
    - **Search by name**: type part of a name. Accents and capitals do not matter. Press Enter to hear how many places match.
    - **Search where**: **Around the map position**, or **Whole world, by name**, which finds a name anywhere and lists the nearest matches. A whole-world search takes a second or two.

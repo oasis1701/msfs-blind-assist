@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.Services.Geography;
 
 /// <summary>The downloaded files a build reads.</summary>
 internal sealed record LocationBuildInputs(
-    string GeoNamesZip, string CountryInfoPath, string Admin1Path, string FeatureCodesPath,
+    string GeoNamesZip, string CountryInfoPath, string Admin1Path,
     IReadOnlyDictionary<NaturalEarthLayer, string> NaturalEarthFiles,
     string GeoNamesDate)
 {
@@ -80,10 +80,9 @@ internal sealed class LocationDataBuilder
 
                 var countries = GeoNamesNameFiles.ParseCountryInfo(File.ReadLines(inputs.CountryInfoPath, Encoding.UTF8));
                 var states = GeoNamesNameFiles.ParseAdmin1(File.ReadLines(inputs.Admin1Path, Encoding.UTF8));
-                var featureNames = GeoNamesNameFiles.ParseFeatureCodes(File.ReadLines(inputs.FeatureCodesPath, Encoding.UTF8));
                 try
                 {
-                    (places, rows) = ImportPlaces(db, inputs.GeoNamesZip, countries, states, featureNames,
+                    (places, rows) = ImportPlaces(db, inputs.GeoNamesZip, countries, states,
                         p => Report(BuildPhase.Places, p * 85 / 100), ct);
                 }
                 catch (InvalidDataException ex)
@@ -149,18 +148,19 @@ internal sealed class LocationDataBuilder
             CREATE TABLE place(
                 cat INTEGER NOT NULL, cell INTEGER NOT NULL, id INTEGER NOT NULL,
                 lat_off INTEGER NOT NULL, lon_off INTEGER NOT NULL, pop INTEGER NOT NULL,
-                code INTEGER NOT NULL, admin INTEGER NOT NULL, name TEXT NOT NULL,
+                kind INTEGER NOT NULL, admin INTEGER NOT NULL, name TEXT NOT NULL,
                 PRIMARY KEY(cat, cell, id)) WITHOUT ROWID
             """);
         Exec(db, "CREATE TABLE admin(id INTEGER PRIMARY KEY, cc TEXT NOT NULL, admin1 TEXT NOT NULL, country TEXT NOT NULL, state TEXT NOT NULL)");
-        // name: featureCodes_en.txt's English name ("island"), the code itself when the file has none.
-        Exec(db, "CREATE TABLE feature_code(id INTEGER PRIMARY KEY, code TEXT NOT NULL, name TEXT NOT NULL)");
+        // Our own kinds of place (LocationFeatureCatalog's PlaceKind): its key ("island"), and what the
+        // window calls it in the table ("Island") and the tree ("Islands"). Never GeoNames' own names.
+        Exec(db, "CREATE TABLE place_kind(id INTEGER PRIMARY KEY, key TEXT NOT NULL, singular TEXT NOT NULL, plural TEXT NOT NULL)");
         // An airport's alternate names (ICAO and IATA codes among them), keyed by its GeoNames id:
         // they match it to the navigation database (AirportMatcher). Airports only, about 42,000.
         Exec(db, "CREATE TABLE airport_alias(id INTEGER PRIMARY KEY, names TEXT NOT NULL)");
-        // Every (category, feature code) pair the place table holds: the Location Info window builds its
+        // Every (category, kind) pair the place table holds: the Location Info window builds its
         // category tree from it, without reading 8 million rows.
-        Exec(db, "CREATE TABLE place_type(cat INTEGER NOT NULL, code INTEGER NOT NULL, PRIMARY KEY(cat, code)) WITHOUT ROWID");
+        Exec(db, "CREATE TABLE place_type(cat INTEGER NOT NULL, kind INTEGER NOT NULL, PRIMARY KEY(cat, kind)) WITHOUT ROWID");
         Exec(db, "CREATE TABLE shape(id INTEGER PRIMARY KEY, layer INTEGER NOT NULL, name TEXT NOT NULL, extra TEXT, is_line INTEGER NOT NULL, blob BLOB NOT NULL)");
         Exec(db, "CREATE VIRTUAL TABLE shape_rt USING rtree(id, min_lon, max_lon, min_lat, max_lat)");
         Exec(db, "CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)");
@@ -169,11 +169,11 @@ internal sealed class LocationDataBuilder
     private struct PlaceRow
     {
         public byte Cat; public int Cell; public int Id; public int LatOff; public int LonOff;
-        public int Pop; public int Code; public int Admin; public string Name;
+        public int Pop; public int Kind; public int Admin; public string Name;
     }
 
     private static (long Places, long Rows) ImportPlaces(SqliteConnection db, string zipPath,
-        Dictionary<string, string> countries, Dictionary<string, string> states, Dictionary<string, string> featureNames,
+        Dictionary<string, string> countries, Dictionary<string, string> states,
         Action<int> percent, CancellationToken ct)
     {
         using var zip = ZipFile.OpenRead(zipPath);
@@ -184,21 +184,21 @@ internal sealed class LocationDataBuilder
         using var reader = new StreamReader(counting, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1 << 16);
 
         var adminIds = new Dictionary<(string Cc, string A1), int>();
-        var codeIds = new Dictionary<string, int>(StringComparer.Ordinal);
+        var kindIds = new Dictionary<PlaceKind, int>();
         var batch = new List<PlaceRow>(BatchRows);
         var aliases = new List<(int Id, string Names)>();
-        var placeTypes = new HashSet<(byte Cat, int Code)>();
+        var placeTypes = new HashSet<(byte Cat, int Kind)>();
         long places = 0, rows = 0;
 
         using var insert = db.CreateCommand();
-        insert.CommandText = "INSERT INTO place(cat, cell, id, lat_off, lon_off, pop, code, admin, name) VALUES ($cat, $cell, $id, $lat, $lon, $pop, $code, $admin, $name)";
+        insert.CommandText = "INSERT INTO place(cat, cell, id, lat_off, lon_off, pop, kind, admin, name) VALUES ($cat, $cell, $id, $lat, $lon, $pop, $kind, $admin, $name)";
         var pCat = insert.Parameters.Add("$cat", SqliteType.Integer);
         var pCell = insert.Parameters.Add("$cell", SqliteType.Integer);
         var pId = insert.Parameters.Add("$id", SqliteType.Integer);
         var pLat = insert.Parameters.Add("$lat", SqliteType.Integer);
         var pLon = insert.Parameters.Add("$lon", SqliteType.Integer);
         var pPop = insert.Parameters.Add("$pop", SqliteType.Integer);
-        var pCode = insert.Parameters.Add("$code", SqliteType.Integer);
+        var pKind = insert.Parameters.Add("$kind", SqliteType.Integer);
         var pAdmin = insert.Parameters.Add("$admin", SqliteType.Integer);
         var pName = insert.Parameters.Add("$name", SqliteType.Text);
 
@@ -214,7 +214,7 @@ internal sealed class LocationDataBuilder
             foreach (var r in batch)
             {
                 pCat.Value = r.Cat; pCell.Value = r.Cell; pId.Value = r.Id; pLat.Value = r.LatOff; pLon.Value = r.LonOff;
-                pPop.Value = r.Pop; pCode.Value = r.Code; pAdmin.Value = r.Admin; pName.Value = r.Name;
+                pPop.Value = r.Pop; pKind.Value = r.Kind; pAdmin.Value = r.Admin; pName.Value = r.Name;
                 insert.ExecuteNonQuery();
             }
             tx.Commit();
@@ -233,20 +233,20 @@ internal sealed class LocationDataBuilder
                 adminId = adminIds.Count + 1;
                 adminIds[adminKey] = adminId;
             }
-            if (!codeIds.TryGetValue(row.FeatureCode, out int codeId))
+            if (!kindIds.TryGetValue(row.Kind, out int kindId))
             {
-                codeId = codeIds.Count + 1;
-                codeIds[row.FeatureCode] = codeId;
+                kindId = kindIds.Count + 1;
+                kindIds[row.Kind] = kindId;
             }
             var (latOff, lonOff) = LocationGrid.Offsets(row.Latitude, row.Longitude);
             batch.Add(new PlaceRow
             {
                 Cat = (byte)row.Category, Cell = LocationGrid.Cell(row.Latitude, row.Longitude), Id = row.Id,
-                LatOff = latOff, LonOff = lonOff, Pop = row.Population, Code = codeId, Admin = adminId, Name = row.Name,
+                LatOff = latOff, LonOff = lonOff, Pop = row.Population, Kind = kindId, Admin = adminId, Name = row.Name,
             });
             places++;
             if (row.AlternateNames.Length > 0) aliases.Add((row.Id, row.AlternateNames));
-            placeTypes.Add(((byte)row.Category, codeId));
+            placeTypes.Add(((byte)row.Category, kindId));
 
             if (batch.Count >= BatchRows)
             {
@@ -281,13 +281,14 @@ internal sealed class LocationDataBuilder
                 cmd.ExecuteNonQuery();
             }
             cmd.Parameters.Clear();
-            cmd.CommandText = "INSERT INTO feature_code(id, code, name) VALUES ($id, $code, $name)";
-            var cId = cmd.Parameters.Add("$id", SqliteType.Integer);
-            var cCode = cmd.Parameters.Add("$code", SqliteType.Text);
-            var cName = cmd.Parameters.Add("$name", SqliteType.Text);
-            foreach (var (code, id) in codeIds)
+            cmd.CommandText = "INSERT INTO place_kind(id, key, singular, plural) VALUES ($id, $key, $singular, $plural)";
+            var kId = cmd.Parameters.Add("$id", SqliteType.Integer);
+            var kKey = cmd.Parameters.Add("$key", SqliteType.Text);
+            var kSingular = cmd.Parameters.Add("$singular", SqliteType.Text);
+            var kPlural = cmd.Parameters.Add("$plural", SqliteType.Text);
+            foreach (var (kind, id) in kindIds)
             {
-                cId.Value = id; cCode.Value = code; cName.Value = featureNames.GetValueOrDefault(code) ?? code;
+                kId.Value = id; kKey.Value = kind.Key; kSingular.Value = kind.Singular; kPlural.Value = kind.Plural;
                 cmd.ExecuteNonQuery();
             }
             cmd.Parameters.Clear();
@@ -297,10 +298,10 @@ internal sealed class LocationDataBuilder
             var lNames = cmd.Parameters.Add("$names", SqliteType.Text);
             foreach (var (id, names) in aliases) { lId.Value = id; lNames.Value = names; cmd.ExecuteNonQuery(); }
             cmd.Parameters.Clear();
-            cmd.CommandText = "INSERT INTO place_type(cat, code) VALUES ($cat, $code)";
+            cmd.CommandText = "INSERT INTO place_type(cat, kind) VALUES ($cat, $kind)";
             var tCat = cmd.Parameters.Add("$cat", SqliteType.Integer);
-            var tCode = cmd.Parameters.Add("$code", SqliteType.Integer);
-            foreach (var (cat, code) in placeTypes) { tCat.Value = cat; tCode.Value = code; cmd.ExecuteNonQuery(); }
+            var tKind = cmd.Parameters.Add("$kind", SqliteType.Integer);
+            foreach (var (cat, kind) in placeTypes) { tCat.Value = cat; tKind.Value = kind; cmd.ExecuteNonQuery(); }
             tx.Commit();
         }
         return (places, rows);

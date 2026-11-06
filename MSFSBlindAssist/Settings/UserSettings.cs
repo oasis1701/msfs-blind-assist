@@ -237,7 +237,7 @@ public class UserSettings
         public int LocationInfoRange { get; set; } = 30;
         // One of LocationPhrases' compass words ("northwest"), or empty for every direction.
         public string LocationInfoDirection { get; set; } = "";
-        // Unticked kinds of place, as "Terrain:ISL" keys: a kind a newer database adds starts ticked.
+        // Unticked kinds of place, as "Terrain:island" keys (PlaceType.Key): a kind a newer database adds starts ticked.
         public List<string> LocationInfoHiddenTypes { get; set; } = new();
         public bool LocationInfoFiltersShown { get; set; } = false;
         // While true the map position is the aircraft; "Set as map position" on a place clears it.
@@ -245,7 +245,7 @@ public class UserSettings
         public string LocationInfoMapName { get; set; } = "";
         public double LocationInfoMapLatitude { get; set; }
         public double LocationInfoMapLongitude { get; set; }
-        // The kinds of place Output C names, set by the window's "Use for Output C" ("Terrain:ISL"
+        // The kinds of place Output C names, set by the window's "Use for Output C" ("Terrain:island"
         // keys); empty means towns and villages, C's usual choice.
         public List<string> OutputCPlaceTypes { get; set; } = new();
 

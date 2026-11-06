@@ -10,16 +10,16 @@ namespace MSFSBlindAssist.Tests.Geography;
 public class PlaceSearchTests
 {
     private static PlaceResult Place(int id, string name, double lat, double lon, LocationCategory category = LocationCategory.Terrain,
-        string code = "ISL", int population = 0) =>
-        new(id, name, lat, lon, category, code, "island", population, "Västra Götaland", "Sweden") { FoldedName = SearchText.Fold(name) };
+        string kind = "island", int population = 0) =>
+        new(id, name, lat, lon, category, kind, "Island", population, "Västra Götaland", "Sweden") { FoldedName = SearchText.Fold(name) };
 
     // Around Trollhättan (58.28, 12.29).
     private static readonly PlaceResult[] Places =
     {
         Place(1, "Krokholmen", 57.93333, 11.66667),                          // southwest, about 28 nm
-        Place(2, "Trollhättan", 58.28, 12.29, LocationCategory.Town, "PPL", 48573), // at the point
-        Place(3, "Göta älv", 58.10, 12.10, LocationCategory.Water, "STM"),     // southwest, about 12 nm
-        Place(4, "Hunneberg", 58.35, 12.48, LocationCategory.Terrain, "MT"),  // northeast, about 7 nm
+        Place(2, "Trollhättan", 58.28, 12.29, LocationCategory.Town, "town", 48573), // at the point
+        Place(3, "Göta älv", 58.10, 12.10, LocationCategory.Water, "river"),   // southwest, about 12 nm
+        Place(4, "Hunneberg", 58.35, 12.48, LocationCategory.Terrain, "mountain"), // northeast, about 7 nm
     };
 
     private static readonly HashSet<string> None = new();
@@ -34,7 +34,7 @@ public class PlaceSearchTests
     [Fact]
     public void Unticked_kinds_are_left_out()
     {
-        var hidden = new HashSet<string> { "Terrain:ISL", "Town:PPL" };
+        var hidden = new HashSet<string> { "Terrain:island", "Town:town" };
         var shown = PlaceFilter.Apply(Places, 58.28, 12.29, hidden, "", null, null);
         Assert.Equal(new[] { 4, 3 }, shown.Select(i => Places[i].Id));
     }

@@ -222,9 +222,10 @@ public sealed class OfflineLocationServiceTests : IDisposable
         var places = Built().SearchAround(38.6, -76.6, 60, CancellationToken.None)!;
         var mountain = Assert.Single(places, p => p.Name == "Sugarloaf Mountain");
         Assert.Equal(LocationCategory.Terrain, mountain.Category);
-        Assert.Equal("mountain", mountain.TypeName);          // from featureCodes_en.txt
+        Assert.Equal("Mountain", mountain.TypeName);          // our own name, singular in the table
+        Assert.Equal("mountain", mountain.Kind);
         Assert.Equal("Maryland", mountain.State);
-        Assert.Equal("MUS", Assert.Single(places, p => p.Name == "Bay Museum").TypeName); // a code the file lacks keeps the code
+        Assert.Equal("Museum", Assert.Single(places, p => p.Name == "Bay Museum").TypeName);
         Assert.Equal("bayside airport", Assert.Single(places, p => p.Name == "Bayside Airport").FoldedName);
         Assert.Equal("KBAY,BYA,Bayside Field", Assert.Single(places, p => p.Name == "Bayside Airport").AlternateNames);
         Assert.Equal("", Assert.Single(places, p => p.Name == "Pond").AlternateNames); // airports only
@@ -236,10 +237,14 @@ public sealed class OfflineLocationServiceTests : IDisposable
     public void The_place_types_come_from_the_database()
     {
         var types = Built().GetPlaceTypes()!;
-        Assert.Contains(types, t => t.Key == "Terrain:MT" && t.Name == "mountain");
-        Assert.Contains(types, t => t.Key == "Town:PPLA2");
-        Assert.Contains(types, t => t.Key == "Village:PPL"); // Hamlet, population 0
-        Assert.Contains(types, t => t.Key == "Town:PPL");    // Bayside, 1,238
+        Assert.Contains(types, t => t.Key == "Terrain:mountain" && t.Name == "Mountains"); // plural in the tree
+        Assert.Contains(types, t => t.Key == "Village:village"); // Hamlet, population 0
+        Assert.Contains(types, t => t.Key == "Town:neighborhood"); // Harbor District (PPLX)
+        // Bayside (PPL, 1,238) and Bigtown (PPLA2, a county seat) are both plain towns: one kind.
+        Assert.Single(types, t => t.Key == "Town:town");
+        Assert.DoesNotContain(types, t => t.Name.Contains('(') || t.Name != t.Name.Trim() || char.IsLower(t.Name[0]));
+        // In category order, then the catalog's order within each.
+        Assert.Equal(types.OrderBy(t => t.Category).ThenBy(t => LocationFeatureCatalog.OrderOf(t.Kind)), types);
     }
 
     [Fact]
@@ -264,10 +269,10 @@ public sealed class OfflineLocationServiceTests : IDisposable
     {
         var service = Built();
         Assert.Equal("Bayside", service.GetNearest(38.55, -76.48, Miles)!.Nearest!.Name);
-        var museum = service.GetNearest(38.55, -76.48, Miles with { PlaceTypes = new[] { "Landmark:MUS" } })!;
+        var museum = service.GetNearest(38.55, -76.48, Miles with { PlaceTypes = new[] { "Landmark:museum" } })!;
         Assert.Equal("Bay Museum", museum.Nearest!.Name);
         Assert.Equal("Maryland", museum.Where.State); // the area still comes from the nearest town
-        Assert.Null(service.GetNearest(38.55, -76.48, Miles with { PlaceTypes = new[] { "Terrain:ISL" } })!.Nearest);
+        Assert.Null(service.GetNearest(38.55, -76.48, Miles with { PlaceTypes = new[] { "Terrain:island" } })!.Nearest);
     }
 
     [Fact]

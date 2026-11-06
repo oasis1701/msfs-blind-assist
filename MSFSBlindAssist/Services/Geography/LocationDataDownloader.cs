@@ -317,15 +317,14 @@ internal sealed class LocationDataDownloader : IDisposable
         string folder = _store.DownloadFolder;
         string country = Path.Combine(folder, "countryInfo.txt");
         string admin1 = Path.Combine(folder, "admin1CodesASCII.txt");
-        string featureCodes = Path.Combine(folder, "featureCodes_en.txt");
         // A whole dump a failed or cancelled build left is built without the network, as the status
-        // box promises ("nothing is downloaded again"): its name files are still beside it.
-        if (CompleteDump() is null || !File.Exists(country) || !File.Exists(admin1) || !File.Exists(featureCodes))
+        // box promises ("nothing is downloaded again"): its name files are still beside it. Kinds of
+        // place are named by LocationFeatureCatalog, never by GeoNames' featureCodes_en.txt.
+        if (CompleteDump() is null || !File.Exists(country) || !File.Exists(admin1))
         {
-            SetStatus(new DownloadStatus(DownloadJobPhase.Downloading, "Downloading GeoNames country, state and place type names.", 0));
+            SetStatus(new DownloadStatus(DownloadJobPhase.Downloading, "Downloading GeoNames country and state names.", 0));
             await DownloadSmallFileAsync(GeoNamesBaseUrl + "countryInfo.txt", country, null, ct).ConfigureAwait(false);
             await DownloadSmallFileAsync(GeoNamesBaseUrl + "admin1CodesASCII.txt", admin1, null, ct).ConfigureAwait(false);
-            await DownloadSmallFileAsync(GeoNamesBaseUrl + "featureCodes_en.txt", featureCodes, null, ct).ConfigureAwait(false);
         }
 
         var shapes = new Dictionary<NaturalEarthLayer, string>();
@@ -341,7 +340,7 @@ internal sealed class LocationDataDownloader : IDisposable
         }
 
         var (zip, date) = await DownloadGeoNamesZipAsync(ct).ConfigureAwait(false);
-        return new LocationBuildInputs(zip, country, admin1, featureCodes, shapes, date)
+        return new LocationBuildInputs(zip, country, admin1, shapes, date)
         {
             MinimumPlaces = MinimumPlaces,
             MinimumRows = MinimumRows,

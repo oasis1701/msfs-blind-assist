@@ -39,7 +39,7 @@ internal sealed record LocationQuerySettings(
     /// coast is mentioned only within it. At sea and over a lake the nearest land or shore is always said.</summary>
     public int CoastRange { get; init; } = 50;
 
-    /// <summary>The kinds of place Output C names ("Terrain:ISL", <see cref="PlaceType.Key"/>), set from the
+    /// <summary>The kinds of place Output C names ("Terrain:island", <see cref="PlaceType.Key"/>), set from the
     /// Location Info window's "Use for Output C". Empty: towns and villages, C's usual choice. Only a C press
     /// passes it; the periodic announcement and the window leave it empty.</summary>
     public IReadOnlyCollection<string> PlaceTypes { get; init; } = Array.Empty<string>();
@@ -181,14 +181,11 @@ internal sealed class OfflineLocationService
             ? _store.Read(c =>
             {
                 var admins = AdminNames.Load(c);
-                var sections = FeatureCodeIds(c, CitySectionCode);
+                var sections = PlaceKinds.Load(c).IdsOf(new[] { LocationFeatureCatalog.Neighborhood.Key });
                 return (IReadOnlyList<TrafficCityReport>)positions
                     .Select(p => MajorCityReport(c, admins, sections, p.Lat, p.Lon, settings)).ToList();
             })
             : null;
-
-    /// <summary>GeoNames' feature code for a section of a populated place: a district or neighbourhood.</summary>
-    private const string CitySectionCode = "PPLX";
 
     /// <summary>The major-city search widens through these radii and stops at the first that holds a city: the
     /// nearest within a radius is the nearest of all. Where cities are dense the first step finds one, and
@@ -207,7 +204,7 @@ internal sealed class OfflineLocationService
         foreach (double km in CitySearchStepsKm.Where(k => k < rangeKm).Append(rangeKm))
         {
             city = Places(c, lat, lon, km, s.MajorPopulation, LocationCategory.Town)
-                .Where(p => !sections.Contains(p.Code)).MinBy(p => p.DistanceNm);
+                .Where(p => !sections.Contains(p.Kind)).MinBy(p => p.DistanceNm);
             if (city is not null) break;
         }
 
@@ -233,18 +230,6 @@ internal sealed class OfflineLocationService
             point = new CityPoint(city.Name, cityState, cityCountry, city.Lat, city.Lon);
         }
         return new TrafficCityReport(where, point);
-    }
-
-    /// <summary>The ids the database gives a GeoNames feature code (the <c>feature_code</c> table).</summary>
-    private static HashSet<int> FeatureCodeIds(SqliteConnection c, string code)
-    {
-        var ids = new HashSet<int>();
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id FROM feature_code WHERE code = $code";
-        cmd.Parameters.AddWithValue("$code", code);
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) ids.Add(r.GetInt32(0));
-        return ids;
     }
 
     /// <summary>The area in GeoNames' spelling, as C names places: over land the nearest town inside the same
@@ -361,21 +346,21 @@ internal sealed class OfflineLocationService
     /// Nearby range, or null.</summary>
     private static PlaceHit? NearestOfTypes(SqliteConnection c, double lat, double lon, LocationQuerySettings s, AdminNames admins)
     {
-        var codes = FeatureCodes.Load(c);
+        var kinds = PlaceKinds.Load(c);
         FoundPlace? best = null;
         foreach (var group in s.PlaceTypes.Select(ParseTypeKey).Where(k => k is not null).GroupBy(k => k!.Value.Category))
         {
-            var ids = codes.IdsOf(group.Select(k => k!.Value.Code));
+            var ids = kinds.IdsOf(group.Select(k => k!.Value.Kind));
             if (ids.Count == 0) continue;
             var hit = Places(c, lat, lon, s.Km(s.NearbyRange), group.Key)
-                .Where(p => ids.Contains(p.Code)).MinBy(p => p.DistanceNm);
+                .Where(p => ids.Contains(p.Kind)).MinBy(p => p.DistanceNm);
             if (hit is not null && (best is null || hit.DistanceNm < best.DistanceNm)) best = hit;
         }
         return best is null ? null : ToHit(best, admins);
     }
 
-    /// <summary>"Terrain:ISL" back to its category and code; null for a key this version does not know.</summary>
-    internal static (LocationCategory Category, string Code)? ParseTypeKey(string key)
+    /// <summary>"Terrain:island" back to its category and kind key; null for a key this version does not know.</summary>
+    internal static (LocationCategory Category, string Kind)? ParseTypeKey(string key)
     {
         int colon = key.IndexOf(':');
         if (colon <= 0 || !Enum.TryParse<LocationCategory>(key[..colon], out var category)) return null;
@@ -414,25 +399,26 @@ internal sealed class OfflineLocationService
     // ---- the Location Info window's search ----
 
     /// <summary>Every kind of place the database holds that the window shows (<see cref="LocationFeatureCatalog.IsShown"/>),
-    /// from its <c>place_type</c> table, named by GeoNames' <c>featureCodes_en.txt</c>. Null when no usable
-    /// database is installed.</summary>
+    /// from its <c>place_type</c> table, named in the plural as our own kinds (<see cref="LocationFeatureCatalog"/>).
+    /// In category order, then the catalog's order within each. Null when no usable database is installed.</summary>
     internal IReadOnlyList<PlaceType>? GetPlaceTypes() =>
         _store.IsAvailable
             ? _store.Read(c =>
             {
-                var codes = FeatureCodes.Load(c);
+                var kinds = PlaceKinds.Load(c);
                 var types = new List<PlaceType>();
                 using var cmd = c.CreateCommand();
-                cmd.CommandText = "SELECT cat, code FROM place_type";
+                cmd.CommandText = "SELECT cat, kind FROM place_type";
                 using var r = cmd.ExecuteReader();
                 while (r.Read())
                 {
                     var category = (LocationCategory)r.GetInt32(0);
                     if (!LocationFeatureCatalog.IsShown(category)) continue;
-                    var (code, name) = codes.Of(r.GetInt32(1));
-                    types.Add(new PlaceType(category, code, name));
+                    var kind = kinds.Of(r.GetInt32(1));
+                    types.Add(new PlaceType(category, kind.Key, kind.Plural));
                 }
-                return (IReadOnlyList<PlaceType>)types;
+                return (IReadOnlyList<PlaceType>)types
+                    .OrderBy(t => t.Category).ThenBy(t => LocationFeatureCatalog.OrderOf(t.Kind)).ToList();
             })
             : null;
 
@@ -444,11 +430,11 @@ internal sealed class OfflineLocationService
             {
                 lon = LocationGrid.NormalizeLon(lon);
                 var admins = AdminNames.Load(c);
-                var codes = FeatureCodes.Load(c);
+                var kinds = PlaceKinds.Load(c);
                 var categories = Enum.GetValues<LocationCategory>().Where(LocationFeatureCatalog.IsShown).ToArray();
                 var found = new List<PlaceResult>();
                 foreach (var p in PlacesWithId(c, lat, lon, radiusKm, categories, ct))
-                    found.Add(ToResult(p, admins, codes));
+                    found.Add(ToResult(p, admins, kinds));
                 return WithAliases(c, found);
             })
             : null;
@@ -463,12 +449,12 @@ internal sealed class OfflineLocationService
             ? _store.Read(c =>
             {
                 var admins = AdminNames.Load(c);
-                var codes = FeatureCodes.Load(c);
+                var kinds = PlaceKinds.Load(c);
                 // The nearest max kept in a max-heap on distance, so a common word never holds millions.
                 var nearest = new PriorityQueue<FoundPlaceWithId, double>(Comparer<double>.Create((a, b) => b.CompareTo(a)));
                 int total = 0;
                 using var cmd = c.CreateCommand();
-                cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, code, id, cat FROM place WHERE cat <> $hidden";
+                cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, kind, id, cat FROM place WHERE cat <> $hidden";
                 cmd.Parameters.AddWithValue("$hidden", (int)LocationCategory.Undersea);
                 using var r = cmd.ExecuteReader();
                 long n = 0;
@@ -486,7 +472,7 @@ internal sealed class OfflineLocationService
                     if (nearest.Count > max) nearest.Dequeue();
                 }
                 var found = new List<PlaceResult>();
-                while (nearest.TryDequeue(out var p, out _)) found.Add(ToResult(p, admins, codes));
+                while (nearest.TryDequeue(out var p, out _)) found.Add(ToResult(p, admins, kinds));
                 found.Reverse();
                 return new WorldSearchOutcome(WithAliases(c, found), total);
             })
@@ -506,12 +492,12 @@ internal sealed class OfflineLocationService
 
     private sealed record FoundPlaceWithId(FoundPlace Place, int Id, LocationCategory Category);
 
-    private static PlaceResult ToResult(FoundPlaceWithId f, AdminNames admins, FeatureCodes codes)
+    private static PlaceResult ToResult(FoundPlaceWithId f, AdminNames admins, PlaceKinds kinds)
     {
         var p = f.Place;
         var (state, country) = admins.Of(p.AdminId);
-        var (code, typeName) = codes.Of(p.Code);
-        return new PlaceResult(f.Id, p.Name, p.Lat, p.Lon, f.Category, code, typeName, p.Population, state, country)
+        var kind = kinds.Of(p.Kind);
+        return new PlaceResult(f.Id, p.Name, p.Lat, p.Lon, f.Category, kind.Key, kind.Singular, p.Population, state, country)
         {
             FoldedName = SearchText.Fold(p.Name),
         };
@@ -539,7 +525,7 @@ internal sealed class OfflineLocationService
         var found = new List<FoundPlaceWithId>();
         if (radiusKm <= 0) return found;
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, code, id FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to";
+        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, kind, id FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to";
         var pCat = cmd.Parameters.Add("$cat", SqliteType.Integer);
         var pFrom = cmd.Parameters.Add("$from", SqliteType.Integer);
         var pTo = cmd.Parameters.Add("$to", SqliteType.Integer);
@@ -563,34 +549,35 @@ internal sealed class OfflineLocationService
         return found;
     }
 
-    /// <summary>The <c>feature_code</c> table: id → (code, readable name).</summary>
-    private sealed class FeatureCodes
+    /// <summary>The <c>place_kind</c> table: id → our kind of place (key, singular, plural).</summary>
+    private sealed class PlaceKinds
     {
-        private readonly Dictionary<int, (string Code, string Name)> _byId = new();
+        private static readonly PlaceKind Unknown = new("", "", "");
+        private readonly Dictionary<int, PlaceKind> _byId = new();
 
-        internal static FeatureCodes Load(SqliteConnection c)
+        internal static PlaceKinds Load(SqliteConnection c)
         {
-            var codes = new FeatureCodes();
+            var kinds = new PlaceKinds();
             using var cmd = c.CreateCommand();
-            cmd.CommandText = "SELECT id, code, name FROM feature_code";
+            cmd.CommandText = "SELECT id, key, singular, plural FROM place_kind";
             using var r = cmd.ExecuteReader();
-            while (r.Read()) codes._byId[r.GetInt32(0)] = (r.GetString(1), r.GetString(2));
-            return codes;
+            while (r.Read()) kinds._byId[r.GetInt32(0)] = new PlaceKind(r.GetString(1), r.GetString(2), r.GetString(3));
+            return kinds;
         }
 
-        internal (string Code, string Name) Of(int id) => _byId.GetValueOrDefault(id, ("", ""));
+        internal PlaceKind Of(int id) => _byId.GetValueOrDefault(id, Unknown);
 
-        internal HashSet<int> IdsOf(IEnumerable<string> codes)
+        internal HashSet<int> IdsOf(IEnumerable<string> keys)
         {
-            var wanted = new HashSet<string>(codes, StringComparer.Ordinal);
-            return _byId.Where(kv => wanted.Contains(kv.Value.Code)).Select(kv => kv.Key).ToHashSet();
+            var wanted = new HashSet<string>(keys, StringComparer.Ordinal);
+            return _byId.Where(kv => wanted.Contains(kv.Value.Key)).Select(kv => kv.Key).ToHashSet();
         }
     }
 
     // ---- places ----
 
     private sealed record FoundPlace(string Name, double Lat, double Lon, int Population, int AdminId, double DistanceNm, double BearingTrue,
-        int Code);
+        int Kind);
 
     private static List<FoundPlace> Places(SqliteConnection c, double lat, double lon, double radiusKm, params LocationCategory[] categories) =>
         Places(c, lat, lon, radiusKm, 0, categories);
@@ -601,7 +588,7 @@ internal sealed class OfflineLocationService
         var found = new List<FoundPlace>();
         if (radiusKm <= 0) return found;
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, code FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to AND pop >= $min";
+        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, kind FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to AND pop >= $min";
         var pCat = cmd.Parameters.Add("$cat", SqliteType.Integer);
         var pFrom = cmd.Parameters.Add("$from", SqliteType.Integer);
         var pTo = cmd.Parameters.Add("$to", SqliteType.Integer);

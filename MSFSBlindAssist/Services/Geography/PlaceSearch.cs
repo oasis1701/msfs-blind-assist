@@ -1,22 +1,24 @@
 namespace MSFSBlindAssist.Services.Geography;
 
-/// <summary>A kind of place the Location Info window filters on: a category and one GeoNames feature
-/// code in it ("Terrain", "ISL", "island"). Populated codes appear under both Town and Village.</summary>
-internal sealed record PlaceType(LocationCategory Category, string Code, string Name)
+/// <summary>A kind of place the Location Info window filters on: a category and one of our kinds in it
+/// (<see cref="PlaceKind"/>), with the kind's plural as the tree shows it ("Terrain", "island", "Islands").
+/// Neighborhoods appear under both Town and Village.</summary>
+internal sealed record PlaceType(LocationCategory Category, string Kind, string Name)
 {
-    /// <summary>"Terrain:ISL": how a type is saved in the settings.</summary>
-    internal string Key => KeyOf(Category, Code);
+    /// <summary>"Terrain:island": how a type is saved in the settings.</summary>
+    internal string Key => KeyOf(Category, Kind);
 
-    internal static string KeyOf(LocationCategory category, string code) => category + ":" + code;
+    internal static string KeyOf(LocationCategory category, string kind) => category + ":" + kind;
 }
 
 /// <summary>One place found by a Location Info search, before any distance is worked out: the window
-/// measures it from both the map position and the aircraft.</summary>
+/// measures it from both the map position and the aircraft. <see cref="TypeName"/> is our kind's singular
+/// ("Island"), as the table's Type column shows it.</summary>
 internal sealed record PlaceResult(
-    int Id, string Name, double Lat, double Lon, LocationCategory Category, string Code, string TypeName,
+    int Id, string Name, double Lat, double Lon, LocationCategory Category, string Kind, string TypeName,
     int Population, string State, string Country)
 {
-    internal string TypeKey => PlaceType.KeyOf(Category, Code);
+    internal string TypeKey => PlaceType.KeyOf(Category, Kind);
 
     /// <summary>Folded once (<see cref="SearchText.Fold"/>) when the results are loaded, so typing in the
     /// search box filters without folding every name again.</summary>

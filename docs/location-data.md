@@ -21,8 +21,9 @@ state or province you are in, decided by a real outline.
 
 - **GeoNames** (CC BY 4.0, credited in the GeoNames tab): the full world dump
   `https://download.geonames.org/export/dump/allCountries.zip` (about 400 MB, 13.5 million rows,
-  rebuilt daily), with `countryInfo.txt` and `admin1CodesASCII.txt` for country and state names and
-  `featureCodes_en.txt` for the English name of each kind of place ("ISL" → "island").
+  rebuilt daily), with `countryInfo.txt` and `admin1CodesASCII.txt` for country and state names.
+  GeoNames' `featureCodes_en.txt` is not used: its names ("bank(s)", "israeli settlement") are never
+  shown. Our own kinds of place and their names are `LocationFeatureCatalog`'s (`PlaceKind`).
 - **Natural Earth** (public domain), release v5.1.2 at 1:10 million scale, as GeoJSON from the
   project's GitHub tag (gzip in transit, about 20 MB; 63 MB on disk): named oceans, seas, bays and
   straits (`ne_10m_geography_marine_polys`), the sea coastline, lakes, regions (mountain ranges,
@@ -35,11 +36,14 @@ rivers, and they stop at their estuaries).
 
 ## What is stored
 
-About 8.4 million GeoNames rows (`LocationFeatureCatalog`): every populated place except
-historical and abandoned ones, split into Town (500+ people, or a seat of administration) and
-Village; airports; terrain (mountains, hills, valleys, capes, peninsulas, islands); water (lakes,
-reservoirs, bays, streams, beaches, gulfs, straits, sounds, coves, reefs); tourist landmarks; and
-the undersea class, stored for later use. The finished database is about 330 MB at
+About 8.4 million GeoNames rows (`LocationFeatureCatalog`, an explicit list of GeoNames codes):
+populated places, split into Town (500+ people, or a seat of administration) and Village, as
+capitals, regional capitals, plain towns or villages and neighborhoods (historical, abandoned and
+destroyed places, and any populated code not listed, are dropped); airports; terrain (mountains,
+hills, valleys, capes, peninsulas, islands); water (lakes, reservoirs, bays, rivers, beaches,
+gulfs, straits, sounds, coves, reefs); tourist landmarks; and the undersea class, stored for later
+use. Each row is stored as one of our kinds (`PlaceKind`); several GeoNames codes can share one
+(ISL and ISLS are both Islands). The finished database is about 330 MB at
 `%APPDATA%\MSFSBlindAssist\databases\location-data.sqlite`
 (`DatabasePathResolver.GetLocationDataPath`).
 
@@ -47,13 +51,15 @@ the undersea class, stored for later use. The finished database is about 330 MB 
   0.25° cell (rows south to north, columns west to east) with a two-byte offset from the cell
   corner, so a radius search is one range seek per row of cells, two where the search crosses ±180°.
 - `admin` maps each place's country and state codes to GeoNames' names.
-- `feature_code` maps the small id `place.code` holds to the GeoNames code and its English name
-  (the code itself where `featureCodes_en.txt` has none).
-- `place_type` lists every (category, feature code) pair `place` holds: the Location Info window
+- `place_kind` maps the small id `place.kind` holds to our kind: its key ("island", saved in the
+  settings as "Terrain:island"), its singular for the table ("Island") and its plural for the tree
+  ("Islands").
+- `place_type` lists every (category, kind) pair `place` holds: the Location Info window
   builds its kinds-of-place tree from it without reading 8 million rows.
 - `airport_alias` keeps each airport's GeoNames alternate names (its ICAO and IATA codes among
   them), keyed by its GeoNames id, for matching it to the navigation database (`AirportMatcher`).
-  Schema 2 (2026-11) added these three; a schema 1 database reads as "needs an update" (LOC-7).
+  Schema 2 (2026-11) added these three; schema 3 (2026-11) replaced GeoNames' feature codes with
+  our kinds. An older database reads as "needs an update" (LOC-7).
 - `shape` holds the Natural Earth shapes as float32 blobs, one row per polygon part and coastlines
   cut into 64-point chunks, with an R*Tree on their bounding boxes (`NaturalEarthShapes`).
 - `meta` holds the schema version, the GeoNames file date, the Natural Earth release, the place

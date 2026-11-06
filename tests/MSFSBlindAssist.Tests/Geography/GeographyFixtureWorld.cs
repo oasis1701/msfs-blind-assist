@@ -34,9 +34,6 @@ internal static class GeographyFixtureWorld
 
     internal const string CountryInfo = "#ISO\tISO3\tNum\tfips\tCountry\nUS\tUSA\t840\tUS\tUnited States\n";
     internal const string Admin1 = "US.MD\tMaryland\tMaryland\t4361885\nUS.VA\tVirginia\tVirginia\t6254928\n";
-    // MUS is left out on purpose: a code the file does not name keeps the code as its name.
-    internal const string FeatureCodes = "P.PPL\tpopulated place\ta city, town, village\nP.PPLA2\tseat of a second-order administrative division\t\n"
-        + "P.PPLX\tsection of populated place\t\nS.AIRP\tairport\ta place where aircraft regularly land\nH.LK\tlake\t\nT.MT\tmountain\t\nnull\t\t\n";
 
     internal static byte[] DumpZip()
     {
@@ -76,7 +73,6 @@ internal static class GeographyFixtureWorld
         File.WriteAllBytes(zip, DumpZip());
         File.WriteAllText(Path.Combine(dir, "countryInfo.txt"), CountryInfo);
         File.WriteAllText(Path.Combine(dir, "admin1.txt"), Admin1);
-        File.WriteAllText(Path.Combine(dir, "featureCodes.txt"), FeatureCodes);
         var files = Shapes.ToDictionary(kv => kv.Key, kv =>
         {
             string path = Path.Combine(dir, kv.Key + ".geojson");
@@ -84,7 +80,7 @@ internal static class GeographyFixtureWorld
             return path;
         });
         return new LocationBuildInputs(zip, Path.Combine(dir, "countryInfo.txt"), Path.Combine(dir, "admin1.txt"),
-            Path.Combine(dir, "featureCodes.txt"), files, "2026-10-10")
+            files, "2026-10-10")
         {
             MinimumPlaces = 1,
             MinimumRows = minimumRows,

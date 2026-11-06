@@ -351,7 +351,8 @@ public partial class LocationInfoForm : Form
     // ---- the kinds-of-place tree ----
 
     /// <summary>All, then each shown category, then the kinds of place in it, from the database's own list
-    /// (<see cref="OfflineLocationService.GetPlaceTypes"/>). Unticked kinds come from the settings.</summary>
+    /// (<see cref="OfflineLocationService.GetPlaceTypes"/>), in the catalog's order. Unticked kinds come from
+    /// the settings.</summary>
     private void BuildTypeTree()
     {
         var types = _service.GetPlaceTypes() ?? Array.Empty<PlaceType>();
@@ -362,7 +363,7 @@ public partial class LocationInfoForm : Form
         foreach (var group in types.GroupBy(t => t.Category).OrderBy(g => g.Key))
         {
             var categoryNode = new TreeNode(LocationFeatureCatalog.Label(group.Key)) { Tag = group.Key };
-            foreach (var type in group.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase))
+            foreach (var type in group)
                 categoryNode.Nodes.Add(new TreeNode(type.Name) { Tag = type, Checked = !hidden.Contains(type.Key) });
             categoryNode.Checked = categoryNode.Nodes.Cast<TreeNode>().All(n => n.Checked);
             root.Nodes.Add(categoryNode);

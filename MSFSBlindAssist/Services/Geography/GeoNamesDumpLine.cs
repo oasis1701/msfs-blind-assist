@@ -7,6 +7,9 @@ internal readonly record struct GeoNamesRow(
     int Id, string Name, double Latitude, double Longitude,
     LocationCategory Category, string FeatureCode, string CountryCode, string Admin1, int Population)
 {
+    /// <summary>Our kind of place (<see cref="LocationFeatureCatalog.KindOf"/>), the one the window shows.</summary>
+    public PlaceKind Kind { get; init; } = LocationFeatureCatalog.Undersea;
+
     /// <summary>The alternate-names column (comma-separated), kept for airports only: their ICAO
     /// and IATA codes and other names match them to the navigation database. Empty otherwise.</summary>
     public string AlternateNames { get; init; } = "";
@@ -68,6 +71,7 @@ internal static class GeoNamesDumpLine
             (int)Math.Min(population, int.MaxValue))
         {
             AlternateNames = category == LocationCategory.Airport ? Field(line, starts, 3).Trim().ToString() : "",
+            Kind = LocationFeatureCatalog.KindOf(category, code),
         };
         return true;
     }
