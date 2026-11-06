@@ -250,14 +250,19 @@ Desired pitch = the learned trim − the target descent angle, rate limited at t
   `TypicalApproachAoaDeg` stands in. The live angle of attack is not used, nor the vertical speed's
   rate of change (VG-25): the old law built on them moved the command away from a pilot who
   followed it.
-- The mode says where the target descent angle comes from, and the flight recording has it per update
-  (`vmode`, VP-2):
-  - **Path** (established on final): the runway's glide path angle +
-    atan(height error / (27 s × ground speed)), from level up to the glide path angle + 2° (VG-24,
-    VG-26). The height error is against the path at the distance along the final course, not the
-    straight line. Below the path the cue asks for level flight until the path comes down to the
-    aircraft, then follows it. Under 60 ft of wheel height the correction stops and the cue holds the
-    glide path angle. A steep runway uses its own angle throughout (London City 5.5°).
+- The mode says where the target descent angle comes from, in the order an approach meets them, and the
+  flight recording has it per update (`vmode`, VP-2):
+  - **Follow** (deciding, joining while climbing or descending): the aircraft's own pitch, since the
+    altitude is ATC's or the pilot's there.
+  - **Hold** (joining only, `VisualGuidanceLevelHold`): once the vertical speed has been under 200 fpm
+    for 5 s, the altitude of that update is held: atan(height error / (27 s × ground speed)) either way,
+    within ±2°, so the cue asks back down from above and back up from below (VG-24). A pitch more than
+    1.5° from the cue the pilot heard (the previous update's) ends the hold at once, so a descent ATC
+    clears is never fought; the next level-off is held the same way. Each decision starts without a
+    hold. In the harness the scripted jets level by the altimeter about 30 ft low and climb back
+    slowly, so the hold takes an altitude about 28 ft under the cleared one (DESC runs,
+    `holdDriftMaxFt`); for about 15 s after a level-off from 1,500 fpm the learned trim reads up to
+    0.6° high (the flight path lags the pitch), so the cue sits that much above the aircraft.
   - **Plan** (vectoring and the pattern, every leg until established): BA chose the route, so it plans
     the descent along it (`VisualGuidanceVertical.PlannedHeight`): a 3° line (the runway's angle) back
     from a level-off a quarter of a degree under the path at the join point, level for the last 20 s of
@@ -273,17 +278,12 @@ Desired pitch = the learned trim − the target descent angle, rate limited at t
     and the path law takes them up onto it from below; a light aircraft at 65 kt arrives level about
     30 ft under it. A jet on the path but 0.2 nm off the centreline is vectoring too, so it is taken down
     to the floor before it is established (up to 1,380 fpm in the harness).
-  - **Follow** (deciding, joining while climbing or descending): the aircraft's own pitch, since the
-    altitude is ATC's or the pilot's there.
-  - **Hold** (joining only, `VisualGuidanceLevelHold`): once the vertical speed has been under 200 fpm
-    for 5 s, the altitude of that update is held: atan(height error / (27 s × ground speed)) either way,
-    within ±2°, so the cue asks back down from above and back up from below (VG-24). A pitch more than
-    1.5° from the cue the pilot heard (the previous update's) ends the hold at once, so a descent ATC
-    clears is never fought; the next level-off is held the same way. Each decision starts without a
-    hold. In the harness the scripted jets level by the altimeter about 30 ft low and climb back
-    slowly, so the hold takes an altitude about 28 ft under the cleared one (DESC runs,
-    `holdDriftMaxFt`); for about 15 s after a level-off from 1,500 fpm the learned trim reads up to
-    0.6° high (the flight path lags the pitch), so the cue sits that much above the aircraft.
+  - **Path** (established on final): the runway's glide path angle +
+    atan(height error / (27 s × ground speed)), from level up to the glide path angle + 2° (VG-24,
+    VG-26). The height error is against the path at the distance along the final course, not the
+    straight line. Below the path the cue asks for level flight until the path comes down to the
+    aircraft, then follows it. Under 60 ft of wheel height the correction stops and the cue holds the
+    glide path angle. A steep runway uses its own angle throughout (London City 5.5°).
   - **Flare**: the profile's fixed flare pitch (stage 6 replaces the flare).
 
 The vertical-speed law it replaced (a target rate of the natural descent plus 2 fpm per foot, locked to
@@ -331,6 +331,15 @@ The vertical path (stage 5) steers a flight path angle: desired pitch = learned 
 | `PathAngleTimeConstantS` | 1 s | The flight path angle's smoothing |
 | `VisualGuidanceVertical.MinGroundSpeedKt` | 40 kt | Below it the angles use 40 kt, and the trim learner skips the sample (a slew, a pause) |
 | `VisualGuidanceTrimLearner.MinValidDeg`, `MaxValidDeg` | −5°, 20° | A trim sample outside this band is a sim glitch and skipped |
+| `LevelVsFpm`, `LevelHoldS` | 200 fpm, 5 s | While joining, under this vertical speed for this long counts as level, and the hold takes that update's altitude |
+| `HoldBreakPitchDeg` | 1.5° | While holding, a pitch this far from the cue the pilot heard ends the hold: the pilot means it |
+| `VisualGuidanceVertical.ArrivalBelowDeg` | 0.25° | The plan levels off this far under the path at the join point (159 ft at a jet's 6 nm, 27 ft at a light aircraft's 1 nm) |
+| `VisualGuidanceVertical.FloorBelowPathFt` | 150 ft | Before established the plan is never lower than this under the path at the aircraft's straight-line distance (the owner, 2026-11-02); a jet's plan is this floor all the way in |
+| `VisualGuidanceVertical.LevelOffLeadS` | 20 s | The plan is level for this long of flight before the join point |
+| `StableGateFt` `[profile]` | 1,000 ft | Where the aircraft should be on the path: "Too high" judges whether 2° steeper can get there by it, "Too low" is said once more as the datum comes down through it. Light aircraft 300 ft |
+| `VisualGuidanceVertical.TooLowDeg` | 0.5° | "Too low" below the path by this angle, about where the PAPI shows red; "Too high" adds the same at the gate |
+| `VisualGuidanceVertical.WarningFloorFt` | 60 ft | The warnings never come within this of the path, twice the 30 ft "On path" (`OnPathFt`) |
+| `VisualGuidanceVertical.TooLowRepeatS`, `TooLowRearmFraction` | 10 s, 0.8 | "Too low" is said once more after 10 s if still that low, and armed again back within 80 % of its margin |
 | `typicalApproachAoaDeg` `[profile]` | 6.0° | The trim the learner starts from until its first sample. PMDG 777 overrides to 4.5°. |
 | `maxPitchRateDegPerSec` `[profile]` | 2.5 | Cap on commanded pitch change rate (deg/sec), applied over the measured frame time |
 | `glideslopeAltitudeBiasFt` `[profile]` | 60 *(est.)* | Added to ideal glidepath so VG matches the real ILS (TCH + datum). PMDG 777 = 80 (measured). |
@@ -342,7 +351,7 @@ The vertical path (stage 5) steers a flight path angle: desired pitch = learned 
 
 ### Vertical sign
 
-Above the reference (the path on final) means a larger target descent angle and a lower desired pitch (VG-24). A height error is + above the path, a descent angle + down, the glide path angle + (3.0): with autothrust holding the speed, less pitch is more descent. The old pitch PID once had this backwards (a leading minus, masked by autopilot tests that kept the error near zero) and would have steered a pilot away from the glideslope; the tests that pin the sign today are named in VG-24. If one fails, work out by hand which way the aircraft has to go; never flip the test.
+Above the reference (the path on final, BA's plan while vectoring and on the pattern, the held altitude while joining) means a larger target descent angle and a lower desired pitch (VG-24). Below the path or the plan the cue asks for level, never a climb; only the joining hold asks back up, within 2° (VG-26). A height error is + above the path, a descent angle + down, the glide path angle + (3.0): with autothrust holding the speed, less pitch is more descent. The old pitch PID once had this backwards (a leading minus, masked by autopilot tests that kept the error near zero) and would have steered a pilot away from the glideslope; the tests that pin the sign today are named in VG-24. If one fails, work out by hand which way the aircraft has to go; never flip the test.
 
 ## Tuning Guide
 
@@ -355,6 +364,9 @@ Above the reference (the path on final) means a larger target descent angle and 
 | Oscillates across centerline at short final | Bank rate cap too loose for the airframe | Lower `maxBankRateDegPerSec` in the airframe's `VisualGuidanceProfile` |
 | Sits off the path and converges slowly | Correction too slow | Sweep `approach --vertical CorrectionTimeConstantS=...` in the harness; watch `selfFeedback` and `pathOvershootFt` |
 | The pitch cue moves when the pilot pitches | The trim learner too quick | Sweep `TrimTimeConstantS`; the STEP runs' `selfFeedback` measures it |
+| The joining hold lets go in a bump, or engages before the level-off settles | Hold break or level test | Sweep `HoldBreakPitchDeg`, `LevelVsFpm` and `LevelHoldS` on the DESC and DESCHIGH runs; watch `holdBreaks`, `holdEngageS` and `holdDriftMaxFt` (check J) |
+| Joins final too high or too low while vectoring | The plan | `FloorBelowPathFt` (the owner's 150 ft), `ArrivalBelowDeg` and `LevelOffLeadS` in `VisualGuidanceVertical`; watch `joinPathErrFt` on VEC, VECHIGH and FAR (check K) |
+| "Too high" or "Too low" too early or too late | The margins | `StableGateFt` in the profile, `TooLowDeg` and `WarningFloorFt`; the VERT runs' `firstTooHighAlongNm` and `firstTooLowAlongNm` (check I) |
 | Aircraft-specific: 777/747 pitch lag feels jerky | Pitch rate cap too tight or too loose | Tune `maxPitchRateDegPerSec` in the airframe profile |
 
 ### Tuning workflow

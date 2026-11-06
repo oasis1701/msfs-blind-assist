@@ -44,7 +44,7 @@ internal enum VisualGuidanceVerticalMode { Follow, Hold, Plan, Path, Flare }
 ///
 /// The law has the shape of FlyByWire's A320 glideslope track (flybywiresim/aircraft, GPL-3.0,
 /// FmgcOuterLoops.cpp; notes in the redesign's spec folder): it steers a flight path angle, not a
-/// vertical speed, as the beam angle plus a correction that removes the height error over about 20 s,
+/// vertical speed, as the beam angle plus a correction that removes the height error over 17 to 27 s,
 /// limited to 2° of the beam angle, and holds the beam angle under 60 ft. We take the idea and its
 /// numbers, credited here; the code is ours.
 /// </summary>
@@ -67,7 +67,7 @@ internal static class VisualGuidanceVertical
     public const double ArrivalBelowDeg = 0.25;
     /// <summary>Before established, BA never plans the aircraft more than this below the path at its distance (the owner, 2026-11-02).</summary>
     public const double FloorBelowPathFt = 150;
-    /// <summary>The planned descent levels off this long of flight before the join point: one correction time constant.</summary>
+    /// <summary>The planned descent levels off this long of flight before the join point: the spec's correction time (the harness picked 27 s for the correction itself).</summary>
     public const double LevelOffLeadS = 20;
     /// <summary>"Too low" is said once more after this long, if still that low.</summary>
     public const double TooLowRepeatS = 10;

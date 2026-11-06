@@ -968,6 +968,53 @@ lines up with the flight path, not a guessed per-aircraft number. The light runs
 down (G) all floated in the fixed flare at stage 4 too, coming down 3,215 to 6,640 ft along the runway;
 the flare is stage 6.
 
+**The checks added later.** J (Task 4): on DESC and DESCHIGH the hold engages within `LevelHoldS` + 1 s of
+the scripted level-off, drifts at most 50 ft, and never breaks. K (Task 5): on VEC, VECHIGH and FAR every
+run is established, joins between 250 ft below and 50 ft above the path, and the cue never asks for a
+climb on final. I (Task 6): "Too high" on the two VERT starts built for it and no other FINAL or VERT run,
+"Too low" on its two (1 to 3 calls) and no other, "You'll be ... high at final" only on DESCHIGH among
+the descents, and no "Too low" while vectoring. C also fails now when a run that should converge (FINAL
+and H's four VERT runs) never reaches the path: `pathOvershootFt` reads `NA` then, not 0 (the checkpoint
+review).
+
+**The final run** (`approach_stage5_final`, at the end of Task 6's code): A to K pass, 40 accepted (E on the
+two 45° speed intercepts, G on the light runs). Before and after:
+
+| | stage 1 (`baseline_v6`) | stage 4 (`stage4_h5`) | stage 5 |
+|---|---|---|---|
+| selfFeedback3s / 10s, jet (STEP) | −0.671 / −1.524 | −0.181 / −1.365 | 0.241 / −0.100 |
+| selfFeedback3s / 10s, light | −0.415 / −0.741 | −0.086 / −0.685 | 0.182 / −0.201 |
+| pitchRateRmsDegS, FPS jet at 20 / 30 / 60 fps | 0.153 / 0.275 / 0.761 | 0.0185 / 0.0226 / 0.0313 | 0.0002 at all three |
+| median pitchJitterDeg, all runs | | 0.0015 | 0.0002 |
+| median pitchRateRmsDegS, all runs (VERT) | | 0.045 (0.188) | 0.0046 (0.037) |
+| median pathRmsFt, all runs (FINAL, VERT, vectoring and pattern) | | 45.3 (18.5, 95.1, 85.0) | 10.0 (8.5, 45.1, 15.0) |
+| median \|gateErrFt\| (runs reaching the gate) | | 45.8 (188 runs) | 5.5 (220 runs) |
+
+The lock's frame-rate step is gone: the pitch rate on the FPS runs is the same at every frame rate.
+
+Every WORSE line against `approach_stage4_h5`, by cause:
+
+- **Jets join under the path, by design.** A jet's plan is the 150 ft floor all the way to the join (a 20 s
+  level lead at 140 kt needs 248 ft under the path), so vectoring, the pattern and the close cut-ins join
+  120 to 220 ft low and the path law takes them up onto it from below: `|joinPathErrFt|` up on FINAL-JET
+  x0.2 (vectoring, since 0.2 nm off counts as vectoring; −99 to −155), VEC-JET (−46 to −145) and CLOSE-JET
+  (−106 to −170), and their `pathRmsFt` up (FINAL x0.2 2.4 to 9.5 ft, VEC 12.5 to 23.3). The same plan
+  raises `maxDescentFpm` where the aircraft starts on or above the path while vectoring: FINAL-JET x0.2
+  up to 1,382 fpm, SPEED-JET160 x0.2 1,580 (E allows 1,428 and 1,630), the NOISE runs 1,385.
+- **Light aircraft joining high descend at the 2° limit**, where the old law dove at up to 1,500 fpm:
+  `pathRmsFt` up on the INT, SHALLOW, TURN, NOCROSS and DESCHIGH light runs (for example INT-B-LIGHT-R30
+  458 to 583 ft), all of which reach final 400 to 1,800 ft high with nothing guiding the altitude while
+  joining, and now hear "You'll be ... high at final" and "Too high"; SHALLOW-LIGHT's gate error 564 to 595
+  ft. Their `maxDescentFpm` up on FINAL-LIGHT h+200 (567 to 627), VEC-LIGHT (567 to 715) and SPEED-LIGHT90
+  (756 to 868) is the path law's steeper correction, inside E.
+- **The light vectoring and pattern cue now moves.** Where stage 4 sat the pitch on the aircraft (a
+  near-still cue), the plan's level-offs and descents move it: `pitchRateRmsDegS` up on DW, FAR, VEC,
+  VECHIGH, CLOSE and SPEED light runs, at most 0.38°/s (CLOSE-LIGHT), `pitchJitterDeg` at most 0.013°.
+- **38 light runs no longer touch down** (G, accepted): the fixed flare, stage 6.
+
+Two numbers to watch: the pattern jets join at −220 ft against K's −250 (the floor plus the correction's
+lag on the floor's slope), and FINAL-JET x0.2's 1,382 fpm against E's 1,428.
+
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
 4,857 landing runs, 1,960 taxis, 409 wrong turns.
