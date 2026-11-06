@@ -418,8 +418,11 @@ CURATED = {
     # 2020, on the ground, engines off): LEFT_BUTTON_DOWN held 1 s moved the stock ELEVATOR TRIM
     # POSITION 2.99 -> 1.97 and RIGHT_BUTTON_DOWN moved it back up; TFDi's quick start calls the
     # resting 3.0 "unit ANU", so up is nose up. MSFSBA's Long Trim buttons are named from these
-    # words (Md11TrimButtons), keyed by the DOWN event that moves that way.
-    "MD11_THR_LONG_TRIM_SW": {"directions": {"RIGHT_BUTTON_DOWN": "Nose Up", "LEFT_BUTTON_DOWN": "Nose Down"}},
+    # words (Md11TrimButtons), keyed by the DOWN event that moves that way. Its own var only ever reads
+    # the handle's spring-back centre (1), so the row shows what the handles MOVE instead: the stock
+    # ELEVATOR TRIM POSITION TFDi drives (`stock_readout`), in the shared trim announcement's words.
+    "MD11_THR_LONG_TRIM_SW": {"directions": {"RIGHT_BUTTON_DOWN": "Nose Up", "LEFT_BUTTON_DOWN": "Nose Down"},
+                              "stock_readout": "ELEVATOR TRIM POSITION"},
 }
 
 # Guard covers TFDi's own XML does not link to the control they cover. The generator never infers

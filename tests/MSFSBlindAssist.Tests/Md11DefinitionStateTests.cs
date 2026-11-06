@@ -39,7 +39,7 @@ public class Md11DefinitionStateTests
         // Md11ElevatorFeelTests). A READOUT row (the trims, Md11TooltipReadout) is a position too:
         // TFDi's tooltip over its own var, no power term (pinned in Md11TrimTests).
         var composites = Md11ControlMap.Load().Controls
-            .Where(c => c.Composite != null || Md11TooltipReadout.CanEvaluate(c.Readout))
+            .Where(c => c.Composite != null || Md11TooltipReadout.CanEvaluate(c.Readout) || c.StockReadout != null)
             .Select(c => c.NodeId).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var missing = Vars.Where(kv => kv.Value.StateVariables != null && !composites.Contains(kv.Key))
             .Where(kv => !kv.Value.StateVariables!.Contains(TFDiMD11Definition.DcPowerKey)

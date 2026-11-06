@@ -33349,6 +33349,7 @@
     "RIGHT_BUTTON_DOWN": "Nose Up",
     "LEFT_BUTTON_DOWN": "Nose Down"
    },
+   "stock_readout": "ELEVATOR TRIM POSITION",
    "state_var": "MD11_THR_LONG_TRIM_SW",
    "value_map": {},
    "num_states": 2,

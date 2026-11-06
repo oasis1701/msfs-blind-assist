@@ -180,6 +180,14 @@ public class Md11TrimTests
     }
 
     [Fact]
+    public void TheLongTrimRow_ShowsTheStabiliserTrim_NotTheHandlesSpringBackCentre()
+    {
+        var d = new TFDiMD11Definition().GetVariables()[LongTrim];
+        Assert.True(d.RenderAsReadOnlyStatus);
+        Assert.Equal(new[] { "MON_ElevatorTrim" }, d.StateVariables);   // the shared trim read-out, by its Name
+    }
+
+    [Fact]
     public void LongTrim_HasNoReadBackOfItsOwn_TheStockTrimAnnouncementSpeaksIt()
         => Assert.Null(Md11TrimButtons.ReadBackSentence(Control(LongTrim), _ => 3.0));
 

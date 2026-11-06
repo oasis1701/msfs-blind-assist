@@ -228,6 +228,13 @@ public sealed class Md11Control
     [JsonPropertyName("directions")]
     public Dictionary<string, string>? Directions { get; set; }
 
+    /// <summary>
+    /// Curated: the STOCK SimVar a control's row shows instead of its own var — the Long Trim handles,
+    /// whose own var only ever reads their spring-back centre, show the ELEVATOR TRIM POSITION they move.
+    /// </summary>
+    [JsonPropertyName("stock_readout")]
+    public string? StockReadout { get; set; }
+
     /// <summary>The spoken label, never null — falls back to the node id so a control is always identifiable.</summary>
     public string DisplayLabel => string.IsNullOrWhiteSpace(Label) ? NodeId : Label!;
 

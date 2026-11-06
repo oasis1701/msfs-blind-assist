@@ -167,6 +167,17 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
     private static bool HasReadout(Md11Control c)
         => c.Composite == null && c.ValueMap.Count == 0 && Md11TooltipReadout.CanEvaluate(c.Readout);
 
+    /// <summary>
+    /// True when the control's row shows the stabiliser trim instead of its own var: its curated
+    /// <see cref="Md11Control.StockReadout"/> names the shared trim read-out's SimVar (the Long Trim
+    /// handles, whose own var only ever reads their spring-back centre). Matched on the base
+    /// definition's own Name, so a renamed base var drops the row back to what it was.
+    /// </summary>
+    private bool ShowsStabTrim(Md11Control c)
+        => c.StockReadout != null
+           && GetBaseVariables().TryGetValue(ElevatorTrimKey, out var trim)
+           && string.Equals(trim.Name, c.StockReadout, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The keys a readout row reads and watches: every L:var its readout names, by its key.</summary>
     private string[] ReadoutDependencies(Md11Control c)
         => Md11TooltipReadout.Vars(c.Readout).Select(KeyFor).Distinct(StringComparer.Ordinal).ToArray();
@@ -708,6 +719,7 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
                     StateVariables = c.Composite != null
                         ? new[] { c.NodeId, Md11CompositeState.InnerKeyFor(c.NodeId) }
                         : HasReadout(c) ? ReadoutDependencies(c)
+                        : ShowsStabTrim(c) ? new[] { ElevatorTrimKey }
                         : null,
                 };
                 // The gear lever's var is its 0-25 TRAVEL against the map's {0 Up, 1 Down}, and
