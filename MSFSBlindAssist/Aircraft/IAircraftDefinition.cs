@@ -23,13 +23,10 @@ public enum FCUControlType
 /// </summary>
 public sealed class VisualGuidanceProfile
 {
-    /// <summary>Typical angle of attack (degrees) at the airframe's stabilized-approach trim
-    /// point. Used as a FALLBACK in <c>VisualGuidanceManager.CalculateDesiredPitch</c> when the
-    /// live AoA reading (SimConnect <c>INCIDENCE ALPHA</c>) is unavailable or outside the
-    /// sanity band. With live AoA available (the normal case), this value is unused — the
-    /// real measured AoA inherently encodes the current weight / flap / speed, so the nominal
-    /// pitch baseline converges on whatever the airplane is actually trimmed for and the
-    /// per-aircraft estimate becomes obsolete.</summary>
+    /// <summary>The trim (degrees, pitch minus flight path) the vertical cue starts from until its
+    /// first sample: visual guidance learns the aircraft's own trim from the first update at 40 kt
+    /// or more (<c>VisualGuidanceTrimLearner</c>), so this is only the guess for the update or two
+    /// before it. About the airframe's approach angle of attack.</summary>
     public double TypicalApproachAoaDeg { get; init; } = 6.0;
 
     /// <summary>Reference Vref (knots) used as the denominator in the lateral airspeed-compensation
@@ -129,6 +126,13 @@ public sealed class VisualGuidanceProfile
     /// about a mile. Default 6.0 nm, the owner's starting value for airliners (2026-11-04), to be
     /// revisited after testing.</summary>
     public double MinimumFinalNm { get; init; } = 6.0;
+
+    /// <summary>The stable gate: the height (ft above the threshold) by which the aircraft should be
+    /// on the path. Visual guidance says "Too high" when even its steepest cue cannot reach the path by
+    /// here, and "Too low" once more if still low passing it; it never says "go around". Per-aircraft
+    /// because airline rules set 1,000 ft (the default) while a light aircraft's circuit joins final
+    /// at about 400 ft, so light aircraft take about 300 (the owner's choice, 2026-11-06).</summary>
+    public double StableGateFt { get; init; } = 1000.0;
 }
 
 /// <summary>

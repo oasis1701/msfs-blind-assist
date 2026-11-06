@@ -31,7 +31,7 @@ internal readonly record struct VisualGuidanceStatus(VisualGuidanceReadoutPhase 
 internal static class VisualGuidanceStatusText
 {
     private const double OnCentrelineNm = 0.05;
-    private const double OnPathFt = 30.0;
+    private const double OnPathFt = VisualGuidanceVertical.OnPathFt;
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     public static string Compose(in VisualGuidanceStatus s) => s.Phase switch

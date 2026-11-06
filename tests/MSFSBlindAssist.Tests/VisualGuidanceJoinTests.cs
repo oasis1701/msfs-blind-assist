@@ -371,5 +371,27 @@ public class VisualGuidanceJoinTests
     {
         Assert.Equal(25.0, Profile.MaxApproachBankDeg);
         Assert.Equal(6.0, Profile.MinimumFinalNm);
+        Assert.Equal(1000.0, Profile.StableGateFt);
+    }
+
+    // The route still to fly to the join point (the planned descent, stage 5): straight in, the line to it.
+    [Fact]
+    public void Route_to_join_straight_in()
+    {
+        var plan = new VisualGuidanceJoinPlan(VisualGuidanceJoinState.Vectoring, 30,
+            new[] { new VisualGuidanceLeg(VisualGuidanceLegKind.Final, 0, 0, 0, 0) });
+        Assert.Equal(4.29, VisualGuidanceJoin.RouteToJoinNm(plan, 0, P(10, 2), 6.2), 0.01);
+    }
+
+    // On the right-side pattern's downwind: to the downwind's corner with the base (7.61, 3), down the base
+    // to final (7.61, 0), then along final to the join point: 5.61 + 3 + 1.47.
+    [Fact]
+    public void Route_to_join_on_the_downwind()
+    {
+        var plan = VisualGuidanceJoin.Decide(P(-1, 3), 180, 140, Gain, Profile);
+        Assert.Equal(VisualGuidanceJoinState.Pattern, plan.State);
+        Assert.Equal(10.08, VisualGuidanceJoin.RouteToJoinNm(plan, 0, P(2, 3), 6.14), 0.02);
+        // On the base, from its middle: down the base, then along final.
+        Assert.Equal(1.5 + 1.47, VisualGuidanceJoin.RouteToJoinNm(plan, 1, P(7.61, 1.5), 6.14), 0.02);
     }
 }

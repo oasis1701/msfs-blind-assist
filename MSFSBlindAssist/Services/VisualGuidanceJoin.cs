@@ -239,6 +239,40 @@ internal static class VisualGuidanceJoin
     }
 
     /// <summary>
+    /// The route still to fly to the join point, nm, for the planned descent (stage 5): in the flat
+    /// approach frame, from the aircraft to the corner of the active leg and the next, corner to corner,
+    /// then along final from the last corner to <paramref name="joinAlongNm"/>. A corner is where the two
+    /// legs' lines meet. On final (the last leg), the straight line to the join point.
+    /// </summary>
+    public static double RouteToJoinNm(VisualGuidanceJoinPlan plan, int activeLegIndex, VisualGuidanceApproachPoint p,
+        double joinAlongNm)
+    {
+        int last = plan.Legs.Count - 1;
+        int active = Math.Clamp(activeLegIndex, 0, Math.Max(last, 0));
+        double from = p.AlongNm, fromCross = p.CrossNm, total = 0;
+        for (int i = active; i < last; i++)
+        {
+            var corner = Corner(plan.Legs[i], plan.Legs[i + 1]);
+            total += Math.Sqrt((corner.AlongNm - from) * (corner.AlongNm - from) + (corner.CrossNm - fromCross) * (corner.CrossNm - fromCross));
+            from = corner.AlongNm;
+            fromCross = corner.CrossNm;
+        }
+        return total + Math.Sqrt((joinAlongNm - from) * (joinAlongNm - from) + fromCross * fromCross);
+    }
+
+    // Where two legs' lines meet; the second leg's own point when they are parallel.
+    private static VisualGuidanceApproachPoint Corner(in VisualGuidanceLeg a, in VisualGuidanceLeg b)
+    {
+        // A leg's direction in (along, cross): inbound is −along, right is +cross.
+        double ax = -Math.Cos(a.DirectionDeg * D2R), ay = Math.Sin(a.DirectionDeg * D2R);
+        double bx = -Math.Cos(b.DirectionDeg * D2R), by = Math.Sin(b.DirectionDeg * D2R);
+        double det = ax * by - ay * bx;
+        if (Math.Abs(det) < 1e-9) return new(b.AlongNm, b.CrossNm);
+        double t = ((b.AlongNm - a.AlongNm) * by - (b.CrossNm - a.CrossNm) * bx) / det;
+        return new(a.AlongNm + t * ax, a.CrossNm + t * ay);
+    }
+
+    /// <summary>
     /// The pattern's turn onto final, nm along final from the base: the wider of the capture law's curve
     /// from the 90° base (<see cref="AlongToEstablishNm"/>) and the aircraft's own turn onto final at its
     /// speed and bank settings (<see cref="TurnOntoCut"/>), so the base leaves room for whichever the
