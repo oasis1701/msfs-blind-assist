@@ -37,10 +37,34 @@ public class FenixChannelNdMessagesTests
             new FenixDisplayVerdict(trusted, trusted ? "trusted" : "off"), null, data, null, 0, connection);
     }
 
-    // A rig that has taken its baseline on a quiet ND.
-    private static FenixChannelNdMessages Baselined(FenixChannelSnapshot? first = null)
+    // The announcer with its clock: every sample is 100 ms after the one before, the host's tick.
+    private sealed class Rig
     {
-        var announcer = new FenixChannelNdMessages();
+        private readonly FenixChannelNdMessages _announcer = new();
+        private long _ms;
+
+        // One sample.
+        public string? Once(FenixChannelSnapshot s, bool muted) => _announcer.Sample(s with { AtMs = _ms += 100 }, muted);
+
+        // The same reading sampled until it has held the settle: what the last sample says, every one before it silent.
+        public string? Sample(FenixChannelSnapshot s, bool muted)
+        {
+            long start = _ms + 100;
+            string? said = Once(s, muted);
+            while (_ms - start < FenixChannelNdMessages.SettleMs)
+            {
+                Assert.Null(said);
+                said = Once(s, muted);
+            }
+
+            return said;
+        }
+    }
+
+    // A rig that has taken its baseline on a quiet ND.
+    private static Rig Baselined(FenixChannelSnapshot? first = null)
+    {
+        var announcer = new Rig();
         Assert.Null(announcer.Sample(first ?? Snap(), false));
         return announcer;
     }
@@ -48,15 +72,49 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void The_first_reading_is_silent()
     {
-        var announcer = new FenixChannelNdMessages();
+        var announcer = new Rig();
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], center: "WINDSHEAR"), false));
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], center: "WINDSHEAR"), false));
     }
 
     [Fact]
+    public void A_message_missing_from_one_sample_says_nothing()
+    {
+        // A message left out of one push, or a list the ND redraws for a frame: back before the settle, it never went.
+        Rig announcer = Baselined(Snap(listed: ["TA ONLY"]));
+
+        Assert.Null(announcer.Once(Snap(), false));
+        Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"]), false));
+        Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"]), false));
+    }
+
+    [Fact]
+    public void A_change_is_spoken_once_it_has_held_300_ms()
+    {
+        Rig announcer = Baselined();
+
+        Assert.Null(announcer.Once(Snap(listed: ["TA ONLY"]), false));   // the hold starts
+        Assert.Null(announcer.Once(Snap(listed: ["TA ONLY"]), false));   // 100 ms
+        Assert.Null(announcer.Once(Snap(listed: ["TA ONLY"]), false));   // 200 ms
+        Assert.Equal("ND message: TA ONLY", announcer.Once(Snap(listed: ["TA ONLY"]), false));   // 300 ms
+        Assert.Null(announcer.Once(Snap(listed: ["TA ONLY"]), false));
+    }
+
+    [Fact]
+    public void A_reading_the_nd_passes_through_is_never_spoken()
+    {
+        // TA ONLY shows for 200 ms, then WINDSHEAR replaces it and holds: only WINDSHEAR was on the ND long enough.
+        Rig announcer = Baselined();
+
+        Assert.Null(announcer.Once(Snap(listed: ["TA ONLY"]), false));
+        Assert.Null(announcer.Once(Snap(listed: ["TA ONLY"]), false));
+        Assert.Equal("ND message: WINDSHEAR", announcer.Sample(Snap(center: "WINDSHEAR"), false));
+    }
+
+    [Fact]
     public void A_new_message_is_spoken_once()
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Equal("ND message: MAP PARTLY DISPLAYED, amber", announcer.Sample(Snap(listed: ["aMAP PARTLY DISPLAYED"]), false));
         Assert.Null(announcer.Sample(Snap(listed: ["aMAP PARTLY DISPLAYED"]), false));
@@ -65,7 +123,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void A_message_that_goes_is_spoken_once()
     {
-        FenixChannelNdMessages announcer = Baselined(Snap(listed: ["TA ONLY"]));
+        Rig announcer = Baselined(Snap(listed: ["TA ONLY"]));
 
         Assert.Equal("ND message gone: TA ONLY", announcer.Sample(Snap(), false));
         Assert.Null(announcer.Sample(Snap(), false));
@@ -74,7 +132,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void Several_at_once_share_one_line()
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
         Assert.Equal("ND message: WINDSHEAR, TA ONLY",
             announcer.Sample(Snap(listed: ["TA ONLY"], center: "WINDSHEAR"), false));
         Assert.Equal("ND message gone: WINDSHEAR, TA ONLY", announcer.Sample(Snap(), false));
@@ -83,7 +141,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void New_gone_and_waypoint_share_one_line_in_that_order()
     {
-        FenixChannelNdMessages announcer = Baselined(Snap(listed: ["TA ONLY"]));
+        Rig announcer = Baselined(Snap(listed: ["TA ONLY"]));
 
         Assert.Equal("ND message: WINDSHEAR. ND message gone: TA ONLY. ND: 1500, 2.7 NM",
             announcer.Sample(Snap(center: "WINDSHEAR", waypoint: "1500", distance: "g2s.7 csNM"), false));
@@ -92,7 +150,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void An_active_waypoint_change_is_spoken()
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Equal("ND: 1500, 2.7 NM", announcer.Sample(Snap(waypoint: "1500", distance: "g2s.7 csNM"), false));
         Assert.Null(announcer.Sample(Snap(waypoint: "1500", distance: "g2s.6 csNM"), false));
@@ -103,7 +161,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void Ppos_is_no_active_waypoint()
     {
-        FenixChannelNdMessages announcer = Baselined(Snap(waypoint: "1500", distance: "g2s.7 csNM"));
+        Rig announcer = Baselined(Snap(waypoint: "1500", distance: "g2s.7 csNM"));
 
         Assert.Equal("ND: no active waypoint", announcer.Sample(Snap(waypoint: "PPOS     ", distance: null), false));
         Assert.Null(announcer.Sample(Snap(waypoint: "PPOS", distance: null), false));
@@ -112,7 +170,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void A_muted_row_says_nothing()
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], waypoint: "1500"), true));
         Assert.Null(announcer.Sample(Snap(waypoint: "1500"), true));
@@ -121,7 +179,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void Unmuting_replays_nothing()
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], waypoint: "1500"), true));
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], waypoint: "1500"), false));
@@ -131,7 +189,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void An_untrusted_nd_is_silent()
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], trusted: false), false));
         // The first good reading after the gap is the new baseline: what came meanwhile is not news.
@@ -142,7 +200,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void A_reading_with_a_problem_is_a_gap()
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], broken: true), false));
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"]), false));
@@ -159,7 +217,7 @@ public class FenixChannelNdMessagesTests
 
         foreach ((ulong mode, Action<FenixChannelProtoWriter> letter) in new[] { (Ls, ils), (Arc, corner) })
         {
-            FenixChannelNdMessages announcer = Baselined(Snap(mode: mode));
+            Rig announcer = Baselined(Snap(mode: mode));
 
             Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], mode: mode, more: letter), false));
             Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], mode: mode), false));
@@ -170,7 +228,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void A_new_connection_is_silent()
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], waypoint: "1500", connection: 2), false));
         Assert.Null(announcer.Sample(Snap(listed: ["TA ONLY"], waypoint: "1500", connection: 2), false));
@@ -183,7 +241,7 @@ public class FenixChannelNdMessagesTests
     [InlineData("wMODE CHANGE ")]
     public void Range_and_mode_change_are_never_announced(string text)
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Null(announcer.Sample(Snap(center: text), false));
         Assert.Null(announcer.Sample(Snap(), false));
@@ -200,7 +258,7 @@ public class FenixChannelNdMessagesTests
     [InlineData("gCENTER", "wWINDSHEAR", null, "ND message: CENTER, green, WINDSHEAR, white")]
     public void Each_center_message_follows_its_own_fields_colors(string? center, string? windshear, string? tcas, string said)
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Equal(said, announcer.Sample(Snap(center: center, windshear: windshear, tcas: tcas), false));
     }
@@ -225,7 +283,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void Another_center_text_is_announced()
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Equal("ND message: SOMETHING NEW", announcer.Sample(Snap(center: "SOMETHING NEW"), false));
         Assert.Equal("ND message gone: SOMETHING NEW", announcer.Sample(Snap(), false));
@@ -235,7 +293,7 @@ public class FenixChannelNdMessagesTests
     public void A_listed_message_the_glass_does_not_draw_is_not_announced()
     {
         // The lower box holds the first entry that is not TA ONLY; a second one is not drawn.
-        FenixChannelNdMessages announcer = Baselined(Snap(listed: ["GPS PRIMARY"]));
+        Rig announcer = Baselined(Snap(listed: ["GPS PRIMARY"]));
 
         Assert.Null(announcer.Sample(Snap(listed: ["GPS PRIMARY", "OTHER"]), false));
         Assert.Null(announcer.Sample(Snap(listed: ["GPS PRIMARY"]), false));
@@ -244,7 +302,7 @@ public class FenixChannelNdMessagesTests
     [Fact]
     public void Rose_ls_draws_no_waypoint_and_returning_to_arc_is_silent()
     {
-        FenixChannelNdMessages announcer = Baselined();
+        Rig announcer = Baselined();
 
         Assert.Null(announcer.Sample(Snap(waypoint: "1500", mode: Ls), false));
         Assert.Null(announcer.Sample(Snap(waypoint: "2000", mode: Ls), false));
@@ -270,7 +328,7 @@ public class FenixChannelNdMessagesTests
         CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
         try
         {
-            FenixChannelNdMessages announcer = Baselined();
+            Rig announcer = Baselined();
             Assert.Equal("ND: 1500, 2.7 NM", announcer.Sample(Snap(waypoint: "1500", distance: "g2s.7 csNM"), false));
         }
         finally

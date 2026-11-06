@@ -98,7 +98,11 @@ public class FenixChannelNdKeyTests
         definition.SpeakNdMessages(speech, Snap());                       // the baseline: silent
         Assert.Empty(speech.All);
 
-        definition.SpeakNdMessages(speech, Snap(["aMAP PARTLY DISPLAYED"]));
+        // A message counts once it has held the settle, on the snapshot's own clock.
+        for (long ms = 100; ms <= 100 + FenixChannelNdMessages.SettleMs; ms += 100)
+        {
+            definition.SpeakNdMessages(speech, Snap(["aMAP PARTLY DISPLAYED"]) with { AtMs = ms });
+        }
 
         Assert.Single(speech.All);
         Assert.StartsWith("ND message: MAP PARTLY DISPLAYED", speech.All[0]);
