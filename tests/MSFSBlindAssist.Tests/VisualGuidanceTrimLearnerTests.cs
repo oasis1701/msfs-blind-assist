@@ -56,6 +56,29 @@ public class VisualGuidanceTrimLearnerTests
         Assert.Equal(0.37, 6.0 - learner.TrimDeg, 0.03);
     }
 
+    // In the flare (stage 6) the flight path keeps being read, for the time to touchdown, while the level
+    // attitude learned before it is held.
+    [Fact]
+    public void The_flight_path_keeps_up_while_the_trim_is_held()
+    {
+        var learner = Settled(2.0, -3.0);
+        double trim = learner.TrimDeg;
+        for (int i = 0; i < 30 * 5; i++) learner.UpdatePathAngle(VsFor(-1.0), Gs, Dt);
+        Assert.Equal(-1.0, learner.PathAngleDeg, 0.02);
+        Assert.Equal(trim, learner.TrimDeg, 9);
+        // The split halves learn exactly what Update learns.
+        var whole = Settled(2.0, -3.0);
+        var split = Settled(2.0, -3.0);
+        for (int i = 0; i < 30 * 3; i++)
+        {
+            whole.Update(3.0, VsFor(-2.0), Gs, Dt);
+            split.UpdatePathAngle(VsFor(-2.0), Gs, Dt);
+            split.UpdateTrim(3.0, Gs, Dt);
+        }
+        Assert.Equal(whole.TrimDeg, split.TrimDeg, 12);
+        Assert.Equal(whole.PathAngleDeg, split.PathAngleDeg, 12);
+    }
+
     [Fact]
     public void Slow_or_wild_samples_are_skipped()
     {

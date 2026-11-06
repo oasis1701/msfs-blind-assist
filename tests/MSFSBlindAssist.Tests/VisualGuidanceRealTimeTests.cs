@@ -134,18 +134,22 @@ public class VisualGuidanceRealTimeTests
     [InlineData(20)]
     [InlineData(30)]
     [InlineData(60)]
-    public void The_flare_cue_reaches_the_flare_pitch_within_half_a_second(int hz)
+    public void The_flare_cue_starts_where_the_aircraft_is_at_any_update_rate(int hz)
     {
         var rig = new Rig();
         rig.Place(0.3, 0, 0);
         rig.UpdateAt(0);
         rig.FlyFor(2, hz);
-        Assert.InRange(rig.Pitch, 1.0, 3.0);   // on the approach law, not yet flaring
+        double approach = rig.Pitch;
+        Assert.InRange(approach, 1.0, 3.0);   // on the approach law, not yet flaring
 
-        // 0.1 nm out and 55 ft below the path: the main gear about 25 ft up, under the 30 ft trigger.
+        // 0.1 nm out and 55 ft below the path: the main gear about 25 ft up, 2 s from touchdown at 742 fpm.
+        // The flare's sink profile starts at the aircraft's own 742 fpm, so the cue stays where it was
+        // (stage 6; the fixed flare pitch jumped to 6°).
         rig.Place(0.1, 0, 0, altOffsetFt: -55);
         rig.FlyFor(0.5, hz);
-        Assert.Equal(new VisualGuidanceProfile().FlareTargetPitchDeg, rig.Pitch, 6);
+        Assert.Equal("Flare", rig.Phase);
+        Assert.Equal(approach, rig.Pitch, 0.05);
     }
 
     [Fact]

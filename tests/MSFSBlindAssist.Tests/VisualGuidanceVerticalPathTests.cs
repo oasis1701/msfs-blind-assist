@@ -55,13 +55,14 @@ public class VisualGuidanceVerticalPathTests
         Assert.Equal(5.0, rig.Pitch, 0.05);
     }
 
-    // Wheels 50 ft up (the datum 62 ft above the threshold, past it), 20 ft above the path: under the 60 ft
-    // floor the correction stops and the cue holds the glide path's angle.
+    // Wheels 55 ft up (the datum 67 ft above the threshold, past it), 20 ft above the path: under the 60 ft
+    // floor the correction stops and the cue holds the glide path's angle. (At 742 fpm the flare starts at
+    // 53 ft, 4.3 s out: stage 6.)
     [Fact]
     public void The_correction_stops_at_sixty_feet()
     {
         var rig = OnFinal();
-        double along = -18.0 / (6076.12 * Math.Tan(3.0 * Math.PI / 180));   // the path 42 ft up there, plus 20
+        double along = -13.0 / (6076.12 * Math.Tan(3.0 * Math.PI / 180));   // the path 47 ft up there, plus 20
         Hold(rig, 0.5, along, altOffsetFt: 20);
         Assert.Equal("Final", rig.Phase);
         Assert.Equal(3.0, rig.TargetDescent, 9);
@@ -90,18 +91,21 @@ public class VisualGuidanceVerticalPathTests
     public void Its_mode_is_path()
         => Assert.Equal("Path", OnFinal().VerticalMode);
 
-    // The checkpoint review's finding 2: a balloon or a go-around back above the flare height. In the
-    // flare the cue ramps to the profile's 6°; back on final it must leave from there at the profile's
-    // pitch rate (2.5°/s, 0.083° a frame at 30 Hz), not jump to the pre-flare cue's 2° in one frame.
+    // The checkpoint review's finding 2: a go-around back above the flare's 100 ft band (stage 6: a
+    // balloon under it stays in the flare). Low in the flare the cue has risen toward the level attitude;
+    // back on final it must leave from there at the profile's pitch rate (2.5°/s, 0.083° a frame at
+    // 30 Hz), not jump to the path's cue in one frame.
     [Fact]
     public void Back_above_the_flare_the_cue_leaves_from_the_flare_pitch()
     {
         var rig = OnFinal();
-        Hold(rig, 1, 0.0, altOffsetFt: -30);           // the datum 30 ft up, the wheels 18: flare
+        Hold(rig, 1.0 / 30, 0.0, altOffsetFt: -30);     // the datum 30 ft up, the wheels 18: flare
+        Assert.Equal("Flare", rig.Phase);
+        Hold(rig, 1, 0.0, altOffsetFt: -40);            // the wheels 8 ft up: the cue rises
         Assert.Equal("Flare", rig.Phase);
         double flarePitch = rig.Pitch;
-        Assert.Equal(6.0, flarePitch, 0.01);
-        Hold(rig, 1.0 / 30, 0.0, altOffsetFt: 10);      // the wheels 58 ft up: final again
+        Assert.True(flarePitch > 3.0, $"the flare's cue is {flarePitch:0.00}°");
+        Hold(rig, 1.0 / 30, 0.0, altOffsetFt: 53);      // the wheels 101 ft up: final again
         Assert.Equal("Final", rig.Phase);
         Assert.True(Math.Abs(rig.Pitch - flarePitch) <= 2.5 / 30 + 1e-6,
             $"the cue went from {flarePitch:0.00}° to {rig.Pitch:0.00}° in one frame");

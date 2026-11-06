@@ -96,21 +96,15 @@ public sealed class VisualGuidanceProfile
     /// approach); the A320 default (12) is estimated and should be calibrated in-sim.</summary>
     public double FlareAltitudeBiasFt { get; init; } = 12.0;
 
-    /// <summary>True main-gear height (ft) at which the flare phase is entered and the flare
-    /// audio cue announces. Per-aircraft because manufacturer flare-initiation guidance and
-    /// autoland behaviour vary: the A320 FCTM specifies a 30 ft initiation (default); the
-    /// PMDG 777's autoland begins flaring at ~40 ft RA, so VG's cue is timed to match — a
-    /// hand-flying pilot using VG to mirror autoland gets the cue at the same moment the
-    /// autopilot would have started its flare. Keep within 20–50 ft.</summary>
+    /// <summary>True main-gear height (ft) by which the flare has started: the backstop of the
+    /// time-based start (visual guidance stage 6). The flare starts about 4.3 s before touchdown
+    /// (<c>VisualGuidanceFlare</c>), or at this height if that comes first, as it does in a slow
+    /// descent. Per-aircraft because manufacturer flare-initiation guidance and autoland behaviour
+    /// vary: the A320 FCTM specifies a 30 ft initiation (default); the PMDG 777's autoland begins
+    /// flaring at ~40 ft RA, so VG's cue is timed to match — a hand-flying pilot using VG to mirror
+    /// autoland gets the cue no later than the autopilot would have started its flare; a light
+    /// aircraft rounds out at about 5 to 15 ft. Keep within 5–50 ft.</summary>
     public double FlareTriggerWheelHeightFt { get; init; } = 30.0;
-
-    /// <summary>Target pitch (degrees) commanded during the flare phase. Per-aircraft because
-    /// manufacturer flare pitch attitudes vary: Boeing FCTM specifies a 2–3° pitch increase
-    /// from approach attitude (777 ≈ +1.5° approach → ~+4–4.5° flare), while Airbus aircraft
-    /// flare to ~+5–6° (default). Used directly by <c>CalculateDesiredPitch</c> in the Flare
-    /// branch, rate-limited from the previous pitch by <c>MAX_FLARE_PITCH_RATE</c> so the
-    /// desired-tone frequency doesn't step. Keep within 3–8°.</summary>
-    public double FlareTargetPitchDeg { get; init; } = 6.0;
 
     /// <summary>The largest bank (degrees) visual guidance asks for while it turns the aircraft onto
     /// final or vectors it there (<c>VisualGuidanceJoin</c>). Per-aircraft because a light aircraft

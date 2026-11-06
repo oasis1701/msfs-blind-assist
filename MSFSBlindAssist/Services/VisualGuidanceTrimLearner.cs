@@ -37,12 +37,34 @@ internal sealed class VisualGuidanceTrimLearner
     public void Update(double pitchDeg, double vsFpm, double gsKt, double frameSeconds)
     {
         if (!(gsKt >= VisualGuidanceVertical.MinGroundSpeedKt) || !double.IsFinite(pitchDeg) || !double.IsFinite(vsFpm)) return;
-        double dt = double.IsFinite(frameSeconds) ? Math.Max(frameSeconds, 0) : 0;
+        UpdatePathAngle(vsFpm, gsKt, frameSeconds);
+        UpdateTrim(pitchDeg, gsKt, frameSeconds);
+    }
+
+    /// <summary>
+    /// The first half of <see cref="Update"/>: the smoothed flight path alone. The manager runs it on every
+    /// update, the flare included, before the phase is decided: the flare starts by the time to touchdown
+    /// this gives (stage 6), from the first update after Ctrl+V on.
+    /// </summary>
+    public void UpdatePathAngle(double vsFpm, double gsKt, double frameSeconds)
+    {
+        if (!(gsKt >= VisualGuidanceVertical.MinGroundSpeedKt) || !double.IsFinite(vsFpm)) return;
         _pathAngle = VisualGuidanceTiming.Smooth(_pathAngle, VisualGuidanceVertical.FlightPathAngleDeg(vsFpm, gsKt),
-            Math.Exp(-1.0 / _tuning.PathAngleTimeConstantS), dt);
-        double sample = pitchDeg - _pathAngle.Value;
+            Math.Exp(-1.0 / _tuning.PathAngleTimeConstantS), Dt(frameSeconds));
+    }
+
+    /// <summary>
+    /// The second half of <see cref="Update"/>: the trim from the pitch and the flight path just read. The
+    /// manager skips it in the flare and at touchdown, so the level attitude learned before the flare is held.
+    /// </summary>
+    public void UpdateTrim(double pitchDeg, double gsKt, double frameSeconds)
+    {
+        if (!(gsKt >= VisualGuidanceVertical.MinGroundSpeedKt) || !double.IsFinite(pitchDeg) || _pathAngle is not double pathAngle) return;
+        double sample = pitchDeg - pathAngle;
         if (sample < MinValidDeg || sample > MaxValidDeg) return;
-        TrimDeg = HasData ? VisualGuidanceTiming.Smooth(TrimDeg, sample, Math.Exp(-1.0 / _tuning.TrimTimeConstantS), dt) : sample;
+        TrimDeg = HasData ? VisualGuidanceTiming.Smooth(TrimDeg, sample, Math.Exp(-1.0 / _tuning.TrimTimeConstantS), Dt(frameSeconds)) : sample;
         HasData = true;
     }
+
+    private static double Dt(double frameSeconds) => double.IsFinite(frameSeconds) ? Math.Max(frameSeconds, 0) : 0;
 }

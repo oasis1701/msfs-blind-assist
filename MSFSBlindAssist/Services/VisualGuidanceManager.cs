@@ -134,8 +134,9 @@ public class VisualGuidanceManager : IDisposable
     // Rate limiting (vertical): the pitch commanded on the last update.
     private double previousDesiredPitch = 0.0;
 
-    // Flare state tracking
-    private double lastFlarePitch = 3.0;           // For rate limiting during flare
+    // The flare's time constant (stage 6, VisualGuidanceFlare.TauS), set once when the flare starts so its
+    // sink profile starts at the aircraft's own descent rate; +∞ asks for the touchdown rate from the start.
+    private double flareTauS = double.PositiveInfinity;
 
     // Announcement tracking
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
@@ -203,14 +204,6 @@ public class VisualGuidanceManager : IDisposable
     // Guidance constants
     private const double TOUCHDOWN_ALTITUDE_FT = 5.0;    // Consider touchdown below 5 ft AGL
 
-    // Flare rate limiting constant
-    // Maximum pitch change rate during flare (deg/sec). 10, not the 1.5 the 1 Hz design wrote: once
-    // limits ran on real time (VG-20), 1.5°/s took a jet's cue 2.7 s to reach the flare pitch, after
-    // its wheels touched (30 ft is about 2.4 s up), and the harness's jets landed about 230 fpm
-    // firmer. 10°/s reaches it in about 0.4 s, close to the per-frame jump pilots had flown, with
-    // touchdowns within 20 fpm of it (docs/virtual-pilot.md, "Stage 2"). Stage 6 replaces the flare.
-    private const double MAX_FLARE_PITCH_RATE = 10.0;
-
     // ILS glideslope angle — usually 3°, but published per-runway (LCY 5.5°, Aspen 6.59°,
     // Innsbruck 3.8°). Populated in Initialize() from runway.GlideslopeAngleDeg with a 3.0°
     // fallback if the runway has no ILS or the navdata doesn't carry the angle. The vertical path's
@@ -251,14 +244,10 @@ public class VisualGuidanceManager : IDisposable
     // ground, different attitudes), so do not "reconcile" them into one value.
     private double glideslopeAltitudeBiasFt = 60.0;      // A320 estimate; 777 measured = 80
     private double flareAltitudeBiasFt = 12.0;           // A320 estimate; 777 measured = 30
-    // True main-gear height (ft) at which the flare phase fires. Per-aircraft: A320 default
-    // 30 (FCTM), PMDG 777 = 40 (matches the autopilot's autoland flare initiation).
+    // True main-gear height (ft) by which the flare has started, whatever the time to touchdown says
+    // (stage 6: the backstop of the time-based start, and of "Flare"). Per-aircraft: A320 default 30
+    // (FCTM), PMDG 777 = 40 (matches the autopilot's autoland flare initiation).
     private double flareTriggerWheelHeightFt = 30.0;
-    // Target pitch commanded during the Flare phase. A320 default 6° per FCTM, 777 lower
-    // (~4.5° per Boeing FCTM, "2–3° pitch increase from approach attitude" — 777 approach
-    // pitch is ~+1.5°). The 6.0 here is only the pre-profile default; the aircraft's
-    // VisualGuidanceProfile.FlareTargetPitchDeg overwrites it and is authoritative.
-    private double flareTargetPitchDeg = 6.0;
     private const double CROSS_TRACK_RATE_SMOOTHING_PER_SECOND = 0.85;  // Exponential smoothing for cross-track rate, per second (strong filtering to prevent noise spikes)
 
     public bool IsActive => isActive;
@@ -313,8 +302,8 @@ public class VisualGuidanceManager : IDisposable
     internal string DecisionForHarness => joinPlan?.State.ToString() ?? "None";
 
     /// <summary>
-    /// VirtualPilot hook (VP-1): the vertical path's six tuning numbers. The app never sets it; the
-    /// harness's `approach --vertical` sweeps them to pick the defaults.
+    /// VirtualPilot hook (VP-1): the vertical path's and the flare's tuning numbers. The app never sets it;
+    /// the harness's `approach --vertical` sweeps them to pick the defaults.
     /// </summary>
     internal VisualGuidanceVerticalTuning VerticalTuningForHarness { get; init; } = VisualGuidanceVerticalTuning.Default;
 
@@ -499,7 +488,6 @@ public class VisualGuidanceManager : IDisposable
         glideslopeAltitudeBiasFt = profile.GlideslopeAltitudeBiasFt;
         flareAltitudeBiasFt = profile.FlareAltitudeBiasFt;
         flareTriggerWheelHeightFt = profile.FlareTriggerWheelHeightFt;
-        flareTargetPitchDeg = profile.FlareTargetPitchDeg;
         maxApproachBankDeg = profile.MaxApproachBankDeg;
         minimumFinalNm = profile.MinimumFinalNm;
         // Cached for ProcessUpdate's tone-pair re-arm — see the field comment.
@@ -563,7 +551,7 @@ public class VisualGuidanceManager : IDisposable
         lastCalculatedAltitudeError = 0.0;
 
         // Reset flare state
-        lastFlarePitch = 3.0;
+        flareTauS = double.PositiveInfinity;
 
         // Instantiate both generators and apply the aircraft's pitch→frequency mapping. We do
         // NOT Start() them yet — the first ProcessUpdate call kicks off audio output once real
@@ -1010,6 +998,10 @@ public class VisualGuidanceManager : IDisposable
 
         try
         {
+            // The smoothed flight path first, on every update, the flare included: the flare starts by the
+            // time to touchdown it gives (stage 6), from the first update after Ctrl+V on.
+            trimLearner.UpdatePathAngle(currentVerticalSpeedFPM, currentGroundSpeedKnots, frameSeconds);
+
             // Update phase based on position
             decidedThisUpdate = false;
             UpdatePhase(lat, lon, agl, altMSL);
@@ -1128,24 +1120,26 @@ public class VisualGuidanceManager : IDisposable
             return;
         }
 
-        // Check for flare. Trigger height is per-aircraft (777 = 40 to match autopilot
-        // autoland; A320 = 30 from FCTM) via VisualGuidanceProfile.FlareTriggerWheelHeightFt.
-        if (wheelHeightAGL <= flareTriggerWheelHeightFt)
+        var tuning = VerticalTuningForHarness;
+        // A balloon or a bounce stays in the flare with the profile it started with; only above the
+        // flare's band (100 ft, a go-around) is it final again, the path's cue leaving from the flare's
+        // pitch (stage 6, plan decision 7).
+        if (currentPhase is GuidancePhase.Flare or GuidancePhase.Touchdown)
         {
-            currentPhase = GuidancePhase.Flare;
-            if (previousPhase != currentPhase)
-            {
-                // Capture entry state
-                lastFlarePitch = previousDesiredPitch;  // Start from current guidance pitch
-                AnnouncePhaseChange("Flare", HOLD_FLARE_S);
-            }
+            currentPhase = wheelHeightAGL <= tuning.FlareEndWheelFt ? GuidancePhase.Flare : GuidancePhase.Final;
             return;
         }
 
-        // Back above the flare height (a balloon, or a go-around): final again, as before the flare.
-        if (currentPhase is GuidancePhase.Flare or GuidancePhase.Touchdown)
+        // The flare starts by time to touchdown (4.3 s, on the smoothed descent rate, never the raw
+        // vertical speed: VG-25), or at the aircraft's own flare height (777 = 40 to match the autopilot's
+        // autoland; A320 = 30 from FCTM), whichever comes first (VG-27). From any phase: Ctrl+V pressed
+        // low starts it on the first update, from the aircraft's own descent.
+        double sinkFpm = VisualGuidanceFlare.SinkFpm(trimLearner.PathAngleDeg, currentGroundSpeedKnots);
+        if (VisualGuidanceFlare.Starts(wheelHeightAGL, sinkFpm, flareTriggerWheelHeightFt, tuning))
         {
-            currentPhase = GuidancePhase.Final;
+            currentPhase = GuidancePhase.Flare;
+            flareTauS = VisualGuidanceFlare.TauS(wheelHeightAGL, sinkFpm, tuning.TouchdownSinkFpm);
+            AnnouncePhaseChange("Flare", HOLD_FLARE_S);
             return;
         }
 
@@ -1629,7 +1623,9 @@ public class VisualGuidanceManager : IDisposable
     /// stage 5). Desired pitch = the learned trim (<see cref="VisualGuidanceTrimLearner"/>) − the target
     /// descent angle, rate limited (VG-20, VG-25). The mode says where the target comes from:
     /// <list type="bullet">
-    /// <item>Flare: the flare's fixed pitch, as before stage 5 (stage 6 replaces it).</item>
+    /// <item>Flare (stage 6, VG-27): a sink rate easing from the aircraft's own at the flare's start to
+    /// 150 fpm at touchdown (<see cref="VisualGuidanceFlare"/>), from the level attitude held from before
+    /// the flare.</item>
     /// <item>Follow (deciding, joining while climbing or descending): the aircraft's own pitch, since the
     /// altitude is the pilot's or ATC's there.</item>
     /// <item>Plan (vectoring and the pattern, every leg until established): BA's planned descent along the
@@ -1651,18 +1647,26 @@ public class VisualGuidanceManager : IDisposable
         if (runway == null) return 0.0;
         var tuning = VerticalTuningForHarness;
 
-        // The trim is learned on every update outside the flare and touchdown, whatever the mode.
+        // The trim is learned on every update outside the flare and touchdown, whatever the mode, from the
+        // flight path ProcessUpdate has just read; in the flare the level attitude learned before it is held.
         if (currentPhase is not (GuidancePhase.Flare or GuidancePhase.Touchdown))
-            trimLearner.Update(currentPitch, currentVerticalSpeedFPM, currentGroundSpeedKnots, frameSeconds);
+            trimLearner.UpdateTrim(currentPitch, currentGroundSpeedKnots, frameSeconds);
 
         if (currentPhase == GuidancePhase.Flare)
         {
-            // The flare's fixed pitch, rate limited from the approach (per second of frame time, VG-20).
+            // The flare (VG-27): the sink rate eases from the aircraft's own at the flare's start to 150 fpm
+            // at touchdown; the cue is the held level attitude minus its descent angle, at the profile's
+            // pitch rate (VG-20). The target is always a descent, so the cue never asks for a climb.
             verticalMode = VisualGuidanceVerticalMode.Flare;
-            double flarePitch = RateLimited(lastFlarePitch, flareTargetPitchDeg, MAX_FLARE_PITCH_RATE);
-            lastFlarePitch = flarePitch;
-            // Back above the flare height (a balloon, a go-around), the path's cue leaves from here, not
-            // from the cue before the flare: a 4° jump in one frame otherwise (stage 5 checkpoint).
+            double wheelFt = altMSL - thresholdElevationMSL - flareAltitudeBiasFt;
+            double targetSinkFpm = VisualGuidanceFlare.TargetSinkFpm(wheelFt, flareTauS, tuning.TouchdownSinkFpm);
+            lastTargetDescentDeg = VisualGuidanceFlare.DescentDeg(targetSinkFpm, currentGroundSpeedKnots);
+            double flarePitch = Math.Clamp(RateLimited(previousDesiredPitch, trimLearner.TrimDeg - lastTargetDescentDeg,
+                maxPitchRateDegPerSec), -12.0, 12.0);
+            // F and the record give the target as a rate (+ a climb).
+            lastCalculatedTargetFPM = -targetSinkFpm;
+            // Back above the flare's band (a go-around), the path's cue leaves from here, not from the cue
+            // before the flare (stage 5 checkpoint).
             previousDesiredPitch = flarePitch;
             return flarePitch;
         }

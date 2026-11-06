@@ -89,12 +89,13 @@ public class VisualGuidanceVerticalWarningTests
         Assert.Empty(Said(farLines, "Too high"));
     }
 
-    // 70 ft low with the wheels 42 ft up (0.2 nm out): under 60 ft the correction stops and so do the
-    // warnings. At 0.4 nm the same 70 ft low, wheels 105 ft up, is said.
+    // 70 ft low with the wheels 56 ft up (0.245 nm out): under 60 ft the correction stops and so do the
+    // warnings. At 0.4 nm the same 70 ft low, wheels 105 ft up, is said. (At 742 fpm the flare starts at
+    // 53 ft, 4.3 s out: stage 6.)
     [Fact]
     public void No_warning_under_sixty_feet()
     {
-        var (rig, lines) = OnFinalAt(0.2, -70);
+        var (rig, lines) = OnFinalAt(0.245, -70);
         rig.FlyFor(3, 30);
         Assert.Equal("Final", rig.Phase);
         Assert.Empty(Said(lines, "Too low"));
