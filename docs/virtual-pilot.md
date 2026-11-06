@@ -1113,6 +1113,33 @@ their 10 ft backstop), once on every landing (N). Against `approach_stage6_t3` e
 same (`BETTER {}`, `WORSE {}`, `CHANGED {}`): only when the word is said moved. A to K and A, L, M, N, O
 pass, as at Task 3.
 
+**The final run** (`approach_stage6_final`, at the end of Task 4's code): A, L, M, N, O pass with 48
+accepted, A to K with 28 accepted. Before and after:
+
+| | stage 1 (`baseline_v7`) | stage 5 (`stage5_h6`) | stage 6 |
+|---|---|---|---|
+| jets touched down (of 116), in the zone | 102, 101 | 111, 97 | 111, 97 |
+| jets' touchdown sink, median / max fpm | 345 / 564 | 384 / 1,043 | 248 / 473 |
+| jets' touchdown point, median ft past the threshold | 1,189 | 1,151 | 1,325 |
+| light runs touched down (of 111), in the zone | 50, 49 | 110, 99 | 110, 106 |
+| light touchdown sink, median / max fpm | 215 / 383 | 237 / 413 | 240 / 270 |
+| light touchdown point, median ft | 1,004 | 979 | 1,053 |
+| flare start, median wheel ft, jets / light | 30 / 10 | 30 / 10 | 53 / 25 |
+| "Flare" said, median wheel ft, jets / light | 30 / 10 | 30 / 10 | 30 / 14 |
+| "Flare" per landing | 0 or 1 (light) | 1 | 1 |
+
+Against `approach_stage5_h6`: `BETTER` 118 softer touchdowns (`touchdownVsFpm down`), `WORSE {}`, and 12
+touchdown points moving more than 300 ft (`CHANGED`): the softer flare floats a little longer, 400 to 460
+ft on the INT jets that arrive high and the SPEED jets at 160 kt. Against `approach_baseline_v7` the WORSE
+lines are stages 2 to 5's, as at stage 5, with two differences, both the flare's: the 19 firmer
+touchdowns against stage 1 become 55 softer ones, and one new `|touchdownXteFt| up`, WIND-TW-A-JET (38 ft
+left at stage 1, 56 at stage 5, 70 now, 5 ft inside the runway's edge). On that run, the tailwind base, the
+lateral command banks about 5° left from 0.12 nm out with the aircraft already 20 ft left, on every stage's
+app; the softer flare's 240 ft more float lets the drift grow. That is the lateral law near the threshold,
+which stage 6 does not touch: a finding for the owner, not a flare fault. The light runs that floated past
+the runway at stage 5 (110 with the fixed flare from 30 ft) all land, 106 in the zone, at most 270 fpm; the
+4 outside are the SHALLOW runs that reach the gate 590 ft high and landed long at stage 5 too.
+
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
 4,857 landing runs, 1,960 taxis, 409 wrong turns.
