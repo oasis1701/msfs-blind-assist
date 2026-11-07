@@ -60,7 +60,7 @@ public class VisualGuidanceBankCalloutGateTests
     public void Drifting_a_degree_off_after_matched_is_spoken_when_it_reaches_a_degree()
     {
         var said = Fly(t => (0, t < 2 ? 0 : -Math.Min(1.3, 0.5 * (t - 2))), 6);
-        Assert.Equal(new[] { "On commanded path", "1 right" }, said.Select(s => s.Phrase));
+        Assert.Equal(new[] { "Matched, level", "1 right" }, said.Select(s => s.Phrase));
         Assert.InRange(said[1].T, 4.0 - 1e-9, 4.0 + Frame + 1e-9);
     }
 
@@ -114,7 +114,7 @@ public class VisualGuidanceBankCalloutGateTests
     }
 
     [Fact]
-    public void Switching_between_matched_and_on_commanded_path_never_repeats()
+    public void Switching_between_matched_and_matched_level_never_repeats()
     {
         var said = Fly(t => (1.0 - t / 4, 1.0 - t / 4 - 0.1), 4);
         Assert.Single(said);

@@ -31,7 +31,8 @@ sealed class TonePilot
     private const double BankTimeConstantS = 0.5, PitchTimeConstantS = 0.7;
 
     private static readonly Regex BankErrorCallout = new(@"^(\d+) (left|right)$", RegexOptions.CultureInvariant);
-    private static readonly Regex BankMatchedCallout = new(@"^(matched|On commanded path)$", RegexOptions.CultureInvariant);
+    // "Matched, level" was "On commanded path" before 2026-11-06; both stay, for runs against an older app.
+    private static readonly Regex BankMatchedCallout = new(@"^(matched|Matched, level|On commanded path)$", RegexOptions.CultureInvariant);
 
     private readonly double _rollRateDegS, _pitchRateDegS, _bankRangeDeg, _pitchRangeDeg, _reactionDelayS;
     private readonly bool _bankBySpeech;

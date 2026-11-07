@@ -218,7 +218,7 @@ If another program is already using one of these keys, BA tells you *"Visual gui
 
 **Distance callouts.** *"5 miles out"*, *"3 miles out"* and *"1 mile out"* as you pass 5, 3 and 1 miles from the runway threshold. Once you are established on final they add your height against the glide path: *"3 miles out, 80 feet high"*, *"1 mile out, 40 feet low"*, or *"5 miles out, on path"* within about 30 feet. One you are already inside when you press Output Ctrl+V is not said. On the pattern's downwind and base none is said; once the pattern has taken you back out past a mark, it is said on final.
 
-**Bank callouts.** BA speaks how much more bank you need: *"3 left"* means roll 3 degrees further to the left than you are now; *"2 right"* means roll 2 degrees further right. *"matched"* means your bank is what the guidance wants. *"On commanded path"* means your bank matches and the guidance wants the wings level: you are tracking the centreline.
+**Bank callouts.** BA speaks how much more bank you need: *"3 left"* means roll 3 degrees further to the left than you are now; *"2 right"* means roll 2 degrees further right. *"matched"* means your bank is what the guidance wants. *"Matched, level"* means your bank matches and the guidance wants the wings level: you are tracking the centreline, or a straight leg of the pattern.
 
 When they come:
 

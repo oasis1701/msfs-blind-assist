@@ -10,9 +10,10 @@ namespace MSFSBlindAssist.Services;
 /// <list type="bullet">
 /// <item>"Matched" is entered when |e| comes within 0.4° and left only when it reaches 1.0°, a band,
 /// not a wait, so an error hovering around half a degree settles on "matched" instead of flipping with
-/// "1 right" many times a second. While matched the callout is "On commanded path" when the command is
+/// "1 right" many times a second. While matched the callout is "Matched, level" when the command is
 /// within 0.5° of wings level, else "matched"; the two count as one callout, so switching between them
-/// never speaks.</item>
+/// never speaks. ("Matched, level" was "On commanded path" until 2026-11-06: the owner expected
+/// "matched", and the mile calls' "on path" is the glide path.)</item>
 /// <item>Otherwise the callout is "N left" or "N right", N the error rounded, at least 1.</item>
 /// <item>A callout is spoken the update it differs from the last one spoken, never repeated while it
 /// stays the same, and only when the caller may speak (the manual-query grace window, VG-19, and the
@@ -24,7 +25,7 @@ internal sealed class VisualGuidanceBankCalloutGate
     public const double MatchedEnterDeg = 0.4;
     public const double MatchedLeaveDeg = 1.0;
 
-    // Within this of wings level, a matched command is spoken as "On commanded path".
+    // Within this of wings level, a matched command is spoken as "Matched, level".
     private const double OnPathCommandDeg = 0.5;
     private const string MatchedKey = "matched";
 
@@ -48,7 +49,7 @@ internal sealed class VisualGuidanceBankCalloutGate
 
         _lastSpokenKey = key;
         if (!_matched) return key;
-        return Math.Abs(desiredBankDeg) < OnPathCommandDeg ? "On commanded path" : "matched";
+        return Math.Abs(desiredBankDeg) < OnPathCommandDeg ? "Matched, level" : "matched";
     }
 
     /// <summary>Forgets what was spoken and the matched state.</summary>

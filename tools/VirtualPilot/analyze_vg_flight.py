@@ -39,7 +39,8 @@ import sys
 
 FT_PER_NM = 6076.12
 ESTABLISHED_NM, ESTABLISHED_DEG, ESTABLISHED_HOLD_S = 0.1, 5.0, 3.0
-BANK_CALLOUT = re.compile(r'^(\d+ (left|right)|matched|On commanded path)$')
+# "Matched, level" was "On commanded path" before 2026-11-06; both stay, for older recordings.
+BANK_CALLOUT = re.compile(r'^(\d+ (left|right)|matched|Matched, level|On commanded path)$')
 
 
 def recording_files(path):

@@ -17,7 +17,8 @@ sealed class ApproachMetrics
     private const double EstablishedCrossNm = 0.1, EstablishedTrackDeg = 5.0, EstablishedHoldS = 3.0;
     private const double OvershootMinStartCrossNm = 0.15;
 
-    private static readonly Regex BankCallout = new(@"^(\d+ (left|right)|matched|On commanded path)$", RegexOptions.CultureInvariant);
+    // "Matched, level" was "On commanded path" before 2026-11-06; both stay, so a run against an older app still counts.
+    private static readonly Regex BankCallout = new(@"^(\d+ (left|right)|matched|Matched, level|On commanded path)$", RegexOptions.CultureInvariant);
 
     private readonly record struct Sample(double T, double Along, double Cross, double TrackErr, double PathErr, double Vs,
         double DesiredPitch, double DesiredBank, double Bank, string Phase, string? Decision, bool Scripted,
