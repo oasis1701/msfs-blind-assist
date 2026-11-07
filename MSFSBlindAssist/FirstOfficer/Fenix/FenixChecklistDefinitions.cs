@@ -230,15 +230,16 @@ public static class FenixChecklistDefinitions
             Auto("ES_MODE", "ENGINE_START", "Engine mode selector: IGN START",
                 "S_ENG_MODE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_ENG_MODE", 2)),
             // Engine 1 first, then engine 2 (user preference). Each "Engine n: running" line is
-            // completed by the flow's ES_ENGn_N2 wait (FO-6) and also ticks itself from N2.
+            // completed by the flow's ES_ENGn_N2 wait (FO-6) and also ticks itself from the Fenix's own
+            // running flag (FO_ENGn_RUNNING, N2 55 % while the flag is unknown), as the A32NX's does.
             Auto("ES_ENG1", "ENGINE_START", "Engine 1 master: ON",
                 "S_ENG_MASTER_1", v => v > 0.5, (e, _) => e.Set("S_ENG_MASTER_1", 1)),
             Auto("ES_ENG1_RUN", "ENGINE_START", "Engine 1: running",
-                "FO_ENG1_N2", v => v >= FenixStateEvaluator.EngineRunningN2, action: null),
+                "FO_ENG1_RUNNING", v => v > 0.5, action: null),
             Auto("ES_ENG2", "ENGINE_START", "Engine 2 master: ON",
                 "S_ENG_MASTER_2", v => v > 0.5, (e, _) => e.Set("S_ENG_MASTER_2", 1)),
             Auto("ES_ENG2_RUN", "ENGINE_START", "Engine 2: running",
-                "FO_ENG2_N2", v => v >= FenixStateEvaluator.EngineRunningN2, action: null),
+                "FO_ENG2_RUNNING", v => v > 0.5, action: null),
         }
     };
 
@@ -299,9 +300,10 @@ public static class FenixChecklistDefinitions
                 "S_WR_PRED_WS", v => v > 0.5, (e, _) => e.Set("S_WR_PRED_WS", 1)),     // [RADAR]
             Auto("TX_XPDRAUTO", "TAXI", "Transponder: AUTO",
                 "S_XPDR_OPERATION", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_XPDR_OPERATION", 1)),
-            // Level-triggered test: TakeoffConfigTest holds 1.5 s, announces the result
-            // ("Takeoff config normal." / "check configuration."), then RELEASES — a plain
-            // pulse left the button stuck at 1 and re-fired the config check after landing.
+            // Level-triggered test: TakeoffConfigTest presses and holds the button, RELEASES it (a plain
+            // pulse left the button stuck at 1 and re-fired the config check after landing), then waits
+            // for the warning computer's own delay (VerdictAfterMs) before announcing the result
+            // ("Takeoff config normal." / "check configuration.").
             ActionManual("TX_CONFIG", "TAXI", "Takeoff config test",
                 (e, _) => e.TakeoffConfigTest()),
         }
@@ -313,7 +315,8 @@ public static class FenixChecklistDefinitions
         Items = new()
         {
             // Advise the cabin crew: hit CALL ALL and release (momentary chime). At line-up since
-            // 2026-10-19 (owner; in Taxi from 2026-10-09).
+            // 2026-10-19 (owner; in Taxi from 2026-10-09). In v3 the call only hurries the purser;
+            // it does not set CABIN READY, which the purser reports on her own (LUC_CABIN reads it).
             ActionManual("LU_CABIN", "LINEUP", "Advise the cabin crew for takeoff (call all)",
                 (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
             Auto("LU_TCAS", "LINEUP", "TCAS: TA/RA",
@@ -386,7 +389,8 @@ public static class FenixChecklistDefinitions
             // The Approach flow's seat-belt step.
             Auto("AP_SEATBELTS", "APPROACH", "Seat belts: ON",
                 "S_OH_SIGNS", v => v > 0.5, (e, _) => e.Set("S_OH_SIGNS", 1)),
-            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
+            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime). In v3
+            // the call only hurries the purser; it does not set CABIN READY (LDC_MEMO_CABIN reads it).
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
             Reminder("AP_MINIMUMS", "APPROACH", "Check minimums set on the MCDU approach page"),
@@ -596,8 +600,8 @@ public static class FenixChecklistDefinitions
             Reminder("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: SET",
                 s => AirbusReadbackFormat.OnOff(s.GetValue("S_MIP_PARKING_BRAKE"))),
             Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "Takeoff speeds and thrust: SET",
-                s => AirbusReadbackFormat.TakeoffSpeeds(s.GetValue("FNX2PLD_speedV1"),
-                    s.GetValue("FNX2PLD_speedVR"), s.GetValue("FNX2PLD_speedV2"),
+                s => AirbusReadbackFormat.TakeoffSpeeds(s.GetValue("N_MISC_PERF_TO_V1"),
+                    s.GetValue("N_MISC_PERF_TO_VR"), s.GetValue("N_MISC_PERF_TO_V2"),
                     s.GetValue("N_MISC_PERF_TO_FLEX"))),
             Reminder("BSC_WINDOWS", "BEFORE_START_CL", "Windows: CLOSED"),
             Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON",
@@ -659,8 +663,12 @@ public static class FenixChecklistDefinitions
         {
             Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: CONFIRMED"),
             // The takeoff memo's cabin line, here since the cabin call moved to the Line-up flow
-            // (owner, 2026-10-19; FOA-8).
-            Reminder("LUC_CABIN", "LINEUP_CL", "Cabin: READY"),
+            // (owner, 2026-10-19; FOA-8). A Reminder: nothing auto-detects it. The Line-up flow's call
+            // step LU_CABIN links it, so a call that went out ticks it (FO-6), and a finished flow ticks
+            // it whether or not the purser has reported (FO-7); the pilot can tick it too. The live
+            // value is the purser's own report from the Fenix data service (v3), never the call we
+            // sent, and can say "not reported" on a ticked line.
+            Reminder("LUC_CABIN", "LINEUP_CL", "Cabin: READY", s => s.CabinReadyText()),
             Auto("LUC_TCAS", "LINEUP_CL", "TCAS: TA/RA",
                 "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, action: null,
                 live: s => AirbusReadbackFormat.Tcas(s.GetValue("S_XPDR_MODE"))),
@@ -700,7 +708,10 @@ public static class FenixChecklistDefinitions
                 FenixGearConfirmation.DownField, v => v > 0.5, action: null),
             Auto("LDC_MEMO_SIGNS", "LANDING_CL", "Signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, action: null),
-            Reminder("LDC_MEMO_CABIN", "LANDING_CL", "Cabin: READY"),
+            // A Reminder like LUC_CABIN, with no flow step linked to it: the Landing flow's completion
+            // ticks it as it does every line no step delivers (FO-7), whatever the purser has reported,
+            // and the pilot can tick it too. The live value is the purser's report.
+            Reminder("LDC_MEMO_CABIN", "LANDING_CL", "Cabin: READY", s => s.CabinReadyText()),
             Auto("LDC_MEMO_SPLRS", "LANDING_CL", "Spoilers: ARMED",
                 "A_FC_SPEEDBRAKE", v => Math.Abs(v) < 0.5, action: null),
             // FULL, or 3 with the GPWS LDG FLAP 3 switch on; the live value is the lever itself.

@@ -119,11 +119,44 @@ Waypoint Tracking (use Fix Track window to add):
   4          Track Slot 4
   5          Track Slot 5
 
+Engine displays (no AI key needed):
+  Alt+E      Open the Engine displays window: the upper and lower engine
+             displays as two live lists (page name first, then N1, EGT,
+             fuel flow, alerts, fuel; N2, oil, vibration; or the SYS page),
+             then MFD ENG, MFD SYS, Lower DU Captain, Fuel Flow Used,
+             Fuel Flow Reset, N1 SET and Manual N1 (type the N1 reference
+             and press Enter; N1 SET on 1, 2 or BOTH). Tab moves, Escape
+             closes. If the displays cannot be read, it reads the upper
+             display with AI instead.
+
+Navigation display (no AI key needed):
+  Alt+N      Open the Navigation display window: the Captain's ND as one
+             live list, top of the screen to the bottom (mode and range,
+             GS, TAS and wind, the track, the active waypoint, the map
+             buttons on, then each item on the map with its distance and
+             degrees off the top of the map, the bottom corners and the
+             messages), then Mode, Range, CTR, TFC, WXR, STA, WPT, ARPT,
+             DATA, POS, TERR, VOR/ADF 1 and VOR/ADF 2. Tab moves, Escape
+             closes. If the ND cannot be read, it reads the ND with AI
+             instead.
+  Ctrl+W     Active waypoint as the ND shows it: name, arrival time and
+             distance to go.
+
+Primary flight display (no AI key needed):
+  Alt+P      Open the Primary flight display window: the Captain's PFD as
+             one live list, part by part (the FMA, above, on and below the
+             speed tape, the attitude with the flight director and the
+             approach pointers, the altitude tape, vertical speed, heading,
+             then the messages), then MINS mode, Minimums, MINS RST, Baro
+             units, Altimeter, STD, FPV, MTRS, Flight director, Speed
+             reference and Speed reference value (type it and press Enter;
+             the selector on V1, VR, WT, VREF or BUG). Tab moves, Escape
+             closes. If the PFD cannot be read, it reads the PFD with AI
+             instead; with the classic EFIS display selected, it says so
+             first.
+
 AI Display Reading (requires an AI API key — Gemini or Claude — in File > Settings > AI tab):
-  Alt+P      Read PFD
-  Alt+N      Read Navigation Display
   Alt+I      Read ISFD backup instruments
-  Alt+E      Read Upper Engine Display (N1, EGT, fuel flow, alerts)
   Alt+S      Read Lower Display Unit (N2, oil, vibration — or the ND when
              the LOWER DU selector is set to it)
   Alt+D      Describe outside scene
@@ -204,6 +237,11 @@ MCP Set Values:
   Ctrl+A     Set Altitude (opens dialog with Intervene, VNAV, Level Change, ALT HOLD toggles)
   Ctrl+V     Set Vertical Speed (opens dialog with VS Engage toggle)
 
+Note: in these four dialogs a button press that works is confirmed by the
+button's new label, the "MCP:" line and the "FMA:" line; a press that
+changes nothing is read back about 3 seconds later. A button that shows no
+state, such as Altitude Intervene, says "Altitude Intervene pressed" at once.
+
 Altimeter:
   Ctrl+B     Set altimeter (input dialog accepts hPa 900-1060 or
              inHg 26.50-31.30; branches on entered magnitude, so both
@@ -277,8 +315,37 @@ line-select keys: F1-F6 for L1-L6 and F7-F12 for R1-R6. With this on,
 the default Ctrl+1-6 / Alt+1-6 chords are disabled.
 
 Automatic Announcements:
-  - MCP value changes (speed, heading, altitude, vertical speed)
-  - Autopilot mode changes (AP, AT, LNAV, VNAV, LVL CHG, HDG SEL, VS, ALT HOLD, VOR/LOC, APP)
+  - MCP value changes (speed, heading, altitude, vertical speed), switches and
+    knobs, each starting with "MCP:", for example "MCP: altitude 10000 feet"
+    or "MCP: Bank Limit: 25"
+  - Autopilot mode changes (AP, AT, LNAV, VNAV, LVL CHG, HDG SEL, VS, ALT HOLD, VOR/LOC, APP),
+    for example "MCP: Level Change: engaged"
+  - Flight mode annunciator (FMA) changes, starting with "FMA:", in Boeing's
+    wording: A/T, roll and pitch modes, armed modes and the AFDS status, for
+    example "FMA: Roll: VOR/LOC, Pitch: G/S"; a mode with no word is said as
+    "unrecognised". The Primary flight display window (Output Alt+P) lists the
+    whole FMA at the top. The MCP lights are still announced too, and neither
+    cuts the other off (mute "Flight Mode Annunciator" in Ctrl+M; the window still
+    lists it). Needs PMDG's SDK data: until it arrives, nothing is announced and
+    the window says "FMA reader waiting for PMDG SDK data". Says "FMA announcements unavailable"
+    once if it cannot read the FMA: at once for an unrecognised PMDG file, after
+    two minutes if the FMA is not found in the aircraft's memory or does not match
+    the aircraft, and then it keeps trying every 30 seconds. Says "stopped" if it
+    loses the FMA in flight (its reading stops matching the aircraft, or the memory
+    is lost), and "resumed" when it reads the FMA again, with any mode change you
+    missed; after "stopped: unexpected values" it waits for a new flight. After
+    a reload where you heard "stopped", it says "resumed" when it reads the new
+    flight's FMA. While stopped, the window's FMA line says the same, and when its
+    reading does not match, adds the last known FMA
+  - Engine display alerts appearing and going, starting with the display they
+    are on, for example "Upper DU alert: engine 1 START VALVE OPEN" and
+    "Upper DU alert gone: engine 1 LOW OIL PRESSURE"; gauge colours, for
+    example "Upper DU: engine 1 EGT amber" (then red or normal; vibration
+    "high"); the thrust mode, for example "Upper DU: thrust mode CLB".
+    Nothing while the displays are dark or for a few seconds after they come
+    on. Three Ctrl+M rows: "Engine display alerts", "Engine gauge colors",
+    "Thrust mode". The start valve and overhead light announcements are
+    kept as well.
   - Master Warning / Master Caution (with cleared state)
   - All annunciator lights (on and off)
   - Speed brake position changes

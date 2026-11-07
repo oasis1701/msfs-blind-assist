@@ -131,7 +131,7 @@ public partial class IniA300Definition
             if (_seedGate.Armed)
                 _seedGate.NoteValue(varName, value, ownedByAircraft: IsAircraftOwned(varName));
             // Observed whatever the quiet: the baseline must follow the aircraft. A master light is quiet only
-            // during a test; a lever only just after the First Officer moved it ([FOA-14]).
+            // during a test; a lever only just after the First Officer moved it ([FOA-16]).
             bool master = varName is A300Announcements.MasterWarningKey or A300Announcements.MasterCautionKey;
             if (_tracker.Observe(varName, value) is string phrase && !(master ? IsFoQuietMaster() : IsFoQuietRow(varName)))
                 announcer.Announce(phrase);

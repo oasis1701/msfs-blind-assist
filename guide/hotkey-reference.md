@@ -74,8 +74,8 @@ These read what the FCU, MCP or flight control panel shows, with its mode. The e
 ### Output: navigation and distance {#output-navigation-and-distance}
 
 - **Output N** — NAV 1 and NAV 2: frequency, ident, localiser, glideslope and DME.
-- **Output D** — Distance to destination, from the aircraft's FMS. Not on: Fenix, MD-11.
-- **Output Shift+D** — Distance and time to top of descent. Not on: Fenix, MD-11.
+- **Output D** — Distance to destination, from the aircraft's FMS. Not on: MD-11.
+- **Output Shift+D** — Distance and time to top of descent. Not on: MD-11.
 - **Output 1** to **Output 5** — Read tracked waypoint slots 1 to 5 (see [Tracking Waypoints](planning-your-flight.md#fix-tracking)).
 - **Output Ctrl+D** — Distance to your selected destination runway.
 - **Output Ctrl+I** — ILS guidance report for the destination runway.
@@ -270,20 +270,25 @@ Full explanations: [Fenix A320 CEO](airbus-aircraft.md#airbus-fenix).
 
 ### Output keys {#output-keys-2}
 
-All need an AI provider.
+Each display key opens a live window read from the Fenix. When the Fenix cannot share that display, it gives the AI read instead, which needs an AI provider and Fenix v3.
 
-- **Output Alt+P** — Read the PFD (the first officer's, the only one the camera frames whole).
-- **Output Alt+N** — Read the captain's navigation display.
-- **Output Alt+E** — Read the E/WD.
-- **Output Alt+S** — Read the System Display.
-- **Output Alt+I** — Read the standby instruments.
+- **Output Alt+P** — The captain's PFD window. The AI read looks at the first officer's PFD.
+- **Output Alt+N** — The captain's navigation display window, with its EFIS controls.
+- **Output Alt+E** — The E/WD window, with T.O CONFIG, CLR, RCL and EMER CANC after the list.
+- **Output Alt+S** — The SD window: the System Display's page, its values, STATUS and the bottom line, with the ECAM page keys after the list.
+- **Output Alt+I** — The ISIS window, with the ISIS panel's buttons and baro knob after the list. With the three round standby gauges, always the AI read.
+- **Output Shift+1** to **Shift+6** — Green dot, S, F, VLS, alpha prot or VSW, and VFE next, from the PFD's speed tape.
+- **Output Ctrl+W** — The next waypoint: name, bearing, distance and time.
+- **Output D**, **Output Shift+D** — Distance and time to the destination and to the top of descent, worked out from the Fenix's flight plan.
 
 ### Input keys {#input-keys-2}
 
 - **Input Shift+1** to **Shift+4** — Push the heading, altitude, speed and vertical speed knobs.
 - **Input Ctrl+1** to **Ctrl+4** — Pull the heading, altitude, speed and vertical speed knobs.
+- **Input Ctrl+Shift+D** — Open the DCDU window.
+- **Input Ctrl+Shift+F** — Open the Fenix windows list: Engines, Cabin, Failures, Fenix documents, Fenix options, PFD, ND, E/WD, SD, ISIS and DCDU. On any other aircraft you hear *"This aircraft has no extra windows."*
 
-Ctrl+P opens the autopilot window: AP1, AP2, ATHR, APPR, LOC, EXPED and the disconnect buttons for each side. Input Shift+T opens the Fenix's own EFB web page.
+Ctrl+P opens the autopilot window: AP1, AP2, ATHR, APPR, LOC, EXPED and the disconnect buttons for each side. Input Shift+T opens the Fenix's own EFB web page, where **Alt+Home** goes back to the EFB's home screen.
 
 ### MCDU window (Input Shift+M) {#mcdu-window-input-shift-m-2}
 
@@ -295,9 +300,20 @@ Ctrl+P opens the autopilot window: AP1, AP2, ATHR, APPR, LOC, EXPED and the disc
 - **Ctrl+Shift+L**, **Ctrl+Shift+R** — Left (captain's) or right (first officer's) MCDU.
 - **Alt+I** INIT, **Alt+D** DIR, **Alt+P** PROG, **Alt+F** F-PLN, **Alt+E** PERF, **Alt+R** RAD NAV, **Alt+Shift+F** SEC F-PLN, **Alt+U** FUEL PRED, **Alt+K** ATC COM, **Alt+M** MCDU MENU, **Alt+A** AIRPORT, **Alt+T** DATA, **Alt+O** OVFLY.
 
+### Fenix windows (Input Ctrl+Shift+F) {#fenix-windows-input-ctrl-shift-f}
+
+- **The list**: **Enter** opens the selected window, **Escape** closes the list.
+- **Engines**: arrow keys read the values, **F5** reads them again, **Escape** closes.
+- **Cabin**: **Ctrl+Tab** moves between the Status, Audio, Doors, Temperature and Water tabs, **Escape** closes.
+- **Failures**: **Enter** in the search box searches; **Alt+N** Fail now, **Alt+A** (or **Enter** on a failure) Arm, **Alt+C** Clear, each after a Yes or No; **F5** refreshes, **Escape** closes.
+- **Fenix documents**: **Enter** opens a document, **Ctrl+F** the search box, **Ctrl+P** the pinned ECAM procedure, **Ctrl+D** pins or unpins, **F6** and **Shift+F6** move between the document, the list and the search box, **F5** reloads, **Escape** hides the window.
+- **Fenix options**: **Enter** speaks the selected option's details; **F2** changes an on/off or choice option for this simulator session, **Shift+F2** makes an option permanent, **Ctrl+F2** resets your change to the Fenix default; **F5** reads the options again, **Escape** closes.
+- **PFD**, **ND**, **E/WD**, **SD** and **ISIS**: arrow keys read the rows, which update every second; **Tab** reaches the controls after the list; **F5** refreshes without a word, **Escape** closes.
+- **DCDU**: arrow keys read the rows; **Ctrl+1**, **Ctrl+2** the left keys and **Alt+1**, **Alt+2** the right ones (or **F1**, **F2**, **F7**, **F8** with the alternate setting); **Page Down**, **Page Up** scroll the message; **Ctrl+Page Down**, **Ctrl+Page Up** the next and previous message; **Ctrl+P** prints; **Bright** and **Dim** buttons after the list; **F5** refreshes, **Escape** closes.
+
 ### General keys that differ or don't work here {#general-keys-that-differ-or-don-t-work-here-2}
 
-- **Output D, Shift+D, Shift+1 to Shift+6, Ctrl+W, Ctrl+0, Ctrl+E** do nothing.
+- **Output Ctrl+0, Ctrl+E** do nothing.
 - **Input Shift+A, Ctrl+O, Shift+P, Ctrl+J, Ctrl+L** do nothing; use the Ctrl+P window.
 
 ## FlyByWire A380X {#hk-a380}
@@ -373,13 +389,16 @@ Full explanations: [PMDG 737 (NG3)](boeing-aircraft-and-the-md-11.md#boeing-pmdg
 ### Output keys {#output-keys-4}
 
 - **Output Shift+1** to **Shift+6** — Flap manoeuvring speeds for flaps up, 1, 5, 10, 15 and 25, at your current weight.
-- **Output Alt+P** — Read the PFD (AI).
-- **Output Alt+N** — Read the navigation display (AI).
-- **Output Alt+E** — Read the upper engine display (AI).
-- **Output Alt+S** — Read the lower display unit (AI): N2, oil and vibration, or whatever it is set to show.
+- **Output Alt+P** — Open the Primary flight display window: the Captain's PFD, read from the aircraft, as a list part by part (the FMA, the speed tape, the attitude, the altitude tape, vertical speed, heading, then the messages), with MINS mode, Minimums, MINS RST, Baro units, Altimeter, STD, FPV, MTRS, Flight director and the speed reference. No AI key needed; if BA cannot read the PFD it reads the PFD with AI instead, and if the classic EFIS display is selected it says so first.
+- **Output Alt+N** — Open the Navigation display window: the Captain's ND, read from the aircraft, as a list from the top of the screen to the bottom, with Mode, Range, CTR, the map buttons and VOR/ADF 1 and 2. No AI key needed; if BA cannot read the ND it reads the ND with AI instead.
+- **Output Ctrl+W** — The active waypoint as the ND shows it: name, arrival time and distance to go.
+- **Output Alt+E** — Open the Engine displays window: the upper and lower engine displays, read from the aircraft, with MFD ENG, MFD SYS, Lower DU, Fuel Flow, N1 SET and the manual N1. No AI key needed; if BA cannot read the displays it reads the upper display with AI instead.
+- **Output Alt+S** — Read the lower display unit (AI), whatever it is set to show.
 - **Output Alt+I** — Read the standby instrument (AI).
 
 F and Shift+F read fuel tank by tank.
+
+In the Engine displays window, **Tab** moves between the two lists and the controls, the arrow keys read a list, and **Escape** closes it. The Navigation display and Primary flight display windows work the same way, with one list.
 
 ### Input keys {#input-keys-4}
 
@@ -398,7 +417,7 @@ The Ctrl+P window is the 737 Autopilot: CMD A, CMD B, CWS A and B, both flight d
 
 ### General keys that differ or don't work here {#general-keys-that-differ-or-don-t-work-here-4}
 
-- **Output Ctrl+W, Ctrl+0, Ctrl+E** do nothing.
+- **Output Ctrl+0, Ctrl+E** do nothing.
 - **Input Shift+A, Ctrl+O, Shift+P, Ctrl+J, Ctrl+L** and the Shift/Ctrl+number knob keys do nothing; use the Ctrl+P window and the MCP windows.
 
 ## PMDG 777 {#hk-pmdg777}
@@ -407,6 +426,7 @@ Full explanations: [PMDG 777](boeing-aircraft-and-the-md-11.md#boeing-pmdg777). 
 
 - **Output Shift+1** to **Shift+5** — Flap manoeuvring speeds for flaps up, 1, 5, 15 and 20. There is no Shift+6.
 - **Output Alt+E** reads the upper EICAS, and **Alt+S** the lower display, whatever page it shows.
+- **Output Alt+N** reads the navigation display with AI; there is no Navigation display window, and **Output Ctrl+W** does nothing.
 - **Output Shift+V** reads vertical speed or flight path angle; the Ctrl+V window has V/S and FPA modes.
 - With **Enhanced distance announcements** on in FMC Settings, **Output D** and **Shift+D** read the CDU's PROG page. This works on the 777 only, not the 737.
 - **Input Ctrl+B** and **Input Ctrl+N** do nothing on the 777.

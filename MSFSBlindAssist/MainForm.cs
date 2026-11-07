@@ -520,6 +520,7 @@ public partial class MainForm : Form
         {
             sectionsListBox.Items.Add(section);
         }
+        WatchPanelVariant();
 
         // Sync menu items with the loaded aircraft (fixes first-launch menu mismatch)
         UpdateAircraftMenuItems();
@@ -547,6 +548,9 @@ public partial class MainForm : Form
         // it works whenever the sim + iFly plugin are running). Generic announcements
         // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.
         StartIFlySdkBridge();
+
+        // PMDG 737: the display readers wait for the PMDG SDK themselves, so they start with the aircraft.
+        StartPmdg737Displays();
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
@@ -976,9 +980,11 @@ public partial class MainForm : Form
             PrepareRunwayProbeWarmUp = taxiGuidanceManager.PrepareRunwayShapeWarmUp,
         };
 
-        // Per-aircraft rollout-anticipation lead for the taxi steering tone
-        // (see IAircraftDefinition.TaxiTurnLeadSeconds).
+        // Per-aircraft rollout-anticipation leads for the taxi steering tone, and their ceiling
+        // (see IAircraftDefinition.TaxiTurnLeadSeconds / TaxiSharpTurnLeadSeconds / TaxiTurnLeadMaxDegrees).
         taxiGuidanceManager.TurnLeadSeconds = currentAircraft.TaxiTurnLeadSeconds;
+        taxiGuidanceManager.SharpTurnLeadSeconds = currentAircraft.TaxiSharpTurnLeadSeconds;
+        taxiGuidanceManager.TurnLeadMaxDegrees = currentAircraft.TaxiTurnLeadMaxDegrees;
 
         // Read the raw navdata provider into a LOCAL, not the field: the field is assigned exactly
         // once below, through WithTaxiAugmentation — see its doc comment and ProviderWrapGuardTests.
@@ -1284,6 +1290,22 @@ public partial class MainForm : Form
     }
 
     /// <summary>
+    /// A panel press of a button that flips its own state light (SimVarDefinition.PressTogglesStateVariable:
+    /// the Fenix EFIS FD, LS and map option buttons): marks the light with the value the press should leave, so the light's
+    /// change is not spoken after the screen reader read the button's new label (CORE-7). It rides the same
+    /// value-matched gate as a combo pick (CORE-8, CORE-9), so a change the pilot did not cause with this press
+    /// still speaks. Nothing is marked while disconnected (no press is sent) or while the light is unread. The Fenix
+    /// ND window's EFIS buttons use it too (FenixA320Definition.PanelPressEcho), so a press there is heard once.
+    /// </summary>
+    internal void MarkStateLightEchoForPress(SimVarDefinition buttonDef)
+    {
+        if (simConnectManager is not { IsConnected: true } || string.IsNullOrEmpty(buttonDef.StateVariable)) return;
+        double? cached = currentSimVarValues.TryGetValue(buttonDef.StateVariable, out double lit) ? lit : null;
+        if (buttonDef.StateVariableAfterPress(cached) is double expected)
+            MarkUiSet(buttonDef.StateVariable, expected);
+    }
+
+    /// <summary>
     /// Public wrapper over <see cref="MarkUiSet"/> for hotkey windows that live outside
     /// MainForm (the PMDG Ctrl+P autopilot window) and set panel-monitored variables
     /// directly. Without it those windows triple-announce: the screen reader announces
@@ -1323,10 +1345,10 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// True for the quick-access readout hotkeys (the H/V/Q/S/D/B/P/A/F set) — single
-    /// keypresses whose whole purpose is to speak a value. When one of these fires during
-    /// an active visual-guidance session, VG opens a grace window so its per-second
-    /// bank/centerline callouts don't talk over the readout.
+    /// True for the quick-access readout hotkeys (the H/V/Q/S/D/B/P/A/F set)
+    /// — single keypresses whose whole purpose is to speak a value. When
+    /// one of these fires during an active visual-guidance session, VG opens a grace window
+    /// so its per-second bank/centerline callouts don't talk over the readout.
     /// </summary>
     private static bool IsManualReadoutAction(HotkeyAction action) => action switch
     {

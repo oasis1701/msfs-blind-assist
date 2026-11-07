@@ -202,6 +202,7 @@ public partial class MainForm
         }
         _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
+        RestartPmdg737DisplaysIfSimulatorChanged();
         // The First Officer window outlives a flight load (only an aircraft switch disposes it):
         // the last flight's SimBrief plan and phase latches are dropped here, and so are the
         // universal automation's legs (a flight loaded in the air is no takeoff it watched).
@@ -850,6 +851,7 @@ public partial class MainForm
 
         // Update the aircraft instance
         currentAircraft = newAircraft;
+        WatchPanelVariant();
 
         // A profile picked while a flight is still loading (AircraftLoaded fired, the new aircraft has not
         // published yet) would take the pre-publish values as its FCU callout baselines and then speak the
@@ -867,6 +869,8 @@ public partial class MainForm
             newA300.Attach(simConnectManager);
 
         taxiGuidanceManager.TurnLeadSeconds = newAircraft.TaxiTurnLeadSeconds;
+        taxiGuidanceManager.SharpTurnLeadSeconds = newAircraft.TaxiSharpTurnLeadSeconds;
+        taxiGuidanceManager.TurnLeadMaxDegrees = newAircraft.TaxiTurnLeadMaxDegrees;
 
         // Refresh aircraft-conditional menu items (FMC Settings shows only for the
         // aircraft UpdateAircraftSpecificMenuItems names).
@@ -1216,6 +1220,9 @@ public partial class MainForm
 
         // Starting the SDK bridge is a no-op unless the new aircraft is the iFly.
         StartIFlySdkBridge();
+
+        // Likewise the PMDG 737 display readers unless it is the PMDG 737 (a reader already running restarts).
+        StartPmdg737Displays();
 
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)

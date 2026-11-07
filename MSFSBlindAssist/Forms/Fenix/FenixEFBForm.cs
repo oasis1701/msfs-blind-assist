@@ -2,35 +2,43 @@ using System.Runtime.InteropServices;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms.Fenix;
 
 /// <summary>
-/// Hosts the Fenix A320 EFB web UI (http://localhost:8083/#/efb) in a WebView2.
+/// Hosts the Fenix A320 EFB web UI (http://127.0.0.1:8083/?target=external#/efb) in a
+/// WebView2.
 ///
-/// Unlike the FlyByWire flyPad (FbwEfbForm), the Fenix EFB website is ALREADY
-/// screen-reader accessible when opened in a browser, so there is no scraping,
-/// no accessible-HTML shim, and no Coherent/SimConnect client here — we simply
-/// host the live site. The URL is reachable whenever the Fenix A320 is loaded
-/// in the sim.
+/// The v3 EFB page is NOT screen-reader accessible on its own. This window
+/// adds the accessibility layer on top of the live page and catches its dead ends
+/// (pages a screen reader cannot use, a failed load) instead of leaving a blind user
+/// in them. The URL is reachable whenever the Fenix A320 is loaded in the sim.
 ///
 /// On a navigation failure (aircraft still loading, server not up, transient
-/// hiccup) the form swaps the browser for an accessible retry panel and speaks
-/// the failure, so a blind user gets clear feedback instead of WebView2's raw
-/// error page.
+/// hiccup) the form swaps the browser for an accessible retry panel, with the failure
+/// text in a tabbable read-only TextBox, and speaks the failure, so a blind user gets
+/// clear feedback instead of WebView2's raw error page.
 /// </summary>
 public class FenixEFBForm : Form
 {
-    private const string EfbUrl = "http://localhost:8083/#/efb";
+    // The external target, named explicitly (the owner's decision). The page's own
+    // target detection already falls back to external for WebView2; pinning it removes
+    // that reliance (Tab and the paging keys reach the page, no simulated sleep).
+    // 127.0.0.1, never localhost ([A320-40]) - the gateway listens on IPv4
+    // only, and a client that tries ::1 first pays for the refusal on every new connection.
+    internal const string EfbUrl = "http://127.0.0.1:8083/?target=external#/efb";
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private readonly ScreenReaderAnnouncer _announcer;
+    // A dead end is caught once: the router may change the address twice on its way into the MCDU.
+    private readonly FenixEfbDeadEndGate _deadEndGate = new();
 
     private WebView2 _webView = null!;
     private Panel _errorPanel = null!;
-    private Label _errorLabel = null!;
+    private TextBox _errorBox = null!;
     private Button _retryButton = null!;
     private bool _webViewReady;
     private IntPtr _previousWindow = IntPtr.Zero;
@@ -83,15 +91,23 @@ public class FenixEFBForm : Form
         {
             Text = "&Retry",
             AutoSize = true,
-            Location = new System.Drawing.Point(12, 60),
+            Location = new System.Drawing.Point(12, 120),
         };
         _retryButton.Click += (_, _) => Navigate();
 
-        _errorLabel = new Label
+        // Read-only multiline TextBox, not a Label: the status text must be a
+        // tab-stoppable control so a screen reader can review the failure text on
+        // demand ([VAT-13]); same build as IFlyEfbForm's.
+        _errorBox = new TextBox
         {
-            AutoSize = true,
-            MaximumSize = new System.Drawing.Size(700, 0),
             Location = new System.Drawing.Point(12, 12),
+            Size = new System.Drawing.Size(700, 100),
+            Multiline = true,
+            ReadOnly = true,
+            TabStop = true,
+            ScrollBars = ScrollBars.Vertical,
+            BorderStyle = BorderStyle.FixedSingle,
+            AccessibleName = "Fenix EFB status message",
             Text = NotReachableMessage,
         };
 
@@ -101,13 +117,14 @@ public class FenixEFBForm : Form
             Visible = false,
             AccessibleName = "Fenix EFB status",
         };
-        _errorPanel.Controls.Add(_errorLabel);
+        _errorPanel.Controls.Add(_errorBox);
         _errorPanel.Controls.Add(_retryButton);
         Controls.Add(_errorPanel);
     }
 
-    private const string NotReachableMessage =
-        "Fenix EFB is not reachable at http://localhost:8083. " +
+    // Names the address the window tried, so the failure text says where it looked.
+    internal const string NotReachableMessage =
+        "Fenix EFB is not reachable at http://127.0.0.1:8083. " +
         "Make sure the Fenix A320 is fully loaded, then press Retry.";
 
     private async Task InitWebViewAsync()
@@ -120,23 +137,57 @@ public class FenixEFBForm : Form
             s.AreDevToolsEnabled = false;
             s.IsZoomControlEnabled = false;
             _webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+            // Fires for in-page fragment changes too (IsNewDocument false), which is how the
+            // single-page EFB moves between its pages: the one hook that sees the MCDU and FAP.
+            _webView.CoreWebView2.SourceChanged += OnSourceChanged;
             _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
             // Escape from INSIDE the web content never reaches ProcessCmdKey (the
             // WebView2 browser process owns that focus), and the WinForms WebView2
             // wrapper doesn't expose the controller's AcceleratorKeyPressed event.
-            // So a tiny injected listener posts a close message; capture-phase (true)
-            // guarantees it fires even if the page handles Escape itself.
+            // So a tiny injected capture-phase listener posts a close message: Escape
+            // closes the window, except while a CDK overlay pane with content is open
+            // (a "More options" menu, a drop-down panel, the Panel States dialog), where
+            // the page's own overlay closes on Escape instead.
             // ProcessCmdKey still covers Escape on the error panel.
             await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.addEventListener('keydown',function(e){" +
-                "if(e.key==='Escape'){window.chrome.webview.postMessage('msfsba-efb-close');}}," +
+                "if(e.key==='Escape'&&!document.querySelector('.cdk-overlay-pane > *')){window.chrome.webview.postMessage('msfsba-efb-close');}}," +
                 "true);");
+            // The accessibility layer: registered with the document-created injection, so it
+            // is in place before the first page script runs and again for every new document. Read once,
+            // here; a missing file only costs the layer, never the page.
+            string? layer = ReadLayerScript();
+            if (layer != null)
+            {
+                await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(layer);
+            }
             _webViewReady = true;
             Navigate();
         }
         catch (Exception ex)
         {
             ShowError("The browser component could not start. " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// The layer script, copied next to the executable by the project file. Null (and a log line) when
+    /// it is missing or unreadable: the EFB then loads as the page is, which a screen reader cannot use.
+    /// </summary>
+    private static string? ReadLayerScript()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "Resources", "fenix-efb-accessibility.js");
+        try
+        {
+            string text = File.ReadAllText(path);
+            if (!string.IsNullOrWhiteSpace(text)) return text;
+            Log.Warn("FenixEFB", $"Accessibility layer not loaded ({path}): the file is empty");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("FenixEFB", $"Accessibility layer not loaded ({path}): {ex.Message}");
+            return null;
         }
     }
 
@@ -162,6 +213,25 @@ public class FenixEFBForm : Form
         }
     }
 
+    private void OnSourceChanged(object? sender, CoreWebView2SourceChangedEventArgs e)
+    {
+        // Fired on the UI thread. The MCDU and FAP pages cannot be read with a screen reader:
+        // step back to the EFB home and say where the working windows are.
+        string source = _webView.CoreWebView2.Source;
+        FenixEfbRoute route = FenixEfbRoutes.Classify(source);
+        string? message = FenixEfbRoutes.DeadEndMessage(route);
+        if (message == null) return;
+        if (!_deadEndGate.ShouldCatch(route, Environment.TickCount64))
+        {
+            Log.Debug("FenixEFB", $"EFB page {source} is the {route} caught under {FenixEfbDeadEndGate.WindowMs} ms ago; left to that catch");
+            return;
+        }
+
+        Log.Debug("FenixEFB", $"EFB page {source} is the unreadable {route}; back to the EFB home");
+        _webView.CoreWebView2.Navigate(EfbUrl);
+        _announcer.AnnounceImmediate(message);
+    }
+
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
         if (e.IsSuccess)
@@ -183,7 +253,7 @@ public class FenixEFBForm : Form
 
     private void ShowError(string message)
     {
-        _errorLabel.Text = message;
+        _errorBox.Text = message;
         _webView.Visible = false;
         _errorPanel.Visible = true;
         _retryButton.Focus();

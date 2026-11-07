@@ -1,0 +1,161 @@
+{
+  "formatVersion": 1,
+  "module": "pmdg737",
+  "generatorVersion": 2,
+  "codeHash": "e3e8d4327738012d2b97b296a036eae794e36601f5671057351b12688b93ed63",
+  "dataRanges": [
+    {
+      "address": 222892,
+      "length": 96
+    },
+    {
+      "address": 223715,
+      "length": 864
+    },
+    {
+      "address": 224598,
+      "length": 47
+    },
+    {
+      "address": 913316,
+      "length": 388
+    },
+    {
+      "address": 913712,
+      "length": 220
+    },
+    {
+      "address": 913936,
+      "length": 200
+    },
+    {
+      "address": 914144,
+      "length": 204
+    },
+    {
+      "address": 914352,
+      "length": 32
+    },
+    {
+      "address": 919380,
+      "length": 132
+    }
+  ],
+  "dataHash": "554f1db05b72ca4a6fef8bf2120635a631c7b4f73a5946b1c3838d6e581470da",
+  "searches": [
+    {
+      "pattern": "QUZTAEFmdGVyVE9UaW1lcgBBRlMAQWZ0ZXJMTkRUaW1lcgBBRlMARkQxAA==",
+      "hits": [
+        222892
+      ]
+    },
+    {
+      "pattern": "QUZTAEFmdGVyVE9UaW1lcgBBRlMAQWZ0ZXJMTkRUaW1lcgBBRlMARkQxAEFGUwBGRDIAQUZTAEFQTW9kZQBBRlMAaURFVlQAQUZTAGJTcGxpdABBRlMAbUZDQwBBRlMA",
+      "hits": [
+        222892
+      ]
+    },
+    {
+      "pattern": "QwAAAFcAAABTAAAAIAAAAFAAAAAAAAAA",
+      "hits": [
+        919380,
+        919404
+      ]
+    },
+    {
+      "pattern": "QwAAAFcAAABTAAAAIAAAAFIAAAAAAAAA",
+      "hits": [
+        919428,
+        919452
+      ]
+    }
+  ],
+  "readers": {
+    "fma": {
+      "layout": {
+        "sourceFile": "",
+        "anchorAddress": 222892,
+        "anchor": "QUZTAEFmdGVyVE9UaW1lcgBBRlMAQWZ0ZXJMTkRUaW1lcgBBRlMARkQxAEFGUwBGRDIAQUZTAEFQTW9kZQBBRlMAaURFVlQAQUZTAGJTcGxpdABBRlMAbUZDQwBBRlMA",
+        "instanceGlobal": 971492,
+        "objectSize": 19768,
+        "displayGlobal": 2544800,
+        "fmaAp": 520,
+        "fmaAt": 2688,
+        "pitch": 2216,
+        "pitchArmed": 2220,
+        "roll": 2456,
+        "rollArmed": 2460,
+        "fd1": 4,
+        "fd2": 5,
+        "mcpAlt": 2280,
+        "mcpHdg": 2488,
+        "atWords": {
+          "firstValue": 1,
+          "words": [
+            "THR HLD",
+            "ARM",
+            "MCP SPD",
+            "FMC SPD",
+            "N1",
+            "GA",
+            "RETARD"
+          ],
+          "valueOneWord": null
+        },
+        "rollWords": {
+          "firstValue": 3,
+          "words": [
+            "HDG SEL",
+            "VOR/LOC",
+            "LNAV",
+            "B/CRS",
+            "FAC",
+            "ROLLOUT"
+          ],
+          "valueOneWord": "CWS R"
+        },
+        "pitchWords": {
+          "firstValue": 2,
+          "words": [
+            "TO/GA",
+            "V/S",
+            "MCP SPD",
+            "ALT ACQ",
+            "ALT HOLD",
+            "G/S",
+            "G/S V/S",
+            "G/P",
+            "G/P V/S",
+            "FLARE",
+            "VNAV",
+            "VNAV PTH",
+            "VNAV SPD",
+            "VNAV ALT"
+          ],
+          "valueOneWord": "CWS P"
+        },
+        "statusWords": {
+          "firstValue": 2,
+          "words": [
+            "FD",
+            "CMD",
+            "SINGLE CH",
+            "LAND 2",
+            "LAND 3",
+            "NO AUTOLAND"
+          ],
+          "valueOneWord": null
+        }
+      }
+    },
+    "engineDisplays": {
+      "failure": "Function CSymbolGenerator_Engine::instance() not found exactly once."
+    },
+    "navDisplay": {
+      "failure": "Function CEFIS::instance() not found exactly once."
+    },
+    "pfd": {
+      "failure": "Function CGlassData::instance() not found exactly once."
+    }
+  }
+}

@@ -31,8 +31,12 @@ using Step = Models.FlowStep<FenixStateEvaluator>;
 /// </summary>
 public static class FenixFlowDefinitions
 {
-    /// <summary>N2 percent at/above which an engine counts as started (CFM56 idle ~58-60).</summary>
-    private const double EngRunningN2 = FenixStateEvaluator.EngineRunningN2;
+    /// <summary>How long each engine-start wait lets the engine spool before the flow stops. Sourced
+    /// (Airbus instructor notes): the IAE FADEC dry-cranks 30 s before ignition and fuel
+    /// on every auto start, and the Fenix option iae_crank_type offers 30 or 50 s of it. Assumed: 180 s
+    /// is margin over that (120 s was the old wait). Measured (2026-10-22, IAE A321
+    /// with a 30 s crank): master ON to the Fenix running flag about 66 s per engine.</summary>
+    internal const int EngineStartTimeoutSeconds = 180;
 
     // [RADAR] Weather radar OFF/ON values — confirmed against the def's registered
     // ValueDescriptions (FenixA320Definition.cs: S_WR_SYS {0="1",1="Off",2="2"},
@@ -149,8 +153,11 @@ public static class FenixFlowDefinitions
                 s => s.IsOn("S_OH_PNEUMATIC_PACK_1") && s.IsOn("S_OH_PNEUMATIC_PACK_2")), "PF_PACKS"),
             Done(Skip(SW("PF_XBLEED", "Crossbleed: AUTO", "S_OH_PNEUMATIC_XBLEED_SELECTOR", 1),
                 s => s.IsPosition("S_OH_PNEUMATIC_XBLEED_SELECTOR", 1)), "PF_XBLEED"),
-            Done(Skip(SW("PF_PACKFLOW", "Pack flow: NORMAL", "S_OH_PNEUMATIC_PACK_FLOW", 1),
-                s => s.IsPosition("S_OH_PNEUMATIC_PACK_FLOW", 1)), "PF_PACKFLOW"),
+            // The A321's pneumatic panel has an ECON FLOW button and no PACK FLOW knob, and its system name
+            // still reads 1: the step passes silently there (FO-20) rather than claim the knob is set.
+            Done(Skip(Provider("PF_PACKFLOW", "Pack flow: NORMAL", "S_OH_PNEUMATIC_PACK_FLOW",
+                    s => s.HasPackFlowSelector ? 1 : null),
+                s => s.HasPackFlowSelector && s.IsPosition("S_OH_PNEUMATIC_PACK_FLOW", 1)), "PF_PACKFLOW"),
             Done(Skip(SW("PF_HOTAIR", "Hot air: ON", "S_OH_PNEUMATIC_HOT_AIR", 1),
                 s => s.IsOn("S_OH_PNEUMATIC_HOT_AIR")), "PF_HOTAIR"),
             Done(Skip(SW("PF_PRESSMODE", "Cabin pressure mode: AUTO", "S_OH_PNEUMATIC_PRESS_MODE", 1),
@@ -264,7 +271,7 @@ public static class FenixFlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 4. Engine Start (FADEC-managed: mode IGN, master on, N2 verification)
+    // 4. Engine Start (FADEC-managed: mode IGN, master on, wait for the running flag)
     // -----------------------------------------------------------------------
     private static Flow BuildEngineStart() => new()
     {
@@ -278,18 +285,19 @@ public static class FenixFlowDefinitions
             Done(Skip(SW("ES_MODE", "Engine mode selector: IGN START", "S_ENG_MODE", 2),
                 s => s.IsPosition("S_ENG_MODE", 2)), "ES_MODE"),
             // Engine 1 first, then engine 2 (user preference). The FADEC runs the whole
-            // start; each N2 wait verifies the engine actually spooled (stock TURB ENG N2,
-            // pushed per second) before the next master goes on, and completes its own "Engine n:
-            // running" line, which reads the same N2 (FO-6). A timeout stops the flow, so nothing
-            // is latched.
+            // start; each wait is on the Fenix's own running flag (FO_ENGn_RUNNING, the A32NX's
+            // name and the A32NX flow's shape; N2 55 % only while the flag is unknown), so the next
+            // master goes on once the engine has stabilized, and it completes its own "Engine n:
+            // running" line, which reads the same field (FO-6). The step ids keep their _N2 names.
+            // A timeout stops the flow, so nothing is latched.
             Done(Skip(SW("ES_ENG1", "Engine 1 master: ON", "S_ENG_MASTER_1", 1),
                 s => s.IsOn("S_ENG_MASTER_1")), "ES_ENG1"),
             Done(WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for the engine to stabilize",
-                "FO_ENG1_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG1_RUN"),
+                "FO_ENG1_RUNNING", v => v > 0.5, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG1_RUN"),
             Done(Skip(SW("ES_ENG2", "Engine 2 master: ON", "S_ENG_MASTER_2", 1),
                 s => s.IsOn("S_ENG_MASTER_2")), "ES_ENG2"),
             Done(WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for the engine to stabilize",
-                "FO_ENG2_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG2_RUN"),
+                "FO_ENG2_RUNNING", v => v > 0.5, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG2_RUN"),
         }
     };
 
@@ -398,8 +406,12 @@ public static class FenixFlowDefinitions
         {
             // Advise the cabin crew: hit CALL ALL and release (momentary chime). The ONE cabin call
             // before takeoff, here at line-up since 2026-10-19 (owner; in Taxi from 2026-10-09).
-            // Also the Line-up Checklist's "Cabin: READY", a line the pilot confirms: a call that
-            // could not be sent keeps it open.
+            // In v3 the call only hurries the purser; it does not set CABIN READY. Linked to the
+            // Line-up Checklist's cabin line, a Reminder nothing auto-detects: the link ticks it
+            // when the call goes out (FO-6) and a call that could not be sent keeps it open. So the
+            // tick says the call was sent, not that the cabin is ready; the line's live value is the
+            // purser's own report and can still say "not reported" on a ticked line. Unlinking would
+            // not stop the tick: a finished flow ticks every line no step skipped (FO-7).
             Also(Done(SW("LU_CABIN", "Advise the cabin crew for takeoff (call all)", "CABIN_CALL_ALL", 1), "LU_CABIN"),
                 "LUC_CABIN"),
             // Also the Line-up Checklist's "TCAS: TA/RA" (FO-6).
@@ -487,7 +499,8 @@ public static class FenixFlowDefinitions
             // Descent, and a write that fails keeps both lines out of the latch, following the switch.
             Also(Done(Skip(SW("AP_SEATBELTS", "Seat belts: ON", "S_OH_SIGNS", 1),
                 s => s.IsOn("S_OH_SIGNS")), "AP_SEATBELTS"), "APC_SEATBELTS"),
-            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
+            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime). In v3
+            // the call only hurries the purser; it does not set CABIN READY.
             Done(SW("AP_CABIN", "Notify the cabin crew for landing (call all)", "CABIN_CALL_ALL", 1), "AP_CABIN"),
             Captain("AP_MINIMUMS", "Check minimums set on the MCDU approach page"),
             Captain("AP_ENGMODE", "Set engine mode selector as required"),

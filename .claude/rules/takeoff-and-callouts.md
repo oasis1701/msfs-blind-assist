@@ -8,6 +8,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*Takeoff*.cs"
   - "MSFSBlindAssist/Aircraft/A380TakeoffCallouts.cs"
   - "MSFSBlindAssist/Aircraft/A320TakeoffCallouts.cs"
+  - "MSFSBlindAssist/Aircraft/FenixTakeoffCallouts.cs"
   - "MSFSBlindAssist/Aircraft/MD11/Md11TakeoffCallouts.cs"
   - "MSFSBlindAssist/Aircraft/A300/A300TakeoffCallouts.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AltitudeCallout*.cs"

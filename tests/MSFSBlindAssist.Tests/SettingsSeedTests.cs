@@ -211,10 +211,22 @@ public class SettingsSeedTests : IDisposable
     private static readonly string[] ExpectedDefaultSilentVars =
     {
         "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED", "N_MIP_CLOCK_UTC",
-        "FNX2PLD_clockChr", "FNX2PLD_clockEt",
         "S_SEAT_HEIGHT_CAPT", "S_SEAT_DISTANCE_CAPT",
         "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO",
     };
+
+    [Fact]
+    public void Fenix_DefaultSilentVars_AreAllRegisteredFenixVariables()
+    {
+        var vars = new MSFSBlindAssist.Aircraft.FenixA320Definition().GetVariables();
+        foreach (var key in ExpectedDefaultSilentVars)
+        {
+            // Commented out of the definition since 9e5cde4dc; it stays in the seed so a live HHMMSS
+            // clock that changes every second is silent by default if it is ever registered again.
+            if (key == "N_MIP_CLOCK_UTC") continue;
+            Assert.True(vars.ContainsKey(key), key);
+        }
+    }
 
     [Fact]
     public void Fenix_NotYetSeeded_AddsDefaultSilentVarsAndSetsFlag()

@@ -110,6 +110,39 @@ public class OwnAircraftFilterTests
         Assert.False(OwnAircraftFilter.SharesOwnPosition(double.NaN, Lon, true, Lat, Lon, true));
     }
 
+    // ── Add-on helper objects ─────────────────────────────────────────────────────────────────
+    // The Fenix update of 2026-10-22 ships SimObjects/Misc/FNX_DUMMY, category "airplane",
+    // atc_type and atc_model "Fenix Dummy Object", icao_type_designator "FNXDUMMY". It spawns them at
+    // its own gear under the tail numbers nose-FNX, left-FNX and right-FNX, each a separate object
+    // whose id changes within a second (the user aircraft's id never matches one), and the position
+    // filter let them through. Live 2026-10-22/23, ground_traffic.log, 186 lines:
+    // "Stop, nose-FNX, Fenix very close, ahead, 25 feet." all through the taxi.
+
+    [Theory]
+    [InlineData("Fenix Dummy Object", "Fenix Dummy Object")]
+    [InlineData("Fenix Dummy Object", "")]                    // ATC TYPE alone
+    [InlineData("", "Fenix Dummy Object")]                    // ATC MODEL alone
+    [InlineData("", "FNXDUMMY")]                              // ATC MODEL as the ICAO designator
+    [InlineData("  fenix dummy object ", null)]
+    public void The_Fenix_gear_dummies_are_never_traffic(string? atcType, string? atcModel)
+        => Assert.True(OwnAircraftFilter.IsAddOnHelperObject(atcType, atcModel));
+
+    [Theory]
+    [InlineData("ATCCOM.ATC_NAME AIRBUS.0.text", "ATCCOM.AC_MODEL A320.0.text")]   // a Fenix A320 itself (measured 2026-10-23)
+    [InlineData("Airbus", "A20N")]
+    [InlineData("ATCCONN", "B77W")]
+    [InlineData("", "")]
+    [InlineData(null, null)]
+    public void Real_aircraft_are_not_helper_objects(string? atcType, string? atcModel)
+        => Assert.False(OwnAircraftFilter.IsAddOnHelperObject(atcType, atcModel));
+
+    [Fact]
+    public void The_spoken_name_in_the_log_is_the_dummy_ones()
+        // Ties the filter's key to the evidence: "Fenix Dummy Object" is the ATC TYPE that names
+        // the logged "nose-FNX, Fenix".
+        => Assert.Equal("nose-FNX, Fenix",
+            MSFSBlindAssist.Services.GroundTrafficLogic.SpokenName("", "nose-FNX", "Fenix Dummy Object"));
+
     // ── Wiring in SimConnectManager (no harness: pinned from the source) ─────────────────────
 
     [Fact]
@@ -139,14 +172,16 @@ public class OwnAircraftFilterTests
     }
 
     [Fact]
-    public void A_traffic_entry_passes_both_filters_before_it_is_raised()
+    public void A_traffic_entry_passes_every_filter_before_it_is_raised()
     {
         string body = MethodBody("SimConnectManager.Dispatch.cs", "void ProcessAiTrafficEntry(");
         int raised = body.IndexOf("AiTrafficReceived?.Invoke", StringComparison.Ordinal);
         int byId = body.IndexOf("_ownAircraft.IsOwnAircraft(", StringComparison.Ordinal);
         int byPosition = body.IndexOf("OwnAircraftFilter.SharesOwnPosition(", StringComparison.Ordinal);
-        Assert.True(raised > 0 && byId >= 0 && byPosition >= 0 && byId < raised && byPosition < raised,
-            "ProcessAiTrafficEntry must drop the own aircraft by id and by position before raising AiTrafficReceived");
+        int byHelperType = body.IndexOf("OwnAircraftFilter.IsAddOnHelperObject(raw.AtcType, raw.AtcModel)", StringComparison.Ordinal);
+        Assert.True(raised > 0 && byId >= 0 && byPosition >= 0 && byHelperType >= 0 &&
+                    byId < raised && byPosition < raised && byHelperType < raised,
+            "ProcessAiTrafficEntry must drop the own aircraft by id and by position, and an add-on's helper objects by type, before raising AiTrafficReceived");
     }
 
     // The text from <signature> to the next member declaration — enough for these plain method shapes.

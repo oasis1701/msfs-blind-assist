@@ -224,6 +224,10 @@
     <None Update="Resources\coherent-ecl-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Fenix EFB accessibility layer (read by FenixEFBForm and injected into the EFB page) -->
+    <None Update="Resources\fenix-efb-accessibility.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="Resources\flypad-shell.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -247,6 +251,10 @@
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Exec Command="REM Copy both versioned SimConnect DLLs to output directory&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2020.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2024.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)Libraries\Tolk.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\nvda_controllerClient\x64\nvdaControllerClient.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;&#xD;&#xA;REM Copy navdatareader and all its dependencies to output directory (skip if not present)&#xD;&#xA;if exist &quot;$(ProjectDir)..\Navdatareader-win-1.2.4\&quot; (&#xD;&#xA;  if not exist &quot;$(TargetDir)navdatareader\&quot; mkdir &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;  xcopy /Y /E /I &quot;$(ProjectDir)..\Navdatareader-win-1.2.4\*&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;  REM Copy SimConnect.cfg to navdatareader directory for FS2024 SimConnect support&#xD;&#xA;  xcopy /Y &quot;$(ProjectDir)SimConnect.cfg&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;)" />
   </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MSFSBlindAssist.DisplayLayouts\MSFSBlindAssist.DisplayLayouts.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Build-order only. ReferenceOutputAssembly=false because a net10 project cannot
