@@ -27,6 +27,9 @@ public class VisualGuidanceManager : IDisposable
     // Guidance state
     private GuidancePhase currentPhase = GuidancePhase.NotStarted;
     private Runway? runway;
+    // The painted landing threshold, past a displaced one (KATL 27R 512 ft, KJFK 22R 3,471 ft): every
+    // distance, along-track position and path height is measured from here, never from the runway end.
+    private VisualGuidanceThreshold threshold;
     private double thresholdElevationMSL = 0.0;
 
     // Joining final (visual guidance redesign, stage 4; VisualGuidanceJoin). Once the wings are nearly
@@ -212,12 +215,11 @@ public class VisualGuidanceManager : IDisposable
     // Guidance constants
     private const double TOUCHDOWN_ALTITUDE_FT = 5.0;    // Consider touchdown below 5 ft AGL
 
-    // ILS glideslope angle — usually 3°, but published per-runway (LCY 5.5°, Aspen 6.59°,
-    // Innsbruck 3.8°). Populated in Initialize() from runway.GlideslopeAngleDeg with a 3.0°
-    // fallback if the runway has no ILS or the navdata doesn't carry the angle. The vertical path's
-    // height, its angle, its 2° limit and the warnings' half degree all use it, never 3°.
-    private const double DEFAULT_GLIDESLOPE_ANGLE_DEG = 3.0;
-    private double glideslopeAngleDeg = DEFAULT_GLIDESLOPE_ANGLE_DEG;
+    // The glide path angle — usually 3°, but published per runway (LCY 5.5°, Aspen 6.59°,
+    // Innsbruck 3.8°). Populated in Initialize() by VisualGuidanceVertical.PathAngleDeg: the ILS
+    // glideslope's, else the PAPI's, else 3°. The vertical path's height, its angle, its 2° limit
+    // and the warnings' half degree all use it, never 3°.
+    private double glideslopeAngleDeg = VisualGuidanceVertical.DefaultPathAngleDeg;
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_TRACKING = 120.0;    // Cross-track error (NM) to bank for tracking (increased for faster convergence)
@@ -358,16 +360,16 @@ public class VisualGuidanceManager : IDisposable
             || cachedLatitude is not double lat || cachedLongitude is not double lon || cachedAltMSL is not double altMSL)
             return VisualGuidanceStatusText.Compose(new VisualGuidanceStatus(VisualGuidanceReadoutPhase.Starting, 0, 0, 0, 0, 0));
 
-        double cross = SignedCrossTrackNm(runway, lat, lon);
+        double cross = SignedCrossTrackNm(threshold,lat, lon);
         double heightFt = altMSL - thresholdElevationMSL;
         var status = new VisualGuidanceStatus(
             phase,
-            DistanceNm: NavigationCalculator.CalculateDistance(lat, lon, runway.StartLat, runway.StartLon),
+            DistanceNm: NavigationCalculator.CalculateDistance(lat, lon, threshold.Lat, threshold.Lon),
             CrossTrackNm: cross,
             AltitudeErrorFt: lastCalculatedAltitudeError,
             TargetFpm: lastCalculatedTargetFPM,
             WheelHeightFt: heightFt - flareAltitudeBiasFt,
-            Warning: FinalWarning(VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm, heightFt),
+            Warning: FinalWarning(VisualGuidanceJoin.Locate(lat, lon, threshold).AlongNm, heightFt),
             // On final the flare's calls once said (VG-22): "Prepare to flare", then "Flare" in the second before it starts.
             FlareCall: currentPhase != GuidancePhase.Final ? VisualGuidanceFlareCall.None
                 : flareCalled ? VisualGuidanceFlareCall.Flare
@@ -474,6 +476,7 @@ public class VisualGuidanceManager : IDisposable
         DisposeTones();
 
         runway = destinationRunway;
+        threshold = VisualGuidanceThreshold.Of(destinationRunway);
         guidanceWaveType = guidanceToneWaveform;
         guidanceVolume = toneVolume;
         currentToneWaveType = currentToneWaveform;
@@ -486,16 +489,10 @@ public class VisualGuidanceManager : IDisposable
         thresholdElevationMSL = destinationRunway.ThresholdElevation > 0
             ? destinationRunway.ThresholdElevation
             : destinationAirport.Altitude;
-        // Use the published per-runway glideslope angle (LCY 5.5°, Aspen 6.59°, Innsbruck
-        // 3.8°, ...) when navdata has it. Fall back to 3° for runways without an ILS row
-        // or DB builds that don't populate ils.gs_pitch. Sanity-clamp to [2°, 8°] to reject
-        // corrupt navdata (a 0.1° or 30° value would yield nonsense guidance); real-world
-        // ILS angles fit comfortably inside this band — Aspen at 6.59° is the steepest
-        // certified Cat I in the world.
-        double rawGsAngle = destinationRunway.GlideslopeAngleDeg;
-        glideslopeAngleDeg = (rawGsAngle >= 2.0 && rawGsAngle <= 8.0)
-            ? rawGsAngle
-            : DEFAULT_GLIDESLOPE_ANGLE_DEG;
+        // The published ILS glideslope angle (LCY 5.5°, Aspen 6.59°, Innsbruck 3.8°) when navdata
+        // has a believable one, else the PAPI's (3.5° and 4.0° are common without an ILS), else 3°.
+        glideslopeAngleDeg = VisualGuidanceVertical.PathAngleDeg(
+            destinationRunway.GlideslopeAngleDeg, destinationRunway.PapiAngleDeg);
 
         // Apply aircraft-specific tunables (preserves A320 defaults if profile is the base instance).
         typicalApproachAoaDeg = profile.TypicalApproachAoaDeg;
@@ -605,7 +602,7 @@ public class VisualGuidanceManager : IDisposable
         // The flight recording (VP-2): one start line per approach, then a line per update.
         recordStartUtc = ClockForHarness();
         recording = true;
-        Record(VisualGuidanceFlightRecord.Start(destinationAirport.ICAO, runway.RunwayID, runway.StartLat, runway.StartLon,
+        Record(VisualGuidanceFlightRecord.Start(destinationAirport.ICAO, runway.RunwayID, threshold.Lat, threshold.Lon,
             runway.Heading, runway.HeadingMag, thresholdElevationMSL, glideslopeAngleDeg, glideslopeAltitudeBiasFt, flareAltitudeBiasFt));
 
         Say($"Visual guidance active, runway {runway.RunwayID}", immediate: true, HOLD_ACTIVATION_S);
@@ -683,9 +680,9 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>Signed as the lateral law takes it: nautical miles, + right of the centreline facing the runway.</summary>
-    private double SignedCrossTrackNm(Runway rwy, double lat, double lon)
-        => Math.Sign(NavigationCalculator.CalculateCrossTrackError(lat, lon, rwy.StartLat, rwy.StartLon, rwy.Heading))
-           * NavigationCalculator.CalculateDistanceToLocalizer(lat, lon, rwy.StartLat, rwy.StartLon, rwy.Heading);
+    private static double SignedCrossTrackNm(VisualGuidanceThreshold thr, double lat, double lon)
+        => Math.Sign(NavigationCalculator.CalculateCrossTrackError(lat, lon, thr.Lat, thr.Lon, thr.CourseTrueDeg))
+           * NavigationCalculator.CalculateDistanceToLocalizer(lat, lon, thr.Lat, thr.Lon, thr.CourseTrueDeg);
 
     /// <summary>
     /// Silently dispose both tones and clear the deferred-Start flag. Used by <see cref="Stop"/>
@@ -1050,8 +1047,8 @@ public class VisualGuidanceManager : IDisposable
                 DesiredPitchDeg: desiredPitch, DesiredBankDeg: desiredBank,
                 TargetFpm: lastCalculatedTargetFPM, AltitudeErrorFt: lastCalculatedAltitudeError,
                 VerticalMode: verticalMode.ToString(), TargetDescentDeg: lastTargetDescentDeg, TrimDeg: trimLearner.TrimDeg,
-                CrossTrackNm: SignedCrossTrackNm(runway, lat, lon),
-                DistanceNm: NavigationCalculator.CalculateDistance(lat, lon, runway.StartLat, runway.StartLon))));
+                CrossTrackNm: SignedCrossTrackNm(threshold,lat, lon),
+                DistanceNm: NavigationCalculator.CalculateDistance(lat, lon, threshold.Lat, threshold.Lon))));
 
             // First-frame deferred Start — by the time the 150 ms WasapiOut buffer fills, the
             // phase-continuous oscillator's portamento has reached the target frequency (well
@@ -1201,7 +1198,7 @@ public class VisualGuidanceManager : IDisposable
     private void Decide(double lat, double lon, double altMSL)
     {
         if (runway == null) return;
-        var position = VisualGuidanceJoin.Locate(lat, lon, runway);
+        var position = VisualGuidanceJoin.Locate(lat, lon, threshold);
         double relativeTrack = VisualGuidanceJoin.Normalize((cachedGroundTrack ?? cachedHeading ?? runway.HeadingMag) - runway.HeadingMag);
         // The full gain, not the speed-capped one (VG-28): the decision plans for a pilot who slows down for
         // the turns, as the pilot manages the speed (the owner, 2026-11-06). From the next update the
@@ -1252,7 +1249,7 @@ public class VisualGuidanceManager : IDisposable
     private void AdvancePatternLeg(double lat, double lon, double relativeTrack, double speedFactor)
     {
         if (runway == null || joinPlan == null) return;
-        var position = VisualGuidanceJoin.Locate(lat, lon, runway);
+        var position = VisualGuidanceJoin.Locate(lat, lon, threshold);
         while (activeLegIndex < joinPlan.Legs.Count - 1)
         {
             var next = joinPlan.Legs[activeLegIndex + 1];
@@ -1287,11 +1284,11 @@ public class VisualGuidanceManager : IDisposable
             establishedSince = null;
             return;
         }
-        double cross = SignedCrossTrackNm(runway, lat, lon);
+        double cross = SignedCrossTrackNm(threshold,lat, lon);
         double trackError = VisualGuidanceJoin.Normalize(LateralTrackDeg(heading) - runway.HeadingMag);
         bool inside = Math.Abs(cross) <= VisualGuidanceJoin.EstablishedCrossNm
             && Math.Abs(trackError) <= VisualGuidanceJoin.EstablishedTrackDeg
-            && VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm > 0;
+            && VisualGuidanceJoin.Locate(lat, lon, threshold).AlongNm > 0;
         if (!inside)
         {
             establishedSince = null;
@@ -1327,7 +1324,7 @@ public class VisualGuidanceManager : IDisposable
 
         {
             // Signed as the lateral law takes it: + right of the centreline facing the runway.
-            double signedCrossTrackNM = SignedCrossTrackNm(runway, lat, lon);
+            double signedCrossTrackNM = SignedCrossTrackNm(threshold,lat, lon);
 
             // Cross-track rate (derivative term) for damping, over a time window (oldest to newest
             // sample in the last CROSS_TRACK_RATE_WINDOW_S seconds). This filters out single-frame
@@ -1387,7 +1384,7 @@ public class VisualGuidanceManager : IDisposable
                 // full VFR circuits come with the general aviation work (the redesign's piece 7).
                 var leg = joinPlan.Legs[activeLegIndex];
                 guidancePhase = leg.Kind == VisualGuidanceLegKind.Downwind ? "PATTERN_DOWNWIND" : "PATTERN_BASE";
-                double headingError = VisualGuidanceJoin.LegHeadingErrorDeg(leg, VisualGuidanceJoin.Locate(lat, lon, runway),
+                double headingError = VisualGuidanceJoin.LegHeadingErrorDeg(leg, VisualGuidanceJoin.Locate(lat, lon, threshold),
                     relativeTrack, currentGroundSpeedKnots, CaptureGain);
                 double rawDesiredBank = RateLimited(previousDesiredBank, headingError * LATERAL_HEADING_GAIN * speedFactor,
                     maxBankRateDegPerSec);
@@ -1462,7 +1459,7 @@ public class VisualGuidanceManager : IDisposable
 
                 // Calculate distance to threshold for debugging
                 double distanceNM = NavigationCalculator.CalculateDistance(
-                    lat, lon, runway.StartLat, runway.StartLon);
+                    lat, lon, threshold.Lat, threshold.Lon);
 
                 // Debug output for precision mode
                 Log.Debug("VisualGuidance", 
@@ -1510,7 +1507,7 @@ public class VisualGuidanceManager : IDisposable
             // The intercept being flown, as long as the track still meets final ahead of the threshold,
             // even inside the minimum final (that only decides "Heading does not cross final"); parallel
             // or diverging, no cue until the aircraft reaches the line.
-            var position = new VisualGuidanceApproachPoint(VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm, cross);
+            var position = new VisualGuidanceApproachPoint(VisualGuidanceJoin.Locate(lat, lon, threshold).AlongNm, cross);
             clamp = VisualGuidanceJoin.MeetsFinalAhead(position, relativeTrack) ? liveIntercept : 0.0;
         }
         bool due = (clamp > 0 && Math.Abs(cross) <= VisualGuidanceJoin.TurnCueCrossNm(clamp, currentGroundSpeedKnots,
@@ -1541,7 +1538,7 @@ public class VisualGuidanceManager : IDisposable
     private JoinPicture? PictureOfTheJoin(double lat, double lon, double cross, bool withJoinAlong = true)
     {
         if (runway == null || joinPlan == null || cachedHeading is not double heading) return null;
-        double along = VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm;
+        double along = VisualGuidanceJoin.Locate(lat, lon, threshold).AlongNm;
         double relativeTrack = VisualGuidanceJoin.Normalize(LateralTrackDeg(heading) - runway.HeadingMag);
         double intercept = VisualGuidanceJoin.InterceptDeg(cross, relativeTrack);
         bool joining = joinPlan.State == VisualGuidanceJoinState.Joining;
@@ -1609,7 +1606,7 @@ public class VisualGuidanceManager : IDisposable
             return;
         }
 
-        double cross = SignedCrossTrackNm(runway, lat, lon);
+        double cross = SignedCrossTrackNm(threshold,lat, lon);
         if (PictureOfTheJoin(lat, lon, cross, withJoinAlong: false) is not JoinPicture picture) return;
         DateTime now = lastUpdateUtc ?? ClockForHarness();
 
@@ -1722,7 +1719,7 @@ public class VisualGuidanceManager : IDisposable
             return 0.0;
 
         // The height error against the path, at the distance along the final course (+ above it).
-        double along = VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm;
+        double along = VisualGuidanceJoin.Locate(lat, lon, threshold).AlongNm;
         double heightFt = altMSL - thresholdElevationMSL;
         double error = heightFt - VisualGuidanceVertical.PathHeightFt(along, glideslopeAngleDeg, glideslopeAltitudeBiasFt);
         lastCalculatedAltitudeError = error;
@@ -1753,7 +1750,7 @@ public class VisualGuidanceManager : IDisposable
             // BA chose the route: the planned descent along what is left of it, on every leg until
             // established, never below the floor, never a climb (VG-24, VG-26).
             verticalMode = VisualGuidanceVerticalMode.Plan;
-            double cross = SignedCrossTrackNm(runway, lat, lon);
+            double cross = SignedCrossTrackNm(threshold,lat, lon);
             var position = new VisualGuidanceApproachPoint(along, cross);
             double joinAlong = PictureOfTheJoin(lat, lon, cross)?.JoinAlongNm ?? double.NaN;
             if (!(joinAlong > 0)) joinAlong = minimumFinalNm;
@@ -1908,7 +1905,7 @@ public class VisualGuidanceManager : IDisposable
         }
         if (currentPhase != GuidancePhase.Final || heightFt - flareAltitudeBiasFt <= tuning.CorrectionFloorWheelFt) return;
 
-        double along = VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm;
+        double along = VisualGuidanceJoin.Locate(lat, lon, threshold).AlongNm;
         double error = lastCalculatedAltitudeError;
         if (!tooHighSaid && VisualGuidanceVertical.TooHigh(along, error, glideslopeAngleDeg, glideslopeAltitudeBiasFt, gateFt, tuning.PathLimitDeg))
         {
@@ -1952,7 +1949,7 @@ public class VisualGuidanceManager : IDisposable
     private double? HighAtFinalFt(double lat, double lon, double heightFt)
     {
         if (runway == null || currentPhase != GuidancePhase.Joining || levelHold.HeldAltitudeFt == null || turnOntoFinalDue) return null;
-        if (PictureOfTheJoin(lat, lon, SignedCrossTrackNm(runway, lat, lon)) is not JoinPicture join
+        if (PictureOfTheJoin(lat, lon, SignedCrossTrackNm(threshold,lat, lon)) is not JoinPicture join
             || !join.CrossesFinal || !(join.JoinAlongNm > 0)) return null;
         double atJoinFt = heightFt - VisualGuidanceVertical.PathHeightFt(join.JoinAlongNm, glideslopeAngleDeg, glideslopeAltitudeBiasFt);
         return VisualGuidanceVertical.TooHigh(join.JoinAlongNm, atJoinFt, glideslopeAngleDeg, glideslopeAltitudeBiasFt,
@@ -1981,7 +1978,7 @@ public class VisualGuidanceManager : IDisposable
 
         var now = ClockForHarness();
         double distanceNM = NavigationCalculator.CalculateDistance(
-            lat, lon, runway.StartLat, runway.StartLon);
+            lat, lon, threshold.Lat, threshold.Lon);
 
         // A mark is said when the distance comes down through it, once, and armed again only after the
         // distance has gone back above it by MILE_CALL_REARM_NM (a pattern flown out past it and back in).

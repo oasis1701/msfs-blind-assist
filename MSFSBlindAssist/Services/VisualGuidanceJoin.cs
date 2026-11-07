@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Navigation;
 
 namespace MSFSBlindAssist.Services;
 
@@ -9,6 +10,20 @@ namespace MSFSBlindAssist.Services;
 /// to the side, + right of the extended centreline facing the runway.
 /// </summary>
 internal readonly record struct VisualGuidanceApproachPoint(double AlongNm, double CrossNm);
+
+/// <summary>
+/// Where the approach frame starts: the runway's painted landing threshold, past a displaced threshold
+/// rather than at the runway end (<see cref="NavigationCalculator.LandingThreshold"/>), and its true
+/// course. Every distance, along-track position and path height visual guidance uses is measured from it.
+/// </summary>
+internal readonly record struct VisualGuidanceThreshold(double Lat, double Lon, double CourseTrueDeg)
+{
+    public static VisualGuidanceThreshold Of(Runway runway)
+    {
+        var (lat, lon) = NavigationCalculator.LandingThreshold(runway);
+        return new VisualGuidanceThreshold(lat, lon, runway.Heading);
+    }
+}
 
 /// <summary>
 /// Where the aircraft was when visual guidance decided how to reach final: already on it; on a
@@ -92,15 +107,15 @@ internal static class VisualGuidanceJoin
     /// Along and cross of a position, as great-circle along-track and cross-track distances from the
     /// threshold on the runway's true course: the reference the lateral law steers to.
     /// </summary>
-    public static VisualGuidanceApproachPoint Locate(double lat, double lon, Runway runway)
+    public static VisualGuidanceApproachPoint Locate(double lat, double lon, VisualGuidanceThreshold threshold)
     {
-        double phi1 = runway.StartLat * D2R, phi2 = lat * D2R, dLambda = (lon - runway.StartLon) * D2R;
+        double phi1 = threshold.Lat * D2R, phi2 = lat * D2R, dLambda = (lon - threshold.Lon) * D2R;
         double a = Math.Sin((phi2 - phi1) / 2) * Math.Sin((phi2 - phi1) / 2)
                  + Math.Cos(phi1) * Math.Cos(phi2) * Math.Sin(dLambda / 2) * Math.Sin(dLambda / 2);
         double delta = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
         double theta = Math.Atan2(Math.Sin(dLambda) * Math.Cos(phi2),
             Math.Cos(phi1) * Math.Sin(phi2) - Math.Sin(phi1) * Math.Cos(phi2) * Math.Cos(dLambda));
-        double rel = theta - runway.Heading * D2R;
+        double rel = theta - threshold.CourseTrueDeg * D2R;
         double cross = Math.Asin(Math.Sin(delta) * Math.Sin(rel));
         double alongPastThreshold = Math.Atan2(Math.Sin(delta) * Math.Cos(rel), Math.Cos(delta));
         return new VisualGuidanceApproachPoint(-alongPastThreshold * EarthRadiusNm, cross * EarthRadiusNm);

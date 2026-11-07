@@ -45,7 +45,7 @@ tools/VirtualPilot/bin/x64/Release/net10.0-windows/VirtualPilot.exe <mode> [opti
 | `wrongturn` | follows a gate → runway route, then deliberately turns into a branch that leads to a runway hold line not on the route; the app must say "off route" first |
 | `all` | landings + taxi |
 | `departures` | per runway end: named (OSM) holding-point departures (`HP`, flown free and on a clearance), intersection departures (`IX`), full-length backtracks where the runway list would say "(backtrack required)" (`BT`); per airport: gate → gate taxis across the field (`G2G`) and ATC clearances with explicit "hold short of runway X" instructions (`HSCLR`) — each also voiced as a written and a spoken-NATO clearance and fed to the SayIntentions import's own parser (`CLR_*`) |
-| `approach` | visual guidance (Output Ctrl+V): 159 simulated approaches through the real `VisualGuidanceManager`, flown by a pilot who follows the two tones and the bank callouts, on two synthetic runways (no navdata database needed). See [Approaches](#approaches-visual-guidance) |
+| `approach` | visual guidance (Output Ctrl+V): 287 simulated approaches through the real `VisualGuidanceManager`, flown by a pilot who follows the two tones and the bank callouts, on four synthetic runways (no navdata database needed). See [Approaches](#approaches-visual-guidance) |
 | `fetchosm` | downloads the raw Overpass answer for each airport into `runs/_osm/ICAO.json` (one polite request at a time — Overpass rate-limits hard, expect ~1 airport a minute). Every mode then builds the app's OWN OSM-augmented graph from that snapshot (names, holding points); `VP_NOOSM=1` flies plain navdata, `VP_OSMDIR` points elsewhere. The snapshot pins the data so a before/after run measures the code, not OSM churn |
 
 Options: `--airports N` (busiest by taxi-path count, default 100), `--icao A,B`, `--shard i/n`
@@ -145,12 +145,18 @@ All of them are inert in the app (VP-1):
 
 ### The runways, the aircraft and the pilot
 
-Two synthetic runways replace the navdata database. Both have a 3° glide path and are 2 nm long.
+Four synthetic runways replace the navdata database, each with 2 nm of runway past its landing
+threshold. A and B fly the full matrix; C and D only the DATUM family (see "Scenarios"). The harness's
+frame starts at the landing threshold and measures the path at the runway's own angle, both worked out
+in `ApproachRunways` rather than taken from the app, so visual guidance aiming at the runway end, or
+flying the wrong angle, shows as path error.
 
-| runway | threshold | true course | variation | magnetic course | elevation |
-|---|---|---|---|---|---|
-| A | 47.0 N, 8.0 E | 004 | 9° E | 355 (wraps through north) | 1,400 ft |
-| B | 40.0 N, 74.0 W | 268 | 13° W | 281 | 20 ft |
+| runway | landing threshold | true course | variation | magnetic course | elevation | displaced threshold | ILS / PAPI angle, path |
+|---|---|---|---|---|---|---|---|
+| A | 47.0 N, 8.0 E | 004 | 9° E | 355 (wraps through north) | 1,400 ft | none | 3° / none, 3° |
+| B | 40.0 N, 74.0 W | 268 | 13° W | 281 | 20 ft | none | 3° / none, 3° |
+| C | 33.6 N, 84.4 W | 270 | 5° W | 275 | 1,000 ft | 3,471 ft (KJFK 22R's) | 3° / none, 3° |
+| D | 51.5 N, 0.5 E | 093 | none | 093 | 300 ft | none | none / 4°, 4° |
 
 The aircraft is a point mass. Bank sets the turn rate (g·tan φ / V), and wings level flies a great
 circle. The flight path follows the pitch minus a fixed trim angle of attack through a first-order
@@ -205,7 +211,7 @@ and the aircraft.
 
 Headings are relative to the centreline's direction where the aircraft starts. "Cross" is positive
 right of the extended centreline, facing the runway. A start on the course is already descending
-on the 3° path, except the vectoring and turning starts, which fly parallel to it level; a
+on the runway's glide path (3°, runway D's 4°), except the vectoring and turning starts, which fly parallel to it level; a
 descend-and-maintain start is on its scripted descent; the others start level. Unless a row says otherwise, the frame rate is 30 a second and the reaction delay 0.5
 and 1.0 s. The light runs fly with a minimum final (`MinimumFinalNm`) of 1.0 nm, the circuit-sized
 final the redesign's spec gives light aircraft, and a stable gate (`StableGateFt`) of 300 ft above the
@@ -237,6 +243,7 @@ set directly). The jets keep the A320 default's 30 ft.
 | Descend and maintain | `DESC-A-{JET,LIGHT}-{L,R}`, `DESCHIGH-A-{JET,LIGHT}-{L,R}` | the 30° intercept start, the jet 1,000 ft and the light aircraft 500 ft above the path, with a scripted descent at 1,500 fpm (jet) or 700 (light) to a level above the threshold: `DESC` 2,500 ft (jet) or 1,300 (light), about 275 and 160 ft above the path where the cut meets final; `DESCHIGH` 3,500 or 1,900, about 1,275 and 760 ft above it, too high for the 2° steeper path to recover by the stable gate | 8 |
 | Vectoring high | `VECHIGH-A-{JET,LIGHT}-{L,R}-par` | the vectoring start flying parallel inbound, level, the jet 1,000 ft and the light aircraft 400 ft above the path | 4 |
 | Vectoring wide | `VECWIDE-A-{JET,LIGHT}-{L,R}-par` | flying parallel inbound, level at the path's height for the distance along, far abeam: the jet 9 nm out and 4 nm abeam, the light aircraft 4.5 nm out and 2 nm abeam ("cleared visual" from well beside final), where the path at the along-course distance is far under the planned descent; added after the stage-5 final review, so not in the baselines (227 in all) | 4 |
+| Datum | `DATUM-{C,D}-{JET,LIGHT}-{h0,h+200,h-200}`, `DATUM-{C,D}-{JET,LIGHT}-INT-{L,R}30` | on runway C (3,471 ft displaced threshold) and D (no ILS, PAPI 4°), with the 0.5 s pilot: the final start on the centreline, on the path and 200 ft above and below it, and the 30° intercept start; added 2026-11-06 with VG-30 and VG-31, so not in the baselines | 20 |
 
 The three stage-5 families (off the path, descend and maintain, vectoring high) fly runway A with
 the 0.5 s pilot; their names carry no delay.
@@ -326,7 +333,7 @@ guidance's capture gain (deg·kt/nm, its `CaptureGainForHarness`) for every run;
 reflection and refuses to run against an app from before stage 4. Stage 4's sweep also had
 `--roll-in S` for a profile field `RollInTimeS`; the sweep picked 0 s and both were removed.
 
-`--selftest` runs 37 checks of the harness itself: turn rate and direction, the 3° descent rate,
+`--selftest` runs 38 checks of the harness itself: turn rate and direction, the 3° descent rate,
 wind drift, the SimConnect signs, the north wrap, the runway geometry, great-circle flight, the
 pilot's delay, roll rate, deadband and saturation, speech timestamps, the frame-rate runs, results
 under a Swedish culture, the matrix size, the step measures, wheel contact, the run ending past the
@@ -344,7 +351,9 @@ to the tones (with the tones on the aircraft's own pitch), each off-the-path sta
 name gives, the vertical keys that need the app's vertical mode reading `NA` without it and
 numbers with it (the flare's too: on a landing `flareStartWheelFt` is a number on any app,
 `maxFlareClimbDeg` one exactly when it is and the app has the hook, `flareCalls` always a count), and
-the light runs flaring at 10 ft while the jets keep the profile's 30 (`light-flare-height`). The far-end check also flies a far-side start, which must not end where it starts. The
+the light runs flaring at 10 ft while the jets keep the profile's 30 (`light-flare-height`), and the DATUM
+runways (`datum-runways`: C's runway end 3,471 ft before its landing threshold and its far end 2 nm past
+it, D with no ILS angle and a 4° PAPI and path, A's and B's frames starting exactly at their runway ends). The far-end check also flies a far-side start, which must not end where it starts. The
 downwind mirror check counts passing the runway's far end and touching down within 100 ft of it as
 the same ending, since which line the last frame crosses first is a coincidence of that frame. `--scenario` runs every scenario
 whose name contains the text. `--trace` prints one scenario every half simulated second (phase,
@@ -1143,6 +1152,36 @@ app; the softer flare's 240 ft more float lets the drift grow. That is the later
 which stage 6 does not touch: a finding for the owner, not a flare fault. The light runs that floated past
 the runway at stage 5 (110 with the fixed flare from 30 ft) all land, 106 in the zone, at most 270 fpm; the
 4 outside are the SHALLOW runs that reach the gate 590 ft high and landed long at stage 5 too.
+
+### Where the path starts and how steep it is (2026-11-06)
+
+VG-30 measures the path from the painted landing threshold, past a displaced one; VG-31 flies the PAPI's
+angle where there is no ILS angle. The harness changed first: runways C and D, the DATUM family, the
+frame starting at the landing threshold, the path at the runway's own angle, and the `datum-runways`
+check (38 checks). Two runs with that harness, 287 approaches each:
+
+- `approach_datum_before`: the app at 4b4ccfb70 (the end of stage 6, in a worktree, with `Runway.PapiAngleDeg`
+  added so the harness builds). Its 267 older lines are textually identical to
+  `approach_datum_head`, the stage-6 harness's run of the same app.
+- `approach_datum_after`: the fix. Its 267 older lines are textually identical too: A and B have no displaced
+  threshold and an ILS angle, so nothing changes there.
+
+On the 20 DATUM runs (`compare_approach.py`, before against after):
+
+| | before | after |
+|---|---|---|
+| C's six finals (3,471 ft displaced threshold) | all `landedShort`, 2,004 to 2,542 ft before the painted threshold; path 158 to 190 ft RMS low | all touch down 928 to 1,462 ft past it; path within 9 ft RMS, the same numbers as runway A's |
+| D's six finals (PAPI 4°, no ILS) | touch down, path 62 to 307 ft RMS off (visual guidance flying 3°) | path 3 to 9 ft RMS |
+| C's four intercepts | as runway A's (they reach final high: level at the path's height 12 nm out, the altitude being ATC's while joining) | unchanged, within 7 ft |
+| D's four intercepts | high at final as on A, the jets passing the far end | still high, the gate error 1,694 to 1,144 ft (jets) and 713 to 415 ft (light); the jets still pass the far end, as SHALLOW-A-JET does on 3° |
+
+`compare_approach.py` finds only the 20 DATUM runs changed. `BETTER`: 6 now touch down, `pathRmsFt` and
+`|gateErrFt|` down on 16, pitch rate and jitter down on 12. `CHANGED`: the touchdown point on 8 (C's six finals
+moving from before the painted threshold to past it, D's light intercepts landing 4,800 ft earlier) and
+`flareCalls` on D's two jet intercepts. `WORSE`: `bankRateRmsDegS` up on C's six finals from at most 0.0001
+to 0.0004 °/s; on D's intercepts `maxDescentFpm` 1,603 to 1,922 on the jets (the path's 2° limit is now
+from 4°, not 3°) and pitch rate and jitter up by a few thousandths of a degree. The touchdown sink rate
+is within 3 fpm on C and 6 to 19 fpm softer on D.
 
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 

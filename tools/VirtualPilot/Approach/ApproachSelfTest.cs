@@ -50,6 +50,7 @@ static class ApproachSelfTest
             ("vert-start-height", VertStartHeightCheck),
             ("vertical-measures-follow-the-hooks", VerticalMeasuresFollowTheHooksCheck),
             ("light-flare-height", LightFlareHeightCheck),
+            ("datum-runways", DatumRunwaysCheck),
         };
 
         int failures = 0;
@@ -127,6 +128,25 @@ static class ApproachSelfTest
         var problems = new List<string>();
         if (Math.Abs(HeadingChange(355, f.HeadingMagDeg)) > 0.01) problems.Add($"HeadingMagDeg {F(f.HeadingMagDeg)}, expected 355");
         if (Math.Abs(HeadingChange(355, f.GroundTrackMagDeg)) > 0.01) problems.Add($"GroundTrackMagDeg {F(f.GroundTrackMagDeg)}, expected 355");
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    // The DATUM runways: C's runway end lies its 3,471 ft offset before the landing threshold the frame
+    // starts at, and 2 nm of runway lie past it; D has no ILS angle and a PAPI at 4°, its path's angle.
+    // A and B have no offset, so their frame starts exactly at the runway end, as before.
+    private static string? DatumRunwaysCheck()
+    {
+        var problems = new List<string>();
+        var c = ApproachRunways.C;
+        double endAlongFt = ApproachRunways.Locate(c, c.Runway.StartLat, c.Runway.StartLon).AlongNm * 6076.12;
+        if (Math.Abs(endAlongFt - 3471) > 1) problems.Add($"runway C's end is {F(endAlongFt)} ft before the threshold, expected 3471 ±1");
+        if (Math.Abs(ApproachRunways.FarEndNm(c) - -2.0) > 1e-9) problems.Add($"runway C's far end at {F(ApproachRunways.FarEndNm(c))} nm, expected -2");
+        var d = ApproachRunways.D;
+        if (d.Runway.GlideslopeAngleDeg != 0 || d.Runway.PapiAngleDeg != 4.0 || d.PathDeg != 4.0)
+            problems.Add($"runway D: ILS {F(d.Runway.GlideslopeAngleDeg)}°, PAPI {F(d.Runway.PapiAngleDeg)}°, path {F(d.PathDeg)}°; expected 0, 4, 4");
+        foreach (var r in ApproachRunways.All)
+            if (r.ThresholdLat != r.Runway.StartLat || r.ThresholdLon != r.Runway.StartLon)
+                problems.Add($"runway {r.Id}'s frame does not start at its runway end");
         return problems.Count == 0 ? null : string.Join("; ", problems);
     }
 
@@ -302,7 +322,7 @@ static class ApproachSelfTest
         int unique = all.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count();
         // 223 through stage 5's Task 7, then the four VECWIDE starts (the stage-5 final review), then the
         // eight FARFAST starts (the first sim flight, 2026-11-06), then the thirty-two SLOW starts.
-        return all.Count == 267 && unique == 267 ? null : $"{all.Count} scenarios, {unique} unique names; expected 267";
+        return all.Count == 287 && unique == 287 ? null : $"{all.Count} scenarios, {unique} unique names; expected 287";
     }
 
     // A gust rolls the aircraft; the pilot, holding wings level against a level command, only learns
@@ -473,7 +493,7 @@ static class ApproachSelfTest
         const string name = "FINAL-A-LIGHT-x0-h0-d0.5", far = "FAR-A-JET-R-d0.5";
         var sc = Scenario(name);
         var m = ApproachRunner.RunOne(sc, trace: null);
-        double farEndNm = -sc.Runway.Runway.Length / 6076.12;
+        double farEndNm = ApproachRunways.FarEndNm(sc.Runway);
         var problems = new List<string>();
         if (m.EndAlongNm < farEndNm - 0.01) problems.Add($"{name} ended ({m.EndReason}) {F(-m.EndAlongNm)} nm past the threshold, beyond the far end at {F(-farEndNm)} nm");
         var f = ApproachRunner.RunOne(Scenario(far), trace: null);
@@ -495,7 +515,7 @@ static class ApproachSelfTest
             double Num(string line, string key) => Field(line, key) is var v && v != "NA" ? double.Parse(v, CultureInfo.InvariantCulture) : double.NaN;
             // Passing the runway's far end in the flare and touching down within 100 ft of it are the
             // same ending: which line the last frame crosses first is a coincidence of that frame.
-            double farEndFt = -ApproachRunways.All.First(x => x.Id == rwy).Runway.Length;
+            double farEndFt = ApproachRunways.FarEndNm(ApproachRunways.All.First(x => x.Id == rwy)) * 6076.12;
             string Ending(string line) => Field(line, "endReason") == "pastRunwayEnd" || Math.Abs(Num(line, "touchdownAlongFt") - farEndFt) <= 100
                 ? "at the far end" : Field(line, "endReason");
             if (Ending(l) != Ending(r))

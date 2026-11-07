@@ -7,9 +7,11 @@ using MSFSBlindAssist.Settings;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// A headless visual guidance manager on runway 09 (true 090, no variation, threshold 47.0 N 8.0 E,
-/// elevation 500 ft, 3°) with its own clock and a <see cref="SpeechCapture"/>. The aircraft does
-/// not move between updates; only what a test changes with <see cref="Place"/> changes.
+/// A headless visual guidance manager on runway 09 (true 090, no variation, landing threshold 47.0 N
+/// 8.0 E, elevation 500 ft, 3°) with its own clock and a <see cref="SpeechCapture"/>. The aircraft does
+/// not move between updates; only what a test changes with <see cref="Place"/> changes. With a
+/// displaced threshold the runway's end (the start of its pavement) lies that far before the landing
+/// threshold, which stays at 47.0 N 8.0 E, so <see cref="Place"/>'s distances are always from it.
 /// </summary>
 internal sealed class VisualGuidanceTestRig
 {
@@ -17,18 +19,32 @@ internal sealed class VisualGuidanceTestRig
     private static readonly DateTime Start = new(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
 
     private readonly VisualGuidanceManager _vg;
+    private readonly double _pathDeg;
     private DateTime _clock = Start;
     private double _seconds;
 
     /// <param name="record">Receives the flight recording's lines (VP-2); by default they go nowhere.</param>
-    public VisualGuidanceTestRig(Action<string>? record = null)
+    /// <param name="thresholdOffsetFt">The runway's displaced threshold (<see cref="Runway.ThresholdOffset"/>).</param>
+    /// <param name="glideslopeAngleDeg">The ILS glideslope's angle the navdata gives (0: no ILS).</param>
+    /// <param name="papiAngleDeg">The PAPI's angle the navdata gives (0: none).</param>
+    /// <param name="pathDeg">The glide path <see cref="Place"/> puts the aircraft on, by default 3°.</param>
+    public VisualGuidanceTestRig(Action<string>? record = null, double thresholdOffsetFt = 0.0,
+        double glideslopeAngleDeg = 3.0, double papiAngleDeg = 0.0, double pathDeg = 3.0)
     {
+        _pathDeg = pathDeg;
+        double startLat = ThrLat, startLon = ThrLon;
+        if (thresholdOffsetFt > 0)
+        {
+            var pavementStart = VolantaTrafficCalculator.Project(ThrLat, ThrLon, Course + 180, thresholdOffsetFt / 6076.12);
+            (startLat, startLon) = (pavementStart.Latitude, pavementStart.Longitude);
+        }
         var (endLat, endLon) = VolantaTrafficCalculator.Project(ThrLat, ThrLon, Course, 2.0);
         var runway = new Runway
         {
             AirportICAO = "ZZVG", RunwayID = "09", Heading = Course, HeadingMag = Course,
-            StartLat = ThrLat, StartLon = ThrLon, EndLat = endLat, EndLon = endLon,
-            ThresholdElevation = Elev, GlideslopeAngleDeg = 3.0,
+            StartLat = startLat, StartLon = startLon, EndLat = endLat, EndLon = endLon,
+            Length = 2.0 * 6076.12 + thresholdOffsetFt, ThresholdOffset = thresholdOffsetFt,
+            ThresholdElevation = Elev, GlideslopeAngleDeg = glideslopeAngleDeg, PapiAngleDeg = papiAngleDeg,
         };
         var airport = new Airport { ICAO = "ZZVG", Name = "Test", Latitude = ThrLat, Longitude = ThrLon, Altitude = Elev, MagVar = 0.0 };
         _vg = new VisualGuidanceManager(Speech)
@@ -76,7 +92,7 @@ internal sealed class VisualGuidanceTestRig
         var pos = crossNm >= 0
             ? VolantaTrafficCalculator.Project(back.Latitude, back.Longitude, Norm(Course + 90), crossNm)
             : VolantaTrafficCalculator.Project(back.Latitude, back.Longitude, Norm(Course - 90), -crossNm);
-        double alt = Elev + alongNm * 6076.12 * Math.Tan(3.0 * Math.PI / 180) + new VisualGuidanceProfile().GlideslopeAltitudeBiasFt + altOffsetFt;
+        double alt = Elev + alongNm * 6076.12 * Math.Tan(_pathDeg * Math.PI / 180) + new VisualGuidanceProfile().GlideslopeAltitudeBiasFt + altOffsetFt;
         double heading = Norm(Course + headingRelDeg);
 
         _vg.UpdateLatitude(pos.Latitude); _vg.UpdateLongitude(pos.Longitude); _vg.UpdateAltitudeMSL(alt);

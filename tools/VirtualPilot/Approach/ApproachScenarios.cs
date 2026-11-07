@@ -24,7 +24,7 @@ sealed record ApproachScenario(string Name, ApproachRunway Runway, ApproachAircr
     double StartBankDeg = 0, IReadOnlyList<(double AtS, double ToRelHeadingDeg)>? Turns = null, bool StartLevel = false,
     ApproachVerticalScript? Descent = null, ApproachSlowing? Slowing = null);
 
-/// <summary>The scenario matrix: 267 approaches (docs/virtual-pilot.md, "Approaches").</summary>
+/// <summary>The scenario matrix: 287 approaches (docs/virtual-pilot.md, "Approaches").</summary>
 static class ApproachScenarios
 {
     private static readonly double[] Delays = { 0.5, 1.0 };
@@ -133,7 +133,26 @@ static class ApproachScenarios
 
         AddJoiningFamilies(list, kinds);
         AddVerticalFamilies(list);
+        AddDatumFamily(list, kinds);
         return list;
+    }
+
+    // Where the path starts and how steep it is (2026-11-06): runway C's displaced threshold (3,471 ft,
+    // KJFK 22R's) and runway D's PAPI at 4° with no ILS. On final on the path and 200 ft off it, and on a
+    // 30° intercept, both aircraft, the 0.5 s pilot. Measured against the landing threshold and the
+    // runway's own angle, so visual guidance aiming at the runway end, or flying 3°, shows as path error.
+    private static void AddDatumFamily(List<ApproachScenario> list, ApproachAircraftKind[] kinds)
+    {
+        const double d = 0.5;
+        var heights = new (string Name, double Ft)[] { ("h0", 0), ("h+200", 200), ("h-200", -200) };
+        foreach (var r in ApproachRunways.Datum)
+            foreach (var k in kinds)
+            {
+                foreach (var h in heights)
+                    list.Add(Final($"DATUM-{r.Id}-{KindName(k)}-{h.Name}", r, k, 0, h.Ft, d));
+                foreach (char side in new[] { 'L', 'R' })
+                    list.Add(Intercept($"DATUM-{r.Id}-{KindName(k)}-INT-{side}30", r, k, side, 30, d));
+            }
     }
 
     // The vertical path (visual guidance stage 5): finals that start high or low, joins after ATC's

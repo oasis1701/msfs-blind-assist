@@ -78,7 +78,7 @@ Every approach is recorded to `%APPDATA%\MSFSBlindAssist\logs\visual_guidance_fl
 
 ### F: the status readout
 
-F (`HotkeyAction.ReadTargetFPM`, the name kept from when it read the target descent rate) speaks `GetStatusReadout()`, composed by the pure `VisualGuidanceStatusText.Compose` (VG-22): the phase, the sideways position, then the vertical, e.g. *"On final, 6.2 miles. On the centreline. 40 feet high, target 750 down."* Distance is straight-line to the threshold; cross-track is signed as the lateral law takes it (+ right of the centreline facing the runway); the altitude error and target descent rate are the last update's; the flare reads the wheel height (`altMSL − threshold − FlareAltitudeBiasFt`). "On the centreline" is within 0.05 nm, "On path" within 30 ft; heights round to 10 ft and rates to 50 fpm, all culture-invariant. Before the first update, *"Visual guidance starting."* Whatever visual guidance speaks on its own in a phase belongs in that phase's readout. F stays a quick-access key only: Output mode's F is Fuel Quantity.
+F (`HotkeyAction.ReadTargetFPM`, the name kept from when it read the target descent rate) speaks `GetStatusReadout()`, composed by the pure `VisualGuidanceStatusText.Compose` (VG-22): the phase, the sideways position, then the vertical, e.g. *"On final, 6.2 miles. On the centreline. 40 feet high, target 750 down."* Distance is straight-line to the landing threshold (past a displaced one, VG-30); cross-track is signed as the lateral law takes it (+ right of the centreline facing the runway); the altitude error and target descent rate are the last update's; the flare reads the wheel height (`altMSL − threshold − FlareAltitudeBiasFt`). "On the centreline" is within 0.05 nm, "On path" within 30 ft; heights round to 10 ft and rates to 50 fpm, all culture-invariant. Before the first update, *"Visual guidance starting."* Whatever visual guidance speaks on its own in a phase belongs in that phase's readout. F stays a quick-access key only: Output mode's F is Fuel Quantity.
 
 Before final (stage 5) the vertical half is the path at the join point: *"Path there 2,470 feet, you're 300 high."* The altitude is MSL (threshold elevation + `PathHeightFt(joinAlong)`), what the altimeter and ATC use; the height is the aircraft's MSL against it now ("you're on it" within 30 ft). Vectoring, every leg, adds BA's target (*"..., target 800 down."*), falling back on `MinimumFinalNm` for the join point as its plan does; joining has none, the altitude being the pilot's or ATC's, and says no height on a heading that does not cross final. A warning that holds now replaces the height: *"you'll be 1,700 feet high at final"* while joining, *"Too high, 600 feet above the path"* or *"Too low, 400 feet below the path"* on final (`VisualGuidanceVerticalWarning`).
 
@@ -160,6 +160,17 @@ Approach AoA, Vref reference, and the pitch/bank rate caps are aircraft-shaped �
 | `MaxApproachBankDeg` | 25.0° | 25.0° | Largest bank the capture law, vectoring and the pattern ask for; with `MaxBankRateDegPerSec` and the ground speed it sizes the turns BA counts (vectoring's cut, the pattern's base and downwind). |
 | `MinimumFinalNm` | 6.0 | 6.0 | Shortest final BA joins (vectoring, the pattern), and the nearest point an ATC heading may meet final and still count as joining. The owner's starting value for airliners (2026-11-04), to be revisited after testing. |
 | `StableGateFt` | 1,000 | 1,000 | The height above the threshold by which the aircraft should be on the path (the airline gate). Light aircraft take about 300 (the owner, 2026-11-06). |
+
+### Where the path starts and how steep it is
+
+Every distance, along-track position and path height is measured from the runway's **painted landing threshold** (`VisualGuidanceThreshold.Of`, VG-30), never from the runway end. The navdata's end position (`runway_end.lonx/laty`, `Runway.StartLat`/`StartLon`) is the start of the pavement; a displaced threshold lies `Runway.ThresholdOffset` feet down the runway from it (`runway_end.offset_threshold`), and `NavigationCalculator.LandingThreshold` places it there along the runway's true course. The landing flare assist uses the same function. It covers the glide path, F's distance and "past the threshold", the mile calls, the decision and the capture law's frame, and the recording's `start` line. Sideways nothing changes: the point moves along the centreline.
+
+- About one hard-surface runway end in eight has a displaced threshold, in both navdata builds (5,049 of 42,470 in MSFS 2024, 4,754 of 36,116 in MSFS 2020; KATL 27R 512 ft in 2024 and 498 in 2020, KJFK 22R 3,471 ft). Until 2026-11-06 visual guidance ignored it and aimed short by the offset: 27 ft low at KATL 27R, about 180 ft low at KJFK 22R, and on a 3,471 ft displaced threshold the harness's jets landed 2,000 to 2,500 ft before the painted threshold.
+- The offset data agrees with the sim's own ILS. On runways with an offset and a glideslope, the glideslope antenna sits a median 1,017 ft past the painted threshold (MSFS 2024, 722 ends; 1,018 ft in MSFS 2020), the same as the 1,021 ft past the end of runways without one. So the path's `GlideslopeAltitudeBiasFt`, calibrated on plain runways, fits displaced ones unchanged.
+- An offset that reaches the runway's far end is a navdata error and is ignored (KMWH 18: 3,333 ft on a 3,321 ft runway, one end in each build). About 20 ILS ends in each build have the antenna before the painted threshold (RJAA 34L, KBIS 31), where the offset or the antenna is wrong; visual guidance trusts the offset there, which can only move the aim later on the runway.
+- The navdata has one elevation per runway, the same at both ends, and none for a displaced threshold, so moving the threshold changes no height.
+
+The glide path's angle (`glideslopeAngleDeg`, VG-31) is `VisualGuidanceVertical.PathAngleDeg`: the ILS glideslope's (`ils.gs_pitch`) when it is believable (2° to 8°), else the PAPI's or VASI's (`runway_end.left_vasi_pitch`, else `right_vasi_pitch`, read as `Runway.PapiAngleDeg`), else 3°. About 1,600 runway ends in each build have a PAPI angle other than 3° and no ILS angle, most at 3.5° or 4.0°; until 2026-11-06 visual guidance flew 3° there, 320 ft under a 4° PAPI at 3 nm. The ILS wins when both are there: it is what the sim's glideslope flies, and the MSFS 2024 navdata has PAPIs that disagree with their ILS (288 of 2,863 ends; London City's PAPIs read 3.0 beside its 5.5° ILS, LOWL 26's 9.0). The PAPI's position is not in the navdata, so the path still starts at the threshold plus the glidepath bias, not at the PAPI.
 
 ### Glidepath altitude calibration
 
@@ -356,8 +367,8 @@ The vertical path (stage 5) steers a flight path angle: desired pitch = learned 
 
 | Name | Value | Description |
 |------|-------|-------------|
-| `glideslopeAngleDeg` | per-runway (3.0° default) | Read from `ils.gs_pitch` via `Runway.GlideslopeAngleDeg`; falls back to 3° when navdata lacks the angle. London City = 5.5°, Aspen = 6.59°, Innsbruck = 3.8°. The path's height, the target's feed-forward angle and its 2° limit all use it. |
-| `thresholdElevationMSL` | per-runway-end | Read from `runway_end.altitude` via `Runway.ThresholdElevation`; falls back to `airport.Altitude` when missing. Matters at airports with sloped runways. |
+| `glideslopeAngleDeg` | per-runway (3.0° default) | `VisualGuidanceVertical.PathAngleDeg`: the ILS glideslope's (`ils.gs_pitch` via `Runway.GlideslopeAngleDeg`), else the PAPI's (`Runway.PapiAngleDeg`), else 3°; outside 2° to 8° an angle is not believed (see "Where the path starts and how steep it is"). London City = 5.5°, Aspen = 6.59°, Innsbruck = 3.8°. The path's height, the target's feed-forward angle and its 2° limit all use it. |
+| `thresholdElevationMSL` | per-runway-end | Read from `runway_end.altitude` via `Runway.ThresholdElevation`; falls back to `airport.Altitude` when missing. It is the runway's own elevation, which can differ from the field's (KASE: 7,680 ft against 7,750). |
 | `CorrectionTimeConstantS` | 27 s | The height error is removed over about this long: the correction is atan(error / (this × ground speed)). FlyByWire's glideslope uses 17 to 27 s; the spec said 20, and the harness picked 27, where a light aircraft's cue moves less with the pilot ([virtual-pilot.md](virtual-pilot.md), "Stage 5") |
 | `PathLimitDeg` | 2.0° | The target stays at most this steeper than the glide path angle; on the shallow side it stops at level (VG-26) |
 | `CorrectionFloorWheelFt` | 60 ft | Under this wheel height the correction stops and the target is the glide path angle (FlyByWire's) |
@@ -489,17 +500,6 @@ fills it by guesswork.
   seconds, and the same tone would mean the rudder only there. The idea for later, if the owner asks:
   a separate cue that plainly means the rudder, such as a spoken "Nose 3 right" in the flare. Only the
   sim can test it: the approach harness's model aircraft has no rudder and cannot slip sideways.
-- **A displaced threshold is not allowed for (found 2026-11-06).** Visual guidance takes the runway
-  end's position from the airport database (`Runway.StartLat`/`StartLon`, the start of the pavement)
-  as the threshold, and does not apply `Runway.ThresholdOffset`, the distance to the landing threshold
-  (`runway_end.offset_threshold`). The landing exit planner, the taxi graph and the landing flare assist
-  do add it. On a runway with a displaced threshold the glide path therefore aims short of the painted
-  threshold by the offset, and the touchdown point comes that much earlier than the markings: at KATL
-  27R (offset 512 ft) the path aims about 500 ft short, about 27 ft below the real 3° path at any point
-  along it. Runways without an offset (KATL 27L) are unaffected; the first sim flights used 27L for that
-  reason. To fix later: place visual guidance's threshold `ThresholdOffset` along the runway's course
-  from the runway end, and check every distance and height that is measured from it (the path, the
-  distance callouts, F, the flare's "past the threshold").
 
 ## Related Documentation
 

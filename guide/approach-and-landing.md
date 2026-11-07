@@ -114,7 +114,7 @@ Output I, the wind readout described in [Readout Hotkeys](core-concepts.md#reado
 
 ### What it is {#land-vg-what}
 
-Visual Guidance is an audio instrument for hand-flying an approach. It is BA's equivalent of the flight director needles a sighted pilot follows: it works out what the aircraft should be doing to reach the runway centreline and a normal glide path, and plays it to you as sound. You do not need an ILS. Visual Guidance uses the runway's position and glide-path angle from the navigation database, so it works on any runway in the database, including ones with no instrument approach at all.
+Visual Guidance is an audio instrument for hand-flying an approach. It is BA's equivalent of the flight director needles a sighted pilot follows: it works out what the aircraft should be doing to reach the runway centreline and a normal glide path, and plays it to you as sound. You do not need an ILS. Visual Guidance uses the runway's position and glide-path angle from the navigation database, so it works on any runway in the database, including ones with no instrument approach at all. The glide path starts at the painted threshold, even where the threshold is displaced down the runway, as at KATL 27R or KJFK 22R, so you touch down beyond it, where a sighted pilot would. Its angle is the ILS glideslope's; on a runway with no ILS it is the PAPI's, often 3.5 or 4 degrees at smaller airfields, and 3 degrees when the database gives neither.
 
 It is made of two tones playing together:
 

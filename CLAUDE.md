@@ -141,7 +141,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [vatsim.md](docs/vatsim.md) | VATSIM: the vPilot plugin, pipe server, announcement settings | vatsim |
 | [volanta.md](docs/volanta.md) | Extras, Volanta: Volanta's public web map read in a hidden WebView2, the traffic, friends and ATC tabs, logging in | volanta |
 | [updates.md](docs/updates.md) | Release and preview channels, the updater, release workflows, the startup data check | updates |
-| [visual-guidance.md](docs/visual-guidance.md) | Visual landing guidance (dual tone), hand fly, the liftoff handoff | visual-guidance |
+| [visual-guidance.md](docs/visual-guidance.md) | Visual landing guidance (dual tone), hand fly, the liftoff handoff | visual-guidance, visual-guidance-runway |
 | [audio.md](docs/audio.md) | Which Windows audio endpoint guidance tones play on | audio-output |
 | [fenix-increment-decrement.md](docs/fenix-increment-decrement.md) | Fenix knob and push/pull counters (FCU, EFIS and ISIS baro) | — |
 | [a32nx.md](docs/a32nx.md) | FlyByWire A32NX, Fenix A320, Headwind A330: panels, MCDU, DCDU, cockpit controls | a32nx-fenix, fenix-data, fenix-channel, fenix-channel-displays, fenix-windows, fcu-callouts, tcas-ra, a32nx-mcdu, fbw-arinc |

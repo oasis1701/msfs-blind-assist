@@ -212,7 +212,7 @@ static class ApproachRunner
             double tas = sc.TasKt ?? ApproachAircraftSpecs.For(sc.Kind).TasKt;
             return Math.Asin(Math.Clamp(d.VsFpm / (tas * 101.269), -1, 1)) * 180 / Math.PI;
         }
-        return sc.HeadingRelDeg == 0 && !sc.StartLevel ? -sc.Runway.Runway.GlideslopeAngleDeg : 0.0;
+        return sc.HeadingRelDeg == 0 && !sc.StartLevel ? -sc.Runway.PathDeg : 0.0;
     }
 
     /// <summary>
@@ -261,7 +261,7 @@ static class ApproachRunner
             bool stepped = false;
             // A run ends past the runway's far end only once the aircraft has been over or before the
             // runway: a far-side start (the FAR family) begins past the far end, flying back toward it.
-            double farEndNm = -rwy.Runway.Length / FtPerNm;
+            double farEndNm = ApproachRunways.FarEndNm(rwy);
             bool reachedField = sc.AlongNm >= farEndNm;
             int printedHalfSeconds = -1, spokenPrinted = 0;
             string endReason;
@@ -354,7 +354,7 @@ static class ApproachRunner
     public static string LandingEndReason(ApproachRunway r, double alongNm, double crossNm)
     {
         if (alongNm > 0) return "landedShort";
-        if (alongNm < -r.Runway.Length / FtPerNm) return "landedLong";
+        if (alongNm < ApproachRunways.FarEndNm(r)) return "landedLong";
         if (Math.Abs(crossNm * FtPerNm) > r.Runway.Width / 2) return "offRunway";
         return "touchdown";
     }

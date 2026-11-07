@@ -102,6 +102,29 @@ internal static class VisualGuidanceVertical
     private static double Gs(double gsKt) => double.IsFinite(gsKt) ? Math.Max(gsKt, MinGroundSpeedKt) : MinGroundSpeedKt;
     private static double Tan(double deg) => Math.Tan(deg * D2R);
 
+    /// <summary>The glide path angle when the navdata gives no believable one.</summary>
+    public const double DefaultPathAngleDeg = 3.0;
+    /// <summary>
+    /// A navdata angle outside these is not believed (a 0.1° or 30° value would give nonsense guidance;
+    /// LOWL 26's PAPI reads 9.0). Real angles fit inside: Aspen's 6.59° ILS is the steepest certified CAT I.
+    /// </summary>
+    public const double MinPathAngleDeg = 2.0, MaxPathAngleDeg = 8.0;
+
+    /// <summary>
+    /// The runway's glide path angle: the ILS glideslope's (<c>ils.gs_pitch</c>: LCY 5.5°, Innsbruck 3.8°)
+    /// when it is believable, else the PAPI's or VASI's (<c>runway_end</c>'s light angle: 3.5° and 4.0° are
+    /// common where there is no ILS), else 3°. The ILS wins when both are there: it is what the sim's
+    /// glideslope flies, and the MSFS 2024 navdata leaves some PAPIs at 3.0 beside a steeper ILS (London
+    /// City: PAPI 3.0, ILS 5.5).
+    /// </summary>
+    public static double PathAngleDeg(double ilsGlideslopeDeg, double papiDeg)
+    {
+        static bool Believable(double deg) => deg >= MinPathAngleDeg && deg <= MaxPathAngleDeg;
+        return Believable(ilsGlideslopeDeg) ? ilsGlideslopeDeg
+            : Believable(papiDeg) ? papiDeg
+            : DefaultPathAngleDeg;
+    }
+
     /// <summary>The path's height above the threshold at <paramref name="alongNm"/> out, with the profile's glidepath bias.</summary>
     public static double PathHeightFt(double alongNm, double glidePathDeg, double biasFt)
         => alongNm * FtPerNm * Tan(glidePathDeg) + biasFt;

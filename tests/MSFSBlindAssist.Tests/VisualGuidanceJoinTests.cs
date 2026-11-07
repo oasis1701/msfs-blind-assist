@@ -51,7 +51,7 @@ public class VisualGuidanceJoinTests
         foreach (double cross in new[] { 0.5, -0.5 })
         {
             var (lat, lon) = PointAt(trueCourse, 8.0, cross);
-            var p = VisualGuidanceJoin.Locate(lat, lon, runway);
+            var p = VisualGuidanceJoin.Locate(lat, lon, VisualGuidanceThreshold.Of(runway));
             // ±0.002, not 0.001: the test projects the 0.5 nm offset at the threshold's course, and 8 nm
             // west at 47° N the great circle has turned about 0.14°, which moves about 0.0012 nm of the
             // offset into along-track on runway 09 (runway 36 runs nearly north-south and shows none).
