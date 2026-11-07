@@ -200,6 +200,51 @@ public sealed class Md11Control
     [JsonPropertyName("continuous")]
     public bool Continuous { get; set; }
 
+    /// <summary>The ModelBehaviorDefs template the control was generated from (<c>TFDi_Design_MD11_3Pos_Knob_Hold</c>, …).</summary>
+    [JsonPropertyName("template")]
+    public string Template { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Present only where TFDi's tooltip COMPUTES the state text from the state var and names no
+    /// positions — the rudder and aileron trims (generator: <c>readout_expression</c>). The
+    /// tooltip's own markup, entities decoded and the degree sign spelt out, evaluated live by
+    /// <see cref="Md11TooltipReadout"/> so the scale stays TFDi's.
+    /// </summary>
+    [JsonPropertyName("readout")]
+    public string? Readout { get; set; }
+
+    /// <summary>
+    /// Present only on a spring-loaded control: the event fields its template's REL_CODE sends to let
+    /// it go (generator: <c>template_releases</c>) — LEFT_BUTTON_UP for the rudder trim knob whichever
+    /// way it was held, RIGHT_BUTTON_UP then LEFT_BUTTON_UP for the Long Trim handles.
+    /// </summary>
+    [JsonPropertyName("release")]
+    public List<string>? Release { get; set; }
+
+    /// <summary>
+    /// Curated, MEASURED direction words for a spring-loaded control with no tooltip state, keyed by
+    /// the DOWN event that moves it that way — the Long Trim handles' "Nose Up" / "Nose Down".
+    /// </summary>
+    [JsonPropertyName("directions")]
+    public Dictionary<string, string>? Directions { get; set; }
+
+    /// <summary>
+    /// Curated: the STOCK SimVar a control's row shows instead of its own var — the Long Trim handles,
+    /// whose own var only ever reads their spring-back centre, show the ELEVATOR TRIM POSITION they move.
+    /// </summary>
+    [JsonPropertyName("stock_readout")]
+    public string? StockReadout { get; set; }
+
+    /// <summary>
+    /// Curated: the name of the physical control where the row's label names what it SHOWS instead —
+    /// the Long Trim row reads "Stabilizer Trim", its buttons "Nose Up Long Trim". Null elsewhere.
+    /// </summary>
+    [JsonPropertyName("control_name")]
+    public string? ControlName { get; set; }
+
+    /// <summary>The name a button that works this control speaks: <see cref="ControlName"/>, else the row's label.</summary>
+    public string ButtonName => string.IsNullOrWhiteSpace(ControlName) ? DisplayLabel : ControlName!;
+
     /// <summary>The spoken label, never null — falls back to the node id so a control is always identifiable.</summary>
     public string DisplayLabel => string.IsNullOrWhiteSpace(Label) ? NodeId : Label!;
 

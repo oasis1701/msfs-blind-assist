@@ -72,6 +72,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// Override to add additional base variables if needed.
     /// Aircraft implementations should call this and merge with their aircraft-specific variables.
     /// </summary>
+    /// <summary>The key of the shared stabiliser/elevator trim read-out (<c>ELEVATOR TRIM POSITION</c>), spoken through <see cref="DescribeElevatorTrim"/>.</summary>
+    protected const string ElevatorTrimKey = "MON_ElevatorTrim";
+
     protected virtual Dictionary<string, SimConnect.SimVarDefinition> GetBaseVariables()
     {
         return new Dictionary<string, SimConnect.SimVarDefinition>
@@ -197,7 +200,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             },
 
             // Elevator trim - universal SimConnect variable for trim position announcements
-            ["MON_ElevatorTrim"] = new SimConnect.SimVarDefinition
+            [ElevatorTrimKey] = new SimConnect.SimVarDefinition
             {
                 Name = "ELEVATOR TRIM POSITION",
                 DisplayName = "Elevator Trim",
@@ -781,7 +784,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
 
         // Elevator trim — rendered by DescribeElevatorTrim, debounced on the value it reports
-        if (varName == "MON_ElevatorTrim")
+        if (varName == ElevatorTrimKey)
         {
             if (!_trimAnnouncementsEnabled)
                 return true; // Suppress when toggled off
