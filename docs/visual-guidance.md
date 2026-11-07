@@ -474,6 +474,20 @@ The VirtualPilot approach harness measured the change ([virtual-pilot.md](virtua
 
 There is no integral-windup machinery to worry about today: the vertical path is a path angle with a proportional height correction around a learned trim, and the lateral path uses rate damping rather than an explicit integrator at the precision-track stage. If a future contributor adds an integral term, document the windup strategy alongside it.
 
+## Known gaps
+
+What visual guidance does not do yet, known and left open on purpose, so nobody takes it for a bug or
+fills it by guesswork.
+
+- **No cue for the rudder in a crosswind (2026-11-06).** The bank tone holds the path on the centreline
+  to touchdown, crab and all (VG-29); straightening the nose with the rudder in the flare is the pilot's
+  alone, and nothing tells them how far the nose is off the runway's direction. A bank-based decrab was
+  removed after it drove the first sim flight off the runway's side, and the owner chose not to bring
+  it back at 30 ft either: it would still ask for bank, the wrong control, in the flare's busiest
+  seconds, and the same tone would mean the rudder only there. The idea for later, if the owner asks:
+  a separate cue that plainly means the rudder, such as a spoken "Nose 3 right" in the flare. Only the
+  sim can test it: the approach harness's model aircraft has no rudder and cannot slip sideways.
+
 ## Related Documentation
 
 - [Architecture](architecture.md) - Overall system design
