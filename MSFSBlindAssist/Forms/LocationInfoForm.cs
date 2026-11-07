@@ -41,7 +41,6 @@ public partial class LocationInfoForm : Form
 
     private LocationReport _aircraftReport;
     private double _aircraftLat, _aircraftLon;
-    private IReadOnlyList<Models.NearbyPlace> _majorCities = Array.Empty<Models.NearbyPlace>();
 
     // The loaded places, and which of them pass the filters (indices, nearest first).
     private IReadOnlyList<PlaceResult> _places = Array.Empty<PlaceResult>();
@@ -90,7 +89,6 @@ public partial class LocationInfoForm : Form
         _aircraftLat = aircraftLat;
         _aircraftLon = aircraftLon;
         _kilometres = _settings.DistanceUnits == "kilometers";
-        _majorCities = aircraftReport.Details?.MajorCities ?? new List<Models.NearbyPlace>();
         InitializeComponent();
         LoadFilterControls();
         BuildColumns();
@@ -606,8 +604,6 @@ public partial class LocationInfoForm : Form
             _airportMatches.Clear();
             await EnsureAirportsAsync();
             if (cts.IsCancellationRequested || IsDisposed) return;
-            await LoadMajorCitiesAsync(lat, lon);
-            if (cts.IsCancellationRequested || IsDisposed) return;
             _loading = false;
             ApplyFilters();
             if (_speakCountWhenLoaded)
@@ -650,22 +646,6 @@ public partial class LocationInfoForm : Form
         {
             Log.Warn("LocationInfo", $"Could not read the navigation database's airports: {ex.Message}");
         }
-    }
-
-    /// <summary>The major cities around the map position, for the first box.</summary>
-    private async Task LoadMajorCitiesAsync(double lat, double lon)
-    {
-        if (Following)
-        {
-            _majorCities = _aircraftReport.Details?.MajorCities ?? new List<Models.NearbyPlace>();
-        }
-        else
-        {
-            var query = LocationQuerySettings.From(_settings);
-            var report = await Task.Run(() => _service.GetLocationInfo(lat, lon, query));
-            _majorCities = report?.Details?.MajorCities ?? new List<Models.NearbyPlace>();
-        }
-        UpdateWhereBox();
     }
 
     /// <summary>New places replace the loaded ones. The shown rows index the old list, so they go with it, and the
@@ -740,7 +720,7 @@ public partial class LocationInfoForm : Form
         double nm = LocationGeometry.GreatCircleNm(_aircraftLat, _aircraftLon, MapLat, MapLon);
         double bearing = LocationGeometry.BearingTrue(_aircraftLat, _aircraftLon, MapLat, MapLon);
         // Rewritten only when it changed: new text puts the caret on line 1 and the reader loses its place.
-        string text = LocationPhrases.LocationInfoText(_aircraftReport.Where, mapName, nm, bearing, _majorCities, _kilometres);
+        string text = LocationPhrases.LocationInfoText(_aircraftReport.Where, mapName, nm, bearing, _kilometres);
         if (_whereBox.Text != text) _whereBox.Text = text;
     }
 
@@ -762,7 +742,6 @@ public partial class LocationInfoForm : Form
                 _aircraftReport = report;
                 _aircraftLat = position.Latitude;
                 _aircraftLon = position.Longitude;
-                if (Following) _majorCities = report.Details?.MajorCities ?? new List<Models.NearbyPlace>();
                 UpdateWhereBox();
                 Reload();
                 _rows.Clear();

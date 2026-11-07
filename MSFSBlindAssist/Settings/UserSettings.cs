@@ -228,8 +228,8 @@ public class UserSettings
         // At sea and over lakes the nearest land or shore is always said (owner, 2026-10-10).
         public int CoastRange { get; set; } = 50;
 
-        // Display Limits
-        public int MaxMajorCitiesToShow { get; set; } = 10;
+        // MaxMajorCitiesToShow (default 10) was removed 2026-11-07: it capped the major cities in Location Info's
+        // first box, which no longer lists them (they are the tree's Major cities item). A saved value is ignored.
 
         // The Location Info window (Shift+L) remembers its own filters between openings and sessions
         // (owner, 2026-11-05), but never its search: it opens with an empty search around the map position

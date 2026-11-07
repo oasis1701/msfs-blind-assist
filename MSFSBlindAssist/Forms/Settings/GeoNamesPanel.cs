@@ -17,7 +17,6 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
     private TextBox _majorCitiesTextBox = null!;
     private TextBox _populationThresholdTextBox = null!;
     private TextBox _coastRangeTextBox = null!;
-    private TextBox _maxMajorCitiesTextBox = null!;
     private RadioButton _milesRadioButton = null!;
     private RadioButton _kilometersRadioButton = null!;
     private Button _resetDefaultsButton = null!;
@@ -230,24 +229,6 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         };
         Controls.Add(_kilometersRadioButton);
 
-        yPos += spacing + 10;
-
-        var maxMajorCitiesLabel = new Label
-        {
-            Text = "Maximum Major Cities:",
-            Location = new System.Drawing.Point(20, yPos),
-            Size = new System.Drawing.Size(150, labelHeight)
-        };
-        Controls.Add(maxMajorCitiesLabel);
-
-        _maxMajorCitiesTextBox = new TextBox
-        {
-            Location = new System.Drawing.Point(180, yPos),
-            Size = new System.Drawing.Size(60, textBoxHeight),
-            AccessibleName = "Maximum major cities"
-        };
-        Controls.Add(_maxMajorCitiesTextBox);
-
         yPos += spacing + 20;
 
         // Reset Defaults button (kept — resets only this panel's fields; the dialog owns Save/Cancel)
@@ -270,8 +251,6 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         _populationThresholdTextBox.Text = "50000";
         _coastRangeTextBox.Text = "50";
 
-        _maxMajorCitiesTextBox.Text = "10";
-
         _milesRadioButton.Checked = true;
     }
 
@@ -285,8 +264,6 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         _majorCitiesTextBox.Text = Math.Clamp(settings.MajorCitiesRange, 1, ceiling).ToString();
         _populationThresholdTextBox.Text = settings.MajorCityPopulationThreshold.ToString();
         _coastRangeTextBox.Text = Math.Clamp(settings.CoastRange, 1, LocationQuerySettings.MaxCoastRange).ToString();
-
-        _maxMajorCitiesTextBox.Text = settings.MaxMajorCitiesToShow.ToString();
 
         if (settings.DistanceUnits == "kilometers")
         {
@@ -331,13 +308,6 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
             return false;
         }
 
-        if (!(int.TryParse(_maxMajorCitiesTextBox.Text, out int maxMajorCities) && maxMajorCities > 0 && maxMajorCities <= 50))
-        {
-            error = "Please enter a valid number (1-50) for Maximum Major Cities.";
-            focus = _maxMajorCitiesTextBox;
-            return false;
-        }
-
         error = "";
         focus = null;
         return true;
@@ -349,8 +319,6 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         settings.MajorCitiesRange = int.Parse(_majorCitiesTextBox.Text);
         settings.MajorCityPopulationThreshold = int.Parse(_populationThresholdTextBox.Text);
         settings.CoastRange = int.Parse(_coastRangeTextBox.Text);
-
-        settings.MaxMajorCitiesToShow = int.Parse(_maxMajorCitiesTextBox.Text);
 
         settings.DistanceUnits = _kilometersRadioButton.Checked ? "kilometers" : "miles";
     }

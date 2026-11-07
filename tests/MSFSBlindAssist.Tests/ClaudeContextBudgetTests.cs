@@ -720,7 +720,7 @@ public class ClaudeContextBudgetTests
             "MSFSBlindAssist/Database/Models/Airport.cs", "MSFSBlindAssist/Database/Models/AirportCandidate.cs",
             "MSFSBlindAssist/Database/Models/DatabaseMetadata.cs", "MSFSBlindAssist/Database/Models/ILSData.cs",
             "MSFSBlindAssist/Database/Models/Runway.cs", "MSFSBlindAssist/Database/Models/StartPosition.cs",
-            "MSFSBlindAssist/Database/Models/WaypointFix.cs", "MSFSBlindAssist/Models/LocationData.cs",
+            "MSFSBlindAssist/Database/Models/WaypointFix.cs",
             "MSFSBlindAssist/Models/SimBriefOFP.cs", "MSFSBlindAssist/Models/TcasTraffic.cs",
         },
         ["generic dialogs and display controls that no feature's rules apply to"] = new[]

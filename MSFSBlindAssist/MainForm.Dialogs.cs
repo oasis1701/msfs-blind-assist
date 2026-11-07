@@ -134,7 +134,7 @@ public partial class MainForm
                 try
                 {
                     var report = await Task.Run(() => offlineLocationService.GetLocationInfo(position.Latitude, position.Longitude, query));
-                    if (report?.Details is null)
+                    if (report is null)
                     {
                         announcer.AnnounceImmediate(LocationDataUnavailableText());
                         return;

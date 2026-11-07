@@ -193,28 +193,23 @@ public class PlaceSearchTests
     }
 
     [Fact]
-    public void The_first_box_adds_the_map_position_and_the_major_cities()
+    public void The_first_box_adds_the_map_position_but_never_the_major_cities()
     {
         var where = new WhereYouAre { State = "Västra Götaland", Country = "Sweden" };
-        var cities = new List<NearbyPlace>
-        {
-            new() { Name = "Gothenburg", State = "Västra Götaland", Country = "Sweden", Population = 572799, Distance = 38, Direction = "south", Type = "major_city" },
-        };
-        string following = LocationPhrases.LocationInfoText(where, null, 0, 0, cities, false);
+        string following = LocationPhrases.LocationInfoText(where, null, 0, 0, false);
         Assert.StartsWith("In: Västra Götaland, Sweden", following);
         Assert.DoesNotContain("Map position", following);
-        Assert.Contains("Major cities:\r\nGothenburg", following);
+        Assert.DoesNotContain("Major cities", following); // the tree's Major cities item, in the table
 
-        string away = LocationPhrases.LocationInfoText(where, "Krokholmen", 20.0, 225, cities, false);
-        Assert.Contains("\r\nMap position: Krokholmen, 23 miles southwest of the aircraft", away);
-        Assert.Contains("Major cities around the map position:", away);
+        string away = LocationPhrases.LocationInfoText(where, "Krokholmen", 20.0, 225, false);
+        Assert.EndsWith("\r\nMap position: Krokholmen, 23 miles southwest of the aircraft", away);
 
         Assert.Contains("\r\nMap position: Krokholmen, where the aircraft is",
-            LocationPhrases.LocationInfoText(where, "Krokholmen", 0.0, 0, cities, false));
+            LocationPhrases.LocationInfoText(where, "Krokholmen", 0.0, 0, false));
         // The spot where the aircraft was when following was turned off has no name of its own.
         Assert.Contains("\r\nMap position: the aircraft's position, not following it",
-            LocationPhrases.LocationInfoText(where, "", 0.0, 0, cities, false));
+            LocationPhrases.LocationInfoText(where, "", 0.0, 0, false));
         Assert.Contains("\r\nMap position: where the aircraft was, now 2.3 miles south of it",
-            LocationPhrases.LocationInfoText(where, "", 2.0, 180, cities, false));
+            LocationPhrases.LocationInfoText(where, "", 2.0, 180, false));
     }
 }

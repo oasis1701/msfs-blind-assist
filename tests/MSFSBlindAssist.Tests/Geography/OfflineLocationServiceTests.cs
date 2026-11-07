@@ -10,7 +10,7 @@ public sealed class OfflineLocationServiceTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "msfsba-geo-" + Guid.NewGuid().ToString("N"));
     private readonly LocationDataStore _store;
-    private static readonly LocationQuerySettings Miles = new(false, 25, 185, 50000, 10);
+    private static readonly LocationQuerySettings Miles = new(false, 25, 185, 50000);
 
     public OfflineLocationServiceTests()
     {
@@ -209,11 +209,10 @@ public sealed class OfflineLocationServiceTests : IDisposable
     }
 
     [Fact]
-    public void Location_info_lists_the_major_cities()
+    public void Location_info_keeps_the_nearest_town_whatever_output_c_names()
     {
-        var details = Built().GetLocationInfo(38.6, -76.6, Miles)!.Details!;
-        Assert.Contains(details.MajorCities, c => c.Name == "Bigtown");
-        Assert.DoesNotContain(details.MajorCities, c => c.Name == "Bayside"); // under the 50,000 threshold
+        var report = Built().GetLocationInfo(38.55, -76.48, Miles with { PlaceTypes = new[] { "Landmark:museum" } })!;
+        Assert.Equal("Bayside", report.Nearest!.Name);
     }
 
     [Fact]

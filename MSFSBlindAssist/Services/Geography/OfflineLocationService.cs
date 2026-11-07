@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.Services.Geography;
 
 /// <summary>The GeoNames tab's ranges and limits, read once per lookup.</summary>
 internal sealed record LocationQuerySettings(
-    bool Kilometres, int NearbyRange, int MajorRange, int MajorPopulation, int MaxMajor)
+    bool Kilometres, int NearbyRange, int MajorRange, int MajorPopulation)
 {
     internal const double KmPerMile = 1.609344;
 
@@ -28,8 +28,7 @@ internal sealed record LocationQuerySettings(
         bool kilometres = s.DistanceUnits == "kilometers";
         int Range(int value) => Math.Clamp(value, 1, MaxRange(kilometres));
         return new(
-            kilometres, Range(s.NearbyCitiesRange), Range(s.MajorCitiesRange), s.MajorCityPopulationThreshold,
-            s.MaxMajorCitiesToShow)
+            kilometres, Range(s.NearbyCitiesRange), Range(s.MajorCitiesRange), s.MajorCityPopulationThreshold)
         {
             CoastRange = Math.Clamp(s.CoastRange, 1, MaxCoastRange),
         };
@@ -51,9 +50,9 @@ internal sealed record LocationQuerySettings(
     internal double CoastOverLandKm => Km(Math.Max(1, CoastRange));
 }
 
-/// <summary>Everything one lookup found: the "where" facts, the nearest place, and (for the
-/// Location Info window) the full lists.</summary>
-internal sealed record LocationReport(WhereYouAre Where, PlaceHit? Nearest, LocationData? Details);
+/// <summary>Everything one lookup found: the "where" facts and the nearest place. (Until 2026-11-07 it also
+/// carried the Location Info window's major cities, listed in its first box; they are its table's now.)</summary>
+internal sealed record LocationReport(WhereYouAre Where, PlaceHit? Nearest);
 
 /// <summary>A city and where it is.</summary>
 internal sealed record CityPoint(string Name, string State, string Country, double Lat, double Lon);
@@ -114,11 +113,12 @@ internal sealed class OfflineLocationService
 
     /// <summary>For Output C. Null when no usable database is installed.</summary>
     internal LocationReport? GetNearest(double lat, double lon, LocationQuerySettings settings) =>
-        _store.IsAvailable ? _store.Read(c => Report(c, lat, lon, settings, details: false)) : null;
+        _store.IsAvailable ? _store.Read(c => Report(c, lat, lon, settings, forWindow: false)) : null;
 
-    /// <summary>For the Location Info window. Null when no usable database is installed.</summary>
+    /// <summary>For the Location Info window's first box: C's report, but always the nearest town or village,
+    /// whatever kinds Output C names. Null when no usable database is installed.</summary>
     internal LocationReport? GetLocationInfo(double lat, double lon, LocationQuerySettings settings) =>
-        _store.IsAvailable ? _store.Read(c => Report(c, lat, lon, settings, details: true)) : null;
+        _store.IsAvailable ? _store.Read(c => Report(c, lat, lon, settings, forWindow: true)) : null;
 
     /// <summary>
     /// For the Volanta traffic list: where each of many positions is, in one read of the store (one
@@ -154,7 +154,7 @@ internal sealed class OfflineLocationService
             State = state,
             Country = country,
         };
-        return new LocationReport(where, nearest is null ? null : ToHit(nearest, admins), null);
+        return new LocationReport(where, nearest is null ? null : ToHit(nearest, admins));
     }
 
     /// <summary>Lake, land or sea for a traffic line, as <see cref="Report"/> decides it, the shore band
@@ -290,7 +290,7 @@ internal sealed class OfflineLocationService
         }) ?? new List<TownMatch>();
     }
 
-    private static LocationReport Report(SqliteConnection c, double lat, double lon, LocationQuerySettings s, bool details)
+    private static LocationReport Report(SqliteConnection c, double lat, double lon, LocationQuerySettings s, bool forWindow)
     {
         lon = LocationGrid.NormalizeLon(lon);
         var admins = AdminNames.Load(c);
@@ -321,7 +321,7 @@ internal sealed class OfflineLocationService
         var nearest = nearby.FirstOrDefault();
         PlaceHit? place = nearest is null ? null : ToHit(nearest, admins);
         // The area still comes from the nearest town; only the place C names follows the chosen kinds.
-        if (!details && s.PlaceTypes.Count > 0)
+        if (!forWindow && s.PlaceTypes.Count > 0)
             place = NearestOfTypes(c, lat, lon, s, admins);
         var (state, country) = AreaOf(hits, land, nearby, nearest, admins);
 
@@ -339,7 +339,7 @@ internal sealed class OfflineLocationService
             TimeZone = BaseAircraftDefinition.LookupTimeZoneName(lat, lon),
         };
 
-        return new LocationReport(where, place, details ? Details(c, lat, lon, s, admins) : null);
+        return new LocationReport(where, place);
     }
 
     /// <summary>The nearest place of the kinds in <see cref="LocationQuerySettings.PlaceTypes"/> within the
@@ -365,29 +365,6 @@ internal sealed class OfflineLocationService
         int colon = key.IndexOf(':');
         if (colon <= 0 || !Enum.TryParse<LocationCategory>(key[..colon], out var category)) return null;
         return (category, key[(colon + 1)..]);
-    }
-
-    /// <summary>The Location Info window's Major Cities: towns of at least the Minimum Population within the
-    /// Major Cities Range, larger and closer first (the online lookup's ranking).</summary>
-    private static LocationData Details(SqliteConnection c, double lat, double lon, LocationQuerySettings s, AdminNames admins)
-    {
-        var major = Places(c, lat, lon, s.Km(s.MajorRange), s.MajorPopulation, LocationCategory.Town)
-            .Select(p => ToNearbyPlace(p, admins, s, "major_city")).ToList();
-        major.Sort((a, b) => (a.Distance / Math.Log10(Math.Max(a.Population, 1000)))
-            .CompareTo(b.Distance / Math.Log10(Math.Max(b.Population, 1000))));
-        return new LocationData { MajorCities = major.Take(s.MaxMajor).ToList() };
-    }
-
-    private static NearbyPlace ToNearbyPlace(FoundPlace p, AdminNames admins, LocationQuerySettings s, string type)
-    {
-        var (state, country) = admins.Of(p.AdminId);
-        return new NearbyPlace
-        {
-            Name = p.Name, State = state, Country = country, Population = p.Population,
-            Distance = LocationPhrases.ToUnit(p.DistanceNm, s.Kilometres),
-            Unit = LocationPhrases.UnitWord(s.Kilometres),
-            Direction = LocationPhrases.Direction(p.BearingTrue), Type = type,
-        };
     }
 
     private static PlaceHit ToHit(FoundPlace p, AdminNames admins)

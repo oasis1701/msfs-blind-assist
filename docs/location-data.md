@@ -131,8 +131,9 @@ then sea (inside a named marine polygon) (LOC-6):
   ("Shore: …" over a lake), "Near: Maryland, United States". Over land: "In: Bavaria, Germany",
   "Region: Alps, mountain range" (when inside one), "Coast: English Channel, 1.2 miles south" (within
   the Coast Range). Then "Time zone: …" (the GeoTimeZone package), a "Map position: …" line when the
-  map position is not the aircraft, and the major cities around the map position
-  (`LocationPhrases.LocationInfoText`). The window opens already filled and focused on that box, and
+  map position is not the aircraft (`LocationPhrases.LocationInfoText`). It does not list the major
+  cities: since 2026-11-07 they are the tree's Major cities item, in the table, never in two places
+  (the GeoNames tab's Maximum Major Cities, which capped the box's list, went with it). The window opens already filled and focused on that box, and
   speaks nothing itself. Then the kinds-of-place tree (`PlaceTree.Build`: headings by
   `LocationFeatureCatalog.TreeGroup`, so Towns, Villages and one Neighborhoods sit side by side under
   Populated places, and no heading names its own item; Major cities first, named with the Major

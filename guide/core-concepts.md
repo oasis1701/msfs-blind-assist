@@ -428,7 +428,7 @@ The automatic nearest-city announcement (Announcements tab) speaks this same sen
 
 ### The Location Information window {#the-location-information-window}
 
-Press \] then Shift+L. The window opens already filled in, with the cursor in its first box, **Where you are**. Over land it shows the state or province you are in (for example *"In: Bavaria, Germany"*), the mountain range or desert if you are over one, the named coast if it is within range, and the time zone. Over water it shows the sea or lake, the nearest land or shore, and the nearest region. Then come the major cities around you.
+Press \] then Shift+L. The window opens already filled in, with the cursor in its first box, **Where you are**. Over land it shows the state or province you are in (for example *"In: Bavaria, Germany"*), the mountain range or desert if you are over one, the named coast if it is within range, and the time zone. Over water it shows the sea or lake, the nearest land or shore, and the nearest region. The major cities are not listed here: tick **Major cities** in the tree below and they are in the table.
 
 Press Tab to move through the window. In order:
 
@@ -476,10 +476,9 @@ Press Escape to close the window and return to the simulator.
 The rest of the **GeoNames** tab controls how far Output C and the major cities reach:
 
 - **Nearby Cities Range:** how far Output C looks for the nearest town.
-- **Major Cities Range** and **Minimum Population for Major Cities:** which towns count as major cities (50,000 people by default), for the window's first box and the Volanta traffic list.
+- **Major Cities Range** and **Minimum Population for Major Cities:** which towns count as major cities (50,000 people by default), for the window's Major cities and the Volanta traffic list.
 - **Coast Range:** how close the sea coast must be, over land, before C mentions it; 50 by default, up to 1,000. Over water the nearest land is always given, whatever the Coast Range.
 - **Distance Units:** **Miles** or **Kilometers**. This changes the spoken and shown distances.
-- **Maximum Major Cities:** how many major cities the first box lists.
 - **Reset to Defaults** puts these back.
 
 The ranges are capped at 310 miles (500 kilometres), and the Coast Range at 1,000, so a press never searches half a continent. The window's own range is set in the window.

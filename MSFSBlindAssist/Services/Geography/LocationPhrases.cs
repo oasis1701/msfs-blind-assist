@@ -212,7 +212,8 @@ internal static class LocationPhrases
 
     /// <summary>
     /// The Location Info window's first box: the aircraft's "Where you are" lines; when the map position does
-    /// not follow the aircraft, a line saying where it is; then the major cities around the map position.
+    /// not follow the aircraft, a line saying where it is. The major cities are not listed here: they are the
+    /// tree's Major cities item, in the table (the owner's choice, 2026-11-07: never in two places).
     /// <paramref name="mapName"/> is null while it follows the aircraft, empty for the spot where the aircraft
     /// was when following was turned off, else the place picked. The line reads "Map position: Krokholmen,
     /// 23 miles northwest of the aircraft" or "Map position: Krokholmen, where the aircraft is"; for the spot,
@@ -221,7 +222,7 @@ internal static class LocationPhrases
     /// "Where the aircraft was, at the aircraft".)
     /// </summary>
     internal static string LocationInfoText(WhereYouAre aircraft, string? mapName, double mapNmFromAircraft,
-        double mapBearingFromAircraft, IReadOnlyList<NearbyPlace> majorCities, bool kilometres)
+        double mapBearingFromAircraft, bool kilometres)
     {
         var text = WhereYouAreText(aircraft, kilometres);
         if (mapName is not null)
@@ -233,9 +234,6 @@ internal static class LocationPhrases
                 : mapName + ", " + (atAircraft ? "where the aircraft is" : away + " of the aircraft");
             text += "\r\nMap position: " + line;
         }
-        if (majorCities.Count > 0)
-            text += "\r\nMajor cities" + (mapName is null ? "" : " around the map position") + ":\r\n"
-                + string.Join("\r\n", majorCities.Select(c => c.ToString()));
         return text;
     }
 
