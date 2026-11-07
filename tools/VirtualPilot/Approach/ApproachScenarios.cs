@@ -15,14 +15,16 @@ namespace VirtualPilot.Approach;
 /// (<see cref="ApproachScriptedTurns"/>); <paramref name="StartLevel"/> starts a course-parallel start
 /// level instead of on the glide path's angle. <paramref name="Descent"/> scripts a pilot obeying ATC's
 /// "descend and maintain" (<see cref="ApproachVerticalScript"/>), and the run starts on its descent.
+/// <paramref name="Slowing"/> slows the aircraft from <paramref name="TasKt"/> through the approach
+/// (<see cref="ApproachSlowing"/>); without it the speed is held to touchdown.
 /// </summary>
 sealed record ApproachScenario(string Name, ApproachRunway Runway, ApproachAircraftKind Kind, double AlongNm, double CrossNm,
     double HeadingRelDeg, double HeightOffsetFt, double WindFromRelDeg, double WindKt, int Fps, double ReactionDelayS,
     double? PitchStepAtS, double? TasKt, bool SensorNoise = false, double GustBankDeg = 0, bool BankBySpeech = false,
     double StartBankDeg = 0, IReadOnlyList<(double AtS, double ToRelHeadingDeg)>? Turns = null, bool StartLevel = false,
-    ApproachVerticalScript? Descent = null);
+    ApproachVerticalScript? Descent = null, ApproachSlowing? Slowing = null);
 
-/// <summary>The scenario matrix: 235 approaches (docs/virtual-pilot.md, "Approaches").</summary>
+/// <summary>The scenario matrix: 267 approaches (docs/virtual-pilot.md, "Approaches").</summary>
 static class ApproachScenarios
 {
     private static readonly double[] Delays = { 0.5, 1.0 };
@@ -234,6 +236,31 @@ static class ApproachScenarios
                 foreach (double dly in Delays)
                     list.Add(new ApproachScenario($"FARFAST-A-JET-{side}-t{Inv(tas, "0")}-{DelayName(dly)}", a, ApproachAircraftKind.Jet,
                         -12.5, Sign(side) * 0.5, 0, AboveField(4000, -12.5), 0, 0, 30, dly, null, tas) with { StartLevel = true });
+
+        // Slowing down (the owner's A320 visual approaches, 2026-11-06): pressed at 230 or 210 kt, 190 for the
+        // turns, 180 on final, 140 from 6 to 4 nm (ApproachSlowing). The far side as the first sim flight; a
+        // "cleared visual" 12 nm out and 4 nm beside final, flying parallel; ATC's 30° intercept; a downwind
+        // abeam the runway 3 nm out, 2,000 ft above the field. The owner: approaches usually start 18 to 14 nm
+        // out, so the "cleared visual" and the intercept also start there. On ATC's intercept the pilot descends
+        // as cleared ("descend and maintain"), since joining leaves the altitude to ATC.
+        var slowStarts = new (string Name, double Along, double Cross, double Rel, double Height, double Tas, bool Level,
+            ApproachVerticalScript? Descent)[]
+        {
+            ("FAR", -12.5, 0.5, 0, AboveField(4000, -12.5), 230, true, null),
+            ("VEC", 12.0, 4.0, 0, 0, 230, true, null),
+            ("VEC14", 14.0, 4.0, 0, 0, 230, true, null),
+            ("VEC18", 18.0, 4.0, 0, 0, 230, true, null),
+            ("INT", 12.0, 3.0, -30, 0, 210, false, new ApproachVerticalScript(-1500, 2500)),
+            ("INT14", 14.0, 3.0, -30, 0, 230, false, new ApproachVerticalScript(-1500, 3000)),
+            ("INT18", 18.0, 4.0, -30, 0, 230, false, new ApproachVerticalScript(-1500, 3500)),
+            ("DW", DownwindAlongNm, 3.0, 180, AboveField(2000, DownwindAlongNm), 210, false, null),
+        };
+        foreach (var st in slowStarts)
+            foreach (char side in new[] { 'L', 'R' })
+                foreach (double dly in Delays)
+                    list.Add(new ApproachScenario($"SLOW-{st.Name}-A-JET-{side}-t{Inv(st.Tas, "0")}-{DelayName(dly)}", a,
+                        ApproachAircraftKind.Jet, st.Along, Sign(side) * st.Cross, Sign(side) * st.Rel, st.Height, 0, 0, 30, dly,
+                        null, st.Tas) with { StartLevel = st.Level, Slowing = new ApproachSlowing(), Descent = st.Descent });
 
         foreach (var k in kinds)
             foreach (char side in new[] { 'L', 'R' })

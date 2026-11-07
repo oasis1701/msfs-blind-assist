@@ -32,7 +32,8 @@ sealed class ApproachAircraft
     private const double G = 9.80665, MsPerKt = 1852.0 / 3600.0, FpmPerKt = 101.269;
 
     private readonly ApproachRunway _rwy;
-    private readonly double _tasKt, _alphaTrimDeg, _tauGammaS;
+    private readonly double _alphaTrimDeg, _tauGammaS;
+    private double _tasKt;
     private readonly double _windToTrueDeg, _windKt;
 
     public double Lat { get; private set; }
@@ -47,6 +48,10 @@ sealed class ApproachAircraft
     public double GammaDeg { get; private set; }
     public double AlphaDeg { get; private set; }
     public double AglFt => AltMslFt - _rwy.Runway.ThresholdElevation;
+    public double TasKt => _tasKt;
+
+    /// <summary>The pilot slowing down (<see cref="ApproachSlowing"/>); the next <see cref="Step"/> flies at it.</summary>
+    public void SetTas(double tasKt) => _tasKt = tasKt;
 
     /// <param name="tasKt">Overrides the kind's TAS (the speed scenarios).</param>
     /// <param name="gammaDeg">The flight path it starts on, already settled (0 = level).</param>

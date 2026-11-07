@@ -309,6 +309,41 @@ public class VisualGuidanceJoinTests
         Assert.Equal(90.0, left.Legs[1].DirectionDeg, 9);
     }
 
+    // VG-28: until "Turn base" the pattern follows the speed now, sized with the speed-capped gain. Slowing
+    // down moves the base in; speeding up moves it out and widens the downwind; the downwind never narrows.
+    [Fact]
+    public void The_pattern_resized_for_the_speed_now()
+    {
+        double Capped(double gs) => VisualGuidanceJoin.TurnLimitedCaptureGain(Gain, gs, 25);
+        var pressed = VisualGuidanceJoin.Decide(P(-12.5, 0.5), 0, 230, Gain, Profile);
+        Assert.Equal(VisualGuidanceJoinState.Pattern, pressed.State);
+
+        var at230 = VisualGuidanceJoin.ResizePattern(pressed, 230, Capped(230), Profile);
+        var at190 = VisualGuidanceJoin.ResizePattern(at230, 190, Capped(190), Profile);
+        var at250 = VisualGuidanceJoin.ResizePattern(at230, 250, Capped(250), Profile);
+
+        // The capped gain's longer turn onto final puts the base further out than the full gain did.
+        Assert.True(at230.Legs[1].AlongNm > pressed.Legs[1].AlongNm);
+        Assert.True(at190.Legs[1].AlongNm < at230.Legs[1].AlongNm);
+        Assert.True(at250.Legs[1].AlongNm > at230.Legs[1].AlongNm);
+        Assert.True(Math.Abs(at250.Legs[0].CrossNm) > Math.Abs(at230.Legs[0].CrossNm));
+        Assert.Equal(at230.Legs[0].CrossNm, at190.Legs[0].CrossNm, 9);
+        // Each is the pattern Decide would build at that speed, from a downwind at least as wide.
+        Assert.Equal(VisualGuidanceJoin.Decide(P(-12.5, at230.Legs[0].CrossNm), 0, 190, Capped(190), Profile).Legs[1].AlongNm,
+            at190.Legs[1].AlongNm, 9);
+    }
+
+    [Fact]
+    public void Resizing_at_approach_speed_changes_nothing_and_leaves_other_plans_alone()
+    {
+        var pattern = VisualGuidanceJoin.Decide(P(-1, 3), 180, 140, Gain, Profile);
+        var same = VisualGuidanceJoin.ResizePattern(pattern, 140, VisualGuidanceJoin.TurnLimitedCaptureGain(Gain, 140, 25), Profile);
+        Assert.Equal(pattern.Legs, same.Legs);
+
+        var vectoring = VisualGuidanceJoin.Decide(P(10, 2), 0, 140, Gain, Profile);
+        Assert.Same(vectoring, VisualGuidanceJoin.ResizePattern(vectoring, 250, VisualGuidanceJoin.TurnLimitedCaptureGain(Gain, 250, 25), Profile));
+    }
+
     // A tight downwind is widened until the aircraft can finish its turn onto the base before the turn
     // onto final starts (the owner's choice, 2026-11-05, after the far-side jets' base and final turns ran
     // into one U-turn from 1.225 nm and swung 640 ft past the centreline): the sideways room of its own

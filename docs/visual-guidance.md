@@ -230,7 +230,10 @@ intercept flown when joining and at least 30° after the turn, 90° on the patte
 it holds the intercept and asks for no turn; it turns in as the line comes near. Above about 161 kt
 of ground speed the gain is capped so the law never asks a faster turn than 90% of what the profile's
 largest approach bank gives (`VisualGuidanceJoin.TurnLimitedCaptureGain`, VG-28): a faster aircraft
-starts its turns further out, and its pattern is sized from the same capped gain.
+starts its turns further out. Until "Turn base" the pattern is resized every update from the speed now
+and the capped gain (`ResizePattern`: the base moves in as the aircraft slows, the downwind never
+narrows). Only the decision at the press takes the full gain, planning for a pilot who slows down for the
+turns, as the pilot manages the speed.
 
 - Bank is the track error to that desired track × the speed factor √(ground speed / Vref), rate-limited,
   at most the profile's `MaxApproachBankDeg`.

@@ -276,7 +276,7 @@ static class ApproachRunner
                 double? scripted = turns?.BankFor(t,
                     ((ac.HeadingTrueDeg - ApproachRunways.LocalCourse(rwy, ac.Lat, ac.Lon)) % 360 + 540) % 360 - 180);
                 // A scripted descent (a pilot obeying ATC's "descend and maintain") replaces the pitch.
-                double? scriptedPitch = descent?.PitchFor(t, ac.AglFt, ac.VsFpm, spec.AlphaTrimDeg, tasKt, spec.TauGammaS);
+                double? scriptedPitch = descent?.PitchFor(t, ac.AglFt, ac.VsFpm, spec.AlphaTrimDeg, ac.TasKt, spec.TauGammaS);
                 metrics.Record(t, ac, vg, scripted != null, scriptedPitch != null);   // the state and the command it produced, same frame
                 // Checked after recording, so the step's 10 s sample exists for selfFeedback10s.
                 if (sc.PitchStepAtS is double stepEnd && t >= stepEnd + StepRunAfterS) { endReason = "stepDone"; break; }
@@ -305,6 +305,13 @@ static class ApproachRunner
                     pilot.Knock(g.Sign * sc.GustBankDeg / rampFrames);
                 }
                 var (bank, pitch) = pilot.Step(t, dt, vg.DesiredBankForHarness, vg.DesiredPitchForHarness, speech.Lines, scripted, scriptedPitch);
+                // A pilot slowing down through the approach (ApproachSlowing): this step's speed.
+                if (sc.Slowing is ApproachSlowing slowing)
+                {
+                    var (alongS, crossS) = ApproachRunways.Locate(rwy, ac.Lat, ac.Lon);
+                    double relTrack = ((ac.TrackTrueDeg - ApproachRunways.LocalCourse(rwy, ac.Lat, ac.Lon)) % 360 + 540) % 360 - 180;
+                    ac.SetTas(slowing.Step(ac.TasKt, slowing.TargetKt(alongS, crossS, relTrack), dt));
+                }
                 ac.Step(dt, bank, pitch);
                 t = (frame + 1) * dt;
 
@@ -363,6 +370,7 @@ static class ApproachRunner
         return $"t={N(t, "0.0"),6} {phase,-18} along={N(along, "0.00"),6}nm cross={N(cross * 6076.12, "0"),6}ft " +
                $"dPath={N(pathErr, "0"),5}ft vs={N(ac.VsFpm, "0"),5} " +
                $"bank {N(vg.DesiredBankForHarness, "0.0"),5}/{N(ac.BankStdDeg, "0.0"),5} " +
-               $"pitch {N(vg.DesiredPitchForHarness, "0.00"),6}/{N(ac.PitchDeg, "0.00"),6}" + vertical;
+               $"pitch {N(vg.DesiredPitchForHarness, "0.00"),6}/{N(ac.PitchDeg, "0.00"),6}" + vertical
+               + (sc.Slowing != null ? $" tas {N(ac.TasKt, "0")}" : "");
     }
 }

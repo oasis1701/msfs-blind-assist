@@ -1183,7 +1183,10 @@ public class VisualGuidanceManager : IDisposable
         if (runway == null) return;
         var position = VisualGuidanceJoin.Locate(lat, lon, runway);
         double relativeTrack = VisualGuidanceJoin.Normalize((cachedGroundTrack ?? cachedHeading ?? runway.HeadingMag) - runway.HeadingMag);
-        joinPlan = VisualGuidanceJoin.Decide(position, relativeTrack, currentGroundSpeedKnots, CaptureGain, visualGuidanceProfile);
+        // The full gain, not the speed-capped one (VG-28): the decision plans for a pilot who slows down for
+        // the turns, as the pilot manages the speed (the owner, 2026-11-06). From the next update the
+        // pattern's size and every turn follow the capped gain at the speed then.
+        joinPlan = VisualGuidanceJoin.Decide(position, relativeTrack, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile);
         activeLegIndex = 0;
         levelHold.Reset();
         double underPathFt = VisualGuidanceVertical.PathHeightFt(position.AlongNm, glideslopeAngleDeg, glideslopeAltitudeBiasFt)
@@ -1337,6 +1340,10 @@ public class VisualGuidanceManager : IDisposable
             // leg's cue is not checked: a far-side start can begin closer to final than the cue.
             if (currentPhase == GuidancePhase.Vectoring)
             {
+                // Until "Turn base" the pattern follows the speed now (VG-28): the base moves in as the
+                // aircraft slows down, and the downwind widens if its turns need more room.
+                if (OnPatternLeg && ActiveLegKind == VisualGuidanceLegKind.Downwind && joinPlan != null)
+                    joinPlan = VisualGuidanceJoin.ResizePattern(joinPlan, currentGroundSpeedKnots, CaptureGain, visualGuidanceProfile);
                 if (OnPatternLeg)
                     AdvancePatternLeg(lat, lon, relativeTrack, speedFactor);
                 if (!OnPatternLeg)

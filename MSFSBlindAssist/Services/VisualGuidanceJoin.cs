@@ -497,17 +497,41 @@ internal static class VisualGuidanceJoin
         // The simple pattern: a downwind on the aircraft's side, a base, final. It mainly serves IFR
         // handovers today ("cleared visual approach" from the far side of the field); full VFR circuits
         // come with the general aviation work (the redesign's piece 7).
-        // The base is placed so the aircraft lines up the minimum final out, counting the turn onto final
-        // from its own speed and bank (PatternTurnOntoFinalNm), as vectoring counts the turn onto its cut.
         int side = p.CrossNm >= 0 ? 1 : -1;
-        double offset = Math.Max(Math.Max(cross, 2 * TurnRadiusNm(gsKt, profile.MaxApproachBankDeg)),
+        return PatternPlan(side, cross, gsKt, captureGain, profile);
+    }
+
+    /// <summary>
+    /// The simple pattern on <paramref name="side"/> for this ground speed: a downwind at least
+    /// <paramref name="leastOffsetNm"/> out and wide enough for the aircraft's own turns, and a base placed
+    /// so the aircraft lines up the minimum final out, counting the turn onto final from its own speed and
+    /// bank (<see cref="PatternTurnOntoFinalNm"/>), as vectoring counts the turn onto its cut.
+    /// </summary>
+    private static VisualGuidanceJoinPlan PatternPlan(int side, double leastOffsetNm, double gsKt, double captureGain,
+        VisualGuidanceProfile profile)
+    {
+        double offset = Math.Max(Math.Max(leastOffsetNm, 2 * TurnRadiusNm(gsKt, profile.MaxApproachBankDeg)),
             Math.Max(MinDownwindNm, PatternLeastDownwindNm(side, gsKt, captureGain, profile)));
         double baseAlong = profile.MinimumFinalNm + PatternTurnOntoFinalNm(offset, side, gsKt, captureGain, profile);
         return new(VisualGuidanceJoinState.Pattern, PatternClampDeg, new[]
         {
             new VisualGuidanceLeg(VisualGuidanceLegKind.Downwind, 0, side * offset, 180, side),
             new VisualGuidanceLeg(VisualGuidanceLegKind.Base, baseAlong, 0, -90 * side, 0),
-            final,
+            new VisualGuidanceLeg(VisualGuidanceLegKind.Final, 0, 0, 0, 0),
         });
+    }
+
+    /// <summary>
+    /// The pattern for the speed now (VG-28), while the downwind is still the leg flown: the downwind
+    /// widens when the aircraft's turns now need more room, never narrows (the aircraft may already be on
+    /// it), and the base moves to where the turn onto final at this speed lines up the minimum final out,
+    /// in as the aircraft slows, out if it speeds up. Any other plan comes back as it is.
+    /// </summary>
+    public static VisualGuidanceJoinPlan ResizePattern(VisualGuidanceJoinPlan plan, double gsKt, double captureGain,
+        VisualGuidanceProfile profile)
+    {
+        if (plan.State != VisualGuidanceJoinState.Pattern || plan.Legs.Count < 3) return plan;
+        double offset = plan.Legs[0].CrossNm;
+        return PatternPlan(offset >= 0 ? 1 : -1, Math.Abs(offset), gsKt, captureGain, profile);
     }
 }
