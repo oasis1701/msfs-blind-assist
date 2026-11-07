@@ -68,6 +68,25 @@ public class NavigationCalculator
     }
 
     /// <summary>
+    /// The painted landing threshold of a runway end. The navdata's end position
+    /// (<c>runway_end.lonx/laty</c>, <see cref="MSFSBlindAssist.Database.Models.Runway.StartLat"/>) is the start
+    /// of the pavement; a displaced threshold lies <see cref="MSFSBlindAssist.Database.Models.Runway.ThresholdOffset"/>
+    /// feet down the runway from it (KATL 27R 512 ft, KJFK 22R 3,471 ft). The sim's own glideslope antennas
+    /// sit about 1,020 ft past this point on displaced and plain runways alike, in both navdata builds
+    /// (2026-11-06). A zero offset returns the end's position exactly. An offset that reaches the far end
+    /// is a navdata error (KMWH 18: 3,333 ft on a 3,321 ft runway) and is ignored; on a runway of unknown
+    /// length (0) the offset still applies.
+    /// </summary>
+    public static (double Lat, double Lon) LandingThreshold(MSFSBlindAssist.Database.Models.Runway runway)
+    {
+        double offsetFt = runway.ThresholdOffset;
+        bool usable = offsetFt > 0 && (runway.Length <= 0 || offsetFt < runway.Length);
+        return usable
+            ? CalculateTouchdownAimPoint(runway.StartLat, runway.StartLon, runway.Heading, offsetFt)
+            : (runway.StartLat, runway.StartLon);
+    }
+
+    /// <summary>
     /// Calculates touchdown aim point coordinates by projecting a distance from threshold along runway heading.
     /// Used for glideslope calculations to ensure safe touchdown zone (not at threshold).
     /// </summary>

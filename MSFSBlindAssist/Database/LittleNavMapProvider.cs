@@ -127,6 +127,8 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
                     re_primary.lonx as primary_lonx,
                     re_primary.altitude as primary_altitude,
                     re_primary.offset_threshold as primary_offset,
+                    re_primary.left_vasi_pitch as primary_left_vasi_pitch,
+                    re_primary.right_vasi_pitch as primary_right_vasi_pitch,
                     re_primary.ils_ident as primary_ils_ident,
                     re_primary.has_closed_markings as primary_closed,
                     re_primary.is_landing as primary_is_landing,
@@ -137,6 +139,8 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
                     re_secondary.lonx as secondary_lonx,
                     re_secondary.altitude as secondary_altitude,
                     re_secondary.offset_threshold as secondary_offset,
+                    re_secondary.left_vasi_pitch as secondary_left_vasi_pitch,
+                    re_secondary.right_vasi_pitch as secondary_right_vasi_pitch,
                     re_secondary.ils_ident as secondary_ils_ident,
                     re_secondary.has_closed_markings as secondary_closed,
                     re_secondary.is_landing as secondary_is_landing,
@@ -849,6 +853,9 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
         double endLon = Convert.ToDouble(reader[$"{oppositePrefix}_lonx"] ?? 0.0);
         double altitude = Convert.ToDouble(reader[$"{prefix}_altitude"] ?? 0.0);
         double thresholdOffset = Convert.ToDouble(reader[$"{prefix}_offset"] ?? 0.0);
+        // The approach slope lights' angle: the left light's, else the right one's (NULL or 0 = none).
+        double papiAngle = SafeReadDouble(reader, $"{prefix}_left_vasi_pitch", 0.0);
+        if (papiAngle <= 0.0) papiAngle = SafeReadDouble(reader, $"{prefix}_right_vasi_pitch", 0.0);
         string ilsIdent = reader[$"{prefix}_ils_ident"]?.ToString() ?? "";
 
         // ILS frequency/heading/glideslope-pitch now come straight off the reader — the
@@ -927,6 +934,7 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             ThresholdOffset = thresholdOffset,
             ThresholdElevation = altitude,
             GlideslopeAngleDeg = ilsGsPitch,
+            PapiAngleDeg = Math.Max(0.0, papiAngle),
             IsClosed = isClosed,
             IsLanding = isLanding,
             IsTakeoff = isTakeoff

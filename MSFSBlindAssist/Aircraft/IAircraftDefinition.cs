@@ -23,13 +23,10 @@ public enum FCUControlType
 /// </summary>
 public sealed class VisualGuidanceProfile
 {
-    /// <summary>Typical angle of attack (degrees) at the airframe's stabilized-approach trim
-    /// point. Used as a FALLBACK in <c>VisualGuidanceManager.CalculateDesiredPitch</c> when the
-    /// live AoA reading (SimConnect <c>INCIDENCE ALPHA</c>) is unavailable or outside the
-    /// sanity band. With live AoA available (the normal case), this value is unused — the
-    /// real measured AoA inherently encodes the current weight / flap / speed, so the nominal
-    /// pitch baseline converges on whatever the airplane is actually trimmed for and the
-    /// per-aircraft estimate becomes obsolete.</summary>
+    /// <summary>The trim (degrees, pitch minus flight path) the vertical cue starts from until its
+    /// first sample: visual guidance learns the aircraft's own trim from the first update at 40 kt
+    /// or more (<c>VisualGuidanceTrimLearner</c>), so this is only the guess for the update or two
+    /// before it. About the airframe's approach angle of attack.</summary>
     public double TypicalApproachAoaDeg { get; init; } = 6.0;
 
     /// <summary>Reference Vref (knots) used as the denominator in the lateral airspeed-compensation
@@ -67,14 +64,13 @@ public sealed class VisualGuidanceProfile
     /// saturation outside the approach phase).</summary>
     public double TonePitchRangeDeg { get; init; } = 6.0;
 
-    /// <summary>Bank (degrees) at which the tone pan saturates to ±1.0. Default is ±5°, which
-    /// covers a stabilized approach (banks rarely exceed 5° once on centerline) and gives a
-    /// 0.20 pan/° matching slope (vs the old 0.10 pan/° at ±10°) so small bank errors produce
-    /// clearly noticeable stereo deltas. The PID can command up to 25° bank during intercept
-    /// — that saturates the desired tone, but the spoken bank-guidance announcements
-    /// ("3 left", "2 right", etc.) already handle the large-error regime where matching by
-    /// ear is unnecessary. Raise for aircraft with wider habitual bank envelopes.</summary>
-    public double ToneBankRangeDeg { get; init; } = 5.0;
+    /// <summary>Bank (degrees) at which the tone pan saturates to ±1.0. Default ±10°, a 0.10 pan/°
+    /// matching slope. It was ±5° (0.20 pan/°) from May 2026 for finer matching on final; the owner
+    /// widened it again on 2026-11-06 after the first sim flight, where on the pattern's downwind at
+    /// 230 kt the guidance asked 4 to 6° and any bank past 5° sounded the same as the target. Past
+    /// the range both tones sit fully to one side and the spoken bank callouts ("3 left", "2 right")
+    /// say how far.</summary>
+    public double ToneBankRangeDeg { get; init; } = 10.0;
 
     /// <summary>Height (ft) by which VG's datum-referenced altitude (SimConnect PLANE ALTITUDE −
     /// threshold elevation) sits ABOVE the bare geometric distance×tan(3°) glidepath when the
@@ -99,21 +95,37 @@ public sealed class VisualGuidanceProfile
     /// approach); the A320 default (12) is estimated and should be calibrated in-sim.</summary>
     public double FlareAltitudeBiasFt { get; init; } = 12.0;
 
-    /// <summary>True main-gear height (ft) at which the flare phase is entered and the flare
-    /// audio cue announces. Per-aircraft because manufacturer flare-initiation guidance and
-    /// autoland behaviour vary: the A320 FCTM specifies a 30 ft initiation (default); the
-    /// PMDG 777's autoland begins flaring at ~40 ft RA, so VG's cue is timed to match — a
-    /// hand-flying pilot using VG to mirror autoland gets the cue at the same moment the
-    /// autopilot would have started its flare. Keep within 20–50 ft.</summary>
+    /// <summary>True main-gear height (ft) by which the flare has started: the backstop of the
+    /// time-based start (visual guidance stage 6). The flare starts about 4.3 s before touchdown
+    /// (<c>VisualGuidanceFlare</c>), or at this height if that comes first, as it does in a slow
+    /// descent. Per-aircraft because manufacturer flare-initiation guidance and autoland behaviour
+    /// vary: the A320 FCTM specifies a 30 ft initiation (default); the PMDG 777's autoland begins
+    /// flaring at ~40 ft RA, so VG's cue is timed to match — a hand-flying pilot using VG to mirror
+    /// autoland gets the cue no later than the autopilot would have started its flare; a light
+    /// aircraft rounds out at about 5 to 15 ft. Keep within 5–50 ft.</summary>
     public double FlareTriggerWheelHeightFt { get; init; } = 30.0;
 
-    /// <summary>Target pitch (degrees) commanded during the flare phase. Per-aircraft because
-    /// manufacturer flare pitch attitudes vary: Boeing FCTM specifies a 2–3° pitch increase
-    /// from approach attitude (777 ≈ +1.5° approach → ~+4–4.5° flare), while Airbus aircraft
-    /// flare to ~+5–6° (default). Used directly by <c>CalculateDesiredPitch</c> in the Flare
-    /// branch, rate-limited from the previous pitch by <c>MAX_FLARE_PITCH_RATE</c> so the
-    /// desired-tone frequency doesn't step. Keep within 3–8°.</summary>
-    public double FlareTargetPitchDeg { get; init; } = 6.0;
+    /// <summary>The largest bank (degrees) visual guidance asks for while it turns the aircraft onto
+    /// final or vectors it there (<c>VisualGuidanceJoin</c>). Per-aircraft because a light aircraft
+    /// on a tight circuit and an airliner on a wide one have different habitual banks. Default 25°,
+    /// the bank today's intercept already asked for, and the standard-rate figure for an airliner at
+    /// approach speeds; the precision track near the centreline keeps its own 10° limit.</summary>
+    public double MaxApproachBankDeg { get; init; } = 25.0;
+
+    /// <summary>The shortest final (nm from the threshold) visual guidance joins when it picks the
+    /// route itself, and the nearest point at which a heading from ATC may meet final and still
+    /// count as "Joining final" (<c>VisualGuidanceJoin.Decide</c>). Per-aircraft because an airliner
+    /// wants several miles of final to be stable while a light aircraft's circuit joins final at
+    /// about a mile. Default 6.0 nm, the owner's starting value for airliners (2026-11-04), to be
+    /// revisited after testing.</summary>
+    public double MinimumFinalNm { get; init; } = 6.0;
+
+    /// <summary>The stable gate: the height (ft above the threshold) by which the aircraft should be
+    /// on the path. Visual guidance says "Too high" when even its steepest cue cannot reach the path by
+    /// here, and "Too low" once more if still low passing it; it never says "go around". Per-aircraft
+    /// because airline rules set 1,000 ft (the default) while a light aircraft's circuit joins final
+    /// at about 400 ft, so light aircraft take about 300 (the owner's choice, 2026-11-06).</summary>
+    public double StableGateFt { get; init; } = 1000.0;
 }
 
 /// <summary>
