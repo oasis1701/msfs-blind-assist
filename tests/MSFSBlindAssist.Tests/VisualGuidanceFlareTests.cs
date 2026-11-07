@@ -38,15 +38,44 @@ public class VisualGuidanceFlareTests
         Assert.False(VisualGuidanceFlare.Starts(30.5, 300, Backstop, T));
     }
 
-    // "Flare" at 2.5 s (30 ft at 740 fpm), or at the flare height, whichever first.
+    // "Flare" 1 s before the flare starts and "Prepare to flare" 4 s before (the owner, 2026-11-06): at 742 fpm
+    // the flare starts at 53 ft, "Flare" at 65.5 ft, "Prepare to flare" at 102.6 ft.
     [Fact]
-    public void The_word_comes_two_and_a_half_seconds_out()
+    public void The_calls_come_one_and_four_seconds_before_the_flare()
     {
-        Assert.False(VisualGuidanceFlare.CallDue(31.0, 740, Backstop, T));  // 2.51 s
-        Assert.True(VisualGuidanceFlare.CallDue(30.8, 740, Backstop, T));
-        Assert.True(VisualGuidanceFlare.CallDue(41.6, 1000, Backstop, T));  // 2.50 s, above the flare height
-        Assert.False(VisualGuidanceFlare.CallDue(31, 300, Backstop, T));
-        Assert.True(VisualGuidanceFlare.CallDue(30, 300, Backstop, T));
+        Assert.Equal(1.0, VisualGuidanceFlare.TimeToStartS(65.54, 742, Backstop, T), 0.01);
+        Assert.True(VisualGuidanceFlare.CallDue(65.4, 742, Backstop, T));
+        Assert.False(VisualGuidanceFlare.CallDue(65.8, 742, Backstop, T));
+        Assert.True(VisualGuidanceFlare.PrepareDue(102.5, 742, Backstop, T));
+        Assert.False(VisualGuidanceFlare.PrepareDue(103.0, 742, Backstop, T));
+    }
+
+    // Slow, the flare starts at the flare height (30 ft): at 300 fpm "Flare" at 35 ft, "Prepare to flare" at 50.
+    [Fact]
+    public void Slow_the_calls_come_before_the_flare_height()
+    {
+        Assert.True(VisualGuidanceFlare.CallDue(35.0, 300, Backstop, T));
+        Assert.False(VisualGuidanceFlare.CallDue(35.2, 300, Backstop, T));
+        Assert.True(VisualGuidanceFlare.PrepareDue(50.0, 300, Backstop, T));
+        Assert.False(VisualGuidanceFlare.PrepareDue(50.2, 300, Backstop, T));
+    }
+
+    // Fast, the flare starts at the band's top (100 ft) once touchdown is 4.3 s away: at 1,500 fpm "Flare" at 125 ft.
+    [Fact]
+    public void Fast_the_flare_starts_at_the_band_and_the_calls_come_before_it()
+    {
+        Assert.True(VisualGuidanceFlare.CallDue(125, 1500, Backstop, T));
+        Assert.False(VisualGuidanceFlare.CallDue(126, 1500, Backstop, T));
+        Assert.True(VisualGuidanceFlare.PrepareDue(200, 1500, Backstop, T));
+        Assert.False(VisualGuidanceFlare.PrepareDue(201, 1500, Backstop, T));
+    }
+
+    [Fact]
+    public void Climbing_never_starts_the_flare_and_a_started_one_is_now()
+    {
+        Assert.Equal(double.PositiveInfinity, VisualGuidanceFlare.TimeToStartS(80, -300, Backstop, T));
+        Assert.Equal(double.PositiveInfinity, VisualGuidanceFlare.TimeToStartS(80, 0, Backstop, T));
+        Assert.Equal(0.0, VisualGuidanceFlare.TimeToStartS(40, 740, Backstop, T));
     }
 
     // τ is chosen so the profile starts at the aircraft's own sink and eases to 150 fpm at touchdown.

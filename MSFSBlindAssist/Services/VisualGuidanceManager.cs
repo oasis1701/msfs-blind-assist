@@ -137,9 +137,13 @@ public class VisualGuidanceManager : IDisposable
     // The flare's time constant (stage 6, VisualGuidanceFlare.TauS), set once when the flare starts so its
     // sink profile starts at the aircraft's own descent rate; +∞ asks for the touchdown rate from the start.
     private double flareTauS = double.PositiveInfinity;
-    // "Flare" has been said this approach; armed again only above the flare's band (a go-around), so a
-    // balloon or a bounce is not said again (stage 6).
+    // "Flare" and "Prepare to flare" have been said this approach; armed again only when climbing above the
+    // flare's band (a go-around), so a balloon or a bounce is not said again (stage 6), and a call made above
+    // the band on the way down is not repeated.
     private bool flareCalled;
+    private bool flarePrepareCalled;
+    // A climb at least this fast above the flare's band arms the flare's calls again (a go-around, not a gust).
+    private const double FLARE_REARM_CLIMB_FPM = 200.0;
 
     // Announcement tracking
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
@@ -170,6 +174,7 @@ public class VisualGuidanceManager : IDisposable
     // reworded line is measured the same way, never estimated (VG-1, VG-21).
     private const double HOLD_ACTIVATION_S = 4.0;          // "Visual guidance active, runway 27L" 3.31 s
     private const double HOLD_FLARE_S = 0.6;               // "Flare" 0.49 s
+    private const double HOLD_FLARE_PREPARE_S = 1.3;       // "Prepare to flare" 1.07 s (2026-11-06)
     private const double HOLD_TOUCHDOWN_S = 0.9;           // "Touchdown" 0.72 s
     // Joining final's lines, measured 2026-11-04 the same way.
     private const double HOLD_ON_FINAL_S = 0.9;            // "On final" 0.70 s
@@ -362,7 +367,11 @@ public class VisualGuidanceManager : IDisposable
             AltitudeErrorFt: lastCalculatedAltitudeError,
             TargetFpm: lastCalculatedTargetFPM,
             WheelHeightFt: heightFt - flareAltitudeBiasFt,
-            Warning: FinalWarning(VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm, heightFt));
+            Warning: FinalWarning(VisualGuidanceJoin.Locate(lat, lon, runway).AlongNm, heightFt),
+            // On final the flare's calls once said (VG-22): "Prepare to flare", then "Flare" in the second before it starts.
+            FlareCall: currentPhase != GuidancePhase.Final ? VisualGuidanceFlareCall.None
+                : flareCalled ? VisualGuidanceFlareCall.Flare
+                : flarePrepareCalled ? VisualGuidanceFlareCall.Prepare : VisualGuidanceFlareCall.None);
         // Joining and vectoring: the join from here (the countdown speaks the same time), the pattern's leg,
         // and the path's altitude there (stage 5, plan decision 8): vectoring falls back on the minimum final
         // as its plan does; joining says it only while its heading crosses final.
@@ -560,6 +569,7 @@ public class VisualGuidanceManager : IDisposable
         // Reset flare state
         flareTauS = double.PositiveInfinity;
         flareCalled = false;
+        flarePrepareCalled = false;
 
         // Instantiate both generators and apply the aircraft's pitch→frequency mapping. We do
         // NOT Start() them yet — the first ProcessUpdate call kicks off audio output once real
@@ -1131,7 +1141,13 @@ public class VisualGuidanceManager : IDisposable
         var tuning = VerticalTuningForHarness;
         // The smoothed descent rate, never the raw vertical speed (VG-25), so a gust starts nothing early.
         double sinkFpm = VisualGuidanceFlare.SinkFpm(trimLearner.PathAngleDeg, currentGroundSpeedKnots);
-        if (wheelHeightAGL > tuning.FlareEndWheelFt) flareCalled = false;
+        // A go-around arms the flare's calls again: climbing above the flare's band, not merely above it, since
+        // "Prepare to flare", and "Flare" on a fast descent, are said above the band on the way down.
+        if (wheelHeightAGL > tuning.FlareEndWheelFt && sinkFpm < -FLARE_REARM_CLIMB_FPM)
+        {
+            flareCalled = false;
+            flarePrepareCalled = false;
+        }
 
         // A balloon or a bounce stays in the flare with the profile it started with; only above the
         // flare's band (100 ft, a go-around) is it final again, the path's cue leaving from the flare's
@@ -1146,6 +1162,10 @@ public class VisualGuidanceManager : IDisposable
             else currentPhase = GuidancePhase.Final;
             return;
         }
+
+        // On final, before the flare: "Prepare to flare", then "Flare" just before it starts.
+        if (currentPhase == GuidancePhase.Final)
+            SayFlareCallsWhenDue(wheelHeightAGL, sinkFpm, tuning);
 
         // The flare starts by time to touchdown (4.3 s), or at the aircraft's own flare height (777 = 40 to
         // match the autopilot's autoland; A320 = 30 from FCTM), whichever comes first (VG-27). From any
@@ -1808,17 +1828,39 @@ public class VisualGuidanceManager : IDisposable
     /// Announces phase changes; <paramref name="holdSeconds"/> is the line's measured speaking time (VG-21).
     /// </summary>
     /// <summary>
-    /// "Flare" (stage 6, VG-27): once per approach, queued with its measured hold, on the first update in
-    /// the flare when touchdown is <see cref="VisualGuidanceVerticalTuning.FlareCallS"/> away at the smoothed
-    /// descent rate (30 ft at 740 fpm) or the wheels are at the aircraft's flare height, whichever comes
-    /// first; so earlier when coming down faster, and never before the flare has started. Said through
-    /// <see cref="Say"/>, not <see cref="AnnouncePhaseChange"/>, whose one-second gap could drop it for good.
+    /// "Flare" (stage 6, VG-27): once per approach, queued with its measured hold, when the flare is
+    /// <see cref="VisualGuidanceVerticalTuning.FlareCallLeadS"/> away at the smoothed descent rate (about 65 ft
+    /// at 740 fpm) or has started (Ctrl+V pressed low), so the pilot is pulling as the tone rises. Until
+    /// 2026-11-06 it came 2.5 s before touchdown, about 2 s after the tone had started rising (the owner:
+    /// "why does flare get announced in the middle of the action"). Said through <see cref="Say"/>, not
+    /// <see cref="AnnouncePhaseChange"/>, whose one-second gap could drop it for good. No "Prepare to flare" after it.
     /// </summary>
     private void SayFlareWhenDue(double wheelFt, double sinkFpm, VisualGuidanceVerticalTuning tuning)
     {
         if (flareCalled || !VisualGuidanceFlare.CallDue(wheelFt, sinkFpm, flareTriggerWheelHeightFt, tuning)) return;
         flareCalled = true;
+        flarePrepareCalled = true;
         Say("Flare", immediate: false, HOLD_FLARE_S);
+    }
+
+    /// <summary>
+    /// On final, before the flare: "Flare" when it is due, else "Prepare to flare" once, queued with its measured
+    /// hold, when the flare is <see cref="VisualGuidanceVerticalTuning.FlarePrepareLeadS"/> away at the smoothed
+    /// descent rate (about 100 ft at 740 fpm, higher when coming down faster). The owner, 2026-11-06: from 100 ft
+    /// to the flare can take longer than the aircraft's own callouts suggest, "so I do want a ready to flare
+    /// call out", then the wording "prepare" rather than "ready".
+    /// </summary>
+    private void SayFlareCallsWhenDue(double wheelFt, double sinkFpm, VisualGuidanceVerticalTuning tuning)
+    {
+        if (flareCalled) return;
+        if (VisualGuidanceFlare.CallDue(wheelFt, sinkFpm, flareTriggerWheelHeightFt, tuning))
+        {
+            SayFlareWhenDue(wheelFt, sinkFpm, tuning);
+            return;
+        }
+        if (flarePrepareCalled || !VisualGuidanceFlare.PrepareDue(wheelFt, sinkFpm, flareTriggerWheelHeightFt, tuning)) return;
+        flarePrepareCalled = true;
+        Say("Prepare to flare", immediate: false, HOLD_FLARE_PREPARE_S);
     }
 
     private void AnnouncePhaseChange(string message, double holdSeconds)

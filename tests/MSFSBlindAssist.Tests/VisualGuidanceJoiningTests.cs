@@ -286,7 +286,7 @@ public class VisualGuidanceJoiningTests
     {
         var (rig, _) = RecordedAt(-1, 3, 180);
         rig.FlyFor(5, 30);
-        Assert.Equal("Vectoring to final, downwind, joining 6.0 miles out. 3.0 miles right of final. Path there 2,470 feet, you're on it, target level.",
+        Assert.Equal("Vectoring to a 6.0 mile final, downwind. 3.0 miles right of final. Path there 2,470 feet, you're on it, target level.",
             rig.Readout);
     }
 
@@ -301,7 +301,7 @@ public class VisualGuidanceJoiningTests
         double seconds = (1.5 - VisualGuidanceJoin.TurnCueCrossNm(90, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0)) / (140.0 / 3600);
         Assert.InRange(seconds, 8.0, 9.5);
         // On the 3° path at 7.6 nm, about 510 ft above the path's altitude at the 6.0 nm join point.
-        Assert.Matches(@"^Vectoring to final, base, joining 6\.0 miles out\. 1\.5 miles right of final, turn in about 10 seconds\. "
+        Assert.Matches(@"^Vectoring to a 6\.0 mile final, base\. 1\.5 miles right of final, turn in about 10 seconds\. "
             + @"Path there 2,4[67]0 feet, you're 5[0-2]0 high, target ([0-9,]+ down|level)\.$", rig.Readout);
     }
 
@@ -351,7 +351,7 @@ public class VisualGuidanceJoiningTests
         var at = new VisualGuidanceApproachPoint(10, 1.8);
         double cut = VisualGuidanceJoin.Decide(at, 0, 140, VisualGuidanceJoin.DefaultCaptureGain, profile).ClampDeg;
         Assert.Equal(6.19, VisualGuidanceJoin.JoinAlongNm(at, 0, cut, 140, VisualGuidanceJoin.DefaultCaptureGain, profile), 0.01);
-        Assert.StartsWith("Vectoring to final, joining 6.2 miles out.", rig.Readout);
+        Assert.StartsWith("Vectoring to a 6.2 mile final.", rig.Readout);
     }
 
     // Heading away from final there is no time to the turn yet.
@@ -488,7 +488,8 @@ public class VisualGuidanceJoiningTests
         var (rig, _) = RecordedAt(12, 2.9, -30);
         double join = 12 - VisualGuidanceJoin.AlongToEstablishNm(2.9, 30, 140, VisualGuidanceJoin.DefaultCaptureGain);
         double seconds = VisualGuidanceJoin.SecondsToTurn(2.9, 30, 30, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0)!.Value;
-        string expected = $"Joining final {join.ToString("0.0", CultureInfo.InvariantCulture)} miles out. 30 degree intercept, " +
+        // About a 6.6 mile final, so "a".
+        string expected = $"Joining a {join.ToString("0.0", CultureInfo.InvariantCulture)} mile final. 30 degree intercept, " +
             $"turn in about {(Math.Round(seconds / 5, MidpointRounding.AwayFromZero) * 5).ToString("0", CultureInfo.InvariantCulture)} seconds.";
         // Then the path there (stage 5): about 2,670 ft at the 6.6 nm join point, the aircraft 1,710 ft above
         // it (on the path's height for 12 nm); no target, the altitude being ATC's or the pilot's.

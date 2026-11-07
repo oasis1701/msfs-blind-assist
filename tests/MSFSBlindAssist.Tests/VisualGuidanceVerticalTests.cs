@@ -162,7 +162,8 @@ public class VisualGuidanceVerticalTests
         Assert.Equal(1.5, t.HoldBreakPitchDeg);
         // The flare's (stage 6): the owner's starting values.
         Assert.Equal(4.3, t.FlareStartS);
-        Assert.Equal(2.5, t.FlareCallS);
+        Assert.Equal(4.0, t.FlarePrepareLeadS);   // "Prepare to flare" 4 s before the flare (the owner, 2026-11-06)
+        Assert.Equal(1.0, t.FlareCallLeadS);    // "Flare" 1 s before it (was 2.5 s before touchdown)
         Assert.Equal(150.0, t.TouchdownSinkFpm);
         Assert.Equal(100.0, t.FlareEndWheelFt);
         Assert.Equal(1.0, t.FlareCorrectionGain);   // the harness's pick, the owner's yes (2026-11-06)

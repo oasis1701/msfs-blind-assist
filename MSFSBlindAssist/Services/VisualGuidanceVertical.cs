@@ -31,8 +31,16 @@ internal sealed record VisualGuidanceVerticalTuning
     public double HoldBreakPitchDeg { get; init; } = 1.5;
     /// <summary>The flare starts this long before touchdown: FlyByWire's flare law starts at about 4.3 s.</summary>
     public double FlareStartS { get; init; } = 4.3;
-    /// <summary>"Flare" is said this long before touchdown: 30 ft, the A320's manual flare height, at 740 fpm.</summary>
-    public double FlareCallS { get; init; } = 2.5;
+    /// <summary>
+    /// "Prepare to flare" is said this long before the flare starts (the owner, 2026-11-06: from 100 ft to the
+    /// flare can take longer than the aircraft's own callouts suggest): about 100 ft at 740 fpm.
+    /// </summary>
+    public double FlarePrepareLeadS { get; init; } = 4.0;
+    /// <summary>
+    /// "Flare" is said this long before the flare starts, so the pilot is pulling as the tone rises: about
+    /// 65 ft at 740 fpm. It was 2.5 s before touchdown until 2026-11-06, after the tone had started.
+    /// </summary>
+    public double FlareCallLeadS { get; init; } = 1.0;
     /// <summary>The flare's sink rate at touchdown, fpm: FlyByWire's flare law's.</summary>
     public double TouchdownSinkFpm { get; init; } = 150.0;
     /// <summary>The flare's band: it starts by time only under this wheel height and ends only above it (the landing assist's go-around height).</summary>

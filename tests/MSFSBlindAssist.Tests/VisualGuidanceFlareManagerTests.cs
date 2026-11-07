@@ -172,78 +172,140 @@ public class VisualGuidanceFlareManagerTests
         Assert.Equal(3.0, rig.TargetDescent, 0.3);
     }
 
-    private static int Flares(VisualGuidanceTestRig rig) => rig.Speech.Spoken.Count(s => s.Text == "Flare");
+    private const string PrepareLine = "Prepare to flare";
 
-    // Down from one wheel height to another at sinkFpm, one update at 30 Hz per step: the heights at which "Flare" was said.
-    private static List<double> FlyDown(VisualGuidanceTestRig rig, double fromFt, double toFt, double sinkFpm)
+    private static int Count(VisualGuidanceTestRig rig, string line) => rig.Speech.Spoken.Count(s => s.Text == line);
+    private static int Flares(VisualGuidanceTestRig rig) => Count(rig, "Flare");
+
+    // Down from one wheel height to another at sinkFpm, one update at 30 Hz per step: the heights at which
+    // the line ("Flare" unless given) was said, and with each the phase before that update.
+    private static List<(double Ft, string PhaseBefore)> FlyDown(VisualGuidanceTestRig rig, double fromFt, double toFt,
+        double sinkFpm, string line = "Flare")
     {
-        var said = new List<double>();
+        var said = new List<(double, string)>();
         for (double h = fromFt; h >= toFt; h -= sinkFpm / 60.0 / 30)
         {
-            int before = Flares(rig);
+            int before = Count(rig, line);
+            string phase = rig.Phase;
             Step(rig, h, -sinkFpm);
-            if (Flares(rig) > before) said.Add(h);
+            if (Count(rig, line) > before) said.Add((h, phase));
         }
         return said;
     }
 
-    // At 742 fpm, 2.5 s out is 30.9 ft: the word comes there, once and queued, not at the flare's start (53 ft).
-    [Fact]
-    public void Flare_is_said_once_two_and_a_half_seconds_out()
+    // Settled at sinkFpm above the calls, then down to the runway: where "Prepare to flare" and "Flare" came.
+    private static (List<(double Ft, string PhaseBefore)> Ready, List<(double Ft, string PhaseBefore)> Flare) Calls(double sinkFpm, double fromFt)
     {
-        var rig = OnFinal();
-        var said = FlyDown(rig, 60, 6, 742);
-        Assert.Single(said);
-        Assert.InRange(said[0], 30.4, 31.4);
-        Assert.False(rig.Speech.Spoken.Single(s => s.Text == "Flare").Interrupted);
+        var rig = OnFinal(-sinkFpm);
+        rig.FlyFor(5, 30, _ => AtWheel(rig, fromFt, -sinkFpm));   // the smoothed descent settles at sinkFpm
+        var ready = new List<(double, string)>();
+        var flare = new List<(double, string)>();
+        for (double h = fromFt; h >= 6; h -= sinkFpm / 60.0 / 30)
+        {
+            int readyBefore = Count(rig, PrepareLine), flareBefore = Flares(rig);
+            string phase = rig.Phase;
+            Step(rig, h, -sinkFpm);
+            if (Count(rig, PrepareLine) > readyBefore) ready.Add((h, phase));
+            if (Flares(rig) > flareBefore) flare.Add((h, phase));
+        }
+        return (ready, flare);
     }
 
-    // At 300 fpm the aircraft's flare height (30 ft) comes before 2.5 s (12.5 ft): the word comes with the
-    // flare's start, on the same update.
+    // At 742 fpm the flare starts at 53 ft (4.3 s out). "Prepare to flare" comes 4 s before that, at 102.6 ft, and
+    // "Flare" 1 s before it, at 65.5 ft, while still on final, so the pilot is pulling as the tone rises (the owner,
+    // 2026-11-06: "Flare" used to come 2.5 s before touchdown, in the middle of the flare). Each once, queued.
     [Fact]
-    public void Flare_is_said_at_the_backstop_when_slow()
+    public void Prepare_to_flare_then_flare_before_the_flare_starts()
+    {
+        var (ready, flare) = Calls(742, 130);
+        var r = Assert.Single(ready);
+        var f = Assert.Single(flare);
+        Assert.InRange(r.Ft, 102.1, 102.7);
+        Assert.InRange(f.Ft, 65.1, 65.6);
+        Assert.Equal("Final", r.PhaseBefore);
+        Assert.Equal("Final", f.PhaseBefore);
+    }
+
+    [Fact]
+    public void The_calls_are_queued_not_cut_off()
     {
         var rig = OnFinal();
-        rig.FlyFor(5, 30, _ => AtWheel(rig, 90, -300));
-        double? saidAt = null;
-        for (double h = 40; h >= 20 && saidAt == null; h -= 300.0 / 60 / 30)
-        {
-            string before = rig.Phase;
-            Step(rig, h, -300);
-            if (Flares(rig) > 0)
-            {
-                saidAt = h;
-                Assert.NotEqual("Flare", before);
-                Assert.Equal("Flare", rig.Phase);
-            }
-        }
-        Assert.NotNull(saidAt);
-        Assert.InRange(saidAt!.Value, 29.8, 30.2);
-        Assert.Equal(1, Flares(rig));
+        rig.FlyFor(5, 30, _ => AtWheel(rig, 130, -742));
+        FlyDown(rig, 130, 6, 742);
+        Assert.False(rig.Speech.Spoken.Single(s => s.Text == PrepareLine).Interrupted);
+        Assert.False(rig.Speech.Spoken.Single(s => s.Text == "Flare").Interrupted);
+        Assert.True(rig.Speech.Spoken.FindIndex(s => s.Text == PrepareLine) < rig.Speech.Spoken.FindIndex(s => s.Text == "Flare"));
+    }
+
+    // Faster, both come higher: at 1,000 fpm "Prepare to flare" at 138 ft and "Flare" at 88 ft.
+    [Fact]
+    public void Coming_down_faster_the_calls_come_higher()
+    {
+        var (ready, flare) = Calls(1000, 170);
+        Assert.InRange(Assert.Single(ready).Ft, 137.5, 138.4);
+        Assert.InRange(Assert.Single(flare).Ft, 87.2, 88.4);   // 88.3 ft, within one 0.56 ft step at 30 Hz
+    }
+
+    // At 1,500 fpm the flare starts at the band's top (100 ft) and both calls come above it, each once: the
+    // calls are armed again only by a climb above the band, so the way down never repeats them.
+    [Fact]
+    public void Very_fast_the_calls_above_the_band_are_said_once()
+    {
+        var (ready, flare) = Calls(1500, 250);
+        Assert.InRange(Assert.Single(ready).Ft, 199, 200.1);
+        Assert.InRange(Assert.Single(flare).Ft, 124, 125.1);
+    }
+
+    // At 300 fpm the flare starts at the aircraft's flare height (30 ft): "Flare" a second before it, at 35 ft,
+    // and "Prepare to flare" at 50.
+    [Fact]
+    public void Slow_the_calls_come_before_the_flare_height()
+    {
+        var (ready, flare) = Calls(300, 90);
+        Assert.InRange(Assert.Single(ready).Ft, 49.8, 50.1);
+        var f = Assert.Single(flare);
+        Assert.InRange(f.Ft, 34.8, 35.1);
+        Assert.Equal("Final", f.PhaseBefore);
     }
 
     [Fact]
     public void A_balloon_is_not_said_again()
     {
         var rig = OnFinal();
-        Assert.Single(FlyDown(rig, 60, 25, 742));
+        rig.FlyFor(5, 30, _ => AtWheel(rig, 130, -742));
+        Assert.Single(FlyDown(rig, 130, 25, 742));
         rig.FlyFor(1, 30, _ => AtWheel(rig, 70, +300));
         Assert.Equal("Flare", rig.Phase);
         Assert.Empty(FlyDown(rig, 70, 6, 742));
         Assert.Equal(1, Flares(rig));
+        Assert.Equal(1, Count(rig, PrepareLine));
     }
 
-    // Above 100 ft (a go-around) the word is armed again for the next approach.
+    // A climb above 100 ft (a go-around) arms both calls again for the next approach.
     [Fact]
-    public void Flare_is_said_again_after_a_go_around()
+    public void The_calls_are_said_again_after_a_go_around()
     {
         var rig = OnFinal();
-        Assert.Single(FlyDown(rig, 60, 25, 742));
-        rig.FlyFor(1, 30, _ => AtWheel(rig, 101, +500));
+        rig.FlyFor(5, 30, _ => AtWheel(rig, 130, -742));
+        Assert.Single(FlyDown(rig, 130, 25, 742));
+        rig.FlyFor(3, 30, _ => AtWheel(rig, 150, +1000));
         Assert.Equal("Final", rig.Phase);
-        rig.FlyFor(5, 30, _ => AtWheel(rig, 101, -742));   // the smoothed descent settles again
-        Assert.Single(FlyDown(rig, 100, 6, 742));
+        rig.FlyFor(5, 30, _ => AtWheel(rig, 150, -742));   // the smoothed descent settles again
+        Assert.Single(FlyDown(rig, 150, 6, 742));
         Assert.Equal(2, Flares(rig));
+        Assert.Equal(2, Count(rig, PrepareLine));
+    }
+
+    // F on final repeats the call once said (VG-22): "Prepare to flare." until "Flare" comes.
+    [Fact]
+    public void F_on_final_repeats_prepare_to_flare()
+    {
+        var rig = OnFinal();
+        rig.FlyFor(5, 30, _ => AtWheel(rig, 130, -742));
+        Assert.DoesNotContain("flare", rig.Readout, StringComparison.OrdinalIgnoreCase);
+        FlyDown(rig, 130, 90, 742);
+        Assert.StartsWith("On final", rig.Readout);
+        Assert.EndsWith(" Prepare to flare.", rig.Readout);
     }
 
     // F in the flare adds the target, to 50 fpm: τ from 53 ft at 742 fpm, at 20 ft 20 × 60 / 5.37 + 150 = 373.

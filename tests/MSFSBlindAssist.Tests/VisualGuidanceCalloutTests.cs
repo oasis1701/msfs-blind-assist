@@ -107,7 +107,7 @@ public class VisualGuidanceCalloutTests
             Assert.StartsWith(expected, rig.Readout);
         else
         {
-            Assert.StartsWith("Vectoring to final, joining ", rig.Readout);
+            Assert.StartsWith("Vectoring to a", rig.Readout);
             Assert.Contains(expected, rig.Readout);
         }
     }

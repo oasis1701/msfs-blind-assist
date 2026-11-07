@@ -8,8 +8,9 @@ namespace MSFSBlindAssist.Services;
 ///
 /// The flare starts when the time to touchdown first reaches <see cref="VisualGuidanceVerticalTuning.FlareStartS"/>
 /// (under <see cref="VisualGuidanceVerticalTuning.FlareEndWheelFt"/>) or at the profile's flare height,
-/// whichever comes first; "Flare" is due at <see cref="VisualGuidanceVerticalTuning.FlareCallS"/> or the
-/// same height. The target sink eases from the aircraft's own at the flare's start to
+/// whichever comes first; "Prepare to flare" is due <see cref="VisualGuidanceVerticalTuning.FlarePrepareLeadS"/>
+/// before that start and "Flare" <see cref="VisualGuidanceVerticalTuning.FlareCallLeadS"/> before it
+/// (<see cref="TimeToStartS"/>). The target sink eases from the aircraft's own at the flare's start to
 /// <see cref="VisualGuidanceVerticalTuning.TouchdownSinkFpm"/> at touchdown through the landing assist's own
 /// <see cref="LandingGuidanceLaws.FlareTargetVsFpm"/>, so the target is always a descent. The cue adds a lead while the aircraft still sinks faster than the
 /// target, so it can briefly sit above the level attitude then; floating or ballooning it is the target's
@@ -43,9 +44,28 @@ internal static class VisualGuidanceFlare
         => wheelFt <= backstopFt
            || (wheelFt <= t.FlareEndWheelFt && TimeToTouchdownS(wheelFt, sinkFpm) <= t.FlareStartS);
 
-    /// <summary>"Flare" is due: at the flare height, or with touchdown <see cref="VisualGuidanceVerticalTuning.FlareCallS"/> away.</summary>
+    /// <summary>
+    /// Seconds until the flare starts at this sink (<see cref="Starts"/>): 0 once it would start, +∞ when
+    /// level, climbing or not a number. By time it needs both touchdown <see cref="VisualGuidanceVerticalTuning.FlareStartS"/>
+    /// away and the wheels under the flare's band; by height, the wheels at the flare height.
+    /// </summary>
+    public static double TimeToStartS(double wheelFt, double sinkFpm, double backstopFt, VisualGuidanceVerticalTuning t)
+    {
+        if (Starts(wheelFt, sinkFpm, backstopFt, t)) return 0.0;
+        if (!double.IsFinite(wheelFt) || !double.IsFinite(sinkFpm) || sinkFpm <= 0) return double.PositiveInfinity;
+        double ftPerS = sinkFpm / 60.0;
+        double byTime = Math.Max(TimeToTouchdownS(wheelFt, sinkFpm) - t.FlareStartS, (wheelFt - t.FlareEndWheelFt) / ftPerS);
+        double byHeight = (wheelFt - backstopFt) / ftPerS;
+        return Math.Max(0.0, Math.Min(byTime, byHeight));
+    }
+
+    /// <summary>"Prepare to flare" is due: the flare <see cref="VisualGuidanceVerticalTuning.FlarePrepareLeadS"/> or less away.</summary>
+    public static bool PrepareDue(double wheelFt, double sinkFpm, double backstopFt, VisualGuidanceVerticalTuning t)
+        => TimeToStartS(wheelFt, sinkFpm, backstopFt, t) <= t.FlarePrepareLeadS;
+
+    /// <summary>"Flare" is due: the flare <see cref="VisualGuidanceVerticalTuning.FlareCallLeadS"/> or less away, or started.</summary>
     public static bool CallDue(double wheelFt, double sinkFpm, double backstopFt, VisualGuidanceVerticalTuning t)
-        => wheelFt <= backstopFt || TimeToTouchdownS(wheelFt, sinkFpm) <= t.FlareCallS;
+        => TimeToStartS(wheelFt, sinkFpm, backstopFt, t) <= t.FlareCallLeadS;
 
     /// <summary>
     /// The profile's time constant, set once at the flare's start, so the target starts at the aircraft's

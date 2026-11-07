@@ -25,12 +25,16 @@ internal readonly record struct VisualGuidanceStatus(VisualGuidanceReadoutPhase 
     double AltitudeErrorFt, double TargetFpm, double WheelHeightFt,
     VisualGuidanceLegKind Leg = VisualGuidanceLegKind.Final, double InterceptDeg = 0, bool Turning = false,
     bool CrossesFinal = true, double JoinAlongNm = 0, double? SecondsToTurn = null, bool FinalToTheRight = false,
-    double? JoinPathMslFt = null, double JoinHeightErrorFt = 0, VisualGuidanceVerticalWarning Warning = VisualGuidanceVerticalWarning.None);
+    double? JoinPathMslFt = null, double JoinHeightErrorFt = 0, VisualGuidanceVerticalWarning Warning = VisualGuidanceVerticalWarning.None,
+    VisualGuidanceFlareCall FlareCall = VisualGuidanceFlareCall.None);
+
+/// <summary>The flare's call already said on final, before the flare starts: F repeats it (VG-22).</summary>
+internal enum VisualGuidanceFlareCall { None, Prepare, Flare }
 
 /// <summary>
 /// Composes F's sentence: the phase first, then where the aircraft is sideways, then where it is
 /// vertically, for example "On final, 6.2 miles. On the centreline. 40 feet high, target 750 down." or
-/// "Joining final 6.4 miles out. 30 degree intercept, turn in about 85 seconds. Path there 2,470 feet,
+/// "Joining a 6.4 mile final. 30 degree intercept, turn in about 85 seconds. Path there 2,470 feet,
 /// you're 300 high." Before final the vertical half is the path's altitude at the join point (MSL, what
 /// the altimeter and ATC use) and the height against it now; vectoring adds BA's target, joining none,
 /// since the altitude is ATC's or the pilot's there (plan decision 8). Also the lines BA speaks on its
@@ -48,12 +52,20 @@ internal static class VisualGuidanceStatusText
         VisualGuidanceReadoutPhase.Joining => Joining(s),
         VisualGuidanceReadoutPhase.Vectoring => Vectoring(s),
         VisualGuidanceReadoutPhase.OnFinal =>
-            $"On final, {Tenths(s.DistanceNm)} miles. {Side(s.CrossTrackNm)}. {Vertical(s)}.",
+            $"On final, {Tenths(s.DistanceNm)} miles. {Side(s.CrossTrackNm)}. {Vertical(s)}.{FlareCallText(s.FlareCall)}",
         VisualGuidanceReadoutPhase.Flare =>
             $"Flare, {Math.Max(0, Math.Round(s.WheelHeightFt, MidpointRounding.AwayFromZero)).ToString("0", Inv)} feet. {Side(s.CrossTrackNm)}. {Capitalised(Target(s.TargetFpm))}.",
         VisualGuidanceReadoutPhase.Touchdown =>
             $"Touchdown. {Side(s.CrossTrackNm)}.",
         _ => "Visual guidance starting.",
+    };
+
+    // " Prepare to flare." or " Flare." after the final sentence, once BA has said it; nothing before.
+    private static string FlareCallText(VisualGuidanceFlareCall call) => call switch
+    {
+        VisualGuidanceFlareCall.Prepare => " Prepare to flare.",
+        VisualGuidanceFlareCall.Flare => " Flare.",
+        _ => "",
     };
 
     /// <summary>"You'll be 1,700 feet high at final": joining, once level (plan decision 10).</summary>
@@ -80,20 +92,32 @@ internal static class VisualGuidanceStatusText
     {
         if (s.Turning) return $"Joining final, turning onto final. {FinalSide(s.CrossTrackNm)}.{PathThere(s, withTarget: false)}";
         if (!s.CrossesFinal) return $"Joining final. Heading does not cross final. {WhereFinalIs(s)}.";
-        return $"Joining final {Tenths(s.JoinAlongNm)} miles out. {FivesAtLeastFive(s.InterceptDeg)} degree intercept{TurnIn(s)}."
+        return $"Joining {MileFinal(s.JoinAlongNm)}. {FivesAtLeastFive(s.InterceptDeg)} degree intercept{TurnIn(s)}."
             + PathThere(s, withTarget: false);
     }
 
-    // The pattern names its leg: the downwind has no time to the turn onto final yet; the base counts down to it.
+    // "a 6.4 mile final", "an 8.8 mile final": "an" before a number spoken with a vowel sound (eight,
+    // eighty-, eleven, eighteen).
+    private static string MileFinal(double nm)
+    {
+        string number = Tenths(nm);
+        string whole = number.Split('.')[0];
+        bool vowel = whole.StartsWith('8') || whole is "11" or "18";
+        return $"{(vowel ? "an" : "a")} {number} mile final";
+    }
+
+    // "A 6.4 mile final": the length of final the aircraft will be lined up on, in the pilot's and ATC's words
+    // (the owner, 2026-11-06: "Joining final 6.4 miles out" was vague). The pattern names its leg after it: the
+    // downwind has no time to the turn onto final yet; the base counts down to it.
     private static string Vectoring(in VisualGuidanceStatus s) => s.Leg switch
     {
         VisualGuidanceLegKind.Downwind =>
-            $"Vectoring to final, downwind, joining {Tenths(s.JoinAlongNm)} miles out. {FinalSide(s.CrossTrackNm)}.{PathThere(s, withTarget: true)}",
+            $"Vectoring to {MileFinal(s.JoinAlongNm)}, downwind. {FinalSide(s.CrossTrackNm)}.{PathThere(s, withTarget: true)}",
         VisualGuidanceLegKind.Base =>
-            $"Vectoring to final, base, joining {Tenths(s.JoinAlongNm)} miles out. {FinalSide(s.CrossTrackNm)}{TurnIn(s)}.{PathThere(s, withTarget: true)}",
+            $"Vectoring to {MileFinal(s.JoinAlongNm)}, base. {FinalSide(s.CrossTrackNm)}{TurnIn(s)}.{PathThere(s, withTarget: true)}",
         _ => s.Turning
             ? $"Vectoring to final, turning onto final. {FinalSide(s.CrossTrackNm)}.{PathThere(s, withTarget: true)}"
-            : $"Vectoring to final, joining {Tenths(s.JoinAlongNm)} miles out. {FinalSide(s.CrossTrackNm)}{TurnIn(s)}.{PathThere(s, withTarget: true)}",
+            : $"Vectoring to {MileFinal(s.JoinAlongNm)}. {FinalSide(s.CrossTrackNm)}{TurnIn(s)}.{PathThere(s, withTarget: true)}",
     };
 
     // " Path there 2,470 feet, you're 300 high[, target 800 down]." with a leading space; nothing without a join point.
