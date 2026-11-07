@@ -14,5 +14,7 @@ miles out, 80 feet high"). The flare now starts about 4 seconds before touchdown
 descent to a gentle touchdown: "Prepare to flare" warns you about 4 seconds before it, and "Flare"
 comes just before it starts, so you raise the nose as the tone rises. In a crosswind BA keeps your
 path on the centreline all the way down; straighten the nose with the rudder in the flare. Press F
-at any time to hear where you are ("Joining a 6.4 mile final"), and bank callouts are said the
-moment the number changes, with "Matched, level" when you are tracking the line.
+at any time to hear where you are ("Joining a 6.4 mile final"); before final it also says where the
+centreline is from you ("Centreline 3.0 miles to your right", or "ahead" on a base leg). Bank
+callouts are said the moment the number changes, with "Matched, level" when you are tracking the
+line.
