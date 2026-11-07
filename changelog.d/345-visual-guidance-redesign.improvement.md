@@ -9,6 +9,8 @@ The pitch tone now flies a real 3-degree glide path, set from the nose attitude 
 level at, which BA learns as you fly. BA warns you once if you are too high or too low to make it
 ("Too high, 600 feet above the path"), and the mile calls add your height against the path ("3
 miles out, 80 feet high"). The flare now starts about 4 seconds before touchdown and eases your
-descent to a gentle touchdown, with "Flare" said once. In a crosswind BA keeps your path on the
-centreline all the way down; straighten the nose with the rudder in the flare. Press F at any time
-to hear where you are, and bank callouts are said the moment the number changes.
+descent to a gentle touchdown: "Prepare to flare" warns you about 4 seconds before it, and "Flare"
+comes just before it starts, so you raise the nose as the tone rises. In a crosswind BA keeps your
+path on the centreline all the way down; straighten the nose with the rudder in the flare. Press F
+at any time to hear where you are ("Joining a 6.4 mile final"), and bank callouts are said the
+moment the number changes, with "Matched, level" when you are tracking the line.
