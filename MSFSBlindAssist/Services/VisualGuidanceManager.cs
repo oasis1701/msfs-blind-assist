@@ -146,8 +146,8 @@ public class VisualGuidanceManager : IDisposable
     private DateTime lastDistanceAnnouncement = DateTime.MinValue;
     private readonly HashSet<double> armedMileMarks = new();   // the mile marks still to be said on the way in
     private bool distanceCalloutsPrimed;   // the first update after Ctrl+V arms the marks still ahead
-    // Decides when a bank callout is spoken (VG-21); rebuilt in Initialize with the profile's tone bank range.
-    private VisualGuidanceBankCalloutGate bankCalloutGate = new(new VisualGuidanceProfile().ToneBankRangeDeg);
+    // Decides when a bank callout is spoken (VG-21); rebuilt in Initialize.
+    private VisualGuidanceBankCalloutGate bankCalloutGate = new();
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
 
     // Manual-query grace window (VG-19). When the pilot fires a readout hotkey (F status,
@@ -515,9 +515,8 @@ public class VisualGuidanceManager : IDisposable
         lastDistanceAnnouncement = DateTime.MinValue;
         armedMileMarks.Clear();
         distanceCalloutsPrimed = false;
-        // A fresh gate (nothing spoken, no holds) on this aircraft's tone bank range: past it both
-        // tones are pinned and only the callouts say how far (VG-21).
-        bankCalloutGate = new VisualGuidanceBankCalloutGate(profile.ToneBankRangeDeg);
+        // A fresh gate: nothing spoken yet (VG-21).
+        bankCalloutGate = new VisualGuidanceBankCalloutGate();
         routineAnnouncementsSuppressedUntil = DateTime.MinValue;
         cachedLatitude = null;
         cachedLongitude = null;
@@ -1982,10 +1981,10 @@ public class VisualGuidanceManager : IDisposable
     private const double MILE_CALL_REARM_NM = 0.3;
 
     /// <summary>
-    /// Speaks the bank error ("3 right", "matched") when <see cref="VisualGuidanceBankCalloutGate"/>
-    /// says one is due (VG-21). The gate sees every update, including those inside a manual-query
-    /// grace window, where it may not speak (VG-19): when the window ends, a callout that came due
-    /// during it speaks the error as it is then, at once, not timed again from zero.
+    /// Speaks the bank error ("3 right", "matched") the update it changes, through
+    /// <see cref="VisualGuidanceBankCalloutGate"/> (VG-21). The gate sees every update, including those
+    /// inside a manual-query grace window or a line's hold, where it may not speak (VG-19): when the
+    /// window ends, it speaks the error as it is then, at once.
     /// </summary>
     private void AnnounceBankGuidance(double desiredBankDegrees)
     {
@@ -2001,7 +2000,7 @@ public class VisualGuidanceManager : IDisposable
         double bankNow = StandardBank(cachedBank.Value);
         bool deliberateTurn = currentPhase == GuidancePhase.Joining && !turnOntoFinalDue
             && Math.Abs(bankNow) >= VisualGuidanceJoin.DecideBankDeg;
-        string? callout = bankCalloutGate.Next(ClockForHarness(), desiredBankDegrees, bankNow,
+        string? callout = bankCalloutGate.Next(desiredBankDegrees, bankNow,
             maySpeak: !RoutineAnnouncementsSuppressed && currentPhase != GuidancePhase.Deciding && !deliberateTurn);
         if (callout != null)
             Say(callout, immediate: true, holdSeconds: 0);

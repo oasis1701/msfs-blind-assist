@@ -220,12 +220,10 @@ If another program is already using one of these keys, BA tells you *"Visual gui
 
 When they come:
 
-- As soon as you go a degree or more off, for example drifting off on final or hit by a gust, BA says so a quarter of a second later, as long as the tones can still show the error (up to 5 degrees on most aircraft).
-- A bigger one, where both tones sit fully to one side, is spoken once you stop rolling, so you hear the number you still need, not a string of numbers while you roll.
+- At once, every time the number changes by a degree. While you roll you hear the numbers count down, each new one cutting off the last, so the one you hear is always the one you need now.
 - *"matched"* is said once when you get within about half a degree, and BA stays quiet until you are a full degree off again.
-- A small steady error under a degree is spoken after a second and a half.
 - Each callout is said once. BA speaks again when the number changes, not on a timer.
-- There is always at least a second between bank callouts, so none cuts off the one before, and BA waits for its own announcements, such as *"Flare"* or *"5 miles out"*, to finish. A callout that falls inside that time is skipped, and the next one tells you the error as it is then.
+- BA waits for its own announcements, such as *"Flare"* or *"5 miles out"*, to finish, so a bank callout does not cut them off. As soon as one has finished, BA tells you the error as it is then.
 
 <div class="callout note" role="note" markdown="1">
 

@@ -668,7 +668,9 @@ twins do (the fixed flare's balloon).
 
 ### Stage 3: callouts, F and the recording (2026-11-04)
 
-Bank callouts now speak through `VisualGuidanceBankCalloutGate` (VG-21), each of visual guidance's
+Since 2026-11-06 the gate described here speaks at once, the update the error changes, with no hold,
+gap or wait for a steady bank (the owner's decision after the first sim flight, VG-21); this section
+is stage 3's record. Bank callouts now speak through `VisualGuidanceBankCalloutGate` (VG-21), each of visual guidance's
 own lines holds them back for its measured speaking time, the centreline callouts are gone, F reads
 the status (VG-22), and every update is recorded (VP-2). Measured on the final code
 (`approach_stage3_final`) against the stage-2 code with the same harness (`approach_stage2_v2`):
