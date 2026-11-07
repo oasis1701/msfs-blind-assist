@@ -106,6 +106,26 @@ internal static class VisualGuidanceJoin
         return new VisualGuidanceApproachPoint(-alongPastThreshold * EarthRadiusNm, cross * EarthRadiusNm);
     }
 
+    /// <summary>The share of the aircraft's own turn rate at its largest approach bank the capture law may ask for (<see cref="TurnLimitedCaptureGain"/>).</summary>
+    public const double TurnRateMargin = 0.9;
+
+    /// <summary>
+    /// The capture gain the aircraft can follow at <paramref name="gsKt"/>. Coming off a 90° intercept the
+    /// law asks a turn of gain ÷ 3600 degrees a second whatever the speed (2.85°/s at the default), but a
+    /// turn at <paramref name="maxBankDeg"/> gives g·tan(bank) ÷ V, so above about 180 kt at 25° the
+    /// aircraft cannot turn as fast as the law asks and overshoots the line (the first sim flight,
+    /// 2026-11-06: 1.97°/s at 241-265 kt on the pattern's downwind). The gain is capped at
+    /// <see cref="TurnRateMargin"/> of what the bank gives, so a faster aircraft starts its turn further
+    /// out; at approach speed the full gain stands.
+    /// </summary>
+    public static double TurnLimitedCaptureGain(double captureGain, double gsKt, double maxBankDeg)
+    {
+        double gs = Math.Max(double.IsFinite(gsKt) ? gsKt : 0, MinGroundSpeedKt);
+        double bank = Math.Clamp(double.IsFinite(maxBankDeg) ? maxBankDeg : 25, 1, 60);
+        double turnRateDegS = G * Math.Tan(bank * D2R) / (gs * MetresPerNm / 3600.0) / D2R;
+        return Math.Min(captureGain, TurnRateMargin * 3600.0 * turnRateDegS);
+    }
+
     /// <summary>Degrees of desired intercept per nm of offset: the gain over the ground speed (at least <see cref="MinGroundSpeedKt"/>).</summary>
     public static double CaptureGainDegPerNm(double gsKt, double captureGain)
         => captureGain / Math.Max(double.IsFinite(gsKt) ? gsKt : 0, MinGroundSpeedKt);

@@ -22,7 +22,7 @@ sealed record ApproachScenario(string Name, ApproachRunway Runway, ApproachAircr
     double StartBankDeg = 0, IReadOnlyList<(double AtS, double ToRelHeadingDeg)>? Turns = null, bool StartLevel = false,
     ApproachVerticalScript? Descent = null);
 
-/// <summary>The scenario matrix: 223 approaches in nineteen families (docs/virtual-pilot.md, "Approaches").</summary>
+/// <summary>The scenario matrix: 235 approaches (docs/virtual-pilot.md, "Approaches").</summary>
 static class ApproachScenarios
 {
     private static readonly double[] Delays = { 0.5, 1.0 };
@@ -224,6 +224,16 @@ static class ApproachScenarios
                     list.Add(At($"FAR-{r.Id}-{KindName(k)}-{side}-{DelayName(d)}", r, k, along, Sign(side) * (jet ? 1.0 : 0.5), 180,
                         AboveField(jet ? 2000 : 1000, along)));
                 }
+
+        // Far side at speed (the first sim flight, 2026-11-06, Fenix A320 off KATL 27R): climbed out past
+        // the far end and level about 4,000 ft above the field, flying away from it, at an airliner's clean
+        // speeds. Every other pattern start flies 140 kt; the capture law's turn rate outruns a 25° bank
+        // above about 180 kt.
+        foreach (char side in new[] { 'L', 'R' })
+            foreach (double tas in new[] { 210.0, 250.0 })
+                foreach (double dly in Delays)
+                    list.Add(new ApproachScenario($"FARFAST-A-JET-{side}-t{Inv(tas, "0")}-{DelayName(dly)}", a, ApproachAircraftKind.Jet,
+                        -12.5, Sign(side) * 0.5, 0, AboveField(4000, -12.5), 0, 0, 30, dly, null, tas) with { StartLevel = true });
 
         foreach (var k in kinds)
             foreach (char side in new[] { 'L', 'R' })

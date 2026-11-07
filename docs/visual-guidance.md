@@ -227,7 +227,10 @@ A320 localizer capture: a desired track toward the line of the capture gain ÷ t
 offset (`DefaultCaptureGain` 10259 deg·kt/nm, FlyByWire's k1: 73° per nm at 140 kt, 158° at 65 kt),
 less 12 × the closing rate, clamped to the intercept (30° on final, the chosen cut when vectoring, the
 intercept flown when joining and at least 30° after the turn, 90° on the pattern). Far from the line
-it holds the intercept and asks for no turn; it turns in as the line comes near.
+it holds the intercept and asks for no turn; it turns in as the line comes near. Above about 161 kt
+of ground speed the gain is capped so the law never asks a faster turn than 90% of what the profile's
+largest approach bank gives (`VisualGuidanceJoin.TurnLimitedCaptureGain`, VG-28): a faster aircraft
+starts its turns further out, and its pattern is sized from the same capped gain.
 
 - Bank is the track error to that desired track × the speed factor √(ground speed / Vref), rate-limited,
   at most the profile's `MaxApproachBankDeg`.

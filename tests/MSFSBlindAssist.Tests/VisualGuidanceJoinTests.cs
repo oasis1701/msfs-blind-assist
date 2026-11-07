@@ -90,6 +90,39 @@ public class VisualGuidanceJoinTests
         Assert.Equal(157.83, VisualGuidanceJoin.CaptureGainDegPerNm(65, Gain), 0.01);
     }
 
+    // VG-28: coming off a 90° intercept the law asks gain ÷ 3600 degrees a second at any speed; the
+    // gain is capped at 90% of the turn a 25° bank gives, so above about 161 kt the turn starts earlier.
+    [Theory]
+    [InlineData(140.0)]
+    [InlineData(160.0)]
+    public void Approach_speed_keeps_the_full_capture_gain(double gsKt)
+        => Assert.Equal(Gain, VisualGuidanceJoin.TurnLimitedCaptureGain(Gain, gsKt, 25));
+
+    [Theory]
+    [InlineData(210.0)]
+    [InlineData(250.0)]
+    [InlineData(300.0)]
+    public void Above_approach_speed_the_law_never_asks_a_faster_turn_than_the_bank_gives(double gsKt)
+    {
+        double gain = VisualGuidanceJoin.TurnLimitedCaptureGain(Gain, gsKt, 25);
+        double askedDegS = gain / 3600.0;
+        double bankGivesDegS = 9.80665 * Math.Tan(25 * Math.PI / 180) / (gsKt * 1852.0 / 3600.0) * 180 / Math.PI;
+        Assert.True(gain < Gain);
+        Assert.Equal(0.9 * bankGivesDegS, askedDegS, 6);
+    }
+
+    // The first sim flight's downwind: 250 kt, where the fixed gain asked 2.85°/s and a 25° bank gives 2.04.
+    [Fact]
+    public void At_250_knots_the_law_asks_under_two_degrees_a_second()
+        => Assert.Equal(1.83, VisualGuidanceJoin.TurnLimitedCaptureGain(Gain, 250, 25) / 3600.0, 2);
+
+    [Fact]
+    public void A_stopped_or_unknown_speed_keeps_the_full_capture_gain()
+    {
+        Assert.Equal(Gain, VisualGuidanceJoin.TurnLimitedCaptureGain(Gain, 0, 25));
+        Assert.Equal(Gain, VisualGuidanceJoin.TurnLimitedCaptureGain(Gain, double.NaN, 25));
+    }
+
     [Fact]
     public void A_stopped_aircraft_gets_no_countdown_and_a_finite_gain()
     {

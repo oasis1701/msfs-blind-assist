@@ -301,6 +301,11 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     internal double CaptureGainForHarness { get; init; } = VisualGuidanceJoin.DefaultCaptureGain;
 
+    // The capture gain at this ground speed: never a faster turn than the profile's largest approach bank
+    // gives (VisualGuidanceJoin.TurnLimitedCaptureGain); the full gain at approach speed.
+    private double CaptureGain
+        => VisualGuidanceJoin.TurnLimitedCaptureGain(CaptureGainForHarness, currentGroundSpeedKnots, maxApproachBankDeg);
+
     /// <summary>VirtualPilot hook (VP-1): the decision's name (OnFinal, Joining, Vectoring, Pattern), "None" before it.</summary>
     internal string DecisionForHarness => joinPlan?.State.ToString() ?? "None";
 
@@ -1178,7 +1183,7 @@ public class VisualGuidanceManager : IDisposable
         if (runway == null) return;
         var position = VisualGuidanceJoin.Locate(lat, lon, runway);
         double relativeTrack = VisualGuidanceJoin.Normalize((cachedGroundTrack ?? cachedHeading ?? runway.HeadingMag) - runway.HeadingMag);
-        joinPlan = VisualGuidanceJoin.Decide(position, relativeTrack, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile);
+        joinPlan = VisualGuidanceJoin.Decide(position, relativeTrack, currentGroundSpeedKnots, CaptureGain, visualGuidanceProfile);
         activeLegIndex = 0;
         levelHold.Reset();
         double underPathFt = VisualGuidanceVertical.PathHeightFt(position.AlongNm, glideslopeAngleDeg, glideslopeAltitudeBiasFt)
@@ -1228,7 +1233,7 @@ public class VisualGuidanceManager : IDisposable
         while (activeLegIndex < joinPlan.Legs.Count - 1)
         {
             var next = joinPlan.Legs[activeLegIndex + 1];
-            if (!VisualGuidanceJoin.LegIsDue(next, position, relativeTrack, currentGroundSpeedKnots, CaptureGainForHarness,
+            if (!VisualGuidanceJoin.LegIsDue(next, position, relativeTrack, currentGroundSpeedKnots, CaptureGain,
                     LATERAL_HEADING_GAIN * speedFactor))
                 break;
             activeLegIndex++;
@@ -1355,7 +1360,7 @@ public class VisualGuidanceManager : IDisposable
                 var leg = joinPlan.Legs[activeLegIndex];
                 guidancePhase = leg.Kind == VisualGuidanceLegKind.Downwind ? "PATTERN_DOWNWIND" : "PATTERN_BASE";
                 double headingError = VisualGuidanceJoin.LegHeadingErrorDeg(leg, VisualGuidanceJoin.Locate(lat, lon, runway),
-                    relativeTrack, currentGroundSpeedKnots, CaptureGainForHarness);
+                    relativeTrack, currentGroundSpeedKnots, CaptureGain);
                 double rawDesiredBank = RateLimited(previousDesiredBank, headingError * LATERAL_HEADING_GAIN * speedFactor,
                     maxBankRateDegPerSec);
                 desiredBank = Math.Clamp(rawDesiredBank, -maxApproachBankDeg, maxApproachBankDeg);
@@ -1384,7 +1389,7 @@ public class VisualGuidanceManager : IDisposable
                 guidancePhase = "CAPTURE";
                 double clamp = FinalClampDeg(signedCrossTrackNM, relativeTrack);
                 double desiredTrack = VisualGuidanceJoin.DesiredLegTrackDeg(signedCrossTrackNM, crossTrackRate,
-                    currentGroundSpeedKnots, clamp, CaptureGainForHarness);
+                    currentGroundSpeedKnots, clamp, CaptureGain);
 
                 // Simple heading controller onto the desired track
                 double headingError = VisualGuidanceJoin.Normalize(desiredTrack - relativeTrack);
@@ -1481,7 +1486,7 @@ public class VisualGuidanceManager : IDisposable
             clamp = VisualGuidanceJoin.MeetsFinalAhead(position, relativeTrack) ? liveIntercept : 0.0;
         }
         bool due = (clamp > 0 && Math.Abs(cross) <= VisualGuidanceJoin.TurnCueCrossNm(clamp, currentGroundSpeedKnots,
-                       CaptureGainForHarness, LATERAL_HEADING_GAIN * speedFactor))
+                       CaptureGain, LATERAL_HEADING_GAIN * speedFactor))
                    || Math.Abs(cross) <= ARC_MODE_EXIT_NM;
         if (!due) return false;
         turnOntoFinalDue = true;
@@ -1527,16 +1532,16 @@ public class VisualGuidanceManager : IDisposable
         double timedIntercept = joining ? intercept
             : intercept >= VisualGuidanceJoin.MinTimedInterceptDeg ? joinPlan.ClampDeg : 0.0;
         double? seconds = turnWillCome && !turnOntoFinalDue
-            ? VisualGuidanceJoin.SecondsToTurn(cross, timedIntercept, clamp, currentGroundSpeedKnots, CaptureGainForHarness,
+            ? VisualGuidanceJoin.SecondsToTurn(cross, timedIntercept, clamp, currentGroundSpeedKnots, CaptureGain,
                 LATERAL_HEADING_GAIN * SpeedFactor())
             : null;
         // Where it lines up, counting the turn onto the cut when vectoring, as the decision did (joining
         // flies its own cut, so there is no turn to count), and for the pattern the sum that placed its
         // base. Only F needs it; the countdown skips it.
         double joinAlong = !withJoinAlong ? double.NaN
-            : pattern ? VisualGuidanceJoin.PatternJoinAlongNm(joinPlan, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile)
+            : pattern ? VisualGuidanceJoin.PatternJoinAlongNm(joinPlan, currentGroundSpeedKnots, CaptureGain, visualGuidanceProfile)
             : VisualGuidanceJoin.JoinAlongNm(position, relativeTrack,
-                joining ? intercept : joinPlan.ClampDeg, currentGroundSpeedKnots, CaptureGainForHarness, visualGuidanceProfile);
+                joining ? intercept : joinPlan.ClampDeg, currentGroundSpeedKnots, CaptureGain, visualGuidanceProfile);
         // Toward the nearest point of final, in (inbound, right) components, against the track's right normal.
         double toX = along > 0 ? 0 : along, toY = -cross;
         double track = relativeTrack * Math.PI / 180;
