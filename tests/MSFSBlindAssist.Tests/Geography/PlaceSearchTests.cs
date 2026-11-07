@@ -62,6 +62,53 @@ public class PlaceSearchTests
     }
 
     [Fact]
+    public void The_tree_never_names_a_heading_after_its_own_item_or_lists_a_kind_twice()
+    {
+        var types = new[]
+        {
+            new PlaceType(LocationCategory.Village, "neighborhood", "Neighborhoods"),
+            new PlaceType(LocationCategory.Town, "town", "Towns"),
+            new PlaceType(LocationCategory.Village, "village", "Villages"),
+            new PlaceType(LocationCategory.Town, "neighborhood", "Neighborhoods"),
+            new PlaceType(LocationCategory.Town, "capital", "Capitals"),
+            new PlaceType(LocationCategory.Airport, "airport", "Airports"),
+            new PlaceType(LocationCategory.Airport, "heliport", "Heliports"),
+            new PlaceType(LocationCategory.Terrain, "island", "Islands"),
+        };
+        var tree = PlaceTree.Build(types, "Major cities, within 200 miles");
+
+        Assert.Equal(new[] { "Populated places", "Aviation", "Terrain" }, tree.Select(g => g.Name));
+        Assert.Equal(new[] { "Major cities, within 200 miles", "Capitals", "Towns", "Villages", "Neighborhoods" },
+            tree[0].Items.Select(i => i.Name));
+        Assert.True(tree[0].Items[0].IsMajorCities);
+        Assert.Equal(new[] { "Town:neighborhood", "Village:neighborhood" }, tree[0].Items[4].TypeKeys.OrderBy(k => k));
+        Assert.Equal(new[] { "Airports", "Heliports" }, tree[1].Items.Select(i => i.Name));
+        Assert.All(tree, g => Assert.DoesNotContain(g.Items, i => i.Name == g.Name));
+    }
+
+    [Fact]
+    public void Major_cities_reach_their_own_range_even_with_their_kind_unticked()
+    {
+        var places = new[]
+        {
+            Place(1, "Trollhättan", 58.28, 12.29, LocationCategory.Town, "town", 48573),   // at the point
+            Place(2, "Gothenburg", 57.70, 11.97, LocationCategory.Town, "town", 572799),   // about 37 nm south
+            Place(3, "Majorna", 57.69, 11.92, LocationCategory.Town, "neighborhood", 90000), // a part of Gothenburg
+            Place(4, "Borås", 57.72, 12.94, LocationCategory.Town, "town", 66273),         // about 40 nm
+        };
+        var hidden = new HashSet<string> { "Town:town", "Town:neighborhood" };
+        var cities = new MajorCityFilter(50000, 39.0);
+
+        var shown = PlaceFilter.Apply(places, 58.28, 12.29, hidden, "", null, 15.0, cities);
+        Assert.Equal(new[] { 2 }, shown.Select(i => places[i].Id)); // Borås is past the cities' 39 nm
+
+        var allTowns = PlaceFilter.Apply(places, 58.28, 12.29, None, "", null, 15.0, cities);
+        Assert.Equal(new[] { 1, 2 }, allTowns.Select(i => places[i].Id)); // the towns' 15 nm, the city's 39
+
+        Assert.Equal(new[] { 1 }, PlaceFilter.Apply(places, 58.28, 12.29, None, "", null, 15.0).Select(i => places[i].Id));
+    }
+
+    [Fact]
     public void Moving_the_map_position_reorders_the_list()
     {
         var shown = PlaceFilter.Apply(Places, 57.93333, 11.66667, None, "", null, null);

@@ -439,6 +439,27 @@ internal sealed class OfflineLocationService
             })
             : null;
 
+    /// <summary>The window's Major cities: every town of at least <paramref name="minPopulation"/> within
+    /// <paramref name="radiusKm"/>, neighborhoods left out (<see cref="PlaceFilter.IsMajorCity"/>), in no order.
+    /// Read beside <see cref="SearchAround"/>, since the Major Cities Range is usually wider than the window's.
+    /// Null when no usable database is installed.</summary>
+    internal IReadOnlyList<PlaceResult>? SearchMajorCities(double lat, double lon, double radiusKm, int minPopulation, CancellationToken ct) =>
+        _store.IsAvailable
+            ? _store.Read(c =>
+            {
+                lon = LocationGrid.NormalizeLon(lon);
+                var admins = AdminNames.Load(c);
+                var kinds = PlaceKinds.Load(c);
+                var found = new List<PlaceResult>();
+                foreach (var p in PlacesWithId(c, lat, lon, radiusKm, new[] { LocationCategory.Town }, ct, minPopulation))
+                {
+                    var result = ToResult(p, admins, kinds);
+                    if (PlaceFilter.IsMajorCity(result, minPopulation)) found.Add(result);
+                }
+                return (IReadOnlyList<PlaceResult>)found;
+            })
+            : null;
+
     /// <summary>
     /// Every shown place in the world whose folded name contains <paramref name="foldedQuery"/>, the
     /// <paramref name="max"/> nearest to the point, nearest first. Reads the whole place table (no name
@@ -520,12 +541,13 @@ internal sealed class OfflineLocationService
     }
 
     private static List<FoundPlaceWithId> PlacesWithId(SqliteConnection c, double lat, double lon, double radiusKm,
-        LocationCategory[] categories, CancellationToken ct)
+        LocationCategory[] categories, CancellationToken ct, int minPopulation = 0)
     {
         var found = new List<FoundPlaceWithId>();
         if (radiusKm <= 0) return found;
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, kind, id FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to";
+        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, kind, id FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to AND pop >= $min";
+        cmd.Parameters.AddWithValue("$min", minPopulation);
         var pCat = cmd.Parameters.Add("$cat", SqliteType.Integer);
         var pFrom = cmd.Parameters.Add("$from", SqliteType.Integer);
         var pTo = cmd.Parameters.Add("$to", SqliteType.Integer);

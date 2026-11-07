@@ -133,7 +133,11 @@ then sea (inside a named marine polygon) (LOC-6):
   the Coast Range). Then "Time zone: …" (the GeoTimeZone package), a "Map position: …" line when the
   map position is not the aircraft, and the major cities around the map position
   (`LocationPhrases.LocationInfoText`). The window opens already filled and focused on that box, and
-  speaks nothing itself. Then the kinds-of-place tree, the filters behind their button, and one
+  speaks nothing itself. Then the kinds-of-place tree (`PlaceTree.Build`: headings by
+  `LocationFeatureCatalog.TreeGroup`, so Towns, Villages and one Neighborhoods sit side by side under
+  Populated places, and no heading names its own item; Major cities first, named with the Major
+  Cities Range, read by `SearchMajorCities` out to that range and kept by `PlaceFilter` even past the
+  window's range or with its kind unticked), the filters behind their button, and one
   table of every shown place, its count in the list's name (`OfflineLocationService.SearchAround`,
   up to about 270,000 rows at the 500 km ceiling, in a virtual `AccessibleTableView`, read
   cell by cell, CORE-20), filtered in memory

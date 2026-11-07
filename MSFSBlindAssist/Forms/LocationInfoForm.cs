@@ -350,9 +350,9 @@ public partial class LocationInfoForm : Form
 
     // ---- the kinds-of-place tree ----
 
-    /// <summary>All, then each shown category, then the kinds of place in it, from the database's own list
-    /// (<see cref="OfflineLocationService.GetPlaceTypes"/>), in the catalog's order. Unticked kinds come from
-    /// the settings.</summary>
+    /// <summary>All, then each heading, then its kinds of place, from the database's own list
+    /// (<see cref="OfflineLocationService.GetPlaceTypes"/>) grouped by <see cref="PlaceTree.Build"/>: Major
+    /// cities first under the populated places, named with its range. Unticked items come from the settings.</summary>
     private void BuildTypeTree()
     {
         var types = _service.GetPlaceTypes() ?? Array.Empty<PlaceType>();
@@ -360,13 +360,18 @@ public partial class LocationInfoForm : Form
         _typeTree.BeginUpdate();
         _typeTree.Nodes.Clear();
         var root = new TreeNode("All places");
-        foreach (var group in types.GroupBy(t => t.Category).OrderBy(g => g.Key))
+        foreach (var group in PlaceTree.Build(types, MajorCitiesName()))
         {
-            var categoryNode = new TreeNode(LocationFeatureCatalog.Label(group.Key)) { Tag = group.Key };
-            foreach (var type in group)
-                categoryNode.Nodes.Add(new TreeNode(type.Name) { Tag = type, Checked = !hidden.Contains(type.Key) });
-            categoryNode.Checked = categoryNode.Nodes.Cast<TreeNode>().All(n => n.Checked);
-            root.Nodes.Add(categoryNode);
+            var groupNode = new TreeNode(group.Name);
+            foreach (var item in group.Items)
+            {
+                bool shown = item.IsMajorCities
+                    ? !hidden.Contains(PlaceFilter.MajorCitiesKey)
+                    : !item.TypeKeys.Any(hidden.Contains);
+                groupNode.Nodes.Add(new TreeNode(item.Name) { Tag = item, Checked = shown });
+            }
+            groupNode.Checked = groupNode.Nodes.Cast<TreeNode>().All(n => n.Checked);
+            root.Nodes.Add(groupNode);
         }
         root.Checked = root.Nodes.Cast<TreeNode>().All(n => n.Checked);
         _typeTree.Nodes.Add(root);
@@ -379,9 +384,34 @@ public partial class LocationInfoForm : Form
     private static IEnumerable<TreeNode> Descendants(TreeNode node) =>
         node.Nodes.Cast<TreeNode>().SelectMany(n => Descendants(n).Prepend(n));
 
+    /// <summary>"Major cities, within 200 miles": the GeoNames tab's Major Cities Range, as the lookups clamp it.</summary>
+    private string MajorCitiesName()
+    {
+        var query = LocationQuerySettings.From(_settings);
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"Major cities, within {query.MajorRange} {UnitWord}");
+    }
+
+    private IEnumerable<PlaceTreeItem> TreeItems() =>
+        _typeTree.Nodes.Cast<TreeNode>().SelectMany(n => Descendants(n).Prepend(n))
+            .Select(n => n.Tag).OfType<PlaceTreeItem>();
+
+    /// <summary>The unticked items' type keys, and <see cref="PlaceFilter.MajorCitiesKey"/> for an unticked
+    /// Major cities.</summary>
     private IEnumerable<string> HiddenTypes() =>
         _typeTree.Nodes.Cast<TreeNode>().SelectMany(n => Descendants(n).Prepend(n))
-            .Where(n => n.Tag is PlaceType && !n.Checked).Select(n => ((PlaceType)n.Tag!).Key);
+            .Where(n => n.Tag is PlaceTreeItem && !n.Checked)
+            .SelectMany(n => n.Tag is PlaceTreeItem { IsMajorCities: true } ? new[] { PlaceFilter.MajorCitiesKey } : ((PlaceTreeItem)n.Tag!).TypeKeys);
+
+    /// <summary>The Major cities filter while its item is ticked, else null.</summary>
+    private MajorCityFilter? MajorCities()
+    {
+        var item = _typeTree.Nodes.Cast<TreeNode>().SelectMany(n => Descendants(n).Prepend(n))
+            .FirstOrDefault(n => n.Tag is PlaceTreeItem { IsMajorCities: true });
+        if (item is null || !item.Checked) return null;
+        var query = LocationQuerySettings.From(_settings);
+        return new MajorCityFilter(query.MajorPopulation, WholeWorld ? null : query.Km(query.MajorRange) / LocationPhrases.KmPerNm);
+    }
 
     /// <summary>Ticking or unticking an item does the same to everything under it; an item above shows
     /// ticked only while everything under it is ticked. Only the kinds of place (the bottom level) decide
@@ -408,6 +438,8 @@ public partial class LocationInfoForm : Form
             _announcer.AnnounceImmediate("Output C names the nearest town or village again.");
         };
         menu.Items.AddRange(new ToolStripItem[] { use, reset });
+        // Output C names kinds of place; Major cities is not one, so it is unavailable there.
+        menu.Opening += (_, _) => use.Enabled = _typeTree.SelectedNode?.Tag is not PlaceTreeItem { IsMajorCities: true };
         return menu;
     }
 
@@ -415,7 +447,8 @@ public partial class LocationInfoForm : Form
     private void UseForOutputC(TreeNode? node)
     {
         if (node is null) return;
-        var keys = Descendants(node).Prepend(node).Where(n => n.Tag is PlaceType).Select(n => ((PlaceType)n.Tag!).Key).ToList();
+        var keys = Descendants(node).Prepend(node).Select(n => n.Tag).OfType<PlaceTreeItem>()
+            .SelectMany(i => i.TypeKeys).ToList();
         if (keys.Count == 0) return;
         _settings.OutputCPlaceTypes = keys;
         SettingsManager.Save();
@@ -553,9 +586,18 @@ public partial class LocationInfoForm : Form
             }
             else
             {
-                var places = await Task.Run(() => _service.SearchAround(lat, lon, radiusKm, cts.Token));
+                // The major cities are read out to their own range beside the places within the window's.
+                var query = LocationQuerySettings.From(_settings);
+                var places = await Task.Run(() =>
+                {
+                    var around = _service.SearchAround(lat, lon, radiusKm, cts.Token) ?? Array.Empty<PlaceResult>();
+                    var cities = _service.SearchMajorCities(lat, lon, query.Km(query.MajorRange), query.MajorPopulation, cts.Token)
+                        ?? Array.Empty<PlaceResult>();
+                    var ids = around.Select(p => p.Id).ToHashSet();
+                    return around.Concat(cities.Where(c => ids.Add(c.Id))).ToList();
+                });
                 if (cts.IsCancellationRequested || IsDisposed) return;
-                SetPlaces(places ?? Array.Empty<PlaceResult>());
+                SetPlaces(places);
                 _loadedWorld = false;
                 _loadedRadiusKm = radiusKm;
             }
@@ -649,7 +691,7 @@ public partial class LocationInfoForm : Form
         string? direction = _directionCombo.SelectedIndex > 0 ? PlaceFilter.Directions[_directionCombo.SelectedIndex - 1] : null;
         double? maxNm = WholeWorld ? null : RangeKm / LocationPhrases.KmPerNm;
         _shown = PlaceFilter.Apply(_places, MapLat, MapLon, HiddenTypes().ToHashSet(StringComparer.Ordinal),
-            SearchText.Fold(_searchBox.Text), direction, maxNm);
+            SearchText.Fold(_searchBox.Text), direction, maxNm, MajorCities());
 
         _rows.Clear();
         _results.BeginUpdate();
@@ -678,7 +720,13 @@ public partial class LocationInfoForm : Form
         if (_shown.Count == 0) return "No places found";
         string places = _shown.Count == 1 ? "1 place" : string.Create(inv, $"{_shown.Count:N0} places");
         if (!WholeWorld)
-            return string.Create(inv, $"{places} within {(int)_rangeBox.Value} {UnitWord} of the map position");
+        {
+            // The major cities reach their own range: said, so the count is never put down to the window's alone.
+            var query = LocationQuerySettings.From(_settings);
+            string cities = MajorCities() is not null && query.MajorRange > (int)_rangeBox.Value
+                ? string.Create(inv, $", major cities within {query.MajorRange} {UnitWord}") : "";
+            return string.Create(inv, $"{places} within {(int)_rangeBox.Value} {UnitWord} of the map position{cities}");
+        }
         return _worldTotal > _places.Count
             ? string.Create(inv, $"{places} shown, the nearest of {_worldTotal:N0} named like that")
             : $"{places} named like that";

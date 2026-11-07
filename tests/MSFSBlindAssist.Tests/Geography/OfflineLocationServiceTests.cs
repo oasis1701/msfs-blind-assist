@@ -248,6 +248,16 @@ public sealed class OfflineLocationServiceTests : IDisposable
     }
 
     [Fact]
+    public void The_windows_major_cities_reach_past_its_range_and_leave_out_neighborhoods()
+    {
+        var service = Built();
+        // Bigtown (600,000) is 77 km from here, outside a 60 km search; Harbor District (a PPLX of 90,000) never counts.
+        var cities = service.SearchMajorCities(38.6, -76.6, 200, 50000, CancellationToken.None)!;
+        Assert.Equal(new[] { "Bigtown" }, cities.Select(p => p.Name));
+        Assert.Empty(service.SearchMajorCities(38.6, -76.6, 60, 50000, CancellationToken.None)!);
+    }
+
+    [Fact]
     public void A_whole_world_search_keeps_the_nearest_and_counts_them_all()
     {
         var outcome = Built().SearchWorld("bay", 38.5, -76.5, 2, CancellationToken.None)!;

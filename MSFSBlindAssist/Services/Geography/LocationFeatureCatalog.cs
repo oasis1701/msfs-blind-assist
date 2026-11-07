@@ -233,12 +233,13 @@ internal static class LocationFeatureCatalog
     /// which is stored for later and never shown.</summary>
     internal static bool IsShown(LocationCategory category) => category != LocationCategory.Undersea;
 
-    /// <summary>A category's heading in the Location Info window's category tree.</summary>
-    internal static string Label(LocationCategory category) => category switch
+    /// <summary>The heading a category's kinds sit under in the Location Info window's tree. Towns and villages
+    /// share one, so the tree lists Towns and Villages side by side and Neighborhoods once; no heading names one
+    /// of its own items (the owner's choice, 2026-11-07).</summary>
+    internal static string TreeGroup(LocationCategory category) => category switch
     {
-        LocationCategory.Town => "Towns",
-        LocationCategory.Village => "Villages",
-        LocationCategory.Airport => "Airports",
+        LocationCategory.Town or LocationCategory.Village => "Populated places",
+        LocationCategory.Airport => "Aviation",
         LocationCategory.Terrain => "Terrain",
         LocationCategory.Water => "Water",
         LocationCategory.Landmark => "Landmarks",
