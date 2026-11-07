@@ -64,14 +64,13 @@ public sealed class VisualGuidanceProfile
     /// saturation outside the approach phase).</summary>
     public double TonePitchRangeDeg { get; init; } = 6.0;
 
-    /// <summary>Bank (degrees) at which the tone pan saturates to ±1.0. Default is ±5°, which
-    /// covers a stabilized approach (banks rarely exceed 5° once on centerline) and gives a
-    /// 0.20 pan/° matching slope (vs the old 0.10 pan/° at ±10°) so small bank errors produce
-    /// clearly noticeable stereo deltas. The PID can command up to 25° bank during intercept
-    /// — that saturates the desired tone, but the spoken bank-guidance announcements
-    /// ("3 left", "2 right", etc.) already handle the large-error regime where matching by
-    /// ear is unnecessary. Raise for aircraft with wider habitual bank envelopes.</summary>
-    public double ToneBankRangeDeg { get; init; } = 5.0;
+    /// <summary>Bank (degrees) at which the tone pan saturates to ±1.0. Default ±10°, a 0.10 pan/°
+    /// matching slope. It was ±5° (0.20 pan/°) from May 2026 for finer matching on final; the owner
+    /// widened it again on 2026-11-06 after the first sim flight, where on the pattern's downwind at
+    /// 230 kt the guidance asked 4 to 6° and any bank past 5° sounded the same as the target. Past
+    /// the range both tones sit fully to one side and the spoken bank callouts ("3 left", "2 right")
+    /// say how far.</summary>
+    public double ToneBankRangeDeg { get; init; } = 10.0;
 
     /// <summary>Height (ft) by which VG's datum-referenced altitude (SimConnect PLANE ALTITUDE −
     /// threshold elevation) sits ABOVE the bare geometric distance×tan(3°) glidepath when the

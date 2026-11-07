@@ -129,7 +129,7 @@ Your whole job is to make the current tone sit on top of the guidance tone. You 
 
 **Up and down (pitch).** Listen to the two pitches. If the guidance tone is higher than the current tone, raise the nose a little. If it is lower, lower the nose. When the two are close in pitch you hear a beat: a wobble or flutter in the sound, caused by two nearly-equal notes rubbing against each other. The bigger the difference, the faster the flutter. A difference of half a degree of pitch is a clear fast flutter; a tenth of a degree is a slow, lazy wobble. When the wobble stops and you hear one steady chord, your pitch is exactly what the guidance wants.
 
-**Left and right (bank).** Listen to where each tone sits between your ears. If the guidance tone is further to the right than the current tone, roll to the right. If it is further left, roll left. When both tones come from the same place, your bank matches what the guidance wants.
+**Left and right (bank).** Listen to where each tone sits between your ears. If the guidance tone is further to the right than the current tone, roll to the right. If it is further left, roll left. When both tones come from the same place, your bank matches what the guidance wants. Each tone moves across the whole space between your ears for 10 degrees of bank either way: at 10 degrees or more of bank it sits fully to one side.
 
 **Both at once.** The two axes are separate and you fly them together, not one after the other: roll to bring the positions together while you pitch to stop the beating, just as a sighted pilot keeps both flight director bars centred at once.
 
@@ -137,7 +137,7 @@ Remember what the guidance tone is telling you. It is not "where the runway is";
 
 <div class="callout tip" role="note" markdown="1">
 
-**Tip:** The tones are deliberately very sensitive near the matched state: small errors are clearly audible. For big corrections, such as the turn onto final, the guidance tone may sit fully over to one side. That is normal. The spoken bank callouts described below cover those big corrections.
+**Tip:** The tones are sensitive near the matched state: small errors are clearly audible. For big corrections, such as the turn onto final, the guidance tone may sit fully over to one side. That is normal. The spoken bank callouts described below cover those big corrections.
 
 </div>
 
