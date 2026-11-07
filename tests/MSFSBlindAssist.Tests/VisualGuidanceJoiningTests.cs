@@ -286,7 +286,8 @@ public class VisualGuidanceJoiningTests
     {
         var (rig, _) = RecordedAt(-1, 3, 180);
         rig.FlyFor(5, 30);
-        Assert.Equal("Vectoring to a 6.0 mile final, downwind. 3.0 miles right of final. Path there 2,470 feet, you're on it, target level.",
+        // Right of final, flying away from the runway: the centreline is on the right.
+        Assert.Equal("Vectoring to a 6.0 mile final, downwind. Centreline 3.0 miles to your right. Path there 2,470 feet, you're on it, target level.",
             rig.Readout);
     }
 
@@ -300,8 +301,9 @@ public class VisualGuidanceJoiningTests
         rig.FlyFor(5, 30, beforeEach: _ => rig.Place(aB, 1.5, -90));
         double seconds = (1.5 - VisualGuidanceJoin.TurnCueCrossNm(90, 140, VisualGuidanceJoin.DefaultCaptureGain, 1.0)) / (140.0 / 3600);
         Assert.InRange(seconds, 8.0, 9.5);
-        // On the 3° path at 7.6 nm, about 510 ft above the path's altitude at the 6.0 nm join point.
-        Assert.Matches(@"^Vectoring to a 6\.0 mile final, base\. 1\.5 miles right of final, turn in about 10 seconds\. "
+        // On the 3° path at 7.6 nm, about 510 ft above the path's altitude at the 6.0 nm join point. Flying the
+        // base straight at the centreline: it is ahead, not "to your left" by a rounding.
+        Assert.Matches(@"^Vectoring to a 6\.0 mile final, base\. Centreline 1\.5 miles ahead, turn in about 10 seconds\. "
             + @"Path there 2,4[67]0 feet, you're 5[0-2]0 high, target ([0-9,]+ down|level)\.$", rig.Readout);
     }
 

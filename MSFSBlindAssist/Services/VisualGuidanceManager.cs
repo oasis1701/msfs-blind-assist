@@ -389,7 +389,7 @@ public class VisualGuidanceManager : IDisposable
             {
                 Leg = ActiveLegKind,
                 InterceptDeg = join.InterceptDeg, Turning = turnOntoFinalDue, CrossesFinal = join.CrossesFinal,
-                JoinAlongNm = join.JoinAlongNm, SecondsToTurn = join.SecondsToTurn, FinalToTheRight = join.FinalToTheRight,
+                JoinAlongNm = join.JoinAlongNm, SecondsToTurn = join.SecondsToTurn, CentrelineBearingDeg = join.CentrelineBearingDeg,
                 JoinPathMslFt = pathThereMsl,
                 JoinHeightErrorFt = pathThereMsl is double p ? altMSL - p : 0,
                 Warning = HighAtFinalFt(lat, lon, heightFt) != null ? VisualGuidanceVerticalWarning.HighAtFinal : VisualGuidanceVerticalWarning.None,
@@ -1522,7 +1522,7 @@ public class VisualGuidanceManager : IDisposable
 
     /// <summary>What F and the countdown know about the join, from the latest position and track.</summary>
     private readonly record struct JoinPicture(double InterceptDeg, bool CrossesFinal, double? SecondsToTurn,
-        double JoinAlongNm, bool FinalToTheRight);
+        double JoinAlongNm, double CentrelineBearingDeg);
 
     private double SpeedFactor() => Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / airspeedReferenceKnots);
 
@@ -1532,8 +1532,8 @@ public class VisualGuidanceManager : IDisposable
     /// (<see cref="VisualGuidanceJoin.SecondsToTurn"/>, with the clamp the turn cue uses: the intercept
     /// flown when joining, the chosen angle when vectoring; none on the pattern's downwind); where the
     /// aircraft will be lined up on final (the live intercept when joining, the chosen angle when
-    /// vectoring, the sum that placed the base for the pattern); and the side of the track the nearest
-    /// point of final lies on (the threshold, when past it). Null before a decision.
+    /// vectoring, the sum that placed the base for the pattern); and the bearing of the extended centreline's
+    /// nearest point from the track (+ right). Null before a decision.
     /// </summary>
     private JoinPicture? PictureOfTheJoin(double lat, double lon, double cross, bool withJoinAlong = true)
     {
@@ -1567,11 +1567,10 @@ public class VisualGuidanceManager : IDisposable
             : pattern ? VisualGuidanceJoin.PatternJoinAlongNm(joinPlan, currentGroundSpeedKnots, CaptureGain, visualGuidanceProfile)
             : VisualGuidanceJoin.JoinAlongNm(position, relativeTrack,
                 joining ? intercept : joinPlan.ClampDeg, currentGroundSpeedKnots, CaptureGain, visualGuidanceProfile);
-        // Toward the nearest point of final, in (inbound, right) components, against the track's right normal.
-        double toX = along > 0 ? 0 : along, toY = -cross;
-        double track = relativeTrack * Math.PI / 180;
-        bool toTheRight = toX * -Math.Sin(track) + toY * Math.Cos(track) > 0;
-        return new JoinPicture(intercept, crosses, seconds, joinAlong, toTheRight);
+        // The extended centreline's nearest point from the track (+ right): straight across to the line, on
+        // either side of the threshold, so F places the centreline itself ("Centreline 3.0 miles to your left").
+        double centrelineBearing = VisualGuidanceJoin.Normalize((cross > 0 ? -90.0 : 90.0) - relativeTrack);
+        return new JoinPicture(intercept, crosses, seconds, joinAlong, centrelineBearing);
     }
 
     /// <summary>

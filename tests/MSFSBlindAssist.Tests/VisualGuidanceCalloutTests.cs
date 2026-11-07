@@ -92,12 +92,13 @@ public class VisualGuidanceCalloutTests
     }
 
     // Cross-track is positive right of the centreline facing the runway (for runway 09, south): on final
-    // (within 0.1 nm) and vectoring to it.
+    // (within 0.1 nm) F says the side facing the runway; vectoring, flying parallel inbound, it says where the
+    // centreline is from the cockpit, so right of it the centreline is to the left.
     [Theory]
     [InlineData(6, 0.08, "On final, 6.0 miles. 0.1 miles right of the centreline.")]
     [InlineData(6, -0.08, "On final, 6.0 miles. 0.1 miles left of the centreline.")]
-    [InlineData(10, 2.0, ". 2.0 miles right of final.")]
-    [InlineData(10, -2.0, ". 2.0 miles left of final.")]
+    [InlineData(10, 2.0, ". Centreline 2.0 miles to your left.")]
+    [InlineData(10, -2.0, ". Centreline 2.0 miles to your right.")]
     public void Right_of_the_centreline_reads_right(double alongNm, double crossNm, string expected)
     {
         var rig = new VisualGuidanceTestRig();

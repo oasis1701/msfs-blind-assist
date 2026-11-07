@@ -16,7 +16,8 @@ internal enum VisualGuidanceVerticalWarning { None, HighAtFinal, TooHigh, TooLow
 /// once the turn onto final has come; <paramref name="CrossesFinal"/> whether the heading flown crosses
 /// final (joining); <paramref name="JoinAlongNm"/> where the aircraft will be lined up on final, nm from
 /// the threshold; <paramref name="SecondsToTurn"/> the time to the turn onto final, if known;
-/// <paramref name="FinalToTheRight"/> the side of the aircraft's track the nearest point of final lies on;
+/// <paramref name="CentrelineBearingDeg"/> the bearing of the extended centreline's nearest point from the aircraft's
+/// track, degrees, + right (NaN unknown);
 /// <paramref name="JoinPathMslFt"/> the path's altitude (MSL) at the join point, null for no vertical half;
 /// <paramref name="JoinHeightErrorFt"/> how far above it the aircraft is now (+ above);
 /// <paramref name="Warning"/> a warning F says in place of the height.
@@ -24,7 +25,7 @@ internal enum VisualGuidanceVerticalWarning { None, HighAtFinal, TooHigh, TooLow
 internal readonly record struct VisualGuidanceStatus(VisualGuidanceReadoutPhase Phase, double DistanceNm, double CrossTrackNm,
     double AltitudeErrorFt, double TargetFpm, double WheelHeightFt,
     VisualGuidanceLegKind Leg = VisualGuidanceLegKind.Final, double InterceptDeg = 0, bool Turning = false,
-    bool CrossesFinal = true, double JoinAlongNm = 0, double? SecondsToTurn = null, bool FinalToTheRight = false,
+    bool CrossesFinal = true, double JoinAlongNm = 0, double? SecondsToTurn = null, double CentrelineBearingDeg = double.NaN,
     double? JoinPathMslFt = null, double JoinHeightErrorFt = 0, VisualGuidanceVerticalWarning Warning = VisualGuidanceVerticalWarning.None,
     VisualGuidanceFlareCall FlareCall = VisualGuidanceFlareCall.None);
 
@@ -43,6 +44,8 @@ internal enum VisualGuidanceFlareCall { None, Prepare, Flare }
 internal static class VisualGuidanceStatusText
 {
     private const double OnCentrelineNm = 0.05;
+    /// <summary>The centreline is "ahead" within this of the nose and "behind" within this of the tail.</summary>
+    public const double AheadBehindDeg = 30.0;
     private const double OnPathFt = VisualGuidanceVertical.OnPathFt;
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
@@ -90,8 +93,8 @@ internal static class VisualGuidanceStatusText
 
     private static string Joining(in VisualGuidanceStatus s)
     {
-        if (s.Turning) return $"Joining final, turning onto final. {FinalSide(s.CrossTrackNm)}.{PathThere(s, withTarget: false)}";
-        if (!s.CrossesFinal) return $"Joining final. Heading does not cross final. {WhereFinalIs(s)}.";
+        if (s.Turning) return $"Joining final, turning onto final. {CentrelineFromYou(s)}.{PathThere(s, withTarget: false)}";
+        if (!s.CrossesFinal) return $"Joining final. Heading does not cross final. {CentrelineFromYou(s)}.";
         return $"Joining {MileFinal(s.JoinAlongNm)}. {FivesAtLeastFive(s.InterceptDeg)} degree intercept{TurnIn(s)}."
             + PathThere(s, withTarget: false);
     }
@@ -112,12 +115,12 @@ internal static class VisualGuidanceStatusText
     private static string Vectoring(in VisualGuidanceStatus s) => s.Leg switch
     {
         VisualGuidanceLegKind.Downwind =>
-            $"Vectoring to {MileFinal(s.JoinAlongNm)}, downwind. {FinalSide(s.CrossTrackNm)}.{PathThere(s, withTarget: true)}",
+            $"Vectoring to {MileFinal(s.JoinAlongNm)}, downwind. {CentrelineFromYou(s)}.{PathThere(s, withTarget: true)}",
         VisualGuidanceLegKind.Base =>
-            $"Vectoring to {MileFinal(s.JoinAlongNm)}, base. {FinalSide(s.CrossTrackNm)}{TurnIn(s)}.{PathThere(s, withTarget: true)}",
+            $"Vectoring to {MileFinal(s.JoinAlongNm)}, base. {CentrelineFromYou(s)}{TurnIn(s)}.{PathThere(s, withTarget: true)}",
         _ => s.Turning
-            ? $"Vectoring to final, turning onto final. {FinalSide(s.CrossTrackNm)}.{PathThere(s, withTarget: true)}"
-            : $"Vectoring to {MileFinal(s.JoinAlongNm)}. {FinalSide(s.CrossTrackNm)}{TurnIn(s)}.{PathThere(s, withTarget: true)}",
+            ? $"Vectoring to final, turning onto final. {CentrelineFromYou(s)}.{PathThere(s, withTarget: true)}"
+            : $"Vectoring to {MileFinal(s.JoinAlongNm)}. {CentrelineFromYou(s)}{TurnIn(s)}.{PathThere(s, withTarget: true)}",
     };
 
     // " Path there 2,470 feet, you're 300 high[, target 800 down]." with a leading space; nothing without a join point.
@@ -134,26 +137,38 @@ internal static class VisualGuidanceStatusText
     private static string TurnIn(in VisualGuidanceStatus s)
         => s.SecondsToTurn is double t ? $", turn in about {FivesAtLeastFive(t)} seconds" : "";
 
-    private static string WhereFinalIs(in VisualGuidanceStatus s)
-        => $"Final {Tenths(Math.Abs(s.CrossTrackNm))} miles to your {(s.FinalToTheRight ? "right" : "left")}";
-
     private static string Tenths(double v) => Math.Round(v, 1, MidpointRounding.AwayFromZero).ToString("0.0", Inv);
 
     private static string FivesAtLeastFive(double v)
         => Math.Max(5, RoundTo(v, 5)).ToString("#,0", Inv);
 
-    // Sideways on final: "of the centreline".
-    private static string Side(double crossTrackNm) => Sideways(crossTrackNm, "the centreline");
+    // Sideways on final, in the flare and at touchdown: the side facing the runway, "0.1 miles left of the centreline".
+    private static string Side(double crossTrackNm)
+        => SidewaysNm(crossTrackNm) is double nm
+            ? $"{nm.ToString("0.0", Inv)} miles {(crossTrackNm > 0 ? "right" : "left")} of the centreline"
+            : "On the centreline";
 
-    // Sideways while joining or vectoring: "of final".
-    private static string FinalSide(double crossTrackNm) => Sideways(crossTrackNm, "final");
+    // Sideways while joining or vectoring: where the centreline is from the cockpit, "Centreline 6.1 miles to your
+    // left", "ahead" or "behind" (the owner, 2026-11-07: "6.1 miles left of final" was heard as 6.1 miles of final
+    // left to fly).
+    private static string CentrelineFromYou(in VisualGuidanceStatus s)
+    {
+        if (SidewaysNm(s.CrossTrackNm) is not double nm) return "On the centreline";
+        string miles = nm.ToString("0.0", Inv);
+        double b = s.CentrelineBearingDeg;
+        if (double.IsNaN(b)) return $"{miles} miles from the centreline";
+        double size = Math.Abs(VisualGuidanceJoin.Normalize(b));
+        string where = size <= AheadBehindDeg ? "ahead"
+            : size >= 180.0 - AheadBehindDeg ? "behind"
+            : VisualGuidanceJoin.Normalize(b) > 0 ? "to your right" : "to your left";
+        return $"Centreline {miles} miles {where}";
+    }
 
-    private static string Sideways(double crossTrackNm, string of)
+    // The sideways distance to say, to a tenth and at least 0.1; null within OnCentrelineNm.
+    private static double? SidewaysNm(double crossTrackNm)
     {
         double size = Math.Abs(crossTrackNm);
-        if (size <= OnCentrelineNm) return "On the centreline";
-        double tenths = Math.Max(0.1, Math.Round(size, 1, MidpointRounding.AwayFromZero));
-        return $"{tenths.ToString("0.0", Inv)} miles {(crossTrackNm > 0 ? "right" : "left")} of {of}";
+        return size <= OnCentrelineNm ? null : Math.Max(0.1, Math.Round(size, 1, MidpointRounding.AwayFromZero));
     }
 
     // On final: the height against the path, or the warning in its place, then the target.
