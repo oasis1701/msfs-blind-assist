@@ -228,13 +228,15 @@ static class ApproachSelfTest
         return problems.Count == 0 ? null : string.Join("; ", problems);
     }
 
-    // Desired 30 with no callout: the pilot rolls until the current tone pins too, at 5°, and stays.
+    // Desired 30 with no callout: the pilot rolls until the current tone pins too, at the profile's tone
+    // bank range (10° since 2026-11-06, 5° before), and stays.
     private static string? SaturatedNoCalloutCheck()
     {
+        double range = new MSFSBlindAssist.Aircraft.VisualGuidanceProfile().ToneBankRangeDeg;
         var s = FlyPilot(JetPilot(0, 0, 0), 0, 5, 30, 0, NoSpeech, 3.0, 5.0);
         var problems = new List<string>();
         foreach (double at in new[] { 3.0, 5.0 })
-            if (Math.Abs(s[at].Bank - 5) > 0.5) problems.Add($"bank at {F(at)} s {F(s[at].Bank)}, expected 5 ±0.5");
+            if (Math.Abs(s[at].Bank - range) > 0.5) problems.Add($"bank at {F(at)} s {F(s[at].Bank)}, expected {F(range)} ±0.5");
         return problems.Count == 0 ? null : string.Join("; ", problems);
     }
 
