@@ -489,6 +489,17 @@ fills it by guesswork.
   seconds, and the same tone would mean the rudder only there. The idea for later, if the owner asks:
   a separate cue that plainly means the rudder, such as a spoken "Nose 3 right" in the flare. Only the
   sim can test it: the approach harness's model aircraft has no rudder and cannot slip sideways.
+- **A displaced threshold is not allowed for (found 2026-11-06).** Visual guidance takes the runway
+  end's position from the airport database (`Runway.StartLat`/`StartLon`, the start of the pavement)
+  as the threshold, and does not apply `Runway.ThresholdOffset`, the distance to the landing threshold
+  (`runway_end.offset_threshold`). The landing exit planner, the taxi graph and the landing flare assist
+  do add it. On a runway with a displaced threshold the glide path therefore aims short of the painted
+  threshold by the offset, and the touchdown point comes that much earlier than the markings: at KATL
+  27R (offset 512 ft) the path aims about 500 ft short, about 27 ft below the real 3° path at any point
+  along it. Runways without an offset (KATL 27L) are unaffected; the first sim flights used 27L for that
+  reason. To fix later: place visual guidance's threshold `ThresholdOffset` along the runway's course
+  from the runway end, and check every distance and height that is measured from it (the path, the
+  distance callouts, F, the flare's "past the threshold").
 
 ## Related Documentation
 
