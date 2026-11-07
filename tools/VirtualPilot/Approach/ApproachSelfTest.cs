@@ -298,8 +298,9 @@ static class ApproachSelfTest
     {
         var all = ApproachScenarios.All();
         int unique = all.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count();
-        // 223 through stage 5's Task 7, then the four VECWIDE starts (the stage-5 final review).
-        return all.Count == 227 && unique == 227 ? null : $"{all.Count} scenarios, {unique} unique names; expected 227";
+        // 223 through stage 5's Task 7, then the four VECWIDE starts (the stage-5 final review), then the
+        // eight FARFAST starts (the first sim flight, 2026-11-06).
+        return all.Count == 235 && unique == 235 ? null : $"{all.Count} scenarios, {unique} unique names; expected 235";
     }
 
     // A gust rolls the aircraft; the pilot, holding wings level against a level command, only learns
