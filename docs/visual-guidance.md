@@ -242,8 +242,9 @@ turns, as the pilot manages the speed.
   the redesign.
 - Established on final: within 0.1 nm and 5° for 3 s on the final leg, "Established on final".
 
-Above 100 ft the track error uses the GPS ground track, so a crab into the wind is not corrected
-away; below 100 ft it uses the heading, to decrab.
+The track error uses the GPS ground track all the way to touchdown, so a crab into the wind is not
+corrected away (VG-29). Until 2026-11-06 it used the heading below 100 ft, to decrab, which banked the
+aircraft downwind off the centreline; the decrab is the pilot's, with the rudder in the flare.
 
 **Vertical (pitch)** (`CalculateDesiredPitch`, the vertical path, stage 5 of the redesign): the cue
 steers a flight path angle, not a vertical speed, the shape of FlyByWire's A320 glideslope track.

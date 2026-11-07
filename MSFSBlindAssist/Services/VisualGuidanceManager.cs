@@ -1287,11 +1287,13 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// The track the lateral law steers (magnetic): the ground track, so the aircraft holds the line in a
-    /// crosswind with its crab, but the heading below 100 ft, to line the nose up with the runway.
+    /// The track the lateral law steers (magnetic): the ground track all the way to touchdown, so the
+    /// aircraft holds the line in a crosswind with its crab (VG-29). Until 2026-11-06 it steered the heading
+    /// below 100 ft above the ground, to line the nose up with the runway; banking the nose straight turned
+    /// the path too, and on the first sim flight the wind carried the aircraft off the runway's side. The
+    /// decrab is the pilot's, with the rudder in the flare.
     /// </summary>
-    private double LateralTrackDeg(double heading)
-        => cachedAGL.HasValue && cachedAGL.Value <= 100.0 ? heading : cachedGroundTrack ?? heading;
+    private double LateralTrackDeg(double heading) => cachedGroundTrack ?? heading;
 
     /// <summary>
     /// The bank the guidance asks for, right positive. Deciding: the aircraft's own bank. Joining before
@@ -1321,8 +1323,7 @@ public class VisualGuidanceManager : IDisposable
                 smoothedCrossTrackRate = crossTrackRate;
             }
 
-            // The ground track holds the centreline in a crosswind (with the crab); below 100 ft the
-            // heading lines the nose up with the runway (the decrab).
+            // The ground track holds the centreline in a crosswind, with the crab, to touchdown (VG-29).
             double actualTrackAngle = LateralTrackDeg(heading);
             double trackAngleError = NormalizeHeading(runway.HeadingMag - actualTrackAngle);
             double relativeTrack = VisualGuidanceJoin.Normalize(actualTrackAngle - runway.HeadingMag);

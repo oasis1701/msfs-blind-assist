@@ -61,12 +61,12 @@ internal sealed class VisualGuidanceTestRig
     public double TargetDescent => _vg.TargetDescentForHarness;
 
     /// <summary>
-    /// alongNm back from the threshold, crossNm right of the centreline, heading and track course +
-    /// headingRelDeg, at gsKt; bankDeg right wing down positive (fed to the manager as SimConnect's
-    /// left-positive bank); pitchDeg nose up.
+    /// alongNm back from the threshold, crossNm right of the centreline, heading course + headingRelDeg
+    /// and the ground track course + trackRelDeg (by default the heading: no wind), at gsKt; bankDeg right
+    /// wing down positive (fed to the manager as SimConnect's left-positive bank); pitchDeg nose up.
     /// </summary>
     public void Place(double alongNm, double crossNm, double headingRelDeg, double vsFpm = -742, double altOffsetFt = 0,
-        double aoaDeg = 5.0, double bankDeg = 0.0, double gsKt = 140, double pitchDeg = 2.0)
+        double aoaDeg = 5.0, double bankDeg = 0.0, double gsKt = 140, double pitchDeg = 2.0, double? trackRelDeg = null)
     {
         static double Norm(double d) => (d % 360 + 360) % 360;
         // Past the threshold (alongNm negative) is ahead along the course: Project takes no negative distance.
@@ -81,7 +81,7 @@ internal sealed class VisualGuidanceTestRig
 
         _vg.UpdateLatitude(pos.Latitude); _vg.UpdateLongitude(pos.Longitude); _vg.UpdateAltitudeMSL(alt);
         _vg.UpdateHeading(heading); _vg.UpdateGroundSpeed(gsKt); _vg.UpdateVerticalSpeed(vsFpm);
-        _vg.UpdateGroundTrack(heading);
+        _vg.UpdateGroundTrack(Norm(Course + (trackRelDeg ?? headingRelDeg)));
         _vg.UpdatePitch(VisualGuidanceManager.PitchDegreesFromSimConnect(-pitchDeg * Math.PI / 180));
         _vg.UpdateBank(VisualGuidanceManager.BankDegreesFromSimConnect(-bankDeg * Math.PI / 180));
         _vg.UpdateAoA(VisualGuidanceManager.AoaDegreesFromSimConnect(aoaDeg * Math.PI / 180));
