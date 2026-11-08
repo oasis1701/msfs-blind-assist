@@ -448,7 +448,10 @@ internal sealed class OfflineLocationService
     /// <summary>
     /// Every shown place in the world whose folded name contains <paramref name="foldedQuery"/>, the
     /// <paramref name="max"/> nearest to the point, nearest first. Reads the whole place table (no name
-    /// index: about a second), so it runs off the UI thread. Null when no usable database is installed.
+    /// index), so it runs off the UI thread: measured 2026-11-08 on the owner's PC, 8.5 million places, 5.4 to
+    /// 5.7 s for a name of two letters or more however many match, 7.5 to 8.7 s for one common letter. A
+    /// trigram FTS5 name index was measured and declined: 22 ms for a rare name but 3 to 12 s for a common
+    /// piece ("berg", "san"), and the database grew from 341 to 798 MB. Null when no usable database is installed.
     /// </summary>
     internal WorldSearchOutcome? SearchWorld(string foldedQuery, double lat, double lon, int max, CancellationToken ct) =>
         _store.IsAvailable && foldedQuery.Length > 0
