@@ -135,8 +135,13 @@ public partial class LocationInfoForm : Form
             AccessibleName = "Where you are", TabIndex = 0,
         };
 
-        _typeTree = new NativeAccessibleTreeView { CheckBoxes = true, Dock = DockStyle.Fill, AccessibleName = "Places to show", TabIndex = 1 };
-        _typeTree.AfterCheck += TypeTree_AfterCheck;
+        // Check boxes as state images (CORE-18), never TVS_CHECKBOXES: with it every item is a "check box" to
+        // the screen reader, which then reads the item's MSAA value, the tree depth ("Islands … 2"). As plain
+        // outline items with a checked state, as in the First Officer checklist, the depth is never read
+        // (owner, 2026-11-08). Space and a click on the box toggle here (TypeTree_KeyDown, _NodeMouseClick).
+        _typeTree = new NativeAccessibleTreeView { CheckboxStateImages = true, Dock = DockStyle.Fill, AccessibleName = "Places to show", TabIndex = 1 };
+        _typeTree.KeyDown += TypeTree_KeyDown;
+        _typeTree.NodeMouseClick += TypeTree_NodeMouseClick;
         _typeTree.ContextMenuStrip = BuildTypeMenu();
 
         _filtersButton = new Button { AutoSize = true, TabIndex = 2 };
@@ -373,6 +378,8 @@ public partial class LocationInfoForm : Form
         }
         root.Checked = root.Nodes.Cast<TreeNode>().All(n => n.Checked);
         _typeTree.Nodes.Add(root);
+        // Every item is tickable: each gets its box once it is in the tree.
+        foreach (var node in Descendants(root).Prepend(root)) _typeTree.ShowCheckBox(node);
         root.Expand();
         // Selected, so Tab into the tree reads an item rather than nothing.
         _typeTree.SelectedNode = root;
@@ -389,10 +396,6 @@ public partial class LocationInfoForm : Form
         return string.Create(System.Globalization.CultureInfo.InvariantCulture,
             $"Major cities, within {query.MajorRange} {UnitWord}");
     }
-
-    private IEnumerable<PlaceTreeItem> TreeItems() =>
-        _typeTree.Nodes.Cast<TreeNode>().SelectMany(n => Descendants(n).Prepend(n))
-            .Select(n => n.Tag).OfType<PlaceTreeItem>();
 
     /// <summary>The unticked items' type keys, and <see cref="PlaceFilter.MajorCitiesKey"/> for an unticked
     /// Major cities.</summary>
@@ -414,13 +417,30 @@ public partial class LocationInfoForm : Form
     /// <summary>Ticking or unticking an item does the same to everything under it; an item above shows
     /// ticked only while everything under it is ticked. Only the kinds of place (the bottom level) decide
     /// what the list shows.</summary>
-    private void TypeTree_AfterCheck(object? sender, TreeViewEventArgs e)
+    private void Toggle(TreeNode node)
     {
-        if (e.Action == TreeViewAction.Unknown || e.Node is null) return; // our own writes below
-        foreach (var child in Descendants(e.Node)) child.Checked = e.Node.Checked;
-        for (var parent = e.Node.Parent; parent is not null; parent = parent.Parent)
+        node.Checked = !node.Checked;
+        foreach (var child in Descendants(node)) child.Checked = node.Checked;
+        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
             parent.Checked = parent.Nodes.Cast<TreeNode>().All(n => n.Checked);
         ApplyFilters();
+    }
+
+    /// <summary>Space toggles the selected item: without TVS_CHECKBOXES the native control no longer does.</summary>
+    private void TypeTree_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Space || e.Modifiers != Keys.None || _typeTree.SelectedNode is not { } node) return;
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+        Toggle(node);
+    }
+
+    /// <summary>A left click on an item's box toggles it, as Space does.</summary>
+    private void TypeTree_NodeMouseClick(object? sender, TreeNodeMouseClickEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || e.Node is null) return;
+        if (_typeTree.HitTest(e.Location).Location != TreeViewHitTestLocations.StateImage) return;
+        Toggle(e.Node);
     }
 
     private ContextMenuStrip BuildTypeMenu()
