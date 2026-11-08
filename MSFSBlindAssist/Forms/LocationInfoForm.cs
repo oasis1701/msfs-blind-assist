@@ -135,7 +135,7 @@ public partial class LocationInfoForm : Form
             AccessibleName = "Where you are", TabIndex = 0,
         };
 
-        _typeTree = new NativeAccessibleTreeView { CheckBoxes = true, Dock = DockStyle.Fill, AccessibleName = "Kinds of place", TabIndex = 1 };
+        _typeTree = new NativeAccessibleTreeView { CheckBoxes = true, Dock = DockStyle.Fill, AccessibleName = "Places to show", TabIndex = 1 };
         _typeTree.AfterCheck += TypeTree_AfterCheck;
         _typeTree.ContextMenuStrip = BuildTypeMenu();
 
