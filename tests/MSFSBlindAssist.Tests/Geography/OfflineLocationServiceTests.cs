@@ -285,6 +285,20 @@ public sealed class OfflineLocationServiceTests : IDisposable
     }
 
     [Fact]
+    public void Output_c_can_name_the_nearest_major_city_within_the_major_cities_range()
+    {
+        var service = Built();
+        // Bigtown (600,000) is about 77 km away, past the 25-mile Nearby range but within the 185-mile Major
+        // Cities Range; Harbor District (a PPLX of 90,000) is nearer but never a major city.
+        var city = service.GetNearest(38.6, -76.6, Miles with { PlaceTypes = new[] { PlaceFilter.MajorCitiesKey } })!;
+        Assert.Equal("Bigtown", city.Nearest!.Name);
+        Assert.Null(service.GetNearest(38.6, -76.6, Miles with { MajorRange = 30, PlaceTypes = new[] { PlaceFilter.MajorCitiesKey } })!.Nearest);
+        // Picked with other kinds (a heading or All places), the nearest of them all.
+        var mixed = service.GetNearest(38.55, -76.48, Miles with { PlaceTypes = new[] { PlaceFilter.MajorCitiesKey, "Town:town" } })!;
+        Assert.Equal("Bayside", mixed.Nearest!.Name);
+    }
+
+    [Fact]
     public void An_update_replaces_the_live_database_in_place()
     {
         Built();

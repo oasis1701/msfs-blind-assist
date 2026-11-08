@@ -74,8 +74,9 @@ internal sealed record MajorCityFilter(int MinPopulation, double? MaxNm);
 /// <summary>The window's filters, applied in memory to the loaded places (pure, unit-tested).</summary>
 internal static class PlaceFilter
 {
-    /// <summary>How an unticked Major cities item is saved among the hidden type keys. No colon, so Output C's
-    /// <see cref="OfflineLocationService.ParseTypeKey"/> never reads it as a kind.</summary>
+    /// <summary>How the Major cities item is saved: among the hidden type keys when unticked, among Output C's
+    /// kinds when picked for C (C then names the nearest major city within the Major Cities Range). No colon,
+    /// so <see cref="OfflineLocationService.ParseTypeKey"/> never reads it as a kind.</summary>
     internal const string MajorCitiesKey = "MajorCities";
 
     /// <summary>The direction filter's choices: the eight compass words <see cref="LocationPhrases.Direction"/>

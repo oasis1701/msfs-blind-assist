@@ -343,7 +343,8 @@ internal sealed class OfflineLocationService
     }
 
     /// <summary>The nearest place of the kinds in <see cref="LocationQuerySettings.PlaceTypes"/> within the
-    /// Nearby range, or null.</summary>
+    /// Nearby range, or null. <see cref="PlaceFilter.MajorCitiesKey"/> among them adds the nearest major city
+    /// within the Major Cities Range, as the window's Major cities item lists them (owner, 2026-11-08).</summary>
     private static PlaceHit? NearestOfTypes(SqliteConnection c, double lat, double lon, LocationQuerySettings s, AdminNames admins)
     {
         var kinds = PlaceKinds.Load(c);
@@ -355,6 +356,13 @@ internal sealed class OfflineLocationService
             var hit = Places(c, lat, lon, s.Km(s.NearbyRange), group.Key)
                 .Where(p => ids.Contains(p.Kind)).MinBy(p => p.DistanceNm);
             if (hit is not null && (best is null || hit.DistanceNm < best.DistanceNm)) best = hit;
+        }
+        if (s.PlaceTypes.Contains(PlaceFilter.MajorCitiesKey))
+        {
+            var neighborhoods = kinds.IdsOf(new[] { LocationFeatureCatalog.Neighborhood.Key });
+            var city = Places(c, lat, lon, s.Km(s.MajorRange), s.MajorPopulation, LocationCategory.Town)
+                .Where(p => !neighborhoods.Contains(p.Kind)).MinBy(p => p.DistanceNm);
+            if (city is not null && (best is null || city.DistanceNm < best.DistanceNm)) best = city;
         }
         return best is null ? null : ToHit(best, admins);
     }

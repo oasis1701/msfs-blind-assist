@@ -436,17 +436,17 @@ public partial class LocationInfoForm : Form
             _announcer.AnnounceImmediate("Output C names the nearest town or village again.");
         };
         menu.Items.AddRange(new ToolStripItem[] { use, reset });
-        // Output C names kinds of place; Major cities is not one, so it is unavailable there.
-        menu.Opening += (_, _) => use.Enabled = _typeTree.SelectedNode?.Tag is not PlaceTreeItem { IsMajorCities: true };
         return menu;
     }
 
-    /// <summary>Output C names the nearest place of every kind under this item (All: of any kind).</summary>
+    /// <summary>Output C names the nearest place of every kind under this item (All: of any kind). Major cities
+    /// is saved as <see cref="PlaceFilter.MajorCitiesKey"/>: C then names the nearest major city within the Major
+    /// Cities Range, the first the item lists while the map position follows the aircraft.</summary>
     private void UseForOutputC(TreeNode? node)
     {
         if (node is null) return;
         var keys = Descendants(node).Prepend(node).Select(n => n.Tag).OfType<PlaceTreeItem>()
-            .SelectMany(i => i.TypeKeys).ToList();
+            .SelectMany(i => i.IsMajorCities ? new[] { PlaceFilter.MajorCitiesKey } : i.TypeKeys).ToList();
         if (keys.Count == 0) return;
         _settings.OutputCPlaceTypes = keys;
         SettingsManager.Save();
