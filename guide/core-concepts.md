@@ -433,7 +433,7 @@ Press \] then Shift+L. The window opens already filled in, with the cursor in it
 Press Tab to move through the window. In order:
 
 1. **Where you are** (described above).
-2. **Places to show**: a tree with check boxes: **All places**, then Populated places, Aviation, Terrain, Water and Landmarks, then the kinds in each, such as Islands or Mountains under Terrain. Populated places holds Major cities, Capitals, Regional capitals, Towns, Villages and Neighborhoods. **Major cities** names its range, for example *"Major cities, within 200 miles"*: it lists every city of at least the GeoNames tab's Minimum Population for Major Cities within its Major Cities Range, even past the window's own range and even with Towns unticked. Change both on the GeoNames tab. Ticking or unticking an item does the same to everything under it, so you can untick Villages in one go, or tick Terrain and then untick only mountains. An item shows ticked only while everything under it is ticked.
+2. **Places to show**: a tree with check boxes: **All places**, then Populated places, Aviation, Terrain, Water and Landmarks, then the kinds in each, such as Islands or Mountains under Terrain. Populated places holds Major cities, Capitals, Regional capitals, Towns, Villages and Neighborhoods. **Major cities** names its population, for example *"Major cities, 50,000 or more"*: it lists every town of at least the GeoNames tab's Minimum Population for Major Cities, even with Towns unticked. Like every item, it lists them only within the window's **Range**. Ticking or unticking an item does the same to everything under it, so you can untick Villages in one go, or tick Terrain and then untick only mountains. An item shows ticked only while everything under it is ticked.
 3. **Show filters and search**, which shows the filters below it (the button then reads **Hide filters and search**):
    - **Search by name**: type part of a name. Accents and capitals do not matter. Press Enter to hear how many places match.
    - **Search where**: **Around the map position**, or **Whole world, by name**, which finds a name anywhere and lists the nearest matches. A whole-world search takes about five or six seconds; a single letter takes longer.
@@ -463,7 +463,7 @@ Press Tab to move through the window. In order:
 
 **The map position.** Everything in the window is measured from one point, the map position. Normally it is the aircraft. **Set as map position** moves it to a place, so you can look around somewhere else: the list is then measured from there, the first box adds a line such as *"Map position: Krokholmen, 23 miles northwest of the aircraft"*, and the table gains the **From aircraft** column. The **Map position follows the aircraft** check box, near the bottom, brings it back to the aircraft. Unticking it leaves the map position where the aircraft is at that moment: the line then reads *"Map position: the aircraft's position, not following it"*, and once you move on, for example *"Map position: where the aircraft was, now 2.3 miles south of it"*.
 
-On an item in the tree, the context menu has **Use for Output C**: from then on Output C names the nearest place of that kind instead of the nearest town, for example the nearest island. On **All places** it names the nearest place of any kind. On **Major cities** it names the nearest major city within the Major Cities Range, the first one the table lists while the map position follows the aircraft. **Output C back to the nearest town or village** undoes it.
+On an item in the tree, the context menu has **Use for Output C**: from then on Output C names the nearest place of that kind instead of the nearest town, for example the nearest island. On **All places** it names the nearest place of any kind. C then searches within the window's **Range**, so it names the first place the table lists for that kind while the map position follows the aircraft; if there is none, it says *"No match within 30 miles"*. **Output C back to the nearest town or village** undoes it.
 
 **Reset filters** puts the filters, search and range back to their defaults. The window remembers its kinds of place, filters, range and map position, even after BA restarts. The search is not remembered: each time the window opens, the search box is empty and **Search where** is **Around the map position**.
 
@@ -475,8 +475,9 @@ Press Escape to close the window and return to the simulator.
 
 The rest of the **GeoNames** tab controls how far Output C and the major cities reach:
 
-- **Nearby Cities Range:** how far Output C looks for the nearest town.
-- **Major Cities Range** and **Minimum Population for Major Cities:** which towns count as major cities (50,000 people by default), for the window's Major cities and the Volanta traffic list.
+- **Nearest Town or Village Range:** how far Output C looks for the nearest town or village, and how far the location readouts (the window's first box, the Volanta traffic list) look for one.
+- **Minimum Population for Major Cities:** which towns count as major cities (50,000 people by default), for the window's Major cities and the Volanta traffic list.
+- **Major Cities Range:** how far the Volanta traffic list looks for the nearest major city.
 - **Coast Range:** how close the sea coast must be, over land, before C mentions it; 50 by default, up to 1,000. Over water the nearest land is always given, whatever the Coast Range.
 - **Distance Units:** **Miles** or **Kilometers**. This changes the spoken and shown distances.
 - **Reset to Defaults** puts these back.

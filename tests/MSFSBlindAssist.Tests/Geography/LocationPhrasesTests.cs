@@ -103,6 +103,9 @@ public class LocationPhrasesTests
     {
         var empty = new WhereYouAre { State = "Tamanrasset", Country = "Algeria" };
         Assert.Equal("No town within 25 miles, Tamanrasset, Algeria", LocationPhrases.NearestCitySentence(empty, null, false, 25));
+        // Kinds picked for C (islands, say): nothing of them need not be a town.
+        Assert.Equal("No match within 30 miles, Tamanrasset, Algeria",
+            LocationPhrases.NearestCitySentence(empty, null, false, 30, kindsPicked: true));
     }
 
     [Fact]

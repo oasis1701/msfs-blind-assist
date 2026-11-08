@@ -136,9 +136,10 @@ then sea (inside a named marine polygon) (LOC-6):
   (the GeoNames tab's Maximum Major Cities, which capped the box's list, went with it). The window opens already filled and focused on that box, and
   speaks nothing itself. Then the kinds-of-place tree (`PlaceTree.Build`: headings by
   `LocationFeatureCatalog.TreeGroup`, so Towns, Villages and one Neighborhoods sit side by side under
-  Populated places, and no heading names its own item; Major cities first, named with the Major
-  Cities Range, read by `SearchMajorCities` out to that range and kept by `PlaceFilter` even past the
-  window's range or with its kind unticked), the filters behind their button, and one
+  Populated places, and no heading names its own item; Major cities first, named with the Minimum
+  Population for Major Cities, kept by `PlaceFilter` with Towns unticked but, like every item, only
+  within the window's Range: one range everywhere, the owner's choice of 2026-11-08, after a range of
+  its own stopped the cities short of the villages), the filters behind their button, and one
   table of every shown place, its count in the list's name (`OfflineLocationService.SearchAround`,
   up to about 270,000 rows at the 500 km ceiling, in a virtual `AccessibleTableView`, read
   cell by cell, CORE-20), filtered in memory
@@ -150,7 +151,8 @@ then sea (inside a named marine polygon) (LOC-6):
   window's filters, range and map position live in `UserSettings.LocationInfo*`, never its search,
   which opens empty around the map position (owner, 2026-11-06); "Use for Output C"
   sets `OutputCPlaceTypes`, which only a C press passes (`LocationQuerySettings.PlaceTypes`), never
-  the periodic announcement. Nothing in the window refreshes by itself; F5 reads the aircraft again.
+  the periodic announcement; C then searches the window's Range (`LocationQuerySettings.WindowRange`),
+  naming the first place the window lists for those kinds, or "No match within …". Nothing in the window refreshes by itself; F5 reads the aircraft again.
   Every range is capped at 310 miles or 500 km (the Coast Range at 1,000) where the lookups read it
   (`LocationQuerySettings.From`, and the window's range field), so a larger value saved before the
   cap existed never makes a press scan a continent.
@@ -161,8 +163,8 @@ then sea (inside a named marine polygon) (LOC-6):
   does no nearest-land or coast search beyond the shore band (VOL-8). With the window's "Report location to
   nearest major city" ticked, `TrafficCityPlace` says the distance and direction from the nearest major city
   instead ("92 miles west of Wichita, Kansas, United States"): `GetMajorCities` finds it with the GeoNames tab's
-  Minimum Population for Major Cities and Major Cities Range, as Location Info's list does, but never takes a
-  section of a city (GeoNames' PPLX: "East Village" in Manhattan), which that list still includes.
+  Minimum Population for Major Cities and Major Cities Range (its only user since 2026-11-08), and never takes
+  a section of a city (GeoNames' PPLX: "East Village" in Manhattan), as Location Info's Major cities never does.
 
 Numbers are invariant everywhere (LOC-3).
 

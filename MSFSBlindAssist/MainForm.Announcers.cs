@@ -2956,7 +2956,8 @@ public partial class MainForm
                         if (userInitiated) announcer.Announce(LocationDataUnavailableText());
                         return;
                     }
-                    string sentence = LocationPhrases.NearestCitySentence(report.Where, report.Nearest, query.Kilometres, query.NearbyRange);
+                    string sentence = LocationPhrases.NearestCitySentence(report.Where, report.Nearest, query.Kilometres,
+                        query.OutputCRange, kindsPicked: query.PlaceTypes.Count > 0);
                     announcer.Announce(sentence);
                     Log.Debug("MainForm", $"Nearest city announced: {sentence}");
                 }

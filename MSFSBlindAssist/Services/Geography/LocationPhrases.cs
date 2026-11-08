@@ -116,8 +116,10 @@ internal static class LocationPhrases
     private static bool IsOverWater(WhereYouAre where) =>
         where.Water != WaterKind.None && !string.IsNullOrEmpty(where.WaterName);
 
-    /// <summary>Output > C.</summary>
-    internal static string NearestCitySentence(WhereYouAre where, PlaceHit? place, bool kilometres, int nearbyRange)
+    /// <summary>Output > C. <paramref name="nearbyRange"/> is the range searched; with kinds picked for C
+    /// (<paramref name="kindsPicked"/>) nothing found reads "No match within …", since it need not be a town.</summary>
+    internal static string NearestCitySentence(WhereYouAre where, PlaceHit? place, bool kilometres, int nearbyRange,
+        bool kindsPicked = false)
     {
         string? edge = EdgeClause(where, kilometres);
         if (IsOverWater(where))
@@ -131,7 +133,7 @@ internal static class LocationPhrases
         if (place is not null)
             return PlaceClause(place, kilometres) + coast;
 
-        var s = Inv($"No town within {nearbyRange} {UnitWord(kilometres)}");
+        var s = Inv($"{(kindsPicked ? "No match" : "No town")} within {nearbyRange} {UnitWord(kilometres)}");
         string? area = StateAndCountry(where);
         if (area is not null) s += ", " + area;
         return s + coast;

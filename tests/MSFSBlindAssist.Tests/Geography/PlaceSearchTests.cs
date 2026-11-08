@@ -87,7 +87,7 @@ public class PlaceSearchTests
     }
 
     [Fact]
-    public void Major_cities_reach_their_own_range_even_with_their_kind_unticked()
+    public void Major_cities_show_with_towns_unticked_but_only_within_the_windows_range()
     {
         var places = new[]
         {
@@ -97,15 +97,16 @@ public class PlaceSearchTests
             Place(4, "Borås", 57.72, 12.94, LocationCategory.Town, "town", 66273),         // about 40 nm
         };
         var hidden = new HashSet<string> { "Town:town", "Town:neighborhood" };
-        var cities = new MajorCityFilter(50000, 39.0);
+        var cities = new MajorCityFilter(50000);
 
-        var shown = PlaceFilter.Apply(places, 58.28, 12.29, hidden, "", null, 15.0, cities);
-        Assert.Equal(new[] { 2 }, shown.Select(i => places[i].Id)); // Borås is past the cities' 39 nm
-
-        var allTowns = PlaceFilter.Apply(places, 58.28, 12.29, None, "", null, 15.0, cities);
-        Assert.Equal(new[] { 1, 2 }, allTowns.Select(i => places[i].Id)); // the towns' 15 nm, the city's 39
-
-        Assert.Equal(new[] { 1 }, PlaceFilter.Apply(places, 58.28, 12.29, None, "", null, 15.0).Select(i => places[i].Id));
+        // Towns unticked, Major cities ticked: the cities of 50,000 or more, never a neighborhood.
+        Assert.Equal(new[] { 2, 4 }, PlaceFilter.Apply(places, 58.28, 12.29, hidden, "", null, 60.0, cities).Select(i => places[i].Id));
+        // One range for every item: the window's 39 nm stops Borås whatever is ticked (owner, 2026-11-08).
+        Assert.Equal(new[] { 2 }, PlaceFilter.Apply(places, 58.28, 12.29, hidden, "", null, 39.0, cities).Select(i => places[i].Id));
+        // Nothing unticked: Majorna shows too, as a Neighborhood; Borås still stops at the 39 nm.
+        Assert.Equal(new[] { 1, 2, 3 }, PlaceFilter.Apply(places, 58.28, 12.29, None, "", null, 39.0, cities).Select(i => places[i].Id));
+        // Major cities unticked: nothing of theirs gets past unticked Towns.
+        Assert.Empty(PlaceFilter.Apply(places, 58.28, 12.29, hidden, "", null, 60.0));
     }
 
     [Fact]

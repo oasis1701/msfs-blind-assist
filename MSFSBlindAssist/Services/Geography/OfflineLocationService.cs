@@ -31,8 +31,17 @@ internal sealed record LocationQuerySettings(
             kilometres, Range(s.NearbyCitiesRange), Range(s.MajorCitiesRange), s.MajorCityPopulationThreshold)
         {
             CoastRange = Math.Clamp(s.CoastRange, 1, MaxCoastRange),
+            WindowRange = Range(s.LocationInfoRange),
         };
     }
+
+    /// <summary>The Location Info window's own Range (its filters), in the tab's units: how far Output C looks
+    /// for the kinds picked with "Use for Output C", so C names the first place the window lists for them
+    /// (one range everywhere, the owner's choice, 2026-11-08).</summary>
+    public int WindowRange { get; init; } = 30;
+
+    /// <summary>The range a C press searches: the window's Range for picked kinds, else the Nearby range.</summary>
+    internal int OutputCRange => PlaceTypes.Count > 0 ? WindowRange : NearbyRange;
 
     /// <summary>The GeoNames tab's Coast Range, in the tab's units (default 50): over land the sea
     /// coast is mentioned only within it. At sea and over a lake the nearest land or shore is always said.</summary>
@@ -343,24 +352,26 @@ internal sealed class OfflineLocationService
     }
 
     /// <summary>The nearest place of the kinds in <see cref="LocationQuerySettings.PlaceTypes"/> within the
-    /// Nearby range, or null. <see cref="PlaceFilter.MajorCitiesKey"/> among them adds the nearest major city
-    /// within the Major Cities Range, as the window's Major cities item lists them (owner, 2026-11-08).</summary>
+    /// window's Range, or null: the first place the Location Info window lists for them. <see cref="PlaceFilter.MajorCitiesKey"/>
+    /// among them adds the nearest major city (the Minimum Population, no neighborhoods), in the same range
+    /// (one range everywhere, the owner's choice, 2026-11-08).</summary>
     private static PlaceHit? NearestOfTypes(SqliteConnection c, double lat, double lon, LocationQuerySettings s, AdminNames admins)
     {
         var kinds = PlaceKinds.Load(c);
+        double rangeKm = s.Km(s.WindowRange);
         FoundPlace? best = null;
         foreach (var group in s.PlaceTypes.Select(ParseTypeKey).Where(k => k is not null).GroupBy(k => k!.Value.Category))
         {
             var ids = kinds.IdsOf(group.Select(k => k!.Value.Kind));
             if (ids.Count == 0) continue;
-            var hit = Places(c, lat, lon, s.Km(s.NearbyRange), group.Key)
+            var hit = Places(c, lat, lon, rangeKm, group.Key)
                 .Where(p => ids.Contains(p.Kind)).MinBy(p => p.DistanceNm);
             if (hit is not null && (best is null || hit.DistanceNm < best.DistanceNm)) best = hit;
         }
         if (s.PlaceTypes.Contains(PlaceFilter.MajorCitiesKey))
         {
             var neighborhoods = kinds.IdsOf(new[] { LocationFeatureCatalog.Neighborhood.Key });
-            var city = Places(c, lat, lon, s.Km(s.MajorRange), s.MajorPopulation, LocationCategory.Town)
+            var city = Places(c, lat, lon, rangeKm, s.MajorPopulation, LocationCategory.Town)
                 .Where(p => !neighborhoods.Contains(p.Kind)).MinBy(p => p.DistanceNm);
             if (city is not null && (best is null || city.DistanceNm < best.DistanceNm)) best = city;
         }
@@ -424,26 +435,6 @@ internal sealed class OfflineLocationService
             })
             : null;
 
-    /// <summary>The window's Major cities: every town of at least <paramref name="minPopulation"/> within
-    /// <paramref name="radiusKm"/>, neighborhoods left out (<see cref="PlaceFilter.IsMajorCity"/>), in no order.
-    /// Read beside <see cref="SearchAround"/>, since the Major Cities Range is usually wider than the window's.
-    /// Null when no usable database is installed.</summary>
-    internal IReadOnlyList<PlaceResult>? SearchMajorCities(double lat, double lon, double radiusKm, int minPopulation, CancellationToken ct) =>
-        _store.IsAvailable
-            ? _store.Read(c =>
-            {
-                lon = LocationGrid.NormalizeLon(lon);
-                var admins = AdminNames.Load(c);
-                var kinds = PlaceKinds.Load(c);
-                var found = new List<PlaceResult>();
-                foreach (var p in PlacesWithId(c, lat, lon, radiusKm, new[] { LocationCategory.Town }, ct, minPopulation))
-                {
-                    var result = ToResult(p, admins, kinds);
-                    if (PlaceFilter.IsMajorCity(result, minPopulation)) found.Add(result);
-                }
-                return (IReadOnlyList<PlaceResult>)found;
-            })
-            : null;
 
     /// <summary>
     /// Every shown place in the world whose folded name contains <paramref name="foldedQuery"/>, the
@@ -529,13 +520,12 @@ internal sealed class OfflineLocationService
     }
 
     private static List<FoundPlaceWithId> PlacesWithId(SqliteConnection c, double lat, double lon, double radiusKm,
-        LocationCategory[] categories, CancellationToken ct, int minPopulation = 0)
+        LocationCategory[] categories, CancellationToken ct)
     {
         var found = new List<FoundPlaceWithId>();
         if (radiusKm <= 0) return found;
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, kind, id FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to AND pop >= $min";
-        cmd.Parameters.AddWithValue("$min", minPopulation);
+        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, kind, id FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to";
         var pCat = cmd.Parameters.Add("$cat", SqliteType.Integer);
         var pFrom = cmd.Parameters.Add("$from", SqliteType.Integer);
         var pTo = cmd.Parameters.Add("$to", SqliteType.Integer);

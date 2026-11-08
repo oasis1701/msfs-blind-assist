@@ -247,16 +247,6 @@ public sealed class OfflineLocationServiceTests : IDisposable
     }
 
     [Fact]
-    public void The_windows_major_cities_reach_past_its_range_and_leave_out_neighborhoods()
-    {
-        var service = Built();
-        // Bigtown (600,000) is 77 km from here, outside a 60 km search; Harbor District (a PPLX of 90,000) never counts.
-        var cities = service.SearchMajorCities(38.6, -76.6, 200, 50000, CancellationToken.None)!;
-        Assert.Equal(new[] { "Bigtown" }, cities.Select(p => p.Name));
-        Assert.Empty(service.SearchMajorCities(38.6, -76.6, 60, 50000, CancellationToken.None)!);
-    }
-
-    [Fact]
     public void A_whole_world_search_keeps_the_nearest_and_counts_them_all()
     {
         var outcome = Built().SearchWorld("bay", 38.5, -76.5, 2, CancellationToken.None)!;
@@ -285,14 +275,18 @@ public sealed class OfflineLocationServiceTests : IDisposable
     }
 
     [Fact]
-    public void Output_c_can_name_the_nearest_major_city_within_the_major_cities_range()
+    public void Output_c_names_the_first_place_the_window_lists_within_its_range()
     {
         var service = Built();
-        // Bigtown (600,000) is about 77 km away, past the 25-mile Nearby range but within the 185-mile Major
-        // Cities Range; Harbor District (a PPLX of 90,000) is nearer but never a major city.
-        var city = service.GetNearest(38.6, -76.6, Miles with { PlaceTypes = new[] { PlaceFilter.MajorCitiesKey } })!;
+        // Bigtown (600,000) is about 77 km (48 miles) away: within a 60-mile window Range, past a 30-mile one,
+        // whatever the Major Cities Range (185) says. Harbor District (a PPLX of 90,000) is nearer but never a
+        // major city.
+        var city = service.GetNearest(38.6, -76.6, Miles with { WindowRange = 60, PlaceTypes = new[] { PlaceFilter.MajorCitiesKey } })!;
         Assert.Equal("Bigtown", city.Nearest!.Name);
-        Assert.Null(service.GetNearest(38.6, -76.6, Miles with { MajorRange = 30, PlaceTypes = new[] { PlaceFilter.MajorCitiesKey } })!.Nearest);
+        var none = Miles with { WindowRange = 30, PlaceTypes = new[] { PlaceFilter.MajorCitiesKey } };
+        Assert.Null(service.GetNearest(38.6, -76.6, none)!.Nearest);
+        Assert.Equal(30, none.OutputCRange);
+        Assert.Equal(25, Miles.OutputCRange); // nothing picked: the nearest town or village, the Nearby range
         // Picked with other kinds (a heading or All places), the nearest of them all.
         var mixed = service.GetNearest(38.55, -76.48, Miles with { PlaceTypes = new[] { PlaceFilter.MajorCitiesKey, "Town:town" } })!;
         Assert.Equal("Bayside", mixed.Nearest!.Name);

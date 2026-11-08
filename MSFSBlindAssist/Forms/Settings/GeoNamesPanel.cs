@@ -110,21 +110,22 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
 
         yPos += labelHeight + 10;
 
-        // Nearby cities
+        // The nearest town or village (UserSettings.NearbyCitiesRange): not cities, any town or village however
+        // small, for Output C, Location Info's Where you are and the Volanta traffic list (owner, 2026-11-08).
         var nearbyCitiesLabel = new Label
         {
-            Text = "Nearby Cities Range:",
+            Text = "Nearest Town or Village Range:",
             Location = new System.Drawing.Point(20, yPos),
-            Size = new System.Drawing.Size(150, labelHeight)
+            Size = new System.Drawing.Size(200, labelHeight)
         };
         Controls.Add(nearbyCitiesLabel);
 
         _nearbyCitiesTextBox = new TextBox
         {
-            Location = new System.Drawing.Point(180, yPos),
+            Location = new System.Drawing.Point(230, yPos),
             Size = new System.Drawing.Size(60, textBoxHeight),
-            AccessibleName = "Nearby cities range",
-            AccessibleDescription = "Distance in miles or kilometers for nearby cities"
+            AccessibleName = "Nearest town or village range",
+            AccessibleDescription = "How far, in miles or kilometers, Output C and the location readouts look for the nearest town or village"
         };
         Controls.Add(_nearbyCitiesTextBox);
 
@@ -144,7 +145,7 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
             Location = new System.Drawing.Point(180, yPos),
             Size = new System.Drawing.Size(60, textBoxHeight),
             AccessibleName = "Major cities range",
-            AccessibleDescription = "Distance in miles or kilometers for major cities"
+            AccessibleDescription = "How far, in miles or kilometers, the Volanta traffic list looks for the nearest major city"
         };
         Controls.Add(_majorCitiesTextBox);
 
@@ -282,7 +283,7 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         string units = _kilometersRadioButton.Checked ? "kilometers" : "miles";
         if (!(int.TryParse(_nearbyCitiesTextBox.Text, out int nearbyCities) && nearbyCities > 0 && nearbyCities <= ceiling))
         {
-            error = $"Please enter a number from 1 to {ceiling} ({units}) for Nearby Cities Range.";
+            error = $"Please enter a number from 1 to {ceiling} ({units}) for Nearest Town or Village Range.";
             focus = _nearbyCitiesTextBox;
             return false;
         }

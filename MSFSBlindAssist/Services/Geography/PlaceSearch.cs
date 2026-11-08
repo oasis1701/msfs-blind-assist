@@ -67,15 +67,17 @@ internal static class PlaceTree
     }
 }
 
-/// <summary>The Major cities filter: the GeoNames tab's Minimum Population for Major Cities, and its range in
-/// nautical miles from the map position (null: no limit, the whole-world search).</summary>
-internal sealed record MajorCityFilter(int MinPopulation, double? MaxNm);
+/// <summary>The Major cities filter while its item is ticked: the GeoNames tab's Minimum Population for Major
+/// Cities. Its range is the window's, as for every item (one range everywhere, the owner's choice, 2026-11-08:
+/// a range of its own stopped the cities short of the villages, and left the window's Range doing nothing
+/// with only Major cities ticked).</summary>
+internal sealed record MajorCityFilter(int MinPopulation);
 
 /// <summary>The window's filters, applied in memory to the loaded places (pure, unit-tested).</summary>
 internal static class PlaceFilter
 {
     /// <summary>How the Major cities item is saved: among the hidden type keys when unticked, among Output C's
-    /// kinds when picked for C (C then names the nearest major city within the Major Cities Range). No colon,
+    /// kinds when picked for C (C then names the nearest major city within the window's Range). No colon,
     /// so <see cref="OfflineLocationService.ParseTypeKey"/> never reads it as a kind.</summary>
     internal const string MajorCitiesKey = "MajorCities";
 
@@ -94,8 +96,8 @@ internal static class PlaceFilter
     /// holds unticked type keys; <paramref name="foldedQuery"/> is matched anywhere in the folded name;
     /// <paramref name="direction"/> is one of <see cref="Directions"/> or null for all;
     /// <paramref name="maxNm"/> limits the distance from the map position (null: no limit, the whole-world
-    /// search). With <paramref name="majorCities"/> (Major cities ticked) a major city is kept within its own
-    /// range even when its type is unticked or it lies past <paramref name="maxNm"/>.
+    /// search). With <paramref name="majorCities"/> (Major cities ticked) a major city is kept even when its
+    /// type (Towns) is unticked, within the same range.
     /// </summary>
     internal static List<int> Apply(IReadOnlyList<PlaceResult> places, double mapLat, double mapLon,
         IReadOnlySet<string> hiddenTypes, string foldedQuery, string? direction, double? maxNm,
@@ -106,13 +108,10 @@ internal static class PlaceFilter
         {
             var p = places[i];
             bool typeShown = !hiddenTypes.Contains(p.TypeKey);
-            bool major = majorCities is { } m && IsMajorCity(p, m.MinPopulation);
-            if (!typeShown && !major) continue;
+            if (!typeShown && !(majorCities is { } m && IsMajorCity(p, m.MinPopulation))) continue;
             if (foldedQuery.Length > 0 && !p.FoldedName.Contains(foldedQuery, StringComparison.Ordinal)) continue;
             double nm = LocationGeometry.GreatCircleNm(mapLat, mapLon, p.Lat, p.Lon);
-            bool inRange = typeShown && (maxNm is not { } max || nm <= max);
-            bool inMajorRange = major && (majorCities!.MaxNm is not { } majorMax || nm <= majorMax);
-            if (!inRange && !inMajorRange) continue;
+            if (maxNm is { } max && nm > max) continue;
             // A place at the map position itself has no direction, so a direction filter leaves it out.
             if (direction is not null && (nm < 0.01
                 || LocationPhrases.Direction(LocationGeometry.BearingTrue(mapLat, mapLon, p.Lat, p.Lon)) != direction)) continue;

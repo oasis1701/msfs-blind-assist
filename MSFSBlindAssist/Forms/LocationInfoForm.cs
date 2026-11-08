@@ -389,12 +389,13 @@ public partial class LocationInfoForm : Form
     private static IEnumerable<TreeNode> Descendants(TreeNode node) =>
         node.Nodes.Cast<TreeNode>().SelectMany(n => Descendants(n).Prepend(n));
 
-    /// <summary>"Major cities, within 200 miles": the GeoNames tab's Major Cities Range, as the lookups clamp it.</summary>
+    /// <summary>"Major cities, 50,000 or more": the GeoNames tab's Minimum Population for Major Cities. No range:
+    /// the item uses the window's, as every item does (owner, 2026-11-08).</summary>
     private string MajorCitiesName()
     {
         var query = LocationQuerySettings.From(_settings);
         return string.Create(System.Globalization.CultureInfo.InvariantCulture,
-            $"Major cities, within {query.MajorRange} {UnitWord}");
+            $"Major cities, {query.MajorPopulation:N0} or more");
     }
 
     /// <summary>The unticked items' type keys, and <see cref="PlaceFilter.MajorCitiesKey"/> for an unticked
@@ -410,8 +411,7 @@ public partial class LocationInfoForm : Form
         var item = _typeTree.Nodes.Cast<TreeNode>().SelectMany(n => Descendants(n).Prepend(n))
             .FirstOrDefault(n => n.Tag is PlaceTreeItem { IsMajorCities: true });
         if (item is null || !item.Checked) return null;
-        var query = LocationQuerySettings.From(_settings);
-        return new MajorCityFilter(query.MajorPopulation, WholeWorld ? null : query.Km(query.MajorRange) / LocationPhrases.KmPerNm);
+        return new MajorCityFilter(LocationQuerySettings.From(_settings).MajorPopulation);
     }
 
     /// <summary>Ticking or unticking an item does the same to everything under it; an item above shows
@@ -459,9 +459,9 @@ public partial class LocationInfoForm : Form
         return menu;
     }
 
-    /// <summary>Output C names the nearest place of every kind under this item (All: of any kind). Major cities
-    /// is saved as <see cref="PlaceFilter.MajorCitiesKey"/>: C then names the nearest major city within the Major
-    /// Cities Range, the first the item lists while the map position follows the aircraft.</summary>
+    /// <summary>Output C names the nearest place of every kind under this item (All: of any kind), within this
+    /// window's Range: the first place the window lists for them while the map position follows the aircraft.
+    /// Major cities is saved as <see cref="PlaceFilter.MajorCitiesKey"/>.</summary>
     private void UseForOutputC(TreeNode? node)
     {
         if (node is null) return;
@@ -604,18 +604,9 @@ public partial class LocationInfoForm : Form
             }
             else
             {
-                // The major cities are read out to their own range beside the places within the window's.
-                var query = LocationQuerySettings.From(_settings);
-                var places = await Task.Run(() =>
-                {
-                    var around = _service.SearchAround(lat, lon, radiusKm, cts.Token) ?? Array.Empty<PlaceResult>();
-                    var cities = _service.SearchMajorCities(lat, lon, query.Km(query.MajorRange), query.MajorPopulation, cts.Token)
-                        ?? Array.Empty<PlaceResult>();
-                    var ids = around.Select(p => p.Id).ToHashSet();
-                    return around.Concat(cities.Where(c => ids.Add(c.Id))).ToList();
-                });
+                var places = await Task.Run(() => _service.SearchAround(lat, lon, radiusKm, cts.Token));
                 if (cts.IsCancellationRequested || IsDisposed) return;
-                SetPlaces(places);
+                SetPlaces(places ?? Array.Empty<PlaceResult>());
                 _loadedWorld = false;
                 _loadedRadiusKm = radiusKm;
             }
@@ -720,13 +711,7 @@ public partial class LocationInfoForm : Form
         if (_shown.Count == 0) return "No places found";
         string places = _shown.Count == 1 ? "1 place" : string.Create(inv, $"{_shown.Count:N0} places");
         if (!WholeWorld)
-        {
-            // The major cities reach their own range: said, so the count is never put down to the window's alone.
-            var query = LocationQuerySettings.From(_settings);
-            string cities = MajorCities() is not null && query.MajorRange > (int)_rangeBox.Value
-                ? string.Create(inv, $", major cities within {query.MajorRange} {UnitWord}") : "";
-            return string.Create(inv, $"{places} within {(int)_rangeBox.Value} {UnitWord} of the map position{cities}");
-        }
+            return string.Create(inv, $"{places} within {(int)_rangeBox.Value} {UnitWord} of the map position");
         return _worldTotal > _places.Count
             ? string.Create(inv, $"{places} shown, the nearest of {_worldTotal:N0} named like that")
             : $"{places} named like that";
