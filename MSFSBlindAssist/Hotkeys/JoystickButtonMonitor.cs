@@ -177,7 +177,16 @@ public sealed class JoystickButtonMonitor : IDisposable
     private SinkWindow? _window;
     private SinkWindow? _retiring;
     private int _dispatchDepth;
+    private long _startedAtMs;
     private readonly Dictionary<IntPtr, Device?> _devices = new();
+
+    /// <summary>How long after <see cref="Start"/> reports only set each device's state and fire
+    /// nothing. Raw Input sends no initial state, and throttle quadrants hold buttons down all
+    /// the time (a lever resting in its idle or reverse detent, a latched switch) while their
+    /// axes report continuously: without this, the first report after Start fired such a
+    /// button at once (found on a Thrustmaster Boeing and a WinCTRL Airbus quadrant). Shorter
+    /// than the capture dialog's spoken prompt, so no deliberate press is lost.</summary>
+    private const long SettleMs = 500;
     private byte[] _buffer = new byte[256];
     private bool _disposed;
 
@@ -210,6 +219,7 @@ public sealed class JoystickButtonMonitor : IDisposable
             _window = null;
             return;
         }
+        _startedAtMs = Environment.TickCount64;
         s_started = this;
     }
 
@@ -261,6 +271,7 @@ public sealed class JoystickButtonMonitor : IDisposable
             if (_buffer.Length < size) _buffer = new byte[size];
 
             List<int>? pressed = null;
+            bool settling = Environment.TickCount64 - _startedAtMs < SettleMs;
             unsafe
             {
                 fixed (byte* p = _buffer)
@@ -272,8 +283,10 @@ public sealed class JoystickButtonMonitor : IDisposable
                     byte* reports = p + headerSize + 8;
                     for (uint i = 0; i < count; i++)
                     {
+                        // Always processed, so the state is current; while settling, the edges are
+                        // dropped and what is held now becomes the starting point.
                         var fromReport = ProcessReport(device, (IntPtr)(reports + i * reportSize), reportSize);
-                        if (fromReport.Count > 0) (pressed ??= new List<int>()).AddRange(fromReport);
+                        if (fromReport.Count > 0 && !settling) (pressed ??= new List<int>()).AddRange(fromReport);
                     }
                 }
             }

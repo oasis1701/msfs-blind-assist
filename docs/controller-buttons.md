@@ -28,7 +28,7 @@ The first version polled every controller through WinMM (`joyGetPosEx`) on a bac
 
 ## Limits
 
-Buttons 1 to 100 can be bound (101 to 104 are the hat directions' numbers). Two identical controllers (same vendor and product id) share their bindings. A button held while the monitor starts counts as pressed at its next report, since Raw Input sends no initial state.
+Buttons 1 to 100 can be bound (101 to 104 are the hat directions' numbers). Two identical controllers (same vendor and product id) share their bindings. Raw Input sends no initial state, so for the first half second after each start (`SettleMs`) reports only record what each controller holds: a throttle lever resting in a detent or a latched switch is the starting point, not a press. A press in that half second is not seen, and a controller that sends nothing until later (a yoke at rest) starts from "nothing pressed", so a switch latched on it counts as pressed at its first report.
 
 ## Testing
 
