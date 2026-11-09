@@ -45,10 +45,9 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     //   RA 20. run 3 (bias=30, trigger=40) → fired at RA 30. The pattern is linear: each +10
     //   of bias moves the fire-point up by +10. Real offset = 40, locking the cue at RA 40.
     // - FlareTriggerWheelHeightFt = 40: the PMDG 777 autoland begins its flare at ~40 ft RA;
-    //   timing VG's cue to match lets a hand-flying pilot mirror the autoland.
-    // - FlareTargetPitchDeg = 4.5: Boeing FCTM specifies a 2–3° pitch increase from approach
-    //   attitude during flare. Approach pitch on the 777 is ~+1.5°, so flare ≈ +4–4.5°. The
-    //   shared default of 6° was tuned for Airbus and overshoots the 777 by ~1.5°.
+    //   timing VG's cue to match lets a hand-flying pilot mirror the autoland. Since visual
+    //   guidance stage 6 it is the backstop: the flare starts about 4.3 s before touchdown or
+    //   here, whichever comes first, and eases the descent rate instead of asking a fixed pitch.
     // - TonePitchRangeDeg = 10: the default 6° gave 50 Hz/° of beat (too dissonant at the
     //   ±0.1° pitch errors a stabilized approach produces). 10° = 30 Hz/° — gentler at small
     //   errors, still clearly audible when off.
@@ -61,7 +60,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         GlideslopeAltitudeBiasFt  = 80.0,
         FlareAltitudeBiasFt       = 40.0,
         FlareTriggerWheelHeightFt = 40.0,
-        FlareTargetPitchDeg       = 4.5,
         TonePitchRangeDeg         = 10.0
     };
 

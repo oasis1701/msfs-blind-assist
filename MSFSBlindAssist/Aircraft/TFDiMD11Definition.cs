@@ -200,7 +200,6 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
         GlideslopeAltitudeBiasFt = 75.0,   // estimate — calibrate vs a coupled ILS autoland
         FlareAltitudeBiasFt = 35.0,   // estimate
         FlareTriggerWheelHeightFt = 35.0,
-        FlareTargetPitchDeg = 5.0,
         TonePitchRangeDeg = 10.0
     };
 

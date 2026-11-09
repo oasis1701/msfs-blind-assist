@@ -140,7 +140,8 @@ CREATE TABLE approach_leg (
             ("marking_flags", 0), ("has_closed_markings", 0), ("has_stol_markings", 0));
 
     public void InsertRunwayEnd(int runwayEndId, string name, string? ilsIdent = null,
-        double heading = 0, double altitude = 0, double lonx = 0, double laty = 0)
+        double heading = 0, double altitude = 0, double lonx = 0, double laty = 0,
+        double? leftVasiPitch = null, double? rightVasiPitch = null)
         => Insert("runway_end",
             ("runway_end_id", runwayEndId), ("name", name), ("ils_ident", ilsIdent),
             ("heading", heading), ("altitude", altitude), ("lonx", lonx), ("laty", laty),
@@ -148,7 +149,8 @@ CREATE TABLE approach_leg (
             // no test needs to vary them.
             ("offset_threshold", 0), ("has_closed_markings", 0),
             ("is_takeoff", 1), ("is_landing", 1), ("is_pattern", "Yes"), ("end_type", "PRIMARY"),
-            ("left_vasi_type", null), ("left_vasi_pitch", null), ("right_vasi_type", null), ("right_vasi_pitch", null));
+            ("left_vasi_type", leftVasiPitch != null ? "PAPI4" : null), ("left_vasi_pitch", leftVasiPitch),
+            ("right_vasi_type", rightVasiPitch != null ? "PAPI4" : null), ("right_vasi_pitch", rightVasiPitch));
 
     /// <summary>An approach procedure to one runway end; its legs go in with
     /// <see cref="InsertApproachLeg"/>.</summary>

@@ -353,15 +353,14 @@ public class LandingFlareAssistManager : IDisposable
 
     /// <summary>
     /// Points every measurement at <paramref name="r"/>: the aim point projected from the pavement
-    /// edge down the runway to the PAINTED threshold (a zero offset — 94 % of runway ends,
-    /// including every EGLL and KJFK end — is an exact no-op), the threshold elevation, and the
-    /// spoken label.
+    /// edge down the runway to the PAINTED threshold (<see cref="NavigationCalculator.LandingThreshold"/>,
+    /// shared with visual guidance; a zero offset, 94 % of runway ends, is an exact no-op), the
+    /// threshold elevation, and the spoken label.
     /// </summary>
     private void ApplyActiveRunway(Runway r)
     {
         runway = r;
-        (thresholdLat, thresholdLon) = NavigationCalculator.CalculateTouchdownAimPoint(
-            r.StartLat, r.StartLon, r.Heading, r.ThresholdOffset);
+        (thresholdLat, thresholdLon) = NavigationCalculator.LandingThreshold(r);
         thresholdElevationFt = r.ThresholdElevation != 0
             ? r.ThresholdElevation
             : armedAirport?.Altitude ?? 0.0;
