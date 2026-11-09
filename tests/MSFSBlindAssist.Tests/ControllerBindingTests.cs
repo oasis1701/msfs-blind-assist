@@ -5,7 +5,7 @@ namespace MSFSBlindAssist.Tests;
 
 /// <summary>The pure parts of controller button bindings: press detection, the hat directions,
 /// the saved action name, and the command list the pilot picks from. Reading a real controller
-/// (WinMM) is sim-side hardware and is checked in the in-sim test plan, not here.</summary>
+/// (Raw Input) is sim-side hardware and is checked in the in-sim test plan, not here.</summary>
 public class ControllerBindingTests
 {
     [Fact]
@@ -22,19 +22,40 @@ public class ControllerBindingTests
         Assert.Equal(names.Count, names.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
+    private static HashSet<int> Buttons(params int[] pressed) => new(pressed);
+
     [Fact]
     public void Only_the_press_edge_fires_and_a_held_button_fires_once()
     {
-        Assert.Equal(new[] { 1, 5 }, ControllerButtonEdges.NewlyPressed(0, 0, 0b1_0001, 0));
-        Assert.Empty(ControllerButtonEdges.NewlyPressed(0b1_0001, 0, 0b1_0001, 0));   // held
-        Assert.Empty(ControllerButtonEdges.NewlyPressed(0b1_0001, 0, 0, 0));          // released
-        Assert.Equal(new[] { 2 }, ControllerButtonEdges.NewlyPressed(0b01, 0, 0b11, 0));
+        Assert.Equal(new[] { 1, 5 }, ControllerButtonEdges.NewlyPressed(Buttons(), 0, Buttons(5, 1), 0));
+        Assert.Empty(ControllerButtonEdges.NewlyPressed(Buttons(1, 5), 0, Buttons(1, 5), 0));   // held
+        Assert.Empty(ControllerButtonEdges.NewlyPressed(Buttons(1, 5), 0, Buttons(), 0));       // released
+        Assert.Equal(new[] { 2 }, ControllerButtonEdges.NewlyPressed(Buttons(1), 0, Buttons(1, 2), 0));
     }
 
     [Fact]
-    public void Button_32_is_reported_as_32()
+    public void Buttons_past_32_are_reported()
     {
-        Assert.Equal(new[] { 32 }, ControllerButtonEdges.NewlyPressed(0, 0, 0x8000_0000u, 0));
+        // Raw Input has no 32-button limit: a Honeycomb Bravo reports 48.
+        Assert.Equal(new[] { 48 }, ControllerButtonEdges.NewlyPressed(Buttons(), 0, Buttons(48), 0));
+    }
+
+    [Theory]
+    [InlineData(0, 0, 7, ControllerBinding.HatUp)]       // 8 positions, 0 = up
+    [InlineData(2, 0, 7, ControllerBinding.HatRight)]
+    [InlineData(4, 0, 7, ControllerBinding.HatDown)]
+    [InlineData(6, 0, 7, ControllerBinding.HatLeft)]
+    [InlineData(1, 0, 7, 0)]                             // diagonal
+    [InlineData(8, 0, 7, 0)]                             // null state: centred
+    [InlineData(15, 0, 7, 0)]
+    [InlineData(1, 1, 8, ControllerBinding.HatUp)]       // 1-based, 0 = centred
+    [InlineData(0, 1, 8, 0)]
+    [InlineData(3, 0, 3, ControllerBinding.HatLeft)]     // 4 positions
+    [InlineData(270, 0, 359, ControllerBinding.HatLeft)] // the angle itself, in degrees
+    [InlineData(45, 0, 315, 0)]
+    public void Hid_hat_values_map_to_the_four_directions(int value, int min, int max, int expected)
+    {
+        Assert.Equal(expected, ControllerButtonEdges.HatDirectionFromHid(value, min, max));
     }
 
     [Theory]
@@ -54,10 +75,11 @@ public class ControllerBindingTests
     [Fact]
     public void A_hat_direction_fires_when_it_starts_not_while_it_is_held()
     {
-        Assert.Equal(new[] { ControllerBinding.HatUp }, ControllerButtonEdges.NewlyPressed(0, 0, 0, ControllerBinding.HatUp));
-        Assert.Empty(ControllerButtonEdges.NewlyPressed(0, ControllerBinding.HatUp, 0, ControllerBinding.HatUp));
+        Assert.Equal(new[] { ControllerBinding.HatUp },
+            ControllerButtonEdges.NewlyPressed(Buttons(), 0, Buttons(), ControllerBinding.HatUp));
+        Assert.Empty(ControllerButtonEdges.NewlyPressed(Buttons(), ControllerBinding.HatUp, Buttons(), ControllerBinding.HatUp));
         Assert.Equal(new[] { ControllerBinding.HatLeft },
-            ControllerButtonEdges.NewlyPressed(0, ControllerBinding.HatUp, 0, ControllerBinding.HatLeft));
+            ControllerButtonEdges.NewlyPressed(Buttons(), ControllerBinding.HatUp, Buttons(), ControllerBinding.HatLeft));
     }
 
     [Theory]

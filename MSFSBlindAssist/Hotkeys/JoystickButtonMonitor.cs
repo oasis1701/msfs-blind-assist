@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using Microsoft.Win32.SafeHandles;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Hotkeys;
@@ -11,191 +12,463 @@ public class ControllerButtonPressedEventArgs : EventArgs
     public int Button { get; init; }
 }
 
-/// <summary>Watches every game controller Windows knows (yokes, joysticks, throttles, gamepads)
-/// through WinMM's joystick API and raises <see cref="ButtonPressed"/> on the UI thread when a
-/// button or a hat direction is pressed. WinMM needs no extra package and no window focus: it
-/// reads the device whether MSFS, the app or anything else is in front.
+/// <summary>Listens to every game controller (yokes, joysticks, throttles, gamepads) through
+/// Windows Raw Input and raises <see cref="ButtonPressed"/> on the UI thread when a button or a
+/// hat direction is pressed.
 ///
-/// Its limits are WinMM's: 16 devices and 32 buttons per device. A button past 32 is not seen.
+/// Raw Input is a passive copy of each HID input report: Windows hands the same report to the
+/// simulator, MobiFlight and every other reader, and this class never opens, polls or acquires
+/// a controller. An earlier version polled through WinMM (<c>joyGetPosEx</c>), whose probing of
+/// empty joystick slots disturbed other readers: a Honeycomb Bravo driven by MobiFlight stopped
+/// working in the sim (PR #334 review). See CTL-3.
 ///
-/// Polling runs on a background thread. A device that is not plugged in is only probed at the
-/// rescan (every few seconds), never at the poll rate: asking WinMM about an empty joystick slot
-/// is slow, and doing it 30 times a second is a known cause of stutter.</summary>
+/// <c>RIDEV_INPUTSINK</c> delivers reports while another window (MSFS) is in front. Windows keeps
+/// ONE raw-input target per device type per process, so only one monitor may be started at a
+/// time; MainForm stops its own while the Settings dialog captures with another (CTL-4).</summary>
 public sealed class JoystickButtonMonitor : IDisposable
 {
+    // ---- Raw Input ---------------------------------------------------------------------------
+
     [StructLayout(LayoutKind.Sequential)]
-    private struct JOYINFOEX
+    private struct RAWINPUTDEVICE
     {
-        public uint dwSize, dwFlags, dwXpos, dwYpos, dwZpos, dwRpos, dwUpos, dwVpos;
-        public uint dwButtons, dwButtonNumber, dwPOV, dwReserved1, dwReserved2;
+        public ushort usUsagePage;
+        public ushort usUsage;
+        public uint dwFlags;
+        public IntPtr hwndTarget;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct JOYCAPSW
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RAWINPUTHEADER
     {
-        public ushort wMid, wPid;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szPname;
-        public uint wXmin, wXmax, wYmin, wYmax, wZmin, wZmax, wNumButtons, wPeriodMin, wPeriodMax;
-        public uint wRmin, wRmax, wUmin, wUmax, wVmin, wVmax, wCaps, wMaxAxes, wNumAxes, wMaxButtons;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szRegKey;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szOEMVxD;
+        public uint dwType;
+        public uint dwSize;
+        public IntPtr hDevice;
+        public IntPtr wParam;
     }
 
-    [DllImport("winmm.dll")] private static extern uint joyGetNumDevs();
-    [DllImport("winmm.dll")] private static extern uint joyGetPosEx(uint uJoyID, ref JOYINFOEX pji);
-    [DllImport("winmm.dll", CharSet = CharSet.Unicode)]
-    private static extern uint joyGetDevCapsW(UIntPtr uJoyID, ref JOYCAPSW pjc, uint cbjc);
-
-    private const uint JOYERR_NOERROR = 0;
-    private const uint JOY_RETURNBUTTONS = 0x80;
-    private const uint JOY_RETURNPOV = 0x40;
-    private const uint JOY_RETURNPOVCTS = 0x200;
-    // Both POV flags: a hat that reports only the four positions still fills dwPOV.
-    private const uint PollFlags = JOY_RETURNBUTTONS | JOY_RETURNPOV | JOY_RETURNPOVCTS;
-    private const int PollIntervalMs = 30;
-    private const int RescanIntervalMs = 3000;
-
-    private sealed class Device
+    [StructLayout(LayoutKind.Explicit, Size = 32)]
+    private struct RID_DEVICE_INFO_HID
     {
-        public uint Id;
+        [FieldOffset(0)] public uint cbSize;
+        [FieldOffset(4)] public uint dwType;
+        [FieldOffset(8)] public uint dwVendorId;
+        [FieldOffset(12)] public uint dwProductId;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterRawInputDevices(RAWINPUTDEVICE[] devices, uint count, uint size);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetRawInputData(IntPtr hRawInput, uint command, IntPtr data, ref uint size, uint headerSize);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetRawInputDeviceInfoW")]
+    private static extern uint GetRawInputDeviceInfo(IntPtr hDevice, uint command, IntPtr data, ref uint size);
+
+    private const int WM_INPUT_DEVICE_CHANGE = 0x00FE;
+    private const int WM_INPUT = 0x00FF;
+    private const uint RID_HEADER = 0x10000005;
+    private const uint RID_INPUT = 0x10000003;
+    private const uint RIM_TYPEHID = 2;
+    private const uint RIDI_PREPARSEDDATA = 0x20000005;
+    private const uint RIDI_DEVICENAME = 0x20000007;
+    private const uint RIDI_DEVICEINFO = 0x2000000B;
+    private const uint RIDEV_REMOVE = 0x00000001;
+    private const uint RIDEV_INPUTSINK = 0x00000100;
+    private const uint RIDEV_DEVNOTIFY = 0x00002000;
+    private const int GIDC_REMOVAL = 2;
+
+    // Generic Desktop page: joystick, gamepad, multi-axis controller. Keyboards and mice are
+    // never registered, so the app's own hotkeys and the screen reader are untouched.
+    private const ushort UsagePageGenericDesktop = 0x01;
+    private static readonly ushort[] ControllerUsages = { 0x04, 0x05, 0x08 };
+
+    // ---- HID parsing (hid.dll) ---------------------------------------------------------------
+
+    [DllImport("hid.dll")]
+    private static extern int HidP_GetValueCaps(int reportType, byte[] valueCaps, ref ushort length, IntPtr preparsed);
+
+    [DllImport("hid.dll")]
+    private static extern int HidP_GetCaps(IntPtr preparsed, byte[] caps);
+
+    [DllImport("hid.dll")]
+    private static extern uint HidP_MaxUsageListLength(int reportType, ushort usagePage, IntPtr preparsed);
+
+    [DllImport("hid.dll")]
+    private static extern int HidP_GetUsages(int reportType, ushort usagePage, ushort linkCollection,
+        ushort[] usageList, ref uint usageLength, IntPtr preparsed, IntPtr report, uint reportLength);
+
+    [DllImport("hid.dll")]
+    private static extern int HidP_GetUsageValue(int reportType, ushort usagePage, ushort linkCollection,
+        ushort usage, out uint value, IntPtr preparsed, IntPtr report, uint reportLength);
+
+    [DllImport("hid.dll", CharSet = CharSet.Unicode)]
+    private static extern bool HidD_GetProductString(SafeFileHandle device, byte[] buffer, uint length);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security,
+        uint creation, uint flags, IntPtr template);
+
+    private const int HidP_Input = 0;
+    private const int HIDP_STATUS_SUCCESS = 0x00110000;
+    private const ushort UsagePageButton = 0x09;
+    private const ushort UsageHatSwitch = 0x39;
+    private const int HidpCapsSize = 64;        // HIDP_CAPS
+    private const int HidpValueCapsSize = 72;   // HIDP_VALUE_CAPS
+
+    /// <summary>Buttons above this are ignored: 101–104 are the hat directions' numbers
+    /// (<see cref="ControllerBinding.HatUp"/>…). No flight controller comes near 100 buttons.</summary>
+    private const int MaxButton = 100;
+
+    private sealed class Device : IDisposable
+    {
         public int VendorId, ProductId;
         public string Name = "";
-        public uint Buttons;
+        public bool Named;                  // see EnsureNamed
+        public IntPtr Preparsed;            // unmanaged copy, freed in Dispose
+        public ushort[] UsageBuffer = Array.Empty<ushort>();
+        public bool HasHat;
+        public ushort HatLinkCollection;
+        public int HatMin, HatMax;
+        public HashSet<int> Buttons = new();
         public int Hat;
+
+        public void Dispose()
+        {
+            if (Preparsed != IntPtr.Zero) Marshal.FreeHGlobal(Preparsed);
+            Preparsed = IntPtr.Zero;
+        }
     }
 
-    /// <summary>One Start()..Stop() run. Each poll thread owns its session and checks only its own
-    /// flag, and a press is delivered only if its session is still the current one: a thread that
-    /// outlived Stop()'s join (a slow rescan) can neither keep polling beside its successor nor
-    /// deliver a press after a restart.</summary>
-    private sealed class Session
+    /// <summary>The hidden window Raw Input delivers to. Not a message-only window: a hidden
+    /// top-level tool window is the documented target for RIDEV_INPUTSINK.</summary>
+    private sealed class SinkWindow : NativeWindow
     {
-        public volatile bool Active = true;
+        private readonly JoystickButtonMonitor _owner;
+        public SinkWindow(JoystickButtonMonitor owner)
+        {
+            _owner = owner;
+            CreateHandle(new CreateParams { Caption = "MSFSBA controller input", ExStyle = 0x00000080 /* WS_EX_TOOLWINDOW */ });
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            _owner._dispatchDepth++;
+            try
+            {
+                if (m.Msg == WM_INPUT) _owner.OnRawInput(m.LParam);
+                else if (m.Msg == WM_INPUT_DEVICE_CHANGE && m.WParam.ToInt32() == GIDC_REMOVAL) _owner.OnDeviceRemoved(m.LParam);
+            }
+            finally { _owner._dispatchDepth--; }
+            base.WndProc(ref m); // DefWindowProc frees the WM_INPUT buffer
+
+            // Stopped from inside a ButtonPressed handler (the capture dialog stops on its first
+            // press): the window is torn down here, once no message of its own is on the stack.
+            if (_owner._retiring == this && _owner._dispatchDepth == 0)
+            {
+                _owner._retiring = null;
+                DestroyHandle();
+            }
+        }
     }
 
-    private readonly SynchronizationContext _uiContext;
-    private Thread? _thread;
-    private Session? _session;
+    private static JoystickButtonMonitor? s_started;
+
+    private SinkWindow? _window;
+    private SinkWindow? _retiring;
+    private int _dispatchDepth;
+    private readonly Dictionary<IntPtr, Device?> _devices = new();
+    private byte[] _buffer = new byte[256];
     private bool _disposed;
 
-    /// <summary>Raised on the thread that created the monitor (the UI thread).</summary>
+    /// <summary>Raised on the UI thread (the thread that called <see cref="Start"/>).</summary>
     public event EventHandler<ControllerButtonPressedEventArgs>? ButtonPressed;
 
-    /// <summary>Create on the UI thread: events are posted back to the context current here.</summary>
-    public JoystickButtonMonitor()
-    {
-        _uiContext = SynchronizationContext.Current ?? new SynchronizationContext();
-    }
+    /// <summary>Which devices to decode, by vendor and product id; null decodes all (the capture
+    /// dialog). MainForm passes its bound devices, so a throttle's axis reports, which arrive
+    /// many times a second, are dropped after one dictionary lookup.</summary>
+    public Func<int, int, bool>? DeviceFilter { get; set; }
 
-    public bool IsRunning => _session?.Active == true;
+    public bool IsRunning => _window != null;
 
     public void Start()
     {
         if (_disposed || IsRunning) return;
-        var session = new Session();
-        _session = session;
-        _thread = new Thread(() => PollLoop(session)) { IsBackground = true, Name = "Controller buttons" };
-        _thread.Start();
+        if (s_started != null && s_started != this)
+        {
+            // A second registration would silently steal the first one's input (one target per
+            // process), and its Stop would unregister both.
+            Log.Warn("Controller", "Controller input not started: another controller monitor is running.");
+            return;
+        }
+
+        _window = new SinkWindow(this);
+        if (!Register(_window.Handle, RIDEV_INPUTSINK | RIDEV_DEVNOTIFY))
+        {
+            Log.Error("Controller", $"RegisterRawInputDevices failed: {Marshal.GetLastWin32Error()}");
+            _window.DestroyHandle();
+            _window = null;
+            return;
+        }
+        s_started = this;
     }
 
     public void Stop()
     {
-        if (_session == null) return;
-        _session.Active = false;
-        _session = null;
-        _thread?.Join(500);
-        _thread = null;
+        if (_window == null) return;
+        Register(IntPtr.Zero, RIDEV_REMOVE);
+        // Destroying the window also discards any WM_INPUT still queued for it. Called from
+        // inside one of its own messages, the window finishes that message first.
+        if (_dispatchDepth > 0) _retiring = _window;
+        else _window.DestroyHandle();
+        _window = null;
+        if (s_started == this) s_started = null;
+        foreach (var device in _devices.Values) device?.Dispose();
+        _devices.Clear(); // a restart starts every device from "nothing pressed"
     }
 
-    private void PollLoop(Session session)
+    private static bool Register(IntPtr hwnd, uint flags)
     {
-        var devices = new List<Device>();
-        var lastRescan = Environment.TickCount64 - RescanIntervalMs;
+        var devices = ControllerUsages
+            .Select(u => new RAWINPUTDEVICE { usUsagePage = UsagePageGenericDesktop, usUsage = u, dwFlags = flags, hwndTarget = hwnd })
+            .ToArray();
+        return RegisterRawInputDevices(devices, (uint)devices.Length, (uint)Marshal.SizeOf<RAWINPUTDEVICE>());
+    }
+
+    private void OnRawInput(IntPtr hRawInput)
+    {
         try
         {
-            while (session.Active)
+            int headerSize = Marshal.SizeOf<RAWINPUTHEADER>();
+
+            // The header alone first, into a stack struct (no allocation: axis reports arrive
+            // hundreds of times a second): it names the device, which decides whether to read on.
+            uint size = (uint)headerSize;
+            RAWINPUTHEADER header;
+            unsafe
             {
-                if (Environment.TickCount64 - lastRescan >= RescanIntervalMs)
-                {
-                    devices = Rescan(devices);
-                    lastRescan = Environment.TickCount64;
-                }
+                if (GetRawInputData(hRawInput, RID_HEADER, (IntPtr)(&header), ref size, (uint)headerSize) == uint.MaxValue) return;
+            }
+            if (header.dwType != RIM_TYPEHID) return;
 
-                foreach (var device in devices)
+            var device = GetDevice(header.hDevice);
+            if (device == null) return;
+            if (DeviceFilter != null && !DeviceFilter(device.VendorId, device.ProductId)) return;
+
+            size = 0;
+            GetRawInputData(hRawInput, RID_INPUT, IntPtr.Zero, ref size, (uint)headerSize);
+            if (size == 0) return;
+            if (_buffer.Length < size) _buffer = new byte[size];
+
+            List<int>? pressed = null;
+            unsafe
+            {
+                fixed (byte* p = _buffer)
                 {
-                    var info = new JOYINFOEX
+                    if (GetRawInputData(hRawInput, RID_INPUT, (IntPtr)p, ref size, (uint)headerSize) == uint.MaxValue) return;
+                    // RAWHID: dwSizeHid, dwCount, then dwCount reports of dwSizeHid bytes each.
+                    uint reportSize = *(uint*)(p + headerSize);
+                    uint count = *(uint*)(p + headerSize + 4);
+                    byte* reports = p + headerSize + 8;
+                    for (uint i = 0; i < count; i++)
                     {
-                        dwSize = (uint)Marshal.SizeOf<JOYINFOEX>(),
-                        dwFlags = PollFlags,
-                    };
-                    // An unplugged device fails here until the next rescan drops it.
-                    if (joyGetPosEx(device.Id, ref info) != JOYERR_NOERROR) continue;
-
-                    int hat = ControllerButtonEdges.HatDirection(info.dwPOV);
-                    foreach (int button in ControllerButtonEdges.NewlyPressed(device.Buttons, device.Hat, info.dwButtons, hat))
-                        Raise(session, device, button);
-                    device.Buttons = info.dwButtons;
-                    device.Hat = hat;
+                        var fromReport = ProcessReport(device, (IntPtr)(reports + i * reportSize), reportSize);
+                        if (fromReport.Count > 0) (pressed ??= new List<int>()).AddRange(fromReport);
+                    }
                 }
+            }
+            if (pressed == null) return;
+            EnsureNamed(device, header.hDevice);
 
-                Thread.Sleep(PollIntervalMs);
+            // Raised only once the report is fully read: a command may open a window whose
+            // message loop delivers the next WM_INPUT into this same object, reusing _buffer.
+            foreach (int button in pressed)
+            {
+                if (!IsRunning) return; // a handler stopped the monitor: the rest belongs to nobody
+                ButtonPressed?.Invoke(this, new ControllerButtonPressedEventArgs
+                {
+                    VendorId = device.VendorId,
+                    ProductId = device.ProductId,
+                    DeviceName = device.Name,
+                    Button = button,
+                });
             }
         }
         catch (Exception ex)
         {
-            // Never take the app down over a controller: log and stop reading them.
-            Log.Error("Controller", $"Controller polling stopped: {ex.Message}");
-            session.Active = false;
+            // Never take the app down over a controller report.
+            Log.Debug("Controller", $"Raw input report skipped: {ex.Message}");
         }
     }
 
-    /// <summary>The devices plugged in now. One already known keeps its last state; a new one
-    /// starts from what it reads now, so a button held while it is plugged in (or while the
-    /// app starts) does not fire.</summary>
-    private static List<Device> Rescan(List<Device> known)
+    /// <summary>Updates the device's state from one report and returns what was newly pressed.
+    /// A report that changes no button and not the hat (the yoke's axes moving, nearly every
+    /// report while taxiing) returns at once without allocating.</summary>
+    private static IReadOnlyList<int> ProcessReport(Device device, IntPtr report, uint length)
     {
-        var found = new List<Device>();
-        uint slots = Math.Min(joyGetNumDevs(), 16u);
-        for (uint id = 0; id < slots; id++)
+        var buttons = device.Buttons;
+        if (device.UsageBuffer.Length > 0)
         {
-            var info = new JOYINFOEX
+            uint usageCount = (uint)device.UsageBuffer.Length;
+            int status = HidP_GetUsages(HidP_Input, UsagePageButton, 0, device.UsageBuffer, ref usageCount,
+                device.Preparsed, report, length);
+            // Any other status (a report ID without buttons) leaves the buttons as they were.
+            if (status == HIDP_STATUS_SUCCESS && !SameButtons(device, usageCount))
             {
-                dwSize = (uint)Marshal.SizeOf<JOYINFOEX>(),
-                dwFlags = PollFlags,
-            };
-            if (joyGetPosEx(id, ref info) != JOYERR_NOERROR) continue;
-
-            var caps = new JOYCAPSW();
-            if (joyGetDevCapsW((UIntPtr)id, ref caps, (uint)Marshal.SizeOf<JOYCAPSW>()) != JOYERR_NOERROR) continue;
-
-            // Known only if the SAME device is still in the slot: unplug one controller and plug
-            // another in between two rescans, and the new one takes the freed slot.
-            var existing = known.FirstOrDefault(d => d.Id == id && d.VendorId == caps.wMid && d.ProductId == caps.wPid);
-            if (existing != null)
-            {
-                found.Add(existing);
-                continue;
+                buttons = new HashSet<int>();
+                for (int i = 0; i < usageCount; i++)
+                {
+                    int b = device.UsageBuffer[i];
+                    if (b >= 1 && b <= MaxButton) buttons.Add(b);
+                }
             }
-
-            var device = new Device
-            {
-                Id = id,
-                VendorId = caps.wMid,
-                ProductId = caps.wPid,
-                Name = FriendlyName(caps.wMid, caps.wPid, caps.szPname),
-                Buttons = info.dwButtons,
-                Hat = ControllerButtonEdges.HatDirection(info.dwPOV),
-            };
-            found.Add(device);
-            Log.Info("Controller", $"Controller found: {device.Name} (VID {device.VendorId:X4}, PID {device.ProductId:X4}, slot {id})");
         }
-        return found;
+
+        int hat = device.Hat;
+        if (device.HasHat && HidP_GetUsageValue(HidP_Input, UsagePageGenericDesktop, device.HatLinkCollection,
+                UsageHatSwitch, out uint value, device.Preparsed, report, length) == HIDP_STATUS_SUCCESS)
+        {
+            hat = ControllerButtonEdges.HatDirectionFromHid((int)value, device.HatMin, device.HatMax);
+        }
+
+        if (ReferenceEquals(buttons, device.Buttons) && hat == device.Hat) return Array.Empty<int>();
+
+        var pressed = ControllerButtonEdges.NewlyPressed(device.Buttons, device.Hat, buttons, hat);
+        device.Buttons = buttons;
+        device.Hat = hat;
+        return pressed;
     }
 
-    /// <summary>The name Windows shows in its Game Controllers panel. WinMM's own product name
-    /// is usually the generic driver's ("Microsoft PC-joystick driver"), so the OEM name the
-    /// HID driver registered for this vendor and product comes first.</summary>
-    private static string FriendlyName(int vendorId, int productId, string? winmmName)
+    /// <summary>Whether the usages just read are exactly the buttons already held.</summary>
+    private static bool SameButtons(Device device, uint usageCount)
+    {
+        int counted = 0;
+        for (int i = 0; i < usageCount; i++)
+        {
+            int b = device.UsageBuffer[i];
+            if (b < 1 || b > MaxButton) continue;
+            if (!device.Buttons.Contains(b)) return false;
+            counted++;
+        }
+        return counted == device.Buttons.Count;
+    }
+
+    private void OnDeviceRemoved(IntPtr hDevice)
+    {
+        if (_devices.Remove(hDevice, out var device)) device?.Dispose();
+    }
+
+    /// <summary>The device behind a raw-input handle, described once and cached; null (also
+    /// cached) for one that cannot be described, so it is not asked again for every report.</summary>
+    private Device? GetDevice(IntPtr hDevice)
+    {
+        if (_devices.TryGetValue(hDevice, out var cached)) return cached;
+        Device? device = null;
+        try { device = Describe(hDevice); }
+        catch (Exception ex) { Log.Debug("Controller", $"Controller description failed: {ex.Message}"); }
+        _devices[hDevice] = device;
+        return device;
+    }
+
+    /// <summary>Names a device the first time one of its buttons is pressed. Never done for a
+    /// device <see cref="DeviceFilter"/> excludes, nor for axis movement: naming may open a
+    /// handle to it, and a controller the pilot has bound nothing on (a MobiFlight-driven
+    /// throttle) is left alone.</summary>
+    private static void EnsureNamed(Device device, IntPtr hDevice)
+    {
+        if (device.Named) return;
+        device.Named = true;
+        try { device.Name = FriendlyName(device.VendorId, device.ProductId, DevicePath(hDevice)); }
+        catch (Exception ex)
+        {
+            device.Name = $"Controller {device.VendorId:X4}:{device.ProductId:X4}";
+            Log.Debug("Controller", $"Controller naming failed: {ex.Message}");
+        }
+        Log.Info("Controller", $"Controller found: {device.Name} (VID {device.VendorId:X4}, PID {device.ProductId:X4}, hat {device.HasHat})");
+    }
+
+    private static Device? Describe(IntPtr hDevice)
+    {
+        var info = new RID_DEVICE_INFO_HID { cbSize = 32 };
+        uint size = 32;
+        var infoPtr = Marshal.AllocHGlobal(32);
+        try
+        {
+            Marshal.StructureToPtr(info, infoPtr, false);
+            if (GetRawInputDeviceInfo(hDevice, RIDI_DEVICEINFO, infoPtr, ref size) == uint.MaxValue) return null;
+            info = Marshal.PtrToStructure<RID_DEVICE_INFO_HID>(infoPtr);
+        }
+        finally { Marshal.FreeHGlobal(infoPtr); }
+        if (info.dwType != RIM_TYPEHID) return null;
+
+        size = 0;
+        GetRawInputDeviceInfo(hDevice, RIDI_PREPARSEDDATA, IntPtr.Zero, ref size);
+        if (size == 0) return null;
+        var device = new Device
+        {
+            VendorId = (int)info.dwVendorId,
+            ProductId = (int)info.dwProductId,
+            Preparsed = Marshal.AllocHGlobal((int)size),
+        };
+        if (GetRawInputDeviceInfo(hDevice, RIDI_PREPARSEDDATA, device.Preparsed, ref size) == uint.MaxValue)
+        {
+            device.Dispose();
+            return null;
+        }
+
+        uint maxUsages = HidP_MaxUsageListLength(HidP_Input, UsagePageButton, device.Preparsed);
+        device.UsageBuffer = new ushort[maxUsages];
+        FindHat(device);
+        return device;
+    }
+
+    /// <summary>The hat switch's logical range and collection, from the device's value caps.</summary>
+    private static void FindHat(Device device)
+    {
+        var caps = new byte[HidpCapsSize];
+        if (HidP_GetCaps(device.Preparsed, caps) != HIDP_STATUS_SUCCESS) return;
+        ushort valueCapsCount = BitConverter.ToUInt16(caps, 2 * (5 + 17 + 2)); // NumberInputValueCaps
+        if (valueCapsCount == 0) return;
+
+        var valueCaps = new byte[valueCapsCount * HidpValueCapsSize];
+        if (HidP_GetValueCaps(HidP_Input, valueCaps, ref valueCapsCount, device.Preparsed) != HIDP_STATUS_SUCCESS) return;
+        for (int i = 0; i < valueCapsCount; i++)
+        {
+            int o = i * HidpValueCapsSize;
+            ushort usagePage = BitConverter.ToUInt16(valueCaps, o);
+            bool isRange = valueCaps[o + 12] != 0;
+            ushort usageMin = BitConverter.ToUInt16(valueCaps, o + 56);
+            ushort usageMax = isRange ? BitConverter.ToUInt16(valueCaps, o + 58) : usageMin;
+            if (usagePage != UsagePageGenericDesktop || UsageHatSwitch < usageMin || UsageHatSwitch > usageMax) continue;
+
+            device.HasHat = true;
+            device.HatLinkCollection = BitConverter.ToUInt16(valueCaps, o + 6);
+            device.HatMin = BitConverter.ToInt32(valueCaps, o + 40);
+            device.HatMax = BitConverter.ToInt32(valueCaps, o + 44);
+            return;
+        }
+    }
+
+    private static string? DevicePath(IntPtr hDevice)
+    {
+        uint chars = 0;
+        GetRawInputDeviceInfo(hDevice, RIDI_DEVICENAME, IntPtr.Zero, ref chars);
+        if (chars == 0) return null;
+        var ptr = Marshal.AllocHGlobal((int)chars * 2);
+        try
+        {
+            return GetRawInputDeviceInfo(hDevice, RIDI_DEVICENAME, ptr, ref chars) == uint.MaxValue
+                ? null
+                : Marshal.PtrToStringUni(ptr);
+        }
+        finally { Marshal.FreeHGlobal(ptr); }
+    }
+
+    /// <summary>The name the pilot hears: the OEM name Windows registered for this vendor and
+    /// product, else the product string the device reports, else its ids. The product string is
+    /// read through a handle opened with NO access rights, which only queries the HID class
+    /// driver's descriptor and cannot read or claim the device.</summary>
+    private static string FriendlyName(int vendorId, int productId, string? devicePath)
     {
         string key = $@"System\CurrentControlSet\Control\MediaProperties\PrivateProperties\Joystick\OEM\VID_{vendorId:X4}&PID_{productId:X4}";
         foreach (var hive in new[] { Registry.CurrentUser, Registry.LocalMachine })
@@ -211,34 +484,22 @@ public sealed class JoystickButtonMonitor : IDisposable
                 Log.Debug("Controller", $"OEM name lookup failed: {ex.Message}");
             }
         }
-        return !string.IsNullOrWhiteSpace(winmmName) && !winmmName.Contains("PC-joystick", StringComparison.OrdinalIgnoreCase)
-            ? winmmName.Trim()
-            : $"Controller {vendorId:X4}:{productId:X4}";
-    }
 
-    private void Raise(Session session, Device device, int button)
-    {
-        var args = new ControllerButtonPressedEventArgs
+        if (devicePath != null)
         {
-            VendorId = device.VendorId,
-            ProductId = device.ProductId,
-            DeviceName = device.Name,
-            Button = button,
-        };
-        try
-        {
-            _uiContext.Post(_ =>
+            const uint FILE_SHARE_READ_WRITE = 0x3, OPEN_EXISTING = 3;
+            using var handle = CreateFile(devicePath, 0, FILE_SHARE_READ_WRITE, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+            if (!handle.IsInvalid)
             {
-                // Stopped (or stopped and restarted) between the press and this post: a dialog
-                // opened, the app is closing. The press belongs to nobody; drop it.
-                if (session.Active && ReferenceEquals(session, _session)) ButtonPressed?.Invoke(this, args);
-            }, null);
+                var buffer = new byte[256];
+                if (HidD_GetProductString(handle, buffer, (uint)buffer.Length))
+                {
+                    string product = System.Text.Encoding.Unicode.GetString(buffer).TrimEnd('\0').Trim();
+                    if (product.Length > 0) return product;
+                }
+            }
         }
-        catch (InvalidOperationException)
-        {
-            // The window behind the UI context is gone (app exit): nothing to deliver to.
-            session.Active = false;
-        }
+        return $"Controller {vendorId:X4}:{productId:X4}";
     }
 
     public void Dispose()

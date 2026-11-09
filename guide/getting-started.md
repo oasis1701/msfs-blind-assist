@@ -388,6 +388,8 @@ To remove an assignment, select it in the list and press Delete or the **Remove*
 
 </div>
 
+BA only listens to your controllers: Windows gives it a copy of each button press, the same copy the simulator and programs such as MobiFlight receive. It never takes a controller over, so throttles, panels and other hardware keep working exactly as before.
+
 ### What you will hear {#controller-buttons-what-you-will-hear}
 
 Exactly what the keyboard command says: a button for ground speed speaks the ground speed. A button you have not assigned in BA stays silent. If you had pressed a bracket key and then press an assigned controller button, the mode closes quietly and the button's command runs.
@@ -395,7 +397,7 @@ Exactly what the keyboard command says: a button for ground speed speaks the gro
 ### If something goes wrong {#controller-buttons-if-something-goes-wrong}
 
 - **BA says it caught nothing.** Check that the controller is plugged in and appears in Windows' Game Controllers settings, then capture again.
-- **A button does nothing.** While hotkeys are suspended from the File menu, controller buttons are paused too. BA reads only the first 32 buttons of each controller; a button numbered higher cannot be assigned.
+- **A button does nothing.** While hotkeys are suspended from the File menu, controller buttons are paused too.
 - **Two identical controllers** share their assignments, because Windows reports them with the same identity.
 
 ## The Hotkey List {#gs-hotkey-list}

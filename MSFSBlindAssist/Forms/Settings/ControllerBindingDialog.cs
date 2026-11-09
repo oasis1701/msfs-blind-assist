@@ -108,6 +108,13 @@ public class ControllerBindingDialog : Form
         _capture = new JoystickButtonMonitor();
         _capture.ButtonPressed += OnCaptured;
         _capture.Start();
+        if (!_capture.IsRunning)
+        {
+            // Say so now, rather than wait 15 s and blame the controller.
+            StopCapture();
+            SetStatus("Controller input could not be started, so no button can be captured. The debug log says why.");
+            return;
+        }
         _captureTimeout.Start();
         SetStatus("Waiting. Press the button on your controller now, or Escape to cancel.");
     }

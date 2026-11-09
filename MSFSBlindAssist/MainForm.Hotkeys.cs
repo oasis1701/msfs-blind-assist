@@ -506,14 +506,20 @@ public partial class MainForm
         }
     }
 
-    /// <summary>Reads the controllers only while a button is bound, so a pilot who never
-    /// assigns one has no polling thread at all. Called at startup and after the Settings dialog.</summary>
+    /// <summary>Listens to the controllers only while a button is bound, so a pilot who never
+    /// assigns one registers no controller input at all; and decodes only the bound devices'
+    /// reports. Called at startup and after the Settings dialog.</summary>
     private void ApplyControllerBindings()
     {
-        if (SettingsManager.Current.ControllerBindings.Count > 0)
-            controllerMonitor.Start();
-        else
+        var bindings = SettingsManager.Current.ControllerBindings;
+        if (bindings.Count == 0)
+        {
             controllerMonitor.Stop();
+            return;
+        }
+        var boundDevices = bindings.Select(b => (b.VendorId, b.ProductId)).ToHashSet();
+        controllerMonitor.DeviceFilter = (vendorId, productId) => boundDevices.Contains((vendorId, productId));
+        controllerMonitor.Start();
     }
 
     private void ToggleTakeoffAssist()

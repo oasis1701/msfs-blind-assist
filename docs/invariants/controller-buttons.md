@@ -4,9 +4,9 @@ Each section is the complete text of one rule. Its one-line form, under the same
 
 ## CTL-1
 
-- A binding names its device by USB vendor and product id (`ControllerBinding.VendorId`, `ProductId`), never the WinMM joystick slot, and its command by the enum NAME (`ControllerBinding.Action`), never the number; `TryGetAction` accepts exact names only. → [controller-buttons.md](../controller-buttons.md)
+- A binding names its device by USB vendor and product id (`ControllerBinding.VendorId`, `ProductId`), never a device handle or enumeration slot, and its command by the enum NAME (`ControllerBinding.Action`), never the number; `TryGetAction` accepts exact names only. → [controller-buttons.md](../controller-buttons.md)
 
-Why. The WinMM slot (0–15) is the order Windows enumerated the controllers in. It changes when a pilot plugs the yoke into another port, or the throttle before the yoke, and a binding stored by slot would then answer on the wrong device. The USB ids belong to the device. `HotkeyAction` has no explicit values, so inserting a member in the middle renumbers everything after it; a saved number would silently move onto another command, while a saved name either still means the same command or stops parsing (shown as "no longer available" and skipped). `Enum.TryParse` alone also accepts "5" and "A, B", which is why `TryGetAction` checks the name against `Enum.GetNames` first.
+Why. A Raw Input device handle is valid only until the device is unplugged, and a joystick slot is the order Windows enumerated the controllers in: both change when a pilot plugs the yoke into another port, or the throttle before the yoke, and a binding stored that way would answer on the wrong device. The USB ids belong to the device. `HotkeyAction` has no explicit values, so inserting a member in the middle renumbers everything after it; a saved number would silently move onto another command, while a saved name either still means the same command or stops parsing (shown as "no longer available" and skipped). `Enum.TryParse` alone also accepts "5" and "A, B", which is why `TryGetAction` checks the name against the enum's names first.
 
 ## CTL-2
 
@@ -16,12 +16,18 @@ Why. A pilot may have pressed ] on the keyboard and then reached for the yoke. L
 
 ## CTL-3
 
-- `JoystickButtonMonitor` probes empty joystick slots only at its rescan, never at the poll rate; it fires press edges only (`ControllerButtonEdges.NewlyPressed`) and seeds a newly found device silently, so a held button never fires. → [controller-buttons.md](../controller-buttons.md)
+- `JoystickButtonMonitor` only LISTENS, through Raw Input (`RIDEV_INPUTSINK`): never poll, open for reading or acquire a controller (WinMM joy calls, DirectInput, HidD_GetInputReport); a MobiFlight-driven throttle stopped working under the WinMM version. It fires press edges only (`ControllerButtonEdges.NewlyPressed`). → [controller-buttons.md](../controller-buttons.md)
 
-Why. `joyGetPosEx` on a slot with nothing plugged in is slow (Windows re-reads the joystick registry), and calling it for all 16 slots at the 30 ms poll rate is a known cause of stutter. The monitor polls only the devices its last rescan (every 3 s) found. Firing on the press edge means a held button runs its command once and a release runs nothing. A device found at a rescan (and every device when the monitor starts, as it does again after the Settings dialog) starts from the state it reads then, so a button already held does not fire.
+Why. The first version (PR #334) polled every controller through WinMM's `joyGetPosEx` every 30 ms and probed the 16 joystick slots, empty ones included, every 3 s. Reviewing it, Robin found his Honeycomb Bravo throttle quadrant, which MobiFlight drives, no longer worked in the simulator while it ran. Raw Input is a copy of each HID input report that Windows hands to every registered reader alike: this app never touches the device, so nothing it does can block the simulator, MobiFlight or another reader. The one handle it opens is with no access rights, once per device, only to ask the HID class driver for the product name. Firing on the press edge means a held button runs its command once and a release runs nothing. Raw Input sends no state at registration, so every device starts from "nothing pressed" when the monitor starts (again after the Settings dialog): a button still held then fires at its next report. Asking the device for its current state instead (`HidD_GetInputReport`) would talk to it, which is what this rule forbids.
 
 ## CTL-4
 
 - The live controller reading is stopped while the Settings dialog is open and restarted from the saved bindings on every close path, and it runs only while at least one button is bound. → [controller-buttons.md](../controller-buttons.md)
 
-Why. The Controller Buttons tab captures a press with its own monitor. If MainForm's kept running, pressing a button that is already bound, to reassign it, would also run its old command. Restarting in a `finally` after `ShowDialog`, from `SettingsManager.Current`, covers OK (the new bindings), Cancel and the close box (the unchanged ones). A pilot who never binds a button gets no polling thread at all.
+Why. The Controller Buttons tab captures a press with its own monitor. If MainForm's kept running, pressing a button that is already bound, to reassign it, would also run its old command, and the two monitors would fight over the process's one Raw Input registration (CTL-5). Restarting in a `finally` after `ShowDialog`, from `SettingsManager.Current`, covers OK (the new bindings), Cancel and the close box (the unchanged ones). A pilot who never binds a button registers no controller input at all.
+
+## CTL-5
+
+- Only one `JoystickButtonMonitor` may be started at a time: Windows keeps ONE Raw Input target per device type per process, so a second `Start` would steal the first one's input and its `Stop` (`RIDEV_REMOVE`) would unregister both; `Start` refuses while another is running. → [controller-buttons.md](../controller-buttons.md)
+
+Why. `RegisterRawInputDevices` keys its registrations on the usage page and usage, not on the window: registering joysticks for a second window moves them there, and removing them removes them for the whole process. The capture dialog and MainForm therefore never run theirs together (CTL-4). Any other part of the app that wants controller input must go through the running monitor rather than register its own.
