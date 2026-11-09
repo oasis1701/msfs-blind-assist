@@ -16,6 +16,10 @@ using Pmdg737Flows = MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737FlowDefinitions
 using Pmdg737Checklists = MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737ChecklistDefinitions;
 using Pmdg737State = MSFSBlindAssist.FirstOfficer.PMDG737.AircraftStateEvaluator;
 using Pmdg777State = MSFSBlindAssist.FirstOfficer.AircraftStateEvaluator;
+using A300Flows = MSFSBlindAssist.FirstOfficer.A300.A300FoFlowDefinitions;
+using A300Checklists = MSFSBlindAssist.FirstOfficer.A300.A300FoChecklistDefinitions;
+using A300State = MSFSBlindAssist.FirstOfficer.A300.A300FoStateEvaluator;
+using A300Keys = MSFSBlindAssist.FirstOfficer.A300.A300FoKeys;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
@@ -54,6 +58,7 @@ public class FoEngineAndGroundGuardTests
         AssertGuardFirst(PMDG777FlowDefinitions.Build(), "ELECTRICAL_POWER_UP", "EPU_ENGINES_STOPPED", Pmdg777State.EnginesStoppedField);
         AssertGuardFirst(PMDG777FlowDefinitions.Build(), "COCKPIT_PREP", "CP_ENGINES_STOPPED", Pmdg777State.EnginesStoppedField);
         AssertGuardFirst(Md11FoFlowDefinitions.Build(), "POWER_UP", "PU_ENGINES_STOPPED", "FO_ENGINES_STOPPED");
+        AssertGuardFirst(A300Flows.Build(), "POWER_UP", "PU_ENGINES_STOPPED", A300Keys.EnginesStopped);
     }
 
     [Fact]
@@ -73,6 +78,8 @@ public class FoEngineAndGroundGuardTests
         AssertGuardFirst(Pmdg737Flows.Build(), "SECURE", "SE_ON_GROUND", Pmdg737State.OnGroundField);
         AssertGuardFirst(IFly737FlowDefinitions.Build(), "SHUTDOWN", "SD_ON_GROUND", IFly737StateEvaluator.OnGroundField);
         AssertGuardFirst(IFly737FlowDefinitions.Build(), "SECURE", "SE_ON_GROUND", IFly737StateEvaluator.OnGroundField);
+        AssertGuardFirst(A300Flows.Build(), "PARKING", "PK_ON_GROUND", A300Keys.OnGround);
+        AssertGuardFirst(A300Flows.Build(), "SECURING", "SC_ON_GROUND", A300Keys.OnGround);
     }
 
     private static void AssertPowerWaitBefore<T>(IEnumerable<FlowDefinition<T>> flows, string flowId, string waitId,
@@ -95,6 +102,21 @@ public class FoEngineAndGroundGuardTests
         AssertPowerWaitBefore(FbwA320FlowDefinitions.Build(), "SHUTDOWN", "SD_POWER_SOURCE", FbwA320StateEvaluator.ApuOrExtPowerField, "SD_ENG1_OFF");
         AssertPowerWaitBefore(HwA330FlowDefinitions.Build(), "SHUTDOWN", "SD_POWER_SOURCE", HwA330StateEvaluator.ApuOrExtPowerField, "SD_ENG1_OFF");
         AssertPowerWaitBefore(FbwA380FlowDefinitions.Build(), "PARKING", "PK_POWER_SOURCE", FbwA380StateEvaluator.ApuOrExtPowerField, "PK_MASTERS_OFF");
+        AssertPowerWaitBefore(A300Flows.Build(), "PARKING", "PK_POWER_SOURCE", A300Keys.ApuOrExtPower, "PK_FUEL_LEVERS");
+    }
+
+    [Theory]
+    [InlineData(1.0, double.NaN, 1.0)]       // one source on is enough with the other unread
+    [InlineData(double.NaN, 1.0, 1.0)]
+    [InlineData(0.0, 0.0, 0.0)]
+    [InlineData(0.0, double.NaN, double.NaN)]
+    public void The_A300_power_source_is_the_APU_available_or_external_power_on(double apuAvail, double extPwr, double expected)
+    {
+        var cache = new Dictionary<string, double>();
+        if (!double.IsNaN(extPwr)) cache[A300Keys.ExtPower] = extPwr;
+        if (!double.IsNaN(apuAvail)) A300.A300FoTestLights.Set(cache, A300Keys.ApuAvailLight, lit: apuAvail >= 0.5);
+        var a300 = new A300State { Read = k => cache.TryGetValue(k, out var v) ? v : null };
+        Assert.Equal(expected, a300.GetValue(A300Keys.ApuOrExtPower));
     }
 
     // ---- The readings the guards rest on: unread is never stopped, never powered ----------------
@@ -177,6 +199,10 @@ public class FoEngineAndGroundGuardTests
         var md11 = new Md11FoStateEvaluator();
         foreach (var id in new[] { "PU_FUEL_OFF", "PK_FUEL", "SD_IRS", "SD_BATTERY" })
             Assert.True(GuardOf(Md11FoChecklistDefinitions.Build(), id)(md11), id);
+
+        var a300 = new A300State();
+        foreach (var id in new[] { "PU_FUEL_LEVERS", "PK_FUEL_LEVERS", "PK_FUEL_PUMPS", "SC_IRS", "SC_BATTERIES" })
+            Assert.True(GuardOf(A300Checklists.Build(), id)(a300), id);
     }
 
     [Fact]

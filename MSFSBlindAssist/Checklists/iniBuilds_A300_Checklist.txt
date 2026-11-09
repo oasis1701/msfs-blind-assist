@@ -1,0 +1,378 @@
+[Preflight - Preliminary cockpit preparation]
+Batteries: auto
+Hydraulic panel: check
+Wiper switches: off
+Gear lever: down
+Slats/flaps handle: in agreement
+Reverser levers: down
+Fuel levers: off
+Weather radar: off
+External power (if available): establish
+APU fire system: test
+APU (as required) - APU master switch: on
+APU (as required) - APU start switch: on
+IRS mode selectors: nav
+ISDU: set
+Oxygen lo pr supply switches: on
+Annunciator light: test
+VHF radios: as required
+
+[Preflight - Flight deck preparation]
+FMC (initialise using MCDU) - Clear messages: press clr button
+FMC (initialise using MCDU) - Init: press
+FMC (initialise using MCDU) - Enter from/To airports: press from/To button
+FMC (initialise using MCDU) - Return: press
+FMC (initialise using MCDU) - Verify lat/long position
+FMC (initialise using MCDU) - Align IRS: press
+No smoking: auto
+Seat belts: on
+Hydraulic power panel: check
+Servo control panel: check
+Flight recorder ground control: on
+External lights (set) - Nose switch: off
+External lights (set) - Land switches: retracted
+External lights (set) - Wing switch: off
+External lights (set) - Strobe switch: auto
+External lights (set) - Beacon switch: off
+External lights (set) - Rwy turn off (l&r): off
+External lights (set) - Nav & logo
+ATS lever: on
+Pitch trim & yaw damper levers: on (IRS must be aligned)
+Electrical power panel: check
+Engine 1 fire panel: press loop test / press squib test
+Electrical ind panel: select emer and ESS
+Engine panel: ignition selector switch: off
+Fuel panel: set
+APU fire: check/test
+Cabin pressure panel: check
+Window heater switches: on
+Probe heat switches: on
+Engine 2 fire panel: press loop test / press squib test
+Ventilation panel: ovbd valve flow bar: illuminated
+Emergency exit lights: arm
+Air bleed panel (check/set) - If APU bleed switch is off: check x feed flow bar vertical
+Air bleed panel (check/set) - If APU is running: APU bleed switch: on
+Cond temperature panel: set/check
+Pack temperature panel: check mode sel switches in auto
+Oxygen panel: check
+EFIS control panel - PFD and ND brightness: set
+EFIS control panel - FD / FPV switch: on
+EFIS control panel - FMA displays fd1 on CPT / fd2 on FO: white text
+EFIS control panel - Command bars: in view
+EFIS control panel - VOR / nav / ILS switch: nav
+EFIS control panel - DH: press button
+EFIS control panel - Set DH
+Fcp: check
+Captain switch panel: check
+Standby airspeed indicator: ensure airspeed pointer at 0
+Rmi: ensure no flags and compass agree within 1 degree
+PFD: check no warnings/messages
+ND: check selected display normal
+Altimeter - Set bug to field elevation: set
+Ivsi: check TCAS off flag
+ADF rmi: ensure no flags and compass agree within 1 degree
+Egpws button: push-test
+Clock: set/check
+Standby horizon: check no flag and erect
+Standby altimeter: set/check
+Slat-flap position indicator (sfpi): check sfpi agrees with selected position
+Brakes pressure gauge: check accu press in green band
+Alternate braking system: check
+Parking brake: set
+Autobrake switches: extinguished
+Rev & rev unlk lights: extinguished
+Engine instruments & lights: extinguished
+Landing elevation: set
+Landing gear warning: test
+Brake fan: as required
+Speed brake handle: retracted / disarmed
+Takeoff warning: check
+Fuel levers: off
+Warning system & emergency cancel switches: safetied
+ATC transponder / TCAS: set code/squawk
+Adfs: check tone on and ADF/ant selected to ADF
+Rudder trim: zero
+Weather radar: test
+FMS route (program) - Clear any messages: clr button
+FMS route (program) - Init a: altn, cost index, crz fl, flt id, weather
+FMS route (program) - F-pln: ensure runway selected before procedure for SID/stars
+FMS route (program) - F-pln: SID, airways, STAR
+Performance data: calculate on EFB and set on FMS init b & TO/appr pages
+TRP - Flex TO temp: as required
+TRP - Select auto: for TO with profile
+TRP - Select TOGA: for TO with manual thrust
+Cockpit door: closed
+APU (start) - APU master switch: on
+APU (start) - APU start switch: on
+APU (start) - ECAM APU button: press
+APU (start) - ECAM status page: monitor APU 100%
+APU (start) - APU bleed switch: on
+External power: off
+
+[Pushback - Before start checklist]
+Cockpit prep: completed
+Signs: on/auto
+Fuel quantity: kg/lb set
+Navigation: set/check
+Ldg elev: __ Set
+Altimeters: set (both)
+Brk-a/skid: norm/on
+Windows/doors: closed
+Beacon: on
+Parking brake: on
+
+[Pushback - Engine start procedure]
+Request pushback: as required
+Area clear to start: confirm
+Ignition selector: a or b
+Engine 2 start switch: press
+Engine 2 fuel lever: on at 20% N2
+ECAM eng status page: monitor
+Blue open light for eng 2: extinguished
+Engine 1 start switch: press
+Engine 1 fuel lever: on at 20% N2
+ECAM eng status page: monitor
+Blue open light for eng 1: extinguished
+
+[Pushback - After start procedure]
+Ignition (as required) - Normal operations: off
+Ignition (as required) - Heavy precipitation or contaminated taxiway: on
+APU bleed (as required) - Both engines running: off
+APU bleed (as required) - Single-engine running: on
+APU master (as required) - Both engines running: off
+APU master (as required) - Single-engine running: on
+Anti-ice: on in visible moisture below 10°c
+Speedbrake: arm
+Rudder trim: reset, check 0
+Slats-flaps: set for takeoff (optimal 15/15)
+Trim: set for takeoff
+
+[Pushback - After start checklist]
+Pitch trim: __ Set
+Rudder trim: zero
+Spoilers: armed
+Slats-flaps: set for takeoff
+ECAM status: checked
+Anti-ice: as required
+Hand signal: received
+
+[Taxi out - Taxi out procedure]
+Taxi clearance: obtain
+Nose light: taxi
+Brakes: release
+Once both engines running - Flight controls: check
+Once both engines running - FCU set pre sel speed
+Once both engines running - Set alt sel: first stop altitude
+Once both engines running - Flight directors: on
+Once both engines running - Required ap mode: prof and nav
+Once both engines running - Fmas match expected mode: check
+Once both engines running - Autobrake: max
+Once both engines running - Transponder: confirm XPDR mode set, correct squawk entered
+Once both engines running - Weather radar: on
+Once both engines running - Takeoff config: test
+
+[Runway - Before takeoff checklist]
+Flight controls: checked
+Briefing: confirmed
+Slats-flaps: set for takeoff
+Performance/fmas: check/read
+Takeoff config: checked
+Transponder: set
+Cabin: secure
+TCAS: ta/ra
+Packs: as required
+Ignition: as required
+
+[Runway - Line up procedure]
+Line-up or takeoff clearance: obtain
+Brake fans: off
+External lights (set) - Nose switch: TO
+External lights (set) - Land switches: on
+External lights (set) - Wing switch: as required
+External lights (set) - Strobe switch: on
+External lights (set) - Beacon switch: on
+External lights (set) - Rwy turn off (l&r): on
+External lights (set) - Nav & logo: on
+Ignition: as required
+Packs - Normal operation: on
+Packs - If required for take-off performance: off
+TCAS: ta/ra
+
+[Takeoff - Takeoff procedure]
+Clock: start
+Throttles: advance to at least 40% N1
+Brakes: release
+Go-levers: trigger (TOGA button)
+FMA indications: announce
+Airspeed & engine instruments: scan
+Speeds: announce 100kts, V1, rotate
+Rotation: perform
+Landing gear: positive climb, gear up
+Thrust reduction (perform) - Confirm TRP lim mode indicates: cl in auto setting
+Thrust reduction (perform) - If TRP is not in auto: set auto or cl
+Thrust reduction (perform) - Throttle levers reduce for climb thrust: confirm
+Slats-flaps (retract) - Once above acceleration altitude: retract flaps/slats in stages
+Slats-flaps (retract) - At f speed minimum: set flaps 1
+Slats-flaps (retract) - At s speed minimum: set slats/flaps zero
+
+[Takeoff - After takeoff procedure]
+Spoilers: disarm
+Landing gear: off
+Packs: on
+External lights (set) - Nose switch: off
+External lights (set) - Rwy turn off (l&r): off
+External lights (set) - Land switches: on until 10,000ft
+Anti-ice: as required
+Ignition (as required) - Normal operations: off
+Ignition (as required) - Severe turbulence, heavy icing, heavy rain: set cont relight
+APU (off) - If APU used for departure: APU bleed off
+APU (off) - If APU used for departure: APU master switch off
+
+[Takeoff - After takeoff checklist]
+Slats/flaps: retracted
+Landing gear: up/neutral
+Packs: on
+Altimeters: __ Set
+
+[Climb - 10,000Ft procedure]
+Altimeters: __ Set
+Landing lights: retract / off
+Seat belt signs: may be turned off above 10,000ft
+
+[Cruise - Top of climb procedure]
+TRP lim mode: check indicates cr
+ECAM memo/status pages: check
+ECAM system pages: review periodically
+Flight progress: check track and distance to next wp
+Flight progress: check fuel (fob and FMS fuel pred)
+
+[Descent - Descent preparation]
+ECAM memo: check status
+Weather and landing information: obtain
+Landing elevation: set
+Fuel: check
+FMS: program as required
+DH: as required
+Autobrake (as required) - Normal runway length: lo mode
+Autobrake (as required) - Short, contaminated or low visibility: mid mode
+Autobrake (as required) - Short braking distance: max mode
+Autobrake (as required) - Very long runways or little braking needed: autobrake unnecessary
+GPWS flaps/slats switch (as required) - Landing with slats / flaps set to 15/20
+GPWS flaps/slats switch (as required) - Landing with slats / flaps set to 30/40
+Approach briefing: perform
+
+[Descent - Descent procedure]
+Descent (initiate) - For profile descent: FCU alt knob turn to select cleared alt and pull
+Descent (initiate) - Fmas: check p.thr/p.des armed
+Ignition (as required) - Normal operations: off
+Ignition (as required) - Severe turbulence, heavy icing, heavy rain: set cont relight
+Anti-ice (as required) - Normal operations: off
+Anti-ice (as required) - Icing conditions (visible moisture below 10 degs): on
+Altimeters: __ Set
+Before reaching 10,000ft: seat belts on
+Exterior lights (at 10,000ft) - Rwy turn off: on
+Exterior lights (at 10,000ft) - Land lights: on
+
+[Approach - Approach checklist]
+Signs: set
+Briefing: confirmed
+ECAM status: checked
+Altimeters: __ Set
+Minimums: __ Set
+Ignition: as required
+Ldg elev: __ Set
+
+[Visual approach - Visual (at least 5 miles)]
+Gear: down
+Ground spoilers: arm
+When gear down: check 3 greens
+Airspeed below vfe: set flaps 20
+Once flaps 20 and airspeed below vfe: set flaps 30/40
+Ap: disconnect when required
+Athr: de-select for landing mandatory
+
+[Final - Landing checklist]
+Landing gear: down
+Autobrake: as required
+Anti-skid: checked
+Slats-flaps: set
+Spoilers: armed
+
+[Final - Go-around procedure]
+Go around flaps: retract flaps/slats on schedule
+TOGA button: trigger
+Throttle levers: advance to go around thrust if a/thr not used
+Rotation: perform
+Flaps: retract one step
+FMA: check thr, go around on PFD
+Gear: up/neutral
+Nav or heading mode: select (as required)
+Flaps: retract flaps/slats on schedule
+At thrust reduction altitude: throttles reduce
+At acceleration altitude: lvl/ch select
+
+[Landing roll - After landing procedure]
+External lights (set) - Nose switch: taxi
+External lights (set) - Land switches: retracted
+External lights (set) - Wing switch: off
+External lights (set) - Strobe switch: auto
+External lights (set) - Rwy turn off (l&r): off
+Anti-ice (off/as required) - Wing anti-ice: off
+Anti-ice (off/as required) - Engine anti-ice: may be left on for taxi / off
+Ignition: off
+APU (start) - APU master switch: on
+APU (start) - APU start switch: on
+Ground spoilers: retracted / disarmed
+Transponder / TCAS: stby/off
+Weather radar: off
+Pitch trim: set 1° nose up
+Slats-flaps: retract to 0/0 in stages
+Brake temperature (monitor) - Brake fans: as required
+
+[Landing roll - After landing checklist]
+Slats-flaps: retracted
+Transponder: as required
+Weather radar: off
+Spoilers: disarmed
+APU: started
+
+[Parking - Parking procedure]
+Nose light: off (approaching stand)
+Parking brake: on
+APU bleed: on
+Engine fuel levers: off
+Elapsed time: stop
+Beacon: off (N2 < 20%)
+Cabin pressure: check
+Seat belt signs: off
+Fuel pumps: off
+Probe heat: off
+IRS nav switches x3 (as required) - Reset IRS for realignment if necessary: reset
+IRS nav switches x3 (as required) - If last flight of day: off
+Brake fans: off < 100 deg c
+
+[Parking - Parking checklist]
+APU bleed: as required
+Engines: off
+Diff press: check zero
+Lights/signs: as required
+Fuel pumps: off
+Window and probe heat: off
+Parking brake and chocks: as required
+
+[Parking - Securing aircraft procedure]
+IRS: off
+Crew oxygen: off
+Exterior lights: all off
+APU bleed: off
+External power: as required
+APU: off
+Emergency exit lights: disarm
+Batteries: off
+
+[Parking - Securing aircraft checklist]
+Nav systems: off
+Oxygen: off
+APU bleed: off
+Emergency exit lights: disarmed
+APU and batteries: off

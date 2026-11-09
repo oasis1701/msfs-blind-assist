@@ -19,8 +19,10 @@ paths:
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/EngineModeSelector*.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/A320Family*.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/AirbusSecuring*.cs"
+  - "MSFSBlindAssist/FirstOfficer/A300/**"
+  - "tests/MSFSBlindAssist.Tests/FirstOfficer/A300/**"
 ---
-# First Officer rules: Fenix A320, FBW A32NX/A380, Headwind A330
+# First Officer rules: Fenix A320, FBW A32NX/A380, Headwind A330, iniBuilds A300
 
 Loaded when Claude reads matching code, on top of first-officer.md. Background: docs/first-officer.md. Full text of each rule: docs/invariants/first-officer-airbus.md.
 
@@ -38,3 +40,6 @@ Loaded when Claude reads matching code, on top of first-officer.md. Background: 
 - [FOA-12] The FBW A32NX/A380 FO resolve each name FBW's FS2020 (fs2020-master) and FS2024 builds spell differently per running sim (`FbwSimBuilds`, `A380BuildNames`, `SdPageShownVarFor`, `LandingConf3VarFor`); both names are registered `OnRequest`; an unknown sim reads NaN and writes nothing, reported. Full: docs/invariants/first-officer-airbus.md#foa-12
 - [FOA-13] Fenix v3: a cockpit cabin call no longer sets CABIN READY, the virtual purser does. The FO reads it (`FenixStateEvaluator.CabinReadyField`) only as the live value of the Line-up and Landing "Cabin: READY" lines, which stay pilot-confirmed Reminders (owner, 2026-10-22), and never speaks cabin ready (the cabin monitor's job). Full: docs/invariants/first-officer-airbus.md#foa-13
 - [FOA-14] A Fenix FO step only some variants have gates on `FenixStateEvaluator.Variant` (the definition's detected variant), never on the config L:vars; on a variant without it the step's target provider returns null ([FO-20]'s silent skip), and an unknown variant behaves as the A320 (the A321 has no PACK FLOW selector). Full: docs/invariants/first-officer-airbus.md#foa-14
+- [FOA-15] The A300 FO writes ONLY placed panel rows through `IniA300Definition.FoApply` (`IA300FoPort`, [A300-1]); a key that is not a row is refused and logged, never written another way; a button is pressed only while `A300FoKeys.PressConfirmations` says not done, and confirmed on it. Full: docs/invariants/first-officer-airbus.md#foa-15
+- [FOA-16] An A300 FO write quiets ONLY its own row: its lights (`A300FoQuiet.LampsOf`), its lever call-out and its "did not move", for 5 s (the MD-11's per-control window); every other light, and the master warning and caution, still speak. Only a system test's run quiets every light (`QuietAllLightsFor`). A later call never shortens a window. Full: docs/invariants/first-officer-airbus.md#foa-16
+- [FOA-17] A300 starter lines (`A300FoLine.Starter`) tick on the engine RUNNING and latch; no step ticks them. A stopped Engine Start ends its light-up watch at once and puts back only a starter the flow switched on, over a fuel lever read off (`A300FoActionExecutor.OnFlowStoppedAsync`, `ReleaseHeldPresses`). Full: docs/invariants/first-officer-airbus.md#foa-17

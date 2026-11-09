@@ -13,6 +13,8 @@ using IFlyState = MSFSBlindAssist.FirstOfficer.IFly737.IFly737StateEvaluator;
 using Md11State = MSFSBlindAssist.FirstOfficer.MD11.Md11FoStateEvaluator;
 using Pmdg737State = MSFSBlindAssist.FirstOfficer.PMDG737.AircraftStateEvaluator;
 using Pmdg777State = MSFSBlindAssist.FirstOfficer.AircraftStateEvaluator;
+using A300State = MSFSBlindAssist.FirstOfficer.A300.A300FoStateEvaluator;
+using A300Keys = MSFSBlindAssist.FirstOfficer.A300.A300FoKeys;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
@@ -40,7 +42,7 @@ public class FoCutGuardSweepTests
 
     private static readonly Regex EngineCut = new(
         @"(\bengine \d master: off|\bengine masters.*: off|start levers?: cutoff|"
-        + @"fuel control( switches)?: cutoff|fuel switches: off)", RegexOptions.IgnoreCase);
+        + @"fuel control( switches)?: cutoff|fuel switches: off|fuel levers?: off)", RegexOptions.IgnoreCase);
 
     private static readonly Regex PumpIrsBattery = new(
         @"(fuel pumps?( switches)?: (all )?off|hydraulic.*pumps?( \w+)?: off|demand pump selectors: off|\b(electric|engine|demand) pumps: off|"
@@ -232,6 +234,24 @@ public class FoCutGuardSweepTests
         },
         () => new Md11State());
 
+    // The A300's engines read stopped only with both fuel levers read off as well as N2 below 10.
+    private static Profile<MSFSBlindAssist.FirstOfficer.A300.A300FoActionExecutor, A300State> A300() => new("iniBuilds A300",
+        MSFSBlindAssist.FirstOfficer.A300.A300FoChecklistDefinitions.Build(),
+        MSFSBlindAssist.FirstOfficer.A300.A300FoFlowDefinitions.Build(),
+        (g, r) =>
+        {
+            var cache = new Dictionary<string, double>
+            {
+                ["SIM_ON_GROUND"] = g ? 1 : 0,
+                [A300Keys.FuelLever1] = r ? 1 : 0,
+                [A300Keys.FuelLever2] = r ? 1 : 0,
+            };
+            var s = new A300State { Read = k => cache.TryGetValue(k, out var v) ? v : null };
+            s.SetEngineN2(r ? 60 : 0, r ? 60 : 0);
+            return s;
+        },
+        () => new A300State());
+
     [Fact]
     public void A320_family() // the A32NX, its Headwind A330 duplicate and the Fenix: one rule for all three
     {
@@ -255,6 +275,9 @@ public class FoCutGuardSweepTests
 
     [Fact]
     public void Tfdi_MD11() => Sweep(Md11());
+
+    [Fact]
+    public void IniBuilds_A300() => Sweep(A300());
 
     // ---- The flows that power the aircraft down or set it up cold open with BOTH guards ---------
 
@@ -290,6 +313,7 @@ public class FoCutGuardSweepTests
         AssertOpensWithGroundAndEnginesGuards(IFly737().Flows, "SECURE", "iFly 737");
         AssertOpensWithGroundAndEnginesGuards(Pmdg777().Flows, "SECURE", "PMDG 777");
         AssertOpensWithGroundAndEnginesGuards(Md11().Flows, "SHUTDOWN", "MD-11");
+        AssertOpensWithGroundAndEnginesGuards(A300().Flows, "SECURING", "iniBuilds A300");
     }
 
     [Fact]
@@ -302,6 +326,7 @@ public class FoCutGuardSweepTests
         AssertOpensWithGroundAndEnginesGuards(Fenix().Flows, "ELECTRICAL_POWER_UP", "Fenix");
         AssertOpensWithGroundAndEnginesGuards(A380().Flows, "COCKPIT_PREP", "A380");
         AssertOpensWithGroundAndEnginesGuards(Md11().Flows, "POWER_UP", "MD-11");
+        AssertOpensWithGroundAndEnginesGuards(A300().Flows, "POWER_UP", "iniBuilds A300");
         // The 737 Preflights switch the fuel pumps off: cold and dark only, like the 777's
         // Cockpit Preparation and Electrical Power Up (hydraulic pumps, fuel controls).
         AssertOpensWithGroundAndEnginesGuards(MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737FlowDefinitions.Build(), "PREFLIGHT", "PMDG 737");
@@ -357,6 +382,10 @@ public class FoCutGuardSweepTests
     [InlineData("Demand pump selectors: OFF", "Pumps")]
     [InlineData("Batteries: OFF", "Pumps")]
     [InlineData("Battery switch: OFF", "Pumps")]
+    [InlineData("Fuel levers: OFF", "Engine")]
+    [InlineData("Engine 1 fuel lever: ON", "")]
+    [InlineData("Batteries 1, 2 and 3: OFF", "Pumps")]
+    [InlineData("IRS 1, 2 and 3: OFF", "Pumps")]
     public void The_sweep_classifies_labels(string label, string expected) =>
         Assert.Equal(expected, Classify(label)?.ToString() ?? "");
 }

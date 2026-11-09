@@ -28,6 +28,7 @@ public class CalcPathProbeOptInTests
         yield return new object[] { new FlyByWireA380Definition() };
         yield return new object[] { new HeadwindA330Definition() };   // inherits the A320's set via base.BuildVariables()
         yield return new object[] { new TFDiMD11Definition() };       // every control write is a calculator-path CEVENT
+        yield return new object[] { new IniA300Definition() };        // every control write is a calculator-path B: event
     }
 
     // An aircraft not on this list does not register the probe var today — opting an aircraft in

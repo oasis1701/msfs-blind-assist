@@ -103,6 +103,8 @@
     <!-- TFDi MD-11 control map. EmbeddedResource, not a copied file: the aircraft has zero
          controls without it, so it must not be able to go missing from the output folder. -->
     <EmbeddedResource Include="Resources\md11_control_map.json" />
+    <!-- iniBuilds A300 control map, embedded for the same reason. -->
+    <EmbeddedResource Include="Resources\a300_control_map.json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -160,6 +162,9 @@
     <None Update="HotkeyGuides\TFDi_MD11_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="HotkeyGuides\iniBuilds_A300_Hotkeys.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <!-- User-facing guides/manuals. Shipped in full (whole folder) so the in-app
          hotkey lists' "see Guides\..." references resolve next to the exe, and any
          future per-aircraft manual added here ships automatically. -->
@@ -199,6 +204,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-md11-efb-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-a300-efb-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-oans-agent.js">

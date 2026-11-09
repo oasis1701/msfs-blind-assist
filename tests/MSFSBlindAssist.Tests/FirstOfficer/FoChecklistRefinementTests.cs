@@ -86,6 +86,10 @@ public class FoChecklistRefinementTests
     { AssertBeforeStartTail(IFly737.IFly737ChecklistDefinitions.Build());
       AssertBeforeStartFlowTail(IFly737.IFly737FlowDefinitions.Build()); }
 
+    [Fact] public void A300_BeforeStartTail()
+    { AssertBeforeStartTail(MSFSBlindAssist.FirstOfficer.A300.A300FoChecklistDefinitions.Build());
+      AssertBeforeStartFlowTail(MSFSBlindAssist.FirstOfficer.A300.A300FoFlowDefinitions.Build()); }
+
     [Fact] public void A330_BeforeStartTail()
     { AssertBeforeStartTail(HwA330.HwA330ChecklistDefinitions.Build());
       AssertBeforeStartFlowTail(HwA330.HwA330FlowDefinitions.Build()); }

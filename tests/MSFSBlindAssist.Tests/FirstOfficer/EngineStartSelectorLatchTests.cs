@@ -106,6 +106,20 @@ public class EngineStartSelectorLatchTests
     }
 
     /// <summary>
+    /// The A300 starter pushbutton is ON only until the start valve closes; whether it then goes
+    /// back off by itself is not yet measured, so its item latches on the engine RUNNING, as the
+    /// MD-11's START switch does, never on the button. Started 2, then 1.
+    /// </summary>
+    [Fact]
+    public void A300StartersLatchOnEngineRunning()
+    {
+        var groups = MSFSBlindAssist.FirstOfficer.A300.A300FoChecklistDefinitions.Build();
+        var n2 = MSFSBlindAssist.FirstOfficer.A300.A300FoStateEvaluator.EngineRunningN2;
+        AssertLatchesOnEngineRunning(Item(groups, "ES_STARTER_1"), "FO_ENG1_N2", n2);
+        AssertLatchesOnEngineRunning(Item(groups, "ES_STARTER_2"), "FO_ENG2_N2", n2);
+    }
+
+    /// <summary>
     /// The 777 evaluator discarded the N2 the shared FirstOfficerForm feeds every profile
     /// ("not used by the 777 evaluator"), so the field had to be wired before its selector
     /// items could detect anything. N2 arrives from SimConnect, NOT the PMDG CDA, so it must
@@ -151,5 +165,9 @@ public class EngineStartSelectorLatchTests
         Assert.Equal(RevertBehavior.RevertToState, Item(md11, "ES_E1_FUEL").RevertBehavior);
         Assert.Equal(RevertBehavior.RevertToState, Item(md11, "ES_E2_FUEL").RevertBehavior);
         Assert.Equal(RevertBehavior.RevertToState, Item(md11, "ES_E3_FUEL").RevertBehavior);
+
+        var a300 = MSFSBlindAssist.FirstOfficer.A300.A300FoChecklistDefinitions.Build();
+        Assert.Equal(RevertBehavior.RevertToState, Item(a300, "ES_FUEL_1").RevertBehavior);
+        Assert.Equal(RevertBehavior.RevertToState, Item(a300, "ES_FUEL_2").RevertBehavior);
     }
 }

@@ -24,6 +24,7 @@ public class DefAnnounceMuteSetsTests
             IFlyDisabledMonitorVariables = new() { "ifly" },
             PMDGDisabledMonitorVariables = new() { "pmdg" },
             Md11DisabledMonitorVariables = new() { "md11" },
+            A300DisabledMonitorVariables = new() { "a300" },
             FenixDisabledMonitorVariables = new() { "fenix" },
         };
         s.RebuildDisabledMonitorVariableCaches();
@@ -39,6 +40,7 @@ public class DefAnnounceMuteSetsTests
     [InlineData("PMDG_737", "pmdg")]
     [InlineData("PMDG_777", "pmdg")]
     [InlineData("TFDI_MD11", "md11")]
+    [InlineData("INI_A300", "a300")]
     public void Each_self_announcing_airframe_is_muted_by_its_own_list(string aircraftCode, string marker)
     {
         var set = DefAnnounceMuteSets.For(aircraftCode, Marked());

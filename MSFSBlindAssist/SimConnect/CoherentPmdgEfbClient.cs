@@ -134,6 +134,13 @@ namespace MSFSBlindAssist.SimConnect
         public static CoherentPmdgEfbClient ForMd11()
             => new("TFDi_MD11_efb", "coherent-md11-efb-agent.js", "__MSFSBA_MD11_EFB", side: null);
 
+        /// <summary>
+        /// The iniBuilds A300 tablet. One view ("VCockpit18 - iniEfbA300"), so no side probe. A
+        /// Bootstrap-styled page with a real DOM (docs/a300.md).
+        /// </summary>
+        public static CoherentPmdgEfbClient ForA300()
+            => new("iniEfbA300", "coherent-a300-efb-agent.js", "__MSFSBA_A300_EFB", side: null);
+
         public void Start()
         {
             if (_cts != null)
