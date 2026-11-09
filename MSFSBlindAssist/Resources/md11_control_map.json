@@ -5204,6 +5204,9 @@
     "RIGHT_BUTTON_DOWN": 94725,
     "RIGHT_BUTTON_UP": 94726
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "FlightDeck/CaptainYoke.xml"
   },
@@ -5223,6 +5226,9 @@
     "RIGHT_BUTTON_DOWN": 96002,
     "RIGHT_BUTTON_UP": 96003
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "FlightDeck/FOYoke.xml"
   },
@@ -9141,6 +9147,9 @@
     "RIGHT_BUTTON_DOWN": 102444,
     "RIGHT_BUTTON_UP": 102445
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "Cabin/FreightCabinFrame.xml"
   },
@@ -9236,6 +9245,9 @@
     "RIGHT_BUTTON_DOWN": 102450,
     "RIGHT_BUTTON_UP": 102451
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "Cabin/FreightCabinFrame.xml"
   },
@@ -9283,6 +9295,9 @@
     "RIGHT_BUTTON_DOWN": 102454,
     "RIGHT_BUTTON_UP": 102455
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "Cabin/FreightCabinFrame.xml"
   },
@@ -25786,6 +25801,9 @@
     "RIGHT_BUTTON_DOWN": 90326,
     "RIGHT_BUTTON_UP": 90327
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "FlightDeck/Overhead.xml"
   },
@@ -26996,6 +27014,7 @@
    "label_source": "tooltip",
    "state_var": "MD11_PED_AIL_TRIM_IND",
    "value_map": {},
+   "readout": "%((L:MD11_PED_AIL_TRIM_IND) 25 - abs 0.1 <)%{if}Neutral%{else}%((L:MD11_PED_AIL_TRIM_IND) 25 <)%{if}%(25 (L:MD11_PED_AIL_TRIM_IND) - 2.5 /)%!1.1f! degrees Left Wing Down%{else}%((L:MD11_PED_AIL_TRIM_IND) 25 - 2.5 /)%!1.1f! degrees Right Wing Down%{end}%{end}",
    "num_states": null,
    "events": {
     "WHEEL_UP": 69852,
@@ -32294,6 +32313,7 @@
    "label_source": "tooltip",
    "state_var": "MD11_PED_RUD_TRIM_IND",
    "value_map": {},
+   "readout": "%((L:MD11_PED_RUD_TRIM_IND) 25 - abs 0.1 <)%{if}Neutral%{else}%((L:MD11_PED_RUD_TRIM_IND) 25 <)%{if}%(25 (L:MD11_PED_RUD_TRIM_IND) - 2.5 /)%!1.1f! degrees Nose Left%{else}%((L:MD11_PED_RUD_TRIM_IND) 25 - 2.5 /)%!1.1f! degrees Nose Right%{end}%{end}",
    "num_states": 2,
    "events": {
     "LEFT_BUTTON_DOWN": 69848,
@@ -32301,6 +32321,9 @@
     "RIGHT_BUTTON_DOWN": 69850,
     "RIGHT_BUTTON_UP": 69851
    },
+   "release": [
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "FlightDeck/AftFootPedestal.xml"
   },
@@ -32837,6 +32860,7 @@
    "label_source": "tooltip",
    "state_var": "MD11_PED_WXR_TILT_KB",
    "value_map": {},
+   "readout": "%((L:MD11_PED_WXR_TILT_KB) 5 <)%{if}%(15 (L:MD11_PED_WXR_TILT_KB) 1 + /)%!d! degrees DN%{else}%((L:MD11_PED_WXR_TILT_KB) 5 >)%{if}%((L:MD11_PED_WXR_TILT_KB) 5 - 3 *)%!d! degrees UP%{else}Neutral%{end}%{end}",
    "num_states": 2,
    "events": {
     "WHEEL_UP": 69902,
@@ -33319,8 +33343,14 @@
    "kind": "switch",
    "template": "MD11_Long_Trim_Switch",
    "area": "Throttle Quadrant",
-   "label": "Elevator Trim (Long Trim)",
-   "label_source": "tooltip",
+   "label": "Stabilizer Trim",
+   "label_source": "curated",
+   "directions": {
+    "RIGHT_BUTTON_DOWN": "Nose Up",
+    "LEFT_BUTTON_DOWN": "Nose Down"
+   },
+   "stock_readout": "ELEVATOR TRIM POSITION",
+   "control_name": "Long Trim",
    "state_var": "MD11_THR_LONG_TRIM_SW",
    "value_map": {},
    "num_states": 2,
@@ -33330,6 +33360,10 @@
     "RIGHT_BUTTON_DOWN": 77842,
     "RIGHT_BUTTON_UP": 77843
    },
+   "release": [
+    "RIGHT_BUTTON_UP",
+    "LEFT_BUTTON_UP"
+   ],
    "guard_id": null,
    "source": "FlightDeck/FootPedestalLower.xml"
   },

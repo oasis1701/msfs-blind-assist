@@ -404,6 +404,7 @@ public partial class TFDiMD11Definition
         AddRadiosPanel(placement.Structure, placement.Controls, displays);
         AddSpeedbrakeArm(placement.Controls);
         AddStdToggles(placement.Controls);
+        AddTrimButtons(placement.Controls);
 
         _panelStructure = placement.Structure;
         _panelControls = placement.Controls;
@@ -460,6 +461,23 @@ public partial class TFDiMD11Definition
             if (std.PanelName == null || !controls.TryGetValue(std.PanelName, out var keys)) continue;
             int at = keys.IndexOf(std.Knob);
             keys.Insert(at < 0 ? keys.Count : at + 1, std.Key);
+        }
+    }
+
+    /// <summary>
+    /// Each trim's Left and Right buttons sit right after the trim's own read-only row, on whatever
+    /// panel the layout table put it (<see cref="Md11TrimButtons"/>).
+    /// </summary>
+    private void AddTrimButtons(Dictionary<string, List<string>> controls)
+    {
+        foreach (var keys in controls.Values)
+        {
+            foreach (var group in _trimButtons.GroupBy(t => t.Control.NodeId))
+            {
+                int at = keys.IndexOf(group.Key);
+                if (at < 0) continue;
+                keys.InsertRange(at + 1, group.Select(t => t.Key));
+            }
         }
     }
 

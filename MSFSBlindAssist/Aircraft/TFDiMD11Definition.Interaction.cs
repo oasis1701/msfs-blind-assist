@@ -462,6 +462,15 @@ public partial class TFDiMD11Definition
             return true;
         }
 
+        // The trim buttons (Md11TrimButtons): rows of this app's own that turn a trim knob through
+        // its own CEVENTs, ahead of the map lookup for the same reason as the STD toggles.
+        if (_trimByKey.TryGetValue(varKey, out var trim))
+        {
+            _uiContext ??= SynchronizationContext.Current;
+            PressTrim(trim, simConnect, announcer);
+            return true;
+        }
+
         if (!_byNodeId.TryGetValue(varKey, out var control))
             return false;   // not ours (a base var) — let the generic path have it
 
@@ -1076,6 +1085,125 @@ public partial class TFDiMD11Definition
     /// "…: On"), composed from whatever their lamp reads at the settle and corrected by the lamp
     /// if it lands later.
     /// </summary>
+    /// <summary>The trim knobs a hold is still turning: a press while one runs is dropped, so a held-down key cannot queue holds that outlast it.</summary>
+    private readonly HashSet<string> _trimHolding = new(StringComparer.Ordinal);
+
+    /// <summary>Per trim knob, the latest press — only its read-back speaks. Written on the UI thread, also read by the settle loop off it.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _trimReadBackSeq = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// One trim button press (<see cref="Md11TrimButtons"/>): the knob held or clicked through its own
+    /// CEVENTs, then the trim read back once in TFDi's words ("Rudder Trim: 0.3 degrees Nose Left").
+    /// Refused aloud when nothing would land ([MD11-16]). UI thread.
+    /// </summary>
+    private void PressTrim(Md11TrimButton trim, SimConnectManager sim, ScreenReaderAnnouncer announcer)
+    {
+        var bus = _bus;
+        if (bus == null || !CanDeliver)
+        {
+            Log.Debug("MD11", $"{trim.Key}: refused — the transport cannot send.");
+            announcer.Announce(Md11Fcp.Unavailable(trim.Label));
+            return;
+        }
+        var control = trim.Control;
+
+        if (!trim.IsHold)
+        {
+            int seq = NextTrimReadBack(control);
+            int backlogMs = bus.BacklogMs;   // sampled before the click joins the queue
+            if (!FireControlEvent(control.NodeId, trim.DownEvent))
+            {
+                announcer.Announce(Md11Fcp.Unavailable(trim.Label));
+                return;
+            }
+            _ = ReadBackTrimAsync(control, seq, Md11EventBus.ReadBackDelayMs(Md11TrimButtons.SettleMs, backlogMs), sim, announcer);
+            return;
+        }
+
+        lock (_trimHolding)
+        {
+            if (!_trimHolding.Add(control.NodeId))
+            {
+                Log.Debug("MD11", $"{trim.Key}: dropped — {control.NodeId} is still being held.");
+                return;
+            }
+        }
+        // Only an ACCEPTED press takes the read-back: a dropped one moved nothing, and taking it before
+        // the busy check silenced the hold that did run (key repeat drops the last press every time).
+        _ = HoldTrimAsync(trim, NextTrimReadBack(control), bus, sim, announcer);
+    }
+
+    /// <summary>Marks a press of <paramref name="control"/> as the latest, whose read-back is the one that speaks. UI thread.</summary>
+    private int NextTrimReadBack(Md11Control control)
+        => _trimReadBackSeq.AddOrUpdate(control.NodeId, 1, (_, last) => last + 1);
+
+    private async Task HoldTrimAsync(Md11TrimButton trim, int seq, Md11EventBus bus, SimConnectManager sim, ScreenReaderAnnouncer announcer)
+    {
+        var control = trim.Control;
+        bool taken = false;
+        try
+        {
+            taken = await bus.TryPressAndHoldAsync(control, Md11TrimButtons.HoldMs, trim.DownEvent, trim.UpEvents).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("MD11", $"Trim hold for {trim.Key} threw: {ex.Message}");
+        }
+        finally
+        {
+            lock (_trimHolding) _trimHolding.Remove(control.NodeId);
+        }
+        if (!taken)
+        {
+            OnUiThread(() => announcer.Announce(Md11Fcp.Unavailable(trim.Label)));
+            return;
+        }
+        // No readout of its own (Long Trim): the stabiliser trim is already announced from the stock
+        // ELEVATOR TRIM POSITION, so a read-back here would say the same thing twice ([CORE-7]).
+        if (control.Readout == null) return;
+        // The UP is queued now; the settle is measured from when it is WRITTEN.
+        await ReadBackTrimAsync(control, seq, Md11EventBus.ReadBackDelayMs(Md11TrimButtons.SettleMs, bus.BacklogMs), sim, announcer).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The trim's read-back: after <paramref name="delayMs"/>, the trim's var on its next DELIVERY
+    /// ([MD11-9]), through TFDi's readout. Nothing delivered is no evidence: a log line, no speech. A
+    /// newer press of the same knob owns the read-back; a context reset or aircraft switch drops it;
+    /// a Ctrl+M mute of the trim row is honoured ([MD11-18]). The delivery also relabels the row.
+    /// </summary>
+    private Task ReadBackTrimAsync(Md11Control control, int seq, int delayMs, SimConnectManager sim, ScreenReaderAnnouncer announcer)
+        => DeferToUiThreadAsync(delayMs, async () =>
+        {
+            // The trim GLIDES to its new value (an aileron click takes about a second), so one read
+            // after a fixed wait caught it mid-move: 25.457 on its way to 26 was spoken "0.2 degrees
+            // Right Wing Down" (live, 2026-11-06). Read until two deliveries in a row agree, bounded.
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            double? read = await sim.ReadFreshAsync(control.NodeId, BatchReadBackTimeoutMs).ConfigureAwait(false);
+            int reads = 1;
+            while (read is double previous && sw.ElapsedMilliseconds < Md11TrimButtons.SettleCeilingMs)
+            {
+                await Task.Delay(Md11TrimButtons.SettlePollMs).ConfigureAwait(false);
+                if (_trimReadBackSeq.TryGetValue(control.NodeId, out var newer) && newer != seq) return null;   // a newer press reads instead
+                var next = await sim.ReadFreshAsync(control.NodeId, BatchReadBackTimeoutMs).ConfigureAwait(false);
+                reads++;
+                if (next is not double now) break;
+                read = now;
+                if (Md11TrimButtons.HasSettled(previous, now)) break;
+            }
+            Log.Debug("MD11", $"Trim read-back: {control.StateVar}={read?.ToString("0.###", CultureInfo.InvariantCulture) ?? "null"} "
+                + $"(press {seq}, {reads} reads, {sw.ElapsedMilliseconds} ms).");
+            if (read is not double value) return null;
+            var sentence = Md11TrimButtons.ReadBackSentence(control,
+                name => string.Equals(name, control.StateVar, StringComparison.OrdinalIgnoreCase) ? value : ReadStateVar(name));
+            if (sentence == null) return null;
+            return () =>
+            {
+                if (_trimReadBackSeq.TryGetValue(control.NodeId, out var latest) && latest != seq) return;   // a newer press speaks instead
+                if (Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(control.NodeId)) return;
+                announcer.Announce(sentence);
+            };
+        }, "Trim read-back threw", "Trim read-back (UI-thread tail) threw", guardGeneration: true);
+
     private async Task HoldTestButtonAsync(Md11Control control, SimConnectManager sim, bool guarded)
     {
         try

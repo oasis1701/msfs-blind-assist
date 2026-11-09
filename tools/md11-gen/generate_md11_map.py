@@ -413,6 +413,16 @@ CURATED = {
     # the Units wheel on a live MD-11F (2026-10-15) -- the selector is likely inert on the
     # freighter -- so a combo could not be proven, and the row stays a read-only digit.
     **{f"MD11_OVHD_{n}_PAX_LOAD_SW": {"state_var": f"MD11_OVHD_{n}_PAX_LOAD_SW"} for n in (1, 10)},
+    # The Long Trim handles: a spring-loaded hold (MD11_Long_Trim_Switch) with no tooltip state, so
+    # nothing in the package says which way is nose up. MEASURED on a live MD-11 (2026-11-06, MSFS
+    # 2020, on the ground, engines off): LEFT_BUTTON_DOWN held 1 s moved the stock ELEVATOR TRIM
+    # POSITION 2.99 -> 1.97 and RIGHT_BUTTON_DOWN moved it back up; TFDi's quick start calls the
+    # resting 3.0 "unit ANU", so up is nose up. MSFSBA's Long Trim buttons are named from these
+    # words (Md11TrimButtons), keyed by the DOWN event that moves that way. Its own var only ever reads
+    # the handle's spring-back centre (1), so the row shows what the handles MOVE instead: the stock
+    # ELEVATOR TRIM POSITION TFDi drives (`stock_readout`), in the shared trim announcement's words.
+    "MD11_THR_LONG_TRIM_SW": {"directions": {"RIGHT_BUTTON_DOWN": "Nose Up", "LEFT_BUTTON_DOWN": "Nose Down"},
+                              "stock_readout": "ELEVATOR TRIM POSITION", "control_name": "Long Trim"},
 }
 
 # Guard covers TFDi's own XML does not link to the control they cover. The generator never infers
@@ -437,6 +447,10 @@ CURATED_GUARDS = {
 # otherwise the cockpit's own placard wording. Discriminator first ("Left Rain Repellent").
 LABEL_FIXES = {
     "MD11_OVHD_AICE_AUTO_BT": "Anti-Ice Auto",
+    # TFDi's "Elevator Trim (Long Trim)" names the HANDLES, but the row shows the stabiliser trim
+    # they move (CURATED `stock_readout`); the handles' own name stays on their buttons
+    # (CURATED `control_name`: "Nose Up Long Trim").
+    "MD11_THR_LONG_TRIM_SW": "Stabilizer Trim",
     "MD11_OVHD_L_RAIN_REPLNT_BT": "Left Rain Repellent",
     "MD11_OVHD_R_RAIN_REPLNT_BT": "Right Rain Repellent",
     "MD11_OVHD_PNEU_OUTFLOW_VALVE_POS_SW": "Outflow Valve Position",
@@ -1604,8 +1618,45 @@ def _if_composite_block(outer_var, body, node_id, found):
     }
 
 
+def readout_expression(expr, state_var):
+    """TFDi's computed readout for a control with no positions, as the app evaluates it, or None.
+
+    D17. Some tooltips compute their whole state text from the control's var rather than naming
+    positions: the rudder and aileron trims read '%((L:..._TRIM_IND) 25 - abs 0.1 <)%{if}Neutral
+    %{else}...%!1.1f!° Nose Left...' -- a scale (25 is neutral, 2.5 units a degree) stated nowhere
+    else, TFDi's Variables page lists the vars with no unit. No value_map can carry that, so the
+    expression itself is shipped and the app evaluates it against the live var
+    (Md11TooltipReadout), which keeps the scale TFDi's own instead of a copy typed into C#.
+
+    Only where the expression reads the STATE VAR alone (any number of times): a second var is a
+    companion's words (the EFIS minimums caps), a variant flag the airframe's (LABEL_ONLY_VARS).
+    The entities are decoded (read_xml keeps '&lt;') and '°' is spelled out as speakable() does,
+    outside any RPN -- RPN carries no degree sign, so the plain replace is safe.
+    """
+    if not expr or "%!" not in expr or not state_var:
+        return None
+    names = set(_lvars(expr))
+    if names != {state_var} or names & LABEL_ONLY_VARS:
+        return None
+    return html.unescape(expr).replace("°", " degrees")
+
+
+def drop_export_readouts(controls, export_vars):
+    """D17's export rule: no readout on a control whose state var is one of TFDi's exports.
+
+    The altimeter knobs' tooltips compute their setting from MD11_CAP/FO/STBY_ALTIMETER, but those
+    are documented exports the app already reads and words itself (Md11StatusRow, the B key), and
+    their rows are read-only for that reason (Md11ExportBacked). A second wording would only compete.
+    The wasm is read after collect(), so this runs then.
+    """
+    exports = set(export_vars)
+    for c in controls:
+        if "readout" in c and c.get("state_var") in exports:
+            del c["readout"]
+
+
 def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, source=None,
-                  threshold=None, withheld=None):
+                  threshold=None, withheld=None, readout=None):
     """Split a TOOLTIPID into (label, state_var, value_map).
 
     TFDi tooltips come in two shapes.
@@ -1695,6 +1746,7 @@ def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, sourc
     # A composite (D10, D13) takes no value_map, from its state or from its label (_inline_if and
     # _inline_case below): its words describe TWO vars (_composite_block).
     block = _composite_block(expr, node_id, empty_cases, source) if expr and node_id else None
+    is_composite = block is not None   # `block` is reused for a threshold below
     if block is not None:
         if composite is not None:
             composite.update(block)
@@ -1802,6 +1854,12 @@ def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, sourc
     label = re.sub(r"\s+([,/])", r"\1", label)
     label = speakable(label)
     value_map = {k: speakable(v) for k, v in value_map.items()}
+
+    # D17: a computed readout, only where nothing else describes the state.
+    if readout is not None and not value_map and not is_composite and not threshold:
+        text = readout_expression(expr, state_var)
+        if text:
+            readout["expr"] = text
 
     return (label or None), state_var, value_map
 
@@ -1917,6 +1975,35 @@ def _nested_template_error(source, tmpl, text, m):
         f"silently; teach collect() nesting before regenerating")
 
 
+TEMPLATE_RE = re.compile(r'<Template\s+Name\s*=\s*"([^"]+)"(.*?)</Template>', re.S)
+REL_CODE_RE = re.compile(r"<REL_CODE>(.*?)</REL_CODE>", re.S)
+
+
+def template_releases(base):
+    """{template name: the event fields its REL_CODE sends}, from the package's Templates folder.
+
+    A spring-loaded control (the rudder trim knob, the yoke trim switches, the Long Trim handles)
+    is released by its template's REL_CODE, not by an event of its own choosing: the rudder knob's
+    sends '#LEFT_BUTTON_UP#' whichever way it was turned, Long Trim's sends RIGHT_BUTTON_UP then
+    LEFT_BUTTON_UP. collect() copies the fields onto each control as `release`, so the app releases
+    a hold exactly as the cockpit does (Md11TrimButtons) instead of guessing an UP per direction.
+    """
+    releases = {}
+    folder = os.path.join(base, "Templates")
+    if not os.path.isdir(folder):
+        return releases
+    for fname in sorted(os.listdir(folder)):
+        if not fname.endswith(".xml"):
+            continue
+        for m in TEMPLATE_RE.finditer(read_xml(os.path.join(folder, fname))):
+            rel = REL_CODE_RE.search(m.group(2))
+            if rel:
+                fields = re.findall(r"#([A-Z_]+)#", rel.group(1))
+                if fields:
+                    releases.setdefault(m.group(1), fields)
+    return releases
+
+
 def collect(pkg_dir):
     base = os.path.join(pkg_dir, md11_paths.PACKAGE_MARKER)
     if not os.path.isdir(base):
@@ -1925,6 +2012,7 @@ def collect(pkg_dir):
     controls = []
     seen = set()
     stats = Counter()
+    releases = template_releases(base)
 
     for root, dirs, files in os.walk(base):
         # Folders in name order as well as files: os.walk lists them in whatever order the file
@@ -1972,9 +2060,11 @@ def collect(pkg_dir):
                 composite = {}
                 threshold = {}
                 withheld = []
+                readout = {}
                 label, state_var, value_map = parse_tooltip(
                     fields.get("TOOLTIPID"), node_id=node_id, empty_cases=empty_cases,
-                    composite=composite, source=source, threshold=threshold, withheld=withheld)
+                    composite=composite, source=source, threshold=threshold, withheld=withheld,
+                    readout=readout)
 
                 key = (node_id, kind, tuple(sorted(events.items())))
                 if key in seen:
@@ -2041,10 +2131,18 @@ def collect(pkg_dir):
                         # variable's value (D16): the rule the aircraft applies, so one reader can
                         # serve every such control instead of a hand-written class per casualty.
                         **({"threshold": threshold} if threshold else {}),
+                        # Only where TFDi's tooltip COMPUTES the state text from the state var
+                        # (D17, readout_expression): the trims. The app evaluates it live.
+                        **({"readout": readout["expr"]}
+                           if readout and not percent and not curated else {}),
                         "num_states": int(num_states)
                         if num_states and num_states.isdigit()
                         else None,
                         "events": events,
+                        # Only on a spring-loaded control: the fields its template's REL_CODE sends
+                        # to let it go (template_releases), each one an event this control carries.
+                        **({"release": [f for f in releases[tmpl] if f in events]}
+                           if tmpl in releases and all(f in events for f in releases[tmpl]) else {}),
                         # TFDi's own link where it declares one; otherwise a measured link from
                         # CURATED_GUARDS, which behaves identically everywhere downstream — the
                         # guard's label, MSFSBA's panel placement and the auto-open all read this
@@ -2274,6 +2372,7 @@ def main():
     controls, stats = collect(pkg)
     # The wasm is read BEFORE the curated lamps, which are gated on its control table.
     all_vars, export_vars = wasm_vars(wasm)
+    drop_export_readouts(controls, export_vars)
     controls = add_curated_lamps(controls, all_vars, stats)
     controls = finalize_controls(controls)
     controls = apply_state(controls)
