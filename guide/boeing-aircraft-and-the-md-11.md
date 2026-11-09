@@ -83,7 +83,8 @@ Press **Input Shift+M** to open the **PMDG 737 CDU** window. The 737 has two CDU
 - Line select keys: Ctrl+1 to Ctrl+6 are the left keys, Alt+1 to Alt+6 the right keys.
 - **Alt+S** jumps to the **Scratchpad** box. Type your entry and press Enter; BA types it into the CDU one key at a time. **Alt+Home** returns you to the display.
 - **Backspace** on the display is CLR when the scratchpad has text and DEL when it is empty. When the scratchpad empties, BA says *"Cleared"*. Any new scratchpad message from the FMC is read aloud.
-- Page keys: Alt+I Init Ref, Alt+R RTE, Alt+A Dep/Arr, Alt+F Fix, Alt+G Legs, Alt+H Hold, Alt+P Prog, Alt+M Menu, Alt+B CLB, Alt+Z CRZ, Alt+D DES, Alt+N N1 Limit, Alt+E Execute (or Ctrl+Enter), Alt+C CLR/DEL. There is no VNAV key on the 737 window. Every key is also a button in the window.
+- Page keys: Alt+I Init Ref, Alt+R RTE, Alt+A Dep/Arr, Alt+F Fix, Alt+G Legs, Alt+H Hold, Alt+P Prog, Alt+M Menu, Alt+B CLB, Alt+Z CRZ, Alt+D DES, Alt+N N1 Limit, Alt+E Execute (or Ctrl+Enter), Alt+C CLR/DEL. Every key is also a button in the window.
+- Some 737s, such as the BBJ2, have the newer FANS2 CDU keyboard. It has VNAV, ATC and FMC Comm keys instead of CLB, CRZ and DES, and several keys sit in different places. BA detects which keyboard your aircraft has and names the window's page buttons to match. On a FANS2 CDU the extra keys are Alt+V VNAV, Alt+T ATC and Alt+O FMC Comm. Every Alt key opens the page it names on either keyboard. A key your CDU does not have is spoken instead of pressed, for example *"No CLB key on this CDU. Use VNAV."* This has not yet been tested in the simulator.
 - Where a page offers a choice between options shown with arrows, the selected one is marked with an "X".
 
 The status line says **CDU Connected**, **CDU Not Powered** or **CDU Not Connected**. If it never connects, check the SDK setup above.

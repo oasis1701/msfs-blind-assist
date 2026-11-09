@@ -1,0 +1,1 @@
+PMDG 737 BBJ2 (and any 737 with the FANS2 CDU option): the CDU window's page buttons and Alt keys now open the page they name. Before, eight of them opened a different page. The buttons are named after the keys your CDU actually has, and the FANS2 keys have shortcuts of their own: Alt+V VNAV, Alt+T ATC and Alt+O FMC Comm.

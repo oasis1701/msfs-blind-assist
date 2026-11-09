@@ -464,7 +464,8 @@ public partial class MainForm
         {
             if (currentAircraft?.AircraftCode == "PMDG_737")
             {
-                pmdgCDUForm = new PMDG737CDUForm(simConnectManager.PMDGDataManager, announcer);
+                pmdgCDUForm = new PMDG737CDUForm(simConnectManager.PMDGDataManager, announcer,
+                    () => simConnectManager.GetCachedVariableValue(PMDG737Definition.CduOptionsKey));
             }
             else
             {
