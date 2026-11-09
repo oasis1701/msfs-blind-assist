@@ -30,6 +30,7 @@
     <ProjectReference Include="..\..\MSFSBlindAssist\MSFSBlindAssist.csproj" />
     <ProjectReference Include="..\..\tools\ChangelogBuilder\ChangelogBuilder.csproj" />
     <ProjectReference Include="..\..\tools\GuideBuilder\GuideBuilder.csproj" />
+    <ProjectReference Include="..\..\tools\LayoutBundle\LayoutBundle.csproj" />
   </ItemGroup>
 
   <!-- Captured wire data the characterization tests read at run time. They resolve it
@@ -42,6 +43,10 @@
     </None>
     <!-- Golden scripts the app sends; tools/*-test node suites execute the same files. -->
     <None Update="Fixtures\*.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- The golden layout files the reading tests load (GoldenLayouts). -->
+    <None Update="Layouts\**\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

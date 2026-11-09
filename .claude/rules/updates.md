@@ -17,6 +17,8 @@ paths:
   - "MSFSBlindAssist/Services/StartupDataCheck.cs"
   - "MSFSBlindAssist/Forms/StartupDataDialog.cs"
   - "tests/MSFSBlindAssist.Tests/**/*StartupDataCheck*.cs"
+  - "tools/LayoutBundle/**"
+  - "tests/MSFSBlindAssist.Tests/LayoutBundler*.cs"
 ---
 # Updates and release channels rules
 
@@ -31,3 +33,4 @@ Loaded when Claude reads matching code. Background: docs/updates.md. Full text o
 - [UPD-7] The automatic startup update check must stay SILENT on failure and when up to date — only the menu item reports those. Full: docs/invariants/updates.md#upd-7
 - [UPD-8] The rolling preview's version travels in the release NAME (`Preview build <version>`), never the fixed `preview` tag; `UpdateCandidateSelector.ResolveVersion` falls back from tag to name, or every preview is an unparseable candidate. Full: docs/invariants/updates.md#upd-8
 - [UPD-9] The startup data check (`StartupDataCheck`) shows its dialog on EVERY launch while the navigation database or location data is missing, silenced only by the Updates tab's "Check for missing data when the app starts"; never remember a dismissal; run it before the update check so the dialogs never stack, and skip that check while its download runs. Full: docs/invariants/updates.md#upd-9
+- [UPD-10] `release.yml` and `preview.yml` fetch the layouts store's `layouts` branch (repo in secret `LAYOUTS_REPO`, key `LAYOUTS_DEPLOY_KEY`) and run `LayoutBundler` before the zip; a failed fetch, a known module with no layout or a file that does not load fails the run, never a ZIP without layouts or a warning. `LayoutBundlerWorkflowTests` pins it. Full: docs/invariants/updates.md#upd-10

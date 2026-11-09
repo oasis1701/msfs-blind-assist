@@ -71,6 +71,39 @@ Do **not** translate names from 777 conventions.
 
 `MCP_Heading`, `MCP_Altitude`, `MCP_IASMach`, `MCP_VertSpeed` are declared with `PreventTextInput = true` in `GetPMDGVariables()` (same pattern as the 777). The panel UI shows them as read-only readouts; values are set via the four MCP dialogs accessed by Shift+H / Shift+S / Shift+A / Shift+V. This matches the 777 UX. Do not add inline text inputs.
 
+The four dialogs' mode buttons (Heading Select, LNAV, Speed Intervene, Altitude Intervene, Altitude
+Hold, VNAV, Level Change, Engage V/S) go through `Pmdg737McpToggleReadback` ([P737-7]).
+ValueInputForm's own read-back, an interrupting announce 1.2 s after a press, is off for them: in the
+owner's smoke test (2026-10-23) a Level Change press gave "Level Change engaged" (the MCP light), the
+button's new label, the FMA line, then the window's "Level Change engaged" again, which cut the FMA
+line off. A press that works is confirmed by the label, the "MCP:" light and the "FMA:" line; 3 s after
+the press the state is read again, and only a press that changed nothing is read back, queued
+("Level Change Off"). Altitude Intervene, and Speed Intervene outside VNAV, show no state, so they are
+not checked: their press says "Altitude Intervene pressed" at once, queued (owner, 2026-10-23). The Ctrl+B altimeter dialog keeps the window's read-back (its Standard button's refusal
+flag needs it), and no other aircraft is affected.
+
+## What BA says by itself about the MCP
+
+Owner, 2026-10-23 (option B): everything `ProcessSimVarUpdate` says about the MCP starts with
+`McpPrefix` ("MCP: "), so it is told apart from the FMA's "FMA: " lines. The words after it are the
+ones spoken before; the lights add ": " before their state:
+
+| Source | Spoken |
+| --- | --- |
+| `MCP_IASMach`, `MCP_Heading`, `MCP_Altitude`, `MCP_VertSpeed` | "MCP: speed 250 knots", "MCP: Mach 0.78" (F2, current culture, as Shift+S), "MCP: heading 223", "MCP: altitude 10000 feet", "MCP: VS 1000 feet per minute" |
+| `MCP_IASOverspeedFlash`, `MCP_IASUnderspeedFlash`, `MCP_indication_powered` | "MCP: overspeed" / "MCP: underspeed" (interrupting, rising edge only), "MCP: powered" / "MCP: unpowered" |
+| `MCP_annun*` (17 lights) | "MCP: Level Change: engaged", "MCP: VOR/LOC: armed", "MCP: A/T: armed", ... and "...: disengaged" |
+| `MCP_FDSw_0/1`, `MCP_ATArmSw`, `MCP_BankLimitSel`, `MCP_DisengageBar`, `MCP_Course_0/1` | "MCP: Flight Director Captain: On", "MCP: Autothrottle Arm: ARM", "MCP: Bank Limit: 25", "MCP: AP Disengage Bar: Down", "MCP: Course Captain: 223" |
+
+The switches and knobs in the last row spoke through MainForm's generic path ("<DisplayName>:
+<description>", or the number for the courses), which cannot add the prefix; they now speak from
+`ProcessSimVarUpdate` in exactly those words (`McpSwitchStateText`), so MainForm's Ctrl+M wrap and
+combo echo suppression ([VAR-8], [CORE-8], [CORE-9]) cover them. A def-handled var skips MainForm's
+generic control refresh, so the five MCP panel combos set `RefreshControlWhenDefHandled` to their own
+positions and still follow a change made in the cockpit. `Pmdg737McpAnnouncementTests` pins every line,
+a comma-decimal culture, and that no announced `MCP_*` variable is left to the generic path. The key
+readouts (Shift+H, Shift+S, Shift+A, Shift+V) keep their own words.
+
 ## Autopilot window (Ctrl+P)
 
 Input-mode Ctrl+P opens the engage-cluster window: CMD A/B, CWS A/B, F/D Captain and
@@ -101,8 +134,12 @@ Invariants:
   toggle press computes its flip target from the current state, which the sentinel
   would falsify; momentary buttons stay pressable, their press ignores the value.
 - Presses call `MainForm.SuppressUiEcho` with the EXPECTED RESULTING value, not the
-  press parameter — the echo gate is value-matched, so marking a press with 1 would
-  let the matching disengage announce twice.
+  press parameter — the generic echo gate is value-matched, so marking a press with 1
+  would let the matching disengage announce twice. (The 737's F/D, A/T arm, disengage
+  bar and bank limit rows now announce from `ProcessSimVarUpdate`, moved there for the
+  "MCP: " prefix, like its MCP lights, so their echo is MainForm's time-only def wrap,
+  [CORE-9]; the expected value still matters wherever a row's variable announces on
+  the generic path, as on the 777.)
 - Bank limit is a ComboBox, never a cycling button. Multi-position switches stay
   multi-position combos.
 - Window hotkeys are native mnemonics carried as row DATA (`ApRowSpec.Mnemonic`,
@@ -111,6 +148,148 @@ Invariants:
   key lives on its text Label, whose mnemonic focuses the next control in tab
   order). Tests pin assignment, per-table uniqueness AND that every letter occurs
   in its label — a letter not in the label silently never becomes a hotkey.
+
+## FMA from module memory
+
+The SDK sends only the MCP lights, which cannot tell armed from engaged or VNAV PTH from VNAV SPD,
+so the flight mode annunciator is read read-only from PMDG's own WASM module memory in the
+simulator: `Services/PMDG/Pmdg737Fma*.cs` on top of the generic `Services/WasmMemory/` layer.
+Every change of the A/T, roll, pitch (active and armed) and AFDS parts is spoken in PMDG's printed
+words after "FMA: " ("FMA: Roll: VOR/LOC"; a value with no word as "unrecognised", never dropped).
+When the reader cannot read, it says why once; memory not found and a mismatch with the SDK are never
+final (it keeps searching, every 30 s after two minutes), and "FMA announcements resumed" carries
+whatever changed in the gap; a stop heard before a flight reload is answered by "resumed" alone when
+the new flight's FMA is read. The FMA is spoken beside the MCP-light announcements ("MCP: Level
+Change: engaged") and never instead of them: both use the non-interrupting announce, so neither cuts
+the other off, and the FMA (about 300 ms after memory changes) often comes before the MCP light (the
+next SDK update). The Primary flight display window (Output Alt+P) lists the whole FMA at the top;
+Output P read it until 2026-10-30, when the owner freed the key (the announcements and the window
+already give the FMA); Ctrl+M
+has one "Flight Mode Annunciator" row. The definition owns the monitor
+(`PMDG737Definition.Fma`): MainForm starts it, `OnSimContextReset` restarts it and `OnSwitchedAway`
+stops it. The layout comes from a layout file, never hardcoded: the generator, an optional program
+beside the app that writes layout files, writes one for the installed `737NG3.wasm`, and a release
+carries the files from the layouts store. Every reading is cross-checked against the SDK's FD switches,
+MCP altitude and MCP heading. The layout files, the layout store, the runtime and the safety model:
+[wasm-memory.md](wasm-memory.md). Rules: `.claude/rules/wasm-memory.md` (WASM-n).
+
+## Engine displays
+
+The upper and lower center display units are read the same way, on the same module session as the
+FMA (`Services/PMDG/Pmdg737EngineDisplay*.cs`; the runtime:
+[wasm-memory.md](wasm-memory.md#the-engine-displays)).
+
+- **Output Alt+E opens "Engine displays"** (`PMDG737EngineDisplaysForm`, through
+  `HandleHotkeyAction`'s `ReadDisplayUpperECAM` case): the upper and lower lists, each naming its page
+  and then its rows, then MFD ENG, MFD SYS, Lower DU Captain, Fuel Flow Used, Fuel Flow Reset, N1 SET and
+  the manual N1. When the reader cannot work (unavailable, or stopped for 10 s) Alt+E says nothing of its
+  own and goes straight to the AI read of the upper display (the `ReadDisplayUpperECAM` row of
+  `Pmdg737DisplayReads`; [WASM-29]). Output Alt+S stays the AI read of the lower unit.
+- **Announcements**, each kind on its own Ctrl+M row ("Engine display alerts", "Engine gauge colors",
+  "Thrust mode"), non-interrupting, beside the existing ones, never instead of them ([WASM-9]): during a
+  start the pilot hears both "Engine 1 Start Valve: Open" (the SDK valve position) and "Upper DU alert:
+  engine 1 START VALVE OPEN" (the display message). Nothing is said while the displays are dark, nor
+  for 10 s after they light up ([WASM-10]).
+- **The Lower DU knob follows PMDG** (measured live 2026-10-24, matching the spike): ND puts the
+  navigation display on the lower unit and the compact engine page on the upper; ENG PRI blanks the
+  upper and puts the compact page on the lower; back on NORM the lower stays blank, the upper compact,
+  until MFD ENG is pressed (twice, PMDG's own logic). PMDG keeps every display unit blank for about
+  30 s after ground power comes on.
+- **MFD ENG and MFD SYS** (`MPM_MFD_ENG`, `MPM_MFD_SYS`, `EVT_MPM_MFD_ENG_BUTTON` /
+  `EVT_MPM_MFD_SYS_BUTTON`) are momentary buttons in the Instruments panel and the window; a press is
+  read back 1.5 s later by the lower display's page ("Lower display: SYS page"), or "MFD SYS pressed"
+  when the reader is not running ([CORE-7]).
+- **The Fuel Flow switch is spring-loaded** (USED and RESET return to RATE), and PMDG tells its display
+  a position was left only on the mouse release: the old RESET/RATE/USED combo sent a lone click, so choosing USED left
+  the engine displays on fuel used for good and choosing RATE sent nothing (live 2026-10-24). It is now
+  two press-and-release buttons, `MPM_FUEL_FLOW_USED` (left press and release) and `MPM_FUEL_FLOW_RESET`
+  (right press and release) on `EVT_MPM_FUEL_FLOW_SWITCH` (swept live with `tools/CDUTest`: the
+  display shows fuel used for 10 s after USED, 2 s after RESET, which zeroes it), each read back by the
+  "FUEL USED: …" row PMDG then shows. `MAIN_FuelFlowSelector` is no longer announced: it rests at RATE.
+- **The N1 SET inner knob** (`EVT_MPM_N1SET_CONTROL`, event 70099), swept live 2026-10-24 on BOTH: a
+  right click +0.5 and a left click −0.5 at any spacing down to 120 ms; a wheel turn up +0.1 and down
+  −0.1 when at least 300 ms apart (faster turns accelerate, about 0.4 each at 80 ms); PMDG limits the
+  manual N1 to 0 to 105; "1" sets engine 1, "2" engine 2, BOTH both.
+- **The manual N1 is set by value** (`MSFSBA_PMDG737_MANUAL_N1`, a button in Instruments after N1 SET
+  that opens a value dialog, and the window's Manual N1 field): no SDK field holds it, so
+  `Pmdg737ManualN1Setter` turns the inner knob closed-loop against PMDG's own value from the engine
+  display reader: clicks (150 ms apart) for the half points, then wheel turns (350 ms apart, under the
+  acceleration) for the tenths, reading back after each batch (300 ms settle), sent through
+  `SendPMDGEventViaTransmitWithTarget` on the UI thread ([SIM-20]). It says "N1 reference 95.5" (each
+  engine's value when they differ) or "… could not reach 95.5" after 300 clicks or 90 s; a new value
+  replaces one being set. It needs the reader and N1 SET on 1, 2 or BOTH: otherwise the button says
+  "Manual N1 needs the engine display reader" or "Set N1 SET to 1, 2 or BOTH first" instead of opening,
+  the window's field is disabled, and Enter in the open dialog says the reason.
+
+## Navigation display
+
+The Captain's ND is read the same way, on the same module session (`Services/PMDG/Pmdg737NavDisplay*.cs`,
+`ModuleNavDisplaySampler.cs`; the rows and runtime: [wasm-memory.md](wasm-memory.md#the-navigation-display)).
+The First Officer's ND is not read.
+
+- **Output Alt+N opens "Navigation display"** (`PMDG737NavDisplayForm`, through `HandleHotkeyAction`'s
+  `ReadDisplayND` case): the Captain ND list, then Mode, Range, CTR, TFC, WXR, STA, WPT, ARPT, DATA, POS,
+  TERR, VOR/ADF 1 and VOR/ADF 2. When the reader cannot work (unavailable, or stopped for 10 s) Alt+N
+  says nothing of its own and goes straight to the AI read of the ND (the `ReadDisplayND` row of
+  `Pmdg737DisplayReads`; [WASM-29]).
+- **Output Ctrl+W** (`ReadNDWaypoint`, the FBW ND waypoint key, free on the 737) says the ND's top-right
+  corner as printed ("EMPAD, 1533.3Z, 6.8 NM"), "No active waypoint", or "ND waypoint unavailable:
+  <reason>", interrupting; it answers from the FMC even when no display shows the ND.
+- **Announcements** under one Ctrl+M row, "ND messages" (`MSFSBA_PMDG737_ND_MESSAGES`): the ND's
+  messages appearing and going and the active waypoint changing, non-interrupting, beside every existing
+  announcement, never instead of one ([WASM-12]). Nothing is compared while the displays are dark, nor
+  for 10 s after they light up ([WASM-13]).
+- **The window's selectors** are the Captain's EFIS knobs (`EFIS_ModeSel_0`, `EFIS_RangeSel_0`,
+  `EFIS_VORADFSel1_0`, `EFIS_VORADFSel2_0`), set through MainForm's echo suppression and
+  `HandleUIVariableSet` ([CORE-8]), so their existing announcements and the absolute-position dispatch
+  are unchanged. **Its buttons** press and release the Captain's EFIS map buttons through
+  `HeldTransmitAsync` (`EVT_EFIS_CPT_MODE_CTR`, `EVT_EFIS_CPT_RANGE_TFC`, `EVT_EFIS_CPT_WXR`, `_STA`,
+  `_WPT`, `_ARPT`, `_DATA`, `_POS`, `_TERR`; pressed live with `tools/CDUTest 737 transmit` as LEFTSINGLE
+  then LEFTRELEASE, 2026-10-25), held as the WXR test's presses, so an app exit or aircraft switch inside
+  a hold still releases it. CTR cycles expanded, centred, VSD and back (measured live). The buttons show
+  the state PMDG's panel bytes hold ("STA: on") and a press is read back once after it settles.
+- **The EFIS Captain panel is unchanged**: CTR, TFC and the map buttons are in the window only.
+
+## Primary flight display
+
+The Captain's glass PFD is the fourth reader on the same module session (`Services/PMDG/Pmdg737Pfd*.cs`,
+`ModulePfdSampler.cs`; the rows and runtime: [wasm-memory.md](wasm-memory.md#the-primary-flight-display)).
+The First Officer's PFD and PMDG's classic EFIS look are not read.
+
+- **Output Alt+P opens "Primary flight display"** (`PMDG737PfdForm`, through `HandleHotkeyAction`'s
+  `ReadDisplayPFD` case, `ShowPfd`): the Captain PFD list (with the FMA reader's columns, its readout while
+  it does not run), then MINS mode, Minimums, MINS RST, Baro units, Altimeter, STD, FPV, MTRS, Flight
+  director, Speed reference and Speed reference value. When the reader cannot work (unavailable, or stopped
+  for 10 s), Alt+P says nothing of its own and goes straight to the AI read of the PFD (the `ReadDisplayPFD`
+  row of `Pmdg737DisplayReads`; [WASM-29]); when the Captain's screen shows the classic EFIS look, it first
+  says "Classic EFIS is selected, falling back to AI reading", interrupting. Inside the CDU window
+  a plain Alt+P stays PROG (`PMDG737CDUForm.AltPageKey`).
+- **Announcements** under one Ctrl+M row, "PFD messages" (`MSFSBA_PMDG737_PFD_MESSAGES`): the PFD's
+  messages appearing and going (a flag that replaces an instrument included; WINDSHEAR and PULL UP never),
+  non-interrupting, beside every existing announcement ([WASM-18]). Nothing is compared while the PFD is
+  not drawn, nor for 10 s after the displays light up ([WASM-19]).
+- **The window's selectors** (`EFIS_MinsSelBARO_0`, `EFIS_BaroSelHPA_0`, `MAIN_SpdRefSelector`) set through
+  MainForm's echo suppression and `HandleUIVariableSet` ([CORE-8]). PMDG moves the First Officer's MINS
+  and baro selectors with the Captain's, and the def's generic path speaks those ("First Officer Mins
+  Mode: RADIO", ground session 2): the existing behaviour of the EFIS Captain panel too.
+- **Its fields:** Minimums through `EFIS_MinsValueFt_0_SET`, now closed-loop from the PFD reader
+  ([P737-8]); Altimeter through the Ctrl+B dialog's own check and set (`AltimeterInputError`,
+  `SetAltimeterValue`, `SetAltimeterFromText`, under `BaroKnobBusy`, [P737-5]); the speed reference value
+  through `Pmdg737SpeedReferenceSetter`: EVT_MPM_SPEED_REFERENCE_CONTROL swept live 2026-10-30, a click
+  (RIGHTSINGLE up, LEFTSINGLE down) moves 5 of the position's steps (the layout's) at any spacing, a wheel turn
+  (0x4000 up, 0x2000 down) one step when at least 150 ms apart; the session's very first click moved one
+  step. VREF on the ground is PMDG's INVALID ENTRY. A round that leaves the value no closer ends the
+  setting ("WT 148000, could not reach 149000"): WT's step is the layout's with PMDG's kilogram option off
+  (with the option on, its 1000 or 2000 step is not in the layout and unseen live).
+- **Its buttons:** MINS RST, FPV and MTRS press and release through `HeldTransmitAsync`
+  (`EVT_EFIS_CPT_MINIMUMS_RST`, `_FPV`, `_MTRS`); STD is the baro knob's STD push as Ctrl+B's Standard,
+  under the one baro guard ([P737-5]); Flight director sets `MCP_FDSw_0` to its other position through
+  the echo suppression (its "MCP:" switch line stays quiet; the FD master light still speaks). The buttons
+  show the state the PFD reading holds (the SDK for the FD switch); NVDA reads a focused button's new text,
+  so a stateful button's press is read back only when it changed nothing, 3 s later ("FPV off": never
+  silent, as the MCP windows' [P737-7], owner 2026-10-30); MINS RST, whose text never changes, is always
+  read back, with the minimums the PFD then shows. MINS RST toggles the minimums
+  display (live, 2026-10-30), setting BARO 200 or RADIO 50 only when none is set.
 
 ## Altimeter access
 
@@ -651,9 +830,9 @@ and only then makes the AI call.
 
 | Key | Display | Instrument view |
 |---|---|---|
-| Alt+P | PFD | view 8 (index 7) |
-| Alt+N | ND | view 8 (index 7) |
-| Alt+E | EICAS (upper engine display) | view 2 (index 1) |
+| Alt+P | PFD: only when the Primary flight display reader cannot work or the classic EFIS look is selected, see [Primary flight display](#primary-flight-display) | view 8 (index 7) |
+| Alt+N | ND: only when the Navigation display reader cannot work, see [Navigation display](#navigation-display) | view 8 (index 7) |
+| Alt+E | EICAS (upper engine display): only when the Engine displays reader cannot work, see [Engine displays](#engine-displays) | view 2 (index 1) |
 | Alt+S | Lower display unit (DU4) | view 2 (index 1) |
 | Alt+I | ISFD (standby) | view 2 (index 1) |
 
@@ -683,9 +862,10 @@ right edge and clipped. In the EICAS view it sits well inside the frame and crop
 that is where `DisplayType.ISFD737`'s prompt already says it is, "between the captain's displays
 and the Engine Display", so no prompt change was needed.
 
-**Alt+S reads the lower display unit**, and it is the only route THIS APP offers to N2, oil
-pressure, temperature and quantity, and engine vibration — the Engines panel carries the EEC,
-ignition, start and fuel-lever SWITCHES and no secondary engine readouts at all.
+**Alt+S reads the lower display unit.** Until 2026-10-24 it was the only route this app offered to N2,
+oil pressure, temperature and quantity, and engine vibration; the Engine displays window (Output Alt+E)
+now reads PMDG's own values for them from module memory, and Alt+S stays as the AI read. The Engines
+panel carries the EEC, ignition, start and fuel-lever SWITCHES and no secondary engine readouts at all.
 
 ⚠️ **That is a claim about the app, not about the simulator**, and the first draft got it wrong by
 saying "the only way a blind pilot reaches" them. Measured on the live aircraft 2026-09-20: the
@@ -713,7 +893,9 @@ which would have dropped a value that is on screen. Only N1 and EGT are upper-un
 a MobiFlight `#69968` key event, and the `MOUSE_FLAG_LEFTSINGLE` click code were all sent through
 simconnect-mcp and the selector stayed on position 1 every time, screen unchanged. The app's own
 dispatch for this family is a different path and is not implicated. So the ND branch of the prompt
-and the "NORM" label on position 1 both still want a pilot to flick the real knob.
+and the "NORM" label on position 1 both still want a pilot to flick the real knob. (2026-10-24: the
+app's own absolute dispatch moved the knob live, and the engine display reader showed ND, NORM and ENG
+PRI as labelled; see [Engine displays](#engine-displays).)
 
 It was added on 2026-09-20, after the camera work. It had been skipped on the stated grounds that
 the PMDG 777 does not have it either — precedent rather than a reason. The 777 still has the same

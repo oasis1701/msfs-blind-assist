@@ -1,0 +1,1 @@
+Fenix A320 family: the DCDU has its own window (input mode, then Control+Shift+D, or DCDU in the Fenix windows list) that reads datalink messages from the Fenix's own screen, presses its keys and announces each new message, so a clearance can be read and answered. It replaces the DCDU Left panel.

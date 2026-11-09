@@ -22,6 +22,10 @@
          pinning it here does not touch the shared taxi_router.log (the reason the
          old TaxiLeadInProbe was removed). -->
     <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiLeadIn.cs"            Link="Linked\TaxiLeadIn.cs" />
+    <!-- GetLandingExits now routes junction -> apron (CorroborateHighSpeed). TaxiRouter logs through
+         Log.Channel("taxi_router"), which only reaches the log folder after Log.Init(); this tool never
+         calls it, so the pilot's taxi_router.log is still untouched. -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiRouter.cs"            Link="Linked\TaxiRouter.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\HoldShortNodeResolver.cs" Link="Linked\HoldShortNodeResolver.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RouteRunwayCrossings.cs"  Link="Linked\RouteRunwayCrossings.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayFrame.cs"           Link="Linked\RunwayFrame.cs" />
@@ -66,6 +70,10 @@
       types not available in this probe's stripped compilation unit).
     -->
     <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\AirportTaxiData.cs"  Link="Linked\AirportTaxiData.cs" />
+    <!-- AirportTaxiData and NamedHoldingPointResolver name SignHoldingPoint (the X-Plane sign
+         holding points), declared beside its extractor - a gap in this link set that left the
+         sweep unable to build on main. -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\SignHoldingPointExtractor.cs" Link="Linked\SignHoldingPointExtractor.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\TaxiGeo.cs"          Link="Linked\TaxiGeo.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\TaxiDataMerger.cs"   Link="Linked\TaxiDataMerger.cs" />
     <!-- Settings -->

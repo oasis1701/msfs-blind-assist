@@ -552,6 +552,9 @@ public partial class MainForm : Form
         // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.
         StartIFlySdkBridge();
 
+        // PMDG 737: the display readers wait for the PMDG SDK themselves, so they start with the aircraft.
+        StartPmdg737Displays();
+
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
 
@@ -1293,12 +1296,13 @@ public partial class MainForm : Form
 
     /// <summary>
     /// A panel press of a button that flips its own state light (SimVarDefinition.PressTogglesStateVariable:
-    /// the Fenix EFIS FD and LS buttons): marks the light with the value the press should leave, so the light's
+    /// the Fenix EFIS FD, LS and map option buttons): marks the light with the value the press should leave, so the light's
     /// change is not spoken after the screen reader read the button's new label (CORE-7). It rides the same
     /// value-matched gate as a combo pick (CORE-8, CORE-9), so a change the pilot did not cause with this press
-    /// still speaks. Nothing is marked while disconnected (no press is sent) or while the light is unread.
+    /// still speaks. Nothing is marked while disconnected (no press is sent) or while the light is unread. The Fenix
+    /// ND window's EFIS buttons use it too (FenixA320Definition.PanelPressEcho), so a press there is heard once.
     /// </summary>
-    private void MarkStateLightEchoForPress(SimVarDefinition buttonDef)
+    internal void MarkStateLightEchoForPress(SimVarDefinition buttonDef)
     {
         if (simConnectManager is not { IsConnected: true } || string.IsNullOrEmpty(buttonDef.StateVariable)) return;
         double? cached = currentSimVarValues.TryGetValue(buttonDef.StateVariable, out double lit) ? lit : null;
@@ -1346,10 +1350,10 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// True for the quick-access readout hotkeys (the H/V/Q/S/D/B/P/A/F set) — single
-    /// keypresses whose whole purpose is to speak a value. When one of these fires during
-    /// an active visual-guidance session, VG opens a grace window so its per-second
-    /// bank/centerline callouts don't talk over the readout.
+    /// True for the quick-access readout hotkeys (the H/V/Q/S/D/B/P/A/F set)
+    /// — single keypresses whose whole purpose is to speak a value. When
+    /// one of these fires during an active visual-guidance session, VG opens a grace window
+    /// so its per-second bank/centerline callouts don't talk over the readout.
     /// </summary>
     private static bool IsManualReadoutAction(HotkeyAction action) => action switch
     {

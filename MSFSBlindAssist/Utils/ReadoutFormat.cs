@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace MSFSBlindAssist.Utils;
 
 /// <summary>
@@ -10,6 +12,17 @@ namespace MSFSBlindAssist.Utils;
 public static class ReadoutFormat
 {
     public const string PlaceholderUnit = "number";
+
+    /// <summary>Format the outside-temperature readout in whole degrees, converting only the spoken value.
+    /// Rounds half away from zero, as the "0" format did, but through an int: formatting a double
+    /// with "0" keeps the sign of a value that rounds to zero, so -0.3 °C read "-0 degrees".</summary>
+    public static string OutsideTemperature(double celsius, bool useFahrenheit)
+    {
+        double temperature = useFahrenheit ? celsius * 9.0 / 5.0 + 32.0 : celsius;
+        int whole = (int)Math.Round(temperature, MidpointRounding.AwayFromZero);
+        string unit = useFahrenheit ? "Fahrenheit" : "Celsius";
+        return $"{whole.ToString(CultureInfo.InvariantCulture)} degrees {unit}";
+    }
 
     public static string WithUnit(string value, string? units)
     {
