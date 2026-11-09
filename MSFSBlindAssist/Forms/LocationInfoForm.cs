@@ -256,15 +256,16 @@ public partial class LocationInfoForm : Form
     // ---- columns ----
 
     /// <summary>The table's columns. "From aircraft" is left out while the map position is the aircraft,
-    /// since it would repeat "From map position".</summary>
+    /// since it would repeat "From map position". The distances come right after the name, read first along a
+    /// row (owner, 2026-11-08).</summary>
     private void BuildColumns()
     {
         _columns.Clear();
         _columns.Add(("Name", 220, p => p.Name));
-        _columns.Add(("Type", 150, p => p.TypeName));
-        _columns.Add(("Region", 200, p => LocationPhrases.Region(p.State, p.Country)));
         _columns.Add(("From map position", 150, p => FromPoint(MapLat, MapLon, p)));
         if (!Following) _columns.Add(("From aircraft", 150, p => FromPoint(_aircraftLat, _aircraftLon, p)));
+        _columns.Add(("Type", 150, p => p.TypeName));
+        _columns.Add(("Region", 200, p => LocationPhrases.Region(p.State, p.Country)));
         _columns.Add(("Details", 180, Details));
         _columns.Add(("Coordinates", 160, p => LocationPhrases.Coordinates(p.Lat, p.Lon)));
 
