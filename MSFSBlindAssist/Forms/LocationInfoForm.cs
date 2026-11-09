@@ -157,6 +157,7 @@ public partial class LocationInfoForm : Form
             VirtualMode = true, Dock = DockStyle.Fill, AccessibleName = "Places", TabIndex = 4,
         };
         _results.RetrieveVirtualItem += Results_RetrieveVirtualItem;
+        _results.Enter += Results_Enter;
         _results.ContextMenuStrip = BuildResultsMenu();
 
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, TabIndex = 5 };
@@ -690,17 +691,42 @@ public partial class LocationInfoForm : Form
         _results.VirtualListSize = _shown.Count;
         // Always a selected row: Tab into a list with none gives the screen reader nothing to read.
         // The place selected before stays selected while it is still listed; otherwise the nearest.
+        // Selecting a row raises focus and selection events even while the table is not focused, and NVDA
+        // read them after every filter change ("checked", then "Name"; 2026-11-08). So while the focus is
+        // elsewhere the row is only remembered, and selected when the table is entered.
+        _pendingSelectIndex = null;
         if (_shown.Count > 0)
         {
             int index = selectedId is { } id ? _shown.FindIndex(i => _places[i].Id == id) : -1;
             if (index < 0) index = 0;
-            _results.SelectedIndices.Add(index);
-            _results.FocusedItem = _results.Items[index];
-            _results.EnsureVisible(index);
+            if (_results.ContainsFocus) SelectRow(index);
+            else
+            {
+                _pendingSelectIndex = index;
+                _keepSelectedId = _places[_shown[index]].Id;
+            }
         }
         _results.Invalidate();
         _results.EndUpdate();
         SetStatus(StatusText());
+    }
+
+    /// <summary>The row to select when the table is next entered; see <see cref="ApplyFilters"/>.</summary>
+    private int? _pendingSelectIndex;
+
+    private void SelectRow(int index)
+    {
+        _results.SelectedIndices.Add(index);
+        _results.FocusedItem = _results.Items[index];
+        _results.EnsureVisible(index);
+    }
+
+    private void Results_Enter(object? sender, EventArgs e)
+    {
+        if (_pendingSelectIndex is not { } index) return;
+        _pendingSelectIndex = null;
+        _keepSelectedId = null;
+        if (index < _shown.Count && _results.SelectedIndices.Count == 0) SelectRow(index);
     }
 
     private string StatusText()
