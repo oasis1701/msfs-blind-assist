@@ -477,18 +477,29 @@ public partial class LocationInfoForm : Form
         return menu;
     }
 
-    /// <summary>Output C names the nearest place of every kind under this item (All: of any kind), within this
-    /// window's Range: the first place the window lists for them while the map position follows the aircraft.
-    /// Major cities is saved as <see cref="PlaceFilter.MajorCitiesKey"/>.</summary>
+    /// <summary>Output C names the nearest place of the picked kinds, within this window's Range: the first place
+    /// the window lists for them while the map position follows the aircraft. A kind of place is used ticked or
+    /// not; a heading (or All) only its ticked kinds, so C can be made specific; with none ticked nothing changes
+    /// (owner, 2026-11-09). Saved once, as picked: later ticks leave it. Major cities is saved as
+    /// <see cref="PlaceFilter.MajorCitiesKey"/>.</summary>
     private void UseForOutputC(TreeNode? node)
     {
         if (node is null) return;
-        var keys = Descendants(node).Prepend(node).Select(n => n.Tag).OfType<PlaceTreeItem>()
+        var under = node.Tag is PlaceTreeItem
+            ? new List<TreeNode> { node }
+            : Descendants(node).Where(n => n.Tag is PlaceTreeItem).ToList();
+        var picked = node.Tag is PlaceTreeItem ? under : under.Where(n => n.Checked).ToList();
+        if (picked.Count == 0)
+        {
+            _announcer.AnnounceImmediate($"Nothing ticked under {node.Text}.");
+            return;
+        }
+        _settings.OutputCPlaceTypes = picked.Select(n => (PlaceTreeItem)n.Tag!)
             .SelectMany(i => i.IsMajorCities ? new[] { PlaceFilter.MajorCitiesKey } : i.TypeKeys).ToList();
-        if (keys.Count == 0) return;
-        _settings.OutputCPlaceTypes = keys;
         SettingsManager.Save();
-        _announcer.AnnounceImmediate($"Output C names the nearest place of the kind {node.Text}.");
+        _announcer.AnnounceImmediate(picked.Count == under.Count
+            ? $"Output C names the nearest place of the kind {node.Text}."
+            : $"Output C names the nearest of: {string.Join(", ", picked.Select(n => n.Text))}.");
     }
 
     // ---- the results' context menu ----
