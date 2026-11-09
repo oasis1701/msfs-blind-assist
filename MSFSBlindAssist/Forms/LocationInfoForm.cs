@@ -110,8 +110,20 @@ public partial class LocationInfoForm : Form
     {
         SuspendLayout();
         Text = "Location Information";
-        Size = new Size(1000, 760);
-        MinimumSize = new Size(760, 560);
+        // Sizes are at 100% and grow with the screen's scaling, capped to its working area: unscaled, at 200%
+        // the doubled text and rows left the table four rows, and none with the filters shown (2026-11-09).
+        Load += (_, _) =>
+        {
+            var work = Screen.FromControl(this).WorkingArea.Size;
+            Size Fit(Size logical)
+            {
+                var s = LogicalToDeviceUnits(logical);
+                return new Size(Math.Min(s.Width, work.Width), Math.Min(s.Height, work.Height));
+            }
+            MinimumSize = Fit(new Size(760, 560));
+            Size = Fit(new Size(1000, 760));
+            CenterToScreen();
+        };
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.Sizable;
         ShowInTaskbar = true;
@@ -122,11 +134,14 @@ public partial class LocationInfoForm : Form
         // then the places they select; the bottom row last.
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(6) };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 120)); // where you are
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 200)); // kinds of place
+        // The box is as tall as its lines; the tree and the places share what the other rows leave, so showing
+        // the filters shrinks both instead of only the places.
+        _whereRow = new RowStyle(SizeType.Absolute, 120);           // FitWhereRow sizes it to the text
+        layout.RowStyles.Add(_whereRow);                            // where you are
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30));   // kinds of place
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // show/hide filters
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // filters
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // places
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 70));   // places
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // bottom row
 
         _whereBox = new TextBox
@@ -134,6 +149,7 @@ public partial class LocationInfoForm : Form
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill,
             AccessibleName = "Where you are", TabIndex = 0,
         };
+        _whereBox.SizeChanged += (_, _) => FitWhereRow(); // a new width wraps the text differently
 
         // Check boxes as state images (CORE-18), never TVS_CHECKBOXES: with it every item is a "check box" to
         // the screen reader, which then reads the item's MSAA value, the tree depth ("Islands … 2"). As plain
@@ -753,6 +769,20 @@ public partial class LocationInfoForm : Form
         // Rewritten only when it changed: new text puts the caret on line 1 and the reader loses its place.
         string text = LocationPhrases.LocationInfoText(_aircraftReport.Where, mapName, nm, bearing, _kilometres);
         if (_whereBox.Text != text) _whereBox.Text = text;
+        FitWhereRow();
+    }
+
+    private RowStyle _whereRow = null!;
+
+    /// <summary>The box's row as tall as its text, wrapped at its width, so its lines never cost the places room.</summary>
+    private void FitWhereRow()
+    {
+        var box = _whereBox;
+        int textWidth = Math.Max(1, box.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
+        var text = TextRenderer.MeasureText(box.Text.Length > 0 ? box.Text : " ", box.Font, new Size(textWidth, 0),
+            TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+        float height = text.Height + (box.Height - box.ClientSize.Height) + box.Margin.Vertical + box.Font.Height / 2;
+        if (Math.Abs(_whereRow.Height - height) >= 1) _whereRow.Height = height;
     }
 
     /// <summary>F5 or Refresh: the aircraft's position read again; the list follows it when the map position does.</summary>
