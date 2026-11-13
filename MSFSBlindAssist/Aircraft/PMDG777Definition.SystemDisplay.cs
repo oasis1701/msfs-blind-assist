@@ -82,14 +82,16 @@ public partial class PMDG777Definition
     // call (the 3 s auto-refresh tick AND the 9-page registration loop).
     // One decimal place on the continuous readouts so a SUB-UNIT change is visible —
     // integer rounding hid live movement (a reservoir at 96.9% read a static "97").
-    private static string Pct(double v) => $"{v:0.0} percent";
+    // Every formatter with a decimal is invariant: a decimal point whatever the PC's regional settings
+    // (SpokenDecimalCultureTests).
+    private static string Pct(double v) => FormattableString.Invariant($"{v:0.0} percent");
     // Stabiliser trim in the UNITS the Shift+T callout speaks (Pmdg777StabTrim), fed from the
     // base MON_ElevatorTrim degrees var — the stock ELEVATOR TRIM PCT row showed a third
     // currency (percent) for the one quantity the FMC and the indicator both give in units.
-    private static string TrimUnits(double v) => $"{Pmdg777StabTrim.UnitsFromDegrees(v):F2} units";
-    private static string V(double v) => $"{v:0.0} volts";
-    private static string Psi(double v) => $"{v:0.0} psi";
-    private static string Cdeg(double v) => $"{v:0.0} degrees C";
+    private static string TrimUnits(double v) => FormattableString.Invariant($"{Pmdg777StabTrim.UnitsFromDegrees(v):F2} units");
+    private static string V(double v) => FormattableString.Invariant($"{v:0.0} volts");
+    private static string Psi(double v) => FormattableString.Invariant($"{v:0.0} psi");
+    private static string Cdeg(double v) => FormattableString.Invariant($"{v:0.0} degrees C");
     // Show weight/fuel in BOTH pounds and kilograms (1 lb = 0.45359237 kg). Applies to
     // every pounds field across all System Display pages (Fuel Flow, Fuel Used, Gross
     // Weight, Total Fuel, per-tank quantities) since they all route through these two.
@@ -107,7 +109,7 @@ public partial class PMDG777Definition
     private static string BrakeAccumPsi(double v) => $"{v * 40:0} psi";
 
     /// <summary>Decoded rows for one synoptic page: (label, registration-key/var-name, formatter).</summary>
-    private List<(string label, string var, Func<double, string> fmt)> PMDG777SdRows(int page)
+    internal List<(string label, string var, Func<double, string> fmt)> PMDG777SdRows(int page)
     {
         var r = new List<(string, string, Func<double, string>)>();
         switch (page)
@@ -127,14 +129,14 @@ public partial class PMDG777Definition
                 r.Add(("Engine 2 Oil Temperature", "GENERAL ENG OIL TEMPERATURE:2", Cdeg));
                 r.Add(("Engine 1 Oil Quantity", "ENG OIL QUANTITY:1", Pct));
                 r.Add(("Engine 2 Oil Quantity", "ENG OIL QUANTITY:2", Pct));
-                r.Add(("Engine 1 Vibration", "ENG VIBRATION:1", v => $"{v:0.0}"));
-                r.Add(("Engine 2 Vibration", "ENG VIBRATION:2", v => $"{v:0.0}"));
+                r.Add(("Engine 1 Vibration", "ENG VIBRATION:1", v => FormattableString.Invariant($"{v:0.0}")));
+                r.Add(("Engine 2 Vibration", "ENG VIBRATION:2", v => FormattableString.Invariant($"{v:0.0}")));
                 r.Add(("Engine 1 Fuel Used", "GENERAL ENG FUEL USED SINCE START:1", Lbs));
                 r.Add(("Engine 2 Fuel Used", "GENERAL ENG FUEL USED SINCE START:2", Lbs));
                 break;
             case 1: // STAT
                 r.Add(("Gross Weight", "TOTAL WEIGHT", Lbs));
-                r.Add(("Center of Gravity", "CG PERCENT", v => $"{v:0.0} percent MAC"));
+                r.Add(("Center of Gravity", "CG PERCENT", v => FormattableString.Invariant($"{v:0.0} percent MAC")));
                 r.Add(("Total Air Temperature", "TOTAL AIR TEMPERATURE", Cdeg));
                 r.Add(("Outside Air Temperature", "AMBIENT TEMPERATURE", Cdeg));
                 r.Add(("IRS Aligned", "IRS_aligned", v => v > 0.5 ? "aligned" : "not aligned"));
@@ -164,7 +166,7 @@ public partial class PMDG777Definition
             case 5: // AIR / PRESS
                 r.Add(("Cabin Altitude", "PRESSURIZATION CABIN ALTITUDE", v => $"{v:0} feet"));
                 r.Add(("Cabin Climb Rate", "PRESSURIZATION CABIN ALTITUDE RATE", v => $"{v:0} feet per minute"));
-                r.Add(("Differential Pressure", "PRESSURIZATION PRESSURE DIFFERENTIAL", v => $"{v:0.0} psi"));
+                r.Add(("Differential Pressure", "PRESSURIZATION PRESSURE DIFFERENTIAL", v => FormattableString.Invariant($"{v:0.0} psi")));
                 r.Add(("Left Duct Pressure", "AIR_DuctPress_0", Psi));
                 r.Add(("Right Duct Pressure", "AIR_DuctPress_1", Psi));
                 break;
@@ -198,7 +200,7 @@ public partial class PMDG777Definition
                 r.Add(("Elevator Trim", "MON_ElevatorTrim", TrimUnits));
                 r.Add(("Rudder Trim", "RUDDER TRIM PCT", Pct));
                 r.Add(("Aileron Trim", "AILERON TRIM PCT", Pct));
-                r.Add(("Flaps Angle", "TRAILING EDGE FLAPS LEFT ANGLE", v => $"{v:0.0} degrees"));
+                r.Add(("Flaps Angle", "TRAILING EDGE FLAPS LEFT ANGLE", v => FormattableString.Invariant($"{v:0.0} degrees")));
                 r.Add(("Spoilers", "SPOILERS LEFT POSITION", Pct));
                 break;
         }

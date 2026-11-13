@@ -90,7 +90,7 @@ ones spoken before; the lights add ": " before their state:
 
 | Source | Spoken |
 | --- | --- |
-| `MCP_IASMach`, `MCP_Heading`, `MCP_Altitude`, `MCP_VertSpeed` | "MCP: speed 250 knots", "MCP: Mach 0.78" (F2, current culture, as Shift+S), "MCP: heading 223", "MCP: altitude 10000 feet", "MCP: VS 1000 feet per minute" |
+| `MCP_IASMach`, `MCP_Heading`, `MCP_Altitude`, `MCP_VertSpeed` | "MCP: speed 250 knots", "MCP: Mach 0.78" (F2, a decimal point in any Windows region, as Shift+S), "MCP: heading 223", "MCP: altitude 10000 feet", "MCP: VS 1000 feet per minute" |
 | `MCP_IASOverspeedFlash`, `MCP_IASUnderspeedFlash`, `MCP_indication_powered` | "MCP: overspeed" / "MCP: underspeed" (interrupting, rising edge only), "MCP: powered" / "MCP: unpowered" |
 | `MCP_annun*` (17 lights) | "MCP: Level Change: engaged", "MCP: VOR/LOC: armed", "MCP: A/T: armed", ... and "...: disengaged" |
 | `MCP_FDSw_0/1`, `MCP_ATArmSw`, `MCP_BankLimitSel`, `MCP_DisengageBar`, `MCP_Course_0/1` | "MCP: Flight Director Captain: On", "MCP: Autothrottle Arm: ARM", "MCP: Bank Limit: 25", "MCP: AP Disengage Bar: Down", "MCP: Course Captain: 223" |
