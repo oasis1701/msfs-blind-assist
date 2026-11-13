@@ -96,9 +96,9 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_HAND_FLY_MODE = 9110;
         private const int HOTKEY_VISUAL_GUIDANCE = 9076;
-        // 9254, not 9252: main took 9252 for HOTKEY_VATSIM_MUTE while this branch was open,
-        // and two cases with the same id is a compile error (CS0152) — not just a clash.
-        private const int HOTKEY_WAYPOINT_FD = 9254;   // Output mode: Ctrl+F (Waypoint Flight Director)
+        // 9277, not 9254: main took 9254 for HOTKEY_SHOW_AIRCRAFT_WINDOWS (input mode) while this branch was open.
+        // The two are in different modes, so it compiled, but one id for two keys is a trap: 9277 is free with every open PR merged.
+        private const int HOTKEY_WAYPOINT_FD = 9277;   // Output mode: Ctrl+F (Waypoint Flight Director)
         private const int HOTKEY_SLIP_CUE = 9275;      // Output mode: Ctrl+K (rudder coordination ticks)
         private const int HOTKEY_MACH_SPEED = 9060;
         private const int HOTKEY_EFB = 9061;
