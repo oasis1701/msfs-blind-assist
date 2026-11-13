@@ -66,6 +66,7 @@ public class DecimalFormatSourceTests
     [InlineData("var s = \"{value:F3}\";")]
     [InlineData("var c = '\"'; var s = $\"{value:F0}\";")]
     [InlineData("var s = Inv($\"{nm:0.0} miles\");")]
+    [InlineData("string tmp = $\"{cache}.{Guid.NewGuid():N}.tmp\";")]
     public void An_invariant_or_logged_or_whole_number_format_is_left_alone(string code) => Assert.Empty(Scan(code));
 
     [Fact]
@@ -111,7 +112,8 @@ internal static class DecimalFormatScan
     {
         spec = spec.Trim();
         if (spec.Length == 0 || spec.IndexOfAny(new[] { '(', ')', '?', '"', '\'' }) >= 0) return false;
-        if (Regex.IsMatch(spec, @"^[FfEe][1-9]\d*$|^[NnPpCc]\d*$")) return true;
+        // N, P and C need their digit: a bare "N" or "P" is also a Guid's format ({Guid.NewGuid():N}).
+        if (Regex.IsMatch(spec, @"^[FfEe][1-9]\d*$|^[NnPpCc]\d+$")) return true;
         return Regex.IsMatch(spec, @"^[+\-0#.,;% ]+$") && Regex.IsMatch(spec, @"[.,][0#]");
     }
 

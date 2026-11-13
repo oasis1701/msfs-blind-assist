@@ -158,7 +158,7 @@ Why a line to fill in, not a checkbox: most PRs here are written with Claude Cod
 
 History. The first draft of this rule (2026-10-19, same PR) asked for a link to a pull request in the website's repo, where the guide then lived; the guide moved into this repo before it merged.
 
-## CORE-20
+## CORE-21
 
 Added 2026-11-13 (PR #349). A plain interpolated string formats in the PC's culture, so `$"COM1 active {value:F3}"` reads "COM1 active 118,300" on a German or Swedish Windows, `{mach:0.00}` "Mach 0,78", and `{feet:N0}` "12.345 ft", which a screen reader says as twelve point three four five. The app's text is English and CI runs under en-US, so nothing showed it: the sweep that added this rule found about 290 such phrases, in every aircraft's announcements, display values and system-display rows, in MainForm, the SimConnect readouts, the weather radar, the SimBrief planner and the EFB. Two were not speech at all: `WeatherService.BuildBbox` and `BuildWindsUrl` put coordinates into web addresses, so under a comma-decimal culture the bounding box became eight numbers and the winds address `latitude=48,3538`, and the radar got no SIGMETs, PIREPs or winds aloft.
 
