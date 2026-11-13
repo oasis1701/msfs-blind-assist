@@ -402,7 +402,7 @@ public class UpdateAvailableForm : Form
             }
 
             downloadProgressBar.Value = e.PercentComplete;
-            statusLabel.Text = $"Downloading: {e.PercentComplete}% ({e.BytesDownloaded / 1024 / 1024:F1} MB / {e.TotalBytes / 1024 / 1024:F1} MB)";
+            statusLabel.Text = FormattableString.Invariant($"Downloading: {e.PercentComplete}% ({e.BytesDownloaded / 1024 / 1024:F1} MB / {e.TotalBytes / 1024 / 1024:F1} MB)");
         }
 
         private void UpdateService_StatusChanged(object? sender, string status)

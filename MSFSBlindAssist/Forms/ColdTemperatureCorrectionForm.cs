@@ -248,7 +248,7 @@ public partial class ColdTemperatureCorrectionForm : Form
         }
         if (temperatureC < MIN_TEMP_C || temperatureC > MAX_TEMP_C)
         {
-            ShowError($"Temperature must be between minus 90 and plus 60 degrees Celsius (got {temperatureC:0.#}).");
+            ShowError(FormattableString.Invariant($"Temperature must be between minus 90 and plus 60 degrees Celsius (got {temperatureC:0.#})."));
             temperatureTextBox.Focus();
             return;
         }
@@ -285,7 +285,7 @@ public partial class ColdTemperatureCorrectionForm : Form
             return;
         }
 
-        string header = $"Cold temperature correction at {fieldElevation:0} ft field elevation, {temperatureC:0.#} Celsius:";
+        string header = FormattableString.Invariant($"Cold temperature correction at {fieldElevation:0} ft field elevation, {temperatureC:0.#} Celsius:");
         string advisory = "Advisory only — verify against official sources.";
         resultsTextBox.Text = header + Environment.NewLine
             + string.Join(Environment.NewLine, outputs) + Environment.NewLine

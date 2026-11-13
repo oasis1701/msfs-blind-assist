@@ -1527,21 +1527,21 @@ public partial class MainForm
                             switch (varDef.Units)
                             {
                                 case "volts":
-                                    formattedValue = $"{value:F1}";
+                                    formattedValue = FormattableString.Invariant($"{value:F1}");
                                     unit = "V";
                                     break;
                                 case "millibars":
-                                    formattedValue = $"{value:F2}";
+                                    formattedValue = FormattableString.Invariant($"{value:F2}");
                                     unit = " hPa";
                                     break;
                                 case "inHg":
-                                    formattedValue = $"{value:F2}";
+                                    formattedValue = FormattableString.Invariant($"{value:F2}");
                                     unit = " inHg";
                                     break;
                                 case "kHz":
                                     // Convert kHz to MHz for display (better precision)
                                     double freqMHz = value / 1000.0;
-                                    formattedValue = $"{freqMHz:F3}";
+                                    formattedValue = FormattableString.Invariant($"{freqMHz:F3}");
                                     unit = " MHz";
                                     break;
                                 default:
@@ -2343,7 +2343,7 @@ public partial class MainForm
         double hasGS, double hasDME, double dme, double locCourse, double gsAngle,
         string ident, string name)
     {
-        string freqStr = freq.ToString("F2");
+        string freqStr = freq.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
         var info = new List<string> { $"{label}: {freqStr}" };
 
         if (hasNav <= 0)
@@ -2361,10 +2361,10 @@ public partial class MainForm
             info.Add($"localizer course {(int)locCourse}");
 
         if (hasGS > 0)
-            info.Add($"glideslope {gsAngle:F1} degrees");
+            info.Add(FormattableString.Invariant($"glideslope {gsAngle:F1} degrees"));
 
         if (hasDME > 0)
-            info.Add($"DME {dme:F1} nautical miles");
+            info.Add(FormattableString.Invariant($"DME {dme:F1} nautical miles"));
 
         return string.Join(", ", info);
     }
@@ -2726,9 +2726,9 @@ public partial class MainForm
         {
             bool isLow = vis < 1500;
             if (isLow && !_prevVisLow)
-                announcer.Announce($"Visibility low: {vis / 1000.0:F1} km");
+                announcer.Announce(FormattableString.Invariant($"Visibility low: {vis / 1000.0:F1} km"));
             else if (!isLow && _prevVisLow)
-                announcer.Announce($"Visibility improving: {vis / 1000.0:F1} km");
+                announcer.Announce(FormattableString.Invariant($"Visibility improving: {vis / 1000.0:F1} km"));
         }
         _prevVisibility = vis;
         _prevVisLow = vis < 1500;

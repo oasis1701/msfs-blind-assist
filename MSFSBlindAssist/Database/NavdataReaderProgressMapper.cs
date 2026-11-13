@@ -58,8 +58,8 @@ public sealed class NavdataReaderProgressMapper
             if (match.Success)
             {
                 int count = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-                string detailMessage = $"Found {count:N0} airports in scenery library";
-                return Advance(90, $"Processed {count:N0} airports", detailMessage);
+                string detailMessage = FormattableString.Invariant($"Found {count:N0} airports in scenery library");
+                return Advance(90, FormattableString.Invariant($"Processed {count:N0} airports"), detailMessage);
             }
         }
 

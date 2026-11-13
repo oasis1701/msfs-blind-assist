@@ -2096,7 +2096,7 @@ public partial class TaxiGuidanceManager
         {
             _rolloutToneLogUtc = toneLogNowUtc;
             string toneDiag = toneLive
-                ? $"desired={toneDesiredHeading:F1} raw={toneRawError:+0.0;-0.0} smooth={_smoothedHeadingError:+0.0;-0.0}"
+                ? FormattableString.Invariant($"desired={toneDesiredHeading:F1} raw={toneRawError:+0.0;-0.0} smooth={_smoothedHeadingError:+0.0;-0.0}")
                 : "desired=- raw=- smooth=-";
             double lateralSignedM = SignedLateralFromRunwayMeters(
                 lat, lon, _rolloutRunway!.StartLat, _rolloutRunway.StartLon, _rolloutRunwayHeadingTrue);

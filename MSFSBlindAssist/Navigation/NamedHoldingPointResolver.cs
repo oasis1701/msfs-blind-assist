@@ -344,7 +344,7 @@ public static class NamedHoldingPointResolver
                 SnappedToDesignatedNode = designated != null,
                 InsertedOnEdge = designated == null && graph.IsHoldingPointProjectionNode(node.NodeId),
             });
-            log?.Invoke($"sign {name}: on {taxiway}, node {node.NodeId}, {dist:F1} m from sign" +
+            log?.Invoke(FormattableString.Invariant($"sign {name}: on {taxiway}, node {node.NodeId}, {dist:F1} m from sign") +
                         (designated != null ? " (scenery hold node)" : ""));
         }
         return result.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();

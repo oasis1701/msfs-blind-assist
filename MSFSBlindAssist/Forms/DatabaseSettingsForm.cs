@@ -178,7 +178,7 @@ public partial class DatabaseSettingsForm : Form
             var metadata = provider.GetMetadata();
 
             // Build status message with NAVDATA information
-            string statusMessage = $"Active Database: {activeVersion} - {airportCount:N0} airports";
+            string statusMessage = FormattableString.Invariant($"Active Database: {activeVersion} - {airportCount:N0} airports");
 
             if (metadata != null)
             {
