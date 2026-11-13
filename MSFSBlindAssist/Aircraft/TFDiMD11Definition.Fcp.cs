@@ -112,7 +112,7 @@ public partial class TFDiMD11Definition
                 return LooksLikeMach(v)
                     ? v is >= Md11Fcp.MinMach and <= Md11Fcp.MaxMach
                         ? (true, "")
-                        : (false, $"Enter a Mach between {Md11Fcp.MinMach:0.00} and {Md11Fcp.MaxMach:0.00}")
+                        : (false, FormattableString.Invariant($"Enter a Mach between {Md11Fcp.MinMach:0.00} and {Md11Fcp.MaxMach:0.00}"))
                     : v >= Md11Fcp.MinSpeedKnots && v <= Md11Fcp.MaxSpeedKnots
                         ? (true, "")
                         : (false, $"Enter a speed between {Md11Fcp.MinSpeedKnots} and {Md11Fcp.MaxSpeedKnots} knots, or a Mach such as 0.82");
@@ -279,7 +279,7 @@ public partial class TFDiMD11Definition
                         : (false, $"Enter hPa between {Md11Fcp.MinHpa} and {Md11Fcp.MaxHpa}, or inHg such as 29.92")
                     : v is >= Md11Fcp.MinInHg and <= Md11Fcp.MaxInHg
                         ? (true, "")
-                        : (false, $"Enter inHg between {Md11Fcp.MinInHg:0.00} and {Md11Fcp.MaxInHg:0.00}, or hPa such as 1013");
+                        : (false, FormattableString.Invariant($"Enter inHg between {Md11Fcp.MinInHg:0.00} and {Md11Fcp.MaxInHg:0.00}, or hPa such as 1013"));
             },
             Suppressing(toggles),
             input =>

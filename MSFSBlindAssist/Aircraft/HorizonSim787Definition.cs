@@ -546,18 +546,18 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
         if (varKey == "HS787_BaroSetting")
         {
             int hpa = (int)Math.Round(value * 33.8639);
-            text = $"{hpa} hPa ({value:0.00} inHg)";
+            text = FormattableString.Invariant($"{hpa} hPa ({value:0.00} inHg)");
             return true;
         }
         // EICAS N1/N2 are 0..1 ratios -> percent; gross weight kg -> tonnes.
         if (varKey is "HS787_EicasN1_1" or "HS787_EicasN1_2" or "HS787_EicasN2_1" or "HS787_EicasN2_2")
         {
-            text = $"{value * 100:0.0} percent";
+            text = FormattableString.Invariant($"{value * 100:0.0} percent");
             return true;
         }
         if (varKey == "HS787_EicasGwKg")
         {
-            text = $"{value / 1000.0:0.0} tonnes";
+            text = FormattableString.Invariant($"{value / 1000.0:0.0} tonnes");
             return true;
         }
         text = "";
