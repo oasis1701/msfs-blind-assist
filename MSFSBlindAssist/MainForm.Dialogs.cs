@@ -218,8 +218,8 @@ public partial class MainForm
 
     private void ShowDestinationRunwayDialog()
     {
-        // Ensure output hotkey mode is deactivated before showing modal dialog
-        hotkeyManager.ExitOutputHotkeyMode();
+        // Deactivate input hotkey mode before showing modal dialog
+        hotkeyManager.ExitInputHotkeyMode();
 
         if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
         {

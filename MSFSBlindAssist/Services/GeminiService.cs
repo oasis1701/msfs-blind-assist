@@ -208,8 +208,10 @@ public class GeminiService : IAiProvider
         UpperECAM,     // Upper ECAM / Engine Warning Display
         ND,            // Navigation Display
         ISIS,          // Integrated Standby Instrument System
-        NDFenix,       // Navigation Display (Fenix A320) — its frame holds BOTH NDs, so this one names the captain's
+        NDFenix,       // Navigation Display (Fenix A320) — its frame holds the captain's PFD and ND, so this one names the ND
         StandbyFenix,  // Standby instruments (Fenix A320) — three round gauges on some variants, a digital ISIS on others
+        StandbyFenixIsis,     // Standby (Fenix A320) when the livery fits an ISIS, B_CONFIG_STDBY 0
+        StandbyFenixAnalogue, // Standby (Fenix A320) when the livery fits the three round standby gauges
         EICAS,         // Engine Indicating and Crew Alerting System (Boeing 777)
         PFD777,        // Primary Flight Display (Boeing 777)
         ND777,         // Navigation Display (Boeing 777)
@@ -357,8 +359,8 @@ Use line breaks to separate information. Put mode and range on the first line, h
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             DisplayType.NDFenix => @"You are reading the CAPTAIN'S Navigation Display of an Airbus A320 for a screen reader user.
-The image contains two navigation displays side by side, one for each pilot. Describe ONLY the LEFT-HAND one, which is the captain's. Ignore the right-hand navigation display, the ECAM displays in the centre, the standby instruments and everything else.
-The two can show different modes and ranges, so do not merge them or fall back to the other one: if the left-hand display is blank or off, say so in one line and stop.
+The image contains the captain's two main displays side by side: the Primary Flight Display (attitude, speed and altitude tapes) on the left and the Navigation Display (the map) on the right. Describe ONLY the Navigation Display, the right-hand display. Ignore the Primary Flight Display, the standby instruments, any part of the ECAM displays at the edge and everything else.
+Do not report values from the Primary Flight Display instead: if the Navigation Display is blank or off, say so in one line and stop.
 Be extremely concise and direct. Skip descriptions of map layouts, visual positioning, and symbology explanations. Only report actual values, modes, and navigation data.
 Skip normal colors (green, white, magenta) - only mention warning/alert colors (amber, red).
 Report: display mode (ROSE NAV, ARC, PLAN), range setting, aircraft heading/track, ground speed and true airspeed, wind direction and speed, active waypoints in sequence, distance/time to next waypoint, course deviation if present, weather radar returns if shown, TCAS traffic if present.
@@ -373,6 +375,20 @@ If it is THREE ROUND DIAL GAUGES - first line ""Round standby gauges"" - report 
 
 If it is a SINGLE DIGITAL SCREEN - first line ""Digital ISIS"" - report airspeed, altitude, barometric setting (including STD if standard is selected), pitch and bank if other than level, and any mode annunciations or flags.
 
+If the standby instruments are dark or not visible in this image, say so in one line and stop. Do not report values from the navigation displays or the ECAM instead.
+Skip normal colors - only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.StandbyFenixIsis => @"You are reading the ISIS (integrated standby instrument system) of an Airbus A320 for a screen reader user.
+The image contains the whole centre panel. Describe ONLY the ISIS, the single small digital screen between the captain's navigation display and the ECAM displays. Ignore the navigation displays, the ECAM displays, and the landing gear and autobrake panels. It may be the older or the newer ISIS style; read either the same way.
+Report, each on its own line: airspeed, altitude, the barometric setting (the number and whether it is hPa or inches of mercury, or STD), pitch and bank if either is other than level, and any flags or annunciations.
+If the standby instruments are dark or not visible in this image, say so in one line and stop. Do not report values from the navigation displays or the ECAM instead.
+Skip normal colors - only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.StandbyFenixAnalogue => @"You are reading the STANDBY INSTRUMENTS of an Airbus A320 for a screen reader user.
+The image contains the whole centre panel. Describe ONLY the standby instruments, three round dial gauges: airspeed, altimeter and attitude. They sit between the captain's navigation display and the ECAM displays. Ignore the navigation displays, the ECAM displays, and the landing gear and autobrake panels.
+Report each on its own line: the standby airspeed in knots from the pointer, the standby altitude in feet from the drum or pointers, the barometric setting in the small window on the altimeter face (give the number and say whether it is hPa or inches of mercury), and the pitch and bank from the standby attitude indicator if either is other than level. If a separate metric altitude gauge is fitted, report its reading too. If a DME or VOR bearing indicator is beside them, report its distance and bearing last.
 If the standby instruments are dark or not visible in this image, say so in one line and stop. Do not report values from the navigation displays or the ECAM instead.
 Skip normal colors - only mention warning/alert colors (amber, red).
 Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",

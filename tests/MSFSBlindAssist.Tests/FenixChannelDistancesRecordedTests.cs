@@ -1,0 +1,1057 @@
+// D and Shift+D on recorded flights: sixteen pushes of the Fenix display channel, each kept here as a route table and
+// checked against the MCDU's figure of the same push (evidence10-distances.md, "The recorded
+// cases"; GateNoRunways and GateDepartureRunwayOnly are from the gate check of 2026-11-05). The recordings themselves
+// stay local ([FNX-23]'s tools); a table is the part of one push the sums read: public waypoints, the aircraft's
+// position and the MCDU's figures.
+//
+// A table is one item per line, built into a RemoteData push with FenixChannelProtoWriter (2.1, 2.4, 2.11 and 2.12
+// under field 2, the position under 192) and decoded with FenixChannelRoute.Decode:
+//   # <title> (<recording>)       a comment: the sitting and the recording the push came from
+//   pos <lat> <lon>               the present position (192.1, 192.2)
+//   rwy <lat> <lon> <apt> <rwy>   a runway (2.1: 1, 2 the threshold, 6 the airport, 4 the runway), in order
+//   to <lat> <lon> <kind> <ident> [options]    the TO waypoint's element (2.11)
+//   leg <lat> <lon> <kind> <ident> [options]   an element of the active route (2.4), in order
+//   mark <lat> <lon> <type> [color=<n>] [ga]   a map marker (2.12: 1, 2, 4 the type, 5 the color, 6 the go-around flag)
+// Latitudes and longitudes are fixed64 doubles. The kind (3) and the type are varints; an ident of "-" is empty (6 not
+// sent). An element's options: "ma" (4 = 1, the missed approach), "r=<radius>" (9), "in=<course in>" (10) and
+// "out=<course out>" (11), fixed32 floats, and "end=<reason>" (16, a varint).
+//
+// Each case expects what the evidence's table says: "within <n>" is a distance within 1 NM plus 0.5 % of the MCDU's
+// figure n (the F-PLN DEST line's DIST for D, PERF CRZ's "TO (T/D)" DIST for Shift+D); "past", "not available" and
+// "a distance" are the answer's kind; "not checked" is a key the evidence does not check at that push.
+
+using System.Globalization;
+using MSFSBlindAssist.Services;
+
+namespace MSFSBlindAssist.Tests;
+
+public class FenixChannelDistancesRecordedTests
+{
+    [Theory]
+    [InlineData(nameof(GateKcvg), "within 398", "not available")]
+    [InlineData(nameof(GateNoRunways), "within 389", "not available")]
+    [InlineData(nameof(GateDepartureRunwayOnly), "within 394", "not available")]
+    [InlineData(nameof(ClimbThreeDiscontinuities), "within 346", "not available")]
+    [InlineData(nameof(ClimbInHdg), "within 342", "not available")]
+    [InlineData(nameof(CruiseManualGapOpen), "within 220", "a distance")]
+    [InlineData(nameof(CruiseTopOfDescent), "not checked", "within 149")]
+    [InlineData(nameof(TurnAfterArtur), "not checked", "within 64")]
+    [InlineData(nameof(CurvedLeg), "within 29", "past")]
+    [InlineData(nameof(DescentRestartMarker), "within 48", "past")]
+    [InlineData(nameof(BeforeEarlyDescent), "not checked", "within 40")]
+    [InlineData(nameof(EarlyDescent), "not checked", "past")]
+    [InlineData(nameof(NoCruiseLevel), "not checked", "not available")]
+    [InlineData(nameof(AfterGlideslope), "within 7", "not available")]
+    [InlineData(nameof(RunwayTo), "within 3", "not checked")]
+    [InlineData(nameof(LandingRoll), "not available", "not checked")]
+    public void Recorded_routes_match_the_mcdu(string name, string destination, string topOfDescent)
+    {
+        var snapshot = new FenixChannelSnapshot(
+            new FenixDisplayVerdict(true, "trusted"), null, Push(Tables[name]), null, 0, 1);
+
+        Check(name, "D", destination, FenixChannelRouteDistances.Answer(snapshot, false, Unexpected));
+        Check(name, "Shift+D", topOfDescent, FenixChannelRouteDistances.Answer(snapshot, true, Unexpected));
+    }
+
+    private static void Unexpected(string problem) => Assert.Fail($"the route did not decode: {problem}");
+
+    private static void Check(string name, string key, string expected, FenixDistanceAnswer answer)
+    {
+        string got = string.Create(CultureInfo.InvariantCulture, $"{answer.Kind} {answer.Nm:F2}");
+        switch (expected)
+        {
+            case "not checked":
+                return;
+            case "past":
+                Assert.True(answer.Kind == FenixDistanceKind.Past, $"{name}, {key}: expected past, got {got}");
+                return;
+            case "not available":
+                Assert.True(answer.Kind == FenixDistanceKind.NotAvailable,
+                    $"{name}, {key}: expected not available, got {got}");
+                return;
+            case "a distance":
+                Assert.True(answer.Kind == FenixDistanceKind.Distance, $"{name}, {key}: expected a distance, got {got}");
+                return;
+        }
+
+        Assert.StartsWith("within ", expected);
+        double mcdu = double.Parse(expected["within ".Length..], NumberStyles.Float, CultureInfo.InvariantCulture);
+        double tolerance = 1 + 0.005 * mcdu;
+        Assert.True(answer.Kind == FenixDistanceKind.Distance && Math.Abs(answer.Nm - mcdu) <= tolerance,
+            string.Create(CultureInfo.InvariantCulture,
+                $"{name}, {key}: expected {mcdu} within {tolerance:F3}, got {got}"));
+    }
+
+    // ---- Building a push from a table -------------------------------------------------------
+
+    private static FenixChannelPush Push(string table)
+    {
+        var route = new FenixChannelProtoWriter();
+        FenixChannelProtoWriter? position = null;
+        foreach (string raw in table.Split('\n'))
+        {
+            string line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+
+            string[] words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            double lat = Number(words[1]), lon = Number(words[2]);
+            switch (words[0])
+            {
+                case "pos":
+                    position = new FenixChannelProtoWriter().Double(1, lat).Double(2, lon);
+                    break;
+                case "rwy":
+                    route.Message(1, new FenixChannelProtoWriter().Double(1, lat).Double(2, lon)
+                        .String(4, words[4]).String(6, words[3]));
+                    break;
+                case "to":
+                    route.Message(11, Element(lat, lon, words[3..]));
+                    break;
+                case "leg":
+                    route.Message(4, Element(lat, lon, words[3..]));
+                    break;
+                case "mark":
+                    route.Message(12, Marker(lat, lon, words[3..]));
+                    break;
+                default:
+                    throw new InvalidDataException($"not a table line: {line}");
+            }
+        }
+
+        Assert.NotNull(position);
+        var remote = new FenixChannelProtoWriter().Message(2, route).Message(192, position);
+        return FenixChannelPush.From(remote.ToArray())!;
+    }
+
+    // <kind> <ident> [ma] [r=] [in=] [out=] [end=]
+    private static FenixChannelProtoWriter Element(double lat, double lon, string[] rest)
+    {
+        var leg = new FenixChannelProtoWriter().Double(1, lat).Double(2, lon).Varint(3, ulong.Parse(rest[0], CultureInfo.InvariantCulture));
+        if (rest[1] != "-") leg.String(6, rest[1]);
+        foreach (string option in rest[2..])
+        {
+            if (option == "ma") leg.Bool(4, true);
+            else if (option.StartsWith("r=", StringComparison.Ordinal)) leg.Float(9, (float)Number(option[2..]));
+            else if (option.StartsWith("in=", StringComparison.Ordinal)) leg.Float(10, (float)Number(option[3..]));
+            else if (option.StartsWith("out=", StringComparison.Ordinal)) leg.Float(11, (float)Number(option[4..]));
+            else if (option.StartsWith("end=", StringComparison.Ordinal))
+                leg.Varint(16, ulong.Parse(option[4..], CultureInfo.InvariantCulture));
+            else throw new InvalidDataException($"not an element option: {option}");
+        }
+
+        return leg;
+    }
+
+    // <type> [color=] [ga]
+    private static FenixChannelProtoWriter Marker(double lat, double lon, string[] rest)
+    {
+        var marker = new FenixChannelProtoWriter().Double(1, lat).Double(2, lon)
+            .Varint(4, ulong.Parse(rest[0], CultureInfo.InvariantCulture));
+        foreach (string option in rest[1..])
+        {
+            if (option == "ga") marker.Bool(6, true);
+            else if (option.StartsWith("color=", StringComparison.Ordinal))
+                marker.Varint(5, ulong.Parse(option[6..], CultureInfo.InvariantCulture));
+            else throw new InvalidDataException($"not a marker option: {option}");
+        }
+
+        return marker;
+    }
+
+    private static double Number(string text) => double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+
+    // ---- The recorded tables ----------------------------------------------------------------
+
+    private static readonly Dictionary<string, string> Tables = new()
+    {
+        [nameof(GateKcvg)] = GateKcvg,
+        [nameof(GateNoRunways)] = GateNoRunways,
+        [nameof(GateDepartureRunwayOnly)] = GateDepartureRunwayOnly,
+        [nameof(ClimbThreeDiscontinuities)] = ClimbThreeDiscontinuities,
+        [nameof(ClimbInHdg)] = ClimbInHdg,
+        [nameof(CruiseManualGapOpen)] = CruiseManualGapOpen,
+        [nameof(CruiseTopOfDescent)] = CruiseTopOfDescent,
+        [nameof(TurnAfterArtur)] = TurnAfterArtur,
+        [nameof(CurvedLeg)] = CurvedLeg,
+        [nameof(DescentRestartMarker)] = DescentRestartMarker,
+        [nameof(BeforeEarlyDescent)] = BeforeEarlyDescent,
+        [nameof(EarlyDescent)] = EarlyDescent,
+        [nameof(NoCruiseLevel)] = NoCruiseLevel,
+        [nameof(AfterGlideslope)] = AfterGlideslope,
+        [nameof(RunwayTo)] = RunwayTo,
+        [nameof(LandingRoll)] = LandingRoll,
+    };
+
+    // MCDU: DEST DIST 398, PERF T/D DIST none.
+    private const string GateKcvg = """
+        # Sitting 3 at the KCVG gate, no cruise level yet (nd-sitting3\rec\101001.351.bin)
+        pos 39.04979182976669 -84.65472211734033
+        rwy 39.05585556 -84.64666667 KCVG 18L
+        rwy 33.64953333 -84.439025 KATL 08L
+        to 39.012609402150034 -84.64674996382742 4 INTCPT
+        leg 39.05585556 -84.64666667 2 KCVG18L
+        leg 39.036689010067974 -84.64675280292357 0 INTCPT in=180.1999969482422 out=180.1999969482422
+        leg 39.015544391531186 -84.64675158533824 0 INTCPT
+        leg 39.01263124502658 -84.6465216019474 1 INTCPT r=1.4311087131500244 in=179.99801635742188 out=173.00140380859375
+        leg 39.00977064316165 -84.6458383333114 1 LASNG r=1.4311087131500244 in=173.00140380859375 out=165.98934936523438
+        leg 38.95699167 -84.62890278 0 LASNG
+        leg 38.82895191377985 -84.58546467361636 0 ZEGUL
+        leg 38.82892660889135 -84.58546426710214 1 ZEGUL r=0.0031249646563082933 in=165.2223358154297 out=193.3435821533203
+        leg 38.82890411967791 -84.58547924429176 1 CHCLL r=0.0031249646563082933 in=193.3435821533203 out=221.49757385253906
+        leg 38.48046667 -84.97849444 0 CHCLL
+        leg 36.92890833786294 -86.44348677386033 0 RAMRD
+        leg 36.92889956852502 -86.4434932865877 1 RAMRD r=0.0031249646563082933 in=216.315185546875 out=205.07815551757812
+        leg 36.92888993952474 -86.44349754080936 1 HITMN r=0.0031249646563082933 in=205.07815551757812 out=193.82603454589844
+        leg 36.136817347136294 -86.68478560282901 0 HITMN
+        leg 36.13679777275995 -86.68478680423543 1 HITMN r=0.0031249646563082933 in=193.68238830566406 out=171.9931182861328
+        leg 36.13677920432274 -86.68477894804022 1 NEWBB r=0.0031249646563082933 in=171.9931182861328 out=150.2767791748047
+        leg 35.73629444 -86.40332778 0 NEWBB
+        leg 35.55596944 -86.27543611 0 IHAVE
+        leg 35.430081077564516 -86.18657732335565 0 MTHEW
+        leg 35.43007785758233 -86.1865748590288 1 MTHEW r=0.0031249646563082933 in=150.13995361328125 out=145.96446228027344
+        leg 35.430074788276386 -86.1865721095681 1 CHPPR r=0.0031249646563082933 in=145.96446228027344 out=141.783203125
+        leg 34.14383056 -84.968775 0 CHPPR
+        leg 34.01252883988232 -84.84450871448858 0 MRCHH
+        leg 34.01251584615146 -84.84449973937036 1 MRCHH r=0.0031249646563082933 in=141.94215393066406 out=158.4708251953125
+        leg 34.012501253407834 -84.84449559270972 1 JAGRR r=0.0031249646563082933 in=158.4708251953125 out=175.02101135253906
+        leg 33.89990833 -84.83267778 0 JAGRR
+        leg 33.89988490663542 -84.83266821887491 1 BAZAR r=0.003122822381556034 in=175.02761840820312 out=147.53955078125
+        leg 33.649305028898084 -84.64130473096704 0 BAZAR
+        leg 33.649287158178105 -84.64128179465179 1 BAZAR r=0.0031249646563082933 in=147.6459503173828 out=118.56550598144531
+        leg 33.64928082058549 -84.64125127914883 1 SCHEL r=0.0031249646563082933 in=118.56550598144531 out=89.4516830444336
+        leg 33.64943056 -84.55409444 0 SCHEL
+        leg 33.64948003096521 -84.55409450613483 3 SCHEL end=2
+        leg 33.64948003096521 -84.55409450613483 2 KATL08L
+        leg 33.64953333 -84.439025 0 KATL08L
+        leg 33.649875806268305 -84.39798068787422 0 1500 ma
+        leg 33.876526453730825 -84.42480831951082 0 INTCPT ma
+        leg 33.87952778 -84.43507222 0 TROYS ma
+        leg 33.88689281084551 -84.44803205410453 1 TROYS ma r=1.5115669965744019 in=289.4000244140625 out=319.3999938964844
+        leg 33.92625462762514 -84.48869805059174 0 TROYS ma out=319.3999938964844
+        leg 33.89343653757924 -84.53481368989388 1 TROYS ma r=1.5124828815460205 in=319.3999938964844 out=139.39999389648438
+        leg 33.888042226845535 -84.49649575435883 1 TROYS ma r=1.5124828815460205 in=139.39999389648438 out=59.82913589477539
+        leg 33.88806960768819 -84.49643901603177 0 TROYS ma out=59.82913589477539
+        leg 33.89005068897741 -84.47109029684496 1 TROYS ma r=1.5124828815460205 in=59.82913589477539 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 33.927079738013255 -84.41488988336584 1 TROYS ma r=1.5124828815460205 in=109.4000015258789 out=289.3999938964844
+        leg 33.9473589623615 -84.4843749286523 0 TROYS ma out=289.3999938964844
+        leg 33.899807039297116 -84.50451849016525 1 TROYS ma r=1.5124828815460205 in=289.3999938964844 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 39.012609402150034 -84.64674996382742 4 INTCPT
+        leg 38.95699167 -84.62890278 4 LASNG
+        leg 38.828925 -84.58545556 4 ZEGUL
+        leg 38.48046667 -84.97849444 4 CHCLL
+        leg 36.9289 -86.44349444 4 RAMRD
+        leg 36.13679722 -86.68479167 4 HITMN
+        leg 35.73629444 -86.40332778 4 NEWBB
+        leg 35.55596944 -86.27543611 4 IHAVE
+        leg 35.43007778 -86.186575 4 MTHEW
+        leg 34.14383056 -84.968775 4 CHPPR
+        leg 34.01251667 -84.84449722 4 MRCHH
+        leg 33.89990833 -84.83267778 4 JAGRR
+        leg 33.64928056 -84.64128611 4 BAZAR
+        leg 33.64943056 -84.55409444 4 SCHEL
+        leg 33.649875806268305 -84.39798068787422 4 1500 ma
+        leg 33.876526453730825 -84.42480831951082 4 INTCPT ma
+        leg 33.87952778 -84.43507222 4 TROYS ma
+        mark 34.14383056 -84.968775 5
+        mark 33.89990833 -84.83267778 5
+        mark 33.64928056 -84.64128611 5
+        mark 33.87952778 -84.43507222 5 ga
+        mark 36.21340577278335 -86.66167537819123 11 color=2
+        """;
+
+    // MCDU: DEST DIST 389, PERF T/D DIST none.
+    private const string GateNoRunways = """
+        # Gate check 2026-11-05 at the KCVG gate, the plan loaded with no runways, IRS aligned (data\gate-20261105-norunways\091437.404.bin)
+        pos 39.04979181062645 -84.65472211610555
+        to 36.9289 -86.44349444 4 RAMRD
+        leg 39.04883889 -84.66782222 3 KCVG end=1
+        leg 36.9289 -86.44349444 2 RAMRD
+        leg 36.13681734713262 -86.68478560283408 0 HITMN
+        leg 36.13679777276002 -86.68478680423753 1 HITMN r=0.0031249646563082933 in=193.68238830566406 out=171.9931182861328
+        leg 36.13677920432669 -86.684778948043 1 NEWBB r=0.0031249646563082933 in=171.9931182861328 out=150.2767791748047
+        leg 35.73629444 -86.40332778 0 NEWBB
+        leg 35.55596944 -86.27543611 0 IHAVE
+        leg 35.43007778 -86.186575 0 MTHEW
+        leg 33.6367 -84.42786389 3 MTHEW end=1
+        leg 39.04883889 -84.66782222 4 KCVG
+        leg 36.9289 -86.44349444 4 RAMRD
+        leg 36.13679722 -86.68479167 4 HITMN
+        leg 35.73629444 -86.40332778 4 NEWBB
+        leg 35.55596944 -86.27543611 4 IHAVE
+        leg 35.43007778 -86.186575 4 MTHEW
+        leg 33.6367 -84.42786389 4 KATL
+        mark 36.21340193846036 -86.66167653601583 11 color=2
+        """;
+
+    // MCDU: DEST DIST 394, PERF T/D DIST none.
+    private const string GateDepartureRunwayOnly = """
+        # Gate check 2026-11-05 at the KCVG gate, the SID entered (KCVG 18L), no arrival (data\gate-20261105-sidonly\091827.261.bin)
+        pos 39.04979181062645 -84.65472211610555
+        rwy 39.05585556 -84.64666667 KCVG 18L
+        to 39.01267460916321 -84.64677090509797 4 INTCPT
+        leg 39.05585556 -84.64666667 2 KCVG18L
+        leg 39.03218903746606 -84.64677301866273 0 INTCPT in=180.1999969482422 out=180.1999969482422
+        leg 39.01333036387269 -84.64677190688936 0 INTCPT
+        leg 39.01267945912707 -84.64672035924323 1 INTCPT r=0.3187776207923889 in=179.99749755859375 out=172.9645233154297
+        leg 39.01204427406428 -84.64656847427928 1 LASNG r=0.3187776207923889 in=172.9645233154297 out=165.9888916015625
+        leg 38.95699167 -84.62890278 0 LASNG
+        leg 38.82895191377985 -84.58546467361636 0 ZEGUL
+        leg 38.82892660889135 -84.58546426710214 1 ZEGUL r=0.0031249646563082933 in=165.2223358154297 out=193.3435821533203
+        leg 38.82890411967791 -84.58547924429176 1 CHCLL r=0.0031249646563082933 in=193.3435821533203 out=221.49757385253906
+        leg 38.48046667 -84.97849444 0 CHCLL
+        leg 38.48046667 -84.97849444 3 CHCLL end=1
+        leg 36.9289 -86.44349444 2 RAMRD
+        leg 36.13681734713262 -86.68478560283408 0 HITMN
+        leg 36.13679777276002 -86.68478680423753 1 HITMN r=0.0031249646563082933 in=193.68238830566406 out=171.9931182861328
+        leg 36.13677920432669 -86.684778948043 1 NEWBB r=0.0031249646563082933 in=171.9931182861328 out=150.2767791748047
+        leg 35.73629444 -86.40332778 0 NEWBB
+        leg 35.55596944 -86.27543611 0 IHAVE
+        leg 35.43007778 -86.186575 0 MTHEW
+        leg 33.6367 -84.42786389 3 MTHEW end=1
+        leg 39.01267460916321 -84.64677090509797 4 INTCPT
+        leg 38.95699167 -84.62890278 4 LASNG
+        leg 38.828925 -84.58545556 4 ZEGUL
+        leg 38.48046667 -84.97849444 4 CHCLL
+        leg 36.9289 -86.44349444 4 RAMRD
+        leg 36.13679722 -86.68479167 4 HITMN
+        leg 35.73629444 -86.40332778 4 NEWBB
+        leg 35.55596944 -86.27543611 4 IHAVE
+        leg 35.43007778 -86.186575 4 MTHEW
+        leg 33.6367 -84.42786389 4 KATL
+        mark 36.21340193846036 -86.66167653601583 11 color=2
+        """;
+
+    // MCDU: DEST DIST 346, PERF T/D DIST none.
+    private const string ClimbThreeDiscontinuities = """
+        # Sitting 2 climbing, three discontinuities open, the MANUAL heading leg (nd-sitting2\rec\205954.757.bin)
+        pos 33.83749322848554 -84.17962000196404
+        rwy 33.64678611111111 -84.4383611111111 KATL 08R
+        rwy 39.05585555555555 -84.64666666666666 KCVG 18L
+        to 33.848480555555554 -84.17917777777778 4 HOYYT
+        leg 33.693245681699175 -84.19191024789758 2 KATL08R
+        leg 33.72419421725151 -84.1790548450215 1 HOYYT r=3.0034337043762207 in=38.12315368652344 out=359.9749450683594
+        leg 33.83331252618242 -84.17916977095356 0 HOYYT
+        leg 33.84812419008769 -84.18112111489825 1 HOYYT r=4.129125595092773 in=359.9748840332031 out=347.5032653808594
+        leg 33.86225813514102 -84.18687408649647 1 GRABA r=4.129125595092773 in=347.5032653808594 out=335.0992126464844
+        leg 33.942508333333336 -84.23179722222223 0 GRABA
+        leg 34.296825 -84.40119722222222 0 PADGT
+        leg 34.296825 -84.40119722222222 3 PADGT end=1
+        leg 35.911547222222225 -84.00548333333333 2 SMTTH
+        leg 36.532872222222224 -83.7853638888889 0 ARTUR
+        leg 36.532872222222224 -83.7853638888889 3 ARTUR end=1
+        leg 38.43198888888889 -84.15304444444445 2 JAKIE
+        leg 38.55153055555556 -84.23965555555556 0 NAVPE
+        leg 38.64919444444445 -84.31060555555555 0 OPAVE
+        leg 38.890425 -84.50603055555555 0 REENY
+        leg 38.924541898604275 -84.53379735542838 0 AAJAY
+        leg 38.93303184114539 -84.53849485927245 1 AAJAY r=1.7577314376831055 in=327.64007568359375 out=345.8164978027344
+        leg 38.94224945270251 -84.53955639645973 1 IGOCO r=1.7577314376831055 in=345.8164978027344 out=3.9688687324523926
+        leg 38.99603888888889 -84.53474722222222 0 IGOCO
+        leg 39.04608611111111 -84.53451111111112 0 NXHAL
+        leg 47.37941944444444 -84.53451111111112 0 MANUAL
+        leg 39.04608611111111 -84.53451111111112 3 MANUAL end=1
+        leg 39.21513888888889 -84.64591666666666 2 BAIRE
+        leg 39.13131944444444 -84.64631111111112 0 FRAZE
+        leg 39.131319444984534 -84.64666666666666 3 FRAZE end=2
+        leg 39.131319444984534 -84.64666666666666 2 KCVG18L
+        leg 39.05585555555555 -84.64666666666666 0 KCVG18L
+        leg 39.0119468403963 -84.64665926236711 0 1500 ma
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma
+        leg 38.933477591599704 -84.30866602040079 1 CALIF ma r=1.378109335899353 in=106.7431411743164 out=102.80000305175781
+        leg 38.91858522072281 -84.22458766060079 0 CALIF ma out=102.80000305175781
+        leg 38.96337990546226 -84.21149873581565 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.957994390661874 -84.2378835782136 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=227.8000030517578
+        leg 38.93642764508748 -84.26845579525268 0 CALIF ma out=227.8000030517578
+        leg 38.93104213179346 -84.29483060828629 1 CALIF ma r=1.378109335899353 in=227.8000030517578 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 38.978675239895814 -84.2975388038905 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=102.80000305175781
+        leg 38.965728735109806 -84.2243785591506 0 CALIF ma out=102.79998779296875
+        leg 38.920934087264015 -84.23751652044405 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 33.684866666666665 -84.17909166666666 4 RONII
+        leg 33.848480555555554 -84.17917777777778 4 HOYYT
+        leg 33.942508333333336 -84.23179722222223 4 GRABA
+        leg 34.296825 -84.40119722222222 4 PADGT
+        leg 35.911547222222225 -84.00548333333333 4 SMTTH
+        leg 36.532872222222224 -83.7853638888889 4 ARTUR
+        leg 38.43198888888889 -84.15304444444445 4 JAKIE
+        leg 38.55153055555556 -84.23965555555556 4 NAVPE
+        leg 38.64919444444445 -84.31060555555555 4 OPAVE
+        leg 38.890425 -84.50603055555555 4 REENY
+        leg 38.932655555555556 -84.54040555555555 4 AAJAY
+        leg 38.99603888888889 -84.53474722222222 4 IGOCO
+        leg 39.04608611111111 -84.53451111111112 4 NXHAL
+        leg 39.21513888888889 -84.64591666666666 4 BAIRE
+        leg 39.13131944444444 -84.64631111111112 4 FRAZE
+        leg 39.0119468403963 -84.64665926236711 4 1500 ma
+        leg 38.933880555555554 -84.31063055555556 4 CALIF ma
+        mark 33.848480555555554 -84.17917777777778 6
+        mark 38.43198888888889 -84.15304444444445 5
+        mark 38.55153055555556 -84.23965555555556 5
+        mark 38.64919444444445 -84.31060555555555 5
+        mark 38.890425 -84.50603055555555 5
+        mark 39.04608611111111 -84.53451111111112 5
+        mark 39.21513888888889 -84.64591666666666 5
+        mark 38.933880555555554 -84.31063055555556 5 ga
+        mark 33.9634847388551 -84.24178362699523 1 color=3
+        mark 33.848071364509565 -84.18110704390283 8 color=6
+        mark 36.4194003260896 -83.82583687478007 11 color=2
+        """;
+
+    // MCDU: DEST DIST 342, PERF T/D DIST none.
+    private const string ClimbInHdg = """
+        # Sitting 2 in HDG off the SID (nd-sitting2\rec\210034.434.bin)
+        pos 33.89493682905011 -84.2053662689043
+        rwy 33.64678611111111 -84.4383611111111 KATL 08R
+        rwy 39.05585555555555 -84.64666666666666 KCVG 18L
+        to 33.942508333333336 -84.23179722222223 4 GRABA
+        leg 33.8481270886782 -84.18110530362566 2 KATL08R
+        leg 33.8621461167701 -84.18681150074443 1 GRABA r=4.095553398132324 in=347.50360107421875 out=335.0992126464844
+        leg 33.942508333333336 -84.23179722222223 0 GRABA
+        leg 34.296825 -84.40119722222222 0 PADGT
+        leg 34.296825 -84.40119722222222 3 PADGT end=1
+        leg 35.911547222222225 -84.00548333333333 2 SMTTH
+        leg 36.532872222222224 -83.7853638888889 0 ARTUR
+        leg 36.532872222222224 -83.7853638888889 3 ARTUR end=1
+        leg 38.43198888888889 -84.15304444444445 2 JAKIE
+        leg 38.55153055555556 -84.23965555555556 0 NAVPE
+        leg 38.64919444444445 -84.31060555555555 0 OPAVE
+        leg 38.890425 -84.50603055555555 0 REENY
+        leg 38.924541898604275 -84.53379735542838 0 AAJAY
+        leg 38.93303184114539 -84.53849485927245 1 AAJAY r=1.7577314376831055 in=327.64007568359375 out=345.8164978027344
+        leg 38.94224945270251 -84.53955639645973 1 IGOCO r=1.7577314376831055 in=345.8164978027344 out=3.9688687324523926
+        leg 38.99603888888889 -84.53474722222222 0 IGOCO
+        leg 39.04608611111111 -84.53451111111112 0 NXHAL
+        leg 47.37941944444444 -84.53451111111112 0 MANUAL
+        leg 39.04608611111111 -84.53451111111112 3 MANUAL end=1
+        leg 39.21513888888889 -84.64591666666666 2 BAIRE
+        leg 39.13131944444444 -84.64631111111112 0 FRAZE
+        leg 39.131319444984534 -84.64666666666666 3 FRAZE end=2
+        leg 39.131319444984534 -84.64666666666666 2 KCVG18L
+        leg 39.05585555555555 -84.64666666666666 0 KCVG18L
+        leg 39.0119468403963 -84.64665926236711 0 1500 ma
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma
+        leg 38.933477591599704 -84.30866602040079 1 CALIF ma r=1.378109335899353 in=106.7431411743164 out=102.80000305175781
+        leg 38.91858522072281 -84.22458766060079 0 CALIF ma out=102.80000305175781
+        leg 38.96337990546226 -84.21149873581565 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.957994390661874 -84.2378835782136 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=227.8000030517578
+        leg 38.93642764508748 -84.26845579525268 0 CALIF ma out=227.8000030517578
+        leg 38.93104213179346 -84.29483060828629 1 CALIF ma r=1.378109335899353 in=227.8000030517578 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 38.978675239895814 -84.2975388038905 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=102.80000305175781
+        leg 38.965728735109806 -84.2243785591506 0 CALIF ma out=102.79998779296875
+        leg 38.920934087264015 -84.23751652044405 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 33.848480555555554 -84.17917777777778 4 HOYYT
+        leg 33.942508333333336 -84.23179722222223 4 GRABA
+        leg 34.296825 -84.40119722222222 4 PADGT
+        leg 35.911547222222225 -84.00548333333333 4 SMTTH
+        leg 36.532872222222224 -83.7853638888889 4 ARTUR
+        leg 38.43198888888889 -84.15304444444445 4 JAKIE
+        leg 38.55153055555556 -84.23965555555556 4 NAVPE
+        leg 38.64919444444445 -84.31060555555555 4 OPAVE
+        leg 38.890425 -84.50603055555555 4 REENY
+        leg 38.932655555555556 -84.54040555555555 4 AAJAY
+        leg 38.99603888888889 -84.53474722222222 4 IGOCO
+        leg 39.04608611111111 -84.53451111111112 4 NXHAL
+        leg 39.21513888888889 -84.64591666666666 4 BAIRE
+        leg 39.13131944444444 -84.64631111111112 4 FRAZE
+        leg 39.0119468403963 -84.64665926236711 4 1500 ma
+        leg 38.933880555555554 -84.31063055555556 4 CALIF ma
+        mark 38.43198888888889 -84.15304444444445 5
+        mark 38.55153055555556 -84.23965555555556 5
+        mark 38.64919444444445 -84.31060555555555 5
+        mark 38.890425 -84.50603055555555 5
+        mark 39.04608611111111 -84.53451111111112 5
+        mark 39.21513888888889 -84.64591666666666 5
+        mark 38.933880555555554 -84.31063055555556 5 ga
+        mark 34.15771913145696 -84.36780374553241 1 color=3
+        mark 36.4194003260896 -83.82583687478007 11 color=2
+        """;
+
+    // MCDU: DEST DIST 220, PERF T/D DIST none.
+    private const string CruiseManualGapOpen = """
+        # Sitting 2 cruising, the MANUAL discontinuity open (nd-sitting2\rec\211904.671.bin)
+        pos 35.86685552322584 -84.01677072639403
+        rwy 33.64678611111111 -84.4383611111111 KATL 08R
+        rwy 39.05585555555555 -84.64666666666666 KCVG 18L
+        to 35.911547222222225 -84.00548333333333 4 SMTTH
+        leg 34.296825 -84.40119722222222 2 T-P
+        leg 35.911547222222225 -84.00548333333333 0 SMTTH
+        leg 36.49713541315319 -83.79812375777064 0 ARTUR
+        leg 36.53313099280391 -83.79033482662547 1 ARTUR r=10.221811294555664 in=16.01528549194336 out=3.5793356895446777
+        leg 36.56967989664433 -83.79228846319694 1 JAKIE r=10.221811294555664 in=3.5793356895446777 out=351.3771667480469
+        leg 38.41259910499321 -84.14919480583691 0 JAKIE
+        leg 38.431404604621704 -84.15518962508116 1 JAKIE r=6.455106258392334 in=351.1575012207031 out=340.7462158203125
+        leg 38.4490865882528 -84.16540709583316 1 NAVPE r=6.455106258392334 in=340.7462158203125 out=330.4700012207031
+        leg 38.55153055555556 -84.23965555555556 0 NAVPE
+        leg 38.64919444444445 -84.31060555555555 0 OPAVE
+        leg 38.890425 -84.50603055555555 0 REENY
+        leg 38.924447762918255 -84.53372069689583 0 AAJAY
+        leg 38.93303620317288 -84.53847270965963 1 AAJAY r=1.7781243324279785 in=327.64007568359375 out=345.8167724609375
+        leg 38.94236075587289 -84.53954656266554 1 IGOCO r=1.7781243324279785 in=345.8167724609375 out=3.9688687324523926
+        leg 38.99603888888889 -84.53474722222222 0 IGOCO
+        leg 39.04608611111111 -84.53451111111112 0 NXHAL
+        leg 47.37941944444444 -84.53451111111112 0 MANUAL
+        leg 39.04608611111111 -84.53451111111112 3 MANUAL end=1
+        leg 39.21513888888889 -84.64591666666666 2 BAIRE
+        leg 39.13131944444444 -84.64631111111112 0 FRAZE
+        leg 39.131319444984534 -84.64666666666666 3 FRAZE end=2
+        leg 39.131319444984534 -84.64666666666666 2 KCVG18L
+        leg 39.05585555555555 -84.64666666666666 0 KCVG18L
+        leg 39.0119468403963 -84.64665926236711 0 1500 ma
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma
+        leg 38.933477591599704 -84.30866602040079 1 CALIF ma r=1.378109335899353 in=106.7431411743164 out=102.80000305175781
+        leg 38.91858522072281 -84.22458766060079 0 CALIF ma out=102.80000305175781
+        leg 38.96337990546226 -84.21149873581565 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.957994390661874 -84.2378835782136 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=227.8000030517578
+        leg 38.93642764508748 -84.26845579525268 0 CALIF ma out=227.8000030517578
+        leg 38.93104213179346 -84.29483060828629 1 CALIF ma r=1.378109335899353 in=227.8000030517578 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 38.978675239895814 -84.2975388038905 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=102.80000305175781
+        leg 38.965728735109806 -84.2243785591506 0 CALIF ma out=102.79998779296875
+        leg 38.920934087264015 -84.23751652044405 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 34.296825 -84.40119722222222 4 PADGT
+        leg 35.911547222222225 -84.00548333333333 4 SMTTH
+        leg 36.532872222222224 -83.7853638888889 4 ARTUR
+        leg 38.43198888888889 -84.15304444444445 4 JAKIE
+        leg 38.55153055555556 -84.23965555555556 4 NAVPE
+        leg 38.64919444444445 -84.31060555555555 4 OPAVE
+        leg 38.890425 -84.50603055555555 4 REENY
+        leg 38.932655555555556 -84.54040555555555 4 AAJAY
+        leg 38.99603888888889 -84.53474722222222 4 IGOCO
+        leg 39.04608611111111 -84.53451111111112 4 NXHAL
+        leg 39.21513888888889 -84.64591666666666 4 BAIRE
+        leg 39.13131944444444 -84.64631111111112 4 FRAZE
+        leg 39.0119468403963 -84.64665926236711 4 1500 ma
+        leg 38.933880555555554 -84.31063055555556 4 CALIF ma
+        mark 38.43198888888889 -84.15304444444445 5 color=6
+        mark 38.55153055555556 -84.23965555555556 5 color=6
+        mark 38.64919444444445 -84.31060555555555 5 color=6
+        mark 38.890425 -84.50603055555555 5 color=6
+        mark 39.04608611111111 -84.53451111111112 5 color=6
+        mark 39.21513888888889 -84.64591666666666 5 color=6
+        mark 38.933880555555554 -84.31063055555556 5 color=6 ga
+        mark 37.583149517693506 -83.98635084840272 0
+        mark 36.419401212625665 -83.82583655905314 11 color=2
+        """;
+
+    // MCDU: DEST DIST none, PERF T/D DIST 149.
+    private const string CruiseTopOfDescent = """
+        # Sitting 2 cruising, PERF CRZ printing the T/D (nd-sitting2\rec\211340.762.bin)
+        pos 35.15011236158658 -84.19413535753108
+        rwy 33.64678611111111 -84.4383611111111 KATL 08R
+        rwy 39.05585555555555 -84.64666666666666 KCVG 18L
+        to 35.911547222222225 -84.00548333333333 4 SMTTH
+        leg 34.296825 -84.40119722222222 2 T-P
+        leg 35.911547222222225 -84.00548333333333 0 SMTTH
+        leg 36.497354849388344 -83.7980454452349 0 ARTUR
+        leg 36.53312940583228 -83.79030435874996 1 ARTUR r=10.159046173095703 in=16.01528549194336 out=3.5801055431365967
+        leg 36.56945389550468 -83.79224599855375 1 JAKIE r=10.159046173095703 in=3.5801055431365967 out=351.3771667480469
+        leg 38.412579311831415 -84.14919086598532 0 JAKIE
+        leg 38.431404007292215 -84.15519181742935 1 JAKIE r=6.461704254150391 in=351.1575012207031 out=340.7461242675781
+        leg 38.44910404152177 -84.16541972142412 1 NAVPE r=6.461704254150391 in=340.7461242675781 out=330.4700012207031
+        leg 38.55153055555556 -84.23965555555556 0 NAVPE
+        leg 38.64919444444445 -84.31060555555555 0 OPAVE
+        leg 38.890425 -84.50603055555555 0 REENY
+        leg 38.92443500163318 -84.53371030487916 0 AAJAY
+        leg 38.933036794463405 -84.53846970709692 1 AAJAY r=1.7808889150619507 in=327.64007568359375 out=345.8168029785156
+        leg 38.94237584441659 -84.5395452296024 1 IGOCO r=1.7808889150619507 in=345.8168029785156 out=3.9688687324523926
+        leg 38.99603888888889 -84.53474722222222 0 IGOCO
+        leg 39.04608611111111 -84.53451111111112 0 NXHAL
+        leg 47.37941944444444 -84.53451111111112 0 MANUAL
+        leg 39.04608611111111 -84.53451111111112 3 MANUAL end=1
+        leg 39.21513888888889 -84.64591666666666 2 BAIRE
+        leg 39.13131944444444 -84.64631111111112 0 FRAZE
+        leg 39.131319444984534 -84.64666666666666 3 FRAZE end=2
+        leg 39.131319444984534 -84.64666666666666 2 KCVG18L
+        leg 39.05585555555555 -84.64666666666666 0 KCVG18L
+        leg 39.0119468403963 -84.64665926236711 0 1500 ma
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma
+        leg 38.933477591599704 -84.30866602040079 1 CALIF ma r=1.378109335899353 in=106.7431411743164 out=102.80000305175781
+        leg 38.91858522072281 -84.22458766060079 0 CALIF ma out=102.80000305175781
+        leg 38.96337990546226 -84.21149873581565 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.957994390661874 -84.2378835782136 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=227.8000030517578
+        leg 38.93642764508748 -84.26845579525268 0 CALIF ma out=227.8000030517578
+        leg 38.93104213179346 -84.29483060828629 1 CALIF ma r=1.378109335899353 in=227.8000030517578 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 38.978675239895814 -84.2975388038905 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=102.80000305175781
+        leg 38.965728735109806 -84.2243785591506 0 CALIF ma out=102.79998779296875
+        leg 38.920934087264015 -84.23751652044405 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 34.296825 -84.40119722222222 4 PADGT
+        leg 35.911547222222225 -84.00548333333333 4 SMTTH
+        leg 36.532872222222224 -83.7853638888889 4 ARTUR
+        leg 38.43198888888889 -84.15304444444445 4 JAKIE
+        leg 38.55153055555556 -84.23965555555556 4 NAVPE
+        leg 38.64919444444445 -84.31060555555555 4 OPAVE
+        leg 38.890425 -84.50603055555555 4 REENY
+        leg 38.932655555555556 -84.54040555555555 4 AAJAY
+        leg 38.99603888888889 -84.53474722222222 4 IGOCO
+        leg 39.04608611111111 -84.53451111111112 4 NXHAL
+        leg 39.21513888888889 -84.64591666666666 4 BAIRE
+        leg 39.13131944444444 -84.64631111111112 4 FRAZE
+        leg 39.0119468403963 -84.64665926236711 4 1500 ma
+        leg 38.933880555555554 -84.31063055555556 4 CALIF ma
+        mark 38.43198888888889 -84.15304444444445 5 color=6
+        mark 38.55153055555556 -84.23965555555556 5 color=6
+        mark 38.64919444444445 -84.31060555555555 5 color=6
+        mark 38.890425 -84.50603055555555 5 color=6
+        mark 39.04608611111111 -84.53451111111112 5 color=6
+        mark 39.21513888888889 -84.64591666666666 5 color=6
+        mark 38.933880555555554 -84.31063055555556 5 color=6 ga
+        mark 37.58090450537125 -83.98591520490004 0
+        mark 36.419401212625665 -83.82583655905314 11 color=2
+        """;
+
+    // MCDU: DEST DIST none, PERF T/D DIST 64.
+    private const string TurnAfterArtur = """
+        # Sitting 2 in the turn just after ARTUR was sequenced (nd-sitting2\rec\212412.419.bin)
+        pos 36.53680188390944 -83.78433080055133
+        rwy 33.64678611111111 -84.4383611111111 KATL 08R
+        rwy 39.05585555555555 -84.64666666666666 KCVG 18L
+        to 38.43198888888889 -84.15304444444445 4 JAKIE
+        leg 36.532872222222224 -83.7853638888889 2 SMTTH
+        leg 36.60633353868744 -83.77983596633598 1 JAKIE r=10.154069900512695 in=16.01528549194336 out=350.77764892578125
+        leg 38.413334843930194 -84.1490820338492 0 JAKIE
+        leg 38.43143407038787 -84.15504712779361 1 JAKIE r=6.412942886352539 in=350.5503845214844 out=340.4429626464844
+        leg 38.44846587976983 -84.16495842760801 1 NAVPE r=6.412942886352539 in=340.4429626464844 out=330.4700012207031
+        leg 38.55153055555556 -84.23965555555556 0 NAVPE
+        leg 38.64919444444445 -84.31060555555555 0 OPAVE
+        leg 38.890425 -84.50603055555555 0 REENY
+        leg 38.92446415475036 -84.53373404541641 0 AAJAY
+        leg 38.93303544361783 -84.53847656654179 1 AAJAY r=1.7745733261108398 in=327.64007568359375 out=345.8167419433594
+        leg 38.9423413746801 -84.53954827499246 1 IGOCO r=1.7745733261108398 in=345.8167419433594 out=3.9688687324523926
+        leg 38.99603888888889 -84.53474722222222 0 IGOCO
+        leg 39.04608611111111 -84.53451111111112 0 NXHAL
+        leg 47.37941944444444 -84.53451111111112 0 MANUAL
+        leg 39.04608611111111 -84.53451111111112 3 MANUAL end=1
+        leg 39.21513888888889 -84.64591666666666 2 BAIRE
+        leg 39.13131944444444 -84.64631111111112 0 FRAZE
+        leg 39.131319444984534 -84.64666666666666 3 FRAZE end=2
+        leg 39.131319444984534 -84.64666666666666 2 KCVG18L
+        leg 39.05585555555555 -84.64666666666666 0 KCVG18L
+        leg 39.0119468403963 -84.64665926236711 0 1500 ma
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma
+        leg 38.933477591599704 -84.30866602040079 1 CALIF ma r=1.378109335899353 in=106.7431411743164 out=102.80000305175781
+        leg 38.91858522072281 -84.22458766060079 0 CALIF ma out=102.80000305175781
+        leg 38.96337990546226 -84.21149873581565 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.957994390661874 -84.2378835782136 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=227.8000030517578
+        leg 38.93642764508748 -84.26845579525268 0 CALIF ma out=227.8000030517578
+        leg 38.93104213179346 -84.29483060828629 1 CALIF ma r=1.378109335899353 in=227.8000030517578 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 38.978675239895814 -84.2975388038905 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=102.80000305175781
+        leg 38.965728735109806 -84.2243785591506 0 CALIF ma out=102.79998779296875
+        leg 38.920934087264015 -84.23751652044405 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 36.532872222222224 -83.7853638888889 4 ARTUR
+        leg 38.43198888888889 -84.15304444444445 4 JAKIE
+        leg 38.55153055555556 -84.23965555555556 4 NAVPE
+        leg 38.64919444444445 -84.31060555555555 4 OPAVE
+        leg 38.890425 -84.50603055555555 4 REENY
+        leg 38.932655555555556 -84.54040555555555 4 AAJAY
+        leg 38.99603888888889 -84.53474722222222 4 IGOCO
+        leg 39.04608611111111 -84.53451111111112 4 NXHAL
+        leg 39.21513888888889 -84.64591666666666 4 BAIRE
+        leg 39.13131944444444 -84.64631111111112 4 FRAZE
+        leg 39.0119468403963 -84.64665926236711 4 1500 ma
+        leg 38.933880555555554 -84.31063055555556 4 CALIF ma
+        mark 38.43198888888889 -84.15304444444445 5 color=6
+        mark 38.55153055555556 -84.23965555555556 5 color=6
+        mark 38.64919444444445 -84.31060555555555 5 color=6
+        mark 38.890425 -84.50603055555555 5 color=6
+        mark 39.04608611111111 -84.53451111111112 5 color=6
+        mark 39.21513888888889 -84.64591666666666 5 color=6
+        mark 38.933880555555554 -84.31063055555556 5 color=6 ga
+        mark 37.58817311965449 -83.97821593021465 0
+        """;
+
+    // MCDU: DEST DIST 29, PERF T/D DIST none.
+    private const string CurvedLeg = """
+        # Sitting 2 on the STAR's curved leg, AAJAY to IGOCO (nd-sitting2\rec\214453.156.bin)
+        pos 38.94211782065866 -84.53908298814225
+        rwy 33.64678611111111 -84.4383611111111 KATL 08R
+        rwy 39.05585555555555 -84.64666666666666 KCVG 18L
+        to 38.99603888888889 -84.53474722222222 4 IGOCO
+        leg 38.933117010475655 -84.53806238164086 2 SMTTH
+        leg 38.94442304594393 -84.53936442982526 1 IGOCO r=2.155979871749878 in=345.8218688964844 out=3.9688687324523926
+        leg 38.99603888888889 -84.53474722222222 0 IGOCO
+        leg 39.04608611111111 -84.53451111111112 0 NXHAL
+        leg 39.06291200293849 -84.53993843447486 1 BAIRE r=2.111027956008911 in=0.21007969975471497 out=331.6404113769531
+        leg 39.19442101828004 -84.6314470956644 0 BAIRE
+        leg 39.20577931047237 -84.64950605276006 1 BAIRE r=1.4134387969970703 in=331.5735168457031 out=286.5425109863281
+        leg 39.16390171905336 -84.6755940068832 1 FRAZE r=1.4134387969970703 in=286.5425109863281 out=125.00025177001953
+        leg 39.15481922511432 -84.65886895502102 0 FRAZE
+        leg 39.13552144459365 -84.64591821513591 1 FRAZE r=1.4134387969970703 in=125.00025177001953 out=180.000244140625
+        leg 39.13131944444444 -84.64631111111112 0 FRAZE
+        leg 39.131319444984534 -84.64666666666666 3 FRAZE end=2
+        leg 39.131319444984534 -84.64666666666666 2 KCVG18L
+        leg 39.05585555555555 -84.64666666666666 0 KCVG18L
+        leg 39.0119468403963 -84.64665926236711 0 1500 ma
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma
+        leg 38.933477591599704 -84.30866602040079 1 CALIF ma r=1.378109335899353 in=106.7431411743164 out=102.80000305175781
+        leg 38.91858522072281 -84.22458766060079 0 CALIF ma out=102.80000305175781
+        leg 38.96337990546226 -84.21149873581565 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.957994390661874 -84.2378835782136 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=227.8000030517578
+        leg 38.93642764508748 -84.26845579525268 0 CALIF ma out=227.8000030517578
+        leg 38.93104213179346 -84.29483060828629 1 CALIF ma r=1.378109335899353 in=227.8000030517578 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 38.978675239895814 -84.2975388038905 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=102.80000305175781
+        leg 38.965728735109806 -84.2243785591506 0 CALIF ma out=102.79998779296875
+        leg 38.920934087264015 -84.23751652044405 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 38.932655555555556 -84.54040555555555 4 AAJAY
+        leg 38.99603888888889 -84.53474722222222 4 IGOCO
+        leg 39.04608611111111 -84.53451111111112 4 NXHAL
+        leg 39.21513888888889 -84.64591666666666 4 BAIRE
+        leg 39.13131944444444 -84.64631111111112 4 FRAZE
+        leg 39.0119468403963 -84.64665926236711 4 1500 ma
+        leg 38.933880555555554 -84.31063055555556 4 CALIF ma
+        mark 39.04608611111111 -84.53451111111112 5 color=6
+        mark 39.21513888888889 -84.64591666666666 5 color=6
+        mark 38.933880555555554 -84.31063055555556 5 color=6 ga
+        mark 39.18226312609272 -84.6229707548251 4 color=6
+        mark 39.18226312609272 -84.6229707548251 2 color=6
+        mark 39.1754319681708 -84.6868532709278 2 color=3
+        mark 38.98999825798717 -84.53528792528277 7 color=3
+        mark 39.1754319681708 -84.6868532709278 0
+        mark 39.20577846898527 -84.64950239743483 0 color=3
+        """;
+
+    // MCDU: DEST DIST 48, PERF T/D DIST none.
+    private const string DescentRestartMarker = """
+        # Sitting 2 descending, a cyan type 0 marker ahead with type 2 markers (nd-sitting2\rec\214102.295.bin)
+        pos 38.66460946071653 -84.32235574210245
+        rwy 33.64678611111111 -84.4383611111111 KATL 08R
+        rwy 39.05585555555555 -84.64666666666666 KCVG 18L
+        to 38.890425 -84.50603055555555 4 REENY
+        leg 38.64919444444445 -84.31060555555555 2 SMTTH
+        leg 38.890425 -84.50603055555555 0 REENY
+        leg 38.92294191130936 -84.53249445365313 0 AAJAY
+        leg 38.93310596875308 -84.53811844998667 1 AAJAY r=2.1043410301208496 in=327.64007568359375 out=345.8211669921875
+        leg 38.94414120883587 -84.53938931227951 1 IGOCO r=2.1043410301208496 in=345.8211669921875 out=3.9688687324523926
+        leg 38.99603888888889 -84.53474722222222 0 IGOCO
+        leg 39.04608611111111 -84.53451111111112 0 NXHAL
+        leg 39.06291200293849 -84.53993843447486 1 BAIRE r=2.111027956008911 in=0.21007969975471497 out=331.6404113769531
+        leg 39.19442101828004 -84.6314470956644 0 BAIRE
+        leg 39.20577931047237 -84.64950605276006 1 BAIRE r=1.4134387969970703 in=331.5735168457031 out=286.5425109863281
+        leg 39.16390171905336 -84.6755940068832 1 FRAZE r=1.4134387969970703 in=286.5425109863281 out=125.00025177001953
+        leg 39.15481922511432 -84.65886895502102 0 FRAZE
+        leg 39.13552144459365 -84.64591821513591 1 FRAZE r=1.4134387969970703 in=125.00025177001953 out=180.000244140625
+        leg 39.13131944444444 -84.64631111111112 0 FRAZE
+        leg 39.131319444984534 -84.64666666666666 3 FRAZE end=2
+        leg 39.131319444984534 -84.64666666666666 2 KCVG18L
+        leg 39.05585555555555 -84.64666666666666 0 KCVG18L
+        leg 39.0119468403963 -84.64665926236711 0 1500 ma
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma
+        leg 38.933477591599704 -84.30866602040079 1 CALIF ma r=1.378109335899353 in=106.7431411743164 out=102.80000305175781
+        leg 38.91858522072281 -84.22458766060079 0 CALIF ma out=102.80000305175781
+        leg 38.96337990546226 -84.21149873581565 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.957994390661874 -84.2378835782136 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=227.8000030517578
+        leg 38.93642764508748 -84.26845579525268 0 CALIF ma out=227.8000030517578
+        leg 38.93104213179346 -84.29483060828629 1 CALIF ma r=1.378109335899353 in=227.8000030517578 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 38.978675239895814 -84.2975388038905 1 CALIF ma r=1.378109335899353 in=282.79998779296875 out=102.80000305175781
+        leg 38.965728735109806 -84.2243785591506 0 CALIF ma out=102.79998779296875
+        leg 38.920934087264015 -84.23751652044405 1 CALIF ma r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF ma out=282.79998779296875
+        leg 38.64919444444445 -84.31060555555555 4 OPAVE
+        leg 38.890425 -84.50603055555555 4 REENY
+        leg 38.932655555555556 -84.54040555555555 4 AAJAY
+        leg 38.99603888888889 -84.53474722222222 4 IGOCO
+        leg 39.04608611111111 -84.53451111111112 4 NXHAL
+        leg 39.21513888888889 -84.64591666666666 4 BAIRE
+        leg 39.13131944444444 -84.64631111111112 4 FRAZE
+        leg 39.0119468403963 -84.64665926236711 4 1500 ma
+        leg 38.933880555555554 -84.31063055555556 4 CALIF ma
+        mark 38.890425 -84.50603055555555 5 color=6
+        mark 39.04608611111111 -84.53451111111112 5 color=6
+        mark 39.21513888888889 -84.64591666666666 5 color=6
+        mark 38.933880555555554 -84.31063055555556 5 color=6 ga
+        mark 39.18226312609272 -84.6229707548251 4 color=6
+        mark 39.18226312609272 -84.6229707548251 2 color=6
+        mark 39.1754319681708 -84.6868532709278 2 color=3
+        mark 38.726888353835086 -84.37337384048449 7 color=3
+        mark 39.1754319681708 -84.6868532709278 0
+        mark 39.20577846898527 -84.64950239743483 0 color=3
+        mark 38.771537325864436 -84.40951948730203 8 color=6
+        """;
+
+    // MCDU: DEST DIST none, PERF T/D DIST 40.
+    private const string BeforeEarlyDescent = """
+        # Sitting 3, the last push before the early descent (nd-sitting3\rec2\114032.283.bin)
+        pos 35.44172926461484 -86.19479354195694
+        rwy 39.05585556 -84.64666667 KCVG 18L
+        rwy 33.64953333 -84.439025 KATL 08L
+        to 35.43007778 -86.186575 4 MTHEW
+        leg 35.55596944 -86.27543611 2 KCVG18L
+        leg 35.43894857551204 -86.1928258729145 0 MTHEW
+        leg 35.43028533696715 -86.18619791977832 1 MTHEW r=8.406636238098145 in=150.13995361328125 out=146.0429229736328
+        leg 35.42202862535919 -86.17880140092406 1 CHPPR r=8.406636238098145 in=146.0429229736328 out=141.783203125
+        leg 34.14383056 -84.968775 0 CHPPR
+        leg 34.023230317984726 -84.85461795786918 0 MRCHH
+        leg 34.011790319463245 -84.84671827400135 1 MRCHH r=2.75114107131958 in=141.94215393066406 out=158.44012451171875
+        leg 33.99894333529685 -84.84306771281625 1 JAGRR r=2.75114107131958 in=158.44012451171875 out=175.02101135253906
+        leg 33.89990833 -84.83267778 0 JAGRR
+        leg 33.88365589955111 -84.8258903422451 1 BAZAR r=2.111027956008911 in=175.02761840820312 out=146.75254821777344
+        leg 33.65602471631876 -84.64657703626139 0 BAZAR
+        leg 33.65109499010552 -84.64011904217726 1 BAZAR r=0.8832932114601135 in=146.8551483154297 out=118.17111206054688
+        leg 33.649352053731214 -84.63160053173387 1 SCHEL r=0.8832932114601135 in=118.17111206054688 out=89.4516830444336
+        leg 33.64943056 -84.55409444 0 SCHEL
+        leg 33.64948003096521 -84.55409450613483 3 SCHEL end=2
+        leg 33.64948003096521 -84.55409450613483 2 KATL08L
+        leg 33.64953333 -84.439025 0 KATL08L
+        leg 33.649875806268305 -84.39798068787422 0 1500 ma
+        leg 33.876526453730825 -84.42480831951082 0 INTCPT ma
+        leg 33.87952778 -84.43507222 0 TROYS ma
+        leg 33.88689281084551 -84.44803205410453 1 TROYS ma r=1.5115669965744019 in=289.4000244140625 out=319.3999938964844
+        leg 33.92625462762514 -84.48869805059174 0 TROYS ma out=319.3999938964844
+        leg 33.89343653757924 -84.53481368989388 1 TROYS ma r=1.5124828815460205 in=319.3999938964844 out=139.39999389648438
+        leg 33.888042226845535 -84.49649575435883 1 TROYS ma r=1.5124828815460205 in=139.39999389648438 out=59.82913589477539
+        leg 33.88806960768819 -84.49643901603177 0 TROYS ma out=59.82913589477539
+        leg 33.89005068897741 -84.47109029684496 1 TROYS ma r=1.5124828815460205 in=59.82913589477539 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 33.927079738013255 -84.41488988336584 1 TROYS ma r=1.5124828815460205 in=109.4000015258789 out=289.3999938964844
+        leg 33.9473589623615 -84.4843749286523 0 TROYS ma out=289.3999938964844
+        leg 33.899807039297116 -84.50451849016525 1 TROYS ma r=1.5124828815460205 in=289.3999938964844 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 35.55596944 -86.27543611 4 IHAVE
+        leg 35.43007778 -86.186575 4 MTHEW
+        leg 34.14383056 -84.968775 4 CHPPR
+        leg 34.01251667 -84.84449722 4 MRCHH
+        leg 33.89990833 -84.83267778 4 JAGRR
+        leg 33.64928056 -84.64128611 4 BAZAR
+        leg 33.64943056 -84.55409444 4 SCHEL
+        leg 33.649875806268305 -84.39798068787422 4 1500 ma
+        leg 33.876526453730825 -84.42480831951082 4 INTCPT ma
+        leg 33.87952778 -84.43507222 4 TROYS ma
+        mark 34.14383056 -84.968775 5 color=6
+        mark 33.89990833 -84.83267778 5 color=6
+        mark 33.64928056 -84.64128611 5 color=6
+        mark 33.87952778 -84.43507222 5 color=6 ga
+        mark 33.711232685262374 -84.68996022094056 4 color=6
+        mark 34.91082666452622 -85.68898461069854 0
+        """;
+
+    // MCDU: DEST DIST none, PERF T/D DIST none.
+    private const string EarlyDescent = """
+        # Sitting 3, the descent begun 40 NM before the T/D (nd-sitting3\rec2\114034.023.bin)
+        pos 35.43884409934875 -86.19272247877689
+        rwy 39.05585556 -84.64666667 KCVG 18L
+        rwy 33.64953333 -84.439025 KATL 08L
+        to 35.43007778 -86.186575 4 MTHEW
+        leg 35.55596944 -86.27543611 2 KCVG18L
+        leg 35.43894857551204 -86.1928258729145 0 MTHEW
+        leg 35.43028533696715 -86.18619791977832 1 MTHEW r=8.406636238098145 in=150.13995361328125 out=146.0429229736328
+        leg 35.42202862535919 -86.17880140092406 1 CHPPR r=8.406636238098145 in=146.0429229736328 out=141.783203125
+        leg 34.14383056 -84.968775 0 CHPPR
+        leg 34.023230317984726 -84.85461795786918 0 MRCHH
+        leg 34.011790319463245 -84.84671827400135 1 MRCHH r=2.75114107131958 in=141.94215393066406 out=158.44012451171875
+        leg 33.99894333529685 -84.84306771281625 1 JAGRR r=2.75114107131958 in=158.44012451171875 out=175.02101135253906
+        leg 33.89990833 -84.83267778 0 JAGRR
+        leg 33.88365589955111 -84.8258903422451 1 BAZAR r=2.111027956008911 in=175.02761840820312 out=146.75254821777344
+        leg 33.65602471631876 -84.64657703626139 0 BAZAR
+        leg 33.65109499010552 -84.64011904217726 1 BAZAR r=0.8832932114601135 in=146.8551483154297 out=118.17111206054688
+        leg 33.649352053731214 -84.63160053173387 1 SCHEL r=0.8832932114601135 in=118.17111206054688 out=89.4516830444336
+        leg 33.64943056 -84.55409444 0 SCHEL
+        leg 33.64948003096521 -84.55409450613483 3 SCHEL end=2
+        leg 33.64948003096521 -84.55409450613483 2 KATL08L
+        leg 33.64953333 -84.439025 0 KATL08L
+        leg 33.649875806268305 -84.39798068787422 0 1500 ma
+        leg 33.876526453730825 -84.42480831951082 0 INTCPT ma
+        leg 33.87952778 -84.43507222 0 TROYS ma
+        leg 33.88689281084551 -84.44803205410453 1 TROYS ma r=1.5115669965744019 in=289.4000244140625 out=319.3999938964844
+        leg 33.92625462762514 -84.48869805059174 0 TROYS ma out=319.3999938964844
+        leg 33.89343653757924 -84.53481368989388 1 TROYS ma r=1.5124828815460205 in=319.3999938964844 out=139.39999389648438
+        leg 33.888042226845535 -84.49649575435883 1 TROYS ma r=1.5124828815460205 in=139.39999389648438 out=59.82913589477539
+        leg 33.88806960768819 -84.49643901603177 0 TROYS ma out=59.82913589477539
+        leg 33.89005068897741 -84.47109029684496 1 TROYS ma r=1.5124828815460205 in=59.82913589477539 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 33.927079738013255 -84.41488988336584 1 TROYS ma r=1.5124828815460205 in=109.4000015258789 out=289.3999938964844
+        leg 33.9473589623615 -84.4843749286523 0 TROYS ma out=289.3999938964844
+        leg 33.899807039297116 -84.50451849016525 1 TROYS ma r=1.5124828815460205 in=289.3999938964844 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 35.55596944 -86.27543611 4 IHAVE
+        leg 35.43007778 -86.186575 4 MTHEW
+        leg 34.14383056 -84.968775 4 CHPPR
+        leg 34.01251667 -84.84449722 4 MRCHH
+        leg 33.89990833 -84.83267778 4 JAGRR
+        leg 33.64928056 -84.64128611 4 BAZAR
+        leg 33.64943056 -84.55409444 4 SCHEL
+        leg 33.649875806268305 -84.39798068787422 4 1500 ma
+        leg 33.876526453730825 -84.42480831951082 4 INTCPT ma
+        leg 33.87952778 -84.43507222 4 TROYS ma
+        mark 34.14383056 -84.968775 5 color=6
+        mark 33.89990833 -84.83267778 5 color=6
+        mark 33.64928056 -84.64128611 5 color=6
+        mark 33.87952778 -84.43507222 5 color=6 ga
+        mark 33.711232685262374 -84.68996022094056 4 color=6
+        mark 33.711232685262374 -84.68996022094056 2 color=6
+        mark 33.64940523086876 -84.58481249380638 2 color=3
+        mark 33.65109442874809 -84.64011778285115 0 color=3
+        mark 34.12140196774233 -84.9475124710103 8 color=6
+        """;
+
+    // MCDU: DEST DIST none, PERF T/D DIST none.
+    private const string NoCruiseLevel = """
+        # Sitting 3 cruising before the cruise level was entered (nd-sitting3\rec\112001.207.bin)
+        pos 37.473187056140404 -85.93843972167105
+        rwy 39.05585556 -84.64666667 KCVG 18L
+        rwy 33.64953333 -84.439025 KATL 08L
+        to 36.9289 -86.44349444 4 RAMRD
+        leg 38.48046667 -84.97849444 2 KCVG18L
+        leg 36.94408905601476 -86.42952552628934 0 RAMRD
+        leg 36.92811107175661 -86.44138587113017 1 RAMRD r=5.693043231964111 in=216.315185546875 out=205.14715576171875
+        leg 36.910569470912826 -86.44913598487953 1 HITMN r=5.693043231964111 in=205.14715576171875 out=193.82603454589844
+        leg 36.17346684555647 -86.67372972796012 0 HITMN
+        leg 36.137805282353554 -86.67592640155766 1 HITMN r=5.693043231964111 in=193.68577575683594 out=172.0568084716797
+        leg 36.10397243857763 -86.66161282514331 1 NEWBB r=5.693043231964111 in=172.0568084716797 out=150.2767791748047
+        leg 35.73629444 -86.40332778 0 NEWBB
+        leg 35.55596944 -86.27543611 0 IHAVE
+        leg 35.430081077564516 -86.18657732335565 0 MTHEW
+        leg 35.43007785758233 -86.1865748590288 1 MTHEW r=0.0031249646563082933 in=150.13995361328125 out=145.96446228027344
+        leg 35.430074788276386 -86.1865721095681 1 CHPPR r=0.0031249646563082933 in=145.96446228027344 out=141.783203125
+        leg 34.14383056 -84.968775 0 CHPPR
+        leg 34.01252883988232 -84.84450871448858 0 MRCHH
+        leg 34.01251584615146 -84.84449973937036 1 MRCHH r=0.0031249646563082933 in=141.94215393066406 out=158.4708251953125
+        leg 34.012501253407834 -84.84449559270972 1 JAGRR r=0.0031249646563082933 in=158.4708251953125 out=175.02101135253906
+        leg 33.89990833 -84.83267778 0 JAGRR
+        leg 33.89988490663542 -84.83266821887491 1 BAZAR r=0.003122822381556034 in=175.02761840820312 out=147.53955078125
+        leg 33.649305028898084 -84.64130473096704 0 BAZAR
+        leg 33.649287158178105 -84.64128179465179 1 BAZAR r=0.0031249646563082933 in=147.6459503173828 out=118.56550598144531
+        leg 33.64928082058549 -84.64125127914883 1 SCHEL r=0.0031249646563082933 in=118.56550598144531 out=89.4516830444336
+        leg 33.64943056 -84.55409444 0 SCHEL
+        leg 33.64948003096521 -84.55409450613483 3 SCHEL end=2
+        leg 33.64948003096521 -84.55409450613483 2 KATL08L
+        leg 33.64953333 -84.439025 0 KATL08L
+        leg 33.649875806268305 -84.39798068787422 0 1500 ma
+        leg 33.876526453730825 -84.42480831951082 0 INTCPT ma
+        leg 33.87952778 -84.43507222 0 TROYS ma
+        leg 33.88689281084551 -84.44803205410453 1 TROYS ma r=1.5115669965744019 in=289.4000244140625 out=319.3999938964844
+        leg 33.92625462762514 -84.48869805059174 0 TROYS ma out=319.3999938964844
+        leg 33.89343653757924 -84.53481368989388 1 TROYS ma r=1.5124828815460205 in=319.3999938964844 out=139.39999389648438
+        leg 33.888042226845535 -84.49649575435883 1 TROYS ma r=1.5124828815460205 in=139.39999389648438 out=59.82913589477539
+        leg 33.88806960768819 -84.49643901603177 0 TROYS ma out=59.82913589477539
+        leg 33.89005068897741 -84.47109029684496 1 TROYS ma r=1.5124828815460205 in=59.82913589477539 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 33.927079738013255 -84.41488988336584 1 TROYS ma r=1.5124828815460205 in=109.4000015258789 out=289.3999938964844
+        leg 33.9473589623615 -84.4843749286523 0 TROYS ma out=289.3999938964844
+        leg 33.899807039297116 -84.50451849016525 1 TROYS ma r=1.5124828815460205 in=289.3999938964844 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 38.48046667 -84.97849444 4 CHCLL
+        leg 36.9289 -86.44349444 4 RAMRD
+        leg 36.13679722 -86.68479167 4 HITMN
+        leg 35.73629444 -86.40332778 4 NEWBB
+        leg 35.55596944 -86.27543611 4 IHAVE
+        leg 35.43007778 -86.186575 4 MTHEW
+        leg 34.14383056 -84.968775 4 CHPPR
+        leg 34.01251667 -84.84449722 4 MRCHH
+        leg 33.89990833 -84.83267778 4 JAGRR
+        leg 33.64928056 -84.64128611 4 BAZAR
+        leg 33.64943056 -84.55409444 4 SCHEL
+        leg 33.649875806268305 -84.39798068787422 4 1500 ma
+        leg 33.876526453730825 -84.42480831951082 4 INTCPT ma
+        leg 33.87952778 -84.43507222 4 TROYS ma
+        mark 34.14383056 -84.968775 5 color=6
+        mark 33.89990833 -84.83267778 5 color=6
+        mark 33.64928056 -84.64128611 5 color=6
+        mark 33.87952778 -84.43507222 5 color=6 ga
+        mark 36.20073671215283 -86.66549868906421 11 color=2
+        """;
+
+    // MCDU: DEST DIST 7, PERF T/D DIST none.
+    private const string AfterGlideslope = """
+        # Sitting 3 on the approach after glideslope capture, no descent markers (nd-sitting3\rec2\120300.068.bin)
+        pos 33.64943205478078 -84.57085236280479
+        rwy 39.05585556 -84.64666667 KCVG 18L
+        rwy 33.64953333 -84.439025 KATL 08L
+        to 33.64943056 -84.55409444 4 SCHEL
+        leg 33.65101107165968 -84.64017455812875 2 KCVG18L
+        leg 33.64934885226525 -84.63204045677077 1 SCHEL r=0.8443292379379272 in=118.13793182373047 out=89.4516830444336
+        leg 33.64943056 -84.55409444 0 SCHEL
+        leg 33.64948003096521 -84.55409450613483 3 SCHEL end=2
+        leg 33.64948003096521 -84.55409450613483 2 KATL08L
+        leg 33.64953333 -84.439025 0 KATL08L
+        leg 33.649875806268305 -84.39798068787422 0 1500 ma
+        leg 33.876526453730825 -84.42480831951082 0 INTCPT ma
+        leg 33.87952778 -84.43507222 0 TROYS ma
+        leg 33.88689281084551 -84.44803205410453 1 TROYS ma r=1.5115669965744019 in=289.4000244140625 out=319.3999938964844
+        leg 33.92625462762514 -84.48869805059174 0 TROYS ma out=319.3999938964844
+        leg 33.89343653757924 -84.53481368989388 1 TROYS ma r=1.5124828815460205 in=319.3999938964844 out=139.39999389648438
+        leg 33.888042226845535 -84.49649575435883 1 TROYS ma r=1.5124828815460205 in=139.39999389648438 out=59.82913589477539
+        leg 33.88806960768819 -84.49643901603177 0 TROYS ma out=59.82913589477539
+        leg 33.89005068897741 -84.47109029684496 1 TROYS ma r=1.5124828815460205 in=59.82913589477539 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 33.927079738013255 -84.41488988336584 1 TROYS ma r=1.5124828815460205 in=109.4000015258789 out=289.3999938964844
+        leg 33.9473589623615 -84.4843749286523 0 TROYS ma out=289.3999938964844
+        leg 33.899807039297116 -84.50451849016525 1 TROYS ma r=1.5124828815460205 in=289.3999938964844 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 33.64928056 -84.64128611 4 BAZAR
+        leg 33.64943056 -84.55409444 4 SCHEL
+        leg 33.649875806268305 -84.39798068787422 4 1500 ma
+        leg 33.876526453730825 -84.42480831951082 4 INTCPT ma
+        leg 33.87952778 -84.43507222 4 TROYS ma
+        mark 33.87952778 -84.43507222 5 color=6 ga
+        """;
+
+    // MCDU: DEST DIST 3, PERF T/D DIST none.
+    private const string RunwayTo = """
+        # Sitting 3 with the runway as the TO waypoint (nd-sitting3\rec2\120430.446.bin)
+        pos 33.64946849417175 -84.48872675892055
+        rwy 39.05585556 -84.64666667 KCVG 18L
+        rwy 33.64953333 -84.439025 KATL 08L
+        to 33.64953333 -84.439025 4 KATL08L
+        leg 33.64943056 -84.55409444 2 KCVG18L
+        leg 33.64948003096521 -84.55409450613483 3 SCHEL end=2
+        leg 33.64948003096521 -84.55409450613483 2 KATL08L
+        leg 33.64953333 -84.439025 0 KATL08L
+        leg 33.649875806268305 -84.39798068787422 0 1500 ma
+        leg 33.876526453730825 -84.42480831951082 0 INTCPT ma
+        leg 33.87952778 -84.43507222 0 TROYS ma
+        leg 33.88689281084551 -84.44803205410453 1 TROYS ma r=1.5115669965744019 in=289.4000244140625 out=319.3999938964844
+        leg 33.92625462762514 -84.48869805059174 0 TROYS ma out=319.3999938964844
+        leg 33.89343653757924 -84.53481368989388 1 TROYS ma r=1.5124828815460205 in=319.3999938964844 out=139.39999389648438
+        leg 33.888042226845535 -84.49649575435883 1 TROYS ma r=1.5124828815460205 in=139.39999389648438 out=59.82913589477539
+        leg 33.88806960768819 -84.49643901603177 0 TROYS ma out=59.82913589477539
+        leg 33.89005068897741 -84.47109029684496 1 TROYS ma r=1.5124828815460205 in=59.82913589477539 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 33.927079738013255 -84.41488988336584 1 TROYS ma r=1.5124828815460205 in=109.4000015258789 out=289.3999938964844
+        leg 33.9473589623615 -84.4843749286523 0 TROYS ma out=289.3999938964844
+        leg 33.899807039297116 -84.50451849016525 1 TROYS ma r=1.5124828815460205 in=289.3999938964844 out=109.4000015258789
+        leg 33.87952778 -84.43507222 0 TROYS ma out=109.4000015258789
+        leg 33.64943056 -84.55409444 4 SCHEL
+        leg 33.649875806268305 -84.39798068787422 4 1500 ma
+        leg 33.876526453730825 -84.42480831951082 4 INTCPT ma
+        leg 33.87952778 -84.43507222 4 TROYS ma
+        mark 33.87952778 -84.43507222 5 color=6 ga
+        """;
+
+    // MCDU: DEST DIST 0, PERF T/D DIST none.
+    private const string LandingRoll = """
+        # Sitting 2 on the landing roll, the missed approach active (nd-sitting2\rec\215328.109.bin)
+        pos 39.056669881801916 -84.64667526587803
+        rwy 33.64678611111111 -84.4383611111111 KATL 08R
+        rwy 39.05585555555555 -84.64666666666666 KCVG 18L
+        to 39.0119468403963 -84.64665926236711 4 1500
+        leg 39.05585555555555 -84.64666666666666 2 SMTTH
+        leg 39.0119468403963 -84.64665926236711 0 1500
+        leg 38.933880555555554 -84.31063055555556 0 CALIF
+        leg 38.933477591599704 -84.30866602040079 1 CALIF r=1.378109335899353 in=106.7431411743164 out=102.80000305175781
+        leg 38.91858522072281 -84.22458766060079 0 CALIF out=102.80000305175781
+        leg 38.96337990546226 -84.21149873581565 1 CALIF r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.957994390661874 -84.2378835782136 1 CALIF r=1.378109335899353 in=282.79998779296875 out=227.8000030517578
+        leg 38.93642764508748 -84.26845579525268 0 CALIF out=227.8000030517578
+        leg 38.93104213179346 -84.29483060828629 1 CALIF r=1.378109335899353 in=227.8000030517578 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF out=282.79998779296875
+        leg 38.978675239895814 -84.2975388038905 1 CALIF r=1.378109335899353 in=282.79998779296875 out=102.80000305175781
+        leg 38.965728735109806 -84.2243785591506 0 CALIF out=102.79998779296875
+        leg 38.920934087264015 -84.23751652044405 1 CALIF r=1.378109335899353 in=102.80000305175781 out=282.79998779296875
+        leg 38.933880555555554 -84.31063055555556 0 CALIF out=282.79998779296875
+        leg 39.0119468403963 -84.64665926236711 4 1500
+        leg 38.933880555555554 -84.31063055555556 4 CALIF
+        mark 38.933880555555554 -84.31063055555556 5 color=6 ga
+        """;
+}

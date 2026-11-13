@@ -4,3 +4,5 @@
 # '**/' also matches no folder, so this covers .claude/rules/*.md and any subfolder Claude Code discovers.
 # ClaudeContextBudgetTests checks the bytes too (no CRLF, no byte-order mark).
 .claude/rules/**/*.md text eol=lf
+# The golden layout files: byte for byte what the generator writes (\n line ends, WASM-21), so git never changes them.
+tests/MSFSBlindAssist.Tests/Layouts/**/*.json text eol=lf

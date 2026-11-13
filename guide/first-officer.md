@@ -68,6 +68,8 @@ To run a flow, select it in Available flows and press Enter, or Tab to Start Flo
 
 Before it switches anything that could stop an engine, a flow checks that it is safe. The power-up flows that check the engine controls (Electrical Power Up on the Fenix A320, A32NX, Headwind A330 and 777, Cockpit Preparation on the A380X and 777, and Power Up on the MD-11) and the 737 Preflights stop if an engine is running or the aircraft is in the air, and the shutdown, parking and securing flows stop unless the aircraft is on the ground. The securing flows also stop if an engine is still turning. A shutdown or parking flow cuts the engines first, then waits up to two minutes for them to spin down (*"Waiting for: Engines stopped"* when flow progress is spoken) before it switches the fuel pumps off. Either way you hear why.
 
+On the Fenix A320 the First Officer goes by the Fenix's own engine readings. Engine Start moves on to the second engine once the Fenix says the first start is complete, and allows up to 3 minutes for each engine. Shutdown's *"Engines stopped"* waits for the Fenix's engines to spin down, usually about 20 seconds, before the fuel pumps go off. On the Fenix A321, the Preflight flow leaves out the pack flow selector, which the A321 does not have; set its Econ Flow button as you need it.
+
 ## The Checklists tab {#fo-checklists-tab}
 
 The checklists are a tree. Each checklist is named with its progress, for example "Before Start — Not started", "Before Start — 3 of 7 complete" or "Before Start — Complete". Press Right Arrow to open one and Up and Down Arrow to read its lines; opening one closes the others.
@@ -78,6 +80,13 @@ The checklists are a tree. Each checklist is named with its progress, for exampl
 - A line the First Officer cannot set, such as a read-back item, only records that you checked it.
 - A checklist you finished, by hand or with its flow, stays complete for the rest of the flight, even when later flows move the same switches.
 - The **Checklist status** line below the tree shows the selected line with its live value and whether it is complete, without ticking it.
+
+On the Fenix A320, these lines take their live value from the Fenix itself:
+
+- Before Start Checklist, "Takeoff speeds and thrust: SET": V1, VR, V2 and flex from the MCDU's PERF TAKE OFF page, for example "V1 142, VR 145, V2 149, flex 55", or "not set" until you enter them.
+- Line-up Checklist and Landing Checklist, "Cabin: READY": "reported ready" or "not reported". In Fenix v3 the cabin crew reports the cabin ready when it is; your cabin call from the cockpit no longer makes it ready.
+- Cockpit Preparation Checklist, "Fuel quantity: CHECKED": the Fenix's own total, which counts any extra center tanks.
+- Cockpit Preparation Checklist and Approach Checklist, "Baro reference: SET": "standard" or the QNH, for example "QNH 1013", read from the EFIS's own QNH light, so it stays right after you pull and push the baro knob.
 
 The buttons below the tree:
 

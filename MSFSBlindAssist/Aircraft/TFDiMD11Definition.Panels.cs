@@ -130,11 +130,27 @@ public partial class TFDiMD11Definition
             v[n1].ExcludeFromMonitorManager = false;
 
         // ---- Fuel --------------------------------------------------------------------
-        v["MD11_OVHD_TANK_1_VAL"] = Export("MD11_OVHD_TANK_1_VAL", "Tank 1");
-        v["MD11_OVHD_TANK_2_VAL"] = Export("MD11_OVHD_TANK_2_VAL", "Tank 2");
-        v["MD11_OVHD_TANK_3_VAL"] = Export("MD11_OVHD_TANK_3_VAL", "Tank 3");
-        v["MD11_OVHD_TANK_AUX_VAL"] = Export("MD11_OVHD_TANK_AUX_VAL", "Auxiliary tank");
-        v["MD11_OVHD_TANK_TAIL_VAL"] = Export("MD11_OVHD_TANK_TAIL_VAL", "Tail tank");
+        foreach (var tank in Md11FuelUnits.Tanks)
+            v[tank.Key] = Export(tank.Key, tank.RowName);
+        // The tanks read in the EFB's weight unit, which only this undocumented bitmask carries
+        // (Md11FuelUnits). Silent and never a row: the tank rows and the fuel keys read its bit.
+        v[Md11FuelUnits.OptionsKey] = Export(Md11FuelUnits.OptionsKey, "EFB general options");
+        // The sim's own fuel weight, the only witness that all-zero tanks are not yet published
+        // (Md11FuelUnits.TanksUnpublished) and the check on the unit they read in (TankUnit).
+        // Batched, consumed silently in ProcessSimVarUpdate. 100 lb, not the shared 0.001: both
+        // read the cache, which takes every delivery, against a 1,000 lb line and a wide ratio band,
+        // so fuel burn need not raise an update on every batch tick of the flight.
+        v[Md11FuelUnits.SimFuelKey] = new SimVarDefinition
+        {
+            Name = Md11FuelUnits.SimFuelVar,
+            DisplayName = "Sim fuel weight",
+            Type = SimVarType.SimVar,
+            Units = "pounds",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromMonitorManager = true,
+            ChangeTolerance = 100,
+        };
 
         // ---- Flap system -------------------------------------------------------------
         // FLAPS_MOVING is announced: on an aircraft whose flap gauge cannot be read, "flaps
@@ -494,11 +510,7 @@ public partial class TFDiMD11Definition
         // guide promised N1 in the Read-outs; until this panel existed nothing carried it.
         displays["Engines"] = new List<string> { "MD11_ENG1_N1", "MD11_ENG2_N1", "MD11_ENG3_N1" };
         displays["APU Status"] = new List<string> { "MD11_APU_STATE", "MD11_APU_N1", "MD11_APU_N2" };
-        displays["Fuel Quantity"] = new List<string>
-        {
-            "MD11_OVHD_TANK_1_VAL", "MD11_OVHD_TANK_2_VAL", "MD11_OVHD_TANK_3_VAL",
-            "MD11_OVHD_TANK_AUX_VAL", "MD11_OVHD_TANK_TAIL_VAL",
-        };
+        displays["Fuel Quantity"] = Md11FuelUnits.Tanks.Select(t => t.Key).ToList();
 
         var names = new List<string> { "V-Speeds", "Minimums and Altimeters", "Autoflight Status", "Engines", "APU Status", "Fuel Quantity" };
         foreach (var name in names) controls[name] = new List<string>();   // display-only: MainForm needs the (empty) entry

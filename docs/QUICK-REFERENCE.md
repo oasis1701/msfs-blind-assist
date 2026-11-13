@@ -212,22 +212,17 @@ public override FCUControlType GetAltitudeControlType() => FCUControlType.Increm
 ## Fenix Counter Pattern
 
 ### Counter-Based Rotary Encoder
+A Fenix knob L:var is a counter the Fenix acts on by difference (the cockpit adds or takes 1 per click), so a step is a relative change from the sim's own value, never an app-side count written as an absolute value ([FNX-5]; the full explanation is [fenix-increment-decrement.md](fenix-increment-decrement.md)).
 <!-- fragment: MSFSBlindAssist/Aircraft/FenixA320Definition.cs#IncrementCounter -->
 ```csharp
-private Dictionary<string, int> rmpCounters = new Dictionary<string, int>();
+// (L:x) 1 + (>L:x): one click up from wherever the sim's count is (a minus for a click down).
+internal static string CounterStepCode(string lvar, int steps) =>
+    FormattableString.Invariant($"(L:{lvar}) {Math.Abs(steps)} {(steps < 0 ? "-" : "+")} (>L:{lvar})");
 
 private void IncrementCounter(string varName, SimConnect.SimConnectManager simConnect)
 {
-    if (!rmpCounters.ContainsKey(varName)) rmpCounters[varName] = 0;
-    rmpCounters[varName]++;
-    simConnect.SetLVar(varName, rmpCounters[varName]);
-}
-
-private void DecrementCounter(string varName, SimConnect.SimConnectManager simConnect)
-{
-    if (!rmpCounters.ContainsKey(varName)) rmpCounters[varName] = 0;
-    rmpCounters[varName]--;
-    simConnect.SetLVar(varName, rmpCounters[varName]);
+    if (simConnect != null && simConnect.IsConnected)
+        simConnect.ExecuteCalculatorCodeUnique(CounterStepCode(varName, 1));
 }
 
 // Usage in HandleUIVariableSet()

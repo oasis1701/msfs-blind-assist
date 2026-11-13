@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Aircraft.MD11;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Tests;
@@ -52,6 +53,17 @@ public class ValueChangeToleranceTests
     }
 
     [Fact]
+    public void The_Md11_sim_fuel_weight_carries_100_pounds_and_is_not_a_seeded_var()
+    {
+        // Its readers (Md11FuelUnits.TanksUnpublished / TankUnit) read the cache, which takes every
+        // delivery, against a 1,000 lb line and a wide ratio band; fuel burn need not fire per tick.
+        var def = new TFDiMD11Definition().GetVariables()[Md11FuelUnits.SimFuelKey];
+
+        Assert.Equal(100, def.ChangeTolerance);
+        Assert.DoesNotContain(Md11FuelUnits.SimFuelKey, TFDiMD11Definition.SeededScalarKeys);
+    }
+
+    [Fact]
     public void No_other_Md11_variable_sets_a_tolerance_of_its_own()
     {
         // Widening another var is a decision about its readers AND about Md11SeedGate (which counts
@@ -59,8 +71,9 @@ public class ValueChangeToleranceTests
         var widened = new TFDiMD11Definition().GetVariables()
             .Where(kv => kv.Value.ChangeTolerance != null)
             .Select(kv => kv.Key)
+            .Order(StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(new[] { TFDiMD11Definition.DcPowerKey }, widened);
+        Assert.Equal(new[] { TFDiMD11Definition.DcPowerKey, Md11FuelUnits.SimFuelKey }.Order(StringComparer.Ordinal), widened);
     }
 }

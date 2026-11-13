@@ -268,7 +268,7 @@ The STAR tab works exactly like the SID tab: type the arrival airport in **STAR 
 This tab sets the departure airport and runway at the very start of the plan.
 
 1. In **Departure ICAO**, type the airport's code.
-2. The **Departure Runways** list fills with every runway, each with its length, width, surface and, if it has one, its ILS frequency and course. Lengths are shown in the ground distance unit you chose in Settings (**Use feet for distances (default: metres)** on the Taxi Guidance tab).
+2. The **Departure Runways** list fills with every runway, each with its length, width, surface and, if it has one, its localizer: "ILS" (localizer and glideslope), "Localizer" (no glideslope), or "LDA" or "IGS" for an offset approach that does not line up with the runway, with its frequency and magnetic course. Lengths are shown in the ground distance unit you chose in Settings (**Use feet for distances (default: metres)** on the Taxi Guidance tab).
 3. Choose the runway and press **Load Departure**. BA says, for example, *"Loaded departure EGLL runway 27R"*.
 
 The departure runway you set here is also the runway the taxi-out part of the AI briefing plans to.
@@ -303,7 +303,7 @@ This tab is a reference page for any airport in your navigation database. You ca
 
 The **Airport Information** box starts with the airport's code and name, then is grouped under headings: basic information (ident and name), from aircraft (the distance and direction, when connected), location (coordinates, elevation and magnetic variation), frequencies (Tower, ATIS, AWOS, ASOS and UNICOM), status (closed, military, add-on scenery), fuel, a count of facilities (gates, ramps, runways, approaches and so on), a runway summary, parking, the tower position, the transition altitude and level where the navigation data has them, and the scenery file the airport comes from.
 
-The **Runway Information** box starts with the ILS, if the runway has one (ident, frequency, localizer heading and width, glideslope angle and DME), then gives the dimensions, surface, true and magnetic heading, threshold position, displaced threshold, blast pad and overrun, pattern altitude and runway elevation, lighting, markings, whether the runway is used for take-off and landing, and any VASI or PAPI.
+The **Runway Information** box starts with the runway's localizer under **Localizer and glideslope**. Its first line says what it is, in the same words as the runway lists: "ILS 110.10, course 171", "Localizer 108.70, course 152", "LDA 111.35, course 147", or "No localizer". A glideslope that is not 3 degrees is added, and CAT II or CAT III is named. The details follow (ident, frequency, localizer heading and width, glideslope angle and DME). Then it gives the dimensions, surface, true and magnetic heading, threshold position, displaced threshold, blast pad and overrun, pattern altitude and runway elevation, lighting, markings, whether the runway is used for take-off and landing, and any VASI or PAPI.
 
 A localizer heading is marked as a true heading ("0.5° true"), so do not mistake it for the magnetic course. Fields the navigation data leaves empty are left out or read "N/A".
 
@@ -495,9 +495,9 @@ If BA cannot reach the tablet, F6 says, for example, *"flyPad not connected. Mak
 
 ### The Fenix and iFly EFBs {#the-fenix-and-ifly-efbs}
 
-The Fenix A320 and the iFly 737 MAX8 serve their tablets as real web sites on your own computer, and those sites already work with a screen reader. BA simply shows the live site in its window, so you read and use it exactly like a web page, with browse mode and quick keys.
+The Fenix A320 and the iFly 737 MAX8 serve their tablets as real web sites on your own computer. BA shows the live site in its window, so you read and use it exactly like a web page, with browse mode and quick keys. The iFly site already works with a screen reader; the Fenix v3 site does not on its own, so BA adds the names, states and keys it lacks.
 
-- **Fenix EFB:** opens the Fenix tablet site. If the Fenix A320 has not finished loading, the window shows a message instead: *"Fenix EFB is not reachable at http://localhost:8083. Make sure the Fenix A320 is fully loaded, then press Retry."* Press **Retry** once it has loaded. Press Escape to close the window.
+- **Fenix EFB:** opens the Fenix tablet site. Every app is a button you can Tab to, and Alt+Home goes back to the EFB's home screen from anywhere; the details are in [the Fenix chapter's EFB section](airbus-aircraft.md#efb-2). If the Fenix A320 has not finished loading, the window says so instead, in a message you can reach with Tab: *"Fenix EFB is not reachable at http://127.0.0.1:8083. Make sure the Fenix A320 is fully loaded, then press Retry."* Press **Retry** once it has loaded. Escape closes an open menu or pop-up on the page first, then the window.
 - **iFly 737 EFB:** opens the iFly SP1 tablet, with its Performance, Navigraph and SimBrief, Payload and Balance, Ground Services, Doors and other apps. BA says *"iFly EFB loaded."* when the page is ready. If the iFly EFB is not running yet, a message explains why and a **Retry** button is focused. Press Escape to close, F5 to reload, and Alt+Home to go back to the EFB's main page.
 
 Both windows hide rather than close, so when you reopen them you are back on the page you left.

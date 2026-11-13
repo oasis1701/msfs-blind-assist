@@ -686,7 +686,7 @@ public class ClaudeContextBudgetTests
         return problems;
     }
 
-    private static readonly string[] ShippedCodeRoots = { "MSFSBlindAssist/", "MSFSBlindAssistUpdater/", "plugins/" };
+    private static readonly string[] ShippedCodeRoots = { "MSFSBlindAssist/", "MSFSBlindAssist.DisplayLayouts/", "MSFSBlindAssistUpdater/", "plugins/" };
 
     /// <summary>The shared aircraft rules glob files in every aircraft's folder under Aircraft/ (every file; every
     /// *Definition*.cs), so they never stand in for an aircraft's own rule file: a ported aircraft whose rule file
@@ -806,6 +806,7 @@ public class ClaudeContextBudgetTests
             "A320-10 SimVarDefinition.IsNotSet", "A380-2 RenderAsButton", "A380-10 RenderAsButton",
             "A380F-12 ExcludeFromBatch", "ARINC-2 ValueDescriptions", "MD11-11 ExcludeFromMonitorManager",
             "MD11-22 SimVarDefinition.ValueToDescriptionKey", "FOA-6 IsAnnounced",
+            "FNX-7 StateVariable", "FNX-7 StateLitText",
         },
         ["a MainForm field declared in MainForm.cs and used by the partial the rule loads on"] = new[]
         {

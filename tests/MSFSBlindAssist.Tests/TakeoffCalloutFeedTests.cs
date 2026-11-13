@@ -52,7 +52,7 @@ public class TakeoffCalloutFeedTests
         Assert.Equal("IFLY_IAS", new IFly737MAXDefinition().TakeoffCalloutFeedKey);
         Assert.Equal(A320TakeoffCallouts.IasKey, new FlyByWireA320Definition().TakeoffCalloutFeedKey);
         Assert.Equal(A320TakeoffCallouts.IasKey, new HeadwindA330Definition().TakeoffCalloutFeedKey);   // inherited
-        Assert.Null(new FenixA320Definition().TakeoffCalloutFeedKey);   // its V1/rotate are Takeoff Assist's
+        Assert.Equal(FenixTakeoffCallouts.IasKey, new FenixA320Definition().TakeoffCalloutFeedKey);
     }
 
     [Fact]

@@ -212,7 +212,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         // Ground-speed announcement interval. Useful for monitoring taxi-speed
         // SOPs (10 kt turns / 30 kt straight) without needing to press the GS
         // hotkey. Also fires during takeoff roll, complementing the takeoff-
-        // assist 80/100/V1/rotate callouts. Off by default to keep behaviour
+        // assist 80 and 100 knot callouts. Off by default to keep behaviour
         // for existing users; user picks 5 / 10 kt to enable.
         gsAnnounceLabel = new Label
         {

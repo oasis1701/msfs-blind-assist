@@ -166,7 +166,11 @@ Heading:
 
 Aircraft state:
   F          Read fuel, tank by tank, with a total (pounds). Includes the auxiliary and tail
-             trim tanks, which the sim's own fuel readout has no place for.
+             trim tanks, which the sim's own fuel readout has no place for. Pounds whichever
+             weight unit the EFB is set to; until the aircraft has reported that unit it says
+             "Fuel quantity unavailable, the aircraft has not reported its weight unit". For
+             about 20 seconds after a flight loads, while the aircraft sets its fuel, it says
+             "Fuel quantity unavailable".
   Shift+F    Read the same in kilograms
   Shift+G    Read gear lever position
   B          Read the captain's altimeter in both units, "Altimeter: 1013, 29.92", or
@@ -220,7 +224,9 @@ Press Ctrl+3 to jump to it and arrow through the rows: "AC Bus 1: Off", "Externa
 light: On". It updates live and F5 refreshes it. The lights are no longer separate tab stops, so
 Tab moves only between the controls you can operate. A light on a dead bus reads "unpowered".
 The Read-outs section works the same way: each of its panels is one list, with units - "V1: 152
-knots", "Captain altimeter: standard", "Tank 1: 12000 pounds".
+knots", "Captain altimeter: standard", "Tank 1: 12000 pounds". The fuel rows are in the weight
+unit set on the EFB's Options page, as the overhead shows them, in steps of 100 pounds or 50
+kilograms.
 
 The Read-outs section has an Engines panel with N1 for all three engines ("Engine 1 N1: 25.4
 percent"), between Autoflight Status and APU Status.

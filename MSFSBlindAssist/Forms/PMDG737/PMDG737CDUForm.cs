@@ -397,23 +397,7 @@ public partial class PMDG737CDUForm : Form
         // Alt+letter: 737 page button hotkeys
         if (e.Alt && !e.Control && !e.Shift)
         {
-            string? key = e.KeyCode switch
-            {
-                Keys.I => "INIT_REF",
-                Keys.R => "RTE",
-                Keys.B => "CLB",
-                Keys.Z => "CRZ",
-                Keys.D => "DES",
-                Keys.M => "MENU",
-                Keys.G => "LEGS",
-                Keys.A => "DEP_ARR",
-                Keys.H => "HOLD",
-                Keys.P => "PROG",
-                Keys.N => "N1_LIMIT",
-                Keys.F => "FIX",
-                Keys.E => "EXEC",
-                _ => null
-            };
+            string? key = AltPageKey(e.KeyCode);
 
             if (key != null)
             {
@@ -424,6 +408,26 @@ public partial class PMDG737CDUForm : Form
             }
         }
     }
+
+    /// <summary>The CDU key a plain Alt+letter presses in this window (window-local keys; Output mode's Alt+P, Alt+N
+    /// and Alt+E, which open the PFD, ND and Engine displays, are the global hotkeys), or null.</summary>
+    internal static string? AltPageKey(Keys key) => key switch
+    {
+        Keys.I => "INIT_REF",
+        Keys.R => "RTE",
+        Keys.B => "CLB",
+        Keys.Z => "CRZ",
+        Keys.D => "DES",
+        Keys.M => "MENU",
+        Keys.G => "LEGS",
+        Keys.A => "DEP_ARR",
+        Keys.H => "HOLD",
+        Keys.P => "PROG",
+        Keys.N => "N1_LIMIT",
+        Keys.F => "FIX",
+        Keys.E => "EXEC",
+        _ => null
+    };
 
     private void ScratchpadInput_KeyDown(object? sender, KeyEventArgs e)
     {

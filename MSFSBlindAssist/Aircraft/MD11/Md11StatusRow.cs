@@ -92,7 +92,15 @@ public static class Md11StatusRow
             case "MD11_OVHD_TANK_3_VAL":
             case "MD11_OVHD_TANK_AUX_VAL":
             case "MD11_OVHD_TANK_TAIL_VAL":
-                return $"{Whole(value)} pounds";
+            {
+                // In the EFB's weight unit, which the overhead shows too (Md11FuelUnits). Every tank
+                // at 0 while the sim carries fuel is the aircraft not having published them yet.
+                var tanks = Md11FuelUnits.Tanks.Select(t => read(t.Key)).ToList();
+                var simPounds = read(Md11FuelUnits.SimFuelKey);
+                if (value == 0 && Md11FuelUnits.TanksUnpublished(tanks, simPounds))
+                    return "not available";
+                return Md11FuelUnits.DescribeTank(value, Md11FuelUnits.TankUnit(tanks, read(Md11FuelUnits.OptionsKey), simPounds));
+            }
 
             default:
                 return null;
