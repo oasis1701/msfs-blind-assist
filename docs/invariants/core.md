@@ -158,6 +158,16 @@ Why a line to fill in, not a checkbox: most PRs here are written with Claude Cod
 
 History. The first draft of this rule (2026-10-19, same PR) asked for a link to a pull request in the website's repo, where the guide then lived; the guide moved into this repo before it merged.
 
+## CORE-20
+
+Added 2026-11-13. A plain interpolated string formats in the PC's culture, so `$"COM1 active {value:F3}"` reads "COM1 active 118,300" on a German or Swedish Windows, `{mach:0.00}` "Mach 0,78", and `{feet:N0}` "12.345 ft", which a screen reader says as twelve point three four five. The app's text is English and CI runs under en-US, so nothing showed it: the sweep that added this rule found about 290 such phrases, in every aircraft's announcements, display values and system-display rows, in MainForm, the SimConnect readouts, the weather radar, the SimBrief planner and the EFB. Two were not speech at all: `WeatherService.BuildBbox` and `BuildWindsUrl` put coordinates into web addresses, so under a comma-decimal culture the bounding box became eight numbers and the winds address `latitude=48,3538`, and the radar got no SIGMETs, PIREPs or winds aloft.
+
+The rule: a number with a decimal or a group separator that reaches the pilot, or another program, is formatted with the invariant culture, `FormattableString.Invariant($"…")` or `string.Create(CultureInfo.InvariantCulture, $"…")`, as `ActiveSkyFormatting`, `LocationPhrases` and `TaxiBriefingRenderer` already did (an invariant `N0` writes "12,345" everywhere). A whole number needs nothing (`{x:F0}`, `{x:000}`), and a log line may keep the PC's culture.
+
+Two tests hold it. `DecimalFormatSourceTests` walks every source file as C# and fails on a decimal format with no invariant call around it, naming the file and line; a log call (`Log.Debug`, a `LogChannel`, `RolloutDiag`, `DiagLog`) is its only exemption, and a new log helper is added to its `LogCallees`, never a speech helper. It cannot see a double interpolated with no format at all (`$"{value}"`), which is what `SpokenDecimalCultureTests` is for: it feeds every variable of every aircraft through `TryGetDisplayOverride`, `ProcessSimVarUpdate` and the system-display rows under de-DE and holds the result against en-US.
+
+Not covered, on purpose: the minus sign. Under sv-SE a negative whole number is written with U+2212 ("−1500"), which screen readers say as minus; `Pmdg737McpAnnouncementTests` pins that for the 737's V/S. The parsing twin of this rule is [CORE-17].
+
 ## Background: the former CLAUDE.md core sections
 
 These sections stood in CLAUDE.md's core until 2026-10; CLAUDE.md now keeps the rules as CORE one-liners. Kept here word for word; where the Screen Reader Announcements text below differs from CORE-7 above, CORE-7 governs.
