@@ -104,8 +104,30 @@ public sealed class VisualGuidanceProfile
     /// autoland behaviour vary: the A320 FCTM specifies a 30 ft initiation (default); the
     /// PMDG 777's autoland begins flaring at ~40 ft RA, so VG's cue is timed to match — a
     /// hand-flying pilot using VG to mirror autoland gets the cue at the same moment the
-    /// autopilot would have started its flare. Keep within 20–50 ft.</summary>
+    /// autopilot would have started its flare. Keep within 10–50 ft: a light single rounds
+    /// out lower than any jet (FAA Airplane Flying Handbook: 10–20 ft). The manual landing
+    /// assist speaks "Flare" at this same height (<c>LandingFlareAssistManager</c>).</summary>
     public double FlareTriggerWheelHeightFt { get; init; } = 30.0;
+
+    /// <summary>Time constant (s) of the manual landing assist's exponential flare law,
+    /// targetVS = −(gearAGL/τ·60 + <see cref="FlareTouchdownSinkFpm"/>). The 6 s default
+    /// meets a transport jet's ~620 fpm at the 50 ft engage height; a light single wants a
+    /// short round-out near the ground instead (see <see cref="FlareHoldsEntrySink"/>).</summary>
+    public double FlareSinkTauSec { get; init; } = 6.0;
+
+    /// <summary>Sink rate (fpm) the manual landing assist's flare law asks for at touchdown.</summary>
+    public double FlareTouchdownSinkFpm { get; init; } = 120.0;
+
+    /// <summary>When true the flare law never asks for MORE sink than the aircraft had when the
+    /// assist engaged at 50 ft: the target holds the approach sink until the exponential
+    /// falls below it, so a short τ starts the round-out low instead of telling a slow
+    /// approach it is floating. False (default) keeps the plain exponential the jets fly.</summary>
+    public bool FlareHoldsEntrySink { get; init; }
+
+    /// <summary>Ground speed (kt) below which the manual landing assist ends its rollout tone
+    /// when no landing-exit guidance runs. 40 kt is near a jet's taxi speed; a light single
+    /// touches down not far above it.</summary>
+    public double RolloutGuidanceEndKnots { get; init; } = 40.0;
 
     /// <summary>Target pitch (degrees) commanded during the flare phase. Per-aircraft because
     /// manufacturer flare pitch attitudes vary: Boeing FCTM specifies a 2–3° pitch increase
@@ -381,6 +403,13 @@ public interface IAircraftDefinition
     /// engage of its own).
     /// </summary>
     bool AutopilotEngageWaitsForState { get; }
+
+    /// <summary>
+    /// Whether the aircraft has gear for the universal auto-gear to move (FO-27). True everywhere but
+    /// where the simulator's own answer is wrong: the COWS DA40 has fixed gear, reports it retractable
+    /// with the handle up, and uses the gear key for its steering assist.
+    /// </summary>
+    bool HasRetractableGear { get; }
 
     // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
     // Aircraft without these systems should use the default implementation (does nothing)

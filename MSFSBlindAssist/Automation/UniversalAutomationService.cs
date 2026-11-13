@@ -211,6 +211,13 @@ public sealed class UniversalAutomationService
 
     public bool AnyEnabled => AutoGearUpEnabled || AutoGearDownEnabled || AutoApEnabled;
 
+    /// <summary>
+    /// The current aircraft has gear to move (<c>IAircraftDefinition.HasRetractableGear</c>), pushed
+    /// with its other limits. False, neither gear call ever acts or speaks: the COWS DA40's handle reads
+    /// up, and its gear key is its steering-assist switch (FO-27).
+    /// </summary>
+    public bool HasRetractableGear { get; set; } = true;
+
     /// <summary>Forgets everything (an aircraft switch, a flight loaded): the takeoff gates stay
     /// disarmed until the next ground sample.</summary>
     public void Reset()
@@ -283,7 +290,8 @@ public sealed class UniversalAutomationService
         if (double.IsNaN(_peakMslFt) || altitudeMsl > _peakMslFt)
             _peakMslFt = altitudeMsl;
 
-        if (AutoGearUpEnabled && _gearUpArmed && !_gearRaisedThisLeg && climbing && altitudeAgl > GearUpMinAglFt)
+        if (HasRetractableGear && AutoGearUpEnabled && _gearUpArmed && !_gearRaisedThisLeg && climbing
+            && altitudeAgl > GearUpMinAglFt)
         {
             // Already up (the pilot raised it): nothing to do, nothing to say.
             if (gearDown != false)
@@ -294,7 +302,7 @@ public sealed class UniversalAutomationService
             _gearRaisedThisLeg = true;
         }
 
-        if (AutoGearDownEnabled && !_gearLoweredThisLeg && descending
+        if (HasRetractableGear && AutoGearDownEnabled && !_gearLoweredThisLeg && descending
             && altitudeAgl < GearDownBandTopFt && altitudeAgl > GearDownBandBottomFt
             && altitudeMsl <= _peakMslFt - GearDownDescentFt
             && !(airspeedKts > GearDownMaxIasKts))

@@ -26,6 +26,7 @@ public class FlowStepRunOnlyIfSentIdTests
         new object[] { "PMDG 737" }, new object[] { "PMDG 777" }, new object[] { "Fenix A320" },
         new object[] { "FBW A32NX" }, new object[] { "FBW A380" }, new object[] { "Headwind A330" },
         new object[] { "iFly 737 MAX8" }, new object[] { "TFDi MD-11" },
+        new object[] { "DA40-NG" }, new object[] { "DA40-XLS" },
     };
 
     internal static IEnumerable<(string Flow, (string Id, FlowStepActionType Type, string? After)[] Steps)> Flows(string profile) =>
@@ -39,6 +40,8 @@ public class FlowStepRunOnlyIfSentIdTests
             "Headwind A330" => Project(HwA330.HwA330FlowDefinitions.Build()),
             "iFly 737 MAX8" => Project(IFly737.IFly737FlowDefinitions.Build()),
             "TFDi MD-11" => Project(Md11.Md11FoFlowDefinitions.Build()),
+            "DA40-NG" => Project(MSFSBlindAssist.FirstOfficer.DA40.DA40FoFlowDefinitions.Build(MSFSBlindAssist.Aircraft.DA40.DA40Variant.NG)),
+            "DA40-XLS" => Project(MSFSBlindAssist.FirstOfficer.DA40.DA40FoFlowDefinitions.Build(MSFSBlindAssist.Aircraft.DA40.DA40Variant.XLS)),
             _ => throw new System.ArgumentException(profile),
         };
 

@@ -1,0 +1,33 @@
+using System;
+using System.IO;
+using Xunit;
+
+namespace MSFSBlindAssist.Tests;
+
+/// <summary>
+/// Every DA40 window that reads through the definition must close with it: the Alt+S engine
+/// window kept refreshing against an aircraft that had been switched away.
+/// </summary>
+public class CowsDA40TeardownTests
+{
+    private static string RepoRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) return dir.FullName;
+        throw new InvalidOperationException("MSFSBlindAssist.sln not found");
+    }
+
+    [Fact]
+    public void TheEngineGlanceWindowClosesWhenTheAircraftIsSwitchedAway()
+    {
+        string src = File.ReadAllText(Path.Combine(RepoRoot(),
+            "MSFSBlindAssist", "Aircraft", "DA40", "CowsDA40Definition.CasMonitor.cs"));
+        int stop = src.IndexOf("public void StopCasMonitor()", StringComparison.Ordinal);
+        Assert.True(stop >= 0);
+        // Before the shared watcher stops (G1000CasWatcher), which is where the method used to
+        // return early when the watcher had never started.
+        int end = src.IndexOf("_casWatcher?.Stop();", stop, StringComparison.Ordinal);
+        Assert.True(end > stop);
+        Assert.Contains("CloseEngineGlance();", src.Substring(stop, end - stop));
+    }
+}

@@ -21,6 +21,8 @@ public class FirstOfficerWindowsTests
         ["IFLY_737MAX8"] = "iFly 737 MAX8 First Officer",
         ["TFDI_MD11"] = "TFDi MD-11 First Officer",
         ["HS_787"] = null,
+        ["COWS_DA40NG"] = "DA40-NG First Officer",
+        ["COWS_DA40XLS"] = "DA40-XLS First Officer",
     };
 
     [Theory]

@@ -244,7 +244,7 @@ You will learn fastest by flying, but these kinds of resources help a great deal
 
 <nav class="guide-nav" aria-label="Guide chapters" markdown="1">
 
-- [Previous chapter: Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md)
+- [Previous chapter: COWS Diamond DA40](diamond-da40.md)
 - [Next chapter: Tone Cheat Sheet](tone-cheat-sheet.md)
 - [Guide contents](index.md)
 
