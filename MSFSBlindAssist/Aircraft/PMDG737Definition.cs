@@ -7733,9 +7733,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                         simConnect.SendEvent("VOR1_SET", (uint)settings.Nav1Course);
                         simConnect.SendEvent("NAV2_RADIO_SET_HZ", (uint)Math.Round(settings.Nav2FreqMHz * 1_000_000.0));
                         simConnect.SendEvent("VOR2_SET", (uint)settings.Nav2Course);
-                        announcer.AnnounceImmediate(
-                            $"NAV 1 {settings.Nav1FreqMHz:0.00}, course {settings.Nav1Course}. " +
-                            $"NAV 2 {settings.Nav2FreqMHz:0.00}, course {settings.Nav2Course}.");
+                        announcer.AnnounceImmediate(NavRadiosSetMessage(settings));
                     });
                 form.Show(parentForm);
             }
@@ -7745,4 +7743,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             else Open();
         });
     }
+
+    /// <summary>What the NAV Radios dialog says once it has set both radios. A frequency is spoken with a decimal
+    /// point whatever the PC's regional settings (it said "110,30" under a comma-decimal culture).</summary>
+    internal static string NavRadiosSetMessage(NavRadioSettings settings) => FormattableString.Invariant(
+        $"NAV 1 {settings.Nav1FreqMHz:0.00}, course {settings.Nav1Course}. NAV 2 {settings.Nav2FreqMHz:0.00}, course {settings.Nav2Course}.");
 }
