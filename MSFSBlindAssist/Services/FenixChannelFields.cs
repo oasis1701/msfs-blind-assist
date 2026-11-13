@@ -63,11 +63,13 @@ internal static partial class FenixChannelFields
     /// The Fenix builds the channel has been checked against in the sim, spelled as
     /// <c>FenixDataService.GetSoftwareVersionAsync</c> gives them, and matched exactly. The trust gate trusts no
     /// display on a build outside this set. 3.0.0.7613 is the first, confirmed by the owner on 2026-11-02 after that
-    /// day's in-sim run: the field numbers here were checked against it ([FNX-23]).
+    /// day's in-sim run: the field numbers here were checked against it ([FNX-23]). 3.0.0.7852 joined on 2026-11-14,
+    /// confirmed the same way: its whole contract compared with 3.0.0.7613's showed no number moved.
     /// </summary>
     public static readonly IReadOnlySet<string> VerifiedBuilds = new HashSet<string>(StringComparer.Ordinal)
     {
-        "3.0.0.7613"
+        "3.0.0.7613",
+        "3.0.0.7852"
     };
 
     /// <summary>AircraftDataPush, the message of the display data call.</summary>

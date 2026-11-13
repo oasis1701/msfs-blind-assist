@@ -1,5 +1,5 @@
 // The Fenix options window shows the Fenix EFB's own words for each option, so a pilot reads what a
-// sighted pilot reads in the EFB. These pin the snapshot of those words (EFB bundle 3.0.0.7426): the
+// sighted pilot reads in the EFB. These pin the snapshot of those words (EFB bundle 3.0.0.7852): the
 // right count, labels scoped to their own option, descriptions whole and unescaped, and the control hints.
 using MSFSBlindAssist.Services;
 
@@ -10,8 +10,8 @@ public class FenixOptionLabelsTests
     [Fact]
     public void Table_holds_every_option_the_EFB_labels()
     {
-        Assert.Equal(125, FenixOptionLabels.All.Count);
-        Assert.Equal(34, FenixOptionLabels.All.Values.Sum(t => t.ValueLabels.Count));
+        Assert.Equal(127, FenixOptionLabels.All.Count);
+        Assert.Equal(35,FenixOptionLabels.All.Values.Sum(t => t.ValueLabels.Count));
     }
 
     [Theory]
