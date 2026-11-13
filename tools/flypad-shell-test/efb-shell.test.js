@@ -212,3 +212,31 @@ test('without a key, "(now …)" and an after-colon tail are part of the key aga
   assert.notStrictEqual(s.buttonByLabel('Runway next'), step, 'an unkeyed "(now …)" change was patched in place');
   assert.notStrictEqual(s.buttonByLabel('GPU'), gpu, 'an unkeyed after-colon change was patched in place');
 });
+
+// The flyPad's error notices: the pilot presses an error's Dismiss button and the next scrape no
+// longer lists it. Removing the focused node would drop focus to <body> and the screen reader
+// somewhere arbitrary; the shell moves it to the control that followed it, else the page heading.
+const alertItem = (text, key) => ({ idx: 0, kind: 'alert', controlType: '', text, clickable: false, level: 0, live: 'assertive', disabled: false, key });
+test('dismissing a focused notice moves focus to the next control, or the page heading', (t) => {
+  const s = loadShell(t);
+  const notice = [alertItem('Error: OFP airport is invalid', 'notice:1'), btn(100001, 'Dismiss: OFP airport is invalid', { key: 'notice-dismiss:1' })];
+  s.render('Performance', notice.concat([btn(7, 'Calculate')]));
+  s.buttonByLabel('Dismiss').focus();
+  s.render('Performance', [btn(7, 'Calculate')]);
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('Calculate'));
+
+  s.render('Performance', notice);
+  s.buttonByLabel('Dismiss').focus();
+  s.render('Performance', []);
+  assert.strictEqual(s.window.document.activeElement.id, 'pgttl');
+});
+
+// A focused unkeyed button whose label changes is rebuilt as a new node in the same place: focus
+// goes to that rebuilt button, never to the control after it (Enter would then press the wrong one).
+test('a focused button rebuilt by a label change keeps the focus in its place', (t) => {
+  const s = loadShell(t);
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'GPU Connect'), btn(3, 'Next')]);
+  s.buttonByLabel('GPU Connect').focus();
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'GPU Disconnect'), btn(3, 'Next')]);
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('GPU Disconnect'));
+});
