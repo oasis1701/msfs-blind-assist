@@ -1347,7 +1347,34 @@
     for (var i = 0; i < maps.length; i++) { name(maps[i], 'Moving map'); }
   });
 
-  // Quick settings: the airplane button holds only its picture, found by its class or its file name.
+  // Settings: a drop-down (Printer) is a mat-select named only by its value; it takes its setting's name in front.
+  RULES.push(function (root) {
+    var selects = root.querySelectorAll('app-settings2 article mat-select');
+    for (var i = 0; i < selects.length; i++) { nameSelect(selects[i], settingName(selects[i].closest('article'))); }
+  });
+
+  // Quick settings (Fenix 3.0.0.7852): the sim rate button has the page's own label, "Cycle sim rate", which replaces
+  // its content, so the rate it is on (NORMAL / 2X / 4X, marked only by a class) is never read. The rate goes in the
+  // button's description, with the header's note ("AP REQUIRED") while the page shows one: the page disables the
+  // button then, so Tab never reaches the note. The page's label stays.
+  var descriptionWritten = new WeakMap();
+  var simRates = [];
+  function describeSimRate(el) {
+    var parts = [];
+    var rate = textOf(el.querySelector('.sim-rate-option-active'));
+    if (rate) { parts.push(rate); }
+    var popup = el.closest('div.brightness-popup');
+    var note = textOf(popup ? popup.querySelector('.sim-rate-ap-required') : null);
+    if (note) { parts.push(note); }
+    ownState(el, 'aria-description', parts.length ? parts.join(', ') : null, descriptionWritten);
+  }
+  function undescribe(el) { ownState(el, 'aria-description', null, descriptionWritten); }
+  RULES.push(function (root) {
+    simRates = followFound(root.querySelectorAll('button.sim-rate-btn'), simRates, describeSimRate, undescribe);
+  });
+
+  // Quick settings: the airplane button holds only its picture, found by its class or its file name. Since Fenix
+  // 3.0.0.7852 the page names it itself ("Toggle airplane mode"), and a page's own label is never replaced.
   RULES.push(function (root) {
     var pictures = root.querySelectorAll('img.flight-mode-btn-icon, img[src*=airplane]');
     for (var i = 0; i < pictures.length; i++) {
@@ -1464,6 +1491,21 @@
       if (!icons[i].matches(CONTROL) && holder && holder.closest(CONTROL)) { found.push(icons[i]); }
     }
     glyphs = hideOnly(found, glyphs);
+  });
+
+  // Glyphs in no control that sit beside the text or the box that says the same: the icons of quick settings' two
+  // headers ("BRIGHTNESS", "SIM RATE"), the pen beside a planned passenger box on Mass and Balance, and the wind
+  // arrows of the Landing result. Each read as a stray character. One inside a control is the rule above's.
+  var STRAY_GLYPHS = 'div.brightness-popup-header i[class*="fa-"], i.planned-edit-icon, app-arrival-result i[class*="fa-"]';
+  var strayGlyphs = [];
+  RULES.push(function (root) {
+    var icons = root.querySelectorAll(STRAY_GLYPHS);
+    var found = [];
+    for (var i = 0; i < icons.length; i++) {
+      var holder = icons[i].parentElement;
+      if (!icons[i].matches(CONTROL) && !(holder && holder.closest(CONTROL))) { found.push(icons[i]); }
+    }
+    strayGlyphs = hideOnly(found, strayGlyphs);
   });
 
   // Every screen: a picture with no alt attribute says nothing to a screen reader but "graphic", or its file name (the

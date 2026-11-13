@@ -1170,7 +1170,8 @@ test('Unlabeled_Landing_pictures_are_hidden_and_the_buttons_holding_them_keep_th
 // first empty: it is named by its own text (below). Landing's has no <br> and keeps the page's text as its name.
 for (const [fixture, selector, glyphs, label] of [
   ['depperf', 'button.btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-2x.fa-sync-alt', 'i.select-arrow.fas.fa-arrow-right'], 'SYNC LIVE WX'],
-  ['arrperf', 'button.arrival-btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-sync-alt'], null]
+  ['arrperf', 'button.arrival-btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-sync-alt',
+    'i.fas.fa-arrow-down.wind-vector', 'i#xwArrow.fas.fa-arrow-right', 'i#hwArrow.fas.fa-arrow-down'], null]
 ]) {
   test('The_SYNC_LIVE_WX_glyph_is_hidden_and_the_button_keeps_its_text_on_' + fixture, async () => {
     const bare = await load(fixture, { layer: false });
@@ -1181,7 +1182,8 @@ for (const [fixture, selector, glyphs, label] of [
       assert.strictEqual(nameOf(sync), 'SYNC LIVE WX');
       assert.strictEqual(sync.querySelector('br') !== null, label !== null, 'as captured');
       assert.strictEqual(sync.getAttribute('aria-label'), label);
-      // Only glyphs inside controls are hidden here (the wind arrows on Landing's results are in no control).
+      // The glyphs inside controls are hidden here, and on Landing the three wind arrows of the results too: they are
+      // in no control and read as stray characters beside the wind's own figures.
       assert.deepStrictEqual(hiddenByLayer(bare, window).filter(h => /^i[.#]/.test(h)), glyphs);
     } finally {
       bare.close();
