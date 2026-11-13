@@ -16,6 +16,7 @@ Chapter 1 of 2 in [Part 6: Flying](index.md#part-5-flying) of the MSFS Blind Ass
 - [Takeoff Speed Callouts](#takeoff-vspeed-callouts)
 - [Autopilot Windows](#autopilot-windows)
 - [Hand Fly Mode](#hand-fly)
+- [Waypoint Flight Director](#waypoint-fd)
 - [Altitude Callouts](#flying-altitude-callouts)
 - [Other Automatic Callouts in Flight](#flying-auto-callouts)
 - [TCAS Traffic](#tcas)
@@ -27,7 +28,7 @@ A typical departure with BA looks like this:
 1. Taxi to the runway with [Taxi Guidance](taxi-guidance.md). When you line up, Takeoff Assist switches itself on.
 2. Roll down the runway following the Takeoff Assist tone, listening to the speed and V-speed calls.
 3. At liftoff BA hands you over to Hand Fly mode, which gives you a tone for pitch and bank.
-4. Engage the autopilot when you are ready, using the autopilot windows to set speed, heading, altitude and vertical speed.
+4. Engage the autopilot when you are ready, using the autopilot windows to set speed, heading, altitude and vertical speed, or hand-fly the departure to your tracked waypoints with the [Waypoint Flight Director](#waypoint-fd).
 5. In the climb and cruise, BA calls each 1,000 feet and tells you about anything that changes.
 
 Each step can also be done by hand, and each automatic step can be switched off.
@@ -357,6 +358,45 @@ The same tab holds the Visual Guidance and Takeoff Assist tone settings; those a
 - **"Hand fly mode active, quick keys failed."** (or *"Airborne, hand fly, quick keys failed."* at liftoff). Another program on your computer already uses one of the single-letter keys as its own global hotkey, so BA could not take it. Hand Fly still works, and you can still read everything with output mode (for example Output S for speed). Close the other program, or turn Hand Fly off and on again, which retries the keys.
 - **No tone, only speech.** Check that the feedback type is not **Screen Reader Announcements Only**, and check the volume. If Visual Guidance is on, the Hand Fly tone is deliberately silent.
 - **Too much speech.** Choose **Audio Tones Only**, or untick **Monitor Heading**.
+
+## Waypoint Flight Director {#waypoint-fd}
+
+### What it is {#waypoint-fd-what}
+
+The Waypoint Flight Director guides you while you hand-fly from one tracked waypoint to the next, between the takeoff tone and the landing tone. Like [Visual Guidance](approach-and-landing.md#visual-guidance), it plays two tones at once: one for the attitude the flight director wants, one for the attitude you have. You fly until they match. The command tone pans left and right for bank, and rises and falls in pitch for climb and descent.
+
+It is built from the simulator's own data, so it works in every aircraft, IFR or VFR, with no autopilot and no flight director of the aircraft's own. It only guides: it never moves a control or touches the autopilot.
+
+### When to use it {#waypoint-fd-when}
+
+Use it to hand-fly a departure, a climb to a level, a leg to a fix or an airway, instead of engaging the autopilot just after takeoff. It goes quiet by itself while the autopilot is engaged and comes back when you disconnect, so you can hand-fly the departure, let the autopilot take the cruise and hand-fly again later.
+
+### How to use it {#waypoint-fd-how}
+
+1. Put the waypoints in the tracking slots in the order you want to fly them, slot 1 first (see [Tracking Waypoints](planning-your-flight.md#fix-tracking)). From the Route Viewer, choosing a Track Slot opens the Track Fix Window already filled with the fix's own altitude restriction, course and speed restriction from the navigation data, for you to check and Track.
+2. For each fix you can add a **Crossing Altitude** with its **Altitude Constraint** (At, At or above, At or below, Between), a **Course** to hold through the fix instead of flying direct to it (an airway, an approach course or a radial), and a **Speed restriction**. Leave them blank to fly direct to the fix with no vertical guidance.
+3. Press Output Ctrl+F. The flight director starts on the first filled slot and says the leg. With no waypoint tracked it says *"No waypoints to track"*.
+4. Fly to match the tones. At each fix it says the next leg, for example *"Next, TOPM, 18 miles, bearing 102."*, and carries on. Empty slots between filled ones are skipped.
+5. It stops after the last filled slot (*"Final waypoint reached"*). Press Output Ctrl+F again to stop it at any time.
+
+A leg with a crossing altitude climbs you to meet an "at or above" at once, but holds a descent until it is due, so a restriction far ahead does not start you down at cruise. A leg with a speed restriction is spoken as an action: *"Reduce speed to 240"*, then *"Speed 240"* once you comply. A departure's opening "climb on a course to an altitude" leg is flown as a course hold, climbing until the altitude is made.
+
+Output **Ctrl+K** turns on a separate rudder cue, with or without the flight director: a tick in the ear on the side of the rudder to press while the ball is out, faster the further out it is, and silent once you are coordinated.
+
+### What you will hear {#waypoint-fd-hear}
+
+- The leg, as the flight director starts and at each fix.
+- *"Autopilot engaged, flight director standing by"*, and the tones going quiet, when the autopilot takes over.
+- The speed restriction calls above.
+
+### Settings {#waypoint-fd-settings}
+
+In Settings, Hand Fly Options, the **Waypoint Flight Director** section sets the target and current-attitude tones' type and volume, **Hard-pan the FD tone** (fully left or right instead of in proportion), **Auto-mute FD tones while the autopilot is engaged** (on by default), **Play a centered tone change when on target** with its tone type, **Activate the Flight Director automatically after takeoff**, the **Slip cue volume (Ctrl+K)**, and **Test Flight Director Tones**.
+
+### If something goes wrong {#waypoint-fd-problems}
+
+- The flight director does not check your route: it flies the slots in the order you filled them.
+- A leg with no fix at all, such as "climb heading 071 to 600 feet" with no altitude to sequence on, cannot be tracked, and BA says so.
 
 ## Altitude Callouts {#flying-altitude-callouts}
 
