@@ -165,8 +165,8 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         // Lead with the value in the FCU's selected display unit so the spoken order
         // matches what the cockpit shows (and a unit flip re-announces).
         return _hwBaroInHg >= 1
-            ? $"Altimeter: {inHg:F2}, {mb:F0}"
-            : $"Altimeter: {mb:F0}, {inHg:F2}";
+            ? FormattableString.Invariant($"Altimeter: {inHg:F2}, {mb:F0}")
+            : FormattableString.Invariant($"Altimeter: {mb:F0}, {inHg:F2}");
     }
 
     private void HwAnnounceBaroIfChanged(ScreenReaderAnnouncer announcer)

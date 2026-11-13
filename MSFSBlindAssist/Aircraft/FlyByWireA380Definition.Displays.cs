@@ -27,7 +27,7 @@ public partial class FlyByWireA380Definition
         string who = capt ? "Captain" : "First officer";
         string pre = qnh ? "Q N H " : "";
         return (capt ? _baroInHgL : _baroInHgR) == true
-            ? $"{who} altimeter {pre}{hpa / 33.8639:0.00} inches"
+            ? FormattableString.Invariant($"{who} altimeter {pre}{hpa / 33.8639:0.00} inches")
             : $"{who} altimeter {pre}{hpa:0} hectopascals";
     }
 
@@ -106,7 +106,7 @@ public partial class FlyByWireA380Definition
         // RMP frequencies are FBW L:vars in raw Hz (122800000 = 122.800 MHz).
         if (varKey.StartsWith("FBW_RMP_FREQUENCY_", StringComparison.Ordinal))
         {
-            displayText = $"{value / 1_000_000.0:0.000} MHz";
+            displayText = FormattableString.Invariant($"{value / 1_000_000.0:0.000} MHz");
             return true;
         }
         // The RMP panel readouts use the reliable STOCK COM simvars, already in MHz.
@@ -115,19 +115,19 @@ public partial class FlyByWireA380Definition
         if (varKey.StartsWith("COM_ACTIVE_", StringComparison.Ordinal)
             || varKey.StartsWith("COM_STANDBY_", StringComparison.Ordinal))
         {
-            displayText = value >= 118.0 && value <= 137.0 ? $"{value:0.000} MHz" : "---.--- MHz";
+            displayText = value >= 118.0 && value <= 137.0 ? FormattableString.Invariant($"{value:0.000} MHz") : "---.--- MHz";
             return true;
         }
         // ND nav-radio frequencies — label the units so an ADF freq isn't a bare "890"
         // (890 kHz is correct, just ambiguous). VOR in MHz, ADF in kHz; 0 = not tuned.
         if (varKey == "ND_VOR1_FREQ" || varKey == "ND_VOR2_FREQ")
         {
-            displayText = value >= 108.0 && value <= 118.0 ? $"{value:0.00} MHz" : "--- (not tuned)";
+            displayText = value >= 108.0 && value <= 118.0 ? FormattableString.Invariant($"{value:0.00} MHz") : "--- (not tuned)";
             return true;
         }
         if (varKey == "ND_ADF1_FREQ" || varKey == "ND_ADF2_FREQ")
         {
-            displayText = value >= 150.0 && value <= 1800.0 ? $"{value:0.0} kHz" : "--- (not tuned)";
+            displayText = value >= 150.0 && value <= 1800.0 ? FormattableString.Invariant($"{value:0.0} kHz") : "--- (not tuned)";
             return true;
         }
         // Beta-target (sideslip target). Only valid when _ACTIVE (cached in ProcessSimVarUpdate).
@@ -135,7 +135,7 @@ public partial class FlyByWireA380Definition
         {
             displayText = !_betaTargetActive ? "not active"
                         : Math.Abs(value) < 0.05 ? "centred"
-                        : $"{Math.Abs(value):0.0} degrees {(value > 0 ? "left" : "right")}";
+                        : FormattableString.Invariant($"{Math.Abs(value):0.0} degrees {(value > 0 ? "left" : "right")}");
             return true;
         }
         // TCAS RA vertical-speed band: green = fly toward, red = avoid. The :1 display
@@ -197,11 +197,11 @@ public partial class FlyByWireA380Definition
         // GW CG % of MAC (Gus's FBW airframe value, more accurate than the stock CG PERCENT).
         if (varKey == "A32NX_AIRFRAME_GW_CG_PERCENT_MAC")
         {
-            displayText = (value > 5 && value < 60) ? $"{value:0.0} percent MAC" : "not available";
+            displayText = (value > 5 && value < 60) ? FormattableString.Invariant($"{value:0.0} percent MAC") : "not available";
             return true;
         }
         // Mach — two decimals (default F0 would render "0").
-        if (varKey == "PFD_MACH") { displayText = $"{value:0.00}"; return true; }
+        if (varKey == "PFD_MACH") { displayText = FormattableString.Invariant($"{value:0.00}"); return true; }
         // Autoland capability (FCDC FG discrete word 1 — see A380ApproachCapability).
         if (varKey == "PFD_AUTOLAND")
         {
@@ -218,7 +218,7 @@ public partial class FlyByWireA380Definition
         if (varKey == "A32NX_SPEEDS_MANAGED_PFD") { displayText = value < 1 ? "none" : $"{value:0} knots"; return true; }
         // Preselected speed / Mach (set in the MCDU PERF page; -1 = none).
         if (varKey == "A32NX_SpeedPreselVal") { displayText = value < 0 ? "none" : $"{value:0} knots"; return true; }
-        if (varKey == "A32NX_MachPreselVal") { displayText = value < 0 ? "none" : $"{value:0.00}"; return true; }
+        if (varKey == "A32NX_MachPreselVal") { displayText = value < 0 ? "none" : FormattableString.Invariant($"{value:0.00}"); return true; }
         // Selected vertical speed (FCU V/S window; 0 = not selected / not in V/S).
         if (varKey == "A32NX_AUTOPILOT_VS_SELECTED")
         {
@@ -238,8 +238,8 @@ public partial class FlyByWireA380Definition
             return true;
         }
         // ILS DME — one decimal nm; ILS freq — three decimals MHz.
-        if (varKey == "PFD_ILS_DME") { displayText = value < 0.05 ? "no DME" : $"{value:0.0} nautical miles"; return true; }
-        if (varKey == "PFD_ILS_FREQ") { displayText = value < 100 ? "none" : $"{value:0.000} MHz"; return true; }
+        if (varKey == "PFD_ILS_DME") { displayText = value < 0.05 ? "no DME" : FormattableString.Invariant($"{value:0.0} nautical miles"); return true; }
+        if (varKey == "PFD_ILS_FREQ") { displayText = value < 100 ? "none" : FormattableString.Invariant($"{value:0.000} MHz"); return true; }
         // ILS/LS course — -1 (or any negative) means no course is set.
         if (varKey == "A32NX_FM_LS_COURSE") { displayText = value < 0 ? "no course set" : $"{value:000} degrees"; return true; }
         // Vertical deviation (this var is "Vertical Deviation" in the panel) — show the actual
@@ -255,7 +255,7 @@ public partial class FlyByWireA380Definition
             {
                 double dots = (s?.GetCachedVariableValue("A32NX_RADIO_RECEIVER_GS_DEVIATION") ?? 0) / 0.4;
                 displayText = Math.Abs(dots) < 0.05 ? "on the glideslope"
-                    : $"{Math.Abs(dots):0.0} dots {(dots > 0 ? "above" : "below")} glideslope";
+                    : FormattableString.Invariant($"{Math.Abs(dots):0.0} dots {(dots > 0 ? "above" : "below")} glideslope");
             }
             else if (value > 0.5)
             {
@@ -275,7 +275,7 @@ public partial class FlyByWireA380Definition
         // Cross-track error — magnitude in NM with left/right of track (FBW sign: positive = right).
         if (varKey == "A32NX_FG_CROSS_TRACK_ERROR")
         {
-            displayText = Math.Abs(value) < 0.01 ? "on track" : $"{Math.Abs(value):0.00} NM {(value > 0 ? "right" : "left")} of track";
+            displayText = Math.Abs(value) < 0.01 ? "on track" : FormattableString.Invariant($"{Math.Abs(value):0.00} NM {(value > 0 ? "right" : "left")} of track");
             return true;
         }
         // EWD thrust limit — the max-N1 % for the current thrust-rating mode.
@@ -315,10 +315,10 @@ public partial class FlyByWireA380Definition
             }
             // ---- PFD / ISIS / ND status-box decode (A380 attitude is in DEGREES) ----
             case "PLANE PITCH DEGREES":   // positive = nose down
-                displayText = Math.Abs(value) < 0.5 ? "Level" : $"{Math.Abs(value):F1} degrees {(value < 0 ? "up" : "down")}";
+                displayText = Math.Abs(value) < 0.5 ? "Level" : FormattableString.Invariant($"{Math.Abs(value):F1} degrees {(value < 0 ? "up" : "down")}");
                 return true;
             case "PLANE BANK DEGREES":    // positive = bank left
-                displayText = Math.Abs(value) < 0.5 ? "Wings level" : $"{Math.Abs(value):F1} degrees {(value > 0 ? "left" : "right")}";
+                displayText = Math.Abs(value) < 0.5 ? "Wings level" : FormattableString.Invariant($"{Math.Abs(value):F1} degrees {(value > 0 ? "left" : "right")}");
                 return true;
             case "PLANE HEADING DEGREES MAGNETIC":
             {
@@ -333,7 +333,7 @@ public partial class FlyByWireA380Definition
                 return true;
             }
             case "A32NX_EFIS_L_TO_WPT_DISTANCE":
-                displayText = value <= 0 ? "--" : $"{value:F1} NM";
+                displayText = value <= 0 ? "--" : FormattableString.Invariant($"{value:F1} NM");
                 return true;
             case "A32NX_EFIS_L_TO_WPT_BEARING":   // stored as radians
             {
@@ -351,7 +351,7 @@ public partial class FlyByWireA380Definition
             }
             case "A32NX_RADIO_RECEIVER_LOC_DEVIATION":
             case "A32NX_RADIO_RECEIVER_GS_DEVIATION":
-                displayText = $"{value:F2} degrees";
+                displayText = FormattableString.Invariant($"{value:F2} degrees");
                 return true;
             case "A32NX_RADIO_RECEIVER_LOC_IS_VALID":
             case "A32NX_RADIO_RECEIVER_GS_IS_VALID":
@@ -370,7 +370,7 @@ public partial class FlyByWireA380Definition
                     return true;
                 }
                 displayText = (capt ? _baroInHgL : _baroInHgR) == true
-                    ? $"{hpa / 33.8639:0.00} inHg"
+                    ? FormattableString.Invariant($"{hpa / 33.8639:0.00} inHg")
                     : $"{hpa:0} hPa";
                 return true;
             }
@@ -392,7 +392,7 @@ public partial class FlyByWireA380Definition
                 double deg = w.Value;
                 displayText = Math.Abs(deg) < 0.1
                     ? "Neutral"
-                    : $"{(deg > 0 ? "Left" : "Right")} {Math.Abs(deg):0.0} degrees";
+                    : FormattableString.Invariant($"{(deg > 0 ? "Left" : "Right")} {Math.Abs(deg):0.0} degrees");
                 return true;
             }
             // Weight panel fields — show in the pilot's selected unit (kg/lb), the
@@ -433,7 +433,7 @@ public partial class FlyByWireA380Definition
                 // pilot enters it on the MFD PERF T.O page.
                 var w = new Arinc429Word(value);
                 if (!(w.IsNormalOperation || w.IsFunctionalTest)) { displayText = "Not computed"; return true; }
-                displayText = $"{w.Value:0.0} percent";
+                displayText = FormattableString.Invariant($"{w.Value:0.0} percent");
                 return true;
             }
             case "ELEVATOR_TRIM":
@@ -619,11 +619,11 @@ public partial class FlyByWireA380Definition
                 {
                     "Thrust rating: " + thrMode,
                     "Thrust limit: " + string.Join(", ", engs.Select(ThrPct)),
-                    "N1: "          + Grp("A32NX_ENGINE_N1:{0}",  v => $"{v:0.0}%"),
-                    "N1 command: "  + Grp("A32NX_AUTOTHRUST_N1_COMMANDED:{0}", v => $"{v:0.0}%"),
+                    "N1: "          + Grp("A32NX_ENGINE_N1:{0}",  v => FormattableString.Invariant($"{v:0.0}%")),
+                    "N1 command: "  + Grp("A32NX_AUTOTHRUST_N1_COMMANDED:{0}", v => FormattableString.Invariant($"{v:0.0}%")),
                     "EGT: "         + Grp("A32NX_ENGINE_EGT:{0}", v => $"{v:0}°C"),
-                    "N2: "          + Grp("A32NX_ENGINE_N2:{0}",  v => $"{v:0.0}%"),
-                    "N3: "          + Grp("A32NX_ENGINE_N3:{0}",  v => $"{v:0.0}%"),
+                    "N2: "          + Grp("A32NX_ENGINE_N2:{0}",  v => FormattableString.Invariant($"{v:0.0}%")),
+                    "N3: "          + Grp("A32NX_ENGINE_N3:{0}",  v => FormattableString.Invariant($"{v:0.0}%")),
                     "Fuel Flow: "   + Grp("A32NX_ENGINE_FF:{0}",  v => $"{v:0} kg/h"),
                     "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
                 };
@@ -783,11 +783,11 @@ public partial class FlyByWireA380Definition
     public List<(string label, string var, Func<double, string> fmt)> A380SdRows(int page)
     {
         string Pct(double v) => $"{v:0} %";
-        string Pct1(double v) => $"{v:0.0} %";
+        string Pct1(double v) => FormattableString.Invariant($"{v:0.0} %");
         string V(double v) => $"{v:0} volts";
         string Psi(double v) => $"{v:0} psi";
         string C(double v) => $"{v:0} degrees";
-        string Qt(double v) => $"{v:0.0} quarts";
+        string Qt(double v) => FormattableString.Invariant($"{v:0.0} quarts");
         // Weight/fuel rows FOLLOW the metric toggle (WeightUser: kg or lb per the EFB
         // "US Units" setting) so the displays change unit automatically, like the
         // on-demand read-outs. Wt = plain kg in; AWt = ARINC429 kg word in.
@@ -807,7 +807,7 @@ public partial class FlyByWireA380Definition
         // negative garbage); the FBW page clamps negatives to 0, so mirror that.
         string OilP(double v) => v <= 0 ? "not available" : $"{v:0} psi";
         // ARINC429 decoder: payload + unit, or "not available" when the SSM isn't normal.
-        string A(double v, string unit, string fmt = "0") { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value.ToString(fmt)} {unit}" : "not available"; }
+        string A(double v, string unit, string fmt = "0") { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value.ToString(fmt, System.Globalization.CultureInfo.InvariantCulture)} {unit}" : "not available"; }
         // ARINC429 DISCRETE-word single-bit decoder (1-based bit, SSM-gated). For the CPIOM
         // VCS/TCS/AGS discrete words (cabin fans, cargo isolation, hot air, pack operative).
         Func<double, string> Bit(int bit, string set, string clr, bool invert = false)
@@ -825,7 +825,7 @@ public partial class FlyByWireA380Definition
             {
                 string name = b1Var.EndsWith("_B1") ? b1Var.Substring(0, b1Var.Length - 3) + sfx : b1Var;
                 double? cv = _sdRender?.GetCachedVariableValue(name);
-                if (cv.HasValue) { var w = new SimConnect.Arinc429Word(cv.Value); if (w.IsNormalOperation || w.IsFunctionalTest) return $"{w.Value.ToString(fmt)} {unit}"; }
+                if (cv.HasValue) { var w = new SimConnect.Arinc429Word(cv.Value); if (w.IsNormalOperation || w.IsFunctionalTest) return $"{w.Value.ToString(fmt, System.Globalization.CultureInfo.InvariantCulture)} {unit}"; }
             }
             return "not available";
         };
@@ -847,7 +847,7 @@ public partial class FlyByWireA380Definition
                     r.Add(($"Engine {e} oil quantity", $"A32NX_ENGINE_OIL_QTY:{e}", Qt));
                     r.Add(($"Engine {e} oil temperature", $"GENERAL_ENG_OIL_TEMPERATURE:{e}", C));
                     r.Add(($"Engine {e} oil pressure", $"ENG_OIL_PRESSURE:{e}", OilP));
-                    r.Add(($"Engine {e} vibration", $"TURB_ENG_VIBRATION:{e}", v => $"{v:0.0}"));
+                    r.Add(($"Engine {e} vibration", $"TURB_ENG_VIBRATION:{e}", v => FormattableString.Invariant($"{v:0.0}")));
                     // Starter (cranking) valve — open while motoring/starting the engine.
                     r.Add(($"Engine {e} starter valve", $"A32NX_PNEU_ENG_{e}_STARTER_VALVE_OPEN", OpenShut));
                     // Nacelle temperature — the FBW ENG page hardcodes 240°C (not yet modelled);
@@ -907,11 +907,11 @@ public partial class FlyByWireA380Definition
                     for (int c = 1; c <= 2; c++) r.Add(($"Pack {f} FDAC channel {c}", $"A32NX_COND_FDAC_{f}_CHANNEL_{c}_FAILURE", v => Flag(v, "failed", "normal")));
                 break;
             case 3: // COND (Air Conditioning)
-                r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", v => $"{v:0.0} degrees"));
-                for (int z = 1; z <= 8; z++) r.Add(($"Main deck zone {z} temp", $"A32NX_COND_MAIN_DECK_{z}_TEMP", v => $"{v:0.0} degrees"));
-                for (int z = 1; z <= 7; z++) r.Add(($"Upper deck zone {z} temp", $"A32NX_COND_UPPER_DECK_{z}_TEMP", v => $"{v:0.0} degrees"));
-                r.Add(("Forward cargo temp", "A32NX_COND_CARGO_FWD_TEMP", v => $"{v:0.0} degrees"));
-                r.Add(("Bulk cargo temp", "A32NX_COND_CARGO_BULK_TEMP", v => $"{v:0.0} degrees"));
+                r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", v => FormattableString.Invariant($"{v:0.0} degrees")));
+                for (int z = 1; z <= 8; z++) r.Add(($"Main deck zone {z} temp", $"A32NX_COND_MAIN_DECK_{z}_TEMP", v => FormattableString.Invariant($"{v:0.0} degrees")));
+                for (int z = 1; z <= 7; z++) r.Add(($"Upper deck zone {z} temp", $"A32NX_COND_UPPER_DECK_{z}_TEMP", v => FormattableString.Invariant($"{v:0.0} degrees")));
+                r.Add(("Forward cargo temp", "A32NX_COND_CARGO_FWD_TEMP", v => FormattableString.Invariant($"{v:0.0} degrees")));
+                r.Add(("Bulk cargo temp", "A32NX_COND_CARGO_BULK_TEMP", v => FormattableString.Invariant($"{v:0.0} degrees")));
                 r.Add(("Cabin air extract valve", "A32NX_VENT_OVERPRESSURE_RELIEF_VALVE_IS_OPEN", OpenShut));
                 r.Add(("Ram air valve", "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON", v => v > 0.5 ? "open" : "closed"));
                 // CPIOM VCS/TCS/AGS discrete-word states (cabin fans, cargo isolation, hot air,
@@ -1017,7 +1017,7 @@ public partial class FlyByWireA380Definition
                 // the pushbuttons use the ESS/APU names.
                 foreach (var (idx, name) in new[] { ("1", "1"), ("2", "2"), ("3", "ESS"), ("4", "APU") })
                 {
-                    r.Add(($"Battery {name} voltage", $"A32NX_ELEC_BAT_{idx}_POTENTIAL", v => $"{v:0.0} volts"));
+                    r.Add(($"Battery {name} voltage", $"A32NX_ELEC_BAT_{idx}_POTENTIAL", v => FormattableString.Invariant($"{v:0.0} volts")));
                     r.Add(($"Battery {name} current", $"A32NX_ELEC_BAT_{idx}_CURRENT", v => $"{v:0} amps"));
                     // Charge direction from the current sign (positive = charging into the battery).
                     r.Add(($"Battery {name} status", $"A32NX_ELEC_BAT_{idx}_CURRENT", v => Math.Abs(v) < 1 ? "idle" : v > 0 ? "charging" : "discharging"));
@@ -1101,7 +1101,7 @@ public partial class FlyByWireA380Definition
                     string s = sys[0] == 'G' ? "Green" : "Yellow";
                     r.Add(($"{s} pressure", $"A32NX_HYD_{sys}_SYSTEM_1_SECTION_PRESSURE", Psi));
                     r.Add(($"{s} system pressurised", $"A32NX_HYD_{sys}_SYSTEM_1_SECTION_PRESSURE_SWITCH", v => Flag(v, "yes", "no")));
-                    r.Add(($"{s} reservoir level", $"A32NX_HYD_{sys}_RESERVOIR_LEVEL", v => $"{v:0.0} gallons"));
+                    r.Add(($"{s} reservoir level", $"A32NX_HYD_{sys}_RESERVOIR_LEVEL", v => FormattableString.Invariant($"{v:0.0} gallons")));
                     r.Add(($"{s} reservoir low", $"A32NX_HYD_{sys}_RESERVOIR_LEVEL_IS_LOW", v => Flag(v, "LOW", "normal")));
                     r.Add(($"{s} reservoir overheat", $"A32NX_HYD_{sys}_RESERVOIR_OVHT", v => Flag(v, "OVERHEAT", "normal")));
                     r.Add(($"{s} reservoir air pressure low", $"A32NX_HYD_{sys}_RESERVOIR_AIR_PRESSURE_IS_LOW", v => Flag(v, "LOW", "normal")));
@@ -1163,12 +1163,12 @@ public partial class FlyByWireA380Definition
                         if (!w3.IsNormalOperation && !w3.IsFunctionalTest) return "not available";
                         w = w3;
                     }
-                    return Math.Abs(w.Value) < 0.05 ? "Neutral" : $"{Math.Abs(w.Value):0.0} degrees {(w.Value > 0 ? "left" : "right")}";
+                    return Math.Abs(w.Value) < 0.05 ? "Neutral" : FormattableString.Invariant($"{Math.Abs(w.Value):0.0} degrees {(w.Value > 0 ? "left" : "right")}");
                 }));
                 r.Add(("Speed brake handle", "A32NX_SPOILERS_HANDLE_POSITION", v => $"{v * 100:0} %"));
                 r.Add(("Ground spoilers armed", "A32NX_SPOILERS_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
-                r.Add(("Flaps angle", "A32NX_LEFT_FLAPS_ANGLE", v => $"{v:0.0} degrees"));
-                r.Add(("Slats angle", "A32NX_LEFT_SLATS_ANGLE", v => $"{v:0.0} degrees"));
+                r.Add(("Flaps angle", "A32NX_LEFT_FLAPS_ANGLE", v => FormattableString.Invariant($"{v:0.0} degrees")));
+                r.Add(("Slats angle", "A32NX_LEFT_SLATS_ANGLE", v => FormattableString.Invariant($"{v:0.0} degrees")));
                 break;
             case 13: // CRUISE — fuel + cabin summary
                 for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel flow", $"A32NX_ENGINE_FF:{e}", Kgh));
@@ -1181,9 +1181,9 @@ public partial class FlyByWireA380Definition
                     var w = new SimConnect.Arinc429Word(v);
                     return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet" : "not set (auto)";
                 }));
-                r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", v => $"{v:0.0} degrees"));
-                r.Add(("Forward cargo temp", "A32NX_COND_CARGO_FWD_TEMP", v => $"{v:0.0} degrees"));
-                r.Add(("Bulk cargo temp", "A32NX_COND_CARGO_BULK_TEMP", v => $"{v:0.0} degrees"));
+                r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", v => FormattableString.Invariant($"{v:0.0} degrees")));
+                r.Add(("Forward cargo temp", "A32NX_COND_CARGO_FWD_TEMP", v => FormattableString.Invariant($"{v:0.0} degrees")));
+                r.Add(("Bulk cargo temp", "A32NX_COND_CARGO_BULK_TEMP", v => FormattableString.Invariant($"{v:0.0} degrees")));
                 break;
         }
         return r;
@@ -1285,11 +1285,11 @@ public partial class FlyByWireA380Definition
         {
             "Thrust rating: " + thrMode,
             "Thrust limit: " + string.Join(", ", engs.Select(ThrPct)),
-            "N1: "          + Grp("A32NX_ENGINE_N1:{0}",  v => $"{v:0.0}%"),
-            "N1 command: "  + Grp("A32NX_AUTOTHRUST_N1_COMMANDED:{0}", v => $"{v:0.0}%"),
+            "N1: "          + Grp("A32NX_ENGINE_N1:{0}",  v => FormattableString.Invariant($"{v:0.0}%")),
+            "N1 command: "  + Grp("A32NX_AUTOTHRUST_N1_COMMANDED:{0}", v => FormattableString.Invariant($"{v:0.0}%")),
             "EGT: "         + Grp("A32NX_ENGINE_EGT:{0}", v => $"{v:0}°C"),
-            "N2: "          + Grp("A32NX_ENGINE_N2:{0}",  v => $"{v:0.0}%"),
-            "N3: "          + Grp("A32NX_ENGINE_N3:{0}",  v => $"{v:0.0}%"),
+            "N2: "          + Grp("A32NX_ENGINE_N2:{0}",  v => FormattableString.Invariant($"{v:0.0}%")),
+            "N3: "          + Grp("A32NX_ENGINE_N3:{0}",  v => FormattableString.Invariant($"{v:0.0}%")),
             "Fuel Flow: "   + Grp("A32NX_ENGINE_FF:{0}",  v => $"{v:0} kg/h"),
             "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
         };
