@@ -634,19 +634,22 @@ public static class WeatherService
 
     // ── URL builders ─────────────────────────────────────────────────────────
 
-    private static string BuildBbox(double lat, double lon, double rangeNm)
+    // Both go into a web address: a decimal point whatever the PC's regional settings. Under a comma-decimal
+    // culture the box was eight numbers ("11,25,48,10,…") and the winds address "latitude=48,3538", which the
+    // services refuse or misread.
+    internal static string BuildBbox(double lat, double lon, double rangeNm)
     {
         double dLat = rangeNm / 60.0;
         double dLon = rangeNm / (60.0 * Math.Cos(lat * Math.PI / 180.0));
-        return $"{lon - dLon:F2},{lat - dLat:F2},{lon + dLon:F2},{lat + dLat:F2}";
+        return FormattableString.Invariant($"{lon - dLon:F2},{lat - dLat:F2},{lon + dLon:F2},{lat + dLat:F2}");
     }
 
-    private static string BuildWindsUrl(double lat, double lon)
+    internal static string BuildWindsUrl(double lat, double lon)
     {
         var levelParams = WindPressureLevels
             .SelectMany(p => new[] { $"wind_speed_{p}hPa", $"wind_direction_{p}hPa" });
         string fields = string.Join(",", levelParams);
-        return $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}" +
+        return FormattableString.Invariant($"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}") +
                $"&hourly={fields}&wind_speed_unit=kn&forecast_days=1&timezone=UTC";
     }
 
@@ -739,8 +742,8 @@ public static class WeatherService
     /// <summary>Converts FL050-FL180 / SFC-FL050 to "5,000 ft to 18,000 ft" etc.</summary>
     public static string DecodeAltitudeRange(int lowFt, int highFt)
     {
-        string low  = lowFt  <= 0 ? "surface"         : $"{lowFt:N0} ft";
-        string high = highFt <= 0 ? "unlimited"        : $"{highFt:N0} ft";
+        string low  = lowFt  <= 0 ? "surface"         : FormattableString.Invariant($"{lowFt:N0} ft");
+        string high = highFt <= 0 ? "unlimited"        : FormattableString.Invariant($"{highFt:N0} ft");
         if (lowFt <= 0 && highFt <= 0) return "";
         return $"{low} to {high}";
     }
@@ -783,7 +786,7 @@ public static class WeatherService
         double visSm = visKm / 1.609344;
         sb.AppendLine(visKm >= 9.9
             ? "Visibility: 10+ km (6+ statute miles)"
-            : $"Visibility: {visKm:F1} km ({visSm:F1} statute miles)");
+            : FormattableString.Invariant($"Visibility: {visKm:F1} km ({visSm:F1} statute miles)"));
 
         sb.AppendLine($"Temperature: {w.Temperature:F0}°C");
         sb.AppendLine($"In cloud: {(w.InCloud >= 0.5 ? "Yes" : "No")}");
