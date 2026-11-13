@@ -1,0 +1,1 @@
+In the Fenix EFB on Fenix 3.0.0.7852, the new sim rate button in quick settings says the rate it is on, and stray characters no longer read beside the quick settings headings, the planned passenger boxes and the Landing wind figures. The Printer setting's drop-down says its name.
