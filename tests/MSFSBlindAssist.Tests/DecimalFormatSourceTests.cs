@@ -67,6 +67,7 @@ public class DecimalFormatSourceTests
     [InlineData("var c = '\"'; var s = $\"{value:F0}\";")]
     [InlineData("var s = Inv($\"{nm:0.0} miles\");")]
     [InlineData("string tmp = $\"{cache}.{Guid.NewGuid():N}.tmp\";")]
+    [InlineData("var s = string.Create(inv, $\"{count:N0} places\");")]
     public void An_invariant_or_logged_or_whole_number_format_is_left_alone(string code) => Assert.Empty(Scan(code));
 
     [Fact]
@@ -274,8 +275,12 @@ internal static class DecimalFormatScan
                 if (LogCallees.Contains(last) || InvariantCallees.Contains(name) || InvariantCallees.Contains(last)) return;
                 // A formatting call handed the invariant culture before the string. Only a formatting call: any other
                 // call around the string may mention the culture for a reason of its own (a parse two lines up).
-                if (CultureTakingCallees.Contains(last)
-                    && _s.AsSpan(open, start - open).Contains("InvariantCulture", StringComparison.Ordinal)) return;
+                if (!CultureTakingCallees.Contains(last)) continue;
+                var before = _s.AsSpan(open + 1, start - open - 1);
+                if (before.Contains("InvariantCulture", StringComparison.Ordinal)) return;
+                // string.Create(inv, $"…") and string.Format(provider, "…"): a format provider handed in before the
+                // string, under whatever name, is a culture chosen on purpose.
+                if (last is "Create" or "Format" or "AppendFormat" && before.TrimEnd().EndsWith(",", StringComparison.Ordinal)) return;
             }
             int where = at < 0 ? start : at, line = 1;
             for (int j = 0; j < where; j++) if (_s[j] == '\n') line++;
