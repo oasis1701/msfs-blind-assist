@@ -517,7 +517,7 @@ public partial class FlyByWireA380Definition
         {
             string knob = varKey == "PRESS_MAN_ALT_SET" ? "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB" : "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB";
             simConnect.ExecuteCalculatorCode($"{value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} (>L:{knob})");
-            announcer.Announce($"Set to {value:0.0}");
+            announcer.Announce(FormattableString.Invariant($"Set to {value:0.0}"));
             return true;
         }
         // Cabin lighting (passenger-cabin brightness). Calc-path write (the reliable FBW
@@ -685,7 +685,7 @@ public partial class FlyByWireA380Definition
             }
             simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(hpa * 16.0));
             announcer.Announce(inHg
-                ? $"Altimeter set {hpa / 33.8639:0.00} inches"
+                ? FormattableString.Invariant($"Altimeter set {hpa / 33.8639:0.00} inches")
                 : $"Altimeter set {hpa:0} hectopascals");
             return true;
         }

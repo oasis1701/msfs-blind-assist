@@ -55,7 +55,7 @@ public class WaypointFix
     {
         if (DistanceFromAircraft.HasValue && BearingFromAircraft.HasValue)
         {
-            return $"{Ident} - {DistanceFromAircraft.Value:F1} NM, {BearingFromAircraft.Value:F0}°";
+            return FormattableString.Invariant($"{Ident} - {DistanceFromAircraft.Value:F1} NM, {BearingFromAircraft.Value:F0}°");
         }
         return Ident ?? "Unknown";
     }
@@ -68,7 +68,7 @@ public class WaypointFix
         var details = $"{Ident ?? "Unknown"}";
 
         if (DistanceFromAircraft.HasValue)
-            details += $", Distance {DistanceFromAircraft.Value:F1} nautical miles";
+            details += FormattableString.Invariant($", Distance {DistanceFromAircraft.Value:F1} nautical miles");
 
         if (BearingFromAircraft.HasValue)
             details += $", Bearing {BearingFromAircraft.Value:F0} degrees";

@@ -152,7 +152,7 @@ public class NavRadiosForm : Form
         if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out double v))
         {
-            Reject(box, $"{fieldName} must be a number between {FreqMin:0.00} and {FreqMax:0.00} megahertz");
+            Reject(box, FrequencyNotANumberMessage(fieldName));
             return false;
         }
         if (v >= 1000) v /= 100.0;          // "11030" -> 110.30
@@ -160,12 +160,21 @@ public class NavRadiosForm : Form
         v = Math.Round(v / 0.05) * 0.05;
         if (v < FreqMin || v > FreqMax)
         {
-            Reject(box, $"{fieldName} must be between {FreqMin:0.00} and {FreqMax:0.00} megahertz");
+            Reject(box, FrequencyOutOfRangeMessage(fieldName));
             return false;
         }
         mhz = v;
         return true;
     }
+
+    /// <summary>What a frequency field says when what was typed is no number. The band's limits are spoken with a
+    /// decimal point whatever the PC's regional settings, as the fields show them.</summary>
+    internal static string FrequencyNotANumberMessage(string fieldName) =>
+        FormattableString.Invariant($"{fieldName} must be a number between {FreqMin:0.00} and {FreqMax:0.00} megahertz");
+
+    /// <summary>What a frequency field says when the number typed is outside the VOR and ILS band.</summary>
+    internal static string FrequencyOutOfRangeMessage(string fieldName) =>
+        FormattableString.Invariant($"{fieldName} must be between {FreqMin:0.00} and {FreqMax:0.00} megahertz");
 
     private bool TryParseCourse(TextBox box, string fieldName, out int course)
     {

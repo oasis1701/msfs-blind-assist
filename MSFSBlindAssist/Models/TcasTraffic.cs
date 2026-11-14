@@ -45,7 +45,7 @@ public class TcasTraffic
     private string FormatRelativePosition(bool includeAltitude)
     {
         string distStr = DistanceNm < 10.0
-            ? $"{DistanceNm:F1}nm"
+            ? FormattableString.Invariant($"{DistanceNm:F1}nm")
             : $"{(int)Math.Round(DistanceNm)}nm";
 
         string posStr = $"{ClockPosition} o'clock";
@@ -57,8 +57,8 @@ public class TcasTraffic
         string altStr = altDiff < 200
             ? "same altitude"
             : AltitudeDiffFt > 0
-                ? $"{altDiff:N0}ft above"
-                : $"{altDiff:N0}ft below";
+                ? FormattableString.Invariant($"{altDiff:N0}ft above")
+                : FormattableString.Invariant($"{altDiff:N0}ft below");
 
         return $"{distStr}, {altStr}, {posStr}";
     }

@@ -886,8 +886,8 @@ public class VisualGuidanceManager : IDisposable
             {
                 // Format distance to final (1 decimal place)
                 string distanceText = crossTrackError < 1.0
-                    ? $"{crossTrackError:F1} mile"
-                    : $"{crossTrackError:F1} miles";
+                    ? FormattableString.Invariant($"{crossTrackError:F1} mile")
+                    : FormattableString.Invariant($"{crossTrackError:F1} miles");
 
                 AnnouncePhaseChange($"Intercepting final, {distanceText} to final");
             }
@@ -1669,7 +1669,7 @@ public class VisualGuidanceManager : IDisposable
             // Determine direction (positive = right, negative = left)
             string direction = signedCrossTrack > 0 ? "right" : "left";
 
-            announcement = $"{roundedDistance:F1} nm {direction} of center";
+            announcement = FormattableString.Invariant($"{roundedDistance:F1} nm {direction} of center");
         }
 
         // Only announce if changed from last announcement

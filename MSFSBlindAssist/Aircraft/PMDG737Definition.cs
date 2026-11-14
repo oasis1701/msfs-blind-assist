@@ -5569,7 +5569,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // -------------------------------------------------------------
             case "MCP_IASMach":
                 if (value < 10)
-                    announcer.Announce($"{McpPrefix}Mach {value:F2}");
+                    announcer.Announce(FormattableString.Invariant($"{McpPrefix}Mach {value:F2}"));
                 else
                     announcer.Announce($"{McpPrefix}speed {(int)Math.Round(value)} knots");
                 return true;
@@ -5824,7 +5824,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom1Active) < 0.0001) return true;
                 _lastCom1Active = value;
-                announcer.Announce($"COM1 active {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM1 active {value:F3}"));
                 return true;
 
             case "COM2_ActiveFreq":
@@ -5835,7 +5835,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom2Active) < 0.0001) return true;
                 _lastCom2Active = value;
-                announcer.Announce($"COM2 active {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM2 active {value:F3}"));
                 return true;
 
             case "COM_STANDBY_FREQUENCY_SET:1":
@@ -5846,7 +5846,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom1Standby) < 0.0001) return true;
                 _lastCom1Standby = value;
-                announcer.Announce($"COM1 standby {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM1 standby {value:F3}"));
                 return true;
 
             case "COM_STANDBY_FREQUENCY_SET:2":
@@ -5857,7 +5857,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom2Standby) < 0.0001) return true;
                 _lastCom2Standby = value;
-                announcer.Announce($"COM2 standby {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM2 standby {value:F3}"));
                 return true;
 
             // -------------------------------------------------------------
@@ -5987,7 +5987,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             return $"{v.DisplayName}: {description}";
         if (v.ValueDescriptions.Count > 0 && v.OnlyAnnounceValueDescriptionMatches)
             return null;
-        return $"{v.DisplayName}: {value}";
+        return FormattableString.Invariant($"{v.DisplayName}: {value}");
     }
 
     /// <summary>
@@ -6089,7 +6089,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 {
                     float speed = (float)dm.GetFieldValue("MCP_IASMach");
                     string speedText = speed < 10f
-                        ? $"Mach {speed:F2}"
+                        ? FormattableString.Invariant($"Mach {speed:F2}")
                         : $"Speed {(int)Math.Round(speed)} knots";
                     string speedMode = "";
                     if ((int)dm.GetFieldValue("MCP_annunLVL_CHG") > 0) speedMode = ", LVL CHG";
@@ -6424,7 +6424,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
         float speed = (float)dm.GetFieldValue("MCP_IASMach");
         string speedText = speed < 10f
-            ? $"Mach {speed:F2}"
+            ? FormattableString.Invariant($"Mach {speed:F2}")
             : $"Speed {(int)Math.Round(speed)} knots";
         announcer.AnnounceImmediate(speedText);
     }
@@ -7591,7 +7591,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
     // "Altimeter: <hpa>, <inHg>": the callout, the B readout and Ctrl+B's STD check say it alike.
     private static string AltimeterValuePhrase(double inHg)
-        => $"Altimeter: {(int)Math.Round(inHg * Pmdg737Baro.HpaPerInHg)}, {inHg:0.00}";
+        => FormattableString.Invariant($"Altimeter: {(int)Math.Round(inHg * Pmdg737Baro.HpaPerInHg)}, {inHg:0.00}");
 
     // The captain's baro knob, or null when the event map lacks its turn or its STD push.
     private CaptainBaroKnob? CaptainKnob(SimConnect.SimConnectManager simConnect)
@@ -7733,9 +7733,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                         simConnect.SendEvent("VOR1_SET", (uint)settings.Nav1Course);
                         simConnect.SendEvent("NAV2_RADIO_SET_HZ", (uint)Math.Round(settings.Nav2FreqMHz * 1_000_000.0));
                         simConnect.SendEvent("VOR2_SET", (uint)settings.Nav2Course);
-                        announcer.AnnounceImmediate(
-                            $"NAV 1 {settings.Nav1FreqMHz:0.00}, course {settings.Nav1Course}. " +
-                            $"NAV 2 {settings.Nav2FreqMHz:0.00}, course {settings.Nav2Course}.");
+                        announcer.AnnounceImmediate(NavRadiosSetMessage(settings));
                     });
                 form.Show(parentForm);
             }
@@ -7745,4 +7743,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             else Open();
         });
     }
+
+    /// <summary>What the NAV Radios dialog says once it has set both radios. A frequency is spoken with a decimal
+    /// point whatever the PC's regional settings (it said "110,30" under a comma-decimal culture).</summary>
+    internal static string NavRadiosSetMessage(NavRadioSettings settings) => FormattableString.Invariant(
+        $"NAV 1 {settings.Nav1FreqMHz:0.00}, course {settings.Nav1Course}. NAV 2 {settings.Nav2FreqMHz:0.00}, course {settings.Nav2Course}.");
 }

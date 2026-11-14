@@ -259,7 +259,7 @@ internal static class FcuValuePhrases
     /// less) is the FCU publishing nothing — never "mach 0.00".</summary>
     public static string SpeedReadout(double value, string status) =>
         value <= 0 ? NotAvailableReadout("speed")
-        : value < 10 ? $"FCU speed mach {value:0.00}, {status}"
+        : value < 10 ? FormattableString.Invariant($"FCU speed mach {value:0.00}, {status}")
         : $"FCU speed {value:000} knots, {status}";
 
     /// <summary>The Shift+V readout while the V/S (or FPA) window shows dashes.</summary>
@@ -276,7 +276,7 @@ internal static class FcuValuePhrases
     {
         if (shim < 0) return null;
         if (shim == 0) return Unavailable;
-        return shim < 10 ? $"Mach {shim:F2}" : $"Speed {Math.Round(shim):0} knots";
+        return shim < 10 ? FormattableString.Invariant($"Mach {shim:F2}") : $"Speed {Math.Round(shim):0} knots";
     }
 
     /// <summary>The FCU altitude, already in the unit the pilot reads it in.</summary>
@@ -313,7 +313,7 @@ internal static class FcuValuePhrases
         if (!word.IsNormalOperation) return WordWithoutSelection(word);
         double degrees = Math.Round(word.Value, 1);
         if (degrees == 0) degrees = 0;   // -0.0 would otherwise format as "-0.0"
-        return $"FPA {degrees:0.0} degrees";
+        return FormattableString.Invariant($"FPA {degrees:0.0} degrees");
     }
 
     /// <summary>A word that is not Normal Operation: No Computed Data is the window showing no

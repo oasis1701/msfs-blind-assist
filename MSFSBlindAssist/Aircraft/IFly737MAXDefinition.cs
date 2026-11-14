@@ -1764,7 +1764,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     private static string AltimeterPhrase(double inHg) =>
         Math.Abs(inHg - 29.92) < 0.005
             ? "Altimeter standard"
-            : $"Altimeter: {(int)Math.Round(inHg * 33.8639)}, {inHg:0.00}";
+            : FormattableString.Invariant($"Altimeter: {(int)Math.Round(inHg * 33.8639)}, {inHg:0.00}");
 
     // COM1/COM2 active/standby announce baselines (key = var key). Absent key =
     // baseline not yet seen; the first read after launch/reconnect stays silent.
@@ -2323,7 +2323,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 "COM2_ACTIVE_FREQ" => "COM2 active",
                 _ => "COM2 standby",
             };
-            announcer.Announce($"{comLabel} {value:F3}");
+            announcer.Announce(FormattableString.Invariant($"{comLabel} {value:F3}"));
             return true;
         }
 
@@ -2386,7 +2386,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 else
                     AnnounceWindow(varName, value == IFlySdkClient.SyntheticBlank
                         ? "MCP speed blank, FMC managed"
-                        : value < 10 ? $"MCP speed Mach {value:F2}" : $"MCP speed {value:F0}", announcer);
+                        : value < 10 ? FormattableString.Invariant($"MCP speed Mach {value:F2}") : $"MCP speed {value:F0}", announcer);
                 return true;
             case "SYN_MCP_HEADING":
                 if (value != IFlySdkClient.SyntheticBlank)

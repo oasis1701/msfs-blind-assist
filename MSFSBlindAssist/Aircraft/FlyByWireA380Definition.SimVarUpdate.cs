@@ -234,7 +234,7 @@ public partial class FlyByWireA380Definition
             _comActiveFreq[ch] = value;
             if (plausible && changed && prev > 0
                 && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
-                announcer.Announce($"VHF {ch} active {value:0.000}");
+                announcer.Announce(FormattableString.Invariant($"VHF {ch} active {value:0.000}"));
             return true;
         }
         if (varName.StartsWith("COM_STANDBY_", StringComparison.Ordinal))
@@ -245,7 +245,7 @@ public partial class FlyByWireA380Definition
             _comStandbyFreq[ch] = value;
             if (plausible && changed && prev > 0
                 && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
-                announcer.Announce($"VHF {ch} standby {value:0.000}");
+                announcer.Announce(FormattableString.Invariant($"VHF {ch} standby {value:0.000}"));
             return true;
         }
         // Transponder squawk auto-announce: TRANSPONDER CODE:1 reads a BCD16 word; decode (same as
@@ -273,7 +273,7 @@ public partial class FlyByWireA380Definition
             _rmpActiveFreq[ch] = value;
             if (plausible && changed && prev != 0
                 && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
-                announcer.Announce($"VHF {ch} active {mhz:0.000}");
+                announcer.Announce(FormattableString.Invariant($"VHF {ch} active {mhz:0.000}"));
             return true;
         }
 
@@ -864,7 +864,7 @@ public partial class FlyByWireA380Definition
         if (_reqBaro && varName == "KOHLSMAN_HG")
         {
             _reqBaro = false;
-            announcer.AnnounceImmediate($"Altimeter {value * 33.8639:0} hectopascals, {value:0.00} inches");
+            announcer.AnnounceImmediate(FormattableString.Invariant($"Altimeter {value * 33.8639:0} hectopascals, {value:0.00} inches"));
             return true;
         }
         // Weight-unit selection (kg/lb) mirror of the EFB "US Units" toggle. Seed
@@ -1013,7 +1013,7 @@ public partial class FlyByWireA380Definition
                     FcuWindowState.Unavailable => FcuValuePhrases.NotAvailableReadout("vertical speed"),
                     FcuWindowState.Dashes => FcuValuePhrases.ManagedVerticalReadout(fpaMode),
                     _ => fpaMode
-                        ? $"FCU flight path angle {_pFpaVal!.Value:0.0} degrees"
+                        ? FormattableString.Invariant($"FCU flight path angle {_pFpaVal!.Value:0.0} degrees")
                         : $"FCU vertical speed {_pVsVal!.Value:0} feet per minute",
                 };
                 announcer.AnnounceImmediate(spoken);

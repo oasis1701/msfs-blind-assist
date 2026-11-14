@@ -102,7 +102,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             FcuWindowState.Unavailable => FcuValuePhrases.NotAvailableReadout("vertical speed"),
             FcuWindowState.Dashes => FcuValuePhrases.ManagedVerticalReadout(fpaMode),
             _ => fpaMode
-                ? $"FCU FPA {displayValue:+0.0;-0.0;0.0} degrees"
+                ? FormattableString.Invariant($"FCU FPA {displayValue:+0.0;-0.0;0.0} degrees")
                 : $"FCU VS {displayValue:+0;-0;0} feet per minute",
         };
     }
@@ -6587,7 +6587,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
                 }
                 announcer.AnnounceImmediate(baroMode == 0
                     ? "Altimeter standard"
-                    : $"Altimeter: {baroHpa:F0}, {inchesOut:F2}");
+                    : FormattableString.Invariant($"Altimeter: {baroHpa:F0}, {inchesOut:F2}"));
                 return true;
             }
             // Ctrl+W (output): ND TO-waypoint name/distance/bearing via SimVars (no Coherent — see NdWaypointReadout).
@@ -6983,7 +6983,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         if (mode == 2)
         {
             double inches = (inUnit >= 22 && inUnit <= 33) ? inUnit : hpa * HpaToInHg;
-            return $"Altimeter {inches:F2} inches";
+            return FormattableString.Invariant($"Altimeter {inches:F2} inches");
         }
         double hpaVal = (inUnit >= 745 && inUnit <= 1100) ? inUnit : hpa;
         return $"Altimeter {hpaVal:F0} hectopascals";
@@ -7238,7 +7238,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             return $"{v:0} feet";
         }
-        string Lvl(double v) => $"{v:0.0} gal";
+        string Lvl(double v) => FormattableString.Invariant($"{v:0.0} gal");
         string OnOff(double v) => v > 0.5 ? "powered" : "not powered";
         string OpenShut(double v) => v > 0.5 ? "open" : "closed";
         string YesNo(double v) => v > 0.5 ? "yes" : "no";
@@ -7292,7 +7292,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             // the SD showing XX).
             string FtAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet" : "not available"; }
             string FpmAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet per minute" : "not available"; }
-            string PsiAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0.0} psi" : "not available"; }
+            string PsiAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? FormattableString.Invariant($"{w.Value:0.0} psi") : "not available"; }
             // Select the ACTIVE CPC: CPC 1's discrete word bit 11 set = CPC 1 active, else CPC 2.
             // On the auto-register pass (cache == null) default to CPC 1 and emit the CPC 2
             // candidates as hidden registration rows.
@@ -7316,7 +7316,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 r.Add(("Cabin altitude (manual mode)", "A32NX_PRESS_MAN_CABIN_ALTITUDE", v => $"{v:0} feet"));
                 r.Add(("Cabin vertical speed (manual mode)", "A32NX_PRESS_MAN_CABIN_VS", v => $"{v:0} feet per minute"));
-                r.Add(("Differential pressure (manual mode)", "A32NX_PRESS_MAN_CABIN_DELTA_PRESSURE", v => $"{v:0.0} psi"));
+                r.Add(("Differential pressure (manual mode)", "A32NX_PRESS_MAN_CABIN_DELTA_PRESSURE", v => FormattableString.Invariant($"{v:0.0} psi")));
                 r.Add(("Outflow valve (manual mode)", "A32NX_PRESS_MAN_OUTFLOW_VALVE_OPEN_PERCENTAGE", v => $"{v:0} %"));
             }
             r.Add(("Safety valve", "A32NX_PRESS_SAFETY_VALVE_OPEN_PERCENTAGE", Pct));
@@ -7530,7 +7530,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         else if (page == 10) // ENGINE — oil + vibration + igniters (N1/N2/EGT/FF are on the E/WD)
         {
-            string Vib(double v) => $"{v:0.0}";
+            string Vib(double v) => FormattableString.Invariant($"{v:0.0}");
             string IgOnOff(double v) => v > 0.5 ? "on" : "off";
             r.Add(("Engine 1 oil quantity", "ENG_OIL_QUANTITY:1", Pct));
             r.Add(("Engine 1 oil temperature", "GENERAL_ENG_OIL_TEMPERATURE:1", C));
@@ -7555,7 +7555,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
                 var w = new SimConnect.Arinc429Word(v);
                 if (!(w.IsNormalOperation || w.IsFunctionalTest)) return "not available";
                 double d = w.Value;
-                return Math.Abs(d) < 0.1 ? "neutral" : $"{Math.Abs(d):0.0} degrees {(d > 0 ? pos : neg)}";
+                return Math.Abs(d) < 0.1 ? "neutral" : FormattableString.Invariant($"{Math.Abs(d):0.0} degrees {(d > 0 ? pos : neg)}");
             }
             // THS: FBW shows DN for positive (nose-down trim), UP for negative.
             r.Add(("Pitch trim, THS", "A32NX_FCDC_1_ELEVATOR_TRIM_POS", v => ArDeg(v, "nose down", "nose up")));
@@ -7565,7 +7565,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Right aileron", "A32NX_FCDC_1_AILERON_RIGHT_POS", v => ArDeg(v, "down", "up")));
             // Rudder deflection is a plain percent L:var (±100% ≈ ±25°); positive = right.
             r.Add(("Rudder", "A32NX_HYD_RUDDER_DEFLECTION",
-                v => Math.Abs(v) < 0.5 ? "neutral" : $"{Math.Abs(v * 0.25):0.0} degrees {(v > 0 ? "right" : "left")}"));
+                v => Math.Abs(v) < 0.5 ? "neutral" : FormattableString.Invariant($"{Math.Abs(v * 0.25):0.0} degrees {(v > 0 ? "right" : "left")}")));
             // Rudder trim ARINC word, positive = nose-left (matches the FCC-panel decode).
             // Pick the active FAC: use FAC 1 unless its discrete word 2 is invalid (then FAC 2).
             // On the auto-register pass (cache == null) default to FAC 1 and register FAC 2.
@@ -7661,10 +7661,10 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 "Thrust rating: " + thrMode,
                 "Thrust limit: "  + thrLimStr,
-                "N1: "          + Grp("A32NX_ENGINE_N1:{0}",  v => $"{v:0.0}%"),
-                "N1 command: "  + Grp("A32NX_AUTOTHRUST_N1_COMMANDED:{0}", v => $"{v:0.0}%"),
+                "N1: "          + Grp("A32NX_ENGINE_N1:{0}",  v => FormattableString.Invariant($"{v:0.0}%")),
+                "N1 command: "  + Grp("A32NX_AUTOTHRUST_N1_COMMANDED:{0}", v => FormattableString.Invariant($"{v:0.0}%")),
                 "EGT: "         + Grp("A32NX_ENGINE_EGT:{0}", v => $"{v:0}°C"),
-                "N2: "          + Grp("A32NX_ENGINE_N2:{0}",  v => $"{v:0.0}%"),
+                "N2: "          + Grp("A32NX_ENGINE_N2:{0}",  v => FormattableString.Invariant($"{v:0.0}%")),
                 "Fuel Flow: "   + Grp("A32NX_ENGINE_FF:{0}",  v => $"{v:0} kg/h"),
                 "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
                 "Fuel on board: " + fobStr,
@@ -7835,7 +7835,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey.StartsWith("COM_ACTIVE_FREQUENCY:", StringComparison.Ordinal)
             || varKey.StartsWith("COM_STANDBY_FREQUENCY:", StringComparison.Ordinal))
         {
-            displayText = $"{value / 1000.0:F3}";
+            displayText = FormattableString.Invariant($"{value / 1000.0:F3}");
             return true;
         }
         // Wiper position readout (backed on the circuit-switch var, but the OFF/SLOW/FAST
@@ -7866,12 +7866,12 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // VOR in MHz, ADF in kHz; out-of-band (0) = not tuned. Mirrors the A380.
         if (varKey == "ND_VOR1_FREQ" || varKey == "ND_VOR2_FREQ")
         {
-            displayText = value >= 108.0 && value <= 118.0 ? $"{value:0.00} MHz" : "--- (not tuned)";
+            displayText = value >= 108.0 && value <= 118.0 ? FormattableString.Invariant($"{value:0.00} MHz") : "--- (not tuned)";
             return true;
         }
         if (varKey == "ND_ADF1_FREQ" || varKey == "ND_ADF2_FREQ")
         {
-            displayText = value >= 150.0 && value <= 1800.0 ? $"{value:0.0} kHz" : "--- (not tuned)";
+            displayText = value >= 150.0 && value <= 1800.0 ? FormattableString.Invariant($"{value:0.0} kHz") : "--- (not tuned)";
             return true;
         }
         // Predicted takeoff pitch trim ("Not computed" until the FMS has perf
@@ -7885,7 +7885,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             double deg = w.Value;
             displayText = Math.Abs(deg) < 0.05
                 ? "Neutral"
-                : $"{Math.Abs(deg):0.0} degrees {(deg < 0 ? "up" : "down")}";
+                : FormattableString.Invariant($"{Math.Abs(deg):0.0} degrees {(deg < 0 ? "up" : "down")}");
             return true;
         }
 
@@ -7901,7 +7901,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 double dots = (s?.GetCachedVariableValue("A32NX_RADIO_RECEIVER_GS_DEVIATION") ?? 0) / 0.4;
                 displayText = Math.Abs(dots) < 0.05 ? "on the glideslope"
-                    : $"{Math.Abs(dots):0.0} dots {(dots > 0 ? "above" : "below")} glideslope";
+                    : FormattableString.Invariant($"{Math.Abs(dots):0.0} dots {(dots > 0 ? "above" : "below")} glideslope");
             }
             else if (value > 0.5)
             {
@@ -7938,7 +7938,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             if (!(w.IsNormalOperation || w.IsFunctionalTest)) { displayText = "Not available"; return true; }
             double deg = w.Value;
             displayText = Math.Abs(deg) < 0.1 ? "Neutral"
-                : $"{(deg > 0 ? "Left" : "Right")} {Math.Abs(deg):0.0} degrees";
+                : FormattableString.Invariant($"{(deg > 0 ? "Left" : "Right")} {Math.Abs(deg):0.0} degrees");
             return true;
         }
         // Nosewheel steering angle: 0.5 = centred, (v-0.5)*140 = degrees (±70° authority).
@@ -7986,14 +7986,14 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             double deg = value * 180.0 / Math.PI;   // SimConnect: positive = nose DOWN
             displayText = Math.Abs(deg) < 0.5 ? "Level"
-                : $"{Math.Abs(deg):F1} degrees {(deg < 0 ? "up" : "down")}";
+                : FormattableString.Invariant($"{Math.Abs(deg):F1} degrees {(deg < 0 ? "up" : "down")}");
             return true;
         }
         if (varKey == "PLANE_BANK_DEGREES")
         {
             double deg = value * 180.0 / Math.PI;   // SimConnect: positive = bank LEFT
             displayText = Math.Abs(deg) < 0.5 ? "Wings level"
-                : $"{Math.Abs(deg):F1} degrees {(deg > 0 ? "left" : "right")}";
+                : FormattableString.Invariant($"{Math.Abs(deg):F1} degrees {(deg > 0 ? "left" : "right")}");
             return true;
         }
         if (varKey == "PLANE_HEADING_DEGREES_MAGNETIC")
@@ -8013,7 +8013,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         if (varKey == "A32NX_EFIS_L_TO_WPT_DISTANCE")
         {
-            displayText = value <= 0 ? "--" : $"{value:F1} NM";
+            displayText = value <= 0 ? "--" : FormattableString.Invariant($"{value:F1} NM");
             return true;
         }
         if (varKey == "A32NX_EFIS_L_TO_WPT_BEARING")
@@ -8036,12 +8036,12 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             // /1852 made it read ~0.00 NM always. Sign: + = right of track.
             double nm = value;
             displayText = Math.Abs(nm) < 0.01 ? "On track"
-                : $"{Math.Abs(nm):F2} NM {(nm > 0 ? "right" : "left")}";
+                : FormattableString.Invariant($"{Math.Abs(nm):F2} NM {(nm > 0 ? "right" : "left")}");
             return true;
         }
         if (varKey == "A32NX_RADIO_RECEIVER_LOC_DEVIATION" || varKey == "A32NX_RADIO_RECEIVER_GS_DEVIATION")
         {
-            displayText = $"{value:F2} degrees";
+            displayText = FormattableString.Invariant($"{value:F2} degrees");
             return true;
         }
         if (varKey == "A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS")
@@ -8102,7 +8102,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         // Preselected speed / Mach (set in the MCDU PERF page; -1 = none).
         if (varKey == "A32NX_SpeedPreselVal") { displayText = value < 0 ? "none" : $"{value:0} knots"; return true; }
-        if (varKey == "A32NX_MachPreselVal") { displayText = value < 0 ? "none" : $"{value:0.00}"; return true; }
+        if (varKey == "A32NX_MachPreselVal") { displayText = value < 0 ? "none" : FormattableString.Invariant($"{value:0.00}"); return true; }
         // Selected vertical speed (FCU V/S window; 0 = not selected / not in V/S).
         if (varKey == "A32NX_AUTOPILOT_VS_SELECTED")
         {
@@ -8141,12 +8141,12 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // ND tuned nav-radio frequencies / DME (stock simvars).
         if (varKey == "ND_VOR1_FREQ" || varKey == "ND_VOR2_FREQ")
         {
-            displayText = value > 1 ? $"{value:0.00} megahertz" : "not tuned";
+            displayText = value > 1 ? FormattableString.Invariant($"{value:0.00} megahertz") : "not tuned";
             return true;
         }
         if (varKey == "ND_VOR1_DME" || varKey == "ND_VOR2_DME")
         {
-            displayText = value > 0 ? $"{value:0.0} nautical miles" : "no DME";
+            displayText = value > 0 ? FormattableString.Invariant($"{value:0.0} nautical miles") : "no DME";
             return true;
         }
         if (varKey == "ND_ADF1_FREQ" || varKey == "ND_ADF2_FREQ")
@@ -8407,7 +8407,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 string com = varName.EndsWith(":2") ? "COM 2" : varName.EndsWith(":3") ? "COM 3" : "COM 1";
                 string kind = varName.Contains("ACTIVE") ? "active" : "standby";
-                announcer.Announce($"{com} {kind} {value / 1000.0:F3}");
+                announcer.Announce(FormattableString.Invariant($"{com} {kind} {value / 1000.0:F3}"));
             }
             return true;
         }
@@ -9046,7 +9046,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             int knob = (int)Math.Round((t - 18.0) / 12.0 * 300.0);
             string zone = varKey.Contains("CKPT") ? "CKPT" : varKey.Contains("FWD") ? "FWD" : "AFT";
             simConnect.ExecuteCalculatorCode($"{knob} (>L:A32NX_OVHD_COND_{zone}_SELECTOR_KNOB)");
-            announcer.Announce($"{(zone == "CKPT" ? "Cockpit" : zone == "FWD" ? "Forward cabin" : "Aft cabin")} temperature {t:0.#} degrees");
+            announcer.Announce(FormattableString.Invariant($"{(zone == "CKPT" ? "Cockpit" : zone == "FWD" ? "Forward cabin" : "Aft cabin")} temperature {t:0.#} degrees"));
             return true;
         }
 
@@ -9327,7 +9327,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             uint convertedValue = (uint)(value * 16);  // FlyByWire expects hPa * 16
 
             simConnect.SendEvent(varKey, convertedValue);
-            announcer.Announce($"Left baro set to {value:F2} hPa");
+            announcer.Announce(FormattableString.Invariant($"Left baro set to {value:F2} hPa"));
             return true; // Handled
         }
 
@@ -9338,7 +9338,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             uint convertedValue = (uint)(value * 16);  // FlyByWire expects hPa * 16
 
             simConnect.SendEvent(varKey, convertedValue);
-            announcer.Announce($"Right baro set to {value:F2} hPa");
+            announcer.Announce(FormattableString.Invariant($"Right baro set to {value:F2} hPa"));
             return true; // Handled
         }
 
@@ -9769,7 +9769,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // dot, once. internalSpeed < 100 is Mach*100 (e.g. 78 = 0.78).
         string spdStatus = (s.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
         if (internalSpeed < 100)
-            a.AnnounceImmediate($"FCU speed mach {internalSpeed / 100.0:0.00}, {spdStatus}");
+            a.AnnounceImmediate(FormattableString.Invariant($"FCU speed mach {internalSpeed / 100.0:0.00}, {spdStatus}"));
         else
             a.AnnounceImmediate($"FCU speed {internalSpeed}, {spdStatus}");
         return true;
@@ -9830,7 +9830,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
-            a.AnnounceImmediate($"FCU flight path angle {value:0.0}");
+            a.AnnounceImmediate(FormattableString.Invariant($"FCU flight path angle {value:0.0}"));
         else
             a.AnnounceImmediate($"FCU vertical speed {value:0}");
         return true;

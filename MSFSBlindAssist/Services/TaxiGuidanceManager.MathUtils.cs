@@ -23,10 +23,10 @@ public partial class TaxiGuidanceManager
             if (DistanceFormatter.IsMetres)
             {
                 double km = meters / 1000.0;
-                return $"{km:F1} kilometres";
+                return FormattableString.Invariant($"{km:F1} kilometres");
             }
             double nm = meters * METERS_TO_NM;
-            return $"{nm:F1} nautical miles";
+            return FormattableString.Invariant($"{nm:F1} nautical miles");
         }
         return DistanceFormatter.FromMetres(meters);
     }

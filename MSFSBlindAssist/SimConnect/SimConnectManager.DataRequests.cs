@@ -959,7 +959,7 @@ public partial class SimConnectManager
                         position.MagneticVariation);
 
                     // Format announcement with runway identifier
-                    string announcement = $"{distance:F1} miles to runway {destinationRunway.RunwayID} at {destinationAirport.ICAO}, bearing {bearing:000} degrees";
+                    string announcement = FormattableString.Invariant($"{distance:F1} miles to runway {destinationRunway.RunwayID} at {destinationAirport.ICAO}, bearing {bearing:000} degrees");
 
                     SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                     {

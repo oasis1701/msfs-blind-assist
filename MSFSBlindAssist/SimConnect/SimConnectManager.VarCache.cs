@@ -289,7 +289,7 @@ public partial class SimConnectManager
         }
         else if (varDef.Units == "volts")
         {
-            return $"{varDef.DisplayName}: {value:F1}V";
+            return FormattableString.Invariant($"{varDef.DisplayName}: {value:F1}V");
         }
         else if (varDef.Units == "feet")
         {
@@ -305,11 +305,11 @@ public partial class SimConnectManager
         }
         else if (varDef.Units == "millibars" || varDef.Units == "millibar")
         {
-            return $"{varDef.DisplayName}: {value:F2}";
+            return FormattableString.Invariant($"{varDef.DisplayName}: {value:F2}");
         }
         else if (varDef.Units == "inHg" || varDef.Units == "inhg")
         {
-            return $"{varDef.DisplayName}: {value:F2}";
+            return FormattableString.Invariant($"{varDef.DisplayName}: {value:F2}");
         }
         else if (varDef.Units == "kilograms" || varDef.Units == "pounds")
         {
@@ -322,7 +322,7 @@ public partial class SimConnectManager
         }
 
         // Default formatting
-        return $"{varDef.DisplayName}: {value:F1}";
+        return FormattableString.Invariant($"{varDef.DisplayName}: {value:F1}");
     }
 
     /// <summary>
