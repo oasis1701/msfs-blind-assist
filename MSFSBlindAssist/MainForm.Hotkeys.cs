@@ -492,6 +492,36 @@ public partial class MainForm
             announcer.AnnounceImmediate("cancelled");
     }
 
+    /// <summary>A bound controller button runs its command as the keyboard chord would. An
+    /// unbound button is silent: a yoke has many buttons the pilot uses in the sim itself.</summary>
+    private void OnControllerButtonPressed(object? sender, ControllerButtonPressedEventArgs e)
+    {
+        foreach (var binding in SettingsManager.Current.ControllerBindings)
+        {
+            if (binding.Matches(e.VendorId, e.ProductId, e.Button) && binding.TryGetAction(out var action))
+            {
+                hotkeyManager.TriggerFromController(action);
+                return;
+            }
+        }
+    }
+
+    /// <summary>Listens to the controllers only while a button is bound, so a pilot who never
+    /// assigns one registers no controller input at all; and decodes only the bound devices'
+    /// reports. Called at startup and after the Settings dialog.</summary>
+    private void ApplyControllerBindings()
+    {
+        var bindings = SettingsManager.Current.ControllerBindings;
+        if (bindings.Count == 0)
+        {
+            controllerMonitor.Stop();
+            return;
+        }
+        var boundDevices = bindings.Select(b => (b.VendorId, b.ProductId)).ToHashSet();
+        controllerMonitor.DeviceFilter = (vendorId, productId) => boundDevices.Contains((vendorId, productId));
+        controllerMonitor.Start();
+    }
+
     private void ToggleTakeoffAssist()
     {
         if (!simConnectManager.IsConnected)

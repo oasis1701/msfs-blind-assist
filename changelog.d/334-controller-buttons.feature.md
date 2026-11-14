@@ -1,0 +1,1 @@
+You can now give any BA command to a button on your yoke, joystick, throttle or gamepad, or to a direction of its hat switch, in the new Controller Buttons tab of Settings. The button runs the command straight away, with no bracket key first, even while the simulator is in front: ground speed or the next taxiway is one press away while your hands are on the controls.

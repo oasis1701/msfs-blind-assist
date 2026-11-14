@@ -8,3 +8,4 @@ MIRRORS: copied word for word from their areas' rule files. They name no code, s
 
 - [SIC-17] Tie each hold-short to the taxiway it FOLLOWS, never the clearance's last; cut on the parser's OWN mask, keep a taxiway repeated across a hold-short as its own row, and map a name the sequence lacks to -1 so it is reported. Full: docs/invariants/sayintentions-clearance.md#sic-17
 - [UPD-7] The automatic startup update check must stay SILENT on failure and when up to date — only the menu item reports those. Full: docs/invariants/updates.md#upd-7
+- [CTL-4] The live controller reading is stopped while the Settings dialog is open and restarted from the saved bindings on every close path, and it runs only while at least one button is bound. Full: docs/invariants/controller-buttons.md#ctl-4
