@@ -46,7 +46,7 @@ public partial class TaxiGuidanceManager
         // wants to confirm the SPECIFIC runway named.
         Dictionary<int, string>? userRunwayHoldShorts = null,
         // Taxiway-flavored twin of userRunwayHoldShorts (per-row "Hold short of"
-        // combo picks with the "Taxiway " prefix): sequence index → taxiway name
+        // combo picks that are a taxiway entry): sequence index → taxiway name
         // to stop short of after that row's taxiway. "Taxi via A, hold short of
         // taxiway B" — the standard post-landing instruction at KATL/OMDB/VHHH-
         // class fields (VATSIM gap analysis 2026-08-31, P2). Guidance stops at
@@ -123,7 +123,12 @@ public partial class TaxiGuidanceManager
         // taxiway, so the reversed-entry re-route (TryForwardFacingRunwayEntry) never swaps it
         // for another: VirtualPilot 2026-09-24 moved 135 intersection departures (LTFM A4 → A3B)
         // when it did. Full-length departures only.
-        bool intersectionDeparture = false)
+        bool intersectionDeparture = false,
+        // Holding-point flavour of the per-row "Hold short of" picks: sequence index ->
+        // the named holding point to stop at after that row's taxiway ("taxi via L, hold
+        // short of L2", LOWW 2026-11-14). The stop goes on the segment ending at the
+        // point's own node; a point the route does not pass is reported, never guessed.
+        Dictionary<int, Navigation.HoldingPointHoldShort>? userHoldingPointHoldShorts = null)
     {
         lock (_stateLock)
         {
@@ -145,6 +150,7 @@ public partial class TaxiGuidanceManager
         var priorUserHoldShortIndices = _userHoldShortIndices;
         var priorUserRunwayHoldShorts = _userRunwayHoldShorts;
         var priorUserTaxiwayHoldShorts = _userTaxiwayHoldShorts;
+        var priorUserHoldingPointHoldShorts = _userHoldingPointHoldShorts;
         var priorPreferIlsHold = _preferIlsHold;
         var priorBacktrackDeparture = _backtrackDeparture;
         var priorBacktrackDepApproachAnnounced = _backtrackDepApproachAnnounced;
@@ -173,6 +179,7 @@ public partial class TaxiGuidanceManager
             _userHoldShortIndices = priorUserHoldShortIndices;
             _userRunwayHoldShorts = priorUserRunwayHoldShorts;
             _userTaxiwayHoldShorts = priorUserTaxiwayHoldShorts;
+            _userHoldingPointHoldShorts = priorUserHoldingPointHoldShorts;
             _preferIlsHold = priorPreferIlsHold;
             _backtrackDeparture = priorBacktrackDeparture;
             _backtrackDepApproachAnnounced = priorBacktrackDepApproachAnnounced;
@@ -228,6 +235,8 @@ public partial class TaxiGuidanceManager
                 ? new Dictionary<int, string>(userRunwayHoldShorts) : null;
             _userTaxiwayHoldShorts = userTaxiwayHoldShorts != null
                 ? new Dictionary<int, string>(userTaxiwayHoldShorts) : null;
+            _userHoldingPointHoldShorts = userHoldingPointHoldShorts != null
+                ? new Dictionary<int, Navigation.HoldingPointHoldShort>(userHoldingPointHoldShorts) : null;
             _preferIlsHold = preferIlsHold;
             _backtrackDeparture = fullLengthBacktrack;
             _backtrackDepApproachAnnounced = false;
@@ -891,6 +900,20 @@ public partial class TaxiGuidanceManager
                         : runwayHoldShortWarning + " " + taxiwayHoldWarning;
             }
 
+            // Holding-point picks from the same combos: stop at the named point itself, after
+            // the chosen row. Same note as the other flavours when one is not on the route.
+            // The ones that found their stop are kept: TruncateToHoldShort below can cut it off.
+            var placedPointPicks = new List<Navigation.HoldingPointHoldShort>();
+            if (userHoldingPointHoldShorts != null && userHoldingPointHoldShorts.Count > 0 && taxiwaySequence != null)
+            {
+                string? pointHoldWarning = ApplyUserHoldingPointHoldShorts(
+                    route, taxiwaySequence, userHoldingPointHoldShorts, placedPointPicks);
+                if (pointHoldWarning != null)
+                    runwayHoldShortWarning = runwayHoldShortWarning == null
+                        ? pointHoldWarning
+                        : runwayHoldShortWarning + " " + pointHoldWarning;
+            }
+
             // Capture the FULL constrained-route length BEFORE TruncateToHoldShort
             // trims the tail. The length advisory below must judge the clearance on
             // the full route, not the truncated one: a clearance that doubles back —
@@ -926,7 +949,15 @@ public partial class TaxiGuidanceManager
             // radius of the threshold, which is often PAST the hold-short markings
             // (real hold-short lines sit ~150-200 ft / 46-61 m back from the threshold).
             if (isRunwayDestination)
+            {
                 TruncateToHoldShort(route, destinationName, preferIlsHold);
+                // A holding-point pick past that hold line went with the tail just cut off.
+                // Place had found it, so nothing above reported it: say it here.
+                string? cutOffNote = DescribeHoldingPointPicksCutOff(route, placedPointPicks, destinationName);
+                if (cutOffNote != null)
+                    runwayHoldShortWarning = runwayHoldShortWarning == null
+                        ? cutOffNote : runwayHoldShortWarning + " " + cutOffNote;
+            }
 
             // The auto hold-shorts for INTERMEDIATE runway crossings (FAA AIM 4-3-18 &
             // ICAO Doc 4444) are applied by AdoptRoute below, at the moment this route
@@ -2022,8 +2053,54 @@ public partial class TaxiGuidanceManager
             }
         }
 
+        // Holding-point picks are tied to a POINT, not to a leg of the sequence, so they are
+        // carried over whatever became of the sequence (a recalculation off every cleared
+        // taxiway has none): each one whose stop is still AHEAD on the route being replaced
+        // goes back on where the new route reaches the point, and is reported when the new
+        // route no longer passes it. One already behind the aircraft is dropped, or a new
+        // route running back through the point would stop the pilot there a second time.
+        //
+        // A new route that STARTS at the point has no segment to stop on (the recalculation
+        // starts at the nearest node within 50 m, which can be the point with the aircraft
+        // still short of it), and a recalculated route never starts held ([HLD-10]). That
+        // stop is lost, and it is said as what it is: "does not pass it" would tell the
+        // pilot the point is elsewhere, when it is the next node ahead.
+        var recalcPlacedPoints = new List<Navigation.HoldingPointHoldShort>();
+        if (_userHoldingPointHoldShorts is { Count: > 0 })
+        {
+            var lostPoints = new List<string>();
+            var pointNotes = new List<string>();
+            foreach (var pick in _userHoldingPointHoldShorts.OrderBy(k => k.Key).Select(k => k.Value))
+            {
+                if (!pick.IsStillAhead(_route?.Segments, _currentSegmentIndex)) continue;
+                if (pick.Place(newRoute.Segments))
+                    recalcPlacedPoints.Add(pick);
+                else if (pick.StartsRoute(newRoute.Segments))
+                    pointNotes.Add(pick.StartsRouteNote);
+                else
+                    lostPoints.Add($"{pick.Label} (the new route does not pass it)");
+            }
+            if (lostPoints.Count > 0)
+                pointNotes.Insert(0,
+                    $"Note: requested hold-short(s) not on route — {string.Join("; ", lostPoints)}.");
+            if (pointNotes.Count > 0)
+            {
+                string pointWarning = string.Join(" ", pointNotes.Distinct());
+                recalcHoldWarning = recalcHoldWarning == null
+                    ? pointWarning : recalcHoldWarning + " " + pointWarning;
+            }
+        }
+
         if (_isRunwayLineup)
+        {
             TruncateToHoldShort(newRoute, _destinationName, _preferIlsHold);
+            // As in LoadRoute: a pick just placed past the destination's hold line went with
+            // the tail that cut off, and is reported rather than dropped in silence.
+            string? cutOffNote = DescribeHoldingPointPicksCutOff(newRoute, recalcPlacedPoints, _destinationName);
+            if (cutOffNote != null)
+                recalcHoldWarning = recalcHoldWarning == null
+                    ? cutOffNote : recalcHoldWarning + " " + cutOffNote;
+        }
 
         // Distinct consecutive named taxiways of the recalculated route, in order.
         var viaNames = RouteTaxiwaySequence.DistinctConsecutive(newRoute.Segments);
@@ -2406,7 +2483,11 @@ public partial class TaxiGuidanceManager
         {
             if (destDesignator == null || toEnd[i] <= DEST_HOLD_NEAR_M) return true;
             if (toEnd[i] > DEST_HOLD_MAX_BACK_M) return false;
-            var named = RouteRunwayCrossings.ExtractRunwayDesignators(route.Segments[i].HoldShortRunway);
+            // The scenery's own name for the node when a pilot's pick has replaced the label
+            // with one naming no runway ("holding point B3" on runway 11's hold line): read
+            // from the label alone, that line could be taken for THIS runway's.
+            var named = RouteRunwayCrossings.HoldNodeDesignators(
+                route.Segments[i].HoldShortRunway, route.Segments[i].ToNode?.HoldShortName);
             string recip = RouteRunwayCrossings.NormalizeDesignator(RouteRunwayCrossings.Reciprocal(destDesignator));
             return named.Count == 0 || named.Any(d => d == destDesignator || d == recip);
         }
@@ -2626,6 +2707,11 @@ public partial class TaxiGuidanceManager
                 lastSeg.HoldShortRunway = RouteRunwayCrossings.ComposeCrossingLabel(
                     lastSeg.HoldShortRunway, recip, pilotDesignator) ?? lastSeg.HoldShortRunway;
         }
+        // The pilot's own holding-point pick sits ON this hold: keep the runway in the label
+        // the countdown speaks ("Runway 16 at holding point A1"). Nothing else would add it,
+        // because the automatic pass skips the route's own arrival on the destination strip.
+        lastSeg.HoldShortRunway = Navigation.HoldingPointHoldShort.AtDestinationHold(
+            lastSeg.HoldShortRunway, destinationName);
         foreach (string other in route.RunwayEntryStubAlsoOn)
             lastSeg.HoldShortRunway = RouteRunwayCrossings.ComposeSharedLabel(
                 string.IsNullOrEmpty(lastSeg.HoldShortRunway) ? destinationName : lastSeg.HoldShortRunway, other)
@@ -3097,6 +3183,62 @@ public partial class TaxiGuidanceManager
 
         if (unmatched.Count == 0) return null;
         return $"Note: requested hold-short(s) not on route — {string.Join("; ", unmatched)}.";
+    }
+
+    /// <summary>
+    /// Applies the per-row "hold short of HOLDING POINT X" picks: after the chosen row's
+    /// taxiway run starts, guidance stops where the route reaches the point's own node
+    /// (<see cref="Navigation.HoldingPointHoldShort.Place"/>). A row whose taxiway never made
+    /// it onto the route is searched from the route's start instead: the point is a place,
+    /// and the pilot asked to stop there whichever leg reaches it.
+    /// Returns a spoken note naming any pick the route does not pass, or null. A route that
+    /// STARTS at the point has nothing to stop on either, and says that instead: the aircraft
+    /// is at the point or just short of it, not somewhere the route never goes.
+    /// </summary>
+    /// <param name="placed">Receives every pick that found its stop.</param>
+    private static string? ApplyUserHoldingPointHoldShorts(
+        TaxiRoute route, List<string> taxiwaySequence,
+        Dictionary<int, Navigation.HoldingPointHoldShort> userHoldingPointHoldShorts,
+        List<Navigation.HoldingPointHoldShort> placed)
+    {
+        var unmatched = new List<string>();
+        var notes = new List<string>();
+
+        foreach (var (seqIdx, pick) in userHoldingPointHoldShorts.OrderBy(k => k.Key))
+        {
+            if (seqIdx < 0 || seqIdx >= taxiwaySequence.Count) continue;
+            string rowTaxiway = taxiwaySequence[seqIdx];
+            int runStart = FindTaxiwayRunStart(route, taxiwaySequence, seqIdx, rowTaxiway);
+            if (pick.Place(route.Segments, Math.Max(0, runStart)))
+                placed.Add(pick);
+            else if (pick.StartsRoute(route.Segments))
+                notes.Add(pick.StartsRouteNote);
+            else
+                unmatched.Add($"{pick.Label} (route does not pass it after taxiway {rowTaxiway})");
+        }
+
+        if (unmatched.Count > 0)
+            notes.Insert(0, $"Note: requested hold-short(s) not on route — {string.Join("; ", unmatched)}.");
+        return notes.Count == 0 ? null : string.Join(" ", notes.Distinct());
+    }
+
+    /// <summary>
+    /// The note for holding-point picks whose stop <see cref="TruncateToHoldShort"/> has just
+    /// cut off with the route's tail: the point lies past the runway destination's hold line
+    /// (the CAT I line picked while the CAT II/III hold is preferred, or a painted line a few
+    /// metres runway-ward of the scenery's). Guidance stops at that line first, so nothing is
+    /// placed; the pilot is told rather than left to find no stop was counted. Null when
+    /// every placed pick is still held on the route.
+    /// </summary>
+    private static string? DescribeHoldingPointPicksCutOff(
+        TaxiRoute route, List<Navigation.HoldingPointHoldShort> placed, string destinationName)
+    {
+        var notes = placed
+            .Where(pick => !pick.IsStillAhead(route.Segments, 0))
+            .Select(pick => pick.BeyondDestinationHoldNote(destinationName))
+            .Distinct()
+            .ToList();
+        return notes.Count == 0 ? null : string.Join(" ", notes);
     }
 
     /// <summary>True when any edge at this node is named <paramref name="taxiwayName"/>.</summary>

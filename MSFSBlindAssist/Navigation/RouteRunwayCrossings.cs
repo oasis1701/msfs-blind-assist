@@ -79,6 +79,23 @@ public static class RouteRunwayCrossings
     }
 
     /// <summary>
+    /// The runways a scenery hold NODE stands for when a route segment ends on it: the ones the
+    /// segment's label names, or, when that label names none, the ones the scenery's own name for
+    /// the node does (<c>TaxiNode.HoldShortName</c>, which the label was seeded from).
+    ///
+    /// <para>The two differ only after a pilot's pick has written its label over the scenery's:
+    /// "holding point B3", "taxiway W", "end of taxiway L". A named holding point resolves ONTO
+    /// the scenery's hold node by design, so runway 11's hold line read "names no runway" once
+    /// picked, and <c>TruncateToHoldShort</c>'s <c>CanBeDestinationHold</c> ("naming this runway
+    /// or none", [HLD-13]) could take it for the hold of the runway the pilot is taxiing to.</para>
+    /// </summary>
+    public static IReadOnlyList<string> HoldNodeDesignators(string? segmentLabel, string? sceneryHoldName)
+    {
+        var named = ExtractRunwayDesignators(segmentLabel);
+        return named.Count > 0 ? named : ExtractRunwayDesignators(sceneryHoldName);
+    }
+
+    /// <summary>
     /// True when the label names at least one runway and every runway it names is
     /// <paramref name="designator"/>'s pavement (either end). A stop shared with another runway is
     /// not "only" this runway's, so clearing this runway must not remove it.
