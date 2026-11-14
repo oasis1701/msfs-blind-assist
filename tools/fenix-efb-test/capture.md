@@ -122,6 +122,17 @@ is fine; delete any value you find, keeping the element. Connections holds the c
   `div.cdk-overlay-backdrop`, then `div.cdk-overlay-connected-position-bounding-box > div#cdk-overlay-0.cdk-overlay-pane
   > div.overflow-menu` with its two `button.overflow-menu__item`; the first `button.overflow-button` has
   `aria-expanded="true"`. Credential search: clean (Aircraft has no credential settings).
+- Fenix 3.0.0.7852 (2026-11-13, A320-232 IAE, the snippet run in a headless Chromium over the DevTools protocol): all 22
+  screens were captured and swept with the layer (every control named, also on the fully scrolled Settings pages), and
+  no class, tag or id the layer keys on had changed. Only the two captures whose page changed were committed:
+  - `quick-settings`: the new SIM RATE header and `button.sim-rate-btn`, the new "Toggle ANC" button, and the
+    airplane button with the page's own `aria-label` and `aria-pressed`.
+  - `settings-connections`: "Navdata Mode" with its "Manual Import" choice, and the Pushover settings' new names.
+    Credential search: clean (setting names and descriptions only; the masked boxes hold no value attribute).
+  - The other twenty stay as captured on 3.0.0.7438: their 7852 captures differ only by session state (which failures
+    are set, PACKS, the Navigraph sidebar, Material's running id numbers) and by how many Settings articles the page had
+    rendered, which the tests pin. Audio's new "ANC in Flight Deck Only" and Misc's "Window Dirt" use the markup the
+    captures already hold.
 
 ## Check live after every Fenix update
 

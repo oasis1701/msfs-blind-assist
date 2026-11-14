@@ -622,7 +622,7 @@ test('The_Panel_States_dialog_backdrop_is_not_a_menu', async () => {
 const SETTINGS_BOXES = {
   'settings-audio': ['ACP Volume: CAB', 'ACP Volume: HF1', 'ACP Volume: HF2', 'ACP Volume: INT', 'ACP Volume: VHF1',
     'ACP Volume: VHF2', 'ACP Volume: VHF3'],
-  'settings-connections': ['Hoppie Logon Code', 'Pushover: Application Key', 'Pushover: Token', 'SimBrief Username / ID'],
+  'settings-connections': ['Hoppie Logon Code', 'Pushover: API Token', 'Pushover: User Key','SimBrief Username / ID'],
   'settings-misc': ['Background Image'],
   'settings-printer': null
 };
@@ -1465,14 +1465,21 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
     assert.deepStrictEqual(all(charts, 'button.btn-default').map(nameOf), ['Navigraph', 'Reset']);
     assert.ok(all(charts, 'button.btn-default').every(b => !b.hasAttribute('aria-label')));
 
-    // Quick settings: the slider and the airplane button, the other two keep the page's own labels.
+    // Quick settings: the slider is named by the layer; every button keeps the page's own label. Since Fenix
+    // 3.0.0.7852 the page names the airplane button itself, with its pressed state, so the layer leaves it alone.
     const slider = one(quick, 'mat-slider.brightness-popup-slider');
     assert.strictEqual(nameOf(slider), 'Brightness');
     assert.strictEqual(slider.getAttribute('role'), 'slider');
     assert.strictEqual(slider.getAttribute('aria-valuenow'), '0.775', 'the page\'s own value stays');
     const airplane = one(quick, 'button.quick-settings-btn img[src*=airplane]').closest('button');
-    assert.strictEqual(nameOf(airplane), 'Airplane mode');
+    assert.strictEqual(nameOf(airplane), 'Toggle airplane mode');
+    assert.strictEqual(airplane.getAttribute('aria-pressed'), 'false', 'the page\'s own state');
+    assert.strictEqual(airplane.getAttribute('data-msfsba'), null, 'not the layer\'s');
     assert.strictEqual(airplane.hasAttribute('role'), false, 'a real button already');
+    const anc = one(quick, 'button[aria-label="Toggle ANC"]');
+    assert.strictEqual(nameOf(anc), 'Toggle ANC');
+    assert.strictEqual(anc.getAttribute('data-msfsba'), null);
+    assert.strictEqual(anc.querySelector('i').getAttribute('aria-hidden'), 'true', 'its glyph is hidden');
     const settings = one(quick, 'button[aria-label="Open settings"]');
     const open = one(quick, 'button.top-bar-settings-btn');
     assert.deepStrictEqual([settings, open].map(nameOf), ['Open settings', 'Open quick settings']);
@@ -1480,6 +1487,85 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
   } finally {
     if (charts) charts.close();
     if (quick) quick.close();
+  }
+});
+
+// Settings' one drop-down (Printer) is a mat-select named only by its value: it takes its setting's name in front,
+// as the Takeoff drop-downs do, and the page's value reference stays behind it.
+test('The_Settings_drop_down_is_named_by_its_setting', async () => {
+  const bare = await load('settings-printer', { layer: false });
+  const window = await load('settings-printer');
+  try {
+    const pageList = one(bare, 'app-settings2 article mat-select').getAttribute('aria-labelledby');
+    const select = one(window, 'app-settings2 article mat-select');
+    assert.strictEqual(select.getAttribute('aria-label'), 'Printer');
+    assert.strictEqual(select.getAttribute('aria-labelledby'), select.id + ' ' + pageList);
+    assert.ok(nameOf(select).startsWith('Printer'));
+    assert.strictEqual(select.getAttribute('role'), 'combobox', 'the page\'s own role');
+  } finally {
+    bare.close();
+    window.close();
+  }
+});
+
+// Quick settings' sim rate button (Fenix 3.0.0.7852) has the page's own label, which replaces its content, so the
+// rate it is on was never read. The layer puts the rate, and the header's "AP REQUIRED" note while the page shows
+// one, in the button's description, and follows the page; the label and the disabled state stay the page's.
+test('The_sim_rate_button_says_its_rate_and_the_autopilot_note_and_follows_the_page', async () => {
+  const window = await load('quick-settings');
+  try {
+    const rate = one(window, 'button.sim-rate-btn');
+    assert.strictEqual(rate.getAttribute('aria-label'), 'Cycle sim rate', 'the page\'s own label');
+    assert.strictEqual(nameOf(rate), 'Cycle sim rate');
+    assert.strictEqual(rate.hasAttribute('disabled'), true, 'as captured');
+    assert.strictEqual(rate.getAttribute('aria-description'), 'NORMAL, AP REQUIRED');
+    assert.strictEqual(rate.hasAttribute('tabindex'), false, 'a disabled control gets no Tab stop');
+    assert.strictEqual(rate.getAttribute('data-msfsba'), null);
+
+    // The autopilot comes on: the page drops the note and enables the button; then a press moves the rate.
+    one(window, 'span.sim-rate-ap-required').remove();
+    rate.removeAttribute('disabled');
+    await turns();
+    assert.strictEqual(rate.getAttribute('aria-description'), 'NORMAL');
+    const options = [...rate.querySelectorAll('span:not(.sim-rate-separator)')];
+    assert.deepStrictEqual(options.map(o => squash(o.textContent)), ['NORMAL', '2X', '4X']);
+    options[0].classList.remove('sim-rate-option-active');
+    options[1].classList.add('sim-rate-option-active');
+    await turns();
+    assert.strictEqual(rate.getAttribute('aria-description'), '2X');
+
+    // A description the page gives is the page's.
+    rate.setAttribute('aria-description', 'page words');
+    options[1].classList.remove('sim-rate-option-active');
+    options[2].classList.add('sim-rate-option-active');
+    await turns();
+    assert.strictEqual(rate.getAttribute('aria-description'), 'page words');
+
+    // The two header glyphs (the sun and the forward arrows) are in no control and are hidden; the titles stay.
+    const glyphs = all(window, 'div.brightness-popup-header i');
+    assert.strictEqual(glyphs.length, 2);
+    assert.ok(glyphs.every(g => g.getAttribute('aria-hidden') === 'true'));
+    assert.deepStrictEqual(all(window, 'span.brightness-popup-title').map(t => squash(t.textContent)), ['BRIGHTNESS', 'SIM RATE']);
+  } finally {
+    window.close();
+  }
+});
+
+// Before Fenix 3.0.0.7852 the airplane button held only its picture, with no label or pressed state of the page's,
+// and the layer names it "Airplane mode". The capture is 7852's, so the page's own label and state come off first.
+test('An_airplane_button_without_a_label_of_the_page_s_is_named_Airplane_mode', async () => {
+  const window = await load('quick-settings', { layer: false });
+  try {
+    const airplane = one(window, 'button.quick-settings-btn img[src*=airplane]').closest('button');
+    airplane.removeAttribute('aria-label');
+    airplane.removeAttribute('aria-pressed');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(airplane.getAttribute('aria-label'), 'Airplane mode');
+    assert.strictEqual(nameOf(airplane), 'Airplane mode');
+    assert.strictEqual(airplane.getAttribute('data-msfsba'), '1', 'the layer\'s label');
+  } finally {
+    window.close();
   }
 });
 
@@ -1494,7 +1580,7 @@ test('Unlabeled_pictures_on_Charts_and_quick_settings_are_hidden_and_their_butto
     const airplane = one(quick, 'button.quick-settings-btn img[src*=airplane]');
     assert.strictEqual(airplane.hasAttribute('alt'), false, 'as captured');
     assert.strictEqual(airplane.getAttribute('aria-hidden'), 'true');
-    assert.strictEqual(nameOf(airplane.closest('button')), 'Airplane mode');
+    assert.strictEqual(nameOf(airplane.closest('button')), 'Toggle airplane mode', 'the page\'s own label since 3.0.0.7852');
 
     charts = await load('charts', { layer: false });
     const items = all(charts, 'app-navigraph-sidebar-item');
@@ -1645,8 +1731,8 @@ const SECOND_PASS = {
     note: 'home, chevron; two sidebar items (not the My Flight header); two zoom icons; four map controls; the list toggle; the map (a name only)'
   },
   'quick-settings': {
-    handled: 1 + 9 + 1 + 1 + 1, listeners: 1 + 9 + 1,
-    note: 'home (the chevron is hidden here); nine home tiles; the slider; the airplane button; the backdrop that closes the pop-up'
+    handled: 1 + 9 + 1 + 1, listeners: 1 + 9 + 1,
+    note: 'home (the chevron is hidden here); nine home tiles; the slider; the backdrop that closes the pop-up (the page names the airplane button itself)'
   }
 };
 // The seven other Settings captures, counted from each capture by hand: the closed app switcher's icons, the badges
@@ -1659,19 +1745,20 @@ const SETTINGS_PARTS = {
   'settings-connections': { switcher: 9, badges: 8, toggles: 0, dots: 8, groups: 3, options: 9, boxes: 4 },
   'settings-ground-services': { switcher: 9, badges: 8, toggles: 8, dots: 8, groups: 0, options: 0, boxes: 0 },
   'settings-misc': { switcher: 9, badges: 6, toggles: 4, dots: 6, groups: 2, options: 4, boxes: 1 },
-  'settings-printer': { switcher: 9, badges: 8, toggles: 2, dots: 8, groups: 0, options: 0, boxes: 5 },
+  'settings-printer': { switcher: 9, badges: 8, toggles: 2, dots: 8, groups: 0, options: 0, boxes: 5, selects: 1 },
   'settings-realism': { switcher: 9, badges: 8, toggles: 3, dots: 8, groups: 5, options: 13, boxes: 0 },
   // Aircraft with the first menu open: the menu's backdrop is the "Close menu" button.
   'settings-overflow-open': { switcher: 9, badges: 8, toggles: 5, dots: 8, groups: 3, options: 6, boxes: 0, backdrop: 1 }
 };
 for (const [fixture, p] of Object.entries(SETTINGS_PARTS)) {
   const backdrop = p.backdrop || 0;
+  const selects = p.selects || 0;
   SECOND_PASS[fixture] = {
-    handled: 2 + p.switcher + 8 + p.badges + 2 * p.toggles + p.dots + p.groups + p.options + p.boxes + backdrop,
+    handled: 2 + p.switcher + 8 + p.badges + 2 * p.toggles + p.dots + p.groups + p.options + p.boxes + selects + backdrop,
     listeners: 2 + p.switcher + 8 + p.toggles + backdrop,
     note: 'home, chevron, ' + p.switcher + ' switcher icons, 8 categories, ' + p.badges + ' badges, ' + p.toggles +
       ' checkboxes and switches, ' + p.dots + ' three-dot buttons, ' + p.groups + ' choice groups, ' + p.options +
-      ' choices, ' + p.boxes + ' boxes, ' + backdrop + ' menu backdrop'
+      ' choices, ' + p.boxes + ' boxes, ' + selects + ' drop-downs, ' + backdrop + ' menu backdrop'
   };
 }
 for (const [fixture, expected] of Object.entries(SECOND_PASS)) {
@@ -1744,7 +1831,8 @@ const ISOLATION = {
   ],
   'quick-settings': [
     ['mat-slider', 'mat-slider[aria-label]', 1],
-    ['img[src*=airplane]', 'button[aria-label="Airplane mode"]', 1],
+    ['button.sim-rate-btn', 'button.sim-rate-btn[aria-description]', 1],
+    ['brightness-popup-header', 'div.brightness-popup-header i[aria-hidden=true]', 2],
     ['brightness-popup-backdrop', 'div.brightness-popup-backdrop[role=button]', 1]
   ]
 };

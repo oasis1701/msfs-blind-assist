@@ -220,14 +220,15 @@ test('The_seat_map_is_hidden_from_a_screen_reader', async () => {
 
     // On this screen the layer hides exactly: the top bar's pictures and glyphs, every other picture with no alt (the
     // closed switcher's icons, the battery pictures, the logos, the seat map's background), the chart's picture and
-    // labels but its limits, and the seat map.
+    // labels but its limits, the seat map, and the pen glyph beside each of the three planned passenger boxes.
     const hidden = hiddenByLayer(bare, window);
+    const pen = 'i.fas.fa-pen.planned-edit-icon';
     assert.deepStrictEqual(hidden.filter(h => !/^div\.(line-with-text|text-numbers-)/.test(h)), [
       'img#appBg', 'i.fas.fa-chevron-down', 'img.airplane-icon.top-icon-fade-out', 'img.signal-icon.top-icon-fade-in',
       'img#linkedup', 'i.fas.fa-cog', ...Array(9).fill('img.app-img'), 'img.battery-none', 'img.lightning', 'img',
-      'img#mainWandB', 'img.logo.opacity-10.logo-big', 'img#seatMapBg', 'div#seatContainer'
+      'img#mainWandB', 'img.logo.opacity-10.logo-big', pen, 'img#seatMapBg', 'div#seatContainer', pen, pen
     ]);
-    assert.strictEqual(hidden.length, 22 + 33);
+    assert.strictEqual(hidden.length, 25 + 33);
   } finally {
     bare.close();
     window.close();
