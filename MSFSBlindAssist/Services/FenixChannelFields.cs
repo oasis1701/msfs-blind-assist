@@ -64,7 +64,9 @@ internal static partial class FenixChannelFields
     /// <c>FenixDataService.GetSoftwareVersionAsync</c> gives them, and matched exactly. The trust gate trusts no
     /// display on a build outside this set. 3.0.0.7613 is the first, confirmed by the owner on 2026-11-02 after that
     /// day's in-sim run: the field numbers here were checked against it ([FNX-23]). 3.0.0.7852 joined on 2026-11-14,
-    /// confirmed the same way: its whole contract compared with 3.0.0.7613's showed no number moved.
+    /// on the owner's confirmation: its whole contract compared with 3.0.0.7613's showed no number moved, and a run at
+    /// a gate read all six displays. What that run did not cover (the FMA's slots in flight among it) is listed under
+    /// [FNX-23].
     /// </summary>
     public static readonly IReadOnlySet<string> VerifiedBuilds = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -129,7 +131,9 @@ internal static partial class FenixChannelFields
 
     /// <summary>
     /// DUData, the display units: entry i of each list is unit i. The Fenix sends both lists unpacked, one varint
-    /// field per entry; protobuf's packed form of the same lists reads the same.
+    /// field per entry; protobuf's packed form of the same lists reads the same. 3.0.0.7852 added member 4, a
+    /// switch-on delay per unit, which the app does not read: whether a unit reads powered while that delay runs is
+    /// not measured yet ([FNX-22]).
     /// </summary>
     public static class DuData
     {

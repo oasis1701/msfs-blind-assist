@@ -11,10 +11,23 @@ public class FenixOptionLabelsTests
     public void Table_holds_every_option_the_EFB_labels()
     {
         Assert.Equal(127, FenixOptionLabels.All.Count);
-        Assert.Equal(35,FenixOptionLabels.All.Values.Sum(t => t.ValueLabels.Count));
+        Assert.Equal(35, FenixOptionLabels.All.Values.Sum(t => t.ValueLabels.Count));
     }
 
     [Theory]
+    [InlineData(null, false)]             // unknown: nothing to compare
+    [InlineData("", false)]
+    [InlineData(FenixOptionLabels.SourceVersion, false)]
+    [InlineData("3.0.0.7613", true)]      // a checked build the table was not taken from
+    [InlineData("3.0.0.7852 ", true)]     // exact, as the build check is
+    public void The_table_knows_when_the_running_Fenix_is_another_build(string? running, bool another)
+        => Assert.Equal(another, FenixOptionLabels.IsFromAnotherBuild(running));
+
+    [Theory]
+    [InlineData("anc_in_flight_deck_only", "ANC in Flight Deck Only")]    // new in 3.0.0.7852
+    [InlineData("window_dirt_enabled", "Window Dirt")]                    // new in 3.0.0.7852
+    [InlineData("pushover_application_key", "Pushover: API Token")]       // renamed in 3.0.0.7852
+    [InlineData("pushover_token", "Pushover: User Key")]                  // renamed in 3.0.0.7852
     [InlineData("encoder_acceleration_enabled", "Encoder Acceleration")]
     [InlineData("efis_baro_linking_type", "EFIS Linking: Baro")]
     [InlineData("fd_ls_sync_enabled", "EFIS Linking: FD/LS")]

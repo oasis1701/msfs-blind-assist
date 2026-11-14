@@ -56,7 +56,7 @@ public class FenixChannelReadOnlyTests
     }
 
     [Fact]
-    public void The_first_checked_build_is_the_one_Robin_confirmed()
+    public void The_checked_builds_are_the_ones_Robin_confirmed()
     {
         // The trust gate trusts a display only on a build in this set ([FNX-23]). A build is run in the sim with
         // it added in the working copy only, and committed only on the owner's confirmation: Robin (the

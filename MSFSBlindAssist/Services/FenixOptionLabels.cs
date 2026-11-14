@@ -29,6 +29,14 @@ public static class FenixOptionLabels
     /// <summary>The Fenix software version whose EFB bundle the table was taken from.</summary>
     public const string SourceVersion = "3.0.0.7852";
 
+    /// <summary>
+    /// True when the running Fenix, spelled as <c>FenixDataService.GetSoftwareVersionAsync</c> gives it, is known and
+    /// is not the build the table was taken from, so a few labels may differ from that Fenix's own EFB. An unknown
+    /// version is no mismatch: there is nothing to compare.
+    /// </summary>
+    public static bool IsFromAnotherBuild(string? runningVersion)
+        => !string.IsNullOrWhiteSpace(runningVersion) && !string.Equals(runningVersion, SourceVersion, StringComparison.Ordinal);
+
     private static readonly Lazy<IReadOnlyDictionary<string, FenixOptionText>> Loaded = new(() => Parse(Table));
 
     public static IReadOnlyDictionary<string, FenixOptionText> All => Loaded.Value;
