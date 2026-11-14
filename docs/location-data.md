@@ -22,6 +22,8 @@ state or province you are in, decided by a real outline.
 - **GeoNames** (CC BY 4.0, credited in the GeoNames tab): the full world dump
   `https://download.geonames.org/export/dump/allCountries.zip` (about 400 MB, 13.5 million rows,
   rebuilt daily), with `countryInfo.txt` and `admin1CodesASCII.txt` for country and state names.
+  GeoNames' `featureCodes_en.txt` is not used: its names ("bank(s)", "israeli settlement") are never
+  shown. Our own kinds of place and their names are `LocationFeatureCatalog`'s (`PlaceKind`).
 - **Natural Earth** (public domain), release v5.1.2 at 1:10 million scale, as GeoJSON from the
   project's GitHub tag (gzip in transit, about 20 MB; 63 MB on disk): named oceans, seas, bays and
   straits (`ne_10m_geography_marine_polys`), the sea coastline, lakes, regions (mountain ranges,
@@ -34,11 +36,14 @@ rivers, and they stop at their estuaries).
 
 ## What is stored
 
-About 8.4 million GeoNames rows (`LocationFeatureCatalog`): every populated place except
-historical and abandoned ones, split into Town (500+ people, or a seat of administration) and
-Village; airports; terrain (mountains, hills, valleys, capes, peninsulas, islands); water (lakes,
-reservoirs, bays, streams, beaches, gulfs, straits, sounds, coves, reefs); tourist landmarks; and
-the undersea class, stored for later use. The finished database is about 330 MB at
+About 8.4 million GeoNames rows (`LocationFeatureCatalog`, an explicit list of GeoNames codes):
+populated places, split into Town (500+ people, or a seat of administration) and Village, as
+capitals, regional capitals, plain towns or villages and neighborhoods (historical, abandoned and
+destroyed places, and any populated code not listed, are dropped); airports; terrain (mountains,
+hills, valleys, capes, peninsulas, islands); water (lakes, reservoirs, bays, rivers, beaches,
+gulfs, straits, sounds, coves, reefs); tourist landmarks; and the undersea class, stored for later
+use. Each row is stored as one of our kinds (`PlaceKind`); several GeoNames codes can share one
+(ISL and ISLS are both Islands). The finished database is about 330 MB at
 `%APPDATA%\MSFSBlindAssist\databases\location-data.sqlite`
 (`DatabasePathResolver.GetLocationDataPath`).
 
@@ -46,6 +51,15 @@ the undersea class, stored for later use. The finished database is about 330 MB 
   0.25° cell (rows south to north, columns west to east) with a two-byte offset from the cell
   corner, so a radius search is one range seek per row of cells, two where the search crosses ±180°.
 - `admin` maps each place's country and state codes to GeoNames' names.
+- `place_kind` maps the small id `place.kind` holds to our kind: its key ("island", saved in the
+  settings as "Terrain:island"), its singular for the table ("Island") and its plural for the tree
+  ("Islands").
+- `place_type` lists every (category, kind) pair `place` holds: the Location Info window
+  builds its kinds-of-place tree from it without reading 8 million rows.
+- `airport_alias` keeps each airport's GeoNames alternate names (its ICAO and IATA codes among
+  them), keyed by its GeoNames id, for matching it to the navigation database (`AirportMatcher`).
+  Schema 2 (2026-11) added these three; schema 3 (2026-11) replaced GeoNames' feature codes with
+  our kinds. An older database reads as "needs an update" (LOC-7).
 - `shape` holds the Natural Earth shapes as float32 blobs, one row per polygon part and coastlines
   cut into 64-point chunks, with an R*Tree on their bounding boxes (`NaturalEarthShapes`).
 - `meta` holds the schema version, the GeoNames file date, the Natural Earth release, the place
@@ -59,7 +73,7 @@ data is missing, from the startup data check's `StartupDataDialog`, UPD-9):
 1. Checks free disk space (the peak is about 1.5 GB: the 400 MB download, a 370 MB staging file
    and the 330 MB result; an update's old database is already on disk). Says "Downloading location
    data, about N megabytes to download."
-2. Fetches the two GeoNames name files and the five Natural Earth files whole (SHA-256 checked,
+2. Fetches the three GeoNames name files and the five Natural Earth files whole (SHA-256 checked,
    3 attempts each), then the dump into `location-data-download\allCountries.zip.part`, resuming
    with `Range` + `If-Range` from the validator in `.part.json` (LOC-4). Speaks 25, 50 and 75
    percent. A watchdog speaks a stall at 20 s without data and abandons the attempt at 60 s; up to
@@ -112,15 +126,36 @@ then sea (inside a named marine polygon) (LOC-6):
   0.5 miles north, English Channel coast 1.2 miles south" (the coast clause only within the Coast Range).
   No town within the nearby range: "No town within 25 miles, <area>, <country>". The periodic
   announcement uses the same sentence and stays silent when no data is installed.
-- **Location Info**: a "Where you are" box first, then the seven lists. Over water: "Over
-  Chesapeake Bay", "Nearest land: 5.2 miles west" ("Shore: …" over a lake), "Near: Maryland,
-  United States". Over land:
-  "In: Bavaria, Germany", "Region: Alps, mountain range" (when inside one), "Coast: English
-  Channel, 1.2 miles south" (within the Coast Range). Then "Time zone: …" (the GeoTimeZone package). The
-  window opens already filled and focused on that box, and speaks nothing itself. The landmark
-  lists share the tab's one Landmarks Range. Every range is capped at 310 miles or 500 km (the
-  Coast Range at 1,000) where the lookups read it (`LocationQuerySettings.From`), so a larger
-  value saved before the cap existed never makes a press scan a continent.
+- **Location Info** (`Forms/LocationInfoForm.cs`, design: docs/design/2026-11-05-location-info-redesign.md):
+  a "Where you are" box first. Over water: "Over Chesapeake Bay", "Nearest land: 5.2 miles west"
+  ("Shore: …" over a lake), "Near: Maryland, United States". Over land: "In: Bavaria, Germany",
+  "Region: Alps, mountain range" (when inside one), "Coast: English Channel, 1.2 miles south" (within
+  the Coast Range). Then "Time zone: …" (the GeoTimeZone package), a "Map position: …" line when the
+  map position is not the aircraft (`LocationPhrases.LocationInfoText`). It does not list the major
+  cities: since 2026-11-07 they are the tree's Major cities item, in the table, never in two places
+  (the GeoNames tab's Maximum Major Cities, which capped the box's list, went with it). The window opens already filled and focused on that box, and
+  speaks nothing itself. Then the kinds-of-place tree (`PlaceTree.Build`: headings by
+  `LocationFeatureCatalog.TreeGroup`, so Towns, Villages and one Neighborhoods sit side by side under
+  Populated places, and no heading names its own item; Major cities first, named with the Minimum
+  Population for Major Cities, kept by `PlaceFilter` with Towns unticked but, like every item, only
+  within the window's Range: one range everywhere, the owner's choice of 2026-11-08, after a range of
+  its own stopped the cities short of the villages), the filters behind their button, and one
+  table of every shown place, its count in the list's name (`OfflineLocationService.SearchAround`,
+  up to about 270,000 rows at the 500 km ceiling, in a virtual `AccessibleTableView`, read
+  cell by cell, CORE-20), filtered in memory
+  (`PlaceFilter`: kinds of place, folded name, compass direction, range) and sorted from the map
+  position. "Whole world, by name" reads the whole table (`SearchWorld`, no name index; ASCII names
+  are compared as they are and only hits folded) and keeps the nearest 2,000. Airports show the
+  navigation database's ident when `AirportMatcher` finds them: a GeoNames-listed ident within 5 km,
+  else the nearest within 5 km sharing a name word (0.55% wrong when measured, 2026-11-05). The
+  window's filters, range and map position live in `UserSettings.LocationInfo*`, never its search,
+  which opens empty around the map position (owner, 2026-11-06); "Use for Output C" (on a heading: only its ticked kinds)
+  sets `OutputCPlaceTypes`, which only a C press passes (`LocationQuerySettings.PlaceTypes`), never
+  the periodic announcement; C then searches the window's Range (`LocationQuerySettings.WindowRange`),
+  naming the first place the window lists for those kinds, or "No match within …". Nothing in the window refreshes by itself; F5 reads the aircraft again.
+  Every range is capped at 310 miles or 500 km (the Coast Range at 1,000) where the lookups read it
+  (`LocationQuerySettings.From`, and the window's range field), so a larger value saved before the
+  cap existed never makes a press scan a continent.
 - **Volanta traffic list** (`TrafficPlace`, docs/volanta.md): each aircraft's "Location:", the place C
   would name without its distance, direction or coast: "Pike Lake, Wisconsin, United States", the
   state and country alone with no town in range, or over water "over Lake Michigan, near Milwaukee,
@@ -128,8 +163,8 @@ then sea (inside a named marine polygon) (LOC-6):
   does no nearest-land or coast search beyond the shore band (VOL-8). With the window's "Report location to
   nearest major city" ticked, `TrafficCityPlace` says the distance and direction from the nearest major city
   instead ("92 miles west of Wichita, Kansas, United States"): `GetMajorCities` finds it with the GeoNames tab's
-  Minimum Population for Major Cities and Major Cities Range, as Location Info's list does, but never takes a
-  section of a city (GeoNames' PPLX: "East Village" in Manhattan), which that list still includes.
+  Minimum Population for Major Cities and Major Cities Range (its only user since 2026-11-08), and never takes
+  a section of a city (GeoNames' PPLX: "East Village" in Manhattan), as Location Info's Major cities never does.
 
 Numbers are invariant everywhere (LOC-3).
 
@@ -140,7 +175,9 @@ Numbers are invariant everywhere (LOC-3).
 - Pure, unit-tested: `GeoNamesDumpLine`, `GeoNamesNameFiles`, `LocationFeatureCatalog`,
   `LocationGrid`, `LocationGeometry`, `NaturalEarthShapes`, `DownloadGuards` (progress gate, stall
   detector, retry budget, resume decision, disk space), `LocationPhrases`, `LocationDataStatusText`,
-  `SearchText` (the name folding the EFB's airport search and `FindTowns` share).
+  `SearchText` (the name folding the EFB's airport search and `FindTowns` share), `PlaceFilter` and
+  `AirportMatcher` (the Location Info window's filter and airport match, in `PlaceSearch.cs` and
+  `AirportMatcher.cs`).
 - I/O: `LocationDataStore`, `LocationDataBuilder`, `LocationDataDownloader`, `OfflineLocationService`.
 - Callers: `MainForm.AnnounceNearestCity` (Output C and its timer), `MainForm.ShowLocationInfoDialog`,
   `Forms/LocationInfoForm.cs`, `Forms/Settings/GeoNamesPanel.cs`, the Volanta window

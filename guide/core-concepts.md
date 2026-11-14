@@ -399,7 +399,7 @@ The **AI** tab of the Settings window:
 Two tools tell you where you are over the world, as opposed to where you are on an airport (for that, see [Where Am I](knowing-where-you-are.md#where-am-i)):
 
 - **Output C** speaks one sentence: the nearest town, the water you are over, and how far the coast or land is.
-- **Output Shift+L** opens the **Location Information** window, a fuller picture with lists of cities, landmarks, airports, terrain and water around you.
+- **Output Shift+L** opens the **Location Information** window: where you are, then every place around you in one list, nearest first, which you can search and filter.
 
 Both answer instantly and work offline, from location data you download once.
 
@@ -423,35 +423,67 @@ Over water BA tells you what you are over and how far land is, then the nearest 
 
 If no town is within range you hear *"No town within 25 miles"* followed by the region and country.
 
-The automatic nearest-city announcement (Announcements tab) speaks this same sentence on a timer.
+C can name another kind of place instead of the nearest town, for example the nearest island: see **Use for Output C** below.
+
+The automatic nearest-city announcement (Announcements tab) speaks this same sentence on a timer, always with the nearest town.
 
 ### The Location Information window {#the-location-information-window}
 
-Press \] then Shift+L. The window opens already filled in, with the cursor in its first box, **Where you are**. Over land it shows the state or province you are in (for example *"In: Bavaria, Germany"*), the mountain range or desert if you are over one, the named coast if it is within range, and the time zone. Over water it shows the sea or lake, the nearest land or shore, and the nearest region.
+Press \] then Shift+L. The window opens already filled in, with the cursor in its first box, **Where you are**. Over land it shows the state or province you are in (for example *"In: Bavaria, Germany"*), the mountain range or desert if you are over one, the named coast if it is within range, and the time zone. Over water it shows the sea or lake, the nearest land or shore, and the nearest region. The major cities are not listed here: tick **Major cities** in the tree below and they are in the table.
 
-Press Tab to move through the other boxes, each a read-only text you can arrow through:
+Press Tab to move through the window. In order:
 
-- **Major Cities**
-- **Tourist Landmarks**
-- **Terrain** (mountains, hills, valleys, capes, islands)
-- **Nearby Places**
-- **Cardinal Directions** (the nearest towns to the north, east, south and west)
-- **Airports**
-- **Water Bodies** (lakes, bays, gulfs, straits and coves)
+1. **Where you are** (described above).
+2. **Places to show**: a tree with check boxes: **All places**, then Populated places, Aviation, Terrain, Water and Landmarks, then the kinds in each, such as Islands or Mountains under Terrain. Populated places holds Major cities, Capitals, Regional capitals, Towns, Villages and Neighborhoods. **Major cities** names its population, for example *"Major cities, 50,000 or more"*: it lists every town of at least the GeoNames tab's Minimum Population for Major Cities, even with Towns unticked. Like every item, it lists them only within the window's **Range**. Ticking or unticking an item does the same to everything under it, so you can untick Villages in one go, or tick Terrain and then untick only mountains. An item shows ticked only while everything under it is ticked.
+3. **Show filters and search**, which shows the filters below it (the button then reads **Hide filters and search**):
+   - **Search by name**: type part of a name. Accents and capitals do not matter. Press Enter to hear how many places match.
+   - **Search where**: **Around the map position**, or **Whole world, by name**, which finds a name anywhere and lists the nearest matches. A whole-world search takes about five or six seconds; a single letter takes longer.
+   - **Range**: how far around the map position to list places, in your distance unit, up to 310 miles or 500 kilometres.
+   - **Direction from the map position**: all directions, or one of eight (north, northeast and so on).
+4. **Places**: one table of everything the tree and filters let through, nearest first. Arriving in it you hear how many there are, for example *"Places, 1,998 places within 30 miles of the map position"*, or *"No places found"*, then the column and the nearest place, for example *"Name, Gothenburg-Landvetter Airport, 1 of 1998"*. Move through it cell by cell, as in a spreadsheet:
+   - **Up and Down**: the same column in the next or previous place, with its number in the list, for example *"Dansered, 2 of 1998"*.
+   - **Left and Right**: the next or previous column of the same place, with the column's name, for example *"From map position, 4.2 miles northeast"*. An empty cell reads *"blank"*.
+   - **Home and End**: the first and last column. **Ctrl+Home and Ctrl+End**: the first and last place. **Page Up and Page Down**: a screenful of places.
+   - NVDA's table keys, Ctrl+Alt with the arrows, do the same as the arrows.
 
-A box with nothing in range says so, for example *"No major cities found."* Press Escape to close the window and return to the simulator.
+   Each row has these columns:
+   - **Name**
+   - **From map position**: distance and direction
+   - **From aircraft**: shown only when the map position is not the aircraft (see below)
+   - **Type**: what the place is, as GeoNames calls it: island, mountain, lake, airport, populated place and so on
+   - **Region**: the state or province and the country
+   - **Details**: a town's population; for an airport its ident and *"in simulator"* when BA found it in the simulator's airports, or *"Not found in simulator"*. The match is made by name and position, so it is very likely right but not guaranteed.
+   - **Coordinates**, in decimal degrees
+5. **Reset filters**, **Map position follows the aircraft** and **Refresh**.
+
+**Context menu.** On a place, press the Applications key or Shift+F10:
+
+- **Track in slot**, then a slot from 1 to 5. Output 1 to 5 then give its distance and bearing, as for a tracked waypoint.
+- **Set as map position**: measures everything from this place instead of the aircraft (see below).
+- **Copy coordinates**: copies them in decimal degrees, for example *57.93333, 11.66667*.
+
+**The map position.** Everything in the window is measured from one point, the map position. Normally it is the aircraft. **Set as map position** moves it to a place, so you can look around somewhere else: the list is then measured from there, the first box adds a line such as *"Map position: Krokholmen, 23 miles northwest of the aircraft"*, and the table gains the **From aircraft** column. The **Map position follows the aircraft** check box, near the bottom, brings it back to the aircraft. Unticking it leaves the map position where the aircraft is at that moment: the line then reads *"Map position: the aircraft's position, not following it"*, and once you move on, for example *"Map position: where the aircraft was, now 2.3 miles south of it"*.
+
+On an item in the tree, the context menu has **Use for Output C**: from then on Output C names the nearest place of that kind instead of the nearest town, for example the nearest island. On a heading, or on **All places**, it takes only the ticked kinds under it: on **Terrain** with only Islands and Peaks ticked, C names the nearest island or peak, and BA says *"Output C names the nearest of: Islands, Peaks"*. With nothing ticked under it, BA says *"Nothing ticked under Terrain"* and C stays as it was. Ticking things later does not change C; pick **Use for Output C** again. C then searches within the window's **Range**, so it names the first place the table lists for that kind while the map position follows the aircraft; if there is none, it says *"No match within 30 miles"*. **Output C back to the nearest town or village** undoes it.
+
+**Reset filters** puts the filters, search and range back to their defaults. The window remembers its kinds of place, filters, range and map position, even after BA restarts. The search is not remembered: each time the window opens, the search box is empty and **Search where** is **Around the map position**.
+
+**Refreshing.** The window does not update by itself, so the list never moves while you read it. Press **F5**, or **Refresh**, to read the aircraft's position again; the list follows when the map position is the aircraft.
+
+Press Escape to close the window and return to the simulator.
 
 ### Settings {#settings-2}
 
-The rest of the **GeoNames** tab controls how far each search reaches and how much it lists:
+The rest of the **GeoNames** tab controls how far Output C and the major cities reach:
 
-- **Distance Ranges:** **Nearby Cities Range**, **Cardinal Cities Range**, **Major Cities Range**, **Landmarks Range** (used by all four landmark lists) and **Coast Range** (how close the sea coast must be, over land, before C mentions it; 50 by default, up to 1,000). Over water the nearest land is always given, whatever the Coast Range.
-- **Minimum Population for Major Cities:** how big a town must be to count as a major city (50,000 by default).
+- **Nearest Town or Village Range:** how far Output C looks for the nearest town or village, and how far the location readouts (the window's first box, the Volanta traffic list) look for one.
+- **Minimum Population for Major Cities:** which towns count as major cities (50,000 people by default), for the window's Major cities and the Volanta traffic list.
+- **Major Cities Range:** how far the Volanta traffic list looks for the nearest major city.
+- **Coast Range:** how close the sea coast must be, over land, before C mentions it; 50 by default, up to 1,000. Over water the nearest land is always given, whatever the Coast Range.
 - **Distance Units:** **Miles** or **Kilometers**. This changes the spoken and shown distances.
-- **Maximum Results Per Category:** how many entries each list shows (Nearby Places, Major Cities, Airports, Terrain Features, Water Bodies, Tourist Landmarks).
-- **Reset to Defaults** puts the ranges back.
+- **Reset to Defaults** puts these back.
 
-The ranges are capped at 310 miles (500 kilometres), and the Coast Range at 1,000, so a press never searches half a continent.
+The ranges are capped at 310 miles (500 kilometres), and the Coast Range at 1,000, so a press never searches half a continent. The window's own range is set in the window.
 
 <div class="callout note" role="note" markdown="1">
 
@@ -462,6 +494,7 @@ The ranges are capped at 310 miles (500 kilometres), and the Coast Range at 1,00
 ### If something goes wrong {#if-something-goes-wrong-5}
 
 - **C says the data is not downloaded.** Go to the GeoNames tab and press Download location data.
+- **C or Shift+L says the data needs an update.** A new version of BA stores more in the location data (the kinds of place and the airports' codes). Press Download location data on the GeoNames tab once; it downloads and builds the data again.
 - **The download stalled.** BA says *"Location data download stalled, no data for 20 seconds."* and retries by itself. If it gives up, press the button again: it resumes rather than starting over.
 - **C says the data will be ready at the next start.** Another program (often antivirus) was holding the file. Restart BA.
 - **Distances are in the wrong unit.** Change Distance Units on the GeoNames tab. This is separate from the ground distance unit used by taxi guidance.

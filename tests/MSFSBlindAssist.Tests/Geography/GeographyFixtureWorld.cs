@@ -10,15 +10,15 @@ namespace MSFSBlindAssist.Tests.Geography;
 /// </summary>
 internal static class GeographyFixtureWorld
 {
-    private static string Row(int id, string name, double lat, double lon, string cls, string code, string a1, int pop) =>
-        FormattableString.Invariant($"{id}\t{name}\t{name}\t\t{lat}\t{lon}\t{cls}\t{code}\tUS\t\t{a1}\t\t\t\t{pop}\t\t\tAmerica/New_York\t2026-01-01");
+    private static string Row(int id, string name, double lat, double lon, string cls, string code, string a1, int pop, string alternates = "") =>
+        FormattableString.Invariant($"{id}\t{name}\t{name}\t{alternates}\t{lat}\t{lon}\t{cls}\t{code}\tUS\t\t{a1}\t\t\t\t{pop}\t\t\tAmerica/New_York\t2026-01-01");
 
     internal static readonly string[] Rows =
     {
         Row(1, "Bayside", 38.55, -76.48, "P", "PPL", "MD", 1238),
         Row(2, "Hamlet", 38.60, -76.70, "P", "PPL", "MD", 0),
         Row(3, "Bigtown", 39.29, -76.61, "P", "PPLA2", "MD", 600000),
-        Row(4, "Bayside Airport", 38.40, -76.60, "S", "AIRP", "MD", 0),
+        Row(4, "Bayside Airport", 38.40, -76.60, "S", "AIRP", "MD", 0, "KBAY,BYA,Bayside Field"),
         Row(5, "Pond", 38.70, -76.90, "H", "LK", "MD", 0),
         Row(6, "Sugarloaf Mountain", 38.90, -77.00, "T", "MT", "MD", 0),
         Row(7, "Bay Museum", 38.50, -76.50, "S", "MUS", "MD", 0),
@@ -79,7 +79,8 @@ internal static class GeographyFixtureWorld
             File.WriteAllText(path, kv.Value);
             return path;
         });
-        return new LocationBuildInputs(zip, Path.Combine(dir, "countryInfo.txt"), Path.Combine(dir, "admin1.txt"), files, "2026-10-10")
+        return new LocationBuildInputs(zip, Path.Combine(dir, "countryInfo.txt"), Path.Combine(dir, "admin1.txt"),
+            files, "2026-10-10")
         {
             MinimumPlaces = 1,
             MinimumRows = minimumRows,

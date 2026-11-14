@@ -1,187 +1,856 @@
-using MSFSBlindAssist.Models;
+using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Controls;
+using MSFSBlindAssist.Database;
+using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services.Geography;
+using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms;
 
 /// <summary>
-/// The Location Info window (Output > Shift+L). It opens already filled from the offline location
-/// data (the lookup takes milliseconds), with the "Where you are" box first and focused, so the
-/// screen reader reads it on arrival; nothing else is spoken, since a separate summary would only
-/// repeat that box (CORE-7). Escape or Alt+F4 closes it and returns focus to the simulator.
+/// The Location Info window (Output > Shift+L), answered from the offline location data only (LOC-1).
+/// From the top: "Where you are" (focused on opening, so the screen reader reads it; the window speaks
+/// nothing itself, LOC-8), the places as one table nearest first, and the filters behind a show/hide
+/// button. Everything is measured from the map position: the aircraft while "Map position follows the
+/// aircraft" is ticked, else a place picked with "Set as map position". The filters, range and map position
+/// are remembered between openings and sessions; the search is not: it opens empty, around the map position. Nothing refreshes by itself, so the list
+/// never moves under the pilot; F5 or Refresh reads the aircraft's position again. Design:
+/// docs/design/2026-11-05-location-info-redesign.md.
 /// </summary>
 public partial class LocationInfoForm : Form
 {
-    // Windows API declarations for focus management
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private TableLayoutPanel mainLayout = null!;
-    private TextBox whereYouAreTextBox = null!;
-    private TextBox nearbyPlacesTextBox = null!;
-    private TextBox majorCitiesTextBox = null!;
-    private TextBox cardinalDirectionsTextBox = null!;
-    private TextBox airportsTextBox = null!;
-    private TextBox terrainTextBox = null!;
-    private TextBox waterBodiesTextBox = null!;
-    private TextBox touristLandmarksTextBox = null!;
-    private readonly IntPtr previousWindow;
+    /// <summary>The most places a whole-world name search keeps: the nearest to the map position.</summary>
+    private const int WorldSearchMax = 2000;
 
-    internal LocationInfoForm(LocationReport report, bool kilometres)
+    private readonly OfflineLocationService _service;
+    private readonly SimConnectManager _sim;
+    private readonly ScreenReaderAnnouncer _announcer;
+    private readonly WaypointTracker _tracker;
+    private readonly IntPtr _previousWindow;
+    private readonly UserSettings _settings = SettingsManager.Current;
+    private readonly bool _kilometres;
+
+    private LocationReport _aircraftReport;
+    private double _aircraftLat, _aircraftLon;
+
+    // The loaded places, and which of them pass the filters (indices, nearest first).
+    private IReadOnlyList<PlaceResult> _places = Array.Empty<PlaceResult>();
+    private List<int> _shown = new();
+    private double _loadedLat, _loadedLon, _loadedRadiusKm = -1;
+    private bool _loadedWorld;
+    private string _loadedWorldQuery = "";
+    private int _worldTotal;
+    private bool _loading;
+    private CancellationTokenSource? _loadCts;
+
+    private AirportMatcher? _airports;
+    private readonly Dictionary<int, AirportSearchEntry?> _airportMatches = new();
+
+    private readonly List<(string Header, int Width, Func<PlaceResult, string> Text)> _columns = new();
+    // The rows handed to the virtual list, one per index until the shown places or the columns change, so a
+    // row's texts are worked out once however often the list and the screen reader ask for it.
+    private readonly Dictionary<int, ListViewItem> _rows = new();
+    private bool _updatingControls;
+
+    private TextBox _whereBox = null!;
+    private AccessibleTableView _results = null!;
+    private string _status = "";
+    private Button _filtersButton = null!;
+    private TableLayoutPanel _filtersPanel = null!;
+    private TextBox _searchBox = null!;
+    private ComboBox _scopeCombo = null!;
+    private NumericUpDown _rangeBox = null!;
+    private ComboBox _directionCombo = null!;
+    private NativeAccessibleTreeView _typeTree = null!;
+    private CheckBox _followCheck = null!;
+    private Button _resetButton = null!;
+    private Button _refreshButton = null!;
+    private readonly System.Windows.Forms.Timer _searchDebounce = new() { Interval = 400 };
+    private readonly System.Windows.Forms.Timer _rangeDebounce = new() { Interval = 400 };
+
+    internal LocationInfoForm(OfflineLocationService service, SimConnectManager sim, ScreenReaderAnnouncer announcer,
+        WaypointTracker tracker, LocationReport aircraftReport, double aircraftLat, double aircraftLon)
     {
-        // Capture the current foreground window (likely the simulator)
-        previousWindow = GetForegroundWindow();
+        _previousWindow = GetForegroundWindow();
+        _service = service;
+        _sim = sim;
+        _announcer = announcer;
+        _tracker = tracker;
+        _aircraftReport = aircraftReport;
+        _aircraftLat = aircraftLat;
+        _aircraftLon = aircraftLon;
+        _kilometres = _settings.DistanceUnits == "kilometers";
         InitializeComponent();
-        Populate(report, kilometres);
+        LoadFilterControls();
+        BuildColumns();
+        UpdateWhereBox();
     }
+
+    // ---- the map position ----
+
+    private bool Following => _settings.LocationInfoFollowAircraft;
+    private double MapLat => Following ? _aircraftLat : _settings.LocationInfoMapLatitude;
+    private double MapLon => Following ? _aircraftLon : _settings.LocationInfoMapLongitude;
+    private string UnitWord => LocationPhrases.UnitWord(_kilometres);
+    private double RangeKm => _kilometres ? (double)_rangeBox.Value : (double)_rangeBox.Value * LocationQuerySettings.KmPerMile;
+    private bool WholeWorld => _scopeCombo.SelectedIndex == 1;
+
+    // ---- layout ----
 
     private void InitializeComponent()
     {
-        this.SuspendLayout();
-
-        // Form properties
-        this.Text = "Location Information";
-        this.Size = new System.Drawing.Size(800, 640);
-        this.StartPosition = FormStartPosition.CenterScreen;
-        this.FormBorderStyle = FormBorderStyle.Sizable;
-        this.MinimumSize = new System.Drawing.Size(700, 540);
-        this.MaximizeBox = true;
-        this.MinimizeBox = true;
-        this.ShowInTaskbar = true;
-        this.TopMost = true;
-
-        const int rows = 8;
-        mainLayout = new TableLayoutPanel
+        SuspendLayout();
+        Text = "Location Information";
+        // Sizes are at 100% and grow with the screen's scaling, capped to its working area: unscaled, at 200%
+        // the doubled text and rows left the table four rows, and none with the filters shown (2026-11-09).
+        Load += (_, _) =>
         {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = rows,
-            AutoSize = true
+            var work = Screen.FromControl(this).WorkingArea.Size;
+            Size Fit(Size logical)
+            {
+                var s = LogicalToDeviceUnits(logical);
+                return new Size(Math.Min(s.Width, work.Width), Math.Min(s.Height, work.Height));
+            }
+            MinimumSize = Fit(new Size(760, 560));
+            Size = Fit(new Size(1000, 760));
+            CenterToScreen();
         };
-        for (int i = 0; i < rows; i++)
-        {
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / rows));
-        }
-        mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        StartPosition = FormStartPosition.CenterScreen;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        ShowInTaskbar = true;
+        TopMost = true;
+        KeyPreview = true;
 
-        // "Where you are" first: the box the window opens on.
-        whereYouAreTextBox = CreateCategoryTextBox("Where you are");
-        majorCitiesTextBox = CreateCategoryTextBox("Major Cities");
-        touristLandmarksTextBox = CreateCategoryTextBox("Tourist Landmarks");
-        terrainTextBox = CreateCategoryTextBox("Terrain");
-        nearbyPlacesTextBox = CreateCategoryTextBox("Nearby Places");
-        cardinalDirectionsTextBox = CreateCategoryTextBox("Cardinal Directions");
-        airportsTextBox = CreateCategoryTextBox("Airports");
-        waterBodiesTextBox = CreateCategoryTextBox("Water Bodies");
+        // Tab order (owner, 2026-11-05): where you are, the kinds of place, the filters behind their button,
+        // then the places they select; the bottom row last.
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(6) };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        // The box is as tall as its lines; the tree and the places share what the other rows leave, so showing
+        // the filters shrinks both instead of only the places.
+        _whereRow = new RowStyle(SizeType.Absolute, 120);           // FitWhereRow sizes it to the text
+        layout.RowStyles.Add(_whereRow);                            // where you are
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30));   // kinds of place
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // show/hide filters
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // filters
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 70));   // places
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // bottom row
 
-        var boxes = new[]
+        _whereBox = new TextBox
         {
-            whereYouAreTextBox, majorCitiesTextBox, touristLandmarksTextBox, terrainTextBox,
-            nearbyPlacesTextBox, cardinalDirectionsTextBox, airportsTextBox, waterBodiesTextBox,
+            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill,
+            AccessibleName = "Where you are", TabIndex = 0,
         };
-        for (int i = 0; i < boxes.Length; i++)
+        _whereBox.SizeChanged += (_, _) => FitWhereRow(); // a new width wraps the text differently
+
+        // Check boxes as state images (CORE-18), never TVS_CHECKBOXES: with it every item is a "check box" to
+        // the screen reader, which then reads the item's MSAA value, the tree depth ("Islands … 2"). As plain
+        // outline items with a checked state, as in the First Officer checklist, the depth is never read
+        // (owner, 2026-11-08). Space and a click on the box toggle here (TypeTree_KeyDown, _NodeMouseClick).
+        _typeTree = new NativeAccessibleTreeView { CheckboxStateImages = true, Dock = DockStyle.Fill, AccessibleName = "Places to show", TabIndex = 1 };
+        _typeTree.KeyDown += TypeTree_KeyDown;
+        _typeTree.NodeMouseClick += TypeTree_NodeMouseClick;
+        _typeTree.ContextMenuStrip = BuildTypeMenu();
+
+        _filtersButton = new Button { AutoSize = true, TabIndex = 2 };
+        _filtersButton.Click += (_, _) => SetFiltersShown(!_filtersPanel.Visible);
+
+        _filtersPanel = BuildFiltersPanel();
+        _filtersPanel.TabIndex = 3;
+
+        // The table's name carries the count (or "No places found"), read on arrival in it. A table read cell
+        // by cell (CORE-20): Up and Down along a column, Left and Right along a row.
+        _results = new AccessibleTableView
         {
-            boxes[i].TabIndex = i;
-            mainLayout.Controls.Add(boxes[i], 0, i);
-        }
+            VirtualMode = true, Dock = DockStyle.Fill, AccessibleName = "Places", TabIndex = 4,
+        };
+        _results.RetrieveVirtualItem += Results_RetrieveVirtualItem;
+        _results.Enter += Results_Enter;
+        _results.ContextMenuStrip = BuildResultsMenu();
 
-        this.Controls.Add(mainLayout);
+        var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, TabIndex = 5 };
+        _resetButton = new Button { Text = "Reset filters", AutoSize = true, TabIndex = 0 };
+        _resetButton.Click += (_, _) => ResetFilters();
+        _followCheck = new CheckBox { Text = "Map position follows the aircraft", AutoSize = true, TabIndex = 1 };
+        _followCheck.CheckedChanged += FollowCheck_CheckedChanged;
+        _refreshButton = new Button { Text = "Refresh (F5)", AutoSize = true, AccessibleName = "Refresh", TabIndex = 2 };
+        _refreshButton.Click += (_, _) => RefreshFromAircraft();
+        buttons.Controls.AddRange(new Control[] { _resetButton, _followCheck, _refreshButton });
 
-        // Handle key events for quick close
-        this.KeyPreview = true;
-        this.KeyDown += LocationInfoForm_KeyDown;
+        layout.Controls.Add(_whereBox, 0, 0);
+        layout.Controls.Add(_typeTree, 0, 1);
+        layout.Controls.Add(_filtersButton, 0, 2);
+        layout.Controls.Add(_filtersPanel, 0, 3);
+        layout.Controls.Add(_results, 0, 4);
+        layout.Controls.Add(buttons, 0, 5);
+        Controls.Add(layout);
 
-        // Focus and bring window to front when opened
-        this.Shown += (sender, e) =>
+        KeyDown += Form_KeyDown;
+        _searchDebounce.Tick += (_, _) => { _searchDebounce.Stop(); OnSearchSettled(); };
+        _rangeDebounce.Tick += (_, _) => { _rangeDebounce.Stop(); Reload(); };
+        Shown += (_, _) =>
         {
-            BringToFront();
             Activate();
             TopMost = true;
-            TopMost = false; // Flash to bring to front
-            whereYouAreTextBox.Focus();
+            TopMost = false;
+            _whereBox.Focus();
+            _whereBox.Select(0, 0);
+            Reload();
         };
-
-        this.ResumeLayout(false);
+        ResumeLayout(false);
     }
 
-    private TextBox CreateCategoryTextBox(string categoryName)
+    private TableLayoutPanel BuildFiltersPanel()
     {
-        return new TextBox
+        var panel = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        int tab = 0;
+        void Row(string label, Control control)
         {
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
-            Dock = DockStyle.Fill,
-            Font = new System.Drawing.Font("Consolas", 9F, System.Drawing.FontStyle.Regular),
-            BackColor = System.Drawing.SystemColors.Window,
-            ForeColor = System.Drawing.SystemColors.WindowText,
-            TabStop = true,
-            AccessibleName = categoryName,
-            AccessibleDescription = $"{categoryName} information",
-        };
+            control.TabIndex = tab++;
+            if (label.Length > 0) control.AccessibleName ??= label.TrimEnd(':');
+            panel.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, panel.RowCount);
+            panel.Controls.Add(control, 1, panel.RowCount);
+            panel.RowCount++;
+        }
+
+        _searchBox = new TextBox { Width = 300 };
+        _searchBox.TextChanged += (_, _) => { if (_updatingControls) return; _searchDebounce.Stop(); _searchDebounce.Start(); };
+        _searchBox.KeyDown += SearchBox_KeyDown;
+        Row("Search by name:", _searchBox);
+
+        _scopeCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
+        _scopeCombo.Items.AddRange(new object[] { "Around the map position", "Whole world, by name" });
+        _scopeCombo.SelectedIndexChanged += (_, _) => { if (!_updatingControls) Reload(); };
+        Row("Search where:", _scopeCombo);
+
+        _rangeBox = new NumericUpDown { Minimum = 1, Maximum = LocationQuerySettings.MaxRange(_kilometres), Width = 100 };
+        _rangeBox.ValueChanged += (_, _) => { if (_updatingControls) return; _rangeDebounce.Stop(); _rangeDebounce.Start(); };
+        Row($"Range in {LocationPhrases.UnitWord(_kilometres)}:", _rangeBox);
+
+        _directionCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
+        _directionCombo.Items.Add("All directions");
+        foreach (var d in PlaceFilter.Directions) _directionCombo.Items.Add(d);
+        _directionCombo.SelectedIndexChanged += (_, _) => { if (!_updatingControls) ApplyFilters(); };
+        Row("Direction from the map position:", _directionCombo);
+
+        return panel;
     }
 
-    private void LocationInfoForm_KeyDown(object? sender, KeyEventArgs e)
+    private void SetFiltersShown(bool shown)
     {
-        // Allow Escape or Alt+F4 to close the form
-        if (e.KeyCode == Keys.Escape)
+        _filtersPanel.Visible = shown;
+        _filtersButton.Text = shown ? "Hide filters and search" : "Show filters and search";
+        _settings.LocationInfoFiltersShown = shown;
+    }
+
+    // ---- columns ----
+
+    /// <summary>The table's columns. "From aircraft" is left out while the map position is the aircraft,
+    /// since it would repeat "From map position". The distances come right after the name, read first along a
+    /// row (owner, 2026-11-08).</summary>
+    private void BuildColumns()
+    {
+        _columns.Clear();
+        _columns.Add(("Name", 220, p => p.Name));
+        _columns.Add(("From map position", 150, p => FromPoint(MapLat, MapLon, p)));
+        if (!Following) _columns.Add(("From aircraft", 150, p => FromPoint(_aircraftLat, _aircraftLon, p)));
+        _columns.Add(("Type", 150, p => p.TypeName));
+        _columns.Add(("Region", 200, p => LocationPhrases.Region(p.State, p.Country)));
+        _columns.Add(("Details", 180, Details));
+        _columns.Add(("Coordinates", 160, p => LocationPhrases.Coordinates(p.Lat, p.Lon)));
+
+        _rows.Clear();
+        _results.BeginUpdate();
+        _results.Columns.Clear();
+        foreach (var (header, width, _) in _columns) _results.Columns.Add(header, width);
+        _results.EndUpdate();
+    }
+
+    private string FromPoint(double lat, double lon, PlaceResult p) => LocationPhrases.DistanceAndDirection(
+        LocationGeometry.GreatCircleNm(lat, lon, p.Lat, p.Lon), LocationGeometry.BearingTrue(lat, lon, p.Lat, p.Lon), _kilometres);
+
+    private string Details(PlaceResult p)
+    {
+        string? ident = null;
+        if (p.Category == LocationCategory.Airport)
         {
-            this.Close();
+            if (!_airportMatches.TryGetValue(p.Id, out var match))
+                _airportMatches[p.Id] = match = _airports?.Match(p.Name, p.AlternateNames, p.Lat, p.Lon);
+            if (_airports is null) return "";
+            ident = match?.Ident;
+        }
+        return LocationPhrases.PlaceDetails(p.Category, p.Population, ident);
+    }
+
+    private void Results_RetrieveVirtualItem(object? sender, RetrieveVirtualItemEventArgs e)
+    {
+        if (e.ItemIndex < 0 || e.ItemIndex >= _shown.Count)
+        {
+            e.Item = new ListViewItem(new string[_columns.Count]);
+            return;
+        }
+        if (!_rows.TryGetValue(e.ItemIndex, out var row))
+        {
+            var place = _places[_shown[e.ItemIndex]];
+            _rows[e.ItemIndex] = row = new ListViewItem(_columns.Select(c => c.Text(place)).ToArray());
+        }
+        e.Item = row;
+    }
+
+    private PlaceResult? SelectedPlace =>
+        _results.SelectedIndices.Count > 0 && _results.SelectedIndices[0] < _shown.Count
+            ? _places[_shown[_results.SelectedIndices[0]]]
+            : null;
+
+    // ---- filters ----
+
+    private void LoadFilterControls()
+    {
+        _updatingControls = true;
+        try
+        {
+            // The search is never remembered: an empty search around the map position (owner, 2026-11-06).
+            _searchBox.Text = "";
+            _scopeCombo.SelectedIndex = 0;
+            _rangeBox.Value = Math.Clamp(_settings.LocationInfoRange, (int)_rangeBox.Minimum, (int)_rangeBox.Maximum);
+            int direction = PlaceFilter.Directions.ToList().IndexOf(_settings.LocationInfoDirection);
+            _directionCombo.SelectedIndex = direction + 1;
+            _followCheck.Checked = Following;
+            BuildTypeTree();
+        }
+        finally { _updatingControls = false; }
+        SetFiltersShown(_settings.LocationInfoFiltersShown);
+    }
+
+    private void SaveFilterSettings()
+    {
+        _settings.LocationInfoRange = (int)_rangeBox.Value;
+        _settings.LocationInfoDirection = _directionCombo.SelectedIndex > 0 ? PlaceFilter.Directions[_directionCombo.SelectedIndex - 1] : "";
+        _settings.LocationInfoHiddenTypes = HiddenTypes().ToList();
+    }
+
+    private void ResetFilters()
+    {
+        var defaults = new UserSettings();
+        _settings.LocationInfoRange = defaults.LocationInfoRange;
+        _settings.LocationInfoDirection = defaults.LocationInfoDirection;
+        _settings.LocationInfoHiddenTypes = defaults.LocationInfoHiddenTypes;
+        LoadFilterControls();
+        Reload();
+    }
+
+    /// <summary>Typing settled: a whole-world search runs again; around a point the loaded places are filtered.</summary>
+    private void OnSearchSettled()
+    {
+        if (WholeWorld) Reload();
+        else ApplyFilters();
+    }
+
+    private void SearchBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Enter) return;
+        e.SuppressKeyPress = true;
+        _searchDebounce.Stop();
+        OnSearchSettled();
+        // The count is spoken only here, never on each filter change (CORE-7).
+        if (!_loading) _announcer.AnnounceImmediate(_status);
+        else _speakCountWhenLoaded = true;
+    }
+
+    private bool _speakCountWhenLoaded;
+
+    // ---- the kinds-of-place tree ----
+
+    /// <summary>All, then each heading, then its kinds of place, from the database's own list
+    /// (<see cref="OfflineLocationService.GetPlaceTypes"/>) grouped by <see cref="PlaceTree.Build"/>: Major
+    /// cities first under the populated places, named with its range. Unticked items come from the settings.</summary>
+    private void BuildTypeTree()
+    {
+        var types = _service.GetPlaceTypes() ?? Array.Empty<PlaceType>();
+        var hidden = _settings.LocationInfoHiddenTypes.ToHashSet(StringComparer.Ordinal);
+        _typeTree.BeginUpdate();
+        _typeTree.Nodes.Clear();
+        var root = new TreeNode("All places");
+        foreach (var group in PlaceTree.Build(types, MajorCitiesName()))
+        {
+            var groupNode = new TreeNode(group.Name);
+            foreach (var item in group.Items)
+            {
+                bool shown = item.IsMajorCities
+                    ? !hidden.Contains(PlaceFilter.MajorCitiesKey)
+                    : !item.TypeKeys.Any(hidden.Contains);
+                groupNode.Nodes.Add(new TreeNode(item.Name) { Tag = item, Checked = shown });
+            }
+            groupNode.Checked = groupNode.Nodes.Cast<TreeNode>().All(n => n.Checked);
+            root.Nodes.Add(groupNode);
+        }
+        root.Checked = root.Nodes.Cast<TreeNode>().All(n => n.Checked);
+        _typeTree.Nodes.Add(root);
+        // Every item is tickable: each gets its box once it is in the tree.
+        foreach (var node in Descendants(root).Prepend(root)) _typeTree.ShowCheckBox(node);
+        root.Expand();
+        // Selected, so Tab into the tree reads an item rather than nothing.
+        _typeTree.SelectedNode = root;
+        _typeTree.EndUpdate();
+    }
+
+    private static IEnumerable<TreeNode> Descendants(TreeNode node) =>
+        node.Nodes.Cast<TreeNode>().SelectMany(n => Descendants(n).Prepend(n));
+
+    /// <summary>"Major cities, 50,000 or more": the GeoNames tab's Minimum Population for Major Cities. No range:
+    /// the item uses the window's, as every item does (owner, 2026-11-08).</summary>
+    private string MajorCitiesName()
+    {
+        var query = LocationQuerySettings.From(_settings);
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"Major cities, {query.MajorPopulation:N0} or more");
+    }
+
+    /// <summary>The unticked items' type keys, and <see cref="PlaceFilter.MajorCitiesKey"/> for an unticked
+    /// Major cities.</summary>
+    private IEnumerable<string> HiddenTypes() =>
+        _typeTree.Nodes.Cast<TreeNode>().SelectMany(n => Descendants(n).Prepend(n))
+            .Where(n => n.Tag is PlaceTreeItem && !n.Checked)
+            .SelectMany(n => n.Tag is PlaceTreeItem { IsMajorCities: true } ? new[] { PlaceFilter.MajorCitiesKey } : ((PlaceTreeItem)n.Tag!).TypeKeys);
+
+    /// <summary>The Major cities filter while its item is ticked, else null.</summary>
+    private MajorCityFilter? MajorCities()
+    {
+        var item = _typeTree.Nodes.Cast<TreeNode>().SelectMany(n => Descendants(n).Prepend(n))
+            .FirstOrDefault(n => n.Tag is PlaceTreeItem { IsMajorCities: true });
+        if (item is null || !item.Checked) return null;
+        return new MajorCityFilter(LocationQuerySettings.From(_settings).MajorPopulation);
+    }
+
+    /// <summary>Ticking or unticking an item does the same to everything under it; an item above shows
+    /// ticked only while everything under it is ticked. Only the kinds of place (the bottom level) decide
+    /// what the list shows.</summary>
+    private void Toggle(TreeNode node)
+    {
+        node.Checked = !node.Checked;
+        foreach (var child in Descendants(node)) child.Checked = node.Checked;
+        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+            parent.Checked = parent.Nodes.Cast<TreeNode>().All(n => n.Checked);
+        ApplyFilters();
+    }
+
+    /// <summary>Space toggles the selected item: without TVS_CHECKBOXES the native control no longer does.</summary>
+    private void TypeTree_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Space || e.Modifiers != Keys.None || _typeTree.SelectedNode is not { } node) return;
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+        Toggle(node);
+    }
+
+    /// <summary>A left click on an item's box toggles it, as Space does.</summary>
+    private void TypeTree_NodeMouseClick(object? sender, TreeNodeMouseClickEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || e.Node is null) return;
+        if (_typeTree.HitTest(e.Location).Location != TreeViewHitTestLocations.StateImage) return;
+        Toggle(e.Node);
+    }
+
+    private ContextMenuStrip BuildTypeMenu()
+    {
+        var menu = new ContextMenuStrip();
+        var use = new ToolStripMenuItem("Use for Output C");
+        use.Click += (_, _) => UseForOutputC(_typeTree.SelectedNode);
+        var reset = new ToolStripMenuItem("Output C back to the nearest town or village");
+        reset.Click += (_, _) =>
+        {
+            _settings.OutputCPlaceTypes = new List<string>();
+            SettingsManager.Save();
+            _announcer.AnnounceImmediate("Output C names the nearest town or village again.");
+        };
+        menu.Items.AddRange(new ToolStripItem[] { use, reset });
+        return menu;
+    }
+
+    /// <summary>Output C names the nearest place of the picked kinds, within this window's Range: the first place
+    /// the window lists for them while the map position follows the aircraft. A kind of place is used ticked or
+    /// not; a heading (or All) only its ticked kinds, so C can be made specific; with none ticked nothing changes
+    /// (owner, 2026-11-09). Saved once, as picked: later ticks leave it. Major cities is saved as
+    /// <see cref="PlaceFilter.MajorCitiesKey"/>.</summary>
+    private void UseForOutputC(TreeNode? node)
+    {
+        if (node is null) return;
+        var under = node.Tag is PlaceTreeItem
+            ? new List<TreeNode> { node }
+            : Descendants(node).Where(n => n.Tag is PlaceTreeItem).ToList();
+        var picked = node.Tag is PlaceTreeItem ? under : under.Where(n => n.Checked).ToList();
+        if (picked.Count == 0)
+        {
+            _announcer.AnnounceImmediate($"Nothing ticked under {node.Text}.");
+            return;
+        }
+        _settings.OutputCPlaceTypes = picked.Select(n => (PlaceTreeItem)n.Tag!)
+            .SelectMany(i => i.IsMajorCities ? new[] { PlaceFilter.MajorCitiesKey } : i.TypeKeys).ToList();
+        SettingsManager.Save();
+        _announcer.AnnounceImmediate(picked.Count == under.Count
+            ? $"Output C names the nearest place of the kind {node.Text}."
+            : $"Output C names the nearest of: {string.Join(", ", picked.Select(n => n.Text))}.");
+    }
+
+    // ---- the results' context menu ----
+
+    private ContextMenuStrip BuildResultsMenu()
+    {
+        var menu = new ContextMenuStrip();
+        var track = new ToolStripMenuItem("Track in slot");
+        for (int slot = 1; slot <= _tracker.SlotCount; slot++)
+        {
+            int s = slot;
+            var item = new ToolStripMenuItem($"Slot {s}");
+            item.Click += (_, _) => TrackSelected(s);
+            track.DropDownItems.Add(item);
+        }
+        var setMap = new ToolStripMenuItem("Set as map position");
+        setMap.Click += (_, _) => SetMapPosition(SelectedPlace);
+        var copy = new ToolStripMenuItem("Copy coordinates");
+        copy.Click += (_, _) => CopyCoordinates(SelectedPlace);
+        menu.Items.AddRange(new ToolStripItem[] { track, setMap, copy });
+        menu.Opening += (_, e) => e.Cancel = SelectedPlace is null;
+        return menu;
+    }
+
+    private void TrackSelected(int slot)
+    {
+        if (SelectedPlace is not { } p) return;
+        _tracker.TrackWaypoint(slot, new WaypointFix
+        {
+            Ident = p.Name, Name = p.Name, Latitude = p.Lat, Longitude = p.Lon, Section = FlightPlanSection.Enroute,
+        });
+        _announcer.AnnounceImmediate($"{p.Name} tracked in slot {slot}");
+    }
+
+    private void CopyCoordinates(PlaceResult? p)
+    {
+        if (p is null) return;
+        try
+        {
+            Clipboard.SetText(LocationPhrases.Coordinates(p.Lat, p.Lon));
+            _announcer.AnnounceImmediate("Coordinates copied");
+        }
+        catch (ExternalException ex)
+        {
+            _announcer.AnnounceImmediate("Could not copy: the clipboard is in use.");
+            Log.Warn("LocationInfo", $"Clipboard copy failed: {ex.Message}");
         }
     }
 
-    private void Populate(LocationReport report, bool kilometres)
+    private void SetMapPosition(PlaceResult? p)
     {
-        whereYouAreTextBox.Text = LocationPhrases.WhereYouAreText(report.Where, kilometres);
-
-        var data = report.Details ?? new LocationData();
-        nearbyPlacesTextBox.Text = data.NearbyPlaces.Count > 0
-            ? string.Join("\r\n", data.NearbyPlaces)
-            : "No nearby places found.";
-        majorCitiesTextBox.Text = data.MajorCities.Count > 0
-            ? string.Join("\r\n", data.MajorCities)
-            : "No major cities found.";
-
-        string directions = data.Directions.ToString().Trim();
-        cardinalDirectionsTextBox.Text = directions.Length > 0
-            ? directions
-            : "No cardinal direction information available.";
-
-        PopulateLandmarkTextBox(airportsTextBox, data.CategorizedLandmarks, "Airports");
-        PopulateLandmarkTextBox(terrainTextBox, data.CategorizedLandmarks, "Terrain");
-        PopulateLandmarkTextBox(waterBodiesTextBox, data.CategorizedLandmarks, "Water Bodies");
-        PopulateLandmarkTextBox(touristLandmarksTextBox, data.CategorizedLandmarks, "Tourist Landmarks");
+        if (p is null) return;
+        _settings.LocationInfoFollowAircraft = false;
+        _settings.LocationInfoMapName = p.Name;
+        _settings.LocationInfoMapLatitude = p.Lat;
+        _settings.LocationInfoMapLongitude = p.Lon;
+        _updatingControls = true;
+        _followCheck.Checked = false;
+        _updatingControls = false;
+        _announcer.AnnounceImmediate($"Map position set to {p.Name}.");
+        OnMapPositionChanged();
     }
 
-    private static void PopulateLandmarkTextBox(TextBox textBox, Dictionary<string, List<Landmark>> categorizedLandmarks, string category)
+    private void FollowCheck_CheckedChanged(object? sender, EventArgs e)
     {
-        textBox.Text = categorizedLandmarks.TryGetValue(category, out var list) && list.Count > 0
-            ? string.Join("\r\n", list)
-            : $"No {category.ToLowerInvariant()} found.";
+        if (_updatingControls) return;
+        if (_followCheck.Checked) _settings.LocationInfoFollowAircraft = true;
+        else
+        {
+            // Unticked by hand: the map position stays where the aircraft is now.
+            _settings.LocationInfoFollowAircraft = false;
+            _settings.LocationInfoMapName = ""; // LocationPhrases words it: "where the aircraft was"
+            _settings.LocationInfoMapLatitude = _aircraftLat;
+            _settings.LocationInfoMapLongitude = _aircraftLon;
+        }
+        OnMapPositionChanged();
+    }
+
+    private void OnMapPositionChanged()
+    {
+        BuildColumns();
+        UpdateWhereBox();
+        Reload();
+    }
+
+    // ---- loading ----
+
+    /// <summary>Reads the places again when the map position, the range (beyond what is loaded), the scope or a
+    /// whole-world search changed; otherwise only filters. Off the UI thread; a newer load cancels an older one.</summary>
+    private async void Reload()
+    {
+        SaveFilterSettings();
+        // Whatever runs is stale now: cancelled before anything else, so it can never overwrite what follows.
+        _loadCts?.Cancel();
+        _loading = false;
+        bool world = WholeWorld;
+        string folded = SearchText.Fold(_searchBox.Text);
+        double lat = MapLat, lon = MapLon, radiusKm = RangeKm;
+        bool samePoint = Math.Abs(lat - _loadedLat) < 1e-9 && Math.Abs(lon - _loadedLon) < 1e-9;
+        if (!world && !_loadedWorld && samePoint && radiusKm <= _loadedRadiusKm)
+        {
+            ApplyFilters();
+            return;
+        }
+        if (world && _loadedWorld && samePoint && folded == _loadedWorldQuery)
+        {
+            ApplyFilters();
+            return;
+        }
+
+        var cts = _loadCts = new CancellationTokenSource();
+        _loading = true;
+        SetStatus(world && folded.Length == 0 ? WorldPrompt : "Searching");
+        try
+        {
+            if (world && folded.Length == 0)
+            {
+                SetPlaces(Array.Empty<PlaceResult>());
+                _loadedWorld = true;
+                _loadedWorldQuery = "";
+                _worldTotal = 0;
+            }
+            else if (world)
+            {
+                var outcome = await Task.Run(() => _service.SearchWorld(folded, lat, lon, WorldSearchMax, cts.Token));
+                if (cts.IsCancellationRequested || IsDisposed) return;
+                SetPlaces(outcome?.Places ?? Array.Empty<PlaceResult>());
+                _worldTotal = outcome?.TotalMatches ?? 0;
+                _loadedWorld = true;
+                _loadedWorldQuery = folded;
+            }
+            else
+            {
+                var places = await Task.Run(() => _service.SearchAround(lat, lon, radiusKm, cts.Token));
+                if (cts.IsCancellationRequested || IsDisposed) return;
+                SetPlaces(places ?? Array.Empty<PlaceResult>());
+                _loadedWorld = false;
+                _loadedRadiusKm = radiusKm;
+            }
+            _loadedLat = lat;
+            _loadedLon = lon;
+            _airportMatches.Clear();
+            await EnsureAirportsAsync();
+            if (cts.IsCancellationRequested || IsDisposed) return;
+            _loading = false;
+            ApplyFilters();
+            if (_speakCountWhenLoaded)
+            {
+                _speakCountWhenLoaded = false;
+                _announcer.AnnounceImmediate(_status);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (IsDisposed) return;
+            _loading = false;
+            SetStatus("Could not read the location data: " + ex.Message);
+            Log.Warn("LocationInfo", $"Search failed: {ex.Message}");
+        }
+    }
+
+    private const string WorldPrompt = "No places found. Type a name to search the whole world.";
+
+    /// <summary>The count or state, as the list's name: the screen reader reads it on arrival in the list,
+    /// and Enter in the search box speaks it.</summary>
+    private void SetStatus(string text)
+    {
+        _status = text;
+        _results.AccessibleName = "Places, " + text;
+    }
+
+    /// <summary>The simulator's airports, read once per window, for the Details column's ident.</summary>
+    private async Task EnsureAirportsAsync()
+    {
+        if (_airports is not null || !_places.Any(p => p.Category == LocationCategory.Airport)) return;
+        string path = DatabasePathResolver.ResolveExistingDatabasePath(_settings.SimulatorVersion ?? "FS2020");
+        try
+        {
+            var airports = await Task.Run(() => AirportNameSearch.ReadAirports(path));
+            _airports = new AirportMatcher(airports);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("LocationInfo", $"Could not read the navigation database's airports: {ex.Message}");
+        }
+    }
+
+    /// <summary>New places replace the loaded ones. The shown rows index the old list, so they go with it, and the
+    /// selected place is remembered by its id: read through the old rows against the new list, it pointed past
+    /// its end, and the whole-world search and the scope change failed with an index out of range (2026-11-06).</summary>
+    private void SetPlaces(IReadOnlyList<PlaceResult> places)
+    {
+        _keepSelectedId = SelectedPlace?.Id ?? _keepSelectedId;
+        _places = places;
+        _shown = new List<int>();
+        _rows.Clear();
+    }
+
+    private int? _keepSelectedId;
+
+    /// <summary>Filters the loaded places in memory and shows them, keeping the selected place selected.</summary>
+    private void ApplyFilters()
+    {
+        if (_loading) return;
+        SaveFilterSettings();
+        var selectedId = SelectedPlace?.Id ?? _keepSelectedId;
+        _keepSelectedId = null;
+        string? direction = _directionCombo.SelectedIndex > 0 ? PlaceFilter.Directions[_directionCombo.SelectedIndex - 1] : null;
+        double? maxNm = WholeWorld ? null : RangeKm / LocationPhrases.KmPerNm;
+        _shown = PlaceFilter.Apply(_places, MapLat, MapLon, HiddenTypes().ToHashSet(StringComparer.Ordinal),
+            SearchText.Fold(_searchBox.Text), direction, maxNm, MajorCities());
+
+        _rows.Clear();
+        _results.BeginUpdate();
+        _results.SelectedIndices.Clear();
+        _results.VirtualListSize = _shown.Count;
+        // Always a selected row: Tab into a list with none gives the screen reader nothing to read.
+        // The place selected before stays selected while it is still listed; otherwise the nearest.
+        // Selecting a row raises focus and selection events even while the table is not focused, and NVDA
+        // read them after every filter change ("checked", then "Name"; 2026-11-08). So while the focus is
+        // elsewhere the row is only remembered, and selected when the table is entered.
+        _pendingSelectIndex = null;
+        if (_shown.Count > 0)
+        {
+            int index = selectedId is { } id ? _shown.FindIndex(i => _places[i].Id == id) : -1;
+            if (index < 0) index = 0;
+            if (_results.ContainsFocus) SelectRow(index);
+            else
+            {
+                _pendingSelectIndex = index;
+                _keepSelectedId = _places[_shown[index]].Id;
+            }
+        }
+        _results.Invalidate();
+        _results.EndUpdate();
+        SetStatus(StatusText());
+    }
+
+    /// <summary>The row to select when the table is next entered; see <see cref="ApplyFilters"/>.</summary>
+    private int? _pendingSelectIndex;
+
+    private void SelectRow(int index)
+    {
+        _results.SelectedIndices.Add(index);
+        _results.FocusedItem = _results.Items[index];
+        _results.EnsureVisible(index);
+    }
+
+    private void Results_Enter(object? sender, EventArgs e)
+    {
+        if (_pendingSelectIndex is not { } index) return;
+        _pendingSelectIndex = null;
+        _keepSelectedId = null;
+        if (index < _shown.Count && _results.SelectedIndices.Count == 0) SelectRow(index);
+    }
+
+    private string StatusText()
+    {
+        // Invariant, as everything the location data shows (LOC-3).
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (WholeWorld && _loadedWorldQuery.Length == 0) return WorldPrompt;
+        if (_shown.Count == 0) return "No places found";
+        string places = _shown.Count == 1 ? "1 place" : string.Create(inv, $"{_shown.Count:N0} places");
+        if (!WholeWorld)
+            return string.Create(inv, $"{places} within {(int)_rangeBox.Value} {UnitWord} of the map position");
+        return _worldTotal > _places.Count
+            ? string.Create(inv, $"{places} shown, the nearest of {_worldTotal:N0} named like that")
+            : $"{places} named like that";
+    }
+
+    // ---- where you are, and refresh ----
+
+    private void UpdateWhereBox()
+    {
+        string? mapName = Following ? null : _settings.LocationInfoMapName;
+        double nm = LocationGeometry.GreatCircleNm(_aircraftLat, _aircraftLon, MapLat, MapLon);
+        double bearing = LocationGeometry.BearingTrue(_aircraftLat, _aircraftLon, MapLat, MapLon);
+        // Rewritten only when it changed: new text puts the caret on line 1 and the reader loses its place.
+        string text = LocationPhrases.LocationInfoText(_aircraftReport.Where, mapName, nm, bearing, _kilometres);
+        if (_whereBox.Text != text) _whereBox.Text = text;
+        FitWhereRow();
+    }
+
+    private RowStyle _whereRow = null!;
+
+    /// <summary>The box's row as tall as its text, wrapped at its width, so its lines never cost the places room.</summary>
+    private void FitWhereRow()
+    {
+        var box = _whereBox;
+        int textWidth = Math.Max(1, box.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
+        var text = TextRenderer.MeasureText(box.Text.Length > 0 ? box.Text : " ", box.Font, new Size(textWidth, 0),
+            TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+        float height = text.Height + (box.Height - box.ClientSize.Height) + box.Margin.Vertical + box.Font.Height / 2;
+        if (Math.Abs(_whereRow.Height - height) >= 1) _whereRow.Height = height;
+    }
+
+    /// <summary>F5 or Refresh: the aircraft's position read again; the list follows it when the map position does.</summary>
+    private void RefreshFromAircraft()
+    {
+        if (!_sim.IsConnected)
+        {
+            _announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+        _sim.RequestAircraftPositionAsync(async position =>
+        {
+            try
+            {
+                var query = LocationQuerySettings.From(_settings);
+                var report = await Task.Run(() => _service.GetLocationInfo(position.Latitude, position.Longitude, query));
+                if (IsDisposed || report is null) return;
+                _aircraftReport = report;
+                _aircraftLat = position.Latitude;
+                _aircraftLon = position.Longitude;
+                UpdateWhereBox();
+                Reload();
+                _rows.Clear();
+                _results.Invalidate(); // the From aircraft column
+                _announcer.AnnounceImmediate("Refreshed");
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("LocationInfo", $"Refresh failed: {ex.Message}");
+                if (!IsDisposed) _announcer.AnnounceImmediate("Could not refresh: " + ex.Message);
+            }
+        });
+    }
+
+    private void Form_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Escape)
+        {
+            e.SuppressKeyPress = true;
+            Close();
+        }
+        else if (e.KeyCode == Keys.F5)
+        {
+            e.SuppressKeyPress = true;
+            RefreshFromAircraft();
+        }
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         base.OnFormClosed(e);
-
-        // Restore focus to the previous window (likely the simulator)
-        if (previousWindow != IntPtr.Zero)
-        {
-            SetForegroundWindow(previousWindow);
-        }
-    }
-
-    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-    {
-        // Handle Alt+F4 explicitly
-        if (keyData == (Keys.Alt | Keys.F4))
-        {
-            this.Close();
-            return true;
-        }
-
-        return base.ProcessCmdKey(ref msg, keyData);
+        _loadCts?.Cancel();
+        _searchDebounce.Dispose();
+        _rangeDebounce.Dispose();
+        SaveFilterSettings();
+        SettingsManager.Save();
+        if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
     }
 }

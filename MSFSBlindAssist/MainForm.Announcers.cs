@@ -2940,6 +2940,10 @@ public partial class MainForm
             }
 
             var query = LocationQuerySettings.From(MSFSBlindAssist.Settings.SettingsManager.Current);
+            // A C press names the kinds of place picked with the Location Info window's "Use for Output C";
+            // the periodic announcement keeps to the nearest town.
+            if (userInitiated)
+                query = query with { PlaceTypes = MSFSBlindAssist.Settings.SettingsManager.Current.OutputCPlaceTypes.ToList() };
             // The callback runs on the UI thread (SimConnect's message pump), so the await below
             // resumes there and the announcer is safe to call.
             simConnectManager.RequestAircraftPositionAsync(async position =>
@@ -2952,7 +2956,8 @@ public partial class MainForm
                         if (userInitiated) announcer.Announce(LocationDataUnavailableText());
                         return;
                     }
-                    string sentence = LocationPhrases.NearestCitySentence(report.Where, report.Nearest, query.Kilometres, query.NearbyRange);
+                    string sentence = LocationPhrases.NearestCitySentence(report.Where, report.Nearest, query.Kilometres,
+                        query.OutputCRange, kindsPicked: query.PlaceTypes.Count > 0);
                     announcer.Announce(sentence);
                     Log.Debug("MainForm", $"Nearest city announced: {sentence}");
                 }
