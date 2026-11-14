@@ -187,12 +187,22 @@ public sealed class FenixOptionsForm : Form
         if (data == null) return null;
 
         string? version = FenixDataQueries.ParseSoftwareVersion(data);
+        // Once for each build seen: the labels are one build's snapshot, so on another build a few may not be that
+        // Fenix's own words, and the log is where a stale snapshot shows.
+        if (FenixOptionLabels.IsFromAnotherBuild(version) && !string.Equals(_labelsBuildLogged, version, StringComparison.Ordinal))
+        {
+            _labelsBuildLogged = version;
+            Log.Info(LogCategory, $"Option labels are from Fenix {FenixOptionLabels.SourceVersion}; the running Fenix is {version}");
+        }
         IReadOnlyList<FenixSetting> settings = FenixDataQueries.ParseSettings(data);
         IReadOnlyList<FenixOptionGroup> groups = FenixOptionGrouping.Group(settings);
         return new OptionsRead(settings, groups, FenixOptionGrouping.StatusText(version, settings, changesAllowed: ChangesAllowed));
     }
 
     private sealed record OptionsRead(IReadOnlyList<FenixSetting> Settings, IReadOnlyList<FenixOptionGroup> Groups, string Status);
+
+    // The running build the label mismatch was last logged for (FetchAsync), so a read-back's many reads log it once.
+    private string? _labelsBuildLogged;
 
     // The one read of the options and the one place the tree is written, for F5, the first show and the
     // read-back after a change. Returns the options it applied, or null when the Fenix did not answer, the

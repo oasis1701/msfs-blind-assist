@@ -59,7 +59,9 @@ public class FenixOptionCatalogTests
         Assert.Equal("On-Screen Keyboard: On", FenixOptionCatalog.RowText(S("on_screen_keyboard_enabled", "true")));
         Assert.Equal("Type Code: A321", FenixOptionCatalog.RowText(S("type_code", "A321", "Enum", "None",
             new[] { "Unknown", "A318", "A319", "A320", "A321" }, writable: false)));
-        Assert.Equal("Navigraph Navdata Mode: Hot Standby", FenixOptionCatalog.RowText(S("navigraph_navdata_mode", "HotStandby", "Enum",
+        Assert.Equal("Navdata Mode: Hot Standby", FenixOptionCatalog.RowText(S("navigraph_navdata_mode", "HotStandby", "Enum",
+            possible: new[] { "Disabled", "HotStandby", "Automatic", "ManualImport" })));
+        Assert.Equal("Navdata Mode: Manual Import", FenixOptionCatalog.RowText(S("navigraph_navdata_mode", "ManualImport", "Enum",
             possible: new[] { "Disabled", "HotStandby", "Automatic", "ManualImport" })));
         Assert.Equal("SELCAL Code: AB-CD", FenixOptionCatalog.RowText(S("selcal_code", "AB-CD", "System.String")));   // D2
     }
