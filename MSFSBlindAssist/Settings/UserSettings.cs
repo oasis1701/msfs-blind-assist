@@ -480,6 +480,15 @@ public class UserSettings
         public bool TaxiGuidanceAnnounceCrossings { get; set; } = true;
 
         /// <summary>
+        /// When true, a route the off-route detector recalculates mid-taxi is OFFERED, not
+        /// adopted: guidance keeps steering to the route being flown until the pilot presses
+        /// Continue ([ Y) to take the new one (<c>Navigation.RerouteOffer</c>). For pilots on a
+        /// controller's clearance, who should not be handed a route ATC did not give. Default off
+        /// (existing behaviour: the recalculated route is adopted at once).
+        /// </summary>
+        public bool TaxiGuidanceConfirmReroute { get; set; } = false;
+
+        /// <summary>
         /// Ground-speed announcement interval, in knots. 0 disables the feature.
         /// When non-zero, the screen reader announces the current ground speed each
         /// time it crosses a multiple of this value (rising or falling). Useful for
