@@ -1182,8 +1182,8 @@ for (const [fixture, selector, glyphs, label] of [
       assert.strictEqual(nameOf(sync), 'SYNC LIVE WX');
       assert.strictEqual(sync.querySelector('br') !== null, label !== null, 'as captured');
       assert.strictEqual(sync.getAttribute('aria-label'), label);
-      // The glyphs inside controls are hidden here, and on Landing the three wind arrows of the results too: they are
-      // in no control and read as stray characters beside the wind's own figures.
+      // The glyphs inside controls are hidden here, and on Landing the three wind arrows of the results too: in no
+      // control, with no wind worked out ("- KT") they say nothing and read as stray characters.
       assert.deepStrictEqual(hiddenByLayer(bare, window).filter(h => /^i[.#]/.test(h)), glyphs);
     } finally {
       bare.close();
@@ -1191,6 +1191,45 @@ for (const [fixture, selector, glyphs, label] of [
     }
   });
 }
+
+// Landing's two wind component arrows are the only place the page shows the crosswind's side and head or tail wind
+// (the EFB's own code, 3.0.0.7852, turns each round with class dir-180). While the figure after an arrow is a number,
+// the arrow is a picture named by what it shows; with "- KT" it is hidden again. The wind's own arrow stays hidden.
+test('The_Landing_wind_arrows_say_the_side_and_head_or_tail_while_a_wind_is_worked_out', async () => {
+  const window = await load('arrperf');
+  try {
+    const doc = window.document;
+    const xw = doc.getElementById('xwArrow');
+    const hw = doc.getElementById('hwArrow');
+    const figure = arrow => arrow.parentElement.nextElementSibling;
+    assert.deepStrictEqual([xw, hw].map(a => squash(figure(a).textContent)), ['- KT', '- KT'], 'as captured');
+    assert.ok([xw, hw].every(a => a.getAttribute('aria-hidden') === 'true' && !a.hasAttribute('role')));
+
+    // A wind is worked out: each figure becomes a number, as the page's own branch writes it.
+    figure(xw).textContent = ' 12 KT ';
+    figure(hw).textContent = ' 5 KT ';
+    await turns();
+    assert.deepStrictEqual([xw, hw].map(a => a.getAttribute('role')), ['img', 'img']);
+    assert.deepStrictEqual([xw, hw].map(nameOf), ['Crosswind from the left', 'Headwind']);
+    assert.ok([xw, hw].every(a => !a.hasAttribute('aria-hidden')), 'named, no longer hidden');
+
+    // The page turns the arrows round: wind from the right, and a tailwind.
+    xw.classList.add('dir-180');
+    hw.classList.add('dir-180');
+    await turns();
+    assert.deepStrictEqual([xw, hw].map(nameOf), ['Crosswind from the right', 'Tailwind']);
+
+    // No wind worked out again: the names and roles go and the arrows are hidden.
+    figure(xw).textContent = '- KT';
+    figure(hw).textContent = '- KT';
+    await turns();
+    assert.ok([xw, hw].every(a => a.getAttribute('aria-hidden') === 'true'));
+    assert.ok([xw, hw].every(a => !['role', 'aria-label', 'data-msfsba'].some(n => a.hasAttribute(n))));
+    assert.strictEqual(doc.querySelector('i.wind-vector').getAttribute('aria-hidden'), 'true', 'its "270/12" is beside it');
+  } finally {
+    window.close();
+  }
+});
 
 // A button whose own content holds a <br> is named by its own text, the <br> a space, so NVDA presents it as one
 // item. The label is the layer's own: it follows the text, goes when the <br> or the text goes, and a label the page

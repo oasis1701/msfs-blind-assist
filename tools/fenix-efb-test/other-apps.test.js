@@ -1497,13 +1497,13 @@ test('The_Settings_drop_down_is_named_by_its_setting', async () => {
   const window = await load('settings-printer');
   try {
     const pageList = one(bare, 'app-settings2 article mat-select').getAttribute('aria-labelledby');
-    bare.close();
     const select = one(window, 'app-settings2 article mat-select');
     assert.strictEqual(select.getAttribute('aria-label'), 'Printer');
     assert.strictEqual(select.getAttribute('aria-labelledby'), select.id + ' ' + pageList);
     assert.ok(nameOf(select).startsWith('Printer'));
     assert.strictEqual(select.getAttribute('role'), 'combobox', 'the page\'s own role');
   } finally {
+    bare.close();
     window.close();
   }
 });
@@ -1546,6 +1546,24 @@ test('The_sim_rate_button_says_its_rate_and_the_autopilot_note_and_follows_the_p
     assert.strictEqual(glyphs.length, 2);
     assert.ok(glyphs.every(g => g.getAttribute('aria-hidden') === 'true'));
     assert.deepStrictEqual(all(window, 'span.brightness-popup-title').map(t => squash(t.textContent)), ['BRIGHTNESS', 'SIM RATE']);
+  } finally {
+    window.close();
+  }
+});
+
+// Before Fenix 3.0.0.7852 the airplane button held only its picture, with no label or pressed state of the page's,
+// and the layer names it "Airplane mode". The capture is 7852's, so the page's own label and state come off first.
+test('An_airplane_button_without_a_label_of_the_page_s_is_named_Airplane_mode', async () => {
+  const window = await load('quick-settings', { layer: false });
+  try {
+    const airplane = one(window, 'button.quick-settings-btn img[src*=airplane]').closest('button');
+    airplane.removeAttribute('aria-label');
+    airplane.removeAttribute('aria-pressed');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(airplane.getAttribute('aria-label'), 'Airplane mode');
+    assert.strictEqual(nameOf(airplane), 'Airplane mode');
+    assert.strictEqual(airplane.getAttribute('data-msfsba'), '1', 'the layer\'s label');
   } finally {
     window.close();
   }

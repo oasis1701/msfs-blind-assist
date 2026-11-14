@@ -6,10 +6,11 @@
 // control the Tab key skips, one the page set to -1 too, and puts the page's own value back afterwards.)
 // More attributes it writes: a drop-down's aria-labelledby gets the drop-down's own id in front of the page's
 // list (the page's list goes back when the layer's label goes); aria-hidden "true" goes on what a screen reader
-// does not need: decorative pictures and every picture with no alt, icon-font glyphs inside a control, the W&B
-// chart's picture and labels but its limits, the seat map; and the Takeoff results grid gets an aria-owns that
-// reads each label right before its value and every other child in its place (an empty result is a picture
-// described as a "value").
+// does not need: decorative pictures and every picture with no alt, icon-font glyphs inside a control and the few
+// in none that read as a stray character (STRAY_GLYPHS), the W&B chart's picture and labels but its limits, the
+// seat map; quick settings' sim rate button gets an aria-description (its rate); and the Takeoff results grid
+// gets an aria-owns that reads each label right before its value and every other child in its place (an empty
+// result is a picture described as a "value").
 // Four exceptions to "attributes only", each a deliberate one: ids for aria-owns (the results grid's and an open
 // Settings "More options" menu's), written only on what it lists and only as "msfsba-<n>" (an id the page set is
 // used, never replaced); the runway condition's roving Tab stop; one focus helper,
@@ -91,6 +92,8 @@
   var hiddenWritten = new WeakSet();
   // The aria-labelledby a drop-down had before the layer put the drop-down's own id in front of it.
   var labelledbyWas = new WeakMap();
+  // The aria-description the layer wrote on quick settings' sim rate button (the way `written` keeps a label).
+  var descriptionWritten = new WeakMap();
 
   // `skip`, when given, is a selector: an element below the root that matches it is left out.
   function collect(node, out, isRoot, skip) {
@@ -282,7 +285,8 @@
     release(el);
   }
 
-  // Writes a state the layer owns (aria-checked, aria-expanded, aria-pressed, aria-current) only while it is
+  // Writes a state the layer owns (aria-checked, aria-expanded, aria-pressed, aria-current, aria-disabled on a
+  // Settings switch, aria-description on the sim rate button) only while it is
   // the layer's own: a state the page set is never touched. A null value takes back the layer's own state.
   function ownState(el, attr, value, store) {
     var existing = el.getAttribute(attr);
@@ -960,6 +964,28 @@
     }
   });
 
+  // Landing: the result's two wind arrows are the only place the page shows which side the crosswind comes from and
+  // whether the wind is a headwind or a tailwind; the figure after each is the size alone ("12 KT"). The EFB's own code
+  // (3.0.0.7852) turns the crosswind arrow, which points right, round (class dir-180) for wind from the right, and the
+  // headwind arrow, which points down, round for a tailwind. While its figure is a number, each arrow is a picture
+  // named by what it shows; with "- KT" (no wind worked out) it says nothing and the glyph rule hides it.
+  var WIND_ARROWS = { xwArrow: ['Crosswind from the left', 'Crosswind from the right'], hwArrow: ['Headwind', 'Tailwind'] };
+  function windArrowText(arrow) {
+    var names = WIND_ARROWS[arrow.id];
+    var figure = arrow.parentElement ? arrow.parentElement.nextElementSibling : null;
+    if (!names || !/\d/.test(textOf(figure))) { return ''; }
+    return names[arrow.classList.contains('dir-180') ? 1 : 0];
+  }
+  function nameWindArrow(arrow) {
+    var text = windArrowText(arrow);
+    if (text) { giveRole(arrow, 'img'); name(arrow, text); } else { release(arrow); }
+  }
+  var windArrows = [];
+  RULES.push(function (root) {
+    var arrows = root.querySelectorAll('app-arrival-result i#xwArrow, app-arrival-result i#hwArrow');
+    windArrows = followFound(arrows, windArrows, nameWindArrow, release);
+  });
+
   // ---- Settings ----
 
   // The setting an article is about: its heading without the "Default" / "Livery" badge inside it.
@@ -1012,6 +1038,12 @@
   RULES.push(function (root) {
     var boxes = root.querySelectorAll('app-settings2 article input:not([type=checkbox])');
     for (var i = 0; i < boxes.length; i++) { name(boxes[i], settingName(boxes[i].closest('article'))); }
+  });
+
+  // Settings: a drop-down (Printer) is a mat-select named only by its value; it takes its setting's name in front.
+  RULES.push(function (root) {
+    var selects = root.querySelectorAll('app-settings2 article mat-select');
+    for (var i = 0; i < selects.length; i++) { nameSelect(selects[i], settingName(selects[i].closest('article'))); }
   });
 
   // Settings: the three dots hold no text; they say which setting's options they open.
@@ -1347,17 +1379,11 @@
     for (var i = 0; i < maps.length; i++) { name(maps[i], 'Moving map'); }
   });
 
-  // Settings: a drop-down (Printer) is a mat-select named only by its value; it takes its setting's name in front.
-  RULES.push(function (root) {
-    var selects = root.querySelectorAll('app-settings2 article mat-select');
-    for (var i = 0; i < selects.length; i++) { nameSelect(selects[i], settingName(selects[i].closest('article'))); }
-  });
-
   // Quick settings (Fenix 3.0.0.7852): the sim rate button has the page's own label, "Cycle sim rate", which replaces
   // its content, so the rate it is on (NORMAL / 2X / 4X, marked only by a class) is never read. The rate goes in the
-  // button's description, with the header's note ("AP REQUIRED") while the page shows one: the page disables the
-  // button then, so Tab never reaches the note. The page's label stays.
-  var descriptionWritten = new WeakMap();
+  // button's description, with the header's note ("AP REQUIRED") while the page shows one, for a pilot who reaches
+  // the button by quick navigation (B, or the elements list) and so skips the note: arrowing through in browse mode
+  // reads the note, then again in the description. The page's label stays.
   var simRates = [];
   function describeSimRate(el) {
     var parts = [];
@@ -1480,32 +1506,25 @@
 
   // Every screen: an icon font draws its glyph from a style sheet as a private-use character, which Chromium makes the
   // name of a button that has only a title ("Expanded view") or reads as a stray line before a button's text ("SYNC
-  // LIVE WX"). A glyph inside a control is hidden; the control keeps its own name. An icon that is itself
-  // the control (Charts' zoom icons) is left alone, and so is one in no control.
+  // LIVE WX"). A glyph inside a control is hidden; the control keeps its own name. An icon that is itself the control
+  // (Charts' zoom icons, a Landing wind arrow the layer names) is left alone. A glyph in no control is left alone too,
+  // except the few in STRAY_GLYPHS, which sit beside the text or the box that says the same and read as a stray
+  // character: the icons of quick settings' two headers ("BRIGHTNESS", "SIM RATE"), the pen beside a planned passenger
+  // box on Mass and Balance, and on Landing's result the wind's own arrow (its "270/12" is written beside it) and the
+  // two component arrows while they show no wind. One list for both kinds, so a glyph that moves into a control or out
+  // of one is never shown again by the other kind's take-back.
+  var STRAY_GLYPHS = 'div.brightness-popup-header i[class*="fa-"], i.planned-edit-icon, ' +
+    'app-arrival-result i.wind-vector, app-arrival-result i#xwArrow, app-arrival-result i#hwArrow';
   var glyphs = [];
   RULES.push(function (root) {
-    var icons = root.querySelectorAll('i[class*="fa-"]');
+    var icons = root.querySelectorAll('i[class*="fa-"], ' + STRAY_GLYPHS);
     var found = [];
     for (var i = 0; i < icons.length; i++) {
+      if (icons[i].matches(CONTROL)) { continue; }
       var holder = icons[i].parentElement;
-      if (!icons[i].matches(CONTROL) && holder && holder.closest(CONTROL)) { found.push(icons[i]); }
+      if ((holder && holder.closest(CONTROL)) || icons[i].matches(STRAY_GLYPHS)) { found.push(icons[i]); }
     }
     glyphs = hideOnly(found, glyphs);
-  });
-
-  // Glyphs in no control that sit beside the text or the box that says the same: the icons of quick settings' two
-  // headers ("BRIGHTNESS", "SIM RATE"), the pen beside a planned passenger box on Mass and Balance, and the wind
-  // arrows of the Landing result. Each read as a stray character. One inside a control is the rule above's.
-  var STRAY_GLYPHS = 'div.brightness-popup-header i[class*="fa-"], i.planned-edit-icon, app-arrival-result i[class*="fa-"]';
-  var strayGlyphs = [];
-  RULES.push(function (root) {
-    var icons = root.querySelectorAll(STRAY_GLYPHS);
-    var found = [];
-    for (var i = 0; i < icons.length; i++) {
-      var holder = icons[i].parentElement;
-      if (!icons[i].matches(CONTROL) && !(holder && holder.closest(CONTROL))) { found.push(icons[i]); }
-    }
-    strayGlyphs = hideOnly(found, strayGlyphs);
   });
 
   // Every screen: a picture with no alt attribute says nothing to a screen reader but "graphic", or its file name (the
