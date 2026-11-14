@@ -24,6 +24,12 @@ public class TaxiRouter
     }
 
     /// <summary>
+    /// Nodes no search may expand into or pick as an entry or target (a Turn pick closes the
+    /// charted way it declined). Empty by default, which leaves every search unchanged.
+    /// </summary>
+    internal HashSet<int> BlockedNodes { get; } = new();
+
+    /// <summary>
     /// Finds the shortest path between two nodes with no taxiway constraints.
     /// </summary>
     public TaxiRoute? FindShortestPath(int startNodeId, int endNodeId)
@@ -544,6 +550,7 @@ public class TaxiRouter
         {
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != fromComponent) continue;
+            if (BlockedNodes.Count > 0 && BlockedNodes.Contains(nodeId)) continue;
 
             // Unreachable in the graph despite sharing a component id (an edge
             // direction quirk) — keep the candidate but rank it behind every
@@ -638,6 +645,7 @@ public class TaxiRouter
         {
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != requiredComponent) continue;
+            if (BlockedNodes.Count > 0 && BlockedNodes.Contains(nodeId)) continue;
             double d = TaxiGraph.CalculateDistanceMeters(node.Latitude, node.Longitude, refLat, refLon);
             if (farthest ? d > bestM : d < bestM) { bestM = d; best = nodeId; }
         }
@@ -676,6 +684,7 @@ public class TaxiRouter
         {
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != targetComponent) continue;
+            if (BlockedNodes.Count > 0 && BlockedNodes.Contains(nodeId)) continue;
 
             if (!distFromTarget.TryGetValue(nodeId, out double gDist))
                 continue; // unreachable from destination (shouldn't happen given component filter, but defensive)
@@ -698,6 +707,7 @@ public class TaxiRouter
             {
                 var node = _graph.Nodes[nodeId];
                 if (node.ComponentId != targetComponent) continue;
+                if (BlockedNodes.Count > 0 && BlockedNodes.Contains(nodeId)) continue;
 
                 double euclid = TaxiGraph.CalculateDistanceMeters(
                     targetNode.Latitude, targetNode.Longitude, node.Latitude, node.Longitude);
@@ -763,11 +773,13 @@ public class TaxiRouter
         foreach (var nA in _graph.Nodes.Values)
         {
             if (!nA.TaxiwayNames.Contains(currentTaxiway)) continue;
+            if (BlockedNodes.Count > 0 && BlockedNodes.Contains(nA.NodeId)) continue;
             if (!distFromEntry.TryGetValue(nA.NodeId, out double entryDist)) continue;
 
             foreach (var nB in _graph.Nodes.Values)
             {
                 if (!nB.TaxiwayNames.Contains(nextTaxiway)) continue;
+                if (BlockedNodes.Count > 0 && BlockedNodes.Contains(nB.NodeId)) continue;
                 if (!distFromFinalDest.TryGetValue(nB.NodeId, out double destDist)) continue;
 
                 double bridgeGap = TaxiGraph.CalculateDistanceMeters(
@@ -813,6 +825,7 @@ public class TaxiRouter
         var intersections = new List<int>();
         foreach (var node in _graph.Nodes.Values)
         {
+            if (BlockedNodes.Count > 0 && BlockedNodes.Contains(node.NodeId)) continue;
             bool hasTaxiway1 = onTaxiway1.Contains(node.NodeId) || node.TaxiwayNames.Contains(taxiway1);
             bool hasTaxiway2 = onTaxiway2.Contains(node.NodeId) || node.TaxiwayNames.Contains(taxiway2);
             if (hasTaxiway1 && hasTaxiway2)
@@ -1001,8 +1014,10 @@ public class TaxiRouter
             {
                 if (closedSet.Contains(edge.ToNodeId))
                     continue;
+                if (BlockedNodes.Count > 0 && BlockedNodes.Contains(edge.ToNodeId))
+                    continue;
 
-                bool isOnTaxiway = edge.TaxiwayName.Equals(requiredTaxiway, StringComparison.OrdinalIgnoreCase);
+                bool isOnTaxiway =edge.TaxiwayName.Equals(requiredTaxiway, StringComparison.OrdinalIgnoreCase);
 
                 if (!isOnTaxiway)
                 {
@@ -1050,6 +1065,13 @@ public class TaxiRouter
         var direct = AStarSearchStrict(startId, goalId, requiredTaxiway);
         if (direct != null)
             return direct;
+
+        // A blocked node cuts a taxiway for good: hopping to its next section would step over the block.
+        if (BlockedNodes.Count > 0)
+        {
+            Log($"GapChain '{requiredTaxiway}': skipped, blocked nodes active");
+            return null;
+        }
 
         Log($"GapChain '{requiredTaxiway}': strict failed, attempting gap chaining {startId} → {goalId}");
 
@@ -1188,6 +1210,8 @@ public class TaxiRouter
             {
                 if (!edge.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase))
                     continue;
+                if (BlockedNodes.Count > 0 && BlockedNodes.Contains(edge.ToNodeId))
+                    continue;
                 if (visited.Add(edge.ToNodeId))
                     queue.Enqueue(edge.ToNodeId);
             }
@@ -1242,6 +1266,7 @@ public class TaxiRouter
             foreach (var edge in edges)
             {
                 if (visited.Contains(edge.ToNodeId)) continue;
+                if (BlockedNodes.Count > 0 && BlockedNodes.Contains(edge.ToNodeId)) continue;
                 double tentative = currentDist + edge.DistanceMeters;
                 if (tentative < dist.GetValueOrDefault(edge.ToNodeId, double.MaxValue))
                 {
@@ -1296,6 +1321,8 @@ public class TaxiRouter
             foreach (var edge in edges)
             {
                 if (closedSet.Contains(edge.ToNodeId))
+                    continue;
+                if (BlockedNodes.Count > 0 && BlockedNodes.Contains(edge.ToNodeId))
                     continue;
 
                 double cost = edge.DistanceMeters;
@@ -1716,6 +1743,78 @@ public class TaxiRouter
             first.TurnAngleDegrees = NormalizeAngle(first.BearingDegrees - crossingBearing);
             first.TurnDirection = GetTurnDirection(first.TurnAngleDegrees);
             route.Segments.AddRange(leg2.Segments);
+        }
+
+        double cumulative = 0;
+        foreach (var s in route.Segments)
+        {
+            cumulative += s.DistanceMeters;
+            s.CumulativeDistanceMeters = cumulative;
+        }
+        foreach (var s in route.Segments)
+            s.RemainingDistanceMeters = cumulative - s.CumulativeDistanceMeters + s.DistanceMeters;
+        route.TotalDistanceMeters = cumulative;
+        return route;
+    }
+
+    /// <summary>
+    /// Builds a route through <paramref name="nodeIds"/> in order, like <see cref="BuildRoute"/>, except
+    /// that the one pair (<paramref name="offChartFromNodeId"/>, <paramref name="offChartToNodeId"/>) with
+    /// no graph edge becomes a synthetic straight leg (<see cref="TaxiRouteSegment.IsOffChartTurn"/>).
+    /// Any other pair with no edge returns null. Turns and distances run over the whole list.
+    /// </summary>
+    internal TaxiRoute? BuildRouteThrough(IReadOnlyList<int> nodeIds, int offChartFromNodeId = 0, int offChartToNodeId = 0)
+    {
+        var route = new TaxiRoute();
+
+        for (int i = 0; i < nodeIds.Count - 1; i++)
+        {
+            int fromId = nodeIds[i];
+            int toId = nodeIds[i + 1];
+            if (!_graph.Nodes.TryGetValue(fromId, out var fromNode) || !_graph.Nodes.TryGetValue(toId, out var toNode))
+                return null;
+
+            TaxiRouteSegment segment;
+            var edge = _graph.GetEdge(fromId, toId);
+            if (edge != null)
+            {
+                segment = new TaxiRouteSegment
+                {
+                    FromNode = fromNode,
+                    ToNode = toNode,
+                    DistanceMeters = edge.DistanceMeters,
+                    TaxiwayName = edge.TaxiwayName,
+                    BearingDegrees = edge.BearingDegrees,
+                    PathWidth = edge.WidthFeet,
+                    HoldShortRunway = toNode.HoldShortName,
+                };
+            }
+            else if (offChartFromNodeId != 0 && fromId == offChartFromNodeId && toId == offChartToNodeId)
+            {
+                segment = new TaxiRouteSegment
+                {
+                    FromNode = fromNode,
+                    ToNode = toNode,
+                    DistanceMeters = TaxiGraph.CalculateDistanceMeters(
+                        fromNode.Latitude, fromNode.Longitude, toNode.Latitude, toNode.Longitude),
+                    TaxiwayName = "",
+                    BearingDegrees = NavigationCalculator.CalculateBearing(
+                        fromNode.Latitude, fromNode.Longitude, toNode.Latitude, toNode.Longitude),
+                    PathWidth = 0,
+                    IsOffChartTurn = true,
+                };
+            }
+            else
+            {
+                return null;
+            }
+
+            if (route.Segments.Count > 0)
+            {
+                segment.TurnAngleDegrees = NormalizeAngle(segment.BearingDegrees - route.Segments[^1].BearingDegrees);
+                segment.TurnDirection = GetTurnDirection(segment.TurnAngleDegrees);
+            }
+            route.Segments.Add(segment);
         }
 
         double cumulative = 0;
