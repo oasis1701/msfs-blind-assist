@@ -14,7 +14,7 @@ internal static class TurnShape
     /// <summary>A swing toward the other side up to this much is tolerated (a connector's wiggle).</summary>
     public const double MaxContraryDeg = 25.0;
 
-    /// <summary>A single heading change above this is a reversal or hairpin, never a clean turn.</summary>
+    /// <summary>A single heading change above this (the first one included) is a reversal or hairpin, never a clean turn.</summary>
     public const double MaxSingleChangeDeg = 120.0;
 
     /// <summary>How far past the start of the row's taxiway the path is judged.</summary>
@@ -34,6 +34,7 @@ internal static class TurnShape
         double limit = joinAtMeters + WalkPastJoinMeters;
 
         double running = Normalize(legs[0].Bearing - incomingBearing);
+        if (Math.Abs(running) > MaxSingleChangeDeg) return false;
         double maxContrary = sign * running;
         double walked = legs[0].LengthMeters;
 

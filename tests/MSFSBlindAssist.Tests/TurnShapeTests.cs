@@ -68,6 +68,17 @@ public class TurnShapeTests
     }
 
     [Fact]
+    public void A_first_change_over_120_degrees_is_never_clean()
+    {
+        var reversal = Legs((210, 100));
+        Assert.False(TurnShape.IsCleanTurn(0, reversal, 0, TurnSide.Left));
+        Assert.False(TurnShape.IsCleanTurn(0, reversal, 0, TurnSide.Right));
+
+        var exactly120 = Legs((240, 100));
+        Assert.True(TurnShape.IsCleanTurn(0, exactly120, 0, TurnSide.Left));
+    }
+
+    [Fact]
     public void The_walk_stops_80_m_past_the_join()
     {
         var legs = Legs((90, 100), (90, 100), (270, 100));
