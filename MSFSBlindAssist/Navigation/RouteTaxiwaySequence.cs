@@ -61,6 +61,10 @@ public static class RouteTaxiwaySequence
     /// the entered ones are not returned: the lead-in clause (<see cref="TaxiLeadIn"/>) owns the
     /// first, and a connector crossed between two cleared taxiways is deliberately not read out
     /// against the clearance the pilot read back.</para>
+    ///
+    /// <para>When NONE of the entered names is on the route (one entered taxiway, touched only
+    /// at a junction) there is no last entered taxiway to start after, and nothing is returned:
+    /// the whole route would put the lead-in behind "then" as well.</para>
     /// </summary>
     public static List<string> BeyondEntered(
         IReadOnlyList<string>? entered, IReadOnlyList<TaxiRouteSegment>? segments)
@@ -69,6 +73,7 @@ public static class RouteTaxiwaySequence
 
         var actual = DistinctConsecutive(segments);
         int next = 0;
+        bool matchedAny = false;
         foreach (string name in entered)
         {
             for (int i = next; i < actual.Count; i++)
@@ -76,11 +81,12 @@ public static class RouteTaxiwaySequence
                 if (actual[i].Equals(name, StringComparison.OrdinalIgnoreCase))
                 {
                     next = i + 1;
+                    matchedAny = true;
                     break;
                 }
             }
         }
-        return actual.GetRange(next, actual.Count - next);
+        return matchedAny ? actual.GetRange(next, actual.Count - next) : new List<string>();
     }
 
     /// <summary>

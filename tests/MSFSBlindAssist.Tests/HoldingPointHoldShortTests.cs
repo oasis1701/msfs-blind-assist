@@ -122,4 +122,64 @@ public class HoldingPointHoldShortTests
         Assert.False(L2.IsStillAhead(Through(332, 1845, 1582), 0));
         Assert.False(L2.IsStillAhead(null, 0));
     }
+
+    // A route starts at a node near the aircraft (a recalculation: the nearest one within
+    // 50 m), and that can be the point itself while the aircraft is still short of it. Place
+    // has no segment to stop on then, and "the route does not pass it" would tell the pilot
+    // the point is somewhere else, when it is the next node ahead.
+    [Fact]
+    public void StartsRoute_IsTrueOnlyWhenTheRoutesFirstNodeIsThePoint()
+    {
+        Assert.True(L2.StartsRoute(Through(1845, 1582, 1109)));
+        Assert.False(L2.StartsRoute(Through(332, 1845, 1582)));
+        Assert.False(L2.StartsRoute(Through(332, 400, 1582)));
+        Assert.False(L2.StartsRoute(new List<TaxiRouteSegment>()));
+        Assert.False(L2.StartsRoute(null));
+    }
+
+    [Fact]
+    public void StartsRouteNote_SaysWhereThePointIsAndThatNoStopIsCalled()
+    {
+        Assert.Equal(
+            "Note: this route starts at holding point L2. No stop will be called there.",
+            L2.StartsRouteNote);
+    }
+
+    // The pick landed on the runway destination's own hold line (a runway holding point snaps
+    // onto the scenery's hold node). That stop is counted down by its label, so the label has
+    // to keep the runway: "Hold short Runway 16 at holding point A1 in 100 metres.", the same
+    // shape the "depart from named holding point" stop already speaks.
+    [Fact]
+    public void AtDestinationHold_PutsTheRunwayInFrontOfAPickLabel()
+    {
+        Assert.Equal(
+            "Runway 16 at holding point A1",
+            HoldingPointHoldShort.AtDestinationHold(new HoldingPointHoldShort("A1", 7).Label, "Runway 16"));
+        Assert.Equal("16", RouteRunwayCrossings.ExtractRunwayDesignator(
+            HoldingPointHoldShort.AtDestinationHold("holding point A1", "Runway 16")));
+    }
+
+    // Every other label is left exactly as it is: the scenery's own, the pilot's other picks
+    // ([HLD-2]), an empty one, and one this already composed (a second pass adds nothing).
+    [Theory]
+    [InlineData("runway 16 at A1")]
+    [InlineData("end of taxiway L")]
+    [InlineData("taxiway W")]
+    [InlineData("Runway 16 at holding point A1")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void AtDestinationHold_LeavesEveryOtherLabelAlone(string? label)
+    {
+        Assert.Equal(label, HoldingPointHoldShort.AtDestinationHold(label, "Runway 16"));
+    }
+
+    // A pick placed past the destination's hold line is cut off with the route's tail
+    // (TruncateToHoldShort). The pilot is told, in a sentence of its own.
+    [Fact]
+    public void BeyondDestinationHoldNote_NamesThePointAndTheRunway()
+    {
+        Assert.Equal(
+            "Note: holding point L2 lies beyond the Runway 16 hold short point, so no stop is called there.",
+            L2.BeyondDestinationHoldNote("Runway 16"));
+    }
 }

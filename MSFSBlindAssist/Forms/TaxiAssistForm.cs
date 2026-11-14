@@ -977,10 +977,15 @@ public class TaxiAssistForm : Form
         cmbTerminatorTaxiway.DropDown += (s, ev) => PopulateTerminatorTaxiwayList();
         // The named holding points in this list come from an online fetch that can land
         // after the airport loaded. Arrowing a DropDownList never raises DropDown, so the
-        // list is also brought up to date when focus arrives.
+        // list is also brought up to date when focus arrives: refilled only when that
+        // fetch has landed since the list was last filled. With online names off, or an
+        // airport that has none, the resolve returns at once and the list is left alone
+        // (it used to be cleared and refilled on every focus).
         cmbTerminatorTaxiway.Enter += (s, ev) =>
         {
-            if (!_namedHoldingPointsResolved) PopulateTerminatorTaxiwayList();
+            if (_namedHoldingPointsResolved) return;
+            ResolveNamedHoldingPoints();
+            if (_namedHoldingPointsResolved) PopulateTerminatorTaxiwayList();
         };
         cmbFirstHoldShortRunway.Enter += (s, ev) => EnsureHoldingPointsListed(cmbFirstHoldShortRunway);
 
@@ -2253,9 +2258,10 @@ public class TaxiAssistForm : Form
         lblStatus.Text = $"{icao}: {_graph.Nodes.Count} nodes, {paths.Count} paths.";
 
         // Resolve the airport's published named holding points (VIKAS, N2E…)
-        // onto the fresh graph, so the Progressive Taxi "Hold at named holding
-        // point" terminator has its list ready on first open. A fetch that
-        // hasn't landed yet is fine — the combo re-resolves on dropdown open.
+        // onto the fresh graph, so the Progressive Taxi "Hold short of taxiway or
+        // named holding point" list has them ready on first open. A fetch that
+        // hasn't landed yet is fine: the hold-short lists re-resolve when focus
+        // reaches them or the dropdown opens.
         ResolveNamedHoldingPoints();
         // Refill the terminator's target combo too — LoadAirportData cleared its Items above
         // and nothing else repopulates it on an airport change (RefreshTerminatorRow only
@@ -4500,8 +4506,7 @@ public class TaxiAssistForm : Form
     /// fallback for the Progressive Taxi list alone ([HLD-18]).
     /// </summary>
     private IEnumerable<NamedHoldingPoint> RowHoldingPoints() =>
-        _namedHoldingPoints.Where(p => !string.Equals(
-            p.Kind?.Trim(), NamedHoldingPointResolver.SignKind, StringComparison.OrdinalIgnoreCase));
+        _namedHoldingPoints.Where(p => !p.IsFromSign);
 
     /// <summary>
     /// Brings a row's "Hold short of" combo up to date when focus reaches it: the named
@@ -5553,7 +5558,7 @@ public class TaxiAssistForm : Form
         // Sign-sourced points are approximate and are never a runway crossing point.
         static bool NotACrossingPoint(NamedHoldingPoint p) =>
             string.Equals(p.Kind, "intermediate", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(p.Kind, NamedHoldingPointResolver.SignKind, StringComparison.OrdinalIgnoreCase);
+            || p.IsFromSign;
         var runwayHoldNodes = _namedHoldingPoints
             .Where(p => !NotACrossingPoint(p))
             .Select(p => p.NodeId)

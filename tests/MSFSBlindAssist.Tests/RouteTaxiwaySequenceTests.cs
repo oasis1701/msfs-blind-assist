@@ -190,6 +190,17 @@ public class RouteTaxiwaySequenceTests
         Assert.DoesNotContain("string.Join(\", \", route.TaxiwaySequence)", body);
     }
 
+    // NONE of the entered taxiways has a segment on the route (a single entered taxiway that
+    // the route only touches at a junction). There is then no "last entered taxiway" to
+    // start after: returning the whole route put the lead-in taxiway behind "then" as well,
+    // a second time beside the lead-in clause. The summary keeps to what was entered.
+    [Fact]
+    public void ViaClause_AddsNothingWhenNoEnteredTaxiwayIsOnTheRoute()
+    {
+        Assert.Equal("B", RouteTaxiwaySequence.ViaClause(new[] { "B" }, Route("A", "C", "D")));
+        Assert.Empty(RouteTaxiwaySequence.BeyondEntered(new[] { "B", "E" }, Route("A", "C", "D")));
+    }
+
     [Fact]
     public void BeyondEntered_IsEmptyForANullRouteOrNoEnteredTaxiways()
     {

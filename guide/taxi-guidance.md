@@ -163,6 +163,13 @@ After the runways the same list holds every taxiway and every named holding poin
 
 If your route never reaches the taxiway or holding point you chose, the route still loads and the summary ends with a note such as *"Note: requested hold-short(s) not on route — holding point L2 (route does not pass it after taxiway L)."*
 
+Two more notes tell you a holding point you chose gets no stop of its own:
+
+- *"Note: this route starts at holding point L2. No stop will be called there."* The route begins at the point itself, so you are at it or just short of it, and there is nothing left to count down. You can also hear it after *"Route changed"*, when a new route is worked out close to the point. Stop there yourself until you are cleared.
+- *"Note: holding point A1 lies beyond the Runway 16 hold short point, so no stop is called there."* The point is past the line where guidance already stops you before your runway.
+
+When the holding point you chose is your runway's own hold line, the countdown names both: *"Hold short Runway 16 at holding point A1 in 100 metres."*
+
 ### Add Taxiway {#add-taxiway}
 
 A button that adds another taxiway row below the first. It only works once the first taxiway is set to a real taxiway. You can add up to 20 more rows. Each new row is labelled "Taxiway 2", "Taxiway 3" and so on, and has its own taxiway list, **Hold short** checkbox, **Remove** button and **Hold short of runway** list, exactly like the first row.

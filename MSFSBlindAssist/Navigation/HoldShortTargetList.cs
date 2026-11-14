@@ -41,11 +41,7 @@ public static class HoldShortTargetList
     }
 
     public static string HoldingPointLabel(NamedHoldingPoint point)
-    {
-        bool fromSign = string.Equals(
-            point.Kind?.Trim(), NamedHoldingPointResolver.SignKind, StringComparison.OrdinalIgnoreCase);
-        return point.Name + (fromSign ? SignHoldingPointSuffix : HoldingPointSuffix);
-    }
+        => point.Name + (point.IsFromSign ? SignHoldingPointSuffix : HoldingPointSuffix);
 
     /// <summary>
     /// Taxiways in the order given (the graph hands them over sorted), with each holding point
