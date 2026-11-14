@@ -132,8 +132,8 @@ internal static partial class FenixChannelFields
     /// <summary>
     /// DUData, the display units: entry i of each list is unit i. The Fenix sends both lists unpacked, one varint
     /// field per entry; protobuf's packed form of the same lists reads the same. 3.0.0.7852 added member 4, a
-    /// switch-on delay per unit, which the app does not read: whether a unit reads powered while that delay runs is
-    /// not measured yet ([FNX-22]).
+    /// switch-on delay per unit, which the app does not read: a power-up from cold and dark on 2026-11-13 kept each
+    /// display off until its screen was up, the units turning live one by one ([FNX-22]).
     /// </summary>
     public static class DuData
     {
