@@ -97,10 +97,10 @@
 
 ## Execution record
 
-- **Status:** not started (optional)
-- **Claimed by:**
-- **Worked by:**
-- **Started:**
+- **Status:** claimed (the owner chose to build it, 2026-11-16: "let's build it so we can get to full display coverage")
+- **Claimed by:** Robin Kipp (robin24), 2026-11-16
+- **Worked by:** Robin Kipp with Claude
+- **Started:** 2026-11-16, from `B757` at 76185cd85
 - **Landed:**
 - **Tests at landing:**
 - **Tasks:**
