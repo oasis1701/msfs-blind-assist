@@ -263,6 +263,55 @@ test('a native slider reads its bounds and takes a typed value through its own s
   assert.equal(inputs, 1);
 });
 
+test('repeated buttons: the row names the text, never the key, and a selected row stays in its group', () => {
+  const rows = active => ['Default', 'Rainy', 'Sunny'].map(n =>
+    '<div class="row"><span class="name">' + n + '</span><button class="load' + (n === active ? ' active' : '') + '">LOAD</button></div>').join('');
+  const before = page(rows('Default'));
+  const b = scraped(before.A).filter(e => /LOAD/.test(e.text));
+  assert.deepStrictEqual(b.map(e => e.text), ['Default: LOAD (active)', 'Rainy: LOAD', 'Sunny: LOAD']);
+  assert.deepStrictEqual(b.map(e => e.key), ['button:LOAD', 'button:LOAD', 'button:LOAD'], 'the shell keeps repeats apart by order');
+  const after = page(rows('Rainy'));
+  const a = scraped(after.A).filter(e => /LOAD/.test(e.text));
+  assert.deepStrictEqual(a.map(e => e.text), ['Default: LOAD', 'Rainy: LOAD (active)', 'Sunny: LOAD']);
+  assert.deepStrictEqual(a.map(e => e.key), b.map(e => e.key));
+});
+
+test('repeated buttons: a value is never a row\'s name, so a changing number cannot touch them', () => {
+  const { A } = page('<div class="r"><span>29</span><span>GAL</span><button>More information</button></div>' +
+    '<div class="r"><span>Total mass</span><button>More information</button></div>');
+  const l = lines(scraped(A));
+  // "29 GAL" is a value: the pair cannot be told apart by name, so both stay as the page says them.
+  assert.deepStrictEqual(l.filter(x => /More information/.test(x)), ['button|More information', 'button|More information']);
+});
+
+test('a link is followed even when it also listens to mousedown', () => {
+  let followed = 0;
+  const { A, window } = page('<a class="go" href="#there">Go there</a>', {
+    before: w => {
+      const a = w.document.querySelector('.go');
+      a.addEventListener('mousedown', () => {});
+      a.addEventListener('click', ev => { followed++; ev.preventDefault(); });
+    },
+  });
+  const gel = el => (el.className === 'go' ? { mousedown: [{}] } : {});
+  assert.equal(A.clickElement(find(scraped(A, gel), 'Go there').idx, gel), true);
+  assert.equal(followed, 1);
+});
+
+test('a slider whose position is not shown refuses "+5": from where?', () => {
+  const { A } = page('<div class="row"><span class="name">Gain</span><div class="slider" data-rect="0,0,200,20"><div class="slider-bar"></div></div></div>');
+  const el = find(scraped(A), 'Gain (slider, percent)');
+  assert.equal(el.controlType, 'text');
+  assert.equal(A.setValue(el.idx, '+5'), false);
+});
+
+test('a native slider refuses a value that is no number (the browser would put it at its midpoint)', () => {
+  const { A, document } = page('<label>Volume <input id="v" type="range" min="0" max="100" value="75"></label>');
+  const el = find(scraped(A), 'Volume');
+  assert.equal(A.setValue(el.idx, 'loud'), false);
+  assert.equal(document.getElementById('v').value, '75');
+});
+
 test('a read-only or fieldset-disabled box refuses a typed value', () => {
   const { A } = page('<input id="a" type="text" readonly value="x"><fieldset disabled><input id="b" type="text" value="y"></fieldset>');
   const els = scraped(A);

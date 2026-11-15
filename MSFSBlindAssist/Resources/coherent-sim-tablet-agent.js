@@ -1109,24 +1109,31 @@
         var own = '';
         for (var k = 0; k < n.childNodes.length; k++) if (n.childNodes[k].nodeType === 3) own += n.childNodes[k].nodeValue;
         if (!A.norm(own)) continue;
-        if (!/[A-Za-z]/.test(own)) continue;                 // a name, never a number ("29")
+        var line = A.norm(own);
+        if (!A.isNameText(line)) continue;                   // a name, never a value ("29", "GAL", "14947 L")
         var inCtl = false;
         for (var p = n; p && p !== anc; p = p.parentElement) if (A.isControlEl(p)) { inCtl = true; break; }
-        if (inCtl) continue;
-        // A unit on its own ("GAL") says more with its line ("14947 GAL").
-        var line = A.norm(own);
-        if (line.length <= 4 && n.parentElement) { var pl = A.lineText(n.parentElement); if (pl && pl.length <= 40) line = pl; }
-        return line;
+        if (!inCtl) return line;
       }
     }
     return '';
   };
+  // Words that name a row: letters, and never a number with its unit or a unit alone.
+  A.isNameText = function (s) {
+    return /[A-Za-z]{3,}/.test(s) && !/^[\d.,\s\-]*[A-Za-z%°]{1,4}$/.test(s);
+  };
+  // The repeats are found by the button's NAME, without the state it shows, so a selected row's
+  // button stays in its group; and only its text gains the row: its key stays 'button:<name>' (the
+  // shell tells repeats apart by their order), so a row whose words change, or a press that changes
+  // which row is selected, never rebuilds the node under the screen reader (FPD-4, FPD-5).
   A.qualifyRepeats = function (els) {
     var groups = {};
     for (var i = 0; i < els.length; i++) {
       var e = els[i];
       if (e.kind !== 'button' || e.controlType || !A._nodes[e.idx]) continue;
-      (groups[e.text] = groups[e.text] || []).push(e);
+      var base = e.key && e.key.indexOf('button:') === 0 ? e.key.slice(7) : e.text;
+      if (e.text.indexOf(base) !== 0) continue;
+      (groups[base] = groups[base] || []).push(e);
     }
     for (var t in groups) {
       if (!groups.hasOwnProperty(t) || groups[t].length < 2) continue;
@@ -1138,10 +1145,7 @@
         names.push(ctx);
       }
       if (!distinct) continue;
-      for (var m = 0; m < g.length; m++) {
-        g[m].text = names[m] + ': ' + t;
-        if (!g[m].key || g[m].key.indexOf('button:') === 0) g[m].key = 'button:' + g[m].text;
-      }
+      for (var m = 0; m < g.length; m++) g[m].text = names[m] + ': ' + g[m].text;
     }
   };
 
@@ -1220,8 +1224,10 @@
         }
         // The marker carries the frame's origin and its size: the client finds the frame's context
         // by origin, or by its window's size when the page has moved to another origin (STAB-14).
-        var origin = A.originOf(el.getAttribute('src') || el.src), fr = el.getBoundingClientRect();
-        if (origin) sink.push(A.el(el, { kind: 'frame', text: Math.round(fr.width) + 'x' + Math.round(fr.height), value: origin }));
+        // clientWidth/Height: the frame's own window size, unlike a box that counts borders and transforms.
+        var origin = A.originOf(el.getAttribute('src') || el.src);
+        var fw = el.clientWidth || Math.round(el.getBoundingClientRect().width), fh = el.clientHeight || Math.round(el.getBoundingClientRect().height);
+        if (origin) sink.push(A.el(el, { kind: 'frame', text: fw + 'x' + fh, value: origin }));
         return;
       }
       if (tag === 'img') {
@@ -1412,9 +1418,19 @@
   // mouseup…) gets that event alone, a <button> too. Never two: a handler that listens to both would
   // run twice, and a mousedown reaching a text box focuses it. A control that shows no listener of its
   // own (a delegated one) gets click(), which bubbles.
+  // An element whose click does something of its own (a link opens, a form submits or resets, a
+  // <summary> folds) is always clicked, whatever else it listens to.
+  A.hasDefaultClick = function (el) {
+    var tag = el.tagName, ty = (el.getAttribute('type') || '').toLowerCase();
+    if (tag === 'A') return el.getAttribute('href') !== null;
+    if (tag === 'SUMMARY') return true;
+    if (tag === 'INPUT') return ty === 'submit' || ty === 'reset' || ty === 'image';
+    if (tag === 'BUTTON') return !!el.form && (ty === '' || ty === 'submit' || ty === 'reset');
+    return false;
+  };
   A.press = function (el) {
     var h = A.handlerOf(el);
-    if (!h || h === 'click') el.click();
+    if (!h || h === 'click' || A.hasDefaultClick(el)) el.click();
     else if (h === 'touchstart') {
       var te;
       try { te = new Event('touchstart', { bubbles: true, cancelable: true }); } catch (e) { te = document.createEvent('Event'); te.initEvent('touchstart', true, true); }
@@ -1494,14 +1510,18 @@
     if (want === null) return false;
     var signed = /^\s*[+\-−]/.test(String(text));
     if (!ro) {                                              // a range of its travel
-      A.dragSlider(el, signed && start !== null ? start + want : want);
+      if (signed && start === null) return false;           // "+5" from where? Not shown.
+      A.dragSlider(el, signed ? start + want : want);
       return true;
     }
     function read() { return A.readoutNumber(A.lineText(ro)); }
     function giveUp() { if (start !== null) A.dragSlider(el, start); return false; }
     var now = read();
+    // An end that reads as a word ("Off") is measured just inside it.
     A.dragSlider(el, 0); var lo = read();
+    if (lo === null) { A.dragSlider(el, 2); lo = read(); }
     A.dragSlider(el, 100); var hi = read();
+    if (hi === null) { A.dragSlider(el, 98); hi = read(); }
     if (now === null || lo === null || hi === null || lo === hi) return giveUp();
     if (signed && (/^\s*\+/.test(String(text)) || Math.min(lo, hi) >= 0)) want = now + want;
     var up = hi >= lo, a = 0, b = 100, best = 100, bestErr = Math.abs(hi - want);
@@ -1586,7 +1606,10 @@
           return true;
         }
         if (ty === 'range') {
-          A.typeInto(el, want, true);
+          // A browser puts a range given no number back to its midpoint: refuse instead.
+          var n = A.numberIn(want);
+          if (n === null) return false;
+          A.typeInto(el, String(n), true);
           A._dirty = true;
           return true;
         }

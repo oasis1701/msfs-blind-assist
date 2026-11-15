@@ -582,15 +582,16 @@ namespace MSFSBlindAssist.SimConnect
             if (_readFrames)
             {
                 // Each marker is read in a context of its own: two frames of one origin are two pages.
+                // Every marker is matched by origin first, and only then may one still unread take a
+                // context by its size, so a fallback never takes another marker's frame.
                 var frames = new Dictionary<int, (int ContextId, List<ScrapeElement> Elements)?>();
+                var markers = mainElements.Where(e => e.kind == "frame").ToList();
                 var used = new HashSet<int>();
-                int slot = 0;
-                foreach (var e in mainElements)
-                {
-                    if (e.kind != "frame") continue;
-                    slot++;
-                    frames[slot] = await ReadFrameAsync((e.value ?? "").ToLowerInvariant(), e.text ?? "", used, ct);
-                }
+                for (int i = 0; i < markers.Count; i++)
+                    frames[i + 1] = await ReadFrameByOriginAsync((markers[i].value ?? "").ToLowerInvariant(), used, ct);
+                for (int i = 0; i < markers.Count; i++)
+                    if (frames[i + 1] == null)
+                        frames[i + 1] = await ReadFrameBySizeAsync(markers[i].text ?? "", used, ct);
                 elements = SpliceFrames(mainElements, frames, out var slots);
                 _frameSlots = slots;
             }
@@ -679,13 +680,11 @@ namespace MSFSBlindAssist.SimConnect
         private const int FrameMissesBeforeForget = 3;
 
         /// <summary>
-        /// Read the frame a marker stands for: in the newest unused context of its origin (a frame that
-        /// reloads gets a new one), installing the agent there first when it is missing. A frame whose page
-        /// moved to another origin (a sign-in, a redirect) no longer matches its iframe's src, so when no
-        /// context of that origin answers, the frame is the unused page context whose window is the iframe's
-        /// size (<paramref name="size"/>, "WxH": hidden apps' frames are 0 by 0). Null when none can be read.
+        /// Read the frame a marker stands for in the newest unused context of its origin (a frame that
+        /// reloads gets a new one), installing the agent there first when it is missing. Null when none
+        /// of that origin can be read.
         /// </summary>
-        private async Task<(int ContextId, List<ScrapeElement> Elements)?> ReadFrameAsync(string origin, string size,
+        private async Task<(int ContextId, List<ScrapeElement> Elements)?> ReadFrameByOriginAsync(string origin,
             HashSet<int> used, CancellationToken ct)
         {
             var ids = new List<int>();
@@ -696,18 +695,44 @@ namespace MSFSBlindAssist.SimConnect
                 var els = await ScrapeFrameAsync(cid, ct);
                 if (els != null) { used.Add(cid); return (cid, els); }
             }
+            return null;
+        }
+
+        /// <summary>
+        /// A frame whose page moved to another origin (a sign-in, a redirect) no longer matches its iframe's
+        /// src: it is the unused page context whose window is the iframe's size (<paramref name="size"/>,
+        /// "WxH"; every hidden app's frame is 0 by 0, which never matches). A context that does not answer
+        /// the size probe counts a miss like any other eval.
+        /// </summary>
+        private async Task<(int ContextId, List<ScrapeElement> Elements)?> ReadFrameBySizeAsync(string size,
+            HashSet<int> used, CancellationToken ct)
+        {
             if (string.IsNullOrEmpty(size)) return null;
             var others = new List<int>();
-            foreach (var kv in _frameContexts) if (!used.Contains(kv.Key) && kv.Value != origin) others.Add(kv.Key);
+            foreach (var kv in _frameContexts) if (!used.Contains(kv.Key)) others.Add(kv.Key);
             others.Sort((a, b) => b.CompareTo(a));
             foreach (int cid in others)
             {
                 var probe = await EvalFrameAsync("window.innerWidth + 'x' + window.innerHeight", cid, ct);
-                if (!SameFrameSize(probe.Value, size)) continue;
+                if (!CountReply(cid, probe) || !SameFrameSize(probe.Value, size)) continue;
                 var els = await ScrapeFrameAsync(cid, ct);
                 if (els != null) { used.Add(cid); return (cid, els); }
             }
             return null;
+        }
+
+        // Book one eval's outcome against its context: false when it did not answer (a miss, or the
+        // context is gone and forgotten), true when it did.
+        private bool CountReply(int cid, (bool Replied, bool Failed, string Value) reply)
+        {
+            if (reply.Failed || (!reply.Replied && _frameMisses.AddOrUpdate(cid, 1, (_, n) => n + 1) >= FrameMissesBeforeForget))
+            {
+                ForgetContext(cid);
+                return false;
+            }
+            if (!reply.Replied) return false;
+            _frameMisses[cid] = 0;
+            return true;
         }
 
         // One frame's elements, or null when it cannot be read this poll (see _frameMisses).
@@ -724,13 +749,7 @@ namespace MSFSBlindAssist.SimConnect
                 reply = inst.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0
                     ? await EvalFrameAsync(fullScrape, cid, ct) : inst;
             }
-            if (reply.Failed || (!reply.Replied && _frameMisses.AddOrUpdate(cid, 1, (_, n) => n + 1) >= FrameMissesBeforeForget))
-            {
-                ForgetContext(cid);
-                return null;
-            }
-            if (!reply.Replied) return null;
-            _frameMisses[cid] = 0;
+            if (!CountReply(cid, reply)) return null;
             ScrapeResult? r;
             try { r = JsonSerializer.Deserialize<ScrapeResult>(reply.Value); }
             catch { return null; }

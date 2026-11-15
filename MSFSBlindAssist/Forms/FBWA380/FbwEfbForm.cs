@@ -761,8 +761,16 @@ public class FbwEfbForm : Form
                     // A slider takes a number in the page's own form ("0.5"): the pilot types it in
                     // theirs ("0,5" under sv-SE), read as typed input (CORE-17).
                     string sent = tb.Text;
-                    if (controlType == "range" && MSFSBlindAssist.Utils.NumberParsing.TryParseTyped(tb.Text, out double typed))
+                    if (controlType == "range")
+                    {
+                        if (!MSFSBlindAssist.Utils.NumberParsing.TryParseTyped(tb.Text, out double typed))
+                        {
+                            _announcer.Announce("Type a number");   // a validation error always speaks (CORE-7)
+                            e.Handled = true; e.SuppressKeyPress = true;
+                            return;
+                        }
                         sent = typed.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    }
                     _bridgeServer.EnqueueCommand("set_element_value", new Dictionary<string, string>
                     {
                         ["index"] = idx.ToString(),
