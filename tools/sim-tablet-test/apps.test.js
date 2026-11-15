@@ -709,6 +709,19 @@ test('a search list that shows before anything is typed is read (Settings, Add f
   assert.ok(l.includes('button|Result: Aircraft') && l.includes('button|Result: GSX'), l.join(' / '));
 });
 
+test('SayIntentions: a button showing only a symbol or number takes its aria-label, keeping the number', () => {
+  const l = lines(scrape('sayintentions-atc'));
+  for (const want of ['button|Zoom in', 'button|Reset zoom (100%)', 'button|Zoom out']) assert.ok(l.includes(want), want);
+});
+
+test('a button that is only a value reads with the label right before it (SayIntentions’ airport frequencies)', () => {
+  const l = lines(scraped(page('<div class="f"><span>APP</span><button>122.5</button></div>' +
+    '<div class="f"><span>TWR</span><button>118.75</button></div><div class="k"><span>Total 12</span><button>3</button></div>').A));
+  assert.ok(l.includes('button|APP 122.5') && l.includes('button|TWR 118.75'), l.join(' / '));
+  assert.ok(!l.includes('static|APP'), 'the label reads once, with its button');
+  assert.ok(l.includes('button|3') && l.includes('static|Total 12'), 'a label holding a number is a value, never a name');
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));

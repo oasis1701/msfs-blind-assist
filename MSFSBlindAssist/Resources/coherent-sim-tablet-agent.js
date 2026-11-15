@@ -448,7 +448,11 @@
   };
 
   A.buttonLabel = function (el) {
-    var n = A.lineText(el) || A.attr(el, 'aria-label') || A.labelledBy(el) || A.tooltipOf(el) || A.attr(el, 'title') ||
+    // Text with no letters ("+", "100%") gives way to the button's own aria-label, keeping a number
+    // it shows (SayIntentions' zoom: "Zoom in", "Reset zoom (100%)", "Zoom out").
+    var shown = A.lineText(el), aria = A.norm(A.attr(el, 'aria-label'));
+    if (shown && aria && !/[A-Za-zÀ-ɏ]/.test(shown)) return /\d/.test(shown) ? aria + ' (' + shown + ')' : aria;
+    var n = shown || aria || A.labelledBy(el) || A.tooltipOf(el) || A.attr(el, 'title') ||
       A.imgName(el) || A.attr(el, 'data-label');
     if (el.tagName === 'INPUT') n = n || el.value;
     // A drawn cross is a close button; a letter x only where it says so (a "close" class), never a
@@ -1565,6 +1569,15 @@
         if (!label) {                                          // a nameless icon says nothing; skip it
           for (var bc = 0; bc < el.children.length; bc++) walk(el.children[bc]);
           return;
+        }
+        // A button that is only a value takes the label right before it ("APP" + "122.5": SayIntentions'
+        // airport frequencies), which it then reads with itself.
+        if (!/[A-Za-zÀ-ɏ]/.test(label)) {
+          var pv = el.previousElementSibling;
+          if (pv && !A.isHidden(pv) && !A.isControlEl(pv) && !A.hasCtl(pv)) {
+            var pvt = A.lineText(pv);
+            if (pvt && pvt.length <= 24 && /[A-Za-zÀ-ɏ]/.test(pvt) && !/\d/.test(pvt)) { label = pvt + ' ' + label; A.claim(pv); }
+          }
         }
         // Always keyed by its name, so a button that first shows state ("GPU" -> "GPU (connected)") keeps
         // its node and the screen reader's place on it (FPD-5); spoken after a press only when it can

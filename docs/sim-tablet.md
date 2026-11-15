@@ -30,7 +30,8 @@ The add-on apps (iniJetways, MK Airport, AtmosphereMod, CIVA INS, GSX, SayIntent
 
 - **what takes a press** by what it listens to (STAB-13), so a `<div>` that listens to mousedown is a button and a styled one that listens to nothing is text;
 - **native controls**: `<select>` as a select, check boxes and radio buttons as tick boxes ("(one of a group)" for a radio), `<input type="range">` as a slider with its bounds, number boxes with their bounds, date and time boxes with the format to type, text areas; each named the way a browser names it (aria-label, `<label for>`, the label around it, the text before it, a title, a placeholder); a read-only box or one in a disabled `<fieldset>` is dimmed and refuses typing;
-- **ARIA**: roles (`button`, `tab`, `switch`, `checkbox`, `menuitem`...), `aria-pressed`, `aria-checked`, `aria-selected`, `aria-expanded`, `aria-disabled`;
+- **ARIA**: roles (`button`, `tab`, `switch`, `checkbox`, `menuitem`...), `aria-pressed`, `aria-checked`, `aria-selected`, `aria-expanded`, `aria-disabled`; a button whose text is only a symbol or a number takes its `aria-label`, keeping the number (SayIntentions' zoom: "Zoom in", "Reset zoom (100%)");
+- **a button that is only a value** reads with the label right before it (SayIntentions' airport frequencies: "APP 122.5");
 - **state** from ARIA, `data-active`/`data-on`/`data-state`, or a class word ("active", "selected", "is-on", "mk-tab--on"), never from one that says the opposite ("not-selected"); a tab-like control says "(selected)";
 - **switches drawn with a class** ("switch", "toggle" and their on modifier) as tick boxes;
 - **OS sliders** as typed values: "Haze strength (slider)" takes the number its read-out shows, or a travel percentage when it has none (STAB-12);
