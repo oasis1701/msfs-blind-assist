@@ -4046,6 +4046,7 @@ public partial class TaxiGuidanceManager
         _userHoldShortIndices = null;
         _userRunwayHoldShorts = null;
         _userTaxiwayHoldShorts = null;
+        _userHoldingPointHoldShorts = null;
         _rolloutExit = null;
         _isLandingExitRoute = false; // no exit route — runway-end countdown
         _landingExitOffPavement = true;

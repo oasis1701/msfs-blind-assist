@@ -44,4 +44,62 @@ public static class RouteTaxiwaySequence
 
         return names;
     }
+
+    /// <summary>
+    /// The taxiways a route goes on to use AFTER the ones the pilot entered, in order.
+    ///
+    /// <para>The router follows the entered taxiways and then finds its own way to the
+    /// destination ("after the last taxiway: A* to the destination node"), so a route can run
+    /// well past the clearance the pilot typed. LOWW, 2026-11-14: "L" entered for Runway 16;
+    /// the route ran L, W, EX23, E, EX33, D, and the summary said "via L" for a route whose
+    /// last 888 of 2,001 m were on taxiways nobody had named.</para>
+    ///
+    /// <para>The entered names are walked against <see cref="DistinctConsecutive"/> in the order
+    /// they were entered ("A, C, A" matches the second A second), and everything after the last
+    /// one matched is returned. An entered taxiway the route only touches at a junction has no
+    /// segment of its own: it is skipped, never allowed to end the walk. Names BEFORE or BETWEEN
+    /// the entered ones are not returned: the lead-in clause (<see cref="TaxiLeadIn"/>) owns the
+    /// first, and a connector crossed between two cleared taxiways is deliberately not read out
+    /// against the clearance the pilot read back.</para>
+    ///
+    /// <para>When NONE of the entered names is on the route (one entered taxiway, touched only
+    /// at a junction) there is no last entered taxiway to start after, and nothing is returned:
+    /// the whole route would put the lead-in behind "then" as well.</para>
+    /// </summary>
+    public static List<string> BeyondEntered(
+        IReadOnlyList<string>? entered, IReadOnlyList<TaxiRouteSegment>? segments)
+    {
+        if (entered == null || entered.Count == 0) return new List<string>();
+
+        var actual = DistinctConsecutive(segments);
+        int next = 0;
+        bool matchedAny = false;
+        foreach (string name in entered)
+        {
+            for (int i = next; i < actual.Count; i++)
+            {
+                if (actual[i].Equals(name, StringComparison.OrdinalIgnoreCase))
+                {
+                    next = i + 1;
+                    matchedAny = true;
+                    break;
+                }
+            }
+        }
+        return matchedAny ? actual.GetRange(next, actual.Count - next) : new List<string>();
+    }
+
+    /// <summary>
+    /// What follows "via" in the route summary when the route honoured an entered clearance:
+    /// the entered taxiways exactly as given, then, after "then", whatever
+    /// <see cref="BeyondEntered"/> says the route adds to reach the destination. "L, then W,
+    /// EX23, E, EX33, D"; just "A, B, K" when the route ends on the clearance.
+    /// </summary>
+    public static string ViaClause(
+        IReadOnlyList<string> entered, IReadOnlyList<TaxiRouteSegment>? segments)
+    {
+        string list = string.Join(", ", entered);
+        var beyond = BeyondEntered(entered, segments);
+        return beyond.Count == 0 ? list : $"{list}, then {string.Join(", ", beyond)}";
+    }
 }
