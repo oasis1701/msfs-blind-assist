@@ -101,7 +101,51 @@
     if (r.width <= 0 && r.height <= 0) return true;
     var st = A.styleOf(el);
     if (!st) return false;
-    return st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0';
+    if (st.display === 'none') return true;
+    // Hidden until the mouse is over it: a control a sighted pilot finds by hovering (the Flight
+    // Planner's "Clear Selected Facility", shown by ".atlas-nav-bar-facility:hover
+    // .icon-button-close-facility { visibility: visible }") is on screen for the reader too.
+    if (st.visibility === 'hidden' || st.opacity === '0') return !A.hoverRevealed(el);
+    return false;
+  };
+
+  // The page's own hover rules: every selector whose :hover rule makes something visible, with the
+  // :hover taken out (".a:hover .b" -> ".a .b"), so an element it matches is one a hover reveals.
+  // Read once per set of stylesheets (an app adds its sheet when it installs).
+  A._hoverSheets = -1;
+  A._hoverSels = [];
+  A.hoverSelectors = function () {
+    var sheets = el0().styleSheets || [];
+    if (sheets.length === A._hoverSheets) return A._hoverSels;
+    var out = [];
+    for (var i = 0; i < sheets.length; i++) {
+      var rules = null;
+      try { rules = sheets[i].cssRules; } catch (e) { rules = null; }
+      for (var j = 0; rules && j < rules.length; j++) {
+        var sel = rules[j].selectorText || '', css = rules[j].style ? rules[j].style.cssText : '';
+        if (sel.indexOf(':hover') < 0 || !/visibility:\s*(visible|inherit)|opacity:\s*1(\D|$)/.test(css)) continue;
+        var parts = sel.split(',');
+        for (var k = 0; k < parts.length; k++) if (parts[k].indexOf(':hover') >= 0) out.push(A.norm(parts[k].replace(/:hover/g, '')));
+      }
+    }
+    A._hoverSheets = sheets.length;
+    A._hoverSels = out;
+    return out;
+    function el0() { return document; }
+  };
+  // The element, or the ancestor it inherits its hiding from (a revealed wrapper reveals its button).
+  A.hoverRevealed = function (el) {
+    var sels = A.hoverSelectors();
+    if (!sels.length) return false;
+    for (var n = el, up = 0; n && n.nodeType === 1 && up < 6; n = n.parentElement, up++) {
+      if (!n.matches && !n.webkitMatchesSelector) return false;
+      for (var i = 0; i < sels.length; i++) {
+        try { if (n.matches ? n.matches(sels[i]) : n.webkitMatchesSelector(sels[i])) return true; } catch (e) {}
+      }
+      var ps = n.parentElement ? A.styleOf(n.parentElement) : null;
+      if (!ps || (ps.visibility !== 'hidden' && ps.opacity !== '0')) return false;   // hidden here, not inherited
+    }
+    return false;
   };
   A.isVisible = function (el) { return !!el && !A.isHidden(el); };
 
@@ -176,10 +220,13 @@
     // A number against its unit or a label against its number is never one word, even where the
     // boxes touch ("11890" + "FT", "OS Version" + "1.0.3").
     if (/\d$/.test(left) && /^[A-Za-z]/.test(right) || /[A-Za-z]$/.test(left) && /^\d/.test(right)) return true;
-    // Nor is a word against the next word in another element, or a lone dash standing for a value
-    // (MK Airport's diagnostics: "Airport module" + "not responding", "Last update" + "-").
-    if (/[A-Za-z]{2}$/.test(left) && /^[A-Za-z]{2}/.test(right)) return true;
-    if (/^[-–—]\s*$/.test(right) && /[A-Za-z]$/.test(left)) return true;
+    // Nor is a word against the next word in a box of its own (a flex or grid item, never an inline
+    // run that can split one word: "<b>Lon</b>don"), or a lone dash standing for a value (MK
+    // Airport's diagnostics: "Airport module" + "not responding", "Last update" + "-").
+    var sa = A.styleOf(a), sb = A.styleOf(b);
+    var boxed = (sa && sa.display && sa.display !== 'inline') || (sb && sb.display && sb.display !== 'inline');
+    if (boxed && /[A-Za-z]{2}$/.test(left) && /^[A-Za-z]{2}/.test(right)) return true;
+    if (boxed && /^[-–—]\s*$/.test(right) && /[A-Za-z]$/.test(left)) return true;
     var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
     if (ra.width > 0 && rb.width > 0) {
       var sameRow = Math.abs((ra.top + ra.bottom) / 2 - (rb.top + rb.bottom) / 2) <= 6;
@@ -212,13 +259,19 @@
 
   // An icon's name: the first id inside its SVG live, data-icon in a captured fixture. The asset
   // names carry their icon set ("Save--Streamline-Carbon") and clip prefixes ("clip-Arrow").
+  // The first id that says something: an editor's own names ("svg1", "layer1", "path1") are skipped
+  // (the Flight Planner's airport header chevron is "svg1" > "layer1" > "down").
+  A.GENERIC_ID = /^(svg|defs|layer|path|g|group|groupe|trac|rect|circle|mask|clip|stop|use|polygon|ellipse|line)[\s\d]*$/i;
   A.iconName = function (el) {
     var svg = el.querySelector('svg');
     if (!svg) return '';
-    var n = svg.getAttribute('data-icon') || svg.id || '';
-    if (!n) { var i = svg.querySelector('[id]'); n = i ? i.id : ''; }
-    n = n.replace(/--.*$/, '').replace(/^clip-/, '').replace(/[-_]+/g, ' ');
-    return /^(svg\d*|defs\d*|Layer \d+|Groupe.*|Trac.*)$/i.test(n) ? '' : A.norm(n);
+    var cands = [svg.getAttribute('data-icon'), svg.id], inner = svg.querySelectorAll('[id]');
+    for (var j = 0; j < inner.length && j < 12; j++) cands.push(inner[j].id);
+    for (var i = 0; i < cands.length; i++) {
+      var n = A.norm(String(cands[i] || '').replace(/--.*$/, '').replace(/^clip-/, '').replace(/[-_]+/g, ' '));
+      if (n && !A.GENERIC_ID.test(n)) return n;
+    }
+    return '';
   };
 
   // A picture that names its control: <img alt="CIVA Options">.
@@ -252,6 +305,8 @@
     'refresh': 'Refresh',
     'split-view-btn': 'Split view',
     'back-button': 'Back',
+    'return-button': 'Back',                // the Flight Planner's dialogs: a chevron that goes back
+    'close-button': 'Close',
     'incremental-decrease': 'Decrease',
     'incremental-increase': 'Increase'
   };
@@ -264,13 +319,19 @@
     var n = A.lineText(el) || A.attr(el, 'aria-label') || A.labelledBy(el) || A.tooltipOf(el) || A.attr(el, 'title') ||
       A.imgName(el) || A.attr(el, 'data-label');
     if (el.tagName === 'INPUT') n = n || el.value;
-    if (n && /^\s*[×✕✖✗xX]\s*$/.test(n)) return 'Close';      // a cross is a close button
+    // A drawn cross is a close button; a letter x only where it says so (a "close" class), never a
+    // keypad's X key.
+    if (n && (/^\s*[×✕✖✗]\s*$/.test(n) || (/^\s*[xX]\s*$/.test(n) && /close/i.test(A.cls(el))))) return 'Close';
     if (n) return A.norm(n);
     n = A.className(el);
     if (n) return n;
     n = A.iconName(el);
     // A panel's or popup's header leads with an unnamed icon button: its close.
     if (!n && el.parentElement && /header/.test(A.cls(el.parentElement)) && el === el.parentElement.firstElementChild) return 'Close';
+    // A chevron in a header folds the panel under it (the Flight Planner's airport panel).
+    if (n && /^(down|up|chevron.*|caret.*|arrow (down|up))$/i.test(n)) {
+      for (var hp = el.parentElement, d = 0; hp && d < 3; hp = hp.parentElement, d++) if (/header/.test(A.cls(hp))) return 'Fold or unfold';
+    }
     // An icon named only by its picture says which thing it is for: the Flight Planner step it
     // sits in ("Departure airport info"), or the text beside it ("Trash Flight Planner").
     if (n) {
@@ -403,8 +464,8 @@
       if (k.indexOf(':') >= 0) continue;                  // Tailwind's "hover:…", "active:…" variants
       var m = /^(?:is-|has-)?([a-z]+)$/.exec(k) || /--([a-z]+)$/.exec(k) ||
         // a word at the end of an app's own class: CIVA's "civaefb-text-selector-active" (never
-        // "...-inactive", whose last word is "inactive")
-        /[-_](active|selected|current|checked)$/.exec(k);
+        // "...-inactive", whose last word is "inactive", nor "not-selected", "non-active", "un-checked")
+        (/(^|[-_])(not|non|no|un)[-_](active|selected|current|checked)$/.test(k) ? null : /[-_](active|selected|current|checked)$/.exec(k));
       if (m && A.STATE_CLASS.hasOwnProperty(m[1])) add(A.STATE_CLASS[m[1]]);
       else if (/(^|-)error$/.test(k)) add('error');
     }
@@ -715,10 +776,21 @@
     });
 
   // A row of exclusive buttons (TAKE OFF / LANDING, METAR / MANUAL, a unit choice).
+  // Its items are <button>s, or pressable divs (the Flight Planner's map types: "selectable-button").
   A.block('choice',
     function (el) { return A.hasClass(el, 'multiple-buttons'); },
     function (el, els) {
       var bs = el.getElementsByTagName('button');
+      if (!bs.length) {
+        var all = el.getElementsByTagName('*'), items = [];
+        for (var a = 0; a < all.length; a++) {
+          if (!A.isPressable(all[a])) continue;
+          var inner = false;
+          for (var q = 0; q < items.length; q++) if (items[q].contains(all[a])) { inner = true; break; }
+          if (!inner) items.push(all[a]);
+        }
+        bs = items;
+      }
       for (var i = 0; i < bs.length; i++) {
         if (A.isHidden(bs[i])) continue;
         var t = A.lineText(bs[i]) || A.buttonLabel(bs[i]);
@@ -753,7 +825,10 @@
       // A selector that prefixes its choice names itself: "level standard" is the Level dropdown.
       var lead = '';
       if (value && shown.length > value.length && shown.toLowerCase().slice(-value.length) === value.toLowerCase()) lead = A.norm(shown.slice(0, -value.length));
-      els.push(A.el(el, { controlType: 'select', text: name || A.labelFor(el) || A.tooltipOf(el) || A.ucfirst(lead) || A.headingBefore(el) || 'Choice',
+      // Last, the row's own name: a caption cut off from the dropdown by another control in its row
+      // (the Flight Planner's "Cruise altitude" | Auto | FL/FT | 450).
+      els.push(A.el(el, { controlType: 'select', text: name || A.labelFor(el) || A.tooltipOf(el) || A.ucfirst(lead) ||
+                                                        A.rowContext(el) || A.headingBefore(el) || 'Choice',
                           value: value, options: opts, disabled: sel ? A.isDisabled(sel) : false }));
     });
   // The selector shows a short form of the choice ("Dry" for "Dry runway", "level standard" for
@@ -951,7 +1026,7 @@
       var at = A.hasClass(el.parentElement, 'unitbox') ? el.parentElement : el;
       var ph = inp.getAttribute('placeholder');
       var label = A.labelFor(at, 2) || (ph ? '' : A.labelFor(at)) ||
-        (inp.tagName === 'TEXTAREA' ? A.fieldName(inp) : '') || inp.getAttribute('aria-label') || ph || 'Value';
+        (inp.tagName === 'TEXTAREA' ? A.fieldName(inp) : '') || inp.getAttribute('aria-label') || ph || A.rowContext(at) || 'Value';
       els.push(A.el(inp, { controlType: 'text', text: label + (unit ? ' (' + unit + ')' : ''),
                            value: String(inp.value == null ? '' : inp.value), disabled: A.isDisabled(inp) }));
     });
@@ -1051,9 +1126,10 @@
     for (var j = 0; j < c.length; j++) if (c[j].indexOf('__') < 0 && /(^popup|-popup|^modal|-modal|^dialog|-dialog)$/.test(c[j])) return true;
     var r = A.attr(el, 'role');
     if (r === 'dialog' || r === 'alertdialog' || A.attr(el, 'aria-modal') === 'true') return true;
-    // An overlay over most of the page with controls on it (CIVA's options: "civaefb-bg-overlay").
+    // A backdrop over most of the page with controls on it (CIVA's options: "civaefb-bg-overlay"),
+    // never a layer of controls over a map (the Flight Planner's "map-overlay").
     for (var k = 0; k < c.length; k++) {
-      if (c[k].indexOf('__') >= 0 || !/(^|[-_])overlay$/.test(c[k])) continue;
+      if (c[k].indexOf('__') >= 0 || !/(^|[-_])(bg|backdrop|modal|dialog|scrim|dim)[-_]?overlay$|(^|[-_])(backdrop|scrim)$/.test(c[k])) continue;
       return A.coversView(el) && !!el.querySelector('button, input, select, textarea, [role="button"]');
     }
     return false;
@@ -1063,7 +1139,7 @@
     return !!vr && vr.width > 0 && r.width >= vr.width * 0.6 && r.height >= vr.height * 0.6;
   };
   A.popups = function (view) {
-    var cands = view.querySelectorAll('[class*="popup"], [class*="modal"], [class*="dialog"], [class*="overlay"], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'), out = [];
+    var cands = view.querySelectorAll('[class*="popup"], [class*="modal"], [class*="dialog"], [class*="overlay"], [class*="backdrop"], [class*="scrim"], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'), out = [];
     for (var i = 0; i < cands.length; i++) {
       if (!A.isPopup(cands[i]) || A.isHidden(cands[i])) continue;
       var inner = false;
@@ -1115,7 +1191,8 @@
   // under Terms and under Privacy) each say which row they are on: the first line of text before
   // the button in the nearest container that has one ("Default: LOAD", "Mod on/off: CHANGE"). Left
   // as they are when that does not tell them apart.
-  A.rowContext = function (b) {
+  // `skip`: the control's own name, which its caption repeats (a "Manual" tick box's "Manual").
+  A.rowContext = function (b, skip) {
     var anc = b.parentElement;
     for (var up = 0; up < 4 && anc && anc !== A._view; up++, anc = anc.parentElement) {
       var all = anc.getElementsByTagName('*');
@@ -1128,11 +1205,35 @@
         for (var k = 0; k < n.childNodes.length; k++) if (n.childNodes[k].nodeType === 3) own += n.childNodes[k].nodeValue;
         if (!A.norm(own)) continue;
         var line = A.norm(own);
+        if (line === skip) continue;
         if (!A.isNameText(line)) continue;                   // a name, never a value ("29", "GAL", "14947 L")
         var inCtl = false;
         for (var p = n; p && p !== anc; p = p.parentElement) if (A.isControlEl(p)) { inCtl = true; break; }
         if (!inCtl) return line;
       }
+    }
+    return '';
+  };
+  // The whole row's own words, when its first words repeat from row to row (the Flight Planner's
+  // frequencies: "DUBAI 118.350", "DUBAI 121.650"): every text in the button's nearest container that
+  // has text of its own, outside any control. Only the text says it, never the key, so a number in it
+  // can change freely.
+  A.rowLine = function (b, skip) {
+    var anc = b.parentElement;
+    for (var up = 0; up < 4 && anc && anc !== A._view; up++, anc = anc.parentElement) {
+      var all = anc.getElementsByTagName('*'), parts = [];
+      if (all.length > 200) return '';
+      for (var i = 0; i < all.length; i++) {
+        var n = all[i];
+        if (n === b || b.contains(n) || n.contains(b) || A.isHidden(n)) continue;
+        var own = '';
+        for (var k = 0; k < n.childNodes.length; k++) if (n.childNodes[k].nodeType === 3) own += n.childNodes[k].nodeValue;
+        if (!A.norm(own) || A.norm(own) === skip) continue;
+        var inCtl = false;
+        for (var p = n; p && p !== anc; p = p.parentElement) if (A.isControlEl(p)) { inCtl = true; break; }
+        if (!inCtl) parts.push(A.norm(own));
+      }
+      if (parts.length) return parts.join(' ');
     }
     return '';
   };
@@ -1146,26 +1247,47 @@
   // button stays in its group; and only its text gains the row: its key stays 'button:<name>' (the
   // shell tells repeats apart by their order), so a row whose words change, or a press that changes
   // which row is selected, never rebuilds the node under the screen reader (FPD-4, FPD-5).
+  // Fields that say the same thing (the Flight Planner's two "Manual" fuel tick boxes) do the same,
+  // keyed by their own name ('field:Manual') so the row's words never reach the key either.
   A.qualifyRepeats = function (els) {
     var groups = {};
     for (var i = 0; i < els.length; i++) {
       var e = els[i];
-      if (e.kind !== 'button' || e.controlType || !A._nodes[e.idx]) continue;
-      var km = /^(button|choice):(.*)$/.exec(e.key || '');
-      var base = km ? km[2] : e.text;
-      if (e.text.indexOf(base) !== 0) continue;
-      (groups[base] = groups[base] || []).push(e);
+      if (!A._nodes[e.idx] || !e.text) continue;
+      var base;
+      if (e.controlType) {
+        if (e.key && e.key.indexOf('field:') !== 0) continue;
+        base = e.text;
+        e.key = 'field:' + base;
+      } else {
+        if (e.kind !== 'button') continue;
+        var km = /^(button|choice):(.*)$/.exec(e.key || '');
+        base = km ? km[2] : e.text;
+        if (e.text.indexOf(base) !== 0) continue;
+      }
+      var gk = (e.controlType ? 'f|' : 'b|') + base;
+      (groups[gk] = groups[gk] || []).push(e);
     }
-    for (var t in groups) {
-      if (!groups.hasOwnProperty(t) || groups[t].length < 2) continue;
-      var g = groups[t], names = [], seen = {}, distinct = true;
+    // First by the row's name, else by its whole line; left alone when neither tells them apart.
+    function namesBy(g, t, fn) {
+      var names = [], seen = {};
       for (var j = 0; j < g.length; j++) {
-        var ctx = A.rowContext(A._nodes[g[j].idx]);
-        if (!ctx || ctx === t || seen[ctx]) { distinct = false; break; }
+        var ctx = fn(A._nodes[g[j].idx], t);
+        if (!ctx || ctx === t || seen[ctx]) return null;
         seen[ctx] = 1;
         names.push(ctx);
       }
-      if (!distinct) continue;
+      return names;
+    }
+    for (var gk2 in groups) {
+      if (!groups.hasOwnProperty(gk2)) continue;
+      var g = groups[gk2], t = gk2.slice(2);
+      if (g.length < 2) {
+        if (g[0].controlType && g[0].key === 'field:' + g[0].text) g[0].key = undefined;   // unique: as before
+        continue;
+      }
+      var names = namesBy(g, t, A.rowContext) || namesBy(g, t, A.rowLine);
+      if (!names) continue;
       for (var m = 0; m < g.length; m++) g[m].text = names[m] + ': ' + g[m].text;
     }
   };
@@ -1363,8 +1485,10 @@
   // own shows the sim's nowhere (measured 2026-11-15, iniBuilds A350: 0 frames in 5 s, where the C172
   // that shows it in its cockpit got 30 a second), so the apps freeze: Ground Services said "Door 1
   // Closed" while the door opened, and its press then toggled from that stale state. While the view
-  // gets no frames, the reader runs that update once before each read, press and set, so the app on
-  // screen is current; once frames run, it does nothing.
+  // gets no frames, the reader runs that update once before each read, so the app on screen is
+  // current; once frames run, reads add nothing. A press or set runs it unless a frame came in the
+  // last 200 ms, which at the client's pace is nearly always: one extra update per press, so the
+  // press never acts on a frozen state.
   // Stalled = a frame asked for more than 500 ms ago has not come (one request is kept pending, so at
   // the client's 600 ms poll a view that renders has always answered it); before any request, the
   // very first read counts as stalled.

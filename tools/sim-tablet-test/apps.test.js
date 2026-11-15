@@ -155,7 +155,8 @@ function page(inner, opts) {
   global.window = window; global.document = window.document;
   global.MutationObserver = window.MutationObserver; global.InputEvent = window.InputEvent; global.MouseEvent = window.MouseEvent;
   global.Event = window.Event;
-  window.getComputedStyle = el => ({ display: 'block', visibility: 'visible', opacity: '1', cursor: (opts.pointer && opts.pointer(el)) ? 'pointer' : 'auto' });
+  window.getComputedStyle = el => ({ display: opts.display ? opts.display(el) : 'block', visibility: 'visible', opacity: '1',
+                                     cursor: (opts.pointer && opts.pointer(el)) ? 'pointer' : 'auto' });
   window.Element.prototype.getBoundingClientRect = function () {
     const r = (this.getAttribute('data-rect') || '0,0,100,20').split(',').map(Number);
     return { top: r[0], left: r[1], right: r[2], bottom: r[3], width: r[2] - r[1], height: r[3] - r[0] };
@@ -276,12 +277,31 @@ test('repeated buttons: the row names the text, never the key, and a selected ro
   assert.deepStrictEqual(a.map(e => e.key), b.map(e => e.key));
 });
 
-test('repeated buttons: a value is never a row\'s name, so a changing number cannot touch them', () => {
-  const { A } = page('<div class="r"><span>29</span><span>GAL</span><button>More information</button></div>' +
-    '<div class="r"><span>Total mass</span><button>More information</button></div>');
-  const l = lines(scraped(A));
-  // "29 GAL" is a value: the pair cannot be told apart by name, so both stay as the page says them.
-  assert.deepStrictEqual(l.filter(x => /More information/.test(x)), ['button|More information', 'button|More information']);
+test('repeated buttons: a row with no name says its whole line, and a number changing in it never touches the key', () => {
+  const rows = n => '<div class="r"><span>' + n + '</span><span>GAL</span><button>More information</button></div>' +
+    '<div class="r"><span>Total mass</span><button>More information</button></div>';
+  const a = scraped(page(rows(29)).A).filter(e => /More information/.test(e.text));
+  const b = scraped(page(rows(27)).A).filter(e => /More information/.test(e.text));
+  assert.deepStrictEqual(a.map(e => e.text), ['29 GAL: More information', 'Total mass: More information']);
+  assert.deepStrictEqual(b.map(e => e.text), ['27 GAL: More information', 'Total mass: More information']);
+  assert.deepStrictEqual(b.map(e => e.key), a.map(e => e.key), 'the shell keeps the node, and the reader\'s place on it');
+  assert.ok(a.every(e => e.key === 'button:More information'));
+});
+
+test('spacing: a word split over inline runs stays one word; two boxed words do not run together', () => {
+  const inline = el => (el.tagName === 'B' || el.tagName === 'SPAN' ? 'inline' : 'block');
+  const one = lines(scraped(page('<p class="w"><b data-rect="0,0,30,20">Lon</b><span data-rect="0,30,60,20">don</span></p>', { display: inline }).A));
+  assert.deepStrictEqual(one, ['static|London']);
+  const two = lines(scraped(page('<div class="kv"><div data-rect="0,0,100,20">Airport module</div><div data-rect="0,100,200,20">not responding</div></div>').A));
+  assert.deepStrictEqual(two, ['static|Airport module not responding']);
+});
+
+test('state words: a class that says "not selected" is not selected; a keypad\'s X is X', () => {
+  const l = lines(scraped(page('<button class="opt-btn not-selected">Option A</button><button class="opt-btn opt-btn-selected">Option B</button>' +
+    '<div class="keys"><button>W</button><button>X</button><button>Y</button></div>').A));
+  assert.ok(l.includes('button|Option A'));
+  assert.ok(l.includes('button|Option B (selected)'));
+  assert.ok(l.includes('button|X'));
 });
 
 test('a link is followed even when it also listens to mousedown', () => {
