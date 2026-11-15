@@ -8,7 +8,9 @@ MSFS 2024 gives every aircraft the same tablet: the sim's Electronic Flight Bag,
 
 The tablet is ONE Coherent view, titled **"Electronic Flight Bag"** (`coui://html_ui/efb_ui/efb_os/efb_ui.html`), in the sim's UI layer rather than any aircraft's cockpit: it is there for every aircraft, and it is the same view whether the pilot opens the toolbar tablet or looks at the one in the cockpit. `CoherentPmdgEfbClient.ForSimTablet()` connects to it over the Coherent debugger (`127.0.0.1:19999`, no Developer Mode), installs the reader and polls its `scrape()`, exactly as for the PMDG and MD-11 tablets; [tooling.md](tooling.md) covers the debugger.
 
-Measured live on 2026-10-19 (C172 G1000): the view keeps running, about 30 frames a second with steady timers, with the toolbar tablet closed and the camera outside the aircraft, so the window works without the tablet on screen. Not measured: the pause menu and the main menu.
+Measured live on 2026-10-19 (C172 G1000): the view keeps running, about 30 frames a second with steady timers, with the toolbar tablet closed and the camera outside the aircraft. That holds because the C172 shows the sim's tablet in its cockpit. An aircraft with a tablet of its own shows it nowhere, and then the view gets NO frames (measured 2026-11-15, iniBuilds A350: 0 in 5 s), so its apps stop updating. The reader then runs the view's own update before each read, press and set (STAB-15), and offers to show the tablet in the sim for the parts that need real frames (STAB-16, below). Not measured: the pause menu and the main menu.
+
+The client also opens the view's execution contexts (`Runtime.enable`) to read add-on apps that live in a frame from another origin (STAB-14), and hands the reader the debugger's `getEventListeners` on every call, so it knows what each element listens to (STAB-13).
 
 The tablet is built on the MSFS SDK's FSComponent framework (`msfssdk-iife.js`, `efb_os.js`, one script per app under `html_ui/efb_ui/efb_apps/`). `window.EFB_API._installedApps.array` lists the installed apps; an app's `name` is a translation key that `Utils.Translate` resolves when given whole ("@fs-base-efb,TT:EFB.COMMON.AIRCRAFT" gives "aircraft").
 
@@ -16,19 +18,38 @@ The tablet is built on the MSFS SDK's FSComponent framework (`msfssdk-iife.js`, 
 
 Apps stay mounted once opened, hidden behind the one on screen, and so does every page an app has shown, so the reader walks only the shown `.efb-view`. It emits:
 
-- **the dock first**, as tabs named by their tooltips, the open app marked "(current page)", then the **"Load latest SimBrief plan"** button whenever the Flight Planner is on screen;
-- an **open popup** (the route string box, the saved flight plans) before the page, its title as an alert so it is spoken as it opens;
+- **the dock first**, as tabs named by their tooltips, the open app marked "(current page)", then **"Show the tablet in the sim"** while the view gets no frames (or "Hide the tablet in the sim" while the panel MSFSBA showed is up, STAB-16), then the **"Load latest SimBrief plan"** button whenever the Flight Planner is on screen;
+- an **open popup** (the route string box, the saved flight plans, an add-on's own dialog: a `-popup`, `modal` or `dialog` class, an ARIA dialog, or an overlay with a backdrop) before the page, its title as an alert so it is spoken as it opens, its buttons named by it ("Enter route string: Close");
 - the page: buttons (named by text, tooltip, class or icon, an icon button with the thing it is for: "Departure airport info", "Trash Flight Planner"), tab strips and exclusive buttons with "(selected)", dropdowns as selects whose options are read from their closed lists (the Import, Save and Send menus as one button per action instead), loads (seats, cargo, fuel tanks) as number boxes named from their hidden detail panel ("Co-Pilot (LBS, max 300)"), checklist items as tick boxes carrying what to do, switches as tick boxes, search boxes with their results, Flight Planner waypoints as one line each ("SOONE: Hdg 138°, Dist 24.6 NM"), and text as lines: a run of spans on one row is one line, a caption over its value one line with a colon ("Ground Speed: 0 KT").
 
-The map itself (the Flight Planner's canvases) cannot be read, nor can clipped charts, which are images.
+### Add-on apps
+
+The add-on apps (iniJetways, MK Airport, AtmosphereMod, CIVA INS, GSX, SayIntentions.AI, UTL Ride Advisor, TechLog, SimBrief Dispatch, Navigraph Charts, measured 2026-11-15) are plain web pages with none of the OS's classes, so the reader also reads what any page has:
+
+- **what takes a press** by what it listens to (STAB-13), so a `<div>` that listens to mousedown is a button and a styled one that listens to nothing is text;
+- **native controls**: `<select>` as a select, check boxes and radio buttons as tick boxes ("(one of a group)" for a radio), `<input type="range">` as a slider with its bounds, number boxes with their bounds, date and time boxes with the format to type, text areas; each named the way a browser names it (aria-label, `<label for>`, the label around it, the text before it, a title, a placeholder); a read-only box or one in a disabled `<fieldset>` is dimmed and refuses typing;
+- **ARIA**: roles (`button`, `tab`, `switch`, `checkbox`, `menuitem`...), `aria-pressed`, `aria-checked`, `aria-selected`, `aria-expanded`, `aria-disabled`;
+- **state** from ARIA, `data-active`/`data-on`/`data-state`, or a class word ("active", "selected", "is-on", "mk-tab--on"), never from one that says the opposite ("not-selected"); a tab-like control says "(selected)";
+- **switches drawn with a class** ("switch", "toggle" and their on modifier) as tick boxes;
+- **OS sliders** as typed values: "Haze strength (slider)" takes the number its read-out shows, or a travel percentage when it has none (STAB-12);
+- **repeated names** told apart by their row: "LOAD" beside each preset reads "Default: LOAD", "Clear" on each row "KDFW: Clear"; the key stays the button's or field's own name, so a row's words changing never rebuilds it under the screen reader (FPD-4, FPD-5);
+- **controls shown on hover** (a row's "Clear Selected Facility"), from the page's own `:hover` rules: only through a hover on an ANCESTOR, only a control or a group holding controls (a row's hover menu), never a tooltip or a disabled layer;
+- **frames**: same-origin frames read in place, cross-origin ones (GSX Remote, Navigraph Charts) in their own context (STAB-14).
+
+What is drawn rather than written cannot be read: the Flight Planner's map (canvases), Navigraph's charts and clipped charts (images), UTL's turbulence map.
 
 ## Input
 
 Measured live and read from `efb_os.js` (STAB-1 to STAB-3):
 
-- buttons, tabs, dropdown items and switches take `el.click()`; the Flight Planner's search results take a mousedown only;
-- a text box takes `.value` plus an `input` event with NO focus: focusing one hands the pilot's keyboard to the tablet;
+- buttons, tabs, dropdown items and switches take `el.click()`; the Flight Planner's search results take a mousedown only; an add-on's control gets the one event it listens to (STAB-13);
+- a text box takes `.value` plus an `input` event with NO focus: focusing one hands the pilot's keyboard to the tablet; a page's own box also gets `change`;
+- an OS slider is dragged along its bar to the typed value, read back from its read-out (STAB-12); a native slider takes `.value`, refusing anything that is no number;
 - disabled is the `disabled` attribute (on list items too) or the control's shown `.disabled-layer`.
+
+## Show the tablet in the sim
+
+When the tablet's view gets no frames (an aircraft with a tablet of its own), the reader lists "Show the tablet in the sim (some lists fill in only while the sim shows it)" after the dock. MSFSBA then presses the toolbar's tablet button, as a sighted pilot would (`Services/SimTabletPanel.cs`, `MainForm.ToggleSimTabletPanelAsync`), checks that the view now gets frames, and says "The tablet is showing in the sim. Closing this window hides it again." The same button then reads "Hide the tablet in the sim". If no frames come (the sim paused or in a menu), the press is undone and MSFSBA says the sim did not show the tablet. Closing the window hides a panel MSFSBA showed, unless the pilot already closed it; so does quitting MSFSBA. The button only toggles and shows no state, which is why every step is checked by frames (STAB-16).
 
 ## Load latest SimBrief plan
 
@@ -55,6 +76,6 @@ Who it is for: MSFS 2024's default aircraft, which have no tablet of their own. 
 
 ## Testing
 
-- `tools/sim-tablet-test`: jsdom tests over live captures (`npm ci && npm test`, also in CI's `efb-readers` job). `capture.js` saves a page: run it in the view with `tools/coherent-eval.ps1 -Title "Electronic Flight Bag" -ExprFile tools/sim-tablet-test/capture.js` (UTF-8 console) and keep the output; `node run.js <fixture>` prints a fixture as the reader sees it.
-- `tests/MSFSBlindAssist.Tests/SimTabletRouteTests.cs` and `SimTabletSimBriefImportTests.cs`: the route text, the summary, and the import's call order against a scripted tablet.
-- In the sim: the window, the SimBrief import, and Send to avionics, read back in the aircraft.
+- `tools/sim-tablet-test`: jsdom tests over live captures (`npm ci && npm test`, also in CI's `efb-readers` job). `capture.js` saves a page: run it in the view with `tools/coherent-eval.ps1 -Title "Electronic Flight Bag" -ExprFile tools/sim-tablet-test/capture.js` (UTF-8 console) and keep the output; it keeps the attributes the reader reads (roles, ARIA, data-state and the like, the slider's `--ratio-value`) and stamps each element's press events as `data-h`, from `getEventListeners` when the console has it. Inside an add-on's frame, run it in the frame's own context; the capture then starts at its `<body>`. `node run.js <fixture>` prints a fixture as the reader sees it; `SIM_TABLET_AGENT=<path>` runs another copy of the reader, to diff two versions over every fixture. `apps.test.js` holds the add-on apps (live captures of 2026-11-15) and the generic rules; `run.js`'s `listeners: 'bound'` option replays listeners bound before the reader came, seen only through `getEventListeners`.
+- `tests/MSFSBlindAssist.Tests/SimTabletRouteTests.cs` and `SimTabletSimBriefImportTests.cs`: the route text, the summary, and the import's call order against a scripted tablet. `SimTabletFrameTests.cs`: how a frame's elements are spliced in and a press routed back to its frame. `SimTabletPanelTests.cs`: Show and Hide against a scripted view, the toolbar view's exact title, the action idx shared with the reader.
+- In the sim: the window, the SimBrief import, and Send to avionics, read back in the aircraft; every installed add-on app, page by page; Show and Hide the tablet in the sim on an aircraft with a tablet of its own.

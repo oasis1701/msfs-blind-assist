@@ -500,7 +500,7 @@ Both windows hide rather than close, so when you reopen them you are back on the
 
 ### What it is {#in-sim-tablet-what}
 
-Microsoft Flight Simulator 2024 has a tablet of its own, with a Flight Planner, an Aircraft app (mass and balance, take-off and landing performance, checklists) and other apps. BA opens it in an accessible window called "In-Sim Tablet". It is meant for MSFS 2024's default aircraft, which have no tablet of their own.
+Microsoft Flight Simulator 2024 has a tablet of its own, with a Flight Planner, an Aircraft app (mass and balance, take-off and landing performance, checklists) and other apps. Add-ons can install apps into it too, for example GSX, iniJetways, MK Airport, AtmosphereMod, CIVA INS, SayIntentions.AI, UTL Ride Advisor, TechLog, SimBrief Dispatch and Navigraph Charts. BA opens it in an accessible window called "In-Sim Tablet". Its own Flight Planner is meant for MSFS 2024's default aircraft, which have no tablet of their own.
 
 MSFS 2020 has no such tablet.
 
@@ -517,21 +517,34 @@ With one of MSFS 2024's default aircraft:
 - To load your latest SimBrief plan into the simulator's Flight Planner with one press, then send it to the aircraft.
 - To use the tablet's mass and balance, performance and checklist pages.
 
+With any aircraft:
+
+- To use the apps your add-ons installed into the tablet: docking jetways with iniJetways or MK Airport, AtmosphereMod's haze settings, SayIntentions.AI, and the others.
+
 ### How to use it {#in-sim-tablet-how}
 
 In the main window, open the **Extras** menu and choose **In-Sim Tablet (FS2024 Native)**. The window is the same kind as the flyPad, PMDG and MD-11 tablet windows, so you read it in browse mode and use the same keys (F5 to re-read, F6 for the connection status, Alt+F4 to hide it): see [The flyPad, PMDG and MD-11 tablets](#the-flypad-pmdg-and-md-11-tablets).
 
 What the window shows:
 
-- **The dock comes first:** one tab per app, the open one marked *"(current page)"*. Press a tab to open that app.
-- **A pop-up comes before the page,** such as the box for typing a route, and its title is spoken as it opens.
+- **The dock comes first:** one tab per app, the open one marked *"(current page)"*. Press a tab to open that app. "More apps" opens the list of every installed app.
+- **A pop-up comes before the page,** such as the box for typing a route or an app's own dialog, and its title is spoken as it opens. Its buttons say which pop-up they belong to, for example *"Enter route string: Close"*.
+- **Buttons say their state** in brackets when they have one, for example *"Lower Jetway 1 (connected)"* or *"Settings (selected)"*. When a button's state changes after you press it, the new state is spoken.
+- **Buttons with the same name on several rows** say which row they are on, for example *"Default: LOAD"* beside each preset.
 - **Seats, cargo and fuel tanks** are edit fields named with their unit and limit, for example *"Co-Pilot (LBS, max 300)"*. Type a weight and press Enter.
-- **Checklist items and switches** are check boxes.
+- **Sliders** that show their value as a number are edit fields marked *"(slider)"*: type the number you want and press Enter, or type *"+5"* or *"-5"* to move it from where it is. A slider with no number beside it is marked *"(slider, percent)"* and takes how far along it should be, 0 to 100.
+- **Checklist items, switches and tick boxes** are check boxes, and **drop-down lists** are combo boxes.
 - **The Import, Save and Send menus** show as one button for each choice in them.
 - **Flight Planner waypoints** are one line each, for example *"SOONE: Hdg 138°, Dist 24.6 NM"*.
 - The map and the charts are pictures, so they cannot be read.
 
-The tablet does not need to be on screen: the window works with the toolbar tablet closed and the camera anywhere. Typing in the window never takes your keyboard away from the simulator, so the sim's keys and BA's hotkeys keep working. The window stays open when you change aircraft.
+Typing in the window never takes your keyboard away from the simulator, so the sim's keys and BA's hotkeys keep working. The window stays open when you change aircraft.
+
+### Showing the tablet in the sim {#in-sim-tablet-show}
+
+With a default aircraft, whose cockpit has this tablet, the window works with the toolbar tablet closed and the camera anywhere. An aircraft with a tablet of its own does not show the sim's tablet anywhere, and then the sim stops drawing it. BA keeps the apps up to date for you, but a few lists fill in only while the sim draws the tablet, such as the Pilot book's logbook.
+
+When that happens, the window shows a **Show the tablet in the sim** button right after the dock. Press it, and BA opens the tablet from the sim's toolbar, as you would with the mouse. The button then reads **Hide the tablet in the sim**. Closing the window, or quitting BA, hides the tablet again. If you close the tablet yourself from the toolbar, BA leaves it closed.
 
 ### Loading your SimBrief plan {#in-sim-tablet-simbrief}
 
@@ -547,6 +560,7 @@ You need your SimBrief username in BA's settings first: see [Setting your SimBri
 - *"Loading your SimBrief plan."* when you press the button, then a summary: both airports with their runways, the number of waypoints, the cruise altitude, and any procedure the tablet chose.
 - *"The Flight Planner already had this route."* at the end of the summary, when the tablet already held this plan.
 - *"The SimBrief plan is still loading."* if you press the button again before the first press has finished.
+- *"The tablet is showing in the sim. Closing this window hides it again."* after Show the tablet in the sim, and *"The tablet is hidden in the sim."* after Hide.
 
 ### If something goes wrong {#in-sim-tablet-problems}
 
@@ -556,6 +570,11 @@ You need your SimBrief username in BA's settings first: see [Setting your SimBri
 - ***"Could not fetch your SimBrief plan: …"*** BA could not get a plan from SimBrief, for example with no internet connection or no plan generated yet for your username. Check both and press the button again.
 - ***"The sim tablet's flight plan is locked, so a route cannot be entered now."*** The tablet is not taking a new route at the moment. Try again later.
 - ***"The sim tablet did not take the route."*** The tablet would not save the route. Check the plan in SimBrief and press the button again.
+- ***"The sim did not show the tablet. It may be paused or in a menu."*** BA pressed the toolbar's tablet button, but the sim did not draw the tablet, so BA pressed it again to leave things as they were. Close the pause menu or the sim's menu and try again.
+- ***"Could not show the tablet in the sim."*** or ***"Could not hide the tablet in the sim."*** BA could not reach the sim's toolbar. Use the toolbar's tablet button with the mouse, or try again once the flight has loaded.
+- ***"The tablet button was pressed, but it is not known whether the sim shows the tablet."*** The window lost its link to the tablet just then. If the Show the tablet in the sim button is still there a few seconds later, the tablet is not showing: press it again.
+- ***"Still working on the tablet in the sim."*** The last press of Show or Hide has not finished yet. Wait a second and try again.
+- **A value you typed into a slider was not taken.** BA sets a slider only when it can hear its number change as it moves it; if the number never moves, the slider is put back where it was.
 
 ## Checklists {#checklists}
 

@@ -700,7 +700,7 @@ public partial class MainForm
             {
                 SimTabletPanel.Outcome.Shown => "The tablet is showing in the sim. Closing this window hides it again.",
                 SimTabletPanel.Outcome.NotShown => "The sim did not show the tablet. It may be paused or in a menu.",
-                SimTabletPanel.Outcome.Unknown => "The tablet button was pressed, but MSFSBA could not tell whether the sim shows it.",
+                SimTabletPanel.Outcome.Unknown => "The tablet button was pressed, but it is not known whether the sim shows the tablet.",
                 _ => "Could not show the tablet in the sim.",
             });
         }
