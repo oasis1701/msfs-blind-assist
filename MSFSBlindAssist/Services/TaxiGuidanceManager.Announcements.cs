@@ -792,13 +792,17 @@ public partial class TaxiGuidanceManager
     {
         string distStr = FormatDistance(route.TotalDistanceMeters);
 
-        // If the user specified a taxiway sequence, use that for the announcement
-        // (the actual route segments include approach/exit connectors the user doesn't care about)
+        // If the user specified a taxiway sequence, that part is announced as entered (the
+        // route's segments carry connectors between cleared taxiways the pilot never read
+        // back). What the route uses AFTER the last entered taxiway is named too, behind
+        // "then": the router finds its own way from there to the destination, and "via L"
+        // for a route that ran L, W, EX23, E, EX33, D told the pilot half of it (LOWW,
+        // 2026-11-14).
         string taxiwayStr;
         if (route.TaxiwaySequence != null && route.TaxiwaySequence.Count > 0 &&
             string.IsNullOrEmpty(route.ConstrainedFallbackReason))
         {
-            taxiwayStr = $" via {string.Join(", ", route.TaxiwaySequence)}";
+            taxiwayStr = $" via {RouteTaxiwaySequence.ViaClause(route.TaxiwaySequence, route.Segments)}";
         }
         else
         {

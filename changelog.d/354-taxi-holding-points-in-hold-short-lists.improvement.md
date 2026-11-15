@@ -1,0 +1,3 @@
+Named holding points are now in the Taxi Planner's hold-short lists, so "taxi via L, hold short of L2" can be entered the way ATC says it. Each taxiway row's Hold short of list holds the runways, then the taxiways and holding points together by name, with a holding point marked "(holding point)": pick "L2 (holding point)" and guidance stops you at L2 on the way to your runway or gate. Taxiways in that list are now their plain name, so pressing a name's first letter jumps to it.
+
+In Progressive Taxi, "Hold short of taxiway" and "Hold at named holding point" are one choice, "Hold short of taxiway or named holding point", with the same combined list.

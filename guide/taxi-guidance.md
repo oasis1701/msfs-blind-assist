@@ -156,6 +156,20 @@ A checkbox beside the first taxiway. Tick it to make guidance stop at the end of
 
 A list beside the first taxiway, starting with **(none)**, then every runway at the airport. Use it when ATC explicitly tells you to hold short of a runway after this taxiway: "via A, hold short of runway 22R". BA already stops you before every runway your route crosses, so this is optional, but it makes sure the stop is exactly the one ATC named, labelled the way you selected it. Leave it at (none) to rely on BA's automatic runway holds.
 
+After the runways the same list holds every taxiway and every named holding point at the airport, together in name order. A taxiway is listed by its name alone, and a holding point has "(holding point)" after its name: "L", "L1 (holding point)", "L2 (holding point)", "M". Press the first letter of a name to jump to it.
+
+- Choose a taxiway for "via A, hold short of taxiway B". Guidance stops where your route first meets that taxiway, with *"Stop. Hold short of taxiway B. Press continue when cleared."*
+- Choose a holding point for "via L, hold short of L2". Guidance stops at that point, with *"Stop. Hold short of holding point L2. Press continue when cleared."* The holding points come from online data, so they need the online names setting switched on and the airport's data loaded.
+
+If your route never reaches the taxiway or holding point you chose, the route still loads and the summary ends with a note such as *"Note: requested hold-short(s) not on route — holding point L2 (route does not pass it after taxiway L)."*
+
+Two more notes tell you a holding point you chose gets no stop of its own:
+
+- *"Note: this route starts at holding point L2. No stop will be called there."* The route begins at the point itself, so you are at it or just short of it, and there is nothing left to count down. You can also hear it after *"Route changed"*, when a new route is worked out close to the point. Stop there yourself until you are cleared.
+- *"Note: holding point A1 lies beyond the Runway 16 hold short point, so no stop is called there."* The point is past the line where guidance already stops you before your runway.
+
+When the holding point you chose is your runway's own hold line, the countdown names both: *"Hold short Runway 16 at holding point A1 in 100 metres."*
+
 ### Add Taxiway {#add-taxiway}
 
 A button that adds another taxiway row below the first. It only works once the first taxiway is set to a real taxiway. You can add up to 20 more rows. Each new row is labelled "Taxiway 2", "Taxiway 3" and so on, and has its own taxiway list, **Hold short** checkbox, **Remove** button and **Hold short of runway** list, exactly like the first row.
@@ -197,7 +211,7 @@ The planner has Alt shortcuts that jump straight to a control.
 | Alt+G | Gate search |
 | Alt+E | Destination |
 | Alt+I | Intersection departure |
-| Alt+P | Depart from named holding point (and the Progressive named holding point list) |
+| Alt+P | Depart from named holding point |
 | Alt+L | CAT III / low-visibility hold |
 | Alt+B | Full-length departure (requires backtrack) |
 | Alt+F | First taxiway (also Show fitting only) |
@@ -208,7 +222,7 @@ The planner has Alt shortcuts that jump straight to a control.
 | Alt+R | Remove buttons |
 | Alt+N | Progressive Taxi terminator |
 | Alt+U | Progressive Taxi runway target |
-| Alt+W | Progressive Taxi taxiway target |
+| Alt+W | Progressive Taxi taxiway or holding point target |
 | Alt+Y | Fill from SayIntentions |
 | Alt+C | Calculate Route |
 | Alt+S | Stop Guidance (also Last route summary) |
@@ -390,13 +404,12 @@ The details, including how BA reads the clearance and SayIntentions' own ground 
 Some controllers give a clearance one piece at a time: "taxi via A, B, hold short of runway 09", then later "cross runway 09, taxi via C, hold short of taxiway D". Progressive Taxi lets you follow each piece without pretending to know where you will end up.
 
 1. Choose **Progressive Taxi** as the destination type. The Destination list disappears, and the **Hold short of runway** lists on each row are hidden, because the end of the leg is set separately.
-2. Enter the taxiways for this leg as usual. You need at least one; otherwise you hear *"Select at least one taxiway for progressive taxi."*
+2. Enter the taxiways for this leg as usual. You need at least one, unless the leg ends at a named holding point or after crossing a runway; otherwise you hear *"Select at least one taxiway for progressive taxi."*
 3. Below your last taxiway row, choose how the leg ends in the **Terminator** list:
    - **Hold short of runway**: then choose the runway in **Runway to hold short of**. Guidance ends at that runway's hold line on your last taxiway.
-   - **Hold short of taxiway**: then choose the taxiway in **Hold short of taxiway**. Guidance ends where your last taxiway meets it.
+   - **Hold short of taxiway or named holding point**: then choose the target in **Hold short of taxiway or holding point**. The list holds every taxiway at the airport with the named holding points among them, each marked "(holding point)", for example "L2 (holding point)". For a taxiway, guidance ends where your last taxiway meets it. For a holding point, such as "hold short of L2" or "hold at VIKAS", guidance ends at that point, and you do not need to enter a taxiway first. The holding points come from online data.
    - **After crossing runway**: then choose the runway in **Runway to cross**, and optionally the taxiway to cross at in **Cross at taxiway (optional)**. Leave that at (none) to cross at the nearest point. Use this when ATC has already cleared you across: BA does not stop you before that runway, and the leg ends just past it.
    - **End of last taxiway**: guidance ends at the end of your last taxiway.
-   - **Hold at named holding point**: then choose the holding point in **Named holding point**, such as "VIKAS". The list comes from online data; it shows *"(none available at this airport)"* when there are none.
 4. Press **Calculate Route**.
 
 When you reach the end of the leg, the tone stops and you hear one of:
@@ -434,6 +447,7 @@ A summary has the form *"Route to (destination) via (taxiways). (distance), (run
 What each part means:
 
 - **via ...** lists the taxiways in the order you will use them.
+- **then ...** after your taxiways names the ones BA added to reach the destination. You hear it when the taxiways you entered stop short of it: enter only L for Runway 16 and you may hear *"Route to Runway 16 via L, then W, EX23, E, EX33, D. 2.0 kilometres."* Everything before "then" is what you entered; everything after it is BA's own choice of route from there. If ATC gave you the rest of the route, add those taxiways and calculate again.
 - **First taxi onto C** or **First taxi via ... to reach C** means your first cleared taxiway is some way from you, and BA has added the bit of apron or link taxiway that gets you onto it.
 - **The distance** is the whole route. Short distances are in metres or feet, depending on your setting; long ones switch to kilometres, or nautical miles if you use feet.
 - **crossing runway X** and **entering runway X** name every runway the route crosses or goes onto, other than your own departure runway at the end. A runway crossed twice says *"twice"*. Both ends of one runway are named together, such as *"10L/28R"*.
