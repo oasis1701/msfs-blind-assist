@@ -144,7 +144,7 @@ A list on every taxiway row, just before that row's taxiway list. On the first r
 
 Leave it on Automatic unless ATC named the direction, as in "taxi via F, H, left on C". Then set the Turn list on the row for C to **Left**. With Automatic, BA picks the turn that suits your route, as it always has.
 
-On the first taxiway, left and right are from the way your aircraft is facing when you press Calculate Route, if the route starts on that taxiway. If the route first has to taxi to it, from a stand or along a taxilane, they are from the direction you arrive at it. On every later row they are from the direction of the taxiway before it.
+On the first taxiway, left and right are judged from the way your aircraft is facing when you press Calculate Route. The exception is a route that first follows another named taxiway to reach it, or more than 200 metres (about 650 feet) of unnamed taxi lines: then they are judged from the direction you arrive from. At a nose-in stand, set a Turn on the first row after pushback, when you are facing the way you will taxi; set before pushback, it would be judged from a heading that points at the terminal. On every later row they are from the direction of the taxiway before it.
 
 The Turn list keeps its value when you change the row's taxiway, and goes away with the row if you remove it. It is shown for every destination type, Progressive Taxi included. A SayIntentions import sets every Turn list back to Automatic.
 
