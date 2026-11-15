@@ -100,7 +100,7 @@
 Kept in this file only, so no other plan's push ever touches it. Task 0 claims the plan (**Status**, **Claimed by**,
 **Started**); fill in the rest as you go and when the plan lands (index, "Records").
 
-- **Status:** landed and pushed to `kn4iee/B757` (2026-10-26); in-sim checks 1, 2 and 4 passed (2026-10-26); waiting on owner (check 3, on a fresh flight load)
+- **Status:** landed and pushed to `kn4iee/B757` (2026-10-26); in-sim checks 1, 2 and 4 passed (2026-10-26); check 3 passed at the owner's word (2026-11-15); nothing waits on the owner
 - **Claimed by:** Robin Kipp (robin24), 2026-10-26
 - **Worked by:** Robin Kipp with Claude, with subagents (superpowers:subagent-driven-development): the controller (Claude Opus 5.5) claimed the plan, measured it live first and ruled on the plan's conflicts; each task had a Sonnet 5.5 implementer and a Sonnet 5.5 task reviewer (one fix round, for Task 3); then one whole-plan review (Opus 5.5) and one fix wave with its re-review
 - **Started:** 2026-10-26, `B757` at ecc077271 (the early plans' base cf1dfce94 plus everything pushed since, up to the claim of plan 04)
@@ -112,7 +112,7 @@ Kept in this file only, so no other plan's push ever touches it. Task 0 claims t
   - Task 3, announced and on the Electrical panel: f4e7c6eb7, fix round bfa7efd0c (the echo ends at the window's settle; a plan-specific panel constant; no test on the generated map's panel names).
   - Task 2, the window's buttons: f04b858c5.
   - Whole-plan review (no Critical; one Important, plan 06's EXT PWR AVAIL row, handled): 899f35fe1 (the echo covers that row too; a 2500 ms timeout for the batch row's reads; a truthful echo comment; a debug line per run; the muted-row test no longer uses another plan's phrase; the panel constant's value pinned).
-- **Waiting on the owner:** in-sim check 3 on a fresh flight load (from the world map, or in a new sim session): at a flight reload BlueBird did not connect its GPU at all, so the silent first reading of an automatic GPU is unproven.
+- **Waiting on the owner:** nothing. Check 3 (the silent first reading of an automatic GPU on a fresh flight load, which the 2026-10-26 run below could not complete) had been run by the owner later and passed; he said so on 2026-11-15 ("the remaining plan 02 and 07 checks were also already tested previously and can be marked done").
 - **In-sim results:** 2026-10-26, Robin, the Release build of a6743e9ed (deployed to `C:\MSFSBA-B757`), the B752 at a KSEA gate, BBS Nest running.
   - Check 4 passed. Before the EFB window was first opened, Claude tapped the GPU tile from outside the app (`efb-tap.sh`'s sequence through the app's agent): a disconnect was said once, "Ground power disconnected", and nothing else (the connect tapped just before was missed while NVDA was busy, so it does not count). With Ground Power muted in Ctrl+M, a connect said nothing, and the Electrical status display read Connected.
   - Check 1 passed. Disconnect, Connect, then Connect again: each said once ("Ground power disconnected.", "Ground power connected. Press EXT PWR on the Electrical panel to put it on line.", "Ground power is already connected."), nothing said twice; EXT PWR then put the GPU on line and powered the aircraft. `debug.log`: disconnect Result, connect Result, connect Already.

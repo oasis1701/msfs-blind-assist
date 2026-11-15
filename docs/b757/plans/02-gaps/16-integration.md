@@ -73,7 +73,7 @@ Before any other task. A claim counts only once it is on the remote `B757`: one 
 Kept in this file only, so no other plan's push ever touches it. Task 0 claims the plan (**Status**, **Claimed by**,
 **Started**); fill in the rest as you go and when the plan lands (index, "Records").
 
-- **Status:** Tasks 1-4 done and on `B757` (2026-11-14); Task 5 passed at the owner's word; Task 6 (changelog, pull request, removing `docs/b757/`, the merge) not started: it waits on the owner's go-ahead, since the pull request makes the 757 public
+- **Status:** Tasks 1-4 done and on `B757` (2026-11-14); Task 5 and the checks of Task 1's fixes passed at the owner's word (2026-11-15); Task 6 (changelog, pull request, removing `docs/b757/`, the merge) not started: it waits on the owner's go-ahead, since the pull request makes the 757 public
 - **Claimed by:** Robin Kipp (robin24), 2026-11-14
 - **Worked by:** Robin Kipp with Claude, with subagents (one each for the rules, the developer docs, the hotkey guide and the pilot's guide, each checking the handoffs against the code; the code requests worked inline)
 - **Started:** 2026-11-14, from `B757` at 4725281b8
@@ -82,10 +82,9 @@ Kept in this file only, so no other plan's push ever touches it. Task 0 claims t
 - **Tests at this push:** build green; the full suite 25,048 passed, 0 failed (2026-11-14, with `main` at 401cf51c0 merged in)
 - **Waiting on the owner:**
   - The go-ahead for Task 6's pull request.
-  - Four in-sim checks of the code requests applied in Task 1 (below): a CDU message heard before the first Shift+M; a PW aircraft's first Overhead list without "Electronic engine control (RR)"; after a flight load, nothing narrated, and the parking brake's release heard once the cockpit has been still for some seconds; after connecting, the first change heard (a flap or brake move); D pressed while Ctrl+N fills.
-  - Plan 27 (the ADI): build it or close it. Plan 02's airborne gear check and the app's own words for its picks; plan 07's check 3 on a fresh flight load.
+  - Plan 27 (the ADI): build it or close it.
   - The fire handle: plan 12's handoff records the owner's decision of 2026-10-26 that picking Pulled on a locked handle presses Unlock first. It was never built (the code relocks 1.5 s after an Unlock press, B757-13). Build it, or leave the two-step pull.
-- **In-sim results:** Task 5's four scenarios passed: the owner, 2026-11-14 ("every one of the in-sim checks are already completed").
+- **In-sim results:** Task 5's four scenarios passed: the owner, 2026-11-14 ("every one of the in-sim checks are already completed"). The checks of the code requests applied in Task 1 and of the review's fixes passed: the owner, 2026-11-15 ("All tested and working as expected"): a CDU message heard before the first Shift+M; a PW aircraft's first Overhead list without "Electronic engine control (RR)"; after a flight load, nothing narrated, and the parking brake's release heard once the cockpit is still; after connecting, the first change heard; D pressed while Ctrl+N fills. The same day he said plan 02's airborne gear check and the app's words for its picks, and plan 07's check 3, had been run earlier and passed (their records say so now).
 - **Changed from the plan:**
   - The plan was written for plans 01-15. Plans 17-29 landed after it, and the files it owns were last changed about 2026-10-26, so Tasks 2-4 wrote them from the code as it is, with the handoffs as leads. Much of the early handoffs was overtaken: plan 11's window, plan 04's picture read of the ILS panel, plan 17's text recognition, plan 15's panel (never built), plan 19's thirteen tests (eleven since plan 29).
   - Task 2's numbering: B757-5 to -9 and -11 as planned; B757-10 is the ILS frequency variable (plan 19's candidate), not "no EFB tap without a read-back", which B757-18 and -19 replaced; B757-12 to -16 and B757-50 to -63 are the handoffs' other lines. "Extend B757-2" was dropped: B757-2 is retired. `.claude/rules/b757.md` is at its 8,000 characters, so the new lines are in five area rule files with their own full-text files: `b757-controls`, `b757-radios`, `b757-readouts`, `b757-cdu`, `b757-first-officer`.
