@@ -20,6 +20,7 @@ public class SimTabletPanelTests
         public bool ToggleWorks = true;     // the toolbar's button was reached and pressed
         public bool ReaderAnswers = true;
         public bool ProbeAnswers = true;
+        public bool ProbeDiesOnPress;       // the reader stops answering once the button is pressed
         public string Mark = "false";       // the page's "MSFSBA showed it"
         public readonly List<string> Evals = new();
         public int Toggles;
@@ -46,6 +47,7 @@ public class SimTabletPanelTests
             Toggles++;
             Evals.Add("toggle");
             if (ToggleWorks && Draws) Shown = !Shown;
+            if (ToggleWorks && ProbeDiesOnPress) ProbeAnswers = false;
             return Task.FromResult(ToggleWorks);
         }
 
@@ -96,10 +98,10 @@ public class SimTabletPanelTests
     }
 
     [Fact]
-    public async Task Show_WhenTheFrameCheckGetsNoAnswer_IsUnknown_AndNeverPressedTwice()
+    public async Task Show_WhenTheFrameCheckGetsNoAnswer_IsUnverified_AndNeverPressedTwice()
     {
         var v = new FakeView { ProbeAnswers = false };
-        Assert.Equal(Outcome.Unknown, await SimTabletPanel.ShowAsync(v.Eval, v.Toggle));
+        Assert.Equal(Outcome.Unverified, await SimTabletPanel.ShowAsync(v.Eval, v.Toggle));
         Assert.Equal(1, v.Toggles);
     }
 
@@ -115,10 +117,19 @@ public class SimTabletPanelTests
     }
 
     [Fact]
-    public async Task Hide_WhenThePressHidesNothing_Fails_AndKeepsTheMark()
+    public async Task Hide_WhenThePressHidesNothing_IsStillShown_AndKeepsTheMark()
     {
         var v = new FakeView { Shown = true, Mark = "true", Draws = false };
-        Assert.Equal(Outcome.Failed, await SimTabletPanel.HideAsync(v.Eval, v.Toggle));
+        Assert.Equal(Outcome.StillShown, await SimTabletPanel.HideAsync(v.Eval, v.Toggle));
+        Assert.Equal(1, v.Toggles);
+        Assert.Equal("true", v.Mark);
+    }
+
+    [Fact]
+    public async Task Hide_WhenTheCheckAfterThePressGetsNoAnswer_IsUnverified_NeverNothingPressed()
+    {
+        var v = new FakeView { Shown = true, Mark = "true", ProbeDiesOnPress = true };
+        Assert.Equal(Outcome.Unverified, await SimTabletPanel.HideAsync(v.Eval, v.Toggle));
         Assert.Equal(1, v.Toggles);
         Assert.Equal("true", v.Mark);
     }

@@ -28,7 +28,12 @@ public static class SimTabletPanel
 
     internal const string ToolbarTitle = "Toolbar";
 
-    public enum Outcome { Shown, NotShown, Hidden, AlreadyHidden, Unknown, Failed }
+    /// <summary>
+    /// What a Show or Hide did. Unknown and Failed press nothing (the reader did not answer; the
+    /// button could not be pressed); Unverified and StillShown follow a press (no answer after it;
+    /// the frames kept coming), so the caller never presses again on them.
+    /// </summary>
+    public enum Outcome { Shown, NotShown, Hidden, AlreadyHidden, Unknown, Failed, Unverified, StillShown }
 
     /// <summary>
     /// Clicks the toolbar's tablet button, the nearest ancestor of its "EFB" icon that has a click
@@ -46,7 +51,9 @@ public static class SimTabletPanel
         "(function(){var A=window.__MSFSBA_SIM_TABLET;if(!A||!A._probeT0)return '';return A._lastFrame>=A._probeT0?'frames':'none';})()";
     internal const string MarkShown = "(function(){window.__MSFSBA_TABLET_SHOWN=true;var A=window.__MSFSBA_SIM_TABLET;if(A&&A._markDirty)A._markDirty();return 'ok';})()";
     internal const string MarkHidden = "(function(){window.__MSFSBA_TABLET_SHOWN=false;var A=window.__MSFSBA_SIM_TABLET;if(A&&A._markDirty)A._markDirty();return 'ok';})()";
-    internal const string ReadShown = "(function(){return window.__MSFSBA_TABLET_SHOWN?'true':'false';})()";
+    // '' until the reader is installed, so a press is never made that its frame watch could not check.
+    internal const string ReadShown =
+        "(function(){var A=window.__MSFSBA_SIM_TABLET;if(!A||!A.watchFrames)return '';return window.__MSFSBA_TABLET_SHOWN?'true':'false';})()";
     // The panel opening must never leave the pilot's keyboard with the tablet (STAB-1).
     internal const string ReleaseKeyboard = "(function(){var A=window.__MSFSBA_SIM_TABLET;if(A&&A.releaseKeyboard)A.releaseKeyboard();return 'ok';})()";
     // Stamped before each press: the reader keeps the button listed while frames start or stop (A.tabletOffer).
@@ -60,6 +67,9 @@ public static class SimTabletPanel
     /// own Hide is done cannot press the button again behind it.
     /// </summary>
     public static void ShutDown() => _shutDown = true;
+
+    /// <summary>True once MSFSBA is exiting: nothing more is said about the panel.</summary>
+    public static bool IsShutDown => _shutDown;
 
     /// <summary>
     /// Presses the toolbar's tablet button. True when it was pressed; false when the debugger, the
@@ -122,25 +132,37 @@ public static class SimTabletPanel
     public static async Task<Outcome> ShowAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle)
     {
         if (await eval(ReadShown) is not ("true" or "false")) return Outcome.Unknown;
-        await eval(StampPress);
-        if (!await toggle()) return Outcome.Failed;
+        if (!await PressAsync(eval, toggle)) return Outcome.Failed;
         bool? frames = await ViewGetsFramesAsync(eval);
+        // A check that got no answer is asked once more after a moment (the reader re-installing): a
+        // panel up but unmarked could not be hidden from the window later.
+        if (frames == null) { await Task.Delay(1000); frames = await ViewGetsFramesAsync(eval); }
         if (frames == true)
         {
             await eval(MarkShown);
             await eval(ReleaseKeyboard);
             return Outcome.Shown;
         }
-        if (frames == false) { await eval(StampPress); await toggle(); return Outcome.NotShown; }
-        return Outcome.Unknown;
+        if (frames == false) { await PressAsync(eval, toggle); return Outcome.NotShown; }
+        return Outcome.Unverified;
+    }
+
+    // A press, stamped before it and again once it is done (the press itself can take a second), so
+    // the reader's 3 s of keeping the button listed count from the press, not from asking for it.
+    private static async Task<bool> PressAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle)
+    {
+        await eval(StampPress);
+        if (!await toggle()) return false;
+        await eval(StampPress);
+        return true;
     }
 
     /// <summary>
     /// Hides the panel MSFSBA showed, when it still shows: a panel the pilot already closed, or one
     /// MSFSBA never showed, is left alone. <paramref name="cancel"/>, checked after the frame check,
     /// stops it (the window opened again meanwhile). The press counts only once the frames stop
-    /// (<paramref name="verify"/>; exit skips it to stay within its time); else Failed, keeping the
-    /// mark, as does Unknown, to try again later.
+    /// (<paramref name="verify"/>; exit skips it to stay within its time); else StillShown, keeping
+    /// the mark, or Unverified when the check got no answer. Unknown (nothing pressed) keeps it too.
     /// </summary>
     public static async Task<Outcome> HideAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle, Func<bool>? cancel = null, bool verify = true)
     {
@@ -150,13 +172,12 @@ public static class SimTabletPanel
         bool? frames = await ViewGetsFramesAsync(eval, 1000);
         if (frames == null || cancel?.Invoke() == true) return Outcome.Unknown;
         if (frames == false) { await eval(MarkHidden); return Outcome.AlreadyHidden; }
-        await eval(StampPress);
-        if (!await toggle()) return Outcome.Failed;
+        if (!await PressAsync(eval, toggle)) return Outcome.Failed;
         if (verify)
         {
             bool? stopped = await ViewStopsFramesAsync(eval);
-            if (stopped == null) return Outcome.Unknown;
-            if (stopped == false) return Outcome.Failed;
+            if (stopped == null) return Outcome.Unverified;
+            if (stopped == false) return Outcome.StillShown;
         }
         await eval(MarkHidden);
         return Outcome.Hidden;

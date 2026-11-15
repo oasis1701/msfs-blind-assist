@@ -678,14 +678,18 @@ public partial class MainForm
         try
         {
             // Hide first when MSFSBA showed it; a panel the pilot already closed falls through to Show.
+            // Any outcome that followed a press ends here: never a second press on an unclear first.
             var hide = await SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync);
-            if (hide == SimTabletPanel.Outcome.Hidden) { simTabletPanelShown = false; announcer.Announce("The tablet is hidden in the sim."); return; }
-            if (hide is SimTabletPanel.Outcome.Failed or SimTabletPanel.Outcome.Unknown
-                && await client.EvaluateAsync(SimTabletPanel.ReadShown) == "true")
+            string? said = hide switch
             {
-                announcer.Announce("Could not hide the tablet in the sim.");
-                return;
-            }
+                SimTabletPanel.Outcome.Hidden => "The tablet is hidden in the sim.",
+                SimTabletPanel.Outcome.StillShown or SimTabletPanel.Outcome.Failed => "Could not hide the tablet in the sim.",
+                SimTabletPanel.Outcome.Unverified => "The tablet button was pressed, but it is not known whether the sim still shows the tablet.",
+                SimTabletPanel.Outcome.Unknown => "The tablet in the sim cannot be reached right now.",
+                _ => null,                                     // AlreadyHidden: on to Show
+            };
+            if (hide == SimTabletPanel.Outcome.Hidden) simTabletPanelShown = false;
+            if (said != null) { SayPanel(said); return; }
 
             var show = await SimTabletPanel.ShowAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync);
             if (show == SimTabletPanel.Outcome.Shown) simTabletPanelShown = true;
@@ -696,20 +700,27 @@ public partial class MainForm
                 if (undo is SimTabletPanel.Outcome.Hidden or SimTabletPanel.Outcome.AlreadyHidden) simTabletPanelShown = false;
                 return;
             }
-            announcer.Announce(show switch
+            SayPanel(show switch
             {
                 SimTabletPanel.Outcome.Shown => "The tablet is showing in the sim. Closing this window hides it again.",
                 SimTabletPanel.Outcome.NotShown => "The sim did not show the tablet. It may be paused or in a menu.",
-                SimTabletPanel.Outcome.Unknown => "The tablet button was pressed, but it is not known whether the sim shows the tablet.",
+                SimTabletPanel.Outcome.Unverified => "The tablet button was pressed, but it is not known whether the sim shows the tablet.",
+                SimTabletPanel.Outcome.Unknown => "The tablet in the sim cannot be reached right now.",
                 _ => "Could not show the tablet in the sim.",
             });
         }
         catch (Exception ex)
         {
             Log.Warn("SimTablet", $"tablet panel: {ex.Message}");
-            announcer.Announce("Something went wrong with the tablet in the sim.");
+            SayPanel("Something went wrong with the tablet in the sim.");
         }
         finally { simTabletPanelBusy = false; }
+    }
+
+    // Nothing is said once MSFSBA is exiting: a press frozen by the exit's wait ends in its message pump.
+    private void SayPanel(string text)
+    {
+        if (!SimTabletPanel.IsShutDown) announcer.Announce(text);
     }
 
     /// <summary>
@@ -736,6 +747,8 @@ public partial class MainForm
     /// frames to stop. It runs off the UI thread, so the wait cannot deadlock: SimTabletPanel and the
     /// client's evals touch no form. Then no press is allowed (SimTabletPanel.ShutDown): a Show or
     /// Hide frozen by this wait resumes in the exit's message pump and must not press again behind it.
+    /// A Show still running at exit, its mark not yet set, leaves the panel up: rare, and the
+    /// toolbar's button closes it.
     /// </summary>
     private void HideSimTabletPanelOnExit()
     {

@@ -81,6 +81,30 @@
     }
   } catch (e) {}
 
+  // The page's frame callbacks (STAB-15). An app draws in requestAnimationFrame callbacks (the OS's
+  // VirtualList builds its rows there after a scroll, a ResizeObserver polyfill measures there), and
+  // while the sim shows the tablet nowhere no frame comes to run them. Each callback queued from now
+  // on is recorded, wrapped so it runs ONCE whoever calls it first, the browser at a frame or the
+  // reader's pump (A.runFrameCallbacks); a cancelled one is forgotten. Installed once per document;
+  // the reader's own frame watch uses the browser's function (A.raf), so a pump is never a frame.
+  try {
+    if (!window.__MSFSBA_RAF && window.requestAnimationFrame) {
+      var rafState = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame, pending: {}, hook: null };
+      rafState.hook = function (cb) {
+        var done = false, id = 0;
+        var once = function (ts) { if (done) return undefined; done = true; delete rafState.pending[id]; return cb(ts); };
+        id = rafState.raf.call(window, once);
+        rafState.pending[id] = once;
+        return id;
+      };
+      window.requestAnimationFrame = rafState.hook;
+      if (rafState.caf) {
+        window.cancelAnimationFrame = function (id) { delete rafState.pending[id]; return rafState.caf.call(window, id); };
+      }
+      window.__MSFSBA_RAF = rafState;
+    }
+  } catch (e) {}
+
   // ---------------------------------------------------------------------------------
   // small helpers
   // ---------------------------------------------------------------------------------
@@ -204,6 +228,38 @@
   };
   A.isVisible = function (el) { return !!el && !A.isHidden(el); };
 
+  // A virtual list places its rows with position:absolute and a top of their own, in any DOM order
+  // (the Pilot book's logbook: the September header between October flights). Children that are all
+  // positioned so are read in their on-screen order, top to bottom then left to right; any other
+  // parent keeps its DOM order. Stable: rows at the same place keep theirs.
+  A.childrenInOrder = function (el) {
+    var kids = [], i;
+    for (i = 0; i < el.children.length; i++) kids.push(el.children[i]);
+    if (kids.length < 2) return kids;
+    var st0 = A.styleOf(kids[0]);
+    if (!st0 || st0.position !== 'absolute') return kids;
+    var keyed = [];
+    for (i = 0; i < kids.length; i++) {
+      var st = A.styleOf(kids[i]);
+      if (!st || st.position !== 'absolute') return kids;
+      var r = kids[i].getBoundingClientRect();
+      keyed.push({ el: kids[i], top: Math.round(r.top), left: Math.round(r.left), i: i });
+    }
+    keyed.sort(function (a, b) { return a.top - b.top || a.left - b.left || a.i - b.i; });
+    for (i = 0; i < keyed.length; i++) kids[i] = keyed[i].el;
+    return kids;
+  };
+
+  // An OS icon that stands for a word on a line of values (the Pilot book's day and night totals:
+  // "Total flight hours 167h33: day 57h32 night 110h02"). Only icons whose meaning is certain.
+  A.ICON_WORDS = { 'day-icon': 'day', 'night-icon': 'night' };
+  A.iconWord = function (el) {
+    if (!A.hasClass(el, 'icon-element')) return '';
+    var t = A.tokens(el);
+    for (var i = 0; i < t.length; i++) if (A.ICON_WORDS.hasOwnProperty(t[i])) return A.ICON_WORDS[t[i]];
+    return '';
+  };
+
   // The EFB OS document (its .efb holds the .efb-container of app views), or an app's own frame, read
   // whole: a frame page that happens to use an "efb" class is still a frame.
   A.inEfb = function () { return !!document.querySelector('.efb .efb-container'); };
@@ -259,6 +315,8 @@
         var tag = c.tagName.toLowerCase();
         if (tag === 'svg' || tag === 'script' || tag === 'style' || tag === 'canvas' || tag === 'img' || tag === 'iframe') continue;
         if (mode === 'model' ? A.modelHidden(c) : A.isHidden(c)) continue;
+        var word = A.iconWord(c);
+        if (word) { parts.push({ t: word, el: c }); continue; }
         rec(c);
       }
     })(el);
@@ -321,7 +379,7 @@
   A.GENERIC_ID = new RegExp('^(svg|defs|layer|path|g|group|groupe|trac[e\u00e9]?|rect|rectangle|circle|mask|masque|clip|clippath|' +
     'stop|use|polygon|polyline|ellipse|line|ligne|calque|union|titre|title|paint|filter|lineargradient|radialgradient|' +
     'gradient|pattern|symbol|image|shape|vector|frame|object|objet|text|isolation mode|mask group|clip path group|clip path|' +
-    'svgrepo [a-z]*|[a-z]*carrier)[\\s\\d]*$', 'i');
+    'svgrepo [a-z]*)[\\s\\d]*$', 'i');
   A.ICON_WORD = /^[A-Za-zÀ-ɏ ]{3,}$/;
   A.iconName = function (el) {
     var svg = el.querySelector('svg');
@@ -370,6 +428,7 @@
     'back-button': 'Back',
     'return-button': 'Back',                // the Flight Planner's dialogs: a chevron that goes back
     'close-button': 'Close',
+    'to-top-button': 'Back to the top',     // a scrolled list's arrow up (the Pilot book's logbook)
     'incremental-decrease': 'Decrease',
     'incremental-increase': 'Increase'
   };
@@ -828,6 +887,25 @@
       var tip = A.tooltipOf(el);
       var off = !!tip || A.isDisabled(b);
       els.push(A.button(b, name + (off ? ' (not available on this aircraft)' : ''), { disabled: off }));
+    });
+
+  // The Pilot book's flight hours chart: per bar, the hours above an empty bar and the period below
+  // it, read as one line, the period first, with the exact time a hover shows ("15/11: 0h, 00h00");
+  // the current day, week or month says so.
+  A.block('chart-stick',
+    function (el) { return A.hasClass(el, 'flight-hours-stick'); },
+    function (el, els) {
+      var period = el.querySelector('.period'), dur = el.querySelector('.flight-duration-display');
+      if (!period || !dur) return false;
+      var exact = dur.querySelector('.date-display-container');
+      var shown = '';
+      for (var i = 0; i < dur.childNodes.length; i++) if (dur.childNodes[i] !== exact) shown += ' ' + (dur.childNodes[i].textContent || '');
+      shown = A.norm(shown);
+      var ex = exact ? A.modelText(exact) : '';
+      var stick = el.querySelector('.stick');
+      var t = A.lineText(period) + (stick && A.hasClass(stick, 'current') ? ' (current)' : '') + ': ' +
+        (shown && ex && ex !== shown ? shown + ', ' + ex : shown || ex);
+      els.push(A.el(el, { kind: 'static', text: t }));
     });
 
   // Mass and balance's Seats / Cargo / Fuel / Empty strip.
@@ -1376,6 +1454,7 @@
     A._nodes = {};
     A._scrapeId++;
     A._frameRoots = [];
+    A._scrollers = [];
     var efb = A.inEfb();
 
     // Every scrape restamps from 1 in DOM order; an old stamp left on a node no longer walked
@@ -1511,7 +1590,10 @@
       for (var k = 0; k < el.childNodes.length; k++) if (el.childNodes[k].nodeType === 3) own += el.childNodes[k].nodeValue + ' ';
       own = A.norm(own);
       if (own && !A.isClaimed(el)) sink.push(A.el(el, { kind: 'static', text: own }));
-      for (var c = 0; c < el.children.length; c++) walk(el.children[c]);
+      var kids = A.childrenInOrder(el), scroller = A.isVirtualScroller(el), sb;
+      if (scroller && (sb = A.scrollButtons(el, false))) sink.push(sb);
+      for (var c = 0; c < kids.length; c++) walk(kids[c]);
+      if (scroller && (sb = A.scrollButtons(el, true))) sink.push(sb);
     }
 
     // An open popup (the route string box, the saved flight plans, an add-on's dialog) sits over the
@@ -1583,8 +1665,33 @@
     try {
       A._frameAsked = true;
       A._askedAt = Date.now();
-      window.requestAnimationFrame(function (ts) { A._lastFrame = Date.now(); A._lastTs = ts || 0; A._frameAsked = false; });
+      A.raf(function (ts) { A._lastFrame = Date.now(); A._lastTs = ts || 0; A._frameAsked = false; });
     } catch (e) { A._frameAsked = false; }
+  };
+  // The browser's own requestAnimationFrame, never the recording hook: a pump must never count as a
+  // frame. A page that replaced the function after the hook keeps its own.
+  A.raf = function (cb) {
+    var st = window.__MSFSBA_RAF;
+    var f = st && window.requestAnimationFrame === st.hook ? st.raf : window.requestAnimationFrame;
+    return f.call(window, cb);
+  };
+  // Run the page's queued frame callbacks, with a time on the view's frame clock; ones they queue
+  // run too, three rounds at most (an animation loop gets three steps, never a spin).
+  A.runFrameCallbacks = function (t) {
+    var st = window.__MSFSBA_RAF, n = 0;
+    if (!st) return 0;
+    for (var round = 0; round < 3; round++) {
+      var ids = [];
+      for (var k in st.pending) if (st.pending.hasOwnProperty(k)) ids.push(k);
+      if (!ids.length) break;
+      for (var i = 0; i < ids.length; i++) {
+        var f = st.pending[ids[i]];
+        if (!f) continue;
+        try { f(t); } catch (e) {}
+        n++;
+      }
+    }
+    return n;
   };
   A.isStalled = function () {
     return A._frameAsked ? Date.now() - A._askedAt > 500 : A._lastFrame === 0;
@@ -1632,10 +1739,11 @@
     // A heavy update (measured once per app) runs before presses and sets only, and on every third
     // read, so a slow app never makes every read slow.
     if (!always && A._pumpMs > A.PUMP_SLOW_MS && (A._pollCount % 3) !== 0) return;
-    var vs = A.viewService();
-    if (!vs) return;
-    var t0 = Date.now();
-    try { vs.update(A.frameTime()); } catch (e) {}
+    var vs = A.viewService(), t0 = Date.now(), ft = A.frameTime();
+    if (vs) { try { vs.update(ft); } catch (e) {} }
+    // Then what the page queued for a frame: a list that builds its rows after a scroll, a size
+    // measured once laid out (the Pilot book's logbook).
+    A.runFrameCallbacks(ft);
     A._pumpMs = Date.now() - t0;
     // What the update changed counts for this very read, not the next: the observer reports it only
     // after this evaluation ends.
@@ -1756,8 +1864,45 @@
     A.releaseKeyboard();
   };
 
+  // A virtual list (the OS's VirtualList: the Pilot book's logbook) builds only the rows in its window,
+  // ten of 135 flights, and builds the others as it scrolls; a sighted pilot scrolls it. The reader
+  // puts "Scroll up" before its rows and "Scroll down" after them, saying how far down the list is;
+  // a press moves it nine tenths of its height and tells its scroll listener. Their idx is synthetic
+  // (A.SCROLL_IDX + 2 x the list's place on the page, + 1 for down), below the client's actions.
+  A.SCROLL_IDX = 900000;
+  A._scrollers = [];
+  A.isVirtualScroller = function (el) {
+    if (!(el.clientHeight > 0) || el.scrollHeight <= el.clientHeight + 4) return false;
+    if (A.hasClass(el, 'virtual-list-container')) return true;
+    for (var i = 0; i < el.children.length; i++) if (A.hasClass(el.children[i], 'virtual-list')) return true;
+    return false;
+  };
+  A.scrollButtons = function (el, down) {
+    var n = A._scrollers.indexOf(el);
+    if (n < 0) { n = A._scrollers.length; A._scrollers.push(el); }
+    var max = el.scrollHeight - el.clientHeight;
+    if (down ? el.scrollTop >= max - 2 : el.scrollTop <= 2) return null;
+    var pct = Math.max(0, Math.min(100, Math.round(el.scrollTop / max * 100)));
+    return { idx: A.SCROLL_IDX + 2 * n + (down ? 1 : 0), kind: 'button', clickable: true, value: '', controlType: '',
+             text: (down ? 'Scroll down' : 'Scroll up') + ' (list at ' + pct + '%)', level: 0, live: '', disabled: false,
+             options: null, key: 'scroll:' + n + (down ? ':down' : ':up') };
+  };
+  A.scrollStep = function (idx) {
+    var k = idx - A.SCROLL_IDX, el = A._scrollers[k >> 1];
+    if (!el || !el.parentNode) return false;
+    el.scrollTop = Math.max(0, el.scrollTop + ((k & 1) ? 1 : -1) * Math.round(el.clientHeight * 0.9));
+    var ev;
+    try { ev = new Event('scroll', { bubbles: false }); } catch (e) { ev = document.createEvent('Event'); ev.initEvent('scroll', false, false); }
+    el.dispatchEvent(ev);
+    A._dirty = true;
+    return true;
+  };
+
   A.clickElement = function (idx, gel) {
     if (idx === A.SIMBRIEF_IDX || idx === A.SHOW_TABLET_IDX) return false;    // the app's own actions: the client runs them
+    if (idx >= A.SCROLL_IDX && idx < A.SCROLL_IDX + 2000) {
+      return A.withListeners(gel, function () { A.pumpIfStalled(true); var ok = A.scrollStep(idx); A.pumpIfStalled(true); return ok; });
+    }
     return A.withListeners(gel, function () {
       A.pumpIfStalled(true);         // the app presses from its current state, never a frozen one
       var el = A.find(idx);

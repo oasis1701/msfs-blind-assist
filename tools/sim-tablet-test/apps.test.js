@@ -353,9 +353,10 @@ test('hover reveal: a revealed button reads dimmed exactly when its disabled-lay
 });
 
 test('hover reveal: a control inside a wrapper named for its tooltip is still revealed', () => {
-  const l = lines(scraped(styled('<style>.row:hover .tooltip-component { visibility: visible; }</style>' +
-    '<div class="row"><span>KDFW</span><div class="tooltip-component"><button>Remove</button></div></div>',
-    el => (el.closest('.tooltip-component') ? { visibility: 'hidden' } : null)).A));
+  // The hover reveals the group around the wrapper, so the walk up passes the wrapper first.
+  const l = lines(scraped(styled('<style>.row:hover .acts { visibility: visible; }</style>' +
+    '<div class="row"><span>KDFW</span><div class="acts"><div class="tooltip-component"><button>Remove</button></div></div></div>',
+    el => (el.closest('.acts') ? { visibility: 'hidden' } : null)).A));
   assert.ok(l.includes('button|Remove'), l.join(' / '));
 });
 
@@ -579,11 +580,85 @@ test('the tablet panel button: frames coming back re-read the list, and the pane
   assert.ok(!gone.unchanged && !find(gone.elements, 'Hide the tablet in the sim') && !find(gone.elements, SHOW));
 });
 
+test('a view that gets no frames: the page\'s queued frame callbacks run once, by the pump or the browser, never twice', () => {
+  const queued = [];
+  const p = page('<div id="out">loading</div>', {
+    before: w => { w.requestAnimationFrame = cb => { queued.push(cb); return queued.length; }; w.cancelAnimationFrame = () => {}; },
+  });
+  let runs = 0;
+  p.window.requestAnimationFrame(() => { runs++; p.document.getElementById('out').textContent = 'loaded'; });
+  const first = lines(scraped(p.A));
+  assert.ok(first.includes('static|loaded'), first.join(' / '));
+  assert.equal(runs, 1);
+  queued.forEach(cb => cb(Date.now()));       // the browser's frame comes after all
+  assert.equal(runs, 1, 'already run by the pump: the browser\'s call is a no-op');
+  // A cancelled callback never runs.
+  let cancelled = 0;
+  const id = p.window.requestAnimationFrame(() => { cancelled++; });
+  p.window.cancelAnimationFrame(id);
+  p.A._markDirty();
+  scraped(p.A);
+  assert.equal(cancelled, 0);
+});
+
+test('a virtual list reads in its on-screen order and offers Scroll up and Scroll down, which move it a page', () => {
+  // As the OS's VirtualList: rows placed with position:absolute and a top, in any DOM order.
+  const rows = [['Sep 22', 424], ['Oct 19', 154], ['Oct 15', 208]];
+  const p = page('<div class="virtual-list-container"><div class="virtual-list">' +
+    rows.map(r => '<div class="virtual-list-item" data-top="' + r[1] + '"><button>' + r[0] + '</button></div>').join('') +
+    '</div></div><button class="to-top-button"><svg><path id="arrow"></path></svg></button>', {
+    before: w => {
+      const gcs = w.getComputedStyle;
+      w.getComputedStyle = el => Object.assign({}, gcs(el), el.classList && el.classList.contains('virtual-list-item') ? { position: 'absolute' } : {});
+    },
+  });
+  const list = p.document.querySelector('.virtual-list-container');
+  Object.defineProperty(list, 'clientHeight', { value: 500 });
+  Object.defineProperty(list, 'scrollHeight', { value: 5000 });
+  let scrolled = 0;
+  list.addEventListener('scroll', () => scrolled++);
+  p.document.querySelectorAll('.virtual-list-item').forEach(el => {
+    const t = +el.getAttribute('data-top');
+    el.getBoundingClientRect = () => ({ top: t, left: 0, right: 300, bottom: t + 50, width: 300, height: 50 });
+  });
+  const els = scraped(p.A);
+  const l = lines(els);
+  assert.deepStrictEqual(l.filter(x => /Sep|Oct/.test(x)), ['button|Oct 19', 'button|Oct 15', 'button|Sep 22']);
+  assert.ok(!l.some(x => /Scroll up/.test(x)), 'at the top: no Scroll up');
+  const down = els.find(e => /^Scroll down/.test(e.text));
+  assert.equal(down.text, 'Scroll down (list at 0%)');
+  assert.equal(down.key, 'scroll:0:down');
+  assert.ok(l.includes('button|Back to the top'));
+  assert.equal(p.A.clickElement(down.idx), true);
+  assert.equal(list.scrollTop, 450);
+  assert.equal(scrolled, 1, 'the list hears its scroll');
+  const after = lines(scraped(p.A));
+  assert.ok(after.includes('button|Scroll up (list at 10%)') && after.includes('button|Scroll down (list at 10%)'), after.join(' / '));
+});
+
+test('the Pilot book: a chart bar reads as one line, the period first, and the day and night icons as words', () => {
+  const l = lines(scraped(page('<button>WEEK</button>' +
+    '<div class="flight-hours-stick"><div class="flight-duration-display"><div class="date-display-container hide">00h45</div><span>1h</span></div>' +
+    '<div class="stick current"></div><span class="period">15/11</span></div>' +
+    '<div class="total-statistics"><div class="total-statistics-header"><span>Total landings</span><div>28</div></div>' +
+    '<div class="total-statistics-body"><div class="statistic"><div class="icon-element day-icon"><svg></svg></div><div>9</div></div>' +
+    '<div class="statistic"><div class="icon-element night-icon"><svg></svg></div><div>19</div></div></div></div>').A));
+  assert.ok(l.includes('static|15/11 (current): 1h, 00h45'), l.join(' / '));
+  assert.ok(l.some(x => /day 9 night 19/.test(x)), l.join(' / '));
+});
+
 test('the tablet panel button stays in the list through a Show and a Hide (the press is stamped)', async () => {
   const SHOW = 'Show the tablet in the sim (some lists fill in only while the sim shows it)', HIDE = 'Hide the tablet in the sim';
   let pending = [];
   const p = page('<button class="b">Door 1</button>', { before: w => { w.requestAnimationFrame = cb => { pending.push(cb); return 1; }; } });
-  const offer = () => { p.A._markDirty(); const e = scraped(p.A).find(x => x.idx === 990002); return e ? e.text + ' ' + e.key : 'none'; };
+  // As the client reads: an "unchanged" read keeps the last list, so the offer must move the read itself.
+  let last = [];
+  const offer = () => {
+    const r = JSON.parse(p.A.scrape());
+    if (!r.unchanged) last = r.elements;
+    const e = last.find(x => x.idx === 990002);
+    return e ? e.text + ' ' + e.key : 'none';
+  };
   scraped(p.A);
   await sleep(1100);
   assert.equal(offer(), SHOW + ' action:tablet-panel');
