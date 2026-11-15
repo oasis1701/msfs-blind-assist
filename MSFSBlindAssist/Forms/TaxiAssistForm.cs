@@ -840,16 +840,20 @@ public class TaxiAssistForm : Form
         // Turn onto the first taxiway. It comes BEFORE the taxiway list because that is
         // how a clearance reads ("turn left onto Charlie"). A pilot with no turn to set
         // picks the taxiway and tabs on; one with a turn presses Shift+Tab from the
-        // taxiway list. The label has no mnemonic and shares the list's TabIndex (set
-        // with the tab order below), so no Alt shortcut moves.
+        // taxiway list. The label has no mnemonic and the pair shares the taxiway list's
+        // TabIndex (set with the tab order below), so no Alt shortcut moves.
         lblFirstTurn = new Label
         {
             Text = "Turn onto first taxiway:",
             Location = new System.Drawing.Point(labelX, y + 2),
-            AutoSize = true
+            AutoSize = true,
+            // Explicit, so Add() does not auto-number it "highest + 1" and shift every
+            // label added after it; reassigned to the taxiway list's index below.
+            TabIndex = 0
         };
         cmbFirstTurn = new ComboBox
         {
+            TabIndex = 0,
             Location = new System.Drawing.Point(controlX + 180, y),
             Width = 110,
             DropDownStyle = ComboBoxStyle.DropDownList,
@@ -1206,9 +1210,14 @@ public class TaxiAssistForm : Form
         chkFullLengthBacktrack.TabIndex = tabIdx++;
         chkFitFilter.TabIndex = tabIdx++;
         chkHideOccupied.TabIndex = tabIdx++;
-        cmbFirstTurn.TabIndex = tabIdx++;
-        lblFirstTurn.TabIndex = cmbFirstTurn.TabIndex;
         cmbFirstTaxiway.TabIndex = tabIdx++;
+        // The Turn list and its label SHARE the taxiway list's TabIndex: two stops with
+        // one index are visited in Controls order, and Turn was added first. Giving the
+        // Turn controls an index of their own would renumber every later tab stop, and
+        // (via the "highest + 1" auto-number) every later label, moving existing Alt
+        // shortcuts, which resolve through those numbers.
+        cmbFirstTurn.TabIndex = cmbFirstTaxiway.TabIndex;
+        lblFirstTurn.TabIndex = cmbFirstTaxiway.TabIndex;
         chkFirstHoldShort.TabIndex = tabIdx++;
         cmbFirstHoldShortRunway.TabIndex = tabIdx++;
         btnAddTaxiway.TabIndex = tabIdx++;
@@ -4046,22 +4055,25 @@ public class TaxiAssistForm : Form
 
         // Tab order WITHIN the panel: each new group is added at the end so
         // pressing Tab inside the panel walks through Turn → Combo → Hold-short →
-        // Remove → Hold-short-of-runway for slot 2, then slot 3, etc. The Turn
-        // label shares its list's TabIndex (like every label here, a mnemonic
-        // lands on the control after it), and Add Taxiway still focuses the
-        // taxiway combo, so a pilot with no turn to set never meets the Turn list
-        // and one who has a turn presses Shift+Tab from the taxiway list. The
+        // Remove → Hold-short-of-runway for slot 2, then slot 3, etc. Add Taxiway
+        // still focuses the taxiway combo, so a pilot with no turn to set never
+        // meets the Turn list and one who has a turn presses Shift+Tab from the
+        // taxiway list. The
         // panel's overall slot in the FORM tab order is fixed at the position
         // set in InitializeFormControls (between Add Taxiway and Calculate),
         // so the user never has to tab backwards from Calculate to reach a
         // newly-added taxiway.
         int innerTab = pnlTaxiways.Controls.Count; // labels & controls share one stream
+        // Turn shares the taxiway combo's index (collection order puts Turn first), so
+        // the existing controls keep the exact formulas they had: adding the Turn list
+        // must not renumber anything, because existing label shortcuts resolve through
+        // these numbers.
         turnCombo.TabIndex = innerTab + 1;
-        turnLabel.TabIndex = turnCombo.TabIndex;
-        combo.TabIndex = innerTab + 2;
-        holdShortChk.TabIndex = innerTab + 3;
-        removeBtn.TabIndex = innerTab + 4;
-        holdShortRunwayCmb.TabIndex = innerTab + 5;
+        turnLabel.TabIndex = innerTab + 1;
+        combo.TabIndex = innerTab + 1;
+        holdShortChk.TabIndex = innerTab + 2;
+        removeBtn.TabIndex = innerTab + 3;
+        holdShortRunwayCmb.TabIndex = innerTab + 4;
 
         pnlTaxiways.Controls.Add(turnLabel);
         pnlTaxiways.Controls.Add(turnCombo);
