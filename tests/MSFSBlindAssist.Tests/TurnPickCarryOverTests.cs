@@ -90,6 +90,12 @@ public class TurnPickCarryOverTests
         var keep = TurnPickCarryOver.BlocksToKeep(route, 7, new HashSet<int>(), startNodeId: 11);
 
         Assert.Equal(new HashSet<int> { 10, 12 }, keep);
+
+        // Earlier recalculations' blocks are kept too; the start id goes whichever side it came from.
+        var earlier = new HashSet<int> { 40, 12 };
+        var withEarlier = TurnPickCarryOver.BlocksToKeep(route, 7, earlier, startNodeId: 12);
+        Assert.Equal(new HashSet<int> { 10, 11, 40 }, withEarlier);
+        Assert.DoesNotContain(12, withEarlier);
     }
 
     [Fact]
@@ -103,6 +109,16 @@ public class TurnPickCarryOverTests
         Assert.Null(TurnPickCarryOver.FirstAhead(empty, 0));
         Assert.Empty(TurnPickCarryOver.Missed(empty, 0));
         Assert.Empty(TurnPickCarryOver.BlocksToKeep(empty, 0, new HashSet<int>(), 7));
+
+        // alreadyBlocked passes through minus the start id, as a new set.
+        var already = new HashSet<int> { 5, 7 };
+        foreach (var r in new TaxiRoute?[] { null, empty })
+        {
+            var result = TurnPickCarryOver.BlocksToKeep(r, 0, already, 7);
+            Assert.Equal(new HashSet<int> { 5 }, result);
+            Assert.False(ReferenceEquals(result, already));
+        }
+        Assert.Equal(new HashSet<int> { 5, 7 }, already);
     }
 
     [Fact]

@@ -90,16 +90,18 @@ internal static class TurnPickCarryOver
                 .OrderBy(p => p.RowIndex)
                 .ToList();
 
-    /// Union of BlockedNodeIds of every pick that is Made at this index, minus startNodeId.
-    /// alreadyBlocked is not added: the caller's own set stays the caller's.
+    /// alreadyBlocked (the manager's running set: a recalculation drops made picks from the new route,
+    /// so their junctions survive only there) union the BlockedNodeIds of every pick that is Made at
+    /// this index, minus startNodeId from either side. Always a new set, never the caller's instance;
+    /// a null route or one with no picks gives alreadyBlocked minus startNodeId.
     public static HashSet<int> BlocksToKeep(TaxiRoute? route, int currentSegmentIndex,
         IReadOnlySet<int> alreadyBlocked, int startNodeId)
     {
-        var keep = new HashSet<int>();
-        if (route == null) return keep;
-        foreach (var p in route.TurnPicks)
-            if (PhaseOf(p, currentSegmentIndex) == TurnPickPhase.Made)
-                keep.UnionWith(p.BlockedNodeIds);
+        var keep = new HashSet<int>(alreadyBlocked);
+        if (route != null)
+            foreach (var p in route.TurnPicks)
+                if (PhaseOf(p, currentSegmentIndex) == TurnPickPhase.Made)
+                    keep.UnionWith(p.BlockedNodeIds);
         keep.Remove(startNodeId);
         return keep;
     }
