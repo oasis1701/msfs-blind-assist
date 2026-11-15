@@ -536,7 +536,7 @@ What the window shows:
 - **Checklist items, switches and tick boxes** are check boxes, and **drop-down lists** are combo boxes.
 - **The Import, Save and Send menus** show as one button for each choice in them.
 - **Flight Planner waypoints** are one line each, for example *"SOONE: Hdg 138°, Dist 24.6 NM"*.
-- **Long lists that load as you scroll**, such as the Pilot book's logbook, show about ten rows at a time between a **Scroll up** and a **Scroll down** button, which say how far down the list you are, for example *"Scroll down (list at 22%)"*. Press Scroll down to bring in the next rows.
+- **Long lists that load as you scroll**, such as the Pilot book's logbook, show about ten rows at a time between a **Scroll up** and a **Scroll down** button, which say how far down the list you are, for example *"Scroll down (list at 22%)"*. Press Scroll down to bring in the next rows. The list's own Back to the top button works only while the sim shows the tablet; Scroll up always works.
 - The map and the charts are pictures, so they cannot be read.
 
 Typing in the window never takes your keyboard away from the simulator, so the sim's keys and BA's hotkeys keep working. The window stays open when you change aircraft.

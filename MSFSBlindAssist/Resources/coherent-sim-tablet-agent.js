@@ -1578,11 +1578,14 @@
           else if (lt) sink.push(A.el(el, { kind: 'static', text: lt }));
           return;
         }
-        // A caption above its value ("Ground Speed" over "0 KT") reads as one line with a colon.
+        // A caption above its value ("Ground Speed" over "0 KT") reads as one line with a colon; two
+        // rows that are each a name with its value (the Pilot book's "By day 00h26" over "By night
+        // 0h") with a comma.
         var two = el.getElementsByTagName('*').length <= A.ONE_LINE_MAX_NODES ? A.rows(el) : [];
         if (two.length === 2 && el.children.length === 2) {
           var top = A.lineText(el.children[0]), bottom = A.lineText(el.children[1]);
-          if (top && bottom) { sink.push(A.el(el, { kind: 'static', text: top + ': ' + bottom })); return; }
+          var pairs = /[A-Za-z].*\s\d\S*$/.test(top) && /^[A-Za-z]/.test(bottom) && /\d/.test(bottom);
+          if (top && bottom) { sink.push(A.el(el, { kind: 'static', text: top + (pairs ? ', ' : ': ') + bottom })); return; }
         }
       }
 
@@ -1740,10 +1743,13 @@
     // read, so a slow app never makes every read slow.
     if (!always && A._pumpMs > A.PUMP_SLOW_MS && (A._pollCount % 3) !== 0) return;
     var vs = A.viewService(), t0 = Date.now(), ft = A.frameTime();
+    A.fireMovedScrolls();
     if (vs) { try { vs.update(ft); } catch (e) {} }
     // Then what the page queued for a frame: a list that builds its rows after a scroll, a size
-    // measured once laid out (the Pilot book's logbook).
+    // measured once laid out (the Pilot book's logbook). A list those moved hears its scroll, and
+    // builds its rows in one more round.
     A.runFrameCallbacks(ft);
+    if (A.fireMovedScrolls()) A.runFrameCallbacks(ft);
     A._pumpMs = Date.now() - t0;
     // What the update changed counts for this very read, not the next: the observer reports it only
     // after this evaluation ends.
@@ -1880,6 +1886,7 @@
   A.scrollButtons = function (el, down) {
     var n = A._scrollers.indexOf(el);
     if (n < 0) { n = A._scrollers.length; A._scrollers.push(el); }
+    if (el.__msfsbaTop === undefined) el.__msfsbaTop = el.scrollTop;
     var max = el.scrollHeight - el.clientHeight;
     if (down ? el.scrollTop >= max - 2 : el.scrollTop <= 2) return null;
     var pct = Math.max(0, Math.min(100, Math.round(el.scrollTop / max * 100)));
@@ -1891,11 +1898,30 @@
     var k = idx - A.SCROLL_IDX, el = A._scrollers[k >> 1];
     if (!el || !el.parentNode) return false;
     el.scrollTop = Math.max(0, el.scrollTop + ((k & 1) ? 1 : -1) * Math.round(el.clientHeight * 0.9));
+    A.fireScroll(el);
+    el.__msfsbaTop = el.scrollTop;
+    A._dirty = true;
+    return true;
+  };
+  // The browser fires a scroll event at a frame; without frames the list never hears it, so the
+  // reader fires it. A press that moves a list itself ("Back to the top") gets the same, after it.
+  A.fireScroll = function (el) {
     var ev;
     try { ev = new Event('scroll', { bubbles: false }); } catch (e) { ev = document.createEvent('Event'); ev.initEvent('scroll', false, false); }
     el.dispatchEvent(ev);
-    A._dirty = true;
-    return true;
+  };
+  // Each list keeps the position the reader last saw (__msfsbaTop). One that has moved since, by a
+  // press, by the page's own animation, whenever it happened, hears its scroll; true when one did.
+  A.fireMovedScrolls = function () {
+    var moved = false;
+    for (var i = 0; i < A._scrollers.length; i++) {
+      var s = A._scrollers[i];
+      if (!s.parentNode) continue;
+      if (s.__msfsbaTop !== undefined && s.scrollTop !== s.__msfsbaTop) { A.fireScroll(s); moved = true; }
+      s.__msfsbaTop = s.scrollTop;
+    }
+    if (moved) A._dirty = true;
+    return moved;
   };
 
   A.clickElement = function (idx, gel) {
@@ -1907,7 +1933,12 @@
       A.pumpIfStalled(true);         // the app presses from its current state, never a frozen one
       var el = A.find(idx);
       if (!el || A.isDisabled(el)) return false;
-      try { A.press(el); return true; } catch (e) { return false; }
+      try { A.press(el); } catch (e) { return false; }
+      // What the press set going (a list sent back to its top) runs now, not at the next read; a
+      // list it moved hears its scroll.
+      A.fireMovedScrolls();
+      A.pumpIfStalled(true);
+      return true;
     });
   };
 

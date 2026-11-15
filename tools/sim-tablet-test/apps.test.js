@@ -505,9 +505,9 @@ test('a view that gets no frames: the app on screen is updated before each read,
   const els = scraped(A);
   assert.equal(updates, 1);
   A.clickElement(find(els, 'Door 1').idx);
-  assert.equal(updates, 2);
+  assert.equal(updates, 3, 'before the press, and after it, so what it set going runs before the next read');
   A.setValue(find(els, 'Door 1').idx, 'x');
-  assert.equal(updates, 3);
+  assert.equal(updates, 4);
 });
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -634,6 +634,44 @@ test('a virtual list reads in its on-screen order and offers Scroll up and Scrol
   assert.equal(scrolled, 1, 'the list hears its scroll');
   const after = lines(scraped(p.A));
   assert.ok(after.includes('button|Scroll up (list at 10%)') && after.includes('button|Scroll down (list at 10%)'), after.join(' / '));
+});
+
+test('a press that moves a virtual list itself (Back to the top) makes the list hear its scroll', () => {
+  const p = page('<div class="virtual-list-container"><div class="virtual-list"><button>Row</button></div></div>' +
+    '<button class="to-top-button">Top</button>');
+  const list = p.document.querySelector('.virtual-list-container');
+  Object.defineProperty(list, 'clientHeight', { value: 500 });
+  Object.defineProperty(list, 'scrollHeight', { value: 5000 });
+  list.scrollTop = 900;
+  let heard = 0;
+  list.addEventListener('scroll', () => heard++);
+  p.document.querySelector('.to-top-button').onclick = () => { list.scrollTop = 0; };
+  const els = scraped(p.A);
+  assert.equal(p.A.clickElement(els.find(e => e.text === 'Top').idx), true);
+  assert.equal(heard, 1);
+});
+
+test('two rows that are each a name with its value join with a comma, a caption over its value with a colon', () => {
+  const l = lines(scraped(page('<button>Go</button>' +
+    '<div class="pair"><div><span>By day</span> <span>00h26</span></div><div><span>By night</span> <span>0h</span></div></div>' +
+    '<div class="cap"><div>Ground Speed</div><div>0 KT</div></div>', {
+    before: w => {
+      const rect = w.Element.prototype.getBoundingClientRect;
+      // Each row of .pair and .cap, and everything in it, on a line of its own.
+      w.Element.prototype.getBoundingClientRect = function () {
+        for (let n = this; n && n.parentElement; n = n.parentElement) {
+          const p = n.parentElement;
+          if (p.classList.contains('pair') || p.classList.contains('cap')) {
+            const top = n === p.children[0] ? 0 : 30;
+            return { top, left: 0, right: 100, bottom: top + 20, width: 100, height: 20 };
+          }
+        }
+        return rect.call(this);
+      };
+    },
+  }).A));
+  assert.ok(l.includes('static|By day 00h26, By night 0h'), l.join(' / '));
+  assert.ok(l.includes('static|Ground Speed: 0 KT'), l.join(' / '));
 });
 
 test('the Pilot book: a chart bar reads as one line, the period first, and the day and night icons as words', () => {
