@@ -448,10 +448,12 @@
   };
 
   A.buttonLabel = function (el) {
-    // Text with no letters ("+", "100%") gives way to the button's own aria-label, keeping a number
-    // it shows (SayIntentions' zoom: "Zoom in", "Reset zoom (100%)", "Zoom out").
+    // Text with no letters ("+", "100%") gives way to the button's own aria-label, or its title,
+    // keeping a number it shows (SayIntentions' zoom: "Zoom in", "Reset zoom (100%)"; UTL's map: "+"
+    // titled "Zoom in").
     var shown = A.lineText(el), aria = A.norm(A.attr(el, 'aria-label'));
-    if (shown && aria && !/[A-Za-zÀ-ɏ]/.test(shown)) return /\d/.test(shown) ? aria + ' (' + shown + ')' : aria;
+    var said = aria || A.norm(A.attr(el, 'title'));
+    if (shown && said && !/[A-Za-zÀ-ɏ]/.test(shown)) return /\d/.test(shown) ? said + ' (' + shown + ')' : said;
     var n = shown || aria || A.labelledBy(el) || A.tooltipOf(el) || A.attr(el, 'title') ||
       A.imgName(el) || A.attr(el, 'data-label');
     if (el.tagName === 'INPUT') n = n || el.value;
