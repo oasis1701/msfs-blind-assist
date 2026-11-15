@@ -1059,22 +1059,27 @@ public class TaxiRouter
     /// This method: 1) tries strict A*, 2) if it fails, finds the closest reachable node to the goal,
     /// 3) unconstrained-hops to the next section of the taxiway, 4) repeats until goal is reached.
     /// </summary>
-    private List<int>? AStarSearchWithGapChaining(int startId, int goalId, string requiredTaxiway)
+    internal List<int>? AStarSearchWithGapChaining(int startId, int goalId, string requiredTaxiway)
     {
         // Try strict first — works when the taxiway is one connected component
         var direct = AStarSearchStrict(startId, goalId, requiredTaxiway);
         if (direct != null)
             return direct;
 
-        // A blocked node cuts ITS taxiway for good: hopping to that taxiway's next section would step over
-        // the block. A block on another taxiway leaves this one's navdata gaps chained as always.
-        if (BlockedNodes.Count > 0 && _graph.GetNodesOnTaxiway(requiredTaxiway).Any(BlockedNodes.Contains))
-        {
-            Log($"GapChain '{requiredTaxiway}': skipped, a blocked node is on this taxiway");
-            return null;
-        }
-
         Log($"GapChain '{requiredTaxiway}': strict failed, attempting gap chaining {startId} → {goalId}");
+
+        // A blocked node cuts ITS taxiway where it stands, and no hop may step over it: see
+        // HopStepsOverABlock. A navdata gap elsewhere on the same taxiway is chained as always (KBOS C
+        // has 400 m with no name 900 m past its blocked H junction; refusing every gap on a taxiway
+        // that carries a block refused that left turn outright).
+        List<TaxiNode>? blocksHere = null;
+        HashSet<int>? behindBlocks = null;
+        if (BlockedNodes.Count > 0)
+        {
+            foreach (int id in _graph.GetNodesOnTaxiway(requiredTaxiway))
+                if (BlockedNodes.Contains(id)) (blocksHere ??= new List<TaxiNode>()).Add(_graph.Nodes[id]);
+            if (blocksHere != null) behindBlocks = SectionsBehindBlocks(startId, requiredTaxiway, blocksHere);
+        }
 
         // Chain through disconnected sections
         var fullPath = new List<int>();
@@ -1149,6 +1154,7 @@ public class TaxiRouter
             foreach (int nodeId in _graph.GetNodesOnTaxiway(requiredTaxiway))
             {
                 if (reachable.Contains(nodeId)) continue;
+                if (blocksHere != null && HopStepsOverABlock(edgeNode, nodeId, blocksHere, behindBlocks!)) continue;
 
                 var n = _graph.Nodes[nodeId];
                 double d = TaxiGraph.CalculateDistanceMeters(edgeNode.Latitude, edgeNode.Longitude, n.Latitude, n.Longitude);
@@ -1190,6 +1196,49 @@ public class TaxiRouter
 
         Log($"GapChain '{requiredTaxiway}': partial path {fullPath.Count} nodes (may not have reached goal)");
         return null; // only return if we reached the goal (handled above)
+    }
+
+    /// <summary>
+    /// Every node of the taxiway in a section that touches a blocked node from a side the chain did
+    /// not start on: the taxiway as it runs on behind the block.
+    /// </summary>
+    private HashSet<int> SectionsBehindBlocks(int startId, string taxiwayName, List<TaxiNode> blocksOnTaxiway)
+    {
+        var own = BfsReachable(startId, taxiwayName);
+        var behind = new HashSet<int>();
+        foreach (var block in blocksOnTaxiway)
+        {
+            if (!_graph.Adjacency.TryGetValue(block.NodeId, out var edges)) continue;
+            foreach (var edge in edges)
+            {
+                if (!edge.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase)) continue;
+                int next = edge.ToNodeId;
+                if (BlockedNodes.Contains(next) || own.Contains(next) || behind.Contains(next)) continue;
+                behind.UnionWith(BfsReachable(next, taxiwayName));
+            }
+        }
+        return behind;
+    }
+
+    /// <summary>
+    /// Would a gap-chaining hop from <paramref name="from"/> to this node of the same taxiway step
+    /// over a block? It would if the node is blocked, if it lies in a section running on behind a
+    /// block (<see cref="SectionsBehindBlocks"/>), or if a blocked node of the taxiway stands between
+    /// the two (seen from the block they lie more than 90 degrees apart), which also covers a section
+    /// behind the block that a navdata gap of its own detaches from it.
+    /// </summary>
+    private bool HopStepsOverABlock(TaxiNode from, int toNodeId, List<TaxiNode> blocksOnTaxiway, HashSet<int> behindBlocks)
+    {
+        if (BlockedNodes.Contains(toNodeId) || behindBlocks.Contains(toNodeId)) return true;
+        var to = _graph.Nodes[toNodeId];
+        foreach (var block in blocksOnTaxiway)
+        {
+            double east = Math.Cos(block.Latitude * Math.PI / 180.0);
+            double fromX = (from.Longitude - block.Longitude) * east, fromY = from.Latitude - block.Latitude;
+            double toX = (to.Longitude - block.Longitude) * east, toY = to.Latitude - block.Latitude;
+            if (fromX * toX + fromY * toY < 0) return true;
+        }
+        return false;
     }
 
     /// <summary>

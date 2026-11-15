@@ -131,6 +131,88 @@ public class TaxiRouterBlockedNodesTests
         Assert.Equal(Nodes(plain), Nodes(blocked));
     }
 
+    // A junction J on taxiway A (the axis, running north). AHEAD of J, A runs J - V - P2, then a 55 m
+    // navdata gap crossed only through M on an edge named X, then A again P3 - P4. BEHIND J, A runs
+    // J - Pm - P0. Y is a way round the junction, from P2 to P0.
+    private static (TaxiGraph graph, Func<double, int> onA, int m) BuildJunctionOnGappedA()
+    {
+        var paths = new List<TaxiPath>
+        {
+            P(36.9988, -122.0000, 36.9996, -122.0000, "A"),
+            P(36.9996, -122.0000, 37.0000, -122.0000, "A"),
+            P(37.0000, -122.0000, 37.0005, -122.0000, "A"),
+            P(37.0005, -122.0000, 37.0010, -122.0000, "A"),
+            P(37.0010, -122.0000, 37.00125, -121.9994, "X"),
+            P(37.00125, -121.9994, 37.0015, -122.0000, "X"),
+            P(37.0015, -122.0000, 37.0025, -122.0000, "A"),
+            P(37.0010, -122.0000, 37.0010, -122.0012, "Y"),
+            P(37.0010, -122.0012, 36.9988, -122.0012, "Y"),
+            P(36.9988, -122.0012, 36.9988, -122.0000, "Y"),
+        };
+        var graph = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+        return (graph, lat => FindNode(graph, lat, -122.0000).NodeId, FindNode(graph, 37.00125, -121.9994).NodeId);
+    }
+
+    [Fact]
+    public void A_navdata_gap_ahead_of_a_blocked_junction_is_still_chained()
+    {
+        // KBOS, 2026-11-14: a left turn onto C at the H junction, and C has 400 m with no name 900 m
+        // further east. Blocking the junction must not cost the route that gap.
+        var (graph, onA, m) = BuildJunctionOnGappedA();
+        var router = new TaxiRouter(graph);
+        router.BlockedNodes.Add(onA(37.0000));
+
+        var path = router.AStarSearchWithGapChaining(onA(37.0005), onA(37.0025), "A");
+
+        Assert.NotNull(path);
+        Assert.Equal(new[] { onA(37.0005), onA(37.0010), m, onA(37.0015), onA(37.0025) }, path);
+    }
+
+    [Fact]
+    public void The_block_itself_is_never_chained_across_as_if_it_were_a_gap()
+    {
+        var (graph, onA, _) = BuildJunctionOnGappedA();
+        int v = onA(37.0005), p0 = onA(36.9988);
+        // Open, A runs straight through the junction ...
+        Assert.NotNull(new TaxiRouter(graph).AStarSearchWithGapChaining(v, p0, "A"));
+        // ... and with the junction blocked there IS a way round (Y), which a hop could take.
+        var router = new TaxiRouter(graph);
+        router.BlockedNodes.Add(onA(37.0000));
+        Assert.NotNull(router.FindShortestPath(v, p0));
+
+        // But A behind the junction is no "next section": what parts it from V is the block, not a gap.
+        Assert.Null(router.AStarSearchWithGapChaining(v, p0, "A"));
+    }
+
+    [Fact]
+    public void Nor_is_a_section_behind_the_block_that_a_gap_of_its_own_detaches()
+    {
+        // As above, but A behind the junction stops at Pm and resumes 66 m on (Pz1 - Pz), joined only
+        // through G on an edge named X2; the way round, Y, ends at Pz. Neither Pm's section (it touches
+        // the block) nor the detached one (the block stands between it and V) may be hopped to.
+        var paths = new List<TaxiPath>
+        {
+            P(36.9996, -122.0000, 37.0000, -122.0000, "A"),
+            P(37.0000, -122.0000, 37.0005, -122.0000, "A"),
+            P(37.0005, -122.0000, 37.0010, -122.0000, "A"),
+            P(36.9996, -122.0000, 36.9993, -121.9996, "X2"),
+            P(36.9993, -121.9996, 36.9990, -122.0000, "X2"),
+            P(36.9990, -122.0000, 36.9980, -122.0000, "A"),
+            P(37.0010, -122.0000, 37.0010, -122.0012, "Y"),
+            P(37.0010, -122.0012, 36.9980, -122.0012, "Y"),
+            P(36.9980, -122.0012, 36.9980, -122.0000, "Y"),
+        };
+        var graph = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+        int At(double lat) => FindNode(graph, lat, -122.0000).NodeId;
+        int v = At(37.0005), pz = At(36.9980);
+        Assert.NotNull(new TaxiRouter(graph).AStarSearchWithGapChaining(v, pz, "A"));   // open: through J, across the gap
+        var router = new TaxiRouter(graph);
+        router.BlockedNodes.Add(At(37.0000));
+        Assert.NotNull(router.FindShortestPath(v, pz));
+
+        Assert.Null(router.AStarSearchWithGapChaining(v, pz, "A"));
+    }
+
     [Fact]
     public void BuildRouteThrough_inserts_one_off_chart_segment()
     {

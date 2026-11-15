@@ -149,7 +149,7 @@ internal static class TurnPickApplier
         // Step 1: is it already so.
         double joinAt = 0;
         for (int i = afterDeparture; i < firstTaxiway; i++) joinAt += current.Segments[i].DistanceMeters;
-        if (TurnShape.IsCleanTurn(incoming, LegsFrom(current, afterDeparture), joinAt, side))
+        if (TurnShape.IsCleanTurn(incoming, LegsThroughRow(current, afterDeparture, firstTaxiway, name), joinAt, side))
         {
             int u = current.Segments[firstTaxiway].FromNode.NodeId;
             Log(ctx, row, side, name, TurnPickOutcome.AlreadyMet, $"departure {departure}, join {u}");
@@ -193,19 +193,25 @@ internal static class TurnPickApplier
 
         var failures = new List<Failure>();
 
+        // The charted way this pick declines: the route's own nodes up to and including where it joins
+        // the row's taxiway. An option may start along it (A and its connection are its own), but what
+        // follows the turn never goes back over it.
+        var chartedBeforeJoin = new List<int>();
+        for (int i = 0; i <= firstTaxiway; i++) chartedBeforeJoin.Add(current.Segments[i].FromNode.NodeId);
+
         // Step 2: a charted turn; the completed option with the shortest whole route wins.
         Completed? best = null;
         foreach (var option in ChartedOptions(ctx, a, incoming, name, side, blocked))
         {
-            var (done, failure) = Complete(option, prefix, prefixOffChart, row, side, ctx, input, inputHasPin, blocked);
+            var (done, failure) = Complete(option, prefix, prefixOffChart, row, side, ctx, input, inputHasPin, blocked, incoming, chartedBeforeJoin);
             if (done == null) { failures.Add(failure); continue; }
             if (best == null || done.Route.TotalDistanceMeters < best.Route.TotalDistanceMeters - 0.01 ||
                 (Math.Abs(done.Route.TotalDistanceMeters - best.Route.TotalDistanceMeters) <= 0.01 &&
                  done.ConnectionMeters < best.ConnectionMeters))
                 best = done;
         }
-        // Step 1 walks the route (onto the next taxiway if it comes within 80 m), step 2 the taxiway
-        // alone, so step 2 can pick the very route step 1 refused: that route already makes the turn.
+        // Step 2 can arrive at the very route step 1 looked at (another join node of the same turn):
+        // that route already makes the turn.
         if (best != null && NodeIds(best.Route).SequenceEqual(NodeIds(current)))
         {
             Log(ctx, row, side, name, TurnPickOutcome.AlreadyMet,
@@ -232,7 +238,7 @@ internal static class TurnPickApplier
         {
             if (blocked.Contains(c.NextNodeId)) continue;   // as the charted path skips a blocked v
             var option = new Option(new List<int> { a, c.JoinNodeId }, c.NextNodeId, OffChart: true, c.LengthMeters);
-            var (done, failure) = Complete(option, prefix, prefixOffChart, row, side, ctx, input, inputHasPin, blocked);
+            var (done, failure) = Complete(option, prefix, prefixOffChart, row, side, ctx, input, inputHasPin, blocked, incoming, chartedBeforeJoin);
             if (done == null) { failures.Add(failure); continue; }
             Log(ctx, row, side, name, TurnPickOutcome.OffChart,
                 $"departure {a}, join {c.JoinNodeId}, leg {c.LengthMeters:F1} m, {done.Route.TotalDistanceMeters:F0} m");
@@ -249,13 +255,51 @@ internal static class TurnPickApplier
         return (reason, null);
     }
 
-    /// (bearing, length) of each route segment from segmentIndex on.
-    private static List<(double Bearing, double LengthMeters)> LegsFrom(TaxiRoute route, int segmentIndex)
+    /// (bearing, length) of the route's segments from fromSegment on, through the join and along the
+    /// row's own taxiway: the list ends where the route leaves that taxiway. A turn the route makes onto
+    /// the NEXT taxiway is that row's turn, never this one's, however soon it comes.
+    private static List<(double Bearing, double LengthMeters)> LegsThroughRow(TaxiRoute route, int fromSegment,
+        int firstTaxiwaySegment, string name)
     {
         var legs = new List<(double, double)>();
-        for (int i = segmentIndex; i < route.Segments.Count; i++)
+        for (int i = fromSegment; i < route.Segments.Count; i++)
+        {
+            if (i > firstTaxiwaySegment && !Named(route.Segments[i].TaxiwayName, name)) break;
             legs.Add((route.Segments[i].BearingDegrees, route.Segments[i].DistanceMeters));
+        }
         return legs;
+    }
+
+    /// Does the route AS BUILT make the picked turn? Step 2 judges the taxiway's straightest run past
+    /// the join and an off-chart leg its first edge, but the remainder is routed freely and at a fork
+    /// can turn the picked way and then double back (LTFM "right onto N1": 65 degrees right, then 153
+    /// degrees the other way 55 m on). A charted turn is judged from the heading arriving at A; an
+    /// off-chart leg has passed its own gates, so only its turn onto the taxiway and what follows is.
+    /// Nor may it double back within 80 m of the join on whatever comes next: a reversal onto ANOTHER
+    /// taxiway there (more than 120 degrees in one change) undoes the turn just as surely.
+    private static bool BuiltRouteMakesTheTurn(TaxiRoute stitched, int afterDeparture, int firstTaxiway,
+        string name, TurnSide side, double incoming, bool offChart)
+    {
+        bool clean;
+        if (offChart)
+            clean = TurnShape.IsCleanTurn(stitched.Segments[firstTaxiway - 1].BearingDegrees,
+                LegsThroughRow(stitched, firstTaxiway, firstTaxiway, name), 0, side);
+        else
+        {
+            double joinAt = 0;
+            for (int i = afterDeparture; i < firstTaxiway; i++) joinAt += stitched.Segments[i].DistanceMeters;
+            clean = TurnShape.IsCleanTurn(incoming, LegsThroughRow(stitched, afterDeparture, firstTaxiway, name), joinAt, side);
+        }
+        if (!clean) return false;
+
+        double walked = stitched.Segments[firstTaxiway].DistanceMeters;
+        for (int i = firstTaxiway + 1; i < stitched.Segments.Count && walked < TurnShape.WalkPastJoinMeters; i++)
+        {
+            double change = Normalize(stitched.Segments[i].BearingDegrees - stitched.Segments[i - 1].BearingDegrees);
+            if (Math.Abs(change) > TurnShape.MaxSingleChangeDeg) return false;
+            walked += stitched.Segments[i].DistanceMeters;
+        }
+        return true;
     }
 
     /// Step 2: every directed edge (u, v) of the taxiway with u within 150 m of A along the network
@@ -334,12 +378,24 @@ internal static class TurnPickApplier
     /// honoring conditions (no fallback, the pinned node kept, within the length bound).
     private static (Completed?, Failure) Complete(Option option, List<int> prefix,
         List<(int From, int To)> prefixOffChart, int row, TurnSide side,
-        TurnPickContext ctx, TaxiRoute input, bool inputHasPin, HashSet<int> blocked)
+        TurnPickContext ctx, TaxiRoute input, bool inputHasPin, HashSet<int> blocked, double incoming,
+        List<int> chartedBeforeJoin)
     {
         int a = option.DepartureNodeId, u = option.JoinNodeId, v = option.NextNodeId;
         var own = option.Connection.Distinct().ToList();   // A, the interior, u
         var stepBlocked = new HashSet<int>(blocked);
         stepBlocked.UnionWith(own);
+        // The rest never comes back to where the route has already been: with only the junction closed,
+        // a turn the destination does not lie on was "honored" by a loop back through an earlier node
+        // and down the charted side after all (WMKK "left onto G", 265 m of loop). Closed for this
+        // search only; the pick's own BlockedNodeIds stay A, the interior and u.
+        stepBlocked.UnionWith(prefix);
+        // Nor does it go back over the charted way it declined, up to where that way joins the taxiway
+        // (ZJHK "right onto C": an off-chart leg beside the charted lead-in, 37 m of C, then back up the
+        // lead-in itself to the taxiway before, and onto C the charted way after all).
+        stepBlocked.UnionWith(chartedBeforeJoin);
+        // An option whose very next node is one of those would start the rest on closed ground.
+        if (stepBlocked.Contains(v)) return (null, Failure.Remainder);
 
         int end = ctx.DestinationNodeId;
         bool lastRow = row == ctx.Sequence.Count - 1;
@@ -365,10 +421,17 @@ internal static class TurnPickApplier
         var all = new List<int>(prefix);
         all.AddRange(option.Connection);
         all.AddRange(remainder);
+        if (VisitsANodeTwice(all)) return (null, Failure.Remainder);
         var offChartPairs = new List<(int From, int To)>(prefixOffChart);
         if (option.OffChart) offChartPairs.Add((a, u));
         var stitched = new TaxiRouter(ctx.Graph).BuildRouteThrough(all, offChartPairs);
         if (stitched == null || stitched.Segments.Count == 0) return (null, Failure.Other);
+        // A route that turns the picked way and then doubles back does not lead there that way.
+        if (!BuiltRouteMakesTheTurn(stitched, prefix.Count, prefix.Count + option.Connection.Count - 1,
+                ctx.Sequence[row], side, incoming, option.OffChart))
+            return (null, Failure.Remainder);
+        if (ComesBackPastTheJunction(stitched, prefix.Count + option.Connection.Count - 1, ctx.Graph.Nodes[a]))
+            return (null, Failure.Remainder);
         // The pin is tested before the length: an option that drops the pin is NoTurnFound even when it is also too long.
         if (inputHasPin && !all.Contains(ctx.PinnedNodeId)) return (null, Failure.Pinned);
         if (stitched.TotalDistanceMeters > input.TotalDistanceMeters * ctx.MaxLengthRatio + ctx.MaxLengthPadMeters)
@@ -392,6 +455,51 @@ internal static class TurnPickApplier
             OffChartLengthMeters = option.OffChart ? option.OffChartLength : 0,
             BlockedNodeIds = own,
         }, connectionMeters), Failure.None);
+    }
+
+    /// The same node twice is a loop. Each leg the router builds is a simple path, but joined they can
+    /// run out along a taxiway and straight back over it: ZBAD "right onto L2" went 116 m west along
+    /// M to the node the router had picked to leave it by, and back east over the same five nodes.
+    /// VirtualPilot: 487 of the 1,606 picks still honored without this test did that somewhere.
+    internal static bool VisitsANodeTwice(IReadOnlyList<int> nodeIds)
+    {
+        var seen = new HashSet<int>();
+        foreach (int id in nodeIds)
+            if (!seen.Add(id)) return true;
+        return false;
+    }
+
+    /// Once it is 60 m beyond the join, does the route pass within 30 m of the junction it turned at
+    /// (the departure node A)? Then it has turned the picked way and come straight back beside its own
+    /// turn, on other nodes: a loop no closed node catches, and one that puts the aircraft next to the
+    /// start of the leg it has just taxied, where the segment tracker can take it round again.
+    private const double BackPastJunctionAfterMeters = 60.0, BackPastJunctionWithinMeters = 30.0;
+
+    private static bool ComesBackPastTheJunction(TaxiRoute stitched, int firstTaxiway, TaxiNode junction)
+    {
+        double walked = 0;
+        for (int i = firstTaxiway; i < stitched.Segments.Count; i++)
+        {
+            var s = stitched.Segments[i];
+            if (walked >= BackPastJunctionAfterMeters &&
+                DistanceToSegmentMeters(junction, s.FromNode, s.ToNode) < BackPastJunctionWithinMeters)
+                return true;
+            walked += s.DistanceMeters;
+        }
+        return false;
+    }
+
+    /// Distance in metres from p to the segment a-b, on a local flat grid around p.
+    private static double DistanceToSegmentMeters(TaxiNode p, TaxiNode a, TaxiNode b)
+    {
+        const double metresPerDegree = 111132.0;
+        double east = metresPerDegree * Math.Cos(p.Latitude * Math.PI / 180.0);
+        double ax = (a.Longitude - p.Longitude) * east, ay = (a.Latitude - p.Latitude) * metresPerDegree;
+        double bx = (b.Longitude - p.Longitude) * east, by = (b.Latitude - p.Latitude) * metresPerDegree;
+        double dx = bx - ax, dy = by - ay, lengthSquared = dx * dx + dy * dy;
+        double t = lengthSquared < 1e-9 ? 0 : Math.Clamp(-(ax * dx + ay * dy) / lengthSquared, 0, 1);
+        double x = ax + t * dx, y = ay + t * dy;
+        return Math.Sqrt(x * x + y * y);
     }
 
     /// Section 5: walking only the taxiway's own edges from v (v itself counts), never into a blocked

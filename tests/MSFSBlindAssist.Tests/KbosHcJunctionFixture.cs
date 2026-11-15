@@ -15,9 +15,14 @@ internal static class KbosHcJunctionFixture
         C1 = (42.361237, -71.007263), Z = (42.361153, -71.006950), Y = (42.361069, -71.006638),
         C4 = (42.360893, -71.005959), CEast = (42.360600, -71.004753), CWest = (42.362236, -71.010376);
     public static readonly (double Lat, double Lon) StopPosition = (42.3616609, -71.0070903);   // heading 234.5 true
+    /// Beyond CEast with eastGap: 400 m with no taxiway name (GapMid halfway), then C again to CFarEast.
+    public static readonly (double Lat, double Lon)
+        GapMid = (42.360014, -71.002450), GapEnd = (42.359428, -71.000147), CFarEast = (42.359135, -70.998996);
 
     /// connectorName "C" reproduces the graph with online names loaded; "" is raw navdata.
-    public static TaxiGraph Build(string connectorName = "C")
+    /// eastGap adds what the real taxiway C has 900 m east of the junction: a stretch the navdata
+    /// leaves unnamed (nodes 339 to 348, 400 m), after which C resumes.
+    public static TaxiGraph Build(string connectorName = "C", bool eastGap = false)
     {
         var paths = new List<TaxiPath>();
         void Add(string name, (double Lat, double Lon) a, (double Lat, double Lon) b)
@@ -47,7 +52,22 @@ internal static class KbosHcJunctionFixture
         Add("C", Z, Y);
         Add("C", Y, C4);
         Add("C", C4, c5);
-        Add("C", c5, CEast);
+        if (!eastGap) Add("C", c5, CEast);
+        else
+        {
+            // Twelve nodes on the way to CEast, as the real C has: the router tries its ten nearest
+            // nodes of a taxiway as entries, and here, as at the airport, none of them lies past the gap.
+            var from = c5;
+            for (int i = 1; i <= 12; i++)
+            {
+                var to = i == 12 ? CEast : (c5.Item1 + (CEast.Lat - c5.Item1) * i / 12.0, c5.Item2 + (CEast.Lon - c5.Item2) * i / 12.0);
+                Add("C", from, to);
+                from = to;
+            }
+            Add("", CEast, GapMid);
+            Add("", GapMid, GapEnd);
+            Add("C", GapEnd, CFarEast);
+        }
 
         var runways = new List<Runway>
         {
