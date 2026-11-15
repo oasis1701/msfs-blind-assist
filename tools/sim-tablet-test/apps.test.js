@@ -296,6 +296,52 @@ test('spacing: a word split over inline runs stays one word; two boxed words do 
   assert.deepStrictEqual(two, ['static|Airport module not responding']);
 });
 
+test('a control the page shows on hover is read, from the page\'s own :hover rule; one no rule reveals is not', () => {
+  const { A } = page('<style>.bar:hover .closer { visibility: visible; }</style>' +
+    '<div class="bar"><span>OMDB</span><div class="closer"><button title="Clear Selected Facility"></button></div>' +
+    '<div class="gone"><button title="Never shown"></button></div></div>', {
+    before: w => {
+      const orig = w.getComputedStyle;
+      w.__hidden = el => el.classList && (el.classList.contains('closer') || el.classList.contains('gone') ||
+        (el.parentElement && el.parentElement.classList && (el.parentElement.classList.contains('closer') || el.parentElement.classList.contains('gone'))));
+    },
+  });
+  const gcs = window.getComputedStyle;
+  window.getComputedStyle = el => Object.assign({}, gcs(el), window.__hidden(el) ? { visibility: 'hidden' } : {});
+  const l = lines(scraped(A));
+  assert.ok(l.includes('button|Clear Selected Facility'));
+  assert.ok(!l.includes('button|Never shown'));
+});
+
+test('a row of exclusive choices made of pressable divs reads its items with the selected one', () => {
+  const { A, window } = page('<div class="multiple-buttons"><div class="opt selected" data-h="click">Default</div><div class="opt">Satellite</div></div>', {
+    before: w => {
+      w.__presses = [];
+      w.document.querySelectorAll('.opt').forEach(d => { d.onclick = () => w.__presses.push(d.textContent); });
+    },
+  });
+  const els = scraped(A);
+  assert.deepStrictEqual(lines(els), ['button|Default (selected)', 'button|Satellite']);
+  A.clickElement(find(els, 'Satellite').idx);
+  assert.deepStrictEqual(window.__presses, ['Satellite']);
+});
+
+test('repeated fields say their row under a stable key, never their own caption', () => {
+  const box = n => '<div class="row"><span class="t">' + n + '</span><div class="f"><span>Manual</span>' +
+    '<div class="switch-container"></div></div><span>0 KG</span></div>';
+  const els = scraped(page(box('Trip fuel') + box('Alternate fuel')).A).filter(e => e.controlType === 'checkbox');
+  assert.deepStrictEqual(els.map(e => e.text), ['Trip fuel: Manual', 'Alternate fuel: Manual']);
+  assert.deepStrictEqual(els.map(e => e.key), ['field:Manual', 'field:Manual']);
+});
+
+test('a chevron in a header folds; a map\'s layer of controls is no dialog', () => {
+  const l = lines(scraped(page('<div class="facility-header"><div class="title-container"><span>OMDB</span>' +
+    '<button><svg id="svg1"><g id="layer1"><path id="down"></path></g></svg></button></div></div>' +
+    '<div class="map-overlay" data-rect="0,0,600,700"><div class="title">Ground Speed</div><button>Zoom in</button></div>').A));
+  assert.ok(l.includes('button|Fold or unfold'));
+  assert.ok(!l.some(x => /^alert/.test(x)), 'no alert for the map overlay');
+});
+
 test('state words: a class that says "not selected" is not selected; a keypad\'s X is X', () => {
   const l = lines(scraped(page('<button class="opt-btn not-selected">Option A</button><button class="opt-btn opt-btn-selected">Option B</button>' +
     '<div class="keys"><button>W</button><button>X</button><button>Y</button></div>').A));
