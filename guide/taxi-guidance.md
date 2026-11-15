@@ -144,7 +144,7 @@ A list on every taxiway row, just before that row's taxiway list. On the first r
 
 Leave it on Automatic unless ATC named the direction, as in "taxi via F, H, left on C". Then set the Turn list on the row for C to **Left**. With Automatic, BA picks the turn that suits your route, as it always has.
 
-On the first taxiway, left and right are from the way your aircraft is facing when you press Calculate Route. On every later row they are from the direction of the taxiway before it.
+On the first taxiway, left and right are from the way your aircraft is facing when you press Calculate Route, if the route starts on that taxiway. If the route first has to taxi to it, from a stand or along a taxilane, they are from the direction you arrive at it. On every later row they are from the direction of the taxiway before it.
 
 The Turn list keeps its value when you change the row's taxiway, and goes away with the row if you remove it. It is shown for every destination type, Progressive Taxi included. A SayIntentions import sets every Turn list back to Automatic.
 
@@ -407,10 +407,10 @@ ATC: *"Taxi to runway 33L via F, H, left on C."*
 1. Destination: **Runway 33L**.
 2. First taxiway: **F**.
 3. Add Taxiway, Taxiway 2: **H**.
-4. Add Taxiway, Taxiway 3: **C**. Press Shift+Tab to reach **Turn onto taxiway 3**, and set it to **Left**.
+4. Add Taxiway, Taxiway 3: **C**. After choosing C in its taxiway list, press Shift+Tab to reach **Turn onto taxiway 3**, and choose **Left**.
 5. Calculate Route.
 
-If the airport's taxi data has a left turn from H onto C that your route did not already take, the summary adds *"Turning left onto taxiway C, as picked."* If your route already turned left there, you hear nothing extra.
+If the airport's taxi data has a left turn from H onto C that your route did not already take, you hear *"Turning left onto taxiway C, as picked."*, in the summary and again once guidance starts. If your route already turned left there, you hear nothing extra.
 
 If the data has no link from H onto C in that direction, BA builds a short off-chart leg and the summary says so, for example *"Note: this route includes an off-chart left turn onto taxiway C, 95 metres with no taxi line."* Guidance then announces the leg when you reach it. See [Off-chart legs](#taxi-off-chart-legs).
 
@@ -502,11 +502,11 @@ Most routes produce a clean summary. When something is not right, a warning is a
 
 **"Note: no left turn onto taxiway C was found here. The route keeps the charted turn."** You set a Turn list, and BA found no way to make that turn, charted or off-chart. It kept the route it would have built without your pick. Check the direction and the taxiway on that row, and with ATC if the turn really is possible. You hear the same note when the route includes an uncharted apron crossing, or when the pick would drop a named holding point the route is pinned through.
 
-**"Note: turning left onto taxiway C does not lead to Runway 33L. The route keeps the charted turn."** The turn is possible, but nothing beyond it reaches your destination. BA kept the charted turn. Check the clearance: the direction may belong to a different taxiway.
+**"Note: turning left onto taxiway C does not lead to Runway 33L. The route keeps the charted turn."** The turn is possible, but nothing beyond it reaches your destination. BA kept the charted turn. Check the clearance.
 
 **"Note: turning left onto taxiway C would be a long detour to Runway 33L. The route keeps the charted turn."** The turn leads to your destination only the long way round, more than twice the charted route plus 500 metres, so BA kept the charted turn. If ATC really meant that turn, ask whether the long way is intended.
 
-**"Turning left onto taxiway C, as picked."** Not a problem. Your pick changed the route, and BA says so. If you also hear the warning that the route is longer than the direct route, this is usually why.
+**"Turning left onto taxiway C, as picked."** Not a problem. Your pick changed the route, and BA says so, in the summary and again once guidance starts. A Turn list keeps its value from one route to the next, so this is also how you hear that a pick left over from an earlier clearance has turned this route. If you also hear the warning that the route is longer than the direct route, this is usually why.
 
 **"Note: this route includes an off-chart left turn onto taxiway C, 95 metres with no taxi line."** The route includes an off-chart leg. See [Off-chart legs](#taxi-off-chart-legs).
 
@@ -745,6 +745,8 @@ BA does not judge a Turn pick again from where you are. It keeps what it decided
 - Once you have made the turn, no later new route takes you back through that junction.
 - If a new route cannot keep a turn that was still ahead, "Route changed" adds *"The left turn onto taxiway C could not be kept."*
 
+In those two cases BA always takes the new route and says so, even when it uses the same taxiways as the old one: the old route is the one you have left at the turn.
+
 Calculating a new route in the planner clears all of this.
 
 ### When BA cannot recalculate {#when-ba-cannot-recalculate}
@@ -847,6 +849,8 @@ This is a reference list of every taxi guidance callout, grouped by when you hea
 | *"No backtrack entrance found for this runway. Full length departure."* | No entrance suited to a backtrack. | Plan a normal departure. |
 | *"Note: this route includes an off-chart left turn onto taxiway C, 95 metres with no taxi line."* | A picked turn needs a short leg with no taxi line. | Follow the tone along it; see [Off-chart legs](#taxi-off-chart-legs). |
 | *"Note: no left turn onto taxiway C was found here. The route keeps the charted turn."* | Your Turn pick could not be made. | Check the pick against the clearance. |
+| *"Note: turning left onto taxiway C does not lead to Runway 33L. The route keeps the charted turn."* | The picked turn does not reach your destination. | Check the clearance. |
+| *"Note: turning left onto taxiway C would be a long detour to Runway 33L. The route keeps the charted turn."* | The picked turn reaches your destination only the long way round. | Ask ATC whether the long way is intended. |
 | *"Turning left onto taxiway C, as picked."* | Your Turn pick changed the route. | Nothing; for information. |
 | *"Taxiway A. Steering guidance active."* | Guidance has started; you are on A. | Start taxiing. |
 | *"Steering guidance active. Join taxiway A in 60 metres."* | Guidance has started; A is ahead. | Taxi onto A, following the tone. |
