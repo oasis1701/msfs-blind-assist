@@ -547,7 +547,15 @@ public class FbwEfbForm : Form
     // the in-place disabled patch can never drift on what the label without ", dimmed" is.
     private static string CheckBoxLabel(EFBElement el) => string.IsNullOrEmpty(el.Text) ? "(unnamed checkbox)" : el.Text;
     private static string FieldLabel(EFBElement el) => string.IsNullOrEmpty(el.Text) ? "(unnamed field)" : el.Text;
-    private static string FieldCaption(EFBElement el) => FieldLabel(el) + (el.ControlType == "select" ? " (choice — type a value)" : "");
+    private static string FieldCaption(EFBElement el) => FieldLabel(el) + (el.ControlType switch
+    {
+        "select" => " (choice — type a value)",
+        // A slider, in the list fallback, is typed as a number between its bounds.
+        "range" => $" (slider, {FormatBound(el.Min, 0)} to {FormatBound(el.Max, 100)})",
+        _ => ""
+    });
+    private static string FormatBound(double? v, double fallback) =>
+        (v ?? fallback).ToString(System.Globalization.CultureInfo.CurrentCulture);
     private static string ButtonLabel(EFBElement el) => string.IsNullOrEmpty(el.Text) ? "(unnamed button)" : el.Text;
 
     private int InnerWidth()
@@ -715,7 +723,7 @@ public class FbwEfbForm : Form
             return cb;
         }
 
-        if (el.ControlType is "text" or "select")
+        if (el.ControlType is "text" or "select" or "range")
         {
             var container = new Panel { Size = new Size(width, 46), AccessibleRole = AccessibleRole.Grouping };
             string fieldText = FieldLabel(el);

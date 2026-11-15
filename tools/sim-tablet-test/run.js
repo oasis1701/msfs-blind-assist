@@ -3,7 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
 
-const AGENT = path.join(__dirname, '..', '..', 'MSFSBlindAssist', 'Resources', 'coherent-sim-tablet-agent.js');
+// SIM_TABLET_AGENT runs another copy of the reader (an older one, to diff what a change does).
+const AGENT = process.env.SIM_TABLET_AGENT ||
+  path.join(__dirname, '..', '..', 'MSFSBlindAssist', 'Resources', 'coherent-sim-tablet-agent.js');
 
 // Load a captured fixture (capture.js) and the real agent into jsdom.
 // Visibility convention, the same as tools/md11-efb-test: a rendered element carries data-vis="1"

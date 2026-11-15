@@ -4,25 +4,34 @@
 // with the sim's apps (Flight Planner, Aircraft, Pilot book, Settings, Ground Services, CIVA) and any
 // add-on apps installed into it. MSFS 2020 has no such view.
 //
+// The SAME script also reads an app that lives in its own cross-origin frame (GSX Remote at
+// 127.0.0.1:8744, Navigraph Charts): the page cannot reach into such a frame, so the reader emits a
+// 'frame' marker where it sits and CoherentPmdgEfbClient evaluates this script inside the frame's own
+// execution context and splices its elements in (STAB-14). Outside the EFB OS document (no .efb) the
+// reader reads the whole document: no dock, no SimBrief action.
+//
 // ES5 ONLY. Coherent GT is Chromium 49: var (no const/let), no arrow functions, no template
 // literals, no String.includes / Array.from / Object.assign. Use indexOf and plain loops.
 //
 // Contract, identical to coherent-pmdg-efb-agent.js so the shared FbwEfbForm consumes both:
 //   scrape()            -> JSON string {ok, unchanged?, page, elements:[...]}
 //   clickElement(idx)   -> press the element carrying that stamped idx
-//   setValue(idx, text) -> type into it, tick it, or pick a dropdown choice
-// Element: {idx,text,value,controlType,kind,clickable,level,live,disabled,options,key?,announceChange?}
-//   kind: 'tab' | 'button' | 'heading' (+level) | 'static' | 'alert'
-//   controlType: 'text' | 'checkbox' | 'select'
+//   setValue(idx, text) -> type into it, tick it, pick a dropdown choice, or move a slider
+// Element: {idx,text,value,controlType,kind,clickable,level,live,disabled,options,min,max,step,key?,announceChange?}
+//   kind: 'tab' | 'button' | 'heading' (+level) | 'static' | 'alert' | 'frame' (the client's marker)
+//   controlType: 'text' | 'checkbox' | 'select' | 'range'
 //
 // Plus the Flight Planner route primitives (A.route.*) the app's SimBrief import drives one step at
 // a time; see the block near the end.
 //
-// HOW THE TABLET TAKES INPUT (measured live 2026-10-19, and read from efb_os.js):
+// HOW THE TABLET TAKES INPUT (measured live 2026-10-19 and 2026-11-15, and read from the apps' code):
 //   * Buttons, tabs, dropdown items and switches answer el.click(): the OS button sets onclick.
 //   * A few lists answer mousedown only (the Flight Planner's search results, FacilityResultItem
-//     sets onmousedown). A.press fires the ONE event the element listens to, never both.
+//     sets onmousedown; MK Airport's jetway buttons). A.press fires the ONE event the element
+//     listens to, never both (STAB-2).
 //   * A text box takes its value from .value plus an 'input' event, with NO focus.
+//   * The OS slider takes a mousedown on its bar, then follows the DOCUMENT's mousemove and mouseup
+//     (STAB-12); its position is the --ratio-value style on the slider.
 // ⚠️ NEVER FOCUS A TABLET TEXT BOX, and never send it a mousedown: the OS TextBox focuses its input
 // on mousedown, and focusing it fires Coherent FOCUS_INPUT_FIELD, which hands the pilot's KEYBOARD to
 // the tablet (every sim key and app hotkey stops working). A.releaseKeyboard undoes a focus the
@@ -39,6 +48,31 @@
   A.SIMBRIEF_LABEL = 'Load latest SimBrief plan';
 
   // ---------------------------------------------------------------------------------
+  // which listeners an element has (STAB-13)
+  // ---------------------------------------------------------------------------------
+
+  // Add-on apps bind presses with addEventListener (MK Airport's tabs: "click"; its jetway buttons:
+  // "mousedown"), which leaves no trace on the element. Record, per element, which press events it
+  // was given from now on, so A.press can fire the one it answers. Installed ONCE per document (a
+  // re-injection keeps the first hook), and it only RECORDS: the listener is passed through unchanged.
+  try {
+    if (!window.__MSFSBA_LISTEN_HOOKED && window.EventTarget && EventTarget.prototype.addEventListener) {
+      var origAdd = EventTarget.prototype.addEventListener;
+      EventTarget.prototype.addEventListener = function (type) {
+        try {
+          if (this && this.nodeType === 1 && (type === 'click' || type === 'mousedown' || type === 'mouseup' ||
+              type === 'pointerdown' || type === 'pointerup' || type === 'touchstart')) {
+            var h = this.__msfsbaEv || (this.__msfsbaEv = {});
+            h[type] = true;
+          }
+        } catch (e) {}
+        return origAdd.apply(this, arguments);
+      };
+      window.__MSFSBA_LISTEN_HOOKED = true;
+    }
+  } catch (e) {}
+
+  // ---------------------------------------------------------------------------------
   // small helpers
   // ---------------------------------------------------------------------------------
 
@@ -49,18 +83,30 @@
     return ' ' + (c || '') + ' ';
   };
   A.hasClass = function (el, c) { return A.cls(el).indexOf(' ' + c + ' ') >= 0; };
+  A.tokens = function (el) { return A.norm(A.cls(el)).toLowerCase().split(' '); };
+  A.attr = function (el, n) { return el && el.getAttribute ? el.getAttribute(n) : null; };
+  // A data attribute that says yes: data-active="1", data-on="true".
+  A.yes = function (el, n) { var v = A.attr(el, n); return v === '1' || v === 'true' || v === 'on' || v === 'yes'; };
+
+  A.styleOf = function (el) {
+    try {
+      var w = (el.ownerDocument && el.ownerDocument.defaultView) || window;
+      return w.getComputedStyle(el);
+    } catch (e) { return null; }
+  };
 
   A.isHidden = function (el) {
     if (!el || !el.getBoundingClientRect) return false;
     var r = el.getBoundingClientRect();
     if (r.width <= 0 && r.height <= 0) return true;
-    var st = null;
-    try { st = window.getComputedStyle(el); } catch (e) { return false; }
+    var st = A.styleOf(el);
     if (!st) return false;
     return st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0';
   };
   A.isVisible = function (el) { return !!el && !A.isHidden(el); };
 
+  // The EFB OS document, or an app's own frame (no .efb), read whole.
+  A.inEfb = function () { return !!document.querySelector('.efb'); };
   A.root = function () { return document.querySelector('.efb') || document.body; };
   // tools/coherent.ps1's `capture` command looks for findRoot()/isVisible() on the installed agent.
   A.findRoot = function () { return A.root(); };
@@ -68,12 +114,15 @@
   // The OS disables a control with setAttribute("disabled", "") — on <div> list items as well as
   // buttons, where el.disabled is undefined. One container carries disabled="false" while enabled.
   // The OS also shows a disabled control's own .disabled-layer child, which is what a captured
-  // fixture keeps.
+  // fixture keeps. Add-on apps say it with aria-disabled or a class ("mk-btn--disabled").
   A.isDisabled = function (el) {
     if (!el || el.nodeType !== 1) return false;
     if (el.disabled === true) return true;
     var a = el.getAttribute('disabled');
     if (a !== null && a !== 'false') return true;
+    if (el.getAttribute('aria-disabled') === 'true') return true;
+    var t = A.tokens(el);
+    for (var j = 0; j < t.length; j++) if (t[j] === 'disabled' || t[j] === 'is-disabled' || /--disabled$/.test(t[j])) return true;
     for (var i = 0; i < el.children.length; i++) {
       if (A.hasClass(el.children[i], 'disabled-layer')) return !A.isHidden(el.children[i]);
     }
@@ -104,7 +153,7 @@
         if (c.nodeType === 3) { if (c.nodeValue) parts.push({ t: c.nodeValue, el: n }); continue; }
         if (c.nodeType !== 1) continue;
         var tag = c.tagName.toLowerCase();
-        if (tag === 'svg' || tag === 'script' || tag === 'style' || tag === 'canvas' || tag === 'img') continue;
+        if (tag === 'svg' || tag === 'script' || tag === 'style' || tag === 'canvas' || tag === 'img' || tag === 'iframe') continue;
         if (mode === 'model' ? A.modelHidden(c) : A.isHidden(c)) continue;
         rec(c);
       }
@@ -163,6 +212,29 @@
     return /^(svg\d*|defs\d*|Layer \d+|Groupe.*|Trac.*)$/i.test(n) ? '' : A.norm(n);
   };
 
+  // A picture that names its control: <img alt="CIVA Options">.
+  A.imgName = function (el) {
+    var imgs = el.tagName === 'IMG' ? [el] : el.querySelectorAll('img');
+    for (var i = 0; i < imgs.length; i++) {
+      if (A.isHidden(imgs[i])) continue;
+      var n = A.norm(imgs[i].getAttribute('alt') || imgs[i].getAttribute('title'));
+      if (n) return n;
+    }
+    return '';
+  };
+
+  // aria-labelledby names a control by other elements' text.
+  A.labelledBy = function (el) {
+    var ids = A.norm(A.attr(el, 'aria-labelledby'));
+    if (!ids) return '';
+    var parts = ids.split(' '), out = [];
+    for (var i = 0; i < parts.length; i++) {
+      var n = el.ownerDocument.getElementById(parts[i]);
+      if (n) { var t = A.modelText(n); if (t) out.push(t); }
+    }
+    return out.join(' ');
+  };
+
   // Icon buttons the OS names nowhere: by their class.
   A.CLASS_NAMES = {
     'more-info-button': 'More information',
@@ -180,8 +252,10 @@
   };
 
   A.buttonLabel = function (el) {
-    var n = A.lineText(el) || A.tooltipOf(el) || el.getAttribute('aria-label') || el.getAttribute('title');
-    if (n) return n;
+    var n = A.lineText(el) || A.attr(el, 'aria-label') || A.labelledBy(el) || A.tooltipOf(el) || A.attr(el, 'title') ||
+      A.imgName(el) || A.attr(el, 'data-label');
+    if (el.tagName === 'INPUT') n = n || el.value;
+    if (n) return A.norm(n);
     n = A.className(el);
     if (n) return n;
     n = A.iconName(el);
@@ -199,6 +273,148 @@
       }
     }
     return n;
+  };
+
+  // ---------------------------------------------------------------------------------
+  // what takes a press, and what state a control shows (STAB-13)
+  // ---------------------------------------------------------------------------------
+
+  // The one press event an element answers, from its on* property or the listener hook; '' when it
+  // shows none (a listener bound before the reader was installed, or a delegated one).
+  A.handlerOf = function (el) {
+    var h = el.__msfsbaEv || {};
+    if (typeof el.onclick === 'function' || h.click) return 'click';
+    if (typeof el.onmousedown === 'function' || h.mousedown) return 'mousedown';
+    if (typeof el.onpointerdown === 'function' || h.pointerdown) return 'pointerdown';
+    if (typeof el.onmouseup === 'function' || h.mouseup) return 'mouseup';
+    if (typeof el.onpointerup === 'function' || h.pointerup) return 'pointerup';
+    if (typeof el.ontouchstart === 'function' || h.touchstart) return 'touchstart';
+    return '';
+  };
+
+  A.CLICK_ROLES = { button: 1, link: 1, tab: 1, menuitem: 1, option: 1, treeitem: 1, menuitemcheckbox: 1,
+                    menuitemradio: 1, 'switch': 1, checkbox: 1, radio: 1 };
+  // A class that names a pressable thing, for a listener bound before the reader was installed:
+  // "mk-tab", "mk-btn--primary", "jetway-button", "si-btn", Tailwind's "cursor-pointer". Never a BEM
+  // ELEMENT of one ("jetway-button__label"), never a group ("mk-tabs", "button-group"), and a tab
+  // or switch only under an app's own prefix: the OS calls a whole load panel "tab" and its status
+  // dot "chip". Never "link": AtmosphereMod's "atmo-link" is its METAR link's status line, and a real
+  // link is an <a>.
+  A.BEM_PRESS = /^(?:(?:[a-z0-9]+[-_])+(?:btn|button|tab|switch|toggle)|btn|button)(?:--[a-z0-9-]+)?$/;
+  A.isTabLike = function (el) {
+    if (A.attr(el, 'role') === 'tab') return true;
+    var t = A.tokens(el);
+    for (var i = 0; i < t.length; i++) if (t[i].indexOf('__') < 0 && /[-_]tab(?:--[a-z0-9-]+)?$/.test(t[i])) return true;
+    return false;
+  };
+  // A drag handle (Settings' favourites "move-button") is no press: reordering by drag is not offered.
+  A.DRAG_HANDLE = /(?:^|[-_])(?:move|drag|grab|handle|reorder)(?:[-_]|$)/;
+  A.looksPressable = function (el) {
+    var t = A.tokens(el);
+    for (var j = 0; j < t.length; j++) if (A.DRAG_HANDLE.test(t[j])) return false;
+    for (var i = 0; i < t.length; i++) {
+      if (t[i] === 'cursor-pointer' || t[i] === 'clickable') return true;
+      if (t[i].indexOf('__') < 0 && A.BEM_PRESS.test(t[i])) return true;
+    }
+    return false;
+  };
+  A.isPressable = function (el) {
+    var tag = el.tagName;
+    if (tag === 'BUTTON' || tag === 'SUMMARY') return true;
+    if (tag === 'A') return el.getAttribute('href') !== null || !!A.handlerOf(el);
+    if (tag === 'INPUT') { var ty = (el.type || '').toLowerCase(); return ty === 'button' || ty === 'submit' || ty === 'reset' || ty === 'image'; }
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'LABEL' || tag === 'OPTION') return false;
+    if (A.handlerOf(el)) return true;
+    var role = A.attr(el, 'role');
+    if (role && A.CLICK_ROLES[role]) return true;
+    return A.looksPressable(el);
+  };
+  // A pointer cursor the page sets on the element itself, not one it inherits from its parent.
+  A.ownPointer = function (el) {
+    var st = A.styleOf(el);
+    if (!st || st.cursor !== 'pointer') return false;
+    var ps = el.parentElement ? A.styleOf(el.parentElement) : null;
+    return !ps || ps.cursor !== 'pointer';
+  };
+  // A handler on a whole page or panel (iniJetways' body, which clears the selection) is a
+  // container, never one button with the page's text as its name.
+  A.isBig = function (el) {
+    if (el.getElementsByTagName('*').length > 60) return true;
+    var v = A._view, r = el.getBoundingClientRect(), vr = v && v !== el ? v.getBoundingClientRect() : null;
+    return !!vr && vr.height > 0 && r.height > vr.height * 0.6 && r.width > vr.width * 0.6;
+  };
+
+  // The state a control shows, as words: from ARIA, from data attributes (SayIntentions' data-active,
+  // iniJetways' data-state), and from class names ("selected", "active", "mk-tab--on", iniJetways'
+  // "transit" while the jetway moves).
+  A.STATE_CLASS = { selected: 'selected', active: 'active', checked: 'checked', on: 'on', current: 'current',
+                    open: 'open', opened: 'open', expanded: 'expanded', connected: 'connected', transit: 'moving',
+                    moving: 'moving', pressed: 'on', toggled: 'on', error: 'error', failed: 'failed', locked: 'locked' };
+  A.NO_STATE = { '': 1, 'default': 1, normal: 1, none: 1, 'null': 1, undefined: 1, ready: 1 };
+  A.stateOf = function (el) {
+    var w = [], seen = {};
+    function add(s) { if (s && !seen[s]) { seen[s] = 1; w.push(s); } }
+    var a;
+    if (A.attr(el, 'aria-selected') === 'true') add('selected');
+    if (A.attr(el, 'aria-pressed') === 'true') add('on');
+    if ((a = A.attr(el, 'aria-current')) && a !== 'false') add('current');
+    if ((a = A.attr(el, 'aria-expanded')) === 'true') add('expanded'); else if (a === 'false') add('collapsed');
+    if (A.yes(el, 'data-active') || A.yes(el, 'data-selected')) add('selected');
+    if (A.yes(el, 'data-on')) add('on');
+    var t = A.tokens(el);
+    for (var i = 0; i < t.length; i++) {
+      var k = t[i];
+      if (k.indexOf(':') >= 0) continue;                  // Tailwind's "hover:…", "active:…" variants
+      var m = /^(?:is-|has-)?([a-z]+)$/.exec(k) || /--([a-z]+)$/.exec(k);
+      if (m && A.STATE_CLASS.hasOwnProperty(m[1])) add(A.STATE_CLASS[m[1]]);
+      else if (/(^|-)error$/.test(k)) add('error');
+    }
+    var ds = A.attr(el, 'data-state');
+    if (ds && /^[a-z][a-z-]{1,23}$/i.test(ds) && !A.NO_STATE[ds.toLowerCase()]) add(ds.toLowerCase().replace(/-/g, ' '));
+    // A tab that is on is the selected tab ("mk-tab--on").
+    if ((seen.on || seen.active || seen.current) && A.isTabLike(el)) add('selected');
+    if (seen.selected) {                                    // one word for one thing
+      var out = [];
+      for (var j = 0; j < w.length; j++) if (w[j] !== 'active' && w[j] !== 'current' && w[j] !== 'on') out.push(w[j]);
+      w = out;
+    }
+    return w;
+  };
+  // Can this control's state change under the pilot's press: it, or a sibling of the same kind,
+  // carries state (an unselected tab beside the selected one, a jetway that is not yet docked).
+  A.stateful = function (el) {
+    if (A.stateOf(el).length || A.attr(el, 'data-state') !== null || A.attr(el, 'aria-pressed') !== null ||
+        A.attr(el, 'aria-selected') !== null || A.attr(el, 'data-active') !== null) return true;
+    var p = el.parentElement;
+    if (!p) return false;
+    for (var i = 0; i < p.children.length && i < 30; i++) {
+      var s = p.children[i];
+      if (s !== el && s.tagName === el.tagName && A.stateOf(s).length) return true;
+    }
+    return false;
+  };
+
+  // An on/off switch drawn by an add-on: ARIA (role="switch" + aria-checked), or a class that says
+  // which way it is ("civaefb-bg-toggle-on", "mk-switch mk-switch--on"). Null when it is no switch.
+  A.SWITCH_STATE = /(?:^|[-_])(?:toggle|switch)[-_](on|off|checked|unchecked|active|inactive|enabled)$/;
+  A.SWITCH_NAME = /(?:^|[-_])(?:toggle|switch)(?:--([a-z]+))?$/;
+  A.switchValue = function (el) {
+    var role = A.attr(el, 'role'), a = A.attr(el, 'aria-checked');
+    if (a !== null && (role === 'switch' || role === 'checkbox' || role === 'menuitemcheckbox' || role === 'radio' || role === 'menuitemradio')) {
+      return a === 'true' ? 'true' : 'false';
+    }
+    var t = A.tokens(el), isSw = false, on = false;
+    for (var i = 0; i < t.length; i++) {
+      var k = t[i], m;
+      if (k.indexOf('__') >= 0 || k.indexOf(':') >= 0) continue;
+      if ((m = A.SWITCH_STATE.exec(k))) return /^(on|checked|active|enabled)$/.test(m[1]) ? 'true' : 'false';
+      if ((m = A.SWITCH_NAME.exec(k))) { isSw = true; if (m[1] && /^(on|checked|active|enabled|selected)$/.test(m[1])) on = true; }
+    }
+    if (!isSw) return null;
+    if (A.hasClass(el, 'checked') || A.hasClass(el, 'on') || A.hasClass(el, 'active') || A.hasClass(el, 'is-on') ||
+        A.hasClass(el, 'is-checked') || A.hasClass(el, 'selected') || A.yes(el, 'data-on') || A.yes(el, 'data-checked') ||
+        A.attr(el, 'aria-pressed') === 'true') on = true;
+    return on ? 'true' : 'false';
   };
 
   // ---------------------------------------------------------------------------------
@@ -240,6 +456,38 @@
     }
     return '';
   };
+  // A form control's own name, the way a browser finds it: aria-label, aria-labelledby, a
+  // <label for>, the <label> around it (its own text only, never a value read-out inside it), then
+  // the text before it, a title, a placeholder.
+  A.fieldName = function (ctl) {
+    var n = A.attr(ctl, 'aria-label') || A.labelledBy(ctl);
+    if (n) return A.norm(n);
+    if (ctl.id) {
+      try {
+        var lf = ctl.ownerDocument.querySelector('label[for="' + ctl.id.replace(/"/g, '') + '"]');
+        if (lf && A.modelText(lf)) { A.claim(lf); return A.modelText(lf); }
+      } catch (e) {}
+    }
+    var lab = ctl.parentElement;
+    while (lab && lab.tagName !== 'LABEL' && lab !== A._view) lab = lab.parentElement;
+    if (lab && lab.tagName === 'LABEL') {
+      var t = A.ownLabelText(lab, ctl);
+      if (t) { A.claim(lab); return t; }
+    }
+    return A.labelFor(ctl) || A.attr(ctl, 'title') || A.attr(ctl, 'placeholder') || '';
+  };
+  // A wrapping label's words, without the control and any <output> read-out ("Briefing volume" of
+  // "Briefing volume [slider] 75%"), so the name does not change as the value does.
+  A.ownLabelText = function (lab, ctl) {
+    var s = '';
+    for (var i = 0; i < lab.childNodes.length; i++) {
+      var c = lab.childNodes[i];
+      if (c.nodeType === 3) { s += ' ' + c.nodeValue; continue; }
+      if (c.nodeType !== 1 || c === ctl || c.contains(ctl) || c.tagName === 'OUTPUT' || A.isControlEl(c) || A.modelHidden(c)) continue;
+      s += ' ' + A.modelText(c);
+    }
+    return A.norm(s);
+  };
   // The Flight Planner names a field by its step: "Departure airport", "Arrival airport".
   A.stepTitle = function (el) {
     var s = el;
@@ -266,14 +514,18 @@
   // "does this subtree hold a control" — one pass per scrape marks every control's ancestors
   // ---------------------------------------------------------------------------------
 
-  A.CONTROL_SELECTOR = 'button,input,textarea,select,.tab-selector,.dropdown-button,.incrementable-item,' +
-    '.checkpoint-item,.switch-container,.facility-result-item';
+  A.CONTROL_SELECTOR = 'button,input,textarea,select,iframe,.tab-selector,.dropdown-button,.incrementable-item,' +
+    '.checkpoint-item,.switch-container,.facility-result-item,.slider';
   A.isControlEl = function (el) {
     var t = el.tagName;
-    if (t === 'BUTTON' || t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return true;
-    if (typeof el.onclick === 'function') return true;
-    return A.hasClass(el, 'tab-selector') || A.hasClass(el, 'dropdown-button') || A.hasClass(el, 'incrementable-item') ||
-      A.hasClass(el, 'checkpoint-item') || A.hasClass(el, 'switch-container') || A.hasClass(el, 'facility-result-item');
+    if (t === 'BUTTON' || t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'IFRAME') return true;
+    if (A.hasClass(el, 'tab-selector') || A.hasClass(el, 'dropdown-button') || A.hasClass(el, 'incrementable-item') ||
+      A.hasClass(el, 'checkpoint-item') || A.hasClass(el, 'switch-container') || A.hasClass(el, 'facility-result-item')) return true;
+    // A slider is a control of its own only where no text box beside it takes its value; its bar
+    // (which holds the mousedown) is part of it, never a control apart.
+    if (A.hasClass(el, 'slider')) return !!el.querySelector('.slider-bar') && !A.sliderHasBox(el);
+    if (A.hasClass(el, 'slider-bar') || A.hasClass(el, 'slider-button') || A.hasClass(el, 'slider-rail') || A.hasClass(el, 'slider-track')) return false;
+    return A.isPressable(el);
   };
   // A hidden control does not count: it is not on screen, and it must not split the row around it
   // ("340 LBS - 2/4 seats" holds a hidden icon button) into a line per word.
@@ -291,15 +543,17 @@
   // the page
   // ---------------------------------------------------------------------------------
 
-  // The app on screen. Apps stay mounted once opened, hidden behind the shown one.
+  // The app on screen. Apps stay mounted once opened, hidden behind the shown one. In an app's own
+  // frame, the whole document.
   A.shownView = function () {
+    if (!A.inEfb()) return document.body;
     var vs = A.root().querySelectorAll('.efb-container > .efb-view');
     for (var i = 0; i < vs.length; i++) if (!A.isHidden(vs[i])) return vs[i];
     return null;
   };
   A.viewKey = function (v) {
     var c = A.norm(A.cls(v)).split(' ');
-    for (var i = 0; i < c.length; i++) if (c[i] && c[i] !== 'efb-view') return c[i];
+    for (var i = 0; i < c.length; i++) if (c[i] && c[i] !== 'efb-view' && c[i] !== 'hidden') return c[i];
     return '';
   };
 
@@ -307,18 +561,25 @@
     '_HomePageApp': 'Home', 'AtlasApp': 'Flight Planner', 'AircraftApp': 'Aircraft', 'PilotBookApp': 'Pilot book',
     'SettingsApp': 'Settings', 'GSApp': 'Ground Services', 'CivaApp': 'CIVA INS'
   };
-  // The app's own (translated) name from the EFB API: "@fs-base-efb,TT:EFB.COMMON.AIRCRAFT" ->
-  // "aircraft". The home screen's is "more apps", so it keeps "Home".
+  // The app's own name from the EFB API. An app's view is named by its internalName, which an add-on
+  // built with a minifier no longer shares with its class ("NavigraphSimBriefApp" is class "Wp"). A
+  // sim app's name is a translation key ("@fs-base-efb,TT:EFB.COMMON.AIRCRAFT" -> "aircraft"),
+  // capitalised; an add-on's is its own ("iniJetways"), kept as written. The home screen's is
+  // "more apps", so it keeps "Home".
   A.appName = function (key) {
     if (key === '_HomePageApp') return 'Home';
     try {
       var apps = window.EFB_API && EFB_API._installedApps && EFB_API._installedApps.array;
       for (var i = 0; apps && i < apps.length; i++) {
-        if (apps[i].constructor && apps[i].constructor.name === key) {
-          var n = apps[i].name, t = n;
-          if (typeof Utils !== 'undefined' && Utils.Translate) t = Utils.Translate(n);
-          if (t && t.indexOf('TT:') < 0) return A.ucfirst(A.norm(t));
-        }
+        var ik = '';
+        try { ik = apps[i].internalName; } catch (e0) {}
+        if (ik !== key && !(apps[i].constructor && apps[i].constructor.name === key)) continue;
+        var n = apps[i].name;
+        if (!n || typeof n !== 'string') continue;
+        if (n.indexOf('TT:') < 0) return A.norm(n);
+        var t = n;
+        if (typeof Utils !== 'undefined' && Utils.Translate) t = Utils.Translate(n);
+        if (t && t.indexOf('TT:') < 0) return A.ucfirst(A.norm(t));
       }
     } catch (e) {}
     if (A.APP_FALLBACK[key]) return A.APP_FALLBACK[key];
@@ -329,6 +590,12 @@
   A.currentPage = function () {
     var v = A.shownView();
     if (!v) return '';
+    if (!A.inEfb()) {
+      var dt = A.norm(document.title);
+      if (dt) return dt;
+      var h = document.querySelector('h1');
+      return h ? A.lineText(h) : '';
+    }
     var app = A.appName(A.viewKey(v));
     var titles = v.querySelectorAll('.text--title, h1, .atlas-view-title, .checklist-menu-header .title');
     for (var i = 0; i < titles.length; i++) {
@@ -365,6 +632,13 @@
     return false;
   };
 
+  // An OS slider whose value a text box beside it already takes (a load's quick fill, Settings'
+  // brightness): the box is the control, the slider adds nothing.
+  A.sliderHasBox = function (el) {
+    var p = el.parentElement;
+    return !!p && !!p.querySelector('input:not([type="range"]):not([type="hidden"]), textarea');
+  };
+
   // Decorations and pieces another control already reads.
   A.block('skip',
     function (el) {
@@ -372,9 +646,10 @@
         A.hasClass(el, 'flight-plan-step-dot') ||             // the route's timeline dots
         A.hasClass(el, 'waypoint-list-header') ||             // read into each waypoint row,
         A.hasClass(el.firstElementChild, 'waypoint-list-header') ||   // and so is the pair's wrapper (live)
-        A.hasClass(el, 'slider') && !A.hasClass(el, 'tank') ||   // the quick-fill slider: its % box is the control
+        A.hasClass(el, 'slider') && !A.hasClass(el, 'tank') && (!el.querySelector('.slider-bar') || A.sliderHasBox(el)) ||
         A.hasClass(el, 'aircraft-shape') || A.hasClass(el, 'nav-map') || A.hasClass(el, 'map-container') ||
-        A.hasClass(el, 'disabled-layer') || A.hasClass(el, 'tooltip');
+        A.hasClass(el, 'disabled-layer') || A.hasClass(el, 'tooltip') ||
+        (el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'hidden');
     },
     function () {});
 
@@ -533,6 +808,91 @@
       }
     });
 
+  // The OS slider (Settings, AtmosphereMod): a bar the pilot drags. Its position is the
+  // --ratio-value style, in percent of its travel, which is not the app's own value (AtmosphereMod's
+  // haze slider sits at 50 % of travel for "100 %"). So when the row shows the value next to it, the
+  // slider reads as a text box holding that value, and a typed value is found along the bar
+  // (A.setSlider); with no such read-out it is a 0-100 range of its travel.
+  A.ratioOf = function (el) {
+    var m = /--ratio-value:\s*(-?[\d.]+)%/.exec(el.getAttribute('style') || '');
+    return m ? parseFloat(m[1]) : null;
+  };
+  A.sliderReadout = function (el) {
+    var node = el;
+    for (var up = 0; up < 3 && node && node !== A._view; up++) {
+      var sib = node.nextElementSibling;
+      for (var hop = 0; sib && hop < 2; hop++, sib = sib.nextElementSibling) {
+        if (A.isHidden(sib) || A.hasCtl(sib) || A.isControlEl(sib)) continue;
+        var t = A.lineText(sib);
+        if (t && t.length <= 24 && /\d/.test(t)) return sib;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  };
+  A.block('os-slider',
+    function (el) { return A.hasClass(el, 'slider') && !!el.querySelector('.slider-bar'); },
+    function (el, els) {
+      var row = el.parentElement, name = '';
+      for (var up = 0; up < 3 && row && !name && row !== A._view; up++, row = row.parentElement) {
+        name = A.labelFor(up === 0 ? el : row);
+        if (!name) {
+          var nm = row.querySelector('[class*="name"], [class*="title"], [class*="label"]');
+          if (nm && !nm.contains(el) && !A.isHidden(nm)) { name = A.lineText(nm); if (name) A.claim(nm); }
+        }
+      }
+      name = name || 'Slider';
+      var ro = A.sliderReadout(el), ratio = A.ratioOf(el);
+      if (ro) {
+        A.claim(ro);
+        els.push(A.el(el, { controlType: 'text', text: name + ' (slider)', value: A.lineText(ro), disabled: A.isDisabled(el),
+                            key: 'slider:' + name }));
+        return;
+      }
+      els.push(A.el(el, { controlType: 'range', text: name, value: ratio == null ? '' : String(Math.round(ratio)),
+                          min: 0, max: 100, step: 1, disabled: A.isDisabled(el), key: 'slider:' + name }));
+    });
+
+  // A browser's own form controls, as add-on apps use them (UTL Ride Advisor, SayIntentions).
+  A.DATE_HINT = { date: 'year-month-day', time: 'hours:minutes', 'datetime-local': 'year-month-dayThours:minutes', month: 'year-month' };
+  A.block('native-select',
+    function (el) { return el.tagName === 'SELECT'; },
+    function (el, els) {
+      var opts = [], val = '';
+      for (var i = 0; i < el.options.length; i++) {
+        var t = A.norm(el.options[i].textContent || el.options[i].label || el.options[i].value);
+        opts.push(t);
+        if (i === el.selectedIndex) val = t;
+      }
+      els.push(A.el(el, { controlType: 'select', text: A.fieldName(el) || 'Choice', value: val, options: opts, disabled: A.isDisabled(el) }));
+    });
+  A.block('native-input',
+    function (el) { return el.tagName === 'INPUT' && !A.hasClass(el.parentElement, 'textbox'); },
+    function (el, els) {
+      var ty = (el.type || 'text').toLowerCase(), name = A.fieldName(el), dis = A.isDisabled(el);
+      if (ty === 'checkbox' || ty === 'radio') {
+        els.push(A.el(el, { controlType: 'checkbox', text: (name || (ty === 'radio' ? 'Option' : 'Checkbox')) + (ty === 'radio' ? ' (one of a group)' : ''),
+                            value: el.checked ? 'true' : 'false', disabled: dis }));
+        return;
+      }
+      if (ty === 'range') {
+        var mn = parseFloat(el.min), mx = parseFloat(el.max), st = parseFloat(el.step);
+        els.push(A.el(el, { controlType: 'range', text: name || 'Slider', value: String(el.value),
+                            min: isNaN(mn) ? 0 : mn, max: isNaN(mx) ? 100 : mx, step: isNaN(st) ? 1 : st, disabled: dis }));
+        return;
+      }
+      if (ty === 'button' || ty === 'submit' || ty === 'reset' || ty === 'image') {
+        els.push(A.button(el, A.buttonLabel(el) || 'Button'));
+        return;
+      }
+      if (ty === 'file') return;
+      var hint = '';
+      if (ty === 'number' && (el.min !== '' || el.max !== '')) hint = ' (' + (el.min !== '' ? el.min : '') + ' to ' + (el.max !== '' ? el.max : '') + ')';
+      else if (A.DATE_HINT[ty]) hint = ' (' + A.DATE_HINT[ty] + ')';
+      els.push(A.el(el, { controlType: 'text', text: (name || 'Field') + hint, value: String(el.value == null ? '' : el.value),
+                          disabled: dis || el.readOnly === true }));
+    });
+
   // Any other text box (a load's quick-fill %, a wind or QNH box, the route string area).
   A.block('textbox',
     function (el) { return A.hasClass(el, 'textbox') || el.tagName === 'TEXTAREA' || el.tagName === 'INPUT'; },
@@ -542,7 +902,7 @@
       var suffix = el.querySelector ? el.querySelector('.suffix') : null;
       var unit = suffix && !A.hasClass(suffix, 'suffix--hidden') ? A.lineText(suffix) : '';
       var label = A.labelFor(A.hasClass(el.parentElement, 'unitbox') ? el.parentElement : el) ||
-        inp.getAttribute('placeholder') || 'Value';
+        (inp.tagName === 'TEXTAREA' ? A.fieldName(inp) : '') || inp.getAttribute('aria-label') || inp.getAttribute('placeholder') || 'Value';
       els.push(A.el(inp, { controlType: 'text', text: label + (unit ? ' (' + unit + ')' : ''),
                            value: String(inp.value == null ? '' : inp.value), disabled: A.isDisabled(inp) }));
     });
@@ -578,6 +938,29 @@
       }
     });
 
+  // An add-on's own switch: role="switch", or a pressable whose class says on or off (CIVA's
+  // "civaefb-bg-toggle-on", MK Airport's "mk-switch--on"). A switch that holds another control is
+  // a row, never the switch itself (AtmosphereMod's "atmo-switch" wraps the OS switch).
+  A.block('class-switch',
+    function (el) {
+      if (A.hasCtl(el) || el.tagName === 'INPUT' || el.tagName === 'LABEL') return false;
+      var v = A.switchValue(el);
+      return v !== null && (A.isPressable(el) || A.attr(el, 'role') !== null);
+    },
+    function (el, els) {
+      var name = A.attr(el, 'aria-label') || A.labelledBy(el) || A.lineText(el) || A.labelFor(el) || A.attr(el, 'title') || A.imgName(el) || 'Switch';
+      els.push(A.el(el, { controlType: 'checkbox', text: A.norm(name), value: A.switchValue(el), disabled: A.isDisabled(el) }));
+    });
+
+  // An ARIA tab or option list item reads as a tab with its state.
+  A.block('aria-tab',
+    function (el) { var r = A.attr(el, 'role'); return (r === 'tab') && !A.hasCtl(el); },
+    function (el, els) {
+      var t = A.buttonLabel(el), st = A.stateOf(el);
+      els.push(A.el(el, { kind: 'tab', clickable: true, text: t + (st.length ? ' (' + st.join(', ') + ')' : ''),
+                          disabled: A.isDisabled(el), key: 'tab:' + t, announceChange: true }));
+    });
+
   // ---------------------------------------------------------------------------------
   // scrape
   // ---------------------------------------------------------------------------------
@@ -587,6 +970,8 @@
   A.headingLevel = function (el) {
     var t = el.tagName;
     if (t.length === 2 && t.charAt(0) === 'H' && /[1-6]/.test(t.charAt(1))) return parseInt(t.charAt(1), 10);
+    var r = A.attr(el, 'role');
+    if (r === 'heading') return parseInt(A.attr(el, 'aria-level'), 10) || 2;
     if (A.hasClass(el, 'text--title')) return 1;
     if (A.hasClass(el, 'atlas-view-title') || A.hasClass(el, 'environment-title')) return 2;
     return 0;
@@ -610,15 +995,28 @@
   };
 
   // The popups open in a view: an element whose class ends in "-popup" (route-parsing-popup,
-  // saved-flight-plan-popup), on screen.
+  // saved-flight-plan-popup), or a dialog (role="dialog", aria-modal, a "modal" class), on screen.
+  A.isPopup = function (el) {
+    var c = A.tokens(el);
+    for (var j = 0; j < c.length; j++) if (c[j].indexOf('__') < 0 && /(-popup|^modal|-modal|^dialog|-dialog)$/.test(c[j])) return true;
+    var r = A.attr(el, 'role');
+    return r === 'dialog' || r === 'alertdialog' || A.attr(el, 'aria-modal') === 'true';
+  };
   A.popups = function (view) {
-    var cands = view.querySelectorAll('[class*="-popup"]'), out = [];
+    var cands = view.querySelectorAll('[class*="popup"], [class*="modal"], [class*="dialog"], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'), out = [];
     for (var i = 0; i < cands.length; i++) {
-      var c = A.norm(A.cls(cands[i])).split(' '), is = false;
-      for (var j = 0; j < c.length; j++) if (/-popup$/.test(c[j])) { is = true; break; }
-      if (is && !A.isHidden(cands[i])) out.push(cands[i]);
+      if (!A.isPopup(cands[i]) || A.isHidden(cands[i])) continue;
+      var inner = false;
+      for (var k = 0; k < out.length; k++) if (out[k].contains(cands[i])) { inner = true; break; }
+      if (!inner) out.push(cands[i]);
     }
     return out;
+  };
+  A.popupTitle = function (p) {
+    var t = p.querySelector('[class*="popup-header"] .title') || p.querySelector('[class*="header"] [class*="title"]') ||
+      p.querySelector('h1, h2, h3, [role="heading"]');
+    if (t && !A.isHidden(t) && A.lineText(t)) return t;
+    return null;
   };
 
   // A run of text on one line (a label and its value, a number and its unit, the per-character
@@ -644,11 +1042,18 @@
     return any && max - min <= 8;
   };
 
+  // An app's own frame: same-origin is read in place; a cross-origin one cannot be reached from this
+  // page, so a marker says where it sits and which origin it is, and the client reads it in the
+  // frame's own execution context (STAB-14).
+  A.originOf = function (src) { var m = /^([a-z][a-z0-9+.-]*:\/\/[^\/?#]+)/i.exec(src || ''); return m ? m[1].toLowerCase() : ''; };
+  A.frameDoc = function (f) { try { var d = f.contentDocument; return d && d.body ? d : null; } catch (e) { return null; } };
+
   A.collect = function () {
     var els = [];
     A._idx = 0;
     A._nodes = {};
     A._scrapeId++;
+    var efb = A.inEfb();
 
     // Every scrape restamps from 1 in DOM order; an old stamp left on a node no longer walked
     // would collide with a live one.
@@ -656,12 +1061,17 @@
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute(A.ATTR);
 
     var root = A.root();
-    A.markControls(root);
     var view = A.shownView();
     A._view = view;
+    // Only what can be on screen is marked: the shown app, the dock, the tour, the status bar.
+    if (view) A.markControls(view);
+    if (efb) {
+      var marks = root.querySelectorAll('.dock, .onboarding-container, .status-bar');
+      for (var mk = 0; mk < marks.length; mk++) A.markControls(marks[mk]);
+    }
 
     // The first-run tour, over everything else.
-    var tour = root.querySelector('.onboarding-container');
+    var tour = efb ? root.querySelector('.onboarding-container') : null;
     if (tour && !A.isHidden(tour)) {
       var step = tour.querySelector('.step');
       if (step && !A.isHidden(step)) {
@@ -674,7 +1084,7 @@
     }
 
     // The dock comes first, always: it is the way to every app, whatever page is showing.
-    var dock = root.querySelectorAll('.dock .dock-item');
+    var dock = efb ? root.querySelectorAll('.dock .dock-item') : [];
     for (var d = 0; d < dock.length; d++) {
       if (A.isHidden(dock[d])) continue;
       var dn = A.tooltipOf(dock[d]) || A.iconName(dock[d]);
@@ -683,7 +1093,7 @@
                                disabled: A.isDisabled(dock[d]), key: 'dock:' + dn }));
     }
 
-    if (view && A.viewKey(view) === 'AtlasApp') {
+    if (efb && view && A.viewKey(view) === 'AtlasApp') {
       els.push({ idx: A.SIMBRIEF_IDX, kind: 'button', clickable: true, text: A.SIMBRIEF_LABEL, value: '', controlType: '',
                  level: 0, live: '', disabled: false, options: null, key: 'action:simbrief' });
     }
@@ -693,16 +1103,36 @@
     function walk(el) {
       if (!el || el.nodeType !== 1) return;
       var tag = el.tagName.toLowerCase();
-      if (tag === 'svg' || tag === 'canvas' || tag === 'img' || tag === 'script' || tag === 'style') return;
+      if (tag === 'svg' || tag === 'canvas' || tag === 'script' || tag === 'style' || tag === 'noscript' || tag === 'template') return;
       if (A.isHidden(el)) return;
       if (el.__simTabletPopup === A._scrapeId && !walkingPopup) return;   // read already, first
+      if (tag === 'iframe') {
+        var fd = A.frameDoc(el);
+        if (fd) { A.markControls(fd.body); walk(fd.body); return; }
+        var origin = A.originOf(el.getAttribute('src') || el.src);
+        if (origin) sink.push(A.el(el, { kind: 'frame', text: '', value: origin, frame: String(el.src || el.getAttribute('src') || '') }));
+        return;
+      }
+      if (tag === 'img') {
+        // A picture that is a control (CIVA's cog) is named by its alt on the control; a lone
+        // picture with alt text is read like text.
+        var alt = A.norm(el.getAttribute('alt'));
+        if (alt && !A.isPressable(el) && !/^(icon|image|logo|img)$/i.test(alt) && !A.isClaimed(el)) sink.push(A.el(el, { kind: 'static', text: alt }));
+        else if (alt && A.isPressable(el)) sink.push(A.button(el, alt));
+        return;
+      }
       if (A.runBlocks(el, sink)) return;
 
-      if (el.tagName === 'BUTTON' || (typeof el.onclick === 'function' && !A.hasCtl(el))) {
+      var pressable = A.isPressable(el) || (!A.hasCtl(el) && A.ownPointer(el) && !A.isClaimed(el));
+      if (pressable && (tag === 'button' || tag === 'a' || (!A.hasCtl(el) && !A.isBig(el)))) {
         var label = A.buttonLabel(el);
-        if (!label) return;                                    // a nameless icon says nothing; skip it
-        sink.push(A.button(el, label + (A.hasClass(el, 'selected') ? ' (selected)' : ''),
-                           A.hasClass(el, 'selected') ? { key: 'button:' + label } : null));
+        if (!label) {                                          // a nameless icon says nothing; skip it
+          for (var bc = 0; bc < el.children.length; bc++) walk(el.children[bc]);
+          return;
+        }
+        var st = A.stateOf(el), keyed = A.stateful(el);
+        sink.push(A.button(el, label + (st.length ? ' (' + st.join(', ') + ')' : ''),
+                           keyed ? { key: 'button:' + label, announceChange: true } : null));
         return;
       }
 
@@ -740,13 +1170,13 @@
       for (var c = 0; c < el.children.length; c++) walk(el.children[c]);
     }
 
-    // An open popup (the route string box, the saved flight plans) sits over the page and is read
-    // FIRST, its title as an alert so it is spoken as it opens; the page follows.
+    // An open popup (the route string box, the saved flight plans, an add-on's dialog) sits over the
+    // page and is read FIRST, its title as an alert so it is spoken as it opens; the page follows.
     if (view) {
       var pops = A.popups(view);
       for (var pi = 0; pi < pops.length; pi++) pops[pi].__simTabletPopup = A._scrapeId;
       for (var pj = 0; pj < pops.length; pj++) {
-        var pt = pops[pj].querySelector('[class*="popup-header"] .title');
+        var pt = A.popupTitle(pops[pj]);
         if (pt) {
           sink.push(A.el(pt, { kind: 'alert', live: 'assertive', text: A.lineText(pt) }));
           A.claim(pt);
@@ -768,10 +1198,10 @@
     els = kept;
 
     // The notification bell, when it has something.
-    var count = root.querySelector('.status-bar .notification-count');
+    var count = efb ? root.querySelector('.status-bar .notification-count') : null;
     var n = count ? parseInt(A.norm(count.textContent), 10) : 0;
     if (n > 0) els.push(A.el(count, { kind: 'static', text: 'Notifications: ' + n }));
-    var notes = root.querySelectorAll('.status-bar .notification-container .list > *');
+    var notes = efb ? root.querySelectorAll('.status-bar .notification-container .list > *') : [];
     for (var m = 0; m < notes.length; m++) {
       var nt = A.modelText(notes[m]);
       if (nt) els.push(A.el(notes[m], { kind: 'static', text: nt }));
@@ -812,7 +1242,11 @@
   // input
   // ---------------------------------------------------------------------------------
 
-  A.find = function (idx) { return document.querySelector('[' + A.ATTR + '="' + idx + '"]'); };
+  A.find = function (idx) {
+    var n = A._nodes[idx];
+    if (n && n.getAttribute && n.getAttribute(A.ATTR) === String(idx)) return n;
+    return document.querySelector('[' + A.ATTR + '="' + idx + '"]');
+  };
 
   // Hand the pilot's keyboard back if the tablet took it. A press can make the OS focus a text box
   // by itself (a box built with focusOnClear), and a focused box has told the sim to send every key
@@ -837,17 +1271,32 @@
     setTimeout(release, 400);
   };
 
-  // One press, with the one event the element listens to. el.click() is a real click (onclick);
-  // an onmousedown-only element gets a mousedown alone. Never both: a handler that listens to both
-  // would run twice, and a mousedown reaching a text box focuses it.
+  A.mouse = function (target, type, x, y) {
+    var ev, view = (target.ownerDocument && target.ownerDocument.defaultView) || window;
+    try { ev = new MouseEvent(type, { bubbles: true, cancelable: true, view: view, clientX: x || 0, clientY: y || 0 }); }
+    catch (e) {
+      ev = document.createEvent('MouseEvents');
+      ev.initMouseEvent(type, true, true, view, 0, x || 0, y || 0, x || 0, y || 0, false, false, false, false, 0, null);
+    }
+    target.dispatchEvent(ev);
+  };
+
+  // One press, with the one event the element listens to (STAB-2). el.click() is a real click
+  // (onclick, or a click listener); an element that answers only mousedown (or only pointerdown,
+  // mouseup…) gets that event alone. Never two: a handler that listens to both would run twice, and a
+  // mousedown reaching a text box focuses it. A control whose listener the hook never saw (bound
+  // before the reader was installed, or delegated to a parent) gets click(), which bubbles.
   A.press = function (el) {
-    if (typeof el.onclick === 'function' || el.tagName === 'BUTTON') el.click();
-    else if (typeof el.onmousedown === 'function') {
-      var ev;
-      try { ev = new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }); }
-      catch (e) { ev = document.createEvent('MouseEvents'); ev.initEvent('mousedown', true, true); }
-      el.dispatchEvent(ev);
-    } else el.click();
+    var h = A.handlerOf(el);
+    if (h === 'click' || el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'INPUT' || !h) el.click();
+    else if (h === 'touchstart') {
+      var te;
+      try { te = new Event('touchstart', { bubbles: true, cancelable: true }); } catch (e) { te = document.createEvent('Event'); te.initEvent('touchstart', true, true); }
+      el.dispatchEvent(te);
+    } else {
+      var r = el.getBoundingClientRect();
+      A.mouse(el, h, (r.left + r.right) / 2, (r.top + r.bottom) / 2);
+    }
     A._dirty = true;
     A.releaseKeyboard();
   };
@@ -859,10 +1308,79 @@
     try { A.press(el); return true; } catch (e) { return false; }
   };
 
+  // Type into a box. The OS TextBox reads 'input' on the input itself; a framework one (React,
+  // Vue) listens higher up and keeps its own copy of the value, so the value goes in through the
+  // element type's own setter and the events bubble. No focus: see the top.
+  A.typeInto = function (el, want, alsoChange) {
+    var proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement : window.HTMLInputElement, setter = null;
+    try { setter = Object.getOwnPropertyDescriptor(proto.prototype, 'value').set; } catch (e0) {}
+    if (setter) setter.call(el, want); else el.value = want;
+    A.fire(el, 'input');
+    if (alsoChange) A.fire(el, 'change');
+  };
+  A.fire = function (el, type) {
+    var ev;
+    try { ev = type === 'input' ? new InputEvent('input', { bubbles: true }) : new Event(type, { bubbles: true }); }
+    catch (e1) { ev = document.createEvent('Event'); ev.initEvent(type, true, true); }
+    el.dispatchEvent(ev);
+  };
+
+  // Move an OS slider: a mousedown on its bar, then a mousemove at the target and a mouseup, both on
+  // the document, which is what the slider listens to while dragging (STAB-12). The first move goes
+  // one pixel aside, as the slider ignores a move to the x it last saw.
+  A.dragSlider = function (el, pct) {
+    var bar = el.querySelector('.slider-bar') || el, r = el.getBoundingClientRect();
+    var vertical = A.hasClass(el, 'vertical');
+    var p = Math.max(0, Math.min(100, pct)) / 100;
+    var x = vertical ? (r.left + r.right) / 2 : r.left + r.width * p;
+    var y = vertical ? r.bottom - r.height * p : (r.top + r.bottom) / 2;
+    var doc = el.ownerDocument || document;
+    A.mouse(bar, 'mousedown', x, y);
+    if (vertical) A.mouse(doc, 'mousemove', x, y > r.top + 1 ? y - 1 : y + 1);
+    else A.mouse(doc, 'mousemove', x > r.left + 1 ? x - 1 : x + 1, y);
+    A.mouse(doc, 'mousemove', x, y);
+    A.mouse(doc, 'mouseup', x, y);
+    A._dirty = true;
+  };
+  A.numberIn = function (s) { var m = /-?\d+(?:[.,]\d+)?/.exec(String(s || '')); return m ? parseFloat(m[0].replace(',', '.')) : null; };
+  // Set a slider that shows its value beside it: find along the bar where the read-out says the
+  // typed number (or the nearest the slider's steps allow). The read-out follows the slider in the
+  // same tick (measured on AtmosphereMod), so this runs to its end in one call; "+5" and "-5" move
+  // it from where it is.
+  A.setSlider = function (el, text) {
+    var ro = A.sliderReadout(el), cur = A.ratioOf(el);
+    var want = A.numberIn(text);
+    if (want === null) return false;
+    var rel = /^\s*[+-]/.test(String(text));
+    if (!ro) {                                              // a range of its travel
+      A.dragSlider(el, rel && cur !== null ? cur + want : want);
+      return true;
+    }
+    function read() { return A.numberIn(A.lineText(ro)); }
+    if (rel) { var now = read(); if (now === null) return false; want = now + want; }
+    A.dragSlider(el, 0); var lo = read();
+    A.dragSlider(el, 100); var hi = read();
+    if (lo === null || hi === null) return false;
+    var up = hi >= lo, a = 0, b = 100, best = 100, bestErr = Math.abs(hi - want);
+    if (Math.abs(lo - want) < bestErr) { best = 0; bestErr = Math.abs(lo - want); }
+    for (var i = 0; i < 14 && bestErr > 0; i++) {
+      var mid = (a + b) / 2;
+      A.dragSlider(el, mid);
+      var v = read();
+      if (v === null) break;
+      var err = Math.abs(v - want);
+      if (err < bestErr) { bestErr = err; best = mid; }
+      if ((v < want) === up) a = mid; else b = mid;
+    }
+    A.dragSlider(el, best);
+    return true;
+  };
+
   A.setValue = function (idx, text) {
     var el = A.find(idx);
     if (!el || A.isDisabled(el)) return false;
     var want = String(text == null ? '' : text);
+    var on = want.toLowerCase() === 'true';
     try {
       if (A.hasClass(el, 'dropdown-button')) {
         var items = el.querySelectorAll('.dropdown-button-list-item');
@@ -877,23 +1395,61 @@
       if (A.hasClass(el, 'checkpoint-button')) {
         var box = el.querySelector('.checkbox');
         var isOn = !!box && A.hasClass(box, 'checkbox--checked');
-        if (isOn === (want.toLowerCase() === 'true')) return true;
+        if (isOn === on) return true;
         A.press(el);
         return true;
       }
       if (A.hasClass(el, 'switch-container')) {
-        if (A.hasClass(el, 'checked') === (want.toLowerCase() === 'true')) return true;
+        if (A.hasClass(el, 'checked') === on) return true;
         A.press(el);
         return true;
       }
+      if (A.hasClass(el, 'slider') && el.querySelector('.slider-bar')) {
+        var ok = A.setSlider(el, want);
+        A.releaseKeyboard();
+        return ok;
+      }
+      if (el.tagName === 'SELECT') {
+        for (var o = 0; o < el.options.length; o++) {
+          var ot = A.norm(el.options[o].textContent || el.options[o].label || el.options[o].value);
+          if (ot.toLowerCase() !== A.norm(want).toLowerCase() && el.options[o].value !== want) continue;
+          if (el.options[o].disabled) return false;
+          var ss = null;
+          try { ss = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set; } catch (e3) {}
+          if (ss) ss.call(el, el.options[o].value); else el.selectedIndex = o;
+          A.fire(el, 'input');
+          A.fire(el, 'change');
+          A._dirty = true;
+          return true;
+        }
+        return false;
+      }
+      if (el.tagName === 'INPUT') {
+        var ty = (el.type || 'text').toLowerCase();
+        if (ty === 'checkbox' || ty === 'radio') {
+          if (el.checked === on) return true;
+          if (!on && ty === 'radio') return false;         // a radio is unset by picking another
+          el.click();                                      // the browser flips it and fires input + change
+          A._dirty = true;
+          A.releaseKeyboard();
+          return true;
+        }
+        if (ty === 'range') {
+          A.typeInto(el, want, true);
+          A._dirty = true;
+          return true;
+        }
+      }
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-        // The OS TextBox reads the box on 'input' (debounced into its model). No focus: see the top.
-        el.value = want;
-        var ev;
-        try { ev = new InputEvent('input'); } catch (e1) { ev = document.createEvent('Event'); ev.initEvent('input', true, true); }
-        el.dispatchEvent(ev);
+        // An OS TextBox takes 'input' alone (STAB-1); a page's own box also commits on 'change'.
+        A.typeInto(el, want, !A.hasClass(el.parentElement, 'textbox'));
         A._dirty = true;
         A.releaseKeyboard();
+        return true;
+      }
+      if (A.switchValue(el) !== null) {
+        if ((A.switchValue(el) === 'true') === on) return true;
+        A.press(el);
         return true;
       }
       return false;
