@@ -660,9 +660,58 @@ test('the OS frame loop, once recorded, never repeats the view update in one pum
   scraped(p.A);
   assert.equal(updates, 1, 'one view update per pump');
   const size = queue.size;
-  p.A._markDirty(); scraped(p.A);
-  p.A._markDirty(); scraped(p.A);
-  assert.ok(queue.size <= size, 'the browser queue does not grow: ' + size + ' then ' + queue.size);
+  for (let i = 0; i < 2; i++) {
+    p.A._askedAt = Date.now() - 1000;           // the frame asked for is late: this read pumps
+    updates = 0;
+    p.A._markDirty(); scraped(p.A);
+    assert.equal(updates, 1, 'one view update per pump');
+    assert.equal(queue.size, size, 'the browser queue does not grow');
+  }
+});
+
+test('a view update the pump makes runs what it queued for a frame in the same pump', () => {
+  const p = page('<div id="door">Door 1 Closed</div><button>Go</button>', {
+    before: w => {
+      w.requestAnimationFrame = () => 0;
+      w.EFB_API = { _installedApps: { array: [{ options: { efbViewService: {
+        update: () => w.requestAnimationFrame(() => { w.document.getElementById('door').textContent = 'Door 1 Open'; }),
+      } } }] } };
+    },
+  });
+  assert.ok(lines(scraped(p.A)).includes('static|Door 1 Open'));
+});
+
+test('a press that makes a box focus itself hands the keyboard back, though Coherent leaves activeElement on the body (STAB-1)', () => {
+  const p = page('<div class="textbox"><input id="q"></div><button id="add">ADD FAVORITE</button>');
+  const inp = p.document.getElementById('q');
+  let focused = false;
+  inp.addEventListener('focus', () => { focused = true; });
+  inp.addEventListener('focusout', () => { focused = false; });
+  Object.defineProperty(p.document, 'activeElement', { get: () => p.document.body });
+  p.document.getElementById('add').onclick = () => inp.focus();
+  const els = scraped(p.A);
+  assert.equal(p.A.clickElement(els.find(e => e.text === 'ADD FAVORITE').idx), true);
+  assert.equal(focused, false, 'focusout sent: the OS box sends UNFOCUS_INPUT_FIELD');
+});
+
+test('a group the OS disables dims every button in it (Settings, Tablet size while the sim shows no tablet)', () => {
+  const l = lines(scraped(page('<div class="item" disabled=""><div class="item-title">Tablet size</div>' +
+    '<div class="multiple-buttons" disabled=""><button class="selected">SMALL</button><button>MEDIUM</button></div></div>' +
+    '<div class="item"><div class="item-title">Units</div><div class="multiple-buttons"><button>KTS</button></div></div>').A));
+  assert.ok(l.includes('button|SMALL (selected) [dim]') && l.includes('button|MEDIUM [dim]'), l.join(' / '));
+  assert.ok(l.includes('button|KTS'), 'a group with no disabled attribute stays live');
+});
+
+test('a search list that shows before anything is typed is read (Settings, Add favorite)', () => {
+  const l = lines(scraped(page('<div class="search-bar"><div class="textbox"><input placeholder="search"></div>' +
+    '<div class="search-bar-list-container"><div class="search-bar-list">' +
+    '<div class="search-app-list-item">Aircraft</div><div class="search-app-list-item">GSX</div></div></div></div>').A));
+  assert.ok(l.includes('button|Result: Aircraft') && l.includes('button|Result: GSX'), l.join(' / '));
+});
+
+test('AtmosphereMod: its status line reads its two parts with a comma', () => {
+  const l = lines(scrape('atmo-haze'));
+  assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));
 });
 
 test('a press that moves a virtual list itself (Back to the top) makes the list hear its scroll', () => {

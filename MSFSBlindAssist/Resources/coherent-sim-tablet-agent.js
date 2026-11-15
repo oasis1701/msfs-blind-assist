@@ -287,7 +287,14 @@
     var t = A.tokens(el);
     for (var j = 0; j < t.length; j++) if (t[j] === 'disabled' || t[j] === 'is-disabled' || /--disabled$/.test(t[j])) return true;
     for (var i = 0; i < el.children.length; i++) {
-      if (A.hasClass(el.children[i], 'disabled-layer')) return !A.isHidden(el.children[i]);
+      if (A.hasClass(el.children[i], 'disabled-layer') && !A.isHidden(el.children[i])) return true;
+    }
+    // The OS disables a whole group too: Settings' Tablet size and orientation rows, while the sim
+    // shows the tablet nowhere, carry disabled="" on the row and its button group, not on each
+    // button (measured 2026-11-15). A disabled ancestor within the group, below the app's view.
+    for (var up = 0, p = el.parentElement; p && up < 4 && p !== A._view; up++, p = p.parentElement) {
+      var pa = p.getAttribute('disabled');
+      if (pa !== null && pa !== 'false') return true;
     }
     return false;
   };
@@ -1061,10 +1068,16 @@
       }
       var clear = el.querySelector('.delete-text-button');
       if (clear && !A.modelHidden(clear) && !A.isHidden(clear)) els.push(A.button(clear, 'Clear'));
+      // The results once something is typed (the Flight Planner's airports, read even while its list
+      // is drawn closed), or whenever the list shows (Settings' Add favorite lists every app before
+      // anything is typed).
       var list = el.querySelector('.search-bar-list');
-      if (!list || !inp || !A.norm(inp.value)) return;
+      if (!list || !inp) return;
+      var shown = !A.isHidden(list) && !(list.parentElement && A.isHidden(list.parentElement));
+      if (!A.norm(inp.value) && !shown) return;
       for (var i = 0; i < list.children.length; i++) {
         var r = list.children[i];
+        if (shown && A.isHidden(r)) continue;
         var t = A.modelText(r);
         if (t) els.push(A.button(r, 'Result: ' + t));
       }
@@ -1674,8 +1687,8 @@
       A.raf(function (ts) { A._lastFrame = Date.now(); A._lastTs = ts || 0; A._frameAsked = false; });
     } catch (e) { A._frameAsked = false; }
   };
-  // The browser's own requestAnimationFrame, never the recording hook: a pump must never count as a
-  // frame. A page that replaced the function after the hook keeps its own.
+  // The browser's own requestAnimationFrame, never the recording hook nor anything a page put over
+  // it later: a pump must never count as a frame.
   A.raf = function (cb) {
     var st = window.__MSFSBA_RAF;
     return (st ? st.raf : window.requestAnimationFrame).call(window, cb);
@@ -1753,14 +1766,25 @@
     // a real frame, which calls the update itself; while the pump runs, a second call is a no-op,
     // and the pump makes its own only when no callback made one. A list those moved hears its
     // scroll, and builds its rows in one more round.
-    var updates = 0, own = vs ? vs.hasOwnProperty('update') : false, orig = vs ? vs.update : null;
-    if (vs) vs.update = function () { if (updates++) return undefined; return orig.apply(vs, arguments); };
+    // The wrapper disarms itself when the pump ends, so a reference to it kept by anyone stays a
+    // plain pass-through; a view service whose update is no writable data property is left as it is.
+    var updates = 0, pumping = true, own = false, wrapped = false, orig = vs ? vs.update : null;
     try {
+      if (vs && typeof orig === 'function') {
+        own = Object.prototype.hasOwnProperty.call(vs, 'update');
+        var desc = own ? Object.getOwnPropertyDescriptor(vs, 'update') : null;
+        if (!desc || (desc.writable && !desc.get && !desc.set)) {
+          vs.update = function () { if (pumping && updates++) return undefined; return orig.apply(vs, arguments); };
+          wrapped = vs.update !== orig;
+        }
+      }
       A.runFrameCallbacks(ft);
-      if (vs && !updates) { try { vs.update(ft); } catch (e) {} }
+      // No callback made the update: the pump makes it, then runs what it queued for a frame.
+      if (vs && !updates) { try { vs.update(ft); } catch (e) {} A.runFrameCallbacks(ft); }
       if (A.fireMovedScrolls()) A.runFrameCallbacks(ft);
     } finally {
-      if (vs) { if (own) vs.update = orig; else delete vs.update; }
+      pumping = false;
+      if (wrapped) { try { if (own) vs.update = orig; else delete vs.update; } catch (e3) {} }
     }
     A._pumpMs = Date.now() - t0;
     // What the update changed counts for this very read, not the next: the observer reports it only
@@ -1824,16 +1848,34 @@
   // to the tablet. The box's own focus-out path (blur + an InputEvent 'focusout') is what tells the
   // sim to stop (UNFOCUS_INPUT_FIELD). Run now and on the next ticks, as the OS focuses after its own
   // debounce.
+  // Which box to release: Coherent leaves document.activeElement on the body after a box focuses
+  // itself (measured 2026-11-15: Settings' Add favorite focuses its search, FOCUS_INPUT_FIELD went
+  // out, activeElement stayed BODY), so the reader also records each focus itself
+  // (window.__MSFSBA_LAST_FOCUS, a capturing listener) and takes any OS box marked focused. A
+  // focusout on a box that is not focused is a no-op for the OS (its _isFocused is already false).
+  A.focusedBoxes = function () {
+    var out = [], root = A.root();
+    function add(n) {
+      if (n && (n.tagName === 'INPUT' || n.tagName === 'TEXTAREA') && root && root.contains(n) && out.indexOf(n) < 0) out.push(n);
+    }
+    add(document.activeElement);
+    add(window.__MSFSBA_LAST_FOCUS);
+    var marked = root ? root.querySelectorAll('.textbox--focused input, .textbox--focused textarea') : [];
+    for (var i = 0; i < marked.length; i++) add(marked[i]);
+    return out;
+  };
   A.releaseKeyboard = function () {
     function release() {
       try {
-        var a = document.activeElement;
-        if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')) return;
-        if (!A.root().contains(a)) return;
-        a.blur();
-        var ev;
-        try { ev = new InputEvent('focusout'); } catch (e) { ev = document.createEvent('Event'); ev.initEvent('focusout', true, true); }
-        a.dispatchEvent(ev);
+        var boxes = A.focusedBoxes();
+        window.__MSFSBA_LAST_FOCUS = null;
+        for (var i = 0; i < boxes.length; i++) {
+          var a = boxes[i];
+          try { a.blur(); } catch (e0) {}
+          var ev;
+          try { ev = new InputEvent('focusout'); } catch (e) { ev = document.createEvent('Event'); ev.initEvent('focusout', true, true); }
+          a.dispatchEvent(ev);
+        }
       } catch (e2) {}
     }
     release();
@@ -1894,7 +1936,12 @@
     for (var i = 0; !list && i < el.children.length; i++) if (A.hasClass(el.children[i], 'virtual-list')) list = true;
     return list && el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 4;
   };
-  A.isLive = function (el) { var r = A.root(); return !!el && !!r && r.contains(el); };
+  // Still on the page: inside the tablet's root, or inside a same-origin frame read in place.
+  A.isLive = function (el) {
+    var d = el && el.ownerDocument;
+    if (!d || !d.documentElement || !d.documentElement.contains(el)) return false;
+    return d !== document || A.root().contains(el);
+  };
   A.scrollButtons = function (el, down) {
     var n = A._scrollers.indexOf(el);
     if (n < 0) { n = A._scrollers.length; A._scrollers.push(el); }
@@ -1950,8 +1997,7 @@
       if (!el || A.isDisabled(el)) return false;
       try { A.press(el); } catch (e) { return false; }
       // What the press set going (a list sent back to its top) runs now, not at the next read; a
-      // list it moved hears its scroll.
-      A.fireMovedScrolls();
+      // list it moved hears its scroll (the pump fires it).
       A.pumpIfStalled(true);
       return true;
     });
@@ -2366,6 +2412,7 @@
     if (oldH) {
       try { document.removeEventListener('change', oldH.change, true); } catch (eh1) {}
       try { document.removeEventListener('input', oldH.input, true); } catch (eh2) {}
+      try { if (oldH.focus) document.removeEventListener('focus', oldH.focus, true); } catch (eh3) {}
     }
   } catch (e) {}
 
@@ -2385,7 +2432,13 @@
   try {
     document.addEventListener('change', A._markDirty, true);
     document.addEventListener('input', A._markDirty, true);
-    window.__MSFSBA_SIM_TABLET_HANDLERS = { change: A._markDirty, input: A._markDirty };
+    // Each box that takes focus, for A.releaseKeyboard (STAB-1); it only records.
+    var onFocus = function (ev) {
+      var t = ev && ev.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) window.__MSFSBA_LAST_FOCUS = t;
+    };
+    document.addEventListener('focus', onFocus, true);
+    window.__MSFSBA_SIM_TABLET_HANDLERS = { change: A._markDirty, input: A._markDirty, focus: onFocus };
   } catch (e) {}
 
   window.__MSFSBA_SIM_TABLET = A;
