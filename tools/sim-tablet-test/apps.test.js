@@ -328,19 +328,31 @@ test('a view that gets no frames: the app on screen is updated before each read,
   assert.equal(updates, 3);
 });
 
-test('a view that gets frames: the tablet runs its own loop, the reader adds nothing', () => {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+test('a view that gets frames, read at the client\'s pace: the reader adds nothing after the first read', async () => {
   let updates = 0;
   const { A } = page('<button class="b">Door 1</button>', {
     before: w => {
-      w.requestAnimationFrame = cb => { cb(0); return 1; };   // a frame comes at once
+      w.requestAnimationFrame = cb => setTimeout(() => cb(Date.now()), 33);   // about 30 a second
       w.EFB_API = { _installedApps: { array: [{ options: { efbViewService: { update: () => updates++ } } }] } };
     },
   });
-  scraped(A);                    // the first read cannot know yet, and watches
-  const first = updates;
-  scraped(A);
-  scraped(A);
-  assert.equal(updates, first, 'frames are coming: no more updates from the reader');
+  for (let i = 0; i < 4; i++) { scraped(A); await sleep(620); }
+  assert.equal(updates, 1, 'only the very first read, before any frame was seen');
+});
+
+test('a view that gets no frames, read at the client\'s pace: every read updates the app, with a rising time', async () => {
+  const times = [];
+  const { A } = page('<button class="b">Door 1</button>', {
+    before: w => {
+      w.requestAnimationFrame = () => 0;
+      w.EFB_API = { _installedApps: { array: [{ options: { efbViewService: { update: t => times.push(t) } } }] } };
+    },
+  });
+  for (let i = 0; i < 3; i++) { scraped(A); await sleep(620); }
+  assert.equal(times.length, 3);
+  assert.ok(times[0] < times[1] && times[1] < times[2]);
 });
 
 test('choice rows: a pick keeps its row name when the selection moves, and short names count', () => {

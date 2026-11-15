@@ -176,6 +176,10 @@
     // A number against its unit or a label against its number is never one word, even where the
     // boxes touch ("11890" + "FT", "OS Version" + "1.0.3").
     if (/\d$/.test(left) && /^[A-Za-z]/.test(right) || /[A-Za-z]$/.test(left) && /^\d/.test(right)) return true;
+    // Nor is a word against the next word in another element, or a lone dash standing for a value
+    // (MK Airport's diagnostics: "Airport module" + "not responding", "Last update" + "-").
+    if (/[A-Za-z]{2}$/.test(left) && /^[A-Za-z]{2}/.test(right)) return true;
+    if (/^[-–—]\s*$/.test(right) && /[A-Za-z]$/.test(left)) return true;
     var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
     if (ra.width > 0 && rb.width > 0) {
       var sameRow = Math.abs((ra.top + ra.bottom) / 2 - (rb.top + rb.bottom) / 2) <= 6;
@@ -260,6 +264,7 @@
     var n = A.lineText(el) || A.attr(el, 'aria-label') || A.labelledBy(el) || A.tooltipOf(el) || A.attr(el, 'title') ||
       A.imgName(el) || A.attr(el, 'data-label');
     if (el.tagName === 'INPUT') n = n || el.value;
+    if (n && /^\s*[×✕✖✗xX]\s*$/.test(n)) return 'Close';      // a cross is a close button
     if (n) return A.norm(n);
     n = A.className(el);
     if (n) return n;
@@ -396,7 +401,10 @@
     for (var i = 0; i < t.length; i++) {
       var k = t[i];
       if (k.indexOf(':') >= 0) continue;                  // Tailwind's "hover:…", "active:…" variants
-      var m = /^(?:is-|has-)?([a-z]+)$/.exec(k) || /--([a-z]+)$/.exec(k);
+      var m = /^(?:is-|has-)?([a-z]+)$/.exec(k) || /--([a-z]+)$/.exec(k) ||
+        // a word at the end of an app's own class: CIVA's "civaefb-text-selector-active" (never
+        // "...-inactive", whose last word is "inactive")
+        /[-_](active|selected|current|checked)$/.exec(k);
       if (m && A.STATE_CLASS.hasOwnProperty(m[1])) add(A.STATE_CLASS[m[1]]);
       else if (/(^|-)error$/.test(k)) add('error');
     }
@@ -1042,10 +1050,20 @@
     // The OS's own popup views are "ui-view <Name> popup" (Mass and balance's "LOAD AIRCRAFT").
     for (var j = 0; j < c.length; j++) if (c[j].indexOf('__') < 0 && /(^popup|-popup|^modal|-modal|^dialog|-dialog)$/.test(c[j])) return true;
     var r = A.attr(el, 'role');
-    return r === 'dialog' || r === 'alertdialog' || A.attr(el, 'aria-modal') === 'true';
+    if (r === 'dialog' || r === 'alertdialog' || A.attr(el, 'aria-modal') === 'true') return true;
+    // An overlay over most of the page with controls on it (CIVA's options: "civaefb-bg-overlay").
+    for (var k = 0; k < c.length; k++) {
+      if (c[k].indexOf('__') >= 0 || !/(^|[-_])overlay$/.test(c[k])) continue;
+      return A.coversView(el) && !!el.querySelector('button, input, select, textarea, [role="button"]');
+    }
+    return false;
+  };
+  A.coversView = function (el) {
+    var v = A._view, r = el.getBoundingClientRect(), vr = v ? v.getBoundingClientRect() : null;
+    return !!vr && vr.width > 0 && r.width >= vr.width * 0.6 && r.height >= vr.height * 0.6;
   };
   A.popups = function (view) {
-    var cands = view.querySelectorAll('[class*="popup"], [class*="modal"], [class*="dialog"], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'), out = [];
+    var cands = view.querySelectorAll('[class*="popup"], [class*="modal"], [class*="dialog"], [class*="overlay"], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'), out = [];
     for (var i = 0; i < cands.length; i++) {
       if (!A.isPopup(cands[i]) || A.isHidden(cands[i])) continue;
       var inner = false;
@@ -1347,14 +1365,33 @@
   // Closed" while the door opened, and its press then toggled from that stale state. While the view
   // gets no frames, the reader runs that update once before each read, press and set, so the app on
   // screen is current; once frames run, it does nothing.
-  A._lastFrame = 0;
+  // Stalled = a frame asked for more than 500 ms ago has not come (one request is kept pending, so at
+  // the client's 600 ms poll a view that renders has always answered it); before any request, the
+  // very first read counts as stalled.
+  A._lastFrame = 0;          // Date.now() when the last frame came
+  A._lastTs = 0;             // that frame's own timestamp
+  A._pumpTs = 0;             // the last timestamp the reader handed the app
   A._frameAsked = false;
+  A._askedAt = 0;
   A.watchFrames = function () {
     if (A._frameAsked) return;
     try {
       A._frameAsked = true;
-      window.requestAnimationFrame(function () { A._lastFrame = Date.now(); A._frameAsked = false; });
+      A._askedAt = Date.now();
+      window.requestAnimationFrame(function (ts) { A._lastFrame = Date.now(); A._lastTs = ts || 0; A._frameAsked = false; });
     } catch (e) { A._frameAsked = false; }
+  };
+  A.isStalled = function () {
+    return A._frameAsked ? Date.now() - A._askedAt > 500 : A._lastFrame === 0;
+  };
+  // A time on the view's own frame clock: its last frame's timestamp plus the time since, never
+  // earlier than one already handed out (an app may time its updates by it).
+  A.frameTime = function () {
+    var t = A._lastFrame ? A._lastTs + (Date.now() - A._lastFrame)
+      : (window.performance && performance.now ? performance.now() : Date.now());
+    if (t <= A._pumpTs) t = A._pumpTs + 1;
+    A._pumpTs = t;
+    return t;
   };
   A.viewService = function () {
     try {
@@ -1366,15 +1403,27 @@
     } catch (e) {}
     return null;
   };
-  A.pumpIfStalled = function () {
+  A.PUMP_SLOW_MS = 20;
+  // A press or set (always) runs it unless a frame came in the last 200 ms: the pilot's press must act
+  // on the app's current state, and one extra update on a press costs nothing.
+  A.pumpIfStalled = function (always) {
     if (!A.inEfb()) return;
-    var stalled = Date.now() - A._lastFrame > 500;
+    var stalled = always ? !(A._lastFrame && Date.now() - A._lastFrame < 200) : A.isStalled();
     A.watchFrames();
     if (!stalled) return;
+    // A heavy update (measured once per app) runs before presses and sets only, and on every third
+    // read, so a slow app never makes every read slow.
+    if (!always && A._pumpMs > A.PUMP_SLOW_MS && (A._pollCount % 3) !== 0) return;
     var vs = A.viewService();
     if (!vs) return;
-    try { vs.update(window.performance && performance.now ? performance.now() : Date.now()); } catch (e) {}
+    var t0 = Date.now();
+    try { vs.update(A.frameTime()); } catch (e) {}
+    A._pumpMs = Date.now() - t0;
+    // What the update changed counts for this very read, not the next: the observer reports it only
+    // after this evaluation ends.
+    try { if (A._obs && A._obs.takeRecords && A._obs.takeRecords().length) A._dirty = true; } catch (e2) {}
   };
+  A._pumpMs = 0;
 
   A._dirty = true;
   A._everScraped = false;
@@ -1491,7 +1540,7 @@
   A.clickElement = function (idx, gel) {
     if (idx === A.SIMBRIEF_IDX) return false;    // the app's own action: the client runs it
     return A.withListeners(gel, function () {
-      A.pumpIfStalled();             // the app presses from its current state, never a frozen one
+      A.pumpIfStalled(true);         // the app presses from its current state, never a frozen one
       var el = A.find(idx);
       if (!el || A.isDisabled(el)) return false;
       try { A.press(el); return true; } catch (e) { return false; }
@@ -1586,7 +1635,7 @@
   };
 
   A.setValue = function (idx, text, gel) {
-    return A.withListeners(gel, function () { A.pumpIfStalled(); return A.setValueNow(idx, text); });
+    return A.withListeners(gel, function () { A.pumpIfStalled(true); return A.setValueNow(idx, text); });
   };
   // The OS's own text boxes take 'input' alone (STAB-1): the TextBox component and the Flight
   // Planner's route box. A page's own box also commits on 'change'.
@@ -1822,6 +1871,7 @@
   // Everything the import reads back, as JSON.
   A.route.state = function () {
     try {
+      A.pumpIfStalled(true);         // the import's waits read a current Flight Planner (STAB-15)
       var rv = A.route.view();
       var st = { ok: true, atlas: !!A.route.atlas(), routeShown: !!rv && !A.isHidden(rv), airports: [], procedures: [], waypoints: [] };
       if (!rv) return JSON.stringify(st);
