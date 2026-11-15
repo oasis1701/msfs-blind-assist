@@ -48,6 +48,7 @@ internal static class OffChartLeg
         }
 
         // Best first: smallest |first turn|; candidates within TieDeg of the best go shortest first.
+        // Greedy: each round anchors on the best |first turn| still left, so the grouping is not transitive.
         var ordered = new List<Candidate>();
         while (found.Count > 0)
         {
@@ -61,6 +62,7 @@ internal static class OffChartLeg
     }
 
     /// Why one specific leg is refused (None when it passes). Used by Find and by the log.
+    /// A missing node id reports Shape.
     public static Refusal Judge(TaxiGraph graph, PavementMap pavement, int fromNodeId,
         double incomingBearing, int joinNodeId, int nextNodeId, TurnSide side)
     {
@@ -81,12 +83,14 @@ internal static class OffChartLeg
         foreach (var (lat, lon) in samples)
             if (!pavement.IsOnMappedPavement(lat, lon)) return Refusal.OffPavement;
 
-        var ownRunway = RouteRunwayCrossings.RunwayUnder(graph.RunwayCenterlines, from.Latitude, from.Longitude);
+        // Every runway under the start node may be run along; any sample under another runway (even
+        // where it crosses one the leg starts on) is a runway the route was not already on.
+        var shapes = graph.RunwayCenterlines.Select(r => (Runway: r, Shape: RunwayShape.For(r))).ToList();
+        var startedOn = shapes.Where(s => s.Shape.Contains(from.Latitude, from.Longitude, 0.0))
+            .Select(s => s.Runway).ToList();
         foreach (var (lat, lon) in samples)
-        {
-            var under = RouteRunwayCrossings.RunwayUnder(graph.RunwayCenterlines, lat, lon);
-            if (under != null && !ReferenceEquals(under, ownRunway)) return Refusal.EntersRunway;
-        }
+            foreach (var (runway, shape) in shapes)
+                if (!startedOn.Contains(runway) && shape.Contains(lat, lon, 0.0)) return Refusal.EntersRunway;
         return Refusal.None;
     }
 
