@@ -128,7 +128,11 @@ public partial class TaxiGuidanceManager
         // the named holding point to stop at after that row's taxiway ("taxi via L, hold
         // short of L2", LOWW 2026-11-14). The stop goes on the segment ending at the
         // point's own node; a point the route does not pass is reported, never guessed.
-        Dictionary<int, Navigation.HoldingPointHoldShort>? userHoldingPointHoldShorts = null)
+        Dictionary<int, Navigation.HoldingPointHoldShort>? userHoldingPointHoldShorts = null,
+        // The planner's per-row Turn picks: sequence index -> the side ATC named for the turn onto
+        // that row's taxiway. Applied to the route once it is built (TurnPickApplier); null or empty
+        // leaves the route exactly as the router built it.
+        Dictionary<int, TurnSide>? userTurnPicks = null)
     {
         lock (_stateLock)
         {
@@ -151,6 +155,8 @@ public partial class TaxiGuidanceManager
         var priorUserRunwayHoldShorts = _userRunwayHoldShorts;
         var priorUserTaxiwayHoldShorts = _userTaxiwayHoldShorts;
         var priorUserHoldingPointHoldShorts = _userHoldingPointHoldShorts;
+        var priorUserTurnPicks = _userTurnPicks;
+        var priorTurnBlockedNodes = _turnBlockedNodes;
         var priorPreferIlsHold = _preferIlsHold;
         var priorBacktrackDeparture = _backtrackDeparture;
         var priorBacktrackDepApproachAnnounced = _backtrackDepApproachAnnounced;
@@ -180,6 +186,8 @@ public partial class TaxiGuidanceManager
             _userRunwayHoldShorts = priorUserRunwayHoldShorts;
             _userTaxiwayHoldShorts = priorUserTaxiwayHoldShorts;
             _userHoldingPointHoldShorts = priorUserHoldingPointHoldShorts;
+            _userTurnPicks = priorUserTurnPicks;
+            _turnBlockedNodes = priorTurnBlockedNodes;
             _preferIlsHold = priorPreferIlsHold;
             _backtrackDeparture = priorBacktrackDeparture;
             _backtrackDepApproachAnnounced = priorBacktrackDepApproachAnnounced;
@@ -237,6 +245,10 @@ public partial class TaxiGuidanceManager
                 ? new Dictionary<int, string>(userTaxiwayHoldShorts) : null;
             _userHoldingPointHoldShorts = userHoldingPointHoldShorts != null
                 ? new Dictionary<int, Navigation.HoldingPointHoldShort>(userHoldingPointHoldShorts) : null;
+            _userTurnPicks = userTurnPicks != null
+                ? new Dictionary<int, TurnSide>(userTurnPicks) : null;
+            // A new route starts with no junction blocked; a previous route's blocks belong to it.
+            _turnBlockedNodes = new HashSet<int>();
             _preferIlsHold = preferIlsHold;
             _backtrackDeparture = fullLengthBacktrack;
             _backtrackDepApproachAnnounced = false;
@@ -381,14 +393,20 @@ public partial class TaxiGuidanceManager
                 var runwayIds = dataProvider.GetRunways(icao!)
                     .Select(r => r.RunwayID).ToList();
                 List<string>? droppedRunwayLegs = null;
+                List<int>? droppedRowIndices = null;
                 for (int i = taxiwaySequence.Count - 1; i >= 0; i--)
                 {
                     if (knownTaxiways.Contains(taxiwaySequence[i])) continue;
                     string? designator = MatchRunwayDesignator(taxiwaySequence[i], runwayIds);
                     if (designator == null) continue;
                     (droppedRunwayLegs ??= new List<string>()).Insert(0, designator);
+                    (droppedRowIndices ??= new List<int>()).Add(i);
                     taxiwaySequence.RemoveAt(i);
                 }
+                // The Turn picks index the rows as the pilot entered them: re-key them onto the rows
+                // that remain, or a pick would land on the taxiway after the skipped leg.
+                if (droppedRowIndices != null && _userTurnPicks is { Count: > 0 })
+                    _userTurnPicks = TurnPickCarryOver.WithoutRows(_userTurnPicks, droppedRowIndices);
                 if (droppedRunwayLegs != null)
                 {
                     runwayLegNote = droppedRunwayLegs.Count == 1
@@ -851,6 +869,53 @@ public partial class TaxiGuidanceManager
                 }
             }
 
+            // The planner's Turn picks, applied to the route built above: after the pin and the
+            // forward-facing re-route (each may replace the route, and the picks judge the route that
+            // will be flown), before the hold-short picks and hold passes, which must run on the route
+            // the picks leave. A cross-component route keeps its charted turns: its two halves cannot
+            // be re-routed by one router call, so every pick is reported as not found.
+            TurnPickResult? turnPickResult = null;
+            if (_userTurnPicks is { Count: > 0 })
+            {
+                if (isCrossComponentRoute || taxiwaySequence is not { Count: > 0 })
+                {
+                    var refusals = new List<TurnPickRefusal>();
+                    foreach (var (row, side) in _userTurnPicks.OrderBy(p => p.Key))
+                    {
+                        if (taxiwaySequence != null && row >= 0 && row < taxiwaySequence.Count)
+                            refusals.Add(new TurnPickRefusal(row, side, taxiwaySequence[row], TurnPickOutcome.NoTurnFound));
+                        else
+                            _guidanceLog.Info($"Turn pick: row {row} {side} skipped, no such row in the sequence");
+                    }
+                    if (isCrossComponentRoute)
+                        _guidanceLog.Info($"Turn pick: {_userTurnPicks.Count} pick(s) not applied to a cross-component route");
+                    turnPickResult = new TurnPickResult(route, destinationNodeId, new List<AppliedTurnPick>(), refusals);
+                }
+                else
+                {
+                    turnPickResult = TurnPickApplier.Apply(route, _userTurnPicks, new TurnPickContext(
+                        _graph, PavementMapForGraph(), taxiwaySequence, destinationNodeId, isRunwayDestination,
+                        aircraftLat, aircraftLon, aircraftHeading + aircraftHeadingMagVar,
+                        progressiveTerminator, _holdingPointHoldNodeId,
+                        RECALC_LENGTH_BLOWUP_RATIO, RECALC_LENGTH_BLOWUP_PAD_M,
+                        Log: m => _guidanceLog.Info("Turn pick: " + m)));
+                    if (!ReferenceEquals(turnPickResult.Route, route))
+                    {
+                        route = turnPickResult.Route;
+                        route.DestinationName = destinationName;
+                        route.TaxiwaySequence = taxiwaySequence;
+                        if (attemptLeadIn && !leadInFallback && firstCleared != null)
+                            leadIn = TaxiLeadIn.Extract(route, firstCleared);
+                    }
+                    // A Progressive end point re-resolved along the picked direction (design section 5).
+                    if (turnPickResult.DestinationNodeId != destinationNodeId)
+                    {
+                        destinationNodeId = turnPickResult.DestinationNodeId;
+                        _destinationNodeId = turnPickResult.DestinationNodeId;
+                    }
+                }
+            }
+
             // The pilot's own picks, applied to the route object that will actually be ADOPTED.
             // Both passes above (the holding-point pin, the forward-facing re-route) return a fresh
             // TaxiRoute and the picks mutate segments in place, so they must come after. Main ran
@@ -1180,6 +1245,7 @@ public partial class TaxiGuidanceManager
             _lastSegmentAdvanceTime = DateTime.MinValue;
             _holdShortAtDestination = false;
             _unchartedAnnouncedIdx = -1;
+            _offChartLegAnnouncedIdx = -1;
             _pairedCrossingSegIdx = -1;
             _pairedCrossingWindowFrom = DateTime.MinValue;
             _pairedCrossingWindowUntil = DateTime.MinValue;
@@ -1245,6 +1311,12 @@ public partial class TaxiGuidanceManager
                 // guidance cannot honour before tactical callouts start.
                 if (!string.IsNullOrEmpty(runwayLegNote))
                     summary = runwayLegNote + " " + summary;
+                // What the Turn picks did, near the front for the same reason: a pick that could not
+                // be honored, or an off-chart leg, must be heard before the first tactical callout.
+                string? turnPickNote = turnPickResult == null ? null : TurnPickMessages.ComposeLoadNote(
+                    turnPickResult.Applied, turnPickResult.Refusals, destinationName, FormatDistance, forSummary: true);
+                if (!string.IsNullOrEmpty(turnPickNote))
+                    summary = turnPickNote + " " + summary;
                 // Route-start warning goes FIRST of all (prepended last): a route the
                 // aircraft cannot join (island) or must turn around for is the single
                 // most important thing to hear, and the first tactical callout after
@@ -1273,6 +1345,11 @@ public partial class TaxiGuidanceManager
                 // LastRouteStartWarning): the summary they also ride in is cut by StartGuidance.
                 var mustHear = new List<string>();
                 if (!string.IsNullOrEmpty(routeStartWarning)) mustHear.Add(routeStartWarning);
+                // The start-utterance form leaves out a charted pick's confirmation: that one is
+                // for the summary only (design section 6).
+                string? turnPickStartNote = turnPickResult == null ? null : TurnPickMessages.ComposeLoadNote(
+                    turnPickResult.Applied, turnPickResult.Refusals, destinationName, FormatDistance, forSummary: false);
+                if (!string.IsNullOrEmpty(turnPickStartNote)) mustHear.Add(turnPickStartNote);
                 string unheldRunways = RouteRunwayCrossings.DescribeUnheldRunways(route.RunwayEvents);
                 if (unheldRunways.Length > 0)
                     mustHear.Add("Warning: " + unheldRunways + ".");
@@ -1423,14 +1500,16 @@ public partial class TaxiGuidanceManager
         bool AutoActivateFired,
         double PostHighSpeedExitMinBearing,
         TaxiGraph? Graph,
-        long GraphGeneration);
+        long GraphGeneration,
+        Dictionary<int, TurnSide>? UserTurnPicks,
+        HashSet<int> TurnBlockedNodes);
 
     private LoadRouteRollback CaptureLoadRouteRollback() => new(
         _dataProvider, _destinationNodeId, _destinationName, _icao, _originalTaxiwaySequence,
         _preferIlsHold, _backtrackDeparture, _backtrackDepApproachAnnounced, _holdingPointHoldNodeId,
         _isRunwayLineup, _progressiveTerminator, _lineupTargetLat, _lineupTargetLon,
         _lineupHeadingMag, _lineupHeadingTrue, _hasLineupTarget, _autoActivateFired,
-        _postHighSpeedExitMinBearing, _graph, _graphGeneration);
+        _postHighSpeedExitMinBearing, _graph, _graphGeneration, _userTurnPicks, _turnBlockedNodes);
 
     private void RestoreLoadRouteRollback(LoadRouteRollback r)
     {
@@ -1454,6 +1533,8 @@ public partial class TaxiGuidanceManager
         _postHighSpeedExitMinBearing = r.PostHighSpeedExitMinBearing;
         _graph = r.Graph;
         _graphGeneration = r.GraphGeneration;
+        _userTurnPicks = r.UserTurnPicks;
+        _turnBlockedNodes = r.TurnBlockedNodes;
     }
 
     /// <summary>

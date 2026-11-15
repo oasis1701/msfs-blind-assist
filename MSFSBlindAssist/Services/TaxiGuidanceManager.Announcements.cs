@@ -40,6 +40,19 @@ public partial class TaxiGuidanceManager
             AnnounceInstruction("Back on charted taxiways.");
         }
 
+        // A Turn pick's off-chart leg: said once on entering it, so the pilot knows the tone is about
+        // to leave the taxi line on purpose and which way the turn at its end goes. Same length floor
+        // as the apron crossing; nothing is said on leaving it (the turn and taxiway callouts cover that).
+        if (currentSeg.IsOffChartTurn
+            && _offChartLegAnnouncedIdx != _currentSegmentIndex
+            && currentSeg.DistanceMeters >= UNCHARTED_ANNOUNCE_MIN_M
+            && _route.TurnPicks.FirstOrDefault(p => p.FirstSegmentAfterDeparture == _currentSegmentIndex) is { } legPick)
+        {
+            _offChartLegAnnouncedIdx = _currentSegmentIndex;
+            AnnounceInstruction(TurnPickMessages.EnteringLeg(
+                legPick.Side, legPick.TaxiwayName, FormatDistance(currentSeg.DistanceMeters)));
+        }
+
         int nextIdx = _currentSegmentIndex + 1;
         if (nextIdx >= _route.Segments.Count)
         {

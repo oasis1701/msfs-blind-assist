@@ -252,6 +252,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // sequence index -> the point. Kept so a recalculation can put a stop that is still ahead
     // back onto the new route (HoldingPointHoldShort.IsStillAhead).
     private Dictionary<int, Navigation.HoldingPointHoldShort>? _userHoldingPointHoldShorts;
+    // The planner's Turn picks (sequence index -> side), a private copy re-keyed when a runway
+    // leg is dropped. Null when the pilot left every Turn list at Automatic.
+    private Dictionary<int, TurnSide>? _userTurnPicks;
+    // Junction nodes a made Turn pick keeps out of later recalculations of this route, so none
+    // can route back through the junction the pilot turned away from. Empty for a fresh route.
+    private HashSet<int> _turnBlockedNodes = new();
 
     // Paired-runway crossing double-Continue (VATSIM gap analysis 2026-08-31, P7):
     // set when a Continue past a crossing found ANOTHER runway-crossing hold-short
@@ -775,6 +781,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // fired (-1 = none). Also drives the one-shot "back on charted taxiways" when
     // the index advances past it. Reset on LoadRoute.
     private int _unchartedAnnouncedIdx = -1;
+    // Segment index whose off-chart Turn-pick leg sentence has been spoken (-1 = none), so it is
+    // said once per leg. Reset on LoadRoute.
+    private int _offChartLegAnnouncedIdx = -1;
     // Route-joined latch. Off-route detection (and thus auto-recalc) is suppressed
     // until the aircraft has actually reached the route line at least once. The
     // post-pushback taxi from the gate ONTO the first taxiway is legitimately off
