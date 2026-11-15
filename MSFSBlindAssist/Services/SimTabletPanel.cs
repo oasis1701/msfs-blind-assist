@@ -1,13 +1,11 @@
-using System.Net.Http;
-using System.Net.WebSockets;
-using System.Text;
-using System.Text.Json;
+using System.Diagnostics;
+using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// The sim's own tablet panel, opened and closed from its toolbar as a sighted pilot does (STAB-16).
+/// The sim's own tablet panel, shown and hidden from its toolbar as a sighted pilot does (STAB-16).
 ///
 /// Coherent gives the tablet's view animation frames only while something shows it (STAB-15). An
 /// aircraft with a tablet of its own shows the sim's nowhere, and the parts of an app that only move
@@ -16,17 +14,21 @@ namespace MSFSBlindAssist.Services;
 /// frame) until the sim's tablet panel was opened from the toolbar, when it listed all 135 flights.
 /// The reader then offers <see cref="ActionIdx"/>, which the tablet window hands to MainForm.
 ///
-/// The toolbar is its own Coherent view ("Toolbar"), which no other MSFSBA client opens, so a one-off
-/// inspector socket to it never competes with another (DBG-9). The tablet's button there is the
-/// element around the toolbar's "EFB" icon that listens to clicks; a click toggles the panel.
+/// The toolbar is its own Coherent view ("Toolbar"), which no MSFSBA client holds, so a one-shot
+/// eval (<see cref="CoherentEvalClient"/>, one at a time here) never competes with another (DBG-9).
+/// Its tablet button is the element around the toolbar's "EFB" icon that listens to clicks, and a
+/// click only TOGGLES: the button marks no open or closed state (measured), so whether the panel
+/// shows is read from the tablet's view itself: frames arrive while it shows. What MSFSBA showed is
+/// remembered in that page (window.__MSFSBA_TABLET_SHOWN), so a new flight, which reloads it, forgets.
 /// </summary>
 public static class SimTabletPanel
 {
-    /// <summary>The idx of the reader's synthetic "Show the tablet in the sim" button (A.SHOW_TABLET_IDX).</summary>
+    /// <summary>The idx of the reader's synthetic Show / Hide the tablet button (A.SHOW_TABLET_IDX).</summary>
     public const int ActionIdx = 990002;
 
-    private const string DebuggerBase = "http://127.0.0.1:19999";
-    private const string ToolbarTitle = "Toolbar";
+    internal const string ToolbarTitle = "Toolbar";
+
+    public enum Outcome { Shown, NotShown, Hidden, AlreadyHidden, Unknown, Failed }
 
     /// <summary>
     /// Clicks the toolbar's tablet button, the nearest ancestor of its "EFB" icon that has a click
@@ -37,93 +39,87 @@ public static class SimTabletPanel
         "for(var n=g,i=0;n&&i<12;n=n.parentElement,i++){var l=getEventListeners(n);" +
         "if(l&&l.click&&l.click.length){n.click();return 'clicked';}}return 'no-button';})()";
 
-    /// <summary>The "Toolbar" view's id from the debugger's page list, or null.</summary>
-    internal static int? FindToolbarPage(string pageListJson)
+    // In the tablet's view, through the reader (A.watchFrames): ask for a frame now, then whether one came.
+    internal const string FrameProbeStart =
+        "(function(){var A=window.__MSFSBA_SIM_TABLET;if(!A||!A.watchFrames)return '';A._probeT0=Date.now();A.watchFrames();return 'ok';})()";
+    internal const string FrameProbeRead =
+        "(function(){var A=window.__MSFSBA_SIM_TABLET;if(!A||!A._probeT0)return '';return A._lastFrame>=A._probeT0?'frames':'none';})()";
+    internal const string MarkShown = "(function(){window.__MSFSBA_TABLET_SHOWN=true;var A=window.__MSFSBA_SIM_TABLET;if(A&&A._markDirty)A._markDirty();return 'ok';})()";
+    internal const string MarkHidden = "(function(){window.__MSFSBA_TABLET_SHOWN=false;var A=window.__MSFSBA_SIM_TABLET;if(A&&A._markDirty)A._markDirty();return 'ok';})()";
+    internal const string ReadShown = "(function(){return window.__MSFSBA_TABLET_SHOWN?'true':'false';})()";
+    // The panel opening must never leave the pilot's keyboard with the tablet (STAB-1).
+    internal const string ReleaseKeyboard = "(function(){var A=window.__MSFSBA_SIM_TABLET;if(A&&A.releaseKeyboard)A.releaseKeyboard();return 'ok';})()";
+
+    private static readonly SemaphoreSlim OnePress = new(1, 1);
+
+    /// <summary>
+    /// Presses the toolbar's tablet button. True when it was pressed; false when the debugger, the
+    /// toolbar view or its tablet button could not be reached (logged), or a press is still running:
+    /// one at a time, so never two sockets on the view.
+    /// </summary>
+    public static async Task<bool> ToggleAsync()
     {
+        if (!await OnePress.WaitAsync(0)) return false;
         try
         {
-            using var doc = JsonDocument.Parse(pageListJson);
-            foreach (var view in doc.RootElement.EnumerateArray())
-            {
-                if (!view.TryGetProperty("title", out var t) || t.GetString() != ToolbarTitle) continue;
-                if (!view.TryGetProperty("id", out var idEl)) continue;
-                if (idEl.ValueKind == JsonValueKind.Number) return idEl.GetInt32();
-                if (int.TryParse(idEl.GetString(), out int n)) return n;
-            }
+            string r = await CoherentEvalClient.EvalAsync(ToolbarTitle, ToggleScript, exactTitle: true, commandLineApi: true);
+            if (r != "clicked") Log.Warn("SimTablet", $"toolbar: tablet button not pressed ({(r.Length == 0 ? "no answer" : r)})");
+            return r == "clicked";
         }
-        catch (JsonException) { }
-        return null;
+        finally { OnePress.Release(); }
     }
 
     /// <summary>
-    /// Toggles the sim's tablet panel. True when the toolbar's button was pressed; false when the
-    /// debugger, the toolbar view or its tablet button could not be reached (logged).
+    /// Whether the tablet's view gets frames: true when one arrives within <paramref name="timeoutMs"/>,
+    /// false when none does, null when the reader did not answer.
     /// </summary>
-    public static async Task<bool> ToggleAsync(CancellationToken ct = default)
+    public static async Task<bool?> ViewGetsFramesAsync(Func<string, Task<string>> eval, int timeoutMs = 1500, int stepMs = 250)
     {
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-        int? page;
-        try { page = FindToolbarPage(await http.GetStringAsync($"{DebuggerBase}/pagelist.json", ct)); }
-        catch (Exception ex) { Log.Warn("SimTablet", $"toolbar: no page list: {ex.Message}"); return false; }
-        if (page == null) { Log.Warn("SimTablet", "toolbar: no Toolbar view"); return false; }
-
-        using var ws = new ClientWebSocket();
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(4000);
-        try
+        if (await eval(FrameProbeStart) != "ok") return null;
+        var clock = Stopwatch.StartNew();
+        while (true)
         {
-            await ws.ConnectAsync(new Uri($"ws://127.0.0.1:19999/devtools/inspector/{page.Value}"), cts.Token);
-            var msg = JsonSerializer.Serialize(new
-            {
-                id = 1,
-                method = "Runtime.evaluate",
-                @params = new { expression = ToggleScript, returnByValue = true, includeCommandLineAPI = true }
-            });
-            await ws.SendAsync(Encoding.UTF8.GetBytes(msg), WebSocketMessageType.Text, true, cts.Token);
-            var buf = new byte[16384];
-            using var ms = new MemoryStream();
-            for (int frame = 0; frame < 20; frame++)
-            {
-                ms.SetLength(0);
-                WebSocketReceiveResult res;
-                do
-                {
-                    res = await ws.ReceiveAsync(new ArraySegment<byte>(buf), cts.Token);
-                    if (res.MessageType == WebSocketMessageType.Close) return false;
-                    ms.Write(buf, 0, res.Count);
-                } while (!res.EndOfMessage);
-                string value = ReplyValue(Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
-                if (value.Length == 0) continue;          // not our reply yet
-                if (value != "clicked") Log.Warn("SimTablet", $"toolbar: tablet button not found ({value})");
-                return value == "clicked";
-            }
-            return false;
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("SimTablet", $"toolbar: {ex.Message}");
-            return false;
-        }
-        finally
-        {
-            // A proper close, so Coherent releases the view at once (CoherentPmdgEfbClient.Stop).
-            try { if (ws.State == WebSocketState.Open) await ws.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None).WaitAsync(TimeSpan.FromMilliseconds(300)); } catch { }
+            await Task.Delay(stepMs);
+            string r = await eval(FrameProbeRead);
+            if (r == "frames") return true;
+            if (r != "none") return null;
+            if (clock.ElapsedMilliseconds >= timeoutMs) return false;
         }
     }
 
-    // The value of the reply with id 1, or "" for any other message.
-    internal static string ReplyValue(string message)
+    /// <summary>
+    /// Shows the panel: presses the button, then waits for the view's frames. With none, the press
+    /// is undone (it may have closed a panel the sim shows but does not draw, paused or in its menu),
+    /// so the panel is left as it was.
+    /// </summary>
+    public static async Task<Outcome> ShowAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle)
     {
-        try
+        if (!await toggle()) return Outcome.Failed;
+        bool? frames = await ViewGetsFramesAsync(eval);
+        if (frames == true)
         {
-            using var d = JsonDocument.Parse(message);
-            var root = d.RootElement;
-            if (!root.TryGetProperty("id", out var idEl) || !idEl.TryGetInt32(out int id) || id != 1) return "";
-            if (root.TryGetProperty("result", out var outer) && outer.TryGetProperty("result", out var inner)
-                && inner.TryGetProperty("value", out var val) && val.ValueKind == JsonValueKind.String)
-                return val.GetString() ?? "";
-            return "error";
+            await eval(MarkShown);
+            await eval(ReleaseKeyboard);
+            return Outcome.Shown;
         }
-        catch (JsonException) { return ""; }
+        if (frames == false) { await toggle(); return Outcome.NotShown; }
+        return Outcome.Unknown;
+    }
+
+    /// <summary>
+    /// Hides the panel MSFSBA showed, when it still shows: a panel the pilot already closed, or one
+    /// MSFSBA never showed, is left alone. <paramref name="cancel"/>, checked after the frame check,
+    /// stops it (the window opened again meanwhile). Unknown keeps the mark, to try again later.
+    /// </summary>
+    public static async Task<Outcome> HideAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle, Func<bool>? cancel = null)
+    {
+        string mark = await eval(ReadShown);
+        if (mark == "false") return Outcome.AlreadyHidden;
+        if (mark != "true") return Outcome.Unknown;
+        bool? frames = await ViewGetsFramesAsync(eval, 1000);
+        if (frames == null || cancel?.Invoke() == true) return Outcome.Unknown;
+        if (frames == true && !await toggle()) return Outcome.Failed;
+        await eval(MarkHidden);
+        return frames == true ? Outcome.Hidden : Outcome.AlreadyHidden;
     }
 }

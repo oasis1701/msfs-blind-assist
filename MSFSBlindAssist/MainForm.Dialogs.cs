@@ -596,7 +596,7 @@ public partial class MainForm
             coherentSimTablet.ClickInterceptor = idx =>
             {
                 if (idx == SimTabletSimBriefImport.ActionIdx) { _ = LoadSimBriefIntoSimTabletAsync(); return true; }
-                if (idx == SimTabletPanel.ActionIdx) { _ = ShowSimTabletPanelAsync(); return true; }
+                if (idx == SimTabletPanel.ActionIdx) { _ = ToggleSimTabletPanelAsync(); return true; }
                 return false;
             };
             coherentSimTablet.Start();
@@ -610,7 +610,7 @@ public partial class MainForm
             {
                 bool shown = !f.IsDisposed && f.Visible;
                 coherentSimTablet?.SetActive(shown);
-                if (!shown) _ = HideSimTabletPanelAsync();
+                if (!shown) _ = HideSimTabletPanelOnCloseAsync();
             };
         }
         coherentSimTablet.SetActive(true);   // covers a re-Show of an already-visible window
@@ -661,39 +661,86 @@ public partial class MainForm
         finally { simTabletImportBusy = false; }
     }
 
+    private bool SimTabletWindowShown => simTabletForm is { IsDisposed: false, Visible: true };
+
     /// <summary>
-    /// The reader's "Show the tablet in the sim" (STAB-16): opens the sim's own tablet panel from its
-    /// toolbar, so the tablet's view gets frames and lists that wait for one fill in. Offered only
-    /// while nothing shows the tablet; remembered, so closing the window hides the panel again.
+    /// The reader's Show / Hide the tablet in the sim (STAB-16): shows the sim's own tablet panel from
+    /// its toolbar, so the tablet's view gets frames and lists that wait for one fill in, or hides the
+    /// one MSFSBA showed. Each outcome is checked by the view's frames, never assumed from the press.
+    /// One at a time (simTabletPanelBusy).
     /// </summary>
-    private async Task ShowSimTabletPanelAsync()
+    private async Task ToggleSimTabletPanelAsync()
     {
-        if (await SimTabletPanel.ToggleAsync())
+        var client = coherentSimTablet;
+        if (client == null) return;
+        if (simTabletPanelBusy) { announcer.Announce("Still working on the tablet in the sim."); return; }
+        simTabletPanelBusy = true;
+        try
         {
-            simTabletPanelOpened = true;
-            announcer.Announce("The tablet is showing in the sim. Closing this window hides it again.");
+            // Hide first when MSFSBA showed it; a panel the pilot already closed falls through to Show.
+            var hide = await SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync);
+            if (hide == SimTabletPanel.Outcome.Hidden) { simTabletPanelShown = false; announcer.Announce("The tablet is hidden in the sim."); return; }
+            if (hide is SimTabletPanel.Outcome.Failed or SimTabletPanel.Outcome.Unknown
+                && await client.EvaluateAsync(SimTabletPanel.ReadShown) == "true")
+            {
+                announcer.Announce("Could not hide the tablet in the sim.");
+                return;
+            }
+
+            var show = await SimTabletPanel.ShowAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync);
+            if (show == SimTabletPanel.Outcome.Shown) simTabletPanelShown = true;
+            if (show == SimTabletPanel.Outcome.Shown && !SimTabletWindowShown)
+            {
+                // The window closed while the panel opened: hide it again, as the close would have.
+                var undo = await SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync, () => SimTabletWindowShown);
+                if (undo is SimTabletPanel.Outcome.Hidden or SimTabletPanel.Outcome.AlreadyHidden) simTabletPanelShown = false;
+                return;
+            }
+            announcer.Announce(show switch
+            {
+                SimTabletPanel.Outcome.Shown => "The tablet is showing in the sim. Closing this window hides it again.",
+                SimTabletPanel.Outcome.NotShown => "The sim did not show the tablet. It may be paused or in a menu.",
+                SimTabletPanel.Outcome.Unknown => "The tablet button was pressed, but MSFSBA could not tell whether the sim shows it.",
+                _ => "Could not show the tablet in the sim.",
+            });
         }
-        else announcer.Announce("Could not show the tablet in the sim.");
+        catch (Exception ex)
+        {
+            Log.Warn("SimTablet", $"tablet panel: {ex.Message}");
+            announcer.Announce("Could not show the tablet in the sim.");
+        }
+        finally { simTabletPanelBusy = false; }
     }
 
     /// <summary>
-    /// Hides the sim's tablet panel when MSFSBA showed it and it is still shown: the toolbar button
-    /// only toggles and marks no state, so "still shown" is a frame arriving within 700 ms
-    /// (A.watchFrames, A.isStalled); a panel the pilot already closed is left closed.
+    /// The window closing hides the panel MSFSBA showed, silently, when it still shows (frames
+    /// arrive); a panel the pilot closed is left closed, and the window opening again meanwhile stops
+    /// it. While a press runs, that press checks the window itself when it ends.
     /// </summary>
-    private async Task HideSimTabletPanelAsync()
+    private async Task HideSimTabletPanelOnCloseAsync()
     {
         var client = coherentSimTablet;
-        if (!simTabletPanelOpened || client == null) return;
-        simTabletPanelOpened = false;
+        if (client == null || !simTabletPanelShown || simTabletPanelBusy) return;
+        simTabletPanelBusy = true;
         try
         {
-            await client.EvaluateAsync("window.__MSFSBA_SIM_TABLET && __MSFSBA_SIM_TABLET.watchFrames(), 'ok'");
-            await Task.Delay(700);
-            string stalled = await client.EvaluateAsync("window.__MSFSBA_SIM_TABLET ? String(__MSFSBA_SIM_TABLET.isStalled()) : ''");
-            if (stalled == "false") await SimTabletPanel.ToggleAsync();
+            var r = await SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync, () => SimTabletWindowShown);
+            if (r is SimTabletPanel.Outcome.Hidden or SimTabletPanel.Outcome.AlreadyHidden) simTabletPanelShown = false;
         }
         catch (Exception ex) { Log.Warn("SimTablet", $"hide panel: {ex.Message}"); }
+        finally { simTabletPanelBusy = false; }
+    }
+
+    /// <summary>
+    /// On exit, the panel MSFSBA showed is hidden too, within 2.5 s at most. It runs off the UI thread,
+    /// so the wait cannot deadlock: SimTabletPanel and the client's evals touch no form.
+    /// </summary>
+    private void HideSimTabletPanelOnExit()
+    {
+        var client = coherentSimTablet;
+        if (client == null || !simTabletPanelShown) return;
+        try { Task.Run(() => SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync)).Wait(2500); }
+        catch (Exception ex) { Log.Warn("SimTablet", $"hide panel on exit: {ex.Message}"); }
     }
 
     // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven

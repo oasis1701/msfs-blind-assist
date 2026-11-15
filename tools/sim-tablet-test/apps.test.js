@@ -313,6 +313,93 @@ test('a control the page shows on hover is read, from the page\'s own :hover rul
   assert.ok(!l.includes('button|Never shown'));
 });
 
+// A page whose computed style the test sets: style(el) returns what differs from the visible default
+// (visibility is inherited, so hide a whole subtree with el.closest).
+function styled(inner, style) {
+  const p = page(inner);
+  const gcs = p.window.getComputedStyle;
+  p.window.getComputedStyle = el => Object.assign({}, gcs(el), style(el) || {});
+  return p;
+}
+
+test('hover reveal: only through a hover on an ancestor, never a rule hovering the faded control itself', () => {
+  const l = lines(scraped(styled('<style>.btn:hover { opacity: 1; }</style>' +
+    '<div class="toast"><span>Plan deleted</span><button class="btn">Undo</button></div>',
+    el => (el.classList.contains('btn') ? { opacity: '0' } : null)).A));
+  assert.ok(!l.some(x => /Undo/.test(x)), 'a dismissed toast\'s Undo stays unread');
+});
+
+test('hover reveal: a tooltip never joins the name of the control it belongs to', () => {
+  const own = lines(scraped(styled('<style>.has-tip:hover .tip { visibility: visible; }</style>' +
+    '<button class="has-tip">OK<span class="tip">Confirm the change and close</span></button>',
+    el => (el.closest('.tip') ? { visibility: 'hidden' } : null)).A));
+  assert.ok(own.includes('button|OK'), own.join(' / '));
+  const inner = lines(scraped(styled('<style>.row:hover .act { visibility: visible; }</style>' +
+    '<div class="row"><span>Plan</span><button class="act">Apply<span class="tooltip">Applies it to the route</span></button></div>',
+    el => (el.closest('.act') ? { visibility: 'hidden' } : null)).A));
+  assert.ok(inner.includes('button|Apply'), inner.join(' / '));
+});
+
+test('hover reveal: a disabled-layer inside a revealed button never reads it as dimmed (STAB-3)', () => {
+  const l = lines(scraped(styled('<style>.row:hover .act { visibility: visible; }</style>' +
+    '<div class="row"><span>Plan</span><button class="act">Delete<div class="disabled-layer"></div></button></div>',
+    el => (el.closest('.act') ? { visibility: 'hidden' } : null)).A));
+  assert.ok(l.includes('button|Delete'), l.join(' / '));
+});
+
+test('hover reveal: a row\'s hover menu is read with its items (a sighted pilot reaches them), a hint with no control is not', () => {
+  const l = lines(scraped(styled('<style>.menu:hover .sub { visibility: visible; } .card:hover .hint-text { visibility: visible; }</style>' +
+    '<div class="menu"><span>Plans</span><div class="sub"><button>Export</button></div></div>' +
+    '<div class="card"><span>KDFW</span><div class="hint-text">Click to open the airport</div></div>',
+    el => (el.closest('.sub') || el.closest('.hint-text') ? { visibility: 'hidden' } : null)).A));
+  assert.ok(l.includes('button|Export'), l.join(' / '));
+  assert.ok(!l.some(x => /Click to open/.test(x)), 'words alone are never revealed');
+});
+
+test('hover reveal: rules inside @media count, and a rule added after the first read is seen', () => {
+  const p = styled('<style id="s">@media screen { .row:hover .x-close { visibility: visible; } }</style>' +
+    '<div class="row"><span>KDFW</span><button class="x-close">Clear</button></div>' +
+    '<div class="row2"><span>KSAV</span><button class="y-close">Remove</button></div>',
+    el => (el.closest('.x-close') || el.closest('.y-close') ? { visibility: 'hidden' } : null));
+  const first = lines(scraped(p.A));
+  assert.ok(first.includes('button|Clear'), first.join(' / '));
+  assert.ok(!first.includes('button|Remove'));
+  p.document.getElementById('s').sheet.insertRule('.row2:hover .y-close { visibility: visible; }', 1);
+  p.A._markDirty();
+  assert.ok(lines(scraped(p.A)).includes('button|Remove'));
+});
+
+test('an icon is named by a word, never an editor\'s numbered layer', () => {
+  const { A, document } = page(
+    '<span id="a"><svg id="svg1"><g id="layer1"><path id="down"></path></g></svg></span>' +
+    '<span id="b"><svg id="svg2"><g id="Calque_1"><rect id="Rectangle_4"></rect><path id="paint0_linear_12_3"></path></g></svg></span>' +
+    '<span id="c"><svg><g id="Tracé_12"><path id="linearGradient123"></path><path id="filter0_d_1_2"></path></g></svg></span>');
+  assert.equal(A.iconName(document.getElementById('a')), 'down');
+  assert.equal(A.iconName(document.getElementById('b')), '');
+  assert.equal(A.iconName(document.getElementById('c')), '');
+});
+
+test('a field is keyed by its name alone or with a twin, so a twin coming or going never rebuilds it', () => {
+  const one = scraped(page('<div class="r"><span>Left</span><label>Manual <input type="checkbox"></label></div>').A);
+  const two = scraped(page('<div class="r"><span>Left</span><label>Manual <input type="checkbox"></label></div>' +
+    '<div class="r"><span>Right</span><label>Manual <input type="checkbox"></label></div>').A);
+  assert.equal(one.find(e => e.controlType === 'checkbox').key, 'field:Manual');
+  assert.deepStrictEqual(two.filter(e => e.controlType === 'checkbox').map(e => e.key + '=' + e.text),
+    ['field:Manual=Left: Manual', 'field:Manual=Right: Manual']);
+});
+
+test('a box named by its row\'s caption reads the caption once, with the box', () => {
+  const l = lines(scraped(page('<div class="row"><span>Cruise altitude</span><i></i><i></i><i></i>' +
+    '<div class="textbox"><input value="350"></div></div>').A));
+  assert.ok(l.includes('/text|Cruise altitude=350'), l.join(' / '));
+  assert.ok(!l.includes('static|Cruise altitude'), l.join(' / '));
+});
+
+test('a choice row with nothing to pick is read as it is, not dropped', () => {
+  const l = lines(scraped(page('<div class="multiple-buttons"><span>No unit to choose on this aircraft</span></div>').A));
+  assert.ok(l.includes('static|No unit to choose on this aircraft'), l.join(' / '));
+});
+
 test('a row of exclusive choices made of pressable divs reads its items with the selected one', () => {
   const { A, window } = page('<div class="multiple-buttons"><div class="opt selected" data-h="click">Default</div><div class="opt">Satellite</div></div>', {
     before: w => {
@@ -429,7 +516,7 @@ test('"Show the tablet in the sim" is offered once a frame has been missing a se
   const offer = find(scraped(stalled.A), SHOW);
   assert.ok(offer, 'offered once the frame asked for is a second late');
   assert.equal(offer.idx, 990002);
-  assert.equal(offer.key, 'action:show-tablet');
+  assert.equal(offer.key, 'action:tablet-panel');
   assert.equal(stalled.A.clickElement(990002), false, 'the client runs it, never the page');
 
   const rendering = page('<button class="b">Door 1</button>', {
@@ -439,6 +526,44 @@ test('"Show the tablet in the sim" is offered once a frame has been missing a se
   await sleep(1100);
   const again = JSON.parse(rendering.A.scrape());
   assert.ok(again.unchanged || !find(again.elements, SHOW), 'a view that renders: nothing to offer, nothing re-read');
+});
+
+test('the tablet panel button: frames coming back re-read the list, and the panel MSFSBA showed reads "Hide" on the same key', async () => {
+  const SHOW = 'Show the tablet in the sim (some lists fill in only while the sim shows it)';
+  let pending = [];
+  const p = page('<button class="b">Door 1</button>', { before: w => { w.requestAnimationFrame = cb => { pending.push(cb); return 1; }; } });
+  scraped(p.A);
+  await sleep(1100);
+  assert.ok(find(scraped(p.A), SHOW));
+  // The client shows the panel: frames come, and it marks the page.
+  pending.splice(0).forEach(cb => cb(Date.now()));
+  p.window.__MSFSBA_TABLET_SHOWN = true;
+  p.window.requestAnimationFrame = cb => setTimeout(() => cb(Date.now()), 33);
+  const after = JSON.parse(p.A.scrape());
+  assert.ok(!after.unchanged, 'the offer moved, so the list is read again though no element changed');
+  const hide = find(after.elements, 'Hide the tablet in the sim');
+  assert.ok(hide, after.elements.map(e => e.text).join(' / '));
+  assert.equal(hide.idx, 990002);
+  assert.equal(hide.key, 'action:tablet-panel', 'the same node: the screen reader keeps its place');
+  // Hidden again and the mark cleared: nothing offered while frames still come.
+  p.window.__MSFSBA_TABLET_SHOWN = false;
+  const gone = JSON.parse(p.A.scrape());
+  assert.ok(!gone.unchanged && !find(gone.elements, 'Hide the tablet in the sim') && !find(gone.elements, SHOW));
+});
+
+test('the tablet panel button is never offered outside the tablet (an app\'s own frame)', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body><button>Go</button></body></html>');
+  const w = dom.window;
+  global.window = w; global.document = w.document;
+  w.requestAnimationFrame = () => 0;
+  w.getComputedStyle = () => ({ display: 'block', visibility: 'visible', opacity: '1', cursor: 'auto' });
+  w.Element.prototype.getBoundingClientRect = () => ({ top: 0, left: 0, right: 100, bottom: 20, width: 100, height: 20 });
+  w.eval(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'MSFSBlindAssist', 'Resources', 'coherent-sim-tablet-agent.js'), 'utf8'));
+  const A = w.__MSFSBA_SIM_TABLET;
+  scraped(A);
+  await sleep(1100);
+  A._markDirty();
+  assert.ok(!scraped(A).some(e => e.idx === 990002));
 });
 
 test('choice rows: a pick keeps its row name when the selection moves, and short names count', () => {

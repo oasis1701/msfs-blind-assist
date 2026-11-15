@@ -50,8 +50,11 @@
   // The client's other action (STAB-16): shown while nothing in the sim shows the tablet (its view
   // gets no frames, STAB-15), it opens the sim's own tablet panel from the toolbar, as a sighted pilot
   // does, so the parts of an app that only move with frames fill in (Pilot book's logbook list).
+  // While the panel MSFSBA showed still shows (window.__MSFSBA_TABLET_SHOWN, set by the client), the
+  // same button hides it again, so it stays in its place in the list.
   A.SHOW_TABLET_IDX = 990002;
   A.SHOW_TABLET_LABEL = 'Show the tablet in the sim (some lists fill in only while the sim shows it)';
+  A.HIDE_TABLET_LABEL = 'Hide the tablet in the sim';
 
   // ---------------------------------------------------------------------------------
   // which listeners an element has (STAB-13)
@@ -115,39 +118,79 @@
     return false;
   };
 
-  // The page's own hover rules: every selector whose :hover rule makes something visible, with the
-  // :hover taken out (".a:hover .b" -> ".a .b"), so an element it matches is one a hover reveals.
-  // Read once per set of stylesheets (an app adds its sheet when it installs).
-  A._hoverSheets = -1;
-  A._hoverSels = [];
-  A.hoverSelectors = function () {
-    var sheets = el0().styleSheets || [];
-    if (sheets.length === A._hoverSheets) return A._hoverSels;
+  // The page's own hover rules that make something visible when the mouse is over an ANCESTOR of it
+  // (".row:hover .x-close"), with the :hover taken out (".row .x-close"), so an element one matches is
+  // one a sighted pilot finds by moving over its row. A rule hovering the element itself
+  // (".btn:hover{opacity:1}") is left out: nothing shows where to move to find it. Rules inside
+  // @media and @supports count. Kept per document (a same-origin frame has its own sheets), re-read
+  // when the sheets or their rule counts change (an app installs its sheet, a library inserts rules),
+  // and checked once per read.
+  A.hoverSelectors = function (doc) {
+    doc = doc || document;
+    var c = doc.__msfsbaHover;
+    if (c && c.scrape === A._scrapeId) return c.sels;
+    var sheets = doc.styleSheets || [], sig = String(sheets.length), i;
+    for (i = 0; i < sheets.length; i++) {
+      var rl = null;
+      try { rl = sheets[i].cssRules; } catch (e0) { rl = null; }
+      sig += ',' + (rl ? rl.length : -1);
+    }
+    if (c && c.sig === sig) { c.scrape = A._scrapeId; return c.sels; }
     var out = [];
-    for (var i = 0; i < sheets.length; i++) {
-      var rules = null;
-      try { rules = sheets[i].cssRules; } catch (e) { rules = null; }
-      for (var j = 0; rules && j < rules.length; j++) {
-        var sel = rules[j].selectorText || '', css = rules[j].style ? rules[j].style.cssText : '';
+    function scan(rules, depth) {
+      for (var j = 0; rules && j < rules.length && depth < 4; j++) {
+        var r = rules[j];
+        if (r.cssRules && !r.selectorText) { scan(r.cssRules, depth + 1); continue; }   // @media, @supports
+        var sel = r.selectorText || '', css = r.style ? r.style.cssText : '';
         if (sel.indexOf(':hover') < 0 || !/visibility:\s*(visible|inherit)|opacity:\s*1(\D|$)/.test(css)) continue;
         var parts = sel.split(',');
-        for (var k = 0; k < parts.length; k++) if (parts[k].indexOf(':hover') >= 0) out.push(A.norm(parts[k].replace(/:hover/g, '')));
+        for (var k = 0; k < parts.length; k++) {
+          var p = A.norm(parts[k]);
+          if (p.indexOf(':hover') < 0 || p.indexOf(':not(') >= 0) continue;
+          var comps = p.replace(/\s*[>+~]\s*/g, ' ').split(' ');
+          if (comps[comps.length - 1].indexOf(':hover') >= 0) continue;               // hovering itself
+          out.push(A.norm(p.replace(/:hover/g, '')));
+        }
       }
     }
-    A._hoverSheets = sheets.length;
-    A._hoverSels = out;
+    for (i = 0; i < sheets.length; i++) {
+      var rules = null;
+      try { rules = sheets[i].cssRules; } catch (e) { rules = null; }
+      scan(rules, 0);
+    }
+    doc.__msfsbaHover = { scrape: A._scrapeId, sig: sig, sels: out };
     return out;
-    function el0() { return document; }
+  };
+  A.matchesAny = function (n, sels) {
+    for (var i = 0; i < sels.length; i++) {
+      try { if (n.matches ? n.matches(sels[i]) : n.webkitMatchesSelector(sels[i])) return true; } catch (e) {}
+    }
+    return false;
+  };
+  // A hover reveals a CONTROL, or a group holding controls (a row's hover menu), and the words inside
+  // it, never a tooltip or a disabled-layer, which have hiding of their own and show on a hover of the
+  // control or never: they would merge into its name or read it as dimmed (STAB-3).
+  A.OWN_HIDING = /^(tooltip|tip|hint|disabled-layer)$|^tooltip[-_]|[-_](tooltip|tip)$/i;
+  A.ownHiding = function (n) {
+    if (A.attr(n, 'role') === 'tooltip') return true;
+    var t = A.tokens(n);
+    for (var i = 0; i < t.length; i++) if (A.OWN_HIDING.test(t[i])) return true;
+    return false;
+  };
+  A.holdsControl = function (n) {
+    if (A.isControlEl(n)) return true;
+    var all = n.getElementsByTagName('*');
+    for (var i = 0; i < all.length && i < 200; i++) if (A.isControlEl(all[i])) return true;
+    return false;
   };
   // The element, or the ancestor it inherits its hiding from (a revealed wrapper reveals its button).
   A.hoverRevealed = function (el) {
-    var sels = A.hoverSelectors();
+    var sels = A.hoverSelectors(el.ownerDocument);
     if (!sels.length) return false;
     for (var n = el, up = 0; n && n.nodeType === 1 && up < 6; n = n.parentElement, up++) {
       if (!n.matches && !n.webkitMatchesSelector) return false;
-      for (var i = 0; i < sels.length; i++) {
-        try { if (n.matches ? n.matches(sels[i]) : n.webkitMatchesSelector(sels[i])) return true; } catch (e) {}
-      }
+      if (A.matchesAny(n, sels)) return A.holdsControl(n);
+      if (A.ownHiding(n)) return false;
       var ps = n.parentElement ? A.styleOf(n.parentElement) : null;
       if (!ps || (ps.visibility !== 'hidden' && ps.opacity !== '0')) return false;   // hidden here, not inherited
     }
@@ -265,9 +308,14 @@
 
   // An icon's name: the first id inside its SVG live, data-icon in a captured fixture. The asset
   // names carry their icon set ("Save--Streamline-Carbon") and clip prefixes ("clip-Arrow").
-  // The first id that says something: an editor's own names ("svg1", "layer1", "path1") are skipped
-  // (the Flight Planner's airport header chevron is "svg1" > "layer1" > "down").
-  A.GENERIC_ID = /^(svg|defs|layer|path|g|group|groupe|trac|rect|circle|mask|clip|stop|use|polygon|ellipse|line)[\s\d]*$/i;
+  // The first id that says something: an editor's own names ("svg1", "layer1", "path1", Illustrator's
+  // "Calque_1", Figma's "paint0_linear_12_3") are skipped (the Flight Planner's airport header chevron
+  // is "svg1" > "layer1" > "down"). An id INSIDE the drawing counts only as a word, letters alone, 3 or
+  // more: editors number what they name ("Rectangle 4", "filter0_d_1_2"), a person names the icon.
+  A.GENERIC_ID = new RegExp('^(svg|defs|layer|path|g|group|groupe|trac[e\u00e9]?|rect|rectangle|circle|mask|masque|clip|clippath|' +
+    'stop|use|polygon|polyline|ellipse|line|ligne|calque|union|titre|title|paint|filter|lineargradient|radialgradient|' +
+    'gradient|pattern|symbol|image|shape|vector|frame|object|objet|text|isolation mode)[\\s\\d]*$', 'i');
+  A.ICON_WORD = /^[A-Za-zÀ-ɏ ]{3,}$/;
   A.iconName = function (el) {
     var svg = el.querySelector('svg');
     if (!svg) return '';
@@ -275,7 +323,9 @@
     for (var j = 0; j < inner.length && j < 12; j++) cands.push(inner[j].id);
     for (var i = 0; i < cands.length; i++) {
       var n = A.norm(String(cands[i] || '').replace(/--.*$/, '').replace(/^clip-/, '').replace(/[-_]+/g, ' '));
-      if (n && !A.GENERIC_ID.test(n)) return n;
+      if (!n || A.GENERIC_ID.test(n)) continue;
+      if (i >= 2 && !A.ICON_WORD.test(n)) continue;
+      return n;
     }
     return '';
   };
@@ -730,9 +780,11 @@
 
   A.BLOCKS = [];
   A.block = function (name, match, emit) { A.BLOCKS.push({ name: name, match: match, emit: emit }); };
+  // A block whose emit returns false declines the element (it found nothing of its own) and the next
+  // block, or the plain walk, reads it.
   A.runBlocks = function (el, els) {
     for (var i = 0; i < A.BLOCKS.length; i++) {
-      if (A.BLOCKS[i].match(el)) { A.BLOCKS[i].emit(el, els); return true; }
+      if (A.BLOCKS[i].match(el) && A.BLOCKS[i].emit(el, els) !== false) return true;
     }
     return false;
   };
@@ -797,6 +849,7 @@
         }
         bs = items;
       }
+      if (!bs.length) return false;          // nothing to pick: the row is read as it is
       for (var i = 0; i < bs.length; i++) {
         if (A.isHidden(bs[i])) continue;
         var t = A.lineText(bs[i]) || A.buttonLabel(bs[i]);
@@ -834,7 +887,7 @@
       // Last, the row's own name: a caption cut off from the dropdown by another control in its row
       // (the Flight Planner's "Cruise altitude" | Auto | FL/FT | 450).
       els.push(A.el(el, { controlType: 'select', text: name || A.labelFor(el) || A.tooltipOf(el) || A.ucfirst(lead) ||
-                                                        A.rowContext(el) || A.headingBefore(el) || 'Choice',
+                                                        A.rowContext(el, '', true) || A.headingBefore(el) || 'Choice',
                           value: value, options: opts, disabled: sel ? A.isDisabled(sel) : false }));
     });
   // The selector shows a short form of the choice ("Dry" for "Dry runway", "level standard" for
@@ -1032,7 +1085,7 @@
       var at = A.hasClass(el.parentElement, 'unitbox') ? el.parentElement : el;
       var ph = inp.getAttribute('placeholder');
       var label = A.labelFor(at, 2) || (ph ? '' : A.labelFor(at)) ||
-        (inp.tagName === 'TEXTAREA' ? A.fieldName(inp) : '') || inp.getAttribute('aria-label') || ph || A.rowContext(at) || 'Value';
+        (inp.tagName === 'TEXTAREA' ? A.fieldName(inp) : '') || inp.getAttribute('aria-label') || ph || A.rowContext(at, '', true) || 'Value';
       els.push(A.el(inp, { controlType: 'text', text: label + (unit ? ' (' + unit + ')' : ''),
                            value: String(inp.value == null ? '' : inp.value), disabled: A.isDisabled(inp) }));
     });
@@ -1198,7 +1251,8 @@
   // the button in the nearest container that has one ("Default: LOAD", "Mod on/off: CHANGE"). Left
   // as they are when that does not tell them apart.
   // `skip`: the control's own name, which its caption repeats (a "Manual" tick box's "Manual").
-  A.rowContext = function (b, skip) {
+  // `claim`: the text names a field, which reads it with itself, so its line is dropped (A.labelFor).
+  A.rowContext = function (b, skip, claim) {
     var anc = b.parentElement;
     for (var up = 0; up < 4 && anc && anc !== A._view; up++, anc = anc.parentElement) {
       var all = anc.getElementsByTagName('*');
@@ -1215,7 +1269,7 @@
         if (!A.isNameText(line)) continue;                   // a name, never a value ("29", "GAL", "14947 L")
         var inCtl = false;
         for (var p = n; p && p !== anc; p = p.parentElement) if (A.isControlEl(p)) { inCtl = true; break; }
-        if (!inCtl) return line;
+        if (!inCtl) { if (claim) A.claim(n); return line; }
       }
     }
     return '';
@@ -1253,8 +1307,9 @@
   // button stays in its group; and only its text gains the row: its key stays 'button:<name>' (the
   // shell tells repeats apart by their order), so a row whose words change, or a press that changes
   // which row is selected, never rebuilds the node under the screen reader (FPD-4, FPD-5).
-  // Fields that say the same thing (the Flight Planner's two "Manual" fuel tick boxes) do the same,
-  // keyed by their own name ('field:Manual') so the row's words never reach the key either.
+  // Fields that say the same thing (the Flight Planner's two "Manual" fuel tick boxes) do the same.
+  // Every field is keyed by its own name ('field:Manual'), one or many, so the row's words never
+  // reach the key, and a twin appearing or going never rebuilds the one already there (FPD-5).
   A.qualifyRepeats = function (els) {
     var groups = {};
     for (var i = 0; i < els.length; i++) {
@@ -1288,10 +1343,7 @@
     for (var gk2 in groups) {
       if (!groups.hasOwnProperty(gk2)) continue;
       var g = groups[gk2], t = gk2.slice(2);
-      if (g.length < 2) {
-        if (g[0].controlType && g[0].key === 'field:' + g[0].text) g[0].key = undefined;   // unique: as before
-        continue;
-      }
+      if (g.length < 2) continue;
       var names = namesBy(g, t, A.rowContext) || namesBy(g, t, A.rowLine);
       if (!names) continue;
       for (var m = 0; m < g.length; m++) g[m].text = names[m] + ': ' + g[m].text;
@@ -1350,11 +1402,13 @@
                                disabled: A.isDisabled(dock[d]), key: 'dock:' + dn }));
     }
 
-    // Only once a frame asked for has been missing a full second: never on a view that renders.
-    A._offeredShow = !!efb && A.offerShowTablet();
+    // Show: once a frame asked for has been missing a full second, never on a view that renders.
+    // Hide: while the panel MSFSBA showed still shows. One key for both, so the node keeps its place.
+    A._offeredShow = efb ? A.tabletOffer() : '';
     if (A._offeredShow) {
-      els.push({ idx: A.SHOW_TABLET_IDX, kind: 'button', clickable: true, text: A.SHOW_TABLET_LABEL, value: '', controlType: '',
-                 level: 0, live: '', disabled: false, options: null, key: 'action:show-tablet' });
+      els.push({ idx: A.SHOW_TABLET_IDX, kind: 'button', clickable: true, value: '', controlType: '',
+                 text: A._offeredShow === 'hide' ? A.HIDE_TABLET_LABEL : A.SHOW_TABLET_LABEL,
+                 level: 0, live: '', disabled: false, options: null, key: 'action:tablet-panel' });
     }
 
     if (efb && view && A.viewKey(view) === 'AtlasApp') {
@@ -1521,11 +1575,15 @@
   A.isStalled = function () {
     return A._frameAsked ? Date.now() - A._askedAt > 500 : A._lastFrame === 0;
   };
-  // "Show the tablet in the sim" (STAB-16) is offered once a frame asked for has been missing a full
-  // second. Frames stopping or starting changes no element, so scrape compares this with what the
-  // last read offered (A._offeredShow) and reads again when it moved.
-  A._offeredShow = false;
-  A.offerShowTablet = function () { return A._frameAsked && Date.now() - A._askedAt > 1000; };
+  // The tablet panel button (STAB-16): 'show' once a frame asked for has been missing a full second,
+  // 'hide' while frames come to a panel MSFSBA showed, else ''. Frames stopping or starting changes
+  // no element, so scrape compares this with what the last read offered (A._offeredShow) and reads
+  // again when it moved.
+  A._offeredShow = '';
+  A.tabletOffer = function () {
+    if (A._frameAsked && Date.now() - A._askedAt > 1000) return 'show';
+    return window.__MSFSBA_TABLET_SHOWN ? 'hide' : '';
+  };
   // A time on the view's own frame clock: its last frame's timestamp plus the time since, never
   // earlier than one already handed out (an app may time its updates by it).
   A.frameTime = function () {
@@ -1581,7 +1639,7 @@
   A.scrape = function (gel) {
     try {
       A.pumpIfStalled();             // a change it brings marks the page dirty through the observer
-      if (A.inEfb() && A.offerShowTablet() !== A._offeredShow) A._dirty = true;
+      if (A.inEfb() && A.tabletOffer() !== A._offeredShow) A._dirty = true;
       A._pollCount++;
       var forceFull = !A._everScraped || (A._pollCount % A.FORCE_FULL_EVERY === 0);
       if (!A._dirty && !forceFull) return JSON.stringify({ ok: true, unchanged: true });

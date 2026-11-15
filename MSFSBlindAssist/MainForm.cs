@@ -191,12 +191,14 @@ public partial class MainForm : Form
 
     // MSFS 2024's own tablet (Extras, In-Sim Tablet, for every aircraft): the same shared form and
     // client, pointed at the sim's "Electronic Flight Bag" view. simTabletImportBusy keeps the
-    // SimBrief import to one run at a time; simTabletPanelOpened remembers that MSFSBA showed the
-    // sim's tablet panel (STAB-16), so the window's closing hides it again.
+    // SimBrief import to one run at a time. simTabletPanelShown: MSFSBA may have shown the sim's tablet
+    // panel (STAB-16), so the window's closing and exit check it; the page itself remembers whether
+    // it did (SimTabletPanel). simTabletPanelBusy keeps its presses to one at a time.
     private CoherentPmdgEfbClient? coherentSimTablet;
     private Forms.FBWA380.FbwEfbForm? simTabletForm;
     private bool simTabletImportBusy;
-    private bool simTabletPanelOpened;
+    private bool simTabletPanelShown;
+    private bool simTabletPanelBusy;
 
     // MD-11 monitor manager (Ctrl+M) — the aircraft announces 532 annunciator lamps, so muting
     // them individually is not a nicety here.
@@ -1444,6 +1446,8 @@ public partial class MainForm : Form
 
         // The in-sim tablet's window and client: no aircraft swap closes them (the view is the
         // sim's), so exit is their one teardown. The window first, then the client, as above.
+        // A tablet panel MSFSBA showed is hidden first, while the client can still read the view.
+        HideSimTabletPanelOnExit();
         if (simTabletForm != null && !simTabletForm.IsDisposed) simTabletForm.Dispose();
         coherentSimTablet?.Dispose();
 

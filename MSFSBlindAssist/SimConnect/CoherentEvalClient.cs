@@ -25,7 +25,14 @@ namespace MSFSBlindAssist.SimConnect
         private const string DebuggerBase = "http://127.0.0.1:19999";
         private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(4) };
 
-        public static async Task<string> EvalAsync(string titleNeedle, string js, CancellationToken ct = default)
+        public static Task<string> EvalAsync(string titleNeedle, string js, CancellationToken ct = default)
+            => EvalAsync(titleNeedle, js, exactTitle: false, commandLineApi: false, ct);
+
+        /// <param name="exactTitle">The view whose title IS the needle, never one that only holds it
+        /// (the sim's "Toolbar" view, STAB-16).</param>
+        /// <param name="commandLineApi">Evaluate with the debugger's command line API, whose
+        /// <c>getEventListeners</c> finds the element that takes a click.</param>
+        public static async Task<string> EvalAsync(string titleNeedle, string js, bool exactTitle, bool commandLineApi, CancellationToken ct = default)
         {
             // Never a second socket on a view a persistent client owns; while this one runs, the
             // owner-to-be waits for it instead of connecting on top of it.
@@ -36,7 +43,7 @@ namespace MSFSBlindAssist.SimConnect
             try
             {
                 string list = await Http.GetStringAsync($"{DebuggerBase}/pagelist.json", ct);
-                pageId = ResolvePageId(list, titleNeedle);
+                pageId = ResolvePageId(list, titleNeedle, exactTitle);
             }
             catch { return ""; }
             if (pageId < 0) return "";
@@ -54,7 +61,9 @@ namespace MSFSBlindAssist.SimConnect
                 {
                     id = 1,
                     method = "Runtime.evaluate",
-                    @params = new { expression = js, returnByValue = true, awaitPromise = true }
+                    @params = commandLineApi
+                        ? (object)new { expression = js, returnByValue = true, awaitPromise = true, includeCommandLineAPI = true }
+                        : new { expression = js, returnByValue = true, awaitPromise = true }
                 });
                 await ws.SendAsync(Encoding.UTF8.GetBytes(msg), WebSocketMessageType.Text, true, ct);
 
@@ -96,17 +105,22 @@ namespace MSFSBlindAssist.SimConnect
             }
         }
 
-        private static int ResolvePageId(string pagelistJson, string titleNeedle)
+        /// <summary>The first view whose title holds the needle (or is it, <paramref name="exact"/>), or -1.</summary>
+        internal static int ResolvePageId(string pagelistJson, string titleNeedle, bool exact = false)
         {
             using var doc = JsonDocument.Parse(pagelistJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return -1;
             foreach (var view in doc.RootElement.EnumerateArray())
             {
-                if (!view.TryGetProperty("title", out var t)) continue;
-                if ((t.GetString() ?? "").IndexOf(titleNeedle, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (view.ValueKind != JsonValueKind.Object) continue;
+                if (!view.TryGetProperty("title", out var t) || t.ValueKind != JsonValueKind.String) continue;
+                string title = t.GetString() ?? "";
+                if (exact ? !string.Equals(title, titleNeedle, StringComparison.OrdinalIgnoreCase)
+                          : title.IndexOf(titleNeedle, StringComparison.OrdinalIgnoreCase) < 0) continue;
                 if (view.TryGetProperty("id", out var idEl))
                 {
-                    if (idEl.ValueKind == JsonValueKind.Number) return idEl.GetInt32();
-                    if (int.TryParse(idEl.GetString(), out var n)) return n;
+                    if (idEl.ValueKind == JsonValueKind.Number && idEl.TryGetInt32(out int id)) return id;
+                    if (idEl.ValueKind == JsonValueKind.String && int.TryParse(idEl.GetString(), out var n)) return n;
                 }
             }
             return -1;
