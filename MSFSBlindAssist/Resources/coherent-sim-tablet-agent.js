@@ -599,7 +599,7 @@
   A.appName = function (key) {
     if (key === '_HomePageApp') return 'Home';
     try {
-      var apps = window.EFB_API && EFB_API._installedApps && EFB_API._installedApps.array;
+      var api = window.EFB_API, apps = api && api._installedApps && api._installedApps.array;
       for (var i = 0; apps && i < apps.length; i++) {
         var ik = '';
         try { ik = apps[i].internalName; } catch (e0) {}
@@ -1118,9 +1118,11 @@
     }
     return '';
   };
-  // Words that name a row: letters, and never a number with its unit or a unit alone.
+  // Words that name a row ("Left", "Default", a translated name): never a number with its unit
+  // ("14947 L"), nor a unit alone in capitals ("GAL", "KG").
   A.isNameText = function (s) {
-    return /[A-Za-z]{3,}/.test(s) && !/^[\d.,\s\-]*[A-Za-z%°]{1,4}$/.test(s);
+    if (!/[^\s\d.,:;!?()\[\]\-+\/%°]{2,}/.test(s)) return false;
+    return !/^[\d.,\s\-]+\S{0,4}$/.test(s) && !/^[A-Z%°]{1,4}$/.test(s);
   };
   // The repeats are found by the button's NAME, without the state it shows, so a selected row's
   // button stays in its group; and only its text gains the row: its key stays 'button:<name>' (the
@@ -1131,7 +1133,8 @@
     for (var i = 0; i < els.length; i++) {
       var e = els[i];
       if (e.kind !== 'button' || e.controlType || !A._nodes[e.idx]) continue;
-      var base = e.key && e.key.indexOf('button:') === 0 ? e.key.slice(7) : e.text;
+      var km = /^(button|choice):(.*)$/.exec(e.key || '');
+      var base = km ? km[2] : e.text;
       if (e.text.indexOf(base) !== 0) continue;
       (groups[base] = groups[base] || []).push(e);
     }
@@ -1332,6 +1335,47 @@
     return els;
   };
 
+  // ---------------------------------------------------------------------------------
+  // frames (STAB-15)
+  // ---------------------------------------------------------------------------------
+
+  // The tablet's OS runs the app on screen once per animation frame (its view service's update), and
+  // the apps read the sim there: Ground Services publishes its doors, services and pushback state from
+  // it. Coherent gives the view frames only while something shows it. An aircraft with a tablet of its
+  // own shows the sim's nowhere (measured 2026-11-15, iniBuilds A350: 0 frames in 5 s, where the C172
+  // that shows it in its cockpit got 30 a second), so the apps freeze: Ground Services said "Door 1
+  // Closed" while the door opened, and its press then toggled from that stale state. While the view
+  // gets no frames, the reader runs that update once before each read, press and set, so the app on
+  // screen is current; once frames run, it does nothing.
+  A._lastFrame = 0;
+  A._frameAsked = false;
+  A.watchFrames = function () {
+    if (A._frameAsked) return;
+    try {
+      A._frameAsked = true;
+      window.requestAnimationFrame(function () { A._lastFrame = Date.now(); A._frameAsked = false; });
+    } catch (e) { A._frameAsked = false; }
+  };
+  A.viewService = function () {
+    try {
+      var api = window.EFB_API, apps = api && api._installedApps && api._installedApps.array;
+      for (var i = 0; apps && i < apps.length; i++) {
+        var vs = apps[i].options && apps[i].options.efbViewService;
+        if (vs && typeof vs.update === 'function') return vs;
+      }
+    } catch (e) {}
+    return null;
+  };
+  A.pumpIfStalled = function () {
+    if (!A.inEfb()) return;
+    var stalled = Date.now() - A._lastFrame > 500;
+    A.watchFrames();
+    if (!stalled) return;
+    var vs = A.viewService();
+    if (!vs) return;
+    try { vs.update(window.performance && performance.now ? performance.now() : Date.now()); } catch (e) {}
+  };
+
   A._dirty = true;
   A._everScraped = false;
   A._pollCount = 0;
@@ -1345,6 +1389,7 @@
   // "unchanged" could never fire (the MD-11 reader's SELF-TRIGGER TRAP).
   A.scrape = function (gel) {
     try {
+      A.pumpIfStalled();             // a change it brings marks the page dirty through the observer
       A._pollCount++;
       var forceFull = !A._everScraped || (A._pollCount % A.FORCE_FULL_EVERY === 0);
       if (!A._dirty && !forceFull) return JSON.stringify({ ok: true, unchanged: true });
@@ -1446,6 +1491,7 @@
   A.clickElement = function (idx, gel) {
     if (idx === A.SIMBRIEF_IDX) return false;    // the app's own action: the client runs it
     return A.withListeners(gel, function () {
+      A.pumpIfStalled();             // the app presses from its current state, never a frozen one
       var el = A.find(idx);
       if (!el || A.isDisabled(el)) return false;
       try { A.press(el); return true; } catch (e) { return false; }
@@ -1540,7 +1586,7 @@
   };
 
   A.setValue = function (idx, text, gel) {
-    return A.withListeners(gel, function () { return A.setValueNow(idx, text); });
+    return A.withListeners(gel, function () { A.pumpIfStalled(); return A.setValueNow(idx, text); });
   };
   // The OS's own text boxes take 'input' alone (STAB-1): the TextBox component and the Flight
   // Planner's route box. A page's own box also commits on 'change'.

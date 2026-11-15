@@ -587,11 +587,12 @@ namespace MSFSBlindAssist.SimConnect
                 var frames = new Dictionary<int, (int ContextId, List<ScrapeElement> Elements)?>();
                 var markers = mainElements.Where(e => e.kind == "frame").ToList();
                 var used = new HashSet<int>();
+                var tried = new HashSet<int>();   // asked once this poll already: never twice, never a miss twice
                 for (int i = 0; i < markers.Count; i++)
-                    frames[i + 1] = await ReadFrameByOriginAsync((markers[i].value ?? "").ToLowerInvariant(), used, ct);
+                    frames[i + 1] = await ReadFrameByOriginAsync((markers[i].value ?? "").ToLowerInvariant(), used, tried, ct);
                 for (int i = 0; i < markers.Count; i++)
                     if (frames[i + 1] == null)
-                        frames[i + 1] = await ReadFrameBySizeAsync(markers[i].text ?? "", used, ct);
+                        frames[i + 1] = await ReadFrameBySizeAsync(markers[i].text ?? "", used, tried, ct);
                 elements = SpliceFrames(mainElements, frames, out var slots);
                 _frameSlots = slots;
             }
@@ -685,13 +686,14 @@ namespace MSFSBlindAssist.SimConnect
         /// of that origin can be read.
         /// </summary>
         private async Task<(int ContextId, List<ScrapeElement> Elements)?> ReadFrameByOriginAsync(string origin,
-            HashSet<int> used, CancellationToken ct)
+            HashSet<int> used, HashSet<int> tried, CancellationToken ct)
         {
             var ids = new List<int>();
-            foreach (var kv in _frameContexts) if (kv.Value == origin && !used.Contains(kv.Key)) ids.Add(kv.Key);
+            foreach (var kv in _frameContexts) if (kv.Value == origin && !used.Contains(kv.Key) && !tried.Contains(kv.Key)) ids.Add(kv.Key);
             ids.Sort((a, b) => b.CompareTo(a));
             foreach (int cid in ids)
             {
+                tried.Add(cid);
                 var els = await ScrapeFrameAsync(cid, ct);
                 if (els != null) { used.Add(cid); return (cid, els); }
             }
@@ -701,20 +703,23 @@ namespace MSFSBlindAssist.SimConnect
         /// <summary>
         /// A frame whose page moved to another origin (a sign-in, a redirect) no longer matches its iframe's
         /// src: it is the unused page context whose window is the iframe's size (<paramref name="size"/>,
-        /// "WxH"; every hidden app's frame is 0 by 0, which never matches). A context that does not answer
-        /// the size probe counts a miss like any other eval.
+        /// "WxH"; every hidden app's frame is 0 by 0, which never matches). The probe goes only to contexts
+        /// not asked this poll, and forgets one only on an error reply: a slow frame of another app is
+        /// never charged a miss for a question about this one.
         /// </summary>
         private async Task<(int ContextId, List<ScrapeElement> Elements)?> ReadFrameBySizeAsync(string size,
-            HashSet<int> used, CancellationToken ct)
+            HashSet<int> used, HashSet<int> tried, CancellationToken ct)
         {
             if (string.IsNullOrEmpty(size)) return null;
             var others = new List<int>();
-            foreach (var kv in _frameContexts) if (!used.Contains(kv.Key)) others.Add(kv.Key);
+            foreach (var kv in _frameContexts) if (!used.Contains(kv.Key) && !tried.Contains(kv.Key)) others.Add(kv.Key);
             others.Sort((a, b) => b.CompareTo(a));
             foreach (int cid in others)
             {
+                tried.Add(cid);
                 var probe = await EvalFrameAsync("window.innerWidth + 'x' + window.innerHeight", cid, ct);
-                if (!CountReply(cid, probe) || !SameFrameSize(probe.Value, size)) continue;
+                if (probe.Failed) { ForgetContext(cid); continue; }
+                if (!probe.Replied || !SameFrameSize(probe.Value, size)) continue;
                 var els = await ScrapeFrameAsync(cid, ct);
                 if (els != null) { used.Add(cid); return (cid, els); }
             }

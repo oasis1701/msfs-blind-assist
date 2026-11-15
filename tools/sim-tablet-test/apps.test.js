@@ -312,6 +312,52 @@ test('a native slider refuses a value that is no number (the browser would put i
   assert.equal(document.getElementById('v').value, '75');
 });
 
+test('a view that gets no frames: the app on screen is updated before each read, press and set', () => {
+  let updates = 0;
+  const { A, window } = page('<button class="b">Door 1</button>', {
+    before: w => {
+      w.requestAnimationFrame = () => 0;     // queued, never run: nothing shows the tablet
+      w.EFB_API = { _installedApps: { array: [{ options: { efbViewService: { update: () => updates++ } } }] } };
+    },
+  });
+  const els = scraped(A);
+  assert.equal(updates, 1);
+  A.clickElement(find(els, 'Door 1').idx);
+  assert.equal(updates, 2);
+  A.setValue(find(els, 'Door 1').idx, 'x');
+  assert.equal(updates, 3);
+});
+
+test('a view that gets frames: the tablet runs its own loop, the reader adds nothing', () => {
+  let updates = 0;
+  const { A } = page('<button class="b">Door 1</button>', {
+    before: w => {
+      w.requestAnimationFrame = cb => { cb(0); return 1; };   // a frame comes at once
+      w.EFB_API = { _installedApps: { array: [{ options: { efbViewService: { update: () => updates++ } } }] } };
+    },
+  });
+  scraped(A);                    // the first read cannot know yet, and watches
+  const first = updates;
+  scraped(A);
+  scraped(A);
+  assert.equal(updates, first, 'frames are coming: no more updates from the reader');
+});
+
+test('choice rows: a pick keeps its row name when the selection moves, and short names count', () => {
+  const rows = landing => ['Take off weather', 'Landing weather'].map((n, i) =>
+    '<div class="row"><span class="name">' + n + '</span><div class="multiple-buttons">' +
+    '<button class="' + (i === 1 && landing === 'MANUAL' ? '' : 'selected') + '">METAR</button>' +
+    '<button class="' + (i === 1 && landing === 'MANUAL' ? 'selected' : '') + '">MANUAL</button></div></div>').join('');
+  const a = lines(scraped(page(rows('METAR')).A));
+  const b = lines(scraped(page(rows('MANUAL')).A));
+  assert.ok(a.includes('button|Landing weather: METAR (selected)'));
+  assert.ok(b.includes('button|Landing weather: MANUAL (selected)'));
+  assert.ok(b.includes('button|Take off weather: METAR (selected)'));
+  const lr = lines(scraped(page('<div class="r"><span>Left</span><button>More information</button></div>' +
+    '<div class="r"><span>Right</span><button>More information</button></div>').A));
+  assert.deepStrictEqual(lr.filter(x => /More/.test(x)), ['button|Left: More information', 'button|Right: More information']);
+});
+
 test('a read-only or fieldset-disabled box refuses a typed value', () => {
   const { A } = page('<input id="a" type="text" readonly value="x"><fieldset disabled><input id="b" type="text" value="y"></fieldset>');
   const els = scraped(A);
