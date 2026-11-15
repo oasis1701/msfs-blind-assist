@@ -560,14 +560,17 @@ test('"Show the tablet in the sim" is offered once a frame has been missing a se
 test('the tablet panel button: frames coming back re-read the list, and the panel MSFSBA showed reads "Hide" on the same key', async () => {
   const SHOW = 'Show the tablet in the sim (some lists fill in only while the sim shows it)';
   let pending = [];
-  const p = page('<button class="b">Door 1</button>', { before: w => { w.requestAnimationFrame = cb => { pending.push(cb); return 1; }; } });
+  let framesOn = false;   // the view's frames: off (queued, never run) or about 30 a second
+  const p = page('<button class="b">Door 1</button>', {
+    before: w => { w.requestAnimationFrame = cb => (framesOn ? setTimeout(() => cb(Date.now()), 33) : (pending.push(cb), 1)); },
+  });
   scraped(p.A);
   await sleep(1100);
   assert.ok(find(scraped(p.A), SHOW));
   // The client shows the panel: frames come, and it marks the page.
   pending.splice(0).forEach(cb => cb(Date.now()));
   p.window.__MSFSBA_TABLET_SHOWN = true;
-  p.window.requestAnimationFrame = cb => setTimeout(() => cb(Date.now()), 33);
+  framesOn = true;
   const after = JSON.parse(p.A.scrape());
   assert.ok(!after.unchanged, 'the offer moved, so the list is read again though no element changed');
   const hide = find(after.elements, 'Hide the tablet in the sim');
@@ -624,7 +627,7 @@ test('a virtual list reads in its on-screen order and offers Scroll up and Scrol
   const els = scraped(p.A);
   const l = lines(els);
   assert.deepStrictEqual(l.filter(x => /Sep|Oct/.test(x)), ['button|Oct 19', 'button|Oct 15', 'button|Sep 22']);
-  assert.ok(!l.some(x => /Scroll up/.test(x)), 'at the top: no Scroll up');
+  assert.ok(l.includes('button|Scroll up (top of list) [dim]'), 'at the top: dimmed, never gone (the node keeps its place)');
   const down = els.find(e => /^Scroll down/.test(e.text));
   assert.equal(down.text, 'Scroll down (list at 0%)');
   assert.equal(down.key, 'scroll:0:down');
@@ -634,6 +637,32 @@ test('a virtual list reads in its on-screen order and offers Scroll up and Scrol
   assert.equal(scrolled, 1, 'the list hears its scroll');
   const after = lines(scraped(p.A));
   assert.ok(after.includes('button|Scroll up (list at 10%)') && after.includes('button|Scroll down (list at 10%)'), after.join(' / '));
+});
+
+test('the OS frame loop, once recorded, never repeats the view update in one pump, nor fills the browser queue', () => {
+  // As efb_os.js: update() runs the view service, then queues itself again through window.requestAnimationFrame.
+  let framesOn = true, updates = 0;
+  const queue = new Map();
+  let nextId = 1;
+  const p = page('<button class="b">Door 1</button>', {
+    before: w => {
+      w.requestAnimationFrame = cb => { const id = nextId++; queue.set(id, cb); if (framesOn) setTimeout(() => { const f = queue.get(id); queue.delete(id); if (f) f(Date.now()); }, 0); return id; };
+      w.cancelAnimationFrame = id => { queue.delete(id); };
+      w.EFB_API = { _installedApps: { array: [{ options: { efbViewService: { update: () => updates++ } } }] } };
+    },
+  });
+  const vs = p.window.EFB_API._installedApps.array[0].options.efbViewService;
+  const os = { update() { vs.update(Date.now()); p.window.requestAnimationFrame(this.update.bind(this)); } };
+  os.update();                                  // one real frame after the reader came: the loop is recorded
+  framesOn = false;
+  updates = 0;
+  p.A._lastFrame = 0;                           // stalled from here
+  scraped(p.A);
+  assert.equal(updates, 1, 'one view update per pump');
+  const size = queue.size;
+  p.A._markDirty(); scraped(p.A);
+  p.A._markDirty(); scraped(p.A);
+  assert.ok(queue.size <= size, 'the browser queue does not grow: ' + size + ' then ' + queue.size);
 });
 
 test('a press that moves a virtual list itself (Back to the top) makes the list hear its scroll', () => {
@@ -688,7 +717,10 @@ test('the Pilot book: a chart bar reads as one line, the period first, and the d
 test('the tablet panel button stays in the list through a Show and a Hide (the press is stamped)', async () => {
   const SHOW = 'Show the tablet in the sim (some lists fill in only while the sim shows it)', HIDE = 'Hide the tablet in the sim';
   let pending = [];
-  const p = page('<button class="b">Door 1</button>', { before: w => { w.requestAnimationFrame = cb => { pending.push(cb); return 1; }; } });
+  let framesOn = false;   // the view's frames: off (queued, never run) or about 30 a second
+  const p = page('<button class="b">Door 1</button>', {
+    before: w => { w.requestAnimationFrame = cb => (framesOn ? setTimeout(() => cb(Date.now()), 33) : (pending.push(cb), 1)); },
+  });
   // As the client reads: an "unchanged" read keeps the last list, so the offer must move the read itself.
   let last = [];
   const offer = () => {
@@ -703,7 +735,7 @@ test('the tablet panel button stays in the list through a Show and a Hide (the p
   // Show: the client stamps the press, frames start, and the mark comes only once they are seen.
   p.window.__MSFSBA_TABLET_PRESS_AT = Date.now();
   pending.splice(0).forEach(cb => cb(Date.now()));
-  p.window.requestAnimationFrame = cb => setTimeout(() => cb(Date.now()), 33);
+  framesOn = true;
   await sleep(100);
   assert.equal(offer(), SHOW + ' action:tablet-panel', 'between the first frame and the mark');
   p.window.__MSFSBA_TABLET_SHOWN = true;
@@ -712,7 +744,7 @@ test('the tablet panel button stays in the list through a Show and a Hide (the p
   assert.equal(offer(), HIDE + ' action:tablet-panel', 'shown, long after the press');
   // Hide: stamped, frames stop, the mark stays until they are seen to stop, then clears.
   p.window.__MSFSBA_TABLET_PRESS_AT = Date.now();
-  p.window.requestAnimationFrame = () => 0;
+  framesOn = false;
   await sleep(700);
   assert.equal(offer(), HIDE + ' action:tablet-panel', 'while the client checks the frames stopped');
   p.window.__MSFSBA_TABLET_SHOWN = false;

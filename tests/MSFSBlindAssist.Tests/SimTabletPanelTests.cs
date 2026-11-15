@@ -21,6 +21,8 @@ public class SimTabletPanelTests
         public bool ReaderAnswers = true;
         public bool ProbeAnswers = true;
         public bool ProbeDiesOnPress;       // the reader stops answering once the button is pressed
+        public int ProbeSilentTimes;        // frame checks that get no answer before the reader answers again
+        public int TogglesThatWork = int.MaxValue;
         public string Mark = "false";       // the page's "MSFSBA showed it"
         public readonly List<string> Evals = new();
         public int Toggles;
@@ -30,7 +32,7 @@ public class SimTabletPanelTests
             Evals.Add(js);
             string r = js switch
             {
-                _ when js == SimTabletPanel.FrameProbeStart => ProbeAnswers && ReaderAnswers ? "ok" : "",
+                _ when js == SimTabletPanel.FrameProbeStart => ProbeStart(),
                 _ when js == SimTabletPanel.FrameProbeRead => Shown ? "frames" : "none",
                 _ when js == SimTabletPanel.ReadShown => ReaderAnswers ? Mark : "",
                 _ when js == SimTabletPanel.MarkShown => Set("true"),
@@ -42,20 +44,37 @@ public class SimTabletPanelTests
 
         private string Set(string mark) { Mark = mark; return "ok"; }
 
+        private string ProbeStart()
+        {
+            if (!ProbeAnswers || !ReaderAnswers) return "";
+            if (ProbeSilentTimes > 0) { ProbeSilentTimes--; return ""; }
+            return "ok";
+        }
+
         public Task<bool> Toggle()
         {
             Toggles++;
             Evals.Add("toggle");
-            if (ToggleWorks && Draws) Shown = !Shown;
-            if (ToggleWorks && ProbeDiesOnPress) ProbeAnswers = false;
-            return Task.FromResult(ToggleWorks);
+            bool works = ToggleWorks && TogglesThatWork-- > 0;
+            if (works && Draws) Shown = !Shown;
+            if (works && ProbeDiesOnPress) ProbeAnswers = false;
+            return Task.FromResult(works);
         }
 
+        // Stamped right before every press and right after every one that was made.
         public bool StampedBeforeEveryPress()
         {
             for (int i = 0; i < Evals.Count; i++)
                 if (Evals[i] == "toggle" && (i == 0 || Evals[i - 1] != SimTabletPanel.StampPress)) return false;
             return true;
+        }
+
+        public bool StampedAfterEveryPress(int pressesMade)
+        {
+            int after = 0;
+            for (int i = 0; i + 1 < Evals.Count; i++)
+                if (Evals[i] == "toggle" && Evals[i + 1] == SimTabletPanel.StampPress) after++;
+            return after == pressesMade;
         }
     }
 
@@ -69,6 +88,32 @@ public class SimTabletPanelTests
         Assert.Equal("true", v.Mark);
         Assert.Contains(SimTabletPanel.ReleaseKeyboard, v.Evals);
         Assert.True(v.StampedBeforeEveryPress(), "the reader keeps the button listed while frames start");
+        Assert.True(v.StampedAfterEveryPress(1), "and again once the press is done, which can take a second");
+    }
+
+    [Fact]
+    public async Task Show_WhoseCheckGetsNoAnswer_AsksOnceMore_AndMarksAPanelThatShows()
+    {
+        var v = new FakeView { ProbeSilentTimes = 1 };
+        Assert.Equal(Outcome.Shown, await SimTabletPanel.ShowAsync(v.Eval, v.Toggle));
+        Assert.Equal(1, v.Toggles);
+        Assert.Equal("true", v.Mark);
+    }
+
+    [Fact]
+    public async Task Show_WhoseCheckGetsNoAnswer_AsksOnceMore_AndUndoesAPressThatShowedNothing()
+    {
+        var v = new FakeView { ProbeSilentTimes = 1, Draws = false };
+        Assert.Equal(Outcome.NotShown, await SimTabletPanel.ShowAsync(v.Eval, v.Toggle));
+        Assert.Equal(2, v.Toggles);
+    }
+
+    [Fact]
+    public async Task Show_WhoseUndoCannotBePressed_IsUnverified()
+    {
+        var v = new FakeView { Draws = false, TogglesThatWork = 1 };
+        Assert.Equal(Outcome.Unverified, await SimTabletPanel.ShowAsync(v.Eval, v.Toggle));
+        Assert.Equal(2, v.Toggles);
     }
 
     [Fact]

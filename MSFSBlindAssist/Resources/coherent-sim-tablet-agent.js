@@ -82,13 +82,16 @@
   } catch (e) {}
 
   // The page's frame callbacks (STAB-15). An app draws in requestAnimationFrame callbacks (the OS's
-  // VirtualList builds its rows there after a scroll, a ResizeObserver polyfill measures there), and
-  // while the sim shows the tablet nowhere no frame comes to run them. Each callback queued from now
-  // on is recorded, wrapped so it runs ONCE whoever calls it first, the browser at a frame or the
-  // reader's pump (A.runFrameCallbacks); a cancelled one is forgotten. Installed once per document;
-  // the reader's own frame watch uses the browser's function (A.raf), so a pump is never a frame.
+  // VirtualList builds its rows there after a scroll), and while the sim shows the tablet nowhere no
+  // frame comes to run them. Each callback queued through window.requestAnimationFrame from now on
+  // is recorded, wrapped so it runs ONCE whoever calls it first, the browser at a frame or the
+  // reader's pump (A.runFrameCallbacks); a cancelled one is forgotten. Not recorded: one queued
+  // before the reader came, or through a reference taken before it (the bundled ResizeObserver
+  // polyfill binds its own at load). Installed once per document, in the tablet's own window only
+  // (never an add-on's frame, which the pump never runs); the reader's own frame watch uses the
+  // browser's function (A.raf), so a pump is never a frame.
   try {
-    if (!window.__MSFSBA_RAF && window.requestAnimationFrame) {
+    if (!window.__MSFSBA_RAF && window.requestAnimationFrame && window.top === window) {
       var rafState = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame, pending: {}, hook: null };
       rafState.hook = function (cb) {
         var done = false, id = 0;
@@ -1675,8 +1678,7 @@
   // frame. A page that replaced the function after the hook keeps its own.
   A.raf = function (cb) {
     var st = window.__MSFSBA_RAF;
-    var f = st && window.requestAnimationFrame === st.hook ? st.raf : window.requestAnimationFrame;
-    return f.call(window, cb);
+    return (st ? st.raf : window.requestAnimationFrame).call(window, cb);
   };
   // Run the page's queued frame callbacks, with a time on the view's frame clock; ones they queue
   // run too, three rounds at most (an animation loop gets three steps, never a spin).
@@ -1690,6 +1692,8 @@
       for (var i = 0; i < ids.length; i++) {
         var f = st.pending[ids[i]];
         if (!f) continue;
+        // The browser forgets it too, so its queue never fills with callbacks already run.
+        if (st.caf) { try { st.caf.call(window, +ids[i]); } catch (e0) {} }
         try { f(t); } catch (e) {}
         n++;
       }
@@ -1744,12 +1748,20 @@
     if (!always && A._pumpMs > A.PUMP_SLOW_MS && (A._pollCount % 3) !== 0) return;
     var vs = A.viewService(), t0 = Date.now(), ft = A.frameTime();
     A.fireMovedScrolls();
-    if (vs) { try { vs.update(ft); } catch (e) {} }
-    // Then what the page queued for a frame: a list that builds its rows after a scroll, a size
-    // measured once laid out (the Pilot book's logbook). A list those moved hears its scroll, and
-    // builds its rows in one more round.
-    A.runFrameCallbacks(ft);
-    if (A.fireMovedScrolls()) A.runFrameCallbacks(ft);
+    // The view update runs ONCE per pump. The page's queued frame callbacks run first (a list that
+    // builds its rows after a scroll), and among them may be the OS's own frame loop, recorded after
+    // a real frame, which calls the update itself; while the pump runs, a second call is a no-op,
+    // and the pump makes its own only when no callback made one. A list those moved hears its
+    // scroll, and builds its rows in one more round.
+    var updates = 0, own = vs ? vs.hasOwnProperty('update') : false, orig = vs ? vs.update : null;
+    if (vs) vs.update = function () { if (updates++) return undefined; return orig.apply(vs, arguments); };
+    try {
+      A.runFrameCallbacks(ft);
+      if (vs && !updates) { try { vs.update(ft); } catch (e) {} }
+      if (A.fireMovedScrolls()) A.runFrameCallbacks(ft);
+    } finally {
+      if (vs) { if (own) vs.update = orig; else delete vs.update; }
+    }
     A._pumpMs = Date.now() - t0;
     // What the update changed counts for this very read, not the next: the observer reports it only
     // after this evaluation ends.
@@ -1878,26 +1890,29 @@
   A.SCROLL_IDX = 900000;
   A._scrollers = [];
   A.isVirtualScroller = function (el) {
-    if (!(el.clientHeight > 0) || el.scrollHeight <= el.clientHeight + 4) return false;
-    if (A.hasClass(el, 'virtual-list-container')) return true;
-    for (var i = 0; i < el.children.length; i++) if (A.hasClass(el.children[i], 'virtual-list')) return true;
-    return false;
+    var list = A.hasClass(el, 'virtual-list-container');
+    for (var i = 0; !list && i < el.children.length; i++) if (A.hasClass(el.children[i], 'virtual-list')) list = true;
+    return list && el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 4;
   };
+  A.isLive = function (el) { var r = A.root(); return !!el && !!r && r.contains(el); };
   A.scrollButtons = function (el, down) {
     var n = A._scrollers.indexOf(el);
     if (n < 0) { n = A._scrollers.length; A._scrollers.push(el); }
     if (el.__msfsbaTop === undefined) el.__msfsbaTop = el.scrollTop;
+    // Both are always there, dimmed at an end, so the button just pressed never leaves the list.
     var max = el.scrollHeight - el.clientHeight;
-    if (down ? el.scrollTop >= max - 2 : el.scrollTop <= 2) return null;
+    var atEnd = down ? el.scrollTop >= max - 2 : el.scrollTop <= 2;
     var pct = Math.max(0, Math.min(100, Math.round(el.scrollTop / max * 100)));
     return { idx: A.SCROLL_IDX + 2 * n + (down ? 1 : 0), kind: 'button', clickable: true, value: '', controlType: '',
-             text: (down ? 'Scroll down' : 'Scroll up') + ' (list at ' + pct + '%)', level: 0, live: '', disabled: false,
-             options: null, key: 'scroll:' + n + (down ? ':down' : ':up') };
+             text: (down ? 'Scroll down' : 'Scroll up') + (atEnd ? (down ? ' (end of list)' : ' (top of list)') : ' (list at ' + pct + '%)'),
+             level: 0, live: '', disabled: atEnd, options: null, key: 'scroll:' + n + (down ? ':down' : ':up') };
   };
   A.scrollStep = function (idx) {
     var k = idx - A.SCROLL_IDX, el = A._scrollers[k >> 1];
-    if (!el || !el.parentNode) return false;
+    if (!A.isLive(el)) return false;
+    var before = el.scrollTop;
     el.scrollTop = Math.max(0, el.scrollTop + ((k & 1) ? 1 : -1) * Math.round(el.clientHeight * 0.9));
+    if (el.scrollTop === before) return false;               // at its end: nothing to move
     A.fireScroll(el);
     el.__msfsbaTop = el.scrollTop;
     A._dirty = true;
@@ -1916,7 +1931,7 @@
     var moved = false;
     for (var i = 0; i < A._scrollers.length; i++) {
       var s = A._scrollers[i];
-      if (!s.parentNode) continue;
+      if (!A.isLive(s)) continue;
       if (s.__msfsbaTop !== undefined && s.scrollTop !== s.__msfsbaTop) { A.fireScroll(s); moved = true; }
       s.__msfsbaTop = s.scrollTop;
     }

@@ -536,14 +536,14 @@ What the window shows:
 - **Checklist items, switches and tick boxes** are check boxes, and **drop-down lists** are combo boxes.
 - **The Import, Save and Send menus** show as one button for each choice in them.
 - **Flight Planner waypoints** are one line each, for example *"SOONE: Hdg 138°, Dist 24.6 NM"*.
-- **Long lists that load as you scroll**, such as the Pilot book's logbook, show about ten rows at a time between a **Scroll up** and a **Scroll down** button, which say how far down the list you are, for example *"Scroll down (list at 22%)"*. Press Scroll down to bring in the next rows. The list's own Back to the top button works only while the sim shows the tablet; Scroll up always works.
+- **Long lists that load as you scroll**, such as the Pilot book's logbook, show about ten rows at a time between a **Scroll up** and a **Scroll down** button, which say how far down the list you are, for example *"Scroll down (list at 22%)"*. At the top or the end of the list the button is dimmed and says so. Press Scroll down to bring in the next rows. The list's own Back to the top button works only while the sim shows the tablet; Scroll up always works.
 - The map and the charts are pictures, so they cannot be read.
 
 Typing in the window never takes your keyboard away from the simulator, so the sim's keys and BA's hotkeys keep working. The window stays open when you change aircraft.
 
 ### Showing the tablet in the sim {#in-sim-tablet-show}
 
-With a default aircraft, whose cockpit has this tablet, the window works with the toolbar tablet closed and the camera anywhere. An aircraft with a tablet of its own does not show the sim's tablet anywhere, and then the sim stops drawing it. BA keeps the apps up to date for you, but something may still fill in only while the sim draws the tablet.
+With a default aircraft, whose cockpit has this tablet, the window works with the toolbar tablet closed and the camera anywhere. An aircraft with a tablet of its own does not show the sim's tablet anywhere, and then the sim stops drawing it. BA keeps the apps up to date for you, but a few things fill in only while the sim draws the tablet, such as the Pilot book's logbook when you first open it.
 
 When the sim is not drawing it, the window shows a **Show the tablet in the sim** button right after the dock. Press it, and BA opens the tablet from the sim's toolbar, as you would with the mouse. The button then reads **Hide the tablet in the sim**. Closing the window, or quitting BA, hides the tablet again. If you close the tablet yourself from the toolbar, BA leaves it closed.
 
@@ -575,7 +575,7 @@ You need your SimBrief username in BA's settings first: see [Setting your SimBri
 - ***"Could not show the tablet in the sim."*** BA could not reach the sim's toolbar. Try again once the flight has loaded.
 - ***"Could not hide the tablet in the sim."*** BA could not reach the sim's toolbar, or it pressed the toolbar's tablet button and the sim kept drawing the tablet. The button still reads Hide the tablet in the sim: try it again in a moment.
 - ***"The tablet in the sim cannot be reached right now."*** The window has lost its link to the tablet, for example while a flight loads. Nothing was pressed. Try again once F6 says the tablet is connected.
-- ***"The tablet button was pressed, but it is not known whether the sim shows the tablet."*** (or *"still shows"*, after Hide) The window lost its link to the tablet just after the press. Press F5 a few seconds later: if the button after the dock reads Show the tablet in the sim, the tablet is not showing, and pressing it tries again.
+- ***"The tablet button was pressed, but it is not known whether the sim shows the tablet."*** (or *"still shows"*, after Hide) The window lost its link to the tablet just after the press. Press F5 a few seconds later: if the button after the dock reads Show the tablet in the sim, the tablet is not showing, and pressing it tries again; if there is no such button, the tablet is showing, and the sim's toolbar button closes it.
 - ***"Something went wrong with the tablet in the sim."*** An unexpected error; BA wrote it to its log. Try again.
 - ***"Still working on the tablet in the sim."*** The last press of Show or Hide has not finished yet. Wait a second and try again.
 - **A value you typed into a slider was not taken.** BA sets a slider only when it can hear its number change as it moves it; if the number never moves, the slider is put back where it was.

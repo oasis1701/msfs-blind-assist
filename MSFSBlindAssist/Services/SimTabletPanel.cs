@@ -143,7 +143,8 @@ public static class SimTabletPanel
             await eval(ReleaseKeyboard);
             return Outcome.Shown;
         }
-        if (frames == false) { await PressAsync(eval, toggle); return Outcome.NotShown; }
+        // No frames: undo the press; an undo that could not be pressed leaves it unknown.
+        if (frames == false) return await PressAsync(eval, toggle) ? Outcome.NotShown : Outcome.Unverified;
         return Outcome.Unverified;
     }
 
