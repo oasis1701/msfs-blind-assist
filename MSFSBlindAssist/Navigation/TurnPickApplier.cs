@@ -62,9 +62,18 @@ internal static class TurnPickApplier
         {
             bool inSequence = row >= 0 && row < ctx.Sequence.Count;
             string name = inSequence ? ctx.Sequence[row] : "";
-            (TurnPickOutcome outcome, Completed? done) = inSequence
-                ? ApplyOne(current, route, inputHasPin, row, side, ctx, blocked)
-                : (TurnPickOutcome.NoTurnFound, null);
+            (TurnPickOutcome outcome, Completed? done) = (TurnPickOutcome.NoTurnFound, null);
+            // One pick never takes the whole route down: ApplyOne only reads current and blocked, so a
+            // pick that throws leaves both as they were and the later picks still run.
+            try
+            {
+                if (inSequence) (outcome, done) = ApplyOne(current, route, inputHasPin, row, side, ctx, blocked);
+            }
+            catch (Exception ex)
+            {
+                (outcome, done) = (TurnPickOutcome.NoTurnFound, null);
+                Log(ctx, row, side, name, outcome, $"failed: {ex.GetType().Name}: {ex.Message}");
+            }
 
             if (done == null)
             {
@@ -175,6 +184,12 @@ internal static class TurnPickApplier
             a = departure;
             for (int i = 0; i < afterDeparture; i++) prefix.Add(current.Segments[i].FromNode.NodeId);
         }
+        // An earlier pick's off-chart leg in the prefix has no graph edge: it is carried as an off-chart
+        // pair, read from the route's own segments.
+        var prefixOffChart = new List<(int From, int To)>();
+        for (int i = 0; i < prefix.Count; i++)
+            if (current.Segments[i].IsOffChartTurn)
+                prefixOffChart.Add((current.Segments[i].FromNode.NodeId, current.Segments[i].ToNode.NodeId));
 
         var failures = new List<Failure>();
 
@@ -182,7 +197,7 @@ internal static class TurnPickApplier
         Completed? best = null;
         foreach (var option in ChartedOptions(ctx, a, incoming, name, side, blocked))
         {
-            var (done, failure) = Complete(option, prefix, row, side, ctx, input, inputHasPin, blocked);
+            var (done, failure) = Complete(option, prefix, prefixOffChart, row, side, ctx, input, inputHasPin, blocked);
             if (done == null) { failures.Add(failure); continue; }
             if (best == null || done.Route.TotalDistanceMeters < best.Route.TotalDistanceMeters - 0.01 ||
                 (Math.Abs(done.Route.TotalDistanceMeters - best.Route.TotalDistanceMeters) <= 0.01 &&
@@ -199,8 +214,9 @@ internal static class TurnPickApplier
         // Step 3: an off-chart leg, candidates best first; the first that completes wins.
         foreach (var c in OffChartLeg.Find(ctx.Graph, ctx.Pavement, a, incoming, name, side, blocked))
         {
+            if (blocked.Contains(c.NextNodeId)) continue;   // as the charted path skips a blocked v
             var option = new Option(new List<int> { a, c.JoinNodeId }, c.NextNodeId, OffChart: true, c.LengthMeters);
-            var (done, failure) = Complete(option, prefix, row, side, ctx, input, inputHasPin, blocked);
+            var (done, failure) = Complete(option, prefix, prefixOffChart, row, side, ctx, input, inputHasPin, blocked);
             if (done == null) { failures.Add(failure); continue; }
             Log(ctx, row, side, name, TurnPickOutcome.OffChart,
                 $"departure {a}, join {c.JoinNodeId}, leg {c.LengthMeters:F1} m, {done.Route.TotalDistanceMeters:F0} m");
@@ -300,7 +316,8 @@ internal static class TurnPickApplier
 
     /// Step 4: the rest of the route from v with A, u and the connection's interior blocked, then the
     /// honoring conditions (no fallback, the pinned node kept, within the length bound).
-    private static (Completed?, Failure) Complete(Option option, List<int> prefix, int row, TurnSide side,
+    private static (Completed?, Failure) Complete(Option option, List<int> prefix,
+        List<(int From, int To)> prefixOffChart, int row, TurnSide side,
         TurnPickContext ctx, TaxiRoute input, bool inputHasPin, HashSet<int> blocked)
     {
         int a = option.DepartureNodeId, u = option.JoinNodeId, v = option.NextNodeId;
@@ -332,9 +349,11 @@ internal static class TurnPickApplier
         var all = new List<int>(prefix);
         all.AddRange(option.Connection);
         all.AddRange(remainder);
-        var stitched = new TaxiRouter(ctx.Graph).BuildRouteThrough(all,
-            option.OffChart ? a : 0, option.OffChart ? u : 0);
+        var offChartPairs = new List<(int From, int To)>(prefixOffChart);
+        if (option.OffChart) offChartPairs.Add((a, u));
+        var stitched = new TaxiRouter(ctx.Graph).BuildRouteThrough(all, offChartPairs);
         if (stitched == null || stitched.Segments.Count == 0) return (null, Failure.Other);
+        // The pin is tested before the length: an option that drops the pin is NoTurnFound even when it is also too long.
         if (inputHasPin && !all.Contains(ctx.PinnedNodeId)) return (null, Failure.Pinned);
         if (stitched.TotalDistanceMeters > input.TotalDistanceMeters * ctx.MaxLengthRatio + ctx.MaxLengthPadMeters)
             return (null, Failure.Length);

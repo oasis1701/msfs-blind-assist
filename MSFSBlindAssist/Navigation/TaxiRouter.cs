@@ -1764,6 +1764,16 @@ public class TaxiRouter
     /// Any other pair with no edge returns null. Turns and distances run over the whole list.
     /// </summary>
     internal TaxiRoute? BuildRouteThrough(IReadOnlyList<int> nodeIds, int offChartFromNodeId = 0, int offChartToNodeId = 0)
+        => BuildRouteThrough(nodeIds, offChartFromNodeId == 0 && offChartToNodeId == 0
+            ? Array.Empty<(int From, int To)>()
+            : new[] { (offChartFromNodeId, offChartToNodeId) });
+
+    /// <summary>
+    /// As <see cref="BuildRouteThrough(IReadOnlyList{int}, int, int)"/>, with every (From, To) pair in
+    /// <paramref name="offChartPairs"/> that has no graph edge built as a synthetic off-chart leg (matched
+    /// in that direction only). Any other pair with no edge returns null.
+    /// </summary>
+    internal TaxiRoute? BuildRouteThrough(IReadOnlyList<int> nodeIds, IReadOnlyCollection<(int From, int To)> offChartPairs)
     {
         var route = new TaxiRoute();
 
@@ -1789,7 +1799,7 @@ public class TaxiRouter
                     HoldShortRunway = toNode.HoldShortName,
                 };
             }
-            else if (offChartFromNodeId != 0 && fromId == offChartFromNodeId && toId == offChartToNodeId)
+            else if (offChartPairs.Contains((fromId, toId)))
             {
                 segment = new TaxiRouteSegment
                 {

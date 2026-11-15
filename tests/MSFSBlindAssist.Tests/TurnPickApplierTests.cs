@@ -163,21 +163,34 @@ public class TurnPickApplierTests
         Wm = P(-150, 0), Wn = P(-300, 0), Em = P(150, 0), En = P(300, 0),
         Dn = P(150, 200), Ds = P(150, -200);
 
-    private static TaxiGraph Cross(double ringLegMeters = 0, bool withD = false, bool withX1 = false)
+    private static readonly (double Lat, double Lon) Ef = P(450, 0);
+
+    private static TaxiPath Path(string name, (double Lat, double Lon) a, (double Lat, double Lon) b, double widthFt = 75.0)
+        => new TaxiPath
+        {
+            StartLat = a.Lat, StartLon = a.Lon, EndLat = b.Lat, EndLon = b.Lon,
+            Name = name, Type = "PT", StartType = "N", EndType = "N", Width = widthFt,
+        };
+
+    private static TaxiGraph Graph(List<TaxiPath> paths)
+        => TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>(), new List<Runway>());
+
+    /// x1AtX: X1 stubs 50 m south of the B nodes at these eastings instead of withX1's three;
+    /// extendEast: B goes on from En to Ef, 450 m east.
+    private static TaxiGraph Cross(double ringLegMeters = 0, bool withD = false, bool withX1 = false,
+        double[]? x1AtX = null, bool extendEast = false)
     {
         var paths = new List<TaxiPath>();
-        void Add(string name, (double Lat, double Lon) a, (double Lat, double Lon) b)
-            => paths.Add(new TaxiPath
-            {
-                StartLat = a.Lat, StartLon = a.Lon, EndLat = b.Lat, EndLon = b.Lon,
-                Name = name, Type = "PT", StartType = "N", EndType = "N", Width = 75.0,
-            });
+        void Add(string name, (double Lat, double Lon) a, (double Lat, double Lon) b) => paths.Add(Path(name, a, b));
 
         Add("A", ANorth, J);
         Add("B", J, Wm);
         Add("B", Wm, Wn);
         Add("B", J, Em);
         Add("B", Em, En);
+        if (extendEast) Add("B", En, Ef);
+        foreach (double x in x1AtX ?? Array.Empty<double>())
+            Add("X1", P(x, 0), P(x, -50));
         if (ringLegMeters > 0)
         {
             var se = P(300, -ringLegMeters);
@@ -197,10 +210,156 @@ public class TurnPickApplierTests
             Add("X1", En, P(300, -50));
             Add("X1", Wm, P(-150, -50));
         }
-        return TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>(), new List<Runway>());
+        return Graph(paths);
     }
 
     private static readonly string[] AB = { "A", "B" };
+
+    /// On the FINAL route: each applied pick's indices still point at its own departure and join, none of
+    /// its blocked nodes comes back after its join, and the route has this many off-chart legs.
+    private static void AssertPicksHold(TaxiRoute route, IReadOnlyList<AppliedTurnPick> applied, int offChartLegs)
+    {
+        var nodes = Nodes(route);
+        foreach (var pick in applied)
+        {
+            Assert.Equal(pick.DepartureNodeId, route.Segments[pick.FirstSegmentAfterDeparture].FromNode.NodeId);
+            Assert.Equal(pick.JoinNodeId, route.Segments[pick.FirstTaxiwaySegment].FromNode.NodeId);
+            foreach (int id in nodes.Skip(pick.FirstTaxiwaySegment + 1))
+                Assert.DoesNotContain(id, pick.BlockedNodeIds);
+        }
+        Assert.Equal(offChartLegs, route.Segments.Count(s => s.IsOffChartTurn));
+    }
+
+    // Off-chart then charted. A comes south to Pe (a dead end); the only charted way onto B is a
+    // connector curving right to Bk, west of the junction, then a reversal. B runs east through B0 (60 m
+    // straight ahead of Pe, no link) to Be1, where D crosses: south to T directly, north to Dn and round
+    // a ring R back to Ds on D, short of T.
+    private static readonly (double Lat, double Lon)
+        A0 = P(0, 200), Pe = P(0, 0), Bk = P(-60, -60), B0 = P(0, -60), Be1 = P(150, -60),
+        Be2 = P(300, -60), DnO = P(150, 40), DsO = P(150, -160), T = P(150, -260);
+
+    private static TaxiGraph OffChartThenCharted()
+    {
+        const double w = 98.0;
+        return Graph(new List<TaxiPath>
+        {
+            Path("A", A0, Pe, w),
+            Path("", Pe, P(-40, -30), w),
+            Path("", P(-40, -30), Bk, w),
+            Path("B", P(-300, -60), Bk, w),
+            Path("B", Bk, B0, w),
+            Path("B", B0, Be1, w),
+            Path("B", Be1, Be2, w),
+            Path("D", Be1, DnO, w),
+            Path("D", Be1, DsO, w),
+            Path("D", DsO, T, w),
+            Path("R", DnO, P(400, 40), w),
+            Path("R", P(400, 40), P(400, -160), w),
+            Path("R", P(400, -160), DsO, w),
+        });
+    }
+
+    [Fact]
+    public void An_off_chart_pick_then_a_charted_pick_both_change_the_route()
+    {
+        var g = OffChartThenCharted();
+        var seq = new[] { "A", "B", "D" };
+        var r0 = Route(g, A0, T, seq);
+        AssertInOrder(Nodes(r0), Node(g, Pe), Node(g, Bk), Node(g, B0), Node(g, Be1), Node(g, DsO), Node(g, T));
+
+        var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left), (2, TurnSide.Left)), Ctx(g, seq, T, heading: 180));
+
+        Assert.Empty(res.Refusals);
+        Assert.Equal(new[] { 1, 2 }, res.Applied.Select(a => a.RowIndex));
+        Assert.True(res.Applied[0].IsOffChart);
+        Assert.Equal(Node(g, Pe), res.Applied[0].DepartureNodeId);
+        Assert.Equal(Node(g, B0), res.Applied[0].JoinNodeId);
+        Assert.False(res.Applied[1].IsOffChart);
+        Assert.True(res.Applied[1].ChangedRoute);
+        Assert.Equal(Node(g, Be1), res.Applied[1].DepartureNodeId);
+
+        var nodes = Nodes(res.Route);
+        AssertInOrder(nodes, Node(g, Pe), Node(g, B0), Node(g, Be1), Node(g, DnO), Node(g, DsO), Node(g, T));
+        Assert.DoesNotContain(Node(g, Bk), nodes);
+        AssertPicksHold(res.Route, res.Applied, offChartLegs: 1);
+        Assert.Same(res.Applied, res.Route.TurnPicks);
+    }
+
+    // Charted then charted. From J, B goes west to Wm and east to Em; D is a loop Wm, T, Ds, Em; north of
+    // Em, D goes on to Dn and Dnn, from where a ring R comes back to Ds. The charted route goes west.
+    private static readonly (double Lat, double Lon)
+        TL = P(-150, -200), DsL = P(150, -200), DnL = P(150, 50), DnnL = P(150, 100);
+
+    private static TaxiGraph ChartedThenCharted() => Graph(new List<TaxiPath>
+    {
+        Path("A", ANorth, J),
+        Path("B", J, Wm),
+        Path("B", J, Em),
+        Path("D", Wm, TL),
+        Path("D", TL, DsL),
+        Path("D", DsL, Em),
+        Path("D", Em, DnL),
+        Path("D", DnL, DnnL),
+        Path("R", DnnL, P(250, 100)),
+        Path("R", P(250, 100), P(250, -200)),
+        Path("R", P(250, -200), DsL),
+    });
+
+    [Fact]
+    public void A_charted_pick_then_another_charted_pick_both_change_the_route()
+    {
+        var g = ChartedThenCharted();
+        var seq = new[] { "A", "B", "D" };
+        var r0 = Route(g, ANorth, TL, seq);
+        Assert.Equal(new[] { Node(g, ANorth), Node(g, J), Node(g, Wm), Node(g, TL) }, Nodes(r0));
+
+        var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left), (2, TurnSide.Left)), Ctx(g, seq, TL, heading: 180));
+
+        Assert.Empty(res.Refusals);
+        Assert.Equal(new[] { 1, 2 }, res.Applied.Select(a => a.RowIndex));
+        Assert.All(res.Applied, a => Assert.True(a.ChangedRoute && !a.IsOffChart));
+        Assert.Equal(new[] { Node(g, J), Node(g, Em) }, res.Applied.Select(a => a.DepartureNodeId));
+
+        var nodes = Nodes(res.Route);
+        AssertInOrder(nodes, Node(g, J), Node(g, Em), Node(g, DnL), Node(g, DnnL), Node(g, DsL), Node(g, TL));
+        Assert.DoesNotContain(Node(g, Wm), nodes);
+        AssertPicksHold(res.Route, res.Applied, offChartLegs: 0);
+    }
+
+    [Fact]
+    public void Hold_short_of_taxiway_takes_the_nearest_meeting_beyond_v()
+    {
+        // X1 meets B at En and again at Ef; v (Em) carries none. The nearest that way is En, not Ef.
+        var g = Cross(x1AtX: new[] { 300.0, 450.0 }, extendEast: true);
+        var r0 = Route(g, ANorth, Wm, AB);
+        var ctx = Ctx(g, AB, Wm, heading: 180,
+            terminator: new ProgressiveTerminator(ProgressiveTerminatorType.HoldShortTaxiway, "X1"));
+
+        var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left)), ctx);
+
+        Assert.Empty(res.Refusals);
+        Assert.Equal(Node(g, En), res.DestinationNodeId);
+        Assert.Equal(Node(g, En), Nodes(res.Route).Last());
+    }
+
+    [Fact]
+    public void A_pick_that_throws_is_refused_and_later_picks_still_run()
+    {
+        // The destination id is not in the graph: completing any option for row 1 throws inside the
+        // router. Row 2 (already met, which never routes) must still be judged.
+        var g = Cross(withD: true);
+        var seq = new[] { "A", "B", "D" };
+        var r0 = Route(g, ANorth, Dn, seq);
+        var log = new List<string>();
+        var ctx = Ctx(g, seq, Dn, heading: 180) with { DestinationNodeId = 987654, Log = log.Add };
+
+        var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Right), (2, TurnSide.Left)), ctx);
+
+        Assert.Same(r0, res.Route);
+        Assert.Equal(new TurnPickRefusal(1, TurnSide.Right, "B", TurnPickOutcome.NoTurnFound), Assert.Single(res.Refusals));
+        Assert.Equal(2, Assert.Single(res.Applied).RowIndex);
+        Assert.Contains(log, l => l.Contains("KeyNotFoundException"));
+    }
 
     [Fact]
     public void At_a_crossing_node_left_takes_the_east_arm_the_long_way_round()

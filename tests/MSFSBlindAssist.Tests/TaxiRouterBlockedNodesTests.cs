@@ -121,6 +121,25 @@ public class TaxiRouterBlockedNodesTests
     }
 
     [Fact]
+    public void BuildRouteThrough_builds_every_off_chart_pair_it_is_given()
+    {
+        // n-s and e-w are the ring's diagonals, with no edge: w-n (B), n-s (off-chart), s-e (A), e-w (off-chart).
+        var (_, router, n, e, s, w) = BuildRing();
+        var route = router.BuildRouteThrough(new[] { w, n, s, e, w }, new[] { (n, s), (e, w) });
+        Assert.NotNull(route);
+        Assert.Equal(4, route!.Segments.Count);
+        Assert.Equal(new[] { false, true, false, true }, route.Segments.Select(x => x.IsOffChartTurn));
+    }
+
+    [Fact]
+    public void BuildRouteThrough_returns_null_for_an_edgeless_pair_not_in_the_collection()
+    {
+        var (_, router, n, e, s, w) = BuildRing();
+        // (n, s) and (e, w) are given; (w, e) is the same diagonal the other way and is not.
+        Assert.Null(router.BuildRouteThrough(new[] { n, s, e, w, e }, new[] { (n, s), (e, w) }));
+    }
+
+    [Fact]
     public void BuildRouteThrough_returns_null_for_a_pair_with_no_edge_that_is_not_the_off_chart_pair()
     {
         var (_, router, n, _, s, _) = BuildRing();
