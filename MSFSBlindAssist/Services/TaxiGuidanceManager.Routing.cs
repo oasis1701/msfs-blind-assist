@@ -1904,20 +1904,20 @@ public partial class TaxiGuidanceManager
         }
 
         var router = new TaxiRouter(_graph);
+        int recalcStartNodeId = nearestNode.NodeId;
 
         // Prefer getting back onto the ATC-cleared taxiway sequence when possible —
         // only fall back to shortest path if the constrained route fails. This honors
         // the pilot's ATC clearance during brief deviations (e.g., wide turn, wrong
         // turn they corrected). FindConstrainedPath already falls back internally if
         // no valid path exists, setting ConstrainedFallbackReason.
-        TaxiRoute? newRoute;
-        if (remainingSequence != null && remainingSequence.Count > 0)
+        TaxiRoute? BuildNormalRecalcRoute(TaxiRouter r)
         {
-            newRoute = router.FindConstrainedPath(nearestNode.NodeId, _destinationNodeId, remainingSequence,
-                destinationIsRunway: _isRunwayLineup);
-        }
-        else
-        {
+            if (remainingSequence != null && remainingSequence.Count > 0)
+            {
+                return r.FindConstrainedPath(recalcStartNodeId, _destinationNodeId, remainingSequence,
+                    destinationIsRunway: _isRunwayLineup);
+            }
             // The aircraft is near NO taxiway of the cleared sequence — it is
             // either past the whole clearance or far off it. Re-applying the
             // FULL original sequence from here routes the pilot BACKWARDS
@@ -1925,7 +1925,45 @@ public partial class TaxiGuidanceManager
             // recalc built a 126-node loop back to a taxiway 1.5 km behind;
             // only the post-recalc sanity gate stopped it). Shortest path to
             // the destination is the honest recovery.
-            newRoute = router.FindShortestPath(nearestNode.NodeId, _destinationNodeId);
+            return r.FindShortestPath(recalcStartNodeId, _destinationNodeId);
+        }
+
+        // Turn picks (spec section 7): a pick is never judged again from where the aircraft now is. One
+        // still ahead keeps its loaded turn and everything after it; one the aircraft was in the middle of
+        // is said to be missed; one already made keeps its junction blocked for every later recalculation.
+        // With no picks on the route being replaced and nothing blocked, all of this is skipped and the
+        // router is built and called exactly as without picks. Deliberately left alone:
+        // FindRemainingSequenceByPosition above, and the holding-point pin, the sanity gate and the no-op
+        // guard below, which judge newRoute as they always have.
+        bool turnPicksInPlay = (_route?.TurnPicks.Count ?? 0) > 0 || _turnBlockedNodes.Count > 0;
+        // Sentences for the "Route changed" callout: missed picks here, then could-not-be-kept at adoption.
+        var turnPickRecalcNote = new List<string>();
+        var turnBlocks = new HashSet<int>();
+        TaxiRoute? newRoute = null;
+        if (turnPicksInPlay)
+        {
+            var missedPicks = TurnPickCarryOver.Missed(_route, _currentSegmentIndex);
+            foreach (var p in missedPicks)
+                turnPickRecalcNote.Add(TurnPickMessages.Missed(p.Side, p.TaxiwayName));
+            var aheadPick = missedPicks.Count == 0
+                ? TurnPickCarryOver.FirstAhead(_route, _currentSegmentIndex) : null;
+            turnBlocks = TurnPickCarryOver.BlocksToKeep(_route, _currentSegmentIndex, _turnBlockedNodes,
+                recalcStartNodeId);
+            router.BlockedNodes.UnionWith(turnBlocks);
+            if (aheadPick != null && _route != null)
+                newRoute = BuildRecalcRouteKeepingTurn(router, _route, aheadPick, remainingSequence, recalcStartNodeId);
+        }
+
+        // The normal build: the only build without picks, and the fallback when no kept-tail route was made.
+        newRoute ??= BuildNormalRecalcRoute(router);
+
+        // The blocks are dropped only when the router finds no route at all with them (spec section 7).
+        if ((newRoute == null || newRoute.Segments.Count == 0) && turnBlocks.Count > 0)
+        {
+            _guidanceLog.Info($"Turn pick: recalc found no route with {turnBlocks.Count} blocked node(s); retrying without them");
+            router = new TaxiRouter(_graph);
+            turnBlocks = new HashSet<int>();
+            newRoute = BuildNormalRecalcRoute(router);
         }
 
         if (newRoute == null || newRoute.Segments.Count == 0)
@@ -2207,6 +2245,19 @@ public partial class TaxiGuidanceManager
         // with every intermediate crossing untagged (PHNL 2026-09-03 — see AdoptRoute). It sits
         // BELOW the no-op guard so a discarded recalc neither re-tags a route nobody adopts nor
         // writes a crossings line claiming it did.
+        //
+        // Turn picks: a pick still ahead that the route about to be adopted does not carry (the kept-tail
+        // build failed, another pick was missed, or the holding-point pin re-routed) is said, never dropped
+        // in silence; missed picks come first. The block set is committed only here, so a recalculation
+        // discarded by any return above changes nothing.
+        if (turnPicksInPlay)
+        {
+            foreach (var p in TurnPickCarryOver.NotKept(_route, _currentSegmentIndex, newRoute))
+                turnPickRecalcNote.Add(TurnPickMessages.CouldNotBeKept(p.Side, p.TaxiwayName));
+            _guidanceLog.Info($"Turn pick: recalc adopts route keeping {newRoute.TurnPicks.Count} pick(s), " +
+                              $"{turnBlocks.Count} blocked node(s); note=\"{string.Join(" ", turnPickRecalcNote)}\"");
+            _turnBlockedNodes = turnBlocks;
+        }
         AdoptRoute(newRoute, _isRunwayLineup, _destinationName, lat, lon, phase: "recalc",
             userPickEvents: recalcPickEvents, recalculation: true);
         // A remapped pick that met its runway with no stop before that pass may share the stop
@@ -2263,6 +2314,8 @@ public partial class TaxiGuidanceManager
         _lastIncursionWarningTime = MSFSBlindAssist.Utils.SimClock.UtcNow;
         _incursionCooldownFromRecalc = true;
         _headingErrorInitialized = false;
+        // The "Off-chart leg." latch holds a segment index of the old route.
+        _offChartLegAnnouncedIdx = -1;
 
         string firstTaxiway = newRoute.Segments[0].TaxiwayName;
         string distStr = FormatDistance(newRoute.TotalDistanceMeters);
@@ -2277,9 +2330,65 @@ public partial class TaxiGuidanceManager
             viaNames, distStr, _destinationName, newRoute.RunwayEvents);
         if (!string.IsNullOrEmpty(recalcHoldWarning))
             callout = callout + " " + recalcHoldWarning;
+        if (turnPickRecalcNote.Count > 0)
+            callout = callout + " " + string.Join(" ", turnPickRecalcNote);
         AnnounceInstruction(callout);
 
         _lastAnnouncedTaxiway = firstTaxiway;
+    }
+
+    /// <summary>
+    /// The recalculated route for a Turn pick still ahead (spec section 7): a new prefix from the start
+    /// node to the pick's departure node, following the remaining rows before the pick's row (shortest
+    /// path when none remain), then the replaced route's own tail from that node as loaded, off-chart legs
+    /// included, with the picks rebased onto it. Null when any part fails; the caller then builds the
+    /// normal route and the pick is said as not kept.
+    /// </summary>
+    private TaxiRoute? BuildRecalcRouteKeepingTurn(TaxiRouter router, TaxiRoute replaced, AppliedTurnPick ahead,
+        List<string>? remainingSequence, int startNodeId)
+    {
+        var nodeIds = new List<int>();
+        if (startNodeId == ahead.DepartureNodeId)
+        {
+            nodeIds.Add(startNodeId);
+        }
+        else
+        {
+            var prefixRows = _originalTaxiwaySequence != null && remainingSequence != null
+                ? TurnPickCarryOver.PrefixRows(_originalTaxiwaySequence, remainingSequence, ahead.RowIndex)
+                : new List<string>();
+            var prefix = prefixRows.Count > 0
+                ? router.FindConstrainedPath(startNodeId, ahead.DepartureNodeId, prefixRows, destinationIsRunway: false)
+                : router.FindShortestPath(startNodeId, ahead.DepartureNodeId);
+            if (prefix == null || prefix.Segments.Count == 0 || !string.IsNullOrEmpty(prefix.ConstrainedFallbackReason))
+            {
+                _guidanceLog.Info($"Turn pick: recalc could not reach departure node {ahead.DepartureNodeId} " +
+                                  $"for row {ahead.RowIndex} ({prefix?.ConstrainedFallbackReason ?? "no path"})");
+                return null;
+            }
+            nodeIds.Add(prefix.Segments[0].FromNode.NodeId);
+            foreach (var seg in prefix.Segments)
+                nodeIds.Add(seg.ToNode.NodeId);
+            if (nodeIds[^1] != ahead.DepartureNodeId) return null;
+        }
+        int prefixSegments = nodeIds.Count - 1;
+
+        var tail = TurnPickCarryOver.TailFrom(replaced, ahead);
+        if (tail.NodeIds.Count < 2 || tail.NodeIds[0] != ahead.DepartureNodeId) return null;
+        nodeIds.AddRange(tail.NodeIds.Skip(1));
+
+        var stitched = router.BuildRouteThrough(nodeIds, tail.OffChartPairs);
+        if (stitched == null || stitched.Segments.Count == 0)
+        {
+            _guidanceLog.Info($"Turn pick: recalc could not stitch the kept tail for row {ahead.RowIndex}");
+            return null;
+        }
+        stitched.TurnPicks = TurnPickCarryOver.Rebase(replaced.TurnPicks, ahead, stitched);
+        // Rebase finds the departure node's first appearance; a prefix that passed through it earlier
+        // would shift every pick onto the wrong segment, so that route is not kept.
+        var rebasedFirst = stitched.TurnPicks.FirstOrDefault(p => p.RowIndex == ahead.RowIndex);
+        if (rebasedFirst == null || rebasedFirst.FirstSegmentAfterDeparture != prefixSegments) return null;
+        return stitched;
     }
 
     /// <summary>

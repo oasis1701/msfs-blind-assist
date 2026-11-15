@@ -135,6 +135,31 @@ public class TurnPickCarryOverTests
     }
 
     [Fact]
+    public void Not_kept_are_the_picks_still_ahead_the_adopted_route_does_not_carry()
+    {
+        var made = Pick(row: 0, afterDeparture: 1, firstTaxiway: 2);
+        var inTurn = Pick(row: 1, afterDeparture: 3, firstTaxiway: 5);
+        var aheadA = Pick(row: 2, afterDeparture: 7, firstTaxiway: 8);
+        var aheadB = Pick(row: 3, afterDeparture: 9, firstTaxiway: 10);
+        var replaced = RouteWith(aheadB, made, aheadA, inTurn);
+
+        // A route carrying none of them: both picks still ahead, in row order; made and in-turn are not "not kept".
+        Assert.Equal(new[] { aheadA, aheadB }, TurnPickCarryOver.NotKept(replaced, 4, new TaxiRoute()));
+
+        // A route carrying a rebased copy of one keeps it (matched by row, not by instance).
+        var keepsA = RouteWith(Pick(row: 2, afterDeparture: 0, firstTaxiway: 1));
+        Assert.Equal(new[] { aheadB }, TurnPickCarryOver.NotKept(replaced, 4, keepsA));
+
+        var keepsBoth = RouteWith(Pick(row: 2, afterDeparture: 0, firstTaxiway: 1),
+                                  Pick(row: 3, afterDeparture: 2, firstTaxiway: 3));
+        Assert.Empty(TurnPickCarryOver.NotKept(replaced, 4, keepsBoth));
+
+        // Nothing to say for a null or pick-less route being replaced.
+        Assert.Empty(TurnPickCarryOver.NotKept(null, 0, new TaxiRoute()));
+        Assert.Empty(TurnPickCarryOver.NotKept(new TaxiRoute(), 0, new TaxiRoute()));
+    }
+
+    [Fact]
     public void Prefix_rows_are_the_remaining_rows_before_the_picks_row()
     {
         var original = new[] { "E", "M", "F", "H", "C" };

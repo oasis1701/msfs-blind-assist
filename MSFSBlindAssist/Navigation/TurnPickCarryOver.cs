@@ -90,6 +90,17 @@ internal static class TurnPickCarryOver
                 .OrderBy(p => p.RowIndex)
                 .ToList();
 
+    /// Picks Ahead on the route being replaced that the adopted route does not carry (matched by row,
+    /// since a kept pick is a rebased copy), in row order: each must be said as "could not be kept".
+    public static List<AppliedTurnPick> NotKept(TaxiRoute? replaced, int currentSegmentIndex, TaxiRoute adopted)
+        => replaced == null
+            ? new List<AppliedTurnPick>()
+            : replaced.TurnPicks
+                .Where(p => PhaseOf(p, currentSegmentIndex) == TurnPickPhase.Ahead
+                         && !adopted.TurnPicks.Any(k => k.RowIndex == p.RowIndex))
+                .OrderBy(p => p.RowIndex)
+                .ToList();
+
     /// alreadyBlocked (the manager's running set: a recalculation drops made picks from the new route,
     /// so their junctions survive only there) union the BlockedNodeIds of every pick that is Made at
     /// this index, minus startNodeId from either side. Always a new set, never the caller's instance;
