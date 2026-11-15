@@ -90,6 +90,47 @@ public class TaxiRouterBlockedNodesTests
         Assert.Null(router.FindConstrainedPath(p, r, new List<string> { "A" }));
     }
 
+    // S runs north to P1; taxiway A goes on north in two sections 55 m apart (past BridgeSameNamedGaps'
+    // 40 m), joined only through a node M on a differently named edge X, so strict A* cannot cross and
+    // gap chaining must (the second step of "S, A", which has no other entry to try); B is a separate
+    // taxiway elsewhere whose node can be blocked.
+    private static (TaxiGraph graph, int s0, int p4, int m, int b) BuildGappedA()
+    {
+        var paths = new List<TaxiPath>
+        {
+            P(36.9990, -122.0000, 37.0000, -122.0000, "S"),
+            P(37.0000, -122.0000, 37.0010, -122.0000, "A"),
+            P(37.0010, -122.0000, 37.00125, -121.9994, "X"),
+            P(37.00125, -121.9994, 37.0015, -122.0000, "X"),
+            P(37.0015, -122.0000, 37.0025, -122.0000, "A"),
+            P(37.0000, -121.9900, 37.0010, -121.9900, "B"),
+        };
+        var graph = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+        return (graph, FindNode(graph, 36.9990, -122.0000).NodeId, FindNode(graph, 37.0025, -122.0000).NodeId,
+            FindNode(graph, 37.00125, -121.9994).NodeId, FindNode(graph, 37.0010, -121.9900).NodeId);
+    }
+
+    [Fact]
+    public void A_gap_in_a_taxiway_is_still_chained_when_the_block_is_on_another_taxiway()
+    {
+        var (graph, s0, p4, m, b) = BuildGappedA();
+        var seq = new List<string> { "S", "A" };
+
+        // Without blocks: chained across the gap through M.
+        var plain = new TaxiRouter(graph).FindConstrainedPath(s0, p4, seq);
+        Assert.NotNull(plain);
+        Assert.Null(plain!.ConstrainedFallbackReason);
+        Assert.Contains(m, Nodes(plain));
+
+        // A block on taxiway B, which A never touches, changes nothing.
+        var router = new TaxiRouter(graph);
+        router.BlockedNodes.Add(b);
+        var blocked = router.FindConstrainedPath(s0, p4, seq);
+        Assert.NotNull(blocked);
+        Assert.Null(blocked!.ConstrainedFallbackReason);
+        Assert.Equal(Nodes(plain), Nodes(blocked));
+    }
+
     [Fact]
     public void BuildRouteThrough_inserts_one_off_chart_segment()
     {

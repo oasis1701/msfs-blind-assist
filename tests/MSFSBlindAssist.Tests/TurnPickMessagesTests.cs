@@ -63,8 +63,10 @@ public class TurnPickMessagesTests
     }
 
     [Fact]
-    public void Load_note_lists_notes_in_row_order_and_confirms_charted_picks_only_for_the_summary()
+    public void Load_note_lists_notes_in_row_order_and_confirms_charted_picks()
     {
+        // One text for the summary and the start-of-guidance utterance: a charted pick's confirmation
+        // must be heard, since StartGuidance's first callout cuts the queued summary.
         var applied = new[]
         {
             Pick(0, TurnSide.Right, "B", changed: true, offChart: false),
@@ -78,22 +80,17 @@ public class TurnPickMessagesTests
         string offChart = "Note: this route includes an off-chart left turn onto taxiway C, 96 metres with no taxi line.";
 
         Assert.Equal($"{charted} {refusal} {offChart}",
-            TurnPickMessages.ComposeLoadNote(applied, refusals, "Runway 33L", Metres, forSummary: true));
-        Assert.Equal($"{refusal} {offChart}",
-            TurnPickMessages.ComposeLoadNote(applied, refusals, "Runway 33L", Metres, forSummary: false));
+            TurnPickMessages.ComposeLoadNote(applied, refusals, "Runway 33L", Metres));
     }
 
     [Fact]
     public void Load_note_is_null_with_nothing_to_say()
     {
-        foreach (bool forSummary in new[] { true, false })
-        {
-            Assert.Null(TurnPickMessages.ComposeLoadNote(
-                Array.Empty<AppliedTurnPick>(), Array.Empty<TurnPickRefusal>(), "X", Metres, forSummary));
-            Assert.Null(TurnPickMessages.ComposeLoadNote(
-                new[] { Pick(0, TurnSide.Left, "B", changed: false, offChart: false) },
-                Array.Empty<TurnPickRefusal>(), "X", Metres, forSummary));
-        }
+        Assert.Null(TurnPickMessages.ComposeLoadNote(
+            Array.Empty<AppliedTurnPick>(), Array.Empty<TurnPickRefusal>(), "X", Metres));
+        Assert.Null(TurnPickMessages.ComposeLoadNote(
+            new[] { Pick(0, TurnSide.Left, "B", changed: false, offChart: false) },
+            Array.Empty<TurnPickRefusal>(), "X", Metres));
     }
 }
 
@@ -124,13 +121,13 @@ public class TurnPickMessagesCultureTests
                 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
                 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
                 string expected = TurnPickMessages.ComposeLoadNote(
-                    applied, Array.Empty<TurnPickRefusal>(), "X", m => DistanceFormatter.FromMetres(m), false)!;
+                    applied, Array.Empty<TurnPickRefusal>(), "X", m => DistanceFormatter.FromMetres(m))!;
 
                 var de = new CultureInfo("de-DE");
                 CultureInfo.CurrentCulture = de;
                 CultureInfo.CurrentUICulture = de;
                 string actual = TurnPickMessages.ComposeLoadNote(
-                    applied, Array.Empty<TurnPickRefusal>(), "X", m => DistanceFormatter.FromMetres(m), false)!;
+                    applied, Array.Empty<TurnPickRefusal>(), "X", m => DistanceFormatter.FromMetres(m))!;
 
                 Assert.Equal(expected, actual);
                 Assert.DoesNotContain(",", actual.Replace("taxiway C, ", ""));

@@ -1017,7 +1017,7 @@ public class TaxiRouter
                 if (BlockedNodes.Count > 0 && BlockedNodes.Contains(edge.ToNodeId))
                     continue;
 
-                bool isOnTaxiway =edge.TaxiwayName.Equals(requiredTaxiway, StringComparison.OrdinalIgnoreCase);
+                bool isOnTaxiway = edge.TaxiwayName.Equals(requiredTaxiway, StringComparison.OrdinalIgnoreCase);
 
                 if (!isOnTaxiway)
                 {
@@ -1066,10 +1066,11 @@ public class TaxiRouter
         if (direct != null)
             return direct;
 
-        // A blocked node cuts a taxiway for good: hopping to its next section would step over the block.
-        if (BlockedNodes.Count > 0)
+        // A blocked node cuts ITS taxiway for good: hopping to that taxiway's next section would step over
+        // the block. A block on another taxiway leaves this one's navdata gaps chained as always.
+        if (BlockedNodes.Count > 0 && _graph.GetNodesOnTaxiway(requiredTaxiway).Any(BlockedNodes.Contains))
         {
-            Log($"GapChain '{requiredTaxiway}': skipped, blocked nodes active");
+            Log($"GapChain '{requiredTaxiway}': skipped, a blocked node is on this taxiway");
             return null;
         }
 
@@ -1811,6 +1812,7 @@ public class TaxiRouter
                     BearingDegrees = NavigationCalculator.CalculateBearing(
                         fromNode.Latitude, fromNode.Longitude, toNode.Latitude, toNode.Longitude),
                     PathWidth = 0,
+                    HoldShortRunway = toNode.HoldShortName,
                     IsOffChartTurn = true,
                 };
             }

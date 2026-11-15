@@ -37,12 +37,13 @@ internal static class TurnPickMessages
     public static string Missed(TurnSide side, string taxiway)
         => $"The {SideWord(side)} turn onto taxiway {taxiway} was missed.";
 
-    /// The notes for one load, in row order, joined with a space; null when there are none.
-    /// Always: each refusal and each off-chart leg. Only when forSummary: also ChartedNote for each
-    /// applied pick with ChangedRoute and not IsOffChart. A pick with ChangedRoute false says nothing.
+    /// The notes for one load, in row order, joined with a space; null when there are none: each
+    /// refusal, each off-chart leg, and ChartedNote for each applied pick with ChangedRoute and not
+    /// IsOffChart. A pick with ChangedRoute false says nothing. The same text goes into the summary and
+    /// the start-of-guidance utterance: a Turn value left over from an earlier route can turn this one,
+    /// and the summary alone is routinely cut off by the first callout.
     public static string? ComposeLoadNote(IReadOnlyList<AppliedTurnPick> applied,
-        IReadOnlyList<TurnPickRefusal> refusals, string destinationName, Func<double, string> formatDistance,
-        bool forSummary)
+        IReadOnlyList<TurnPickRefusal> refusals, string destinationName, Func<double, string> formatDistance)
     {
         var notes = new List<(int Row, string Text)>();
         foreach (var r in refusals)
@@ -55,7 +56,7 @@ internal static class TurnPickMessages
             if (!p.ChangedRoute) continue;
             if (p.IsOffChart)
                 notes.Add((p.RowIndex, OffChartNote(p.Side, p.TaxiwayName, formatDistance(p.OffChartLengthMeters))));
-            else if (forSummary)
+            else
                 notes.Add((p.RowIndex, ChartedNote(p.Side, p.TaxiwayName)));
         }
         if (notes.Count == 0) return null;

@@ -297,7 +297,7 @@ public class TaxiAssistForm : Form
     // TurnPickCarryOver.FromRows reads). Shared by the first row and every dynamic row.
     private static readonly string[] TurnItems = { "Automatic", "Left", "Right" };
     private const string TURN_LIST_DESCRIPTION =
-        "Optional. Choose Left or Right when ATC names the direction of the turn onto this taxiway, such as left on Charlie. Leave at Automatic to let the route decide. On the first taxiway, left and right are from the way you are facing.";
+        "Optional. Choose Left or Right when ATC names the direction of the turn onto this taxiway, such as left on Charlie. Leave at Automatic to let the route decide. On the first taxiway, left and right are from the direction you reach it from.";
 
     // Cached runway designators for the current airport (e.g. ["09L","09R","27L","27R"]).
     // Populated on airport load; consumed when constructing every Hold-short-of-runway

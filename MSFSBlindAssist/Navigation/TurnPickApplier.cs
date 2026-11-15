@@ -204,6 +204,22 @@ internal static class TurnPickApplier
                  done.ConnectionMeters < best.ConnectionMeters))
                 best = done;
         }
+        // Step 1 walks the route (onto the next taxiway if it comes within 80 m), step 2 the taxiway
+        // alone, so step 2 can pick the very route step 1 refused: that route already makes the turn.
+        if (best != null && NodeIds(best.Route).SequenceEqual(NodeIds(current)))
+        {
+            Log(ctx, row, side, name, TurnPickOutcome.AlreadyMet,
+                $"departure {best.Pick.DepartureNodeId}, join {best.Pick.JoinNodeId}, the charted option is the route");
+            return (TurnPickOutcome.AlreadyMet, new Completed(current, ctx.DestinationNodeId, new AppliedTurnPick
+            {
+                RowIndex = row, Side = side, TaxiwayName = name,
+                DepartureNodeId = best.Pick.DepartureNodeId, JoinNodeId = best.Pick.JoinNodeId,
+                FirstSegmentAfterDeparture = best.Pick.FirstSegmentAfterDeparture,
+                FirstTaxiwaySegment = best.Pick.FirstTaxiwaySegment,
+                ChangedRoute = false, IsOffChart = false,
+                BlockedNodeIds = best.Pick.BlockedNodeIds,
+            }, best.ConnectionMeters));
+        }
         if (best != null)
         {
             Log(ctx, row, side, name, TurnPickOutcome.Charted,
@@ -360,6 +376,8 @@ internal static class TurnPickApplier
 
         stitched.DestinationName = input.DestinationName;
         stitched.TaxiwaySequence = input.TaxiwaySequence;
+        // A route that fell back to shortest path is still one: the summary's fallback warning stays.
+        stitched.ConstrainedFallbackReason = input.ConstrainedFallbackReason;
         double connectionMeters = 0;
         for (int i = prefix.Count; i < prefix.Count + option.Connection.Count - 1; i++)
             connectionMeters += stitched.Segments[i].DistanceMeters;

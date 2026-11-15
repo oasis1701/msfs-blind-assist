@@ -386,6 +386,82 @@ public class TurnPickApplierTests
     }
 
     [Fact]
+    public void A_pick_that_changes_a_fallback_route_keeps_its_fallback_reason()
+    {
+        var g = Cross(ringLegMeters: 100);
+        var r0 = Route(g, ANorth, Wn, AB);
+        r0.ConstrainedFallbackReason = "taxiway Q not found";
+
+        var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left)), Ctx(g, AB, Wn, heading: 180));
+
+        Assert.True(Assert.Single(res.Applied).ChangedRoute);
+        Assert.NotSame(r0, res.Route);
+        Assert.Equal("taxiway Q not found", res.Route.ConstrainedFallbackReason);
+    }
+
+    // A comes south into J; B runs 40 m east (a left turn) to Bm and on to Be; D leaves Bm south. The
+    // route A, B, D turns left onto B and right onto D within 80 m, so walked along the route it ends
+    // straight ahead (step 1 fails), while walked along B alone it is a clean left (step 2 passes)
+    // with the very same nodes.
+    private static readonly (double Lat, double Lon) Bm = P(40, 0), Be = P(140, 0), Dso = P(40, -200);
+
+    [Fact]
+    public void A_charted_option_that_is_the_route_itself_is_already_met()
+    {
+        var g = Graph(new List<TaxiPath>
+        {
+            Path("A", ANorth, J),
+            Path("B", J, Bm),
+            Path("B", Bm, Be),
+            Path("D", Bm, Dso),
+        });
+        var seq = new[] { "A", "B", "D" };
+        var r0 = Route(g, ANorth, Dso, seq);
+        Assert.Equal(new[] { Node(g, ANorth), Node(g, J), Node(g, Bm), Node(g, Dso) }, Nodes(r0));
+
+        var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left)), Ctx(g, seq, Dso, heading: 180));
+
+        Assert.Empty(res.Refusals);
+        var applied = Assert.Single(res.Applied);
+        Assert.False(applied.ChangedRoute);
+        Assert.False(applied.IsOffChart);
+        Assert.Same(r0, res.Route);
+        Assert.Equal(Node(g, J), applied.DepartureNodeId);
+    }
+
+    // A first row reached by a lead-in named for no row: A is the lead-in's last node, and the
+    // incoming bearing is its last segment's, never the aircraft's heading.
+    [Fact]
+    public void A_first_row_reached_by_a_lead_in_joins_where_the_lead_in_ends()
+    {
+        var stand = P(0, 300);
+        var g = Graph(new List<TaxiPath>
+        {
+            Path("L1", stand, ANorth),
+            Path("A", ANorth, J),
+            Path("B", J, Wm),
+            Path("B", J, Em),
+        });
+        var seq = new[] { "B" };
+        var r0 = new TaxiRouter(g).FindShortestPath(Node(g, stand), Node(g, Wm));
+        Assert.NotNull(r0);
+        Assert.Equal(new[] { Node(g, stand), Node(g, ANorth), Node(g, J), Node(g, Wm) }, Nodes(r0!));
+
+        var join = TurnPickApplier.LocateJoin(r0!, seq, 0);
+
+        Assert.NotNull(join);
+        Assert.Equal(Node(g, J), join!.Value.DepartureNodeId);
+        Assert.Equal(r0!.Segments[1].BearingDegrees, join.Value.IncomingBearing!.Value, 6);
+        Assert.Equal(2, join.Value.FirstSegmentAfterDeparture);
+        Assert.Equal(2, join.Value.FirstTaxiwaySegment);
+
+        // Judged from that bearing (south), not the aircraft's heading (north): right is west, as built.
+        var res = TurnPickApplier.Apply(r0, Picks((0, TurnSide.Right)), Ctx(g, seq, Wm, heading: 0.0, aircraft: stand));
+        Assert.False(Assert.Single(res.Applied).ChangedRoute);
+        Assert.Same(r0, res.Route);
+    }
+
+    [Fact]
     public void A_longer_ring_is_refused_as_a_long_detour()
     {
         var g = Cross(ringLegMeters: 300);

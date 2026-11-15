@@ -80,22 +80,23 @@ public class TurnPickCarryOverTests
     }
 
     [Fact]
-    public void Blocks_to_keep_are_those_of_made_picks_without_the_start_node()
+    public void Blocks_to_keep_are_those_of_made_picks_and_earlier_ones_with_nothing_removed()
     {
         var made = Pick(row: 1, afterDeparture: 2, firstTaxiway: 3, blocked: new[] { 10, 11, 12 });
         var inTurn = Pick(row: 2, afterDeparture: 6, firstTaxiway: 8, blocked: new[] { 20 });
         var ahead = Pick(row: 3, afterDeparture: 9, firstTaxiway: 10, blocked: new[] { 30 });
         var route = RouteWith(made, inTurn, ahead);
 
-        var keep = TurnPickCarryOver.BlocksToKeep(route, 7, new HashSet<int>(), startNodeId: 11);
+        var keep = TurnPickCarryOver.BlocksToKeep(route, 7, new HashSet<int>());
 
-        Assert.Equal(new HashSet<int> { 10, 12 }, keep);
+        Assert.Equal(new HashSet<int> { 10, 11, 12 }, keep);
 
-        // Earlier recalculations' blocks are kept too; the start id goes whichever side it came from.
+        // Earlier recalculations' blocks are kept too. A recalculation that starts at a made turn's
+        // junction exempts it on its own router only; the committed set still holds it, or the junction
+        // would be unblocked for good once the made pick has left the route.
         var earlier = new HashSet<int> { 40, 12 };
-        var withEarlier = TurnPickCarryOver.BlocksToKeep(route, 7, earlier, startNodeId: 12);
-        Assert.Equal(new HashSet<int> { 10, 11, 40 }, withEarlier);
-        Assert.DoesNotContain(12, withEarlier);
+        var withEarlier = TurnPickCarryOver.BlocksToKeep(route, 7, earlier);
+        Assert.Equal(new HashSet<int> { 10, 11, 12, 40 }, withEarlier);
     }
 
     [Fact]
@@ -103,19 +104,19 @@ public class TurnPickCarryOverTests
     {
         Assert.Null(TurnPickCarryOver.FirstAhead(null, 0));
         Assert.Empty(TurnPickCarryOver.Missed(null, 0));
-        Assert.Empty(TurnPickCarryOver.BlocksToKeep(null, 0, new HashSet<int>(), 7));
+        Assert.Empty(TurnPickCarryOver.BlocksToKeep(null, 0, new HashSet<int>()));
 
         var empty = new TaxiRoute();
         Assert.Null(TurnPickCarryOver.FirstAhead(empty, 0));
         Assert.Empty(TurnPickCarryOver.Missed(empty, 0));
-        Assert.Empty(TurnPickCarryOver.BlocksToKeep(empty, 0, new HashSet<int>(), 7));
+        Assert.Empty(TurnPickCarryOver.BlocksToKeep(empty, 0, new HashSet<int>()));
 
-        // alreadyBlocked passes through minus the start id, as a new set.
+        // alreadyBlocked passes through whole, as a new, equal set.
         var already = new HashSet<int> { 5, 7 };
         foreach (var r in new TaxiRoute?[] { null, empty })
         {
-            var result = TurnPickCarryOver.BlocksToKeep(r, 0, already, 7);
-            Assert.Equal(new HashSet<int> { 5 }, result);
+            var result = TurnPickCarryOver.BlocksToKeep(r, 0, already);
+            Assert.Equal(new HashSet<int> { 5, 7 }, result);
             Assert.False(ReferenceEquals(result, already));
         }
         Assert.Equal(new HashSet<int> { 5, 7 }, already);
