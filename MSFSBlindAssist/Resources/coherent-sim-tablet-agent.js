@@ -168,20 +168,26 @@
     return false;
   };
   // A hover reveals a CONTROL, or a group holding controls (a row's hover menu), and the words inside
-  // it, never a tooltip or a disabled-layer, which have hiding of their own and show on a hover of the
-  // control or never: they would merge into its name or read it as dimmed (STAB-3).
-  A.OWN_HIDING = /^(tooltip|tip|hint|disabled-layer)$|^tooltip[-_]|[-_](tooltip|tip)$/i;
+  // it, never a tooltip, which has hiding of its own and shows on a hover of the control: it would
+  // merge into its name. A wrapper named for a tooltip that holds the control ("tooltip-component")
+  // is no tooltip. The OS's .disabled-layer needs no exception: it hides with display:none (measured
+  // 2026-11-15), which A.isHidden reads before any hover rule, so a revealed disabled control still
+  // reads dimmed (STAB-3).
+  A.OWN_HIDING = /^(tooltip|tip|hint)$|^tooltip[-_]|[-_](tooltip|tip)$/i;
   A.ownHiding = function (n) {
     if (A.attr(n, 'role') === 'tooltip') return true;
     var t = A.tokens(n);
     for (var i = 0; i < t.length; i++) if (A.OWN_HIDING.test(t[i])) return true;
     return false;
   };
+  // Memoized per read: every hidden element under one revealed row asks the same question.
   A.holdsControl = function (n) {
-    if (A.isControlEl(n)) return true;
+    if (n.__msfsbaHolds && n.__msfsbaHolds.s === A._scrapeId) return n.__msfsbaHolds.v;
+    var v = A.isControlEl(n);
     var all = n.getElementsByTagName('*');
-    for (var i = 0; i < all.length && i < 200; i++) if (A.isControlEl(all[i])) return true;
-    return false;
+    for (var i = 0; !v && i < all.length && i < 200; i++) if (A.isControlEl(all[i])) v = true;
+    n.__msfsbaHolds = { s: A._scrapeId, v: v };
+    return v;
   };
   // The element, or the ancestor it inherits its hiding from (a revealed wrapper reveals its button).
   A.hoverRevealed = function (el) {
@@ -190,7 +196,7 @@
     for (var n = el, up = 0; n && n.nodeType === 1 && up < 6; n = n.parentElement, up++) {
       if (!n.matches && !n.webkitMatchesSelector) return false;
       if (A.matchesAny(n, sels)) return A.holdsControl(n);
-      if (A.ownHiding(n)) return false;
+      if (A.ownHiding(n) && !A.holdsControl(n)) return false;
       var ps = n.parentElement ? A.styleOf(n.parentElement) : null;
       if (!ps || (ps.visibility !== 'hidden' && ps.opacity !== '0')) return false;   // hidden here, not inherited
     }
@@ -314,7 +320,8 @@
   // more: editors number what they name ("Rectangle 4", "filter0_d_1_2"), a person names the icon.
   A.GENERIC_ID = new RegExp('^(svg|defs|layer|path|g|group|groupe|trac[e\u00e9]?|rect|rectangle|circle|mask|masque|clip|clippath|' +
     'stop|use|polygon|polyline|ellipse|line|ligne|calque|union|titre|title|paint|filter|lineargradient|radialgradient|' +
-    'gradient|pattern|symbol|image|shape|vector|frame|object|objet|text|isolation mode)[\\s\\d]*$', 'i');
+    'gradient|pattern|symbol|image|shape|vector|frame|object|objet|text|isolation mode|mask group|clip path group|clip path|' +
+    'svgrepo [a-z]*|[a-z]*carrier)[\\s\\d]*$', 'i');
   A.ICON_WORD = /^[A-Za-zÀ-ɏ ]{3,}$/;
   A.iconName = function (el) {
     var svg = el.querySelector('svg');
@@ -849,13 +856,15 @@
         }
         bs = items;
       }
-      if (!bs.length) return false;          // nothing to pick: the row is read as it is
+      var pushed = 0;
       for (var i = 0; i < bs.length; i++) {
         if (A.isHidden(bs[i])) continue;
         var t = A.lineText(bs[i]) || A.buttonLabel(bs[i]);
         var on = A.hasClass(bs[i], 'selected');
         els.push(A.button(bs[i], t + (on ? ' (selected)' : ''), { key: 'choice:' + t, announceChange: true }));
+        pushed++;
       }
+      if (!pushed) return false;             // nothing to pick: the row is read as it is
     });
 
   // A dropdown. Two kinds: an action menu (Import / Save / Send: its list holds BUTTONS, class
@@ -1269,7 +1278,12 @@
         if (!A.isNameText(line)) continue;                   // a name, never a value ("29", "GAL", "14947 L")
         var inCtl = false;
         for (var p = n; p && p !== anc; p = p.parentElement) if (A.isControlEl(p)) { inCtl = true; break; }
-        if (!inCtl) { if (claim) A.claim(n); return line; }
+        if (!inCtl) {
+          // Only a caption in the control's own row is the field's: a heading, or text further up,
+          // heads a section and stays a line of its own.
+          if (claim && up < 2 && !/^H[1-6]$/.test(n.tagName) && A.attr(n, 'role') !== 'heading') A.claim(n);
+          return line;
+        }
       }
     }
     return '';
@@ -1579,8 +1593,12 @@
   // 'hide' while frames come to a panel MSFSBA showed, else ''. Frames stopping or starting changes
   // no element, so scrape compares this with what the last read offered (A._offeredShow) and reads
   // again when it moved.
+  // For 3 s after a press of the toolbar button (window.__MSFSBA_TABLET_PRESS_AT, stamped by the
+  // client) it stays offered, by the mark alone: frames start or stop a moment after the press, and
+  // the button the pilot just pressed must never leave the list meanwhile.
   A._offeredShow = '';
   A.tabletOffer = function () {
+    if (Date.now() - (window.__MSFSBA_TABLET_PRESS_AT || 0) < 3000) return window.__MSFSBA_TABLET_SHOWN ? 'hide' : 'show';
     if (A._frameAsked && Date.now() - A._askedAt > 1000) return 'show';
     return window.__MSFSBA_TABLET_SHOWN ? 'hide' : '';
   };

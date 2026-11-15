@@ -49,17 +49,26 @@ public static class SimTabletPanel
     internal const string ReadShown = "(function(){return window.__MSFSBA_TABLET_SHOWN?'true':'false';})()";
     // The panel opening must never leave the pilot's keyboard with the tablet (STAB-1).
     internal const string ReleaseKeyboard = "(function(){var A=window.__MSFSBA_SIM_TABLET;if(A&&A.releaseKeyboard)A.releaseKeyboard();return 'ok';})()";
+    // Stamped before each press: the reader keeps the button listed while frames start or stop (A.tabletOffer).
+    internal const string StampPress = "(function(){window.__MSFSBA_TABLET_PRESS_AT=Date.now();return 'ok';})()";
 
     private static readonly SemaphoreSlim OnePress = new(1, 1);
+    private static volatile bool _shutDown;
+
+    /// <summary>
+    /// MSFSBA is exiting: no press after this one, so a Show or Hide still running when the exit's
+    /// own Hide is done cannot press the button again behind it.
+    /// </summary>
+    public static void ShutDown() => _shutDown = true;
 
     /// <summary>
     /// Presses the toolbar's tablet button. True when it was pressed; false when the debugger, the
-    /// toolbar view or its tablet button could not be reached (logged), or a press is still running:
-    /// one at a time, so never two sockets on the view.
+    /// toolbar view or its tablet button could not be reached (logged), a press is still running
+    /// (one at a time, so never two sockets on the view), or MSFSBA is exiting.
     /// </summary>
     public static async Task<bool> ToggleAsync()
     {
-        if (!await OnePress.WaitAsync(0)) return false;
+        if (_shutDown || !await OnePress.WaitAsync(0)) return false;
         try
         {
             string r = await CoherentEvalClient.EvalAsync(ToolbarTitle, ToggleScript, exactTitle: true, commandLineApi: true);
@@ -88,12 +97,32 @@ public static class SimTabletPanel
     }
 
     /// <summary>
+    /// Whether the view's frames stop after a Hide: none for a whole probe, after 500 ms for the
+    /// panel's close, within <paramref name="timeoutMs"/>. Null when the reader did not answer.
+    /// </summary>
+    public static async Task<bool?> ViewStopsFramesAsync(Func<string, Task<string>> eval, int timeoutMs = 2500, int settleMs = 500, int stepMs = 250)
+    {
+        var clock = Stopwatch.StartNew();
+        await Task.Delay(settleMs);
+        while (true)
+        {
+            bool? frames = await ViewGetsFramesAsync(eval, 600, stepMs);
+            if (frames == null) return null;
+            if (frames == false) return true;
+            if (clock.ElapsedMilliseconds >= timeoutMs) return false;
+        }
+    }
+
+    /// <summary>
     /// Shows the panel: presses the button, then waits for the view's frames. With none, the press
     /// is undone (it may have closed a panel the sim shows but does not draw, paused or in its menu),
-    /// so the panel is left as it was.
+    /// so the panel is left as it was. Nothing is pressed while the reader does not answer, as no
+    /// press could then be checked or undone.
     /// </summary>
     public static async Task<Outcome> ShowAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle)
     {
+        if (await eval(ReadShown) is not ("true" or "false")) return Outcome.Unknown;
+        await eval(StampPress);
         if (!await toggle()) return Outcome.Failed;
         bool? frames = await ViewGetsFramesAsync(eval);
         if (frames == true)
@@ -102,24 +131,34 @@ public static class SimTabletPanel
             await eval(ReleaseKeyboard);
             return Outcome.Shown;
         }
-        if (frames == false) { await toggle(); return Outcome.NotShown; }
+        if (frames == false) { await eval(StampPress); await toggle(); return Outcome.NotShown; }
         return Outcome.Unknown;
     }
 
     /// <summary>
     /// Hides the panel MSFSBA showed, when it still shows: a panel the pilot already closed, or one
     /// MSFSBA never showed, is left alone. <paramref name="cancel"/>, checked after the frame check,
-    /// stops it (the window opened again meanwhile). Unknown keeps the mark, to try again later.
+    /// stops it (the window opened again meanwhile). The press counts only once the frames stop
+    /// (<paramref name="verify"/>; exit skips it to stay within its time); else Failed, keeping the
+    /// mark, as does Unknown, to try again later.
     /// </summary>
-    public static async Task<Outcome> HideAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle, Func<bool>? cancel = null)
+    public static async Task<Outcome> HideAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle, Func<bool>? cancel = null, bool verify = true)
     {
         string mark = await eval(ReadShown);
         if (mark == "false") return Outcome.AlreadyHidden;
         if (mark != "true") return Outcome.Unknown;
         bool? frames = await ViewGetsFramesAsync(eval, 1000);
         if (frames == null || cancel?.Invoke() == true) return Outcome.Unknown;
-        if (frames == true && !await toggle()) return Outcome.Failed;
+        if (frames == false) { await eval(MarkHidden); return Outcome.AlreadyHidden; }
+        await eval(StampPress);
+        if (!await toggle()) return Outcome.Failed;
+        if (verify)
+        {
+            bool? stopped = await ViewStopsFramesAsync(eval);
+            if (stopped == null) return Outcome.Unknown;
+            if (stopped == false) return Outcome.Failed;
+        }
         await eval(MarkHidden);
-        return frames == true ? Outcome.Hidden : Outcome.AlreadyHidden;
+        return Outcome.Hidden;
     }
 }

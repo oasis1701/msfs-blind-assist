@@ -100,7 +100,16 @@ namespace MSFSBlindAssist.SimConnect
             catch { return ""; }
             finally
             {
-                try { if (ws.State == WebSocketState.Open) await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None); }
+                // Bounded: a view that never answers the close frame must not hold the caller (and its
+                // one-shot entry) for good; a cancelled close aborts the socket.
+                try
+                {
+                    if (ws.State == WebSocketState.Open)
+                    {
+                        using var closeCts = new CancellationTokenSource(500);
+                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", closeCts.Token);
+                    }
+                }
                 catch { }
             }
         }

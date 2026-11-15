@@ -12,27 +12,49 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class SimTabletPanelTests
 {
-    // A tablet view as the reader answers it: whether frames come, and the page's "MSFSBA showed it" mark.
+    // The tablet's view and the sim's panel, as the reader and the toolbar answer them.
     private sealed class FakeView
     {
-        public string Frames = "frames";          // what FrameProbeRead answers: "frames", "none" or ""
-        public string? Mark = "false";             // ReadShown's answer; null = no answer
+        public bool Shown;                  // the sim draws the panel, so frames come
+        public bool Draws = true;           // a press changes what the sim draws (false: paused, in a menu)
+        public bool ToggleWorks = true;     // the toolbar's button was reached and pressed
+        public bool ReaderAnswers = true;
+        public bool ProbeAnswers = true;
+        public string Mark = "false";       // the page's "MSFSBA showed it"
         public readonly List<string> Evals = new();
         public int Toggles;
-        public bool ToggleWorks = true;
 
         public Task<string> Eval(string js)
         {
             Evals.Add(js);
-            if (js == SimTabletPanel.FrameProbeStart) return Task.FromResult(Frames.Length == 0 ? "" : "ok");
-            if (js == SimTabletPanel.FrameProbeRead) return Task.FromResult(Frames);
-            if (js == SimTabletPanel.ReadShown) return Task.FromResult(Mark ?? "");
-            if (js == SimTabletPanel.MarkShown) { Mark = "true"; return Task.FromResult("ok"); }
-            if (js == SimTabletPanel.MarkHidden) { Mark = "false"; return Task.FromResult("ok"); }
-            return Task.FromResult("ok");
+            string r = js switch
+            {
+                _ when js == SimTabletPanel.FrameProbeStart => ProbeAnswers && ReaderAnswers ? "ok" : "",
+                _ when js == SimTabletPanel.FrameProbeRead => Shown ? "frames" : "none",
+                _ when js == SimTabletPanel.ReadShown => ReaderAnswers ? Mark : "",
+                _ when js == SimTabletPanel.MarkShown => Set("true"),
+                _ when js == SimTabletPanel.MarkHidden => Set("false"),
+                _ => ReaderAnswers ? "ok" : "",
+            };
+            return Task.FromResult(r);
         }
 
-        public Task<bool> Toggle() { Toggles++; return Task.FromResult(ToggleWorks); }
+        private string Set(string mark) { Mark = mark; return "ok"; }
+
+        public Task<bool> Toggle()
+        {
+            Toggles++;
+            Evals.Add("toggle");
+            if (ToggleWorks && Draws) Shown = !Shown;
+            return Task.FromResult(ToggleWorks);
+        }
+
+        public bool StampedBeforeEveryPress()
+        {
+            for (int i = 0; i < Evals.Count; i++)
+                if (Evals[i] == "toggle" && (i == 0 || Evals[i - 1] != SimTabletPanel.StampPress)) return false;
+            return true;
+        }
     }
 
     [Fact]
@@ -41,17 +63,20 @@ public class SimTabletPanelTests
         var v = new FakeView();
         Assert.Equal(Outcome.Shown, await SimTabletPanel.ShowAsync(v.Eval, v.Toggle));
         Assert.Equal(1, v.Toggles);
+        Assert.True(v.Shown);
         Assert.Equal("true", v.Mark);
         Assert.Contains(SimTabletPanel.ReleaseKeyboard, v.Evals);
+        Assert.True(v.StampedBeforeEveryPress(), "the reader keeps the button listed while frames start");
     }
 
     [Fact]
-    public async Task Show_WhenNoFramesCome_UndoesThePress_SoThePanelIsLeftAsItWas()
+    public async Task Show_WhenTheSimDrawsNothing_UndoesThePress_SoThePanelIsLeftAsItWas()
     {
-        var v = new FakeView { Frames = "none" };
+        var v = new FakeView { Draws = false };
         Assert.Equal(Outcome.NotShown, await SimTabletPanel.ShowAsync(v.Eval, v.Toggle));
         Assert.Equal(2, v.Toggles);
         Assert.Equal("false", v.Mark);
+        Assert.True(v.StampedBeforeEveryPress());
     }
 
     [Fact]
@@ -63,26 +88,53 @@ public class SimTabletPanelTests
     }
 
     [Fact]
-    public async Task Show_WhenTheReaderDoesNotAnswer_IsUnknown_AndNeverPressedTwice()
+    public async Task Show_WhileTheReaderDoesNotAnswer_PressesNothing()
     {
-        var v = new FakeView { Frames = "" };
+        var v = new FakeView { ReaderAnswers = false };
+        Assert.Equal(Outcome.Unknown, await SimTabletPanel.ShowAsync(v.Eval, v.Toggle));
+        Assert.Equal(0, v.Toggles);
+    }
+
+    [Fact]
+    public async Task Show_WhenTheFrameCheckGetsNoAnswer_IsUnknown_AndNeverPressedTwice()
+    {
+        var v = new FakeView { ProbeAnswers = false };
         Assert.Equal(Outcome.Unknown, await SimTabletPanel.ShowAsync(v.Eval, v.Toggle));
         Assert.Equal(1, v.Toggles);
     }
 
     [Fact]
-    public async Task Hide_APanelMsfsbaShowedThatStillShows_PressesOnce_AndClearsTheMark()
+    public async Task Hide_APanelMsfsbaShowedThatStillShows_PressesOnce_AndCountsOnlyOnceFramesStop()
     {
-        var v = new FakeView { Mark = "true" };
+        var v = new FakeView { Shown = true, Mark = "true" };
         Assert.Equal(Outcome.Hidden, await SimTabletPanel.HideAsync(v.Eval, v.Toggle));
         Assert.Equal(1, v.Toggles);
+        Assert.False(v.Shown);
         Assert.Equal("false", v.Mark);
+        Assert.True(v.StampedBeforeEveryPress());
+    }
+
+    [Fact]
+    public async Task Hide_WhenThePressHidesNothing_Fails_AndKeepsTheMark()
+    {
+        var v = new FakeView { Shown = true, Mark = "true", Draws = false };
+        Assert.Equal(Outcome.Failed, await SimTabletPanel.HideAsync(v.Eval, v.Toggle));
+        Assert.Equal(1, v.Toggles);
+        Assert.Equal("true", v.Mark);
+    }
+
+    [Fact]
+    public async Task Hide_OnExit_DoesNotWaitForTheFramesToStop()
+    {
+        var v = new FakeView { Shown = true, Mark = "true", Draws = false };
+        Assert.Equal(Outcome.Hidden, await SimTabletPanel.HideAsync(v.Eval, v.Toggle, verify: false));
+        Assert.Equal(1, v.Toggles);
     }
 
     [Fact]
     public async Task Hide_APanelThePilotAlreadyClosed_IsNeverPressed()
     {
-        var v = new FakeView { Mark = "true", Frames = "none" };
+        var v = new FakeView { Shown = false, Mark = "true" };
         Assert.Equal(Outcome.AlreadyHidden, await SimTabletPanel.HideAsync(v.Eval, v.Toggle));
         Assert.Equal(0, v.Toggles);
         Assert.Equal("false", v.Mark);
@@ -91,7 +143,7 @@ public class SimTabletPanelTests
     [Fact]
     public async Task Hide_APanelMsfsbaNeverShowed_IsNeverPressed()
     {
-        var v = new FakeView { Mark = "false" };
+        var v = new FakeView { Shown = true, Mark = "false" };
         Assert.Equal(Outcome.AlreadyHidden, await SimTabletPanel.HideAsync(v.Eval, v.Toggle));
         Assert.Equal(0, v.Toggles);
     }
@@ -99,10 +151,11 @@ public class SimTabletPanelTests
     [Fact]
     public async Task Hide_WithNoAnswer_OrCancelled_KeepsTheMark_ToTryAgain()
     {
-        var silent = new FakeView { Mark = null };
+        var silent = new FakeView { Shown = true, Mark = "true", ReaderAnswers = false };
         Assert.Equal(Outcome.Unknown, await SimTabletPanel.HideAsync(silent.Eval, silent.Toggle));
+        Assert.Equal(0, silent.Toggles);
 
-        var reopened = new FakeView { Mark = "true" };
+        var reopened = new FakeView { Shown = true, Mark = "true" };
         Assert.Equal(Outcome.Unknown, await SimTabletPanel.HideAsync(reopened.Eval, reopened.Toggle, () => true));
         Assert.Equal(0, reopened.Toggles);
         Assert.Equal("true", reopened.Mark);

@@ -707,7 +707,7 @@ public partial class MainForm
         catch (Exception ex)
         {
             Log.Warn("SimTablet", $"tablet panel: {ex.Message}");
-            announcer.Announce("Could not show the tablet in the sim.");
+            announcer.Announce("Something went wrong with the tablet in the sim.");
         }
         finally { simTabletPanelBusy = false; }
     }
@@ -732,15 +732,25 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// On exit, the panel MSFSBA showed is hidden too, within 2.5 s at most. It runs off the UI thread,
-    /// so the wait cannot deadlock: SimTabletPanel and the client's evals touch no form.
+    /// On exit, the panel MSFSBA showed is hidden too, within 2.5 s at most, without waiting for the
+    /// frames to stop. It runs off the UI thread, so the wait cannot deadlock: SimTabletPanel and the
+    /// client's evals touch no form. Then no press is allowed (SimTabletPanel.ShutDown): a Show or
+    /// Hide frozen by this wait resumes in the exit's message pump and must not press again behind it.
     /// </summary>
     private void HideSimTabletPanelOnExit()
     {
         var client = coherentSimTablet;
-        if (client == null || !simTabletPanelShown) return;
-        try { Task.Run(() => SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync)).Wait(2500); }
+        try
+        {
+            if (client == null || !simTabletPanelShown) return;
+            var hide = Task.Run(() => SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync, verify: false));
+            if (!hide.Wait(2500)) Log.Warn("SimTablet", "hide panel on exit: timed out");
+            else if (hide.Result is not (SimTabletPanel.Outcome.Hidden or SimTabletPanel.Outcome.AlreadyHidden))
+                Log.Warn("SimTablet", $"hide panel on exit: {hide.Result}");
+            else simTabletPanelShown = false;
+        }
         catch (Exception ex) { Log.Warn("SimTablet", $"hide panel on exit: {ex.Message}"); }
+        finally { SimTabletPanel.ShutDown(); }
     }
 
     // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven

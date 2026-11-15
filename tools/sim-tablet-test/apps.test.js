@@ -340,11 +340,36 @@ test('hover reveal: a tooltip never joins the name of the control it belongs to'
   assert.ok(inner.includes('button|Apply'), inner.join(' / '));
 });
 
-test('hover reveal: a disabled-layer inside a revealed button never reads it as dimmed (STAB-3)', () => {
-  const l = lines(scraped(styled('<style>.row:hover .act { visibility: visible; }</style>' +
+test('hover reveal: a revealed button reads dimmed exactly when its disabled-layer shows (STAB-3)', () => {
+  // As the OS does (measured): the layer is display:none on an enabled control, shown on a disabled one.
+  const page2 = disabled => styled('<style>.row:hover .act { visibility: visible; }</style>' +
     '<div class="row"><span>Plan</span><button class="act">Delete<div class="disabled-layer"></div></button></div>',
-    el => (el.closest('.act') ? { visibility: 'hidden' } : null)).A));
-  assert.ok(l.includes('button|Delete'), l.join(' / '));
+    el => Object.assign({}, el.closest('.act') ? { visibility: 'hidden' } : {},
+                        el.classList.contains('disabled-layer') && !disabled ? { display: 'none' } : {}));
+  const on = lines(scraped(page2(false).A));
+  assert.ok(on.includes('button|Delete'), on.join(' / '));
+  const off = lines(scraped(page2(true).A));
+  assert.ok(off.includes('button|Delete [dim]'), off.join(' / '));
+});
+
+test('hover reveal: a control inside a wrapper named for its tooltip is still revealed', () => {
+  const l = lines(scraped(styled('<style>.row:hover .tooltip-component { visibility: visible; }</style>' +
+    '<div class="row"><span>KDFW</span><div class="tooltip-component"><button>Remove</button></div></div>',
+    el => (el.closest('.tooltip-component') ? { visibility: 'hidden' } : null)).A));
+  assert.ok(l.includes('button|Remove'), l.join(' / '));
+});
+
+test('a field named by its section\'s heading (the row\'s name, past the caption beside it) leaves the heading in place', () => {
+  const l = lines(scraped(page('<section><h3>Fuel</h3><p></p><p></p><p></p><div class="row"><i></i><i></i><i></i>' +
+    '<div class="textbox"><input value="12"></div></div></section>').A));
+  assert.ok(l.includes('heading|Fuel'), l.join(' / '));
+  assert.ok(l.includes('/text|Fuel=12'), l.join(' / '));
+});
+
+test('a choice row whose every item is hidden is read as it is', () => {
+  const l = lines(scraped(styled('<div class="multiple-buttons"><span>Units</span><button class="h">KG</button></div>',
+    el => (el.classList.contains('h') ? { display: 'none' } : null)).A));
+  assert.ok(l.includes('static|Units'), l.join(' / '));
 });
 
 test('hover reveal: a row\'s hover menu is read with its items (a sighted pilot reaches them), a hint with no control is not', () => {
@@ -373,10 +398,13 @@ test('an icon is named by a word, never an editor\'s numbered layer', () => {
   const { A, document } = page(
     '<span id="a"><svg id="svg1"><g id="layer1"><path id="down"></path></g></svg></span>' +
     '<span id="b"><svg id="svg2"><g id="Calque_1"><rect id="Rectangle_4"></rect><path id="paint0_linear_12_3"></path></g></svg></span>' +
-    '<span id="c"><svg><g id="Tracé_12"><path id="linearGradient123"></path><path id="filter0_d_1_2"></path></g></svg></span>');
+    '<span id="c"><svg><g id="Tracé_12"><path id="linearGradient123"></path><path id="filter0_d_1_2"></path></g></svg></span>' +
+    '<span id="d"><svg><g id="Mask group"><g id="Clip path group"><g id="SVGRepo_bgCarrier"></g><g id="SVGRepo_tracerCarrier"></g>' +
+    '<g id="SVGRepo_iconCarrier"><path id="settings"></path></g></g></g></svg></span>');
   assert.equal(A.iconName(document.getElementById('a')), 'down');
   assert.equal(A.iconName(document.getElementById('b')), '');
   assert.equal(A.iconName(document.getElementById('c')), '');
+  assert.equal(A.iconName(document.getElementById('d')), 'settings');
 });
 
 test('a field is keyed by its name alone or with a twin, so a twin coming or going never rebuilds it', () => {
@@ -549,6 +577,35 @@ test('the tablet panel button: frames coming back re-read the list, and the pane
   p.window.__MSFSBA_TABLET_SHOWN = false;
   const gone = JSON.parse(p.A.scrape());
   assert.ok(!gone.unchanged && !find(gone.elements, 'Hide the tablet in the sim') && !find(gone.elements, SHOW));
+});
+
+test('the tablet panel button stays in the list through a Show and a Hide (the press is stamped)', async () => {
+  const SHOW = 'Show the tablet in the sim (some lists fill in only while the sim shows it)', HIDE = 'Hide the tablet in the sim';
+  let pending = [];
+  const p = page('<button class="b">Door 1</button>', { before: w => { w.requestAnimationFrame = cb => { pending.push(cb); return 1; }; } });
+  const offer = () => { p.A._markDirty(); const e = scraped(p.A).find(x => x.idx === 990002); return e ? e.text + ' ' + e.key : 'none'; };
+  scraped(p.A);
+  await sleep(1100);
+  assert.equal(offer(), SHOW + ' action:tablet-panel');
+  // Show: the client stamps the press, frames start, and the mark comes only once they are seen.
+  p.window.__MSFSBA_TABLET_PRESS_AT = Date.now();
+  pending.splice(0).forEach(cb => cb(Date.now()));
+  p.window.requestAnimationFrame = cb => setTimeout(() => cb(Date.now()), 33);
+  await sleep(100);
+  assert.equal(offer(), SHOW + ' action:tablet-panel', 'between the first frame and the mark');
+  p.window.__MSFSBA_TABLET_SHOWN = true;
+  assert.equal(offer(), HIDE + ' action:tablet-panel');
+  await sleep(3100);
+  assert.equal(offer(), HIDE + ' action:tablet-panel', 'shown, long after the press');
+  // Hide: stamped, frames stop, the mark stays until they are seen to stop, then clears.
+  p.window.__MSFSBA_TABLET_PRESS_AT = Date.now();
+  p.window.requestAnimationFrame = () => 0;
+  await sleep(700);
+  assert.equal(offer(), HIDE + ' action:tablet-panel', 'while the client checks the frames stopped');
+  p.window.__MSFSBA_TABLET_SHOWN = false;
+  assert.equal(offer(), SHOW + ' action:tablet-panel', 'hidden: offered again at once');
+  await sleep(2500);
+  assert.equal(offer(), SHOW + ' action:tablet-panel', 'and after the press window, by the missing frames');
 });
 
 test('the tablet panel button is never offered outside the tablet (an app\'s own frame)', async () => {
