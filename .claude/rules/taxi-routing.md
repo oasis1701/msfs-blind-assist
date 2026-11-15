@@ -33,6 +33,8 @@ paths:
   - "MSFSBlindAssist/Navigation/OffChartLeg.cs"
   - "tests/MSFSBlindAssist.Tests/**/*OffChartLeg*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*KbosHcJunction*.cs"
+  - "MSFSBlindAssist/Navigation/TurnPick*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TurnPick*.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.Announcements.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
   - "MSFSBlindAssist/Database/Models/TaxiNode.cs"
