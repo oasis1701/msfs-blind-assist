@@ -138,6 +138,18 @@ Runway only. A checkbox. Some runways have no taxiway reaching their very end. T
 
 Gate / Parking and Place only. Two checkboxes that hide stands too small for your aircraft and stands already occupied. Untick them if a stand you need is missing. See [Choosing a Stand](gates-gsx-and-docking.md#gsx-choosing-a-stand).
 
+### Turn {#taxi-turn-list}
+
+A list on every taxiway row, just before that row's taxiway list. On the first row it is called **Turn onto first taxiway**, and on later rows **Turn onto taxiway 2**, **Turn onto taxiway 3** and so on. Its choices are **Automatic**, **Left** and **Right**, and it starts on Automatic.
+
+Leave it on Automatic unless ATC named the direction, as in "taxi via F, H, left on C". Then set the Turn list on the row for C to **Left**. With Automatic, BA picks the turn that suits your route, as it always has.
+
+On the first taxiway, left and right are from the way your aircraft is facing when you press Calculate Route. On every later row they are from the direction of the taxiway before it.
+
+The Turn list keeps its value when you change the row's taxiway, and goes away with the row if you remove it. It is shown for every destination type, Progressive Taxi included. A SayIntentions import sets every Turn list back to Automatic.
+
+When BA cannot make the turn you picked, it tells you and keeps its own route. See [Warnings in the summary](#warnings-in-the-summary-and-what-to-do), and [Off-chart legs](#taxi-off-chart-legs) for the case where the airport's taxi data has no link that way.
+
 ### First taxiway {#first-taxiway}
 
 The first taxiway of your clearance. The list starts with **(None - calculate shortest path)**, then every taxiway at the airport, nearest first.
@@ -172,7 +184,7 @@ When the holding point you chose is your runway's own hold line, the countdown n
 
 ### Add Taxiway {#add-taxiway}
 
-A button that adds another taxiway row below the first. It only works once the first taxiway is set to a real taxiway. You can add up to 20 more rows. Each new row is labelled "Taxiway 2", "Taxiway 3" and so on, and has its own taxiway list, **Hold short** checkbox, **Remove** button and **Hold short of runway** list, exactly like the first row.
+A button that adds another taxiway row below the first. It only works once the first taxiway is set to a real taxiway. You can add up to 20 more rows. Each new row is labelled "Taxiway 2", "Taxiway 3" and so on, and has its own **Turn** list, taxiway list, **Hold short** checkbox, **Remove** button and **Hold short of runway** list, exactly like the first row. After you press Add Taxiway, focus is on the new row's taxiway list. Press Shift+Tab from there to reach that row's Turn list. From the taxiway list, Tab goes on to **Hold short**.
 
 In each new row's taxiway list, the taxiways that connect to the previous one come first, nearest first, followed by every other taxiway at the airport in alphabetical order. The list also starts with **(None - end here)**. The taxiway in the row just above is left out, because choosing the same taxiway twice in a row usually means a slip of the finger. The exception is when the row above holds short, which is how clearances such as "N, hold short of runway 15R, N" are entered (see [Worked examples](#taxi-examples)).
 
@@ -287,8 +299,9 @@ BA follows your clearance in order. It does not take a shortcut down some other 
 4. Tick any runway option ATC gave you: intersection, named holding point, low visibility, or backtrack.
 5. Set **First taxiway** to the first taxiway ATC said.
 6. If ATC said to hold short of something after that taxiway, tick **Hold short** (for a taxiway) or choose the runway in **Hold short of runway**.
-7. Press **Add Taxiway** and choose the next taxiway. Repeat until you have entered them all.
-8. Press **Calculate Route**, then listen to the summary, or read it in the **Last route summary** box, and check it matches what ATC said.
+7. If ATC named the direction of a turn, set that row's **Turn** list to Left or Right.
+8. Press **Add Taxiway** and choose the next taxiway. Repeat until you have entered them all.
+9. Press **Calculate Route**, then listen to the summary, or read it in the **Last route summary** box, and check it matches what ATC said.
 
 You do not need to enter runway crossings as taxiways, and you do not need to tell BA to stop before them. BA stops you before every runway your route crosses or enters, automatically, whether or not ATC mentioned it.
 
@@ -387,6 +400,20 @@ ATC: *"Taxi to stand 40."* or you are flying offline and just want to get to the
 
 Set First taxiway to **(None - calculate shortest path)** and calculate. BA finds the shortest route over the taxiways, still stopping you before every runway.
 
+### Example 9: a turn ATC names {#example-9-a-turn-atc-names}
+
+ATC: *"Taxi to runway 33L via F, H, left on C."*
+
+1. Destination: **Runway 33L**.
+2. First taxiway: **F**.
+3. Add Taxiway, Taxiway 2: **H**.
+4. Add Taxiway, Taxiway 3: **C**. Press Shift+Tab to reach **Turn onto taxiway 3**, and set it to **Left**.
+5. Calculate Route.
+
+If the airport's taxi data has a left turn from H onto C that your route did not already take, the summary adds *"Turning left onto taxiway C, as picked."* If your route already turned left there, you hear nothing extra.
+
+If the data has no link from H onto C in that direction, BA builds a short off-chart leg and the summary says so, for example *"Note: this route includes an off-chart left turn onto taxiway C, 95 metres with no taxi line."* Guidance then announces the leg when you reach it. See [Off-chart legs](#taxi-off-chart-legs).
+
 ## Changing a Clearance on the Move {#taxi-amend}
 
 ATC often amends a clearance while you are taxiing. Open the planner again with Input Shift+Y, change the taxiways (Remove deletes a row and everything after it), and press Calculate Route. The new route starts from where you are right now, not from where you were when you first opened the window.
@@ -411,6 +438,8 @@ Some controllers give a clearance one piece at a time: "taxi via A, B, hold shor
    - **After crossing runway**: then choose the runway in **Runway to cross**, and optionally the taxiway to cross at in **Cross at taxiway (optional)**. Leave that at (none) to cross at the nearest point. Use this when ATC has already cleared you across: BA does not stop you before that runway, and the leg ends just past it.
    - **End of last taxiway**: guidance ends at the end of your last taxiway.
 4. Press **Calculate Route**.
+
+The **Turn** lists stay on every row. When the last row has a Turn set, two of the terminators follow it. **End of last taxiway** ends at the end of that taxiway in the picked direction, and **Hold short of taxiway or named holding point** with a taxiway ends where you first meet that taxiway in the picked direction. If there is no such point that way, you hear the "does not lead to" note described under [warnings in the summary](#warnings-in-the-summary-and-what-to-do), and BA keeps the charted turn. The other terminators keep their usual end point, and give the same note if the picked turn leads away from it.
 
 When you reach the end of the leg, the tone stops and you hear one of:
 
@@ -470,6 +499,16 @@ Most routes produce a clean summary. When something is not right, a warning is a
 **"Could not compute a path onto taxiway A along the apron; route starts on A."** BA could not find its own way from your stand to the first taxiway, so the route begins on that taxiway. Taxi onto it carefully; the tone will guide you to it.
 
 **"Your position isn't connected to the taxiway network. The first 40 metres to taxiway A aren't mapped."** Your stand, or the spot you are on, is not joined to the taxiways in the airport's data. BA will steer you straight across that unmapped stretch towards the start of the route, so check it is clear. A similar warning, *"Gate X isn't connected to the taxiway network you're on. The first N of the route aren't mapped."*, means the destination is the part that is cut off.
+
+**"Note: no left turn onto taxiway C was found here. The route keeps the charted turn."** You set a Turn list, and BA found no way to make that turn, charted or off-chart. It kept the route it would have built without your pick. Check the direction and the taxiway on that row, and with ATC if the turn really is possible. You hear the same note when the route includes an uncharted apron crossing, or when the pick would drop a named holding point the route is pinned through.
+
+**"Note: turning left onto taxiway C does not lead to Runway 33L. The route keeps the charted turn."** The turn is possible, but nothing beyond it reaches your destination. BA kept the charted turn. Check the clearance: the direction may belong to a different taxiway.
+
+**"Note: turning left onto taxiway C would be a long detour to Runway 33L. The route keeps the charted turn."** The turn leads to your destination only the long way round, more than twice the charted route plus 500 metres, so BA kept the charted turn. If ATC really meant that turn, ask whether the long way is intended.
+
+**"Turning left onto taxiway C, as picked."** Not a problem. Your pick changed the route, and BA says so. If you also hear the warning that the route is longer than the direct route, this is usually why.
+
+**"Note: this route includes an off-chart left turn onto taxiway C, 95 metres with no taxi line."** The route includes an off-chart leg. See [Off-chart legs](#taxi-off-chart-legs).
 
 ### When a route cannot be built at all {#when-a-route-cannot-be-built-at-all}
 
@@ -560,6 +599,20 @@ Some taxiways bend gradually rather than turning at a junction. When the next 10
 ### Crossing taxiways {#crossing-taxiways}
 
 When you go straight across another taxiway, you hear *"Crossing taxiway K."*, or *"Crossing taxiways K, L."* for more than one. These help you keep track of where you are, and match the taxiway names a controller may use ("give way to traffic on K"). You can switch them off on the Taxi Guidance settings tab.
+
+### Off-chart legs {#taxi-off-chart-legs}
+
+When you pick a turn and the airport's taxi data has no link that way, BA may build a short straight leg of its own from the end of the previous taxiway to the taxiway you named. There is no taxi line on the ground there. The route summary and the first thing you hear when guidance starts both say, for example, *"Note: this route includes an off-chart left turn onto taxiway C, 95 metres with no taxi line."*
+
+When you reach a leg of 40 metres or more, you hear *"Off-chart leg. No taxi line for the next 95 metres. Follow the tone, then turn left onto taxiway C."* Follow the tone as usual. Nothing is said when the leg ends; the usual turn and taxiway callouts follow. A route can hold more than one off-chart leg.
+
+BA keeps these legs short and safe:
+
+- A leg is never longer than 150 metres, or about 500 feet.
+- It stays on pavement the app has mapped.
+- It never takes you onto a runway you were not already on.
+
+If you start the route already inside a runway's hold line, and the off-chart leg joins the taxiway there, the runway crossed right after it has no stop of its own. You hear the usual warning that the runway is crossed with no hold short point, so judge that crossing yourself.
 
 ### Speed reminders {#speed-reminders}
 
@@ -685,6 +738,15 @@ When BA builds a new route, you hear *"Route changed. Now via C, D, crossing run
 
 If the new route would be exactly the same as the rest of your old one, for example after cutting a corner wide, BA says nothing and simply carries on.
 
+BA does not judge a Turn pick again from where you are. It keeps what it decided when the route was loaded:
+
+- If you are still short of the turn, BA rebuilds only the part up to the turn, and keeps the turn and everything after it.
+- If you are in the turn, between the junction and the taxiway, the pick counts as missed, and "Route changed" adds *"The left turn onto taxiway C was missed."*
+- Once you have made the turn, no later new route takes you back through that junction.
+- If a new route cannot keep a turn that was still ahead, "Route changed" adds *"The left turn onto taxiway C could not be kept."*
+
+Calculating a new route in the planner clears all of this.
+
 ### When BA cannot recalculate {#when-ba-cannot-recalculate}
 
 - *"Off route. Unable to recalculate."* BA could not find a route from where you are. Stop, check your position with Output Alt+Y, and plan a new route in the planner.
@@ -783,6 +845,9 @@ This is a reference list of every taxi guidance callout, grouped by when you hea
 | *"Intersection B3 departure, runway 27L. About 2400 metres of runway ahead."* | Confirms your intersection. | Check the runway length is enough. |
 | *"Holding point A2, runway 28. About 3600 metres of runway ahead."* | Confirms your named holding point. | Nothing. |
 | *"No backtrack entrance found for this runway. Full length departure."* | No entrance suited to a backtrack. | Plan a normal departure. |
+| *"Note: this route includes an off-chart left turn onto taxiway C, 95 metres with no taxi line."* | A picked turn needs a short leg with no taxi line. | Follow the tone along it; see [Off-chart legs](#taxi-off-chart-legs). |
+| *"Note: no left turn onto taxiway C was found here. The route keeps the charted turn."* | Your Turn pick could not be made. | Check the pick against the clearance. |
+| *"Turning left onto taxiway C, as picked."* | Your Turn pick changed the route. | Nothing; for information. |
 | *"Taxiway A. Steering guidance active."* | Guidance has started; you are on A. | Start taxiing. |
 | *"Steering guidance active. Join taxiway A in 60 metres."* | Guidance has started; A is ahead. | Taxi onto A, following the tone. |
 | *"Taxiway A is behind you. Turn left to come around."* | The route starts behind you. | Turn round in the direction given. |
@@ -804,6 +869,7 @@ This is a reference list of every taxi guidance callout, grouped by when you hea
 | *"In 150 metres, sharp right onto taxiway D, 90 degrees."* | A big turn, with its angle. | Slow well before it. |
 | *"In 100 metres, continue onto taxiway E."* | The name changes but you go straight. | Carry straight on. |
 | *"Left now, taxiway B."* | Start the turn now. | Turn, following the tone. |
+| *"Off-chart leg. No taxi line for the next 95 metres. Follow the tone, then turn left onto taxiway C."* | A short leg with no taxi line starts here. | Follow the tone. |
 | *"Curving left."* | The taxiway bends gradually. | Follow the tone round. |
 | *"Straighten."* | You have turned enough; the route is straight ahead. | Roll out of the turn. |
 | *"Crossing taxiway K."* | You are going straight across K. | Nothing; for information. |
@@ -888,6 +954,7 @@ This is a reference list of every taxi guidance callout, grouped by when you hea
 | You hear | What it means | What to do |
 |---|---|---|
 | *"Route changed. Now via C, D, crossing runway 26R. 900 metres to Runway 27L."* | A new route from where you are. | Follow it; check it agrees with ATC. |
+| *"The left turn onto taxiway C was missed."* or *"... could not be kept."* | Added to "Route changed" when a picked turn is gone. | Check the new route against ATC. |
 | *"Off route. Unable to recalculate."* | No new route could be found. | Stop and plan a route. |
 | *"Off route. Could not follow clearance. recalculated route too long. Continuing on original route."* | The new route would be a big detour, so it kept the old one. | Return to your route or plan a new one. |
 | *"Off route. Unable to recalculate. The way to Gate C 9 crosses runway 13."* | The only way crosses an unmapped runway. | Stop and ask ATC. |
