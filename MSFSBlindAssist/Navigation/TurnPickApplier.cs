@@ -45,7 +45,10 @@ internal static class TurnPickApplier
 
     private enum Failure { None, Remainder, Pinned, Length, Other }
 
-    private sealed record Completed(TaxiRoute Route, int DestinationNodeId, AppliedTurnPick Pick, double ConnectionMeters);
+    /// OtherArm: the nodes of the row's taxiway that lie on from the join the way the pick did NOT turn
+    /// (see <see cref="OtherArm"/>); closed for every later pick too.
+    private sealed record Completed(TaxiRoute Route, int DestinationNodeId, AppliedTurnPick Pick, double ConnectionMeters,
+        HashSet<int> OtherArm);
 
     /// Applies picks in ascending row order. The returned Route is the input route object when no pick
     /// changed it. Route.TurnPicks is set to Applied.
@@ -82,6 +85,12 @@ internal static class TurnPickApplier
             }
             applied.Add(done.Pick);
             blocked.UnionWith(done.Pick.BlockedNodeIds);
+            // A later pick does not come back onto the arm this one turned away from either. Closed
+            // here, for this load, and not in the pick's BlockedNodeIds: a recalculation keeps only the
+            // junction closed (TURN-3), because a pick counts as made a little before its junction, and
+            // a pilot who then took the other arm after all must still be routed along it.
+            foreach (int id in done.OtherArm)
+                if (id != ctx.DestinationNodeId) blocked.Add(id);
             if (done.Pick.ChangedRoute)
             {
                 current = done.Route;
@@ -160,7 +169,7 @@ internal static class TurnPickApplier
                 FirstSegmentAfterDeparture = afterDeparture, FirstTaxiwaySegment = firstTaxiway,
                 ChangedRoute = false, IsOffChart = false,
                 BlockedNodeIds = new[] { departure, u }.Distinct().ToArray(),
-            }, joinAt));
+            }, joinAt, OtherArm(ctx.Graph, u, current.Segments[firstTaxiway].ToNode.NodeId, name)));
         }
 
         // Steps 2 and 3 work from A and the route before it; a first row with nothing arriving at A
@@ -224,7 +233,7 @@ internal static class TurnPickApplier
                 FirstTaxiwaySegment = best.Pick.FirstTaxiwaySegment,
                 ChangedRoute = false, IsOffChart = false,
                 BlockedNodeIds = best.Pick.BlockedNodeIds,
-            }, best.ConnectionMeters));
+            }, best.ConnectionMeters, best.OtherArm));
         }
         if (best != null)
         {
@@ -394,6 +403,14 @@ internal static class TurnPickApplier
         // (ZJHK "right onto C": an off-chart leg beside the charted lead-in, 37 m of C, then back up the
         // lead-in itself to the taxiway before, and onto C the charted way after all).
         stepBlocked.UnionWith(chartedBeforeJoin);
+        // Nor does it come back onto the arm of the taxiway the pick turned AWAY from: turning the picked
+        // way, leaving the taxiway and returning to its other arm is going the charted way after all
+        // (the owner's ruling, 2026-11-15: KCLE "left onto G7" came back onto G7's other arm across the
+        // runway just vacated, and a recalculation on that lap began it again). The destination itself
+        // stays open, so one that lies on that arm is still reached from elsewhere when there is a way.
+        var otherArm = OtherArm(ctx.Graph, u, v, ctx.Sequence[row]);
+        foreach (int id in otherArm)
+            if (id != ctx.DestinationNodeId) stepBlocked.Add(id);
         // An option whose very next node is one of those would start the rest on closed ground.
         if (stepBlocked.Contains(v)) return (null, Failure.Remainder);
 
@@ -432,6 +449,10 @@ internal static class TurnPickApplier
             return (null, Failure.Remainder);
         if (ComesBackPastTheJunction(stitched, prefix.Count + option.Connection.Count - 1, ctx.Graph.Nodes[a]))
             return (null, Failure.Remainder);
+        // A pick never ADDS a stretch along a runway (crossing one is another matter, and has its hold).
+        if (LongestRunAlongARunwayMeters(ctx.Graph, stitched, end) >
+            Math.Max(AlongRunwayLimitMeters, LongestRunAlongARunwayMeters(ctx.Graph, input, end) + AlongRunwayMoreThanChartedMeters))
+            return (null, Failure.Remainder);
         // The pin is tested before the length: an option that drops the pin is NoTurnFound even when it is also too long.
         if (inputHasPin && !all.Contains(ctx.PinnedNodeId)) return (null, Failure.Pinned);
         if (stitched.TotalDistanceMeters > input.TotalDistanceMeters * ctx.MaxLengthRatio + ctx.MaxLengthPadMeters)
@@ -454,7 +475,35 @@ internal static class TurnPickApplier
             ChangedRoute = true, IsOffChart = option.OffChart,
             OffChartLengthMeters = option.OffChart ? option.OffChartLength : 0,
             BlockedNodeIds = own,
-        }, connectionMeters), Failure.None);
+        }, connectionMeters, otherArm), Failure.None);
+    }
+
+    /// The arm of the row's taxiway the pick turns away from: every node reached along the taxiway's
+    /// own edges from the join u's neighbors other than v, never through u, and not also reached that
+    /// way from v. On a taxiway that is a ring both ways round are the same nodes, and there is none.
+    internal static HashSet<int> OtherArm(TaxiGraph graph, int u, int v, string name)
+    {
+        HashSet<int> Reach(IEnumerable<int> from)
+        {
+            var seen = new HashSet<int>();
+            var queue = new Queue<int>();
+            foreach (int id in from)
+                if (id != u && seen.Add(id)) queue.Enqueue(id);
+            while (queue.Count > 0)
+            {
+                if (!graph.Adjacency.TryGetValue(queue.Dequeue(), out var edges)) continue;
+                foreach (var e in edges)
+                    if (Named(e.TaxiwayName, name) && e.ToNodeId != u && seen.Add(e.ToNodeId))
+                        queue.Enqueue(e.ToNodeId);
+            }
+            return seen;
+        }
+
+        var arm = Reach(graph.Adjacency.TryGetValue(u, out var fromU)
+            ? fromU.Where(e => Named(e.TaxiwayName, name) && e.ToNodeId != v).Select(e => e.ToNodeId)
+            : Enumerable.Empty<int>());
+        arm.ExceptWith(Reach(new[] { v }));
+        return arm;
     }
 
     /// The same node twice is a loop. Each leg the router builds is a simple path, but joined they can
@@ -487,6 +536,37 @@ internal static class TurnPickApplier
             walked += s.DistanceMeters;
         }
         return false;
+    }
+
+    /// A runway crossing puts 45 to 60 m of route on its pavement; more than 100 m on one runway is
+    /// driving ALONG it. Where the scenery draws taxi lines along a runway the router will use them, and
+    /// the hold passes have no good stop for such a route (OMDB "left onto N": onto 12L/30R at N8 with
+    /// "Passing the hold line" and 370 m along it, unheld and unwarned). The charted route may already
+    /// do it; the pick may not make it more than 50 m worse.
+    private const double AlongRunwayLimitMeters = 100.0, AlongRunwayMoreThanChartedMeters = 50.0;
+
+    /// The longest stretch of the route whose segments lie on one runway's pavement at both ends. A
+    /// runway the destination node stands on is not counted: the route ends there by design.
+    private static double LongestRunAlongARunwayMeters(TaxiGraph graph, TaxiRoute route, int destinationNodeId)
+    {
+        double longest = 0;
+        graph.Nodes.TryGetValue(destinationNodeId, out var destination);
+        foreach (var centerline in graph.RunwayCenterlines)
+        {
+            var shape = RunwayShape.For(centerline);
+            if (destination != null && shape.Contains(destination.Latitude, destination.Longitude, 0.0)) continue;
+            double run = 0;
+            bool fromOn = route.Segments.Count > 0 &&
+                shape.Contains(route.Segments[0].FromNode.Latitude, route.Segments[0].FromNode.Longitude, 0.0);
+            foreach (var s in route.Segments)
+            {
+                bool toOn = shape.Contains(s.ToNode.Latitude, s.ToNode.Longitude, 0.0);
+                run = fromOn && toOn ? run + s.DistanceMeters : 0;
+                if (run > longest) longest = run;
+                fromOn = toOn;
+            }
+        }
+        return longest;
     }
 
     /// Distance in metres from p to the segment a-b, on a local flat grid around p.

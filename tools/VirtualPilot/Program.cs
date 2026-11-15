@@ -397,6 +397,8 @@ void RunTurnPicks(World w)
                     fs.Add(new Finding(w.Icao, "OFFCHART_NOTE_MISSING", where, said));
                 if (outcome == "CHARTED" && !said.Contains("as picked", StringComparison.OrdinalIgnoreCase))
                     fs.Add(new Finding(w.Icao, "TURN_CHARTED_NOT_CONFIRMED", where, said));
+                if (route != null && applied is { ChangedRoute: true } && BackOnTheOtherArm(w.Graph, route, applied) is { } backOn)
+                    fs.Add(new Finding(w.Icao, backOn.travels ? "TURN_TRAVELS_THE_OTHER_ARM" : "TURN_CROSSES_THE_OTHER_ARM", where, backOn.what));
                 if (turned is double dTurn && (side == TurnSide.Left ? dTurn > 25 : dTurn < -25))
                     fs.Add(new Finding(w.Icao, outcome == "MET" ? "TURN_MET_WRONG_SIDE" : "TURN_HONORED_WRONG_SIDE", where,
                         $"the route turns {Math.Abs(dTurn):F0}° {(dTurn > 0 ? "right" : "left")} onto {seq[row]}"));
@@ -456,6 +458,45 @@ static double? TurnOnto(TaxiRoute route, AppliedTurnPick p, double startHeading)
         if (k >= j && (past += route.Segments[k].DistanceMeters) >= 60) break;
     }
     return total;
+}
+
+/// <summary>
+/// Does a route that honored a pick come back onto the arm of the taxiway the pick turned AWAY from?
+/// Worked out HERE from the graph: the arm is every node reached along the taxiway's own edges from
+/// the join's other neighbours and not also from the node the route went to (a ring has no other arm).
+/// TRAVELS: a later segment named for the taxiway runs between two nodes of that arm. CROSSES: the
+/// route only passes a node of it, on another taxiway (a junction; the route's last node, its
+/// destination, does not count).
+/// </summary>
+static (bool travels, string what)? BackOnTheOtherArm(TaxiGraph graph, TaxiRoute route, AppliedTurnPick p)
+{
+    int j = p.FirstTaxiwaySegment;
+    if (j < 0 || j >= route.Segments.Count) return null;
+    int u = route.Segments[j].FromNode.NodeId, v = route.Segments[j].ToNode.NodeId;
+    bool OnTaxiway(TaxiEdge e) => string.Equals(e.TaxiwayName, p.TaxiwayName, StringComparison.OrdinalIgnoreCase);
+    HashSet<int> Reach(IEnumerable<int> from)
+    {
+        var seen = new HashSet<int>(); var queue = new Queue<int>();
+        foreach (int id in from) if (id != u && seen.Add(id)) queue.Enqueue(id);
+        while (queue.Count > 0)
+            if (graph.Adjacency.TryGetValue(queue.Dequeue(), out var edges))
+                foreach (var e in edges)
+                    if (OnTaxiway(e) && e.ToNodeId != u && seen.Add(e.ToNodeId)) queue.Enqueue(e.ToNodeId);
+        return seen;
+    }
+    var arm = Reach(graph.Adjacency.TryGetValue(u, out var fromU) ? fromU.Where(e => OnTaxiway(e) && e.ToNodeId != v).Select(e => e.ToNodeId) : Enumerable.Empty<int>());
+    arm.ExceptWith(Reach(new[] { v }));
+    for (int k = j + 1; k < route.Segments.Count; k++)
+    {
+        var s = route.Segments[k];
+        if (string.Equals(s.TaxiwayName, p.TaxiwayName, StringComparison.OrdinalIgnoreCase)
+            && arm.Contains(s.FromNode.NodeId) && arm.Contains(s.ToNode.NodeId))
+            return (true, $"segment {k} of {route.Segments.Count} runs along {p.TaxiwayName} from n{s.FromNode.NodeId} to n{s.ToNode.NodeId}, the other way from the join n{u}");
+    }
+    for (int k = j + 1; k < route.Segments.Count - 1; k++)
+        if (arm.Contains(route.Segments[k].ToNode.NodeId))
+            return (false, $"segment {k} of {route.Segments.Count} ({route.Segments[k].TaxiwayName}) passes n{route.Segments[k].ToNode.NodeId}, on {p.TaxiwayName} the other way from the join n{u}");
+    return null;
 }
 
 /// <summary>Where the picked route leaves the charted one at or after the pick's junction, and the charted way on from there.</summary>

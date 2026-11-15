@@ -502,7 +502,7 @@ Most routes produce a clean summary. When something is not right, a warning is a
 
 **"Note: no left turn onto taxiway C was found here. The route keeps the charted turn."** You set a Turn list, and BA found no way to make that turn, charted or off-chart. It kept the route it would have built without your pick. Check the direction and the taxiway on that row, and with ATC if the turn really is possible. You hear the same note when the route includes an uncharted apron crossing, or when the pick would drop a named holding point the route is pinned through.
 
-**"Note: turning left onto taxiway C does not lead to Runway 33L. The route keeps the charted turn."** The turn is possible, but nothing beyond it reaches your destination, or only by doubling straight back or returning the way the route came. BA kept the charted turn. Check the clearance.
+**"Note: turning left onto taxiway C does not lead to Runway 33L. The route keeps the charted turn."** The turn is possible, but nothing beyond it reaches your destination, or only by a loop: doubling straight back, returning the way the route came, coming back onto the same taxiway on the other side of the junction, or running along a runway. BA kept the charted turn. Check the clearance. If ATC really gave you a way round that crosses that taxiway again further on, leave this Turn list on Automatic and enter the taxiways of the clearance in order.
 
 **"Note: turning left onto taxiway C would be a long detour to Runway 33L. The route keeps the charted turn."** The turn leads to your destination only the long way round, more than twice the charted route plus 500 metres, so BA kept the charted turn. If ATC really meant that turn, ask whether the long way is intended.
 

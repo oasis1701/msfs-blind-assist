@@ -134,6 +134,7 @@ decelerating speed (Normal/End exits 18 kt at the junction, High-speed 35 kt).
 | `LINEUP_LEAVES_MAPPED_PAVEMENT`, `LINEUP_NEVER_ALIGNED` | the lineup intercept leaves every mapped edge; never "Lined up" in 400 m | **low** — many sceneries stop the entry taxiway at the hold line (KIAH SA), so the ground between hold line and runway is unmapped |
 | `TURN_PICK_SILENT`, `TURN_PICK_BROKE_THE_LOAD` | a Turn pick was neither applied nor said; a clearance that loads without the pick fails with it | high |
 | `TURN_HONORED_WRONG_SIDE`, `TURN_MET_WRONG_SIDE`, `TURN_BOTH_SIDES_MET` | the route turns the other way onto the row's taxiway than the pick it honored or called already made (the harness's own sum of heading changes along that taxiway, a contradiction of more than 25°); both sides read as already made | high for the first two; the third is a straight-on join onto a taxiway that then bends both ways |
+| `TURN_TRAVELS_THE_OTHER_ARM`, `TURN_CROSSES_THE_OTHER_ARM` | a route that honored a pick later runs along, or passes a node of, the arm of that taxiway the pick turned away from (worked out by the harness from the graph; the destination node does not count) | high — refused by the app since the sixth round, so either is a regression |
 | `OFFCHART_NOTE_MISSING`, `TURN_CHARTED_NOT_CONFIRMED` | an off-chart leg, or a charted pick that changed the route, with no word of it at load | high |
 | `TURN_PICK_LOST_WHILE_FOLLOWING` | "was missed" or "could not be kept" while the pilot followed the tone | medium — exit→gate plans start facing away from their route, and a first-row pick at a stand is judged from the harness's arbitrary start heading |
 | `OFFCHART_LEG_NOT_TAXIED`, `OFFCHART_LEG_NOT_ANNOUNCED`, `OFFCHART_LEG_OFF_PAVEMENT` | arrived without coming within 25 m of the middle of the leg; a leg of 40 m or more that is not the route's first segment taxied with no "Off-chart leg" sentence; more than 12 m beyond the nearest taxi edge while on the leg | medium; the last is **low**, as `TAXI_OFF_PAVEMENT` (the app's own pavement map has the aprons this index lacks) |
@@ -374,13 +375,15 @@ branch's database change against base `6684fab3a`, then the final harness agains
 finding lines, not one different. A clearance with every Turn on Automatic routes and is guided
 exactly as before.
 
-**Every pick** (`turnpicks`): 10,008 picks on 931 clearances, 2,798 flights. No pick was dropped in
-silence, none broke a load, and none is honored or called already made with the route turning the
-other way. What became of them: already made 3,034; no such turn 3,907; does not lead there 2,019;
-long detour 35; honored on a charted link 572; honored with an off-chart leg 441 (median 53 m, 90 %
-under 122 m, 276 of them 40 m or longer). The sweep tries BOTH sides of every row, so most picks
-point away from the destination by construction; the refusal rate says nothing about a pilot's own
-picks.
+**Every pick** (`turnpicks`): 10,008 picks on 931 clearances, 2,805 flights. No pick was dropped in
+silence, none broke a load, none is honored or called already made with the route turning the other
+way, and no honored route touches the arm of the taxiway it turned away from. What became of them:
+already made 3,033; no such turn 3,907; does not lead there 2,029; long detour 31; honored on a
+charted link 482; honored with an off-chart leg 526 (median 59 m, 90 % under 115 m, 391 of them 40 m
+or longer). The sweep tries BOTH sides of every row, so most picks point away from the destination by
+construction; the refusal rate says nothing about a pilot's own picks. In the 1,004 flights of
+honored picks, a pick adds no runway entered without a hold, no stop on runway pavement and no
+flight that fails to arrive.
 
 **Found and fixed, each flown first:**
 
@@ -393,35 +396,36 @@ picks.
 2. **A turn onto the next taxiway counted as this row's.** "Already made" walked 80 m along the
    route: a straight-on join followed by a left onto the next row read as "left, already made", and
    the pick vanished without a word. It now walks the row's own taxiway only.
-3. **Picks "honored" by loops**, 1,502 of the 2,515 the first cut honored ([TURN-4]): a 153° reversal
-   55 m after the turn (LTFM "right onto N1"); a loop back through a node the route had passed (WMKK
-   "left onto G"); a trip back up the stand's own lead-in (ZJHK "right onto C", where guidance then
-   skipped the loop altogether and steered onto the charted way with the pick still reading as made);
-   116 m out along a taxiway and straight back over the same nodes (ZBAD "right onto L2", and 486
-   others); a turn and straight back past the junction on other nodes. The stitched route must now
-   itself make the turn, may not double back within 80 m, may not use a node twice or come back
-   within 30 m of its junction, and its remainder is searched with the nodes already taxied and the
-   declined charted way closed.
+3. **Picks "honored" by loops**, about 1,500 of the 2,515 the first cut honored ([TURN-4],
+   [TURN-6]): a 153° reversal 55 m after the turn (LTFM "right onto N1"); a loop back through a node
+   the route had passed (WMKK "left onto G"); a trip back up the stand's own lead-in (ZJHK "right
+   onto C", where guidance then skipped the loop altogether and steered onto the charted way with the
+   pick still reading as made); 116 m out along a taxiway and straight back over the same nodes (ZBAD
+   "right onto L2", and 486 others); a turn and straight back past the junction on other nodes.
+4. **The long way round onto the same taxiway's other arm**, which the first design allowed. Of the
+   1,013 picks still honored after 3, 379 travelled along the other arm and 169 more crossed it. One
+   never arrived: KCLE "left onto G7" at a runway exit went back across the runway just vacated and
+   round to G7's other arm, and a recalculation on that lap began it again. By the owner's ruling the
+   rest of a picked route no longer touches that arm ([TURN-6]); the pick gets "does not lead to".
+5. **A pick honored along a runway.** OMDB "left onto N": onto runway 12L/30R at N8 with "Passing
+   the hold line", 370 m along it, unheld and unwarned. A pick no longer adds a stretch along a
+   runway ([TURN-7]); the same pick now gets a 70 m off-chart leg and flies clean.
 
-**Measured, left as designed:**
+**Measured, left as it is:**
 
-- **The long way round is long.** An honored charted pick adds a median 325 m to the route (a
-  quarter add over 660 m, 78 of 572 over 1 km); an off-chart pick a median 128 m. The bound is twice
-  the charted route plus 500 m. An ill-matched pick can still buy a poor route inside it.
-- **One flight never arrived** (KCLE, a pick on the first row at a runway exit, "left onto G7"): the
-  only left turn there leads back across the runway just vacated and round to G7's other arm. Each
-  crossing was held and named. A recalculation during that lap then began the lap again, because the
-  made junction is closed and the recalculated route's start is taken on G7's near arm. The shape
-  behind it, a way round that returns to the SAME taxiway's other arm, is the designed "long way
-  round"; whether to refuse it is an open decision (it is what most of the loops above were).
-- **A missed turn is not always called missed.** Of 435 flights where the pilot took the charted way
-  at the junction, 149 heard "was missed", 106 heard "Route changed" with no word about the pick (it
+- **What an honored pick costs.** A charted pick adds a median 204 m to the route (a quarter add
+  over 610 m, 68 of 482 over 1 km); an off-chart pick a median 32 m, and 298 of 526 leave the route
+  within 50 m of its charted length. The bound is twice the charted route plus 500 m.
+- **A missed turn is not always called missed.** Of 512 flights where the pilot took the charted way
+  at the junction, 209 heard "was missed", 142 heard "Route changed" with no word about the pick (it
   counts as made once the segment index passes its join, about 25 m before a crossing node), and in
-  180 the route never changed within 150 m and the pilot followed the tone again. KBOS, taking the
+  161 the route never changed within 150 m and the pilot followed the tone again. KBOS, taking the
   connector as on the day: the tone hard left throughout, and after 60 m "Route changed… The left
   turn onto taxiway C was missed."
 - **Three rows where both sides read as already made** (RPLL G2, MMMX L): a straight-on join onto a
   taxiway that bends slightly one way and, 140 m on, the other. Nothing changes and nothing is said.
-- Runway entries with no hold that a pick ADDS: none unwarned (one with the spoken no-hold-short
-  warning). Stops on runway pavement are the known class where a route drives along a runway (three
-  added, two removed, in 1,011 pick flights; 17 in the 5,835 taxis with no pick).
+- **Three picks lost while following the tone** ("was missed" or "could not be kept"): each a
+  first-row pick or an exit-to-gate plan that the harness starts facing away from its route.
+- In the miss flights, three runway entries with no hold: the pilot, deliberately off the route, drove
+  on at a runway the charted way leads to (KATL M6: "Warning: approaching runway 09L at M6, off
+  route." was spoken, and the recalculated route said "with no hold short point").

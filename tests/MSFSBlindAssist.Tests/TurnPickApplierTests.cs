@@ -284,15 +284,20 @@ public class TurnPickApplierTests
         });
     }
 
+    // The destination is the ring's south-east corner, short of where the ring comes back onto D: the
+    // charted route reaches it down D and along the ring, the picked one up D and round the ring the
+    // other way, never touching the arm of D it turned away from.
+    private static readonly (double Lat, double Lon) RingSe = P(400, -160);
+
     [Fact]
     public void An_off_chart_pick_then_a_charted_pick_both_change_the_route()
     {
         var g = OffChartThenCharted();
         var seq = new[] { "A", "B", "D" };
-        var r0 = Route(g, A0, T, seq);
-        AssertInOrder(Nodes(r0), Node(g, Pe), Node(g, Bk), Node(g, B0), Node(g, Be1), Node(g, DsO), Node(g, T));
+        var r0 = Route(g, A0, RingSe, seq);
+        AssertInOrder(Nodes(r0), Node(g, Pe), Node(g, Bk), Node(g, B0), Node(g, Be1), Node(g, DsO), Node(g, RingSe));
 
-        var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left), (2, TurnSide.Left)), Ctx(g, seq, T, heading: 180));
+        var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left), (2, TurnSide.Left)), Ctx(g, seq, RingSe, heading: 180));
 
         Assert.Empty(res.Refusals);
         Assert.Equal(new[] { 1, 2 }, res.Applied.Select(a => a.RowIndex));
@@ -304,10 +309,30 @@ public class TurnPickApplierTests
         Assert.Equal(Node(g, Be1), res.Applied[1].DepartureNodeId);
 
         var nodes = Nodes(res.Route);
-        AssertInOrder(nodes, Node(g, Pe), Node(g, B0), Node(g, Be1), Node(g, DnO), Node(g, DsO), Node(g, T));
+        AssertInOrder(nodes, Node(g, Pe), Node(g, B0), Node(g, Be1), Node(g, DnO), Node(g, RingSe));
         Assert.DoesNotContain(Node(g, Bk), nodes);
+        Assert.DoesNotContain(Node(g, DsO), nodes);
         AssertPicksHold(res.Route, res.Applied, offChartLegs: 1);
         Assert.Same(res.Applied, res.Route.TurnPicks);
+    }
+
+    // The same clearance to T, the south end of D. Up D and round the ring only leads there by coming
+    // back onto D at Ds and down the arm the pick turned away from: the second pick is refused, the
+    // first stays.
+    [Fact]
+    public void A_pick_that_only_leads_there_down_the_arm_it_turned_away_from_is_refused()
+    {
+        var g = OffChartThenCharted();
+        var seq = new[] { "A", "B", "D" };
+        var r0 = Route(g, A0, T, seq);
+
+        var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left), (2, TurnSide.Left)), Ctx(g, seq, T, heading: 180));
+
+        Assert.True(Assert.Single(res.Applied).IsOffChart);
+        Assert.Equal(new TurnPickRefusal(2, TurnSide.Left, "D", TurnPickOutcome.DoesNotLead), Assert.Single(res.Refusals));
+        var nodes = Nodes(res.Route);
+        AssertInOrder(nodes, Node(g, Pe), Node(g, B0), Node(g, Be1), Node(g, DsO), Node(g, T));
+        Assert.DoesNotContain(Node(g, DnO), nodes);
     }
 
     // Charted then charted. From J, B goes west to Wm and east to Em; D is a loop Wm, T, Ds, Em; north of
@@ -330,8 +355,11 @@ public class TurnPickApplierTests
         Path("R", P(250, -200), DsL),
     });
 
+    // The first pick (left onto B, east) changes the route: down D's loop to the destination. The second
+    // (left onto D, north) would only lead there round the ring and back onto D at Ds, the arm it
+    // turned away from: it is refused, and the route the first pick made stays.
     [Fact]
-    public void A_charted_pick_then_another_charted_pick_both_change_the_route()
+    public void A_charted_pick_stays_when_a_later_one_is_refused_for_the_other_arm()
     {
         var g = ChartedThenCharted();
         var seq = new[] { "A", "B", "D" };
@@ -340,14 +368,12 @@ public class TurnPickApplierTests
 
         var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left), (2, TurnSide.Left)), Ctx(g, seq, TL, heading: 180));
 
-        Assert.Empty(res.Refusals);
-        Assert.Equal(new[] { 1, 2 }, res.Applied.Select(a => a.RowIndex));
-        Assert.All(res.Applied, a => Assert.True(a.ChangedRoute && !a.IsOffChart));
-        Assert.Equal(new[] { Node(g, J), Node(g, Em) }, res.Applied.Select(a => a.DepartureNodeId));
-
-        var nodes = Nodes(res.Route);
-        AssertInOrder(nodes, Node(g, J), Node(g, Em), Node(g, DnL), Node(g, DnnL), Node(g, DsL), Node(g, TL));
-        Assert.DoesNotContain(Node(g, Wm), nodes);
+        var applied = Assert.Single(res.Applied);
+        Assert.Equal(1, applied.RowIndex);
+        Assert.True(applied.ChangedRoute && !applied.IsOffChart);
+        Assert.Equal(Node(g, J), applied.DepartureNodeId);
+        Assert.Equal(new TurnPickRefusal(2, TurnSide.Left, "D", TurnPickOutcome.DoesNotLead), Assert.Single(res.Refusals));
+        Assert.Equal(new[] { Node(g, ANorth), Node(g, J), Node(g, Em), Node(g, DsL), Node(g, TL) }, Nodes(res.Route));
         AssertPicksHold(res.Route, res.Applied, offChartLegs: 0);
     }
 
@@ -603,6 +629,86 @@ public class TurnPickApplierTests
         Assert.Same(r0, res.Route);
     }
 
+    // B comes south to J on taxiway G; the stand lies south-west, beyond a runway that runs east-west
+    // 100 m south of G. The charted way is west along G and down K, straight across the runway. East of
+    // J, taxiway M leads down ONTO the runway, and the scenery has taxi lines drawn along it back west
+    // to K. "Left onto G" would be followed by 450 m along the runway (VirtualPilot, OMDB "left onto
+    // N": onto runway 12L/30R at N8 with no stop and 370 m along it; hold placement has no good answer
+    // for a route that drives along a runway). A pick never adds that.
+    [Fact]
+    public void A_pick_is_not_honored_by_a_route_along_a_runway()
+    {
+        var bn = P(0, 300);
+        var gw = P(-300, 0);
+        var ge = P(150, 0);
+        var kd = P(-300, -200);
+        var paths = new List<TaxiPath>
+        {
+            Path("B", bn, J),
+            Path("G", J, gw),
+            Path("G", J, ge),
+            Path("K", gw, P(-300, -100)),
+            Path("K", P(-300, -100), kd),
+            Path("M", ge, P(150, -100)),
+            Path("", P(150, -100), P(0, -100)),
+            Path("", P(0, -100), P(-150, -100)),
+            Path("", P(-150, -100), P(-300, -100)),
+        };
+        var runway = new Runway
+        {
+            RunwayID = "09", StartLat = P(-600, -100).Lat, StartLon = P(-600, -100).Lon,
+            EndLat = P(600, -100).Lat, EndLon = P(600, -100).Lon, Heading = 90, Width = 150, Length = 3937,
+        };
+        var starts = new List<StartPosition>
+        {
+            new StartPosition { RunwayName = "09", Latitude = runway.StartLat, Longitude = runway.StartLon, Heading = 90 },
+            new StartPosition { RunwayName = "27", Latitude = runway.EndLat, Longitude = runway.EndLon, Heading = 270 },
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), starts, new List<Runway> { runway });
+        var seq = new[] { "B", "G" };
+        var r0 = Route(g, bn, kd, seq);
+        Assert.Equal(new[] { Node(g, bn), Node(g, J), Node(g, gw), Node(g, P(-300, -100)), Node(g, kd) }, Nodes(r0));
+        // The way along the runway is there and short enough for the length bound.
+        var round = new TaxiRouter(g);
+        round.BlockedNodes.Add(Node(g, J));
+        round.BlockedNodes.Add(Node(g, gw));
+        var along = round.FindShortestPath(Node(g, ge), Node(g, kd));
+        Assert.NotNull(along);
+        Assert.Contains(Node(g, P(0, -100)), Nodes(along!));
+
+        var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left)), Ctx(g, seq, kd, heading: 180));
+
+        Assert.Empty(res.Applied);
+        Assert.Equal(TurnPickOutcome.DoesNotLead, Assert.Single(res.Refusals).Reason);
+        Assert.Same(r0, res.Route);
+    }
+
+    [Fact]
+    public void The_other_arm_is_the_taxiway_on_from_the_join_the_way_not_taken()
+    {
+        var g = Cross(withD: true);
+        // Left at J (east, toward Em): the other arm is B's west side, and nothing east or on D.
+        Assert.Equal(new[] { Node(g, Wm), Node(g, Wn) }.OrderBy(x => x),
+            TurnPickApplier.OtherArm(g, Node(g, J), Node(g, Em), "B").OrderBy(x => x));
+        // Joined in the middle of the east side (Em, going on to En): everything back west, J included.
+        Assert.Equal(new[] { Node(g, J), Node(g, Wm), Node(g, Wn) }.OrderBy(x => x),
+            TurnPickApplier.OtherArm(g, Node(g, Em), Node(g, En), "B").OrderBy(x => x));
+        // At the end of a taxiway there is no other way.
+        Assert.Empty(TurnPickApplier.OtherArm(g, Node(g, Wn), Node(g, Wm), "B"));
+    }
+
+    [Fact]
+    public void A_taxiway_that_is_a_ring_has_no_other_arm()
+    {
+        // B is a square ring; from any corner both ways round reach the same nodes.
+        var nw = P(-100, 100);
+        var ne = P(100, 100);
+        var se = P(100, -100);
+        var sw = P(-100, -100);
+        var g = Graph(new List<TaxiPath> { Path("B", nw, ne), Path("B", ne, se), Path("B", se, sw), Path("B", sw, nw) });
+        Assert.Empty(TurnPickApplier.OtherArm(g, Node(g, nw), Node(g, ne), "B"));
+    }
+
     [Theory]
     [InlineData(new[] { 1, 2, 3, 4 }, false)]
     [InlineData(new[] { 1, 2, 3, 2, 5 }, true)]    // out along a taxiway and back over it
@@ -611,12 +717,14 @@ public class TurnPickApplierTests
     public void A_route_through_the_same_node_twice_is_a_loop(int[] nodeIds, bool expected)
         => Assert.Equal(expected, TurnPickApplier.VisitsANodeTwice(nodeIds));
 
-    // The long way round stays: B comes south to J on taxiway G and the clearance goes on west along G
-    // to K ("B, G, K"), a right turn at J. East of J, G reaches Ge, and taxiway H runs from there round
-    // to G's west arm: no node the route has been through, no sharp reversal. "Left onto G" is honored
-    // that way round, as designed (at most twice the charted length plus 500 m).
+    // B comes south to J on taxiway G and the clearance goes on west along G to K ("B, G, K"), a right
+    // turn at J. East of J, G reaches Ge, and taxiway H runs from there round to G's west arm: no node
+    // the route has been through, no sharp reversal, 80 m clear of the junction. "Left onto G" could be
+    // followed that way, turning left and coming back onto G's OTHER arm, westbound after all. That is
+    // not a way of going left (the owner's ruling of 2026-11-15, after VirtualPilot: KCLE "left onto
+    // G7" came back onto G7's other arm across a runway, and a recalculation on the way circled).
     [Fact]
-    public void A_way_round_clear_of_where_the_route_has_been_is_still_taken()
+    public void A_pick_is_not_honored_by_coming_back_onto_the_taxiways_other_arm()
     {
         var bn = P(0, 300);
         var gw1 = P(-120, 0);
@@ -638,11 +746,19 @@ public class TurnPickApplierTests
         var r0 = Route(g, bn, kd, seq);
         Assert.Equal(new[] { Node(g, bn), Node(g, J), Node(g, gw1), Node(g, gw), Node(g, kd) }, Nodes(r0));
 
+        // The way round is there, and short enough for the length bound.
+        var round = new TaxiRouter(g);
+        round.BlockedNodes.Add(Node(g, J));
+        var loop = round.FindConstrainedPath(Node(g, ge), Node(g, kd), new List<string> { "G", "K" });
+        Assert.NotNull(loop);
+        Assert.Null(loop!.ConstrainedFallbackReason);
+        AssertInOrder(Nodes(loop), Node(g, ge), Node(g, gw1), Node(g, gw), Node(g, kd));
+
         var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left)), Ctx(g, seq, kd, heading: 180));
 
-        Assert.Empty(res.Refusals);
-        Assert.True(Assert.Single(res.Applied).ChangedRoute);
-        AssertInOrder(Nodes(res.Route), Node(g, J), Node(g, ge), Node(g, gw1), Node(g, gw), Node(g, kd));
+        Assert.Empty(res.Applied);
+        Assert.Equal(TurnPickOutcome.DoesNotLead, Assert.Single(res.Refusals).Reason);
+        Assert.Same(r0, res.Route);
     }
 
     // VirtualPilot, ZJHK "right onto C". A lead-in comes south from the stand past N2 (where D leaves to
