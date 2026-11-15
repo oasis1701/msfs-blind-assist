@@ -167,6 +167,8 @@ public class TaxiAssistForm : Form
     // (e.g. iniBuilds EGNM 32 via D1, EGGW). Passed to LoadRoute as
     // fullLengthBacktrack; the entrance node is found via FindBacktrackEntryNode.
     private CheckBox chkFullLengthBacktrack = null!;
+    private Label lblFirstTurn = null!;
+    private ComboBox cmbFirstTurn = null!;
     private Label lblFirstTaxiway = null!;
     private ComboBox cmbFirstTaxiway = null!;
     private CheckBox chkFirstHoldShort = null!;
@@ -268,26 +270,34 @@ public class TaxiAssistForm : Form
     /// </summary>
     private sealed class TaxiwayRow
     {
-        public Label Label = null!;                 // line 1: "Taxiway N:" label
-        public ComboBox Combo = null!;              // line 1: taxiway selector
-        public CheckBox HoldShort = null!;          // line 1: "Hold short" checkbox
-        public Label HoldShortRunwayLabel = null!;  // line 2: "Hold short of runway:" label
-        public ComboBox HoldShortRunway = null!;    // line 2: runway combo
-        public Button RemoveBtn = null!;            // line 1: "Remove" button
+        public Label TurnLabel = null!;             // line 1: "Turn onto taxiway N:" label
+        public ComboBox Turn = null!;               // line 1: Automatic / Left / Right
+        public Label Label = null!;                 // line 2: "Taxiway N:" label
+        public ComboBox Combo = null!;              // line 2: taxiway selector
+        public CheckBox HoldShort = null!;          // line 2: "Hold short" checkbox
+        public Label HoldShortRunwayLabel = null!;  // line 3: "Hold short of runway:" label
+        public ComboBox HoldShortRunway = null!;    // line 3: runway combo
+        public Button RemoveBtn = null!;            // line 2: "Remove" button
 
         /// <summary>Every control this row owns — used to remove/dispose the row in one pass.
         /// Named OwnedControls (not Controls) to avoid confusion with WinForms' Control.Controls.</summary>
         public IEnumerable<Control> OwnedControls =>
-            new Control[] { Label, Combo, HoldShort, HoldShortRunwayLabel, HoldShortRunway, RemoveBtn };
+            new Control[] { TurnLabel, Turn, Label, Combo, HoldShort, HoldShortRunwayLabel, HoldShortRunway, RemoveBtn };
     }
 
     private List<TaxiwayRow> _additionalTaxiways = new();
     private const int MAX_ADDITIONAL_TAXIWAYS = 20;
 
     // Vertical pixel height of one dynamic taxiway row inside pnlTaxiways.
-    // Two-line layout: line 1 holds the taxiway combo + Hold-short checkbox +
-    // Remove button; line 2 holds the "Hold short of runway" combo.
-    private const int DYNAMIC_ROW_HEIGHT_PX = 80;
+    // Three-line layout: line 1 holds the Turn list; line 2 the taxiway combo +
+    // Hold-short checkbox + Remove button; line 3 the "Hold short of runway" combo.
+    private const int DYNAMIC_ROW_HEIGHT_PX = 108;
+
+    // The Turn list items, by index: 0 Automatic, 1 Left, 2 Right (the numbering
+    // TurnPickCarryOver.FromRows reads). Shared by the first row and every dynamic row.
+    private static readonly string[] TurnItems = { "Automatic", "Left", "Right" };
+    private const string TURN_LIST_DESCRIPTION =
+        "Optional. Choose Left or Right when ATC names the direction of the turn onto this taxiway, such as left on Charlie. Leave at Automatic to let the route decide. On the first taxiway, left and right are from the way you are facing.";
 
     // Cached runway designators for the current airport (e.g. ["09L","09R","27L","27R"]).
     // Populated on airport load; consumed when constructing every Hold-short-of-runway
@@ -827,6 +837,29 @@ public class TaxiAssistForm : Form
         };
         y += 30;
 
+        // Turn onto the first taxiway. It comes BEFORE the taxiway list because that is
+        // how a clearance reads ("turn left onto Charlie"). A pilot with no turn to set
+        // picks the taxiway and tabs on; one with a turn presses Shift+Tab from the
+        // taxiway list. The label has no mnemonic and shares the list's TabIndex (set
+        // with the tab order below), so no Alt shortcut moves.
+        lblFirstTurn = new Label
+        {
+            Text = "Turn onto first taxiway:",
+            Location = new System.Drawing.Point(labelX, y + 2),
+            AutoSize = true
+        };
+        cmbFirstTurn = new ComboBox
+        {
+            Location = new System.Drawing.Point(controlX + 180, y),
+            Width = 110,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Turn onto first taxiway",
+            AccessibleDescription = TURN_LIST_DESCRIPTION
+        };
+        cmbFirstTurn.Items.AddRange(TurnItems);
+        cmbFirstTurn.SelectedIndex = 0;
+        y += 28;
+
         // First taxiway
         lblFirstTaxiway = new Label
         {
@@ -1109,6 +1142,8 @@ public class TaxiAssistForm : Form
         this.Controls.Add(cmbHoldingPoint);
         this.Controls.Add(chkCatIiiHold);
         this.Controls.Add(chkFullLengthBacktrack);
+        this.Controls.Add(lblFirstTurn);
+        this.Controls.Add(cmbFirstTurn);
         this.Controls.Add(lblFirstTaxiway);
         this.Controls.Add(cmbFirstTaxiway);
         this.Controls.Add(chkFirstHoldShort);
@@ -1171,6 +1206,8 @@ public class TaxiAssistForm : Form
         chkFullLengthBacktrack.TabIndex = tabIdx++;
         chkFitFilter.TabIndex = tabIdx++;
         chkHideOccupied.TabIndex = tabIdx++;
+        cmbFirstTurn.TabIndex = tabIdx++;
+        lblFirstTurn.TabIndex = cmbFirstTurn.TabIndex;
         cmbFirstTaxiway.TabIndex = tabIdx++;
         chkFirstHoldShort.TabIndex = tabIdx++;
         cmbFirstHoldShortRunway.TabIndex = tabIdx++;
@@ -2003,6 +2040,8 @@ public class TaxiAssistForm : Form
         if (chkCatIiiHold.Checked) chkCatIiiHold.Checked = false;
         if (chkFirstHoldShort.Checked) chkFirstHoldShort.Checked = false;
         if (cmbFirstHoldShortRunway.SelectedIndex > 0) cmbFirstHoldShortRunway.SelectedIndex = 0;
+        // Only when set, so no change event fires needlessly; the form speaks nothing for it.
+        if (cmbFirstTurn.SelectedIndex != 0) cmbFirstTurn.SelectedIndex = 0;
 
         // Repopulates the gate list on its way out, so it has to run BEFORE the
         // destination is selected.
@@ -3895,10 +3934,11 @@ public class TaxiAssistForm : Form
             return;
         }
 
-        // Create new combo and label. Row layout (DYNAMIC_ROW_HEIGHT_PX = 80
-        // px tall): label / taxiway-combo + hold-short checkbox + remove button
-        // on line 1, then "Hold short of runway" combo on line 2 below. The
-        // 80-px height is wide enough for two readable lines without crowding.
+        // Create new combo and label. Row layout (DYNAMIC_ROW_HEIGHT_PX = 108
+        // px tall): line 1 the Turn list, line 2 the taxiway label / combo +
+        // hold-short checkbox + remove button, line 3 the "Hold short of runway"
+        // combo. The Turn line sits first because a clearance reads "turn left onto
+        // Charlie", and the pilot with no turn to set tabs straight past it.
         int index = _additionalTaxiways.Count;
         int panelY = index * DYNAMIC_ROW_HEIGHT_PX;
 
@@ -3913,17 +3953,36 @@ public class TaxiAssistForm : Form
             ? $"Taxiway &{taxiwayNumber}:"
             : $"Taxiway {taxiwayNumber}:";
 
+        // Turn line. The label carries no mnemonic and takes the Turn list's TabIndex
+        // below, so nothing else's Alt shortcut is disturbed.
+        var turnLabel = new Label
+        {
+            Text = $"Turn onto taxiway {taxiwayNumber}:",
+            Location = new System.Drawing.Point(0, panelY + 2),
+            AutoSize = true
+        };
+        var turnCombo = new ComboBox
+        {
+            Location = new System.Drawing.Point(180, panelY),
+            Width = 110,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = $"Turn onto taxiway {taxiwayNumber}",
+            AccessibleDescription = TURN_LIST_DESCRIPTION
+        };
+        turnCombo.Items.AddRange(TurnItems);
+        turnCombo.SelectedIndex = 0;
+
         var label = new Label
         {
             Text = labelText,
-            Location = new System.Drawing.Point(0, panelY),
+            Location = new System.Drawing.Point(0, panelY + 28),
             AutoSize = true,
             AccessibleName = $"Taxiway {taxiwayNumber} Label"
         };
 
         var combo = new ComboBox
         {
-            Location = new System.Drawing.Point(0, panelY + 18),
+            Location = new System.Drawing.Point(0, panelY + 46),
             Width = 200,
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = $"Taxiway {taxiwayNumber}",
@@ -3941,7 +4000,7 @@ public class TaxiAssistForm : Form
         var holdShortChk = new CheckBox
         {
             Text = "&Hold short",
-            Location = new System.Drawing.Point(210, panelY + 20),
+            Location = new System.Drawing.Point(210, panelY + 48),
             Width = 85,
             AccessibleName = $"Hold short after taxiway {taxiwayNumber}",
             AccessibleDescription = $"When checked, guidance will stop at the end of taxiway {taxiwayNumber} and wait for you to continue"
@@ -3950,7 +4009,7 @@ public class TaxiAssistForm : Form
         var removeBtn = new Button
         {
             Text = "&Remove",
-            Location = new System.Drawing.Point(300, panelY + 17),
+            Location = new System.Drawing.Point(300, panelY + 45),
             Width = 70,
             Height = 24,
             AccessibleName = $"Remove taxiway {taxiwayNumber}",
@@ -3959,7 +4018,7 @@ public class TaxiAssistForm : Form
         int removeIndex = index;
         removeBtn.Click += (s, ev) => RemoveTaxiwaysFrom(removeIndex);
 
-        // Line 2 of the row: "Hold short of runway" combo. Lets the user
+        // Line 3 of the row: "Hold short of runway" combo. Lets the user
         // EXPLICITLY annotate an ATC-instructed runway hold-short between
         // this taxiway and the next. Auto-detection still runs over the
         // whole route (so leaving this at "(none)" loses nothing); the
@@ -3970,13 +4029,13 @@ public class TaxiAssistForm : Form
         var lblRunwayHs = new Label
         {
             Text = HOLD_SHORT_RUNWAY_LABEL,
-            Location = new System.Drawing.Point(0, panelY + 45),
+            Location = new System.Drawing.Point(0, panelY + 73),
             AutoSize = true,
             AccessibleName = $"Hold short after taxiway {taxiwayNumber} label"
         };
         var holdShortRunwayCmb = new ComboBox
         {
-            Location = new System.Drawing.Point(180, panelY + 43),
+            Location = new System.Drawing.Point(180, panelY + 71),
             Width = 190,
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = $"Hold short of runway, taxiway or holding point after taxiway {taxiwayNumber}",
@@ -3986,18 +4045,26 @@ public class TaxiAssistForm : Form
         holdShortRunwayCmb.Enter += (s, ev) => EnsureHoldingPointsListed(holdShortRunwayCmb);
 
         // Tab order WITHIN the panel: each new group is added at the end so
-        // pressing Tab inside the panel walks through Combo → Hold-short →
-        // Remove → Hold-short-of-runway for slot 2, then slot 3, etc. The
+        // pressing Tab inside the panel walks through Turn → Combo → Hold-short →
+        // Remove → Hold-short-of-runway for slot 2, then slot 3, etc. The Turn
+        // label shares its list's TabIndex (like every label here, a mnemonic
+        // lands on the control after it), and Add Taxiway still focuses the
+        // taxiway combo, so a pilot with no turn to set never meets the Turn list
+        // and one who has a turn presses Shift+Tab from the taxiway list. The
         // panel's overall slot in the FORM tab order is fixed at the position
         // set in InitializeFormControls (between Add Taxiway and Calculate),
         // so the user never has to tab backwards from Calculate to reach a
         // newly-added taxiway.
         int innerTab = pnlTaxiways.Controls.Count; // labels & controls share one stream
-        combo.TabIndex = innerTab + 1;
-        holdShortChk.TabIndex = innerTab + 2;
-        removeBtn.TabIndex = innerTab + 3;
-        holdShortRunwayCmb.TabIndex = innerTab + 4;
+        turnCombo.TabIndex = innerTab + 1;
+        turnLabel.TabIndex = turnCombo.TabIndex;
+        combo.TabIndex = innerTab + 2;
+        holdShortChk.TabIndex = innerTab + 3;
+        removeBtn.TabIndex = innerTab + 4;
+        holdShortRunwayCmb.TabIndex = innerTab + 5;
 
+        pnlTaxiways.Controls.Add(turnLabel);
+        pnlTaxiways.Controls.Add(turnCombo);
         pnlTaxiways.Controls.Add(label);
         pnlTaxiways.Controls.Add(combo);
         pnlTaxiways.Controls.Add(holdShortChk);
@@ -4007,6 +4074,8 @@ public class TaxiAssistForm : Form
 
         _additionalTaxiways.Add(new TaxiwayRow
         {
+            TurnLabel = turnLabel,
+            Turn = turnCombo,
             Label = label,
             Combo = combo,
             HoldShort = holdShortChk,
@@ -4188,6 +4257,27 @@ public class TaxiAssistForm : Form
                 seqIndex++;
             }
         }
+    }
+
+    /// <summary>
+    /// The Turn picks ("turn left onto Charlie"): sequence index of the row's taxiway
+    /// -> the side. Same row order and same "has a real taxiway" test as
+    /// RowHoldShortPicks; TurnPickCarryOver.FromRows does the numbering (a row with no
+    /// taxiway consumes no index) and drops Automatic rows. Empty when none is set.
+    /// </summary>
+    private Dictionary<int, TurnSide> GetUserTurnPicks()
+    {
+        var rows = new List<(bool HasTaxiway, int TurnIndex)>();
+        string? firstTaxi = cmbFirstTaxiway.SelectedItem?.ToString();
+        rows.Add((!string.IsNullOrEmpty(firstTaxi) && !firstTaxi.StartsWith("(None"),
+            cmbFirstTurn.SelectedIndex));
+        foreach (var row in _additionalTaxiways)
+        {
+            string? sel = row.Combo.SelectedItem?.ToString();
+            rows.Add((!string.IsNullOrEmpty(sel) && !sel.StartsWith("(None"),
+                row.Turn.SelectedIndex));
+        }
+        return TurnPickCarryOver.FromRows(rows);
     }
 
     /// <summary>
@@ -4527,8 +4617,8 @@ public class TaxiAssistForm : Form
     private void UpdateLayout()
     {
         // Resize panel to fit all additional taxiways. Each row is
-        // DYNAMIC_ROW_HEIGHT_PX tall (two-line: combo + hold-short + remove on
-        // top, runway-hold-short combo on bottom).
+        // DYNAMIC_ROW_HEIGHT_PX tall (three-line: Turn list, then taxiway combo +
+        // hold-short + remove, then the runway-hold-short combo).
         int panelHeight = _additionalTaxiways.Count * DYNAMIC_ROW_HEIGHT_PX;
         // Reserve space for the Progressive Taxi terminator block when it is
         // shown below the last row (cmbTerminatorType.Visible + the per-type
@@ -4852,6 +4942,7 @@ public class TaxiAssistForm : Form
                 _ => $"end of taxiway {lastTaxiway}",
             };
 
+            var progTurnPicks = GetUserTurnPicks();
             string? progError = _guidanceManager.LoadRoute(
                 _dataProvider, _currentIcao,
                 _aircraftLat, _aircraftLon, AircraftHeadingTrue(),
@@ -4870,7 +4961,8 @@ public class TaxiAssistForm : Form
                 // crosses where ATC said and not at a neighbouring connector. Null for
                 // every other progressive leg.
                 holdingPointHoldNodeId: crossAtHold?.NodeId,
-                holdingPointName: crossAtHold?.Name);
+                holdingPointName: crossAtHold?.Name,
+                userTurnPicks: progTurnPicks.Count > 0 ? progTurnPicks : null);
 
             if (progError != null)
             {
@@ -5054,6 +5146,7 @@ public class TaxiAssistForm : Form
             }
         }
 
+        var mainTurnPicks = GetUserTurnPicks();
         string? error = _guidanceManager.LoadRoute(
             _dataProvider, _currentIcao,
             _aircraftLat, _aircraftLon, AircraftHeadingTrue(),
@@ -5077,7 +5170,8 @@ public class TaxiAssistForm : Form
             // pilot picked — spoken only when the stop node IS that point's node.
             holdingPointName: holdingPointEntry?.TaxiwayName,
             intersectionDeparture: intersection != null,
-            userHoldingPointHoldShorts: userHoldingPointHoldShorts.Count > 0 ? userHoldingPointHoldShorts : null);
+            userHoldingPointHoldShorts: userHoldingPointHoldShorts.Count > 0 ? userHoldingPointHoldShorts : null,
+            userTurnPicks: mainTurnPicks.Count > 0 ? mainTurnPicks : null);
 
         if (error != null)
         {
