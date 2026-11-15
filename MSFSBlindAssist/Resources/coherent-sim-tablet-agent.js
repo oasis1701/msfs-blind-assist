@@ -47,6 +47,12 @@
   A.SIMBRIEF_IDX = 990001;
   A.SIMBRIEF_LABEL = 'Load latest SimBrief plan';
 
+  // The client's other action (STAB-16): shown while nothing in the sim shows the tablet (its view
+  // gets no frames, STAB-15), it opens the sim's own tablet panel from the toolbar, as a sighted pilot
+  // does, so the parts of an app that only move with frames fill in (Pilot book's logbook list).
+  A.SHOW_TABLET_IDX = 990002;
+  A.SHOW_TABLET_LABEL = 'Show the tablet in the sim (some lists fill in only while the sim shows it)';
+
   // ---------------------------------------------------------------------------------
   // which listeners an element has (STAB-13)
   // ---------------------------------------------------------------------------------
@@ -1344,6 +1350,13 @@
                                disabled: A.isDisabled(dock[d]), key: 'dock:' + dn }));
     }
 
+    // Only once a frame asked for has been missing a full second: never on a view that renders.
+    A._offeredShow = !!efb && A.offerShowTablet();
+    if (A._offeredShow) {
+      els.push({ idx: A.SHOW_TABLET_IDX, kind: 'button', clickable: true, text: A.SHOW_TABLET_LABEL, value: '', controlType: '',
+                 level: 0, live: '', disabled: false, options: null, key: 'action:show-tablet' });
+    }
+
     if (efb && view && A.viewKey(view) === 'AtlasApp') {
       els.push({ idx: A.SIMBRIEF_IDX, kind: 'button', clickable: true, text: A.SIMBRIEF_LABEL, value: '', controlType: '',
                  level: 0, live: '', disabled: false, options: null, key: 'action:simbrief' });
@@ -1508,6 +1521,11 @@
   A.isStalled = function () {
     return A._frameAsked ? Date.now() - A._askedAt > 500 : A._lastFrame === 0;
   };
+  // "Show the tablet in the sim" (STAB-16) is offered once a frame asked for has been missing a full
+  // second. Frames stopping or starting changes no element, so scrape compares this with what the
+  // last read offered (A._offeredShow) and reads again when it moved.
+  A._offeredShow = false;
+  A.offerShowTablet = function () { return A._frameAsked && Date.now() - A._askedAt > 1000; };
   // A time on the view's own frame clock: its last frame's timestamp plus the time since, never
   // earlier than one already handed out (an app may time its updates by it).
   A.frameTime = function () {
@@ -1563,6 +1581,7 @@
   A.scrape = function (gel) {
     try {
       A.pumpIfStalled();             // a change it brings marks the page dirty through the observer
+      if (A.inEfb() && A.offerShowTablet() !== A._offeredShow) A._dirty = true;
       A._pollCount++;
       var forceFull = !A._everScraped || (A._pollCount % A.FORCE_FULL_EVERY === 0);
       if (!A._dirty && !forceFull) return JSON.stringify({ ok: true, unchanged: true });
@@ -1662,7 +1681,7 @@
   };
 
   A.clickElement = function (idx, gel) {
-    if (idx === A.SIMBRIEF_IDX) return false;    // the app's own action: the client runs it
+    if (idx === A.SIMBRIEF_IDX || idx === A.SHOW_TABLET_IDX) return false;    // the app's own actions: the client runs them
     return A.withListeners(gel, function () {
       A.pumpIfStalled(true);         // the app presses from its current state, never a frozen one
       var el = A.find(idx);

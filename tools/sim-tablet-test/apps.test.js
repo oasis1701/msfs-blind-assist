@@ -421,6 +421,26 @@ test('a view that gets no frames, read at the client\'s pace: every read updates
   assert.ok(times[0] < times[1] && times[1] < times[2]);
 });
 
+test('"Show the tablet in the sim" is offered once a frame has been missing a second, never on a view that renders (STAB-16)', async () => {
+  const SHOW = 'Show the tablet in the sim (some lists fill in only while the sim shows it)';
+  const stalled = page('<button class="b">Door 1</button>', { before: w => { w.requestAnimationFrame = () => 0; } });
+  assert.equal(find(scraped(stalled.A), SHOW), undefined, 'not at the first read: no frame asked for yet');
+  await sleep(1100);
+  const offer = find(scraped(stalled.A), SHOW);
+  assert.ok(offer, 'offered once the frame asked for is a second late');
+  assert.equal(offer.idx, 990002);
+  assert.equal(offer.key, 'action:show-tablet');
+  assert.equal(stalled.A.clickElement(990002), false, 'the client runs it, never the page');
+
+  const rendering = page('<button class="b">Door 1</button>', {
+    before: w => { w.requestAnimationFrame = cb => setTimeout(() => cb(Date.now()), 33); },
+  });
+  scraped(rendering.A);
+  await sleep(1100);
+  const again = JSON.parse(rendering.A.scrape());
+  assert.ok(again.unchanged || !find(again.elements, SHOW), 'a view that renders: nothing to offer, nothing re-read');
+});
+
 test('choice rows: a pick keeps its row name when the selection moves, and short names count', () => {
   const rows = landing => ['Take off weather', 'Landing weather'].map((n, i) =>
     '<div class="row"><span class="name">' + n + '</span><div class="multiple-buttons">' +

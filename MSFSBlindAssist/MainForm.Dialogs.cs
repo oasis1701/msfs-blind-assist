@@ -595,9 +595,9 @@ public partial class MainForm
             coherentSimTablet = CoherentPmdgEfbClient.ForSimTablet();
             coherentSimTablet.ClickInterceptor = idx =>
             {
-                if (idx != SimTabletSimBriefImport.ActionIdx) return false;
-                _ = LoadSimBriefIntoSimTabletAsync();
-                return true;
+                if (idx == SimTabletSimBriefImport.ActionIdx) { _ = LoadSimBriefIntoSimTabletAsync(); return true; }
+                if (idx == SimTabletPanel.ActionIdx) { _ = ShowSimTabletPanelAsync(); return true; }
+                return false;
             };
             coherentSimTablet.Start();
         }
@@ -606,7 +606,12 @@ public partial class MainForm
             simTabletForm = new Forms.FBWA380.FbwEfbForm(coherentSimTablet, announcer, "In-Sim Tablet", "In-sim tablet", "In-sim tablet");
             // Idle-gate the scrape to the window's visibility; the socket and reader stay warm.
             var f = simTabletForm;
-            f.VisibleChanged += (_, _) => coherentSimTablet?.SetActive(!f.IsDisposed && f.Visible);
+            f.VisibleChanged += (_, _) =>
+            {
+                bool shown = !f.IsDisposed && f.Visible;
+                coherentSimTablet?.SetActive(shown);
+                if (!shown) _ = HideSimTabletPanelAsync();
+            };
         }
         coherentSimTablet.SetActive(true);   // covers a re-Show of an already-visible window
         simTabletForm.ShowForm();
@@ -654,6 +659,41 @@ public partial class MainForm
             announcer.Announce("The SimBrief plan could not be loaded.");
         }
         finally { simTabletImportBusy = false; }
+    }
+
+    /// <summary>
+    /// The reader's "Show the tablet in the sim" (STAB-16): opens the sim's own tablet panel from its
+    /// toolbar, so the tablet's view gets frames and lists that wait for one fill in. Offered only
+    /// while nothing shows the tablet; remembered, so closing the window hides the panel again.
+    /// </summary>
+    private async Task ShowSimTabletPanelAsync()
+    {
+        if (await SimTabletPanel.ToggleAsync())
+        {
+            simTabletPanelOpened = true;
+            announcer.Announce("The tablet is showing in the sim. Closing this window hides it again.");
+        }
+        else announcer.Announce("Could not show the tablet in the sim.");
+    }
+
+    /// <summary>
+    /// Hides the sim's tablet panel when MSFSBA showed it and it is still shown: the toolbar button
+    /// only toggles and marks no state, so "still shown" is a frame arriving within 700 ms
+    /// (A.watchFrames, A.isStalled); a panel the pilot already closed is left closed.
+    /// </summary>
+    private async Task HideSimTabletPanelAsync()
+    {
+        var client = coherentSimTablet;
+        if (!simTabletPanelOpened || client == null) return;
+        simTabletPanelOpened = false;
+        try
+        {
+            await client.EvaluateAsync("window.__MSFSBA_SIM_TABLET && __MSFSBA_SIM_TABLET.watchFrames(), 'ok'");
+            await Task.Delay(700);
+            string stalled = await client.EvaluateAsync("window.__MSFSBA_SIM_TABLET ? String(__MSFSBA_SIM_TABLET.isStalled()) : ''");
+            if (stalled == "false") await SimTabletPanel.ToggleAsync();
+        }
+        catch (Exception ex) { Log.Warn("SimTablet", $"hide panel: {ex.Message}"); }
     }
 
     // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven
