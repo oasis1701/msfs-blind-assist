@@ -163,4 +163,42 @@ public class RouteRunwayCrossingsTests
         Assert.Equal("27R", RouteRunwayCrossings.ExtractRunwayDesignator("A2, Runway 27R"));
         Assert.Equal(new[] { "27R" }, RouteRunwayCrossings.ExtractRunwayDesignators("A2, Runway 27R"));
     }
+
+    // --- HoldNodeDesignators ---------------------------------------------------
+    //
+    // TruncateToHoldShort decides whether a scenery hold node can be the DESTINATION's hold
+    // from the runway its label names ([HLD-13]: "naming this runway or none"). A pilot's own
+    // pick writes its label over the scenery's on that segment ("holding point B3", "taxiway
+    // W", "end of taxiway L"), and a named holding point resolves ONTO the scenery's hold node
+    // by design. Read from the label alone, runway 11's hold line then "names no runway" and
+    // could be taken for runway 16's.
+
+    [Fact]
+    public void HoldNodeDesignators_reads_the_scenery_name_when_a_pick_label_names_no_runway()
+    {
+        Assert.Equal(new[] { "11" },
+            RouteRunwayCrossings.HoldNodeDesignators("holding point B3", "runway 11 at B3"));
+        Assert.Equal(new[] { "11" },
+            RouteRunwayCrossings.HoldNodeDesignators("end of taxiway L", "B3, Runway 11"));
+    }
+
+    [Fact]
+    public void HoldNodeDesignators_keeps_the_segment_label_when_it_names_a_runway()
+    {
+        // The pilot's runway pick, or the scenery's own label: unchanged from before.
+        Assert.Equal(new[] { "16" },
+            RouteRunwayCrossings.HoldNodeDesignators("runway 16", "runway 34 at A1"));
+        Assert.Equal(new[] { "11" },
+            RouteRunwayCrossings.HoldNodeDesignators("runway 11 at B3", "runway 11 at B3"));
+    }
+
+    [Theory]
+    [InlineData("holding point L2", null)]
+    [InlineData("holding point L2", "")]
+    [InlineData(null, null)]
+    [InlineData("", "L2")]
+    public void HoldNodeDesignators_is_empty_when_neither_names_a_runway(string? label, string? scenery)
+    {
+        Assert.Empty(RouteRunwayCrossings.HoldNodeDesignators(label, scenery));
+    }
 }

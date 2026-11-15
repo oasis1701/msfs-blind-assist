@@ -248,6 +248,10 @@ public partial class TaxiGuidanceManager : IDisposable
     private List<int>? _userHoldShortIndices;
     private Dictionary<int, string>? _userRunwayHoldShorts;
     private Dictionary<int, string>? _userTaxiwayHoldShorts;
+    // The holding-point flavour of the same per-row picks ("hold short of holding point L2"):
+    // sequence index -> the point. Kept so a recalculation can put a stop that is still ahead
+    // back onto the new route (HoldingPointHoldShort.IsStillAhead).
+    private Dictionary<int, Navigation.HoldingPointHoldShort>? _userHoldingPointHoldShorts;
 
     // Paired-runway crossing double-Continue (VATSIM gap analysis 2026-08-31, P7):
     // set when a Continue past a crossing found ANOTHER runway-crossing hold-short
