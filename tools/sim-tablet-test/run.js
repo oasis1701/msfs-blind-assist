@@ -10,12 +10,20 @@ const AGENT = process.env.SIM_TABLET_AGENT ||
 // Load a captured fixture (capture.js) and the real agent into jsdom.
 // Visibility convention, the same as tools/md11-efb-test: a rendered element carries data-vis="1"
 // and its live box as data-rect="top,left,right,bottom"; anything without data-vis is hidden.
-// data-h names the handlers the live element had ("click", "mousedown"): each becomes a stub
-// that records the press in window.__presses as "<event>:<text>", so a test can tell which event
-// reached which element.
-function load(fixtureName) {
-  const html = fs.readFileSync(path.join(__dirname, 'fixtures', fixtureName + '.html'), 'utf8');
-  const dom = new JSDOM('<!DOCTYPE html><html><body>' + html + '</body></html>');
+// data-h names the press events the live element listened to ("click", "mousedown"…): each becomes a
+// stub that records the press in window.__presses as "<event>:<text>", so a test can tell which event
+// reached which element. A click or mousedown stub is an on* property, as the OS sets them; any other
+// event, and every event with { listeners: 'bound' }, is an addEventListener listener bound BEFORE
+// the reader is installed, as an add-on's are live, so only window.__gel (a stand-in for the
+// debugger's getEventListeners, read from data-h) shows it. A capture of an app's own frame starts
+// with its <body>, whose attributes go on the document's body.
+function load(fixtureName, opts) {
+  opts = opts || {};
+  let html = fs.readFileSync(path.join(__dirname, 'fixtures', fixtureName + '.html'), 'utf8');
+  let bodyAttrs = '';
+  const frame = /^\s*<body([^>]*)>([\s\S]*)<\/body>\s*$/.exec(html);
+  if (frame) { bodyAttrs = frame[1]; html = frame[2]; }
+  const dom = new JSDOM('<!DOCTYPE html><html><body' + bodyAttrs + '>' + html + '</body></html>');
   const { window } = dom;
   const doc = window.document;
   global.window = window; global.document = doc;
@@ -24,6 +32,7 @@ function load(fixtureName) {
   global.MutationObserver = window.MutationObserver;
   global.InputEvent = window.InputEvent;
   global.MouseEvent = window.MouseEvent;
+  global.Event = window.Event;          // else Node's own Event, which a jsdom element refuses
 
   const vis = el => el.getAttribute && el.getAttribute('data-vis') === '1';
   window.getComputedStyle = function (el) {
@@ -38,10 +47,17 @@ function load(fixtureName) {
   window.__presses = [];
   for (const el of doc.querySelectorAll('[data-h]')) {
     const name = el.textContent.replace(/\s+/g, ' ').trim().slice(0, 40);
-    const hs = el.getAttribute('data-h').split(',');
-    if (hs.indexOf('click') >= 0) el.onclick = () => window.__presses.push('click:' + name);
-    if (hs.indexOf('mousedown') >= 0) el.onmousedown = () => window.__presses.push('mousedown:' + name);
+    for (const type of el.getAttribute('data-h').split(',').filter(Boolean)) {
+      const stub = () => window.__presses.push(type + ':' + name);
+      if (opts.listeners !== 'bound' && (type === 'click' || type === 'mousedown')) el['on' + type] = stub;
+      else el.addEventListener(type, stub);
+    }
   }
+  window.__gel = el => {
+    const out = {};
+    for (const t of (el.getAttribute('data-h') || '').split(',').filter(Boolean)) out[t] = [{ type: t }];
+    return out;
+  };
 
   window.eval(fs.readFileSync(AGENT, 'utf8'));
   return { window, document: doc, A: window.__MSFSBA_SIM_TABLET };

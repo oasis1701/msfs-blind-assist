@@ -105,9 +105,10 @@
   };
   A.isVisible = function (el) { return !!el && !A.isHidden(el); };
 
-  // The EFB OS document, or an app's own frame (no .efb), read whole.
-  A.inEfb = function () { return !!document.querySelector('.efb'); };
-  A.root = function () { return document.querySelector('.efb') || document.body; };
+  // The EFB OS document (its .efb holds the .efb-container of app views), or an app's own frame, read
+  // whole: a frame page that happens to use an "efb" class is still a frame.
+  A.inEfb = function () { return !!document.querySelector('.efb .efb-container'); };
+  A.root = function () { return (A.inEfb() && document.querySelector('.efb')) || document.body; };
   // tools/coherent.ps1's `capture` command looks for findRoot()/isVisible() on the installed agent.
   A.findRoot = function () { return A.root(); };
 
@@ -121,6 +122,10 @@
     var a = el.getAttribute('disabled');
     if (a !== null && a !== 'false') return true;
     if (el.getAttribute('aria-disabled') === 'true') return true;
+    // A form control inside a disabled <fieldset> is disabled with it.
+    if (/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(el.tagName)) {
+      for (var f = el.parentElement; f; f = f.parentElement) if (f.tagName === 'FIELDSET' && f.disabled) return true;
+    }
     var t = A.tokens(el);
     for (var j = 0; j < t.length; j++) if (t[j] === 'disabled' || t[j] === 'is-disabled' || /--disabled$/.test(t[j])) return true;
     for (var i = 0; i < el.children.length; i++) {
@@ -279,16 +284,36 @@
   // what takes a press, and what state a control shows (STAB-13)
   // ---------------------------------------------------------------------------------
 
-  // The one press event an element answers, from its on* property or the listener hook; '' when it
-  // shows none (a listener bound before the reader was installed, or a delegated one).
+  // The debugger's getEventListeners, handed in by the client on each scrape, press and set: it
+  // exists only inside an eval that asked for the command line API (CoherentPmdgEfbClient.ListenerArg).
+  // Null when absent (the jsdom tests, an older client).
+  A._gel = null;
+  A.withListeners = function (gel, fn) {
+    var prev = A._gel;
+    A._gel = typeof gel === 'function' ? gel : null;
+    A._gelStamp = (A._gelStamp || 0) + 1;
+    try { return fn(); } finally { A._gel = prev; }
+  };
+  A.PRESS_EVENTS = ['click', 'mousedown', 'pointerdown', 'mouseup', 'pointerup', 'touchstart'];
+  // Which press events the element itself listens to: on* properties, getEventListeners when the client
+  // handed it in (exact, whenever the listener was bound), else the hook's record (bound after the
+  // reader was installed).
+  A.pressEventsOf = function (el) {
+    if (el.__msfsbaGelStamp === A._gelStamp && el.__msfsbaGel) return el.__msfsbaGel;
+    var out = {}, h = el.__msfsbaEv || {}, l = null;
+    if (A._gel) { try { l = A._gel(el); } catch (e) { l = null; } }
+    for (var i = 0; i < A.PRESS_EVENTS.length; i++) {
+      var t = A.PRESS_EVENTS[i];
+      if (typeof el['on' + t] === 'function' || h[t] || (l && l[t] && l[t].length)) out[t] = true;
+    }
+    if (A._gel) { el.__msfsbaGel = out; el.__msfsbaGelStamp = A._gelStamp; }
+    return out;
+  };
+  // The one press event an element answers; '' when it shows none (a listener bound before the reader
+  // was installed with no getEventListeners to ask, or a delegated one).
   A.handlerOf = function (el) {
-    var h = el.__msfsbaEv || {};
-    if (typeof el.onclick === 'function' || h.click) return 'click';
-    if (typeof el.onmousedown === 'function' || h.mousedown) return 'mousedown';
-    if (typeof el.onpointerdown === 'function' || h.pointerdown) return 'pointerdown';
-    if (typeof el.onmouseup === 'function' || h.mouseup) return 'mouseup';
-    if (typeof el.onpointerup === 'function' || h.pointerup) return 'pointerup';
-    if (typeof el.ontouchstart === 'function' || h.touchstart) return 'touchstart';
+    var h = A.pressEventsOf(el);
+    for (var i = 0; i < A.PRESS_EVENTS.length; i++) if (h[A.PRESS_EVENTS[i]]) return A.PRESS_EVENTS[i];
     return '';
   };
 
@@ -309,21 +334,26 @@
   };
   // A drag handle (Settings' favourites "move-button") is no press: reordering by drag is not offered.
   A.DRAG_HANDLE = /(?:^|[-_])(?:move|drag|grab|handle|reorder)(?:[-_]|$)/;
+  // With getEventListeners at hand the listeners themselves say what takes a press, and a class name is
+  // only a guess (the OS's "seats-tab" panel, its "chip" dot), so the -btn/-tab guess is used only
+  // without it; a class that says "pointer" or "clickable" is the page's own word either way.
   A.looksPressable = function (el) {
     var t = A.tokens(el);
     for (var j = 0; j < t.length; j++) if (A.DRAG_HANDLE.test(t[j])) return false;
     for (var i = 0; i < t.length; i++) {
       if (t[i] === 'cursor-pointer' || t[i] === 'clickable') return true;
-      if (t[i].indexOf('__') < 0 && A.BEM_PRESS.test(t[i])) return true;
+      if (!A._gel && t[i].indexOf('__') < 0 && A.BEM_PRESS.test(t[i])) return true;
     }
     return false;
   };
+  // Form fields and their captions are never a press: a <label> click focuses its field (STAB-1).
+  A.NEVER_PRESS = { INPUT: 1, TEXTAREA: 1, SELECT: 1, LABEL: 1, OPTION: 1, OUTPUT: 1 };
   A.isPressable = function (el) {
     var tag = el.tagName;
     if (tag === 'BUTTON' || tag === 'SUMMARY') return true;
     if (tag === 'A') return el.getAttribute('href') !== null || !!A.handlerOf(el);
     if (tag === 'INPUT') { var ty = (el.type || '').toLowerCase(); return ty === 'button' || ty === 'submit' || ty === 'reset' || ty === 'image'; }
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'LABEL' || tag === 'OPTION') return false;
+    if (A.NEVER_PRESS[tag]) return false;
     if (A.handlerOf(el)) return true;
     var role = A.attr(el, 'role');
     if (role && A.CLICK_ROLES[role]) return true;
@@ -331,6 +361,7 @@
   };
   // A pointer cursor the page sets on the element itself, not one it inherits from its parent.
   A.ownPointer = function (el) {
+    if (A.NEVER_PRESS[el.tagName]) return false;
     var st = A.styleOf(el);
     if (!st || st.cursor !== 'pointer') return false;
     var ps = el.parentElement ? A.styleOf(el.parentElement) : null;
@@ -441,9 +472,10 @@
   // the box's placeholder. The caption element is CLAIMED so the walk does not read it again.
   // The texts gathered are the ones right before it in the same parent, up to the previous control
   // ("Cruise" + "FL" before the cruise level box), in reading order.
-  A.labelFor = function (ctl) {
-    var node = ctl;
-    for (var up = 0; up < 3 && node && node !== A._view; up++) {
+  // maxUp limits how far up it looks (3 levels by default).
+  A.labelFor = function (ctl, maxUp) {
+    var node = ctl, lim = maxUp || 3;
+    for (var up = 0; up < lim && node && node !== A._view; up++) {
       var got = [], sib = node.previousElementSibling;
       for (var hop = 0; sib && hop < 3; hop++, sib = sib.previousElementSibling) {
         if (A.isHidden(sib)) continue;
@@ -514,8 +546,6 @@
   // "does this subtree hold a control" — one pass per scrape marks every control's ancestors
   // ---------------------------------------------------------------------------------
 
-  A.CONTROL_SELECTOR = 'button,input,textarea,select,iframe,.tab-selector,.dropdown-button,.incrementable-item,' +
-    '.checkpoint-item,.switch-container,.facility-result-item,.slider';
   A.isControlEl = function (el) {
     var t = el.tagName;
     if (t === 'BUTTON' || t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'IFRAME') return true;
@@ -636,7 +666,7 @@
   // brightness): the box is the control, the slider adds nothing.
   A.sliderHasBox = function (el) {
     var p = el.parentElement;
-    return !!p && !!p.querySelector('input:not([type="range"]):not([type="hidden"]), textarea');
+    return !!p && !!p.querySelector('input:not([type="range"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), textarea');
   };
 
   // Decorations and pieces another control already reads.
@@ -849,7 +879,13 @@
                             key: 'slider:' + name }));
         return;
       }
-      els.push(A.el(el, { controlType: 'range', text: name, value: ratio == null ? '' : String(Math.round(ratio)),
+      // A slider whose position the page does not show takes a typed percentage: a range would start
+      // at its minimum and move the slider there on the first arrow press.
+      if (ratio == null) {
+        els.push(A.el(el, { controlType: 'text', text: name + ' (slider, percent)', value: '', disabled: A.isDisabled(el), key: 'slider:' + name }));
+        return;
+      }
+      els.push(A.el(el, { controlType: 'range', text: name, value: String(Math.round(ratio)),
                           min: 0, max: 100, step: 1, disabled: A.isDisabled(el), key: 'slider:' + name }));
     });
 
@@ -901,8 +937,13 @@
       if (!inp) return;
       var suffix = el.querySelector ? el.querySelector('.suffix') : null;
       var unit = suffix && !A.hasClass(suffix, 'suffix--hidden') ? A.lineText(suffix) : '';
-      var label = A.labelFor(A.hasClass(el.parentElement, 'unitbox') ? el.parentElement : el) ||
-        (inp.tagName === 'TEXTAREA' ? A.fieldName(inp) : '') || inp.getAttribute('aria-label') || inp.getAttribute('placeholder') || 'Value';
+      // The caption beside the box or just above it; a box that has none there but has a placeholder
+      // is named by that, never by a line two rows up (AtmosphereMod's preset name box sits under
+      // the "Active: unsaved settings" line and reads "A name for your settings").
+      var at = A.hasClass(el.parentElement, 'unitbox') ? el.parentElement : el;
+      var ph = inp.getAttribute('placeholder');
+      var label = A.labelFor(at, 2) || (ph ? '' : A.labelFor(at)) ||
+        (inp.tagName === 'TEXTAREA' ? A.fieldName(inp) : '') || inp.getAttribute('aria-label') || ph || 'Value';
       els.push(A.el(inp, { controlType: 'text', text: label + (unit ? ' (' + unit + ')' : ''),
                            value: String(inp.value == null ? '' : inp.value), disabled: A.isDisabled(inp) }));
     });
@@ -998,7 +1039,8 @@
   // saved-flight-plan-popup), or a dialog (role="dialog", aria-modal, a "modal" class), on screen.
   A.isPopup = function (el) {
     var c = A.tokens(el);
-    for (var j = 0; j < c.length; j++) if (c[j].indexOf('__') < 0 && /(-popup|^modal|-modal|^dialog|-dialog)$/.test(c[j])) return true;
+    // The OS's own popup views are "ui-view <Name> popup" (Mass and balance's "LOAD AIRCRAFT").
+    for (var j = 0; j < c.length; j++) if (c[j].indexOf('__') < 0 && /(^popup|-popup|^modal|-modal|^dialog|-dialog)$/.test(c[j])) return true;
     var r = A.attr(el, 'role');
     return r === 'dialog' || r === 'alertdialog' || A.attr(el, 'aria-modal') === 'true';
   };
@@ -1012,10 +1054,19 @@
     }
     return out;
   };
+  // Its title: the header's title, else the first short line whose class names a title
+  // ("mb-popup-title"), else its first heading.
   A.popupTitle = function (p) {
-    var t = p.querySelector('[class*="popup-header"] .title') || p.querySelector('[class*="header"] [class*="title"]') ||
-      p.querySelector('h1, h2, h3, [role="heading"]');
-    if (t && !A.isHidden(t) && A.lineText(t)) return t;
+    var cands = [p.querySelector('[class*="popup-header"] .title'), p.querySelector('[class*="header"] [class*="title"]')];
+    var ts = p.querySelectorAll('[class*="title"]');
+    for (var i = 0; i < ts.length && i < 6; i++) cands.push(ts[i]);
+    cands.push(p.querySelector('h1, h2, h3, [role="heading"]'));
+    for (var k = 0; k < cands.length; k++) {
+      var t = cands[k];
+      if (!t || A.isHidden(t) || A.hasCtl(t) || A.isControlEl(t)) continue;
+      var s = A.lineText(t);
+      if (s && s.length <= 80) return t;
+    }
     return null;
   };
 
@@ -1042,6 +1093,58 @@
     return any && max - min <= 8;
   };
 
+  // Buttons that say the same thing ("LOAD" beside each preset, "CHANGE" on every hotkey row, "VIEW"
+  // under Terms and under Privacy) each say which row they are on: the first line of text before
+  // the button in the nearest container that has one ("Default: LOAD", "Mod on/off: CHANGE"). Left
+  // as they are when that does not tell them apart.
+  A.rowContext = function (b) {
+    var anc = b.parentElement;
+    for (var up = 0; up < 4 && anc && anc !== A._view; up++, anc = anc.parentElement) {
+      var all = anc.getElementsByTagName('*');
+      if (all.length > 200) return '';
+      for (var i = 0; i < all.length; i++) {
+        var n = all[i];
+        if (n === b) break;
+        if (n.contains(b) || A.isHidden(n)) continue;
+        var own = '';
+        for (var k = 0; k < n.childNodes.length; k++) if (n.childNodes[k].nodeType === 3) own += n.childNodes[k].nodeValue;
+        if (!A.norm(own)) continue;
+        if (!/[A-Za-z]/.test(own)) continue;                 // a name, never a number ("29")
+        var inCtl = false;
+        for (var p = n; p && p !== anc; p = p.parentElement) if (A.isControlEl(p)) { inCtl = true; break; }
+        if (inCtl) continue;
+        // A unit on its own ("GAL") says more with its line ("14947 GAL").
+        var line = A.norm(own);
+        if (line.length <= 4 && n.parentElement) { var pl = A.lineText(n.parentElement); if (pl && pl.length <= 40) line = pl; }
+        return line;
+      }
+    }
+    return '';
+  };
+  A.qualifyRepeats = function (els) {
+    var groups = {};
+    for (var i = 0; i < els.length; i++) {
+      var e = els[i];
+      if (e.kind !== 'button' || e.controlType || !A._nodes[e.idx]) continue;
+      (groups[e.text] = groups[e.text] || []).push(e);
+    }
+    for (var t in groups) {
+      if (!groups.hasOwnProperty(t) || groups[t].length < 2) continue;
+      var g = groups[t], names = [], seen = {}, distinct = true;
+      for (var j = 0; j < g.length; j++) {
+        var ctx = A.rowContext(A._nodes[g[j].idx]);
+        if (!ctx || ctx === t || seen[ctx]) { distinct = false; break; }
+        seen[ctx] = 1;
+        names.push(ctx);
+      }
+      if (!distinct) continue;
+      for (var m = 0; m < g.length; m++) {
+        g[m].text = names[m] + ': ' + t;
+        if (!g[m].key || g[m].key.indexOf('button:') === 0) g[m].key = 'button:' + g[m].text;
+      }
+    }
+  };
+
   // An app's own frame: same-origin is read in place; a cross-origin one cannot be reached from this
   // page, so a marker says where it sits and which origin it is, and the client reads it in the
   // frame's own execution context (STAB-14).
@@ -1053,6 +1156,7 @@
     A._idx = 0;
     A._nodes = {};
     A._scrapeId++;
+    A._frameRoots = [];
     var efb = A.inEfb();
 
     // Every scrape restamps from 1 in DOM order; an old stamp left on a node no longer walked
@@ -1108,9 +1212,16 @@
       if (el.__simTabletPopup === A._scrapeId && !walkingPopup) return;   // read already, first
       if (tag === 'iframe') {
         var fd = A.frameDoc(el);
-        if (fd) { A.markControls(fd.body); walk(fd.body); return; }
-        var origin = A.originOf(el.getAttribute('src') || el.src);
-        if (origin) sink.push(A.el(el, { kind: 'frame', text: '', value: origin, frame: String(el.src || el.getAttribute('src') || '') }));
+        if (fd) {
+          if (A._frameRoots.indexOf(fd.body) < 0) A._frameRoots.push(fd.body);
+          A.markControls(fd.body);
+          walk(fd.body);
+          return;
+        }
+        // The marker carries the frame's origin and its size: the client finds the frame's context
+        // by origin, or by its window's size when the page has moved to another origin (STAB-14).
+        var origin = A.originOf(el.getAttribute('src') || el.src), fr = el.getBoundingClientRect();
+        if (origin) sink.push(A.el(el, { kind: 'frame', text: Math.round(fr.width) + 'x' + Math.round(fr.height), value: origin }));
         return;
       }
       if (tag === 'img') {
@@ -1130,9 +1241,12 @@
           for (var bc = 0; bc < el.children.length; bc++) walk(el.children[bc]);
           return;
         }
-        var st = A.stateOf(el), keyed = A.stateful(el);
+        // Always keyed by its name, so a button that first shows state ("GPU" -> "GPU (connected)") keeps
+        // its node and the screen reader's place on it (FPD-5); spoken after a press only when it can
+        // carry state.
+        var st = A.stateOf(el);
         sink.push(A.button(el, label + (st.length ? ' (' + st.join(', ') + ')' : ''),
-                           keyed ? { key: 'button:' + label, announceChange: true } : null));
+                           { key: 'button:' + label, announceChange: A.stateful(el) }));
         return;
       }
 
@@ -1197,6 +1311,8 @@
     }
     els = kept;
 
+    A.qualifyRepeats(els);
+
     // The notification bell, when it has something.
     var count = efb ? root.querySelector('.status-bar .notification-count') : null;
     var n = count ? parseInt(A.norm(count.textContent), 10) : 0;
@@ -1221,7 +1337,7 @@
   // The observer is disconnected around collect(): collect() stamps idx attributes itself, and an
   // observer left running would re-arm the dirty flag from the reader's own bookkeeping, so
   // "unchanged" could never fire (the MD-11 reader's SELF-TRIGGER TRAP).
-  A.scrape = function () {
+  A.scrape = function (gel) {
     try {
       A._pollCount++;
       var forceFull = !A._everScraped || (A._pollCount % A.FORCE_FULL_EVERY === 0);
@@ -1230,11 +1346,21 @@
       A._everScraped = true;
       var page = A.currentPage(), els;
       if (A._obs) { try { A._obs.disconnect(); } catch (e1) {} }
-      try { els = A.collect(); }
-      finally { if (A._obs) { try { A._obs.observe(A.root(), A.OBSERVER_OPTS); } catch (e2) {} } }
+      try { els = A.withListeners(gel, A.collect); }
+      finally { A.observeAll(); }
       return JSON.stringify({ ok: true, page: page, elements: els });
     } catch (e) {
       return JSON.stringify({ ok: false, error: String(e && e.message ? e.message : e) });
+    }
+  };
+  // Watch the page and every same-origin frame read in place (A.frameDoc), so a change inside one
+  // is not left stale until the next forced full scrape.
+  A._frameRoots = [];
+  A.observeAll = function () {
+    if (!A._obs) return;
+    try { if (A.root()) A._obs.observe(A.root(), A.OBSERVER_OPTS); } catch (e1) {}
+    for (var i = 0; i < A._frameRoots.length; i++) {
+      try { A._obs.observe(A._frameRoots[i], A.OBSERVER_OPTS); } catch (e2) {}
     }
   };
 
@@ -1283,12 +1409,12 @@
 
   // One press, with the one event the element listens to (STAB-2). el.click() is a real click
   // (onclick, or a click listener); an element that answers only mousedown (or only pointerdown,
-  // mouseup…) gets that event alone. Never two: a handler that listens to both would run twice, and a
-  // mousedown reaching a text box focuses it. A control whose listener the hook never saw (bound
-  // before the reader was installed, or delegated to a parent) gets click(), which bubbles.
+  // mouseup…) gets that event alone, a <button> too. Never two: a handler that listens to both would
+  // run twice, and a mousedown reaching a text box focuses it. A control that shows no listener of its
+  // own (a delegated one) gets click(), which bubbles.
   A.press = function (el) {
     var h = A.handlerOf(el);
-    if (h === 'click' || el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'INPUT' || !h) el.click();
+    if (!h || h === 'click') el.click();
     else if (h === 'touchstart') {
       var te;
       try { te = new Event('touchstart', { bubbles: true, cancelable: true }); } catch (e) { te = document.createEvent('Event'); te.initEvent('touchstart', true, true); }
@@ -1301,11 +1427,13 @@
     A.releaseKeyboard();
   };
 
-  A.clickElement = function (idx) {
+  A.clickElement = function (idx, gel) {
     if (idx === A.SIMBRIEF_IDX) return false;    // the app's own action: the client runs it
-    var el = A.find(idx);
-    if (!el || A.isDisabled(el)) return false;
-    try { A.press(el); return true; } catch (e) { return false; }
+    return A.withListeners(gel, function () {
+      var el = A.find(idx);
+      if (!el || A.isDisabled(el)) return false;
+      try { A.press(el); return true; } catch (e) { return false; }
+    });
   };
 
   // Type into a box. The OS TextBox reads 'input' on the input itself; a framework one (React,
@@ -1342,32 +1470,47 @@
     A.mouse(doc, 'mouseup', x, y);
     A._dirty = true;
   };
-  A.numberIn = function (s) { var m = /-?\d+(?:[.,]\d+)?/.exec(String(s || '')); return m ? parseFloat(m[0].replace(',', '.')) : null; };
+  // A number the pilot typed ("0,5" in a comma-decimal language, "−5" with a Unicode minus).
+  A.numberIn = function (s) {
+    var m = /-?\d+(?:[.,]\d+)?/.exec(String(s == null ? '' : s).replace(/−/g, '-'));
+    return m ? parseFloat(m[0].replace(',', '.')) : null;
+  };
+  // A number the page shows: "1,013 hPa" is a thousand and thirteen (a comma before three digits groups
+  // thousands), "0,5" a half.
+  A.readoutNumber = function (s) {
+    var t = String(s == null ? '' : s).replace(/−/g, '-').replace(/(\d),(\d{3})(?!\d)/g, '$1$2');
+    return A.numberIn(t);
+  };
   // Set a slider that shows its value beside it: find along the bar where the read-out says the
   // typed number (or the nearest the slider's steps allow). The read-out follows the slider in the
-  // same tick (measured on AtmosphereMod), so this runs to its end in one call; "+5" and "-5" move
-  // it from where it is.
+  // same tick (measured on AtmosphereMod), so this runs to its end in one call. Before trusting it,
+  // the read-out has to be seen to move with the bar; if it does not (it updates later, it is not this
+  // slider's, it is not a number at one end), the slider goes back to where it was and the set is
+  // refused (STAB-12). "+5" moves it from where it is; "-5" too, unless the read-out runs below zero,
+  // where it is the number minus five.
   A.setSlider = function (el, text) {
-    var ro = A.sliderReadout(el), cur = A.ratioOf(el);
+    var ro = A.sliderReadout(el), start = A.ratioOf(el);
     var want = A.numberIn(text);
     if (want === null) return false;
-    var rel = /^\s*[+-]/.test(String(text));
+    var signed = /^\s*[+\-−]/.test(String(text));
     if (!ro) {                                              // a range of its travel
-      A.dragSlider(el, rel && cur !== null ? cur + want : want);
+      A.dragSlider(el, signed && start !== null ? start + want : want);
       return true;
     }
-    function read() { return A.numberIn(A.lineText(ro)); }
-    if (rel) { var now = read(); if (now === null) return false; want = now + want; }
+    function read() { return A.readoutNumber(A.lineText(ro)); }
+    function giveUp() { if (start !== null) A.dragSlider(el, start); return false; }
+    var now = read();
     A.dragSlider(el, 0); var lo = read();
     A.dragSlider(el, 100); var hi = read();
-    if (lo === null || hi === null) return false;
+    if (now === null || lo === null || hi === null || lo === hi) return giveUp();
+    if (signed && (/^\s*\+/.test(String(text)) || Math.min(lo, hi) >= 0)) want = now + want;
     var up = hi >= lo, a = 0, b = 100, best = 100, bestErr = Math.abs(hi - want);
     if (Math.abs(lo - want) < bestErr) { best = 0; bestErr = Math.abs(lo - want); }
     for (var i = 0; i < 14 && bestErr > 0; i++) {
       var mid = (a + b) / 2;
       A.dragSlider(el, mid);
       var v = read();
-      if (v === null) break;
+      if (v === null) return giveUp();
       var err = Math.abs(v - want);
       if (err < bestErr) { bestErr = err; best = mid; }
       if ((v < want) === up) a = mid; else b = mid;
@@ -1376,9 +1519,17 @@
     return true;
   };
 
-  A.setValue = function (idx, text) {
+  A.setValue = function (idx, text, gel) {
+    return A.withListeners(gel, function () { return A.setValueNow(idx, text); });
+  };
+  // The OS's own text boxes take 'input' alone (STAB-1): the TextBox component and the Flight
+  // Planner's route box. A page's own box also commits on 'change'.
+  A.isOsBox = function (el) {
+    return A.hasClass(el.parentElement, 'textbox') || A.hasClass(el, 'route-parsing-textarea');
+  };
+  A.setValueNow = function (idx, text) {
     var el = A.find(idx);
-    if (!el || A.isDisabled(el)) return false;
+    if (!el || A.isDisabled(el) || el.readOnly === true) return false;
     var want = String(text == null ? '' : text);
     var on = want.toLowerCase() === 'true';
     try {
@@ -1441,8 +1592,7 @@
         }
       }
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-        // An OS TextBox takes 'input' alone (STAB-1); a page's own box also commits on 'change'.
-        A.typeInto(el, want, !A.hasClass(el.parentElement, 'textbox'));
+        A.typeInto(el, want, !A.isOsBox(el));
         A._dirty = true;
         A.releaseKeyboard();
         return true;
@@ -1692,7 +1842,8 @@
 
   try {
     var obs = new MutationObserver(A._markDirty);
-    obs.observe(A.root(), A.OBSERVER_OPTS);
+    // A frame installed before its body exists is watched from the first scrape on (A.observeAll).
+    if (A.root()) obs.observe(A.root(), A.OBSERVER_OPTS);
     A._obs = obs;
     window.__MSFSBA_SIM_TABLET_OBS = obs;
   } catch (e) {

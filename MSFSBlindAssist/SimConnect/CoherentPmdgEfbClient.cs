@@ -86,6 +86,9 @@ namespace MSFSBlindAssist.SimConnect
         /// </summary>
         private readonly bool _readFrames;
 
+        /// <summary>Hand the agent the debugger's getEventListeners (sim tablet only, <see cref="ListenerArg"/>).</summary>
+        private readonly bool _listenerApi;
+
         /// <summary>
         /// A frame element's idx in the merged list is <c>slot * FrameIdxBase + its own idx</c>, slot
         /// 1 for the first frame marker: far above any idx the main page stamps (the SimBrief action is
@@ -133,7 +136,8 @@ namespace MSFSBlindAssist.SimConnect
         public bool IsBridgeConnected =>
             _connected && (DateTime.UtcNow - _lastGoodScrapeUtc).TotalSeconds < 5;
 
-        private CoherentPmdgEfbClient(string titleNeedle, string agentFile, string agentGlobal, string? side, bool readFrames = false)
+        private CoherentPmdgEfbClient(string titleNeedle, string agentFile, string agentGlobal, string? side,
+            bool readFrames = false, bool listenerApi = false)
         {
             _titleNeedle = titleNeedle;
             _agentFile = agentFile;
@@ -141,6 +145,7 @@ namespace MSFSBlindAssist.SimConnect
             _installMarker = agentGlobal.TrimStart('_') + "_INSTALLED";
             _side = side;
             _readFrames = readFrames;
+            _listenerApi = listenerApi;
             _syncContext = SynchronizationContext.Current;
         }
 
@@ -170,7 +175,7 @@ namespace MSFSBlindAssist.SimConnect
         /// origin are read in that frame's own context (<see cref="_readFrames"/>).
         /// </summary>
         public static CoherentPmdgEfbClient ForSimTablet()
-            => new("Electronic Flight Bag", "coherent-sim-tablet-agent.js", "__MSFSBA_SIM_TABLET", side: null, readFrames: true);
+            => new("Electronic Flight Bag", "coherent-sim-tablet-agent.js", "__MSFSBA_SIM_TABLET", side: null, readFrames: true, listenerApi: true);
 
         /// <summary>
         /// Asked first on every click from the form, with the element's agent idx: true means the
@@ -225,16 +230,18 @@ namespace MSFSBlindAssist.SimConnect
 
         public void Stop()
         {
-            _cts?.Cancel();
             // Close the socket properly before dropping it. Coherent takes ONE inspector per page, and
             // a socket that is only aborted stays half-open on its side (FIN_WAIT) for tens of seconds:
             // measured 2026-11-15, the next client (MSFSBA started again) connected but got no answer
-            // for 48 s. A close handshake releases the page at once. Bounded, as Stop runs at exit.
+            // for 48 s. A close handshake releases the page at once. It goes out BEFORE the cancel:
+            // cancelling the token the receive loop waits on aborts a managed WebSocket at once, so a
+            // close sent after it never leaves. Bounded, as Stop runs at exit.
             var ws = _ws;
             if (ws != null && ws.State == WebSocketState.Open)
             {
                 try { ws.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None).Wait(300); } catch { }
             }
+            _cts?.Cancel();
             try { _ws?.Abort(); } catch { }
             _ws = null;
             _connected = false;
@@ -284,12 +291,12 @@ namespace MSFSBlindAssist.SimConnect
                 {
                     if (ClickInterceptor != null && int.TryParse(Idx(), out int clicked) && ClickInterceptor(clicked)) return null;
                     if (!RouteIdx(Idx(), out string local, out contextId)) return null;
-                    return $"window.{_agentGlobal} && {_agentGlobal}.clickElement({local})";
+                    return $"window.{_agentGlobal} && {_agentGlobal}.clickElement({local}{(_listenerApi ? "," + ListenerArg : "")})";
                 }
                 case "set_element_value":
                 {
                     if (!RouteIdx(Idx(), out string local, out contextId)) return null;
-                    return $"window.{_agentGlobal} && {_agentGlobal}.setValue({local},{JsStr(Val())})";
+                    return $"window.{_agentGlobal} && {_agentGlobal}.setValue({local},{JsStr(Val())}{(_listenerApi ? "," + ListenerArg : "")})";
                 }
                 default:
                     return null;
@@ -414,6 +421,7 @@ namespace MSFSBlindAssist.SimConnect
                 // debugger does not answer Runtime.disable, and an eval sent after one hung.
                 _frameContexts.Clear();
                 _frameCache.Clear();
+                _frameMisses.Clear();
                 _frameSlots = new Dictionary<int, int>();
                 await SendCommandAsync("Runtime.enable", new { }, ct, EvalTimeoutMs);
             }
@@ -507,7 +515,7 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task PollOnce(CancellationToken ct)
         {
-            string raw = await EvalAsync($"window.{_agentGlobal} ? {_agentGlobal}.scrape() : ''", ct);
+            string raw = await EvalAsync($"window.{_agentGlobal} ? {_agentGlobal}.scrape({ListenerArg}) : ''", ct, null, EvalTimeoutMs);
             if (string.IsNullOrEmpty(raw))
             {
                 _agentInstalled = false; // agent gone (page reloaded) — reinstall next round
@@ -539,6 +547,7 @@ namespace MSFSBlindAssist.SimConnect
             // to the ~6s FORCE_FULL_EVERY net). The cached elements are by definition still current
             // (the agent just told us nothing changed), so re-push them via the exact same
             // event/callback used for a real diff — no full scrape needed.
+            //
             // A page that shows a frame from another origin is read again on every poll even when the
             // page itself is unchanged: the frame has its own content, which the page's agent never sees.
             bool framesOnPage = _readFrames && _lastMainElements != null && _lastMainElements.Exists(e => e.kind == "frame");
@@ -572,12 +581,15 @@ namespace MSFSBlindAssist.SimConnect
             var elements = mainElements;
             if (_readFrames)
             {
-                var frames = new Dictionary<string, (int ContextId, List<ScrapeElement> Elements)?>();
+                // Each marker is read in a context of its own: two frames of one origin are two pages.
+                var frames = new Dictionary<int, (int ContextId, List<ScrapeElement> Elements)?>();
+                var used = new HashSet<int>();
+                int slot = 0;
                 foreach (var e in mainElements)
                 {
                     if (e.kind != "frame") continue;
-                    string origin = (e.value ?? "").ToLowerInvariant();
-                    if (!frames.ContainsKey(origin)) frames[origin] = await ReadFrameAsync(origin, ct);
+                    slot++;
+                    frames[slot] = await ReadFrameAsync((e.value ?? "").ToLowerInvariant(), e.text ?? "", used, ct);
                 }
                 elements = SpliceFrames(mainElements, frames, out var slots);
                 _frameSlots = slots;
@@ -660,55 +672,118 @@ namespace MSFSBlindAssist.SimConnect
         // context that is gone).
         private const string NoAgent = "MSFSBA_NO_AGENT";
 
+        // Per context: polls in a row it did not answer in time. A frame is slow now and then (a sim
+        // stutter, a busy page), so one miss never loses it: only an error reply ("no such context"), the
+        // debugger's own destroyed event, or this many misses in a row does.
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _frameMisses = new();
+        private const int FrameMissesBeforeForget = 3;
+
         /// <summary>
-        /// Read one frame by its origin: in the newest context of that origin (a frame that reloads gets
-        /// a new one), installing the agent there first when it is missing. A context that does not
-        /// answer is forgotten. Null when no context of that origin can be read yet.
+        /// Read the frame a marker stands for: in the newest unused context of its origin (a frame that
+        /// reloads gets a new one), installing the agent there first when it is missing. A frame whose page
+        /// moved to another origin (a sign-in, a redirect) no longer matches its iframe's src, so when no
+        /// context of that origin answers, the frame is the unused page context whose window is the iframe's
+        /// size (<paramref name="size"/>, "WxH": hidden apps' frames are 0 by 0). Null when none can be read.
         /// </summary>
-        private async Task<(int ContextId, List<ScrapeElement> Elements)?> ReadFrameAsync(string origin, CancellationToken ct)
+        private async Task<(int ContextId, List<ScrapeElement> Elements)?> ReadFrameAsync(string origin, string size,
+            HashSet<int> used, CancellationToken ct)
         {
-            if (string.IsNullOrEmpty(origin)) return null;
             var ids = new List<int>();
-            foreach (var kv in _frameContexts) if (kv.Value == origin) ids.Add(kv.Key);
+            foreach (var kv in _frameContexts) if (kv.Value == origin && !used.Contains(kv.Key)) ids.Add(kv.Key);
             ids.Sort((a, b) => b.CompareTo(a));
-            string scrape = $"window.{_agentGlobal} ? {_agentGlobal}.scrape() : '{NoAgent}'";
-            // A frame this connection holds nothing for is read in full: its agent may still be there
-            // from an earlier connection, and would answer "unchanged" to a client with no copy.
-            string fullScrape = $"window.{_agentGlobal} ? ({_agentGlobal}._dirty = true, {_agentGlobal}.scrape()) : '{NoAgent}'";
             foreach (int cid in ids)
             {
-                string raw = await EvalAsync(_frameCache.ContainsKey(cid) ? scrape : fullScrape, ct, cid, FrameEvalTimeoutMs);
-                if (raw == NoAgent)
-                {
-                    string inst = await EvalAsync(_agentJs, ct, cid, FrameEvalTimeoutMs);
-                    raw = inst.IndexOf(_installMarker, StringComparison.Ordinal) >= 0
-                        ? await EvalAsync(scrape, ct, cid, FrameEvalTimeoutMs) : "";
-                }
-                if (string.IsNullOrEmpty(raw))
-                {
-                    _frameContexts.TryRemove(cid, out _);
-                    _frameCache.TryRemove(cid, out _);
-                    continue;
-                }
-                ScrapeResult? r;
-                try { r = JsonSerializer.Deserialize<ScrapeResult>(raw); }
-                catch { continue; }
-                if (r == null || !r.ok) continue;
-                if (r.unchanged && _frameCache.TryGetValue(cid, out var cached)) return (cid, cached);
-                var els = r.elements ?? new List<ScrapeElement>();
-                if (!r.unchanged) _frameCache[cid] = els;
-                return (cid, els);
+                var els = await ScrapeFrameAsync(cid, ct);
+                if (els != null) { used.Add(cid); return (cid, els); }
+            }
+            if (string.IsNullOrEmpty(size)) return null;
+            var others = new List<int>();
+            foreach (var kv in _frameContexts) if (!used.Contains(kv.Key) && kv.Value != origin) others.Add(kv.Key);
+            others.Sort((a, b) => b.CompareTo(a));
+            foreach (int cid in others)
+            {
+                var probe = await EvalFrameAsync("window.innerWidth + 'x' + window.innerHeight", cid, ct);
+                if (!SameFrameSize(probe.Value, size)) continue;
+                var els = await ScrapeFrameAsync(cid, ct);
+                if (els != null) { used.Add(cid); return (cid, els); }
             }
             return null;
         }
 
+        // One frame's elements, or null when it cannot be read this poll (see _frameMisses).
+        private async Task<List<ScrapeElement>?> ScrapeFrameAsync(int cid, CancellationToken ct)
+        {
+            string scrape = $"window.{_agentGlobal} ? {_agentGlobal}.scrape({ListenerArg}) : '{NoAgent}'";
+            // A frame this connection holds nothing for is read in full: its agent may still be there
+            // from an earlier connection, and would answer "unchanged" to a client with no copy.
+            string fullScrape = $"window.{_agentGlobal} ? ({_agentGlobal}._dirty = true, {_agentGlobal}.scrape({ListenerArg})) : '{NoAgent}'";
+            var reply = await EvalFrameAsync(_frameCache.ContainsKey(cid) ? scrape : fullScrape, cid, ct);
+            if (reply.Value == NoAgent)
+            {
+                var inst = await EvalFrameAsync(_agentJs, cid, ct);
+                reply = inst.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0
+                    ? await EvalFrameAsync(fullScrape, cid, ct) : inst;
+            }
+            if (reply.Failed || (!reply.Replied && _frameMisses.AddOrUpdate(cid, 1, (_, n) => n + 1) >= FrameMissesBeforeForget))
+            {
+                ForgetContext(cid);
+                return null;
+            }
+            if (!reply.Replied) return null;
+            _frameMisses[cid] = 0;
+            ScrapeResult? r;
+            try { r = JsonSerializer.Deserialize<ScrapeResult>(reply.Value); }
+            catch { return null; }
+            if (r == null || !r.ok) return null;
+            if (r.unchanged && _frameCache.TryGetValue(cid, out var cached)) return cached;
+            var els = r.elements ?? new List<ScrapeElement>();
+            if (!r.unchanged) _frameCache[cid] = els;
+            return els;
+        }
+
         /// <summary>
-        /// The page's elements with each frame marker replaced by that frame's elements, their idx moved
-        /// to the marker's slot (<see cref="FrameIdxBase"/>), and <paramref name="slots"/> naming the
-        /// context each slot was read from. A frame that cannot be read yet leaves one line saying so.
+        /// Is a frame window's "WxH" the marker's "WxH", within a border's few pixels? Never for a 0 by 0
+        /// frame: every hidden app's frame is that size.
+        /// </summary>
+        internal static bool SameFrameSize(string? window, string? marker)
+        {
+            static bool Parse(string? s, out int w, out int h)
+            {
+                w = h = 0;
+                var p = (s ?? "").Split('x');
+                return p.Length == 2 && int.TryParse(p[0], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out w)
+                    && int.TryParse(p[1], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out h);
+            }
+            if (!Parse(window, out int w1, out int h1) || !Parse(marker, out int w2, out int h2)) return false;
+            if (w2 <= 0 || h2 <= 0) return false;
+            return Math.Abs(w1 - w2) <= 4 && Math.Abs(h1 - h2) <= 4;
+        }
+
+        private void ForgetContext(int cid)
+        {
+            _frameContexts.TryRemove(cid, out _);
+            _frameCache.TryRemove(cid, out _);
+            _frameMisses.TryRemove(cid, out _);
+        }
+
+        // One eval in a frame's context: Replied false on a timeout, Failed true on an error reply (the
+        // context is gone), Value the result otherwise.
+        private async Task<(bool Replied, bool Failed, string Value)> EvalFrameAsync(string expression, int cid, CancellationToken ct)
+        {
+            var root = await SendCommandAsync("Runtime.evaluate", EvalArgs(expression, cid), ct, FrameEvalTimeoutMs);
+            if (root is not JsonElement r) return (false, false, "");
+            if (r.TryGetProperty("error", out _)) return (true, true, "");
+            return (true, false, ExtractValue(r));
+        }
+
+        /// <summary>
+        /// The page's elements with each frame marker replaced by that frame's elements (keyed by the
+        /// marker's slot, 1 for the first), their idx moved to the slot (<see cref="FrameIdxBase"/>), and
+        /// <paramref name="slots"/> naming the context each slot was read from. A frame that cannot be read
+        /// yet leaves one line saying so. A frame inside a frame is not read: its marker is dropped.
         /// </summary>
         internal static List<ScrapeElement> SpliceFrames(List<ScrapeElement> page,
-            IReadOnlyDictionary<string, (int ContextId, List<ScrapeElement> Elements)?> frames, out Dictionary<int, int> slots)
+            IReadOnlyDictionary<int, (int ContextId, List<ScrapeElement> Elements)?> frames, out Dictionary<int, int> slots)
         {
             slots = new Dictionary<int, int>();
             if (!page.Exists(e => e.kind == "frame")) return page;
@@ -718,8 +793,7 @@ namespace MSFSBlindAssist.SimConnect
             {
                 if (e.kind != "frame") { merged.Add(e); continue; }
                 slot++;
-                string origin = (e.value ?? "").ToLowerInvariant();
-                if (!frames.TryGetValue(origin, out var frame) || frame == null)
+                if (!frames.TryGetValue(slot, out var frame) || frame == null)
                 {
                     merged.Add(new ScrapeElement { idx = e.idx, kind = "static", text = "This app's page is still loading." });
                     continue;
@@ -727,6 +801,7 @@ namespace MSFSBlindAssist.SimConnect
                 slots[slot] = frame.Value.ContextId;
                 foreach (var fe in frame.Value.Elements)
                 {
+                    if (fe.kind == "frame") continue;
                     var copy = fe.Clone();
                     copy.idx = slot * FrameIdxBase + fe.idx;
                     merged.Add(copy);
@@ -744,12 +819,28 @@ namespace MSFSBlindAssist.SimConnect
         /// <summary>Evaluates in the page, or in one execution context (a frame) when given.</summary>
         private async Task<string> EvalAsync(string expression, CancellationToken ct, int? contextId, int timeoutMs)
         {
-            object args = contextId is int cid
-                ? new { expression, returnByValue = true, contextId = cid }
-                : new { expression, returnByValue = true };
-            var root = await SendCommandAsync("Runtime.evaluate", args, ct, timeoutMs);
+            var root = await SendCommandAsync("Runtime.evaluate", EvalArgs(expression, contextId), ct, timeoutMs);
             return root is JsonElement r ? ExtractValue(r) : "";
         }
+
+        // Runtime.evaluate's params. The sim tablet's evals carry the debugger's command line API, whose
+        // getEventListeners the agent is handed (ListenerArg); every other EFB's are unchanged.
+        private object EvalArgs(string expression, int? contextId)
+        {
+            if (!_listenerApi) return contextId is int c0 ? new { expression, returnByValue = true, contextId = c0 } : new { expression, returnByValue = true };
+            return contextId is int c1
+                ? new { expression, returnByValue = true, includeCommandLineAPI = true, contextId = c1 }
+                : new { expression, returnByValue = true, includeCommandLineAPI = true };
+        }
+
+        /// <summary>
+        /// The argument that hands the agent the debugger's <c>getEventListeners</c> (sim tablet only): it
+        /// exists only inside an eval that asked for the command line API, so it is passed on each call,
+        /// and the agent reads with it which press events an element listens to, including listeners bound
+        /// before the agent was installed (measured 2026-11-15: 9670 elements in 30 ms, MK Airport's tabs
+        /// answer "click").
+        /// </summary>
+        private string ListenerArg => _listenerApi ? "(typeof getEventListeners === 'function' ? getEventListeners : null)" : "";
 
         /// <summary>Sends one debugger command and returns its reply, or null on a timeout or a closed socket.</summary>
         private async Task<JsonElement?> SendCommandAsync(string method, object args, CancellationToken ct, int timeoutMs)
@@ -867,14 +958,12 @@ namespace MSFSBlindAssist.SimConnect
                     break;
                 case "Runtime.executionContextDestroyed":
                     if (p.ValueKind == JsonValueKind.Object && p.TryGetProperty("executionContextId", out var d) && d.TryGetInt32(out int gone))
-                    {
-                        _frameContexts.TryRemove(gone, out _);
-                        _frameCache.TryRemove(gone, out _);
-                    }
+                        ForgetContext(gone);
                     break;
                 case "Runtime.executionContextsCleared":
                     _frameContexts.Clear();
                     _frameCache.Clear();
+                    _frameMisses.Clear();
                     break;
             }
         }

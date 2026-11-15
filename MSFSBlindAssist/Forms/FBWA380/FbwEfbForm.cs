@@ -758,10 +758,15 @@ public class FbwEfbForm : Form
                         e.Handled = true; e.SuppressKeyPress = true;
                         return;
                     }
+                    // A slider takes a number in the page's own form ("0.5"): the pilot types it in
+                    // theirs ("0,5" under sv-SE), read as typed input (CORE-17).
+                    string sent = tb.Text;
+                    if (controlType == "range" && MSFSBlindAssist.Utils.NumberParsing.TryParseTyped(tb.Text, out double typed))
+                        sent = typed.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     _bridgeServer.EnqueueCommand("set_element_value", new Dictionary<string, string>
                     {
                         ["index"] = idx.ToString(),
-                        ["value"] = tb.Text,
+                        ["value"] = sent,
                         ["controlType"] = controlType
                     });
                     _announcer.Announce("Set " + (string.IsNullOrEmpty(fieldName) ? "field" : fieldName) + " to " + tb.Text);
