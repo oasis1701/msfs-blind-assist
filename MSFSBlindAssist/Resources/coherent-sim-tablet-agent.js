@@ -410,7 +410,15 @@
     }
     return A.norm(s);
   };
+  A.TABLE_PARTS = /^(TABLE|THEAD|TBODY|TFOOT|TR)$/;
+  A.cellOf = function (n) {
+    for (var up = 0; n && up < 4; up++, n = n.parentElement) if (n.tagName === 'TD' || n.tagName === 'TH') return n;
+    return null;
+  };
   A.needsSpace = function (a, b, left, right) {
+    // Two table cells never run together ("FL350" + "0.12"), a caption cell either ("ICAO:" + "VCBI").
+    var ca = A.cellOf(a), cb = A.cellOf(b);
+    if (ca !== cb) return true;
     // A number against its unit or a label against its number is never one word, even where the
     // boxes touch ("11890" + "FT", "OS Version" + "1.0.3").
     if (/\d$/.test(left) && /^[A-Za-z]/.test(right) || /[A-Za-z]$/.test(left) && /^\d/.test(right)) return true;
@@ -1018,6 +1026,28 @@
       var t = A.lineText(el);
       if (t) els.push(A.el(null, { kind: 'heading', text: t, level: 2 }));
       els.push(A.button(el, A.CLOSE_GSX_MENU, { key: 'button:' + A.CLOSE_GSX_MENU }));
+    });
+
+  // A row of a two-column table, a name and its value (GSX's price lists: "Boarding fee" | "Rs 2,498.10/pax
+  // ~$7.50/pax" under "Service | Price"; "ICAO:" | "VCBI"), reads as one line, "name: value", even when
+  // the value takes two lines. A wider table (UTL's levels, CIVA's navlog) keeps its own reading, and
+  // so does a row holding a control.
+  A.block('kv-row',
+    function (el) {
+      if (el.tagName !== 'TR' || el.children.length !== 2 || A.hasCtl(el)) return false;
+      if (el.children[0].tagName !== 'TD' || el.children[1].tagName !== 'TD') return false;
+      for (var t = el.parentElement; t; t = t.parentElement) {
+        if (t.tagName !== 'TABLE') continue;
+        var rows = t.rows || [];
+        for (var r = 0; r < rows.length; r++) if (rows[r].cells.length > 2) return false;
+        return true;
+      }
+      return false;
+    },
+    function (el, els) {
+      var name = A.lineText(el.children[0]), value = A.lineText(el.children[1]);
+      if (!name || !value || name.length > 60 || !/[A-Za-z]/.test(name)) return false;
+      els.push(A.el(el, { kind: 'static', text: name.replace(/\s*:$/, '') + ': ' + value }));
     });
 
   // Mass and balance's Seats / Cargo / Fuel / Empty strip.
@@ -1808,14 +1838,18 @@
         // 0h") with a comma. Never over words of the element's own, which it would drop, nor over a
         // word that takes a press ("Gate" over a pressable "A12").
         var twoAll = el.getElementsByTagName('*'), two = [];
-        if (twoAll.length <= A.ONE_LINE_MAX_NODES && el.children.length === 2 && !A.ownWords(el)) {
+        if (twoAll.length <= A.ONE_LINE_MAX_NODES && el.children.length === 2 && !A.ownWords(el) && !A.TABLE_PARTS.test(el.tagName)) {
           two = A.rows(el);
           for (var tw = 0; tw < twoAll.length; tw++) if (A.pressWord(twoAll[tw])) { two = []; break; }
         }
         if (two.length === 2) {
           var top = A.lineText(el.children[0]), bottom = A.lineText(el.children[1]);
           var pairs = /[A-Za-z].*\s\d\S*$/.test(top) && /^[A-Za-z]/.test(bottom) && /\d/.test(bottom);
-          if (top && bottom) { sink.push(A.el(el, { kind: 'static', text: top + (pairs ? ', ' : ': ') + bottom })); return; }
+          // A caption that ends in its own colon takes no second one ("A. PROVIDER:" over its name); a
+          // value over another (an amount over its conversion: "Rs 6,661.60" over "~$20.00") is a pair.
+          var values = /\d\S*$/.test(top) && /^[^A-Za-z\s]/.test(bottom) && /\d/.test(bottom);
+          var sep = /:$/.test(top) ? ' ' : (pairs || values) ? ', ' : ': ';
+          if (top && bottom) { sink.push(A.el(el, { kind: 'static', text: top + sep + bottom })); return; }
         }
       }
 
@@ -2723,6 +2757,7 @@
           document.removeEventListener('touchstart', oldH.pointer, true);
         }
       } catch (eh4) {}
+      try { if (oldH.load) document.removeEventListener('load', oldH.load, true); } catch (eh5) {}
     }
   } catch (e) {}
 
@@ -2761,11 +2796,15 @@
       t.addEventListener('focus', once, false);
     };
     var onPointer = function (ev) { if (ev && ev.isTrusted) window.__MSFSBA_USER_POINTER_AT = Date.now(); };
+    // A frame that loads a document of its own (GSX's price lists and invoices, srcdoc frames) changes
+    // nothing the observer watches, its old body included, so its load marks the page changed.
+    var onLoad = function (ev) { var t = ev && ev.target; if (t && t.tagName === 'IFRAME') A._markDirty(); };
     document.addEventListener('focus', onFocus, true);
     document.addEventListener('mousedown', onPointer, true);
     document.addEventListener('pointerdown', onPointer, true);
     document.addEventListener('touchstart', onPointer, true);
-    window.__MSFSBA_SIM_TABLET_HANDLERS = { change: A._markDirty, input: A._markDirty, focus: onFocus, pointer: onPointer };
+    document.addEventListener('load', onLoad, true);
+    window.__MSFSBA_SIM_TABLET_HANDLERS = { change: A._markDirty, input: A._markDirty, focus: onFocus, pointer: onPointer, load: onLoad };
   } catch (e) {}
 
   window.__MSFSBA_SIM_TABLET = A;

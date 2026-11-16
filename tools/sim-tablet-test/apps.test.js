@@ -1153,6 +1153,44 @@ test('a label around its field keeps its read-out; a full stop after a line of t
   assert.ok(f.includes('static|the notes.'), f.join(' / '));
 });
 
+test('a frame that loads a document of its own after a read (GSX\'s price lists) is read when it loads', () => {
+  const p = page('<button>Back</button><iframe class="menu-document"></iframe>');
+  const { window, document } = p;
+  const f = document.querySelector('iframe');
+  f.contentWindow.Element.prototype.getBoundingClientRect = window.Element.prototype.getBoundingClientRect;   // boxes as on the page
+  const first = JSON.parse(p.A.scrape());
+  assert.ok(first.elements.length >= 1);
+  const fd = f.contentDocument;
+  const body = fd.createElement('body');
+  body.innerHTML = '<h1>CATERING PRICE LIST</h1>';
+  fd.documentElement.replaceChild(body, fd.body);        // a new document's body: nothing observed changed
+  const unchanged = JSON.parse(p.A.scrape());
+  assert.ok(!(unchanged.elements || []).some(e => /CATERING/.test(e.text)), 'nothing told the reader yet');
+  f.dispatchEvent(new window.Event('load'));
+  const after = JSON.parse(p.A.scrape());
+  assert.ok(after.elements.some(e => e.text === 'CATERING PRICE LIST'), JSON.stringify(after).slice(0, 300));
+});
+
+test('a two-cell table row reads as its name and value; a caption ending in a colon gets no second one; a value over its conversion takes a comma', () => {
+  const p = page('<table><tbody><tr><td data-rect="0,0,40,20">ICAO:</td><td data-rect="0,40,90,20">VCBI</td></tr>' +
+    '<tr><td data-rect="20,0,40,40">Boarding fee</td><td data-rect="20,40,90,40"><div data-rect="20,40,90,30">Rs 2,498.10/pax</div><div data-rect="30,40,90,40">~$7.50/pax</div></td></tr></tbody></table>' +
+    '<table><thead><tr><th>Level</th><th>Mean EDR</th><th>Peak</th></tr></thead><tbody><tr><td data-rect="60,0,30,80">FL350</td><td data-rect="60,30,60,80">0.12</td><td data-rect="60,60,90,80">0.30</td></tr>' +
+    '<tr><td data-rect="80,0,30,100">FL390</td><td data-rect="80,30,60,100">0.08</td><td data-rect="80,60,90,100">0.20</td></tr>' +
+    '<tr><td colspan="2" data-rect="100,0,60,120">Average</td><td data-rect="100,60,90,120">0.25</td></tr></tbody></table>' +
+    '<table><thead><tr><th data-rect="200,0,40,220">Service</th><th data-rect="200,40,90,220">Price</th></tr></thead><tbody>' +
+    '<tr><td data-rect="220,0,40,240">De-icing</td><td data-rect="220,40,90,240"><div data-rect="220,40,90,230">Rs 4,673,951.76</div><div data-rect="230,40,90,240">~$14,032.52</div></td></tr>' +
+    '<tr><td data-rect="240,0,40,260">GPU</td><td data-rect="240,40,90,260">Rs 16,654.00</td></tr></tbody></table>' +
+    '<div class="party"><div data-rect="100,0,90,120">A. PROVIDER:</div><div data-rect="120,0,90,140">SriLankan Airlines</div></div>' +
+    '<div class="amt"><div data-rect="150,0,90,170">Rs 6,661.60</div><div data-rect="170,0,90,190">~$20.00</div></div>');
+  const l = lines(scraped(p.A));
+  for (const w of ['static|ICAO: VCBI', 'static|Boarding fee: Rs 2,498.10/pax ~$7.50/pax', 'static|A. PROVIDER: SriLankan Airlines', 'static|Rs 6,661.60, ~$20.00'])
+    assert.ok(l.includes(w), w + ' in ' + l.join(' / '));
+  assert.ok(l.includes('static|FL350 0.12 0.30') && l.includes('static|FL390 0.08 0.20') && l.includes('static|Average 0.25'),
+    'a wider data table keeps its own reading, cells apart, a spanning row too: ' + l.join(' / '));
+  for (const w of ['static|Service Price', 'static|De-icing: Rs 4,673,951.76 ~$14,032.52', 'static|GPU: Rs 16,654.00'])
+    assert.ok(l.includes(w), w + ' in ' + l.join(' / '));
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));
