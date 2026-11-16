@@ -531,6 +531,7 @@ What the window shows:
 - **A pop-up comes before the page,** such as the box for typing a route or an app's own dialog, and its title is spoken as it opens. Its buttons say which pop-up they belong to, for example *"Enter route string: Close"*.
 - **Buttons say their state** in brackets when they have one, for example *"Lower Jetway 1 (connected)"* or *"Settings (selected)"*. When a button's state changes after you press it, the new state is spoken.
 - **Buttons with the same name on several rows** say which row they are on, for example *"Default: LOAD"* beside each preset.
+- **Fields that would share a name** say which one they are: a unit choice says *"unit"* (*"Cruise altitude unit"*), and the parts of a date or time say which part (*"Flight date month"*, *"Flight date day"*, *"Flight date year"*).
 - **Seats, cargo and fuel tanks** are edit fields named with their unit and limit, for example *"Co-Pilot (LBS, max 300)"*. Type a weight and press Enter.
 - **Sliders** that show their value as a number are edit fields marked *"(slider)"*: type the number you want and press Enter, or type *"+5"* or *"-5"* to move it from where it is. A slider with no number beside it is marked *"(slider, percent)"* and takes how far along it should be, 0 to 100.
 - **Checklist items, switches and tick boxes** are check boxes, and **drop-down lists** are combo boxes, including an app's own drop-downs such as GSX's settings (*"Automated reposition"*: No, Yes or Auto). Choosing an entry opens the list and picks it, as you would with the mouse.

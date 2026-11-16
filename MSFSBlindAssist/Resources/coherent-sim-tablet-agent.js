@@ -546,9 +546,14 @@
     // A drawn cross is a close button; a letter x only where it says so (a "close" class), never a
     // keypad's X key.
     if (n && (/^\s*[×✕✖✗]\s*$/.test(n) || (/^\s*[xX]\s*$/.test(n) && /close/i.test(A.cls(el))))) return 'Close';
-    if (n) return A.norm(n);
+    // The information symbol, a lone small "i" (CIVA's, which opens "About the virtual navigator").
+    if (n && /^\s*[iℹⓘ]\s*$/.test(n)) return 'Information';
+    if (n) return (el.__msfsbaName = A.norm(n));      // remembered for when only its icon is left
     n = A.className(el);
     if (n) return n;
+    // A button whose tooltip went away (the Flight Planner's Display size while its picker is open)
+    // keeps the name it had, never its icon's file name ("Tailless Line Arrow Right 1").
+    if (el.__msfsbaName) return el.__msfsbaName;
     n = A.iconName(el);
     // A panel's or popup's header leads with an unnamed icon button: its close.
     if (!n && el.parentElement && /header/.test(A.cls(el.parentElement)) && el === el.parentElement.firstElementChild) return 'Close';
@@ -1152,14 +1157,21 @@
       for (var j = 0; j < items.length; j++) opts.push(A.modelText(items[j]));
       var step = A.stepTitle(el);
       var name = step ? step + (A.hasClass(el.parentElement, 'runway-selector') ? ' runway' : '') : '';
+      // Environment's surface beside the runway: its caption is the runway's, so its choices name it
+      // ("Dry runway", "Wet runway"), never a second "Runway".
+      if (!name && !A.hasClass(el.parentElement, 'runway-selector') && opts.length > 1) {
+        var cond = true;
+        for (var oc = 0; oc < opts.length; oc++) if (!/\srunway$/i.test(opts[oc])) cond = false;
+        if (cond) name = 'Runway condition';
+      }
       var value = A.pickOption(shown, opts);
       // A selector that prefixes its choice names itself: "level standard" is the Level dropdown.
       var lead = '';
       if (value && shown.length > value.length && shown.toLowerCase().slice(-value.length) === value.toLowerCase()) lead = A.norm(shown.slice(0, -value.length));
       // Last, the row's own name: a caption cut off from the dropdown by another control in its row
       // (the Flight Planner's "Cruise altitude" | Auto | FL/FT | 450).
-      els.push(A.el(el, { controlType: 'select', text: name || A.labelFor(el) || A.tooltipOf(el) || A.ucfirst(lead) ||
-                                                        A.rowContext(el, '', true) || A.headingBefore(el) || 'Choice',
+      els.push(A.el(el, { controlType: 'select', text: A.unitName(name || A.labelFor(el) || A.tooltipOf(el) || A.ucfirst(lead) ||
+                                                        A.rowContext(el, '', true) || A.headingBefore(el) || 'Choice', opts),
                           value: value, options: opts, disabled: sel ? A.isDisabled(sel) : false }));
     });
   // The selector shows a short form of the choice ("Dry" for "Dry runway", "level standard" for
@@ -1312,6 +1324,14 @@
 
   // A browser's own form controls, as add-on apps use them (UTL Ride Advisor, SayIntentions).
   A.DATE_HINT = { date: 'year-month-day', time: 'hours:minutes', 'datetime-local': 'year-month-dayThours:minutes', month: 'year-month' };
+  // A choice of units only (FL or FT, Imperial or Metric, KG or LBS) is the unit of the field beside
+  // it, which shares its row's name: it says so ("Cruise altitude unit").
+  A.UNIT_WORD = /^(FL|FT|M|KM|NM|SM|KG|LBS?|L|GAL|KTS?|KM\/H|MPH|HPA|INHG|IN|MB|°C|°F|IMPERIAL|METRIC)$/i;
+  A.unitName = function (name, opts) {
+    if (!name || opts.length < 2 || /\bunits?$/i.test(name)) return name;
+    for (var i = 0; i < opts.length; i++) if (!A.UNIT_WORD.test(A.norm(opts[i]))) return name;
+    return name + ' unit';
+  };
   A.block('native-select',
     function (el) { return el.tagName === 'SELECT'; },
     function (el, els) {
@@ -1321,7 +1341,7 @@
         opts.push(t);
         if (i === el.selectedIndex) val = t;
       }
-      els.push(A.el(el, { controlType: 'select', text: A.fieldName(el) || 'Choice', value: val, options: opts, disabled: A.isDisabled(el) }));
+      els.push(A.el(el, { controlType: 'select', text: A.unitName(A.fieldName(el) || 'Choice', opts), value: val, options: opts, disabled: A.isDisabled(el) }));
     });
   A.block('native-input',
     function (el) { return el.tagName === 'INPUT' && !A.hasClass(el.parentElement, 'textbox'); },
@@ -1688,9 +1708,39 @@
       var g = groups[gk2], t = gk2.slice(2);
       if (g.length < 2) continue;
       var names = namesBy(g, t, A.rowContext) || namesBy(g, t, A.rowLine);
-      if (!names) continue;
+      if (!names) {
+        // Fields that are parts of one date or time (the Flight Planner's Flight date: month, day, year)
+        // say which part, from their choices.
+        var parts = [], seenPart = {};
+        for (var pp = 0; pp < g.length; pp++) {
+          var part = g[pp].controlType === 'select' ? A.partName(g[pp].options || []) : '';
+          if (!part || seenPart[part]) { parts = null; break; }
+          seenPart[part] = 1;
+          parts.push(part);
+        }
+        if (parts) for (var pq = 0; pq < g.length; pq++) g[pq].text = g[pq].text + ' ' + parts[pq];
+        continue;
+      }
       for (var m = 0; m < g.length; m++) g[m].text = names[m] + ': ' + g[m].text;
     }
+  };
+
+  // Which part of a date or time a choice is, from its choices: month names, four-digit years, am and
+  // pm, minutes (00 to 55 or 59), hours (to 12 or 23), days (to 28-31). '' when it is none of them.
+  A.MONTHS = /^(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?)$/i;
+  A.partName = function (opts) {
+    if (opts.length < 2) return '';
+    var all = function (re) { for (var i = 0; i < opts.length; i++) if (!re.test(A.norm(opts[i]))) return false; return true; };
+    if (all(A.MONTHS)) return 'month';
+    if (all(/^\d{4}$/)) return 'year';
+    if (all(/^(am|pm)$/i)) return 'am or pm';
+    if (!all(/^\d{1,2}$/)) return '';
+    var min = 99, max = -1;
+    for (var i = 0; i < opts.length; i++) { var v = parseInt(opts[i], 10); if (v < min) min = v; if (v > max) max = v; }
+    if (min === 0 && max >= 45) return 'minutes';
+    if (max >= 28 && max <= 31) return 'day';
+    if (max === 12 || max === 11 || max === 23) return 'hour';
+    return '';
   };
 
   // An app's own frame: same-origin is read in place; a cross-origin one cannot be reached from this
@@ -1849,11 +1899,14 @@
         }
         if (two.length === 2) {
           var top = A.lineText(el.children[0]), bottom = A.lineText(el.children[1]);
-          var pairs = /[A-Za-z].*\s\d\S*$/.test(top) && /^[A-Za-z]/.test(bottom) && /\d/.test(bottom);
+          // ("By day 00h26" over "By night 0h"; "Estimated takeoff weight 140272 KG" over "Block fuel 5 KG")
+          var pairs = /[A-Za-z].*\s\d\S*(\s[A-Za-z%°]{1,4})?$/.test(top) && /^[A-Za-z]/.test(bottom) && /\d/.test(bottom);
           // A caption that ends in its own colon takes no second one ("A. PROVIDER:" over its name); a
           // value over another (an amount over its conversion: "Rs 6,661.60" over "~$20.00") is a pair.
           var values = /\d\S*$/.test(top) && /^[^A-Za-z\s]/.test(bottom) && /\d/.test(bottom);
-          var sep = /:$/.test(top) ? ' ' : (pairs || values) ? ', ' : ': ';
+          // A first line that ends a sentence, or a caption with its own colon, takes no colon ("...without.
+          // The view changed while measuring": AtmosphereMod's performance result).
+          var sep = /[:.!?]$/.test(top) ? ' ' : (pairs || values) ? ', ' : ': ';
           if (top && bottom) { sink.push(A.el(el, { kind: 'static', text: top + sep + bottom })); return; }
         }
       }

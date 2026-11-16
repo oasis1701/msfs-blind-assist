@@ -1368,6 +1368,50 @@ test('a press on a section far above the box chose nothing; real input seen surv
   assert.deepStrictEqual(log, ['blur'], 'after a reinstall, the page\'s own press on the box still is not the pilot\'s');
 });
 
+test('a first line that ends a sentence joins the next with a space, never a colon', () => {
+  const l = lines(scraped(page('<div class="r"><div data-rect="0,0,90,20">With the mod: 60 fps. Without: 65 fps.</div><div data-rect="20,0,90,40">The view changed while measuring</div></div>').A));
+  assert.ok(l.includes('static|With the mod: 60 fps. Without: 65 fps. The view changed while measuring'), l.join(' / '));
+});
+
+test('a lone small i is the information button', () => {
+  const p = page('<div id="i" data-rect="0,0,20,20">i</div><div id="I" data-rect="0,30,50,20">I</div>');
+  p.document.getElementById('i').onclick = () => {};
+  p.document.getElementById('I').onclick = () => {};
+  const l = lines(scraped(p.A));
+  assert.ok(l.includes('button|Information'), l.join(' / '));
+  assert.ok(l.includes('button|I'), 'a capital I is a key or a roman one, left as it is: ' + l.join(' / '));
+});
+
+test('two values with units over each other read as a pair; a unit selector says it is the unit; date and time parts say which part', () => {
+  const p = page('<div class="w"><div data-rect="0,0,90,20">Estimated takeoff weight 140272 KG</div><div data-rect="20,0,90,40">Block fuel 5 KG</div></div>' +
+    '<div class="g"><div data-rect="50,0,90,70">Ground Speed</div><div data-rect="70,0,90,90">0 KT</div></div>');
+  const l = lines(scraped(p.A));
+  assert.ok(l.includes('static|Estimated takeoff weight 140272 KG, Block fuel 5 KG'), l.join(' / '));
+  assert.ok(l.includes('static|Ground Speed: 0 KT'), l.join(' / '));
+  const sel = (o, v) => '<select>' + o.map(x => '<option' + (x === v ? ' selected' : '') + '>' + x + '</option>').join('') + '</select>';
+  // The tablet's own dropdowns, as the Flight Planner draws its Flight date and Off-block time.
+  const osd = (o, v) => '<div class="dropdown-button"><button class="dropdown-button-selector"><span class="text">' + v + '</span></button>' +
+    '<div class="dropdown-button-list">' + o.map(x => '<div class="dropdown-button-list-item">' + x + '</div>').join('') + '</div></div>';
+  const months = ['January', 'February', 'March'], days = ['01', '02', '15', '30'], years = ['2024', '2025', '2026'];
+  const q = page('<div class="r"><label>Cruise altitude</label>' + sel(['FL', 'FT'], 'FL') + '<input type="text" value="450"></div>' +
+    '<div class="r"><span>Flight date</span>' + osd(months, 'March') + osd(days, '15') + osd(years, '2026') + '</div>' +
+    '<div class="r"><span>Off-block time</span>' + osd(['01', '02', '12'], '01') + osd(['00', '05', '55'], '00') + osd(['am', 'pm'], 'am') + '</div>');
+  const ql = lines(scraped(q.A));
+  for (const w of ['/select|Cruise altitude unit=FL', '/select|Flight date month=March', '/select|Flight date day=15', '/select|Flight date year=2026',
+                   '/select|Off-block time hour=01', '/select|Off-block time minutes=00', '/select|Off-block time am or pm=am'])
+    assert.ok(ql.includes(w), w + ' in ' + ql.join(' / '));
+});
+
+test('a button whose tooltip goes away keeps its name, never its icon\'s file name', () => {
+  const p = page('<button id="b" title="Display size" data-rect="0,0,30,20"><icon-element icon-url="coui://html_ui/efb_ui/efb_os/Assets/icons/NoMargin/Tailless_Line_Arrow_Right_1.svg"></icon-element></button>');
+  const b = p.document.getElementById('b');
+  assert.ok(lines(scraped(p.A)).includes('button|Display size'));
+  b.removeAttribute('title');                     // its picker opened: the OS drops the tooltip
+  const l = lines(scraped(p.A));
+  assert.ok(l.includes('button|Display size'), l.join(' / '));
+  assert.ok(!l.some(x => /Tailless/.test(x)), l.join(' / '));
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));
