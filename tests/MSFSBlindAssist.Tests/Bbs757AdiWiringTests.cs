@@ -225,7 +225,8 @@ public class Bbs757AdiWiringTests
     [Fact]
     public void The_adis_inputs_get_their_hidden_batched_copies_in_their_own_units()
     {
-        var def = new BBS757Definition();
+        // BBS Nest "running", or the first delivery below would speak the PC's real answer (none on a CI runner).
+        var def = new BBS757Definition { NestRunning = () => true };
         var vars = def.GetVariables();
         var keys = def.DisplayCacheKeys();
 
