@@ -101,4 +101,20 @@ public class SimTabletFrameTests
     [InlineData("554x743", "", false)]
     public void AFramesWindow_MatchesItsMarker_BySize(string window, string marker, bool same) =>
         Assert.Equal(same, CoherentPmdgEfbClient.SameFrameSize(window, marker));
+
+    [Fact]
+    public void AFrameInstall_ThatAnswersWithoutTheMarker_IsAMiss_SoTheContextIsForgottenAfterThree()
+    {
+        const string marker = "MSFSBA_SIM_TABLET_INSTALLED";
+        var ok = CoherentPmdgEfbClient.InstallOutcome((true, false, marker), marker);
+        Assert.True(ok.Installed);
+
+        var threw = CoherentPmdgEfbClient.InstallOutcome((true, false, "{\"exceptionDetails\":{}}"), marker);
+        Assert.False(threw.Installed);
+        Assert.Equal((false, false, ""), threw.Reply);   // booked like a timeout: a miss, never a read
+
+        var failed = CoherentPmdgEfbClient.InstallOutcome((true, true, ""), marker);
+        Assert.False(failed.Installed);
+        Assert.True(failed.Reply.Failed);                  // an error reply stays one: forgotten at once
+    }
 }

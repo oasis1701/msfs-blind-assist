@@ -814,7 +814,8 @@ test('a field the press itself focuses is handed back, any field; one focused be
 });
 
 test('an all-capitals control word with a tooltip keeps its press; only a tip that spells the letters out makes an abbreviation', () => {
-  const words = [['SAVE', 'Save the plan'], ['OK', 'Confirm'], ['X', 'Close'], ['ARM', 'Arm the spoilers'], ['ON', 'Turn on']];
+  const words = [['SAVE', 'Save the plan'], ['OK', 'Confirm'], ['X', 'Close'], ['ARM', 'Arms the autobrake'], ['ON', 'Turn on'],
+                 ['LOAD', 'Loading the plan'], ['CLR', 'Clear'], ['HDG', '(Heading)']];
   const p = styled(words.map((w, i) => '<div class="w" id="w' + i + '" data-rect="' + (i * 20) + ',0,40,' + (i * 20 + 10) + '">' + w[0] +
     '<span class="tip">' + w[1] + '</span></div>').join('') +
     '<div class="ab"><span class="term" id="t">FH<span class="term-tip">Flight hours</span></span> left</div>',
@@ -837,6 +838,7 @@ test('a paragraph keeps a word that takes a press by its own pointer as a button
   term.getBoundingClientRect = () => ({ top: 30, left: 0, right: 20, bottom: 50, width: 20, height: 20 });
   const l = lines(scraped(p.A));
   assert.ok(!l.includes('static|Read the help first. Open help for more.'), 'the link is no plain word: ' + l.join(' / '));
+  assert.ok(l.includes('button|Open help'), 'and it is a button: ' + l.join(' / '));
   assert.ok(l.some(x => /The check is due in 750 FH \(Flight hours\) or 90 days\./.test(x)), l.join(' / '));
 });
 

@@ -240,9 +240,17 @@
     // And the tip must spell it out: same first letter, its letters in order, not the word itself
     // ("FH" in "Flight hours"); an all-capitals control word with a tooltip (SAVE, "Save the plan";
     // OK, "Confirm") keeps its press.
-    var letters = own.replace(/[^A-Z]/g, ''), words = A.norm(A.modelText(tip)).toLowerCase();
+    var letters = own.replace(/[^A-Z]/g, ''), words = A.norm(A.modelText(tip)).toLowerCase().replace(/^[^a-z0-9]+/, '');
     if (letters.length < 2 || words.charAt(0) !== letters.charAt(0).toLowerCase()) return null;
-    if (words.split(' ')[0] === own.toLowerCase()) return null;
+    // The tip's first word is the label itself, or the label inflected ("SAVE": "Saves the plan"): a control.
+    var fw = words.split(' ')[0].replace(/[^a-z0-9]/g, ''), ow = own.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (fw === ow || (fw.indexOf(ow) === 0 && /^(s|es|d|ed|ing)$/.test(fw.slice(ow.length)))) return null;
+    // And it sits in running text, as an abbreviation does ("750 FH left"); a control stands alone
+    // ("CLR" with "Clear", "HDG" with "Heading" keep their press: a wrong button is harmless, a lost
+    // press is not).
+    var p = el.parentElement, around = '';
+    for (var pi = 0; p && pi < p.childNodes.length; pi++) if (p.childNodes[pi].nodeType === 3) around += p.childNodes[pi].nodeValue;
+    if (!A.norm(around)) return null;
     for (var li = 0, at = 0; li < letters.length; li++) {
       at = words.indexOf(letters.charAt(li).toLowerCase(), at);
       if (at < 0) return null;
@@ -1401,7 +1409,7 @@
       if (A.isHidden(all[i])) continue;                 // a hidden tip or icon takes no place in the line
       var st = A.styleOf(all[i]);
       if (!st || !/^inline/.test(st.display || '')) return false;
-      if (A.ownPointer(all[i])) return false;           // a link-like word that takes a press stays a control
+      if (A.ownPointer(all[i]) && !A.abbrevTip(all[i])) return false;   // a link-like word stays a control
       shown++;
     }
     return shown > 0;
@@ -1414,6 +1422,8 @@
     for (var i = 0; i < all.length; i++) nodes.push(all[i]);
     for (var j = 0; j < nodes.length; j++) {
       var n = nodes[j], own = false;
+      // A word that takes a press by its own pointer (React's delegated handlers) stays a control.
+      if (j > 0 && A.ownPointer(n) && !A.isHidden(n) && !A.abbrevTip(n)) return false;
       for (var k = 0; k < n.childNodes.length; k++) if (n.childNodes[k].nodeType === 3 && A.norm(n.childNodes[k].nodeValue)) { own = true; break; }
       if (!own || A.isHidden(n)) continue;
       var r = n.getBoundingClientRect(), c = (r.top + r.bottom) / 2;

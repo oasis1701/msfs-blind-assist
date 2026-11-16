@@ -743,6 +743,17 @@ namespace MSFSBlindAssist.SimConnect
             return true;
         }
 
+        /// <summary>
+        /// A frame install's answer: installed when the reader's marker came back. Otherwise the answer
+        /// stays a failure, or becomes a miss (a timeout-like reply) when the context answered without
+        /// the marker (the reader threw there), so three in a row forget the context (STAB-14) instead
+        /// of reinstalling it on every poll.
+        /// </summary>
+        internal static (bool Installed, (bool Replied, bool Failed, string Value) Reply) InstallOutcome(
+            (bool Replied, bool Failed, string Value) reply, string marker)
+            => reply.Value.IndexOf(marker, StringComparison.Ordinal) >= 0 ? (true, reply)
+               : (false, reply.Failed ? reply : (false, false, ""));
+
         // One frame's elements, or null when it cannot be read this poll (see _frameMisses).
         private async Task<List<ScrapeElement>?> ScrapeFrameAsync(int cid, CancellationToken ct)
         {
@@ -759,25 +770,21 @@ namespace MSFSBlindAssist.SimConnect
             (bool Replied, bool Failed, string Value) reply;
             if (!_frameInstalled.ContainsKey(cid))
             {
-                reply = await EvalFrameAsync(_agentJs, cid, ct);
-                if (reply.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0)
+                var (installed, answer) = InstallOutcome(await EvalFrameAsync(_agentJs, cid, ct), _installMarker);
+                reply = answer;
+                if (installed)
                 {
                     _frameInstalled[cid] = 0;
                     reply = await EvalFrameAsync(fullScrape, cid, ct);
                 }
-                // An answer without the marker (the reader threw in that context) is a miss, never a
-                // read: three in a row forget the context instead of reinstalling it on every poll.
-                else if (!reply.Failed) reply = (false, false, "");
             }
             else
             {
                 reply = await EvalFrameAsync(_frameCache.ContainsKey(cid) ? scrape : fullScrape, cid, ct);
                 if (reply.Value == NoAgent)
                 {
-                    var inst = await EvalFrameAsync(_agentJs, cid, ct);
-                    reply = inst.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0
-                        ? await EvalFrameAsync(fullScrape, cid, ct)
-                        : inst.Failed ? inst : (false, false, "");
+                    var (installed, answer) = InstallOutcome(await EvalFrameAsync(_agentJs, cid, ct), _installMarker);
+                    reply = installed ? await EvalFrameAsync(fullScrape, cid, ct) : answer;
                 }
             }
             if (!CountReply(cid, reply)) return null;
