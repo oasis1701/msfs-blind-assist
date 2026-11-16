@@ -1033,6 +1033,126 @@ test('a caption its field claims takes its lines with it, a row below included',
   assert.ok(!l.includes('static|Cruise'), l.join(' / '));
 });
 
+test('an app panel over its own page (fixed, opaque, covering) is read first as a popup; a see-through layer over a map is not', () => {
+  const html = '<div class="main"><button>Customize Airport</button></div>' +
+    '<div class="settings-overlay"><div class="settings-panel"><div class="settings-head menu-head--action" role="button" data-rect="0,0,50,20">' +
+    '<div class="m-title">GSX Settings</div><div class="m-sub m-hint">Tap to close</div></div>' +
+    '<button>Simulation</button></div></div>';
+  const solid = styled(html, el => (el.classList.contains('settings-overlay') ? { position: 'fixed', backgroundColor: 'rgb(20, 20, 20)' } : null));
+  const l = lines(scraped(solid.A));
+  assert.deepStrictEqual(l.slice(0, 3), ['alert|GSX Settings', 'button|GSX Settings Tap to close', 'button|Simulation'], l.join(' / '));
+  assert.ok(l.includes('button|Customize Airport'), 'the page under it follows');
+  const clear = styled(html.replace('settings-overlay', 'map-overlay'), el => (el.classList.contains('map-overlay') ? { position: 'absolute', backgroundColor: 'rgba(0, 0, 0, 0)' } : null));
+  assert.ok(!lines(scraped(clear.A)).some(x => x.indexOf('alert|') === 0));
+  const seeThrough = styled(html, el => (el.classList.contains('settings-overlay') ? { position: 'fixed', backgroundColor: 'rgba(0, 0, 0, 0.2)' } : null));
+  assert.ok(!lines(scraped(seeThrough.A)).some(x => x.indexOf('alert|') === 0), 'a see-through layer is no page of its own');
+  const inPlace = styled(html, el => (el.classList.contains('settings-overlay') ? { position: 'absolute', backgroundColor: 'rgb(20, 20, 20)' } : null));
+  assert.ok(!lines(scraped(inPlace.A)).some(x => x.indexOf('alert|') === 0), 'only a layer fixed over the page');
+});
+
+test('a box the page focuses by itself after a press, late, is handed back after its own focus handler (STAB-1)', () => {
+  // GSX Remote: "Search parking..." asks the server, which answers; the page then focuses its search box,
+  // and the box's focus listener masks the sim's keyboard (its blur listener unmasks).
+  const p = page('<button id="go">Search parking...</button><input id="q" type="text" placeholder="Search parking...">');
+  const { document } = p;
+  const q = document.getElementById('q');
+  const log = [];
+  q.addEventListener('focus', () => log.push('mask'));
+  q.addEventListener('blur', () => log.push('unmask'));
+  document.getElementById('go').onclick = () => {};
+  const els = scraped(p.A);
+  p.A.clickElement(els.find(e => e.text === 'Search parking...').idx);
+  log.length = 0;
+  q.focus();                                   // later, from the server's answer
+  assert.deepStrictEqual(log, ['mask', 'unmask'], 'masked by the page, then handed back');
+  assert.notStrictEqual(document.activeElement, q);
+});
+
+test('a box the pilot focuses with the mouse, or long after a press, is left alone', () => {
+  const p = page('<button id="go">Go</button><input id="q" type="text">');
+  const { window, document } = p;
+  const q = document.getElementById('q');
+  const log = [];
+  q.addEventListener('blur', () => log.push('unmask'));
+  document.getElementById('go').onclick = () => {};
+  const els = scraped(p.A);
+  p.A.clickElement(els.find(e => e.text === 'Go').idx);
+  window.__MSFSBA_USER_POINTER_AT = Date.now(); // what a real (trusted) mouse press on the box records
+  q.focus();
+  assert.deepStrictEqual(log, [], 'a mouse focus stays');
+  q.blur(); log.length = 0;
+  window.__MSFSBA_PRESSED_AT = Date.now() - 60000;
+  window.__MSFSBA_USER_POINTER_AT = 0;
+  q.focus();
+  assert.deepStrictEqual(log, [], 'long after a press: not ours');
+});
+
+test('the reader\'s own mousedown press is never taken for the pilot\'s mouse', () => {
+  const p = page('<div id="go" data-rect="0,0,40,20">Search</div><input id="q" type="text">');
+  const { document } = p;
+  const q = document.getElementById('q');
+  const log = [];
+  q.addEventListener('blur', () => log.push('unmask'));
+  document.getElementById('go').onmousedown = () => {};
+  const els = scraped(p.A);
+  p.A.clickElement(els.find(e => e.text === 'Search').idx);
+  log.length = 0;
+  q.focus();
+  assert.deepStrictEqual(log, ['unmask']);
+});
+
+test('a button over a card, panel or hover card that repeats its words stays a button; ARIA alone makes a dropdown', () => {
+  const hid = el => (el.closest('[hidden]') ? { display: 'none' } : null);
+  const shapes = ['<div class="w"><button>Refuel</button><div hidden=""><div>Refuel</div><div>Requests the fuel truck</div></div></div>',
+                  '<div class="w"><button>KSEA</button><ul hidden=""><li>KSEA</li><li>Seattle-Tacoma Intl</li></ul></div>'];
+  for (const sh of shapes) {
+    const l = lines(scraped(styled(sh, hid).A));
+    assert.ok(!l.some(x => x.indexOf('/select|') === 0), l.join(' / '));
+    assert.ok(l.some(x => x.indexOf('button|') === 0), l.join(' / '));
+  }
+  const aria = lines(scraped(styled('<div class="f"><span class="lbl">Units</span><div class="w"><button aria-expanded="false">KG</button>' +
+    '<div class="opts" hidden=""><div>KG</div><div>LBS</div></div></div></div>', hid).A));
+  assert.ok(aria.some(x => /^\/select\|.*=KG$/.test(x)), aria.join(' / '));
+});
+
+test('an open dropdown is not pressed shut before its choice is pressed', () => {
+  const p = styled('<div class="f"><div class="set-label">Mode</div><div class="set-ctrl"><div class="set-dropdown">' +
+    '<button class="dd-btn" type="button"><span class="dd-label">Yes</span></button>' +
+    '<div class="dd-list"><div class="dd-opt">No</div><div class="dd-opt is-sel">Yes</div></div></div></div></div>', () => null);
+  const did = [];
+  p.document.querySelector('.dd-btn').addEventListener('click', () => did.push('toggle'));
+  p.document.querySelectorAll('.dd-opt').forEach(o => o.addEventListener('click', () => did.push('pick:' + o.textContent)));
+  const dd = scraped(p.A).find(e => e.controlType === 'select');
+  assert.equal(p.A.setValue(dd.idx, 'No'), true);
+  assert.deepStrictEqual(did, ['pick:No']);
+});
+
+test('a block of text a field took as its name is still read; a field\'s own row words name it once', () => {
+  const t = lines(scraped(page('<div class="log"><div data-rect="0,0,90,20">Tower: cleared to land 16L</div><div data-rect="20,0,90,40">You: cleared to land</div>' +
+    '<div data-rect="40,0,90,60">Tower: wind 160 at 8</div></div><input type="text" placeholder="Message ATC...">').A));
+  for (const w of ['static|Tower: cleared to land 16L', 'static|You: cleared to land', 'static|Tower: wind 160 at 8']) assert.ok(t.includes(w), t.join(' / '));
+  const r = styled('<div class="r">Automated reposition <div class="set-dropdown"><button class="dd-btn" type="button">Yes</button>' +
+    '<div class="dd-list" hidden=""><div class="dd-opt">No</div><div class="dd-opt is-sel">Yes</div></div></div></div>',
+    el => (el.closest('[hidden]') ? { display: 'none' } : null));
+  const rl = lines(scraped(r.A));
+  assert.ok(rl.includes('/select|Automated reposition=Yes'), rl.join(' / '));
+  assert.ok(!rl.includes('static|Automated reposition'), rl.join(' / '));
+});
+
+test('an inline word joins the words around it with the page\'s own spacing', () => {
+  const inl = el => (el.tagName === 'B' || el.tagName === 'SPAN' ? 'inline' : el.tagName === 'I' ? 'inline-block' : 'block');
+  const l = lines(scraped(page('<div class="a">Fly to <b>Lon</b>don <button>Go</button></div><div class="b">Price <span>$</span>1200 <button>Buy</button></div>' +
+    '<div class="c">750 <i>FH</i> left <button>Log</button></div><div class="d">Total<i>1200</i>kg <button>Edit</button></div>', { display: inl }).A));
+  for (const w of ['static|Fly to London', 'static|Price $1200', 'static|750 FH left', 'static|Total 1200 kg']) assert.ok(l.includes(w), l.join(' / '));
+});
+
+test('a label around its field keeps its read-out; a full stop after a line of text ends that line', () => {
+  const l = lines(scraped(page('<label>Volume <input type="range" min="0" max="100" value="80"><b data-rect="0,60,90,20">80%</b></label>').A));
+  assert.ok(l.includes('static|80%'), l.join(' / '));
+  const f = lines(scraped(page('<div class="n">See <div data-rect="20,0,90,40">the notes</div>.<button>Go</button></div>').A));
+  assert.ok(f.includes('static|the notes.'), f.join(' / '));
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));

@@ -1086,8 +1086,12 @@
       if (t.toLowerCase() === shown) match = i;
       opts.push(o); texts.push(t);
     }
-    // A lone choice ("Auto: no receipt printer found") only when the page marks it chosen.
-    if (match < 0 || (opts.length === 1 && !A.markedChosen(opts[0]))) return null;
+    // Only with evidence that it is a dropdown: its ARIA says so, or the page marks a choice chosen
+    // (GSX's is-sel; any one, as the mark may lag the button). A button over a card or panel that
+    // repeats its words (a hover card, an accordion, a tab) stays a button.
+    var chosen = A.attr(btn, 'aria-haspopup') !== null || A.attr(btn, 'aria-expanded') !== null || A.attr(list, 'role') === 'listbox';
+    for (var c2 = 0; !chosen && c2 < opts.length; c2++) if (A.markedChosen(opts[c2])) chosen = true;
+    if (match < 0 || !chosen || (opts.length === 1 && !A.markedChosen(opts[0]))) return null;
     return { btn: btn, list: list, opts: opts, texts: texts, value: texts[match] };
   };
   A.block('custom-select',
@@ -1436,7 +1440,23 @@
       if (c[k].indexOf('__') >= 0 || !/(^|[-_])(bg|backdrop|modal|dialog|scrim|dim)[-_]?overlay$|(^|[-_])(backdrop|scrim)$/.test(c[k])) continue;
       return A.coversView(el) && !!el.querySelector('button, input, select, textarea, [role="button"]');
     }
+    // An app's own page over its page (GSX's settings: "settings-overlay", fixed, opaque, z-index 70):
+    // fixed in place, its own background hiding what is under it; never a see-through layer of
+    // controls over a map (the Flight Planner's "map-overlay").
+    for (var m = 0; m < c.length; m++) {
+      if (c[m].indexOf('__') >= 0 || !/(^|[-_])overlay$/.test(c[m])) continue;
+      var st = A.styleOf(el);
+      return !!st && st.position === 'fixed' && A.opaque(st.backgroundColor) && A.coversView(el) &&
+             !!el.querySelector('button, input, select, textarea, [role="button"]');
+    }
     return false;
+  };
+  // A background that hides what is under it: a colour at least half opaque.
+  A.opaque = function (color) {
+    var m = /^rgba?\(([^)]*)\)$/.exec(A.norm(color || ''));
+    if (!m) return false;
+    var p = m[1].split(',');
+    return p.length < 4 || parseFloat(p[3]) >= 0.5;
   };
   A.coversView = function (el) {
     var v = A._view, r = el.getBoundingClientRect(), vr = v ? v.getBoundingClientRect() : null;
@@ -1541,14 +1561,18 @@
         }
       }
       // Else the row's own words before the control ("Default" in <div>Default <button>LOAD</button></div>).
-      var mine = '';
+      var mine = '', after = '', past = false;
       for (var c0 = 0; c0 < anc.childNodes.length; c0++) {
         var cn0 = anc.childNodes[c0];
-        if (cn0.nodeType === 1 && (cn0 === b || cn0.contains(b))) break;
-        if (cn0.nodeType === 3) mine += cn0.nodeValue + ' ';
+        if (cn0.nodeType === 1 && (cn0 === b || cn0.contains(b))) { past = true; continue; }
+        if (cn0.nodeType === 3) { if (past) after += cn0.nodeValue; else mine += cn0.nodeValue + ' '; }
       }
       mine = A.norm(mine);
-      if (mine && mine !== skip && A.isNameText(mine)) return mine;
+      if (mine && mine !== skip && A.isNameText(mine)) {
+        // A field's own row names it whole: its words go with the field, unless more follow it.
+        if (claim && up < 2 && !A.norm(after)) A.claim(anc);
+        return mine;
+      }
     }
     return '';
   };
@@ -1828,7 +1852,11 @@
           walk(ch);
           if (sink.length === mark) continue;
           var out = sink.splice(mark, sink.length - mark), cst = A.styleOf(ch);
-          if (out.length === 1 && out[0].kind === 'static' && cst && /^inline/.test(cst.display || '')) { run += ' ' + out[0].text + ' '; continue; }
+          if (out.length === 1 && out[0].kind === 'static' && cst && /^inline/.test(cst.display || '')) {
+            var sp = cst.display === 'inline' ? '' : ' ';    // an inline run keeps the page's own spacing ("Lon" + "don", "$" + "1200")
+            run += sp + out[0].text + sp;
+            continue;
+          }
           flush();
           for (var oq = 0; oq < out.length; oq++) sink.push(out[oq]);
         }
@@ -1861,10 +1889,11 @@
     // A caption is claimed by its field only when the field is reached, after the walk has already
     // read the caption (it comes first on the page). Drop those lines now; the field carries them.
     // A line inside a caption that holds no control ("Cruise", then "level (FL)" a row below it) goes
-    // with it; one inside a label around its field (a value read-out) stays.
+    // with it; one inside a label around its field (a value read-out) stays, and so does a block of
+    // text a field took as its name (a transcript before "Message ATC"), which is no caption.
     var inCaption = function (n) {
       for (var p = n.parentElement, up = 0; p && up < 6; p = p.parentElement, up++) {
-        if (A.isClaimed(p)) return !p.querySelector('input, select, textarea, button');
+        if (A.isClaimed(p)) return !p.querySelector('input, select, textarea, button') && A.lineText(p).length <= A.ROW_LINE_MAX && A.rows(p).length <= 2;
       }
       return false;
     };
@@ -2105,24 +2134,32 @@
     for (var i = 0; i < marked.length; i++) add(marked[i], true);
     return out;
   };
+  A.releaseBox = function (a) {
+    try { a.blur(); } catch (e0) {}
+    var ev;
+    try { ev = new InputEvent('focusout'); } catch (e) { ev = document.createEvent('Event'); ev.initEvent('focusout', true, true); }
+    a.dispatchEvent(ev);
+  };
   A.releaseKeyboard = function () {
     function release() {
       try {
         var boxes = A.focusedBoxes();
         window.__MSFSBA_LAST_FOCUS = null;
-        for (var i = 0; i < boxes.length; i++) {
-          var a = boxes[i];
-          try { a.blur(); } catch (e0) {}
-          var ev;
-          try { ev = new InputEvent('focusout'); } catch (e) { ev = document.createEvent('Event'); ev.initEvent('focusout', true, true); }
-          a.dispatchEvent(ev);
-        }
+        for (var i = 0; i < boxes.length; i++) A.releaseBox(boxes[i]);
       } catch (e2) {}
     }
     release();
     setTimeout(release, 0);
     setTimeout(release, 150);
     setTimeout(release, 400);
+  };
+
+  // A focus within A.LATE_FOCUS_MS of the reader's last press or set in this document, with no real
+  // pointer press of the pilot's in the second before it, is the page's own (STAB-1).
+  A.LATE_FOCUS_MS = 5000;
+  A.lateFocus = function (now) {
+    var at = window.__MSFSBA_PRESSED_AT, user = window.__MSFSBA_USER_POINTER_AT;
+    return !!at && now - at >= 0 && now - at < A.LATE_FOCUS_MS && !(user && now - user < 1000);
   };
 
   A.mouse = function (target, type, x, y) {
@@ -2152,6 +2189,7 @@
   };
   A.press = function (el) {
     window.__MSFSBA_LAST_FOCUS = null;            // only a focus this press brings is released after it
+    window.__MSFSBA_PRESSED_AT = Date.now();      // and one the page takes by itself soon after (A.lateFocus)
     var h = A.handlerOf(el);
     if (!h || h === 'click' || A.hasDefaultClick(el)) el.click();
     else if (h === 'touchstart') {
@@ -2351,6 +2389,7 @@
   };
   A.setValueNow = function (idx, text) {
     window.__MSFSBA_LAST_FOCUS = null;
+    window.__MSFSBA_PRESSED_AT = Date.now();
     var el = A.find(idx);
     if (!el || A.isDisabled(el) || el.readOnly === true) return false;
     var want = String(text == null ? '' : text);
@@ -2362,7 +2401,7 @@
           if (cs.texts[ci].toLowerCase() !== A.norm(want).toLowerCase()) continue;
           if (A.isDisabled(cs.opts[ci])) return false;
           if (cs.texts[ci] === cs.value) return true;          // already the choice: nothing pressed
-          A.press(cs.btn);                                    // open it, as a pilot does
+          if (A.isHidden(cs.list)) A.press(cs.btn);           // open it, as a pilot does (a press on an open one closes it)
           A.press(cs.opts[ci]);
           return true;
         }
@@ -2677,6 +2716,13 @@
       try { document.removeEventListener('change', oldH.change, true); } catch (eh1) {}
       try { document.removeEventListener('input', oldH.input, true); } catch (eh2) {}
       try { if (oldH.focus) document.removeEventListener('focus', oldH.focus, true); } catch (eh3) {}
+      try {
+        if (oldH.pointer) {
+          document.removeEventListener('mousedown', oldH.pointer, true);
+          document.removeEventListener('pointerdown', oldH.pointer, true);
+          document.removeEventListener('touchstart', oldH.pointer, true);
+        }
+      } catch (eh4) {}
     }
   } catch (e) {}
 
@@ -2696,13 +2742,30 @@
   try {
     document.addEventListener('change', A._markDirty, true);
     document.addEventListener('input', A._markDirty, true);
-    // Each box that takes focus, for A.releaseKeyboard (STAB-1); it only records.
+    // Each box that takes focus, for A.releaseKeyboard (STAB-1), and one the page focuses by itself
+    // soon after a press, late, once its server has answered (GSX Remote's "Search parking...": its
+    // box's focus listener sends FOCUS_INPUT_FIELD through its host): handed back right after the
+    // page's own focus listeners ran (a listener added to the box now runs after them), so the box's
+    // own blur path sends the release. Never a box the pilot clicked: a real (trusted) mouse, pointer
+    // or touch press in the last second leaves it focused.
     var onFocus = function (ev) {
       var t = ev && ev.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) window.__MSFSBA_LAST_FOCUS = t;
+      if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
+      window.__MSFSBA_LAST_FOCUS = t;
+      if (!A.lateFocus(Date.now())) return;
+      var once = function () {
+        t.removeEventListener('focus', once, false);
+        if (window.__MSFSBA_LAST_FOCUS === t) window.__MSFSBA_LAST_FOCUS = null;    // handed back once, here
+        A.releaseBox(t);
+      };
+      t.addEventListener('focus', once, false);
     };
+    var onPointer = function (ev) { if (ev && ev.isTrusted) window.__MSFSBA_USER_POINTER_AT = Date.now(); };
     document.addEventListener('focus', onFocus, true);
-    window.__MSFSBA_SIM_TABLET_HANDLERS = { change: A._markDirty, input: A._markDirty, focus: onFocus };
+    document.addEventListener('mousedown', onPointer, true);
+    document.addEventListener('pointerdown', onPointer, true);
+    document.addEventListener('touchstart', onPointer, true);
+    window.__MSFSBA_SIM_TABLET_HANDLERS = { change: A._markDirty, input: A._markDirty, focus: onFocus, pointer: onPointer };
   } catch (e) {}
 
   window.__MSFSBA_SIM_TABLET = A;

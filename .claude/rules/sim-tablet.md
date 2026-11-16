@@ -10,7 +10,7 @@ paths:
 
 Loaded when Claude reads matching code. Background: docs/sim-tablet.md. Full text of each rule: docs/invariants/sim-tablet.md.
 
-- [STAB-1] Never focus a sim tablet text box or send it a mousedown (`coherent-sim-tablet-agent.js`): focus fires `FOCUS_INPUT_FIELD`, which hands the pilot's keyboard to the tablet. Type with `.value` plus an `input` event; `releaseKeyboard` hands back a focus the OS takes by itself after a press. Full: docs/invariants/sim-tablet.md#stab-1
+- [STAB-1] Never focus a sim tablet text box or send it a mousedown (`coherent-sim-tablet-agent.js`): focus fires `FOCUS_INPUT_FIELD`, which hands the pilot's keyboard to the tablet. Type with `.value` plus an `input` event; `releaseKeyboard` hands back a focus a page takes by itself after a press, `A.lateFocus` one within 5 s (GSX's search). Full: docs/invariants/sim-tablet.md#stab-1
 - [STAB-2] A press fires the ONE event the element listens to (`A.press`): `click()` for an onclick control, a lone mousedown for an onmousedown-only one (the Flight Planner's search results); never both, never a pointer sequence. Full: docs/invariants/sim-tablet.md#stab-2
 - [STAB-3] Disabled is the OS's `disabled` ATTRIBUTE (on div list items too, or on a group around the control) or a shown `.disabled-layer`, read by `A.isDisabled`, never `el.disabled` alone; a press on a disabled control is refused (false), never sent. Full: docs/invariants/sim-tablet.md#stab-3
 - [STAB-4] The SimBrief import ACTS by structure (`A.route.*`: the Folder-icon Import menu's item at `ENTER_ROUTE_STRING`, the airport steps in order, runways by designator), never by the English labels, which the OS translates; the reader may READ labels. Full: docs/invariants/sim-tablet.md#stab-4
