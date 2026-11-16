@@ -13,9 +13,10 @@ namespace MSFSBlindAssist.Tests;
 /// <see cref="Bbs757AdiReader.Decode"/> alone.</summary>
 public class Bbs757AdiReaderTests
 {
-    private const ulong Base = 0x20000000;
+    internal const ulong Base = 0x20000000;
     private const int Size = 0x200000;
-    private const uint Pfd = 0x2000, FirstOfficerPfd = 0x3000, Source = 0x4000, Irs = 0x10000, Adc = 0x20000, Ra = 0x30000,
+    internal const uint Pfd = 0x2000;
+    private const uint FirstOfficerPfd = 0x3000, Source = 0x4000, Irs = 0x10000, Adc = 0x20000, Ra = 0x30000,
         Mcp = 0x40000, Afds = 0x50000, Fms = 0x60000;
 
     private const double DegreesPerRadian = 57.2958;
@@ -41,7 +42,7 @@ public class Bbs757AdiReaderTests
     /// not set (INOP), the AFDS timer stopped at 0, the flap speed 201 (not drawn: the timer), the localizer and the
     /// glideslope pinned right and up on the normal scale, radio altitude 10.56 − 16.93, DH 200, the F/D on with the
     /// take-off pitch command, no TCAS advisory, VREF 30 121 and VREF 25 123.</summary>
-    private static byte[] Gate(Action<byte[]>? tweak = null)
+    internal static byte[] Gate(Action<byte[]>? tweak = null)
     {
         var b = new byte[Size];
         // The manager: the Captain's pfd first, the first officer's after it (the same class).
@@ -104,7 +105,7 @@ public class Bbs757AdiReaderTests
 
     /// <summary>The simulator's four values, given in degrees (the simulator's signs: pitch positive nose down, bank
     /// positive left), knots and Mach; a null one is not given at all.</summary>
-    private static Bbs757SimValues Sim(double? pitch = 0.53, double? bank = -0.40, double? groundSpeed = 0, double? mach = 0.004)
+    internal static Bbs757SimValues Sim(double? pitch = 0.53, double? bank = -0.40, double? groundSpeed = 0, double? mach = 0.004)
     {
         var values = new Dictionary<string, double>();
         if (pitch is { } p) values[Bbs757AdiReader.PitchKey] = p / DegreesPerRadian;
