@@ -226,6 +226,7 @@ have no rows above; their files are named in their own Global Constraints.
 | 26 | `26-displays-ehsi-map.md`: the EHSI in MAP and PLAN; Alt+N window; Ctrl+W | 23 |
 | 27 | `27-displays-adi.md` (optional): the rest of the ADI; Alt+P window, the AI read its fallback | 23 |
 | 28 | `28-displays-ehsi-modes-tcas.md`: the EHSI's VOR and ILS modes, TCAS, the map options | 26 |
+| 30 | `30-displays-adi-vnav-target.md`: the ADI's VNAV target speed, from the active route's path object | 27 |
 
 24, 25, 26 and 27 run in parallel once 23 has landed; 28 takes over 26's files once 26 has landed.
 
