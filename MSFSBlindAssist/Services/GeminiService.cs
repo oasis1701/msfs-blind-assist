@@ -234,8 +234,7 @@ public class GeminiService : IAiProvider
         Adi757,        // Attitude Director Indicator, the 757's PFD-equivalent (BlueBird 757-200) — instrument view 1
         Ehsi757,       // Electronic Horizontal Situation Indicator, the map display (BlueBird 757-200) — instrument view 1
         UpperEicas757, // Upper EICAS: engine gauges and crew alert messages (BlueBird 757-200) — instrument view 2
-        LowerEicas757, // Lower EICAS: secondary engine data or a system page (BlueBird 757-200) — instrument view 2
-        Standby757     // Standby attitude, altimeter and airspeed indicators (BlueBird 757-200) — instrument view 2
+        LowerEicas757  // Lower EICAS: secondary engine data or a system page (BlueBird 757-200) — instrument view 2
     }
 
     /// <summary>
@@ -711,16 +710,7 @@ Then report every value and every system state, one per line, left to right and 
 If the screen is blank or off, say so in one line and stop.
 Be extremely concise and direct. Skip descriptions of layouts, diagrams and visual positioning. Skip normal colors (green, white, cyan); only call out amber and red. Give every word and number exactly as the display presents it. Do not expand abbreviations or convert units. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
 
-            DisplayType.Standby757 => @"You are reading the standby instruments of a Boeing 757 for a screen reader user: three small round gauges of their own, the standby attitude indicator, the standby altimeter and the standby airspeed indicator. The image may contain several displays. ONLY describe the standby instruments. Ignore the upper and lower EICAS screens, the MCP, the autobrake selector, the flap gauge, the gear lever, the first officer's airspeed indicator, and everything else in the frame.
-Report, one per line, each only if the standby instrument shows it, and never guess or estimate a value:
-Attitude: pitch and bank only if unusual (otherwise say wings level), and any flag on the standby attitude indicator.
-Altitude: the standby altimeter's altitude and its barometric setting, in the units it shows.
-Airspeed: the standby airspeed indicator's airspeed, in the units it shows.
-Then any warning flags on these three instruments.
-If an instrument is blank, off or flagged, say so in one line for that instrument.
-Skip normal colors; only call out amber and red. Skip descriptions of instrument layout and positioning. Give every word and number exactly as the instrument presents it. Do not expand abbreviations or convert units. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
-
-            _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
+            _ =>"Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
         };
     }
 

@@ -4,10 +4,12 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Aircraft.BBS757;
 
 /// <summary>
-/// The BlueBird 757-200's five AI display reads and the instrument camera view each one needs. The
-/// ADI, the EHSI, both EICAS CRTs and the standby instruments are WASM-rendered gauges with no DOM and no text behind them
+/// The BlueBird 757-200's four AI display reads and the instrument camera view each one needs. The
+/// ADI, the EHSI and both EICAS CRTs are WASM-rendered gauges with no DOM and no text behind them
 /// (docs/b757.md, "Displays read from memory"), so AI vision on a camera capture is the only way to read them
-/// without the aircraft's memory.
+/// without the aircraft's memory. The standby instruments have no read (the owner, 2026-11-17): the EICAS view frames
+/// them too small to read reliably, and every value they show is on a key of its own (S, M, A, B, and the ADI
+/// window or Hand Fly's P and B for the attitude), so output Alt+I does nothing on the 757.
 ///
 /// The view indices are 0-based into the aircraft's cameras.cfg instrument cameras, so the sim's
 /// own "instrument view 1" is index 0 and its "instrument view 2" is index 1. Measured on the live
@@ -24,8 +26,7 @@ namespace MSFSBlindAssist.Aircraft.BBS757;
 /// <c>BaseAircraftDefinition.TryReadDisplayFor</c>, shared with every other aircraft that reads
 /// displays this way. The hotkey actions keep the Airbus-derived names the rest of the app uses:
 /// Alt+P (<see cref="HotkeyAction.ReadDisplayPFD"/>) reads the ADI, the 757's PFD-equivalent;
-/// Alt+N the EHSI; Alt+E the upper EICAS; Alt+S the lower EICAS; Alt+I
-/// (<see cref="HotkeyAction.ReadDisplayISIS"/>, the PMDG 737's ISFD key) the standby instruments.
+/// Alt+N the EHSI; Alt+E the upper EICAS; Alt+S the lower EICAS.
 /// </summary>
 internal static class Bbs757DisplayReads
 {
@@ -41,6 +42,5 @@ internal static class Bbs757DisplayReads
         new AiDisplayRead(HotkeyAction.ReadDisplayND, GeminiService.DisplayType.Ehsi757, "EHSI", AdiEhsiView),
         new AiDisplayRead(HotkeyAction.ReadDisplayUpperECAM, GeminiService.DisplayType.UpperEicas757, "Upper EICAS", EicasView),
         new AiDisplayRead(HotkeyAction.ReadDisplayLowerECAM, GeminiService.DisplayType.LowerEicas757, "Lower EICAS", EicasView),
-        new AiDisplayRead(HotkeyAction.ReadDisplayISIS, GeminiService.DisplayType.Standby757, "Standby instruments", EicasView),
     };
 }

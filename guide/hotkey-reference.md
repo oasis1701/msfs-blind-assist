@@ -519,7 +519,6 @@ Full explanations: [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-bb
 - **Output Alt+N** — Open the EHSI window: the Captain's map display as a list, with Mode, Range, CTR, TFC and the map options. AI read when BA cannot read it.
 - **Output Ctrl+W** — The active waypoint as the EHSI shows it: name, distance and time.
 - **Output Alt+P** — Open the ADI window: the flight mode annunciator, then the Captain's ADI as a list (the speed tape, the attitude and flight director, the glideslope, the radio altitude and minimums, the localizer), with its flags spoken as they appear and go. AI read when BA cannot read it.
-- **Output Alt+I** — Read the standby instruments (AI).
 - **Output Shift+C** — Open the 757's First Officer.
 - **Output Ctrl+M** — Open the 757 Monitor Manager.
 

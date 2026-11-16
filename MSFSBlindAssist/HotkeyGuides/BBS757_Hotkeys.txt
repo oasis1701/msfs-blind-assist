@@ -317,7 +317,6 @@ Displays (no AI key needed):
   (below).
 
 AI Display Reading (needs an AI provider configured in Settings > AI tab):
-  Alt+I      Describe the standby instruments
   Alt+D      Describe outside scene
   Alt+P, Alt+E, Alt+S and Alt+N describe their display this way only when
   it cannot be read from the aircraft. Alt+P's AI read describes the ADI

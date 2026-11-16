@@ -7,7 +7,7 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// The BlueBird 757-200's five AI display reads: which hotkey reads which display, which
+/// The BlueBird 757-200's four AI display reads (Alt+I, the standby instruments, has none): which hotkey reads which display, which
 /// instrument camera view frames it, and the prompts that tell the AI which display of a busy frame
 /// to describe. Index 0 was measured as framing the captain's EHSI (a 2026-10-25 window capture;
 /// docs/b757.md, "AI display reads"); that the ADI is legible in it is to be confirmed in the
@@ -23,17 +23,19 @@ public class Bbs757DisplayReadsTests
     // ---- The table ----
 
     [Fact]
-    public void FiveReads_OnePerDisplayKey()
+    public void FourReads_OnePerDisplayKey()
     {
         var actions = Bbs757DisplayReads.All.Select(r => r.Action).ToArray();
 
-        Assert.Equal(5, actions.Length);
+        Assert.Equal(4, actions.Length);
         Assert.Equal(actions.Length, actions.Distinct().Count());
         Assert.Contains(HotkeyAction.ReadDisplayPFD, actions);
         Assert.Contains(HotkeyAction.ReadDisplayND, actions);
         Assert.Contains(HotkeyAction.ReadDisplayUpperECAM, actions);
         Assert.Contains(HotkeyAction.ReadDisplayLowerECAM, actions);
-        Assert.Contains(HotkeyAction.ReadDisplayISIS, actions);
+        // The standby instruments have no read (the owner, 2026-11-17): the EICAS view frames them too small to read
+        // reliably, and every value they show is on a key of its own.
+        Assert.DoesNotContain(HotkeyAction.ReadDisplayISIS, actions);
     }
 
     [Theory]
@@ -41,7 +43,6 @@ public class Bbs757DisplayReadsTests
     [InlineData(HotkeyAction.ReadDisplayND, GeminiService.DisplayType.Ehsi757, "EHSI", 0)]
     [InlineData(HotkeyAction.ReadDisplayUpperECAM, GeminiService.DisplayType.UpperEicas757, "Upper EICAS", 1)]
     [InlineData(HotkeyAction.ReadDisplayLowerECAM, GeminiService.DisplayType.LowerEicas757, "Lower EICAS", 1)]
-    [InlineData(HotkeyAction.ReadDisplayISIS, GeminiService.DisplayType.Standby757, "Standby instruments", 1)]
     public void EachRead_HasItsPromptNameAndView(HotkeyAction action, GeminiService.DisplayType type, string name, int view)
     {
         Assert.True(AiDisplayRead.TryGet(Bbs757DisplayReads.All, action, out var read));
@@ -77,7 +78,6 @@ public class Bbs757DisplayReadsTests
     [InlineData(GeminiService.DisplayType.Ehsi757, "EHSI")]
     [InlineData(GeminiService.DisplayType.UpperEicas757, "upper EICAS")]
     [InlineData(GeminiService.DisplayType.LowerEicas757, "lower EICAS")]
-    [InlineData(GeminiService.DisplayType.Standby757, "standby instruments")]
     public void EachPrompt_NamesTheAircraftAndItsDisplay_AndSaysToIgnoreTheRest(GeminiService.DisplayType type, string display)
     {
         string prompt = GeminiService.GetPromptForDisplay(type);
@@ -95,7 +95,6 @@ public class Bbs757DisplayReadsTests
     [InlineData(GeminiService.DisplayType.Ehsi757)]
     [InlineData(GeminiService.DisplayType.UpperEicas757)]
     [InlineData(GeminiService.DisplayType.LowerEicas757)]
-    [InlineData(GeminiService.DisplayType.Standby757)]
     public void EachPrompt_KeepsTheCockpitsOwnWordsAndUnits(GeminiService.DisplayType type)
     {
         string prompt = GeminiService.GetPromptForDisplay(type);
@@ -109,7 +108,6 @@ public class Bbs757DisplayReadsTests
     [InlineData(GeminiService.DisplayType.Ehsi757)]
     [InlineData(GeminiService.DisplayType.UpperEicas757)]
     [InlineData(GeminiService.DisplayType.LowerEicas757)]
-    [InlineData(GeminiService.DisplayType.Standby757)]
     public void EachPrompt_IsWrittenInUsEnglish(GeminiService.DisplayType type)
     {
         string prompt = GeminiService.GetPromptForDisplay(type);
@@ -120,31 +118,15 @@ public class Bbs757DisplayReadsTests
     }
 
     [Fact]
-    public void TheFivePrompts_AreDistinct()
+    public void TheFourPrompts_AreDistinct()
     {
         var prompts = new[]
         {
             GeminiService.DisplayType.Adi757, GeminiService.DisplayType.Ehsi757,
             GeminiService.DisplayType.UpperEicas757, GeminiService.DisplayType.LowerEicas757,
-            GeminiService.DisplayType.Standby757,
         }.Select(GeminiService.GetPromptForDisplay).ToArray();
 
-        Assert.Equal(5, prompts.Distinct().Count());
-    }
-
-    [Fact]
-    public void TheStandbyPrompt_NamesTheThreeInstruments_AndIgnoresTheEicasAndTheMcp()
-    {
-        // The EICAS view frames the standby instruments beside both EICAS CRTs and the MCP (measured).
-        string prompt = GeminiService.GetPromptForDisplay(GeminiService.DisplayType.Standby757);
-
-        Assert.Contains("standby attitude indicator", prompt);
-        Assert.Contains("standby altimeter", prompt);
-        Assert.Contains("standby airspeed indicator", prompt);
-        Assert.Contains("barometric setting", prompt);
-        Assert.Contains("in the units it shows", prompt);
-        Assert.Contains("Ignore the upper and lower EICAS screens, the MCP", prompt);
-        Assert.Contains("never guess or estimate a value", prompt);
+        Assert.Equal(4, prompts.Distinct().Count());
     }
 
     [Fact]
