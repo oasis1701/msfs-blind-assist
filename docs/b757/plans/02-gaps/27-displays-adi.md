@@ -100,22 +100,40 @@
   - **MSFSBlindAssist/Aircraft/BBS757Definition.cs:** the `DisplayReads` doc comment (no code).
 - **Still for plan 16:**
   - The changelog fragment (above).
-  - **docs/wasm-memory.md** still lists the `bbs757` module's readers without `adi` (its module table) and has no ADI rows in its 757 parts, files, logs and tests lists: outside this plan's docs files.
+  - ~~docs/wasm-memory.md~~: done by the controller after the docs commit (the module table, the 757 section's reader list, rules and the `adi` record row; 8791a5a10).
   - The guide's ADI part states what flight shows from BlueBird's draw code, not yet seen drawn (the rising runway, ALT, a TCAS advisory, the LOC and G/S flags, V1 and VR until two minutes after lift-off, the `F` bug from 10 s): correct it if the owner's in-sim checks differ. "Left: V1 INOP" is described as shown before the takeoff speeds are set, as measured at the gate; what the fms's INOP byte means was not traced.
   - The AI fallback's camera view: that the ADI is legible in instrument view index 0 is still unconfirmed (docs/b757.md, "AI display reads").
   - A tester's copy of this build reads no 757 display, the tablet included, until it has the generator-9 layout file.
-  - B757-9's full text (`docs/invariants/b757-readouts.md`) says the FMC refuses a weight below 140,000 or above 250,000 lb; the evidence reads the FMC's own table as 134,000 to 251,000 lb (APPROACH REF refused 120, 130 and 255). docs/b757.md now gives both; the rule's text is for its owner to settle.
+  - ~~B757-9's weight range~~: settled by the controller (8791a5a10): APPROACH REF refused 120, 130 and 255; the FMC computes from 134,000 to 251,000 lb.
 
 ## Execution record
 
-- **Status:** claimed (the owner chose to build it, 2026-11-16: "let's build it so we can get to full display coverage")
+- **Status:** built, reviewed and checked live on the ground (2026-11-16), local on `B757-p27-adi`; waiting on the owner's word to push to `B757`, publish the generator-9 layout and push the private branch, and on the in-sim checks above by ear
 - **Claimed by:** Robin Kipp (robin24), 2026-11-16
-- **Worked by:** Robin Kipp with Claude
+- **Worked by:** Robin Kipp with Claude (the controller measured, ruled and reviewed; one implementer each for the layout record, the private recipe, the reader with its window and the flap speed keys, and the docs; one fresh whole-plan reviewer)
 - **Started:** 2026-11-16, from `B757` at 76185cd85
-- **Landed:**
-- **Tests at landing:**
+- **Landed:** (date; the last commit of this plan on `B757`)
+- **Tests at landing:** the full suite 25,237 passed, 0 failed (e05eb8a50); the toolkit's 742 passed at generator version 9 (private `feature/b757-displays` at e3411dfd9, local)
 - **Tasks:**
-- **Waiting on the owner:**
-- **In-sim results:**
+  - Task 0, the claim: 22d77ee87 (pushed).
+  - Task 1, measured: f0fc7fdb2, 0cff69fb2 (`docs/b757/evidence/displays-adi.md`).
+  - Task 2, the layout record: 5fa46651e (seven parts: the six of the evidence plus the reference speeds).
+  - Task 3, the recipe (private, local): merge f3c85faae, 1cace3980, generator version 9 e3411dfd9. The generated file `…-b7711b092e7ce90c.json` (44,732 bytes) matches every one of the evidence's 95 fields; the other five readers come out byte-identical to the generator-8 file.
+  - Task 4, the sampler: 62fe92ca6. Task 5, rows and words: eb6067b47. Task 6, the window, Alt+P and Ctrl+M: dda44ae02. The owner's addition, Shift+1 to Shift+6 from the FMC's VREF: 7169197e8.
+  - The controller's review of those: 371dc6485 (no ALT beside the RA flag; Alt+P leaves output mode as Alt+E and Alt+N do).
+  - Task 7, rules and docs: 6fc75e380 (B757-64 to -66 in the new `b757-adi.md`, B757-9 rewritten), d0e11e691 (docs/b757.md, the hotkey guide, the pilot's guide), 8791a5a10 (docs/wasm-memory.md, B757-9's weight range).
+  - Task 8: the whole-plan review and its fixes, e05eb8a50; the live check below. Deploy and publish wait on the owner.
+- **Waiting on the owner:** the word to push `B757-p27-adi` to `B757`, to publish the generator-9 layout file (`toolkit/scripts/publish-layouts.ps1 -Source` that file only) and to push the private `feature/b757-displays`; then the deploy to `C:\MSFSBA-B757` with the layout installed; the three in-sim checks above, by ear, on a flight.
+- **In-sim results:** 2026-11-16, at a KSEA gate, read-only through the app's own reader code with the generated layout (an untracked dump test, never committed): with the IRS aligned and the ILS on 110.30 the rows matched the capture item for item ("Left: airspeed 30", "Left: target speed 200", "Left: V1 INOP", "Left: ground speed 0", "Center: pitch 0.5 down, wings level", "Center: flight director, pitch bar 8.5 above, roll bar centered", "Right: glideslope, pointer at full scale, up", "Right: DH 200", "Right: radio altitude -6", "Bottom: localizer, pointer at full scale, right"); with the left IRS switched OFF, "Center: ATT flag" with the ground speed, flight director and DH gone, as the capture showed; the ILS self-test set the LOC and G/S flag bytes for its first 2.5 s, then the amber scales swept (memory, not the app's speech). Shift+1 to Shift+6 from the FMC: ZFW 150.0 on PERF INIT gave "VREF 30 121 knots, VREF 25 123 knots" and Flaps up 201, 1 181, 5 161, 15 141, 20 141. The simulator was ended at the owner's request afterwards.
 - **Changed from the plan:**
+  - The ADI draws a speed tape (airspeed, target speed, V1/VR and `F` bugs, Mach, ground speed), which the plan did not know; it is read as a part of its own.
+  - The owner added, 2026-11-16, "Please also move Shift+1 to 6 onto the FMC's VREF": a seventh part (`ReferenceSpeeds`), `Bbs757DisplayMonitor.Newest` (a read-only member on a frozen file, the one way to hand out a reading while the display is dark) and `Bbs757FlapSpeeds.DescribeFromFmc`; B757-9 rewritten.
+  - Task 6's test list gained `Alt_P_exits_output_hotkey_mode_before_showing_the_window`.
+- **Rulings made while working** (the controller's; the owner may reverse any):
+  - The plan's "Never BlueBird's aurals" made concrete as B757-65: only the five flags are spoken.
+  - Left unread on purpose: the VNAV target speed (its lookup not traced, not testable on the ground), the speed limit bands and trend arrow, the deviation and DH alerts, the pitch limit indicator (its sign unmeasured).
+  - From the review: only a value some row shows in that state is judged `Corrupt`; the V1, VR and `F` bugs are listed only on the tape's visible part (25862 clips them, about 41 kt either side); the rising runway takes the localizer pointer's place and carries its deviation ("Center: rising runway, 0.3 dots right", "Bottom: localizer scale, expanded").
 - **Open at landing:**
+  - Unseen in flight (from BlueBird's code only): the TCAS pitch limits' sign, the AFDS timer running after lift-off, the radio altitude above 2,500 ft, the MCP speed field in Mach mode, "V1 INOP" after take-off, the rising runway, ALT.
+  - The LOC and G/S flags are spoken by both the EHSI ("EHSI flag") and the ADI ("ADI flag") for one receiver event, as each display draws them; each has its own Ctrl+M row. The owner's call whether one should be quiet.
+  - The private recipe: 14 `partial class` declaration lines in the EHSI recipe were rewritten by a script before the rules hook refused shell writes (each file read first); the private repo's CLAUDE.md is over its 25,000-character budget there (25,533, already 25,310 before this plan).
