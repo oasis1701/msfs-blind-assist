@@ -82,7 +82,7 @@ Kept in this file only, so no other plan's push ever touches it. Task 0 claims t
 - **Tests at this push:** build green; the full suite 25,048 passed, 0 failed (2026-11-14, with `main` at 401cf51c0 merged in)
 - **Waiting on the owner:**
   - The go-ahead for Task 6's pull request.
-  - Plan 27 (the ADI): build it or close it.
+  - ~~Plan 27 (the ADI): build it or close it~~: built, and closed at the owner's word on 2026-11-16 (plan 27's record). Its changelog line is still this plan's to write, in Task 6.
   - The fire handle: plan 12's handoff records the owner's decision of 2026-10-26 that picking Pulled on a locked handle presses Unlock first. It was never built (the code relocks 1.5 s after an Unlock press, B757-13). Build it, or leave the two-step pull.
 - **In-sim results:** Task 5's four scenarios passed: the owner, 2026-11-14 ("every one of the in-sim checks are already completed"). The checks of the code requests applied in Task 1 and of the review's fixes passed: the owner, 2026-11-15 ("All tested and working as expected"): a CDU message heard before the first Shift+M; a PW aircraft's first Overhead list without "Electronic engine control (RR)"; after a flight load, nothing narrated, and the parking brake's release heard once the cockpit is still; after connecting, the first change heard; D pressed while Ctrl+N fills. The same day he said plan 02's airborne gear check and the app's words for its picks, and plan 07's check 3, had been run earlier and passed (their records say so now).
 - **Changed from the plan:**
