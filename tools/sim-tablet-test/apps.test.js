@@ -1432,6 +1432,12 @@ test('date and time parts are named only when they make one date or one time; si
   b.removeAttribute('title');
   b.querySelector('icon-element').setAttribute('icon-url', 'coui://x/Play.svg');
   assert.ok(!lines(scraped(t.A)).includes('button|Pause'), 'its icon changed: the old name went with it');
+  const x = page('<button id="s" title="Search" data-rect="0,0,30,20"><icon-element icon-url="coui://x/Search.svg"><svg data-icon="search"></svg></icon-element></button>');
+  const sb = x.document.getElementById('s');
+  assert.ok(lines(scraped(x.A)).includes('button|Search'));
+  sb.removeAttribute('title');
+  sb.querySelector('icon-element').innerHTML = '<svg data-icon="close"></svg>';
+  assert.ok(!lines(scraped(x.A)).includes('button|Search'), 'a close X is another action, never the old name');
   const h = page('<div class="c"><h3 data-rect="0,0,90,20">Need help?</h3><p data-rect="20,0,90,40">Contact support from the menu.</p></div>');
   const hl = lines(scraped(h.A));
   assert.ok(hl.includes('heading|Need help?'), hl.join(' / '));

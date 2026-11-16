@@ -492,7 +492,7 @@
 
   // Which picture a button shows, by its drawing's name and its file: a toggle that swaps it (Pause to
   // Play) shows another.
-  A.STATE_GLYPH = /arrow|chevron|caret|close|cross/i;
+  A.STATE_GLYPH = /arrow|chevron/i;           // an X or a caret is another action (Search to close, Pause to play)
   A.iconKey = function (el) {
     var ie = el.querySelector('icon-element'), im = el.querySelector('img');
     return A.iconName(el) + '|' + (ie ? ie.getAttribute('icon-url') || '' : '') + '|' + (im ? im.getAttribute('src') || '' : '');
@@ -564,7 +564,7 @@
     if (n) return n;
     // A button whose tooltip went away (the Flight Planner's Display size while its picker is open)
     // keeps the name it had, never its icon's file name ("Tailless Line Arrow Right 1").
-    // Kept while it shows the same picture, or an arrow, chevron or close glyph (the same control open or
+    // Kept while it shows the same picture, or an arrow or chevron (the same control open or
     // closed: Display size shows an arrow while its picker is open); another picture (Pause to Play) is
     // another action, which drops it.
     if (el.__msfsbaName && (el.__msfsbaName.icon === A.iconKey(el) || A.STATE_GLYPH.test(A.iconName(el)))) return el.__msfsbaName.n;
