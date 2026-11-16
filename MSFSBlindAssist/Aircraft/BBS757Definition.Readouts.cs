@@ -658,7 +658,8 @@ public partial class BBS757Definition
 
     /// <summary>
     /// Plan 06's output-mode keys: Shift+1 to Shift+5 the flap maneuver speeds, Shift+6 VREF 30 and 25, from
-    /// the gross weight read fresh (<see cref="Bbs757FlapSpeeds"/>); D and Shift+D the destination and the top
+    /// the FMC's own VREF while the ADI reader has it (<see cref="FlapSpeedsFromFmc"/>, plan 27), else from the gross
+    /// weight read fresh (<see cref="Bbs757FlapSpeeds"/>); D and Shift+D the destination and the top
     /// of climb or descent from the first officer's PROG page 1 (<see cref="Bbs757Prog"/>).
     /// </summary>
     partial void HandleReadoutHotkey(HotkeyAction action, SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
@@ -672,8 +673,12 @@ public partial class BBS757Definition
         }
         int index = FlapSpeedIndex(action);
         if (index < 0) return;
-        _ = FlapManeuverSpeeds.AnnounceAsync(simConnect, announcer, R.TotalWeightKey, "BBS757",
-            lbs => Bbs757FlapSpeeds.Describe(lbs, index));
+        // The FMC's own VREF while the ADI reader has it (plan 27); else the measured table by the weight read fresh.
+        if (FlapSpeedsFromFmc(index) is { } fromFmc)
+            announcer.AnnounceImmediate(fromFmc);
+        else
+            _ = FlapManeuverSpeeds.AnnounceAsync(simConnect, announcer, R.TotalWeightKey, "BBS757",
+                lbs => Bbs757FlapSpeeds.Describe(lbs, index));
         handled = true;
     }
 
@@ -700,6 +705,15 @@ public partial class BBS757Definition
             announcer.AnnounceImmediate(Bbs757Prog.NoCdu);
         }
     }
+
+    /// <summary>
+    /// The flap speed readout for <paramref name="scheduleIndex"/> from the FMC's own VREF 30 and VREF 25, which the ADI
+    /// reader's newest good reading carries whatever the display's power (plan 27; the owner's word, 2026-11-16), or null:
+    /// the reader not running, its reference speeds part missing or its read lost, or a VREF not above 0 (PERF INIT not
+    /// done, a weight outside the FMC's table). On null the calculated readout stays as it was.
+    /// </summary>
+    internal string? FlapSpeedsFromFmc(int scheduleIndex) =>
+        Adi.Newest is { } reading ? Bbs757FlapSpeeds.DescribeFromFmc(reading.Vref30, reading.Vref25, scheduleIndex) : null;
 
     /// <summary>The schedule index of a flap speed key (Shift+1 to Shift+6), or -1.</summary>
     internal static int FlapSpeedIndex(HotkeyAction action) => action switch

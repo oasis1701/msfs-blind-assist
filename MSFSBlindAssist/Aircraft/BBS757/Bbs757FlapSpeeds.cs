@@ -7,6 +7,9 @@ namespace MSFSBlindAssist.Aircraft.BBS757;
 /// points measured on BlueBird's own APPROACH REF page (140,000 to 250,000 lb), linear between them; a
 /// weight outside them is unavailable, never extrapolated. The maneuver speeds are the owner's schedule
 /// over VREF 30 (Q5): flaps up + 80, 1 + 60, 5 + 40, 15 + 20, 20 + 20. Pure.
+/// <para>Since plan 27 the keys speak the FMC's own VREF 30 and VREF 25 instead while the ADI reader has them
+/// (<see cref="DescribeFromFmc"/>, the owner's word, 2026-11-16): the measured table is what is left when it has not
+/// (the reader not running, its part missing, PERF INIT not done, a weight outside the FMC's table).</para>
 /// </summary>
 public static class Bbs757FlapSpeeds
 {
@@ -42,6 +45,31 @@ public static class Bbs757FlapSpeeds
             return string.Create(CultureInfo.InvariantCulture, $"VREF 30 {vref30} knots, VREF 25 {vref25} knots, calculated");
         var (flap, add) = Schedule[scheduleIndex];
         return FlapManeuverSpeeds.Sentence(flap, vref30 + add);
+    }
+
+    /// <summary>
+    /// The readout for <paramref name="scheduleIndex"/> from the FMC's own VREF 30 and VREF 25 (plan 27: the numbers
+    /// APPROACH REF prints, read from the aircraft's memory by the ADI reader), in <see cref="Describe"/>'s sentences
+    /// without ", calculated": 0 to 4 the maneuver speeds by the same schedule, which is BlueBird's own ("Flaps 5 maneuver
+    /// speed 161 knots"), 5 "VREF 30 121 knots, VREF 25 123 knots". Null when either is not read or not above 0 (the FMC
+    /// holds 0 until PERF INIT has a weight, and for a weight outside its table): the caller then keeps the calculated
+    /// readout. Each speed is spoken as the nearest knot.
+    /// </summary>
+    public static string? DescribeFromFmc(double? vref30, double? vref25, int scheduleIndex)
+    {
+        if (FmcKnots(vref30) is not int v30 || FmcKnots(vref25) is not int v25) return null;
+        if (scheduleIndex == 5)
+            return string.Create(CultureInfo.InvariantCulture, $"VREF 30 {v30} knots, VREF 25 {v25} knots");
+        var (flap, add) = Schedule[scheduleIndex];
+        return string.Create(CultureInfo.InvariantCulture, $"{FlapManeuverSpeeds.FlapName(flap)} maneuver speed {v30 + add} knots");
+    }
+
+    /// <summary>An FMC speed as whole knots, or null when it is not read, not a number or not above 0.</summary>
+    private static int? FmcKnots(double? knots)
+    {
+        if (knots is not double v || !double.IsFinite(v) || v <= 0 || v > int.MaxValue / 2) return null;
+        int whole = (int)Math.Round(v, MidpointRounding.AwayFromZero);
+        return whole > 0 ? whole : null;
     }
 
     private static double? InTable(double? lbs)

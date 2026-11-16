@@ -687,6 +687,13 @@ public class Bbs757AdiReaderTests
     internal static Bbs757AdiSim In(double? pitch = -2.5, double? bank = 10, double? groundSpeed = 240, double? mach = 0.45) =>
         new(pitch / DegreesPerRadian, bank / DegreesPerRadian, groundSpeed, mach);
 
+    /// <summary>Writes the FMC's VREF 30 and VREF 25 into <see cref="Gate"/>'s memory, where its fms keeps them.</summary>
+    internal static void SetReferenceSpeeds(byte[] gate, double vref30, double vref25)
+    {
+        PutD(gate, At(Fms, V.FmsVref30), vref30);
+        PutD(gate, At(Fms, V.FmsVref25), vref25);
+    }
+
     /// <summary>The gate's reading, read from <see cref="Gate"/> through the real sampler.</summary>
     internal static Bbs757AdiReading GateReading() => Read(Gate());
 

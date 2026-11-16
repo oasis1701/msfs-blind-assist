@@ -280,13 +280,16 @@ public class Bbs757AdiWiringTests
     // ---- the rig ----
 
     /// <summary>A definition whose FMA and ADI monitors are each run over synthetic module memory, on a fake
-    /// environment of its own, and Alt+P pressed through the definition's hotkey path.</summary>
-    private sealed class Rig : IDisposable
+    /// environment of its own, and a key pressed through the definition's hotkey path.</summary>
+    internal sealed class Rig : IDisposable
     {
         public BBS757Definition Def { get; } = new() { NestRunning = () => true, StartMonitor = StartWithoutTimer };
         public SpeechCapture Speech { get; } = new();
         public List<HotkeyAction> AiReads { get; } = new();
         public byte[]? FmaBytes { get; private set; }
+
+        /// <summary>The memory the ADI monitor reads, once <see cref="RunAdi"/> has run: a test changes it in place.</summary>
+        public byte[]? AdiBytes { get; private set; }
 
         private readonly SimConnectManager _sim = new(IntPtr.Zero);
         private readonly List<IDisposable> _leases = new();
@@ -298,7 +301,10 @@ public class Bbs757AdiWiringTests
             _ = Def.Displays;
         }
 
-        public bool PressAltP() => Def.HandleHotkeyAction(HotkeyAction.ReadDisplayPFD, _sim, Speech, null!, null!);
+        public bool PressAltP() => Press(HotkeyAction.ReadDisplayPFD);
+
+        /// <summary>A key through the definition's hotkey path, on a simulator that is not connected.</summary>
+        public bool Press(HotkeyAction action) => Def.HandleHotkeyAction(action, _sim, Speech, null!, null!);
 
         /// <summary>The FMA monitor running over the FMA reader's test memory.</summary>
         public void RunFma()
@@ -311,13 +317,13 @@ public class Bbs757AdiWiringTests
             Run(Def.Fma.Tick, env, () => Def.Fma.StateName);
         }
 
-        /// <summary>The ADI monitor running over the ADI reader's gate (or <paramref name="bytes"/>), with the gate's
-        /// simulator values.</summary>
-        public void RunAdi(byte[]? bytes = null)
+        /// <summary>The ADI monitor running over the ADI reader's gate (or <paramref name="bytes"/>), through the sample
+        /// layout (or <paramref name="layout"/>), with the gate's simulator values.</summary>
+        public void RunAdi(byte[]? bytes = null, Bbs757AdiLayout? layout = null)
         {
-            var layout = Bbs757AdiLayoutTests.Sample();
+            layout ??= Bbs757AdiLayoutTests.Sample();
             var source = new FakeProcessMemory();
-            bytes ??= Bbs757AdiReaderTests.Gate();
+            AdiBytes = bytes ??= Bbs757AdiReaderTests.Gate();
             source.Add(new MemoryRegion(Bbs757AdiReaderTests.Base, Bbs757AdiReaderTests.Base, (ulong)bytes.Length, true, true, true), bytes);
             var env = Environment(Bbs757Module.Adi, layout, new ModuleAnchor(layout.AnchorAddress, layout.Anchor),
                 new ModuleMemory(source, Bbs757AdiReaderTests.Base));

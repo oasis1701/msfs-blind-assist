@@ -131,6 +131,14 @@ public sealed class Bbs757DisplayMonitor<TLayout, TReading> : IBbs757DisplayMoni
     /// while the display is dark or powering up.</summary>
     public TReading? Latest => ShowsReading ? _current : default;
 
+    /// <summary>The newest reading that is not corrupt while running, whatever the display's power (unlike
+    /// <see cref="Latest"/>, also while it is dark or powering up), else default. For what a reader reads beside its
+    /// display's picture, such as the FMC's reference speeds the ADI reader carries: never for a row or a spoken change.</summary>
+    public TReading? Newest => _state == State.Running ? _newest : default;
+
+    // The newest reading Judge found not corrupt, lit or not; handed out by Newest only while running.
+    private TReading _newest = default!;
+
     /// <summary>Why <see cref="Latest"/> is null, in the words of the status rows without the reader's name, or null while
     /// it holds a reading or the monitor was never started: "display dark" while it runs and the display is dark, the final
     /// or stop reason once there is one, "waiting for the simulator", else "starting" (searching, or the display powering
@@ -576,6 +584,7 @@ public sealed class Bbs757DisplayMonitor<TLayout, TReading> : IBbs757DisplayMoni
     private Verdict Judge(long now, TReading reading)
     {
         if (reading.Corrupt) return Verdict.Corrupt;
+        _newest = reading;
         if (IsQuiet(now, reading))
         {
             _rebaseline = true;

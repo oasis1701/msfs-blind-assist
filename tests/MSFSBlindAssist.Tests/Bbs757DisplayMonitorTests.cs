@@ -432,6 +432,78 @@ public sealed class Bbs757DisplayMonitorTests : IDisposable
     }
 
     [Fact]
+    public void Newest_is_the_newest_reading_that_is_not_corrupt_whatever_the_displays_power()
+    {
+        // Plan 27: what a reader reads beside its display's picture (the ADI's FMC reference speeds) is wanted while the
+        // display is dark too, where Latest gives nothing.
+        var h = New();
+        Assert.Equal(default(FakeReading), h.Monitor.Newest); // never started
+        h.Reader.LitOf = reading => !reading.Value.StartsWith("dark", StringComparison.Ordinal);
+        h.Start();
+        h.Tick();
+        Assert.Equal(default(FakeReading), h.Monitor.Newest); // searching: no reading yet
+        var s = h.RunUntilRunning();
+        Assert.Equal(R("A"), h.Monitor.Newest);
+        Assert.Equal(R("A"), h.Monitor.Latest);
+
+        s.Reading = R("B"); // lit: it is Latest's reading, at once (before the change settles)
+        h.Tick();
+        Assert.Equal(R("B"), h.Monitor.Newest);
+        Assert.Equal(R("B"), h.Monitor.Latest);
+
+        s.Reading = R("dark 1"); // the display goes dark: Latest gives nothing, Newest follows the readings
+        h.Tick();
+        Assert.Equal(default(FakeReading), h.Monitor.Latest);
+        Assert.Equal(R("dark 1"), h.Monitor.Newest);
+        s.Reading = R("dark 2");
+        h.Tick();
+        Assert.Equal(R("dark 2"), h.Monitor.Newest);
+
+        s.Reading = R("C"); // powering up: quiet for 10 s, and Newest follows all the same
+        h.Tick();
+        Assert.Equal(default(FakeReading), h.Monitor.Latest);
+        Assert.Equal(R("C"), h.Monitor.Newest);
+
+        s.Reading = Corrupt("X"); // a corrupt reading is never it
+        h.Tick(3);
+        Assert.Equal("Running", h.State);
+        Assert.Equal(R("C"), h.Monitor.Newest);
+
+        s.Fail = true; // the memory lost: nothing, never the last reading before it
+        h.Env.Locate = NotFound;
+        h.Tick();
+        Assert.NotEqual("Running", h.State);
+        Assert.Equal(default(FakeReading), h.Monitor.Newest);
+        Assert.Empty(h.Env.Spoken); // none of it is ever spoken
+    }
+
+    [Fact]
+    public void Newest_is_nothing_once_the_reader_stops()
+    {
+        var h = New();
+        h.Start();
+        var s = h.RunUntilRunning();
+        Assert.Equal(R("A"), h.Monitor.Newest);
+
+        // Ten corrupt readings in a row: unavailable.
+        s.Reading = Corrupt("X");
+        h.Tick(10);
+        Assert.Equal("Unavailable", h.State);
+        Assert.Equal(default(FakeReading), h.Monitor.Newest);
+
+        // A dark candidate runs at once: its reading is the newest, though nothing is shown.
+        var dark = New();
+        dark.Reader.LitNow = false;
+        dark.Start();
+        dark.RunUntilRunning();
+        Assert.Equal(R("A"), dark.Monitor.Newest);
+        Assert.Equal(default(FakeReading), dark.Monitor.Latest);
+
+        dark.Monitor.Stop();
+        Assert.Equal(default(FakeReading), dark.Monitor.Newest);
+    }
+
+    [Fact]
     public void A_dark_candidate_runs_at_once_and_its_power_up_is_a_silent_baseline()
     {
         // A cold-and-dark load: the first reading is dark and not corrupt, so the reader runs at once and its window says
