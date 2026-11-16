@@ -212,6 +212,12 @@
   // as a button: its click only shows what the reader already says.
   A.abbrevTip = function (el) {
     if (!el || el.nodeType !== 1) return null;
+    if (el.__msfsbaAbbr && el.__msfsbaAbbr.s === A._scrapeId) return el.__msfsbaAbbr.v;
+    var v = A.abbrevTipNow(el);
+    el.__msfsbaAbbr = { s: A._scrapeId, v: v };
+    return v;
+  };
+  A.abbrevTipNow = function (el) {
     // Never a real control: a button with a tip is a button (its tip is no part of its name).
     if (/^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY|LABEL)$/.test(el.tagName) || A.attr(el, 'role')) return null;
     var tip = null, own = '';
@@ -224,7 +230,11 @@
       }
     }
     own = A.norm(own);
-    if (!tip || !own || own.length > 6 || !A.isHidden(tip) || !A.modelText(tip)) return null;
+    // An abbreviation's shape only (FH, FC, CYC, A/C): a symbol or a word ("✕", "Save") with a tip is a
+    // control with a tooltip, and stays one. Never an OS tooltip the OS itself hides for good
+    // (forceHide), a tooltip wrapper, or a tip holding a control.
+    if (!tip || !/^[A-Z][A-Z0-9\/.]{0,5}$/.test(own) || !A.isHidden(tip) || !A.modelText(tip)) return null;
+    if (A.hasClass(tip, 'forceHide') || A.hasClass(tip, 'tooltip-component') || A.holdsControl(tip)) return null;
     return tip;
   };
   A.isAbbrevTipOf = function (c, parent) { return A.abbrevTip(parent) === c; };
@@ -476,7 +486,8 @@
     // keeping a number it shows (SayIntentions' zoom: "Zoom in", "Reset zoom (100%)"; UTL's map: "+"
     // titled "Zoom in").
     var shown = A.lineText(el), aria = A.norm(A.attr(el, 'aria-label'));
-    var said = aria || A.norm(A.attr(el, 'title'));
+    // A title (a tooltip, often generic: "Click to copy") only names a symbol, never a shown number.
+    var said = aria || (/\d/.test(shown || '') ? '' : A.norm(A.attr(el, 'title')));
     if (shown && said && !/[A-Za-zÀ-ɏ]/.test(shown)) return /\d/.test(shown) ? said + ' (' + shown + ')' : said;
     var n = shown || aria || A.labelledBy(el) || A.tooltipOf(el) || A.attr(el, 'title') ||
       A.imgName(el) || A.attr(el, 'data-label');
@@ -1282,7 +1293,9 @@
   // scrape
   // ---------------------------------------------------------------------------------
 
-  A._scrapeId = 0;
+  // Carried on from a reader this one replaces: its per-read marks (claims, controls, memos) stay on
+  // the nodes, and a counter restarting from 0 would match them for a read.
+  A._scrapeId = (window.__MSFSBA_SIM_TABLET && window.__MSFSBA_SIM_TABLET._scrapeId) || 0;
 
   A.headingLevel = function (el) {
     var t = el.tagName;
@@ -1605,7 +1618,7 @@
       }
       if (A.runBlocks(el, sink)) return;
 
-      var pressable = !A.abbrevTip(el) && (A.isPressable(el) || (!A.hasCtl(el) && A.ownPointer(el) && !A.isClaimed(el)));
+      var pressable = (A.isPressable(el) || (!A.hasCtl(el) && A.ownPointer(el) && !A.isClaimed(el))) && !A.abbrevTip(el);
       if (pressable && (tag === 'button' || tag === 'a' || (!A.hasCtl(el) && !A.isBig(el)))) {
         var label = A.buttonLabel(el);
         if (!label) {                                          // a nameless icon says nothing; skip it
@@ -1911,8 +1924,8 @@
   // out, activeElement stayed BODY), so the reader also records each focus itself
   // (window.__MSFSBA_LAST_FOCUS, a capturing listener) and takes any OS box marked focused. A
   // focusout on a box that is not focused is a no-op for the OS (its _isFocused is already false).
-  // The recorded and the marked ones are the OS's own text boxes only (A.isOsBox), whose focusout is
-  // idempotent; any other field is released only while it really holds focus.
+  // The marked ones (textbox--focused) are the OS's own text boxes only (A.isOsBox), whose focusout is
+  // idempotent; the recorded one is whatever took focus since this action began, any field.
   A.focusedBoxes = function () {
     var out = [], root = A.root();
     function add(n, osOnly) {
@@ -1921,7 +1934,7 @@
       out.push(n);
     }
     add(document.activeElement, false);
-    add(window.__MSFSBA_LAST_FOCUS, true);
+    add(window.__MSFSBA_LAST_FOCUS, false);       // focused since this action began (cleared at its start)
     var marked = root ? root.querySelectorAll('.textbox--focused input, .textbox--focused textarea') : [];
     for (var i = 0; i < marked.length; i++) add(marked[i], true);
     return out;
@@ -1972,6 +1985,7 @@
     return false;
   };
   A.press = function (el) {
+    window.__MSFSBA_LAST_FOCUS = null;            // only a focus this press brings is released after it
     var h = A.handlerOf(el);
     if (!h || h === 'click' || A.hasDefaultClick(el)) el.click();
     else if (h === 'touchstart') {
@@ -2003,9 +2017,15 @@
     var d = el && el.ownerDocument;
     if (!d || !d.documentElement || !d.documentElement.contains(el)) return false;
     if (d === document) return A.root().contains(el);
-    var fe = null;
-    try { fe = d.defaultView && d.defaultView.frameElement; } catch (e) { fe = null; }
-    return !!fe && A.root().contains(fe);                     // a frame still on the page
+    for (var w = d.defaultView, hop = 0; w && hop < 5; hop++) {   // frames within frames, up to the page
+      var fe = null;
+      try { fe = w.frameElement; } catch (e) { fe = null; }
+      if (!fe) return false;
+      if (fe.ownerDocument === document) return A.root().contains(fe);
+      if (!fe.ownerDocument.documentElement.contains(fe)) return false;
+      w = fe.ownerDocument.defaultView;
+    }
+    return false;
   };
   A.scrollButtons = function (el, down) {
     var n = A._scrollers.indexOf(el);
@@ -2164,6 +2184,7 @@
     return A.hasClass(el.parentElement, 'textbox') || A.hasClass(el, 'route-parsing-textarea');
   };
   A.setValueNow = function (idx, text) {
+    window.__MSFSBA_LAST_FOCUS = null;
     var el = A.find(idx);
     if (!el || A.isDisabled(el) || el.readOnly === true) return false;
     var want = String(text == null ? '' : text);

@@ -788,6 +788,31 @@ test('a wrapping paragraph with inline badges reads whole and in order (TechLog 
   assert.ok(!l.includes('static|NO-GO'), 'the badge is no line of its own');
 });
 
+test('a control with a tooltip stays a control: only an abbreviation shape reads as text (review round 13)', () => {
+  const p = styled('<div class="x" id="x" data-rect="0,0,20,10">✕<span class="tooltip">Close</span></div>' +
+    '<span class="s" id="s" data-rect="0,30,60,10">Save<span class="act-tip">Save the plan</span></span>' +
+    '<div class="tooltip-component" id="g" data-rect="20,0,40,30">GPU<div class="tooltip forceHide">Not compatible</div></div>',
+    el => (el.classList.contains('tooltip') || el.classList.contains('act-tip') ? { display: 'none' } : null));
+  for (const id of ['x', 's', 'g']) p.document.getElementById(id).onclick = () => {};
+  const l = lines(scraped(p.A));
+  assert.ok(l.includes('button|Close') || l.some(x => /^button\|.*Close/.test(x)), 'the cross keeps its press: ' + l.join(' / '));
+  assert.ok(l.some(x => /^button\|Save/.test(x)), 'Save keeps its press: ' + l.join(' / '));
+  assert.ok(!l.some(x => /Not compatible/.test(x)), 'a tooltip the OS hides for good is never read');
+});
+
+test('a field the press itself focuses is handed back, any field; one focused before the press is not (STAB-1)', () => {
+  const p = page('<input id="own" type="text"><button id="go">Go</button>');
+  const own = p.document.getElementById('own');
+  let outs = 0;
+  own.addEventListener('focusout', () => outs++);
+  own.blur = () => {};
+  Object.defineProperty(p.document, 'activeElement', { get: () => p.document.body });
+  p.document.getElementById('go').onclick = () => own.focus();
+  const els = scraped(p.A);
+  p.A.clickElement(els.find(e => e.text === 'Go').idx);
+  assert.equal(outs, 1, 'focused by the press: released');
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));

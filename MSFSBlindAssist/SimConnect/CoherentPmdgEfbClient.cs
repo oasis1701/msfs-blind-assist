@@ -102,6 +102,8 @@ namespace MSFSBlindAssist.SimConnect
         private volatile Dictionary<int, int> _frameSlots = new();
         // Per context id: the frame's last full element list, reused while its agent reports unchanged.
         private readonly System.Collections.Concurrent.ConcurrentDictionary<int, List<ScrapeElement>> _frameCache = new();
+        // The contexts this connection has installed its reader into (once each; see ScrapeFrameAsync).
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _frameInstalled = new();
         // The main page's last full element list and page, reused while it reports unchanged and a frame
         // on it still has to be read.
         private List<ScrapeElement>? _lastMainElements;
@@ -421,6 +423,7 @@ namespace MSFSBlindAssist.SimConnect
                 // debugger does not answer Runtime.disable, and an eval sent after one hung.
                 _frameContexts.Clear();
                 _frameCache.Clear();
+                _frameInstalled.Clear();
                 _frameMisses.Clear();
                 _frameSlots = new Dictionary<int, int>();
                 await SendCommandAsync("Runtime.enable", new { }, ct, EvalTimeoutMs);
@@ -747,19 +750,31 @@ namespace MSFSBlindAssist.SimConnect
             // A frame this connection holds nothing for is read in full: its agent may still be there
             // from an earlier connection, and would answer "unchanged" to a client with no copy.
             string fullScrape = $"window.{_agentGlobal} ? ({_agentGlobal}._dirty = true, {_agentGlobal}.scrape({ListenerArg})) : '{NoAgent}'";
-            // A frame this connection has not read yet gets this connection's reader first, as the page
-            // does on every connection (EnsureConnected): a frame keeps whatever reader an earlier
+            // A frame this connection has not installed into yet gets this connection's reader first, as
+            // the page does on every connection (EnsureConnected): a frame keeps whatever reader an earlier
             // connection put there, possibly an older MSFSBA's, until the frame reloads (measured
-            // 2026-11-16: TechLog's frame kept the previous reader across a new client).
-            bool fresh = !_frameCache.ContainsKey(cid);
-            var reply = fresh ? await EvalFrameAsync(_agentJs, cid, ct) : await EvalFrameAsync(scrape, cid, ct);
-            if (fresh && reply.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0)
-                reply = await EvalFrameAsync(fullScrape, cid, ct);
-            else if (!fresh && reply.Value == NoAgent)
+            // 2026-11-16: TechLog's frame kept the previous reader across a new client). Once per
+            // context and connection, tracked apart from the element cache, so a frame whose reads keep
+            // failing is never reinstalled on every poll.
+            (bool Replied, bool Failed, string Value) reply;
+            if (!_frameInstalled.ContainsKey(cid))
             {
-                var inst = await EvalFrameAsync(_agentJs, cid, ct);
-                reply = inst.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0
-                    ? await EvalFrameAsync(fullScrape, cid, ct) : inst;
+                reply = await EvalFrameAsync(_agentJs, cid, ct);
+                if (reply.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0)
+                {
+                    _frameInstalled[cid] = 0;
+                    reply = await EvalFrameAsync(fullScrape, cid, ct);
+                }
+            }
+            else
+            {
+                reply = await EvalFrameAsync(_frameCache.ContainsKey(cid) ? scrape : fullScrape, cid, ct);
+                if (reply.Value == NoAgent)
+                {
+                    var inst = await EvalFrameAsync(_agentJs, cid, ct);
+                    reply = inst.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0
+                        ? await EvalFrameAsync(fullScrape, cid, ct) : inst;
+                }
             }
             if (!CountReply(cid, reply)) return null;
             ScrapeResult? r;
@@ -794,6 +809,7 @@ namespace MSFSBlindAssist.SimConnect
         {
             _frameContexts.TryRemove(cid, out _);
             _frameCache.TryRemove(cid, out _);
+            _frameInstalled.TryRemove(cid, out _);
             _frameMisses.TryRemove(cid, out _);
         }
 
@@ -994,6 +1010,7 @@ namespace MSFSBlindAssist.SimConnect
                 case "Runtime.executionContextsCleared":
                     _frameContexts.Clear();
                     _frameCache.Clear();
+                    _frameInstalled.Clear();
                     _frameMisses.Clear();
                     break;
             }
