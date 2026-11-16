@@ -410,7 +410,7 @@
     }
     return A.norm(s);
   };
-  A.NEVER_PAIRED = /^(TABLE|THEAD|TBODY|TFOOT|TR|UL|OL|DL)$/;   // table sections and lists are never a caption over its value
+  A.NEVER_PAIRED = /^(TABLE|THEAD|TBODY|TFOOT|TR|UL|OL)$/;   // table sections and lists are never a caption over its value (a dt over its dd is)
   A.cellOf = function (n) {
     for (var up = 0; n && up < 4; up++, n = n.parentElement) if (n.tagName === 'TD' || n.tagName === 'TH') return n;
     return null;
@@ -1481,7 +1481,7 @@
       if (!st || st.position !== 'fixed' || !A.opaque(st.backgroundColor) || !A.coversView(el) || !el.querySelector(ctl)) return false;
       // Over a page: a control outside it. An app's whole page fixed in place is that page.
       var under = (A._view || document).querySelectorAll(ctl);
-      for (var u = 0; u < under.length; u++) if (!el.contains(under[u])) return true;
+      for (var u = 0; u < under.length; u++) if (!el.contains(under[u]) && !A.isHidden(under[u])) return true;
       return false;
     }
     return false;
@@ -2201,9 +2201,14 @@
   // The reader's own presses and sets mark themselves (A._pressing), so their synthetic mouse events
   // never count as the pilot's: whether Coherent marks a real click trusted is not relied on.
   A._pressing = false;
-  A.lateFocus = function (now) {
-    var at = window.__MSFSBA_PRESSED_AT, user = window.__MSFSBA_USER_POINTER_AT;
-    return !!at && now - at >= 0 && now - at < A.LATE_FOCUS_MS && !(user && now - user < 1000);
+  A.lateFocus = function (now, box) {
+    var at = window.__MSFSBA_PRESSED_AT, key = window.__MSFSBA_USER_KEY_AT;
+    if (!at || now - at < 0 || now - at >= A.LATE_FOCUS_MS) return false;
+    if (key && now - key < 1000) return false;
+    var user = window.__MSFSBA_USER_POINTER_AT, tgt = window.__MSFSBA_USER_POINTER_TARGET;
+    if (user && now - user < 1000 &&
+        (!box || !tgt || !tgt.contains || tgt === box || tgt.contains(box) || box.contains(tgt) || tgt.control === box)) return false;
+    return true;
   };
 
   A.mouse = function (target, type, x, y) {
@@ -2808,18 +2813,30 @@
       var t = ev && ev.target;
       if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
       window.__MSFSBA_LAST_FOCUS = t;
-      if (!A.isTextEntry(t) || !A.lateFocus(Date.now())) return;
+      if (!A.isTextEntry(t) || !A.lateFocus(Date.now(), t)) return;
       var armed = Date.now();
       var once = function () {
         t.removeEventListener('focus', once, false);
-        if (Date.now() - armed > 50 || !A.lateFocus(Date.now())) return;   // a later focus is not this one
+        if (Date.now() - armed > 50 || !A.lateFocus(Date.now(), t)) return;   // a later focus is not this one
         window.__MSFSBA_PRESSED_AT = 0;                                    // one hand-back per press
         if (window.__MSFSBA_LAST_FOCUS === t) window.__MSFSBA_LAST_FOCUS = null;
         A.releaseBox(t);
       };
       t.addEventListener('focus', once, false);
     };
-    var onPointer = function () { if (!A._pressing) window.__MSFSBA_USER_POINTER_AT = Date.now(); };
+    // Input that chose a box: a pointer press with its target (on the box, around it, inside it, or its
+    // label), or a key typed into a box (the keyboard already went to the tablet: a helper's Tab). A
+    // page's own click elsewhere, or a key with no box focused, chose nothing.
+    var onPointer = function (ev) {
+      if (A._pressing) return;
+      var t = ev && ev.target;
+      if (ev && ev.type === 'keydown') {
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) window.__MSFSBA_USER_KEY_AT = Date.now();
+        return;
+      }
+      window.__MSFSBA_USER_POINTER_AT = Date.now();
+      window.__MSFSBA_USER_POINTER_TARGET = t;
+    };
     // A frame that loads a document of its own (GSX's price lists and invoices, srcdoc frames) changes
     // nothing the observer watches, its old body included, so its load marks the page changed.
     var onLoad = function (ev) { var t = ev && ev.target; if (t && t.tagName === 'IFRAME') A._markDirty(); };

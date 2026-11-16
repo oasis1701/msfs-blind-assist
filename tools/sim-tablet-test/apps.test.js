@@ -1261,6 +1261,56 @@ test('an app\'s whole page fixed in place is its page, not a popup over one', ()
   assert.ok(l.includes('heading|Tow planner'), l.join(' / '));
 });
 
+test('only input that chose the box keeps a late focus: a page\'s own click elsewhere or a stray key does not', () => {
+  const run = (setup) => {
+    const p = page('<button id="go">Go</button><label id="lb" for="q">Search</label><input id="q" type="text"><div id="map">Map</div>');
+    const { window, document } = p;
+    const q = document.getElementById('q');
+    const log = [];
+    q.addEventListener('blur', () => log.push('blur'));
+    document.getElementById('go').onclick = () => {};
+    p.A.clickElement(scraped(p.A).find(e => e.text === 'Go').idx);
+    setup(p);
+    q.focus();
+    return log;
+  };
+  assert.deepStrictEqual(run(p => p.document.getElementById('map').dispatchEvent(new p.window.Event('mousedown', { bubbles: true }))), ['blur'],
+    'a page\'s own mousedown elsewhere: handed back');
+  assert.deepStrictEqual(run(p => p.document.body.dispatchEvent(new p.window.Event('keydown', { bubbles: true }))), ['blur'],
+    'a key with no box focused: handed back');
+  assert.deepStrictEqual(run(p => p.document.getElementById('lb').dispatchEvent(new p.window.Event('mousedown', { bubbles: true }))), [],
+    'a press on the box\'s label: the pilot chose it');
+});
+
+test('the reader\'s own presses and sets are marked as the reader\'s while they run, and never after', () => {
+  const p = styled('<div id="go" data-rect="0,0,40,20">Search</div><div class="f"><div class="set-label">Mode</div><div class="set-ctrl"><div class="set-dropdown">' +
+    '<button class="dd-btn" type="button">Yes</button><div class="dd-list" hidden=""><div class="dd-opt">No</div><div class="dd-opt is-sel">Yes</div></div></div></div></div>',
+    el => (el.closest('[hidden]') ? { display: 'none' } : null));
+  const seen = [];
+  p.document.getElementById('go').onmousedown = () => seen.push('press:' + p.A._pressing);
+  p.document.querySelector('.dd-btn').addEventListener('click', () => seen.push('set:' + p.A._pressing));
+  const els = scraped(p.A);
+  p.A.clickElement(els.find(e => e.text === 'Search').idx);
+  p.A.setValue(els.find(e => e.controlType === 'select').idx, 'No');
+  assert.deepStrictEqual(seen, ['press:true', 'set:true']);
+  assert.equal(p.A._pressing, false);
+  // A slider's drag is the reader's too (it presses nothing through A.press).
+  const sl = osSlider({ readout: 'sync' });
+  const drags = [];
+  sl.document.querySelector('.slider-bar').addEventListener('mousedown', () => drags.push(sl.A._pressing));
+  const box = scraped(sl.A).find(e => /Haze strength/.test(e.text));
+  assert.equal(sl.A.setValue(box.idx, '120'), true);
+  assert.ok(drags.length > 0 && drags.every(Boolean), JSON.stringify(drags));
+});
+
+test('a definition term over its value is a caption and its value; an overlay counts only shown controls under it', () => {
+  const l = lines(scraped(page('<dl><dt data-rect="0,0,40,20">Gate</dt><dd data-rect="20,0,40,40">A12</dd></dl>').A));
+  assert.ok(l.includes('static|Gate: A12'), l.join(' / '));
+  const o = styled('<div class="toast" hidden=""><button>Undo</button></div><div class="settings-overlay"><div class="m-title">Settings</div><button>Close</button></div>',
+    el => (el.classList.contains('settings-overlay') ? { position: 'fixed', backgroundColor: 'rgb(0, 0, 0)' } : el.closest('[hidden]') ? { display: 'none' } : null));
+  assert.ok(!lines(scraped(o.A)).some(x => x.indexOf('alert|') === 0), 'only a hidden toast under it: no page under it');
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));
