@@ -1407,9 +1407,34 @@ test('a button whose tooltip goes away keeps its name, never its icon\'s file na
   const b = p.document.getElementById('b');
   assert.ok(lines(scraped(p.A)).includes('button|Display size'));
   b.removeAttribute('title');                     // its picker opened: the OS drops the tooltip
+  b.querySelector('icon-element').innerHTML = '<svg data-icon="Tailless_Line_Arrow_Right_1"></svg>';   // and shows an arrow, as live
   const l = lines(scraped(p.A));
   assert.ok(l.includes('button|Display size'), l.join(' / '));
   assert.ok(!l.some(x => /Tailless/.test(x)), l.join(' / '));
+});
+
+test('date and time parts are named only when they make one date or one time; single letters are no units; a swapped icon drops its old name; a heading never joins', () => {
+  const osd = (o, v) => '<div class="dropdown-button"><button class="dropdown-button-selector"><span class="text">' + v + '</span></button>' +
+    '<div class="dropdown-button-list">' + o.map(x => '<div class="dropdown-button-list-item">' + x + '</div>').join('') + '</div></div>';
+  const n = (a, b) => { const r = []; for (let i = a; i <= b; i++) r.push(String(i)); return r; };
+  const p = page('<div class="r"><span>Flight date</span>' + osd(n(1, 12), '11') + osd(n(1, 31), '16') + osd(['2025', '2026'], '2026') + '</div>' +
+    '<div class="r"><span>Departure</span>' + osd(n(1, 12), '9') + osd(['00', '15', '30', '45'], '30') + osd(['am', 'pm'], 'pm') + '</div>' +
+    '<div class="r"><span>Setting</span>' + osd(['0', '15', '30', '45'], '15') + osd(n(0, 30), '5') + '</div>' +
+    '<div class="r"><span>Wake category</span>' + osd(['L', 'M'], 'M') + '</div>');
+  const l = lines(scraped(p.A));
+  for (const w of ['/select|Flight date month=11', '/select|Flight date day=16', '/select|Flight date year=2026',
+                   '/select|Departure hour=9', '/select|Departure minutes=30', '/select|Departure am or pm=pm', '/select|Wake category=M'])
+    assert.ok(l.includes(w), w + ' in ' + l.join(' / '));
+  assert.ok(!l.some(x => /Setting (minutes|day)/.test(x)), 'flaps beside a delay are no date: ' + l.join(' / '));
+  const t = page('<button id="b" title="Pause" data-rect="0,0,30,20"><icon-element icon-url="coui://x/Pause.svg"></icon-element></button>');
+  const b = t.document.getElementById('b');
+  assert.ok(lines(scraped(t.A)).includes('button|Pause'));
+  b.removeAttribute('title');
+  b.querySelector('icon-element').setAttribute('icon-url', 'coui://x/Play.svg');
+  assert.ok(!lines(scraped(t.A)).includes('button|Pause'), 'its icon changed: the old name went with it');
+  const h = page('<div class="c"><h3 data-rect="0,0,90,20">Need help?</h3><p data-rect="20,0,90,40">Contact support from the menu.</p></div>');
+  const hl = lines(scraped(h.A));
+  assert.ok(hl.includes('heading|Need help?'), hl.join(' / '));
 });
 
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {

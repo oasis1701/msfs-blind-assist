@@ -490,6 +490,14 @@
     return '';
   };
 
+  // Which picture a button shows, by its drawing's name and its file: a toggle that swaps it (Pause to
+  // Play) shows another.
+  A.STATE_GLYPH = /arrow|chevron|caret|close|cross/i;
+  A.iconKey = function (el) {
+    var ie = el.querySelector('icon-element'), im = el.querySelector('img');
+    return A.iconName(el) + '|' + (ie ? ie.getAttribute('icon-url') || '' : '') + '|' + (im ? im.getAttribute('src') || '' : '');
+  };
+
   // A picture that names its control: <img alt="CIVA Options">.
   A.imgName = function (el) {
     var imgs = el.tagName === 'IMG' ? [el] : el.querySelectorAll('img');
@@ -548,12 +556,18 @@
     if (n && (/^\s*[×✕✖✗]\s*$/.test(n) || (/^\s*[xX]\s*$/.test(n) && /close/i.test(A.cls(el))))) return 'Close';
     // The information symbol, a lone small "i" (CIVA's, which opens "About the virtual navigator").
     if (n && /^\s*[iℹⓘ]\s*$/.test(n)) return 'Information';
-    if (n) return (el.__msfsbaName = A.norm(n));      // remembered for when only its icon is left
+    if (n) {                                          // remembered, with its icon, for when only that is left
+      el.__msfsbaName = { n: A.norm(n), icon: A.iconKey(el) };
+      return el.__msfsbaName.n;
+    }
     n = A.className(el);
     if (n) return n;
     // A button whose tooltip went away (the Flight Planner's Display size while its picker is open)
     // keeps the name it had, never its icon's file name ("Tailless Line Arrow Right 1").
-    if (el.__msfsbaName) return el.__msfsbaName;
+    // Kept while it shows the same picture, or an arrow, chevron or close glyph (the same control open or
+    // closed: Display size shows an arrow while its picker is open); another picture (Pause to Play) is
+    // another action, which drops it.
+    if (el.__msfsbaName && (el.__msfsbaName.icon === A.iconKey(el) || A.STATE_GLYPH.test(A.iconName(el)))) return el.__msfsbaName.n;
     n = A.iconName(el);
     // A panel's or popup's header leads with an unnamed icon button: its close.
     if (!n && el.parentElement && /header/.test(A.cls(el.parentElement)) && el === el.parentElement.firstElementChild) return 'Close';
@@ -1329,8 +1343,13 @@
   A.UNIT_WORD = /^(FL|FT|M|KM|NM|SM|KG|LBS?|L|GAL|KTS?|KM\/H|MPH|HPA|INHG|IN|MB|°C|°F|IMPERIAL|METRIC)$/i;
   A.unitName = function (name, opts) {
     if (!name || opts.length < 2 || /\bunits?$/i.test(name)) return name;
-    for (var i = 0; i < opts.length; i++) if (!A.UNIT_WORD.test(A.norm(opts[i]))) return name;
-    return name + ' unit';
+    var long = false;                                         // L and M alone are a wake category, not litres and metres
+    for (var i = 0; i < opts.length; i++) {
+      var u = A.norm(opts[i]);
+      if (!A.UNIT_WORD.test(u)) return name;
+      if (u.length > 1) long = true;
+    }
+    return long ? name + ' unit' : name;
   };
   A.block('native-select',
     function (el) { return el.tagName === 'SELECT'; },
@@ -1718,6 +1737,20 @@
           seenPart[part] = 1;
           parts.push(part);
         }
+        // Only when the parts make one date or one time (never flaps beside a delay), which also says
+        // whether 1 to 12 is the month or the hour.
+        if (parts) {
+          var DATE = { month: 1, day: 1, year: 1 }, TIME = { hour: 1, minutes: 1, 'am or pm': 1 }, isDate = false, isTime = false;
+          for (var pk = 0; pk < parts.length; pk++) { if (DATE[parts[pk]]) isDate = true; if (TIME[parts[pk]]) isTime = true; }
+          if (isDate === isTime) parts = null;
+          else {
+            var again = {};
+            for (var pr = 0; parts && pr < parts.length; pr++) {
+              if (parts[pr] === 'month or hour') parts[pr] = isDate ? 'month' : 'hour';
+              if (again[parts[pr]]) parts = null; else again[parts[pr]] = 1;
+            }
+          }
+        }
         if (parts) for (var pq = 0; pq < g.length; pq++) g[pq].text = g[pq].text + ' ' + parts[pq];
         continue;
       }
@@ -1739,7 +1772,8 @@
     for (var i = 0; i < opts.length; i++) { var v = parseInt(opts[i], 10); if (v < min) min = v; if (v > max) max = v; }
     if (min === 0 && max >= 45) return 'minutes';
     if (max >= 28 && max <= 31) return 'day';
-    if (max === 12 || max === 11 || max === 23) return 'hour';
+    if (max === 12 && min <= 1) return 'month or hour';         // its group says which
+    if (max === 11 || max === 23) return 'hour';
     return '';
   };
 
@@ -1893,7 +1927,9 @@
         // 0h") with a comma. Never over words of the element's own, which it would drop, nor over a
         // word that takes a press ("Gate" over a pressable "A12").
         var twoAll = el.getElementsByTagName('*'), two = [];
-        if (twoAll.length <= A.ONE_LINE_MAX_NODES && el.children.length === 2 && !A.ownWords(el) && !A.NEVER_PAIRED.test(el.tagName)) {
+        var isHead = function (c) { return /^H[1-6]$/.test(c.tagName) || A.headingLevel(c) > 0; };
+        if (twoAll.length <= A.ONE_LINE_MAX_NODES && el.children.length === 2 && !A.ownWords(el) && !A.NEVER_PAIRED.test(el.tagName) &&
+            !isHead(el.children[0]) && !isHead(el.children[1])) {
           two = A.rows(el);
           for (var tw = 0; tw < twoAll.length; tw++) if (A.pressWord(twoAll[tw])) { two = []; break; }
         }
