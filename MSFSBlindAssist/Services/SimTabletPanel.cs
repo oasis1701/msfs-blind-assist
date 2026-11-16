@@ -58,6 +58,9 @@ public static class SimTabletPanel
     internal const string ReleaseKeyboard = "(function(){var A=window.__MSFSBA_SIM_TABLET;if(A&&A.releaseKeyboard)A.releaseKeyboard();return 'ok';})()";
     // Stamped before each press: the reader keeps the button listed while frames start or stop (A.tabletOffer).
     internal const string StampPress = "(function(){window.__MSFSBA_TABLET_PRESS_AT=Date.now();return 'ok';})()";
+    // Before Show's press: only a box the panel's opening focuses is released after it (STAB-1), never
+    // a field recorded earlier.
+    internal const string ClearFocusRecord = "(function(){window.__MSFSBA_LAST_FOCUS=null;return 'ok';})()";
 
     private static readonly SemaphoreSlim OnePress = new(1, 1);
     private static volatile bool _shutDown;
@@ -132,6 +135,7 @@ public static class SimTabletPanel
     public static async Task<Outcome> ShowAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle)
     {
         if (await eval(ReadShown) is not ("true" or "false")) return Outcome.Unknown;
+        await eval(ClearFocusRecord);
         if (!await PressAsync(eval, toggle)) return Outcome.Failed;
         bool? frames = await ViewGetsFramesAsync(eval);
         // A check that got no answer is asked once more after a moment (the reader re-installing): a

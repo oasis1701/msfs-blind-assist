@@ -765,6 +765,9 @@ namespace MSFSBlindAssist.SimConnect
                     _frameInstalled[cid] = 0;
                     reply = await EvalFrameAsync(fullScrape, cid, ct);
                 }
+                // An answer without the marker (the reader threw in that context) is a miss, never a
+                // read: three in a row forget the context instead of reinstalling it on every poll.
+                else if (!reply.Failed) reply = (false, false, "");
             }
             else
             {
@@ -773,7 +776,8 @@ namespace MSFSBlindAssist.SimConnect
                 {
                     var inst = await EvalFrameAsync(_agentJs, cid, ct);
                     reply = inst.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0
-                        ? await EvalFrameAsync(fullScrape, cid, ct) : inst;
+                        ? await EvalFrameAsync(fullScrape, cid, ct)
+                        : inst.Failed ? inst : (false, false, "");
                 }
             }
             if (!CountReply(cid, reply)) return null;

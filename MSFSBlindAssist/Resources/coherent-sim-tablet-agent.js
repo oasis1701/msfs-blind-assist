@@ -212,10 +212,12 @@
   // as a button: its click only shows what the reader already says.
   A.abbrevTip = function (el) {
     if (!el || el.nodeType !== 1) return null;
-    if (el.__msfsbaAbbr && el.__msfsbaAbbr.s === A._scrapeId) return el.__msfsbaAbbr.v;
-    var v = A.abbrevTipNow(el);
-    el.__msfsbaAbbr = { s: A._scrapeId, v: v };
-    return v;
+    var m = el.__msfsbaAbbr;
+    if (m && m.s === A._scrapeId) return m.v;
+    if (!m) m = el.__msfsbaAbbr = { s: 0, v: null };
+    m.s = A._scrapeId; m.v = null;                      // provisional: a re-entrant ask gets no abbreviation
+    m.v = A.abbrevTipNow(el);
+    return m.v;
   };
   A.abbrevTipNow = function (el) {
     // Never a real control: a button with a tip is a button (its tip is no part of its name).
@@ -235,6 +237,17 @@
     // (forceHide), a tooltip wrapper, or a tip holding a control.
     if (!tip || !/^[A-Z][A-Z0-9\/.]{0,5}$/.test(own) || !A.isHidden(tip) || !A.modelText(tip)) return null;
     if (A.hasClass(tip, 'forceHide') || A.hasClass(tip, 'tooltip-component') || A.holdsControl(tip)) return null;
+    // And the tip must spell it out: same first letter, its letters in order, not the word itself
+    // ("FH" in "Flight hours"); an all-capitals control word with a tooltip (SAVE, "Save the plan";
+    // OK, "Confirm") keeps its press.
+    var letters = own.replace(/[^A-Z]/g, ''), words = A.norm(A.modelText(tip)).toLowerCase();
+    if (letters.length < 2 || words.charAt(0) !== letters.charAt(0).toLowerCase()) return null;
+    if (words.split(' ')[0] === own.toLowerCase()) return null;
+    for (var li = 0, at = 0; li < letters.length; li++) {
+      at = words.indexOf(letters.charAt(li).toLowerCase(), at);
+      if (at < 0) return null;
+      at++;
+    }
     return tip;
   };
   A.isAbbrevTipOf = function (c, parent) { return A.abbrevTip(parent) === c; };
@@ -1382,13 +1395,16 @@
     var own = false, i;
     for (i = 0; i < el.childNodes.length; i++) if (el.childNodes[i].nodeType === 3 && A.norm(el.childNodes[i].nodeValue)) { own = true; break; }
     if (!own) return false;
-    var all = el.getElementsByTagName('*');
+    var all = el.getElementsByTagName('*'), shown = 0;
     if (!all.length || all.length > A.ONE_LINE_MAX_NODES) return false;
     for (i = 0; i < all.length; i++) {
+      if (A.isHidden(all[i])) continue;                 // a hidden tip or icon takes no place in the line
       var st = A.styleOf(all[i]);
       if (!st || !/^inline/.test(st.display || '')) return false;
+      if (A.ownPointer(all[i])) return false;           // a link-like word that takes a press stays a control
+      shown++;
     }
-    return true;
+    return shown > 0;
   };
   A.isOneLine = function (el) {
     var min = 1e9, max = -1e9, any = false;

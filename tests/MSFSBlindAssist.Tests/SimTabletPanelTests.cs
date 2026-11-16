@@ -89,6 +89,8 @@ public class SimTabletPanelTests
         Assert.Contains(SimTabletPanel.ReleaseKeyboard, v.Evals);
         Assert.True(v.StampedBeforeEveryPress(), "the reader keeps the button listed while frames start");
         Assert.True(v.StampedAfterEveryPress(1), "and again once the press is done, which can take a second");
+        int clear = v.Evals.IndexOf(SimTabletPanel.ClearFocusRecord), press = v.Evals.IndexOf("toggle");
+        Assert.True(clear >= 0 && clear < press, "only a box the panel's opening focuses is released after it (STAB-1)");
     }
 
     [Fact]

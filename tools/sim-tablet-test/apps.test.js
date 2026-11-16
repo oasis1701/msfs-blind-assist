@@ -813,6 +813,33 @@ test('a field the press itself focuses is handed back, any field; one focused be
   assert.equal(outs, 1, 'focused by the press: released');
 });
 
+test('an all-capitals control word with a tooltip keeps its press; only a tip that spells the letters out makes an abbreviation', () => {
+  const words = [['SAVE', 'Save the plan'], ['OK', 'Confirm'], ['X', 'Close'], ['ARM', 'Arm the spoilers'], ['ON', 'Turn on']];
+  const p = styled(words.map((w, i) => '<div class="w" id="w' + i + '" data-rect="' + (i * 20) + ',0,40,' + (i * 20 + 10) + '">' + w[0] +
+    '<span class="tip">' + w[1] + '</span></div>').join('') +
+    '<div class="ab"><span class="term" id="t">FH<span class="term-tip">Flight hours</span></span> left</div>',
+    el => (el.classList.contains('tip') || el.classList.contains('term-tip') ? { display: 'none' } : null));
+  words.forEach((w, i) => { p.document.getElementById('w' + i).onclick = () => {}; });
+  p.document.getElementById('t').onclick = () => {};
+  const l = lines(scraped(p.A));
+  for (const w of words) assert.ok(l.some(x => x.indexOf('button|' + w[0]) === 0), w[0] + ' keeps its press: ' + l.join(' / '));
+  assert.ok(l.some(x => /FH \(Flight hours\) left/.test(x)), l.join(' / '));
+});
+
+test('a paragraph keeps a word that takes a press by its own pointer as a button, and reads around a hidden tip in order', () => {
+  const p = styled('<button>Go</button><p class="a">Read the help first. <span class="lnk">Open help</span> for more.</p>' +
+    '<p class="b">The check is due in 750 <span class="term">FH<span class="term-tip">Flight hours</span></span> or 90 days.</p>',
+    el => (el.tagName !== 'SPAN' ? null : Object.assign({ display: el.classList.contains('term-tip') ? 'none' : 'inline' },
+          el.classList.contains('lnk') ? { cursor: 'pointer' } : {})));
+  const lnk = p.document.querySelector('.lnk');
+  lnk.getBoundingClientRect = () => ({ top: 30, left: 0, right: 60, bottom: 50, width: 60, height: 20 });
+  const term = p.document.querySelector('.term');
+  term.getBoundingClientRect = () => ({ top: 30, left: 0, right: 20, bottom: 50, width: 20, height: 20 });
+  const l = lines(scraped(p.A));
+  assert.ok(!l.includes('static|Read the help first. Open help for more.'), 'the link is no plain word: ' + l.join(' / '));
+  assert.ok(l.some(x => /The check is due in 750 FH \(Flight hours\) or 90 days\./.test(x)), l.join(' / '));
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));
