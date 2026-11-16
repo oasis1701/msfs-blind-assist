@@ -105,7 +105,7 @@ public partial class BBS757Definition : BaseAircraftDefinition
 
     /// <summary>
     /// The 757 plays its own pilot-monitoring 80 knots, V1 and rotate (docs/b757.md, "Take-off callouts"), so
-    /// Takeoff Assist's "80 knots" and "100 knots" are not spoken on it.
+    /// Takeoff Assist's "80 knots" is not spoken on it; its "100 knots", which BlueBird does not call, is.
     /// </summary>
     public override bool PlaysOwnTakeoffSpeedCallouts => true;
 

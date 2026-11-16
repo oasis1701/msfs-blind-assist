@@ -4,7 +4,7 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// Takeoff Assist's own "80 knots" and "100 knots" calls, and the aircraft-definition opt-out an
+/// Takeoff Assist's own "80 knots" and "100 knots" calls, and the aircraft-definition opt-out of "80 knots" an
 /// airframe that plays its own speed callouts takes (<see cref="IAircraftDefinition.PlaysOwnTakeoffSpeedCallouts"/>).
 /// The calls are shared code: every aircraft but the one opting out keeps them unchanged.
 /// </summary>
@@ -34,8 +34,9 @@ public class TakeoffAssistSpeedCalloutTests
     }
 
     [Fact]
-    public void An_aircraft_that_calls_its_own_speeds_hears_no_speed_callout_from_takeoff_assist()
+    public void An_aircraft_that_calls_its_own_speeds_hears_only_100_knots_from_takeoff_assist()
     {
+        // The 757 calls 80 knots itself (so never twice), but no 100 knots: Takeoff Assist keeps that one.
         var (manager, speech) = ActiveManager();
         using (manager)
         {
@@ -44,8 +45,7 @@ public class TakeoffAssistSpeedCalloutTests
             manager.ProcessSpeedUpdate(140, aircraftCallsOwnSpeeds: true);
         }
 
-        Assert.DoesNotContain(speech.All, s => s.Contains("knots", StringComparison.Ordinal));
-        Assert.Empty(speech.All);
+        Assert.Equal(new[] { "100 knots" }, speech.All);
     }
 
     [Fact]

@@ -779,7 +779,7 @@ public sealed class CoherentBbs757TabletClient : IDisposable, IBbs757CduLink
                     && view.TryGetProperty("id", out var idEl))
                 {
                     if (idEl.ValueKind == JsonValueKind.Number) return idEl.GetInt32();
-                    if (int.TryParse(idEl.GetString(), out var n)) return n;
+                    if (int.TryParse(idEl.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var n)) return n;
                 }
             }
         }

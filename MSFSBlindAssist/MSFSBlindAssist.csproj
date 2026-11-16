@@ -27,13 +27,6 @@
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <SelfContained>false</SelfContained>
 
-    <!-- The output folder is pinned, whatever the target framework: bin\x64\<cfg>\net10.0-windows\,
-         the folder the app has always run from. The updater builds there, release.yml / preview.yml /
-         build-release.ps1 zip it, and users launch from it, so a change of framework (one naming a
-         Windows SDK version would otherwise name the folder after itself) must never move it. -->
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <OutputPath>bin\x64\$(Configuration)\net10.0-windows\</OutputPath>
-
     <!-- Assembly Information -->
     <AssemblyName>MSFSBlindAssist</AssemblyName>
     <RootNamespace>MSFSBlindAssist</RootNamespace>

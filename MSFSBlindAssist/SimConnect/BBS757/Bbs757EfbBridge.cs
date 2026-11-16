@@ -167,13 +167,23 @@ public sealed class Bbs757EfbBridge : IMcduBridge, IDisposable
         // Hidden first, then counted: a read that sees the new count also sees the window hidden (TakeRead reads them in that order).
         _active = active;
         if (!active) Interlocked.Increment(ref _showing);
-        _wake.Release();
+        Wake();
     }
 
     public void EnqueueCommand(string command, Dictionary<string, string>? payload = null)
     {
         _commands.Writer.TryWrite(new Bbs757EfbCommandQueue.Command(command, payload, Volatile.Read(ref _showing), _io.NowMs()));
-        _wake.Release();
+        Wake();
+    }
+
+    /// <summary>
+    /// Wakes the loop, coalesced: a wake already pending is not counted again, so a burst of commands (NVDA's arrows through a
+    /// choice list) wakes one wait, not one per command, and the timed waits after it really wait. No wake is lost: one is pending
+    /// whenever a command came in after the loop last waited. Two callers racing past the check leave at most a second one.
+    /// </summary>
+    private void Wake()
+    {
+        if (_wake.CurrentCount == 0) _wake.Release();
     }
 
     // ------------------------------------------------------------------ the loop
@@ -559,8 +569,11 @@ public sealed class Bbs757EfbBridge : IMcduBridge, IDisposable
     public void Dispose()
     {
         _cts.Cancel();
+        // Every await of the loop watches the token (the memory read's wait for the session's search included), so this wait
+        // normally ends at once; 1.5 s bounds the synchronous part of a read already under way.
         try { _loop?.Wait(1500); } catch { }
-        _cts.Dispose();
+        // Disposed only once the loop has ended: a loop still running past the wait keeps a live (canceled) source.
+        if (_loop is null || _loop.IsCompleted) _cts.Dispose();
     }
 }
 

@@ -141,7 +141,10 @@ public partial class BBS757Definition
     {
         try
         {
-            double? now = io.Cached(control.Node) ?? await io.ReadFresh(control.Node, _lifetime.Token);
+            if (_lifetime.IsCancellationRequested) return;
+            // Taken once, before any await: a switch away disposes _lifetime, whose Token then throws.
+            var ct = _lifetime.Token;
+            double? now = io.Cached(control.Node) ?? await io.ReadFresh(control.Node, ct);
             if (Bbs757AutopilotLayout.FlipTarget(control, now) is not double target)
             {
                 SayUnavailable(control, announcer);
@@ -152,8 +155,8 @@ public partial class BBS757Definition
             if (!await SetPositionAsync(control, target, io, announcer) || !atArm) return;
 
             if (_lifetime.IsCancellationRequested) return;   // switched away meanwhile
-            double? armedAfter = await io.ReadFresh(Bbs757AutopilotLayout.AutothrottleArmedVar, _lifetime.Token);
-            _lifetime.Token.ThrowIfCancellationRequested();
+            double? armedAfter = await io.ReadFresh(Bbs757AutopilotLayout.AutothrottleArmedVar, ct);
+            ct.ThrowIfCancellationRequested();
             if (Bbs757AutopilotLayout.AutothrottleRefusedPhrase(control.Label, armedBefore, armedAfter) is { } refused)
                 announcer.Announce(refused);
         }

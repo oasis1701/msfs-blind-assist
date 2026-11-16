@@ -163,16 +163,17 @@ public class Bbs757EfbTests
     }
 
     [Fact]
-    public void The_default_roots_are_the_five_install_locations_in_order()
+    public void The_default_roots_are_the_six_install_locations_in_order()
     {
         var roots = Bbs757WorkFolder.DefaultRoots();
 
-        Assert.Equal(5, roots.Count);
+        Assert.Equal(6, roots.Count);
         Assert.EndsWith(@"Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalState\WASM\MSFS2020\bluebirdsim-aircraft-757-200\work", roots[0]);
         Assert.EndsWith(@"Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalState\WASM\MSFS2024\bluebirdsim-aircraft-757-200\work", roots[1]);
         Assert.EndsWith(@"Microsoft Flight Simulator 2024\WASM\MSFS2020\bluebirdsim-aircraft-757-200\work", roots[2]);
-        Assert.EndsWith(@"Packages\Microsoft.FlightSimulator_8wekyb3d8bbwe\LocalState\packages\bluebirdsim-aircraft-757-200\work", roots[3]);
-        Assert.EndsWith(@"Microsoft Flight Simulator\Packages\bluebirdsim-aircraft-757-200\work", roots[4]);
+        Assert.EndsWith(@"Microsoft Flight Simulator 2024\WASM\MSFS2024\bluebirdsim-aircraft-757-200\work", roots[3]);
+        Assert.EndsWith(@"Packages\Microsoft.FlightSimulator_8wekyb3d8bbwe\LocalState\packages\bluebirdsim-aircraft-757-200\work", roots[4]);
+        Assert.EndsWith(@"Microsoft Flight Simulator\Packages\bluebirdsim-aircraft-757-200\work", roots[5]);
     }
 
     private static void WriteCycle(string work, string json)

@@ -20,28 +20,7 @@ public static class Bbs757Squawk
     public const string EmptyMessage = "Type a four-digit squawk first.";
 
     /// <summary>
-    /// What the pilot typed, as MainForm hands it over: a double, so "0421" arrives as 421 and is padded
-    /// back to four digits; an empty or unparseable box arrives as NaN (the field opts in to
-    /// <c>UnparseableTextAsNaN</c>, since 0000 is a code a pilot can mean).
-    /// </summary>
-    public static bool TryParse(double typed, out string code, out string error)
-    {
-        code = "";
-        error = "";
-        if (double.IsNaN(typed)) { error = EmptyMessage; return false; }
-        if (!double.IsFinite(typed) || typed < 0 || typed > 7777 || Math.Abs(typed - Math.Round(typed)) > 1e-9)
-        {
-            error = InvalidMessage;
-            return false;
-        }
-        string digits = ((int)Math.Round(typed)).ToString("0000", CultureInfo.InvariantCulture);
-        if (digits.Any(ch => ch > '7')) { error = InvalidMessage; return false; }
-        code = digits;
-        return true;
-    }
-
-    /// <summary>
-    /// The squawk box's own text (the definition takes it before MainForm parses it): one to four ASCII
+    /// The squawk box's own text, the one squawk validator (the definition takes it before MainForm parses it): one to four ASCII
     /// digits 0 to 7, padded to four ("421" is 0421). An empty box says to type a code first; anything
     /// else (letters, a sign, a decimal, a fifth digit, an 8 or a 9) gets the digits message.
     /// </summary>

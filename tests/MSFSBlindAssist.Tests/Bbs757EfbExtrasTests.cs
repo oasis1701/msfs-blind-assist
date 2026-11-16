@@ -285,6 +285,21 @@ public class Bbs757EfbExtrasTests
         }, texts);
     }
 
+    [Fact]
+    public void An_unreadable_plan_says_why_first_when_the_reason_is_known()
+    {
+        const string plain = "The SimBrief plan could not be read, so the app won't say when fueling and boarding are complete.";
+        string unreachable = MSFSBlindAssist.Services.SimBriefService.OfpFetchErrorText(
+            MSFSBlindAssist.Services.SimBriefService.OfpFetchFailure.Unreachable, byId: true);
+
+        Assert.Equal(plain, Bbs757EfbExtras.PlanUnreadable(null));
+        Assert.Equal(plain, Bbs757EfbExtras.PlanUnreadable("  "));
+        Assert.Equal("No SimBrief ID is set in the 757's EFB settings. " + plain,
+            Bbs757EfbExtras.PlanUnreadable(Bbs757EfbExtras.NoSimBriefIdText));
+        Assert.Equal("SimBrief could not be reached. Check your internet connection and try again. " + plain,
+            Bbs757EfbExtras.PlanUnreadable(unreachable));
+    }
+
     [Theory]
     [MemberData(nameof(Cultures))]
     public void The_nav_data_watch_says_each_of_its_five_texts_under_any_culture(string culture)

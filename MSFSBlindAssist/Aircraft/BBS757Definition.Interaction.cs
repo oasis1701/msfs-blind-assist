@@ -102,12 +102,10 @@ public partial class BBS757Definition
             return true;
         }
 
-        if (varKey == Bbs757Squawk.SetKey)
-        {
-            Sim = simConnect;
-            _ = SetSquawkAsync(value, simConnect, announcer);   // never throws: it catches and logs
-            return true;
-        }
+        // The squawk box is set from its text (HandleUITypedText), which MainForm offers first and which
+        // always claims it. Claimed here too, sending nothing, so the generic path never fires its
+        // registration's XPNDR_SET with a decimal value.
+        if (varKey == Bbs757Squawk.SetKey) return true;
         if (!_byNode.TryGetValue(varKey, out var control))
             return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
         Sim = simConnect;
@@ -196,6 +194,8 @@ public partial class BBS757Definition
         {
             label ??= control.Label;   // the autopilot window passes its own caption ("A/P Disconnect")
             if (_lifetime.IsCancellationRequested) return;   // switched away: nothing is pressed
+            // Taken once, before any await: a switch away disposes _lifetime, whose Token then throws.
+            var ct = _lifetime.Token;
             string? linked = LinkedStatusKey(control.Node);
             // The state the window's caption shows now, to tell a press the aircraft refused.
             double? before = linked != null && !speak && Bbs757McpLights.ForKey(linked) != null ? io.Cached(linked) : null;
@@ -211,12 +211,12 @@ public partial class BBS757Definition
             if (_lifetime.IsCancellationRequested) return;
             if (linked == null && speak && !Bbs757Write.HasReadableState(control)) announcer.Announce($"{label} pressed");
 
-            await io.Delay(ReadBackDelayMs, _lifetime.Token);
+            await io.Delay(ReadBackDelayMs, ct);
             io.RequestRead(control.Node);
             if (linked == null) return;
 
-            double? state = await io.ReadFresh(linked, _lifetime.Token);
-            _lifetime.Token.ThrowIfCancellationRequested();
+            double? state = await io.ReadFresh(linked, ct);
+            ct.ThrowIfCancellationRequested();
             string phrase = LinkedPhrase(linked, state);
             if (state != null) SettleOwnWriteEcho(linked, phrase);
             if (speak) announcer.Announce(state != null ? phrase : $"{label} pressed");

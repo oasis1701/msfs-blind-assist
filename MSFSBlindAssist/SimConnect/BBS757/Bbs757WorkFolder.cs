@@ -55,8 +55,9 @@ public static class Bbs757WorkFolder
     };
 
     /// <summary>
-    /// Where the work folder can be, most likely first: MSFS 2024 (Microsoft Store, then the
-    /// MSFS2024 WASM folder, then Steam), then MSFS 2020 (Microsoft Store, then Steam).
+    /// Where the work folder can be, most likely first: MSFS 2024 (Microsoft Store, its MSFS2020
+    /// then its MSFS2024 WASM folder, then Steam, the same two), then MSFS 2020 (Microsoft Store,
+    /// then Steam).
     /// </summary>
     public static IReadOnlyList<string> DefaultRoots()
     {
@@ -67,6 +68,7 @@ public static class Bbs757WorkFolder
             Path.Combine(local, "Packages", Msfs2024Package, "LocalState", "WASM", "MSFS2020", PackageName, "work"),
             Path.Combine(local, "Packages", Msfs2024Package, "LocalState", "WASM", "MSFS2024", PackageName, "work"),
             Path.Combine(roaming, Msfs2024SteamFolder, "WASM", "MSFS2020", PackageName, "work"),
+            Path.Combine(roaming, Msfs2024SteamFolder, "WASM", "MSFS2024", PackageName, "work"),
             Path.Combine(local, "Packages", "Microsoft.FlightSimulator_8wekyb3d8bbwe", "LocalState", "packages", PackageName, "work"),
             Path.Combine(roaming, "Microsoft Flight Simulator", "Packages", PackageName, "work"),
         };

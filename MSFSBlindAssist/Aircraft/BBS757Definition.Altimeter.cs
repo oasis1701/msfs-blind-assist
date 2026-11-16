@@ -125,12 +125,6 @@ public partial class BBS757Definition
             ? SendSquawkAsync(code, sim, announcer)
             : RefuseSquawk(error, announcer);
 
-    /// <summary>The squawk field's value as MainForm parses it (the numeric path; the text path above comes first).</summary>
-    internal Task SetSquawkAsync(double typed, SimConnectManager sim, ScreenReaderAnnouncer announcer)
-        => Bbs757Squawk.TryParse(typed, out string code, out string error)
-            ? SendSquawkAsync(code, sim, announcer)
-            : RefuseSquawk(error, announcer);
-
     private Task RefuseSquawk(string error, ScreenReaderAnnouncer announcer)
     {
         if (!_lifetime.IsCancellationRequested) announcer.AnnounceImmediate(error);   // a validation error always speaks
@@ -147,6 +141,8 @@ public partial class BBS757Definition
         try
         {
             if (_lifetime.IsCancellationRequested) return;
+            // Taken once, before any await: a switch away disposes _lifetime, whose Token then throws.
+            var ct = _lifetime.Token;
             if (!CanWrite(sim))
             {
                 Log.Debug("BBS757", "Squawk: write refused, nothing sent.");
@@ -155,16 +151,16 @@ public partial class BBS757Definition
             }
             OnOwnSquawkSet(code);   // plan 06, then 14
             sim.ExecuteCalculatorCodeUnique(Bbs757Squawk.Write(code));
-            await Task.Delay(ReadBackDelayMs, _lifetime.Token);
-            double? read = await sim.ReadFreshAsync(Bbs757Squawk.CodeKey, FreshReadTimeoutMs, _lifetime.Token);
-            _lifetime.Token.ThrowIfCancellationRequested();
+            await Task.Delay(ReadBackDelayMs, ct);
+            double? read = await sim.ReadFreshAsync(Bbs757Squawk.CodeKey, FreshReadTimeoutMs, ct);
+            ct.ThrowIfCancellationRequested();
             announcer.AnnounceImmediate(Bbs757Squawk.Confirmation(code, read));
         }
         catch (OperationCanceledException) { /* switched away */ }
         catch (Exception ex)
         {
             Log.Error("BBS757", $"Squawk set failed: {ex.Message}");
-            announcer.AnnounceImmediate("Squawk unavailable");
+            if (!_lifetime.IsCancellationRequested) announcer.AnnounceImmediate("Squawk unavailable");
         }
     }
 }

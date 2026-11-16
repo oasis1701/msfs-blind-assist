@@ -98,7 +98,7 @@ If you learnt the older Takeoff Assist where you steered away from the tone, you
 
 - **Centreline position**, as the distance from the centreline changes by about 10 feet, at most twice a second. The number is in steps of 10 feet and the word is the side you are on: *"2 left"* means you are about 20 feet left of the centreline, so steer right. *"center"* means you are within 25 feet of it. You can mute these and keep just the tone.
 - **Pitch**, whenever it changes by one degree, at most twice a second: *"level"*, *"+5"*, *"+14"*, or *"-1"* for nose down.
-- **Speeds**: *"80 knots"* and *"100 knots"*, on every aircraft except the BlueBird 757-200, which plays its own take-off calls (see [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-757-hotkeys)). The V-speed calls come from the aircraft itself or from BA's own V-speed callouts, whether or not Takeoff Assist is on (see [Takeoff Speed Callouts](#takeoff-vspeed-callouts)).
+- **Speeds**: *"80 knots"* and *"100 knots"*. On the BlueBird 757-200, which plays its own *"80 knots"*, only *"100 knots"* (see [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-757-hotkeys)). The V-speed calls come from the aircraft itself or from BA's own V-speed callouts, whether or not Takeoff Assist is on (see [Takeoff Speed Callouts](#takeoff-vspeed-callouts)).
 - **Ground speed**, if you have turned it on (see Settings below), for example *"60 knots."*.
 
 ### The handover to Hand Fly at liftoff {#takeoff-assist-handover}
@@ -167,7 +167,7 @@ How they work:
 - On the MD-11, *"N1 70 percent"* is called once when the first engine reaches 70 percent N1, where the autothrottle takes over.
 - Each call can be muted in the Monitor Manager (Output Ctrl+M) with its speed's row (V1, VR, V2). See [The Monitor Manager](core-concepts.md#monitor-manager).
 
-Takeoff Assist's *"80 knots"* and *"100 knots"* come on top of these on every aircraft except the BlueBird 757-200, which plays its own take-off calls, so Takeoff Assist skips these two there (see [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-757-hotkeys)). Details for each aircraft are in [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
+Takeoff Assist's *"80 knots"* and *"100 knots"* come on top of these on every aircraft. The BlueBird 757-200 plays its own *"80 knots"*, so Takeoff Assist calls only *"100 knots"* there (see [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-757-hotkeys)). Details for each aircraft are in [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
 
 ## Autopilot Windows {#autopilot-windows}
 

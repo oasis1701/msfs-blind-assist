@@ -238,11 +238,12 @@ public partial class MainForm
     /// through the definition's module session (<see cref="BBS757Definition.ReadEfbModelAsync"/>: every reader shares the one
     /// simulator handle and the one search, WASM-11). While the simulator is not connected it is "aircraft memory not found" and the
     /// session is not asked: its file analysis would run for an unknown simulator, find no files, and leave every reader on the
-    /// session unavailable until a flight reload. Runs on the bridge's loop, off the UI thread; never throws.
+    /// session unavailable until a flight reload. Runs on the bridge's loop, off the UI thread; never throws but a cancel through
+    /// <paramref name="ct"/> (the bridge's Dispose), which ends the wait for the session's search.
     /// </summary>
     private Task<Bbs757EfbModelRead> ReadBbs757EfbModelAsync(CancellationToken ct) =>
         simConnectManager is { IsConnected: true } && currentAircraft is BBS757Definition bbs757
-            ? bbs757.ReadEfbModelAsync()
+            ? bbs757.ReadEfbModelAsync(ct)
             : Task.FromResult(Bbs757EfbModelRead.Unreadable(Services.BBS757.Bbs757DisplayReasons.MemoryNotFound));
 
     /// <summary>
@@ -303,7 +304,8 @@ public partial class MainForm
     /// The load watch for a tablet press (Task 6's parts): the parts the hook has BlueBird start (<see cref="Bbs757EfbExtras.PartsFor"/>,
     /// with BlueBird's <c>automatic_loading</c> read from its settings file; a fetch with it off starts nothing), toward the latest
     /// plan for BlueBird's SimBrief ID, fetched and parsed off the UI thread as BlueBird fetches it. A plan that cannot be fetched,
-    /// read or computed is said once (<see cref="Bbs757EfbExtras.PlanUnreadableText"/>, queued); otherwise the definition watches,
+    /// read or computed is said once, with the reason when one is known (<see cref="Bbs757EfbExtras.PlanUnreadable"/>, queued);
+    /// otherwise the definition watches,
     /// from the UI thread, speaking in the aircraft's units read from BlueBird's settings file each time a sentence is said, never
     /// once here: the units question a fetch raises can switch them a moment after the tap (in-sim check 11, 2026-10-30). The
     /// SimBrief ID is never logged or spoken, nor is any message that could carry it. Never throws.
@@ -321,16 +323,19 @@ public partial class MainForm
 
             long? id = folder == null ? null : Bbs757WorkFolder.ReadSimBriefId(folder);
             Bbs757Loads? loads = null;
+            // Why there is no plan, when known: no ID in a settings file that was found, or SimBrief's own fetch error.
+            string? why = folder != null && id == null ? Bbs757EfbExtras.NoSimBriefIdText : null;
             if (id is long simBriefId)
             {
-                var (xml, _) = await Task.Run(() => MSFSBlindAssist.Services.SimBriefService.FetchLatestOfpXmlAsync(simBriefId, null));
+                var (xml, fetchError) = await Task.Run(() => MSFSBlindAssist.Services.SimBriefService.FetchLatestOfpXmlAsync(simBriefId, null));
+                why = fetchError;
                 var plan = xml == null ? null : await Task.Run(() => Bbs757Loadsheet.ParsePlan(xml));
                 if (plan != null) loads = Bbs757Loadsheet.Compute(plan).Loads;
             }
             if (!ReferenceEquals(currentAircraft, def)) return;
             if (loads == null)
             {
-                announcer.Announce(Bbs757EfbExtras.PlanUnreadableText);
+                announcer.Announce(Bbs757EfbExtras.PlanUnreadable(why));
                 return;
             }
             if (simConnectManager is not { IsConnected: true } sim)

@@ -217,14 +217,17 @@ public partial class BBS757Definition
     /// reader, WASM-11): the build whose EFB layout the generator wrote, its memory walked read-only through that layout
     /// (WASM-1, WASM-2). No session (before the readers start, after a switch away) and no located build are "aircraft
     /// memory not found", a build without a current EFB layout "BlueBird file not recognised", and the session's own
-    /// failures are worded for the 757. Runs on the bridge's loop, off the UI thread; never throws.
+    /// failures are worded for the 757. Runs on the bridge's loop, off the UI thread; never throws but
+    /// <see cref="OperationCanceledException"/> once <paramref name="ct"/> (the bridge's loop, ended by its Dispose) fires:
+    /// the wait for the session's search then ends at once, so the bridge's teardown does not wait it out (the search itself
+    /// runs on, the session's).
     /// </summary>
-    internal async Task<Bbs757EfbModelRead> ReadEfbModelAsync()
+    internal async Task<Bbs757EfbModelRead> ReadEfbModelAsync(CancellationToken ct = default)
     {
         try
         {
             if (DisplaySession is not { } session) return Bbs757EfbModelRead.Unreadable(Bbs757DisplayReasons.MemoryNotFound);
-            var location = await session.LocateAsync();
+            var location = await session.LocateAsync().WaitAsync(ct);
             var module = location.Found.FirstOrDefault(m =>
                 m.Build.Layout<Bbs757EfbMemLayout>(DisplayLayouts.Bbs757Module.Efb) is not null);
             if (module is null)
@@ -240,6 +243,10 @@ public partial class BBS757Definition
             var memory = new Bbs757EfbMemory(new ModuleEfbMemory(module.Memory), layout);
             var model = new Bbs757EfbModelReader(memory).Read();
             return model is null ? Bbs757EfbModelRead.Unreadable(Bbs757DisplayReasons.MemoryNotFound) : new Bbs757EfbModelRead(model, null);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;   // the bridge is going: its loop ends on this
         }
         catch (ObjectDisposedException)
         {

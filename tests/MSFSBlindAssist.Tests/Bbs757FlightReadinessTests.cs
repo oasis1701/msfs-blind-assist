@@ -687,10 +687,10 @@ public class Bbs757FlightReadinessTests
     }
 
     [Theory]
-    [InlineData(double.NaN, Bbs757Squawk.EmptyMessage)]
-    [InlineData(4783.0, Bbs757Squawk.InvalidMessage)]
-    [InlineData(4743.0, "Squawk unavailable")]   // valid, but nothing can land
-    public async Task A_squawk_that_cannot_be_set_says_why(double typed, string said)
+    [InlineData("", Bbs757Squawk.EmptyMessage)]
+    [InlineData("4783", Bbs757Squawk.InvalidMessage)]
+    [InlineData("4743", "Squawk unavailable")]   // valid, but nothing can land
+    public async Task A_squawk_that_cannot_be_set_says_why(string typed, string said)
     {
         var def = new BBS757Definition { NestRunning = () => true };
         var speech = new SpeechCapture();

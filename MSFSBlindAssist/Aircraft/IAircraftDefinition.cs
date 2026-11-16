@@ -577,9 +577,9 @@ public interface IAircraftDefinition
 
     /// <summary>
     /// True when this aircraft plays its own take-off speed callouts (the BlueBird 757 calls 80 knots,
-    /// V1 and rotate itself). Takeoff Assist then makes none of its speed callouts ("80 knots",
-    /// "100 knots", the Fenix's V1 and rotate) on it, so a roll never hears two "80 knots"; its
-    /// centerline tone and pitch calls are unchanged. False (the default) keeps them, which every
+    /// V1 and rotate itself). Takeoff Assist then does not call "80 knots" on it, so a roll never hears
+    /// it twice; its "100 knots", which the aircraft does not call, its centerline tone and its pitch
+    /// calls are unchanged. False (the default) keeps both speed calls, which every
     /// other aircraft does: the definition-owned V1 / Rotate / V2 machines
     /// (<see cref="TakeoffVSpeedCallouts"/>) are separate and are not governed by this.
     /// </summary>

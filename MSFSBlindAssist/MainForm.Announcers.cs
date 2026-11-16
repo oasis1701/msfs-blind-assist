@@ -646,8 +646,8 @@ public partial class MainForm
         }
 
         // Handle takeoff assist IAS updates (for speed callouts). An aircraft that plays its own
-        // speed callouts (the BlueBird 757) hears none of takeoff assist's; read per sample, so it
-        // follows the aircraft loaded now.
+        // speed callouts (the BlueBird 757) hears takeoff assist's "100 knots" but not its "80 knots";
+        // read per sample, so it follows the aircraft loaded now.
         if (e.VarName == "TAKEOFF_ASSIST_IAS" && takeoffAssistManager.IsActive)
         {
             takeoffAssistManager.ProcessSpeedUpdate(e.Value,

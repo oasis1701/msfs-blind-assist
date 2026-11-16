@@ -128,7 +128,7 @@ public partial class BBS757Definition
         Add(Bbs757Altimeters.DecisionHeightKey, RequestedRead("DECISION HEIGHT", "Decision Height", "feet"));
 
         // The squawk field. A key containing "_SET" is what MainForm renders as a text box Enter
-        // applies; the definition claims it (HandleUIVariableSet), so the event named here is never
+        // applies; the definition claims its text (HandleUITypedText), so the event named here is never
         // sent: it only keeps the registration an event, which takes no data definition.
         Add(Bbs757Squawk.SetKey, new SimVarDefinition
         {

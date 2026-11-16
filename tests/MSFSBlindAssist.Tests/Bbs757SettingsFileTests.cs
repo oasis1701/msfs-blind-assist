@@ -762,8 +762,9 @@ public class Bbs757SettingsFileTests
         Assert.Equal("MSFS 2024", Bbs757WorkFolder.SimulatorOf(roots[0]));   // Microsoft Store
         Assert.Equal("MSFS 2024", Bbs757WorkFolder.SimulatorOf(roots[1]));
         Assert.Equal("MSFS 2024", Bbs757WorkFolder.SimulatorOf(roots[2]));   // Steam
-        Assert.Equal("MSFS 2020", Bbs757WorkFolder.SimulatorOf(roots[3]));   // Microsoft Store
-        Assert.Equal("MSFS 2020", Bbs757WorkFolder.SimulatorOf(roots[4]));   // Steam
+        Assert.Equal("MSFS 2024", Bbs757WorkFolder.SimulatorOf(roots[3]));
+        Assert.Equal("MSFS 2020", Bbs757WorkFolder.SimulatorOf(roots[4]));   // Microsoft Store
+        Assert.Equal("MSFS 2020", Bbs757WorkFolder.SimulatorOf(roots[5]));   // Steam
         Assert.Equal("MSFS 2024", Bbs757WorkFolder.SimulatorOf(roots[0].ToUpperInvariant()));
     }
 }

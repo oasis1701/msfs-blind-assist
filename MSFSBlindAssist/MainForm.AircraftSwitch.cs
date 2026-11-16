@@ -1206,16 +1206,14 @@ public partial class MainForm
         // Starting the SDK bridge is a no-op unless the new aircraft is the iFly.
         StartIFlySdkBridge();
 
+        // The 757's windows, on every switch: the monitor manager lists the definition it was
+        // built for, so the next Ctrl+M rebuilds it from the live one. Before the readers start, as
+        // StartBbs757Displays makes the hidden CDU window the closed-window message watch needs.
+        DisposeBBS757Forms();
+
         // Likewise the PMDG 737 display readers unless it is the PMDG 737 (a reader already running restarts).
         StartPmdg737Displays();
-        StartBbs757Displays();   // and the BlueBird 757's unless it is the 757
-
-        // The 757's windows, on every switch: the monitor manager lists the definition it was
-        // built for, so the next Ctrl+M rebuilds it from the live one.
-        DisposeBBS757Forms();
-        // After the dispose, which also takes the hidden CDU window StartBbs757Displays has just made: the 757's
-        // closed-window CDU message watch needs one from the moment the 757 is picked (a no-op for another aircraft).
-        StartBbs757CduMessageWatch();
+        StartBbs757Displays();   // and the BlueBird 757's (with its CDU message watch) unless it is the 757
 
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)

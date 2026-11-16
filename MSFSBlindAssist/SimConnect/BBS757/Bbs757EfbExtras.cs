@@ -58,6 +58,17 @@ public static class Bbs757EfbExtras
     /// </summary>
     public const string PlanUnreadableText = "The SimBrief plan could not be read, so the app won't say when fueling and boarding are complete.";
 
+    /// <summary>Why there is no plan when BlueBird's settings file was read and holds no SimBrief ID.</summary>
+    public const string NoSimBriefIdText = "No SimBrief ID is set in the 757's EFB settings.";
+
+    /// <summary>
+    /// What is said once when the SimBrief plan behind a hook cannot be read: the reason when one is known (SimBrief's fetch error,
+    /// which <c>SimBriefService.FetchLatestOfpXmlAsync</c> words without the ID, or <see cref="NoSimBriefIdText"/>), then
+    /// <see cref="PlanUnreadableText"/>; with no reason, that alone. Pure.
+    /// </summary>
+    public static string PlanUnreadable(string? reason) =>
+        string.IsNullOrWhiteSpace(reason) ? PlanUnreadableText : $"{reason.Trim()} {PlanUnreadableText}";
+
     // The nav data watch's texts (plan 18's Global Constraints, verbatim). The cycle is a name, not an amount: it is said as a plain
     // number whatever the Windows culture.
     private const string NavDataRemovedText = "BlueBird removed the installed nav data.";

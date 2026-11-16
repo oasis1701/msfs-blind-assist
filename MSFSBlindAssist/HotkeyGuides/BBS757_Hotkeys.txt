@@ -658,7 +658,7 @@ Notes:
     start; the app assumes no power or engines at load.
   - The 757 plays its own 80 knots, V1 and rotate calls and its altitude
     callouts. So on this aircraft Takeoff Assist (output mode, Ctrl+T)
-    does not call "80 knots" or "100 knots"; its centerline tone and pitch
+    does not call "80 knots"; its "100 knots", centerline tone and pitch
     calls work as on every other aircraft.
   - The flaps, speedbrake and gear also work with the simulator's own keys
     and controls; the app says where they ended up. The simulator's gear

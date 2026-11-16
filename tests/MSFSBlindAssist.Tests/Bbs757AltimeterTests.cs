@@ -281,37 +281,6 @@ public class Bbs757AltimeterTests
     // ---- Squawk -----------------------------------------------------------------------------
 
     [Theory]
-    [InlineData(4743.0, "4743")]
-    [InlineData(421.0, "0421")]   // the panel hands "0421" over as 421
-    [InlineData(0.0, "0000")]
-    [InlineData(7777.0, "7777")]
-    public void A_typed_squawk_is_four_octal_digits(double typed, string code)
-    {
-        Assert.True(Bbs757Squawk.TryParse(typed, out string c, out string error));
-        Assert.Equal(code, c);
-        Assert.Equal("", error);
-    }
-
-    [Theory]
-    [InlineData(4783.0)]
-    [InlineData(8000.0)]
-    [InlineData(12.5)]
-    [InlineData(-1.0)]
-    [InlineData(17777.0)]
-    public void A_squawk_with_a_digit_past_7_is_refused(double typed)
-    {
-        Assert.False(Bbs757Squawk.TryParse(typed, out _, out string error));
-        Assert.Equal(Bbs757Squawk.InvalidMessage, error);
-    }
-
-    [Fact]
-    public void An_empty_squawk_box_is_refused_with_its_own_words()
-    {
-        Assert.False(Bbs757Squawk.TryParse(double.NaN, out _, out string error));
-        Assert.Equal(Bbs757Squawk.EmptyMessage, error);
-    }
-
-    [Theory]
     [InlineData("4743", "4743")]
     [InlineData("421", "0421")]
     [InlineData(" 7700 ", "7700")]

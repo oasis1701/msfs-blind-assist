@@ -523,7 +523,7 @@ Full explanations: [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-bb
 - **Output Shift+C** — Open the 757's First Officer.
 - **Output Ctrl+M** — Open the 757 Monitor Manager.
 
-BA moves the camera for the AI reads and puts your view back afterwards. The 757 plays its own take-off speed calls, so Takeoff Assist does not call *"80 knots"* or *"100 knots"* on it.
+BA moves the camera for the AI reads and puts your view back afterwards. The 757 plays its own take-off speed calls, so Takeoff Assist does not call *"80 knots"* on it; it still calls *"100 knots"*.
 
 F and Shift+F read each tank with a total, L adds the flap angle while the flaps are not at the lever's position, Shift+G adds the lever's position, UP, OFF or DOWN (*"Gear up, lever off"*), and B reads the three altimeters and the radio minimums (*"Altimeter: 1018, 30.05. DH 200"*). The trim is spoken in BlueBird's units while it moves (*"Trim 5.3"*), and the CDU's EXEC light when it comes on and goes out (*"EXEC light on"*, *"EXEC light off"*).
 
