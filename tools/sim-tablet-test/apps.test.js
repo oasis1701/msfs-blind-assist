@@ -1191,6 +1191,76 @@ test('a two-cell table row reads as its name and value; a caption ending in a co
     assert.ok(l.includes(w), w + ' in ' + l.join(' / '));
 });
 
+test('a late-focus hand-back never outlives the focus it was for, and never loops with a page that keeps its box focused', () => {
+  const p = page('<button id="go">Go</button><div id="wrap"><input id="q" type="text"></div>');
+  const { window, document } = p;
+  const q = document.getElementById('q');
+  const log = [];
+  q.addEventListener('blur', () => log.push('blur'));
+  document.getElementById('go').onclick = () => {};
+  const els = scraped(p.A);
+  p.A.clickElement(els.find(e => e.text === 'Go').idx);
+  let stop = true;
+  document.getElementById('wrap').addEventListener('focus', ev => { if (stop) ev.stopPropagation(); }, true);
+  q.focus();                                   // late, but the page stops it before the box
+  stop = false; q.blur(); log.length = 0;
+  window.__MSFSBA_PRESSED_AT = Date.now() - 600000;
+  q.focus();                                   // ten minutes later, someone else's focus
+  assert.deepStrictEqual(log, [], 'a stale hand-back stays out of it');
+  const k = page('<button id="go">Go</button><input id="q" type="text">');
+  const kq = k.document.getElementById('q');
+  let focuses = 0;
+  kq.addEventListener('focus', () => focuses++);
+  kq.addEventListener('blur', () => { if (focuses < 20) kq.focus(); });   // a page that keeps its box focused
+  k.document.getElementById('go').onclick = () => {};
+  k.A.clickElement(scraped(k.A).find(e => e.text === 'Go').idx);
+  kq.focus();
+  assert.ok(focuses <= 2, 'one hand-back per press, then the page keeps its box: ' + focuses);
+});
+
+test('a pointer or key press outside the reader\'s own presses counts as the pilot\'s, trusted or not; only text boxes are handed back', () => {
+  for (const ev of ['mousedown', 'keydown']) {
+    const p = page('<button id="go">Go</button><input id="q" type="text">');
+    const { window, document } = p;
+    const q = document.getElementById('q');
+    const log = [];
+    q.addEventListener('blur', () => log.push('blur'));
+    document.getElementById('go').onclick = () => {};
+    p.A.clickElement(scraped(p.A).find(e => e.text === 'Go').idx);
+    q.dispatchEvent(new window.Event(ev, { bubbles: true }));
+    q.focus();
+    assert.deepStrictEqual(log, [], ev + ' before the focus: the pilot\'s own');
+  }
+  const c = page('<button id="go">Go</button><input id="c" type="checkbox">');
+  const cb = c.document.getElementById('c');
+  const clog = [];
+  cb.addEventListener('blur', () => clog.push('blur'));
+  c.document.getElementById('go').onclick = () => {};
+  c.A.clickElement(scraped(c.A).find(e => e.text === 'Go').idx);
+  cb.focus();
+  assert.deepStrictEqual(clog, [], 'a tick box takes no keyboard');
+});
+
+test('tables: a name cell may be a header cell; a value cell holding headings or lists keeps them; a row holding a control keeps its press; one cell never splits a word', () => {
+  const inl = el => (/^(SPAN|B|I|U|S|EM)$/.test(el.tagName) ? 'inline' : 'block');
+  const p = page('<table><tbody><tr><th data-rect="0,0,40,20">ICAO</th><td data-rect="0,40,90,20">VCBI</td></tr>' +
+    '<tr><td data-rect="20,0,40,40">Fuel</td><td data-rect="20,40,90,40"><button>Edit</button></td></tr>' +
+    '<tr><td data-rect="40,0,40,140">Notes</td><td data-rect="40,40,90,140"><h3 data-rect="40,40,90,60">Before you start</h3><p data-rect="60,40,90,80">Check the doors.</p>' +
+    '<ul data-rect="80,40,90,140"><li data-rect="80,40,90,100">Door 1 closed</li><li data-rect="100,40,90,120">Door 2 closed</li></ul></td></tr></tbody></table>' +
+    '<table><tbody><tr><td><span>Lon</span><b><i><u><s><em>don</em></s></u></i></b></td></tr></tbody></table>', { display: inl });
+  const l = lines(scraped(p.A));
+  for (const w of ['static|ICAO: VCBI', 'button|Edit', 'heading|Before you start', 'static|Door 1 closed']) assert.ok(l.includes(w), w + ' in ' + l.join(' / '));
+  assert.ok(l.includes('static|London'), l.join(' / '));
+});
+
+test('an app\'s whole page fixed in place is its page, not a popup over one', () => {
+  const p = styled('<div class="app-overlay"><h1>Tow planner</h1><button>Plan</button></div>',
+    el => (el.classList.contains('app-overlay') ? { position: 'fixed', backgroundColor: 'rgb(0, 0, 0)' } : null));
+  const l = lines(scraped(p.A));
+  assert.ok(!l.some(x => x.indexOf('alert|') === 0), l.join(' / '));
+  assert.ok(l.includes('heading|Tow planner'), l.join(' / '));
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));

@@ -410,7 +410,7 @@
     }
     return A.norm(s);
   };
-  A.TABLE_PARTS = /^(TABLE|THEAD|TBODY|TFOOT|TR)$/;
+  A.NEVER_PAIRED = /^(TABLE|THEAD|TBODY|TFOOT|TR|UL|OL|DL)$/;   // table sections and lists are never a caption over its value
   A.cellOf = function (n) {
     for (var up = 0; n && up < 4; up++, n = n.parentElement) if (n.tagName === 'TD' || n.tagName === 'TH') return n;
     return null;
@@ -418,7 +418,7 @@
   A.needsSpace = function (a, b, left, right) {
     // Two table cells never run together ("FL350" + "0.12"), a caption cell either ("ICAO:" + "VCBI").
     var ca = A.cellOf(a), cb = A.cellOf(b);
-    if (ca !== cb) return true;
+    if (ca && cb && ca !== cb) return true;
     // A number against its unit or a label against its number is never one word, even where the
     // boxes touch ("11890" + "FT", "OS Version" + "1.0.3").
     if (/\d$/.test(left) && /^[A-Za-z]/.test(right) || /[A-Za-z]$/.test(left) && /^\d/.test(right)) return true;
@@ -1035,7 +1035,7 @@
   A.block('kv-row',
     function (el) {
       if (el.tagName !== 'TR' || el.children.length !== 2 || A.hasCtl(el)) return false;
-      if (el.children[0].tagName !== 'TD' || el.children[1].tagName !== 'TD') return false;
+      if (!/^T[DH]$/.test(el.children[0].tagName) || el.children[1].tagName !== 'TD') return false;
       for (var t = el.parentElement; t; t = t.parentElement) {
         if (t.tagName !== 'TABLE') continue;
         var rows = t.rows || [];
@@ -1045,8 +1045,10 @@
       return false;
     },
     function (el, els) {
-      var name = A.lineText(el.children[0]), value = A.lineText(el.children[1]);
+      var cell = el.children[1], name = A.lineText(el.children[0]), value = A.lineText(cell);
       if (!name || !value || name.length > 60 || !/[A-Za-z]/.test(name)) return false;
+      // A value cell that is a block of its own (a heading, paragraphs, a list: a layout table) keeps it.
+      if (cell.querySelector('h1, h2, h3, h4, h5, h6, p, ul, ol, table') || A.rows(cell).length > 2) return false;
       els.push(A.el(el, { kind: 'static', text: name.replace(/\s*:$/, '') + ': ' + value }));
     });
 
@@ -1475,9 +1477,12 @@
     // controls over a map (the Flight Planner's "map-overlay").
     for (var m = 0; m < c.length; m++) {
       if (c[m].indexOf('__') >= 0 || !/(^|[-_])overlay$/.test(c[m])) continue;
-      var st = A.styleOf(el);
-      return !!st && st.position === 'fixed' && A.opaque(st.backgroundColor) && A.coversView(el) &&
-             !!el.querySelector('button, input, select, textarea, [role="button"]');
+      var st = A.styleOf(el), ctl = 'button, input, select, textarea, [role="button"]';
+      if (!st || st.position !== 'fixed' || !A.opaque(st.backgroundColor) || !A.coversView(el) || !el.querySelector(ctl)) return false;
+      // Over a page: a control outside it. An app's whole page fixed in place is that page.
+      var under = (A._view || document).querySelectorAll(ctl);
+      for (var u = 0; u < under.length; u++) if (!el.contains(under[u])) return true;
+      return false;
     }
     return false;
   };
@@ -1838,7 +1843,7 @@
         // 0h") with a comma. Never over words of the element's own, which it would drop, nor over a
         // word that takes a press ("Gate" over a pressable "A12").
         var twoAll = el.getElementsByTagName('*'), two = [];
-        if (twoAll.length <= A.ONE_LINE_MAX_NODES && el.children.length === 2 && !A.ownWords(el) && !A.TABLE_PARTS.test(el.tagName)) {
+        if (twoAll.length <= A.ONE_LINE_MAX_NODES && el.children.length === 2 && !A.ownWords(el) && !A.NEVER_PAIRED.test(el.tagName)) {
           two = A.rows(el);
           for (var tw = 0; tw < twoAll.length; tw++) if (A.pressWord(twoAll[tw])) { two = []; break; }
         }
@@ -2191,6 +2196,11 @@
   // A focus within A.LATE_FOCUS_MS of the reader's last press or set in this document, with no real
   // pointer press of the pilot's in the second before it, is the page's own (STAB-1).
   A.LATE_FOCUS_MS = 5000;
+  A.TEXT_TYPES = /^(|text|search|email|url|tel|password|number)$/;
+  A.isTextEntry = function (t) { return t.tagName === 'TEXTAREA' || A.TEXT_TYPES.test((t.getAttribute('type') || '').toLowerCase()); };
+  // The reader's own presses and sets mark themselves (A._pressing), so their synthetic mouse events
+  // never count as the pilot's: whether Coherent marks a real click trusted is not relied on.
+  A._pressing = false;
   A.lateFocus = function (now) {
     var at = window.__MSFSBA_PRESSED_AT, user = window.__MSFSBA_USER_POINTER_AT;
     return !!at && now - at >= 0 && now - at < A.LATE_FOCUS_MS && !(user && now - user < 1000);
@@ -2222,6 +2232,11 @@
     return false;
   };
   A.press = function (el) {
+    var was = A._pressing;
+    A._pressing = true;
+    try { A.pressNow(el); } finally { A._pressing = was; }
+  };
+  A.pressNow = function (el) {
     window.__MSFSBA_LAST_FOCUS = null;            // only a focus this press brings is released after it
     window.__MSFSBA_PRESSED_AT = Date.now();      // and one the page takes by itself soon after (A.lateFocus)
     var h = A.handlerOf(el);
@@ -2414,7 +2429,10 @@
   };
 
   A.setValue = function (idx, text, gel) {
-    return A.withListeners(gel, function () { A.pumpIfStalled(true); return A.setValueNow(idx, text); });
+    var was = A._pressing;
+    A._pressing = true;                           // its slider drags are the reader's, not the pilot's
+    try { return A.withListeners(gel, function () { A.pumpIfStalled(true); return A.setValueNow(idx, text); }); }
+    finally { A._pressing = was; }
   };
   // The OS's own text boxes take 'input' alone (STAB-1): the TextBox component and the Flight
   // Planner's route box. A page's own box also commits on 'change'.
@@ -2755,6 +2773,7 @@
           document.removeEventListener('mousedown', oldH.pointer, true);
           document.removeEventListener('pointerdown', oldH.pointer, true);
           document.removeEventListener('touchstart', oldH.pointer, true);
+          document.removeEventListener('keydown', oldH.pointer, true);
         }
       } catch (eh4) {}
       try { if (oldH.load) document.removeEventListener('load', oldH.load, true); } catch (eh5) {}
@@ -2781,21 +2800,26 @@
     // soon after a press, late, once its server has answered (GSX Remote's "Search parking...": its
     // box's focus listener sends FOCUS_INPUT_FIELD through its host): handed back right after the
     // page's own focus listeners ran (a listener added to the box now runs after them), so the box's
-    // own blur path sends the release. Never a box the pilot clicked: a real (trusted) mouse, pointer
-    // or touch press in the last second leaves it focused.
+    // own blur path sends the release. Only a text box (a tick box takes no keyboard), only the focus it
+    // was armed for (one a page stopped before the box leaves it armed: it stands down on any later
+    // one), and once per press (a page that keeps its box focused keeps it). Never a box the pilot or a
+    // helper chose: any pointer, touch or key press in the last second that is not the reader's own.
     var onFocus = function (ev) {
       var t = ev && ev.target;
       if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
       window.__MSFSBA_LAST_FOCUS = t;
-      if (!A.lateFocus(Date.now())) return;
+      if (!A.isTextEntry(t) || !A.lateFocus(Date.now())) return;
+      var armed = Date.now();
       var once = function () {
         t.removeEventListener('focus', once, false);
-        if (window.__MSFSBA_LAST_FOCUS === t) window.__MSFSBA_LAST_FOCUS = null;    // handed back once, here
+        if (Date.now() - armed > 50 || !A.lateFocus(Date.now())) return;   // a later focus is not this one
+        window.__MSFSBA_PRESSED_AT = 0;                                    // one hand-back per press
+        if (window.__MSFSBA_LAST_FOCUS === t) window.__MSFSBA_LAST_FOCUS = null;
         A.releaseBox(t);
       };
       t.addEventListener('focus', once, false);
     };
-    var onPointer = function (ev) { if (ev && ev.isTrusted) window.__MSFSBA_USER_POINTER_AT = Date.now(); };
+    var onPointer = function () { if (!A._pressing) window.__MSFSBA_USER_POINTER_AT = Date.now(); };
     // A frame that loads a document of its own (GSX's price lists and invoices, srcdoc frames) changes
     // nothing the observer watches, its old body included, so its load marks the page changed.
     var onLoad = function (ev) { var t = ev && ev.target; if (t && t.tagName === 'IFRAME') A._markDirty(); };
@@ -2803,6 +2827,7 @@
     document.addEventListener('mousedown', onPointer, true);
     document.addEventListener('pointerdown', onPointer, true);
     document.addEventListener('touchstart', onPointer, true);
+    document.addEventListener('keydown', onPointer, true);
     document.addEventListener('load', onLoad, true);
     window.__MSFSBA_SIM_TABLET_HANDLERS = { change: A._markDirty, input: A._markDirty, focus: onFocus, pointer: onPointer, load: onLoad };
   } catch (e) {}
