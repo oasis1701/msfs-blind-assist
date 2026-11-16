@@ -8,7 +8,7 @@
 > finds them, the shared module session they use, or the safety model. The layout files come from the
 > layouts store, which a release carries beside the exe, or from the generator, an optional program beside
 > the app that writes layout files. The BlueBird 757's module (`bbs757`: its FMA, both EICAS screens, the
-> EHSI and the tablet's control tree) uses the same groundwork: its layout records and what differs are in
+> EHSI, the tablet's control tree and the rest of the ADI) uses the same groundwork: its layout records and what differs are in
 > [the BlueBird 757 module](#the-bluebird-757-module), its readers in [b757.md](b757.md#displays-read-from-memory).
 > Rules: `.claude/rules/wasm-memory.md` (WASM-n), full text in
 > [invariants/wasm-memory.md](invariants/wasm-memory.md).
@@ -109,7 +109,7 @@ nothing in the app:
 | File | Role |
 | --- | --- |
 | `ModuleDescription.cs` | `ModuleDescription`: where a WASM module's file lives (a package name pattern, the folders inside the package, with `OtherPathsInPackage` for a package laid out another way, the file name), its id and its readers. Each `LayoutReader` gives a reader's id, log name, layout type, anchor, layout dump and failed parts. |
-| `ModuleCatalog.cs`, `Pmdg737/Pmdg737Module.cs`, `Bbs757/Bbs757Module.cs` | Every module the app knows. Two: `pmdg737`, the `737NG3.wasm` of the `pmdg-aircraft-73[6-9]` packages, with the readers `fma`, `engineDisplays`, `navDisplay` and `pfd` in that order; and `bbs757`, the `BBS752.wasm` of the `bluebirdsim-aircraft-757-200` package, with the readers `fma`, `efb`, `lowerEicas`, `upperEicas` and `ehsi` ([the BlueBird 757 module](#the-bluebird-757-module)). |
+| `ModuleCatalog.cs`, `Pmdg737/Pmdg737Module.cs`, `Bbs757/Bbs757Module.cs` | Every module the app knows. Two: `pmdg737`, the `737NG3.wasm` of the `pmdg-aircraft-73[6-9]` packages, with the readers `fma`, `engineDisplays`, `navDisplay` and `pfd` in that order; and `bbs757`, the `BBS752.wasm` of the `bluebirdsim-aircraft-757-200` package, with the readers `fma`, `efb`, `lowerEicas`, `upperEicas`, `ehsi` and `adi` ([the BlueBird 757 module](#the-bluebird-757-module)). |
 | `LayoutFile.cs`, `LayoutFileFormat.cs`, `ReaderResult.cs` | The layout file: its records, and the writer and reader of its text ([WASM-21]). |
 | `WasmFileImage.cs`, `LayoutFit.cs` | The fingerprint: a `.wasm` file's code hash, data segments and searches, and whether a layout file fits it ([the fingerprint](#the-fingerprint)). |
 | `ModuleAnchor.cs` | The bytes a reader's memory is found by, and their wasm address. |
@@ -748,7 +748,8 @@ The BlueBird 757-200 is the second module on this groundwork: `bbs757`, the `BBS
 and its tablet inside that module, with no text behind them. What the pilot gets from each reader, every spoken
 line and the windows are in [b757.md](b757.md#displays-read-from-memory); this section is the module, its layout
 records and what differs from the 737. The same rules apply ([WASM-1], [WASM-2], [WASM-4], [WASM-26], [WASM-31]);
-the 757's own are B757-30 to B757-49 (`.claude/rules/b757.md`, `.claude/rules/b757-ehsi.md`).
+the 757's own are B757-30 to B757-49 and B757-64 to B757-66 (`.claude/rules/b757.md`, `.claude/rules/b757-ehsi.md`,
+`.claude/rules/b757-adi.md`).
 
 ### How the 757's objects are found
 
@@ -756,7 +757,7 @@ This build of `BBS752.wasm` has no name section. Every reader reaches its object
 manager and C++ run-time type information: each layout holds the manager's static address (`ManagerBase`) and
 how many bytes of pointers to search (`ManagerSpan`), and the display is the pointer there whose target starts
 with the display class's vtable pointer (`PfdVptr`, `UpperEicasVptr`, `LowerVptr`, `NdVptr`, `EfbVptr`). The
-FMA, the lower EICAS and the EHSI take the first such pointer (for the FMA and the EHSI that is the Captain's
+FMA, the ADI, the lower EICAS and the EHSI take the first such pointer (for the FMA, the ADI and the EHSI that is the Captain's
 display; the First Officer's follows it), the upper EICAS requires exactly one. Everything else is an offset into that object or an object it points
 to, and a few static addresses (the EICAS message lists, the clock, the EHSI's path registry). Each layout also
 carries its own anchor (`AnchorAddress`, `Anchor`), by which `WasmMemoryLocator.FindLinearBase` finds the
@@ -775,6 +776,7 @@ content and ignores `SourceFile`, so the same build installed twice gives one la
 | `lowerEicas` | `Bbs757LowerEicasLayout` | The power and blanking bytes, the page field and the three page values by kind (`EnginePage`, `StatusPage`, `EngineOff`), the N2/N3 exceedance latch, the two engines and their data block, engine type and invalid value, and the HP spool's offset for an RR and a PW. Each page is an optional part, null with its reason: `Bbs757LowerEicasEnginePage` (the engine data fields, the four max boxes, the settings object's pounds flag, the start flags and the fields of BlueBird's start-hold test) and `Bbs757LowerEicasStatusPage` (the status message list's static address, stride and cap and a record's text, length and sequence stamp; the hydraulics, APU and oxygen objects' fields; the four flight control pointers; the brake temperatures). No word table and no number format: the lower EICAS's label words and formats are in the app (`Bbs757LowerEicasText`). |
 | `upperEicas` | `Bbs757UpperEicasLayout` | The object's power, failed, timed-blank and compact bytes, the EGT and N1 limits and max memories, the in-flight start rows; the pointers to the computer, both engines, the lower EICAS, the pneumatic, FMS, fire, reverser, thrust management and TAT objects and the fields read in each; the two message lists' static addresses, an entry's text, length, id, cancelled byte and level, and the caps (`MaxMessages`, `MaxTextLength`, `MaxComponents`); the draw's constants (lines per page, how long RECALL shows, the anti-ice valve's ids, states and minimum opening, the reverser's moving and deployed states, the modes that inhibit amber) and its words (the message levels, the thrust reference words and numbers, the manual, D-TO, TAI, REV, PAGE and RECALL words, the start block's title and units). |
 | `ehsi` | `Bbs757EhsiLayout`, with `Bbs757EhsiLegPosition` | The Captain's navigation display object: its power bytes; the pointers to the EFIS panel, the instrument source (and from it the selected IRS), the MCP and the route; mode, centered, range, validity, heading number, track-up and true-reference fields and the mode word table; the map's size, center, rotation and aircraft screen point; the DATA switch and the EXCESS DATA count and limit; the origin and destination airports; the route's vectors and a leg's fields (stride, cap, label, kind, position by kind, terminator, constraint, ETA); the path registry and the top-of-climb, top-of-descent and end-of-descent fields; the draw's own constants as values (`RadiusFactor`, `AircraftYFactor`, `ClipInset`, `MarkerMargin`, `MinEtaGroundSpeed`); and the screen's words. Then five optional parts. |
+| `adi` | `Bbs757AdiLayout` (`Bbs757AdiLayout.cs`) | The Captain's primary flight display object again (the FMA layout's `PfdVptr`, found afresh: no state is shared with the FMA reader) and its power, failed and timed-blank bytes; the pointers from it to the instrument source selector (and from that the selected IRS, the air data computer and the radio altimeter), the MCP, the autoflight object and the FMS; the air data block's and the PFD's ILS block's offsets; a device's powered and failed bytes. Then seven optional parts, each null with its reason (`AttitudeMissing` and the others): `Bbs757AdiAttitude` (the IRS's attitude-valid fields and the ATT word), `Bbs757AdiSpeed` (the speed tape's sources, the AFDS timer, the draw's constants and words), `Bbs757AdiIls` (the ILS block's pointers, scales and flags, the rising runway's modes), `Bbs757AdiRadioAltitude` (the radio altimeter, its self-test, the decision height, ALT), `Bbs757AdiFlightDirector`, `Bbs757AdiTcas` (the resolution advisory's pitch limits) and `Bbs757AdiReferenceSpeeds` (the FMC's VREF 30 and 25, which the ADI does not draw: Shift+1 to Shift+6 speak them). Generator version 9; the measurements are in [b757.md](b757.md#the-adi-altp). |
 
 The EHSI's five optional parts, each a record of its own, null exactly when its reason (`ApproachMissing` and the
 others) is set, which the record checks on save and on load (`CheckParts`):
@@ -791,7 +793,7 @@ others) is set, which the record checks on save and on load (`CheckParts`):
 the word the display draws. 0 is always blank and never in the table; any other value with no entry reads
 "unrecognised", spoken and never dropped. `Bbs757LayoutDescriptions` writes each layout in full to
 `bbs757-module.log` (`file analysis: …`), as `Pmdg737LayoutDescriptions` does for the 737, and the module's
-`LowerEicasFailures` names a lower EICAS page whose part was not derived.
+`LowerEicasFailures` names a lower EICAS page whose part was not derived, `AdiFailures` an ADI part.
 
 ### The EFB layout
 
