@@ -668,7 +668,7 @@ public class Bbs757AdiReaderTests
 
     /// <summary>An ILS approach, 1,500 ft above the runway: 250 kt, the MCP at 180, the timer long past its bugs, the
     /// flap speed 161, on the localizer's expanded scale, descending at 700 ft/min.</summary>
-    private static Bbs757AdiRaw Approach() => new(
+    internal static Bbs757AdiRaw Approach() => new(
         Lit: true,
         Attitude: new Bbs757AdiAttitudeRaw(IrsAttitude: true, IrsMode: A.IrsModeNav, IrsState: A.IrsStateValid),
         Speed: new Bbs757AdiSpeedRaw(AdcFailed: false, Airspeed: 250, Altitude: 3000, McpSpeed: 180, PitchMode: 9,
@@ -683,8 +683,11 @@ public class Bbs757AdiReaderTests
         ReferenceSpeeds: new Bbs757AdiReferenceSpeedsRaw(121, 123));
 
     /// <summary>The simulator's values in degrees (the simulator's signs), knots and Mach.</summary>
-    private static Bbs757AdiSim In(double? pitch = -2.5, double? bank = 10, double? groundSpeed = 240, double? mach = 0.45) =>
+    internal static Bbs757AdiSim In(double? pitch = -2.5, double? bank = 10, double? groundSpeed = 240, double? mach = 0.45) =>
         new(pitch / DegreesPerRadian, bank / DegreesPerRadian, groundSpeed, mach);
+
+    /// <summary>The gate's reading, read from <see cref="Gate"/> through the real sampler.</summary>
+    internal static Bbs757AdiReading GateReading() => Read(Gate());
 
     private static Bbs757AdiReading Decode(Bbs757AdiRaw raw, Bbs757AdiSim? sim = null, bool machShown = true,
         Bbs757AdiLayout? layout = null) =>
