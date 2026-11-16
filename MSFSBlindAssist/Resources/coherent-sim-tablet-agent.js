@@ -2201,14 +2201,26 @@
   // The reader's own presses and sets mark themselves (A._pressing), so their synthetic mouse events
   // never count as the pilot's: whether Coherent marks a real click trusted is not relied on.
   A._pressing = false;
+  A._sawTrusted = false;
   A.lateFocus = function (now, box) {
     var at = window.__MSFSBA_PRESSED_AT, key = window.__MSFSBA_USER_KEY_AT;
     if (!at || now - at < 0 || now - at >= A.LATE_FOCUS_MS) return false;
     if (key && now - key < 1000) return false;
     var user = window.__MSFSBA_USER_POINTER_AT, tgt = window.__MSFSBA_USER_POINTER_TARGET;
+    if (user && now - user >= 1000) window.__MSFSBA_USER_POINTER_TARGET = tgt = null;   // never keep a removed node alive
     if (user && now - user < 1000 &&
-        (!box || !tgt || !tgt.contains || tgt === box || tgt.contains(box) || box.contains(tgt) || tgt.control === box)) return false;
+        (!box || !tgt || !tgt.contains || tgt === box || box.contains(tgt) || tgt.control === box || A.nearWrapper(tgt, box))) return false;
     return true;
+  };
+  // A wrapper of the box near enough to be its field (3 levels at most), never the body, the document
+  // or the app's view: a press on the page's background chose nothing.
+  A.nearWrapper = function (w, box) {
+    var d = box.ownerDocument;
+    for (var p = box.parentElement, up = 0; p && up < 3; p = p.parentElement, up++) {
+      if (p === d.body || p === d.documentElement || p === A._view) return false;
+      if (p === w) return true;
+    }
+    return false;
   };
 
   A.mouse = function (target, type, x, y) {
@@ -2806,18 +2818,17 @@
     // box's focus listener sends FOCUS_INPUT_FIELD through its host): handed back right after the
     // page's own focus listeners ran (a listener added to the box now runs after them), so the box's
     // own blur path sends the release. Only a text box (a tick box takes no keyboard), only the focus it
-    // was armed for (one a page stopped before the box leaves it armed: it stands down on any later
-    // one), and once per press (a page that keeps its box focused keeps it). Never a box the pilot or a
+    // was armed for (the same focus event: one a page stopped before the box leaves it armed, and it
+    // stands down on any later focus), and once per press (a page that keeps its box focused keeps it). Never a box the pilot or a
     // helper chose: any pointer, touch or key press in the last second that is not the reader's own.
     var onFocus = function (ev) {
       var t = ev && ev.target;
       if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
       window.__MSFSBA_LAST_FOCUS = t;
       if (!A.isTextEntry(t) || !A.lateFocus(Date.now(), t)) return;
-      var armed = Date.now();
-      var once = function () {
+      var once = function (ev2) {
         t.removeEventListener('focus', once, false);
-        if (Date.now() - armed > 50 || !A.lateFocus(Date.now(), t)) return;   // a later focus is not this one
+        if (ev2 !== ev || !A.lateFocus(Date.now(), t)) return;   // only this focus, however long the page's listeners took
         window.__MSFSBA_PRESSED_AT = 0;                                    // one hand-back per press
         if (window.__MSFSBA_LAST_FOCUS === t) window.__MSFSBA_LAST_FOCUS = null;
         A.releaseBox(t);
@@ -2828,9 +2839,13 @@
     // label), or a key typed into a box (the keyboard already went to the tablet: a helper's Tab). A
     // page's own click elsewhere, or a key with no box focused, chose nothing.
     var onPointer = function (ev) {
-      if (A._pressing) return;
-      var t = ev && ev.target;
-      if (ev && ev.type === 'keydown') {
+      if (A._pressing || !ev) return;
+      // Once this document has seen real (trusted) input, an untrusted event is the page's own; while
+      // it has seen none (Coherent may never mark host input trusted), every event counts.
+      if (ev.isTrusted) A._sawTrusted = true;
+      else if (A._sawTrusted) return;
+      var t = ev.target;
+      if (ev.type === 'keydown') {
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) window.__MSFSBA_USER_KEY_AT = Date.now();
         return;
       }

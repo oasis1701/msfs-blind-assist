@@ -1311,6 +1311,41 @@ test('a definition term over its value is a caption and its value; an overlay co
   assert.ok(!lines(scraped(o.A)).some(x => x.indexOf('alert|') === 0), 'only a hidden toast under it: no page under it');
 });
 
+test('a late focus is handed back however long the page\'s own focus listener takes, and a press on the page\'s background chose nothing', () => {
+  const run = (setup, slow) => {
+    const p = page('<button id="go">Go</button><div class="field" id="fw"><input id="q" type="text"></div>');
+    const { window, document } = p;
+    const q = document.getElementById('q');
+    const log = [];
+    if (slow) q.addEventListener('focus', () => { const t0 = Date.now(); while (Date.now() - t0 < 80) { /* a busy frame */ } });
+    q.addEventListener('blur', () => log.push('blur'));
+    document.getElementById('go').onclick = () => {};
+    p.A.clickElement(scraped(p.A).find(e => e.text === 'Go').idx);
+    if (setup) setup(p);
+    q.focus();
+    return log;
+  };
+  assert.deepStrictEqual(run(null, true), ['blur'], 'an 80 ms listener: still handed back');
+  const md = (p, el) => el.dispatchEvent(new p.window.Event('mousedown', { bubbles: true }));
+  assert.deepStrictEqual(run(p => md(p, p.document.body)), ['blur'], 'a press on the body chose nothing');
+  assert.deepStrictEqual(run(p => md(p, p.document)), ['blur'], 'nor one on the document');
+  assert.deepStrictEqual(run(p => md(p, p.document.getElementById('fw'))), [], 'a press on the box\'s own field wrapper chose it');
+  assert.deepStrictEqual(run(p => { p.A._sawTrusted = true; md(p, p.document.getElementById('q')); }), ['blur'],
+    'once real input has been seen, an untrusted press on the box is the page\'s own');
+  // An add-on's own page: the box straight in its body.
+  const f = page('<button id="go">Go</button>');
+  const fq = f.document.createElement('input');
+  fq.type = 'text';
+  f.document.body.appendChild(fq);
+  const flog = [];
+  fq.addEventListener('blur', () => flog.push('blur'));
+  f.document.getElementById('go').onclick = () => {};
+  f.A.clickElement(scraped(f.A).find(e => e.text === 'Go').idx);
+  md(f, f.document.body);
+  fq.focus();
+  assert.deepStrictEqual(flog, ['blur'], 'the body is never the box\'s field');
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));
