@@ -22,12 +22,13 @@ paths:
   - "tests/MSFSBlindAssist.Tests/Bbs757AutoflightAnnouncementsTests.cs"
   - "tests/MSFSBlindAssist.Tests/Bbs757AnnunciatorsTests.cs"
   - "tests/MSFSBlindAssist.Tests/Bbs757ReadoutsTests.cs"
+  - "tests/MSFSBlindAssist.Tests/Bbs757FlapSpeedsFmcTests.cs"
 ---
 # BlueBird 757 MCP, readout and announcement rules
 
 Loaded when Claude reads matching code. Background: docs/b757.md. Full text: docs/invariants/b757-readouts.md. The shared 757 rules (B757-3 for the MCP speed among them) are in b757.md.
 
-- [B757-9] 757 flap maneuver speeds come from `Bbs757FlapSpeeds`' VREF 30 table, measured on BlueBird's APPROACH REF page at 140,000 to 250,000 lb, plus the owner's schedule; never extrapolate outside the table (the readout says unavailable) and never compute VREF from a generic formula. Full: docs/invariants/b757-readouts.md#b757-9
+- [B757-9] 757 flap speeds come first from the FMC's own VREF 30 and 25 (`Bbs757FlapSpeeds.DescribeFromFmc`, the ADI reader's `Newest` reading); only while those are absent or not above 0 from `Bbs757FlapSpeeds.Describe`'s table measured on APPROACH REF (140,000 to 250,000 lb, "calculated"); never extrapolate the table, never a generic formula. Full: docs/invariants/b757-readouts.md#b757-9
 - [B757-11] Cockpit-wide 757 announcements watch L:vars through the tablet agent's watch list (one Coherent call, no SimConnect slot), never as SimConnect rows, and skip any L:var a definition row already announces: `Bbs757LightTable.WatchSet` drops the names `BBS757Definition.CockpitWatched` hands it. Full: docs/invariants/b757-readouts.md#b757-11
 - [B757-50] Read the 757's MCP Mach only from the speed window's wheels (`Bbs757Mcp.MachFromDrums`), never `L:BBS_TARGET_MACH` (it reads 0 in Mach mode, measured); a wheel reading below .40 is knots (the wheels show knots for 1-2 s after a changeover), never a Mach. Full: docs/invariants/b757-readouts.md#b757-50
 - [B757-51] Never let a Mach set command past .86 (`Bbs757Mach.Max`): BlueBird lets the target run to .95 (measured). `Bbs757Mach.Bursts` plans no burst past 25 events, and `Bbs757Mach.SetMachAsync` never corrects more in the set's direction than the planned difference. Full: docs/invariants/b757-readouts.md#b757-51
