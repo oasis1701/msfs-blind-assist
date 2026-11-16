@@ -767,6 +767,16 @@ test('a button that is only a value reads with the label right before it (SayInt
   assert.ok(l.includes('button|3') && l.includes('static|Total 12'), 'a label holding a number is a value, never a name');
 });
 
+test('an abbreviation with a hidden tip reads as text with the tip spelled out, never a button (TechLog)', () => {
+  const p = styled('<button>Perform</button><div class="ck"><div class="ring"><div>750.0</div></div>' +
+    '<div class="small"><span class="term">FH<span class="term-tip">Flight hours</span></span> left</div></div>',
+    el => (el.classList.contains('term-tip') ? { display: 'none' } : null));
+  p.document.querySelector('.term').addEventListener('click', () => {});
+  const l = lines(scraped(p.A, p.window.__gel));
+  assert.ok(!l.some(x => /^button\|.*FH/.test(x)), l.join(' / '));
+  assert.ok(l.some(x => /FH \(Flight hours\) left/.test(x)), l.join(' / '));
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));

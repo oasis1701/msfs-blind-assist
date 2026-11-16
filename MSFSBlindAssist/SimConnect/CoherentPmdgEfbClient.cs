@@ -747,8 +747,15 @@ namespace MSFSBlindAssist.SimConnect
             // A frame this connection holds nothing for is read in full: its agent may still be there
             // from an earlier connection, and would answer "unchanged" to a client with no copy.
             string fullScrape = $"window.{_agentGlobal} ? ({_agentGlobal}._dirty = true, {_agentGlobal}.scrape({ListenerArg})) : '{NoAgent}'";
-            var reply = await EvalFrameAsync(_frameCache.ContainsKey(cid) ? scrape : fullScrape, cid, ct);
-            if (reply.Value == NoAgent)
+            // A frame this connection has not read yet gets this connection's reader first, as the page
+            // does on every connection (EnsureConnected): a frame keeps whatever reader an earlier
+            // connection put there, possibly an older MSFSBA's, until the frame reloads (measured
+            // 2026-11-16: TechLog's frame kept the previous reader across a new client).
+            bool fresh = !_frameCache.ContainsKey(cid);
+            var reply = fresh ? await EvalFrameAsync(_agentJs, cid, ct) : await EvalFrameAsync(scrape, cid, ct);
+            if (fresh && reply.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0)
+                reply = await EvalFrameAsync(fullScrape, cid, ct);
+            else if (!fresh && reply.Value == NoAgent)
             {
                 var inst = await EvalFrameAsync(_agentJs, cid, ct);
                 reply = inst.Value.IndexOf(_installMarker, StringComparison.Ordinal) >= 0

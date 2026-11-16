@@ -207,6 +207,28 @@
     for (var i = 0; i < t.length; i++) if (A.OWN_HIDING.test(t[i])) return true;
     return false;
   };
+  // An abbreviation with a tip of its own (TechLog's "FH" over "Flight hours", shown on a hover or a
+  // click): a short word whose child is a hidden tip. It reads as text with the tip spelled out, never
+  // as a button: its click only shows what the reader already says.
+  A.abbrevTip = function (el) {
+    if (!el || el.nodeType !== 1) return null;
+    // Never a real control: a button with a tip is a button (its tip is no part of its name).
+    if (/^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY|LABEL)$/.test(el.tagName) || A.attr(el, 'role')) return null;
+    var tip = null, own = '';
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var c = el.childNodes[i];
+      if (c.nodeType === 3) own += c.nodeValue;
+      else if (c.nodeType === 1) {
+        if (tip || !A.ownHiding(c)) return null;
+        tip = c;
+      }
+    }
+    own = A.norm(own);
+    if (!tip || !own || own.length > 6 || !A.isHidden(tip) || !A.modelText(tip)) return null;
+    return tip;
+  };
+  A.isAbbrevTipOf = function (c, parent) { return A.abbrevTip(parent) === c; };
+
   // Memoized per read: every hidden element under one revealed row asks the same question.
   A.holdsControl = function (n) {
     if (n.__msfsbaHolds && n.__msfsbaHolds.s === A._scrapeId) return n.__msfsbaHolds.v;
@@ -324,6 +346,8 @@
         if (c.nodeType !== 1) continue;
         var tag = c.tagName.toLowerCase();
         if (tag === 'svg' || tag === 'script' || tag === 'style' || tag === 'canvas' || tag === 'img' || tag === 'iframe') continue;
+        // An abbreviation's hidden tip spells it out: "FH (Flight hours)" (A.abbrevTip).
+        if (A.isAbbrevTipOf(c, n)) { var tipText = A.modelText(c); if (tipText) parts.push({ t: ' (' + tipText + ')', el: c }); continue; }
         if (mode === 'model' ? A.modelHidden(c) : A.isHidden(c)) continue;
         var word = A.iconWord(c);
         if (word) { parts.push({ t: word, el: c }); continue; }
@@ -762,7 +786,7 @@
     // (which holds the mousedown) is part of it, never a control apart.
     if (A.hasClass(el, 'slider')) return !!el.querySelector('.slider-bar') && !A.sliderHasBox(el);
     if (A.hasClass(el, 'slider-bar') || A.hasClass(el, 'slider-button') || A.hasClass(el, 'slider-rail') || A.hasClass(el, 'slider-track')) return false;
-    return A.isPressable(el);
+    return A.isPressable(el) && !A.abbrevTip(el);
   };
   // A hidden control does not count: it is not on screen, and it must not split the row around it
   // ("340 LBS - 2/4 seats" holds a hidden icon button) into a line per word.
@@ -1566,7 +1590,7 @@
       }
       if (A.runBlocks(el, sink)) return;
 
-      var pressable = A.isPressable(el) || (!A.hasCtl(el) && A.ownPointer(el) && !A.isClaimed(el));
+      var pressable = !A.abbrevTip(el) && (A.isPressable(el) || (!A.hasCtl(el) && A.ownPointer(el) && !A.isClaimed(el)));
       if (pressable && (tag === 'button' || tag === 'a' || (!A.hasCtl(el) && !A.isBig(el)))) {
         var label = A.buttonLabel(el);
         if (!label) {                                          // a nameless icon says nothing; skip it
