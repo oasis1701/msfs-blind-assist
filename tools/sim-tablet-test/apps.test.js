@@ -538,7 +538,7 @@ test('a view that gets no frames, read at the client\'s pace: every read updates
 });
 
 test('"Show the tablet in the sim" is offered once a frame has been missing a second, never on a view that renders (STAB-16)', async () => {
-  const SHOW = 'Show the tablet in the sim (some lists fill in only while the sim shows it)';
+  const SHOW = 'Show the tablet in the sim (some apps and lists update only while the sim shows it)';
   const stalled = page('<button class="b">Door 1</button>', { before: w => { w.requestAnimationFrame = () => 0; } });
   assert.equal(find(scraped(stalled.A), SHOW), undefined, 'not at the first read: no frame asked for yet');
   await sleep(1100);
@@ -558,7 +558,7 @@ test('"Show the tablet in the sim" is offered once a frame has been missing a se
 });
 
 test('the tablet panel button: frames coming back re-read the list, and the panel MSFSBA showed reads "Hide" on the same key', async () => {
-  const SHOW = 'Show the tablet in the sim (some lists fill in only while the sim shows it)';
+  const SHOW = 'Show the tablet in the sim (some apps and lists update only while the sim shows it)';
   let pending = [];
   let framesOn = false;   // the view's frames: off (queued, never run) or about 30 a second
   const p = page('<button class="b">Door 1</button>', {
@@ -855,7 +855,7 @@ function inText(word, tip, wrap) {
 test('in running text, a control word whose tip is its own word, inflected, keeps its press', () => {
   for (const [w, t] of [['LOAD', 'Loading the plan'], ['ARM', 'Arms the autobrake'], ['SAVE', 'Saving the plan'],
                         ['STOP', 'Stopped by the pilot'], ['RUN', 'Running the check'], ['SET', 'Setting the speed'],
-                        ['SAVE', 'Saves the plan'], ['SAVE', 'Save: store the plan']]) {
+                        ['SAVE', 'Saves the plan'], ['SAVE', 'Save: store the plan'], ['SAVE', 'Save the plan'], ['SAVE', 'Save'], ['ON', 'Turn on']]) {
     const l = inText(w, t);
     assert.ok(l.includes('button|' + w), w + ' "' + t + '" keeps its press: ' + l.join(' / '));
   }
@@ -920,12 +920,117 @@ test('an abbreviation with its own pointer in a paragraph reads in place', () =>
 test('repeated buttons: a row names a repeat only by words on its own line, never by a section around it', () => {
   // TechLog's Flights page: the main menu's "Flights" tab and the page's own "Flights" sub-tab, whose
   // nearest words are the empty-list notes far below it.
-  const p = page('<div class="nav"><div data-rect="0,0,200,20">TechLog v1.5.4</div><button data-rect="40,0,200,60">Flights</button></div>' +
-    '<div class="sec"><div class="tabs"><button data-rect="100,300,400,120">Flights</button><button data-rect="100,400,500,120">History</button></div>' +
+  // Its sidebar ends in a status line, far below its tabs; the page's header sits on the sub-tabs' line.
+  const p = page('<div class="nav" data-rect="0,0,200,600"><div data-rect="0,0,200,20">TechLog v1.5.4</div><button data-rect="40,0,200,60">Flights</button>' +
+    '<div data-rect="560,0,200,580">ASXGS: figures written into 8 service values</div></div>' +
+    '<div class="sec" data-rect="100,300,800,600"><div class="tabs" data-rect="100,300,500,120"><button data-rect="100,300,400,120">Flights</button><button data-rect="100,400,500,120">History</button></div>' +
     '<div class="empty" data-rect="160,300,800,200">No flights yet. Fly with TechLog running.</div></div>');
   const l = lines(scraped(p.A));
-  assert.ok(!l.some(x => /No flights yet.*: Flights/.test(x)), l.join(' / '));
+  assert.ok(!l.some(x => /(No flights yet|ASXGS).*: Flights/.test(x)), l.join(' / '));
   assert.deepStrictEqual(l.filter(x => /Flights$/.test(x) && x.indexOf('button|') === 0), ['button|Flights', 'button|Flights']);
+});
+
+test('GSX: the open menu\'s title bar reads as its heading and a Close button, never a button named after the question', () => {
+  const head = open => '<section id="menuSurface"><div class="menu-head menu-head--action" role="button" data-rect="0,0,50,20">' +
+    (open ? '<div class="m-title">Activate Services at VCBI/Bandaranaike Intl Colombo</div><div class="m-sub">Gate 6</div>'
+          : '<div class="m-title">GSX Menu</div><div class="m-sub m-hint">Tap to open</div>') + '</div>' +
+    (open ? '<div class="menu-list"><button>Request Deboarding</button></div>' : '') + '</section>';
+  const shut = page(head(false));
+  shut.document.querySelector('.menu-head').onclick = () => {};
+  assert.ok(lines(scraped(shut.A)).includes('button|GSX Menu Tap to open'));
+  const p = page(head(true));
+  let closes = 0;
+  p.document.querySelector('.menu-head').onclick = () => closes++;
+  const els = scraped(p.A);
+  const l = lines(els);
+  assert.deepStrictEqual(l.slice(0, 3), ['heading|Activate Services at VCBI/Bandaranaike Intl Colombo Gate 6', 'button|Close the GSX menu', 'button|Request Deboarding']);
+  assert.equal(p.A.clickElement(els.find(e => e.text === 'Close the GSX menu').idx), true);
+  assert.equal(closes, 1, 'the Close button presses the title bar');
+});
+
+test('a page\'s own dropdown (a button over a hidden list of choices) reads as a choice and is set by opening it and pressing the choice', () => {
+  // GSX Remote's settings: button.dd-btn shows the choice, div.dd-list holds the options, is-sel marks one.
+  const p = styled('<div class="set-field"><div class="set-label">Automated reposition</div><div class="set-ctrl"><div class="set-dropdown">' +
+    '<button class="set-select dd-btn" type="button"><span class="dd-label">Yes</span></button>' +
+    '<div class="dd-list" hidden=""><div class="dd-opt">No</div><div class="dd-opt is-sel">Yes</div><div class="dd-opt">Auto</div></div></div></div></div>',
+    el => (el.closest('.dd-list') && el.closest('.dd-list').hidden ? { display: 'none' } : null));
+  const { document } = p;
+  const btn = document.querySelector('.dd-btn'), list = document.querySelector('.dd-list');
+  const did = [];
+  btn.addEventListener('click', () => { did.push('open'); list.hidden = false; });
+  document.querySelectorAll('.dd-opt').forEach(o => o.addEventListener('click', () => {
+    did.push('pick:' + o.textContent); document.querySelector('.dd-label').textContent = o.textContent; list.hidden = true; }));
+  const els = scraped(p.A);
+  const l = lines(els);
+  assert.ok(l.includes('/select|Automated reposition=Yes'), l.join(' / '));
+  assert.ok(!l.includes('static|Automated reposition'), 'its caption is read with it: ' + l.join(' / '));
+  const dd = els.find(e => e.controlType === 'select');
+  assert.deepStrictEqual(dd.options, ['No', 'Yes', 'Auto']);
+  assert.equal(p.A.setValue(dd.idx, 'Auto'), true);
+  assert.deepStrictEqual(did, ['open', 'pick:Auto']);
+  assert.equal(p.A.setValue(dd.idx, 'Never'), false, 'no such choice: nothing pressed');
+  assert.equal(p.A.setValue(dd.idx, 'Auto'), true, 'already the choice');
+  assert.deepStrictEqual(did, ['open', 'pick:Auto'], 'nothing pressed for a choice already made');
+});
+
+test('a lone dropdown choice reads as a dropdown only when the page marks it chosen', () => {
+  const one = sel => styled('<div class="f"><div class="set-label">Invoice printer</div><div class="set-ctrl"><div class="set-dropdown">' +
+    '<button class="dd-btn" type="button"><span class="dd-label">Auto</span></button><div class="dd-list" hidden=""><div class="dd-opt' + sel + '">Auto</div></div></div></div></div>',
+    el => (el.closest('.dd-list') ? { display: 'none' } : null));
+  assert.ok(lines(scraped(one(' is-sel').A)).includes('/select|Invoice printer=Auto'));
+  assert.ok(!scraped(one('').A).some(e => e.controlType === 'select'), 'unmarked: a button and its hidden twin, no dropdown');
+});
+
+test('a button beside a list of other buttons is no dropdown', () => {
+  const p = styled('<div class="bar"><button>Edit</button><div class="more" hidden=""><button>Copy</button><button>Edit</button></div></div>',
+    el => (el.closest('.more') ? { display: 'none' } : null));
+  assert.ok(!scraped(p.A).some(e => e.controlType === 'select'));
+});
+
+test('a label around its field reads its words once, a word after the field included', () => {
+  const l = lines(scraped(page('<label>Wind speed <input type="text"> kt</label>').A));
+  assert.ok(!l.includes('static|kt'), l.join(' / '));
+  assert.ok(!l.includes('static|Wind speed'), l.join(' / '));
+});
+
+test('words around a child that says nothing, or around an inline word, stay one line', () => {
+  const inl = el => (el.tagName === 'B' ? 'inline' : 'block');
+  const a = lines(scraped(page('<div class="r">Fuel <svg></svg> 1200 kg <button>Edit</button></div>').A));
+  assert.deepStrictEqual(a.slice(0, 2), ['static|Fuel 1200 kg', 'button|Edit']);
+  const b = lines(scraped(page('<div class="r">Total: <b>1200</b> kg <button>Edit</button></div>', { display: inl }).A));
+  assert.deepStrictEqual(b.slice(0, 2), ['static|Total: 1200 kg', 'button|Edit']);
+});
+
+test('a full stop after a link ends the line before it, never a line of its own', () => {
+  const l = lines(scraped(page('<p class="t">See the <a href="#">Terms</a> and the <a href="#">Privacy</a>.</p>').A));
+  assert.ok(!l.includes('static|.'), l.join(' / '));
+  assert.deepStrictEqual(l.slice(0, 4), ['static|See the', 'button|Terms', 'static|and the', 'button|Privacy']);
+});
+
+test('words of its own before rows a list re-sorts by their place read first, the rows top to bottom', () => {
+  const p = styled('<div class="list">Flights<div class="row" data-rect="100,0,100,120">Row B</div><div class="row" data-rect="0,0,100,20">Row A</div></div>',
+    el => (el.classList.contains('row') ? { position: 'absolute' } : null));
+  assert.deepStrictEqual(lines(scraped(p.A)).slice(0, 3), ['static|Flights', 'static|Row A', 'static|Row B']);
+});
+
+test('repeated buttons: a two-line card names its button by the whole card; a row longer than a line names none', () => {
+  const card = f => '<div class="card"><div data-rect="0,0,60,20">DUBAI</div><div data-rect="20,0,60,40">' + f + '</div><button data-rect="40,0,60,60">SET</button></div>';
+  const l = lines(scraped(page(card('118.350') + card('121.650')).A));
+  assert.deepStrictEqual(l.filter(x => /SET$/.test(x)), ['button|DUBAI 118.350: SET', 'button|DUBAI 121.650: SET']);
+  const long = n => '<div class="r"><span>DUBAI</span><span>' + n + ' ' + 'approach and departure control, all sectors of the terminal area east and west' + '</span><button>SET</button></div>';
+  const m = lines(scraped(page(long('ONE') + long('TWO')).A));
+  assert.deepStrictEqual(m.filter(x => /SET$/.test(x)), ['button|SET', 'button|SET']);
+});
+
+test('repeated buttons: a row\'s own words before the button name it', () => {
+  const l = lines(scraped(page('<div class="r">Default <button>LOAD</button></div><div class="r">Rainy <button>LOAD</button></div>').A));
+  assert.deepStrictEqual(l.filter(x => /LOAD$/.test(x)), ['button|Default: LOAD', 'button|Rainy: LOAD']);
+});
+
+test('a caption its field claims takes its lines with it, a row below included', () => {
+  const l = lines(scraped(page('<div class="f"><div class="cap">Cruise<div data-rect="30,0,50,50">level (FL)</div></div><input type="text"></div>').A));
+  assert.ok(!l.includes('static|level (FL)'), l.join(' / '));
+  assert.ok(!l.includes('static|Cruise'), l.join(' / '));
 });
 
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
@@ -983,7 +1088,7 @@ test('the Pilot book: a chart bar reads as one line, the period first, and the d
 });
 
 test('the tablet panel button stays in the list through a Show and a Hide (the press is stamped)', async () => {
-  const SHOW = 'Show the tablet in the sim (some lists fill in only while the sim shows it)', HIDE = 'Hide the tablet in the sim';
+  const SHOW = 'Show the tablet in the sim (some apps and lists update only while the sim shows it)', HIDE = 'Hide the tablet in the sim';
   let pending = [];
   let framesOn = false;   // the view's frames: off (queued, never run) or about 30 a second
   const p = page('<button class="b">Door 1</button>', {

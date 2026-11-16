@@ -53,7 +53,7 @@
   // While the panel MSFSBA showed still shows (window.__MSFSBA_TABLET_SHOWN, set by the client), the
   // same button hides it again, so it stays in its place in the list.
   A.SHOW_TABLET_IDX = 990002;
-  A.SHOW_TABLET_LABEL = 'Show the tablet in the sim (some lists fill in only while the sim shows it)';
+  A.SHOW_TABLET_LABEL = 'Show the tablet in the sim (some apps and lists update only while the sim shows it)';
   A.HIDE_TABLET_LABEL = 'Hide the tablet in the sim';
 
   // ---------------------------------------------------------------------------------
@@ -1006,6 +1006,20 @@
       els.push(A.el(el, { kind: 'static', text: t }));
     });
 
+  // GSX Remote's menu title bar is the menu's one open/close toggle, with no Close button of its own.
+  // Closed it says "GSX Menu, Tap to open" and reads as that button. Open it shows the menu's question
+  // ("Activate Services at VCBI", "Gate 6") and a press CLOSES the menu, so it reads as the menu's
+  // heading and a Close button on the same bar, never a button named after the question.
+  A.CLOSE_GSX_MENU = 'Close the GSX menu';
+  A.block('gsx-menu-head',
+    function (el) { return A.hasClass(el, 'menu-head--action'); },
+    function (el, els) {
+      if (!el.querySelector('.m-title') || el.querySelector('.m-hint')) return false;
+      var t = A.lineText(el);
+      if (t) els.push(A.el(null, { kind: 'heading', text: t, level: 2 }));
+      els.push(A.button(el, A.CLOSE_GSX_MENU, { key: 'button:' + A.CLOSE_GSX_MENU }));
+    });
+
   // Mass and balance's Seats / Cargo / Fuel / Empty strip.
   A.block('tab-selector',
     function (el) { return A.hasClass(el, 'tab-selector'); },
@@ -1047,6 +1061,43 @@
   // dropdown-button-list-buttons) reads as one button per action under the menu's name; a choice
   // (flaps, a runway, a checklist level) reads as a select whose options are the list items, which
   // are read while the list is closed and picked by clicking the item (A.setValue).
+  // A page's own dropdown (GSX Remote's settings: button.dd-btn showing "Yes" over a hidden div.dd-list
+  // of No / Yes / Auto): a button beside a list of plain choices, one of which is what the button
+  // shows. It reads as a choice with its options, never a "Yes" button, and is set as a pilot sets it:
+  // a press opening it, then a press on the choice. A list holding buttons or links is a menu, not this.
+  A.PLAIN_CHOICE_TAGS = /^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/;
+  A.CHOSEN_CLASS = /^(is-)?(sel|selected|active|current|checked)$/i;
+  A.markedChosen = function (o) {
+    if (A.attr(o, 'aria-selected') === 'true') return true;
+    var t = A.tokens(o);
+    for (var i = 0; i < t.length; i++) if (A.CHOSEN_CLASS.test(t[i])) return true;
+    return false;
+  };
+  A.customSelect = function (el) {
+    if (el.children.length !== 2 || A.hasClass(el, 'dropdown-button')) return null;     // the OS's own: its block
+    var btn = el.children[0], list = el.children[1];
+    if (btn.tagName !== 'BUTTON' && A.attr(btn, 'role') !== 'button') return null;
+    if (!list.children.length || list.children.length > 60) return null;
+    var shown = A.norm(A.modelText(btn)).toLowerCase(), opts = [], texts = [], match = -1;
+    if (!shown) return null;
+    for (var i = 0; i < list.children.length; i++) {
+      var o = list.children[i], t = A.norm(A.modelText(o));
+      if (!t || t.length > 60 || A.PLAIN_CHOICE_TAGS.test(o.tagName) || o.querySelector('button, a, input, select, textarea')) return null;
+      if (t.toLowerCase() === shown) match = i;
+      opts.push(o); texts.push(t);
+    }
+    // A lone choice ("Auto: no receipt printer found") only when the page marks it chosen.
+    if (match < 0 || (opts.length === 1 && !A.markedChosen(opts[0]))) return null;
+    return { btn: btn, list: list, opts: opts, texts: texts, value: texts[match] };
+  };
+  A.block('custom-select',
+    function (el) { return el.children.length === 2 && !!A.customSelect(el); },
+    function (el, els) {
+      var cs = A.customSelect(el);
+      els.push(A.el(el, { controlType: 'select', text: A.labelFor(el) || A.rowContext(el, '', true) || A.tooltipOf(cs.btn) || 'Choice',
+                          value: cs.value, options: cs.texts, disabled: A.isDisabled(cs.btn) }));
+    });
+
   A.block('dropdown',
     function (el) { return A.hasClass(el, 'dropdown-button'); },
     function (el, els) {
@@ -1489,6 +1540,15 @@
           return line;
         }
       }
+      // Else the row's own words before the control ("Default" in <div>Default <button>LOAD</button></div>).
+      var mine = '';
+      for (var c0 = 0; c0 < anc.childNodes.length; c0++) {
+        var cn0 = anc.childNodes[c0];
+        if (cn0.nodeType === 1 && (cn0 === b || cn0.contains(b))) break;
+        if (cn0.nodeType === 3) mine += cn0.nodeValue + ' ';
+      }
+      mine = A.norm(mine);
+      if (mine && mine !== skip && A.isNameText(mine)) return mine;
     }
     return '';
   };
@@ -1496,13 +1556,15 @@
   // frequencies: "DUBAI 118.350", "DUBAI 121.650"): every text in the button's nearest container that
   // has text of its own, outside any control. Only the text says it, never the key, so a number in it
   // can change freely.
-  // Only words on the button's own line make its row: a note far below it heads no row (TechLog's
-  // Flights sub-tab, whose nearest words are its "No flights yet" notes), and a row is never longer
-  // than a line.
+  // A row is a container no taller than three of its button ("DUBAI" over "118.350" beside SET, a
+  // two-line card): one taller is a section, which names no row (TechLog's Flights sub-tab, whose
+  // nearest words are the "No flights yet" notes below it; its main menu's Flights tab, whose sidebar
+  // ends in a status line). A row is never longer than a line of text.
   A.ROW_LINE_MAX = 80;
   A.rowLine = function (b, skip) {
     var anc = b.parentElement, br = b.getBoundingClientRect();
     for (var up = 0; up < 4 && anc && anc !== A._view; up++, anc = anc.parentElement) {
+      if (br.height > 0 && anc.getBoundingClientRect().height > br.height * 3 + 4) return '';
       var all = anc.getElementsByTagName('*'), parts = [];
       if (all.length > 200) return '';
       for (var i = 0; i < all.length; i++) {
@@ -1511,7 +1573,6 @@
         var own = '';
         for (var k = 0; k < n.childNodes.length; k++) if (n.childNodes[k].nodeType === 3) own += n.childNodes[k].nodeValue;
         if (!A.norm(own) || A.norm(own) === skip) continue;
-        if (br.height > 0) { var r = n.getBoundingClientRect(); if (r.bottom <= br.top || r.top >= br.bottom) continue; }
         var inCtl = false;
         for (var p = n; p && p !== anc; p = p.parentElement) if (A.isControlEl(p)) { inCtl = true; break; }
         if (!inCtl) parts.push(A.norm(own));
@@ -1745,13 +1806,31 @@
           var t = A.norm(run);
           run = '';
           if (!t) return;
-          sink.push(A.el(first ? el : null, { kind: 'static', text: t }));   // one stamp per node
+          // Punctuation alone (the full stop after a link) ends the line before it, never a line of its own.
+          if (!/[A-Za-z0-9À-ɏ]/.test(t)) {
+            var last = sink.length ? sink[sink.length - 1] : null;
+            if (last && last.kind === 'static') last.text += t;
+            return;
+          }
+          // Stamped once, but every line knows its node, so a caption its field claims drops whole.
+          var rec = A.el(first ? el : null, { kind: 'static', text: t });
+          if (!first) A._nodes[rec.idx] = el;
+          sink.push(rec);
           first = false;
         };
         for (var cn = 0; cn < el.childNodes.length; cn++) {
           var ch = el.childNodes[cn];
-          if (ch.nodeType === 3) run += ch.nodeValue;
-          else if (ch.nodeType === 1) { flush(); walk(ch); }
+          if (ch.nodeType === 3) { run += ch.nodeValue; continue; }
+          if (ch.nodeType !== 1) continue;
+          // A child that says nothing (an icon, a hidden tip) never splits the words around it, and a
+          // lone line from an inline child (a bold number: "Total: 1200 kg") joins them.
+          var mark = sink.length;
+          walk(ch);
+          if (sink.length === mark) continue;
+          var out = sink.splice(mark, sink.length - mark), cst = A.styleOf(ch);
+          if (out.length === 1 && out[0].kind === 'static' && cst && /^inline/.test(cst.display || '')) { run += ' ' + out[0].text + ' '; continue; }
+          flush();
+          for (var oq = 0; oq < out.length; oq++) sink.push(out[oq]);
         }
         flush();
         return;
@@ -1781,10 +1860,18 @@
 
     // A caption is claimed by its field only when the field is reached, after the walk has already
     // read the caption (it comes first on the page). Drop those lines now; the field carries them.
+    // A line inside a caption that holds no control ("Cruise", then "level (FL)" a row below it) goes
+    // with it; one inside a label around its field (a value read-out) stays.
+    var inCaption = function (n) {
+      for (var p = n.parentElement, up = 0; p && up < 6; p = p.parentElement, up++) {
+        if (A.isClaimed(p)) return !p.querySelector('input, select, textarea, button');
+      }
+      return false;
+    };
     var kept = [];
     for (var q = 0; q < els.length; q++) {
-      var e = els[q];
-      if ((e.kind === 'static' || e.kind === 'heading') && A._nodes[e.idx] && A.isClaimed(A._nodes[e.idx])) continue;
+      var e = els[q], en = A._nodes[e.idx];
+      if ((e.kind === 'static' || e.kind === 'heading') && en && (A.isClaimed(en) || inCaption(en))) continue;
       kept.push(e);
     }
     els = kept;
@@ -2269,6 +2356,18 @@
     var want = String(text == null ? '' : text);
     var on = want.toLowerCase() === 'true';
     try {
+      var cs = A.customSelect(el);
+      if (cs) {
+        for (var ci = 0; ci < cs.texts.length; ci++) {
+          if (cs.texts[ci].toLowerCase() !== A.norm(want).toLowerCase()) continue;
+          if (A.isDisabled(cs.opts[ci])) return false;
+          if (cs.texts[ci] === cs.value) return true;          // already the choice: nothing pressed
+          A.press(cs.btn);                                    // open it, as a pilot does
+          A.press(cs.opts[ci]);
+          return true;
+        }
+        return false;
+      }
       if (A.hasClass(el, 'dropdown-button')) {
         var items = el.querySelectorAll('.dropdown-button-list-item');
         for (var i = 0; i < items.length; i++) {

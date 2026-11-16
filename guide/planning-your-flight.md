@@ -533,7 +533,8 @@ What the window shows:
 - **Buttons with the same name on several rows** say which row they are on, for example *"Default: LOAD"* beside each preset.
 - **Seats, cargo and fuel tanks** are edit fields named with their unit and limit, for example *"Co-Pilot (LBS, max 300)"*. Type a weight and press Enter.
 - **Sliders** that show their value as a number are edit fields marked *"(slider)"*: type the number you want and press Enter, or type *"+5"* or *"-5"* to move it from where it is. A slider with no number beside it is marked *"(slider, percent)"* and takes how far along it should be, 0 to 100.
-- **Checklist items, switches and tick boxes** are check boxes, and **drop-down lists** are combo boxes.
+- **Checklist items, switches and tick boxes** are check boxes, and **drop-down lists** are combo boxes, including an app's own drop-downs such as GSX's settings (*"Automated reposition"*: No, Yes or Auto). Choosing an entry opens the list and picks it, as you would with the mouse.
+- **GSX's menu:** while it is closed, *"GSX Menu Tap to open"* opens it. While it is open, its title is read as a heading (for example *"Activate Services at VCBI"*) followed by its entries, and **Close the GSX menu** closes it. GSX also closes its menu by itself after a while.
 - **Dimmed controls** are ones the tablet does not take right now. For example the Settings app's tablet size and orientation only work while the sim shows the tablet: press Show the tablet in the sim first.
 - **The Import, Save and Send menus** show as one button for each choice in them.
 - **Flight Planner waypoints** are one line each, for example *"SOONE: Hdg 138°, Dist 24.6 NM"*.
@@ -544,7 +545,7 @@ Typing in the window never takes your keyboard away from the simulator, so the s
 
 ### Showing the tablet in the sim {#in-sim-tablet-show}
 
-With a default aircraft, whose cockpit has this tablet, the window works with the toolbar tablet closed and the camera anywhere. An aircraft with a tablet of its own does not show the sim's tablet anywhere, and then the sim stops drawing it. BA keeps the apps up to date for you, but a few things fill in only while the sim draws the tablet, such as the Pilot book's logbook when you first open it.
+With a default aircraft, whose cockpit has this tablet, the window works with the toolbar tablet closed and the camera anywhere. An aircraft with a tablet of its own does not show the sim's tablet anywhere, and then the sim stops drawing it. BA keeps the apps up to date for you, but a few things fill in only while the sim draws the tablet, such as the Pilot book's logbook when you first open it. GSX is one of them as a whole: its page in the tablet (the menu, the status line, the settings) only changes while the sim draws the tablet, so show the tablet before using GSX in it. BA's own GSX features do not need the tablet at all.
 
 When the sim is not drawing it, the window shows a **Show the tablet in the sim** button right after the dock. Press it, and BA opens the tablet from the sim's toolbar, as you would with the mouse. The button then reads **Hide the tablet in the sim**. Closing the window, or quitting BA, hides the tablet again. If you close the tablet yourself from the toolbar, BA leaves it closed.
 
