@@ -1362,6 +1362,21 @@
   // Asked only of a small subtree: a big one is a section, never a line, and measuring every box in
   // it on every level of the walk would make the Flight Planner's scrape slow.
   A.ONE_LINE_MAX_NODES = 30;
+  // A paragraph that wraps: text of its own, every element in it laid out inline (a badge, a bold
+  // word), so it reads whole and in order (TechLog's MEL help: "Read whether the aircraft may be
+  // dispatched. NO-GO items must be fixed", where the badge used to come out as a line of its own).
+  A.isParagraph = function (el) {
+    var own = false, i;
+    for (i = 0; i < el.childNodes.length; i++) if (el.childNodes[i].nodeType === 3 && A.norm(el.childNodes[i].nodeValue)) { own = true; break; }
+    if (!own) return false;
+    var all = el.getElementsByTagName('*');
+    if (!all.length || all.length > A.ONE_LINE_MAX_NODES) return false;
+    for (i = 0; i < all.length; i++) {
+      var st = A.styleOf(all[i]);
+      if (!st || !/^inline/.test(st.display || '')) return false;
+    }
+    return true;
+  };
   A.isOneLine = function (el) {
     var min = 1e9, max = -1e9, any = false;
     var all = el.getElementsByTagName('*');
@@ -1626,7 +1641,7 @@
       }
 
       if (!A.hasCtl(el)) {
-        if (A.isOneLine(el)) {
+        if (A.isOneLine(el) || A.isParagraph(el)) {
           var lt = A.lineText(el);
           // A panel title wrapped in a container still reads as the heading it is ("Route").
           var inner = el.querySelector('.text--title, .atlas-view-title, h1, h2, h3, h4, h5, h6');

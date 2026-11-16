@@ -777,6 +777,17 @@ test('an abbreviation with a hidden tip reads as text with the tip spelled out, 
   assert.ok(l.some(x => /FH \(Flight hours\) left/.test(x)), l.join(' / '));
 });
 
+test('a wrapping paragraph with inline badges reads whole and in order (TechLog MEL help)', () => {
+  const p = styled('<button>Go</button><p class="h">2. Read whether the aircraft may be dispatched. <span class="b">NO-GO</span> items must be fixed.</p>',
+    el => (el.tagName === 'SPAN' ? { display: 'inline-block' } : null));
+  // A paragraph over two rows: the badge and the words after it sit lower than its start.
+  const b = p.document.querySelector('.b');
+  b.getBoundingClientRect = () => ({ top: 30, left: 0, right: 40, bottom: 50, width: 40, height: 20 });
+  const l = lines(scraped(p.A));
+  assert.ok(l.includes('static|2. Read whether the aircraft may be dispatched. NO-GO items must be fixed.'), l.join(' / '));
+  assert.ok(!l.includes('static|NO-GO'), 'the badge is no line of its own');
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));
