@@ -144,6 +144,7 @@ public class Bbs757UpperEicasLayoutTests
             new ReaderResult(Bbs757Module.LowerEicas, Bbs757LowerEicasLayoutTests.Sample(), null),
             new ReaderResult(Bbs757Module.UpperEicas, Sample(), null),
             new ReaderResult(Bbs757Module.Ehsi, Bbs757EhsiLayoutTests.Sample(), null),
+            new ReaderResult(Bbs757Module.Adi, Bbs757AdiLayoutTests.Sample(), null),
         }.Where(r => !without.Contains(r.Reader)).ToArray());
 
     [Fact]
@@ -260,7 +261,7 @@ public class Bbs757UpperEicasLayoutTests
     [Fact]
     public void Every_757_reader_is_in_the_module_in_order()
     {
-        Assert.Equal(new[] { "fma", "efb", "lowerEicas", "upperEicas", "ehsi" }, Module.Readers.Select(r => r.Id).ToArray());
+        Assert.Equal(new[] { "fma", "efb", "lowerEicas", "upperEicas", "ehsi", "adi" }, Module.Readers.Select(r => r.Id).ToArray());
     }
 }
 

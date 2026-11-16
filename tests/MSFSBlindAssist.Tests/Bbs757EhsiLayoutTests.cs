@@ -128,6 +128,7 @@ public partial class Bbs757EhsiLayoutTests
             new ReaderResult(Bbs757Module.LowerEicas, Bbs757LowerEicasLayoutTests.Sample(), null),
             new ReaderResult(Bbs757Module.UpperEicas, Bbs757UpperEicasLayoutTests.Sample(), null),
             new ReaderResult(Bbs757Module.Ehsi, Sample(), null),
+            new ReaderResult(Bbs757Module.Adi, Bbs757AdiLayoutTests.Sample(), null),
         });
 
     [Fact]
@@ -240,9 +241,9 @@ public partial class Bbs757EhsiLayoutTests
     }
 
     [Fact]
-    public void The_ehsi_reader_is_the_modules_last()
+    public void The_ehsi_reader_follows_the_upper_eicas_in_the_module()
     {
-        Assert.Equal("ehsi", Module.Readers.Last().Id);
-        Assert.Equal(new[] { "fma", "efb", "lowerEicas", "upperEicas", "ehsi" }, Module.Readers.Select(r => r.Id).ToArray());
+        // The module's last reader until plan 27 added the ADI's after it.
+        Assert.Equal(new[] { "fma", "efb", "lowerEicas", "upperEicas", "ehsi", "adi" }, Module.Readers.Select(r => r.Id).ToArray());
     }
 }

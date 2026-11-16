@@ -182,6 +182,7 @@ public class Bbs757LayoutFileTests
             new ReaderResult(Bbs757Module.LowerEicas, Bbs757LowerEicasLayoutTests.Sample(), null),
             new ReaderResult(Bbs757Module.UpperEicas, Bbs757UpperEicasLayoutTests.Sample(), null),
             new ReaderResult(Bbs757Module.Ehsi, Bbs757EhsiLayoutTests.Sample(), null),
+            new ReaderResult(Bbs757Module.Adi, Bbs757AdiLayoutTests.Sample(), null),
         });
 
     [Fact]

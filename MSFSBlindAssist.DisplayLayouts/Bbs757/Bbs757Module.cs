@@ -14,6 +14,7 @@ public static class Bbs757Module
     public const string LowerEicas = "lowerEicas";
     public const string UpperEicas = "upperEicas";
     public const string Ehsi = "ehsi";
+    public const string Adi = "adi";
 
     public static ModuleDescription Description { get; } = new(
         "bbs757",
@@ -37,6 +38,9 @@ public static class Bbs757Module
             new LayoutReader<Bbs757EhsiLayout>(Ehsi, "EHSI",
                 l => new ModuleAnchor(l.AnchorAddress, l.Anchor), (l, s) => l with { SourceFile = s },
                 Bbs757LayoutDescriptions.DescribeEhsi),
+            new LayoutReader<Bbs757AdiLayout>(Adi, "ADI",
+                l => new ModuleAnchor(l.AnchorAddress, l.Anchor), (l, s) => l with { SourceFile = s },
+                Bbs757LayoutDescriptions.DescribeAdi, AdiFailures),
         });
 
     /// <summary>The lower EICAS pages whose part could not be derived, with the generator's reason (each page is an
@@ -46,6 +50,21 @@ public static class Bbs757Module
         var failures = new List<(string, string)>();
         if (l.EngineMissing is { } engine) failures.Add(("engine page", engine));
         if (l.StatusMissing is { } status) failures.Add(("STATUS page", status));
+        return failures;
+    }
+
+    /// <summary>The ADI parts that could not be derived, with the generator's reason (each part is optional), in the
+    /// layout's order: the generator and the store log them.</summary>
+    private static IReadOnlyList<(string Part, string Reason)> AdiFailures(Bbs757AdiLayout l)
+    {
+        var failures = new List<(string, string)>();
+        if (l.AttitudeMissing is { } attitude) failures.Add(("attitude", attitude));
+        if (l.SpeedMissing is { } speed) failures.Add(("speed tape", speed));
+        if (l.IlsMissing is { } ils) failures.Add(("localizer and glideslope", ils));
+        if (l.RadioAltitudeMissing is { } radioAltitude) failures.Add(("radio altitude and decision height", radioAltitude));
+        if (l.FlightDirectorMissing is { } flightDirector) failures.Add(("flight director", flightDirector));
+        if (l.TcasMissing is { } tcas) failures.Add(("TCAS", tcas));
+        if (l.ReferenceSpeedsMissing is { } referenceSpeeds) failures.Add(("reference speeds", referenceSpeeds));
         return failures;
     }
 }

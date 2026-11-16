@@ -170,7 +170,7 @@ public partial class Bbs757EhsiLayoutTests
         string old = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 
         Assert.True(LayoutFileFormat.TryRead(Module, old, out var file, out string? failure), failure);
-        Assert.Equal(5, file!.Readers.Count(r => r.Layout is not null));
+        Assert.Equal(6, file!.Readers.Count(r => r.Layout is not null));
         var loaded = (Bbs757EhsiLayout)file.Readers.Single(r => r.Reader == Bbs757Module.Ehsi).Layout!;
         Assert.Equal(Sample(), loaded);
         Assert.Null(loaded.Approach);

@@ -247,7 +247,55 @@ public static class Bbs757LayoutDescriptions
         return lines;
     }
 
-    /// <summary>One line for an optional EHSI part: its fields, or why it is missing.</summary>
+    public static IReadOnlyList<string> DescribeAdi(Bbs757AdiLayout l)
+    {
+        string H(uint v) => "0x" + v.ToString("x", CultureInfo.InvariantCulture);
+        string D(double v) => v.ToString("0.0###", CultureInfo.InvariantCulture);
+        string A(IEnumerable<int> v) => "[" + string.Join(", ", v.Select(x => x.ToString(CultureInfo.InvariantCulture))) + "]";
+        string p = $"file analysis: {l.SourceFile}: ADI";
+        var lines = new List<string>
+        {
+            $"{p}: manager {H(l.ManagerBase)} span {l.ManagerSpan}, pfd vptr {H(l.PfdVptr)}, " +
+            $"powered {l.Powered}, failed {l.Failed}, blanked {l.Blanked}, " +
+            $"pfdToSource {l.PfdToSource}, sourceToIrs {l.SourceToIrs}, sourceToAdc {l.SourceToAdc}, sourceToRa {l.SourceToRa}, " +
+            $"devicePowered {l.DevicePowered}, deviceFailed {l.DeviceFailed}, " +
+            $"pfdToMcp {l.PfdToMcp}, pfdToAfds {l.PfdToAfds}, pfdToFms {l.PfdToFms}, ilsBlock {l.IlsBlock}, adcBlock {l.AdcBlock}",
+        };
+        Part(lines, p, "attitude", l.Attitude, l.AttitudeMissing, a =>
+            $"irsAttitude {a.IrsAttitude}, irsMode {a.IrsMode}, irsModeNav {a.IrsModeNav}, irsState {a.IrsState}, " +
+            $"irsStateValid {a.IrsStateValid}, irsStateAligning {a.IrsStateAligning}, attWord {Q(a.AttWord)}");
+        Part(lines, p, "speed tape", l.Speed, l.SpeedMissing, s =>
+            $"adcAirspeed {s.AdcAirspeed}, adcAltitude {s.AdcAltitude}, minAirspeed {D(s.MinAirspeed)}, mcpSpeed {s.McpSpeed}, " +
+            $"afdsPitchMode {s.AfdsPitchMode}, vnavModes {A(s.VnavModes)}, afdsSpeedIntervene {s.AfdsSpeedIntervene}, " +
+            $"fmsV1 {s.FmsV1}, fmsVr {s.FmsVr}, fmsV1Inop {s.FmsV1Inop}, afdsTimer {s.AfdsTimer}, timerStart {s.TimerStart}, " +
+            $"timerStopped {s.TimerStopped}, clock {H(s.Clock)}, bugSeconds {D(s.BugSeconds)}, " +
+            $"flapSpeedAfterSeconds {D(s.FlapSpeedAfterSeconds)}, afdsFlapSpeed {s.AfdsFlapSpeed}, noFlapSpeed {D(s.NoFlapSpeed)}, " +
+            $"flapSpeedMaxAltitude {D(s.FlapSpeedMaxAltitude)}, flapSpeedNearVr {D(s.FlapSpeedNearVr)}, " +
+            $"tapeHalfRange {D(s.TapeHalfRange)}, machShownFrom {D(s.MachShownFrom)}, machShownUntil {D(s.MachShownUntil)}, " +
+            $"spdWord {Q(s.SpdWord)}, v1Word {Q(s.V1Word)}, inopWord {Q(s.InopWord)}, v1BugWord {Q(s.V1BugWord)}, " +
+            $"vrBugWord {Q(s.VrBugWord)}, flapBugWord {Q(s.FlapBugWord)}, groundSpeedWord {Q(s.GroundSpeedWord)}, " +
+            $"noMachWord {Q(s.NoMachWord)}");
+        Part(lines, p, "localizer and glideslope", l.Ils, l.IlsMissing, i =>
+            $"locPointer {i.LocPointer}, locDots {i.LocDots}, gsPointer {i.GsPointer}, locScale {i.LocScale}, gsScale {i.GsScale}, " +
+            $"locValid {i.LocValid}, gsValid {i.GsValid}, expanded {i.Expanded}, locFlag {i.LocFlag}, gsFlag {i.GsFlag}, " +
+            $"test {i.Test}, afdsRollMode {i.AfdsRollMode}, runwayModes {A(i.RunwayModes)}, runwayBelow {D(i.RunwayBelow)}, " +
+            $"locWord {Q(i.LocWord)}, glideslopeWord {Q(i.GlideslopeWord)}");
+        Part(lines, p, "radio altitude and decision height", l.RadioAltitude, l.RadioAltitudeMissing, r =>
+            $"raAltitude {r.RaAltitude}, raOffset {D(r.RaOffset)}, raTest {r.RaTest}, raTestState {r.RaTestState}, " +
+            $"raTestAltitude {r.RaTestAltitude}, raTestAlone {A(r.RaTestAlone)}, raTestAdded {r.RaTestAdded}, " +
+            $"raMaxShown {D(r.RaMaxShown)}, raRoundFrom {D(r.RaRoundFrom)}, dhValue {r.DhValue}, dhShown {r.DhShown}, " +
+            $"adcVerticalSpeed {r.AdcVerticalSpeed}, altDescent {D(r.AltDescent)}, altFrom {D(r.AltFrom)}, " +
+            $"dhWord {Q(r.DhWord)}, raWord {Q(r.RaWord)}, altWord {Q(r.AltWord)}");
+        Part(lines, p, "flight director", l.FlightDirector, l.FlightDirectorMissing, d =>
+            $"fdCaptain {d.FdCaptain}, fdPitch {d.FdPitch}, fdRoll {d.FdRoll}");
+        Part(lines, p, "TCAS", l.Tcas, l.TcasMissing, t =>
+            $"tcasAbove {t.TcasAbove}, tcasBelow {t.TcasBelow}, tcasAbovePitch {t.TcasAbovePitch}, tcasBelowPitch {t.TcasBelowPitch}");
+        Part(lines, p, "reference speeds", l.ReferenceSpeeds, l.ReferenceSpeedsMissing, v =>
+            $"fmsVref30 {v.FmsVref30}, fmsVref25 {v.FmsVref25}");
+        return lines;
+    }
+
+    /// <summary>One line for an optional part of the EHSI or the ADI: its fields, or why it is missing.</summary>
     private static void Part<T>(List<string> lines, string prefix, string name, T? part, string? missing, Func<T, string> fields)
         where T : class =>
         lines.Add(part is not null ? $"{prefix} {name}: {fields(part)}" : $"{prefix}: {name} missing: {missing}");
