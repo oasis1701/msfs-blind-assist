@@ -157,8 +157,8 @@ public class Bbs757SeamsTests
     [Fact]
     public void Loader_reads_guard_fields()
     {
-        // The emergency lights switch sits behind a guard: spec-gaps 3.3 measured the guard var at 0 when
-        // closed, and closing it writes 1 (ARMED) to the switch. A control without a guard carries none.
+        // The emergency lights switch sits behind a guard: its guard var was measured live at 0 when closed,
+        // and closing it writes 1 (ARMED) to the switch. A control without a guard carries none.
         const string json = """
             {
               "controls": [

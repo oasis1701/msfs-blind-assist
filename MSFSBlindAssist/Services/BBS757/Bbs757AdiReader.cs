@@ -34,7 +34,7 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
     /// <summary>The reason of a part the layout lacks without saying why.</summary>
     internal const string NotInLayout = "not in this layout file";
 
-    // BlueBird's draw constants, read from its draw code with the layout's offsets (docs/b757/evidence/displays-adi.md):
+    // BlueBird's draw constants, read from its draw code with the layout's offsets (docs/b757.md, "The ADI (Alt+P)"):
     // none is an address or an offset.
 
     /// <summary>The draw's degrees per radian (f23610).</summary>
@@ -371,7 +371,7 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
 
     /// <summary>
     /// The reading the Captain's ADI draws from <paramref name="raw"/> and this tick's simulator values, by BlueBird's own
-    /// draw rules (S10; docs/b757/evidence/displays-adi.md, "Step 3"). <paramref name="machShown"/> is the tape's Mach
+    /// draw rules (S10; docs/b757.md, "The ADI (Alt+P)"). <paramref name="machShown"/> is the tape's Mach
     /// hysteresis after this tick (<see cref="MachShown"/>).
     /// <list type="bullet">
     /// <item>Dark: nothing but the FMC's reference speeds, which are read whatever the power.</item>

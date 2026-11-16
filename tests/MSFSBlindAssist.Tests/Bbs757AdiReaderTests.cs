@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.Tests;
 
 /// <summary>The 757 ADI sampler (plan 27, Task 4): it finds the Captain's pfd in the gauge manager by its vptr, follows
 /// the layout to the source selector's irs, adc and ra, the mcp, the afds and the fms, and returns each part as drawn.
-/// The memory is the evidence's live reading at the gate (docs/b757/evidence/displays-adi.md: the IRS aligned, the ILS
+/// The memory is the live reading at a KSEA gate on 2026-11-16 (docs/b757.md, "The ADI (Alt+P)": the IRS aligned, the ILS
 /// tuned to 110.30 and received on the ramp, the Captain's F/D on, PERF INIT done), placed through the sample layout of
 /// <see cref="Bbs757AdiLayoutTests"/>; the draw rules that the gate cannot show are tested on
 /// <see cref="Bbs757AdiReader.Decode"/> alone.</summary>

@@ -221,7 +221,7 @@ public static class Bbs757Readouts
     /// <summary>
     /// The stabilizer trim in BlueBird's indicator units from the stock <c>ELEVATOR TRIM POSITION</c> in
     /// degrees: <c>max(0.436, -0.002148·d² + 0.803152·d + 1.11308)</c>, the strip's own code in the
-    /// cockpit XML (live-findings, session 7: 2.3 degrees at load is 2.95 units). The curve rises until
+    /// cockpit XML (measured live: 2.3 degrees at load is 2.95 units). The curve rises until
     /// about 187 degrees, far past the stabilizer's travel, so more nose-up trim never reads fewer units;
     /// below about -0.84 degrees the strip rests on <see cref="StabTrimMinUnits"/>.
     /// </summary>

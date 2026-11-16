@@ -3,7 +3,7 @@ using System.Globalization;
 namespace MSFSBlindAssist.Services.BBS757;
 
 /// <summary>
-/// The ADI's rows and spoken lines (plan 27; docs/b757/evidence/displays-adi.md, "Step 4"). The rows are in screen order,
+/// The ADI's rows and spoken lines (plan 27; docs/b757.md, "The ADI (Alt+P)"). The rows are in screen order,
 /// each starting with where its item sits: the speed tape on the left, the horizon's area in the center, the glideslope,
 /// the decision height and the radio altitude on the right, the localizer at the bottom. A row is there only while its
 /// item is drawn; a flag stands in its instrument's place, never beside a value. The flags' and legends' words are the

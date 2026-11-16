@@ -77,8 +77,11 @@ Kept in this file only, so no other plan's push ever touches it. Task 0 claims t
 - **Claimed by:** Robin Kipp (robin24), 2026-11-14
 - **Worked by:** Robin Kipp with Claude, with subagents (one each for the rules, the developer docs, the hotkey guide and the pilot's guide, each checking the handoffs against the code; the code requests worked inline)
 - **Started:** 2026-11-14, from `B757` at 4725281b8
-- **Landed:** (date; the last commit of this plan on `B757`)
-- **Pull request:** (number, link; the commit that last holds `docs/b757/` before Task 6 deletes it)
+- **Landed:** (the merge, at the owner's word)
+- **Pull request:** [#358](https://github.com/oasis1701/msfs-blind-assist/pull/358), "BlueBird 757-200 support", opened 2026-11-16 from `kn4iee:B757`. The commit that last holds `docs/b757/` is the one before `docs(b757): remove the investigation folder before merge`, which names it.
+- **Task 6's rulings:**
+  - One fragment, `changelog.d/358-bluebird-757.aircraft.md`, not the `.feature.md` and `.fix.md` this task planned. `main` has no 757 file at all, so for a pilot the PR adds a new aircraft (the `aircraft` category). Fixes to a 757 nobody had would mean nothing to them. Three sentences, after the owner's short-fragment preference.
+  - The 8 places citing `docs/b757/evidence/displays-adi.md` (the ADI's code, its tests and `docs/b757.md`) now point to `docs/b757.md`'s "The ADI (Alt+P)", which already held the facts. That section gained the gate's reference-speed reading, the 2026-11-16 flight's confirmations and the VNAV target's trace. The three comments citing "live-findings" or "spec-gaps" by name now state their measurement themselves.
 - **Tests at this push:** build green; the full suite 25,048 passed, 0 failed (2026-11-14, with `main` at 401cf51c0 merged in)
 - **Waiting on the owner:** nothing before the merge, which is at his word.
   - ~~The go-ahead for Task 6's pull request~~: given 2026-11-16 ("please go ahead with the PR and changelog!").

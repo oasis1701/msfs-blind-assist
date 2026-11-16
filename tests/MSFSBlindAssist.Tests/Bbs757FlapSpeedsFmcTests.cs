@@ -10,7 +10,8 @@ namespace MSFSBlindAssist.Tests;
 /// newest good reading has a VREF 30 above 0, the keys speak from it, BlueBird's own schedule over VREF 30 and no
 /// "calculated", since these are the numbers APPROACH REF prints. Otherwise the readout stays as it was: the measured
 /// table by the simulator's weight (<see cref="Bbs757FlapSpeedsTests"/>). The live reading behind the numbers: ZFW 150.0
-/// on PERF INIT, VREF 30 121 and VREF 25 123 (docs/b757/evidence/displays-adi.md, "The FMC's reference speeds").
+/// on PERF INIT, VREF 30 121 and VREF 25 123, at a KSEA gate on 2026-11-16 (docs/b757.md, "The ADI (Alt+P)", "The FMC's
+/// reference speeds").
 /// </summary>
 public class Bbs757FlapSpeedsFmcTests
 {

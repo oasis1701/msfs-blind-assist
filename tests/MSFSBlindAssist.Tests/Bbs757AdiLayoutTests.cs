@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.Tests;
 /// <summary>The ADI layout record (plan 27, Task 2): it round-trips through the generic layout file format
 /// byte-identical under any culture (WASM-21), a part that is missing keeps its reason, a file without the reader reads
 /// as missing (WASM-26), and its equality covers every field but the source file. Offsets and constants are those
-/// measured from the module's memory on 2026-11-16 (docs/b757/evidence/displays-adi.md, "Step 4: the reading"), copied
+/// measured from the module's memory at a KSEA gate on 2026-11-16 (docs/b757.md, "The ADI (Alt+P)"), copied
 /// here; the seventh part, the FMC's reference speeds, is not drawn on the ADI (it feeds the flap speed readouts).</summary>
 public class Bbs757AdiLayoutTests
 {

@@ -287,7 +287,7 @@ public class Bbs757McpTests
     /// A simulated MCP behind <see cref="McpIo"/>, with a virtual clock (<see cref="Now"/>, advanced
     /// only by the loop's waits).
     /// <list type="bullet">
-    /// <item>The speed target moves as BlueBird's measured knob moves it (live-findings, session 7),
+    /// <item>The speed target moves as BlueBird's knob was measured live to move it,
     /// modeled here on its own, never through the code under test: a speed write fires its events
     /// (a burst loop's count, or each <c>(&gt;K:AP_SPD_VAR_…)</c> written out), and the writes with
     /// less than <see cref="BurstResetMs"/> between them are ONE burst whose count runs across them.

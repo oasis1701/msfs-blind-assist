@@ -4,7 +4,7 @@ using static MSFSBlindAssist.Tests.Bbs757AdiReaderTests;
 
 namespace MSFSBlindAssist.Tests;
 
-/// <summary>The ADI's rows and words (plan 27, Task 5): the rows of docs/b757/evidence/displays-adi.md, "Step 4", in its
+/// <summary>The ADI's rows and words (plan 27, Task 5): the rows of docs/b757.md, "The ADI (Alt+P)", in its
 /// order and wording, each starting with where it sits; a flag in its instrument's place; and the five flags as the
 /// only thing spoken. The readings are decoded by the sampler's own draw rules from
 /// <see cref="Bbs757AdiReaderTests.Approach"/>, so a row is checked against what memory held.</summary>
