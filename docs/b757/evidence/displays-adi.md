@@ -173,6 +173,27 @@ Drawn while the attitude is valid and `L:BBS757_PLI_VISIBLE` (handle 1009744) is
 use of the pitch, so the limit's sign could not be settled without seeing it drawn in flight. Left for a recorder
 on a flight.
 
+### The FMC's reference speeds (not drawn on the ADI; for Shift+1 to Shift+6)
+
+The owner's word, 2026-11-16: "Please also move Shift+1 to 6 onto the FMC's VREF." The `F` bug's source is the
+FMC's own VREF, in the fms (`[afds+11896]`, the same object as `[pfd+628]`): **`f64 fms+2128` VREF 30** (f30479),
+**`f64 fms+2120` VREF 25** (f30480), and `f64 fms+2112` VREF 20 (not used). The FMC computes all three (39562)
+from its gross weight (`f32 fms+1652`, pounds; a trial weight typed on APPROACH REF at `+1660` while `u8 +1656`)
+by its own table, for 134,000 to 251,000 lb, once PERF INIT has a fuel and a zero fuel weight; otherwise all three
+are 0. They are the numbers APPROACH REF prints.
+
+- Live: before PERF INIT 0, 0, 0 (and the `F` speed 80.0). ZFW 150.0 typed on PERF INIT (GR WT 170.0): **VREF 20
+  132, VREF 25 123, VREF 30 121**, and the `F` speed 201.0 (121 + 80, flaps up). The app's measured table gives
+  121 and 123 at 170,000 lb: the same numbers.
+- The maneuvering schedule is BlueBird's own (30467): VREF 30 + 80 flaps up, + 60 flaps 1, + 40 flaps 5, + 20
+  flaps 15 and 20: the schedule the app already used.
+
+**The readouts:** while the ADI reader runs and its reading has a VREF 30 above 0, Shift+1 to Shift+5 say the
+maneuvering speed from it ("Flaps 5 maneuver speed 161 knots") and Shift+6 says "VREF 30 121 knots, VREF 25 123
+knots": no "calculated", since these are the aircraft's own numbers. Otherwise (the reader not running, the part
+missing, PERF INIT not done, the weight outside the FMC's table) the readouts stay as they were: the measured
+table by the simulator's weight, with "calculated", or "Flap speeds unavailable."
+
 ## Step 4: the reading (binding for Tasks 2 to 6)
 
 **The layout's parts** (each optional but the first; a part the recipe cannot derive is null with its reason):
@@ -186,6 +207,10 @@ on a flight.
 | Radio altitude | `raAltitude` 2920, `raOffset` 16.93, `raTest` 2868, `raTestState` 344, `raTestAltitude` 2880, `raTestAlone` [2, 4], `raTestAdded` 3, `raMaxShown` 2500, `raRoundFrom` 100; `dhValue` 40 and `dhShown` 46 in the ILS block's object (so from pfd: 176 and 182); `adcVerticalSpeed` 56, `altDescent` −150, `altFrom` 500; words `DH`, `RA`, `ALT` |
 | Flight director | `fdCaptain` 11957, `fdPitch` 15848, `fdRoll` 15856 (in the afds, through `pfdToAfds`) |
 | TCAS | `tcasAbove` 56, `tcasBelow` 64, `tcasAbovePitch` 72, `tcasBelowPitch` 80 (in the ILS block's object) |
+| Reference speeds | `fmsVref30` 2128, `fmsVref25` 2120 (in the fms, through `pfdToFms`); in the reading whatever the display's power, never a row |
+
+The core also holds `pfdToMcp` 608, `pfdToAfds` 612, `pfdToFms` 628, `ilsBlock` 136 and `adcBlock` 368, which
+several parts need; the parts' own offsets are relative to those objects.
 
 **Simulator inputs (4):** `PLANE BANK DEGREES` (radians), `PLANE PITCH DEGREES` (radians), `GROUND VELOCITY`
 (knots), `AIRSPEED MACH` (mach): stock variables, never L:vars of those names.
