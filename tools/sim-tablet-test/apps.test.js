@@ -842,6 +842,92 @@ test('a paragraph keeps a word that takes a press by its own pointer as a button
   assert.ok(l.some(x => /The check is due in 750 FH \(Flight hours\) or 90 days\./.test(x)), l.join(' / '));
 });
 
+// A word with a hidden tip, inside running text, so each abbreviation rule is reached on its own (a
+// word standing alone is refused earlier, by the running-text rule).
+function inText(word, tip, wrap) {
+  const w = '<span class="w" data-rect="0,40,80,20">' + word + '<span class="tip">' + tip + '</span></span>';
+  const p = styled('<div class="t">Then ' + (wrap ? '<span class="chip">' + w + '</span>' : w) + ' it</div>',
+    el => (el.classList.contains('tip') ? { display: 'none' } : null));
+  p.document.querySelector('.w').onclick = () => {};
+  return lines(scraped(p.A));
+}
+
+test('in running text, a control word whose tip is its own word, inflected, keeps its press', () => {
+  for (const [w, t] of [['LOAD', 'Loading the plan'], ['ARM', 'Arms the autobrake'], ['SAVE', 'Saving the plan'],
+                        ['STOP', 'Stopped by the pilot'], ['RUN', 'Running the check'], ['SET', 'Setting the speed'],
+                        ['SAVE', 'Saves the plan'], ['SAVE', 'Save: store the plan']]) {
+    const l = inText(w, t);
+    assert.ok(l.includes('button|' + w), w + ' "' + t + '" keeps its press: ' + l.join(' / '));
+  }
+});
+
+test('in running text, an abbreviation reads spelled out, a tip restating it first included, and through a chip around it', () => {
+  for (const [w, t, want] of [['HDG', '(Heading)', 'Then HDG (Heading) it'], ['FH', 'FH: Flight hours', 'Then FH (FH: Flight hours) it'],
+                              ['CYC', 'Cycles', 'Then CYC (Cycles) it'], ['MIN', 'Minimum', 'Then MIN (Minimum) it']]) {
+    const l = inText(w, t);
+    assert.ok(l.includes('static|' + want), w + ': ' + l.join(' / '));
+  }
+  const chip = inText('FH', 'Flight hours', true);
+  assert.ok(chip.includes('static|Then FH (Flight hours) it'), 'a wrapper holding only the word is no running text of its own: ' + chip.join(' / '));
+});
+
+test('a one-line row keeps a pointer word sharing its line as a button; a nameless pointer icon does not split it', () => {
+  const ptr = el => el.classList && el.classList.contains('p');
+  const named = page('<div class="r" data-rect="0,0,200,20">Signed in as <span class="p" data-rect="0,100,140,20">Pilot</span></div>',
+    { pointer: ptr });
+  const l = lines(scraped(named.A));
+  assert.ok(l.includes('button|Pilot'), l.join(' / '));
+  assert.ok(!l.includes('static|Signed in as Pilot'), l.join(' / '));
+  const icon = page('<div class="r" data-rect="0,0,200,20"><span data-rect="0,0,40,20">Fuel</span><span data-rect="0,40,90,20">1200 kg</span>' +
+    '<svg class="p" data-rect="0,90,110,20"></svg></div>', { pointer: ptr });
+  const li = lines(scraped(icon.A));
+  assert.ok(li.includes('static|Fuel 1200 kg'), li.join(' / '));
+});
+
+test('a line that falls through keeps its words and its pointer word in their order', () => {
+  const p = page('<div class="r">Signed in as <span class="p" data-rect="30,100,140,50">Pilot</span>, member since 2024</div>',
+    { pointer: el => el.classList && el.classList.contains('p') });
+  const l = lines(scraped(p.A));
+  const at = s => l.indexOf(s);
+  assert.ok(at('static|Signed in as') >= 0 && at('button|Pilot') > at('static|Signed in as') &&
+            at('static|, member since 2024') > at('button|Pilot'), l.join(' / '));
+});
+
+test('a caption over a pointer value keeps the value\'s press', () => {
+  const p = page('<div class="kv"><div data-rect="0,0,40,20">Gate</div><div class="p" data-rect="30,0,40,50">A12</div></div>',
+    { pointer: el => el.classList && el.classList.contains('p') });
+  const l = lines(scraped(p.A));
+  assert.ok(l.includes('button|A12'), l.join(' / '));
+  assert.ok(!l.includes('static|Gate: A12'), l.join(' / '));
+});
+
+test('two rows under words of the element\'s own never join and drop those words', () => {
+  const p = page('<div class="kv">Signed in<div data-rect="0,0,40,20">Pilot</div><div data-rect="30,0,40,50">2024</div></div>');
+  const l = lines(scraped(p.A));
+  assert.ok(!l.includes('static|Pilot: 2024'), l.join(' / '));
+  assert.deepStrictEqual(l.slice(0, 3), ['static|Signed in', 'static|Pilot', 'static|2024']);
+});
+
+test('an abbreviation with its own pointer in a paragraph reads in place', () => {
+  const p = styled('<p class="b">Due in 750 <span class="term">FH<span class="term-tip">Flight hours</span></span> or 90 days.</p>',
+    el => (el.tagName !== 'SPAN' ? null : Object.assign({ display: el.classList.contains('term-tip') ? 'none' : 'inline' },
+          el.classList.contains('term') ? { cursor: 'pointer' } : {})));
+  p.document.querySelector('.term').getBoundingClientRect = () => ({ top: 30, left: 0, right: 20, bottom: 50, width: 20, height: 20 });
+  const l = lines(scraped(p.A));
+  assert.ok(l.includes('static|Due in 750 FH (Flight hours) or 90 days.'), l.join(' / '));
+});
+
+test('repeated buttons: a row names a repeat only by words on its own line, never by a section around it', () => {
+  // TechLog's Flights page: the main menu's "Flights" tab and the page's own "Flights" sub-tab, whose
+  // nearest words are the empty-list notes far below it.
+  const p = page('<div class="nav"><div data-rect="0,0,200,20">TechLog v1.5.4</div><button data-rect="40,0,200,60">Flights</button></div>' +
+    '<div class="sec"><div class="tabs"><button data-rect="100,300,400,120">Flights</button><button data-rect="100,400,500,120">History</button></div>' +
+    '<div class="empty" data-rect="160,300,800,200">No flights yet. Fly with TechLog running.</div></div>');
+  const l = lines(scraped(p.A));
+  assert.ok(!l.some(x => /No flights yet.*: Flights/.test(x)), l.join(' / '));
+  assert.deepStrictEqual(l.filter(x => /Flights$/.test(x) && x.indexOf('button|') === 0), ['button|Flights', 'button|Flights']);
+});
+
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
   const l = lines(scrape('atmo-haze'));
   assert.ok(l.includes('static|METAR link: running, last poll 2026-11-15T18:16:59.155Z, AtmosphereMod 0.7.3'), l.filter(x => /METAR link/.test(x)).join(' / '));

@@ -6,6 +6,8 @@
 //   data-h="click"       the press events the element listens to, comma-joined: its onclick /
 //                        onmousedown, and, when the eval asked for the command line API, every
 //                        listener getEventListeners shows (an add-on's addEventListener ones)
+//   data-ptr="1"         the page sets a pointer cursor on the element itself, not inherited
+//                        from its parent (what the reader's A.ownPointer reads)
 // Inputs carry their LIVE value/checked as attributes, a select its chosen option as `selected`, and
 // an OS slider its --ratio-value style. SVGs are reduced to one empty <svg> naming the icon
 // (data-icon = the first id inside it, data-title = its <title>), which keeps a page to tens of
@@ -59,6 +61,8 @@
       }
       if (h.length) out += ' data-h="' + h.join(',') + '"';
       if (visible) {
+        var cs = window.getComputedStyle(el), pcs = el.parentElement ? window.getComputedStyle(el.parentElement) : null;
+        if (cs && cs.cursor === 'pointer' && !(pcs && pcs.cursor === 'pointer')) out += ' data-ptr="1"';
         var r = el.getBoundingClientRect();
         out += ' data-vis="1" data-rect="' + Math.round(r.top) + ',' + Math.round(r.left) + ',' + Math.round(r.right) + ',' + Math.round(r.bottom) + '"';
       }

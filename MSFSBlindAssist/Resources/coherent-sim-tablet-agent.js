@@ -240,16 +240,28 @@
     // And the tip must spell it out: same first letter, its letters in order, not the word itself
     // ("FH" in "Flight hours"); an all-capitals control word with a tooltip (SAVE, "Save the plan";
     // OK, "Confirm") keeps its press.
-    var letters = own.replace(/[^A-Z]/g, ''), words = A.norm(A.modelText(tip)).toLowerCase().replace(/^[^a-z0-9]+/, '');
-    if (letters.length < 2 || words.charAt(0) !== letters.charAt(0).toLowerCase()) return null;
-    // The tip's first word is the label itself, or the label inflected ("SAVE": "Saves the plan"): a control.
-    var fw = words.split(' ')[0].replace(/[^a-z0-9]/g, ''), ow = own.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (fw === ow || (fw.indexOf(ow) === 0 && /^(s|es|d|ed|ing)$/.test(fw.slice(ow.length)))) return null;
-    // And it sits in running text, as an abbreviation does ("750 FH left"); a control stands alone
-    // ("CLR" with "Clear", "HDG" with "Heading" keep their press: a wrong button is harmless, a lost
-    // press is not).
+    var letters = own.replace(/[^A-Z]/g, ''), ow = own.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (letters.length < 2) return null;
+    var words = A.norm(A.modelText(tip)).toLowerCase().replace(/^[^a-z0-9]+/, '');
+    var fw = words.split(' ')[0].replace(/[^a-z0-9]/g, '');
+    // A tip that first restates the word ("FH: Flight hours") is judged by what follows it.
+    if (fw === ow && words.indexOf(' ') > 0) {
+      words = words.slice(words.indexOf(' ') + 1).replace(/^[^a-z0-9]+/, '');
+      fw = words.split(' ')[0].replace(/[^a-z0-9]/g, '');
+    }
+    if (words.charAt(0) !== letters.charAt(0).toLowerCase()) return null;
+    // The tip's first word is the label itself, or the label inflected ("SAVE": "Saves", "Saving";
+    // "STOP": "Stopped"; "RUN": "Running"): a control.
+    var stem = ow.replace(/e$/, ''), rest = fw.indexOf(stem) === 0 ? fw.slice(stem.length) : null;
+    if (fw === ow || (rest !== null && new RegExp('^(e?s|e?d|ing|' + ow.slice(-1) + '(ed|ing))$').test(rest))) return null;
+    // And it sits in running text, as an abbreviation does ("750 FH left"), through wrappers that hold
+    // only it (a chip); a control stands alone ("CLR" with "Clear", "HDG" with "Heading" keep their
+    // press: a wrong button is harmless, a lost press is not).
     var p = el.parentElement, around = '';
-    for (var pi = 0; p && pi < p.childNodes.length; pi++) if (p.childNodes[pi].nodeType === 3) around += p.childNodes[pi].nodeValue;
+    for (var up = 0; p && up < 3; up++, p = p.parentElement) {
+      for (var pi = 0; pi < p.childNodes.length; pi++) if (p.childNodes[pi].nodeType === 3) around += p.childNodes[pi].nodeValue;
+      if (A.norm(around) || p.children.length !== 1) break;
+    }
     if (!A.norm(around)) return null;
     for (var li = 0, at = 0; li < letters.length; li++) {
       at = words.indexOf(letters.charAt(li).toLowerCase(), at);
@@ -378,7 +390,11 @@
         var tag = c.tagName.toLowerCase();
         if (tag === 'svg' || tag === 'script' || tag === 'style' || tag === 'canvas' || tag === 'img' || tag === 'iframe') continue;
         // An abbreviation's hidden tip spells it out: "FH (Flight hours)" (A.abbrevTip).
-        if (A.isAbbrevTipOf(c, n)) { var tipText = A.modelText(c); if (tipText) parts.push({ t: ' (' + tipText + ')', el: c }); continue; }
+        if (A.isAbbrevTipOf(c, n)) {
+          var tipText = A.modelText(c);                 // a tip in brackets of its own keeps them, never doubled
+          if (tipText) parts.push({ t: ' ' + (/^\(.*\)$/.test(tipText) ? tipText : '(' + tipText + ')'), el: c });
+          continue;
+        }
         if (mode === 'model' ? A.modelHidden(c) : A.isHidden(c)) continue;
         var word = A.iconWord(c);
         if (word) { parts.push({ t: word, el: c }); continue; }
@@ -417,6 +433,12 @@
   };
   A.lineText = function (el) { return A.textOf(el, 'visible'); };
   A.modelText = function (el) { return A.textOf(el, 'model'); };
+  // The element's own words (its text nodes), never its children's.
+  A.ownWords = function (el) {
+    var s = '';
+    for (var k = 0; k < el.childNodes.length; k++) if (el.childNodes[k].nodeType === 3) s += el.childNodes[k].nodeValue + ' ';
+    return A.norm(s);
+  };
 
   // A tooltip's text, when the OS would show one for this control. A Tooltip whose condition is
   // false renders with the "forceHide" class (the launcher's "not compatible with this aircraft"
@@ -627,6 +649,10 @@
     var ps = el.parentElement ? A.styleOf(el.parentElement) : null;
     return !ps || ps.cursor !== 'pointer';
   };
+  // A word that takes a press by its own pointer (React's delegated handlers): it stays a control in
+  // any line or pair of rows around it. Never a hidden one, an abbreviation (A.abbrevTip), or a
+  // nameless icon, which the walk skips as saying nothing.
+  A.pressWord = function (n) { return A.ownPointer(n) && !A.isHidden(n) && !A.abbrevTip(n) && !!A.buttonLabel(n); };
   // A handler on a whole page or panel (iniJetways' body, which clears the selection) is a
   // container, never one button with the page's text as its name.
   A.isBig = function (el) {
@@ -1409,7 +1435,7 @@
       if (A.isHidden(all[i])) continue;                 // a hidden tip or icon takes no place in the line
       var st = A.styleOf(all[i]);
       if (!st || !/^inline/.test(st.display || '')) return false;
-      if (A.ownPointer(all[i]) && !A.abbrevTip(all[i])) return false;   // a link-like word stays a control
+      if (A.pressWord(all[i])) return false;            // a link-like word stays a control
       shown++;
     }
     return shown > 0;
@@ -1422,8 +1448,7 @@
     for (var i = 0; i < all.length; i++) nodes.push(all[i]);
     for (var j = 0; j < nodes.length; j++) {
       var n = nodes[j], own = false;
-      // A word that takes a press by its own pointer (React's delegated handlers) stays a control.
-      if (j > 0 && A.ownPointer(n) && !A.isHidden(n) && !A.abbrevTip(n)) return false;
+      if (j > 0 && A.pressWord(n)) return false;
       for (var k = 0; k < n.childNodes.length; k++) if (n.childNodes[k].nodeType === 3 && A.norm(n.childNodes[k].nodeValue)) { own = true; break; }
       if (!own || A.isHidden(n)) continue;
       var r = n.getBoundingClientRect(), c = (r.top + r.bottom) / 2;
@@ -1471,8 +1496,12 @@
   // frequencies: "DUBAI 118.350", "DUBAI 121.650"): every text in the button's nearest container that
   // has text of its own, outside any control. Only the text says it, never the key, so a number in it
   // can change freely.
+  // Only words on the button's own line make its row: a note far below it heads no row (TechLog's
+  // Flights sub-tab, whose nearest words are its "No flights yet" notes), and a row is never longer
+  // than a line.
+  A.ROW_LINE_MAX = 80;
   A.rowLine = function (b, skip) {
-    var anc = b.parentElement;
+    var anc = b.parentElement, br = b.getBoundingClientRect();
     for (var up = 0; up < 4 && anc && anc !== A._view; up++, anc = anc.parentElement) {
       var all = anc.getElementsByTagName('*'), parts = [];
       if (all.length > 200) return '';
@@ -1482,11 +1511,12 @@
         var own = '';
         for (var k = 0; k < n.childNodes.length; k++) if (n.childNodes[k].nodeType === 3) own += n.childNodes[k].nodeValue;
         if (!A.norm(own) || A.norm(own) === skip) continue;
+        if (br.height > 0) { var r = n.getBoundingClientRect(); if (r.bottom <= br.top || r.top >= br.bottom) continue; }
         var inCtl = false;
         for (var p = n; p && p !== anc; p = p.parentElement) if (A.isControlEl(p)) { inCtl = true; break; }
         if (!inCtl) parts.push(A.norm(own));
       }
-      if (parts.length) return parts.join(' ');
+      if (parts.length) { var line = parts.join(' '); return line.length <= A.ROW_LINE_MAX ? line : ''; }
     }
     return '';
   };
@@ -1690,20 +1720,43 @@
         }
         // A caption above its value ("Ground Speed" over "0 KT") reads as one line with a colon; two
         // rows that are each a name with its value (the Pilot book's "By day 00h26" over "By night
-        // 0h") with a comma.
-        var two = el.getElementsByTagName('*').length <= A.ONE_LINE_MAX_NODES ? A.rows(el) : [];
-        if (two.length === 2 && el.children.length === 2) {
+        // 0h") with a comma. Never over words of the element's own, which it would drop, nor over a
+        // word that takes a press ("Gate" over a pressable "A12").
+        var twoAll = el.getElementsByTagName('*'), two = [];
+        if (twoAll.length <= A.ONE_LINE_MAX_NODES && el.children.length === 2 && !A.ownWords(el)) {
+          two = A.rows(el);
+          for (var tw = 0; tw < twoAll.length; tw++) if (A.pressWord(twoAll[tw])) { two = []; break; }
+        }
+        if (two.length === 2) {
           var top = A.lineText(el.children[0]), bottom = A.lineText(el.children[1]);
           var pairs = /[A-Za-z].*\s\d\S*$/.test(top) && /^[A-Za-z]/.test(bottom) && /\d/.test(bottom);
           if (top && bottom) { sink.push(A.el(el, { kind: 'static', text: top + (pairs ? ', ' : ': ') + bottom })); return; }
         }
       }
 
-      var own = '';
-      for (var k = 0; k < el.childNodes.length; k++) if (el.childNodes[k].nodeType === 3) own += el.childNodes[k].nodeValue + ' ';
-      own = A.norm(own);
+      var own = A.ownWords(el), kids = A.childrenInOrder(el), scroller = A.isVirtualScroller(el), sb;
+      // Words of its own between its elements read where they stand ("Signed in as", the button
+      // "Pilot", ", member since 2024"), unless its children are re-sorted (a virtual list's rows).
+      var inOrder = !scroller;
+      for (var io = 0; inOrder && io < kids.length; io++) if (kids[io] !== el.children[io]) inOrder = false;
+      if (own && !A.isClaimed(el) && inOrder && kids.length) {
+        var run = '', first = true;
+        var flush = function () {
+          var t = A.norm(run);
+          run = '';
+          if (!t) return;
+          sink.push(A.el(first ? el : null, { kind: 'static', text: t }));   // one stamp per node
+          first = false;
+        };
+        for (var cn = 0; cn < el.childNodes.length; cn++) {
+          var ch = el.childNodes[cn];
+          if (ch.nodeType === 3) run += ch.nodeValue;
+          else if (ch.nodeType === 1) { flush(); walk(ch); }
+        }
+        flush();
+        return;
+      }
       if (own && !A.isClaimed(el)) sink.push(A.el(el, { kind: 'static', text: own }));
-      var kids = A.childrenInOrder(el), scroller = A.isVirtualScroller(el), sb;
       if (scroller && (sb = A.scrollButtons(el, false))) sink.push(sb);
       for (var c = 0; c < kids.length; c++) walk(kids[c]);
       if (scroller && (sb = A.scrollButtons(el, true))) sink.push(sb);

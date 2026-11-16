@@ -35,8 +35,11 @@ function load(fixtureName, opts) {
   global.Event = window.Event;          // else Node's own Event, which a jsdom element refuses
 
   const vis = el => el.getAttribute && el.getAttribute('data-vis') === '1';
+  // data-ptr="1": the page set a pointer cursor on the element itself (capture.js), which the reader's
+  // A.ownPointer reads; fixtures captured before 2026-11-16 carry none.
   window.getComputedStyle = function (el) {
-    return { display: vis(el) ? 'block' : 'none', visibility: 'visible', opacity: '1' };
+    return { display: vis(el) ? 'block' : 'none', visibility: 'visible', opacity: '1',
+             cursor: el.getAttribute && el.getAttribute('data-ptr') === '1' ? 'pointer' : 'auto' };
   };
   window.Element.prototype.getBoundingClientRect = function () {
     const r = this.getAttribute('data-rect') || (vis(this) ? '0,0,100,20' : '0,0,0,0');
