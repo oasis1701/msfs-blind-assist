@@ -48,7 +48,7 @@ Measured live and read from `efb_os.js` (STAB-1 to STAB-3):
 - buttons, tabs, dropdown items and switches take `el.click()`; the Flight Planner's search results take a mousedown only; an add-on's control gets the one event it listens to (STAB-13);
 - a text box takes `.value` plus an `input` event with NO focus: focusing one hands the pilot's keyboard to the tablet; a page's own box also gets `change`;
 - an OS slider is dragged along its bar to the typed value, read back from its read-out (STAB-12); a native slider takes `.value`, refusing anything that is no number;
-- disabled is the `disabled` attribute (on list items too) or the control's shown `.disabled-layer`.
+- disabled is the `disabled` attribute (on list items too, or on a group around the control: Settings' Tablet size row while the sim shows no tablet) or the control's shown `.disabled-layer`.
 
 ## Show the tablet in the sim
 

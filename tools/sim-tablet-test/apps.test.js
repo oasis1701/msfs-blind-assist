@@ -688,10 +688,55 @@ test('a press that makes a box focus itself hands the keyboard back, though Cohe
   inp.addEventListener('focus', () => { focused = true; });
   inp.addEventListener('focusout', () => { focused = false; });
   Object.defineProperty(p.document, 'activeElement', { get: () => p.document.body });
+  inp.blur = () => {};                          // as in Coherent: blur() does nothing for a box it never saw focused
   p.document.getElementById('add').onclick = () => inp.focus();
   const els = scraped(p.A);
   assert.equal(p.A.clickElement(els.find(e => e.text === 'ADD FAVORITE').idx), true);
-  assert.equal(focused, false, 'focusout sent: the OS box sends UNFOCUS_INPUT_FIELD');
+  assert.equal(focused, false, 'the focusout the reader sent reached it: the OS box sends UNFOCUS_INPUT_FIELD');
+});
+
+test('a box the OS marks focused, with no focus event seen, is handed back too; a field of the page itself is left alone (STAB-1)', () => {
+  const p = page('<div class="textbox" id="w"><input id="q"></div><input id="own" type="text"><button id="go">Go</button>');
+  const q = p.document.getElementById('q'), own = p.document.getElementById('own');
+  let qOut = 0, ownOut = 0;
+  q.addEventListener('focusout', () => qOut++);
+  own.addEventListener('focusout', () => ownOut++);
+  Object.defineProperty(p.document, 'activeElement', { get: () => p.document.body });
+  q.blur = () => {};
+  p.window.__MSFSBA_LAST_FOCUS = own;           // a page field focused earlier: not the OS's, not focused now
+  p.document.getElementById('go').onclick = () => p.document.getElementById('w').classList.add('textbox--focused');
+  const els = scraped(p.A);
+  p.A.clickElement(els.find(e => e.text === 'Go').idx);
+  assert.equal(qOut, 1, 'the marked OS box got its focusout');
+  assert.equal(ownOut, 0, 'the page field did not');
+});
+
+test('the view-update wrapper of the pump disarms itself: a reference taken during a pump still updates afterwards', () => {
+  let updates = 0, kept = null;
+  const p = page('<button>Go</button>', {
+    before: w => {
+      w.requestAnimationFrame = () => 0;
+      const vs = new (class ViewService { update() { updates++; } })();   // a class method, as in efb_os
+      w.EFB_API = { _installedApps: { array: [{ options: { efbViewService: vs } }] } };
+      w.requestAnimationFrame(() => { kept = vs.update; });   // queued before: never run by the pump
+    },
+  });
+  const vs = p.window.EFB_API._installedApps.array[0].options.efbViewService;
+  p.window.requestAnimationFrame(() => { kept = vs.update; });  // recorded: runs inside the pump, sees the wrapper
+  scraped(p.A);
+  updates = 0;
+  kept();
+  kept();
+  assert.equal(updates, 2, 'outside a pump the wrapper passes every call through');
+  assert.ok(!Object.prototype.hasOwnProperty.call(vs, 'update'), 'the class method is back, no own wrapper left');
+});
+
+test('a shown search list skips its hidden rows', () => {
+  const p = styled('<div class="search-bar"><div class="textbox"><input></div><div class="search-bar-list-container"><div class="search-bar-list">' +
+    '<div class="r">Aircraft</div><div class="r gone">GSX</div></div></div></div>',
+    el => (el.classList.contains('gone') ? { display: 'none' } : null));
+  const l = lines(scraped(p.A));
+  assert.ok(l.includes('button|Result: Aircraft') && !l.some(x => /GSX/.test(x)), l.join(' / '));
 });
 
 test('a group the OS disables dims every button in it (Settings, Tablet size while the sim shows no tablet)', () => {

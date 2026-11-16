@@ -1061,9 +1061,10 @@
       els.push(A.button(el, t + (open ? ' (expanded)' : ' (collapsed)'), { key: 'accordion:' + t, announceChange: true }));
     });
 
-  // A search box: the field, then its results. The results list only SHOWS while the box has
-  // focus, which the reader never gives it, so the results are read while hidden and pressed by
-  // mousedown, the one event they answer (FacilityResultItem).
+  // A search box: the field, then its results. The Flight Planner's list only SHOWS while the box
+  // has focus, which the reader never gives it, so once something is typed its results are read
+  // while hidden; a list that shows by itself (Settings' Add favorite) is read as it shows. Results
+  // are pressed by mousedown, the one event they answer (FacilityResultItem).
   A.block('search',
     function (el) { return A.hasClass(el, 'search-bar'); },
     function (el, els) {
@@ -1787,8 +1788,11 @@
     try {
       if (vs && typeof orig === 'function') {
         own = Object.prototype.hasOwnProperty.call(vs, 'update');
-        var desc = own ? Object.getOwnPropertyDescriptor(vs, 'update') : null;
-        if (!desc || (desc.writable && !desc.get && !desc.set)) {
+        // The descriptor wherever it lives (own, or a class method up the prototype chain): only a
+        // writable data property is wrapped, never an accessor.
+        var desc = null;
+        for (var o = vs; o && !desc; o = Object.getPrototypeOf(o)) desc = Object.getOwnPropertyDescriptor(o, 'update') || null;
+        if (desc && desc.writable && !desc.get && !desc.set) {
           vs.update = function () { if (pumping && updates++) return undefined; return orig.apply(vs, arguments); };
           wrapped = vs.update !== orig;
         }
@@ -1868,15 +1872,19 @@
   // out, activeElement stayed BODY), so the reader also records each focus itself
   // (window.__MSFSBA_LAST_FOCUS, a capturing listener) and takes any OS box marked focused. A
   // focusout on a box that is not focused is a no-op for the OS (its _isFocused is already false).
+  // The recorded and the marked ones are the OS's own text boxes only (A.isOsBox), whose focusout is
+  // idempotent; any other field is released only while it really holds focus.
   A.focusedBoxes = function () {
     var out = [], root = A.root();
-    function add(n) {
-      if (n && (n.tagName === 'INPUT' || n.tagName === 'TEXTAREA') && root && root.contains(n) && out.indexOf(n) < 0) out.push(n);
+    function add(n, osOnly) {
+      if (!n || (n.tagName !== 'INPUT' && n.tagName !== 'TEXTAREA') || !root || !root.contains(n) || out.indexOf(n) >= 0) return;
+      if (osOnly && !A.isOsBox(n)) return;
+      out.push(n);
     }
-    add(document.activeElement);
-    add(window.__MSFSBA_LAST_FOCUS);
+    add(document.activeElement, false);
+    add(window.__MSFSBA_LAST_FOCUS, true);
     var marked = root ? root.querySelectorAll('.textbox--focused input, .textbox--focused textarea') : [];
-    for (var i = 0; i < marked.length; i++) add(marked[i]);
+    for (var i = 0; i < marked.length; i++) add(marked[i], true);
     return out;
   };
   A.releaseKeyboard = function () {
@@ -1955,7 +1963,10 @@
   A.isLive = function (el) {
     var d = el && el.ownerDocument;
     if (!d || !d.documentElement || !d.documentElement.contains(el)) return false;
-    return d !== document || A.root().contains(el);
+    if (d === document) return A.root().contains(el);
+    var fe = null;
+    try { fe = d.defaultView && d.defaultView.frameElement; } catch (e) { fe = null; }
+    return !!fe && A.root().contains(fe);                     // a frame still on the page
   };
   A.scrollButtons = function (el, down) {
     var n = A._scrollers.indexOf(el);
