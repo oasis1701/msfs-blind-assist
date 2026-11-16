@@ -108,12 +108,12 @@
 
 ## Execution record
 
-- **Status:** built, reviewed and checked live on the ground (2026-11-16), local on `B757-p27-adi`; waiting on the owner's word to push to `B757`, publish the generator-9 layout and push the private branch, and on the in-sim checks above by ear
+- **Status:** landed 2026-11-16 (pushed, layout published, deployed to `C:\MSFSBA-B757`); waiting on the in-sim checks above by ear
 - **Claimed by:** Robin Kipp (robin24), 2026-11-16
 - **Worked by:** Robin Kipp with Claude (the controller measured, ruled and reviewed; one implementer each for the layout record, the private recipe, the reader with its window and the flap speed keys, and the docs; one fresh whole-plan reviewer)
 - **Started:** 2026-11-16, from `B757` at 76185cd85
-- **Landed:** (date; the last commit of this plan on `B757`)
-- **Tests at landing:** the full suite 25,237 passed, 0 failed (e05eb8a50); the toolkit's 742 passed at generator version 9 (private `feature/b757-displays` at e3411dfd9, local)
+- **Landed:** 2026-11-16, at the owner's "Yes, all three": `B757` fast-forwarded from the claim 22d77ee87 to 5ce04280b (last code e05eb8a50); the private `feature/b757-displays` pushed at f91b68373 (the landed head merged in; recipe and generator version 9 at e3411dfd9); the generator-9 757 layout `…-b7711b092e7ce90c.json` published (layouts d830d54d7); the generator-7 and generator-8 files removed (layouts 795b748dd: "reader adi is missing" in LayoutBundle on this build), and LayoutBundle then passed (bbs757: generator version 9, 6 of 6 readers). `C:\MSFSBA-B757` runs 5ce04280b with that layout in `%APPDATA%` (the two older local copies deleted).
+- **Tests at landing:** the full suite 25,237 passed, 0 failed (e05eb8a50); the toolkit's 742 passed at generator version 9 (private `feature/b757-displays` at e3411dfd9)
 - **Tasks:**
   - Task 0, the claim: 22d77ee87 (pushed).
   - Task 1, measured: f0fc7fdb2, 0cff69fb2 (`docs/b757/evidence/displays-adi.md`).
@@ -122,8 +122,8 @@
   - Task 4, the sampler: 62fe92ca6. Task 5, rows and words: eb6067b47. Task 6, the window, Alt+P and Ctrl+M: dda44ae02. The owner's addition, Shift+1 to Shift+6 from the FMC's VREF: 7169197e8.
   - The controller's review of those: 371dc6485 (no ALT beside the RA flag; Alt+P leaves output mode as Alt+E and Alt+N do).
   - Task 7, rules and docs: 6fc75e380 (B757-64 to -66 in the new `b757-adi.md`, B757-9 rewritten), d0e11e691 (docs/b757.md, the hotkey guide, the pilot's guide), 8791a5a10 (docs/wasm-memory.md, B757-9's weight range).
-  - Task 8: the whole-plan review and its fixes, e05eb8a50; the live check below. Deploy and publish wait on the owner.
-- **Waiting on the owner:** the word to push `B757-p27-adi` to `B757`, to publish the generator-9 layout file (`toolkit/scripts/publish-layouts.ps1 -Source` that file only) and to push the private `feature/b757-displays`; then the deploy to `C:\MSFSBA-B757` with the layout installed; the three in-sim checks above, by ear, on a flight.
+  - Task 8: the whole-plan review and its fixes, e05eb8a50; the live check below; push, publish and deploy at the owner's word (see Landed).
+- **Waiting on the owner:** the three in-sim checks above, by ear, on a flight.
 - **In-sim results:** 2026-11-16, at a KSEA gate, read-only through the app's own reader code with the generated layout (an untracked dump test, never committed): with the IRS aligned and the ILS on 110.30 the rows matched the capture item for item ("Left: airspeed 30", "Left: target speed 200", "Left: V1 INOP", "Left: ground speed 0", "Center: pitch 0.5 down, wings level", "Center: flight director, pitch bar 8.5 above, roll bar centered", "Right: glideslope, pointer at full scale, up", "Right: DH 200", "Right: radio altitude -6", "Bottom: localizer, pointer at full scale, right"); with the left IRS switched OFF, "Center: ATT flag" with the ground speed, flight director and DH gone, as the capture showed; the ILS self-test set the LOC and G/S flag bytes for its first 2.5 s, then the amber scales swept (memory, not the app's speech). Shift+1 to Shift+6 from the FMC: ZFW 150.0 on PERF INIT gave "VREF 30 121 knots, VREF 25 123 knots" and Flaps up 201, 1 181, 5 161, 15 141, 20 141. The simulator was ended at the owner's request afterwards.
 - **Changed from the plan:**
   - The ADI draws a speed tape (airspeed, target speed, V1/VR and `F` bugs, Mach, ground speed), which the plan did not know; it is read as a part of its own.
