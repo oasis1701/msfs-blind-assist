@@ -117,10 +117,11 @@ public class Bbs757AdiTextTests
         var ra = Reading(r => Ra(r, x => x with { RaFailed = true }));
         Assert.Equal(new[] { "Right: RA flag" }, Rows(ra).Where(row => row.Contains("RA ") || row.Contains("radio altitude")));
 
-        // Each is listed in its instrument's place: the other rows stay where they were.
+        // Each is listed in its instrument's place: the other rows stay where they were (no ALT beside the RA flag: the
+        // draw stops after the DH while the ra is failed).
         var all = Reading(r => Ra(Ils(Speed(Attitude(r, a => a with { IrsAttitude = false }), s => s with { AdcFailed = true }),
             i => i with { GsFlag = true, LocFlag = true }), x => x with { RaFailed = true }));
-        Assert.Equal(new[] { "Left: SPD flag", "Center: ATT flag", "Right: G/S flag", "Right: ALT", "Right: RA flag", "Bottom: LOC flag" }, Rows(all));
+        Assert.Equal(new[] { "Left: SPD flag", "Center: ATT flag", "Right: G/S flag", "Right: RA flag", "Bottom: LOC flag" }, Rows(all));
 
         // And spoken once: as it appears, then nothing while it stays.
         var clean = Reading();

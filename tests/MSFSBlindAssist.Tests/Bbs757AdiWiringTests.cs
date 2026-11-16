@@ -83,6 +83,25 @@ public class Bbs757AdiWiringTests
     }
 
     [Fact]
+    public void Alt_P_exits_output_hotkey_mode_before_showing_the_window()
+    {
+        // As Alt+E and Alt+N do: the window takes the keyboard, so output mode would otherwise eat its first key.
+        using var rig = new Rig();
+        rig.RunFma();
+        rig.RunAdi();
+        var outputMode = typeof(HotkeyManager).GetField("outputHotkeyModeActive",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Assert.True(outputMode is not null,
+            "HotkeyManager has no private field outputHotkeyModeActive: this test sets it to enter output hotkey mode; follow its rename");
+        outputMode.SetValue(rig.Hotkeys, true);
+        Assert.True(rig.Hotkeys.IsOutputHotkeyModeActive);
+
+        Assert.True(rig.PressAltP());
+
+        Assert.False(rig.Hotkeys.IsOutputHotkeyModeActive);
+    }
+
+    [Fact]
     public void Alt_P_falls_back_when_the_adi_reader_cannot_run_even_with_the_fma_running()
     {
         // The ADI reader never started.
@@ -287,6 +306,7 @@ public class Bbs757AdiWiringTests
         public SpeechCapture Speech { get; } = new();
         public List<HotkeyAction> AiReads { get; } = new();
         public byte[]? FmaBytes { get; private set; }
+        public HotkeyManager Hotkeys { get; } = new();
 
         /// <summary>The memory the ADI monitor reads, once <see cref="RunAdi"/> has run: a test changes it in place.</summary>
         public byte[]? AdiBytes { get; private set; }
@@ -304,7 +324,7 @@ public class Bbs757AdiWiringTests
         public bool PressAltP() => Press(HotkeyAction.ReadDisplayPFD);
 
         /// <summary>A key through the definition's hotkey path, on a simulator that is not connected.</summary>
-        public bool Press(HotkeyAction action) => Def.HandleHotkeyAction(action, _sim, Speech, null!, null!);
+        public bool Press(HotkeyAction action) => Def.HandleHotkeyAction(action, _sim, Speech, null!, Hotkeys);
 
         /// <summary>The FMA monitor running over the FMA reader's test memory.</summary>
         public void RunFma()
@@ -389,6 +409,7 @@ public class Bbs757AdiWiringTests
         {
             Def.OnSwitchedAway();
             foreach (var lease in _leases) lease.Dispose();
+            Hotkeys.Dispose();
         }
 
         private sealed class Handle : IDisposable

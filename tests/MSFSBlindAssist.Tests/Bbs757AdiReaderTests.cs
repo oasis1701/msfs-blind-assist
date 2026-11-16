@@ -1039,6 +1039,15 @@ public class Bbs757AdiReaderTests
     }
 
     [Fact]
+    public void Alt_is_not_drawn_while_the_radio_altimeter_is_failed()
+    {
+        // BlueBird's 25864 draws only the DH while the ra is failed or unpowered, and returns before the ALT cue.
+        var reading = Decode(WithRa(r => r with { RaFailed = true })).RadioAltitude!;
+        Assert.True(reading.RaFlag);
+        Assert.False(reading.Alt);
+    }
+
+    [Fact]
     public void The_reference_speeds_are_carried_whatever_the_power_and_never_drawn()
     {
         var dark = Decode(Approach() with { Lit = false });

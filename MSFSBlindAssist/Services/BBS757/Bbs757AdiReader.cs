@@ -477,7 +477,8 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
                 RaFlag: rar.RaFailed,
                 RadioAltitude: !rar.RaFailed && altitude <= rap.RaMaxShown ? RadioAltitudeDigits(rap, altitude) : null,
                 DecisionHeight: rar.DhShown && drawnWithAttitude ? rar.DhValue : null,
-                Alt: altitude >= rap.AltFrom && altitude <= rap.RaMaxShown && rar.VerticalSpeed <= rap.AltDescent,
+                // The draw returns after the DH while the ra is failed or unpowered: no ALT then.
+                Alt: !rar.RaFailed && altitude >= rap.AltFrom && altitude <= rap.RaMaxShown && rar.VerticalSpeed <= rap.AltDescent,
                 rap.DhWord, rap.RaWord, rap.AltWord);
         }
 

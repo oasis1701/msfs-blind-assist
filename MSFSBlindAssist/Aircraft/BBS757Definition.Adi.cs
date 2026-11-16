@@ -34,6 +34,7 @@ public partial class BBS757Definition
         {
             // The fallback follows this reader alone: with the FMA running and this one down, the AI read.
             if (Adi.KeyFallsBackToAi()) return ctx.AiRead();
+            ctx.Hotkeys.ExitOutputHotkeyMode();   // as Alt+E and Alt+N: the window takes the keyboard
             if (_adiWindow is not { IsDisposed: false } window)
             {
                 window = _adiWindow = new BBS757DisplayForm(Bbs757AdiDisplay.Name, "Captain ADI", AdiWindowRows);
