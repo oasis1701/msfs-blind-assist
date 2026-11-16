@@ -2201,7 +2201,6 @@
   // The reader's own presses and sets mark themselves (A._pressing), so their synthetic mouse events
   // never count as the pilot's: whether Coherent marks a real click trusted is not relied on.
   A._pressing = false;
-  A._sawTrusted = false;
   A.lateFocus = function (now, box) {
     var at = window.__MSFSBA_PRESSED_AT, key = window.__MSFSBA_USER_KEY_AT;
     if (!at || now - at < 0 || now - at >= A.LATE_FOCUS_MS) return false;
@@ -2842,8 +2841,9 @@
       if (A._pressing || !ev) return;
       // Once this document has seen real (trusted) input, an untrusted event is the page's own; while
       // it has seen none (Coherent may never mark host input trusted), every event counts.
-      if (ev.isTrusted) A._sawTrusted = true;
-      else if (A._sawTrusted) return;
+      // Kept on the window, which outlives a reader reinstalled by a new connection.
+      if (ev.isTrusted) window.__MSFSBA_SAW_TRUSTED = true;
+      else if (window.__MSFSBA_SAW_TRUSTED) return;
       var t = ev.target;
       if (ev.type === 'keydown') {
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) window.__MSFSBA_USER_KEY_AT = Date.now();

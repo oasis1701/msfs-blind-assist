@@ -1330,7 +1330,7 @@ test('a late focus is handed back however long the page\'s own focus listener ta
   assert.deepStrictEqual(run(p => md(p, p.document.body)), ['blur'], 'a press on the body chose nothing');
   assert.deepStrictEqual(run(p => md(p, p.document)), ['blur'], 'nor one on the document');
   assert.deepStrictEqual(run(p => md(p, p.document.getElementById('fw'))), [], 'a press on the box\'s own field wrapper chose it');
-  assert.deepStrictEqual(run(p => { p.A._sawTrusted = true; md(p, p.document.getElementById('q')); }), ['blur'],
+  assert.deepStrictEqual(run(p => { p.window.__MSFSBA_SAW_TRUSTED = true; md(p, p.document.getElementById('q')); }), ['blur'],
     'once real input has been seen, an untrusted press on the box is the page\'s own');
   // An add-on's own page: the box straight in its body.
   const f = page('<button id="go">Go</button>');
@@ -1344,6 +1344,28 @@ test('a late focus is handed back however long the page\'s own focus listener ta
   md(f, f.document.body);
   fq.focus();
   assert.deepStrictEqual(flog, ['blur'], 'the body is never the box\'s field');
+});
+
+test('a press on a section far above the box chose nothing; real input seen survives a reinstall', () => {
+  const p = page('<button id="go">Go</button><div id="sec"><div><div><div class="field"><input id="q" type="text"></div></div></div></div>');
+  const { window, document } = p;
+  const q = document.getElementById('q');
+  const log = [];
+  q.addEventListener('blur', () => log.push('blur'));
+  document.getElementById('go').onclick = () => {};
+  p.A.clickElement(scraped(p.A).find(e => e.text === 'Go').idx);
+  document.getElementById('sec').dispatchEvent(new window.Event('mousedown', { bubbles: true }));
+  q.focus();
+  assert.deepStrictEqual(log, ['blur'], 'four levels up is a section, not the box\'s field');
+  window.__MSFSBA_SAW_TRUSTED = true;
+  window.eval(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'MSFSBlindAssist', 'Resources', 'coherent-sim-tablet-agent.js'), 'utf8'));
+  const A2 = window.__MSFSBA_SIM_TABLET;
+  q.blur(); log.length = 0;
+  document.getElementById('go').onclick = () => {};
+  A2.clickElement(JSON.parse(A2.scrape()).elements.find(e => e.text === 'Go').idx);
+  q.dispatchEvent(new window.Event('mousedown', { bubbles: true }));
+  q.focus();
+  assert.deepStrictEqual(log, ['blur'], 'after a reinstall, the page\'s own press on the box still is not the pilot\'s');
 });
 
 test('AtmosphereMod: its status line reads its two parts with a comma', () => {
