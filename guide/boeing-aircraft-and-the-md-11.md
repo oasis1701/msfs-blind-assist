@@ -556,7 +556,7 @@ What BA says by itself:
 
 ## BlueBird 757-200 {#boeing-bbs757}
 
-BA supports the BlueBird Simulations 757-200, with either engine type, with one set of panels that follows the real cockpit, MCP value windows and an autopilot window, an altimeter and minimums window, a nav radios window, both CDUs read as text, BlueBird's tablet read aloud and operated like a web page, windows that read the upper EICAS, the lower EICAS and the EHSI straight from the aircraft, spoken flight mode annunciations and EICAS messages, and a [First Officer](#boeing-757-fo). Read [Things to know](#boeing-757-quirks) before your first flight.
+BA supports the BlueBird Simulations 757-200, with either engine type, with one set of panels that follows the real cockpit, MCP value windows and an autopilot window, an altimeter and minimums window, a nav radios window, both CDUs read as text, BlueBird's tablet read aloud and operated like a web page, windows that read the ADI, the upper EICAS, the lower EICAS and the EHSI straight from the aircraft, spoken flight mode annunciations, ADI flags and EICAS messages, and a [First Officer](#boeing-757-fo). Read [Things to know](#boeing-757-quirks) before your first flight.
 
 ### Before you fly {#boeing-757-before}
 
@@ -627,7 +627,7 @@ The 757 has no altitude intervene: the MCP panel's ALT SEL Push button does noth
 
 **Output Shift+H, Shift+S, Shift+A and Shift+V** read the same four values without opening a window, followed by the MCP mode buttons that are lit: *"Heading 090, LNAV"*, *"Speed 250, SPD"*, *"Altitude 12000, ALT HOLD"*. These are the button lights, so an armed mode whose button is lit is named too, and heading select, which has no light, names nothing. In Mach mode Shift+S says *"MCP Mach 0.78"*, and with the window blank *"MCP speed window blank. Speed Intervene opens it."* They read the MCP's own values, never the simulator's autopilot values, which disagree with BlueBird's MCP.
 
-**Input Ctrl+P** opens the **757 Autopilot** window. It starts on a list, **Flight mode annunciator**, with the four parts of the FMA as the ADI shows them: *"A/T: SPD"*, *"Roll: LNAV, armed LOC"*, *"Pitch: VNAV PTH, armed G/S"*, *"AFDS: CMD"*. A part with nothing showing reads *none*. Tab from the list to the buttons, or press a button's key from anywhere in the window; your screen reader says each button's key when you land on it. The buttons and their keys, in order:
+**Input Ctrl+P** opens the **757 Autopilot** window. It starts on a list, **Flight mode annunciator**, with the four parts of the FMA as the ADI shows them: *"A/T: SPD"*, *"Roll: LNAV, armed LOC"*, *"Pitch: VNAV PTH, armed G/S"*, *"AFDS: CMD"*. A part with nothing showing reads *none*. The same four lines start the [ADI window](#boeing-757-adi) (Output Alt+P). Tab from the list to the buttons, or press a button's key from anywhere in the window; your screen reader says each button's key when you land on it. The buttons and their keys, in order:
 
 <div class="table-wrap" markdown="1">
 
@@ -809,9 +809,47 @@ Escape closes the window. If you start the simulator while it is open, you hear 
 - *"The tablet cannot be reached, so nothing was tapped."*: the same, at a press.
 - Presses do nothing on the aircraft: check that BBS Nest is running.
 
-### Special windows: EICAS and the EHSI {#boeing-757-displays}
+### Special windows: the ADI, EICAS and the EHSI {#boeing-757-displays}
 
-BA reads three of the 757's displays straight from the aircraft, with no AI: the upper EICAS, the lower EICAS and the Captain's EHSI. Each opens as a window with a list you arrow through, followed by the display's own controls; press Tab to reach them. The lists update every second without losing your place and speak only when you move through them. Escape closes a window.
+BA reads four of the 757's displays straight from the aircraft, with no AI: the Captain's ADI, the upper EICAS, the lower EICAS and the Captain's EHSI. Each opens as a window with a list you arrow through, followed by the display's own controls, if it has any; press Tab to reach them. The lists update every second without losing your place and speak only when you move through them. Escape closes a window.
+
+#### The ADI window {#boeing-757-adi}
+
+**Output Alt+P** opens **ADI**, with the list **Captain ADI**. It starts with the flight mode annunciator, the same four lines as the [757 Autopilot window](#boeing-757-mcp): *"A/T: SPD"*, *"Roll: LNAV, armed LOC"*, *"Pitch: VNAV PTH, armed G/S"*, *"AFDS: CMD"*. Then comes the rest of the ADI, each line starting with where it sits on the display: *Left* is the speed tape, *Center* the attitude, *Right* the glideslope scale and the radio altitude, *Bottom* the localizer scale. A line is there only while the ADI shows its item, so the list grows and shrinks with the flight.
+
+On the left, the speed tape:
+
+- *"Left: airspeed 250"*. The tape starts at 30, so below 30 knots, as when you are parked, it reads *"Left: airspeed 30"*.
+- *"Left: target speed 200"*: the MCP speed. While VNAV controls the speed, the target is the FMC's and the list leaves it out.
+- *"Left: V1 135"* and *"Left: VR 140"*, your takeoff speeds from the FMC, on the ground and until two minutes after lift-off. Before you have set the takeoff speeds, the ADI shows *"Left: V1 INOP"*.
+- *"Left: flap maneuvering speed 161"*: the maneuvering speed for the flaps you have set, from 10 seconds after lift-off and below 20,000 feet. For flaps up to 20 it is the number Output Shift+1 to Shift+5 give once PERF INIT is done, and at flaps 25 and 30 it is VREF 25 or VREF 30 (see [Aircraft-specific hotkeys and callouts](#boeing-757-hotkeys)).
+- *"Left: Mach .780"* once you reach Mach .40, and *"Left: ground speed 250"*.
+
+In the center, the attitude:
+
+- *"Center: pitch 2.5 up, bank 10 left"*, or *"Center: level, wings level"*.
+- *"Center: flight director, pitch bar 7.4 above, roll bar 3 right"*: where the flight director bars sit, in degrees, while the Captain's F/D is on. A bar above, or to one side, is where the flight director wants you to go; *centered* means you are on it.
+- *"Center: TCAS, keep the pitch above 5.0 up"* (or *below*) during a TCAS resolution advisory.
+- *"Center: rising runway"* on an ILS approach close to the localizer, in LOC or ROLLOUT, below 2,500 feet.
+
+On the right and at the bottom, the approach:
+
+- *"Right: glideslope, pointer 0.5 dots up"*: the glideslope is above you, so fly up. It also reads *centered* and *at full scale, up* (or *down*).
+- *"Right: ALT"*, while you descend between 2,500 and 500 feet radio altitude.
+- *"Right: DH 200"*: the radio minimums you set (Input Ctrl+B).
+- *"Right: radio altitude 150"*, below 2,500 feet; above that there is no line. On the ground it can read a few feet below zero, such as *"-6"*.
+- *"Bottom: localizer, pointer 1.2 dots right"*: the localizer is to your right, so fly right. It also reads *centered* and *at full scale, right* (or *left*), and adds *", expanded scale"* once you are close to the centerline and the scale expands.
+- With a frequency set and no signal, the scale without its pointer: *"Right: glideslope scale, no pointer"*, *"Bottom: localizer scale, no pointer"*.
+
+**Flags.** When an instrument fails or has no data, the ADI draws an amber flag in its place, and the list puts the flag there instead of the value: *"Left: SPD flag"* (the whole speed tape), *"Center: ATT flag"*, *"Right: G/S flag"*, *"Right: RA flag"* and *"Bottom: LOC flag"*. While the IRS aligns the center reads *"Center: no attitude"*: no horizon and no flag until the alignment is complete.
+
+**What you hear by itself.** Only the flags, as they appear and go: *"ADI flag: ATT"*, *"ADI flag gone: ATT"*, and the same for SPD, LOC, G/S and RA. Speeds, attitude, needles, radio altitude and minimums are in the list only and never spoken: the 757 makes its own 80 knots, V1, rotate, minimums and altitude calls. To silence the flags, untick **ADI messages** in the 757 Monitor Manager (Output Ctrl+M); the window still lists them.
+
+**What the list leaves out:** the FMC's target speed while VNAV controls the speed, the speed limit bands, the speed trend arrow, the pitch limit indicator, and the amber flashing of the minimums and of the localizer and glideslope scales close to the ground. The AUTOLAND STATUS annunciator beside the ADI is not in the list either: BA speaks it as it changes, and the Status panel shows it.
+
+The window has no controls. While the ADI is off it reads *"ADI display not powered"*. If BA cannot read the flight mode annunciator, the first line says why, and the rest of the ADI follows.
+
+**If you hear an AI description instead.** When BA cannot read the ADI from the aircraft, Alt+P describes it with AI, without saying anything first; this needs an AI provider (see [AI Display Reading](core-concepts.md#ai-display-reading)). The flight mode annunciations are still in the Ctrl+P window whenever BA can read them. See [When BA cannot read a display](#boeing-757-display-trouble) for why this happens and what to do.
 
 #### The Upper EICAS window {#boeing-757-upper-eicas}
 
@@ -876,11 +914,11 @@ The map lines name:
 
 #### When BA cannot read a display {#boeing-757-display-trouble}
 
-BA reads the displays, the flight mode annunciations and the tablet through files made for each version of BlueBird's 757. If it cannot load them, for example after a BlueBird update, you hear once: *"BlueBird display files could not be loaded; the display keys fall back to AI reading."* Alt+E, Alt+S and Alt+N then describe the display with AI instead, as Alt+P does, until a BA update brings the files for the new version.
+BA reads the displays, the flight mode annunciations and the tablet through files made for each version of BlueBird's 757. If it cannot load them, for example after a BlueBird update, you hear once: *"BlueBird display files could not be loaded; the display keys fall back to AI reading."* Alt+P, Alt+E, Alt+S and Alt+N then describe the display with AI instead, until a BA update brings the files for the new version.
 
-While a reader is still finding its display, its window opens and says so, for example *"EHSI reader starting"*; with the display dark it says *"EHSI display not powered"*. If a reader loses its display during a flight you hear, for example, *"EICAS announcements stopped: aircraft memory not found"*, and *"EICAS announcements resumed"* when it is back, followed by anything that changed meanwhile.
+While a reader is still finding its display, its window opens and says so, for example *"EHSI reader starting"*; with the display dark it says *"EHSI display not powered"*. If a reader loses its display during a flight you hear, for example, *"EICAS announcements stopped: aircraft memory not found"*, and *"EICAS announcements resumed"* when it is back, followed by anything that changed meanwhile. While a reader is stopped or unavailable, its key gives the AI description instead of the window. BA keeps looking for a display it lost, so wait for *"resumed"*; after *"announcements stopped: unexpected values"*, reload the flight to start that reader again.
 
-**The ADI and the standby instruments** are read with AI: **Output Alt+P** describes the ADI (attitude and flight mode annunciations) and **Output Alt+I** the standby instruments. They need an AI provider; see [AI Display Reading](core-concepts.md#ai-display-reading). BA moves the simulator's camera to the display and puts your own view back afterwards; from an outside or drone view you hear *"Switch to a cockpit view first."*
+**The standby instruments** are read with AI: **Output Alt+I** describes them. This needs an AI provider; see [AI Display Reading](core-concepts.md#ai-display-reading). The same kind of AI read is what Alt+P, Alt+E, Alt+S and Alt+N fall back to; Alt+P's describes the attitude, the flight mode annunciations and the AUTOLAND STATUS annunciator. BA moves the simulator's camera to the display and puts your own view back afterwards; from an outside or drone view you hear *"Switch to a cockpit view first."*
 
 ### The First Officer {#boeing-757-fo}
 
@@ -892,7 +930,7 @@ Readouts, in output mode (the complete key list is in the [Hotkey Reference](hot
 
 - **Output L** reads the flap lever, for example *"Flaps 5"*. When the flaps are not at the lever's position yet, it adds where they are: *"Flaps 5, moving, 3 degrees"*, or *"Flaps 1, surfaces at 0 degrees"* when they stay there (no hydraulic pressure).
 - **Output Shift+G** reads the gear, then the lever's position, UP, OFF or DOWN: *"Gear up, lever off"* in cruise, *"Gear down, lever down"* on the ground. Listen for a disagreement. *"Gear down, lever off"* means the gear has not retracted: the simulator's gear key steps the 757's lever one position each press (DOWN, UP, OFF, then DOWN again), so a second press before the gear starts up leaves it at OFF with the gear hanging. Put the lever where you want it with the Gear Lever on the Landing gear panel.
-- **Output Shift+1 to Shift+5** read the flap maneuver speeds for your weight, for flaps up, 1, 5, 15 and 20, for example *"Flaps 5 maneuver speed 164 knots, calculated"*. **Output Shift+6** reads the landing reference speeds: *"VREF 30 124 knots, VREF 25 126 knots, calculated"*. They are worked out from BlueBird's own VREF figures and cover gross weights from 140,000 to 250,000 pounds; outside that you hear *"Flap speeds unavailable."*
+- **Output Shift+1 to Shift+5** read the flap maneuver speeds for flaps up, 1, 5, 15 and 20, and **Output Shift+6** the landing reference speeds, VREF 30 and VREF 25. Once the CDU's PERF INIT page has the fuel and the zero fuel weight, they are the FMC's own speeds, the ones its APPROACH REF page shows: *"Flaps 5 maneuver speed 161 knots"*, *"VREF 30 121 knots, VREF 25 123 knots"*. Before that, or while BA cannot read the FMC's speeds from the aircraft, they are calculated from your gross weight with BlueBird's own VREF figures, and each ends in *calculated*: *"Flaps 5 maneuver speed 164 knots, calculated"*, *"VREF 30 124 knots, VREF 25 126 knots, calculated"*. The calculated speeds cover gross weights from 140,000 to 250,000 pounds; outside that you hear *"Flap speeds unavailable."* So if you still hear *calculated* after PERF INIT, the speeds are BA's own working, not the FMC's.
 - **Output D** reads the distance and time to the destination, *"568 miles to destination KMIA, ETA 03:32 Zulu"*, and **Output Shift+D** the next point of the vertical path: *"Top of climb in 56 miles, 02:18 Zulu"*, *"Top of descent in …"* or *"Step climb in …"*. Both are read from the First Officer's CDU, which they leave on page 1 of PROGRESS. If that CDU does not answer you hear *"The first officer's CDU did not answer."*
 - **Output B** reads the three altimeters and the radio minimums, as described [above](#boeing-757-altimeter), and **Output N** the nav radios, as described under [Radios](#boeing-757-radios).
 - **Output F** reads the fuel in pounds, the total and each tank: *"Fuel 25480 pounds: left 12740, right 12740, center 0"*. **Output Shift+F** says the same in kilograms.
@@ -901,7 +939,8 @@ Readouts, in output mode (the complete key list is in the [Hotkey Reference](hot
 
 What BA announces by itself:
 
-- **The flight mode annunciations.** Every change, starting with *"FMA:"* and then in the ADI's own words: *"FMA: Roll: LOC, Pitch: G/S"*, *"FMA: A/T: SPD"*, *"FMA: Roll armed: LOC"*. Changes that happen together come as one sentence, so you hear localizer and glideslope capture as they happen. An armed mode that becomes active is said once, as the active mode, and a part that goes blank is said as *none*, for example *"FMA: A/T: none"*. The whole annunciator is in the [Ctrl+P window](#boeing-757-mcp).
+- **The flight mode annunciations.** Every change, starting with *"FMA:"* and then in the ADI's own words: *"FMA: Roll: LOC, Pitch: G/S"*, *"FMA: A/T: SPD"*, *"FMA: Roll armed: LOC"*. Changes that happen together come as one sentence, so you hear localizer and glideslope capture as they happen. An armed mode that becomes active is said once, as the active mode, and a part that goes blank is said as *none*, for example *"FMA: A/T: none"*. The whole annunciator is in the [Ctrl+P window](#boeing-757-mcp) and at the top of the [ADI window](#boeing-757-adi).
+- **The ADI's flags**, as they appear and go: *"ADI flag: ATT"*, *"ADI flag gone: G/S"*, and the same for SPD, LOC and RA. Nothing else on the ADI is spoken by itself; the [ADI window](#boeing-757-adi) lists the rest.
 - **EICAS messages**, as they appear and go, by level: *"EICAS warning: L ENGINE FIRE"*, *"EICAS caution: L ENG SHUTDOWN"*, advisories and communication messages as *"EICAS: R PACK OFF"*, and *"EICAS gone: L ENG OVHT"*. Messages that change together come as one line. The advisory FMC MESSAGE is not spoken, because the CDU's own message is (see [The CDU](#boeing-757-cdu)); the Upper EICAS window still lists it.
 - **The thrust reference** when it changes, *"Thrust reference: CLB"*, and an engine gauge that changes color: *"EICAS: L EGT red"*, then *"EICAS: L EGT normal"*.
 - **The lower EICAS:** its page when it changes, *"Lower EICAS: STATUS page"*, and, while the STATUS page shows, status messages as they come and go: *"Status: L EICAS CMPTR"*, *"Status gone: WARN ELEX"*.
@@ -918,7 +957,7 @@ What BA announces by itself:
 
 The 757 does not say *"glideslope alive"*: listen for *"FMA: Pitch: G/S"* instead.
 
-**Output Ctrl+M** opens the **757 Monitor Manager**, where you untick anything you do not want to hear. Besides a row for each announcement above, it has **CDU Messages While Closed**, **All Annunciator Lights** and **All Switches From Any Source** to silence a whole kind at once, a *"Switches:"* row for each panel, a *"Light:"* row for each light and a *"Switch:"* row for each switch, and at the end the rows for the displays: **Flight Mode Annunciator**, **EICAS messages**, **Thrust reference**, **Engine gauge colors**, **EICAS status messages** and **EHSI messages**. A display's row also silences BA's own *"stopped"*, *"unavailable"* and *"resumed"* messages for it; the windows still list everything. Your choices persist across sessions. See [The Monitor Manager](core-concepts.md#monitor-manager).
+**Output Ctrl+M** opens the **757 Monitor Manager**, where you untick anything you do not want to hear. Besides a row for each announcement above, it has **CDU Messages While Closed**, **All Annunciator Lights** and **All Switches From Any Source** to silence a whole kind at once, a *"Switches:"* row for each panel, a *"Light:"* row for each light and a *"Switch:"* row for each switch, and at the end the rows for the displays: **Flight Mode Annunciator**, **EICAS messages**, **Thrust reference**, **Engine gauge colors**, **EICAS status messages**, **EHSI messages** and **ADI messages**. A display's row also silences BA's own *"stopped"*, *"unavailable"* and *"resumed"* messages for it; the windows still list everything. Your choices persist across sessions. See [The Monitor Manager](core-concepts.md#monitor-manager).
 
 **Take-off callouts.** The 757 plays its own *"80 knots"*, V1 and rotate calls, and its own altitude callouts. So on this aircraft [Takeoff Assist](takeoff-climb-and-cruise.md#takeoff-assist) does not call *"80 knots"* or *"100 knots"*. Its centerline tone and pitch calls work as on every other aircraft.
 

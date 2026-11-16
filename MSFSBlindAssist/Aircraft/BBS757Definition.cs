@@ -117,8 +117,10 @@ public partial class BBS757Definition : BaseAircraftDefinition
     public override bool UsesStockNavReceivers => false;
 
     /// <summary>
-    /// Alt+P / Alt+N / Alt+E / Alt+S read the ADI, the EHSI and the upper and lower EICAS by AI vision
-    /// on the measured instrument views; <c>BaseAircraftDefinition.HandleHotkeyAction</c> dispatches the table.
+    /// The AI vision reads on the measured instrument views: Alt+I the standby instruments, always; Alt+P / Alt+N /
+    /// Alt+E / Alt+S the ADI, the EHSI and the upper and lower EICAS only as the fallback of their memory readers'
+    /// windows, while a reader cannot run (docs/b757.md, "AI display reads"). The readers' keys go to the display
+    /// registry first; <c>BaseAircraftDefinition.HandleHotkeyAction</c> dispatches the table.
     /// </summary>
     protected override IReadOnlyList<AiDisplayRead> DisplayReads => Bbs757DisplayReads.All;
 

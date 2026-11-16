@@ -509,8 +509,8 @@ Full explanations: [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-bb
 ### Output keys {#output-keys-8}
 
 - **Output Shift+H**, **Shift+S**, **Shift+A**, **Shift+V** — Read the MCP's own heading, speed or Mach, altitude and vertical speed, each followed by the MCP mode buttons that are lit.
-- **Output Shift+1** to **Shift+5** — Flap maneuver speeds for flaps up, 1, 5, 15 and 20, at your current weight.
-- **Output Shift+6** — VREF 30 and VREF 25.
+- **Output Shift+1** to **Shift+5** — Flap maneuver speeds for flaps up, 1, 5, 15 and 20: the FMC's own once PERF INIT is done, calculated from your current weight before (they then end in *calculated*).
+- **Output Shift+6** — VREF 30 and VREF 25, the FMC's own or calculated in the same way.
 - **Output D** — Distance and time to the destination, from the First Officer's CDU PROGRESS page.
 - **Output Shift+D** — Distance and time to the top of climb, the top of descent or a step climb, from the same page.
 - **Output N** — The nav radios: VOR L and VOR R, the ILS course and the ILS frequency.
@@ -518,7 +518,7 @@ Full explanations: [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-bb
 - **Output Alt+S** — Open the Lower EICAS window: the page it shows and its values, with Engine and Status buttons. AI read when BA cannot read it.
 - **Output Alt+N** — Open the EHSI window: the Captain's map display as a list, with Mode, Range, CTR, TFC and the map options. AI read when BA cannot read it.
 - **Output Ctrl+W** — The active waypoint as the EHSI shows it: name, distance and time.
-- **Output Alt+P** — Read the ADI (AI).
+- **Output Alt+P** — Open the ADI window: the flight mode annunciator, then the Captain's ADI as a list (the speed tape, the attitude and flight director, the glideslope, the radio altitude and minimums, the localizer), with its flags spoken as they appear and go. AI read when BA cannot read it.
 - **Output Alt+I** — Read the standby instruments (AI).
 - **Output Shift+C** — Open the 757's First Officer.
 - **Output Ctrl+M** — Open the 757 Monitor Manager.
@@ -567,9 +567,10 @@ Each MCP window, the altimeter window and the nav radios window stay open for th
 - **Escape** — Close.
 - **Alt+I** INIT REF, **Alt+R** RTE, **Alt+D** DEP ARR, **Alt+T** ATC, **Alt+V** VNAV, **Alt+F** FIX, **Alt+G** LEGS, **Alt+H** HOLD, **Alt+O** FMC COMM, **Alt+P** PROG, **Alt+M** MENU, **Alt+N** NAV RAD.
 
-### Display windows (Output Alt+E, Alt+S, Alt+N) {#display-windows-bbs757}
+### Display windows (Output Alt+P, Alt+E, Alt+S, Alt+N) {#display-windows-bbs757}
 
 - **Up**, **Down** — Read the display line by line. **Tab** — Move to the controls after the list.
+- ADI: the list only, no controls.
 - Upper EICAS: **Alt+C** Cancel, **Alt+R** Recall, **Alt+M** Max Ind.
 - Lower EICAS: the **Engine** and **Status** buttons, reached with Tab.
 - EHSI: **Alt+M** Mode, **Alt+R** Range, **Alt+C** CTR, **Alt+T** TFC, **Alt+W** WXR, **Alt+E** TERR, **Alt+N** NAV AID, **Alt+A** APRT, **Alt+D** DATA, **Alt+P** WPT.

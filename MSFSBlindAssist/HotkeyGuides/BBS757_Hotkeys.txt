@@ -86,6 +86,8 @@ Spoken on change (each can be muted with Ctrl+M):
   - The flight mode annunciations, starting with "FMA:" ("FMA: Roll: LOC",
     "FMA: Pitch: VNAV PTH, Pitch armed: none"). The Ctrl+M row is "Flight
     Mode Annunciator".
+  - The ADI's flags as they appear and go: "ADI flag: ATT", "ADI flag
+    gone: G/S" (also SPD, LOC and RA). The Ctrl+M row is "ADI messages".
   - The EICAS messages as they appear and go: "EICAS warning: L ENGINE
     FIRE", "EICAS caution: ...", "EICAS: ..." for an advisory, and "EICAS
     gone: ..."; after CANC "EICAS: 3 messages cancelled", after RECALL
@@ -185,17 +187,23 @@ Flaps:
              moving, 3 degrees", or "Flaps 1, surfaces at 0 degrees" when
              they stay there (no hydraulic pressure).
 
-Flap Maneuver Speeds (calculated for your current weight):
+Flap Maneuver Speeds (the FMC's own once PERF INIT is done, calculated
+before):
   Shift+1    Flaps up maneuver speed
   Shift+2    Flaps 1 maneuver speed
   Shift+3    Flaps 5 maneuver speed
   Shift+4    Flaps 15 maneuver speed
   Shift+5    Flaps 20 maneuver speed
   Shift+6    VREF 30 and VREF 25
-  Each says the speed and "calculated" ("Flaps 5 maneuver speed 164 knots,
-  calculated", "VREF 30 124 knots, VREF 25 126 knots, calculated"). They
-  come from BlueBird's own VREF at your gross weight. Below 140,000 or
-  above 250,000 pounds they say "Flap speeds unavailable."
+  Once the CDU's PERF INIT page has the fuel and the zero fuel weight,
+  they come from the FMC's own VREF, the numbers its APPROACH REF page
+  shows ("Flaps 5 maneuver speed 161 knots", "VREF 30 121 knots, VREF 25
+  123 knots"). Before that, or while the app cannot read the FMC's VREF
+  from the aircraft, they are calculated from BlueBird's VREF figures at
+  your gross weight and end in "calculated" ("Flaps 5 maneuver speed 164
+  knots, calculated", "VREF 30 124 knots, VREF 25 126 knots,
+  calculated"); below 140,000 or above 250,000 pounds the calculated
+  speeds say "Flap speeds unavailable."
 
 Landing Gear:
   Shift+G    Read the gear and the lever, UP, OFF or DOWN
@@ -265,6 +273,21 @@ Waypoint Tracking (use Fix Track window to add):
   5          Track Slot 5
 
 Displays (no AI key needed):
+  Alt+P      Open the ADI window: a live list of the flight mode
+             annunciator ("A/T: SPD", "Roll: LNAV, armed LOC"), then the
+             rest of the Captain's ADI, each line starting with where it
+             sits: the speed tape on the left ("Left: airspeed 250",
+             target speed, V1, VR, flap maneuvering speed, Mach, ground
+             speed), the attitude and the flight director bars in the
+             center ("Center: pitch 2.5 up, bank 10 left"), the
+             glideslope, ALT, DH and radio altitude on the right ("Right:
+             glideslope, pointer 0.5 dots up", "Right: radio altitude
+             150"), and the localizer at the bottom ("Bottom: localizer,
+             pointer 1.2 dots right"). A flag stands in its instrument's
+             place ("Center: ATT flag") and is spoken as it appears and
+             goes ("ADI flag: ATT", "ADI flag gone: ATT"; also SPD, LOC,
+             G/S and RA). Nothing else on the ADI is spoken by itself. The
+             window has no controls.
   Alt+E      Open the Upper EICAS window: a live list of the engine
              indications (EPR, N1, EGT), the thrust reference and every
              message, then the buttons Cancel (Alt+C), Recall (Alt+R) and
@@ -294,19 +317,20 @@ Displays (no AI key needed):
   (below).
 
 AI Display Reading (needs an AI provider configured in Settings > AI tab):
-  Alt+P      Describe the ADI (attitude and flight mode annunciations) and
-             the AUTOLAND STATUS annunciator beside it (LAND 3, LAND 2,
-             NO LAND 3, NO AUTOLAND) when it shows one
   Alt+I      Describe the standby instruments
   Alt+D      Describe outside scene
-  Alt+E, Alt+S and Alt+N describe their display this way only when it
-  cannot be read from the aircraft. The app moves the simulator camera to
-  the display it is reading and puts your own view back afterwards; from
-  an outside or drone view it says "Switch to a cockpit view first".
+  Alt+P, Alt+E, Alt+S and Alt+N describe their display this way only when
+  it cannot be read from the aircraft. Alt+P's AI read describes the ADI
+  (attitude and flight mode annunciations) and the AUTOLAND STATUS
+  annunciator beside it (LAND 3, LAND 2, NO LAND 3, NO AUTOLAND) when it
+  shows one. The app moves the simulator camera to the display it is
+  reading and puts your own view back afterwards; from an outside or
+  drone view it says "Switch to a cockpit view first".
   The display is read as it presents itself: abbreviations such as EPR, N1
   and EGT and the units are not changed.
   The flight mode annunciations need no AI: they are spoken as they change
-  and listed at the top of the 757 Autopilot window (input mode, Ctrl+P).
+  and listed at the top of the ADI window (Alt+P) and of the 757 Autopilot
+  window (input mode, Ctrl+P).
 
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic
@@ -331,7 +355,7 @@ Displays and Windows:
              light, CDU Messages While Closed, the COM frequencies,
              squawk, TCAS mode, altimeter, trim, Flight Mode Annunciator,
              EICAS messages, Thrust reference, Engine gauge colors, EICAS
-             status messages and EHSI messages.
+             status messages, EHSI messages and ADI messages.
   Shift+E    Open Flight Planning EFB (route viewer, procedure planner and
              airport lookup)
   Shift+L    Location Info
