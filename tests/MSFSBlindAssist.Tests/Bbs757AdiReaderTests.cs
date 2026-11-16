@@ -294,7 +294,6 @@ public class Bbs757AdiReaderTests
                      b => Put(b, At(Afds, S.AfdsPitchMode), 300),
                      b => Put(b, At(Fms, S.FmsV1), 2_000_000),
                      b => Put(b, At(Fms, S.FmsVr), -2_000_000),
-                     b => PutD(b, At(Afds, S.AfdsTimer), double.NaN),
                      b => PutD(b, At(Afds, S.AfdsFlapSpeed), -1e7),
                      b => PutD(b, At(G, I.LocPointer), double.NaN),
                      b => PutD(b, At(G, I.GsPointer), 1e7),
@@ -306,9 +305,11 @@ public class Bbs757AdiReaderTests
                      b => PutD(b, At(Afds, F.FdPitch), double.NaN),
                      b => PutD(b, At(Afds, F.FdRoll), 1e7),
                      b => PutD(b, At(G, T.TcasAbove), double.NaN),
-                     b => PutD(b, At(G, T.TcasBelowPitch), 1e7),
-                     b => PutD(b, At(Fms, V.FmsVref30), double.NaN),
-                     b => PutD(b, At(Fms, V.FmsVref25), 1e7),
+                     b =>
+                     {
+                         PutD(b, At(G, T.TcasBelow), 1);
+                         PutD(b, At(G, T.TcasBelowPitch), 1e7);
+                     },
                  })
         {
             var r = Read(Gate(damage));
@@ -340,6 +341,33 @@ public class Bbs757AdiReaderTests
         Assert.False(r.Corrupt);
         Assert.Null(r.RadioAltitude!.DecisionHeight);
         Assert.Equal(-6, r.RadioAltitude.RadioAltitude);
+
+        // Review fix (plan 27): a value behind a flag, or one that only decides whether a bug is drawn, never stops the
+        // reader. A failed adc's or ra's data block, a command while the Captain's F/D is off, a TCAS pitch while its
+        // advisory is clear, the AFDS timer (NaN: no bugs, as BlueBird's own comparisons would give) and the FMC's
+        // reference speeds (never drawn: not carried).
+        foreach (var (damage, check) in new (Action<byte[]>, Action<Bbs757AdiReading>)[]
+                 {
+                     (b => { b[At(Adc, Layout.DeviceFailed)] = 1; PutD(b, At(D, S.AdcAirspeed), double.NaN); PutD(b, At(D, S.AdcAltitude), 2e6); },
+                         x => Assert.True(x.Speed!.SpdFlag)),
+                     (b => { b[At(Ra, Layout.DeviceFailed)] = 1; PutD(b, At(Ra, R.RaAltitude), double.NaN); PutD(b, At(D, R.AdcVerticalSpeed), double.NaN); },
+                         x => Assert.True(x.RadioAltitude!.RaFlag)),
+                     (b => { b[At(Afds, F.FdCaptain)] = 0; PutD(b, At(Afds, F.FdPitch), double.NaN); },
+                         x => Assert.False(x.FlightDirector!.Drawn)),
+                     (b => PutD(b, At(G, T.TcasBelowPitch), 1e7),
+                         x => Assert.Null(x.Tcas!.KeepBelow)),
+                     (b => PutD(b, At(Afds, S.AfdsTimer), double.NaN),
+                         x => { Assert.Null(x.Speed!.V1); Assert.Null(x.Speed.Vr); Assert.Null(x.Speed.FlapSpeed); }),
+                     (b => PutD(b, At(Fms, V.FmsVref30), double.NaN),
+                         x => { Assert.Null(x.Vref30); Assert.Equal(123.0, x.Vref25); }),
+                     (b => PutD(b, At(Fms, V.FmsVref25), 1e7),
+                         x => Assert.Null(x.Vref25)),
+                 })
+        {
+            var hurt = Read(Gate(damage));
+            Assert.False(hurt.Corrupt);
+            check(hurt);
+        }
 
         // In the self-test both are used, so both are checked.
         Assert.True(Read(Gate(b =>
@@ -401,10 +429,11 @@ public class Bbs757AdiReaderTests
     [Fact]
     public void The_afds_timer_running_reads_the_time_kept_plus_the_clock_since_its_start()
     {
-        // Running since the clock read 4950, with 3 s kept, at clock 5000: 53 s. V1 and VR are set: both on the tape,
-        // and the F bug (201) is drawn (10 s have passed).
+        // Running since the clock read 4950, with 3 s kept, at clock 5000: 53 s. At 170 kt V1 and VR are set: both on
+        // the tape, and the F bug (201) is drawn (10 s have passed).
         var r = Read(Gate(b =>
         {
+            PutD(b, At(D, S.AdcAirspeed), 170);
             b[At(Afds, S.AfdsTimer + S.TimerStopped)] = 0;
             PutD(b, At(Afds, S.AfdsTimer), 3);
             PutL(b, At(Afds, S.AfdsTimer + S.TimerStart), 4950);
@@ -418,6 +447,7 @@ public class Bbs757AdiReaderTests
         // The same timer 200 s on: past the bugs' 120 s.
         var later = Read(Gate(b =>
         {
+            PutD(b, At(D, S.AdcAirspeed), 170);
             b[At(Afds, S.AfdsTimer + S.TimerStopped)] = 0;
             PutD(b, At(Afds, S.AfdsTimer), 3);
             PutL(b, At(Afds, S.AfdsTimer + S.TimerStart), 4950);
@@ -668,13 +698,13 @@ public class Bbs757AdiReaderTests
     // ---- BlueBird's draw rules, on Decode alone -----------------------------------------------------------------
 
     /// <summary>An ILS approach, 1,500 ft above the runway: 250 kt, the MCP at 180, the timer long past its bugs, the
-    /// flap speed 161, on the localizer's expanded scale, descending at 700 ft/min.</summary>
+    /// flap speed 221 (on the tape), on the localizer's expanded scale, descending at 700 ft/min.</summary>
     internal static Bbs757AdiRaw Approach() => new(
         Lit: true,
         Attitude: new Bbs757AdiAttitudeRaw(IrsAttitude: true, IrsMode: A.IrsModeNav, IrsState: A.IrsStateValid),
         Speed: new Bbs757AdiSpeedRaw(AdcFailed: false, Airspeed: 250, Altitude: 3000, McpSpeed: 180, PitchMode: 9,
             SpeedIntervene: false, V1: 135, Vr: 140, V1Inop: false, TimerKept: 3600, TimerStart: 0, TimerStopped: true,
-            Clock: 0, FlapSpeed: 161),
+            Clock: 0, FlapSpeed: 221),
         Ils: new Bbs757AdiIlsRaw(LocPointer: 0.6, GsPointer: -0.5, LocScale: true, GsScale: true, LocValid: true,
             GsValid: true, Expanded: true, LocFlag: false, GsFlag: false, RollMode: 3),
         RadioAltitude: new Bbs757AdiRadioAltitudeRaw(RaFailed: false, RaAltitude: 1516.93, RaTest: false, RaTestState: 0,
@@ -693,6 +723,9 @@ public class Bbs757AdiReaderTests
         PutD(gate, At(Fms, V.FmsVref30), vref30);
         PutD(gate, At(Fms, V.FmsVref25), vref25);
     }
+
+    /// <summary>The gate's airspeed set to <paramref name="knots"/> (NaN makes a lit reading corrupt).</summary>
+    internal static void SetAirspeed(byte[] gate, double knots) => PutD(gate, At(D, S.AdcAirspeed), knots);
 
     /// <summary>The gate's reading, read from <see cref="Gate"/> through the real sampler.</summary>
     internal static Bbs757AdiReading GateReading() => Read(Gate());
@@ -723,7 +756,7 @@ public class Bbs757AdiReaderTests
         Assert.Equal(Bbs757AdiAttitudeState.Valid, r.Attitude!.State);
         Assert.Equal(2.5, r.Attitude.PitchUp!.Value, 6);
         Assert.Equal(10, r.Attitude.BankLeft!.Value, 6);
-        Assert.Equal(new Bbs757AdiSpeedReading(false, 250, 180, false, null, null, 161, 0.45, 240, "SPD", "V1", "INOP"), r.Speed);
+        Assert.Equal(new Bbs757AdiSpeedReading(false, 250, 180, false, null, null, 221, 0.45, 240, "SPD", "V1", "INOP"), r.Speed);
         Assert.Equal(new Bbs757AdiRadioAltitudeReading(false, 1500, 200, true, "DH", "RA", "ALT"), r.RadioAltitude);
         Assert.True(r.FlightDirector!.Drawn);
         Assert.Equal(0, r.FlightDirector.PitchBar, 6);    // the command 2.5 at 2.5 nose up: on the symbol
@@ -842,6 +875,28 @@ public class Bbs757AdiReaderTests
     }
 
     [Fact]
+    public void A_bug_off_the_tape_is_not_listed()
+    {
+        // Review fix (plan 27): BlueBird draws the bugs inside the tape's clip (25862: H × 0.2 to H × 0.83, 10 kt to
+        // H × 0.077, so about 41 kt either side of the airspeed). 60 s after lift-off at 200 kt, V1 135 and VR 140 are
+        // below the tape; climbing at 300 kt, the F bug 201 is below it too.
+        var climb = Decode(WithSpeed(s => s with { Airspeed = 200, TimerKept = 60, FlapSpeed = 201 }));
+        Assert.Null(climb.Speed!.V1);
+        Assert.Null(climb.Speed.Vr);
+        Assert.Equal(201, climb.Speed.FlapSpeed);   // 1 kt above the airspeed: on the tape
+
+        var fast = Decode(WithSpeed(s => s with { Airspeed = 300, TimerKept = 60, FlapSpeed = 201 }));
+        Assert.Null(fast.Speed!.FlapSpeed);
+
+        // At the window's edge each is still listed.
+        var edge = Decode(WithSpeed(s => s with { Airspeed = 176, TimerKept = 60, FlapSpeed = 217 }));
+        Assert.Equal((135, 140, 217), (edge.Speed!.V1, edge.Speed.Vr, edge.Speed.FlapSpeed));
+
+        // V1 far above the tape is printed at its top, so it stays listed (the 1 bug itself is clipped).
+        Assert.Equal(135, Decode(WithSpeed(s => s with { Airspeed = 30, TimerKept = 0, FlapSpeed = 100 })).Speed!.V1);
+    }
+
+    [Fact]
     public void The_bugs_are_hidden_while_vr_is_within_4_knots_of_the_flap_speed()
     {
         // Flaps 15 at 121 VREF 30: the F speed 141, VR 140. The 1 and R bugs are hidden.
@@ -868,12 +923,12 @@ public class Bbs757AdiReaderTests
     [Fact]
     public void The_flap_speed_bug_needs_a_speed_the_altitude_and_ten_seconds()
     {
-        Assert.Equal(161, Decode(Approach()).Speed!.FlapSpeed);
+        Assert.Equal(221, Decode(Approach()).Speed!.FlapSpeed);
         Assert.Null(Decode(WithSpeed(s => s with { FlapSpeed = S.NoFlapSpeed })).Speed!.FlapSpeed);
         Assert.Null(Decode(WithSpeed(s => s with { Altitude = 20001 })).Speed!.FlapSpeed);
-        Assert.Equal(161, Decode(WithSpeed(s => s with { Altitude = 20000 })).Speed!.FlapSpeed);
+        Assert.Equal(221, Decode(WithSpeed(s => s with { Altitude = 20000 })).Speed!.FlapSpeed);
         Assert.Null(Decode(WithSpeed(s => s with { TimerKept = 9.9 })).Speed!.FlapSpeed);
-        Assert.Equal(161, Decode(WithSpeed(s => s with { TimerKept = 10 })).Speed!.FlapSpeed);
+        Assert.Equal(221, Decode(WithSpeed(s => s with { TimerKept = 10 })).Speed!.FlapSpeed);
     }
 
     [Fact]

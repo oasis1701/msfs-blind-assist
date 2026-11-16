@@ -821,8 +821,8 @@ On the left, the speed tape:
 
 - *"Left: airspeed 250"*. The tape starts at 30, so below 30 knots, as when you are parked, it reads *"Left: airspeed 30"*.
 - *"Left: target speed 200"*: the MCP speed. While VNAV controls the speed, the target is the FMC's and the list leaves it out.
-- *"Left: V1 135"* and *"Left: VR 140"*, your takeoff speeds from the FMC, on the ground and until two minutes after lift-off. Before you have set the takeoff speeds, the ADI shows *"Left: V1 INOP"*.
-- *"Left: flap maneuvering speed 161"*: the maneuvering speed for the flaps you have set, from 10 seconds after lift-off and below 20,000 feet. For flaps up to 20 it is the number Output Shift+1 to Shift+5 give once PERF INIT is done, and at flaps 25 and 30 it is VREF 25 or VREF 30 (see [Aircraft-specific hotkeys and callouts](#boeing-757-hotkeys)).
+- *"Left: V1 135"* and *"Left: VR 140"*, your takeoff speeds from the FMC, on the ground and until two minutes after lift-off, while they are on the visible part of the tape (within about 40 knots of your airspeed; V1 is also listed while it is printed above the tape). Before you have set the takeoff speeds, the ADI shows *"Left: V1 INOP"*.
+- *"Left: flap maneuvering speed 161"*: the maneuvering speed for the flaps you have set, from 10 seconds after lift-off and below 20,000 feet, while it is on the visible part of the tape. For flaps up to 20 it is the number Output Shift+1 to Shift+5 give once PERF INIT is done, and at flaps 25 and 30 it is VREF 25 or VREF 30 (see [Aircraft-specific hotkeys and callouts](#boeing-757-hotkeys)).
 - *"Left: Mach .780"* once you reach Mach .40, and *"Left: ground speed 250"*.
 
 In the center, the attitude:
@@ -830,7 +830,7 @@ In the center, the attitude:
 - *"Center: pitch 2.5 up, bank 10 left"*, or *"Center: level, wings level"*.
 - *"Center: flight director, pitch bar 7.4 above, roll bar 3 right"*: where the flight director bars sit, in degrees, while the Captain's F/D is on. A bar above, or to one side, is where the flight director wants you to go; *centered* means you are on it.
 - *"Center: TCAS, keep the pitch above 5.0 up"* (or *below*) during a TCAS resolution advisory.
-- *"Center: rising runway"* on an ILS approach close to the localizer, in LOC or ROLLOUT, below 2,500 feet.
+- *"Center: rising runway, 0.3 dots right"* on an ILS approach close to the localizer, in LOC or ROLLOUT, below 2,500 feet. The runway symbol takes the place of the localizer pointer and slides sideways as the pointer would, so this line gives the localizer deviation, and the bottom line then reads *"Bottom: localizer scale, expanded"*.
 
 On the right and at the bottom, the approach:
 

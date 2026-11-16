@@ -292,10 +292,13 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
 
     /// <summary>
     /// Why a lit reading is no reading, or null: a mode or state value below 0 or above 255; a speed, altitude, deviation
-    /// or command that is not a number or beyond <see cref="MaxSize"/> in size; an AFDS timer that is not a number; a
-    /// decision height below 0 or above <see cref="MaxDecisionHeight"/>. Nothing is judged while the display is dark
-    /// (nothing is drawn), nor a value no row can show: the decision height while its shown byte is clear (BlueBird
-    /// clears it while the knob's value is negative), and the ra's self-test state and altitude outside the self-test.
+    /// or command that is not a number or beyond <see cref="MaxSize"/> in size; a decision height below 0 or above
+    /// <see cref="MaxDecisionHeight"/>. Nothing is judged while the display is dark (nothing is drawn), nor a value no row
+    /// can show: the speed tape behind the SPD flag, the radio altitude and vertical speed behind the RA flag, the flight
+    /// director's commands while the Captain's F/D is off, a TCAS pitch while its advisory is clear, the decision height
+    /// while its shown byte is clear (BlueBird clears it while the knob's value is negative), the ra's self-test state and
+    /// altitude outside the self-test, the AFDS timer (it only decides whether the bugs are drawn) and the FMC's reference
+    /// speeds (never drawn). Each of those could only add a way to stop the reader for the flight (as the EHSI's B757-49).
     /// </summary>
     public static string? CorruptCause(Bbs757AdiLayout layout, Bbs757AdiRaw raw)
     {
@@ -315,7 +318,9 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
             Mode("irs mode", a.IrsMode);
             Mode("irs state", a.IrsState);
         }
-        if (raw.Speed is { } s)
+        // Review fix: only what a row can show now. Behind the SPD flag nothing of the tape is drawn; the AFDS timer only
+        // decides whether the bugs are drawn (a NaN draws none, as BlueBird's own comparisons give).
+        if (raw.Speed is { AdcFailed: false } s)
         {
             Size("adc airspeed", s.Airspeed);
             Size("adc altitude", s.Altitude);
@@ -323,8 +328,6 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
             Mode("afds pitch mode", s.PitchMode);
             Size("V1", s.V1);
             Size("VR", s.Vr);
-            double timer = Timer(s);
-            if (!double.IsFinite(timer)) cause ??= string.Create(Inv, $"afds timer = {timer:R} is out of range");
             Size("flap speed", s.FlapSpeed);
         }
         if (raw.Ils is { } i)
@@ -335,8 +338,13 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
         }
         if (raw.RadioAltitude is { } r)
         {
-            Size("radio altitude", r.RaAltitude);
-            if (r.RaTest)
+            // Behind the RA flag neither the number nor ALT is drawn.
+            if (!r.RaFailed)
+            {
+                Size("radio altitude", r.RaAltitude);
+                Size("adc vertical speed", r.VerticalSpeed);
+            }
+            if (!r.RaFailed && r.RaTest)
             {
                 Mode("ra self-test state", r.RaTestState);
                 if (layout.RadioAltitude is { } part && (part.RaTestAlone.Contains(r.RaTestState) || r.RaTestState == part.RaTestAdded))
@@ -344,9 +352,8 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
             }
             if (r.DhShown && (r.DhValue < 0 || r.DhValue > MaxDecisionHeight))
                 cause ??= string.Create(Inv, $"decision height = {r.DhValue} is out of range");
-            Size("adc vertical speed", r.VerticalSpeed);
         }
-        if (raw.FlightDirector is { } f)
+        if (raw.FlightDirector is { FdCaptain: true } f)
         {
             Size("flight director pitch command", f.Pitch);
             Size("flight director roll command", f.Roll);
@@ -355,14 +362,10 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
         {
             Size("TCAS above", t.Above);
             Size("TCAS below", t.Below);
-            Size("TCAS above pitch", t.AbovePitch);
-            Size("TCAS below pitch", t.BelowPitch);
+            if (t.Above != 0) Size("TCAS above pitch", t.AbovePitch);
+            if (t.Below != 0) Size("TCAS below pitch", t.BelowPitch);
         }
-        if (raw.ReferenceSpeeds is { } v)
-        {
-            Size("VREF 30", v.Vref30);
-            Size("VREF 25", v.Vref25);
-        }
+        // The FMC's reference speeds are never drawn: one that is not a number is not carried, never a cause.
         return cause;
     }
 
@@ -428,10 +431,15 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
                 bool flapSpeedSet = sr.FlapSpeed != sp.NoFlapSpeed;
                 bool bugsHidden = flapSpeedSet && Math.Abs(sr.Vr - sr.FlapSpeed) <= sp.FlapSpeedNearVr;
                 bool v1Inop = sr.V1 == 0 && sr.V1Inop;
-                // V1 is on the tape as its bug, or printed at the tape's top while it is beyond the tape.
-                bool v1Shown = !v1Inop && bugTime && sr.V1 != 0 && (!bugsHidden || sr.V1 - shown > sp.TapeHalfRange);
-                bool vrShown = bugTime && sr.Vr != 0 && !bugsHidden;
-                bool flapBug = flapSpeedSet && sr.Altitude <= sp.FlapSpeedMaxAltitude && timer >= sp.FlapSpeedAfterSeconds;
+                // A bug is drawn inside the tape's clip (25862), about TapeHalfRange either side of the airspeed shown:
+                // one beyond it is not seen. V1 is on the tape as its bug, or printed at the tape's top while it is above
+                // the tape.
+                bool OnTape(double bug) => Math.Abs(bug - shown) <= sp.TapeHalfRange;
+                bool v1Shown = !v1Inop && bugTime && sr.V1 != 0
+                    && ((!bugsHidden && OnTape(sr.V1)) || sr.V1 - shown > sp.TapeHalfRange);
+                bool vrShown = bugTime && sr.Vr != 0 && !bugsHidden && OnTape(sr.Vr);
+                bool flapBug = flapSpeedSet && sr.Altitude <= sp.FlapSpeedMaxAltitude && timer >= sp.FlapSpeedAfterSeconds
+                    && OnTape(sr.FlapSpeed);
                 speed = new Bbs757AdiSpeedReading(
                     SpdFlag: false,
                     Airspeed: shown,
@@ -501,7 +509,7 @@ public sealed class Bbs757AdiReader : IBbs757DisplaySampler<Bbs757AdiReading>
         }
 
         return new Bbs757AdiReading(true, attitude, speed, ils, radio, director, tcas,
-            raw.ReferenceSpeeds?.Vref30, raw.ReferenceSpeeds?.Vref25, Corrupt: false)
+            Carried(raw.ReferenceSpeeds?.Vref30), Carried(raw.ReferenceSpeeds?.Vref25), Corrupt: false)
         {
             AttitudeMissing = layout.Attitude is null ? layout.AttitudeMissing ?? NotInLayout : null,
             SpeedMissing = layout.Speed is null ? layout.SpeedMissing ?? NotInLayout : null,

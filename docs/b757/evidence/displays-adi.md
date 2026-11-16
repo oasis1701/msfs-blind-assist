@@ -219,7 +219,9 @@ several parts need; the parts' own offsets are relative to those objects.
 
 **Corrupt:** a mode or state value below 0 or above 255; a speed, altitude, deviation or command that is not
 finite or beyond 1e6 in size; a decision height below 0 or above 5,000. Checked only while the display is lit
-(nothing is drawn while it is dark), the pointers' structure always.
+(nothing is drawn while it is dark), the pointers' structure always. The review's ruling (2026-11-16): only a value
+some row shows in that state is judged; never the tape behind SPD, the ra's numbers behind RA, the F/D commands
+with the F/D off, a TCAS pitch with its advisory clear, the AFDS timer or the reference speeds.
 
 **Rows**, in this order, each starting with where it sits; a row is absent when its item is not drawn:
 
@@ -230,7 +232,10 @@ finite or beyond 1e6 in size; a decision height below 0 or above 5,000. Checked 
    and either the bugs are not hidden or V1 is more than 41 kt above the airspeed shown, where the tape prints
    its number) and `Left: VR 140` (VR not 0 and the bugs not hidden). The bugs are hidden while the `F` speed is
    not 100 and VR is within 4 kt of it.
-5. `Left: flap maneuvering speed 210` (the `F` bug)
+5. `Left: flap maneuvering speed 210` (the `F` bug). The review's ruling (2026-11-16): the `1`, `R` and `F` bugs
+   are drawn inside the tape's clip (25862 sets it before the bugs: x W × 0.055, y H × 0.2, W × 0.153 wide, H ×
+   0.63 high; 10 kt is H × 0.077, so about 41 kt either side), so each is listed only within 41 kt of the airspeed
+   shown; V1 also while printed above the tape.
 6. `Left: Mach .780` (absent while the tape shows `----`)
 7. `Left: ground speed 250` (only while the attitude is valid)
 8. `Center: ATT flag`, or `Center: no attitude` (blank while aligning), or
@@ -239,7 +244,8 @@ finite or beyond 1e6 in size; a decision height below 0 or above 5,000. Checked 
 9. `Center: flight director, pitch bar 7.4 above, roll bar 3 right` (`centered` within 0.05 and 0.5; the roll in
    degrees of bank)
 10. `Center: TCAS, keep the pitch above 5.0 up` and/or `below`
-11. `Center: rising runway`
+11. `Center: rising runway, 0.3 dots right` (the review's ruling: 25857 draws the localizer pointer only without
+    the runway, which moves sideways with `g+0`; row 16 then reads `Bottom: localizer scale, expanded`)
 12. `Right: G/S flag`, or `Right: glideslope, pointer 0.5 dots up` (`centered` within 0.05; `at full scale, up`
     at 2.2), or `Right: glideslope scale, no pointer`
 13. `Right: ALT`

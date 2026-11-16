@@ -216,12 +216,13 @@ public class Bbs757FlapSpeedsFmcTests
     [Fact]
     public void A_corrupt_reading_is_never_the_source()
     {
-        // The ADI turns corrupt (a value out of range) while the FMC's VREF changes: the keys keep the newest good
+        // The ADI turns corrupt (the airspeed not a number) while the FMC's VREF changes: the keys keep the newest good
         // reading's numbers, never the corrupt one's.
         using var rig = new Bbs757AdiWiringTests.Rig();
         rig.RunAdi();
         var bytes = rig.AdiBytes!;
-        Bbs757AdiReaderTests.SetReferenceSpeeds(bytes, double.NaN, 500);
+        Bbs757AdiReaderTests.SetAirspeed(bytes, double.NaN);
+        Bbs757AdiReaderTests.SetReferenceSpeeds(bytes, 140, 500);
         rig.Def.Adi.Tick();
         Assert.Equal("Running", rig.Def.Adi.StateName);
 

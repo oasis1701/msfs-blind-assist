@@ -33,9 +33,9 @@ public class Bbs757AdiTextTests
     private static readonly string[] Places = { "Left: ", "Center: ", "Right: ", "Bottom: " };
 
     /// <summary>Everything the ADI can draw at once: the roll's V1 and VR, the F bug, Mach, a TCAS advisory both ways,
-    /// the rising runway, ALT.</summary>
+    /// the rising runway, ALT. At 150 kt, so V1, VR and the F bug are all on the tape.</summary>
     private static Bbs757AdiReading Everything() => Reading(
-        r => Speed(r, s => s with { TimerKept = 60 }) with
+        r => Speed(r, s => s with { TimerKept = 60, Airspeed = 150, FlapSpeed = 161 }) with
         {
             FlightDirector = new Bbs757AdiFlightDirectorRaw(true, 9.9, 7),
             Tcas = new Bbs757AdiTcasRaw(1, 1, 5, 8),
@@ -45,7 +45,7 @@ public class Bbs757AdiTextTests
 
     private static readonly string[] EverythingRows =
     {
-        "Left: airspeed 250",
+        "Left: airspeed 150",
         "Left: target speed 180",
         "Left: V1 135",
         "Left: VR 140",
@@ -56,12 +56,12 @@ public class Bbs757AdiTextTests
         "Center: flight director, pitch bar 7.4 above, roll bar 3 right",
         "Center: TCAS, keep the pitch above 5.0 up",
         "Center: TCAS, keep the pitch below 8.0 up",
-        "Center: rising runway",
+        "Center: rising runway, 0.3 dots right",
         "Right: glideslope, pointer 0.5 dots up",
         "Right: ALT",
         "Right: DH 200",
         "Right: radio altitude 1500",
-        "Bottom: localizer, pointer 0.3 dots right, expanded scale",
+        "Bottom: localizer scale, expanded",
     };
 
     [Fact]
@@ -135,7 +135,7 @@ public class Bbs757AdiTextTests
     public void A_pinned_pointer_reads_full_scale()
     {
         string Bottom(double pointer, bool expanded = false) =>
-            Rows(Reading(r => Ils(r, i => i with { LocPointer = pointer, Expanded = expanded }))).Single(row => row.StartsWith("Bottom: "));
+            Rows(Reading(r => Ils(r, i => i with { LocPointer = pointer, Expanded = expanded, RollMode = 2 }))).Single(row => row.StartsWith("Bottom: "));
         string Right(double dots) =>
             Rows(Reading(r => Ils(r, i => i with { GsPointer = dots }))).Single(row => row.Contains("glideslope"));
 
@@ -264,8 +264,9 @@ public class Bbs757AdiTextTests
         Assert.Contains("Right: glideslope, pointer centered", rows);
         Assert.Contains("Bottom: localizer, pointer centered", rows);
         // On the expanded scale too, with its name.
+        // (HDG SEL, so no rising runway takes the pointer's place.)
         Assert.Contains("Bottom: localizer, pointer centered, expanded scale",
-            Rows(Reading(r => Ils(r, i => i with { LocPointer = 0.05, Expanded = true }))));
+            Rows(Reading(r => Ils(r, i => i with { LocPointer = 0.05, Expanded = true, RollMode = 2 }))));
 
         // Just past the thresholds: 0.05 of a degree or a dot, half a degree of bank.
         var past = Rows(Reading(
@@ -298,7 +299,7 @@ public class Bbs757AdiTextTests
         var alone = Rows(Reading(r => Ils(r, i => i with { GsValid = false, LocValid = false })));
         Assert.Contains("Right: glideslope scale, no pointer", alone);
         Assert.Contains("Bottom: localizer scale, no pointer", alone);
-        Assert.DoesNotContain("Center: rising runway", alone);
+        Assert.DoesNotContain(alone, row => row.StartsWith("Center: rising runway", StringComparison.Ordinal));
 
         var none = Rows(Reading(r => Ils(r, i => i with { GsScale = false, LocScale = false })));
         Assert.DoesNotContain(none, row => row.Contains("glideslope") || row.Contains("localizer"));
@@ -325,10 +326,10 @@ public class Bbs757AdiTextTests
     [Fact]
     public void A_whole_number_is_rounded_or_cut_as_its_instrument_shows_it()
     {
-        var rows = Rows(Reading(r => Speed(r, s => s with { Airspeed = 249.6, McpSpeed = 179.999, FlapSpeed = 160.5 }), In(groundSpeed: 0.9)));
+        var rows = Rows(Reading(r => Speed(r, s => s with { Airspeed = 249.6, McpSpeed = 179.999, FlapSpeed = 220.5 }), In(groundSpeed: 0.9)));
         Assert.Contains("Left: airspeed 250", rows);
         Assert.Contains("Left: target speed 180", rows);
-        Assert.Contains("Left: flap maneuvering speed 161", rows);
+        Assert.Contains("Left: flap maneuvering speed 221", rows);
         Assert.Contains("Left: ground speed 0", rows);
     }
 
@@ -348,12 +349,12 @@ public class Bbs757AdiTextTests
             "Center: pitch 2.5 up, bank 10 left",
             "Center: flight director, pitch bar centered, roll bar 5 right",
             "TCAS: not read: not in this layout file",
-            "Center: rising runway",
+            "Center: rising runway, 0.3 dots right",
             "Right: glideslope, pointer 0.5 dots down",
             "Right: ALT",
             "Right: DH 200",
             "Right: radio altitude 1500",
-            "Bottom: localizer, pointer 0.3 dots right, expanded scale",
+            "Bottom: localizer scale, expanded",
         }, rows);
 
         var none = Layout with

@@ -91,7 +91,10 @@ public static class Bbs757AdiText
 
         NotRead(rows, "Localizer and glideslope", reading.Ils, reading.IlsMissing);
         var ils = reading.Ils;
-        if (ils is { RisingRunway: true }) rows.Add(Center + "rising runway");
+        // The rising runway takes the localizer pointer's place (25857 draws the pointer only without it) and moves
+        // sideways as the pointer would: its row carries the deviation.
+        if (ils is { RisingRunway: true })
+            rows.Add(Center + "rising runway, " + Deviation(ils.LocalizerDots, ils.LocalizerPinned, "right", "left"));
 
         // ---- right: the glideslope, ALT, the decision height, the radio altitude ----
         if (ils is not null)
@@ -126,6 +129,9 @@ public static class Bbs757AdiText
             {
                 case Bbs757AdiPointer.Flag:
                     rows.Add($"{Bottom}{ils.LocWord} flag");
+                    break;
+                case Bbs757AdiPointer.Pointer when ils.RisingRunway:
+                    rows.Add(Bottom + "localizer scale" + (ils.Expanded ? ", expanded" : ""));
                     break;
                 case Bbs757AdiPointer.Pointer:
                     rows.Add(Bottom + "localizer, pointer " + Deviation(ils.LocalizerDots, ils.LocalizerPinned, "right", "left")
