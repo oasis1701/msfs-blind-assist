@@ -76,7 +76,7 @@ public class FbwEfbForm : Form
     private string _previousAnnouncedPage = "";
     // The alerts/confirmation cards spoken and still on screen (key, or text when keyless), so a
     // popped-up alert announces once (not every poll) and again only after it has gone and returned.
-    private HashSet<string> _announcedAlerts = new();
+    private readonly HashSet<string> _announcedAlerts = new();
 
     // Browser mode = WebView2 semantic document; otherwise the native list.
     private bool _useBrowser = true;
@@ -373,15 +373,7 @@ public class FbwEfbForm : Form
         // same error text under a new key speaks again. An alert is its key AND its text: the
         // BlueBird 757 tablet keeps one alert under the fixed key "alert" whose words change, and
         // each new text is a new alert.
-        var present = new HashSet<string>();
-        var fresh = new List<string>();
-        foreach (var e in _elements)
-        {
-            if (e.Kind != "alert" || string.IsNullOrWhiteSpace(e.Text)) continue;
-            string id = AlertIdentity(e.Key, e.Text);
-            if (present.Add(id) && !_announcedAlerts.Contains(id)) fresh.Add(e.Text);
-        }
-        _announcedAlerts = present;
+        var fresh = TakeNewAlerts(_elements.Select(e => (e.Kind, (string?)e.Key, e.Text)), _announcedAlerts);
         if (fresh.Count > 0) _announcer.AnnounceImmediate(JoinAlerts(fresh));
 
         if (_useBrowser && !_webViewFailed)
@@ -411,6 +403,24 @@ public class FbwEfbForm : Form
     /// (the text alone when it has no key). Internal for the tests.</summary>
     internal static string AlertIdentity(string? key, string text) =>
         string.IsNullOrEmpty(key) ? text : key + "\u001f" + text;
+
+    /// <summary>The alerts in one push not spoken yet, in order. <paramref name="announced"/> becomes
+    /// the alerts this push shows, so an alert that goes and comes back speaks again. Internal for
+    /// the tests.</summary>
+    internal static List<string> TakeNewAlerts(IEnumerable<(string Kind, string? Key, string Text)> items, HashSet<string> announced)
+    {
+        var present = new HashSet<string>();
+        var fresh = new List<string>();
+        foreach (var (kind, key, text) in items)
+        {
+            if (kind != "alert" || string.IsNullOrWhiteSpace(text)) continue;
+            string id = AlertIdentity(key, text);
+            if (present.Add(id) && !announced.Contains(id)) fresh.Add(text);
+        }
+        announced.Clear();
+        announced.UnionWith(present);
+        return fresh;
+    }
 
     /// <summary>Several alerts that arrived together, as one announcement: ". " between them, or
     /// only a space after one that already ends a sentence. Internal for the tests.</summary>
@@ -568,11 +578,13 @@ public class FbwEfbForm : Form
     // which does Controls.Clear() and recreates everything — throwing the screen reader's focus off
     // the control the pilot was on, mid-interaction. That is the same failure the browser shell's
     // keyed in-place reconcile exists to prevent, one layer down; the shell already patches disabled
-    // in place (patchEl), and this is the fallback catching up with it.
+    // in place (patchEl), and this is the fallback catching up with it. The key IS here: a flyPad
+    // notice repeated under a new key (notice:1, then notice:2) shows the same text in the same rows,
+    // and only a rebuild gives its row the identity RestoreListFocus looks for.
     private string StructureSignature()
     {
         return _currentPage + "" + string.Join("",
-            _elements.Select(e => e.Index + "|" + (e.ControlType ?? "") + "|" + e.Clickable + "|" + e.Tag + "|" + e.Text));
+            _elements.Select(e => e.Index + "|" + (e.ControlType ?? "") + "|" + e.Clickable + "|" + e.Tag + "|" + e.Text + "|" + e.Key));
     }
 
     // The base (un-dimmed) label each control type shows, derived in ONE place so the build path and
@@ -647,6 +659,9 @@ public class FbwEfbForm : Form
             foreach (var el in _elements)
             {
                 if (!_rendered.TryGetValue(el.Index, out var r)) continue;
+                // The agent re-stamps idx every scrape: the same control may carry a new one, as the
+                // browser shell's patchEl keeps its data-idx current.
+                r.AgentIdx = el.AgentIdx;
                 ApplyDisabledInPlace(el, r);
                 if (r.Control is CheckBox cb)
                 {
@@ -678,15 +693,17 @@ public class FbwEfbForm : Form
 
     private void RebuildControls(string signature)
     {
-        // The control the pilot is on, by what it shows. A rebuild that only shifted the rows (a
-        // flyPad notice listed or gone above it) puts the focus back on that same control.
-        int focusedAt = -1;
-        string? focusedId = null;
-        foreach (var kv in _rendered)
-            if (kv.Value.Control.ContainsFocus) { focusedAt = kv.Key; focusedId = kv.Value.Identity; break; }
+        // The control the pilot is on, by what it shows, and the rows around it. A rebuild that only
+        // shifted the rows (a flyPad notice listed or gone above it) puts the focus back on that same
+        // control; one that removed it puts the focus where it stood (FocusRowAfterRebuild).
+        var oldRows = _rendered.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
+        int focusedAt = oldRows.FindIndex(r => r.Control.ContainsFocus);
 
         _contentPanel.SuspendLayout();
+        var stale = _contentPanel.Controls.Cast<Control>().ToList();
         _contentPanel.Controls.Clear();
+        // Clear() only detaches: a removed control keeps its window handle until it is disposed.
+        foreach (var gone in stale) gone.Dispose();
         _rendered.Clear();
 
         int y = 8;
@@ -700,7 +717,7 @@ public class FbwEfbForm : Form
             // read r.Disabled LIVE — ApplyDisabledInPlace flips that flag without recreating the
             // control, and a handler that captured the build-time bool would keep answering for a
             // state the control left polls ago.
-            var r = new RenderedControl { Disabled = el.Disabled };
+            var r = new RenderedControl { Disabled = el.Disabled, AgentIdx = el.AgentIdx };
             Control c = CreateControlFor(el, innerWidth, r);
             r.Control = c;
             string id = (string.IsNullOrEmpty(el.Key) ? "t:" + el.Text : "k:" + el.Key) + "|" + el.ControlType + "|" + el.Clickable;
@@ -714,24 +731,59 @@ public class FbwEfbForm : Form
 
         _contentPanel.ResumeLayout(true);
         _lastStructureSignature = signature;
-        if (focusedId != null) RestoreListFocus(focusedId, focusedAt);
+        if (focusedAt >= 0) RestoreListFocus(oldRows, focusedAt);
     }
 
-    // After a rebuild: focus the control showing what the focused one showed; when it is gone, the
-    // first control from where it stood, else the nearest one before it, as the browser shell does.
-    private void RestoreListFocus(string identity, int position)
+    // After a rebuild, put the focus where FocusRowAfterRebuild says, as the browser shell does.
+    private void RestoreListFocus(List<RenderedControl> oldRows, int focusedAt)
     {
-        static Control? FocusableIn(Control c) =>
-            c is Button or CheckBox ? c : c is Panel p ? p.Controls.OfType<TextBox>().FirstOrDefault() : null;
+        var rows = _rendered.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
+        var targets = rows.Select(r => ListFocusTarget(r.Control)).ToList();
+        int at = FocusRowAfterRebuild(oldRows.Select(r => r.Identity).ToList(), focusedAt, oldRows[focusedAt].AgentIdx,
+            rows.Select(r => r.Identity).ToList(), rows.Select(r => r.AgentIdx).ToList(), targets.Select(t => t != null).ToList());
+        if (at >= 0) targets[at]!.Focus();
+    }
 
-        Control? target = _rendered.Values.FirstOrDefault(r => r.Identity == identity) is { } same ? FocusableIn(same.Control) : null;
-        if (target == null)
+    /// <summary>The new row that gets the focus after a list rebuild, or -1. The row showing what
+    /// the focused one showed; when it is gone, the first control after the nearest row before it
+    /// that stayed, else the nearest one before. When no row before it stayed, rows new at the top
+    /// (a flyPad notice listed in the same push) are not its place: the control rebuilt there keeps
+    /// its agent idx; else the first control from the next row that stayed. Rows are compared by
+    /// RenderedControl.Identity. Internal for the tests.</summary>
+    internal static int FocusRowAfterRebuild(IReadOnlyList<string> oldIds, int focusedAt, int focusedIdx,
+        IReadOnlyList<string> newIds, IReadOnlyList<int> newIdx, IReadOnlyList<bool> focusable)
+    {
+        var newAt = new Dictionary<string, int>();
+        for (int i = 0; i < newIds.Count; i++) newAt.TryAdd(newIds[i], i);
+        int Forward(int from) { for (int i = from; i < focusable.Count; i++) if (focusable[i]) return i; return -1; }
+        int Back(int from) { for (int i = from; i >= 0; i--) if (focusable[i]) return i; return -1; }
+
+        if (newAt.TryGetValue(oldIds[focusedAt], out int same) && focusable[same]) return same;
+        for (int b = focusedAt - 1; b >= 0; b--)
         {
-            var order = _rendered.OrderBy(kv => kv.Key).ToList();
-            target = order.Where(kv => kv.Key >= position).Select(kv => FocusableIn(kv.Value.Control)).FirstOrDefault(c => c != null)
-                  ?? order.Where(kv => kv.Key < position).Reverse().Select(kv => FocusableIn(kv.Value.Control)).FirstOrDefault(c => c != null);
+            if (!newAt.TryGetValue(oldIds[b], out int anchor)) continue;
+            int after = Forward(anchor + 1);
+            return after >= 0 ? after : Back(anchor);
         }
-        target?.Focus();
+        int right = -1;
+        for (int a = focusedAt + 1; a < oldIds.Count && right < 0; a++)
+            if (newAt.TryGetValue(oldIds[a], out int at)) right = at;
+        int end = right < 0 ? newIds.Count : right;
+        var oldSet = new HashSet<string>(oldIds);
+        if (focusedIdx != 0)
+            for (int i = 0; i < end; i++)
+                if (focusable[i] && newIdx[i] == focusedIdx && !oldSet.Contains(newIds[i])) return i;
+        int next = Forward(right < 0 ? 0 : right);
+        return next >= 0 ? next : Back(end - 1);
+    }
+
+    // The control a list row hands the focus to: a Button or CheckBox row itself, else a field
+    // container's TextBox, and only while it can take the focus; null for a Label. FocusContent and
+    // the rebuild's RestoreListFocus both pick by this one rule.
+    private static Control? ListFocusTarget(Control row)
+    {
+        Control? c = row is Button or CheckBox or TextBox ? row : row.Controls.OfType<TextBox>().FirstOrDefault();
+        return c is { CanSelect: true } ? c : null;
     }
 
     // What a dimmed control says when the pilot activates it, the same word the browser shell's
@@ -758,7 +810,7 @@ public class FbwEfbForm : Form
                 // answers a dimmed control.
                 AutoCheck = !cbDisabled
             };
-            int idx = el.AgentIdx;   // stamped agent idx — what click/set look up
+            // r.AgentIdx: the stamped agent idx click/set look up, read LIVE (UpdateControlsInPlace keeps it current).
             // Attached unconditionally and gated on the LIVE flag: the control survives a disabled
             // flip now, so whether it refuses cannot be decided once at build time.
             cb.Click += (_, _) => { if (r.Disabled) AnnounceUnavailable(); };
@@ -767,7 +819,7 @@ public class FbwEfbForm : Form
                 if (_suppressControlEvents || r.Disabled) return;
                 _bridgeServer.EnqueueCommand("set_element_value", new Dictionary<string, string>
                 {
-                    ["index"] = idx.ToString(),
+                    ["index"] = r.AgentIdx.ToString(),
                     ["value"] = cb.Checked ? "true" : "false",
                     ["controlType"] = "checkbox"
                 });
@@ -797,7 +849,7 @@ public class FbwEfbForm : Form
                 // could not reach the field to hear its value, or that it is greyed out.
                 ReadOnly = fieldDisabled
             };
-            int idx = el.AgentIdx;   // stamped agent idx — what click/set look up
+            // r.AgentIdx: the stamped agent idx click/set look up, read LIVE (UpdateControlsInPlace keeps it current).
             string controlType = el.ControlType!;
             string fieldName = el.Text;
             tb.KeyDown += (s, e) =>
@@ -812,7 +864,7 @@ public class FbwEfbForm : Form
                     }
                     _bridgeServer.EnqueueCommand("set_element_value", new Dictionary<string, string>
                     {
-                        ["index"] = idx.ToString(),
+                        ["index"] = r.AgentIdx.ToString(),
                         ["value"] = tb.Text,
                         ["controlType"] = controlType
                     });
@@ -851,7 +903,7 @@ public class FbwEfbForm : Form
                 TextAlign = ContentAlignment.MiddleLeft,
                 AccessibleName = text
             };
-            int idx = el.AgentIdx;   // stamped agent idx — what click/set look up
+            // r.AgentIdx: the stamped agent idx click/set look up, read LIVE (UpdateControlsInPlace keeps it current).
             btn.Click += (_, _) =>
             {
                 // The browser shell's onActivate rule: a dimmed control answers "Unavailable" and posts
@@ -859,7 +911,7 @@ public class FbwEfbForm : Form
                 // refusal was then the only thing between the pilot and a locked EFB page.
                 if (r.Disabled) { AnnounceUnavailable(); return; }   // live flag — see the checkbox note
                 _bridgeServer.EnqueueCommand("click_display_element",
-                    new Dictionary<string, string> { ["index"] = idx.ToString() });
+                    new Dictionary<string, string> { ["index"] = r.AgentIdx.ToString() });
                 var t = new System.Windows.Forms.Timer { Interval = 450 };
                 t.Tick += (_, _) =>
                 {
@@ -885,11 +937,7 @@ public class FbwEfbForm : Form
     {
         if (_useBrowser && !_webViewFailed) { _webView.Focus(); return; }
         foreach (Control c in _contentPanel.Controls)
-        {
-            if (c.CanSelect && (c is CheckBox or Button or TextBox)) { c.Focus(); return; }
-            foreach (Control child in c.Controls)
-                if (child is TextBox tb) { tb.Focus(); return; }
-        }
+            if (ListFocusTarget(c) is { } target) { target.Focus(); return; }
         _contentPanel.Focus();
     }
 
@@ -917,6 +965,9 @@ public class FbwEfbForm : Form
         // What the control shows (its key, else its label, its type and its occurrence): how a rebuild
         // finds the control the pilot was on (RestoreListFocus).
         public string Identity = "";
+        // The agent's stamped idx its handlers post, kept current by UpdateControlsInPlace: the agent
+        // re-stamps idx every scrape, and a repeated flyPad notice's Dismiss carries a new one.
+        public int AgentIdx;
     }
 
     private class EFBElement
@@ -1264,6 +1315,7 @@ public class FbwEfbForm : Form
     if (page !== renderedPage) { list.innerHTML = ''; renderedPage = page; }   // page change → clean rebuild
 
     var els = payload.items || [];
+    var focused = document.activeElement;                      // given back below if a move takes it
     var before = Array.prototype.slice.call(list.children);   // pre-render order, for focus rescue below
     var existing = {};
     for (var j = 0; j < before.length; j++) { var ck = before[j].getAttribute('data-key'); if (ck) existing[ck] = before[j]; }
@@ -1278,10 +1330,16 @@ public class FbwEfbForm : Form
     }
     // A removed node that held focus (a flyPad notice's Dismiss button the pilot just pressed, a
     // notice that expired under the cursor) would drop focus to <body>, and the screen reader to
-    // an arbitrary place: remember where it stood, just after the last node before it that stays.
-    var holder = null, anchor = null;
-    for (var gone in existing) { if (!used[gone] && existing[gone].contains(document.activeElement)) { holder = existing[gone]; break; } }
-    if (holder) { for (var b = before.indexOf(holder) - 1; b >= 0; b--) { if (used[before[b].getAttribute('data-key')]) { anchor = before[b]; break; } } }
+    // an arbitrary place: remember where it stood, between the nearest nodes before and after it
+    // that stay, and the agent idx a control rebuilt in its place keeps.
+    var holder = null, anchor = null, right = null, holderIdx = null;
+    for (var gone in existing) { if (!used[gone] && existing[gone].contains(focused)) { holder = existing[gone]; break; } }
+    if (holder) {
+      var h = before.indexOf(holder), hc = ctrlOf(holder);
+      for (var b = h - 1; b >= 0 && !anchor; b--) { if (used[before[b].getAttribute('data-key')]) anchor = before[b]; }
+      for (var a = h + 1; a < before.length && !right; a++) { if (used[before[a].getAttribute('data-key')]) right = before[a]; }
+      holderIdx = hc ? hc.getAttribute('data-idx') : null;
+    }
     // Leaving nodes go BEFORE the rest is placed: while one is still in the list, every node after
     // it is out of place and moved by insertBefore, and a moved node loses the focus (a flyPad
     // notice at the top going would take the focus off whatever control the pilot is on).
@@ -1299,13 +1357,27 @@ public class FbwEfbForm : Form
     }
     // Focus the first control now standing where the removed one stood (a control rebuilt in its
     // place, an unkeyed label change, takes it), else the nearest control before it, else the
-    // page heading.
-    if (holder) {
-      var target = null;
-      for (var c = anchor ? anchor.nextSibling : list.firstChild; c && !target; c = c.nextSibling) target = focusableIn(c);
-      for (var p = anchor; p && !target; p = p.previousSibling) target = focusableIn(p);
-      (target || document.getElementById('pgttl')).focus();
+    // page heading. With no node before it that stayed, nodes new at the top (a notice listed in
+    // the same render) are not its place: the control rebuilt there keeps its agent idx; else the
+    // first control from the next node that stayed. Mirrored by FbwEfbForm.FocusRowAfterRebuild.
+    var target = null, c, p;
+    if (holder && anchor) {
+      for (c = anchor.nextSibling; c && !target; c = c.nextSibling) target = focusableIn(c);
+      for (p = anchor; p && !target; p = p.previousSibling) target = focusableIn(p);
+    } else if (holder) {
+      if (holderIdx && holderIdx !== '0') {
+        for (c = list.firstChild; c && c !== right && !target; c = c.nextSibling) {
+          var f = focusableIn(c);
+          if (f && f.getAttribute('data-idx') === holderIdx && before.indexOf(c) < 0) target = f;
+        }
+      }
+      for (c = right || list.firstChild; c && !target; c = c.nextSibling) target = focusableIn(c);
+      for (p = right ? right.previousSibling : null; p && !target; p = p.previousSibling) target = focusableIn(p);
     }
+    if (holder) (target || document.getElementById('pgttl')).focus();
+    // A node that stayed but was moved (a re-sort) lost the focus as insertBefore took it out:
+    // give it back.
+    else if (focused && focused !== document.activeElement && list.contains(focused)) focused.focus();
   };
 
   document.addEventListener('keydown', function (e) {

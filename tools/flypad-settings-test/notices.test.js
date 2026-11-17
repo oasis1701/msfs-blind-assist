@@ -115,6 +115,17 @@ test('a toast react-toastify lets in from its queue as another closes has no ori
   assert.ok(notices(A).some((e) => e.text === 'Error: SimBrief: no aircraft'), 'a press of the Ground tab cleared it');
 });
 
+test('an error arriving long after the last press (a failed download) has no origin: only Dismiss clears it', async () => {
+  const { window, A } = loadFixture('a320-index');
+  A.notePress(control(window, 'Import from SimBrief'));
+  const ground = control(window, 'Ground');
+  A.notePress(ground);                                   // pressed while the fetch runs
+  A._lastPress.at -= 2000;                               // the fetch fails two seconds later
+  await flashToast(window, 'error', 'SimBrief: no OFP');
+  A.notePress(ground);
+  assert.strictEqual(notices(A).length, 2, 'a press of the Ground tab cleared an error it never raised');
+});
+
 test('an error raised by a typed value belongs to that field, not to the button pressed before it', async () => {
   const { window, A } = loadFixture('a320-index');
   const tab = window.document.createElement('button');
@@ -179,6 +190,16 @@ test('a re-install over a live agent keeps its errors and its counter, and re-re
   await flashToast(window, 'error', 'Could not find OFP runway!');
   const fresh = notices(B).find((e) => /runway/.test(e.text)).key;
   assert.ok(!before.includes(fresh), 'a new error must not reuse a key the form has already spoken');
+});
+
+test('a re-install never re-reads an error the pilot dismissed while FBW still shows its toast', async () => {
+  const { window, A } = loadFixture('a320-index');
+  window.document.querySelector('.Toastify').insertAdjacentHTML('beforeend', toastHtml('error', 'Could not fetch airport'));
+  await new Promise((r) => setTimeout(r, 0));
+  A.clickElement(notices(A).find((e) => e.kind === 'button').idx);
+  assert.deepStrictEqual(notices(A), []);
+  const B = reinstall(window);                           // one slow scrape, toast still open
+  assert.deepStrictEqual(notices(B), [], 'the dismissed error came back');
 });
 
 test('the same error raised again is a new notice under a new key, so it is spoken again', async () => {

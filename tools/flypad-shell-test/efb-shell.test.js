@@ -263,6 +263,34 @@ test('a focused last control going moves the focus to the control before it', (t
   assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('Catering'));
 });
 
+// With no control before it that stays, a notice listed at the top in the same render is not the
+// focused control's place: the control rebuilt there (same agent idx) keeps the focus, and a control
+// that simply went hands it to the next one, never to the new notice's Dismiss button.
+test('with nothing before it, a rebuilt first control keeps the focus over a new notice above it', (t) => {
+  const s = loadShell(t);
+  const notice = [alertItem('Error: Could not fetch airport', 'notice:3'), btn(100003, 'Dismiss: Could not fetch airport', { key: 'notice-dismiss:3' })];
+  s.render('Ground', [btn(2, 'GPU Connect'), btn(3, 'Next')]);
+  s.buttonByLabel('GPU Connect').focus();
+  s.render('Ground', notice.concat([btn(2, 'GPU Disconnect'), btn(3, 'Next')]));
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('GPU Disconnect'));
+
+  s.render('Ground', [btn(5, 'Fuel Truck'), btn(6, 'Next')]);
+  s.buttonByLabel('Fuel Truck').focus();
+  s.render('Ground', notice.concat([btn(5, 'Next')]));    // the agent re-stamps Next as idx 5
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('Next'));
+});
+
+// A control that stays but is moved by a re-sort loses the focus to insertBefore: it gets it back.
+test('a focused control moved by a re-sort keeps the focus', (t) => {
+  const s = loadShell(t);
+  s.render('Ground', [btn(1, 'Catering'), btn(2, 'Baggage'), btn(3, 'Fuel Truck')]);
+  const fuel = s.buttonByLabel('Fuel Truck');
+  fuel.focus();
+  s.render('Ground', [btn(1, 'Fuel Truck'), btn(2, 'Catering'), btn(3, 'Baggage')]);
+  assert.strictEqual(s.buttonByLabel('Fuel Truck'), fuel, 'the node was rebuilt, not moved');
+  assert.strictEqual(s.window.document.activeElement, fuel);
+});
+
 // ---- opt-in Enter-only edit box (item key commit = 'enter') ----
 const fld = (idx, text, value, extra) => Object.assign({ idx, kind: 'field', controlType: 'text', text, value, clickable: false, level: 0, live: '', disabled: false }, extra || {});
 const keydown = (win, el, k) => el.dispatchEvent(new win.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));

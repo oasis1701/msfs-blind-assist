@@ -2445,6 +2445,11 @@
   A.NOTICE_IDX_BASE = 100000;
   A.NOTICE_FLASH_MS = 6000;
   A.NOTICE_MAX = 10;
+  // An error FBW raises within this long of a press is that press's (its own validation, the
+  // Takeoff calculation: FBW shows the toast a frame or two later). One arriving later (a failed
+  // download or lookup) may follow another press made meanwhile, so it gets no origin and only
+  // Dismiss clears it: a wrong origin would clear it silently on an unrelated press.
+  A.NOTICE_ORIGIN_MS = 1000;
   A._notices = [];          // { id, type, text, at, origin }
   A._noticeSeq = 0;
   A._inlineIds = {};        // inline error text -> id, while FBW shows it
@@ -2467,8 +2472,11 @@
   A.captureToast = function (el, queued) {
     var text = A.toastText(el);
     if (!text) return;
+    // Marked on the node, which outlives this agent: a re-install never reads it again, even once
+    // the pilot has dismissed or retried it while FBW still shows it (A.watchToasts).
+    el.__msfsbaToast = true;
     var now = Date.now();
-    var origin = (!queued && A._lastPress && now - A._lastPress.at < 10000) ? A._lastPress.node : null;
+    var origin = (!queued && A._lastPress && now - A._lastPress.at < A.NOTICE_ORIGIN_MS) ? A._lastPress.node : null;
     var keep = [];
     for (var i = 0; i < A._notices.length; i++) if (A._notices[i].text !== text) keep.push(A._notices[i]);
     keep.push({ id: ++A._noticeSeq, type: A.toastType(el), text: text, at: now, origin: origin });
@@ -2521,10 +2529,10 @@
     else A._toastObs = new MutationObserver(A.onToastMutations);
     A._toastHost = host;
     A._toastObs.observe(host, { childList: true, subtree: true });
-    // A toast already open in it is caught now, unless this agent (or a previous install) holds it.
-    var held = {}, open = host.querySelectorAll(".Toastify__toast");
-    for (var h = 0; h < A._notices.length; h++) held[A._notices[h].text] = true;
-    for (var i = 0; i < open.length; i++) if (!held[A.toastText(open[i])]) A.captureToast(open[i]);
+    // A toast already open in it is caught now, unless this agent or a previous install caught it
+    // before (its mark), whether it is still listed or the pilot has dismissed or retried it.
+    var open = host.querySelectorAll(".Toastify__toast");
+    for (var i = 0; i < open.length; i++) if (!open[i].__msfsbaToast) A.captureToast(open[i]);
   };
 
   // Inline error text FBW is showing now. A heading coloured text-utility-red is an error (the
