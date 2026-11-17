@@ -1,9 +1,10 @@
 namespace MSFSBlindAssist.FirstOfficer.PMDG737;
 
 /// <summary>
-/// The 737 First Officer's 400 ft AGL LNAV/VNAV push (the PMDG 737's <see cref="FOAutoManager"/>
-/// and the iFly 737 MAX8's port of it), as pure rules so they are unit-testable: the managers
-/// themselves need a ScreenReaderAnnouncer.
+/// The First Officer's 400 ft AGL LNAV/VNAV push (the PMDG 737's <see cref="FOAutoManager"/>,
+/// the iFly 737 MAX8's port of it and the BlueBird 757's <c>Bbs757FoAutoManager</c>, which reuses
+/// it from this namespace), as pure rules so they are unit-testable: the managers themselves need
+/// a ScreenReaderAnnouncer.
 /// </summary>
 public static class LnavVnavPushHeight
 {

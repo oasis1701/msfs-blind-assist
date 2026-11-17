@@ -1,0 +1,1 @@
+The taxi route summary now names the whole route. When the taxiways you enter stop short of the destination, it says which taxiways were added to reach it: "Route to Runway 16 via L, then W, EX23, E, EX33, D." It used to say only "via L".

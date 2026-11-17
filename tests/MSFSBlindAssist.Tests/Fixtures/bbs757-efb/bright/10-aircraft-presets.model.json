@@ -1,0 +1,622 @@
+{
+  "app": "AIRCRAFT",
+  "section": "COCKPIT PRESETS",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "Cockpit presets",
+      "box": [
+        38,
+        153,
+        195,
+        32
+      ],
+      "hit": [
+        130,
+        169
+      ],
+      "clickable": true,
+      "key": "menu:COCKPIT PRESETS",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Fuel",
+      "box": [
+        39,
+        212,
+        63,
+        34
+      ],
+      "hit": [
+        130,
+        229
+      ],
+      "clickable": true,
+      "key": "menu:FUEL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Weight \u0026 balance",
+      "box": [
+        40,
+        274,
+        206,
+        31
+      ],
+      "hit": [
+        130,
+        289
+      ],
+      "clickable": true,
+      "key": "menu:WEIGHT \u0026 BALANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Ground services",
+      "box": [
+        43,
+        335,
+        192,
+        29
+      ],
+      "hit": [
+        130,
+        349
+      ],
+      "clickable": true,
+      "key": "menu:GROUND SERVICES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin \u0026 doors",
+      "box": [
+        42,
+        393,
+        164,
+        32
+      ],
+      "hit": [
+        130,
+        409
+      ],
+      "clickable": true,
+      "key": "menu:CABIN \u0026 DOORS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Maintenance",
+      "box": [
+        40,
+        454,
+        158,
+        31
+      ],
+      "hit": [
+        130,
+        469
+      ],
+      "clickable": true,
+      "key": "menu:MAINTENANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Failures",
+      "box": [
+        40,
+        513,
+        107,
+        33
+      ],
+      "hit": [
+        130,
+        529
+      ],
+      "clickable": true,
+      "key": "menu:FAILURES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Heading",
+      "text": "Presets",
+      "box": [
+        770,
+        79,
+        105,
+        27
+      ],
+      "hit": [
+        822,
+        92
+      ],
+      "clickable": false,
+      "key": "h:PRESETS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "On ground, in flight, custom",
+      "box": [
+        383,
+        125,
+        866,
+        31
+      ],
+      "hit": [
+        816,
+        140
+      ],
+      "clickable": false,
+      "key": "txt:ON GROUND, IN FLIGHT, CUSTOM",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Cold \u0026 dark",
+      "box": [
+        340,
+        183,
+        200,
+        39
+      ],
+      "hit": [
+        440,
+        202
+      ],
+      "clickable": true,
+      "key": "btn:|COLD \u0026 DARK@17,9",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "After takeoff",
+      "box": [
+        722,
+        183,
+        203,
+        39
+      ],
+      "hit": [
+        823,
+        202
+      ],
+      "clickable": true,
+      "key": "btn:|AFTER TAKEOFF@36,9",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Save user config",
+      "box": [
+        1107,
+        183,
+        200,
+        39
+      ],
+      "hit": [
+        1207,
+        202
+      ],
+      "clickable": true,
+      "key": "btn:|SAVE USER CONFIG@55,9",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Turnaround",
+      "box": [
+        340,
+        233,
+        200,
+        39
+      ],
+      "hit": [
+        440,
+        252
+      ],
+      "clickable": true,
+      "key": "btn:|TURNAROUND@17,11",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Cruise",
+      "box": [
+        722,
+        233,
+        203,
+        39
+      ],
+      "hit": [
+        823,
+        252
+      ],
+      "clickable": true,
+      "key": "btn:|CRUISE@36,11",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Load user config",
+      "box": [
+        1107,
+        233,
+        200,
+        39
+      ],
+      "hit": [
+        1207,
+        252
+      ],
+      "clickable": true,
+      "key": "btn:|LOAD USER CONFIG@55,11",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Before start",
+      "box": [
+        340,
+        283,
+        200,
+        38
+      ],
+      "hit": [
+        440,
+        302
+      ],
+      "clickable": true,
+      "key": "btn:|BEFORE START@17,14",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Approach",
+      "box": [
+        722,
+        283,
+        203,
+        38
+      ],
+      "hit": [
+        823,
+        302
+      ],
+      "clickable": true,
+      "key": "btn:|APPROACH@36,14",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "Choose SAVE or LOAD, then select a panel state.",
+      "box": [
+        1077,
+        301,
+        260,
+        12
+      ],
+      "hit": [
+        1207,
+        307
+      ],
+      "clickable": false,
+      "key": "txt:Choose SAVE or LOAD, then select a panel state.",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Ready for taxi",
+      "box": [
+        340,
+        332,
+        200,
+        39
+      ],
+      "hit": [
+        440,
+        351
+      ],
+      "clickable": true,
+      "key": "btn:|READY FOR TAXI@17,16",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Final approach",
+      "box": [
+        722,
+        332,
+        203,
+        39
+      ],
+      "hit": [
+        823,
+        351
+      ],
+      "clickable": true,
+      "key": "btn:|FINAL APPROACH@36,16",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Ready for takeoff",
+      "box": [
+        340,
+        383,
+        200,
+        39
+      ],
+      "hit": [
+        440,
+        402
+      ],
+      "clickable": true,
+      "key": "btn:|READY FOR TAKEOFF@17,19",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "APU quick start",
+      "box": [
+        340,
+        483,
+        200,
+        39
+      ],
+      "hit": [
+        440,
+        502
+      ],
+      "clickable": true,
+      "key": "btn:|APU QUICK START@17,24",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Quick start: Engine quick start",
+      "box": [
+        722,
+        483,
+        203,
+        39
+      ],
+      "hit": [
+        823,
+        502
+      ],
+      "clickable": true,
+      "key": "btn:QUICK START|ENGINE QUICK START@36,24",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "IRS rapid align",
+      "box": [
+        1107,
+        483,
+        200,
+        39
+      ],
+      "hit": [
+        1207,
+        502
+      ],
+      "clickable": true,
+      "key": "btn:|IRS RAPID ALIGN@55,24",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "All breakers pushed in",
+      "box": [
+        344,
+        739,
+        239,
+        25
+      ],
+      "hit": [
+        463,
+        751
+      ],
+      "clickable": false,
+      "key": "txt:ALL BREAKERS PUSHED IN",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Circuits state: PUSH ALL CBs",
+      "box": [
+        702,
+        733,
+        151,
+        39
+      ],
+      "hit": [
+        777,
+        752
+      ],
+      "clickable": true,
+      "key": "btn:CIRCUITS STATE|PUSH ALL CBs@35,36",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Battery",
+      "box": [
+        1023,
+        842,
+        201,
+        51
+      ],
+      "hit": [
+        1123,
+        867
+      ],
+      "clickable": true,
+      "key": "btn:|BATTERY@51,42",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "External power",
+      "box": [
+        1024,
+        912,
+        199,
+        50
+      ],
+      "hit": [
+        1123,
+        937
+      ],
+      "clickable": true,
+      "key": "btn:|EXTERNAL POWER@51,45",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications",
+      "box": [
+        1364,
+        6,
+        19,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

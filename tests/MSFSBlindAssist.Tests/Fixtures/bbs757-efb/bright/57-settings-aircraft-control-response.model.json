@@ -1,0 +1,508 @@
+{
+  "app": "SETTINGS",
+  "section": "AIRCRAFT",
+  "scrollable": true,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "General",
+      "box": [
+        40,
+        151,
+        108,
+        38
+      ],
+      "hit": [
+        130,
+        170
+      ],
+      "clickable": true,
+      "key": "menu:GENERAL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Aircraft",
+      "box": [
+        39,
+        210,
+        116,
+        38
+      ],
+      "hit": [
+        130,
+        229
+      ],
+      "clickable": true,
+      "key": "menu:AIRCRAFT",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Livery options",
+      "box": [
+        39,
+        274,
+        178,
+        33
+      ],
+      "hit": [
+        130,
+        290
+      ],
+      "clickable": true,
+      "key": "menu:LIVERY OPTIONS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Callouts",
+      "box": [
+        40,
+        332,
+        120,
+        35
+      ],
+      "hit": [
+        130,
+        349
+      ],
+      "clickable": true,
+      "key": "menu:CALLOUTS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin audio",
+      "box": [
+        40,
+        391,
+        143,
+        36
+      ],
+      "hit": [
+        130,
+        409
+      ],
+      "clickable": true,
+      "key": "menu:CABIN AUDIO",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "AIRAC data",
+      "box": [
+        38,
+        452,
+        137,
+        35
+      ],
+      "hit": [
+        130,
+        469
+      ],
+      "clickable": true,
+      "key": "menu:AIRAC DATA",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Toggle",
+      "text": "Adaptive handling assist",
+      "box": [
+        273,
+        94,
+        338,
+        33
+      ],
+      "hit": [
+        1166,
+        110
+      ],
+      "clickable": true,
+      "key": "tgl:ADAPTIVE HANDLING ASSIST",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Slider",
+      "text": "Control response",
+      "box": [
+        274,
+        155,
+        247,
+        30
+      ],
+      "hit": [
+        1049,
+        170
+      ],
+      "clickable": true,
+      "key": "sld:CONTROL RESPONSE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "BALANCED",
+      "slider": [
+        895,
+        1190,
+        1049
+      ]
+    },
+    {
+      "kind": "Toggle",
+      "text": "Adaptive cockpit lighting",
+      "box": [
+        271,
+        212,
+        349,
+        36
+      ],
+      "hit": [
+        1166,
+        230
+      ],
+      "clickable": true,
+      "key": "tgl:ADAPTIVE COCKPIT LIGHTING",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "Automatic",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "TOD pause distance (NM)",
+      "box": [
+        269,
+        270,
+        326,
+        41
+      ],
+      "hit": [
+        1166,
+        290
+      ],
+      "clickable": true,
+      "key": "tgl:TOD PAUSE DISTANCE (NM)",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Automatic step climbs master option: (experimental)",
+      "box": [
+        271,
+        331,
+        707,
+        39
+      ],
+      "hit": [
+        1166,
+        350
+      ],
+      "clickable": true,
+      "key": "tgl:AUTOMATIC STEP CLIMBS MASTER OPTION: (EXPERIMENTAL)",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "Disabled",
+      "slider": null
+    },
+    {
+      "kind": "Heading",
+      "text": "Automatic step climb status: off",
+      "box": [
+        627,
+        387,
+        390,
+        32
+      ],
+      "hit": [
+        822,
+        403
+      ],
+      "clickable": false,
+      "key": "h:AUTOMATIC STEP CLIMB STATUS: OFF",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Nosewheel steering",
+      "box": [
+        273,
+        495,
+        269,
+        30
+      ],
+      "hit": [
+        1166,
+        510
+      ],
+      "clickable": true,
+      "key": "tgl:NOSEWHEEL STEERING",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "Rudder",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Throttle lockout",
+      "box": [
+        272,
+        552,
+        247,
+        36
+      ],
+      "hit": [
+        1166,
+        570
+      ],
+      "clickable": true,
+      "key": "tgl:THROTTLE LOCKOUT",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "Off",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Displays bootup speed",
+      "box": [
+        273,
+        613,
+        304,
+        33
+      ],
+      "hit": [
+        1166,
+        629
+      ],
+      "clickable": true,
+      "key": "tgl:DISPLAYS BOOTUP SPEED",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "Realistic",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Sync barometers",
+      "box": [
+        272,
+        672,
+        239,
+        36
+      ],
+      "hit": [
+        1166,
+        690
+      ],
+      "clickable": true,
+      "key": "tgl:SYNC BAROMETERS",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Initial cockpit door",
+      "box": [
+        272,
+        732,
+        273,
+        36
+      ],
+      "hit": [
+        1166,
+        750
+      ],
+      "clickable": true,
+      "key": "tgl:INITIAL COCKPIT DOOR",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "Open",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Parking brake mode",
+      "box": [
+        272,
+        793,
+        270,
+        33
+      ],
+      "hit": [
+        1167,
+        809
+      ],
+      "clickable": true,
+      "key": "tgl:PARKING BRAKE MODE",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "Realistic",
+      "slider": null
+    },
+    {
+      "kind": "Slider",
+      "text": "IRS alignment time",
+      "box": [
+        273,
+        853,
+        255,
+        33
+      ],
+      "hit": [
+        1192,
+        869
+      ],
+      "clickable": true,
+      "key": "sld:IRS ALIGNMENT TIME",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "FULL (7 MIN\u002B)",
+      "slider": [
+        895,
+        1192,
+        1192
+      ]
+    },
+    {
+      "kind": "Slider",
+      "text": "Boarding \u0026 load rate",
+      "box": [
+        271,
+        912,
+        290,
+        36
+      ],
+      "hit": [
+        1002,
+        930
+      ],
+      "clickable": true,
+      "key": "sld:BOARDING \u0026 LOAD RATE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "STANDARD",
+      "slider": [
+        895,
+        1190,
+        1002
+      ]
+    },
+    {
+      "kind": "Toggle",
+      "text": "Automatic boarding",
+      "box": [
+        273,
+        974,
+        275,
+        32
+      ],
+      "hit": [
+        1166,
+        990
+      ],
+      "clickable": true,
+      "key": "tgl:AUTOMATIC BOARDING",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Text",
+      "text": "DEP -00:18",
+      "box": [
+        1214,
+        0,
+        108,
+        28
+      ],
+      "hit": [
+        1268,
+        14
+      ],
+      "clickable": false,
+      "key": "top:dep",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Notifications",
+      "box": [
+        1329,
+        6,
+        54,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

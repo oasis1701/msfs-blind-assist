@@ -1,0 +1,80 @@
+title: Settings, Aircraft
+checkbox not checked  Adaptive handling assist
+combo [Automatic] {Automatic|Manual}  Adaptive cockpit lighting
+checkbox not checked  TOD pause distance (NM)
+combo [Disabled] {Enabled|Disabled}  Automatic step climbs master option: (experimental)
+text  Automatic step climb status: OFF
+combo [Rudder] {Realistic|Rudder}  Nosewheel steering
+checkbox checked  Throttle lockout
+combo [Realistic] {Realistic|Fast}  Displays bootup speed
+checkbox checked  Sync barometers
+combo [Open] {Open|Closed}  Initial cockpit door
+combo [Realistic] {Realistic|Easy}  Parking brake mode
+combo [Full (7 min+)] {Instant|1 min|2 min|5 min|Full (7 min+)}  IRS alignment time
+combo [Instant] {Realistic|Standard|Quick|Instant}  Boarding & load rate
+checkbox checked  Automatic boarding
+checkbox checked  Automatic GPU/jetway
+checkbox not checked  Hoppie ACARS
+combo [Hoppie] {Hoppie|SayIntentions}  CPDLC network
+checkbox checked  Initial chocks in place
+checkbox not checked  Dirty panel states
+heading 2  Status bar
+text  Sat, 7th Nov 2026 | 23:05L | 05:05Z | OAT 4 C
+heading 2  Notifications
+text  03:16Z AFT cargo door closed.
+text  03:15Z AFT cargo door opened.
+text  01:16Z GPU connected.
+text  00:58Z Brake thermal efficiency: Left 96.2% | right 96.2%
+text  00:58Z Autobrake 1: TARGET 4.5 | ACTUAL 4.5 ft/s2
+text  21:37Z GPU disconnected.
+text  21:37Z Chocks removed.
+text  21:35Z Boarding is complete!
+text  21:35Z 176 passengers boarded!
+text  21:35Z Cargo is loaded!
+text  21:35Z Fuel is set!
+text  21:35Z Boarding initiated.
+text  21:35Z Deboarding is complete!
+text  21:35Z 176 passengers deboarded!
+text  21:29Z R3 door closed.
+text  21:24Z AFT cargo door closed.
+text  21:24Z FWD cargo door closed.
+text  21:23Z Cargo is unloaded!
+text  21:21Z L1 door closed.
+text  21:21Z AFT cargo door opened.
+text  21:21Z FWD cargo door opened.
+text  21:21Z R3 door opened.
+text  21:21Z Deboarding initiated.
+text  21:21Z Boarding is complete!
+text  21:21Z 176 passengers boarded!
+text  21:12Z R3 door closed.
+text  21:08Z Fuel is set!
+text  21:07Z AFT cargo door closed.
+text  21:07Z FWD cargo door closed.
+text  21:07Z Cargo is loaded!
+text  21:04Z L1 door opened.
+text  21:04Z AFT cargo door opened.
+text  21:04Z FWD cargo door opened.
+text  21:04Z R3 door opened.
+text  21:04Z Boarding initiated.
+text  21:04Z Chocks attached.
+text  21:00Z GPU connected.
+text  20:00Z GPU disconnected.
+text  20:00Z Chocks removed.
+text  19:50Z IRS aligned.
+text  19:45Z Boarding is complete!
+text  19:45Z 0 passengers boarded!
+text  19:45Z Cargo is loaded!
+text  19:45Z Fuel is set!
+text  19:42Z Defueling is complete!
+text  19:41Z IRS alignment initiated.
+text  19:41Z Defueling initiated.
+text  19:35Z SIMBRIEF OFP received.
+text  19:34Z GPU connected.
+heading 2  Sections
+button  General
+button  Aircraft (current page)
+button  Livery options
+button  Callouts
+button  Cabin audio
+button  AIRAC data
+button  Home
