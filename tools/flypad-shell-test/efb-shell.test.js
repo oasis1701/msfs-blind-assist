@@ -213,6 +213,84 @@ test('without a key, "(now …)" and an after-colon tail are part of the key aga
   assert.notStrictEqual(s.buttonByLabel('GPU'), gpu, 'an unkeyed after-colon change was patched in place');
 });
 
+// The flyPad's error notices: the pilot presses an error's Dismiss button and the next scrape no
+// longer lists it. Removing the focused node would drop focus to <body> and the screen reader
+// somewhere arbitrary; the shell moves it to the control that followed it, else the page heading.
+const alertItem = (text, key) => ({ idx: 0, kind: 'alert', controlType: '', text, clickable: false, level: 0, live: 'assertive', disabled: false, key });
+test('dismissing a focused notice moves focus to the next control, or the page heading', (t) => {
+  const s = loadShell(t);
+  const notice = [alertItem('Error: OFP airport is invalid', 'notice:1'), btn(100001, 'Dismiss: OFP airport is invalid', { key: 'notice-dismiss:1' })];
+  s.render('Performance', notice.concat([btn(7, 'Calculate')]));
+  s.buttonByLabel('Dismiss').focus();
+  s.render('Performance', [btn(7, 'Calculate')]);
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('Calculate'));
+
+  s.render('Performance', notice);
+  s.buttonByLabel('Dismiss').focus();
+  s.render('Performance', []);
+  assert.strictEqual(s.window.document.activeElement.id, 'pgttl');
+});
+
+// A focused unkeyed button whose label changes is rebuilt as a new node in the same place: focus
+// goes to that rebuilt button, never to the control after it (Enter would then press the wrong one).
+test('a focused button rebuilt by a label change keeps the focus in its place', (t) => {
+  const s = loadShell(t);
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'GPU Connect'), btn(3, 'Next')]);
+  s.buttonByLabel('GPU Connect').focus();
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'GPU Disconnect'), btn(3, 'Next')]);
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('GPU Disconnect'));
+});
+
+// A notice at the top of the page going (a warning expiring, an error cleared by a retry) must not
+// move the controls below it: a node moved by insertBefore loses the focus.
+test('a notice going from above keeps the focus on the control the pilot is on', (t) => {
+  const s = loadShell(t);
+  const notice = [alertItem('Warning: Aircraft needs to be powered to load presets', 'notice:2')];
+  s.render('Performance', notice.concat([btn(6, 'Clear'), btn(7, 'Calculate')]));
+  const calc = s.buttonByLabel('Calculate');
+  calc.focus();
+  s.render('Performance', [btn(6, 'Clear'), btn(7, 'Calculate')]);
+  assert.strictEqual(s.window.document.activeElement, calc);
+});
+
+// The removed control was the last one on the page: focus stays near it, on the control before it,
+// never back at the top of the document.
+test('a focused last control going moves the focus to the control before it', (t) => {
+  const s = loadShell(t);
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'Catering'), btn(3, 'Fuel Truck')]);
+  s.buttonByLabel('Fuel Truck').focus();
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'Catering')]);
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('Catering'));
+});
+
+// With no control before it that stays, a notice listed at the top in the same render is not the
+// focused control's place: the control rebuilt there (same agent idx) keeps the focus, and a control
+// that simply went hands it to the next one, never to the new notice's Dismiss button.
+test('with nothing before it, a rebuilt first control keeps the focus over a new notice above it', (t) => {
+  const s = loadShell(t);
+  const notice = [alertItem('Error: Could not fetch airport', 'notice:3'), btn(100003, 'Dismiss: Could not fetch airport', { key: 'notice-dismiss:3' })];
+  s.render('Ground', [btn(2, 'GPU Connect'), btn(3, 'Next')]);
+  s.buttonByLabel('GPU Connect').focus();
+  s.render('Ground', notice.concat([btn(2, 'GPU Disconnect'), btn(3, 'Next')]));
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('GPU Disconnect'));
+
+  s.render('Ground', [btn(5, 'Fuel Truck'), btn(6, 'Next')]);
+  s.buttonByLabel('Fuel Truck').focus();
+  s.render('Ground', notice.concat([btn(5, 'Next')]));    // the agent re-stamps Next as idx 5
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('Next'));
+});
+
+// A control that stays but is moved by a re-sort loses the focus to insertBefore: it gets it back.
+test('a focused control moved by a re-sort keeps the focus', (t) => {
+  const s = loadShell(t);
+  s.render('Ground', [btn(1, 'Catering'), btn(2, 'Baggage'), btn(3, 'Fuel Truck')]);
+  const fuel = s.buttonByLabel('Fuel Truck');
+  fuel.focus();
+  s.render('Ground', [btn(1, 'Fuel Truck'), btn(2, 'Catering'), btn(3, 'Baggage')]);
+  assert.strictEqual(s.buttonByLabel('Fuel Truck'), fuel, 'the node was rebuilt, not moved');
+  assert.strictEqual(s.window.document.activeElement, fuel);
+});
+
 // ---- opt-in Enter-only edit box (item key commit = 'enter') ----
 const fld = (idx, text, value, extra) => Object.assign({ idx, kind: 'field', controlType: 'text', text, value, clickable: false, level: 0, live: '', disabled: false }, extra || {});
 const keydown = (win, el, k) => el.dispatchEvent(new win.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
