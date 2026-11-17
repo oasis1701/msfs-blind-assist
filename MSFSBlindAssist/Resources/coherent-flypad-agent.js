@@ -2456,56 +2456,83 @@
     return m ? m[2] : "default";
   };
 
-  A.captureToast = function (el) {
+  // A toast's message: its body's text (FBW's icon-only close button sits outside it).
+  A.toastText = function (el) {
     var body = el.querySelector(".Toastify__toast-body");
-    var text = clean((body || el).textContent);
+    return clean((body || el).textContent);
+  };
+
+  // queued: react-toastify let this toast in from its queue (FBW's ToastContainer has limit={2}),
+  // so it was raised earlier and the last press is not its origin; only Dismiss clears it.
+  A.captureToast = function (el, queued) {
+    var text = A.toastText(el);
     if (!text) return;
     var now = Date.now();
-    var origin = (A._lastPress && now - A._lastPress.at < 10000) ? A._lastPress.node : null;
+    var origin = (!queued && A._lastPress && now - A._lastPress.at < 10000) ? A._lastPress.node : null;
     var keep = [];
     for (var i = 0; i < A._notices.length; i++) if (A._notices[i].text !== text) keep.push(A._notices[i]);
     keep.push({ id: ++A._noticeSeq, type: A.toastType(el), text: text, at: now, origin: origin });
-    // Over the cap, drop the oldest passing notice first: a burst of info toasts must not push out
-    // an error the pilot has not dismissed yet.
+    // Over the cap, drop the oldest passing notice first, the one just added included: a burst of
+    // info toasts must not push out an error the pilot has not dismissed yet.
     while (keep.length > A.NOTICE_MAX) {
       var drop = 0;
-      for (var d = 0; d < keep.length - 1; d++) if (keep[d].type !== "error") { drop = d; break; }
+      for (var d = 0; d < keep.length; d++) if (keep[d].type !== "error") { drop = d; break; }
       keep.splice(drop, 1);
     }
     A._notices = keep;
   };
 
+  A.isToastNode = function (n) {
+    return n.nodeType === 1 && A.cls(n).indexOf("Toastify") >= 0;
+  };
+
   A.onToastMutations = function (muts) {
+    // A toast added in the same batch that removed one is react-toastify filling the freed slot
+    // from its queue: it closes the old toast and mounts the waiting one in one go.
+    var queued = false;
+    for (var r = 0; r < muts.length && !queued; r++) {
+      var removed = muts[r].removedNodes;
+      for (var q = 0; q < removed.length; q++) {
+        var rn = removed[q];
+        if (A.isToastNode(rn) && (A.hasClassToken(rn, "Toastify__toast") || rn.querySelector(".Toastify__toast"))) { queued = true; break; }
+      }
+    }
     for (var i = 0; i < muts.length; i++) {
       var added = muts[i].addedNodes;
       for (var j = 0; j < added.length; j++) {
         var n = added[j];
-        if (n.nodeType !== 1 || A.cls(n).indexOf("Toastify") < 0) continue;
-        if (A.hasClassToken(n, "Toastify__toast")) { A.captureToast(n); continue; }
+        if (!A.isToastNode(n)) continue;
+        if (A.hasClassToken(n, "Toastify__toast")) { A.captureToast(n, queued); continue; }
         var inner = n.querySelectorAll(".Toastify__toast");
-        for (var k = 0; k < inner.length; k++) A.captureToast(inner[k]);
+        for (var k = 0; k < inner.length; k++) A.captureToast(inner[k], queued);
       }
     }
   };
 
+  // Watch FBW's toast container itself (div.Toastify, which its ToastContainer always renders),
+  // not the whole flyPad, whose clock, maps and charts mutate many times a second. Called at
+  // install and at the top of every scrape: when FBW re-mounts the container (a flyPad power
+  // cycle), the observer moves to the new one.
   A.watchToasts = function () {
-    if (typeof MutationObserver === "undefined" || !document.body) return;
-    // A toast still on screen that a previous install already captured is not a new one.
-    var held = {}, open = document.querySelectorAll(".Toastify__toast");
+    if (typeof MutationObserver === "undefined") return;
+    var host = document.querySelector(".Toastify");
+    if (!host || host === A._toastHost) return;
+    if (A._toastObs) A._toastObs.disconnect();
+    else A._toastObs = new MutationObserver(A.onToastMutations);
+    A._toastHost = host;
+    A._toastObs.observe(host, { childList: true, subtree: true });
+    // A toast already open in it is caught now, unless this agent (or a previous install) holds it.
+    var held = {}, open = host.querySelectorAll(".Toastify__toast");
     for (var h = 0; h < A._notices.length; h++) held[A._notices[h].text] = true;
-    for (var i = 0; i < open.length; i++) {
-      var body = open[i].querySelector(".Toastify__toast-body");
-      if (!held[clean((body || open[i]).textContent)]) A.captureToast(open[i]);
-    }
-    A._toastObs = new MutationObserver(A.onToastMutations);
-    A._toastObs.observe(document.body, { childList: true, subtree: true });
+    for (var i = 0; i < open.length; i++) if (!held[A.toastText(open[i])]) A.captureToast(open[i]);
   };
 
   // Inline error text FBW is showing now. A heading coloured text-utility-red is an error (the
   // deadzone warning); the throttle-calibration overlap is a plain h2, told apart from the
-  // harmless "Remember to configure MSFS…" h2 in the same kind of box only by the
-  // exclamation-circle icon FBW renders beside it. The throttle page is known by the deadzone
-  // headings it always renders (hidden until needed), never by its translated h1.
+  // harmless "Remember to configure MSFS…" h2 in the same kind of box only by the red strip
+  // holding the exclamation-circle icon just before it (ThrottleConfig.tsx). Only that strip: in
+  // four-axis mode each axis title is an h2 too, beside a pencil icon. The throttle page is known
+  // by the deadzone headings it always renders (hidden until needed), never by its translated h1.
   A.inlineErrors = function (root) {
     var out = [], seen = {};
     var throttlePage = root.querySelector("h2.text-utility-red") !== null;
@@ -2515,7 +2542,8 @@
       if (!A.isVisible(h)) continue;
       var t = clean(h.textContent);
       if (!t || seen[t]) continue;
-      var overlap = throttlePage && h.tagName === "H2" && h.parentElement && !!h.parentElement.querySelector("svg");
+      var strip = h.previousElementSibling;
+      var overlap = throttlePage && h.tagName === "H2" && !!strip && A.hasClassToken(strip, "bg-utility-red") && !!strip.querySelector("svg");
       if (A.hasClassToken(h, "text-utility-red") || overlap) { seen[t] = true; out.push(t); }
     }
     return out;
@@ -2536,9 +2564,13 @@
 
   A.noticeItems = function (root) {
     var out = [], keep = [], now = Date.now();
+    // A control FBW has unmounted can never be pressed again, so it is no retry: let it go, or the
+    // node would hold its whole unmounted React subtree for as long as the error stays.
+    if (A._lastPress && !document.contains(A._lastPress.node)) A._lastPress = null;
     for (var i = 0; i < A._notices.length; i++) {
       var n = A._notices[i], error = n.type === "error";
       if (!error && now - n.at > A.NOTICE_FLASH_MS) continue;
+      if (n.origin && !document.contains(n.origin)) n.origin = null;
       keep.push(n);
       out.push(noticeItem("alert", "notice:" + n.id, 0, A.noticePrefix(n.type) + n.text));
       if (error) out.push(noticeItem("button", "notice-dismiss:" + n.id, A.NOTICE_IDX_BASE + n.id, "Dismiss: " + n.text));
@@ -2587,6 +2619,7 @@
     try {
       var root = A.findRoot();
       if (!root) return JSON.stringify({ ok: false, error: "flyPad root not found (powered up?)" });
+      A.watchToasts();               // follows FBW's toast container if it was re-mounted
       var els = A.enumerate(root);   // first: it advances A._gen, which inlineErrors' isVisible reads
       els = A.noticeItems(root).concat(els);
       return JSON.stringify({ ok: true, page: A.pageLabel(root), elements: els });
@@ -2638,7 +2671,7 @@
     if (A.disabledFor(node)) return "disabled";
     A.notePress(node);
     var kind = A.classify(node);
-    value =(value === null || value === undefined) ? "" : String(value);
+    value = (value === null || value === undefined) ? "" : String(value);
 
     if (kind === "checkbox" || kind === "toggle" || kind === "checkitem") {
       var want = value === "true";
@@ -2720,6 +2753,9 @@
   // reuses a key (notice:1) the form has already spoken, so the next error stays silent.
   var previous = window.__MSFSBA_FLYPAD;
   if (previous && previous._toastObs) { try { previous._toastObs.disconnect(); } catch (e) {} }
+  // Nodes still carry the previous agent's memo stamps (__msfsbaGen): counting on from its
+  // generation keeps a stamp from ever matching a new scrape's.
+  if (previous && typeof previous._gen === "number") A._gen = previous._gen;
   if (previous && previous._notices instanceof Array) {
     A._notices = previous._notices;
     A._noticeSeq = previous._noticeSeq || 0;

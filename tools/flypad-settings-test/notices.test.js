@@ -33,6 +33,15 @@ async function flashToast(window, type, text) {
 
 const notices = (A) => JSON.parse(A.scrape()).elements.filter((e) => e.key);
 
+// A control on the page (in the document, as a real one is: a detached one is no retry). Not
+// data-vis, so the scrape leaves it out.
+function control(window, text) {
+  const b = window.document.createElement('button');
+  b.textContent = text;
+  window.document.getElementById('MSFS_REACT_MOUNT').appendChild(b);
+  return b;
+}
+
 test('an error toast removed before any poll still reads as an error with a Dismiss button', async () => {
   const { window, A } = loadFixture('a320-index');
   await flashToast(window, 'error', 'Beyond Takeoff Weight Limit - Max 19943 lb');
@@ -64,13 +73,10 @@ test('Dismiss removes the error; nothing else does', async () => {
 
 test('pressing the control that raised the error again clears it (a retry)', async () => {
   const { window, A } = loadFixture('a320-index');
-  const calc = window.document.createElement('button');
-  calc.textContent = 'Calculate';
+  const calc = control(window, 'Calculate');
   A.notePress(calc);
   await flashToast(window, 'error', 'Beyond Takeoff Weight Limit - Max 19943 lb');
-  const other = window.document.createElement('button');
-  other.textContent = 'Clear';
-  A.notePress(other);
+  A.notePress(control(window, 'Clear'));
   assert.strictEqual(notices(A).length, 2, 'another control must not clear it');
   A.notePress(calc);
   assert.deepStrictEqual(notices(A), []);
@@ -78,14 +84,35 @@ test('pressing the control that raised the error again clears it (a retry)', asy
 
 test('a control with the same label elsewhere (Landing "Calculate") does not clear the Takeoff error', async () => {
   const { window, A } = loadFixture('a320-index');
-  const takeoff = window.document.createElement('button');
-  takeoff.textContent = 'Calculate';
-  A.notePress(takeoff);
+  A.notePress(control(window, 'Calculate'));
   await flashToast(window, 'error', 'Beyond Takeoff Weight Limit - Max 19943 lb');
-  const landing = window.document.createElement('button');
-  landing.textContent = 'Calculate';
-  A.notePress(landing);
+  A.notePress(control(window, 'Calculate'));
   assert.strictEqual(notices(A).length, 2);
+});
+
+test('a control FBW has unmounted is let go: it is no retry, and holds no detached node', async () => {
+  const { window, A } = loadFixture('a320-index');
+  const calc = control(window, 'Calculate');
+  A.notePress(calc);
+  await flashToast(window, 'error', 'Beyond Takeoff Weight Limit - Max 19943 lb');
+  calc.remove();                                         // FBW re-renders the page without it
+  assert.strictEqual(notices(A).length, 2);
+  assert.strictEqual(A._notices[0].origin, null, 'the notice still holds the unmounted control');
+  assert.strictEqual(A._lastPress, null, 'the last press still holds the unmounted control');
+});
+
+test('a toast react-toastify lets in from its queue as another closes has no origin: only Dismiss clears it', async () => {
+  const { window, A } = loadFixture('a320-index');
+  const host = window.document.querySelector('.Toastify');
+  host.insertAdjacentHTML('beforeend', toastHtml('error', 'SimBrief: no OFP') + toastHtml('error', 'SimBrief: no route'));
+  await new Promise((r) => setTimeout(r, 0));
+  const ground = control(window, 'Ground');
+  A.notePress(ground);                                   // pressed while the third toast waits
+  host.querySelector('.Toastify__toast').remove();       // the first closes, the queued one mounts
+  host.insertAdjacentHTML('beforeend', toastHtml('error', 'SimBrief: no aircraft'));
+  await new Promise((r) => setTimeout(r, 0));
+  A.notePress(ground);
+  assert.ok(notices(A).some((e) => e.text === 'Error: SimBrief: no aircraft'), 'a press of the Ground tab cleared it');
 });
 
 test('an error raised by a typed value belongs to that field, not to the button pressed before it', async () => {
@@ -111,6 +138,33 @@ test('a burst of passing toasts never pushes out an undismissed error', async ()
   await flashToast(window, 'error', 'Could not fetch airport');
   for (let i = 0; i < A.NOTICE_MAX + 2; i++) await flashToast(window, 'info', 'Preset ' + i + ' loaded');
   assert.ok(notices(A).some((e) => e.text === 'Error: Could not fetch airport'));
+});
+
+test('over the cap with only errors listed, a new passing toast is the one dropped', async () => {
+  const { window, A } = loadFixture('a320-index');
+  for (let i = 0; i < A.NOTICE_MAX; i++) await flashToast(window, 'error', 'Error number ' + i);
+  await flashToast(window, 'info', 'Loading preset');
+  const alerts = notices(A).filter((e) => e.kind === 'alert').map((e) => e.text);
+  assert.strictEqual(alerts.length, A.NOTICE_MAX);
+  assert.ok(alerts.includes('Error: Error number 0'), 'the oldest error was pushed out by an info toast');
+});
+
+test('when FBW re-mounts its toast container, the observer follows it at the next scrape', async () => {
+  const { window, A } = loadFixture('a320-index');
+  const old = window.document.querySelector('.Toastify');
+  const fresh = window.document.createElement('div');
+  fresh.className = 'Toastify';
+  old.replaceWith(fresh);                                // a flyPad power cycle
+  notices(A);
+  await flashToast(window, 'error', 'Could not fetch airport');
+  assert.strictEqual(notices(A).filter((e) => e.kind === 'alert').length, 1);
+});
+
+test('a re-install counts on from the previous agent\'s memo generation', () => {
+  const { window, A } = loadFixture('a320-index');
+  for (let i = 0; i < 3; i++) A.scrape();
+  const B = reinstall(window);
+  assert.strictEqual(B._gen, A._gen);
 });
 
 test('a re-install over a live agent keeps its errors and its counter, and re-reads no open toast', async () => {
@@ -151,15 +205,31 @@ test('info and success toasts read without a prefix', async () => {
   assert.deepStrictEqual(notices(A).map((e) => e.text), ['Leaving the page will stop the pushback']);
 });
 
-// The overlap box exactly as FBW renders it: the exclamation-circle icon beside a plain h2.
+// The overlap box exactly as FBW renders it (ThrottleConfig.tsx): the red strip holding the
+// exclamation-circle icon, then a plain h2.
 function addOverlap(window, text) {
   const note = [...window.document.querySelectorAll('h2')].find((h) => /Remember to configure/.test(h.textContent));
   note.parentElement.insertAdjacentHTML('afterend',
     '<div class="w-full overflow-hidden rounded-md border-2 border-theme-accent" data-vis="1" data-rect="830,128,1406,900">' +
-    '<div data-vis="1" data-rect="840,140,170,880"><svg></svg></div>' +
+    '<div class="flex w-full items-center justify-center bg-utility-red py-3" data-vis="1" data-rect="840,140,170,880"><svg></svg></div>' +
     '<h2 class="py-4 text-center" data-vis="1" data-rect="832,130,1404,898">' + text + '</h2></div>');
   return note.parentElement.nextElementSibling.querySelector('h2');
 }
+
+test('in four-axis mode the axis titles, h2s beside a pencil icon, are not errors', () => {
+  const { window, A } = loadFixture('calibrate');
+  // BaseThrottleConfig.tsx renders the title as an h2 when numberOfUserAxes === 4 (the A380's
+  // default), with the expert-mode PencilSquare icon in the same panel.
+  for (const h1 of [...window.document.querySelectorAll('h1')].filter((h) => /^Axis \d/.test(h.textContent))) {
+    const h2 = window.document.createElement('h2');
+    h2.className = 'mb-2 text-center';
+    h2.textContent = h1.textContent;
+    h2.setAttribute('data-vis', '1');
+    h1.replaceWith(h2);
+    h2.parentElement.insertAdjacentHTML('beforeend', '<div class="flex w-60 flex-row"><p>Current Value: 0.00</p><svg class="text-theme-highlight"></svg></div>');
+  }
+  assert.deepStrictEqual(notices(A), []);
+});
 
 test('the throttle overlap reads as an error; the harmless note in the same kind of box does not', () => {
   const { window, A } = loadFixture('calibrate');

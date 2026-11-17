@@ -369,17 +369,19 @@ public class FbwEfbForm : Form
         // a dynamically-injected alert, so we announce it app-side — immediate (it interrupts), once
         // per appearance. Forgotten when the alert is gone so re-showing it speaks again. The flyPad
         // can list several at once (its error notices), each under its own key, so a repeat of the
-        // same error text under a new key speaks again; an alert without a key goes by its text.
+        // same error text under a new key speaks again. An alert is its key AND its text: the
+        // BlueBird 757 tablet keeps one alert under the fixed key "alert" whose words change, and
+        // each new text is a new alert.
         var present = new HashSet<string>();
         var fresh = new List<string>();
         foreach (var e in _elements)
         {
             if (e.Kind != "alert" || string.IsNullOrWhiteSpace(e.Text)) continue;
-            string id = string.IsNullOrEmpty(e.Key) ? e.Text : e.Key;
+            string id = AlertIdentity(e.Key, e.Text);
             if (present.Add(id) && !_announcedAlerts.Contains(id)) fresh.Add(e.Text);
         }
         _announcedAlerts = present;
-        if (fresh.Count > 0) _announcer.AnnounceImmediate(string.Join(". ", fresh));
+        if (fresh.Count > 0) _announcer.AnnounceImmediate(JoinAlerts(fresh));
 
         if (_useBrowser && !_webViewFailed)
         {
@@ -402,6 +404,28 @@ public class FbwEfbForm : Form
         }
 
         UpdateStatusLabel();
+    }
+
+    /// <summary>What makes an alert the same alert from one push to the next: its key and its text
+    /// (the text alone when it has no key). Internal for the tests.</summary>
+    internal static string AlertIdentity(string? key, string text) =>
+        string.IsNullOrEmpty(key) ? text : key + "\u001f" + text;
+
+    /// <summary>Several alerts that arrived together, as one announcement: ". " between them, or
+    /// only a space after one that already ends a sentence. Internal for the tests.</summary>
+    internal static string JoinAlerts(IReadOnlyList<string> texts)
+    {
+        var sb = new StringBuilder();
+        foreach (string t in texts)
+        {
+            if (sb.Length > 0)
+            {
+                char last = sb[sb.Length - 1];
+                sb.Append(last is '.' or '!' or '?' ? " " : ". ");
+            }
+            sb.Append(t.Trim());
+        }
+        return sb.ToString();
     }
 
     // ---- browser-mode rendering ------------------------------------------
@@ -652,6 +676,13 @@ public class FbwEfbForm : Form
 
     private void RebuildControls(string signature)
     {
+        // The control the pilot is on, by what it shows. A rebuild that only shifted the rows (a
+        // flyPad notice listed or gone above it) puts the focus back on that same control.
+        int focusedAt = -1;
+        string? focusedId = null;
+        foreach (var kv in _rendered)
+            if (kv.Value.Control.ContainsFocus) { focusedAt = kv.Key; focusedId = kv.Value.Identity; break; }
+
         _contentPanel.SuspendLayout();
         _contentPanel.Controls.Clear();
         _rendered.Clear();
@@ -659,6 +690,7 @@ public class FbwEfbForm : Form
         int y = 8;
         int tabIndex = 0;
         int innerWidth = InnerWidth();
+        var seen = new Dictionary<string, int>();
 
         foreach (var el in _elements)
         {
@@ -669,6 +701,8 @@ public class FbwEfbForm : Form
             var r = new RenderedControl { Disabled = el.Disabled };
             Control c = CreateControlFor(el, innerWidth, r);
             r.Control = c;
+            string id = (string.IsNullOrEmpty(el.Key) ? "t:" + el.Text : "k:" + el.Key) + "|" + el.ControlType + "|" + el.Clickable;
+            r.Identity = id + "#" + (seen[id] = seen.GetValueOrDefault(id) + 1);
             c.Location = new Point(8, y);
             c.TabIndex = tabIndex++;
             _contentPanel.Controls.Add(c);
@@ -678,6 +712,24 @@ public class FbwEfbForm : Form
 
         _contentPanel.ResumeLayout(true);
         _lastStructureSignature = signature;
+        if (focusedId != null) RestoreListFocus(focusedId, focusedAt);
+    }
+
+    // After a rebuild: focus the control showing what the focused one showed; when it is gone, the
+    // first control from where it stood, else the nearest one before it, as the browser shell does.
+    private void RestoreListFocus(string identity, int position)
+    {
+        static Control? FocusableIn(Control c) =>
+            c is Button or CheckBox ? c : c is Panel p ? p.Controls.OfType<TextBox>().FirstOrDefault() : null;
+
+        Control? target = _rendered.Values.FirstOrDefault(r => r.Identity == identity) is { } same ? FocusableIn(same.Control) : null;
+        if (target == null)
+        {
+            var order = _rendered.OrderBy(kv => kv.Key).ToList();
+            target = order.Where(kv => kv.Key >= position).Select(kv => FocusableIn(kv.Value.Control)).FirstOrDefault(c => c != null)
+                  ?? order.Where(kv => kv.Key < position).Reverse().Select(kv => FocusableIn(kv.Value.Control)).FirstOrDefault(c => c != null);
+        }
+        target?.Focus();
     }
 
     // What a dimmed control says when the pilot activates it, the same word the browser shell's
@@ -860,6 +912,9 @@ public class FbwEfbForm : Form
         // The disabled state this control is CURRENTLY rendering, and the live flag its own event
         // handlers read. Mutated by ApplyDisabledInPlace, never by a rebuild.
         public bool Disabled;
+        // What the control shows (its key, else its label, its type and its occurrence): how a rebuild
+        // finds the control the pilot was on (RestoreListFocus).
+        public string Identity = "";
     }
 
     private class EFBElement
@@ -1082,6 +1137,11 @@ public class FbwEfbForm : Form
   }
 
   function ctrlOf(node) { if (node.matches && node.matches('[data-idx]')) return node; return node.querySelector ? node.querySelector('[data-idx]') : null; }
+  // The control a list node holds that can take the focus, or null.
+  function focusableIn(node) {
+    var bc = node.matches('button, a, input, select') ? node : node.querySelector('button, a, input, select');
+    return (bc && !bc.disabled) ? bc : null;
+  }
 
   // Patch a reused node's mutable bits IN PLACE — never recreate it, never write to
   // the control the user is currently editing (preserves the screen-reader cursor).
@@ -1163,42 +1223,46 @@ public class FbwEfbForm : Form
     var els = payload.items || [];
     var before = Array.prototype.slice.call(list.children);   // pre-render order, for focus rescue below
     var existing = {};
-    for (var j = 0; j < list.children.length; j++) { var ck = list.children[j].getAttribute('data-key'); if (ck) existing[ck] = list.children[j]; }
+    for (var j = 0; j < before.length; j++) { var ck = before[j].getAttribute('data-key'); if (ck) existing[ck] = before[j]; }
 
-    var used = {}, seen = {}, prev = null;
+    // Every item's key first, so the nodes leaving are known before anything moves.
+    var keys = [], used = {}, seen = {};
     for (var n = 0; n < els.length; n++) {
-      var it = els[n], base = keyOf(it);
+      var base = keyOf(els[n]);
       var occ = (seen[base] = (seen[base] || 0) + 1);
-      var key = base + '#' + occ;                       // disambiguate duplicate labels
+      keys.push(base + '#' + occ);                      // disambiguate duplicate labels
+      used[keys[n]] = true;
+    }
+    // A removed node that held focus (a flyPad notice's Dismiss button the pilot just pressed, a
+    // notice that expired under the cursor) would drop focus to <body>, and the screen reader to
+    // an arbitrary place: remember where it stood, just after the last node before it that stays.
+    var holder = null, anchor = null;
+    for (var gone in existing) { if (!used[gone] && existing[gone].contains(document.activeElement)) { holder = existing[gone]; break; } }
+    if (holder) { for (var b = before.indexOf(holder) - 1; b >= 0; b--) { if (used[before[b].getAttribute('data-key')]) { anchor = before[b]; break; } } }
+    // Leaving nodes go BEFORE the rest is placed: while one is still in the list, every node after
+    // it is out of place and moved by insertBefore, and a moved node loses the focus (a flyPad
+    // notice at the top going would take the focus off whatever control the pilot is on).
+    for (var gone2 in existing) { if (!used[gone2]) list.removeChild(existing[gone2]); }
+
+    var prev = null;
+    for (var m = 0; m < els.length; m++) {
+      var it = els[m], key = keys[m];
       var node = existing[key];
       if (node) { patchEl(node, it); }
       else { node = buildEl(it); if (!node) continue; node.setAttribute('data-key', key); }
-      used[key] = true;
       var ref = prev ? prev.nextSibling : list.firstChild;
       if (node !== ref) list.insertBefore(node, ref);    // move only if out of place
       prev = node;
     }
-    // A removed node that held focus (a flyPad notice's Dismiss button the pilot just pressed, a
-    // notice that expired under the cursor) would drop focus to <body>, and the screen reader to
-    // an arbitrary place: move it to the first control now standing where it stood, else the page
-    // heading. Where it stood is just after the last node that came before it and survived
-    // (pre-render order: the loop above has already moved survivors), so a control rebuilt in its
-    // place (an unkeyed label change) takes the focus, not the control after it.
-    var lostFocus = null, holder = null;
-    for (var gone in existing) { if (!used[gone] && existing[gone].contains(document.activeElement)) { holder = existing[gone]; break; } }
+    // Focus the first control now standing where the removed one stood (a control rebuilt in its
+    // place, an unkeyed label change, takes it), else the nearest control before it, else the
+    // page heading.
     if (holder) {
-      lostFocus = document.getElementById('pgttl');
-      var anchor = null;
-      for (var b = before.indexOf(holder) - 1; b >= 0; b--) { if (used[before[b].getAttribute('data-key')]) { anchor = before[b]; break; } }
-      for (var c = anchor ? anchor.nextSibling : list.firstChild; c; c = c.nextSibling) {
-        var gk = c.getAttribute('data-key');
-        if (existing[gk] && !used[gk]) continue;          // also leaving
-        var bc = c.matches('button, a, input, select') ? c : c.querySelector('button, a, input, select');
-        if (bc && !bc.disabled) { lostFocus = bc; break; }
-      }
+      var target = null;
+      for (var c = anchor ? anchor.nextSibling : list.firstChild; c && !target; c = c.nextSibling) target = focusableIn(c);
+      for (var p = anchor; p && !target; p = p.previousSibling) target = focusableIn(p);
+      (target || document.getElementById('pgttl')).focus();
     }
-    for (var gone2 in existing) { if (!used[gone2]) list.removeChild(existing[gone2]); }
-    if (lostFocus) lostFocus.focus();
   };
 
   document.addEventListener('keydown', function (e) {

@@ -240,3 +240,25 @@ test('a focused button rebuilt by a label change keeps the focus in its place', 
   s.render('Ground', [btn(1, 'Back'), btn(2, 'GPU Disconnect'), btn(3, 'Next')]);
   assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('GPU Disconnect'));
 });
+
+// A notice at the top of the page going (a warning expiring, an error cleared by a retry) must not
+// move the controls below it: a node moved by insertBefore loses the focus.
+test('a notice going from above keeps the focus on the control the pilot is on', (t) => {
+  const s = loadShell(t);
+  const notice = [alertItem('Warning: Aircraft needs to be powered to load presets', 'notice:2')];
+  s.render('Performance', notice.concat([btn(6, 'Clear'), btn(7, 'Calculate')]));
+  const calc = s.buttonByLabel('Calculate');
+  calc.focus();
+  s.render('Performance', [btn(6, 'Clear'), btn(7, 'Calculate')]);
+  assert.strictEqual(s.window.document.activeElement, calc);
+});
+
+// The removed control was the last one on the page: focus stays near it, on the control before it,
+// never back at the top of the document.
+test('a focused last control going moves the focus to the control before it', (t) => {
+  const s = loadShell(t);
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'Catering'), btn(3, 'Fuel Truck')]);
+  s.buttonByLabel('Fuel Truck').focus();
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'Catering')]);
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('Catering'));
+});
