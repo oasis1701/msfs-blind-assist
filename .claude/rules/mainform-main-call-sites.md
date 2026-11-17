@@ -4,7 +4,8 @@ paths:
 ---
 # Rules whose code MainForm.cs holds
 
-MIRRORS: copied word for word from simconnect-data.md, simconnect-events.md, ground-traffic.md, surroundings.md, updates.md, pmdg-sdk.md, pmdg-737.md and first-officer.md, whose globs leave MainForm.cs out; it builds the manager, starts the probe, wires route context, runway probe and startup checks, holds the FO window, tears down on exit. Change both together (ClaudeContextBudgetTests checks).
+MIRRORS: copied word for word from simconnect-data.md, simconnect-events.md, ground-traffic.md, surroundings.md, updates.md, pmdg-sdk.md, pmdg-737.md and first-officer.md, whose globs leave MainForm.cs out;
+it builds the manager, starts the probe, wires route context, runway probe and startup checks and offers, holds the FO window, tears down on exit. Change both together (ClaudeContextBudgetTests checks).
 
 - [SIM-5] `SimConnectManager.RequestVariable` must stay safe from ANY thread: off the UI thread it POSTS itself there (`UiThreadGate`; a post refused at shutdown is dropped, never run inline). Never read `continuousVariableIndexMap` or issue `RequestDataOnSimObject` from a pool thread directly. Full: docs/invariants/simconnect-data.md#sim-5
 - [SIM-8] The calc-path probe MUST report its verdict: `CalcPathVerdict.LogLine` on both outcomes, `PilotWarning` spoken when an aircraft registering `MSFSBA_BRIDGE_PROBE` concludes UNVERIFIED (others conclude at once, logged, unspoken by design). MainForm's timer gates on that registration, never a type list. Never make the verdict silent again. Full: docs/invariants/simconnect-events.md#sim-8

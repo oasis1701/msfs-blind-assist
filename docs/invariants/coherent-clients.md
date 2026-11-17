@@ -13,6 +13,8 @@ Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is every persis
 
 - Any public on-demand scrape method competing with a background `RunLoop` must be serialized by its own connect-lock (`_connectLock`) — the existing `_sendLock` only covers `SendAsync`, not connection setup, and doesn't close the race. → [a380x.md](../a380x.md)
 
+An on-demand call that never connects needs no connect-lock (added 2026-11-14): there is no connection setup for it to race. The BlueBird 757's `CoherentBbs757TabletClient` has no `_connectLock`. Only its `RunLoop` connects and installs the agent; `ScrapeAsync`, `GetNavigraphAsync` and the key presses take whatever socket the loop holds, send on it under `_sendLock` and answer nothing when there is none (an on-demand scrape first waits a bounded time for the loop's agent), so they never open a socket of their own. A client written that way must stay that way: the first on-demand method that connects brings the race back and needs the lock.
+
 Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is shared, not the A380's alone (`CoherentDisplayClient` serves the A380 RMP and System Display and the HS787, and `CoherentEWDClient` has the same shape), and `a380-coherent.md` no longer loads on the other aircraft's clients. The ID keeps its prefix.
 
 ## HS-4

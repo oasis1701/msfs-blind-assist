@@ -9,6 +9,7 @@ using A380 = MSFSBlindAssist.FirstOfficer.FBWA380;
 using HwA330 = MSFSBlindAssist.FirstOfficer.HWA330;
 using B737 = MSFSBlindAssist.FirstOfficer.PMDG737;
 using IFly737 = MSFSBlindAssist.FirstOfficer.IFly737;
+using B757 = MSFSBlindAssist.FirstOfficer.BBS757;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
@@ -26,7 +27,7 @@ public class FlowStepDependencyIdTests
     {
         new object[] { "PMDG 737" }, new object[] { "PMDG 777" }, new object[] { "Fenix A320" },
         new object[] { "FBW A32NX" }, new object[] { "FBW A380" }, new object[] { "Headwind A330" },
-        new object[] { "iFly 737 MAX8" },
+        new object[] { "iFly 737 MAX8" }, new object[] { "BlueBird 757" },
     };
 
     // (flow id, ordered steps as (id, requiresStepId, requiresStepSkipText)) for one profile.
@@ -40,6 +41,7 @@ public class FlowStepDependencyIdTests
             "FBW A380" => Project(A380.FbwA380FlowDefinitions.Build()),
             "Headwind A330" => Project(HwA330.HwA330FlowDefinitions.Build()),
             "iFly 737 MAX8" => Project(IFly737.IFly737FlowDefinitions.Build()),
+            "BlueBird 757" => Project(B757.Bbs757FoFlowDefinitions.Build()),
             _ => throw new System.ArgumentException(profile),
         };
 

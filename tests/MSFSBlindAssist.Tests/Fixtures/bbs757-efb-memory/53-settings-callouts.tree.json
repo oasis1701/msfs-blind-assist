@@ -1,0 +1,2859 @@
+{
+  "apps": [
+    {
+      "key": 6,
+      "class": "HOME",
+      "controls": []
+    },
+    {
+      "key": 8,
+      "class": "NAVIGATION",
+      "controls": []
+    },
+    {
+      "key": 10,
+      "class": "CHECKLIST",
+      "controls": []
+    },
+    {
+      "key": 12,
+      "class": "SETTINGS",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "main_grid",
+          "text": "",
+          "x": 0,
+          "y": 32,
+          "w": 1397,
+          "h": 1016,
+          "children": [
+            {
+              "kind": "other",
+              "name": "gradbox_tl",
+              "text": "",
+              "x": 0,
+              "y": 32,
+              "w": 250,
+              "h": 50,
+              "children": [
+                {
+                  "kind": "other",
+                  "name": "btn_stack",
+                  "text": "",
+                  "x": 0,
+                  "y": 32,
+                  "w": 250,
+                  "h": 50,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "home_btn",
+                      "text": "",
+                      "x": 0,
+                      "y": 32,
+                      "w": 50,
+                      "h": 50,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "label",
+                      "name": "page_title_label",
+                      "text": "SETTINGS",
+                      "x": 60,
+                      "y": 41.5,
+                      "w": 145,
+                      "h": 36,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "other",
+              "name": "gradbox_tr",
+              "text": "",
+              "x": 250,
+              "y": 32,
+              "w": 1147,
+              "h": 50,
+              "children": []
+            },
+            {
+              "kind": "other",
+              "name": "gradbox_br",
+              "text": "",
+              "x": 0,
+              "y": 82,
+              "w": 250,
+              "h": 966,
+              "children": [
+                {
+                  "kind": "grid",
+                  "name": "control_grid",
+                  "text": "",
+                  "x": 0,
+                  "y": 82,
+                  "w": 250,
+                  "h": 966,
+                  "children": [
+                    {
+                      "kind": "other",
+                      "name": "btn_stack",
+                      "text": "",
+                      "x": 0,
+                      "y": 142,
+                      "w": 250,
+                      "h": 716,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_general",
+                          "text": "GENERAL",
+                          "x": 0,
+                          "y": 142,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_aircraft",
+                          "text": "AIRCRAFT",
+                          "x": 0,
+                          "y": 202,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_livery",
+                          "text": "LIVERY OPTIONS",
+                          "x": 0,
+                          "y": 262,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_audio",
+                          "text": "CALLOUTS",
+                          "x": 0,
+                          "y": 322,
+                          "w": 250,
+                          "h": 60,
+                          "selected": true,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_cabin_audio",
+                          "text": "CABIN AUDIO",
+                          "x": 0,
+                          "y": 382,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_airac_data",
+                          "text": "AIRAC DATA",
+                          "x": 0,
+                          "y": 442,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "image",
+                      "name": "label_bbs_img",
+                      "text": "./data/efb/bbs_logo_light.png",
+                      "x": 0,
+                      "y": 798,
+                      "w": 250,
+                      "h": 250,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "grid",
+          "name": "page_main_grid",
+          "text": "",
+          "x": 0,
+          "y": 32,
+          "w": 1397,
+          "h": 1016,
+          "children": [
+            {
+              "kind": "grid",
+              "name": "page_control_grid",
+              "text": "",
+              "x": 0,
+              "y": 82,
+              "w": 1397,
+              "h": 966,
+              "children": [
+                {
+                  "kind": "other",
+                  "name": "page_colorbox",
+                  "text": "",
+                  "x": 250,
+                  "y": 82,
+                  "w": 1147,
+                  "h": 966,
+                  "children": [
+                    {
+                      "kind": "scrollbox",
+                      "name": "callouts_scrollbox",
+                      "text": "",
+                      "x": 250,
+                      "y": 82,
+                      "w": 1147,
+                      "h": 966,
+                      "children": [
+                        {
+                          "kind": "other",
+                          "name": "callouts_stackbox",
+                          "text": "",
+                          "x": 250,
+                          "y": 94,
+                          "w": 1147,
+                          "h": 1832,
+                          "children": [
+                            {
+                              "kind": "label",
+                              "name": "callouts_saved_help",
+                              "text": "Selections save automatically for this aircraft registration.",
+                              "x": 274,
+                              "y": 101.5,
+                              "w": 1099,
+                              "h": 21,
+                              "children": []
+                            },
+                            {
+                              "kind": "label",
+                              "name": "callouts_pilot_heading",
+                              "text": "PILOT CALLOUTS",
+                              "x": 274,
+                              "y": 142,
+                              "w": 1099,
+                              "h": 26,
+                              "children": []
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "pilot_callout_80_knots_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 180,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "pilot_callout_80_knots_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 180,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "pilot_callout_80_knots_label",
+                                      "text": "80 KTS",
+                                      "x": 304,
+                                      "y": 180,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "pilot_callout_80_knots_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 188.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "pilot_callout_80_knots_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 180,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "pilot_callout_v1_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 232,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "pilot_callout_v1_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 232,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "pilot_callout_v1_label",
+                                      "text": "V1",
+                                      "x": 304,
+                                      "y": 232,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "pilot_callout_v1_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 240.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "pilot_callout_v1_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 232,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "pilot_callout_rotate_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 284,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "pilot_callout_rotate_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 284,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "pilot_callout_rotate_label",
+                                      "text": "ROTATE",
+                                      "x": 304,
+                                      "y": 284,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "pilot_callout_rotate_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 292.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "pilot_callout_rotate_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 284,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "pilot_callout_positive_rate_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 336,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "pilot_callout_positive_rate_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 336,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "pilot_callout_positive_rate_label",
+                                      "text": "POSITIVE RATE",
+                                      "x": 304,
+                                      "y": 336,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "pilot_callout_positive_rate_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 344.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "pilot_callout_positive_rate_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 336,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "label",
+                              "name": "callouts_egpws_heading",
+                              "text": "EGPWS CALLOUTS",
+                              "x": 274,
+                              "y": 400,
+                              "w": 1099,
+                              "h": 26,
+                              "children": []
+                            },
+                            {
+                              "kind": "label",
+                              "name": "callouts_dh_help",
+                              "text": "Captain DH must be above -20 for EGPWS callouts to play.",
+                              "x": 274,
+                              "y": 445.5,
+                              "w": 1099,
+                              "h": 21,
+                              "children": []
+                            },
+                            {
+                              "kind": "label",
+                              "name": "callouts_altitude_heading",
+                              "text": "RADIO ALTITUDE",
+                              "x": 274,
+                              "y": 486,
+                              "w": 1099,
+                              "h": 26,
+                              "children": []
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_2500_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 524,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_2500_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 524,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_2500_label",
+                                      "text": "2500",
+                                      "x": 304,
+                                      "y": 524,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_2500_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 532.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_2500_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 524,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_radio_altimeter_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 576,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_radio_altimeter_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 576,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_radio_altimeter_label",
+                                      "text": "RADIO ALTIMETER (2500)",
+                                      "x": 304,
+                                      "y": 576,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_radio_altimeter_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 584.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_radio_altimeter_value",
+                                  "text": "OFF",
+                                  "x": 1293,
+                                  "y": 576,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_1000_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 628,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_1000_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 628,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_1000_label",
+                                      "text": "1000",
+                                      "x": 304,
+                                      "y": 628,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_1000_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 636.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_1000_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 628,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_500_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 680,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_500_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 680,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_500_label",
+                                      "text": "500",
+                                      "x": 304,
+                                      "y": 680,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_500_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 688.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_500_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 680,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_400_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 732,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_400_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 732,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_400_label",
+                                      "text": "400",
+                                      "x": 304,
+                                      "y": 732,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_400_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 740.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_400_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 732,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_300_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 784,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_300_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 784,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_300_label",
+                                      "text": "300",
+                                      "x": 304,
+                                      "y": 784,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_300_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 792.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_300_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 784,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_200_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 836,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_200_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 836,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_200_label",
+                                      "text": "200",
+                                      "x": 304,
+                                      "y": 836,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_200_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 844.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_200_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 836,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_100_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 888,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_100_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 888,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_100_label",
+                                      "text": "100",
+                                      "x": 304,
+                                      "y": 888,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_100_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 896.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_100_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 888,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_80_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 940,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_80_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 940,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_80_label",
+                                      "text": "80",
+                                      "x": 304,
+                                      "y": 940,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_80_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 948.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_80_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 940,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_60_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 992,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_60_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 992,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_60_label",
+                                      "text": "60",
+                                      "x": 304,
+                                      "y": 992,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_60_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1000.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_60_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 992,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_50_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1044,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_50_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1044,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_50_label",
+                                      "text": "50",
+                                      "x": 304,
+                                      "y": 1044,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_50_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1052.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_50_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 1044,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_40_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1096,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_40_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1096,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_40_label",
+                                      "text": "40",
+                                      "x": 304,
+                                      "y": 1096,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_40_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1104.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_40_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 1096,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_35_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1148,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_35_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1148,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_35_label",
+                                      "text": "35",
+                                      "x": 304,
+                                      "y": 1148,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_35_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1156.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_35_value",
+                                  "text": "OFF",
+                                  "x": 1293,
+                                  "y": 1148,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_30_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1200,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_30_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1200,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_30_label",
+                                      "text": "30",
+                                      "x": 304,
+                                      "y": 1200,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_30_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1208.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_30_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 1200,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_20_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1252,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_20_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1252,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_20_label",
+                                      "text": "20",
+                                      "x": 304,
+                                      "y": 1252,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_20_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1260.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_20_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 1252,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_10_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1304,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_10_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1304,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_10_label",
+                                      "text": "10",
+                                      "x": 304,
+                                      "y": 1304,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_10_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1312.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_10_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 1304,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_5_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1356,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_5_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1356,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_5_label",
+                                      "text": "5",
+                                      "x": 304,
+                                      "y": 1356,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_5_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1364.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_5_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 1356,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "label",
+                              "name": "callouts_minimums_heading",
+                              "text": "APPROACH / MINIMUMS",
+                              "x": 274,
+                              "y": 1420,
+                              "w": 1099,
+                              "h": 26,
+                              "children": []
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_plus_hundred_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1458,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_plus_hundred_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1458,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_plus_hundred_label",
+                                      "text": "PLUS HUNDRED (DH \u002B 100)",
+                                      "x": 304,
+                                      "y": 1458,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_plus_hundred_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1466.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_plus_hundred_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 1458,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_approaching_dh_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1510,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_approaching_dh_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1510,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_approaching_dh_label",
+                                      "text": "APPROACHING DH (DH \u002B 100)",
+                                      "x": 304,
+                                      "y": 1510,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_approaching_dh_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1518.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_approaching_dh_value",
+                                  "text": "OFF",
+                                  "x": 1293,
+                                  "y": 1510,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_approaching_minimums_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1562,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_approaching_minimums_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1562,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_approaching_minimums_label",
+                                      "text": "APPROACHING MINIMUMS (DH \u002B 80)",
+                                      "x": 304,
+                                      "y": 1562,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_approaching_minimums_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1570.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_approaching_minimums_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 1562,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_50_above_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1614,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_50_above_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1614,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_50_above_label",
+                                      "text": "FIFTY ABOVE (DH \u002B 50)",
+                                      "x": 304,
+                                      "y": 1614,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_50_above_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1622.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_50_above_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 1614,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_minimums_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1666,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_minimums_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1666,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_minimums_label",
+                                      "text": "MINIMUMS",
+                                      "x": 304,
+                                      "y": 1666,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_minimums_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1674.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_minimums_value",
+                                  "text": "ON",
+                                  "x": 1293,
+                                  "y": 1666,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_minimums_minimums_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1718,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_minimums_minimums_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1718,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_minimums_minimums_label",
+                                      "text": "MINIMUMS MINIMUMS",
+                                      "x": 304,
+                                      "y": 1718,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_minimums_minimums_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1726.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_minimums_minimums_value",
+                                  "text": "OFF",
+                                  "x": 1293,
+                                  "y": 1718,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_minimum_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1770,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_minimum_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1770,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_minimum_label",
+                                      "text": "MINIMUM",
+                                      "x": 304,
+                                      "y": 1770,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_minimum_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1778.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_minimum_value",
+                                  "text": "OFF",
+                                  "x": 1293,
+                                  "y": 1770,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_decide_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1822,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_decide_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1822,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_decide_label",
+                                      "text": "DECIDE",
+                                      "x": 304,
+                                      "y": 1822,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_decide_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1830.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_decide_value",
+                                  "text": "OFF",
+                                  "x": 1293,
+                                  "y": 1822,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "callout_decision_height_row",
+                              "text": "",
+                              "x": 274,
+                              "y": 1874,
+                              "w": 1099,
+                              "h": 52,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "callout_decision_height_title_group",
+                                  "text": "",
+                                  "x": 274,
+                                  "y": 1874,
+                                  "w": 929,
+                                  "h": 52,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "callout_decision_height_label",
+                                      "text": "DECISION HEIGHT",
+                                      "x": 304,
+                                      "y": 1874,
+                                      "w": 929,
+                                      "h": 52,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "callout_decision_height_toggle",
+                                  "text": "",
+                                  "x": 1218,
+                                  "y": 1882.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "callout_decision_height_value",
+                                  "text": "OFF",
+                                  "x": 1293,
+                                  "y": 1874,
+                                  "w": 80,
+                                  "h": 52,
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": 9,
+      "class": "SYSTEMS",
+      "controls": []
+    },
+    {
+      "key": 7,
+      "class": "AIRCRAFT",
+      "controls": []
+    },
+    {
+      "key": 5,
+      "class": "SIGN IN",
+      "controls": []
+    },
+    {
+      "key": 2,
+      "class": "app",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "kb_grid",
+          "text": "",
+          "x": 0,
+          "y": 648,
+          "w": 1397,
+          "h": 400,
+          "children": [
+            {
+              "kind": "grid",
+              "name": "keyboard_grid_container",
+              "text": "",
+              "x": 0,
+              "y": 708,
+              "w": 1396.9999,
+              "h": 340,
+              "children": [
+                {
+                  "kind": "grid",
+                  "name": "row_1",
+                  "text": "",
+                  "x": 0,
+                  "y": 708,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "btn_delete",
+                      "text": "COMMAND_DELETE",
+                      "x": 5,
+                      "y": 713,
+                      "w": 138.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_1_keys",
+                      "text": "",
+                      "x": 148.49994,
+                      "y": 708,
+                      "w": 1100,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_q|Q|1",
+                          "text": "q|Q|1",
+                          "x": 153.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_w|W|2",
+                          "text": "w|W|2",
+                          "x": 263.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_e|E|3",
+                          "text": "e|E|3",
+                          "x": 373.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_r|R|4",
+                          "text": "r|R|4",
+                          "x": 483.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_t|T|5",
+                          "text": "t|T|5",
+                          "x": 593.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_y|Y|6",
+                          "text": "y|Y|6",
+                          "x": 703.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_u|U|7",
+                          "text": "u|U|7",
+                          "x": 813.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_i|I|8",
+                          "text": "i|I|8",
+                          "x": 923.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_o|O|9",
+                          "text": "o|O|9",
+                          "x": 1033.5,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_p|P|0",
+                          "text": "p|P|0",
+                          "x": 1143.5,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_backspace",
+                      "text": "COMMAND_BACKSPACE",
+                      "x": 1253.5,
+                      "y": 713,
+                      "w": 138.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_2",
+                  "text": "",
+                  "x": 0,
+                  "y": 793,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "btn_tab",
+                      "text": "COMMAND_TAB",
+                      "x": 5,
+                      "y": 798,
+                      "w": 193.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_2_keys",
+                      "text": "",
+                      "x": 203.49994,
+                      "y": 793,
+                      "w": 990,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_a|A|@",
+                          "text": "a|A|@",
+                          "x": 208.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_s|S|#",
+                          "text": "s|S|#",
+                          "x": 318.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_d|D|$",
+                          "text": "d|D|$",
+                          "x": 428.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_f|F|\u0026",
+                          "text": "f|F|\u0026",
+                          "x": 538.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_g|G|*",
+                          "text": "g|G|*",
+                          "x": 648.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_h|H|(",
+                          "text": "h|H|(",
+                          "x": 758.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_j|J|)",
+                          "text": "j|J|)",
+                          "x": 868.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_k|K|\u0027",
+                          "text": "k|K|\u0027",
+                          "x": 978.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_l|L|\u0022",
+                          "text": "l|L|\u0022",
+                          "x": 1088.5,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_enter",
+                      "text": "COMMAND_ENTER",
+                      "x": 1198.5,
+                      "y": 798,
+                      "w": 193.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_3",
+                  "text": "",
+                  "x": 0,
+                  "y": 878,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "grid",
+                      "name": "row_3_left_grid",
+                      "text": "",
+                      "x": 0,
+                      "y": 878,
+                      "w": 260,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_double_shift",
+                          "text": "COMMAND_DOUBLE_SHIFT",
+                          "x": 5,
+                          "y": 883,
+                          "w": 120,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_shift2",
+                          "text": "COMMAND_SHIFT",
+                          "x": 135,
+                          "y": 883,
+                          "w": 120,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_3_keys",
+                      "text": "",
+                      "x": 260,
+                      "y": 878,
+                      "w": 770,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_z|Z|%",
+                          "text": "z|Z|%",
+                          "x": 265,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_x|X|-",
+                          "text": "x|X|-",
+                          "x": 375,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_c|C|\u002B",
+                          "text": "c|C|\u002B",
+                          "x": 485,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_v|V|=",
+                          "text": "v|V|=",
+                          "x": 595,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_b|B|/",
+                          "text": "b|B|/",
+                          "x": 705,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_n|N|;",
+                          "text": "n|N|;",
+                          "x": 815,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_m|M|:",
+                          "text": "m|M|:",
+                          "x": 925,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_3_right_grid",
+                      "text": "",
+                      "x": 1030,
+                      "y": 878,
+                      "w": 366.99988,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_exclamation",
+                          "text": ",|,|!",
+                          "x": 1035,
+                          "y": 883,
+                          "w": 96.42996,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_question",
+                          "text": ".|.|?",
+                          "x": 1141.4299,
+                          "y": 883,
+                          "w": 96.42996,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_shift",
+                          "text": "COMMAND_SHIFT",
+                          "x": 1247.8599,
+                          "y": 883,
+                          "w": 144.13994,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_4",
+                  "text": "",
+                  "x": 0,
+                  "y": 963,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "grid",
+                      "name": "row_4_left_grid",
+                      "text": "",
+                      "x": 0,
+                      "y": 963,
+                      "w": 348.49994,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_home",
+                          "text": "COMMAND_HOME",
+                          "x": 5,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_numeric_switch2",
+                          "text": "COMMAND_NUMERIC_SWITCH",
+                          "x": 179.24997,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_space",
+                      "text": "COMMAND_SPACE",
+                      "x": 353.49994,
+                      "y": 968,
+                      "w": 690,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_4_right_grid",
+                      "text": "",
+                      "x": 1048.5,
+                      "y": 963,
+                      "w": 348.49994,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_numeric_switch",
+                          "text": "COMMAND_NUMERIC_SWITCH",
+                          "x": 1053.5,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_keyboard_down",
+                          "text": "COMMAND_KEYBOARD_DOWN",
+                          "x": 1227.75,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": 1,
+      "class": "overlay",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "overlay_grid",
+          "text": "",
+          "x": 0,
+          "y": 0,
+          "w": 1397,
+          "h": 32,
+          "children": [
+            {
+              "kind": "label",
+              "name": "time_label",
+              "text": "Sat, 7th Nov 2026 | 23:05L | 05:05Z | OAT 4 C",
+              "x": 15,
+              "y": 0,
+              "w": 1382,
+              "h": 32,
+              "children": []
+            }
+          ]
+        },
+        {
+          "kind": "label",
+          "name": "keyboard_locked_label",
+          "text": "",
+          "x": 0,
+          "y": 0,
+          "w": 1397,
+          "h": 32,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "notices": [
+    {
+      "id": 1,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "19:34Z",
+      "unread": false
+    },
+    {
+      "id": 2,
+      "title": "",
+      "text": "SIMBRIEF OFP RECEIVED.",
+      "time": "19:35Z",
+      "unread": false
+    },
+    {
+      "id": 3,
+      "title": "",
+      "text": "DEFUELING INITIATED.",
+      "time": "19:41Z",
+      "unread": false
+    },
+    {
+      "id": 4,
+      "title": "",
+      "text": "IRS ALIGNMENT INITIATED.",
+      "time": "19:41Z",
+      "unread": false
+    },
+    {
+      "id": 5,
+      "title": "",
+      "text": "DEFUELING IS COMPLETE!",
+      "time": "19:42Z",
+      "unread": false
+    },
+    {
+      "id": 6,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 7,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 8,
+      "title": "",
+      "text": "0 PASSENGERS BOARDED!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 9,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 10,
+      "title": "",
+      "text": "IRS ALIGNED.",
+      "time": "19:50Z",
+      "unread": false
+    },
+    {
+      "id": 11,
+      "title": "",
+      "text": "CHOCKS REMOVED.",
+      "time": "20:00Z",
+      "unread": false
+    },
+    {
+      "id": 12,
+      "title": "",
+      "text": "GPU DISCONNECTED.",
+      "time": "20:00Z",
+      "unread": false
+    },
+    {
+      "id": 15,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "21:00Z",
+      "unread": false
+    },
+    {
+      "id": 16,
+      "title": "",
+      "text": "CHOCKS ATTACHED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 17,
+      "title": "",
+      "text": "BOARDING INITIATED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 18,
+      "title": "",
+      "text": "R3 DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 19,
+      "title": "",
+      "text": "FWD CARGO DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 20,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 21,
+      "title": "",
+      "text": "L1 DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 22,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 23,
+      "title": "",
+      "text": "FWD CARGO DOOR CLOSED.",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 24,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 25,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "21:08Z",
+      "unread": false
+    },
+    {
+      "id": 26,
+      "title": "",
+      "text": "R3 DOOR CLOSED.",
+      "time": "21:12Z",
+      "unread": false
+    },
+    {
+      "id": 27,
+      "title": "",
+      "text": "176 PASSENGERS BOARDED!",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 28,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 29,
+      "title": "",
+      "text": "DEBOARDING INITIATED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 30,
+      "title": "",
+      "text": "R3 DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 31,
+      "title": "",
+      "text": "FWD CARGO DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 32,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 33,
+      "title": "",
+      "text": "L1 DOOR CLOSED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 34,
+      "title": "",
+      "text": "CARGO IS UNLOADED!",
+      "time": "21:23Z",
+      "unread": false
+    },
+    {
+      "id": 35,
+      "title": "",
+      "text": "FWD CARGO DOOR CLOSED.",
+      "time": "21:24Z",
+      "unread": false
+    },
+    {
+      "id": 36,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "21:24Z",
+      "unread": false
+    },
+    {
+      "id": 37,
+      "title": "",
+      "text": "R3 DOOR CLOSED.",
+      "time": "21:29Z",
+      "unread": false
+    },
+    {
+      "id": 38,
+      "title": "",
+      "text": "176 PASSENGERS DEBOARDED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 39,
+      "title": "",
+      "text": "DEBOARDING IS COMPLETE!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 40,
+      "title": "",
+      "text": "BOARDING INITIATED.",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 41,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 42,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 43,
+      "title": "",
+      "text": "176 PASSENGERS BOARDED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 44,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 45,
+      "title": "",
+      "text": "CHOCKS REMOVED.",
+      "time": "21:37Z",
+      "unread": false
+    },
+    {
+      "id": 46,
+      "title": "",
+      "text": "GPU DISCONNECTED.",
+      "time": "21:37Z",
+      "unread": false
+    },
+    {
+      "id": 47,
+      "title": "AUTOBRAKE 1",
+      "text": "TARGET 4.5 | ACTUAL 4.5 ft/s2",
+      "time": "00:58Z",
+      "unread": false
+    },
+    {
+      "id": 48,
+      "title": "BRAKE THERMAL EFFICIENCY",
+      "text": "LEFT 96.2% | RIGHT 96.2%",
+      "time": "00:58Z",
+      "unread": false
+    },
+    {
+      "id": 49,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "01:16Z",
+      "unread": false
+    },
+    {
+      "id": 50,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "03:15Z",
+      "unread": true
+    },
+    {
+      "id": 51,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "03:16Z",
+      "unread": true
+    }
+  ]
+}
