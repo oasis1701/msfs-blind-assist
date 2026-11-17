@@ -40,6 +40,27 @@ public partial class TaxiGuidanceManager
             AnnounceInstruction("Back on charted taxiways.");
         }
 
+        // A Turn pick's off-chart leg: said once on entering it, so the pilot knows the tone is about
+        // to leave the taxi line on purpose and which way the turn at its end goes. Same length floor
+        // as the apron crossing; nothing is said on leaving it (the turn and taxiway callouts cover that).
+        // A leg that is segment 0 is reached on the first taxiing frame, right after the start utterance
+        // (the off-chart note, any runway-with-no-hold warning): held through the start grace window like
+        // the advance notice, the latch left unset, unless the gate projects it would be lost. It is lost
+        // once AdvanceSegment leaves the leg, WAYPOINT_CAPTURE_RADIUS_M short of its end node, which is
+        // what distToTargetM measures to here.
+        if (currentSeg.IsOffChartTurn
+            && _offChartLegAnnouncedIdx != _currentSegmentIndex
+            && currentSeg.DistanceMeters >= UNCHARTED_ANNOUNCE_MIN_M
+            && _route.TurnPicks.FirstOrDefault(p => p.FirstSegmentAfterDeparture == _currentSegmentIndex) is { } legPick
+            && !StartWarningChatterGate.ShouldHold(
+                MSFSBlindAssist.Utils.SimClock.UtcNow, _startChatterSuppressUntil,
+                distToTargetM, WAYPOINT_CAPTURE_RADIUS_M, _lastGroundSpeedKts))
+        {
+            _offChartLegAnnouncedIdx = _currentSegmentIndex;
+            AnnounceInstruction(TurnPickMessages.EnteringLeg(
+                legPick.Side, legPick.TaxiwayName, FormatDistance(currentSeg.DistanceMeters)));
+        }
+
         int nextIdx = _currentSegmentIndex + 1;
         if (nextIdx >= _route.Segments.Count)
         {
@@ -710,7 +731,8 @@ public partial class TaxiGuidanceManager
             return $"Arrived at {_route.DestinationName}.";
 
         var seg = _route.Segments[_currentSegmentIndex];
-        string taxiway = !string.IsNullOrEmpty(seg.TaxiwayName) ? $"Taxiway {seg.TaxiwayName}" : "Connector";
+        string taxiway = !string.IsNullOrEmpty(seg.TaxiwayName) ? $"Taxiway {seg.TaxiwayName}"
+            : seg.IsOffChartTurn ? "Off-chart leg" : "Connector";
 
         // Calculate remaining distance using live aircraft position (if we have one).
         // Use the explicit _positionInitialized flag instead of (lat!=0 || lon!=0) — the
