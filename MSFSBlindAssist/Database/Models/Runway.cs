@@ -35,10 +35,13 @@ public class Runway
 
         public double ThresholdOffset { get; set; }
 
-        /// <summary>Threshold elevation in feet MSL, sourced from runway_end.altitude.
-        /// At airports with sloped runways or different elevations between runway ends
-        /// (KASE, LSZS, KSEA 16L/34R), this is more accurate than the airport's published
-        /// field elevation. 0 means unknown — callers fall back to airport.Altitude.</summary>
+        /// <summary>Threshold elevation in feet MSL, sourced from runway_end.altitude. It is the
+        /// runway's own elevation, more accurate than the airport's published field elevation
+        /// (MSFS 2024: KASE runway 7,680 ft against the field's 7,750, KSEA 16L 385 against 433).
+        /// Both navdata builds have one elevation per runway, the same at both its ends (2026-11-06:
+        /// none of about 48,000 runways differ by more than a foot), and none for a displaced
+        /// threshold, which takes the runway's.
+        /// 0 means unknown — callers fall back to airport.Altitude.</summary>
         public double ThresholdElevation { get; set; }
 
         /// <summary>Published ILS glideslope angle in degrees, sourced from ils.gs_pitch.
@@ -46,6 +49,12 @@ public class Runway
         /// 3.8°. 0 means the runway has no ILS or the navdata doesn't carry the angle —
         /// callers fall back to 3.0°.</summary>
         public double GlideslopeAngleDeg { get; set; }
+
+        /// <summary>The approach slope lights' angle in degrees (PAPI or VASI), sourced from
+        /// runway_end.left_vasi_pitch, else right_vasi_pitch. 0 means the end has none or the
+        /// navdata doesn't carry the angle. Visual guidance flies it where there is no ILS angle
+        /// (<c>VisualGuidanceVertical.PathAngleDeg</c>).</summary>
+        public double PapiAngleDeg { get; set; }
 
         // Operational status flags read from runway_end. Defaults are PERMISSIVE
         // (closed=false, can-land=true, can-takeoff=true) because most user DBs

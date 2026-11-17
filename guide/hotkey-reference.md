@@ -203,7 +203,7 @@ While Hand Fly mode or Visual Guidance is on, these single keys work with no mod
 - **P** — Pitch.
 - **B** — Bank.
 - **D** — Distance to the destination runway.
-- **F** — Target vertical speed and how high or low you are (Visual Guidance only; otherwise you hear *"Visual guidance not active"*).
+- **F** — Where you are: the guidance phase, your position left or right of the centreline (before final, where you will join it and when to turn), and how high or low you are with the descent rate it wants (Visual Guidance only; otherwise you hear *"Visual guidance not active"*).
 
 ## FlyByWire A320neo {#hk-a32nx}
 

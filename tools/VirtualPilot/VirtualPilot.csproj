@@ -21,4 +21,8 @@
     <Compile Remove="frozen/**;runs/**" />
     <None Remove="frozen/**;runs/**" />
   </ItemGroup>
+  <!-- The approach mode needs visual guidance's harness hooks, which an older app build lacks. -->
+  <ItemGroup Condition="'$(MainApp)' == 'true'">
+    <Compile Remove="Approach/**" />
+  </ItemGroup>
 </Project>

@@ -107,7 +107,7 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     // bumped for the widebody; rate caps softened for the larger inertia. The glidepath
     // and flare biases are ESTIMATES pending an in-sim coupled-ILS-autoland calibration
     // (same status as the A320's — do not treat as measured). Flare initiation per the
-    // A330 FCTM (~40 ft RA, ~2° pitch increase from the ~3° approach attitude).
+    // A330 FCTM (~40 ft RA).
     public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
     {
         TypicalApproachAoaDeg     = 4.5,    // widebody approach AoA (lower than the A320's 6°)
@@ -116,8 +116,7 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         MaxBankRateDegPerSec      = 2.5,
         GlideslopeAltitudeBiasFt  = 70.0,   // estimate — calibrate vs a coupled ILS autoland
         FlareAltitudeBiasFt       = 30.0,   // estimate
-        FlareTriggerWheelHeightFt = 40.0,   // A330 FCTM: flare initiation ~40 ft RA
-        FlareTargetPitchDeg       = 5.0     // ~2° increase from the ~3° widebody approach pitch
+        FlareTriggerWheelHeightFt = 40.0    // A330 FCTM: flare initiation ~40 ft RA
     };
 
     // Slightly longer turn-rollout lead than the A320 (1.6 s): the A330's longer

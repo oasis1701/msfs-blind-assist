@@ -114,7 +114,7 @@ Output I, the wind readout described in [Readout Hotkeys](core-concepts.md#reado
 
 ### What it is {#land-vg-what}
 
-Visual Guidance is an audio instrument for hand-flying an approach. It is BA's equivalent of the flight director needles a sighted pilot follows: it works out what the aircraft should be doing to reach the runway centreline and a normal glide path, and plays it to you as sound. You do not need an ILS. Visual Guidance uses the runway's position and glide-path angle from the navigation database, so it works on any runway in the database, including ones with no instrument approach at all.
+Visual Guidance is an audio instrument for hand-flying an approach. It is BA's equivalent of the flight director needles a sighted pilot follows: it works out what the aircraft should be doing to reach the runway centreline and a normal glide path, and plays it to you as sound. You do not need an ILS. Visual Guidance uses the runway's position and glide-path angle from the navigation database, so it works on any runway in the database, including ones with no instrument approach at all. The glide path starts at the painted threshold, even where the threshold is displaced down the runway, as at KATL 27R or KJFK 22R, so you touch down beyond it, where a sighted pilot would. Its angle is the ILS glideslope's; on a runway with no ILS it is the PAPI's, often 3.5 or 4 degrees at smaller airfields, and 3 degrees when the database gives neither.
 
 It is made of two tones playing together:
 
@@ -129,7 +129,7 @@ Your whole job is to make the current tone sit on top of the guidance tone. You 
 
 **Up and down (pitch).** Listen to the two pitches. If the guidance tone is higher than the current tone, raise the nose a little. If it is lower, lower the nose. When the two are close in pitch you hear a beat: a wobble or flutter in the sound, caused by two nearly-equal notes rubbing against each other. The bigger the difference, the faster the flutter. A difference of half a degree of pitch is a clear fast flutter; a tenth of a degree is a slow, lazy wobble. When the wobble stops and you hear one steady chord, your pitch is exactly what the guidance wants.
 
-**Left and right (bank).** Listen to where each tone sits between your ears. If the guidance tone is further to the right than the current tone, roll to the right. If it is further left, roll left. When both tones come from the same place, your bank matches what the guidance wants.
+**Left and right (bank).** Listen to where each tone sits between your ears. If the guidance tone is further to the right than the current tone, roll to the right. If it is further left, roll left. When both tones come from the same place, your bank matches what the guidance wants. Each tone moves across the whole space between your ears for 10 degrees of bank either way: at 10 degrees or more of bank it sits fully to one side.
 
 **Both at once.** The two axes are separate and you fly them together, not one after the other: roll to bring the positions together while you pitch to stop the beating, just as a sighted pilot keeps both flight director bars centred at once.
 
@@ -137,7 +137,7 @@ Remember what the guidance tone is telling you. It is not "where the runway is";
 
 <div class="callout tip" role="note" markdown="1">
 
-**Tip:** The tones are deliberately very sensitive near the matched state: small errors are clearly audible. For big corrections, such as the turn onto final, the guidance tone may sit fully over to one side. That is normal. The spoken bank callouts described below cover those big corrections.
+**Tip:** The tones are sensitive near the matched state: small errors are clearly audible. For big corrections, such as the turn onto final, the guidance tone may sit fully over to one side. That is normal. The spoken bank callouts described below cover those big corrections.
 
 </div>
 
@@ -152,37 +152,81 @@ You do not need Hand Fly mode to use Visual Guidance. If it is on, its tone is m
 ### How to use it {#land-vg-how}
 
 1. Set a destination runway (Input Shift+D).
-2. Fly toward the runway. Visual Guidance can start from a long way out; it will lead you onto the extended centreline.
-3. Press Output Ctrl+V. BA says *"Visual guidance active, runway 27L"* and both tones start.
-4. Match the tones as described above. Listen for the phase callouts (below), which tell you which part of the approach you are in.
-5. At touchdown, Visual Guidance switches itself off and says *"Visual guidance off"*. From there the rollout tones and the Landing Exit Planner take over, if you have set them up.
+2. Press Output Ctrl+V when you want guidance onto final: when ATC hands you the approach, with a heading and "join final" or with "cleared visual approach", or whenever you want it when flying without ATC. BA says *"Visual guidance active, runway 27L"* and both tones start. Once your wings are nearly level, BA says how it will get you onto final (see the next part).
+3. Match the tones as described above. Listen for the callouts (below), which tell you which part of the approach you are in.
+4. At touchdown, Visual Guidance switches itself off and says *"Visual guidance off"*. From there the rollout tones and the Landing Exit Planner take over, if you have set them up.
 
 To switch Visual Guidance off yourself, press Output Ctrl+V again. If you press it with no destination runway set, BA says *"No destination runway selected"* and nothing starts.
 
+### Where you press it from {#land-vg-joining}
+
+When you press Output Ctrl+V, BA looks once at where you are and which way you are going, and picks one of these. If you are in a turn, it waits until your bank is under 5 degrees; until then both tones sit on your own attitude and F says *"Visual guidance starting, waiting for wings level."*
+
+- **On final.** Within about 600 feet of the extended centreline and within 5 degrees of its direction: BA says *"On final"* and guides you down it. The pitch tone aims you at the glide path: above it, a steeper descent, never more than 2 degrees steeper than the path; below it, level flight until the path comes down to you, then down the path, never a climb. The tone is set from the nose attitude your aircraft flies level at, which BA learns as you fly, so matching it puts you on the path. In the last 60 feet it simply holds the path's angle.
+- **Your heading crosses final.** The way you are going crosses the extended centreline ahead of you, at least 6 miles from the threshold, at up to about 100 degrees: BA says *"Joining final"* and keeps you on that heading, ATC's or your own, with the guidance tone's wings level. It never asks you to turn in more steeply than you already are. It counts down *"Turn onto final in 30 seconds"* and *"Turn onto final in 15 seconds"*, then says *"Turn onto final"* when it is time to roll in. From there the guidance tone leads you round onto the centreline, and *"Established on final"* follows once you are on it. Until then your altitude is yours or ATC's. While you climb or descend, the pitch tone sits on your own pitch and asks for nothing. Once you have been level for about 5 seconds, it holds that altitude and asks you back if you drift off it. Pitch away from it on purpose, for example when ATC clears you lower, and it lets go at once; level off again and it holds the new altitude.
+- **Anywhere else on the approach side**, for example flying parallel to final, heading away from it, or cutting toward it too close in: BA says *"Vectoring to final"* and picks the heading itself, the shallowest cut from 30 degrees that puts you on final at least 6 miles out, or straight onto final if you are already close to the centreline. If you are already inside 6 miles and heading in, it picks the shallowest cut that still lines you up before the threshold, so it never leads you away from a runway you are about to land on. It guides your altitude as well: BA plans your descent so you reach final a little below the glide path, never more than about 150 feet below it, then joins the path from below, as on an ILS. If you are already on the glide path, or below it, when BA starts vectoring you, it keeps you there instead, descending with the path, and does not take you lower first. If you are above the plan, the pitch tone asks you down; below it, it asks you to level off, never to climb. Then *"Turn onto final"* and *"Established on final"*, as above.
+- **The far side of the field, or too close in to turn straight onto final.** BA says *"Vectoring to final"* and leads you round a simple pattern on your side of the runway: a downwind flown away from the runway, a base, then final, lined up at least 6 miles out. BA works out how much room your turns need from your speed and bank, so a faster aircraft gets a wider and longer pattern. Above about 160 knots BA also starts each turn earlier, so it never asks for a faster turn than your bank can give. BA expects you to slow down for the turns, as you normally would: until *"Turn base"*, it moves the base in as your speed comes down, so a pattern started at 230 knots fits the 190 you turn at. With the runway on your right on the downwind, both turns are right turns; with it on your left, left turns. BA turns you onto the downwind without turning you toward the runway: if the shorter turn would point you at it, BA turns the other way. BA says *"Turn base"* when it is time to turn onto the base, then counts down to the turn onto final and says *"Turn onto final"*, as above. BA plans your descent round the pattern the same way, along the downwind, the base and final, so you reach final a little below the glide path.
+
+  This is a way back to final, not circuit guidance: there is no circuit height, no circuit entry and no traffic. It mainly serves a "cleared visual approach" from the far side of the field. If you turn onto final yourself before BA says *"Turn base"*, BA keeps leading you along the downwind; press Output Ctrl+V twice (off, then on) so it decides again.
+
+BA never switches from joining to vectoring by itself. If your heading stops crossing final, it says *"Heading does not cross final"* once and keeps holding your heading. If you are still cutting toward final, only closer in than 6 miles, BA still says *"Turn onto final"* when it is time. If you roll into a turn while joining, for a new heading from ATC, BA does not call your bank back while you are turning: it holds whatever heading you settle on. Pressing Output Ctrl+V twice always makes BA decide again, for example after ATC gives you a new heading.
+
 ### Quick-access keys {#land-vg-keys}
 
-While Visual Guidance is on, the single-letter keys of [Hand Fly mode](takeoff-climb-and-cruise.md#hand-fly-quick-keys) (A, S, D, H, P, B, Q and V) work with no bracket key first, plus F. F tells you the descent rate the guidance is asking for and how far you are above or below the ideal glide path, for example *"target -700, 40 high"* (aim for 700 feet per minute down; you are 40 feet above the path) or *"target -500, 120 low"*. If you press F when Visual Guidance is off, BA says *"Visual guidance not active"*.
+While Visual Guidance is on, the single-letter keys of [Hand Fly mode](takeoff-climb-and-cruise.md#hand-fly-quick-keys) (A, S, D, H, P, B, Q and V) work with no bracket key first, plus F.
 
-When you press any of these keys, BA holds back its own per-second bank and centreline callouts for three seconds so your answer is not cut off.
+F tells you where you are: the guidance phase first, then where you are sideways (on final, left or right of the centreline; before final, where the centreline is from you), then how high or low you are against the glide path and the descent rate the guidance wants. Before final it says where you will join final, when to turn, and the glide path's altitude where you join it, as your altimeter shows it. For example:
+
+- *"On final, 4.2 miles. On the centreline. 40 feet high, target 700 down."* You are 4.2 miles from the threshold, lined up, 40 feet above the path; aim for 700 feet per minute down.
+- *"On final, 3.0 miles. On the centreline. Too high, 600 feet above the path, target 1,250 down."* You are too high to get back onto the path by the time you should be on it; see *"Too high"* below.
+- *"Joining a 6.4 mile final. 30 degree intercept, turn in about 85 seconds. Path there 2,470 feet, you're 300 high."* On the heading you are flying, at your speed, you will be lined up on final 6.4 miles from the threshold, so you will have 6.4 miles of final; you are cutting toward it at 30 degrees, and the turn onto final comes in about 85 seconds. The glide path is at 2,470 feet where you join it, and you are 300 feet above that now. While joining, F gives no target descent rate: the altitude is yours or ATC's.
+- *"Joining a 6.4 mile final. 30 degree intercept, turn in about 85 seconds. Path there 2,470 feet, you'll be 1,700 feet high at final."* You are level, and from that height even a steeper descent after the turn cannot bring you down to the path in time. Ask ATC for lower now.
+- *"Joining final. Heading does not cross final. Centreline 2.6 miles to your left."* Your heading no longer takes you onto final; the extended centreline is 2.6 miles away on your left.
+- *"Vectoring to a 6.2 mile final. Centreline 2.0 miles to your left, turn in about 85 seconds. Path there 2,030 feet, you're 400 high, target 800 down."* BA is choosing your heading to join final 6.2 miles out; the centreline is 2 miles away on your left as you cut toward it, you are 400 feet above the path's altitude where you join it, and BA's planned descent wants 800 feet per minute down.
+- *"Vectoring to a 6.0 mile final, downwind. Centreline 3.0 miles to your right. Path there 2,470 feet, you're on it, target level."* BA is leading you along the pattern's downwind, flying away from the runway with the centreline on your right; you will be lined up on final 6 miles from the threshold, you are at the path's altitude there, and BA wants you level for now.
+- *"Vectoring to a 6.0 mile final, base. Centreline 1.5 miles ahead, turn in about 10 seconds. Path there 2,470 feet, you're 510 high, target 900 down."* On the base you fly toward the centreline, 1.5 miles ahead, and the turn onto final comes in about 10 seconds.
+- *"Flare, 20 feet. On the centreline. Target 350 down."* Your wheels are 20 feet above the runway, and the guidance wants you coming down at about 350 feet per minute here, less as you get lower.
+
+*"On path"* and *"you're on it"* mean within about 30 feet of the glide path, and *"On the centreline"* within about 300 feet of it. On final, left and right of the centreline are your aircraft's position as you face the runway. Before final, *"Centreline 2.0 miles to your left"* says where the extended centreline is from the cockpit, relative to the way you are going: *"to your left"*, *"to your right"*, *"ahead"* when it is within about 30 degrees of your nose, as on a base leg, or *"behind"*. Pressed in the first moment after you switch Visual Guidance on, before BA has your position, F says *"Visual guidance starting."* If you press F when Visual Guidance is off, BA says *"Visual guidance not active"*.
+
+When you press any of these keys, BA holds back its bank callouts for three seconds so your answer is not cut off.
 
 If another program is already using one of these keys, BA tells you *"Visual guidance active. Some quick-access keys unavailable; use output mode."* The same readouts are still available through Output mode.
 
 ### What you will hear {#land-vg-hear}
 
-**Phase callouts.** Visual Guidance moves through phases and announces each one as you enter it:
+**When you press Output Ctrl+V.** *"Visual guidance active, runway 27L"*, then, once your wings are nearly level, one of *"On final"*, *"Joining final"* or *"Vectoring to final"* (see [Where you press it from](#land-vg-joining)).
 
-- *"Intercepting final, 1.8 miles to final"*: you are more than about a third of a mile to one side of the extended centreline. The guidance is turning you to join it. The distance is how far you are from the centreline, not from the runway.
-- *"Established on centerline"*: you are on the extended centreline but not yet on the glide path.
-- *"On vertical profile"*: you are on the centreline and within about 100 feet of the glide path. This is where you want to be.
-- *"Extending, turn to heading 093"*: you are more than 500 feet up and on the wrong side of the runway for this approach. Fly the heading given to fly out onto the approach side. While you extend, BA gives progress every ten seconds, such as *"2.5 miles behind threshold"*, and *"Approaching threshold"* when you are close to it.
-- *"Flare"*: your wheels are about 30 feet above the runway (40 feet on the Headwind A330 and the PMDG 777, 35 feet on the MD-11). The guidance tone now asks for the flare pitch. Raise the nose smoothly to match.
+**On the way to final:**
+
+- *"Turn base"*: on the pattern from the far side, roll in now for the base; the guidance tone leads the turn.
+- *"Turn onto final in 30 seconds"* and *"Turn onto final in 15 seconds"*: the countdown to the turn onto final, each said once, and only if the turn was further off than that when BA first worked it out.
+- *"Turn onto final"*: roll in now; the guidance tone leads the turn. It is not said if you were already that close to final when you pressed Output Ctrl+V: the guidance tone is already turning you.
+- *"Heading does not cross final"*: while joining, your heading has stopped taking you onto final ahead of you, or now meets it less than 6 miles out. Said once; said again only if your heading crosses final again for a few seconds and then stops. If you are still cutting toward final, *"Turn onto final"* still comes.
+- *"Established on final"*: you have been within about 600 feet of the centreline and 5 degrees of its direction for 3 seconds. Not said if you pressed Output Ctrl+V already on final.
+- *"You'll be 1,700 feet high at final"*: while joining, once you have been level for about 5 seconds, if from that altitude even a steeper descent after the turn cannot bring you down to the glide path by the point where you should be on it (1,000 feet above the runway on an airliner). Said once. Ask ATC for lower. While you are still climbing or descending BA does not say it, since it does not know where ATC will level you.
+
+**On final:**
+
+- *"Too high, 600 feet above the path"*: even the steepest descent the guidance asks for, 2 degrees steeper than the glide path, cannot bring you back to the path by the point where you should be on it, 1,000 feet above the runway on an airliner. Said once. Airline rules would have you go around if you are not on the path there; BA only warns, it never says "go around".
+- *"Too low, 400 feet below the path"*: you are more than half a degree below the glide path, about where the PAPI would show red: 320 feet low at 6 miles, 160 feet at 3 miles, and never less than 60 feet. The guidance tone asks you to level off until the path comes down to you. Said once, then once more 10 seconds later if you are still that low, and once more as you pass 1,000 feet above the runway if you are still low there. Said again only after you have come back near the path and gone low once more.
+- Neither warning is said when your wheels are 60 feet or less above the runway. Each waits for BA's other announcements to finish, and F repeats it in place of your height.
+- *"Prepare to flare"*: about 4 seconds before the flare starts, at your present descent rate: about 100 feet at a normal descent, higher if you are coming down faster. Get ready to raise the nose.
+- *"Flare"*: about 1 second before the flare starts, so that you are raising the nose as the guidance tone starts to rise: about 65 feet at a normal descent. The flare starts about 4 seconds before touchdown, or when your wheels reach your aircraft's flare height if that comes first (30 feet on the A320, 40 on the Headwind A330 and the PMDG 777, 35 on the MD-11). Coming down faster than normal, you hear both calls earlier and higher. Each is said once per approach: not again if the aircraft floats or balloons, only after you go around, climbing above 100 feet, and come back down. From the flare's start the guidance tone flies the flare: it eases your descent, asking for less and less as you get lower, down to a gentle 150 feet a minute at touchdown; it always wants you still coming down. While you are still coming down faster than it wants, it asks for a little more nose-up, briefly a little above the attitude you would fly level, then eases off as your descent slows. Raise the nose smoothly to match. If the aircraft floats or balloons, the tone asks you gently back down; climb above 100 feet and it goes back to the glide path.
+
+  In a crosswind your nose points a little into the wind, so that you travel straight down the centreline. The bank tone keeps your path on the centreline all the way to touchdown and never asks you to bank the nose straight: banking would turn your path as well, and the wind would carry you off the centreline. Straightening the nose is yours to do, with the rudder in the flare, while you hold the wings level; BA gives no cue for the rudder yet. With a small crab of a degree or two, you can touch down without it.
 - *"Touchdown"*: the wheels are a few feet from the runway.
 
-**Distance callouts.** *"5 miles"*, *"3 miles"* and *"1 mile"* from the runway threshold.
+**Distance callouts.** *"5 miles out"*, *"3 miles out"* and *"1 mile out"* as you pass 5, 3 and 1 miles from the runway threshold. Once you are established on final they add your height against the glide path: *"3 miles out, 80 feet high"*, *"1 mile out, 40 feet low"*, or *"5 miles out, on path"* within about 30 feet. One you are already inside when you press Output Ctrl+V is not said. On the pattern's downwind and base none is said; once the pattern has taken you back out past a mark, it is said on final.
 
-**Bank callouts.** About once a second, when the bank error changes, BA speaks how much more bank you need: *"3 left"* means roll 3 degrees further to the left than you are now; *"2 right"* means roll 2 degrees further right. *"matched"* means your bank is what the guidance wants. *"On commanded path"* means your bank matches and the guidance wants the wings level: you are tracking the centreline.
+**Bank callouts.** BA speaks how much more bank you need: *"3 left"* means roll 3 degrees further to the left than you are now; *"2 right"* means roll 2 degrees further right. *"matched"* means your bank is what the guidance wants. *"Matched, level"* means your bank matches and the guidance wants the wings level: you are tracking the centreline, or a straight leg of the pattern.
 
-**Centerline callouts.** When your position changes by a tenth of a mile, BA says how far you are from the centreline, for example *"0.4 nm left of center"*, or *"on runway center"* when you are within about 300 feet of it. Left and right here are your aircraft's position relative to the centreline.
+When they come:
+
+- At once, every time the number changes by a degree. While you roll you hear the numbers count down, each new one cutting off the last, so the one you hear is always the one you need now.
+- *"matched"* is said once when you get within about half a degree, and BA stays quiet until you are a full degree off again.
+- Each callout is said once. BA speaks again when the number changes, not on a timer.
+- BA waits for its own announcements, such as *"Flare"* or *"5 miles out"*, to finish, so a bank callout does not cut them off. As soon as one has finished, BA tells you the error as it is then.
 
 <div class="callout note" role="note" markdown="1">
 
@@ -202,7 +246,7 @@ All Visual Guidance sound settings are on the **Hand Fly** tab of the Settings w
 
 ### If something goes wrong {#land-vg-problems}
 
-- **The tones are always fully to one side during the turn onto final.** Normal. The guidance is asking for more bank than the tone can show. Follow the spoken bank callouts until you are close to the centreline.
+- **The tones are always fully to one side during the turn onto final, or a turn BA asks for while vectoring.** Normal. The guidance is asking for more bank than the tone can show. Follow the spoken bank callouts until you are close to the centreline.
 - **The pitch tone feels jumpy.** Make small, smooth pitch changes and give the aircraft a second to respond. Chasing the tone with large inputs makes it worse.
 - **You hear three tones.** Visual Guidance mutes Hand Fly's tone automatically; if you hear a third tone, it is probably another BA tone such as taxi or takeoff assist that is still running. Switch it off.
 

@@ -1346,7 +1346,7 @@ public partial class MainForm : Form
     /// True for the quick-access readout hotkeys (the H/V/Q/S/D/B/P/A/F set)
     /// — single keypresses whose whole purpose is to speak a value. When
     /// one of these fires during an active visual-guidance session, VG opens a grace window
-    /// so its per-second bank/centerline callouts don't talk over the readout.
+    /// so its bank callouts don't talk over the readout.
     /// </summary>
     private static bool IsManualReadoutAction(HotkeyAction action) => action switch
     {
