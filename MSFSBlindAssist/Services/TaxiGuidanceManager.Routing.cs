@@ -1691,13 +1691,18 @@ public partial class TaxiGuidanceManager
 
     /// <summary>
     /// Attempts to recalculate the route from the current position to the destination.
+    /// <para>With "ask before switching to a recalculated route" on (<c>_confirmReroutes</c>), a
+    /// route that WOULD be adopted is offered instead (<see cref="Navigation.RerouteOffer"/>) and
+    /// guidance keeps the route being flown; <paramref name="pilotAccepted"/> is true only from
+    /// <see cref="ContinuePastHoldShort"/> taking that offer, and adopts.</para>
     /// </summary>
-    private void TryRecalculateRoute(double lat, double lon, double headingTrue)
+    /// <returns>True when a new route was adopted.</returns>
+    private bool TryRecalculateRoute(double lat, double lon, double headingTrue, bool pilotAccepted = false)
     {
-        if (_graph == null) return;
+        if (_graph == null) return false;
 
         if ((MSFSBlindAssist.Utils.SimClock.UtcNow - _lastRecalculationTime).TotalSeconds < RECALCULATION_COOLDOWN_SEC)
-            return;
+            return false;
 
         // Uncharted-crossing guard (belt and suspenders beside the off-route
         // detector's own suppression): never rebuild a route while a synthetic
@@ -1711,7 +1716,7 @@ public partial class TaxiGuidanceManager
                 {
                     try { _guidanceLog.Info("Recalc suppressed: uncharted crossing segment ahead"); }
                     catch { /* diagnostic only */ }
-                    return;
+                    return false;
                 }
             }
         }
@@ -1723,7 +1728,7 @@ public partial class TaxiGuidanceManager
         // but your copilot isn't yet" desync). Recalcing from this state can
         // produce wildly different routes.
         if (_route != null && _currentSegmentIndex >= _route.Segments.Count - 1)
-            return;
+            return false;
 
         // Near-destination guard. Some navdata has a gap between the last taxiway
         // node and the runway/gate node (the route bridges this with a virtual
@@ -1739,7 +1744,7 @@ public partial class TaxiGuidanceManager
             if (TaxiGraph.FastDistanceMeters(lat, lon,
                     destNodeForGuard.Latitude, destNodeForGuard.Longitude)
                 < NEAR_DESTINATION_SUPPRESS_RECALC_M)
-                return;
+                return false;
         }
 
         _lastRecalculationTime = MSFSBlindAssist.Utils.SimClock.UtcNow;
@@ -1818,7 +1823,7 @@ public partial class TaxiGuidanceManager
                         SpeakNow(RouteReachabilityMessages.RecalculationRefusedDestination(_destinationName));
                     }
                 }
-                return;
+                return false;
             }
         }
 
@@ -1850,7 +1855,7 @@ public partial class TaxiGuidanceManager
         if (newRoute == null || newRoute.Segments.Count == 0)
         {
             SpeakNow("Off route. Unable to recalculate.");
-            return;
+            return false;
         }
 
         // Re-apply the named-holding-point pin, so a recalc keeps routing the pilot to the
@@ -1905,7 +1910,7 @@ public partial class TaxiGuidanceManager
                             ? RouteReachabilityMessages.RecalculationRefusedDestinationRunway(_destinationName, firstLeg.RunwayDesignator)
                             : RouteReachabilityMessages.RecalculationRefusedRunway(firstLeg.RunwayDesignator));
                 }
-                return;
+                return false;
             }
             // The recalculated route starts with an unmapped leg, the case LoadRoute warns about, but a
             // recalculation never speaks a start warning (it is not the start of guidance). Diagnostic
@@ -1987,7 +1992,7 @@ public partial class TaxiGuidanceManager
                     : (lengthBlowUp ? "recalculated route too long" : "recalculated route heads backwards");
                 SpeakNow(
                     $"Off route. Could not follow clearance. {reasonStr}. Continuing on original route.");
-                return;
+                return false;
             }
         }
 
@@ -2119,7 +2124,30 @@ public partial class TaxiGuidanceManager
             _route?.Segments, _currentSegmentIndex);
         if (oldRemainingVia.Count > 0 &&
             oldRemainingVia.SequenceEqual(viaNames, StringComparer.OrdinalIgnoreCase))
-            return;
+            return false;
+
+        // "Ask before switching" (Navigation.RerouteOffer): from here on the route WOULD be
+        // adopted, so this is where it is offered instead. Nothing below has run — no hold
+        // passes, no latch resets, no tone re-slew — so the route being flown is untouched and
+        // the tone keeps steering to it. Spoken once per offer; while it stands, the next
+        // recalculations end here silently.
+        if (_confirmReroutes && !pilotAccepted)
+        {
+            if (!_rerouteOffered)
+            {
+                _rerouteOffered = true;
+                try
+                {
+                    _guidanceLog.Info($"Reroute offered (not adopted): via {string.Join(" ", viaNames)} " +
+                                      $"segments={newRoute.Segments.Count} totalM={newRoute.TotalDistanceMeters:F0} " +
+                                      $"firstBrg={newRoute.Segments[0].BearingDegrees:F1} ac={lat:F6},{lon:F6} hdg={headingTrue:F1}");
+                }
+                catch { /* diagnostic only */ }
+                AnnounceInstruction(Navigation.RerouteOffer.Compose(
+                    viaNames, FormatDistance(newRoute.TotalDistanceMeters), _destinationName));
+            }
+            return false;
+        }
 
         // Adopting the route re-runs the auto crossing hold-shorts: truncation only restores
         // the DESTINATION's own hold, so without them the recalculated route reaches the runway
@@ -2199,6 +2227,7 @@ public partial class TaxiGuidanceManager
         AnnounceInstruction(callout);
 
         _lastAnnouncedTaxiway = firstTaxiway;
+        return true;
     }
 
     /// <summary>
@@ -2911,6 +2940,8 @@ public partial class TaxiGuidanceManager
         _pairedCrossingSegIdx = -1;
         _pairedCrossingWindowFrom = DateTime.MinValue;
         _pairedCrossingWindowUntil = DateTime.MinValue;
+        // And a reroute offer: it was made against the route being replaced.
+        _rerouteOffered = false;
         _route = route;
     }
 

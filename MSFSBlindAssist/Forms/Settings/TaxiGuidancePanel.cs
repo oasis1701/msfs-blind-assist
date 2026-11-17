@@ -51,6 +51,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
     private TextBox sceneryIndexStatusTextBox = null!;
     private CheckBox surroundingsCalloutsCheckBox = null!;
     private CheckBox surfaceChangeCalloutsCheckBox = null!;
+    private CheckBox confirmRerouteCheckBox = null!;
 
     // Optional callback for the manual taxiway-names refresh. Null when the caller doesn't
     // supply augmenting-provider support — the button disables itself in that case.
@@ -483,7 +484,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
 
         // Its own switch: leaving the taxiway is a safety callout and must survive someone turning
         // the chatty passing callouts off. Deliberately not silenced on takeoff or rollout.
-        // It spans y 950-990 and the SayIntentions heading below starts at 995:
+        // It spans y 950-990 and the reroute checkbox below starts at 995:
         // TaxiGuidancePanelLayoutTests measures that no two controls on this tab overlap.
         surfaceChangeCalloutsCheckBox = new CheckBox
         {
@@ -494,13 +495,25 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             AccessibleDescription = "When enabled, says Off the pavement, on grass, if the wheels leave the paved surface while taxiing, and Back on pavement when they regain it. Ignores changes between paved surfaces such as asphalt to concrete. Still speaks during takeoff roll and landing rollout. Applies immediately."
         };
 
+        // Off by default: a recalculated route is adopted at once, as it always has been. On, it
+        // is offered and the pilot takes it with Continue, so a route ATC did not give is never
+        // followed unasked (Navigation.RerouteOffer). Spans y 995-1035.
+        confirmRerouteCheckBox = new CheckBox
+        {
+            Text = "Ask before switching to a new route when off route",
+            Location = new Point(20, 995),
+            Size = new Size(450, 40),
+            AccessibleName = "Ask before switching to a new route when off route",
+            AccessibleDescription = "When enabled, if guidance thinks you have left the route it offers a new route instead of switching to it, and keeps guiding you along your original route. Press left bracket, Y to accept the new route. Default off. Applies immediately."
+        };
+
         // SayIntentions route import. It lives here rather than on a tab of its own:
         // the setting decides what happens to a TAXI ROUTE, which is this tab's
         // subject, and it was the only option left once the API key was retired.
         sayIntentionsHeadingLabel = new Label
         {
             Text = "SayIntentions",
-            Location = new Point(20, 995),
+            Location = new Point(20, 1040),
             Size = new Size(450, 20),
             AccessibleName = "SayIntentions section"
         };
@@ -514,7 +527,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sayIntentionsAutoStartCheckBox = new CheckBox
         {
             Text = "SayIntentions import starts taxi &guidance immediately",
-            Location = new Point(20, 1020),
+            Location = new Point(20, 1065),
             Size = new Size(450, 40),
             AccessibleName = "SayIntentions import starts taxi guidance immediately",
             AccessibleDescription = "When checked, a SayIntentions import starts guidance immediately "
@@ -540,6 +553,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             sceneryIndexEnabledCheckBox, sceneryIndexStatusTextBox,
             surroundingsCalloutsCheckBox,
             surfaceChangeCalloutsCheckBox,
+            confirmRerouteCheckBox,
             sayIntentionsHeadingLabel,
             sayIntentionsAutoStartCheckBox
         });
@@ -574,6 +588,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sceneryIndexStatusTextBox.TabIndex = tabIdx++;
         surroundingsCalloutsCheckBox.TabIndex = tabIdx++;
         surfaceChangeCalloutsCheckBox.TabIndex = tabIdx++;
+        confirmRerouteCheckBox.TabIndex = tabIdx++;
         sayIntentionsAutoStartCheckBox.TabIndex = tabIdx++;
     }
 
@@ -732,6 +747,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         RefreshSceneryIndexStatusText();
         surroundingsCalloutsCheckBox.Checked = settings.SurroundingsCalloutsEnabled;
         surfaceChangeCalloutsCheckBox.Checked = settings.SurfaceChangeCalloutsEnabled;
+        confirmRerouteCheckBox.Checked = settings.TaxiGuidanceConfirmReroute;
         sayIntentionsAutoStartCheckBox.Checked = settings.SayIntentionsAutoStartTaxiGuidance;
     }
 
@@ -793,6 +809,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         settings.SceneryIndexEnabled = sceneryIndexEnabledCheckBox.Checked;
         settings.SurroundingsCalloutsEnabled = surroundingsCalloutsCheckBox.Checked;
         settings.SurfaceChangeCalloutsEnabled = surfaceChangeCalloutsCheckBox.Checked;
+        settings.TaxiGuidanceConfirmReroute = confirmRerouteCheckBox.Checked;
         settings.SayIntentionsAutoStartTaxiGuidance = sayIntentionsAutoStartCheckBox.Checked;
     }
 

@@ -782,7 +782,10 @@ public partial class TaxiGuidanceManager
             }
         }
 
-        return $"{taxiway}{nextTurn}, {distStr} to {_destinationName}.";
+        string offer = _rerouteOffered && _state == TaxiGuidanceState.Taxiing
+            ? Navigation.RerouteOffer.StatusSuffix
+            : "";
+        return $"{taxiway}{nextTurn}, {distStr} to {_destinationName}.{offer}";
         } // end lock(_stateLock)
     }
 
