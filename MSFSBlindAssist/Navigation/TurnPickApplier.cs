@@ -3,7 +3,7 @@ using MSFSBlindAssist.Database.Models;
 namespace MSFSBlindAssist.Navigation;
 
 /// <summary>What became of one Turn pick. Public so a public test theory can take it.</summary>
-public enum TurnPickOutcome { AlreadyMet, Charted, OffChart, NoTurnFound, DoesNotLead, LongDetour }
+public enum TurnPickOutcome { AlreadyMet, Charted, OffChart, NoTurnFound, DoesNotLead, LongDetour, MissesHoldingPoint }
 
 /// <summary>A pick the route could not honor; the charted turn is kept.</summary>
 internal sealed record TurnPickRefusal(int RowIndex, TurnSide Side, string TaxiwayName, TurnPickOutcome Reason);
@@ -21,7 +21,10 @@ internal sealed record TurnPickContext(
     ProgressiveTerminator? Terminator,
     int PinnedNodeId,
     double MaxLengthRatio, double MaxLengthPadMeters,
-    IReadOnlySet<int>? AlreadyBlocked = null,
+    // True when the aircraft is off the destination's network: the route's start node is the one
+    // LoadRoute's first-leg check (RouteReachability.CheckFirstLeg) passed, so a first-row pick
+    // works from it and never re-starts the route at another node.
+    bool KeepRouteStart = false,
     Action<string>? Log = null);
 
 /// <summary>
@@ -45,6 +48,20 @@ internal static class TurnPickApplier
 
     private enum Failure { None, Remainder, Pinned, Length, Other }
 
+    /// The charted route's longest run along a runway, by end node (TURN-7): the same for every option
+    /// of one pick bar a Progressive end re-resolved per option, so it is measured once per end.
+    private sealed class ChartedRunwayRun(TaxiGraph graph, TaxiRoute input)
+    {
+        private readonly Dictionary<int, double> _byEnd = new();
+
+        public double For(int end)
+        {
+            if (!_byEnd.TryGetValue(end, out double m))
+                _byEnd[end] = m = LongestRunAlongARunwayMeters(graph, input, end);
+            return m;
+        }
+    }
+
     /// OtherArm: the nodes of the row's taxiway that lie on from the join the way the pick did NOT turn
     /// (see <see cref="OtherArm"/>); closed for every later pick too.
     private sealed record Completed(TaxiRoute Route, int DestinationNodeId, AppliedTurnPick Pick, double ConnectionMeters,
@@ -56,7 +73,7 @@ internal static class TurnPickApplier
     {
         var applied = new List<AppliedTurnPick>();
         var refusals = new List<TurnPickRefusal>();
-        var blocked = new HashSet<int>(ctx.AlreadyBlocked ?? (IReadOnlySet<int>)new HashSet<int>());
+        var blocked = new HashSet<int>();
         bool inputHasPin = ctx.PinnedNodeId != 0 && NodeIds(route).Contains(ctx.PinnedNodeId);
         var current = route;
         int destination = ctx.DestinationNodeId;
@@ -173,10 +190,16 @@ internal static class TurnPickApplier
         }
 
         // Steps 2 and 3 work from A and the route before it; a first row with nothing arriving at A
-        // starts from the node nearest the aircraft, with an empty prefix.
+        // starts from the node nearest the aircraft, with an empty prefix. Off the destination's
+        // network it starts from the route's own start instead: that is the node the unmapped
+        // first leg was checked from (RTE-26), and another one would skip that check.
         int a;
         var prefix = new List<int>();
-        if (incomingOrNull == null)
+        if (incomingOrNull == null && ctx.KeepRouteStart)
+        {
+            a = departure;
+        }
+        else if (incomingOrNull == null)
         {
             int? component = ctx.Graph.Nodes.TryGetValue(ctx.DestinationNodeId, out var dest) ? dest.ComponentId : null;
             var near = ctx.Graph.FindNearestNode(ctx.AircraftLat, ctx.AircraftLon,
@@ -201,6 +224,7 @@ internal static class TurnPickApplier
                 prefixOffChart.Add((current.Segments[i].FromNode.NodeId, current.Segments[i].ToNode.NodeId));
 
         var failures = new List<Failure>();
+        var chartedRun = new ChartedRunwayRun(ctx.Graph, input);
 
         // The charted way this pick declines: the route's own nodes up to and including where it joins
         // the row's taxiway. An option may start along it (A and its connection are its own), but what
@@ -212,7 +236,7 @@ internal static class TurnPickApplier
         Completed? best = null;
         foreach (var option in ChartedOptions(ctx, a, incoming, name, side, blocked))
         {
-            var (done, failure) = Complete(option, prefix, prefixOffChart, row, side, ctx, input, inputHasPin, blocked, incoming, chartedBeforeJoin);
+            var (done, failure) = Complete(option, prefix, prefixOffChart, row, side, ctx, input, inputHasPin, blocked, incoming, chartedBeforeJoin, chartedRun);
             if (done == null) { failures.Add(failure); continue; }
             if (best == null || done.Route.TotalDistanceMeters < best.Route.TotalDistanceMeters - 0.01 ||
                 (Math.Abs(done.Route.TotalDistanceMeters - best.Route.TotalDistanceMeters) <= 0.01 &&
@@ -242,25 +266,29 @@ internal static class TurnPickApplier
             return (TurnPickOutcome.Charted, best);
         }
 
-        // Step 3: an off-chart leg, candidates best first; the first that completes wins.
-        foreach (var c in OffChartLeg.Find(ctx.Graph, ctx.Pavement, a, incoming, name, side, blocked))
+        // Step 3: an off-chart leg, candidates best first; the first that completes wins. Find's own
+        // refusals feed the log line below, so the legs are judged once.
+        var legRefusals = ctx.Log != null ? new List<OffChartLeg.Refusal>() : null;
+        foreach (var c in OffChartLeg.Find(ctx.Graph, ctx.Pavement, a, incoming, name, side, blocked, legRefusals))
         {
             if (blocked.Contains(c.NextNodeId)) continue;   // as the charted path skips a blocked v
             var option = new Option(new List<int> { a, c.JoinNodeId }, c.NextNodeId, OffChart: true, c.LengthMeters);
-            var (done, failure) = Complete(option, prefix, prefixOffChart, row, side, ctx, input, inputHasPin, blocked, incoming, chartedBeforeJoin);
+            var (done, failure) = Complete(option, prefix, prefixOffChart, row, side, ctx, input, inputHasPin, blocked, incoming, chartedBeforeJoin, chartedRun);
             if (done == null) { failures.Add(failure); continue; }
             Log(ctx, row, side, name, TurnPickOutcome.OffChart,
                 $"departure {a}, join {c.JoinNodeId}, leg {c.LengthMeters:F1} m, {done.Route.TotalDistanceMeters:F0} m");
             return (TurnPickOutcome.OffChart, done);
         }
 
+        // A turn that exists but would miss the picked holding point is said as that, never as no turn.
         var reason = failures.Contains(Failure.Length) ? TurnPickOutcome.LongDetour
             : failures.Contains(Failure.Remainder) ? TurnPickOutcome.DoesNotLead
+            : failures.Contains(Failure.Pinned) ? TurnPickOutcome.MissesHoldingPoint
             : TurnPickOutcome.NoTurnFound;
         if (ctx.Log != null)
             Log(ctx, row, side, name, reason,
                 $"departure {a}, options failed: {Counts(failures.Select(f => f.ToString()))}; " +
-                $"off-chart legs: {Counts(OffChartRefusals(ctx, a, incoming, name, side, blocked))}");
+                $"off-chart legs: {Counts(legRefusals!.Select(r => r.ToString()))}");
         return (reason, null);
     }
 
@@ -388,7 +416,7 @@ internal static class TurnPickApplier
     private static (Completed?, Failure) Complete(Option option, List<int> prefix,
         List<(int From, int To)> prefixOffChart, int row, TurnSide side,
         TurnPickContext ctx, TaxiRoute input, bool inputHasPin, HashSet<int> blocked, double incoming,
-        List<int> chartedBeforeJoin)
+        List<int> chartedBeforeJoin, ChartedRunwayRun chartedRun)
     {
         int a = option.DepartureNodeId, u = option.JoinNodeId, v = option.NextNodeId;
         var own = option.Connection.Distinct().ToList();   // A, the interior, u
@@ -451,9 +479,10 @@ internal static class TurnPickApplier
             return (null, Failure.Remainder);
         // A pick never ADDS a stretch along a runway (crossing one is another matter, and has its hold).
         if (LongestRunAlongARunwayMeters(ctx.Graph, stitched, end) >
-            Math.Max(AlongRunwayLimitMeters, LongestRunAlongARunwayMeters(ctx.Graph, input, end) + AlongRunwayMoreThanChartedMeters))
+            Math.Max(AlongRunwayLimitMeters, chartedRun.For(end) + AlongRunwayMoreThanChartedMeters))
             return (null, Failure.Remainder);
-        // The pin is tested before the length: an option that drops the pin is NoTurnFound even when it is also too long.
+        // The pin is tested before the length: an option that drops the pin is Pinned (MissesHoldingPoint
+        // when no option fails another way) even when it is also too long.
         if (inputHasPin && !all.Contains(ctx.PinnedNodeId)) return (null, Failure.Pinned);
         if (stitched.TotalDistanceMeters > input.TotalDistanceMeters * ctx.MaxLengthRatio + ctx.MaxLengthPadMeters)
             return (null, Failure.Length);
@@ -531,7 +560,9 @@ internal static class TurnPickApplier
         {
             var s = stitched.Segments[i];
             if (walked >= BackPastJunctionAfterMeters &&
-                DistanceToSegmentMeters(junction, s.FromNode, s.ToNode) < BackPastJunctionWithinMeters)
+                GuidanceGeometry.PerpendicularDistanceToSegmentMeters(junction.Latitude, junction.Longitude,
+                    s.FromNode.Latitude, s.FromNode.Longitude, s.ToNode.Latitude, s.ToNode.Longitude)
+                    < BackPastJunctionWithinMeters)
                 return true;
             walked += s.DistanceMeters;
         }
@@ -567,19 +598,6 @@ internal static class TurnPickApplier
             }
         }
         return longest;
-    }
-
-    /// Distance in metres from p to the segment a-b, on a local flat grid around p.
-    private static double DistanceToSegmentMeters(TaxiNode p, TaxiNode a, TaxiNode b)
-    {
-        const double metresPerDegree = 111132.0;
-        double east = metresPerDegree * Math.Cos(p.Latitude * Math.PI / 180.0);
-        double ax = (a.Longitude - p.Longitude) * east, ay = (a.Latitude - p.Latitude) * metresPerDegree;
-        double bx = (b.Longitude - p.Longitude) * east, by = (b.Latitude - p.Latitude) * metresPerDegree;
-        double dx = bx - ax, dy = by - ay, lengthSquared = dx * dx + dy * dy;
-        double t = lengthSquared < 1e-9 ? 0 : Math.Clamp(-(ax * dx + ay * dy) / lengthSquared, 0, 1);
-        double x = ax + t * dx, y = ay + t * dy;
-        return Math.Sqrt(x * x + y * y);
     }
 
     /// Section 5: walking only the taxiway's own edges from v (v itself counts), never into a blocked
@@ -620,18 +638,6 @@ internal static class TurnPickApplier
         return 0;
     }
 
-    /// For the refusal log: why each off-chart leg from A onto the taxiway was refused.
-    private static IEnumerable<string> OffChartRefusals(TurnPickContext ctx, int a, double incoming, string name,
-        TurnSide side, HashSet<int> blocked)
-    {
-        foreach (int join in ctx.Graph.GetNodesOnTaxiway(name))
-        {
-            if (join == a || blocked.Contains(join) || !ctx.Graph.Adjacency.TryGetValue(join, out var edges)) continue;
-            foreach (int next in edges.Where(e => Named(e.TaxiwayName, name)).Select(e => e.ToNodeId).Distinct())
-                yield return OffChartLeg.Judge(ctx.Graph, ctx.Pavement, a, incoming, join, next, side).ToString();
-        }
-    }
-
     private static string Counts(IEnumerable<string> items)
     {
         var groups = items.GroupBy(s => s).Select(g => $"{g.Key} {g.Count()}").ToList();
@@ -657,11 +663,5 @@ internal static class TurnPickApplier
     private static bool Named(string? edgeName, string name)
         => !string.IsNullOrEmpty(name) && string.Equals(edgeName, name, StringComparison.OrdinalIgnoreCase);
 
-    private static double Normalize(double deg)
-    {
-        deg %= 360.0;
-        if (deg > 180.0) deg -= 360.0;
-        else if (deg <= -180.0) deg += 360.0;
-        return deg;
-    }
+    private static double Normalize(double deg) => TaxiGraph.NormalizeAngle(deg);
 }

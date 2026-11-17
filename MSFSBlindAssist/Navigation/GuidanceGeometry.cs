@@ -285,4 +285,38 @@ public static class GuidanceGeometry
         double ey = (lats[i + 1] - lats[i]) * MPD;
         return (Math.Atan2(ex, ey) * 180.0 / Math.PI + 360.0) % 360.0;
     }
+
+    /// <summary>
+    /// Perpendicular (cross-track) distance in meters from (plat, plon) to the segment
+    /// (a→b), clamped to endpoints so points beyond either end use the nearest endpoint.
+    /// Uses equirectangular projection — sub-cm accuracy at taxi scale. The one copy: the
+    /// manager's off-route test and the Turn picks both call it.
+    /// </summary>
+    public static double PerpendicularDistanceToSegmentMeters(
+        double plat, double plon,
+        double alat, double alon,
+        double blat, double blon)
+    {
+        double latMidRad = (alat + blat) * 0.5 * (Math.PI / 180.0);
+        double metersPerDegLon = MPD * Math.Cos(latMidRad);
+
+        double bx = (blon - alon) * metersPerDegLon;
+        double by = (blat - alat) * MPD;
+        double px = (plon - alon) * metersPerDegLon;
+        double py = (plat - alat) * MPD;
+
+        double lenSq = bx * bx + by * by;
+        if (lenSq < 1e-9)
+            return Math.Sqrt(px * px + py * py);
+
+        double t = (px * bx + py * by) / lenSq;
+        if (t < 0.0) t = 0.0;
+        else if (t > 1.0) t = 1.0;
+
+        double fx = t * bx;
+        double fy = t * by;
+        double ex = px - fx;
+        double ey = py - fy;
+        return Math.Sqrt(ex * ex + ey * ey);
+    }
 }

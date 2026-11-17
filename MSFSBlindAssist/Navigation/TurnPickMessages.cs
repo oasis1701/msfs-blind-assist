@@ -13,7 +13,9 @@ internal static class TurnPickMessages
     public static string EnteringLeg(TurnSide side, string taxiway, string distance)
         => $"Off-chart leg. No taxi line for the next {distance}. Follow the tone, then turn {SideWord(side)} onto taxiway {taxiway}.";
 
-    public static string Refused(TurnPickRefusal refusal, string destinationName)
+    /// holdingPointName: the named holding point the route is pinned through, for MissesHoldingPoint;
+    /// null or empty says "the holding point you picked".
+    public static string Refused(TurnPickRefusal refusal, string destinationName, string? holdingPointName = null)
     {
         string side = SideWord(refusal.Side);
         return refusal.Reason switch
@@ -24,6 +26,10 @@ internal static class TurnPickMessages
                 $"Note: turning {side} onto taxiway {refusal.TaxiwayName} does not lead to {destinationName}. The route keeps the charted turn.",
             TurnPickOutcome.LongDetour =>
                 $"Note: turning {side} onto taxiway {refusal.TaxiwayName} would be a long detour to {destinationName}. The route keeps the charted turn.",
+            TurnPickOutcome.MissesHoldingPoint =>
+                $"Note: turning {side} onto taxiway {refusal.TaxiwayName} does not pass " +
+                (string.IsNullOrEmpty(holdingPointName) ? "the holding point you picked" : $"holding point {holdingPointName}") +
+                ". The route keeps the charted turn.",
             _ => "",
         };
     }
@@ -43,12 +49,13 @@ internal static class TurnPickMessages
     /// the start-of-guidance utterance: a Turn value left over from an earlier route can turn this one,
     /// and the summary alone is routinely cut off by the first callout.
     public static string? ComposeLoadNote(IReadOnlyList<AppliedTurnPick> applied,
-        IReadOnlyList<TurnPickRefusal> refusals, string destinationName, Func<double, string> formatDistance)
+        IReadOnlyList<TurnPickRefusal> refusals, string destinationName, Func<double, string> formatDistance,
+        string? holdingPointName = null)
     {
         var notes = new List<(int Row, string Text)>();
         foreach (var r in refusals)
         {
-            string text = Refused(r, destinationName);
+            string text = Refused(r, destinationName, holdingPointName);
             if (text.Length > 0) notes.Add((r.RowIndex, text));
         }
         foreach (var p in applied)

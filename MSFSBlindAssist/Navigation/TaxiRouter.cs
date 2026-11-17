@@ -1224,22 +1224,35 @@ public class TaxiRouter
     /// Would a gap-chaining hop from <paramref name="from"/> to this node of the same taxiway step
     /// over a block? It would if the node is blocked, if it lies in a section running on behind a
     /// block (<see cref="SectionsBehindBlocks"/>), or if a blocked node of the taxiway stands between
-    /// the two (seen from the block they lie more than 90 degrees apart), which also covers a section
-    /// behind the block that a navdata gap of its own detaches from it.
+    /// the two (seen from the block they lie more than 90 degrees apart, and the block lies near the
+    /// line of the hop), which also covers a section behind the block that a navdata gap of its own
+    /// detaches from it. "Near" is <see cref="HopBlockCorridorMinMeters"/> or a quarter of the hop,
+    /// whichever is more: a block well off to the side (a pick's whole other arm is blocked, and a
+    /// curving taxiway puts some of it inside the hop's circle) does not stand between them.
     /// </summary>
     private bool HopStepsOverABlock(TaxiNode from, int toNodeId, List<TaxiNode> blocksOnTaxiway, HashSet<int> behindBlocks)
     {
         if (BlockedNodes.Contains(toNodeId) || behindBlocks.Contains(toNodeId)) return true;
         var to = _graph.Nodes[toNodeId];
+        double corridorM = Math.Max(HopBlockCorridorMinMeters, HopBlockCorridorFraction *
+            TaxiGraph.FastDistanceMeters(from.Latitude, from.Longitude, to.Latitude, to.Longitude));
         foreach (var block in blocksOnTaxiway)
         {
             double east = Math.Cos(block.Latitude * Math.PI / 180.0);
             double fromX = (from.Longitude - block.Longitude) * east, fromY = from.Latitude - block.Latitude;
             double toX = (to.Longitude - block.Longitude) * east, toY = to.Latitude - block.Latitude;
-            if (fromX * toX + fromY * toY < 0) return true;
+            if (fromX * toX + fromY * toY < 0 &&
+                GuidanceGeometry.PerpendicularDistanceToSegmentMeters(block.Latitude, block.Longitude,
+                    from.Latitude, from.Longitude, to.Latitude, to.Longitude) <= corridorM)
+                return true;
         }
         return false;
     }
+
+    /// <summary>The floor of the corridor round a gap hop inside which a blocked node stands between its ends.</summary>
+    internal const double HopBlockCorridorMinMeters = 50.0;
+    /// <summary>The corridor round a gap hop, as a fraction of the hop's length, when that is wider than the floor.</summary>
+    internal const double HopBlockCorridorFraction = 0.25;
 
     /// <summary>
     /// BFS to find all nodes reachable from startId using only edges on the given taxiway.
@@ -1421,57 +1434,55 @@ public class TaxiRouter
     private TaxiRoute BuildRoute(List<int> nodeIds)
     {
         var route = new TaxiRoute();
-        double cumulative = 0;
 
         for (int i = 0; i < nodeIds.Count - 1; i++)
         {
             int fromId = nodeIds[i];
             int toId = nodeIds[i + 1];
-            var fromNode = _graph.Nodes[fromId];
-            var toNode = _graph.Nodes[toId];
-
             var edge = _graph.GetEdge(fromId, toId);
             if (edge == null) continue;
-
-            double turnAngle = 0;
-            string turnDir = "straight";
-            if (i > 0 && route.Segments.Count > 0)
-            {
-                var prevSeg = route.Segments[^1];
-                double prevBearing = prevSeg.BearingDegrees;
-                double currentBearing = edge.BearingDegrees;
-                turnAngle = NormalizeAngle(currentBearing - prevBearing);
-                turnDir = GetTurnDirection(turnAngle);
-            }
-
-            cumulative += edge.DistanceMeters;
-
-            var segment = new TaxiRouteSegment
-            {
-                FromNode = fromNode,
-                ToNode = toNode,
-                DistanceMeters = edge.DistanceMeters,
-                CumulativeDistanceMeters = cumulative,
-                TaxiwayName = edge.TaxiwayName,
-                BearingDegrees = edge.BearingDegrees,
-                TurnAngleDegrees = turnAngle,
-                TurnDirection = turnDir,
-                PathWidth = edge.WidthFeet,
-                IsHoldShortPoint = false,  // Only set by user's hold-short checkboxes
-                HoldShortRunway = toNode.HoldShortName
-            };
-
-            route.Segments.Add(segment);
+            AppendWithTurn(route, EdgeSegment(_graph.Nodes[fromId], _graph.Nodes[toId], edge));
         }
 
-        // Set remaining distances
-        for (int i = 0; i < route.Segments.Count; i++)
-        {
-            route.Segments[i].RemainingDistanceMeters = cumulative - route.Segments[i].CumulativeDistanceMeters + route.Segments[i].DistanceMeters;
-        }
-
-        route.TotalDistanceMeters = cumulative;
+        SetRouteDistances(route);
         return route;
+    }
+
+    /// <summary>A route segment along one graph edge (IsHoldShortPoint is set only by the hold-short passes).</summary>
+    private static TaxiRouteSegment EdgeSegment(TaxiNode fromNode, TaxiNode toNode, TaxiEdge edge) => new()
+    {
+        FromNode = fromNode,
+        ToNode = toNode,
+        DistanceMeters = edge.DistanceMeters,
+        TaxiwayName = edge.TaxiwayName,
+        BearingDegrees = edge.BearingDegrees,
+        PathWidth = edge.WidthFeet,
+        HoldShortRunway = toNode.HoldShortName,
+    };
+
+    /// <summary>Appends a segment, with its turn from the one before it (the first stays straight).</summary>
+    private static void AppendWithTurn(TaxiRoute route, TaxiRouteSegment segment)
+    {
+        if (route.Segments.Count > 0)
+        {
+            segment.TurnAngleDegrees = NormalizeAngle(segment.BearingDegrees - route.Segments[^1].BearingDegrees);
+            segment.TurnDirection = GetTurnDirection(segment.TurnAngleDegrees);
+        }
+        route.Segments.Add(segment);
+    }
+
+    /// <summary>Cumulative and remaining distances of every segment, and the route's total.</summary>
+    private static void SetRouteDistances(TaxiRoute route)
+    {
+        double cumulative = 0;
+        foreach (var s in route.Segments)
+        {
+            cumulative += s.DistanceMeters;
+            s.CumulativeDistanceMeters = cumulative;
+        }
+        foreach (var s in route.Segments)
+            s.RemainingDistanceMeters = cumulative - s.CumulativeDistanceMeters + s.DistanceMeters;
+        route.TotalDistanceMeters = cumulative;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1795,35 +1806,18 @@ public class TaxiRouter
             route.Segments.AddRange(leg2.Segments);
         }
 
-        double cumulative = 0;
-        foreach (var s in route.Segments)
-        {
-            cumulative += s.DistanceMeters;
-            s.CumulativeDistanceMeters = cumulative;
-        }
-        foreach (var s in route.Segments)
-            s.RemainingDistanceMeters = cumulative - s.CumulativeDistanceMeters + s.DistanceMeters;
-        route.TotalDistanceMeters = cumulative;
+        SetRouteDistances(route);
         return route;
     }
 
     /// <summary>
     /// Builds a route through <paramref name="nodeIds"/> in order, like <see cref="BuildRoute"/>, except
-    /// that the one pair (<paramref name="offChartFromNodeId"/>, <paramref name="offChartToNodeId"/>) with
-    /// no graph edge becomes a synthetic straight leg (<see cref="TaxiRouteSegment.IsOffChartTurn"/>).
-    /// Any other pair with no edge returns null. Turns and distances run over the whole list.
+    /// that every (From, To) pair in <paramref name="offChartPairs"/> that has no graph edge becomes a
+    /// synthetic straight leg (<see cref="TaxiRouteSegment.IsOffChartTurn"/>, matched in that direction
+    /// only). Any other pair with no edge returns null. Turns and distances run over the whole list.
     /// </summary>
-    internal TaxiRoute? BuildRouteThrough(IReadOnlyList<int> nodeIds, int offChartFromNodeId = 0, int offChartToNodeId = 0)
-        => BuildRouteThrough(nodeIds, offChartFromNodeId == 0 && offChartToNodeId == 0
-            ? Array.Empty<(int From, int To)>()
-            : new[] { (offChartFromNodeId, offChartToNodeId) });
-
-    /// <summary>
-    /// As <see cref="BuildRouteThrough(IReadOnlyList{int}, int, int)"/>, with every (From, To) pair in
-    /// <paramref name="offChartPairs"/> that has no graph edge built as a synthetic off-chart leg (matched
-    /// in that direction only). Any other pair with no edge returns null.
-    /// </summary>
-    internal TaxiRoute? BuildRouteThrough(IReadOnlyList<int> nodeIds, IReadOnlyCollection<(int From, int To)> offChartPairs)
+    internal TaxiRoute? BuildRouteThrough(IReadOnlyList<int> nodeIds,
+        IReadOnlyCollection<(int From, int To)>? offChartPairs = null)
     {
         var route = new TaxiRoute();
 
@@ -1838,18 +1832,9 @@ public class TaxiRouter
             var edge = _graph.GetEdge(fromId, toId);
             if (edge != null)
             {
-                segment = new TaxiRouteSegment
-                {
-                    FromNode = fromNode,
-                    ToNode = toNode,
-                    DistanceMeters = edge.DistanceMeters,
-                    TaxiwayName = edge.TaxiwayName,
-                    BearingDegrees = edge.BearingDegrees,
-                    PathWidth = edge.WidthFeet,
-                    HoldShortRunway = toNode.HoldShortName,
-                };
+                segment = EdgeSegment(fromNode, toNode, edge);
             }
-            else if (offChartPairs.Contains((fromId, toId)))
+            else if (offChartPairs != null && offChartPairs.Contains((fromId, toId)))
             {
                 segment = new TaxiRouteSegment
                 {
@@ -1870,23 +1855,10 @@ public class TaxiRouter
                 return null;
             }
 
-            if (route.Segments.Count > 0)
-            {
-                segment.TurnAngleDegrees = NormalizeAngle(segment.BearingDegrees - route.Segments[^1].BearingDegrees);
-                segment.TurnDirection = GetTurnDirection(segment.TurnAngleDegrees);
-            }
-            route.Segments.Add(segment);
+            AppendWithTurn(route, segment);
         }
 
-        double cumulative = 0;
-        foreach (var s in route.Segments)
-        {
-            cumulative += s.DistanceMeters;
-            s.CumulativeDistanceMeters = cumulative;
-        }
-        foreach (var s in route.Segments)
-            s.RemainingDistanceMeters = cumulative - s.CumulativeDistanceMeters + s.DistanceMeters;
-        route.TotalDistanceMeters = cumulative;
+        SetRouteDistances(route);
         return route;
     }
 

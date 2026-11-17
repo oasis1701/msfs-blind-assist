@@ -100,10 +100,56 @@ public class TurnPickCarryOverTests
     }
 
     [Fact]
+    public void A_turn_at_the_routes_first_node_keeps_no_block_until_the_index_leaves_segment_0()
+    {
+        // The route starts on the picked taxiway: the pick reads as made at index 0, before the aircraft
+        // has reached that node, so a wrong turn there must still be routable back through it.
+        var atStart = Pick(row: 0, afterDeparture: 0, firstTaxiway: 0, blocked: new[] { 7 });
+        var route = RouteWith(atStart);
+        Assert.Equal(TurnPickPhase.Made, TurnPickCarryOver.PhaseOf(atStart, 0));
+
+        Assert.Empty(TurnPickCarryOver.BlocksToKeep(route, 0, new HashSet<int>()));
+        Assert.Equal(new HashSet<int> { 7 }, TurnPickCarryOver.BlocksToKeep(route, 1, new HashSet<int>()));
+        // Earlier blocks still pass through at index 0.
+        Assert.Equal(new HashSet<int> { 3 }, TurnPickCarryOver.BlocksToKeep(route, 0, new HashSet<int> { 3 }));
+    }
+
+    [Fact]
+    public void A_corner_cut_onto_the_picked_taxiway_is_the_turn_made_not_missed()
+    {
+        var (_, _, route, pick) = KbosPlanned();
+        var onC = route.Segments[pick.FirstTaxiwaySegment];
+        double midLat = (onC.FromNode.Latitude + onC.ToNode.Latitude) / 2;
+        double midLon = (onC.FromNode.Longitude + onC.ToNode.Longitude) / 2;
+
+        // On C, heading along it: made, whether the index has the pick in the turn or still ahead.
+        Assert.True(TurnPickCarryOver.IsOnPickedTaxiway(route, pick, midLat, midLon, onC.BearingDegrees));
+        Assert.Same(pick, Assert.Single(TurnPickCarryOver.MadeByCut(route, pick.FirstSegmentAfterDeparture, midLat, midLon, onC.BearingDegrees)));
+        Assert.Same(pick, Assert.Single(TurnPickCarryOver.MadeByCut(route, 0, midLat, midLon, onC.BearingDegrees)));
+        // Once the index has made it there is nothing to decide.
+        Assert.Empty(TurnPickCarryOver.MadeByCut(route, pick.FirstTaxiwaySegment, midLat, midLon, onC.BearingDegrees));
+
+        // On C heading the other way, or across it, is not the picked turn.
+        Assert.False(TurnPickCarryOver.IsOnPickedTaxiway(route, pick, midLat, midLon, onC.BearingDegrees + 180));
+        Assert.False(TurnPickCarryOver.IsOnPickedTaxiway(route, pick, midLat, midLon, onC.BearingDegrees + 90));
+        // At the junction it turns from, short of the off-chart leg, the turn is still to come.
+        var from = route.Segments[pick.FirstSegmentAfterDeparture].FromNode;
+        Assert.False(TurnPickCarryOver.IsOnPickedTaxiway(route, pick, from.Latitude, from.Longitude, onC.BearingDegrees));
+
+        // A pick made by a cut is neither the first ahead nor one "not kept".
+        var cut = new[] { pick };
+        Assert.Null(TurnPickCarryOver.FirstAhead(route, 0, cut));
+        Assert.Same(pick, TurnPickCarryOver.FirstAhead(route, 0));
+        Assert.Empty(TurnPickCarryOver.NotKept(route, 0, new TaxiRoute(), cut));
+        Assert.Same(pick, Assert.Single(TurnPickCarryOver.NotKept(route, 0, new TaxiRoute())));
+    }
+
+    [Fact]
     public void Nothing_to_keep_on_a_null_route_or_a_route_without_picks()
     {
         Assert.Null(TurnPickCarryOver.FirstAhead(null, 0));
         Assert.Empty(TurnPickCarryOver.Missed(null, 0));
+        Assert.Empty(TurnPickCarryOver.MadeByCut(null, 0, 0, 0, 0));
         Assert.Empty(TurnPickCarryOver.BlocksToKeep(null, 0, new HashSet<int>()));
 
         var empty = new TaxiRoute();

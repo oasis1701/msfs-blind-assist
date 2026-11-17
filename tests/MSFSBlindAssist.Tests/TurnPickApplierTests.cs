@@ -134,6 +134,25 @@ public class TurnPickApplierTests
     }
 
     [Fact]
+    public void Off_the_network_a_first_row_pick_never_moves_the_route_start()
+    {
+        // The route starts at N260, the node LoadRoute's first-leg check passed; the aircraft's nearest
+        // node is N261. On the network the pick works from N261 and the route starts there; off it
+        // (KeepRouteStart) the start stays N260, whatever becomes of the pick.
+        var g = Build();
+        var r0 = Route(g, N260, CEast, "C");
+        var onNetwork = Ctx(g, new[] { "C" }, CEast, heading: 234.5, aircraft: StopPosition);
+
+        var moved = TurnPickApplier.Apply(r0, Picks((0, TurnSide.Left)), onNetwork);
+        Assert.Equal(Node(g, N261), Nodes(moved.Route)[0]);
+
+        var r1 = Route(g, N260, CEast, "C");
+        var kept = TurnPickApplier.Apply(r1, Picks((0, TurnSide.Left)), onNetwork with { KeepRouteStart = true });
+        Assert.Equal(Node(g, N260), Nodes(kept.Route)[0]);
+        Assert.All(kept.Applied, p => Assert.Equal(Node(g, N260), p.DepartureNodeId));
+    }
+
+    [Fact]
     public void Kbos_left_does_not_lead_to_the_west_end()
     {
         var g = Build();
@@ -977,7 +996,8 @@ public class TurnPickApplierTests
         var res = TurnPickApplier.Apply(r0, Picks((1, TurnSide.Left)),
             Ctx(g, AB, Wn, heading: 180, pinnedNodeId: Node(g, Wm)));
 
-        Assert.Equal(TurnPickOutcome.NoTurnFound, Assert.Single(res.Refusals).Reason);
+        // The turn exists; it misses the pinned holding point, and is said as that, not as no turn.
+        Assert.Equal(TurnPickOutcome.MissesHoldingPoint, Assert.Single(res.Refusals).Reason);
         Assert.Same(r0, res.Route);
     }
 }

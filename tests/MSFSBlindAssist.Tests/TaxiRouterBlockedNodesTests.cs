@@ -214,10 +214,40 @@ public class TaxiRouterBlockedNodesTests
     }
 
     [Fact]
+    public void A_block_well_off_to_the_side_of_a_gap_hop_does_not_stand_between_its_ends()
+    {
+        // A has a 400 m navdata gap from E to N, crossed only by X round to the west. A separate piece of
+        // A lies 150 m east of the gap's middle (a pick's other arm, blocked): inside the circle on the hop
+        // as diameter, so the ends are more than 90 degrees apart seen from it, but nowhere near the hop's
+        // line. The hop must still be made.
+        var paths = new List<TaxiPath>
+        {
+            P(36.9990, -122.0000, 37.0000, -122.0000, "A"),
+            P(37.0000, -122.0000, 37.0010, -122.0000, "A"),
+            P(37.0046, -122.0000, 37.0060, -122.0000, "A"),
+            P(37.0010, -122.0000, 37.0010, -122.0020, "X"),
+            P(37.0010, -122.0020, 37.0046, -122.0020, "X"),
+            P(37.0046, -122.0020, 37.0046, -122.0000, "X"),
+            P(37.0028, -121.99831, 37.0028, -121.9915, "A"),
+        };
+        var graph = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+        int start = FindNode(graph, 36.9990, -122.0000).NodeId, goal = FindNode(graph, 37.0060, -122.0000).NodeId;
+        int n = FindNode(graph, 37.0046, -122.0000).NodeId;
+        var router = new TaxiRouter(graph);
+        router.BlockedNodes.Add(FindNode(graph, 37.0028, -121.99831).NodeId);
+
+        var path = router.AStarSearchWithGapChaining(start, goal, "A");
+
+        Assert.NotNull(path);
+        Assert.Contains(n, path!);
+        Assert.Equal(goal, path![^1]);
+    }
+
+    [Fact]
     public void BuildRouteThrough_inserts_one_off_chart_segment()
     {
         var (graph, router, n, _, s, _) = BuildRing();
-        var route = router.BuildRouteThrough(new[] { n, s }, n, s);
+        var route = router.BuildRouteThrough(new[] { n, s }, new[] { (n, s) });
         Assert.NotNull(route);
         var seg = Assert.Single(route!.Segments);
         Assert.True(seg.IsOffChartTurn);
@@ -234,7 +264,7 @@ public class TaxiRouterBlockedNodesTests
     public void BuildRouteThrough_computes_turns_across_both_joins()
     {
         var (_, router, n, e, s, w) = BuildRing();
-        var route = router.BuildRouteThrough(new[] { w, n, s, e }, n, s);
+        var route = router.BuildRouteThrough(new[] { w, n, s, e }, new[] { (n, s) });
         Assert.NotNull(route);
         Assert.Equal(3, route!.Segments.Count);
         Assert.True(route.Segments[1].IsOffChartTurn);

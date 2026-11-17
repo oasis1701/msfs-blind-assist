@@ -56,12 +56,26 @@ internal static class TurnPickCarryOver
          : currentSegmentIndex < pick.FirstTaxiwaySegment ? TurnPickPhase.InTurn
          : TurnPickPhase.Made;
 
-    /// The earliest pick still Ahead, or null.
-    public static AppliedTurnPick? FirstAhead(TaxiRoute? route, int currentSegmentIndex)
+    /// The earliest pick still Ahead and not in except (the picks made by a corner cut), or null.
+    public static AppliedTurnPick? FirstAhead(TaxiRoute? route, int currentSegmentIndex,
+        IReadOnlyCollection<AppliedTurnPick>? except = null)
         => route?.TurnPicks
-            .Where(p => PhaseOf(p, currentSegmentIndex) == TurnPickPhase.Ahead)
+            .Where(p => PhaseOf(p, currentSegmentIndex) == TurnPickPhase.Ahead && !(except?.Contains(p) ?? false))
             .OrderBy(p => p.RowIndex)
             .FirstOrDefault();
+
+    /// Picks the index has not yet counted as made while the aircraft is already on their taxiway
+    /// (IsOnPickedTaxiway), in row order: made by cutting the corner, which is what trips off-route
+    /// there, so neither missed nor still ahead.
+    public static List<AppliedTurnPick> MadeByCut(TaxiRoute? route, int currentSegmentIndex,
+        double lat, double lon, double headingTrue)
+        => route == null
+            ? new List<AppliedTurnPick>()
+            : route.TurnPicks
+                .Where(p => PhaseOf(p, currentSegmentIndex) != TurnPickPhase.Made
+                         && IsOnPickedTaxiway(route, p, lat, lon, headingTrue))
+                .OrderBy(p => p.RowIndex)
+                .ToList();
 
     /// Node ids from the pick's departure node to the end of the route, and every off-chart pair
     /// inside it, in route order.
@@ -91,13 +105,16 @@ internal static class TurnPickCarryOver
                 .ToList();
 
     /// Picks Ahead on the route being replaced that the adopted route does not carry (matched by row,
-    /// since a kept pick is a rebased copy), in row order: each must be said as "could not be kept".
-    public static List<AppliedTurnPick> NotKept(TaxiRoute? replaced, int currentSegmentIndex, TaxiRoute adopted)
+    /// since a kept pick is a rebased copy) and that are not in except (made by a corner cut), in row
+    /// order: each must be said as "could not be kept".
+    public static List<AppliedTurnPick> NotKept(TaxiRoute? replaced, int currentSegmentIndex, TaxiRoute adopted,
+        IReadOnlyCollection<AppliedTurnPick>? except = null)
         => replaced == null
             ? new List<AppliedTurnPick>()
             : replaced.TurnPicks
                 .Where(p => PhaseOf(p, currentSegmentIndex) == TurnPickPhase.Ahead
-                         && !adopted.TurnPicks.Any(k => k.RowIndex == p.RowIndex))
+                         && !adopted.TurnPicks.Any(k => k.RowIndex == p.RowIndex)
+                         && !(except?.Contains(p) ?? false))
                 .OrderBy(p => p.RowIndex)
                 .ToList();
 
@@ -107,16 +124,46 @@ internal static class TurnPickCarryOver
     /// recalculation that starts at one of these nodes exempts it on its own router only, never here,
     /// or the junction would stay unblocked once its made pick has left the route. Always a new set,
     /// never the caller's instance; a null route or one with no picks gives a copy of alreadyBlocked.
+    /// A turn the route makes at its very first node (FirstTaxiwaySegment 0) reads as made from the
+    /// first frame, before the aircraft has reached that node: its junction is kept only once the
+    /// index has left segment 0, so a pilot who turns the wrong way there can be routed back through it.
     public static HashSet<int> BlocksToKeep(TaxiRoute? route, int currentSegmentIndex,
         IReadOnlySet<int> alreadyBlocked)
     {
         var keep = new HashSet<int>(alreadyBlocked);
         if (route != null)
             foreach (var p in route.TurnPicks)
-                if (PhaseOf(p, currentSegmentIndex) == TurnPickPhase.Made)
+                if (PhaseOf(p, currentSegmentIndex) == TurnPickPhase.Made
+                    && !(p.FirstTaxiwaySegment == 0 && currentSegmentIndex == 0))
                     keep.UnionWith(p.BlockedNodeIds);
         return keep;
     }
+
+    /// Is the aircraft already on the pick's own taxiway, along its first 80 m from the join, within
+    /// the off-route tolerance and heading its way? A pick the segment index has not yet counted as
+    /// made is then made by a corner cut (MadeByCut): off-route can fire there because the cut has
+    /// left both the current segment and its next one.
+    public static bool IsOnPickedTaxiway(TaxiRoute route, AppliedTurnPick pick, double lat, double lon,
+        double headingTrue)
+    {
+        double walked = 0;
+        for (int i = pick.FirstTaxiwaySegment; i < route.Segments.Count && walked < TurnShape.WalkPastJoinMeters; i++)
+        {
+            var s = route.Segments[i];
+            if (i > pick.FirstTaxiwaySegment
+                && !string.Equals(s.TaxiwayName, pick.TaxiwayName, StringComparison.OrdinalIgnoreCase)) break;
+            walked += s.DistanceMeters;
+            double off = GuidanceGeometry.PerpendicularDistanceToSegmentMeters(lat, lon,
+                s.FromNode.Latitude, s.FromNode.Longitude, s.ToNode.Latitude, s.ToNode.Longitude);
+            if (off <= PavementTolerance.ForWidthFeet(s.PathWidth)
+                && Math.Abs(TaxiGraph.NormalizeAngle(headingTrue - s.BearingDegrees)) <= OnPickedTaxiwayMaxHeadingDeg)
+                return true;
+        }
+        return false;
+    }
+
+    /// How far the aircraft's heading may be from the picked taxiway's segment to count as on it.
+    public const double OnPickedTaxiwayMaxHeadingDeg = 45.0;
 
     /// Row picks from the planner's rows: a row with no taxiway is skipped and does not consume an index.
     /// turnIndex: 0 Automatic, 1 Left, 2 Right.

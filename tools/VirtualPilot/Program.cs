@@ -381,6 +381,7 @@ void RunTurnPicks(World w)
                     : said.Contains($"no {sideWord} turn onto taxiway", StringComparison.OrdinalIgnoreCase) ? "NO_TURN"
                     : said.Contains("does not lead to", StringComparison.OrdinalIgnoreCase) ? "NO_LEAD"
                     : said.Contains("would be a long detour", StringComparison.OrdinalIgnoreCase) ? "DETOUR"
+                    : said.Contains($"onto taxiway {seq[row]} does not pass", StringComparison.OrdinalIgnoreCase) ? "NO_PIN"
                     : applied == null ? "SILENT"
                     : applied.IsOffChart ? "OFFCHART" : applied.ChangedRoute ? "CHARTED" : "MET";
                 if (outcome == "MET") met++;

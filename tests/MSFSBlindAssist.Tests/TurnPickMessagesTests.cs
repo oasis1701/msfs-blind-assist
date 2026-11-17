@@ -41,6 +41,18 @@ public class TurnPickMessagesTests
         => Assert.Equal(expected,
             TurnPickMessages.Refused(new TurnPickRefusal(1, TurnSide.Right, "B", reason), "Runway 33L"));
 
+    [Theory]
+    [InlineData("A2", "Note: turning right onto taxiway B does not pass holding point A2. The route keeps the charted turn.")]
+    [InlineData("", "Note: turning right onto taxiway B does not pass the holding point you picked. The route keeps the charted turn.")]
+    [InlineData(null, "Note: turning right onto taxiway B does not pass the holding point you picked. The route keeps the charted turn.")]
+    public void A_pick_that_misses_the_pinned_holding_point_says_so_not_that_no_turn_exists(string? point, string expected)
+    {
+        var refusal = new TurnPickRefusal(1, TurnSide.Right, "B", TurnPickOutcome.MissesHoldingPoint);
+        Assert.Equal(expected, TurnPickMessages.Refused(refusal, "Runway 33L", point));
+        Assert.Equal(expected, TurnPickMessages.ComposeLoadNote(
+            Array.Empty<AppliedTurnPick>(), new[] { refusal }, "Runway 33L", m => $"{m} metres", point));
+    }
+
     [Fact]
     public void Could_not_be_kept_and_missed_read_as_specified()
     {

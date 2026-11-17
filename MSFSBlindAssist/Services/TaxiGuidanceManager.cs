@@ -252,9 +252,6 @@ public partial class TaxiGuidanceManager : IDisposable
     // sequence index -> the point. Kept so a recalculation can put a stop that is still ahead
     // back onto the new route (HoldingPointHoldShort.IsStillAhead).
     private Dictionary<int, Navigation.HoldingPointHoldShort>? _userHoldingPointHoldShorts;
-    // The planner's Turn picks (sequence index -> side), a private copy re-keyed when a runway
-    // leg is dropped. Null when the pilot left every Turn list at Automatic.
-    private Dictionary<int, TurnSide>? _userTurnPicks;
     // Junction nodes a made Turn pick keeps out of later recalculations of this route, so none
     // can route back through the junction the pilot turned away from. Empty for a fresh route.
     private HashSet<int> _turnBlockedNodes = new();

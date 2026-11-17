@@ -22,8 +22,10 @@ internal static class OffChartLeg
     public enum Refusal { None, TooLongOrShort, Shape, OffPavement, EntersRunway }
 
     /// Passing candidates, best first (smallest |FirstTurnDeg|; within TieDeg, the shorter leg).
+    /// refusals, when given, receives why each judged leg that did not pass was refused (for a log).
     public static List<Candidate> Find(TaxiGraph graph, PavementMap pavement, int fromNodeId,
-        double incomingBearing, string taxiway, TurnSide side, IReadOnlySet<int>? excludeNodes = null)
+        double incomingBearing, string taxiway, TurnSide side, IReadOnlySet<int>? excludeNodes = null,
+        List<Refusal>? refusals = null)
     {
         var found = new List<Candidate>();
         if (!graph.Nodes.TryGetValue(fromNodeId, out var from)) return found;
@@ -40,8 +42,12 @@ internal static class OffChartLeg
             {
                 if (!string.Equals(edge.TaxiwayName, taxiway, StringComparison.OrdinalIgnoreCase)) continue;
                 if (!seenNext.Add(edge.ToNodeId)) continue;
-                if (Judge(graph, pavement, fromNodeId, incomingBearing, joinId, edge.ToNodeId, side) != Refusal.None)
+                var refusal = Judge(graph, pavement, fromNodeId, incomingBearing, joinId, edge.ToNodeId, side);
+                if (refusal != Refusal.None)
+                {
+                    refusals?.Add(refusal);
                     continue;
+                }
                 var (length, first, atTaxiway) = Measure(graph, fromNodeId, incomingBearing, joinId, edge.ToNodeId, side);
                 found.Add(new Candidate(joinId, edge.ToNodeId, length, first, atTaxiway));
             }
@@ -119,11 +125,5 @@ internal static class OffChartLeg
     private static (double, double) Lerp(TaxiNode a, TaxiNode b, double t)
         => (a.Latitude + (b.Latitude - a.Latitude) * t, a.Longitude + (b.Longitude - a.Longitude) * t);
 
-    private static double Normalize(double deg)
-    {
-        deg %= 360.0;
-        if (deg > 180.0) deg -= 360.0;
-        else if (deg <= -180.0) deg += 360.0;
-        return deg;
-    }
+    private static double Normalize(double deg) => TaxiGraph.NormalizeAngle(deg);
 }

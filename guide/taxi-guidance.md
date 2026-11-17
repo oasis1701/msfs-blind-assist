@@ -144,7 +144,7 @@ A list on every taxiway row, just before that row's taxiway list. On the first r
 
 Leave it on Automatic unless ATC named the direction, as in "taxi via F, H, left on C". Then set the Turn list on the row for C to **Left**. With Automatic, BA picks the turn that suits your route, as it always has.
 
-On the first taxiway, left and right are judged from the way your aircraft is facing when you press Calculate Route. The exception is a route that first follows another named taxiway to reach it, or more than 200 metres (about 650 feet) of unnamed taxi lines: then they are judged from the direction you arrive from. At a nose-in stand, set a Turn on the first row after pushback, when you are facing the way you will taxi; set before pushback, it would be judged from a heading that points at the terminal. On every later row they are from the direction of the taxiway before it.
+On the first taxiway, left and right are judged from the way your aircraft is facing when you press Calculate Route. The exception is a route that first follows another named taxiway to reach it, or more than 200 metres (about 650 feet) of unnamed taxi lines: then they are judged from the direction you arrive from. At a nose-in stand, set a Turn on the first row after pushback, when you are facing the way you will taxi; set before pushback, it would be judged from a heading that points at the terminal. When your position is not connected to the taxiway network, a first-row turn is made from where the route starts, never from another point, so the unmapped stretch BA warned you about stays the one you taxi across. On every later row they are from the direction of the taxiway before it.
 
 The Turn list keeps its value when you change the row's taxiway, and goes away with the row if you remove it. It is shown for every destination type, Progressive Taxi included. A SayIntentions import sets every Turn list back to Automatic.
 
@@ -500,7 +500,9 @@ Most routes produce a clean summary. When something is not right, a warning is a
 
 **"Your position isn't connected to the taxiway network. The first 40 metres to taxiway A aren't mapped."** Your stand, or the spot you are on, is not joined to the taxiways in the airport's data. BA will steer you straight across that unmapped stretch towards the start of the route, so check it is clear. A similar warning, *"Gate X isn't connected to the taxiway network you're on. The first N of the route aren't mapped."*, means the destination is the part that is cut off.
 
-**"Note: no left turn onto taxiway C was found here. The route keeps the charted turn."** You set a Turn list, and BA found no way to make that turn, charted or off-chart. It kept the route it would have built without your pick. Check the direction and the taxiway on that row, and with ATC if the turn really is possible. You hear the same note when the route includes an uncharted apron crossing, or when the pick would drop a named holding point the route is pinned through.
+**"Note: no left turn onto taxiway C was found here. The route keeps the charted turn."** You set a Turn list, and BA found no way to make that turn, charted or off-chart. It kept the route it would have built without your pick. Check the direction and the taxiway on that row, and with ATC if the turn really is possible. You hear the same note when the route includes an uncharted apron crossing.
+
+**"Note: turning left onto taxiway C does not pass holding point A2. The route keeps the charted turn."** The turn is possible, but no way through it passes the named holding point you picked (a holding-point departure, or a Progressive Taxi crossing at a holding point), so BA kept the charted turn. Check which of the two ATC meant: to make that turn, leave the holding point unpicked.
 
 **"Note: turning left onto taxiway C does not lead to Runway 33L. The route keeps the charted turn."** The turn is possible, but nothing beyond it reaches your destination, or only by a loop: doubling straight back, returning the way the route came, coming back onto the same taxiway on the other side of the junction, or running along a runway. BA kept the charted turn. Check the clearance. If ATC really gave you a way round that crosses that taxiway again further on, leave this Turn list on Automatic and enter the taxiways of the clearance in order.
 
@@ -741,8 +743,8 @@ If the new route would be exactly the same as the rest of your old one, for exam
 BA does not judge a Turn pick again from where you are. It keeps what it decided when the route was loaded:
 
 - If you are still short of the turn, BA rebuilds only the part up to the turn, and keeps the turn and everything after it.
-- If you are in the turn, between the junction and the taxiway, the pick counts as missed, and "Route changed" adds *"The left turn onto taxiway C was missed."*
-- Once you have made the turn, no later new route takes you back through that junction.
+- If you are in the turn, between the junction and the taxiway, the pick counts as missed, and "Route changed" adds *"The left turn onto taxiway C was missed."* If you are already on taxiway C and heading along it, because you cut the corner, the turn counts as made and nothing is said about it.
+- Once you have made the turn, no later new route takes you back through that junction. A turn at the very start of the route counts as made only once you are on your way along it, so if you turn the wrong way there, the new route can still take you back through that junction.
 - If a new route cannot keep a turn that was still ahead, "Route changed" adds *"The left turn onto taxiway C could not be kept."*
 
 In those two cases BA always takes the new route and says so, even when it uses the same taxiways as the old one: the old route is the one you have left at the turn.
@@ -851,6 +853,7 @@ This is a reference list of every taxi guidance callout, grouped by when you hea
 | *"Note: no left turn onto taxiway C was found here. The route keeps the charted turn."* | Your Turn pick could not be made. | Check the pick against the clearance. |
 | *"Note: turning left onto taxiway C does not lead to Runway 33L. The route keeps the charted turn."* | The picked turn does not reach your destination. | Check the clearance. |
 | *"Note: turning left onto taxiway C would be a long detour to Runway 33L. The route keeps the charted turn."* | The picked turn reaches your destination only the long way round. | Ask ATC whether the long way is intended. |
+| *"Note: turning left onto taxiway C does not pass holding point A2. The route keeps the charted turn."* | The picked turn and the picked holding point do not go together. | Check the clearance; pick one of the two. |
 | *"Turning left onto taxiway C, as picked."* | Your Turn pick changed the route. | Nothing; for information. |
 | *"Taxiway A. Steering guidance active."* | Guidance has started; you are on A. | Start taxiing. |
 | *"Steering guidance active. Join taxiway A in 60 metres."* | Guidance has started; A is ahead. | Taxi onto A, following the tone. |

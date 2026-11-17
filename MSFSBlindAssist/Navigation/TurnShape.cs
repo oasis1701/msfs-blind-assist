@@ -50,12 +50,5 @@ internal static class TurnShape
         return sign * running <= -MinEndTurnDeg && maxContrary <= MaxContraryDeg;
     }
 
-    /// <summary>Normalizes an angle in degrees into (-180, 180].</summary>
-    private static double Normalize(double deg)
-    {
-        deg %= 360.0;
-        if (deg > 180.0) deg -= 360.0;
-        else if (deg <= -180.0) deg += 360.0;
-        return deg;
-    }
+    private static double Normalize(double deg) => TaxiGraph.NormalizeAngle(deg);
 }
