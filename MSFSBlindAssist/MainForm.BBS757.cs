@@ -323,14 +323,20 @@ public partial class MainForm
 
             long? id = folder == null ? null : Bbs757WorkFolder.ReadSimBriefId(folder);
             Bbs757Loads? loads = null;
-            // Why there is no plan, when known: no ID in a settings file that was found, or SimBrief's own fetch error.
+            // Why there is no plan, when known: no ID in a settings file that was found, SimBrief's own fetch error, or the
+            // loadsheet's refusal of a plan it read (another aircraft, no type, more fuel or cargo than the 757 takes).
             string? why = folder != null && id == null ? Bbs757EfbExtras.NoSimBriefIdText : null;
             if (id is long simBriefId)
             {
                 var (xml, fetchError) = await Task.Run(() => MSFSBlindAssist.Services.SimBriefService.FetchLatestOfpXmlAsync(simBriefId, null));
                 why = fetchError;
                 var plan = xml == null ? null : await Task.Run(() => Bbs757Loadsheet.ParsePlan(xml));
-                if (plan != null) loads = Bbs757Loadsheet.Compute(plan).Loads;
+                if (plan != null)
+                {
+                    var (computed, refusal) = Bbs757Loadsheet.Compute(plan);
+                    loads = computed;
+                    why = refusal ?? why;
+                }
             }
             if (!ReferenceEquals(currentAircraft, def)) return;
             if (loads == null)
