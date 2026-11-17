@@ -1,0 +1,487 @@
+{
+  "app": "AIRCRAFT",
+  "section": "CABIN \u0026 DOORS",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "Cockpit presets",
+      "box": [
+        44,
+        155,
+        188,
+        29
+      ],
+      "hit": [
+        130,
+        169
+      ],
+      "clickable": true,
+      "key": "menu:COCKPIT PRESETS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Fuel",
+      "box": [
+        40,
+        213,
+        61,
+        32
+      ],
+      "hit": [
+        130,
+        229
+      ],
+      "clickable": true,
+      "key": "menu:FUEL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Weight \u0026 balance",
+      "box": [
+        44,
+        277,
+        201,
+        27
+      ],
+      "hit": [
+        130,
+        290
+      ],
+      "clickable": true,
+      "key": "menu:WEIGHT \u0026 BALANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Ground services",
+      "box": [
+        45,
+        337,
+        191,
+        26
+      ],
+      "hit": [
+        130,
+        350
+      ],
+      "clickable": true,
+      "key": "menu:GROUND SERVICES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin \u0026 doors",
+      "box": [
+        45,
+        397,
+        160,
+        27
+      ],
+      "hit": [
+        130,
+        410
+      ],
+      "clickable": true,
+      "key": "menu:CABIN \u0026 DOORS",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Maintenance",
+      "box": [
+        43,
+        457,
+        155,
+        26
+      ],
+      "hit": [
+        130,
+        470
+      ],
+      "clickable": true,
+      "key": "menu:MAINTENANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Failures",
+      "box": [
+        43,
+        517,
+        103,
+        27
+      ],
+      "hit": [
+        130,
+        530
+      ],
+      "clickable": true,
+      "key": "menu:FAILURES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Button",
+      "text": "Close all",
+      "box": [
+        326,
+        189,
+        195,
+        29
+      ],
+      "hit": [
+        423,
+        203
+      ],
+      "clickable": true,
+      "key": "btn:|CLOSE ALL@16,9",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Left FWD: Closed",
+      "box": [
+        675,
+        189,
+        99,
+        39
+      ],
+      "hit": [
+        724,
+        208
+      ],
+      "clickable": true,
+      "key": "btn:LEFT FWD|@33,9",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Right FWD: Closed",
+      "box": [
+        873,
+        189,
+        100,
+        40
+      ],
+      "hit": [
+        923,
+        209
+      ],
+      "clickable": true,
+      "key": "btn:RIGHT FWD|@43,9",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Cockpit open",
+      "box": [
+        326,
+        239,
+        195,
+        29
+      ],
+      "hit": [
+        423,
+        253
+      ],
+      "clickable": true,
+      "key": "btn:|COCKPIT@16,11",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Cabin lighting: Ground service off",
+      "box": [
+        1066,
+        239,
+        258,
+        27
+      ],
+      "hit": [
+        1195,
+        252
+      ],
+      "clickable": true,
+      "key": "btn:CABIN LIGHTING|GROUND SERVICE@53,11",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Slider",
+      "text": "Ceiling",
+      "box": [
+        1066,
+        303,
+        42,
+        12
+      ],
+      "hit": [
+        1146,
+        309
+      ],
+      "clickable": true,
+      "key": "sld:CEILING",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "Off",
+      "slider": [
+        1146,
+        1268,
+        1146
+      ]
+    },
+    {
+      "kind": "Button",
+      "text": "FWD cargo: Closed",
+      "box": [
+        873,
+        298,
+        100,
+        39
+      ],
+      "hit": [
+        923,
+        317
+      ],
+      "clickable": true,
+      "key": "btn:FWD CARGO|@43,14",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Slider",
+      "text": "Window",
+      "box": [
+        1072,
+        347,
+        36,
+        12
+      ],
+      "hit": [
+        1146,
+        353
+      ],
+      "clickable": true,
+      "key": "sld:WINDOW",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "Off",
+      "slider": [
+        1146,
+        1268,
+        1146
+      ]
+    },
+    {
+      "kind": "Button",
+      "text": "Left mid: Closed",
+      "box": [
+        675,
+        364,
+        99,
+        40
+      ],
+      "hit": [
+        724,
+        384
+      ],
+      "clickable": true,
+      "key": "btn:LEFT MID|@33,18",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Right mid: Closed",
+      "box": [
+        873,
+        364,
+        99,
+        40
+      ],
+      "hit": [
+        922,
+        384
+      ],
+      "clickable": true,
+      "key": "btn:RIGHT MID|@43,18",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Slider",
+      "text": "Entry",
+      "box": [
+        1068,
+        391,
+        30,
+        12
+      ],
+      "hit": [
+        1146,
+        397
+      ],
+      "clickable": true,
+      "key": "sld:ENTRY",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "Off",
+      "slider": [
+        1146,
+        1268,
+        1146
+      ]
+    },
+    {
+      "kind": "Button",
+      "text": "AFT cargo: Closed",
+      "box": [
+        873,
+        719,
+        100,
+        40
+      ],
+      "hit": [
+        923,
+        739
+      ],
+      "clickable": true,
+      "key": "btn:AFT CARGO|@43,35",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Left AFT: Closed",
+      "box": [
+        675,
+        838,
+        97,
+        31
+      ],
+      "hit": [
+        723,
+        853
+      ],
+      "clickable": true,
+      "key": "btn:LEFT AFT|@33,41",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Right AFT: Closed",
+      "box": [
+        873,
+        838,
+        100,
+        39
+      ],
+      "hit": [
+        923,
+        857
+      ],
+      "clickable": true,
+      "key": "btn:RIGHT AFT|@43,41",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications",
+      "box": [
+        1364,
+        6,
+        19,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

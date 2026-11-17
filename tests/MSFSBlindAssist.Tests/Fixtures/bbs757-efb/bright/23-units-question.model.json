@@ -1,0 +1,295 @@
+{
+  "app": "NAVIGATION",
+  "section": "ACARS DASHBOARD",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "ACARS dashboard",
+      "box": [
+        1,
+        150,
+        248,
+        40
+      ],
+      "hit": [
+        130,
+        170
+      ],
+      "clickable": true,
+      "key": "menu:ACARS DASHBOARD",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Operating FP",
+      "box": [
+        42,
+        212,
+        154,
+        33
+      ],
+      "hit": [
+        130,
+        228
+      ],
+      "clickable": true,
+      "key": "menu:OPERATING FP",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Weather \u0026 NOTAM",
+      "box": [
+        45,
+        278,
+        199,
+        26
+      ],
+      "hit": [
+        130,
+        291
+      ],
+      "clickable": true,
+      "key": "menu:WEATHER \u0026 NOTAM",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Charts",
+      "box": [
+        42,
+        333,
+        93,
+        33
+      ],
+      "hit": [
+        130,
+        349
+      ],
+      "clickable": true,
+      "key": "menu:CHARTS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Map",
+      "box": [
+        40,
+        393,
+        59,
+        32
+      ],
+      "hit": [
+        130,
+        409
+      ],
+      "clickable": true,
+      "key": "menu:MAP",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "PERF calc",
+      "box": [
+        42,
+        456,
+        119,
+        29
+      ],
+      "hit": [
+        130,
+        470
+      ],
+      "clickable": true,
+      "key": "menu:PERF CALC",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Button",
+      "text": "Refresh SIMBRIEF OFP",
+      "box": [
+        324,
+        92,
+        249,
+        35
+      ],
+      "hit": [
+        448,
+        109
+      ],
+      "clickable": true,
+      "key": "btn:|REFRESH SIMBRIEF OFP@16,4",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Remove FP",
+      "box": [
+        580,
+        92,
+        105,
+        40
+      ],
+      "hit": [
+        632,
+        112
+      ],
+      "clickable": true,
+      "key": "btn:|REMOVE FP@29,4",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Text",
+      "text": "DEP -03:21",
+      "box": [
+        1034,
+        3,
+        102,
+        24
+      ],
+      "hit": [
+        1085,
+        15
+      ],
+      "clickable": false,
+      "key": "top:dep",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Start boarding",
+      "box": [
+        1142,
+        3,
+        180,
+        28
+      ],
+      "hit": [
+        1232,
+        17
+      ],
+      "clickable": true,
+      "key": "top:boarding",
+      "tint": "Green",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Notifications",
+      "box": [
+        1329,
+        6,
+        54,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [
+    {
+      "text": "SIMBRIEF OFP received.",
+      "time": "14:21Z"
+    }
+  ],
+  "question": {
+    "text": "Mismatch between flight plan and aircraft weight units! The loaded flight plan uses LBS, but the aircraft is currently set to KG. Do you want to switch the aircraft unit system?",
+    "buttons": [
+      {
+        "kind": "Button",
+        "text": "Yes",
+        "box": [
+          306,
+          604,
+          178,
+          59
+        ],
+        "hit": [
+          395,
+          633
+        ],
+        "clickable": true,
+        "key": "q:YES",
+        "tint": "Green",
+        "on": null,
+        "selected": false,
+        "value": "",
+        "slider": null
+      },
+      {
+        "kind": "Button",
+        "text": "No",
+        "box": [
+          912,
+          603,
+          181,
+          62
+        ],
+        "hit": [
+          1002,
+          634
+        ],
+        "clickable": true,
+        "key": "q:NO",
+        "tint": "Blue",
+        "on": null,
+        "selected": false,
+        "value": "",
+        "slider": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,601 @@
+{
+  "app": "AIRCRAFT",
+  "section": "MAINTENANCE",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "Cockpit presets",
+      "box": [
+        43,
+        156,
+        190,
+        30
+      ],
+      "hit": [
+        130,
+        171
+      ],
+      "clickable": true,
+      "key": "menu:COCKPIT PRESETS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Fuel",
+      "box": [
+        41,
+        216,
+        60,
+        29
+      ],
+      "hit": [
+        130,
+        230
+      ],
+      "clickable": true,
+      "key": "menu:FUEL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Weight \u0026 balance",
+      "box": [
+        42,
+        276,
+        204,
+        30
+      ],
+      "hit": [
+        130,
+        291
+      ],
+      "clickable": true,
+      "key": "menu:WEIGHT \u0026 BALANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Ground services",
+      "box": [
+        44,
+        335,
+        191,
+        29
+      ],
+      "hit": [
+        130,
+        349
+      ],
+      "clickable": true,
+      "key": "menu:GROUND SERVICES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin \u0026 doors",
+      "box": [
+        45,
+        398,
+        159,
+        24
+      ],
+      "hit": [
+        130,
+        410
+      ],
+      "clickable": true,
+      "key": "menu:CABIN \u0026 DOORS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Maintenance",
+      "box": [
+        43,
+        458,
+        155,
+        26
+      ],
+      "hit": [
+        130,
+        471
+      ],
+      "clickable": true,
+      "key": "menu:MAINTENANCE",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Failures",
+      "box": [
+        43,
+        517,
+        103,
+        27
+      ],
+      "hit": [
+        130,
+        530
+      ],
+      "clickable": true,
+      "key": "menu:FAILURES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Row",
+      "text": "Brake 1",
+      "box": [
+        525,
+        364,
+        80,
+        24
+      ],
+      "hit": [
+        565,
+        376
+      ],
+      "clickable": false,
+      "key": "slot:Brake 1@364",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "79 F",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Brake 2",
+      "box": [
+        625,
+        364,
+        80,
+        24
+      ],
+      "hit": [
+        665,
+        376
+      ],
+      "clickable": false,
+      "key": "slot:Brake 2@364",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "79 F",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Brake 3",
+      "box": [
+        901,
+        364,
+        80,
+        24
+      ],
+      "hit": [
+        941,
+        376
+      ],
+      "clickable": false,
+      "key": "slot:Brake 3@364",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "79 F",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Brake 4",
+      "box": [
+        1002,
+        364,
+        80,
+        24
+      ],
+      "hit": [
+        1042,
+        376
+      ],
+      "clickable": false,
+      "key": "slot:Brake 4@364",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "79F",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Brake 5",
+      "box": [
+        525,
+        478,
+        80,
+        24
+      ],
+      "hit": [
+        565,
+        490
+      ],
+      "clickable": false,
+      "key": "slot:Brake 5@478",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "79 F",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Brake 6",
+      "box": [
+        625,
+        478,
+        80,
+        24
+      ],
+      "hit": [
+        665,
+        490
+      ],
+      "clickable": false,
+      "key": "slot:Brake 6@478",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "79 F",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Brake 7",
+      "box": [
+        901,
+        478,
+        80,
+        24
+      ],
+      "hit": [
+        941,
+        490
+      ],
+      "clickable": false,
+      "key": "slot:Brake 7@478",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "79F",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Brake 8",
+      "box": [
+        1002,
+        478,
+        80,
+        24
+      ],
+      "hit": [
+        1042,
+        490
+      ],
+      "clickable": false,
+      "key": "slot:Brake 8@478",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "79F",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Landing gear (selected)",
+      "box": [
+        288,
+        122,
+        119,
+        26
+      ],
+      "hit": [
+        347,
+        135
+      ],
+      "clickable": true,
+      "key": "tab:|LANDING GEAR@14,6",
+      "tint": "Grey",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Hydraulic",
+      "box": [
+        428,
+        124,
+        95,
+        24
+      ],
+      "hit": [
+        475,
+        136
+      ],
+      "clickable": true,
+      "key": "tab:|HYDRAULIC@21,6",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Oxygen",
+      "box": [
+        551,
+        124,
+        70,
+        24
+      ],
+      "hit": [
+        586,
+        136
+      ],
+      "clickable": true,
+      "key": "tab:|OXYGEN@27,6",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Fire protect",
+      "box": [
+        653,
+        122,
+        112,
+        25
+      ],
+      "hit": [
+        709,
+        134
+      ],
+      "clickable": true,
+      "key": "tab:|FIRE PROTECT@32,6",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "APU",
+      "box": [
+        806,
+        124,
+        41,
+        23
+      ],
+      "hit": [
+        826,
+        135
+      ],
+      "clickable": true,
+      "key": "tab:|APU@40,6",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Heading",
+      "text": "Brake temperature",
+      "box": [
+        297,
+        170,
+        221,
+        26
+      ],
+      "hit": [
+        407,
+        183
+      ],
+      "clickable": false,
+      "key": "h:BRAKE TEMPERATURE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Reset, Brake temperature",
+      "box": [
+        1165,
+        174,
+        138,
+        40
+      ],
+      "hit": [
+        1234,
+        194
+      ],
+      "clickable": true,
+      "key": "btn:BRAKE TEMPERATURE|RESET@58,8",
+      "tint": "Green",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Heading",
+      "text": "Landing gear doors",
+      "box": [
+        298,
+        609,
+        227,
+        26
+      ],
+      "hit": [
+        411,
+        622
+      ],
+      "clickable": false,
+      "key": "h:LANDING GEAR DOORS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Repair altn",
+      "box": [
+        626,
+        638,
+        143,
+        47
+      ],
+      "hit": [
+        697,
+        661
+      ],
+      "clickable": true,
+      "key": "btn:|REPAIR ALTN@31,31",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Nose door: Open",
+      "box": [
+        781,
+        638,
+        127,
+        47
+      ],
+      "hit": [
+        844,
+        661
+      ],
+      "clickable": true,
+      "key": "btn:NOSE DOOR|@39,31",
+      "tint": "Other",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Left door: Open, 05",
+      "box": [
+        921,
+        638,
+        128,
+        47
+      ],
+      "hit": [
+        985,
+        661
+      ],
+      "clickable": true,
+      "key": "btn:LEFT DOOR|@46,31",
+      "tint": "Other",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Right door: Open",
+      "box": [
+        1060,
+        638,
+        128,
+        47
+      ],
+      "hit": [
+        1124,
+        661
+      ],
+      "clickable": true,
+      "key": "btn:RIGHT DOOR|@53,31",
+      "tint": "Other",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications: 54",
+      "box": [
+        1329,
+        6,
+        54,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}
