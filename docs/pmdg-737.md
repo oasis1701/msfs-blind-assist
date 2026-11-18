@@ -58,7 +58,7 @@ CDA (`PMDG_NG3_Control` / `PMDG_777X_Control`) and fires one event via either
 
 The SDK names its CDU key events after the CLASSIC keyboard, and the events are
 POSITIONAL. PMDG's "FANS2 CDU Installed" option (per tail, in `work\Aircraft\<tail>.ini`;
-the BBJ2 ships with it) fits the newer keyboard, which the cockpit model shows while
+an equipment setting, off by default, the BBJ2 included) fits the newer keyboard, which the cockpit model shows while
 `L:cduOptions` = 1 (`cdu_show_fans` in `73X_Cockpit_Behavior.xml`). On it, eight positions
 carry a different key (read off the `ngx_switch_5xx_fans` tooltips):
 

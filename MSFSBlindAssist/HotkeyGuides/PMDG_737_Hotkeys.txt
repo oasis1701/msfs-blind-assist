@@ -312,8 +312,9 @@ CDU Page Buttons:
   Alt+E          Execute
   Alt+C          CLR/DEL (Clear or Delete)
 
-FANS2 CDU: some 737s, such as the BBJ2, have the newer FANS2 CDU keyboard,
-which has VNAV, ATC and FMC Comm keys instead of CLB, CRZ and DES, with
+FANS2 CDU: the newer FANS2 CDU keyboard is optional and can be installed
+on any 737 in its equipment settings. It has VNAV, ATC and FMC Comm keys
+instead of CLB, CRZ and DES, and
 several keys in different places. The CDU window detects which keyboard
 your aircraft has and names its page buttons to match. The shortcuts
 above always open the page they name. A shortcut for a key your CDU does
