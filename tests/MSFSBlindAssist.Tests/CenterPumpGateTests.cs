@@ -41,4 +41,13 @@ public class CenterPumpGateTests
     [Fact] public void IFly_SuppressCenterOn_FuelPresent_False() => Assert.False(CenterPumpGate.ShouldSuppressCenterOn(IFlyR, isOn: true, centerQty: Thr + 1));
     // A wing pump on the iFly key spelling is never gated.
     [Fact] public void IFly_WingPump_NeverGated()      => Assert.False(CenterPumpGate.ShouldSuppressCenterOn("Fuel_L_FWD_Switch_Status", isOn: true, centerQty: 0));
+
+    // ---- BlueBird 757 (plan 29): the SAME gate, keyed on the 757 map's center pump nodes, which its executor writes.
+    private const string Bbs757L = "B757_OVHD_C_PUMPS_L_BUTTON";
+    private const string Bbs757R = "B757_OVHD_C_PUMPS_R_BUTTON";
+
+    [Fact] public void Bbs757CenterOnEvent_Recognised() { Assert.True(CenterPumpGate.IsCenterOnEvent(Bbs757L)); Assert.True(CenterPumpGate.IsCenterOnEvent(Bbs757R)); }
+    [Fact] public void Bbs757_SuppressCenterOn_LowQty_True() => Assert.True(CenterPumpGate.ShouldSuppressCenterOn(Bbs757R, isOn: true, centerQty: 670));
+    [Fact] public void Bbs757_SuppressCenterOff_NeverGated() => Assert.False(CenterPumpGate.ShouldSuppressCenterOn(Bbs757L, isOn: false, centerQty: 0));
+    [Fact] public void Bbs757_WingPump_NeverGated() => Assert.False(CenterPumpGate.ShouldSuppressCenterOn("B757_OVHD_L_PUMPS_FWD_BUTTON", isOn: true, centerQty: 0));
 }

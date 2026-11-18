@@ -331,6 +331,16 @@ public interface IAircraftDefinition
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
     /// <summary>
+    /// A typed panel field's raw text (Enter in a "_SET" box), offered before the text is parsed for
+    /// <see cref="HandleUIVariableSet"/>. True when the aircraft handled it, and the numeric call is then
+    /// not made. For a field whose words depend on what was typed, which the parsed double cannot tell
+    /// apart (an empty box and letters both arrive as NaN): the BlueBird 757's squawk field. Default:
+    /// not handled, so every other aircraft keeps the numeric path unchanged.
+    /// </summary>
+    bool HandleUITypedText(string varKey, string text, SimConnect.SimVarDefinition varDef,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer) => false;
+
+    /// <summary>
     /// Engage the autopilot for the universal auto-AP-engage feature. The default fires the
     /// stock <c>AUTOPILOT_ON</c> event. Aircraft whose autopilot ignores or misreads that event
     /// override this to press their own engage switch: the PMDG jets (CMD A on the 737, A/P L on
@@ -564,6 +574,16 @@ public interface IAircraftDefinition
     /// the same one-condition-one-call-out rule as the PB-light/ECAM-memo invariant.
     /// </summary>
     bool HasOwnIcingAnnouncer { get; }
+
+    /// <summary>
+    /// True when this aircraft plays its own take-off speed callouts (the BlueBird 757 calls 80 knots,
+    /// V1 and rotate itself). Takeoff Assist then does not call "80 knots" on it, so a roll never hears
+    /// it twice; its "100 knots", which the aircraft does not call, its centerline tone and its pitch
+    /// calls are unchanged. False (the default) keeps both speed calls, which every
+    /// other aircraft does: the definition-owned V1 / Rotate / V2 machines
+    /// (<see cref="TakeoffVSpeedCallouts"/>) are separate and are not governed by this.
+    /// </summary>
+    bool PlaysOwnTakeoffSpeedCallouts { get; }
 
     /// <summary>
     /// Null when this aircraft's COM 1 takes the stock tuning events (COM_STBY_RADIO_SET_HZ,

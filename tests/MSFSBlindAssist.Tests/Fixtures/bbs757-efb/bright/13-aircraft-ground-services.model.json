@@ -1,0 +1,496 @@
+{
+  "app": "AIRCRAFT",
+  "section": "GROUND SERVICES",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "Cockpit presets",
+      "box": [
+        43,
+        155,
+        189,
+        29
+      ],
+      "hit": [
+        130,
+        169
+      ],
+      "clickable": true,
+      "key": "menu:COCKPIT PRESETS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Fuel",
+      "box": [
+        43,
+        216,
+        58,
+        29
+      ],
+      "hit": [
+        130,
+        230
+      ],
+      "clickable": true,
+      "key": "menu:FUEL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Weight \u0026 balance",
+      "box": [
+        43,
+        277,
+        202,
+        27
+      ],
+      "hit": [
+        130,
+        290
+      ],
+      "clickable": true,
+      "key": "menu:WEIGHT \u0026 BALANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Ground services",
+      "box": [
+        44,
+        336,
+        191,
+        26
+      ],
+      "hit": [
+        130,
+        349
+      ],
+      "clickable": true,
+      "key": "menu:GROUND SERVICES",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin \u0026 doors",
+      "box": [
+        45,
+        396,
+        159,
+        26
+      ],
+      "hit": [
+        130,
+        409
+      ],
+      "clickable": true,
+      "key": "menu:CABIN \u0026 DOORS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Maintenance",
+      "box": [
+        43,
+        457,
+        154,
+        26
+      ],
+      "hit": [
+        130,
+        470
+      ],
+      "clickable": true,
+      "key": "menu:MAINTENANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Failures",
+      "box": [
+        42,
+        515,
+        104,
+        29
+      ],
+      "hit": [
+        130,
+        529
+      ],
+      "clickable": true,
+      "key": "menu:FAILURES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Button",
+      "text": "Remove all",
+      "box": [
+        727,
+        124,
+        196,
+        41
+      ],
+      "hit": [
+        825,
+        144
+      ],
+      "clickable": true,
+      "key": "btn:|REMOVE ALL@36,6",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Jetway removed",
+      "box": [
+        547,
+        193,
+        196,
+        42
+      ],
+      "hit": [
+        645,
+        214
+      ],
+      "clickable": true,
+      "key": "btn:|JETWAY@27,9",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "GPU removed",
+      "box": [
+        911,
+        193,
+        197,
+        43
+      ],
+      "hit": [
+        1009,
+        214
+      ],
+      "clickable": true,
+      "key": "btn:|GPU@45,9",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "FWD stair off",
+      "box": [
+        547,
+        255,
+        147,
+        40
+      ],
+      "hit": [
+        620,
+        275
+      ],
+      "clickable": true,
+      "key": "btn:|FWD STAIR@27,12",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Ground A/C",
+      "box": [
+        310,
+        350,
+        200,
+        43
+      ],
+      "hit": [
+        410,
+        371
+      ],
+      "clickable": true,
+      "key": "btn:|GROUND A/C@15,17",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Cargo SVC off",
+      "box": [
+        911,
+        351,
+        197,
+        41
+      ],
+      "hit": [
+        1009,
+        371
+      ],
+      "clickable": true,
+      "key": "btn:|CARGO SVC@45,17",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Left air start",
+      "box": [
+        546,
+        414,
+        148,
+        42
+      ],
+      "hit": [
+        620,
+        435
+      ],
+      "clickable": true,
+      "key": "btn:|LEFT AIR START@27,20",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Right air start",
+      "box": [
+        961,
+        414,
+        148,
+        42
+      ],
+      "hit": [
+        1035,
+        435
+      ],
+      "clickable": true,
+      "key": "btn:|RIGHT AIR START@48,20",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Chocks, on",
+      "box": [
+        312,
+        513,
+        196,
+        42
+      ],
+      "hit": [
+        410,
+        534
+      ],
+      "clickable": true,
+      "key": "btn:|CHOCKS@15,25",
+      "tint": "Green",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Fuel truck off",
+      "box": [
+        1131,
+        576,
+        197,
+        43
+      ],
+      "hit": [
+        1229,
+        597
+      ],
+      "clickable": true,
+      "key": "btn:|FUEL TRUCK@56,28",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "AFT stairs off",
+      "box": [
+        547,
+        723,
+        196,
+        42
+      ],
+      "hit": [
+        645,
+        744
+      ],
+      "clickable": true,
+      "key": "btn:|AFT STAIRS@27,36",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Catering off",
+      "box": [
+        911,
+        723,
+        197,
+        42
+      ],
+      "hit": [
+        1009,
+        744
+      ],
+      "clickable": true,
+      "key": "btn:|CATERING@45,36",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "GND SRVC Mode: BBS",
+      "box": [
+        325,
+        891,
+        160,
+        31
+      ],
+      "hit": [
+        405,
+        906
+      ],
+      "clickable": true,
+      "key": "btn:GND SRVC Mode|BBS@16,44",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Req PB tug",
+      "box": [
+        636,
+        896,
+        179,
+        44
+      ],
+      "hit": [
+        725,
+        918
+      ],
+      "clickable": true,
+      "key": "btn:|REQ PB TUG@31,44",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Remove tug",
+      "box": [
+        836,
+        896,
+        178,
+        44
+      ],
+      "hit": [
+        925,
+        918
+      ],
+      "clickable": true,
+      "key": "btn:|REMOVE TUG@41,44",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications",
+      "box": [
+        1364,
+        6,
+        19,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

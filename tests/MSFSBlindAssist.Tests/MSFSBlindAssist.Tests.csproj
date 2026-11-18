@@ -41,6 +41,10 @@
     <None Update="Fixtures\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Captured or measured documents in XML (a SimBrief OFP). -->
+    <None Update="Fixtures\*.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- Golden scripts the app sends; tools/*-test node suites execute the same files. -->
     <None Update="Fixtures\*.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

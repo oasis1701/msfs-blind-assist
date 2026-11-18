@@ -1,0 +1,2200 @@
+{
+  "apps": [
+    {
+      "key": 6,
+      "class": "HOME",
+      "controls": []
+    },
+    {
+      "key": 8,
+      "class": "NAVIGATION",
+      "controls": []
+    },
+    {
+      "key": 10,
+      "class": "CHECKLIST",
+      "controls": []
+    },
+    {
+      "key": 12,
+      "class": "SETTINGS",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "main_grid",
+          "text": "",
+          "x": 0,
+          "y": 32,
+          "w": 1397,
+          "h": 1016,
+          "children": [
+            {
+              "kind": "other",
+              "name": "gradbox_tl",
+              "text": "",
+              "x": 0,
+              "y": 32,
+              "w": 250,
+              "h": 50,
+              "children": [
+                {
+                  "kind": "other",
+                  "name": "btn_stack",
+                  "text": "",
+                  "x": 0,
+                  "y": 32,
+                  "w": 250,
+                  "h": 50,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "home_btn",
+                      "text": "",
+                      "x": 0,
+                      "y": 32,
+                      "w": 50,
+                      "h": 50,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "label",
+                      "name": "page_title_label",
+                      "text": "SETTINGS",
+                      "x": 60,
+                      "y": 41.5,
+                      "w": 145,
+                      "h": 36,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "other",
+              "name": "gradbox_tr",
+              "text": "",
+              "x": 250,
+              "y": 32,
+              "w": 1147,
+              "h": 50,
+              "children": []
+            },
+            {
+              "kind": "other",
+              "name": "gradbox_br",
+              "text": "",
+              "x": 0,
+              "y": 82,
+              "w": 250,
+              "h": 966,
+              "children": [
+                {
+                  "kind": "grid",
+                  "name": "control_grid",
+                  "text": "",
+                  "x": 0,
+                  "y": 82,
+                  "w": 250,
+                  "h": 966,
+                  "children": [
+                    {
+                      "kind": "other",
+                      "name": "btn_stack",
+                      "text": "",
+                      "x": 0,
+                      "y": 142,
+                      "w": 250,
+                      "h": 716,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_general",
+                          "text": "GENERAL",
+                          "x": 0,
+                          "y": 142,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_aircraft",
+                          "text": "AIRCRAFT",
+                          "x": 0,
+                          "y": 202,
+                          "w": 250,
+                          "h": 60,
+                          "selected": true,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_livery",
+                          "text": "LIVERY OPTIONS",
+                          "x": 0,
+                          "y": 262,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_audio",
+                          "text": "CALLOUTS",
+                          "x": 0,
+                          "y": 322,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_cabin_audio",
+                          "text": "CABIN AUDIO",
+                          "x": 0,
+                          "y": 382,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_airac_data",
+                          "text": "AIRAC DATA",
+                          "x": 0,
+                          "y": 442,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "image",
+                      "name": "label_bbs_img",
+                      "text": "./data/efb/bbs_logo_light.png",
+                      "x": 0,
+                      "y": 798,
+                      "w": 250,
+                      "h": 250,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "grid",
+          "name": "page_main_grid",
+          "text": "",
+          "x": 0,
+          "y": 32,
+          "w": 1397,
+          "h": 1016,
+          "children": [
+            {
+              "kind": "grid",
+              "name": "page_control_grid",
+              "text": "",
+              "x": 0,
+              "y": 82,
+              "w": 1397,
+              "h": 966,
+              "children": [
+                {
+                  "kind": "other",
+                  "name": "page_colorbox",
+                  "text": "",
+                  "x": 250,
+                  "y": 82,
+                  "w": 1147,
+                  "h": 966,
+                  "children": [
+                    {
+                      "kind": "scrollbox",
+                      "name": "aircraft_scrollbox",
+                      "text": "",
+                      "x": 250,
+                      "y": 82,
+                      "w": 1147,
+                      "h": 966,
+                      "children": [
+                        {
+                          "kind": "other",
+                          "name": "aircraft_stackbox",
+                          "text": "",
+                          "x": 250,
+                          "y": 82,
+                          "w": 1147,
+                          "h": 1180,
+                          "children": [
+                            {
+                              "kind": "grid",
+                              "name": "easy_flight_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 82,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "easy_flight_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 82,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "easy_flight_label",
+                                      "text": "ADAPTIVE HANDLING ASSIST",
+                                      "x": 280,
+                                      "y": 82,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "easy_flight_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 94.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "easy_flight_value",
+                                  "text": "OFF",
+                                  "x": 1197,
+                                  "y": 82,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "auto_light_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 142,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "auto_light_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 142,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "auto_light_label",
+                                      "text": "ADAPTIVE COCKPIT LIGHTING",
+                                      "x": 280,
+                                      "y": 142,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "auto_light_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 154.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "auto_light_value_label",
+                                  "text": "AUTOMATIC",
+                                  "x": 1197,
+                                  "y": 142,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "tod_pause_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 202,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "tod_pause_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 202,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "tod_pause_title_label",
+                                      "text": "TOD PAUSE DISTANCE (NM)",
+                                      "x": 280,
+                                      "y": 202,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "tod_pause_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 214.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "automatic_step_climbs_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 262,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "automatic_step_climbs_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 262,
+                                  "w": 847,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "automatic_step_climbs_label",
+                                      "text": "AUTOMATIC STEP CLIMBS MASTER OPTION: (EXPERIMENTAL)",
+                                      "x": 280,
+                                      "y": 262,
+                                      "w": 847,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "automatic_step_climbs_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 274.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "automatic_step_climbs_master_value",
+                                  "text": "DISABLED",
+                                  "x": 1197,
+                                  "y": 262,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "automatic_step_climbs_status",
+                              "text": "",
+                              "x": 250,
+                              "y": 322,
+                              "w": 1147,
+                              "h": 100,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "automatic_step_climbs_status_line",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 322,
+                                  "w": 1147,
+                                  "h": 48,
+                                  "children": [
+                                    {
+                                      "kind": "label",
+                                      "name": "automatic_step_climbs_status_title",
+                                      "text": "AUTOMATIC STEP CLIMB STATUS:",
+                                      "x": 635,
+                                      "y": 322,
+                                      "w": 331,
+                                      "h": 48,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "automatic_step_climbs_value",
+                                      "text": "OFF",
+                                      "x": 974,
+                                      "y": 322,
+                                      "w": 38,
+                                      "h": 48,
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "tiller_option_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 422,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "tiller_option_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 422,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "tiller_option_label",
+                                      "text": "NOSEWHEEL STEERING",
+                                      "x": 280,
+                                      "y": 422,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "tiller_option_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 434.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "tiller_option_value_label",
+                                  "text": "RUDDER",
+                                  "x": 1197,
+                                  "y": 422,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "throttle_lockout_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 482,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "throttle_lockout_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 482,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "throttle_lockout_label",
+                                      "text": "THROTTLE LOCKOUT",
+                                      "x": 280,
+                                      "y": 482,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "throttle_lockout_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 494.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "throttle_lockout_value_label",
+                                  "text": "ON",
+                                  "x": 1197,
+                                  "y": 482,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "displays_bootup_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 542,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "displays_bootup_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 542,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "displays_bootup_label",
+                                      "text": "DISPLAYS BOOTUP SPEED",
+                                      "x": 280,
+                                      "y": 542,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "displays_bootup_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 554.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "displays_bootup_value_label",
+                                  "text": "REALISTIC",
+                                  "x": 1197,
+                                  "y": 542,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "baro_sync_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 602,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "baro_sync_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 602,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "baro_sync_label",
+                                      "text": "SYNC BAROMETERS",
+                                      "x": 280,
+                                      "y": 602,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "baro_sync_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 614.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "baro_sync_value_label",
+                                  "text": "ON",
+                                  "x": 1197,
+                                  "y": 602,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "cockpit_door_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 662,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "cockpit_door_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 662,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "cockpit_door_label",
+                                      "text": "INITIAL COCKPIT DOOR",
+                                      "x": 280,
+                                      "y": 662,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "cockpit_door_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 674.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "cockpit_door_value_label",
+                                  "text": "OPEN",
+                                  "x": 1197,
+                                  "y": 662,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "parking_brake_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 722,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "parking_brake_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 722,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "parking_brake_label",
+                                      "text": "PARKING BRAKE MODE",
+                                      "x": 280,
+                                      "y": 722,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "parking_brake_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 734.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "parking_brake_value_label",
+                                  "text": "REALISTIC",
+                                  "x": 1197,
+                                  "y": 722,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "irs_align_time_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 782,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "label",
+                                  "name": "irs_align_time_label",
+                                  "text": "IRS ALIGNMENT TIME",
+                                  "x": 280,
+                                  "y": 782,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "slider",
+                                  "name": "irs_align_time_slider",
+                                  "text": "",
+                                  "x": 897,
+                                  "y": 797,
+                                  "w": 300,
+                                  "h": 30,
+                                  "knob": 1,
+                                  "knobSpan": 15,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "irs_align_time_value_label",
+                                  "text": "FULL(7 MIN\u002B)",
+                                  "x": 1197,
+                                  "y": 782,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "loading_speed_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 842,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "loading_speed_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 842,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "loading_speed_label",
+                                      "text": "BOARDING \u0026 LOAD RATE",
+                                      "x": 280,
+                                      "y": 842,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "slider",
+                                  "name": "loading_speed_slider",
+                                  "text": "",
+                                  "x": 897,
+                                  "y": 857,
+                                  "w": 300,
+                                  "h": 30,
+                                  "knob": 1,
+                                  "knobSpan": 15,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "loading_speed_value_label",
+                                  "text": "INSTANT",
+                                  "x": 1197,
+                                  "y": 842,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "automatic_loading_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 902,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "automatic_loading_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 902,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "automatic_loading_label",
+                                      "text": "AUTOMATIC BOARDING",
+                                      "x": 280,
+                                      "y": 902,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "automatic_loading_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 914.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "automatic_loading_value_label",
+                                  "text": "ON",
+                                  "x": 1197,
+                                  "y": 902,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "auto_connect_ground_services_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 962,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "auto_connect_ground_services_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 962,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "auto_connect_ground_services_label",
+                                      "text": "AUTOMATIC GPU/JETWAY",
+                                      "x": 280,
+                                      "y": 962,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "auto_connect_ground_services_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 974.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "auto_connect_ground_services_value_label",
+                                  "text": "ON",
+                                  "x": 1197,
+                                  "y": 962,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "hoppie_acars_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 1022,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "hoppie_acars_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 1022,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "hoppie_acars_label",
+                                      "text": "HOPPIE ACARS",
+                                      "x": 280,
+                                      "y": 1022,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "hoppie_acars_enabled_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 1034.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "hoppie_acars_enabled_value_label",
+                                  "text": "OFF",
+                                  "x": 1197,
+                                  "y": 1022,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "cpdlc_network_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 1082,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "cpdlc_network_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 1082,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "cpdlc_network_label",
+                                      "text": "CPDLC NETWORK",
+                                      "x": 280,
+                                      "y": 1082,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "cpdlc_network_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 1094.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "cpdlc_network_value_label",
+                                  "text": "HOPPIE",
+                                  "x": 1197,
+                                  "y": 1082,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "auto_attach_chocks_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 1142,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "auto_attach_chocks_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 1142,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "auto_attach_chocks_label",
+                                      "text": "INITIAL CHOCKS IN PLACE",
+                                      "x": 280,
+                                      "y": 1142,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "auto_attach_chocks_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 1154.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "auto_attach_chocks_value_label",
+                                  "text": "ON",
+                                  "x": 1197,
+                                  "y": 1142,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "grid",
+                              "name": "dirty_panel_states_setting_grid",
+                              "text": "",
+                              "x": 250,
+                              "y": 1202,
+                              "w": 1147,
+                              "h": 60,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "dirty_panel_states_title_group",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 1202,
+                                  "w": 647,
+                                  "h": 60,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "dirty_panel_states_label",
+                                      "text": "DIRTY PANEL STATES",
+                                      "x": 280,
+                                      "y": 1202,
+                                      "w": 647,
+                                      "h": 60,
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "toggle",
+                                  "name": "dirty_panel_states_toggle",
+                                  "text": "",
+                                  "x": 1137,
+                                  "y": 1214.5,
+                                  "w": 60,
+                                  "h": 35,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "dirty_panel_states_value_label",
+                                  "text": "OFF",
+                                  "x": 1197,
+                                  "y": 1202,
+                                  "w": 200,
+                                  "h": 60,
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": 9,
+      "class": "SYSTEMS",
+      "controls": []
+    },
+    {
+      "key": 7,
+      "class": "AIRCRAFT",
+      "controls": []
+    },
+    {
+      "key": 5,
+      "class": "SIGN IN",
+      "controls": []
+    },
+    {
+      "key": 2,
+      "class": "app",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "kb_grid",
+          "text": "",
+          "x": 0,
+          "y": 648,
+          "w": 1397,
+          "h": 400,
+          "children": [
+            {
+              "kind": "grid",
+              "name": "keyboard_grid_container",
+              "text": "",
+              "x": 0,
+              "y": 708,
+              "w": 1396.9999,
+              "h": 340,
+              "children": [
+                {
+                  "kind": "grid",
+                  "name": "row_1",
+                  "text": "",
+                  "x": 0,
+                  "y": 708,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "btn_delete",
+                      "text": "COMMAND_DELETE",
+                      "x": 5,
+                      "y": 713,
+                      "w": 138.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_1_keys",
+                      "text": "",
+                      "x": 148.49994,
+                      "y": 708,
+                      "w": 1100,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_q|Q|1",
+                          "text": "q|Q|1",
+                          "x": 153.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_w|W|2",
+                          "text": "w|W|2",
+                          "x": 263.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_e|E|3",
+                          "text": "e|E|3",
+                          "x": 373.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_r|R|4",
+                          "text": "r|R|4",
+                          "x": 483.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_t|T|5",
+                          "text": "t|T|5",
+                          "x": 593.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_y|Y|6",
+                          "text": "y|Y|6",
+                          "x": 703.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_u|U|7",
+                          "text": "u|U|7",
+                          "x": 813.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_i|I|8",
+                          "text": "i|I|8",
+                          "x": 923.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_o|O|9",
+                          "text": "o|O|9",
+                          "x": 1033.5,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_p|P|0",
+                          "text": "p|P|0",
+                          "x": 1143.5,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_backspace",
+                      "text": "COMMAND_BACKSPACE",
+                      "x": 1253.5,
+                      "y": 713,
+                      "w": 138.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_2",
+                  "text": "",
+                  "x": 0,
+                  "y": 793,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "btn_tab",
+                      "text": "COMMAND_TAB",
+                      "x": 5,
+                      "y": 798,
+                      "w": 193.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_2_keys",
+                      "text": "",
+                      "x": 203.49994,
+                      "y": 793,
+                      "w": 990,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_a|A|@",
+                          "text": "a|A|@",
+                          "x": 208.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_s|S|#",
+                          "text": "s|S|#",
+                          "x": 318.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_d|D|$",
+                          "text": "d|D|$",
+                          "x": 428.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_f|F|\u0026",
+                          "text": "f|F|\u0026",
+                          "x": 538.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_g|G|*",
+                          "text": "g|G|*",
+                          "x": 648.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_h|H|(",
+                          "text": "h|H|(",
+                          "x": 758.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_j|J|)",
+                          "text": "j|J|)",
+                          "x": 868.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_k|K|\u0027",
+                          "text": "k|K|\u0027",
+                          "x": 978.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_l|L|\u0022",
+                          "text": "l|L|\u0022",
+                          "x": 1088.5,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_enter",
+                      "text": "COMMAND_ENTER",
+                      "x": 1198.5,
+                      "y": 798,
+                      "w": 193.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_3",
+                  "text": "",
+                  "x": 0,
+                  "y": 878,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "grid",
+                      "name": "row_3_left_grid",
+                      "text": "",
+                      "x": 0,
+                      "y": 878,
+                      "w": 260,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_double_shift",
+                          "text": "COMMAND_DOUBLE_SHIFT",
+                          "x": 5,
+                          "y": 883,
+                          "w": 120,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_shift2",
+                          "text": "COMMAND_SHIFT",
+                          "x": 135,
+                          "y": 883,
+                          "w": 120,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_3_keys",
+                      "text": "",
+                      "x": 260,
+                      "y": 878,
+                      "w": 770,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_z|Z|%",
+                          "text": "z|Z|%",
+                          "x": 265,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_x|X|-",
+                          "text": "x|X|-",
+                          "x": 375,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_c|C|\u002B",
+                          "text": "c|C|\u002B",
+                          "x": 485,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_v|V|=",
+                          "text": "v|V|=",
+                          "x": 595,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_b|B|/",
+                          "text": "b|B|/",
+                          "x": 705,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_n|N|;",
+                          "text": "n|N|;",
+                          "x": 815,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_m|M|:",
+                          "text": "m|M|:",
+                          "x": 925,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_3_right_grid",
+                      "text": "",
+                      "x": 1030,
+                      "y": 878,
+                      "w": 366.99988,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_exclamation",
+                          "text": ",|,|!",
+                          "x": 1035,
+                          "y": 883,
+                          "w": 96.42996,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_question",
+                          "text": ".|.|?",
+                          "x": 1141.4299,
+                          "y": 883,
+                          "w": 96.42996,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_shift",
+                          "text": "COMMAND_SHIFT",
+                          "x": 1247.8599,
+                          "y": 883,
+                          "w": 144.13994,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_4",
+                  "text": "",
+                  "x": 0,
+                  "y": 963,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "grid",
+                      "name": "row_4_left_grid",
+                      "text": "",
+                      "x": 0,
+                      "y": 963,
+                      "w": 348.49994,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_home",
+                          "text": "COMMAND_HOME",
+                          "x": 5,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_numeric_switch2",
+                          "text": "COMMAND_NUMERIC_SWITCH",
+                          "x": 179.24997,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_space",
+                      "text": "COMMAND_SPACE",
+                      "x": 353.49994,
+                      "y": 968,
+                      "w": 690,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_4_right_grid",
+                      "text": "",
+                      "x": 1048.5,
+                      "y": 963,
+                      "w": 348.49994,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_numeric_switch",
+                          "text": "COMMAND_NUMERIC_SWITCH",
+                          "x": 1053.5,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_keyboard_down",
+                          "text": "COMMAND_KEYBOARD_DOWN",
+                          "x": 1227.75,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": 1,
+      "class": "overlay",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "overlay_grid",
+          "text": "",
+          "x": 0,
+          "y": 0,
+          "w": 1397,
+          "h": 32,
+          "children": [
+            {
+              "kind": "label",
+              "name": "time_label",
+              "text": "Sat, 7th Nov 2026 | 23:05L | 05:05Z | OAT 4 C",
+              "x": 15,
+              "y": 0,
+              "w": 1382,
+              "h": 32,
+              "children": []
+            }
+          ]
+        },
+        {
+          "kind": "label",
+          "name": "keyboard_locked_label",
+          "text": "",
+          "x": 0,
+          "y": 0,
+          "w": 1397,
+          "h": 32,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "notices": [
+    {
+      "id": 1,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "19:34Z",
+      "unread": false
+    },
+    {
+      "id": 2,
+      "title": "",
+      "text": "SIMBRIEF OFP RECEIVED.",
+      "time": "19:35Z",
+      "unread": false
+    },
+    {
+      "id": 3,
+      "title": "",
+      "text": "DEFUELING INITIATED.",
+      "time": "19:41Z",
+      "unread": false
+    },
+    {
+      "id": 4,
+      "title": "",
+      "text": "IRS ALIGNMENT INITIATED.",
+      "time": "19:41Z",
+      "unread": false
+    },
+    {
+      "id": 5,
+      "title": "",
+      "text": "DEFUELING IS COMPLETE!",
+      "time": "19:42Z",
+      "unread": false
+    },
+    {
+      "id": 6,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 7,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 8,
+      "title": "",
+      "text": "0 PASSENGERS BOARDED!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 9,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 10,
+      "title": "",
+      "text": "IRS ALIGNED.",
+      "time": "19:50Z",
+      "unread": false
+    },
+    {
+      "id": 11,
+      "title": "",
+      "text": "CHOCKS REMOVED.",
+      "time": "20:00Z",
+      "unread": false
+    },
+    {
+      "id": 12,
+      "title": "",
+      "text": "GPU DISCONNECTED.",
+      "time": "20:00Z",
+      "unread": false
+    },
+    {
+      "id": 15,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "21:00Z",
+      "unread": false
+    },
+    {
+      "id": 16,
+      "title": "",
+      "text": "CHOCKS ATTACHED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 17,
+      "title": "",
+      "text": "BOARDING INITIATED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 18,
+      "title": "",
+      "text": "R3 DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 19,
+      "title": "",
+      "text": "FWD CARGO DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 20,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 21,
+      "title": "",
+      "text": "L1 DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 22,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 23,
+      "title": "",
+      "text": "FWD CARGO DOOR CLOSED.",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 24,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 25,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "21:08Z",
+      "unread": false
+    },
+    {
+      "id": 26,
+      "title": "",
+      "text": "R3 DOOR CLOSED.",
+      "time": "21:12Z",
+      "unread": false
+    },
+    {
+      "id": 27,
+      "title": "",
+      "text": "176 PASSENGERS BOARDED!",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 28,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 29,
+      "title": "",
+      "text": "DEBOARDING INITIATED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 30,
+      "title": "",
+      "text": "R3 DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 31,
+      "title": "",
+      "text": "FWD CARGO DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 32,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 33,
+      "title": "",
+      "text": "L1 DOOR CLOSED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 34,
+      "title": "",
+      "text": "CARGO IS UNLOADED!",
+      "time": "21:23Z",
+      "unread": false
+    },
+    {
+      "id": 35,
+      "title": "",
+      "text": "FWD CARGO DOOR CLOSED.",
+      "time": "21:24Z",
+      "unread": false
+    },
+    {
+      "id": 36,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "21:24Z",
+      "unread": false
+    },
+    {
+      "id": 37,
+      "title": "",
+      "text": "R3 DOOR CLOSED.",
+      "time": "21:29Z",
+      "unread": false
+    },
+    {
+      "id": 38,
+      "title": "",
+      "text": "176 PASSENGERS DEBOARDED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 39,
+      "title": "",
+      "text": "DEBOARDING IS COMPLETE!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 40,
+      "title": "",
+      "text": "BOARDING INITIATED.",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 41,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 42,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 43,
+      "title": "",
+      "text": "176 PASSENGERS BOARDED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 44,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 45,
+      "title": "",
+      "text": "CHOCKS REMOVED.",
+      "time": "21:37Z",
+      "unread": false
+    },
+    {
+      "id": 46,
+      "title": "",
+      "text": "GPU DISCONNECTED.",
+      "time": "21:37Z",
+      "unread": false
+    },
+    {
+      "id": 47,
+      "title": "AUTOBRAKE 1",
+      "text": "TARGET 4.5 | ACTUAL 4.5 ft/s2",
+      "time": "00:58Z",
+      "unread": false
+    },
+    {
+      "id": 48,
+      "title": "BRAKE THERMAL EFFICIENCY",
+      "text": "LEFT 96.2% | RIGHT 96.2%",
+      "time": "00:58Z",
+      "unread": false
+    },
+    {
+      "id": 49,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "01:16Z",
+      "unread": false
+    },
+    {
+      "id": 50,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "03:15Z",
+      "unread": true
+    },
+    {
+      "id": 51,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "03:16Z",
+      "unread": true
+    }
+  ]
+}

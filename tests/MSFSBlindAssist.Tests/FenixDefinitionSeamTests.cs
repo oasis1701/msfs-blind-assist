@@ -1,5 +1,5 @@
-// FenixA320Definition is a partial class with optional `partial void` seams, so the variant and cabin
-// code each implement theirs in their own file without editing the 13,000-line main file. With no
+// FenixA320Definition is a partial class with optional `partial void` seams, so the variant, cabin and
+// display channel code each implement theirs in their own file without editing the 13,000-line main file. With no
 // implementation a partial void call compiles to nothing (the engine background seams have none): the
 // definition must behave exactly as it did before the seams existed.
 //
@@ -100,6 +100,7 @@ public class FenixDefinitionSeamTests
         {
             "AddVariantVariables(", "AddVariantPanelControls(", "AddVariantPanelStructure(",
             "AddVariantPanelDisplayVariables(", "HandleVariantUIVariableSet(", "OnVariantSimVarUpdate(",
+            "TryChannelDisplayRead(",
         })
             Assert.True(source.Contains(seam), $"FenixA320Definition.cs never calls {seam}");
     }

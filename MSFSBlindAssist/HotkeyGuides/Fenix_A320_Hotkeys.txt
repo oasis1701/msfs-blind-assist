@@ -10,15 +10,21 @@ Tip: Press the same bracket key again to cancel a mode you activated by accident
 
 OUTPUT MODE - Press right bracket to activate
 
-AI Features:
+Displays and AI Features:
   Alt+D      Describe outside scene
-  Alt+P      Read PFD
-  Alt+N      Read Navigation Display (the captain's)
-  Alt+E      Read E/WD (Engine and Warning Display)
-  Alt+S      Read SD (System Display)
-  Alt+I      Read the standby instruments
+  Alt+P      PFD window: a live window of the captain's PFD when the display
+             channel can read it, else the AI read
+  Alt+N      Navigation display window (the captain's), live from the Fenix,
+             with its EFIS controls; AI read when it cannot be read
+  Alt+E      E/WD window (the AI read when the Fenix cannot share the E/WD)
+  Alt+S      SD window (System Display); AI read when not available
+  Alt+I      ISIS window, with the ISIS's buttons and baro knob after the
+             list (AI read with the round standby gauges)
 
-  You no longer need to select a camera view first: the app moves the
+  While a display is dark its window opens on one status row, and the rows
+  appear by themselves when the display comes on.
+
+  For the AI reads, you no longer need to select a camera view first: the app moves the
   simulator camera to the display it is reading and puts your own view back
   afterwards - including a saved custom camera such as a cabin or wing view.
   The camera is away for well under a second, and your view is back before the
@@ -33,12 +39,25 @@ AI Features:
   These reads need Fenix v3: on an older Fenix the camera frames the wrong
   displays, so update the Fenix.
 
-  Three things about this aircraft are worth knowing. Alt+N reads the
+  Three things about the AI reads are worth knowing. Alt+N reads the
   CAPTAIN'S navigation display - the one whose range and mode you set on the
-  left EFIS panel. Alt+P reads the FIRST OFFICER'S PFD; the two PFDs differ
-  only in the altimeter setting and in which side's autopilot and flight
+  left EFIS panel. Alt+P's AI read is the FIRST OFFICER'S PFD; the two PFDs
+  differ only in the altimeter setting and in which side's autopilot and flight
   director are annunciated. Alt+I knows whether your Fenix has the digital
   ISIS or the three round standby gauges.
+
+Speeds:
+  Shift+1    Green dot
+  Shift+2    S speed
+  Shift+3    F speed
+  Shift+4    VLS
+  Shift+5    Alpha prot or VSW
+  Shift+6    VFE next
+
+Route:
+  Ctrl+W     Next waypoint: ident, bearing, distance and time
+  D          Distance to destination
+  Shift+D    Distance to top of descent
 
 FCU Controls:
   Shift+H    Read FCU Heading
@@ -205,10 +224,11 @@ EFB / Tablet:
              this Shift+T is the INPUT-mode EFB window.)
 
 Fenix windows:
-  Ctrl+Shift+F  Fenix windows list: Engines, Cabin, Failures, Fenix documents
-                and Fenix options. Enter opens the selected window, Escape
-                closes the list. (Keys inside each window: see the end of
-                this list.)
+  Ctrl+Shift+F  Fenix windows list: Engines, Cabin, Failures, Fenix documents,
+                Fenix options, PFD, ND, E/WD, SD, ISIS and DCDU. Enter opens the
+                selected window, Escape closes the list. (Keys inside each
+                window: see the end of this list.)
+  Ctrl+Shift+D  Open the DCDU window
 
 Teleport:
   Shift+R    Runway Teleport
@@ -340,4 +360,21 @@ Fenix options:
   Shift+F2     Make an option permanent (asks for the value, then Yes or No)
   Ctrl+F2      Reset your change to the Fenix default (asks Yes or No first)
   F5           Read the options again
+  Escape       Close
+
+PFD, ND, E/WD, SD and ISIS:
+  Arrow keys   Read the rows (they update every second)
+  Tab          The controls after the list: the ND's EFIS controls, the E/WD's
+               and the SD's ECAM keys
+  F5           Refresh, without a word
+  Escape       Close
+
+DCDU:
+  Arrow keys   Read the rows
+  Ctrl+1, Ctrl+2  Left keys (F1, F2 with the alternate keys on)
+  Alt+1, Alt+2    Right keys (F7, F8 with the alternate keys on)
+  PageDown, PageUp  Scroll within the message
+  Ctrl+PageDown, Ctrl+PageUp  Next and previous message
+  Ctrl+P       Print
+  F5           Refresh
   Escape       Close

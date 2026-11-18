@@ -531,7 +531,7 @@ public partial class MainForm
 
                 controlButton.Click += (s2, e2) =>
                 {
-                    // A button that flips its own light (the Fenix FD and LS): the reader says the new label,
+                    // A button that flips its own light (the Fenix EFIS FD, LS and map options): the reader says the new label,
                     // so the light is marked before the press goes out and does not repeat it (CORE-7).
                     MarkStateLightEchoForPress(varDef);
                     bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager!, announcer);
@@ -1061,7 +1061,9 @@ public partial class MainForm
                 textBox.Size = new Size(240, 25);
                 textBox.AccessibleName = $"{varDef.DisplayName} value";
                 // With no Set button after the field, this is the reader's only cue that Enter applies it.
-                textBox.AccessibleDescription = "Type a value and press Enter to set";
+                // A field whose entry is not obvious (the Fenix pitch trim, in degrees) opts in with its own
+                // EntryHelpText, never HelpText: the MD-11's still says "press Set" and the PMDG 737's say nothing of Enter.
+                textBox.AccessibleDescription = varDef.EntryHelpText ?? "Type a value and press Enter to set";
 
                 // If this _SET field declares a current-value source, pre-fill it
                 // from the cached value on creation AND on focus-in, then select
@@ -1098,6 +1100,11 @@ public partial class MainForm
 
                 void ApplyTyped()
                 {
+                    // The raw text first, for a field whose words depend on what was typed (the 757's
+                    // squawk: an empty box and letters both parse to NaN below). Default: not handled.
+                    if (currentAircraft.HandleUITypedText(varKey, textBox.Text, varDef, simConnectManager!, announcer))
+                        return;
+
                     // Aircraft delegation: let the loaded aircraft claim _SET keys
                     // (e.g., PMDG 737's EFIS_MinsValueFt_*_SET vars need RST-then-rotate
                     // dispatch). We pass the double value when parseable, else 0 -- or NaN

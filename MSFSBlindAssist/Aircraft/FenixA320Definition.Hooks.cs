@@ -4,8 +4,11 @@ namespace MSFSBlindAssist.Aircraft;
 
 // Seams the Fenix v3 work fills in from its own partial files. Each `partial void` is optional:
 // with no implementation its call compiles to nothing, so the definition behaves as it did before.
-//   FenixA320Definition.Variants.cs  variant, panel, display and visibility seams, OnFenixSwitchedAway
-//   FenixA320Definition.Cabin.cs     cabin background seams
+//   FenixA320Definition.Variants.cs        variant, panel, display and visibility seams, OnFenixSwitchedAway
+//   FenixA320Definition.Cabin.cs           cabin background seams
+//   FenixA320Definition.DisplayChannel.cs  display channel seams: its background pair (which also starts and
+//                                          stops the announcer host), the SimConnect keys of its own that its gate
+//                                          reads, the value peek and the key dispatch
 // The engine background seams (StartEngineBackground, StopEngineBackground) have no implementation: the Engines
 // window reads its own values while it is open.
 public partial class FenixA320Definition
@@ -27,8 +30,8 @@ public partial class FenixA320Definition
     // C# allows one implementation, so the variant file owns it.
     partial void OnFenixSwitchedAway();
 
-    // Background seams, one Start/Stop pair each (the cabin pair is implemented, the engine pair is not). Start
-    // runs once per definition instance,
+    // Background seams, one Start/Stop pair each (the cabin and display channel pairs are implemented, the
+    // engine pair is not). Start runs once per definition instance,
     // on the UI thread, from the first ProcessSimVarUpdate that gets past the take-off IAS feed (that branch
     // returns first, so Start can come up to about a second after the instance's very first update); a sim
     // reconnect keeps the instance, so Start does not run again then. Stop runs in OnSwitchedAway, on an
@@ -38,6 +41,48 @@ public partial class FenixA320Definition
     partial void StopCabinBackground();
     partial void StartEngineBackground(Accessibility.ScreenReaderAnnouncer announcer);
     partial void StopEngineBackground();
+    partial void StartDisplayChannelBackground(Accessibility.ScreenReaderAnnouncer announcer);
+    partial void StopDisplayChannelBackground();
+
+    // The display channel's other seam (FenixA320Definition.DisplayChannel.cs). TryChannelDisplayRead is
+    // HandleHotkeyAction's first look at any action: it hands a channel key to the seam of the feature that owns it
+    // (the seams below) and leaves every other key alone.
+    partial void TryChannelDisplayRead(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+
+    // The channel keys' seams, one per feature, each called only with the actions that feature owns
+    // (ChannelKeyOwnerOf in FenixA320Definition.DisplayChannel.cs). An implementation sets handled when it answered
+    // the key and leaves it false to let the key carry on: a display key then gives its AI read, and the others do
+    // nothing. Each feature implements its seam in a partial of its own (FenixA320Definition.Channel<Feature>.cs).
+    /// <summary>The PFD's keys: Alt+P and the six speed reads, Shift+1 to Shift+6.</summary>
+    partial void ChannelPfdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The ND's keys: Alt+N and Ctrl+W.</summary>
+    partial void ChannelNdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The E/WD's key: Alt+E.</summary>
+    partial void ChannelEwdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The SD's key: Alt+S.</summary>
+    partial void ChannelSdKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The ISIS's key: Alt+I.</summary>
+    partial void ChannelIsisKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The distance keys: D and Shift+D.</summary>
+    partial void ChannelDistancesKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+    /// <summary>The DCDU's key: the app-wide Ctrl+Shift+D, ShowDCDU.</summary>
+    partial void ChannelDcduKey(Hotkeys.HotkeyAction action, ChannelKeyContext ctx, ref bool handled);
+
+    // The announcers' samplers, one per feature. The announcer host (Services/FenixChannelAnnouncers.cs: a timer on
+    // the UI thread, every 100 ms) calls each on every tick, in the order of the list StartDisplayChannelBackground
+    // gives it, with the monitor, the announcer and the tick's one clock reading (ChannelAnnounceContext, in
+    // FenixA320Definition.DisplayChannel.cs). A sampler only reads a snapshot, compares it with what it saw last and
+    // speaks what is due: no I/O, so a tick stays short; it checks its own Ctrl+M row before it speaks
+    // (FenixChannelAnnouncementRows) and keeps tracking while the row is muted. One that throws is logged once and
+    // costs only itself. Each feature implements its own in a partial of its own.
+    /// <summary>The FMA announcer's sampler: a changed mode column.</summary>
+    partial void SampleChannelFma(ChannelAnnounceContext ctx);
+    /// <summary>The E/WD alert announcer's sampler: warnings, cautions and memos.</summary>
+    partial void SampleChannelEwdAlerts(ChannelAnnounceContext ctx);
+    /// <summary>The DCDU announcer's sampler: a new message.</summary>
+    partial void SampleChannelDcdu(ChannelAnnounceContext ctx);
+    /// <summary>The ND messages announcer's sampler: new and gone ND messages, the active waypoint.</summary>
+    partial void SampleChannelNd(ChannelAnnounceContext ctx);
 
     private bool _backgroundStarted;
 
@@ -202,6 +247,7 @@ public partial class FenixA320Definition
         _backgroundStarted = true;
         RunSeam(nameof(StartCabinBackground), () => StartCabinBackground(announcer));
         RunSeam(nameof(StartEngineBackground), () => StartEngineBackground(announcer));
+        RunSeam(nameof(StartDisplayChannelBackground), () => StartDisplayChannelBackground(announcer));
     }
 
     public override bool IsPanelControlVisible(string varKey, SimConnect.SimConnectManager? simConnect)
@@ -256,6 +302,7 @@ public partial class FenixA320Definition
             RunSeam(nameof(OnFenixSwitchedAway), () => OnFenixSwitchedAway());
             RunSeam(nameof(StopCabinBackground), () => StopCabinBackground());
             RunSeam(nameof(StopEngineBackground), () => StopEngineBackground());
+            RunSeam(nameof(StopDisplayChannelBackground), () => StopDisplayChannelBackground());
             _backgroundStarted = false;
         }
         finally

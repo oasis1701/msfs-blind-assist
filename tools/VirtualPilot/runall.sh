@@ -1,7 +1,9 @@
 #!/bin/bash
 # runall.sh <outdir> [modes] : over the 100 busiest airports, 6 processes each.
-#   modes (default "all wrongturn departures"): any of all | wrongturn | departures
+#   modes (default "all wrongturn departures"): any of all | wrongturn | departures | turnpicks
 #   VP_PROCS=n  number of parallel processes (default 6)
+#   VP_SIM=fs2020|fs2024  which simulator's navdata database to fly (default: MSFS 2020's when it
+#               is installed, else MSFS 2024's); a before/after pair must fly the same one
 #   VP_EXE=path  fly a frozen build instead of building the current tree (before/after runs)
 set -e
 cd "$(dirname "$0")"
