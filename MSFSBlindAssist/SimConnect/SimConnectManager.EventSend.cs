@@ -11,6 +11,15 @@ namespace MSFSBlindAssist.SimConnect;
 public partial class SimConnectManager
 {
 
+    /// <summary>
+    /// The RPN of one L:var write. Fixed-point and invariant ([VAR-5]): the default double formatting
+    /// emits scientific notation for small/large magnitudes ("1E-05") and a comma decimal on some
+    /// PCs, both of which the MSFS RPN parser rejects.
+    /// </summary>
+    public static string BuildSetLVarCalcCode(string varName, double value) =>
+        value.ToString("0.################", System.Globalization.CultureInfo.InvariantCulture)
+        + " (>L:" + varName + ")";
+
     public void SetLVar(string varName, double value)
     {
         if (!IsConnected || simConnect == null) return;
@@ -49,10 +58,12 @@ public partial class SimConnectManager
             && varName.IndexOf(' ') < 0
             && varName.IndexOf(':') < 0)
         {
-            // Fixed-point format: the default double formatting emits scientific notation
-            // for small/large magnitudes ("1E-05"), which the MSFS RPN parser rejects.
-            ExecuteCalculatorCode(value.ToString("0.################", System.Globalization.CultureInfo.InvariantCulture)
-                + " (>L:" + varName + ")");
+            // Unique per call ([SIM-17]): MobiFlight drops a command byte-identical to the one before
+            // it, and a repeated value is not a no-op when something else moved the L:var in between.
+            // Measured 2026-11-19 on the Fenix: "0 (>L:S_FCU_ALTITUDE_SCALE)" sent twice ten minutes
+            // apart with nothing between, the FCU reset to 1000 ft steps by another program in the
+            // meantime, so the second was dropped and a typed 10000 swept 100 → 49000 → 10000 in 12 s.
+            ExecuteCalculatorCodeUnique(BuildSetLVarCalcCode(varName, value));
             return;
         }
 

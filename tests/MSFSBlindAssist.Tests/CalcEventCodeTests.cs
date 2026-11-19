@@ -112,4 +112,41 @@ public class CalcEventCodeTests
     {
         Assert.False(SimConnectManager.IsFbwFcuEvent(eventName, "FBW_A380"));
     }
+
+    // ---- SetLVar's calculator write is unique per call too ----------------------------------
+    //
+    // A repeated value is not a no-op when something else moved the L:var in between. Measured
+    // 2026-11-19 on the Fenix: SetLVar("S_FCU_ALTITUDE_SCALE", 0) twice, ten minutes apart with no
+    // other command between, the FCU reset to 1000 ft steps by another program in the meantime.
+    // The second write was dropped, so 99 clicks meant for 100 ft each ran the altitude from 100
+    // to the 49000 ceiling and the typed 10000 took seven writes and 12 s to reach.
+    [Fact]
+    public void SetLVar_sends_its_calculator_write_through_the_unique_channel()
+    {
+        string body = FoFbwUnclaimedEventKeyTests.MethodBody(
+            Path.Combine(ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "SimConnect", "SimConnectManager.EventSend.cs"),
+            "SetLVar");
+
+        Assert.Contains("ExecuteCalculatorCodeUnique(BuildSetLVarCalcCode(", body);
+        Assert.DoesNotContain("ExecuteCalculatorCode(", body);
+    }
+
+    [Fact]
+    public void Two_writes_of_one_value_produce_distinct_command_strings()
+    {
+        string rpn = SimConnectManager.BuildSetLVarCalcCode("S_FCU_ALTITUDE_SCALE", 0);
+
+        Assert.Equal("0 (>L:S_FCU_ALTITUDE_SCALE)", rpn);
+        Assert.NotEqual(SimConnectManager.BuildUniqueCalcCode(rpn, 1), SimConnectManager.BuildUniqueCalcCode(rpn, 2));
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void A_set_lvar_value_is_invariant_fixed_point(string culture)
+    {
+        Assert.Equal("0.82 (>L:X)", TestCulture.Run(culture, () => SimConnectManager.BuildSetLVarCalcCode("X", 0.82)));
+        Assert.Equal("-1.5 (>L:X)", TestCulture.Run(culture, () => SimConnectManager.BuildSetLVarCalcCode("X", -1.5)));
+        Assert.Equal("0.00001 (>L:X)", TestCulture.Run(culture, () => SimConnectManager.BuildSetLVarCalcCode("X", 0.00001)));
+    }
 }

@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.Tests;
 /// is what stops one profile's verdict deciding the next one's writes.
 ///
 /// The regression this closes: a session begun on any profile that registers no MSFSBA_BRIDGE_PROBE
-/// target (PMDG 737/777, HS787, iFly, Fenix) concludes UNVERIFIED and silently. Before the re-arm,
+/// target (PMDG 737/777, HS787, iFly) concludes UNVERIFIED and silently. Before the re-arm,
 /// picking the MD-11 from the Aircraft menu afterwards left that verdict standing, so
 /// `CalcWriteCanLand` was false and EVERY MD-11 write refused "unavailable" for the rest of the
 /// connection — with the module installed, the calc path healthy, and no warning ever spoken,
