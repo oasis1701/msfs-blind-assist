@@ -11,7 +11,7 @@
 //
 // What the scan cannot see: a number with no format at all ($"{value}"), a bare G or R (they write
 // what no format writes) and a format held in a variable (x.ToString(fmt)). SpokenDecimalCultureTests
-// is for those.
+// is for those, and tools/DecimalSweep lists the first kind by hand, with the compiler's types.
 
 using System.Text;
 using System.Text.RegularExpressions;

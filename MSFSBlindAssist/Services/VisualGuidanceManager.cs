@@ -1516,7 +1516,7 @@ public class VisualGuidanceManager : IDisposable
         {
             if (distanceNM <= calloutDist && lastAnnouncedDistance > calloutDist)
             {
-                announcer.Announce($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}");
+                announcer.Announce(FormattableString.Invariant($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}"));
                 lastAnnouncedDistance = calloutDist;
                 lastDistanceAnnouncement = now;
                 break;
