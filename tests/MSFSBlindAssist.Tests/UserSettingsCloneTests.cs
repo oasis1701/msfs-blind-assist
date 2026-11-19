@@ -12,6 +12,16 @@ namespace MSFSBlindAssist.Tests;
 public class UserSettingsCloneTests
 {
     [Fact]
+    public void A_settings_file_with_a_retired_key_still_loads()
+    {
+        // OfferTextRecognitionFor757 was removed with PaddleOCR (plan 20); old files still hold it.
+        var loaded = JsonSerializer.Deserialize<UserSettings>(
+            "{\"OfferTextRecognitionFor757\": false, \"UseFahrenheitForOutsideTemperature\": true}",
+            SettingsManager.JsonOptions)!;
+        Assert.True(loaded.UseFahrenheitForOutsideTemperature);
+    }
+
+    [Fact]
     public void OutsideTemperature_DefaultsToCelsius_ForNewAndExistingSettings()
     {
         Assert.False(new UserSettings().UseFahrenheitForOutsideTemperature);

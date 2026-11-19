@@ -2006,10 +2006,15 @@
     // Interior Lighting panel control). No-op on the A320 / when the pane is closed.
     A.suppressCabinLighting(root);
 
+    // FBW's react-toastify pop-ups are read through the notice list (A.noticeItems), which holds
+    // them until dismissed; their own nodes (text + an icon-only "close") are skipped here.
+    var toastRoot = root.querySelector(".Toastify");
+
     for (var i = 0; i < all.length && idx <= 400; i++) {
       var n = all[i];
       if (!A.isVisible(n)) continue;
       if (A.insideGroundRegion(n)) continue;
+      if (toastRoot && toastRoot.contains(n)) continue;
       var kind = A.classify(n);
       if (!kind) continue;
 
@@ -2173,6 +2178,7 @@
       }
       if (A.insideGroundRegion(tn)) continue; // owned by a Ground builder
       if (A.insideStatusBar(tn)) continue;    // collapsed into the one status line
+      if (toastRoot && toastRoot.contains(tn)) continue; // read via A.noticeItems
       if (A.classify(tn)) continue;        // already captured (interactive/heading)
       if (A.isInsideStamped(tn)) continue; // text inside a captured control
       var own = A.directText(tn);          // immediate text only -> leaf labels/values
@@ -2424,12 +2430,206 @@
     return clean(document.title || "");
   };
 
+  // ---- notices: FBW toasts and inline validation errors -------------------
+  // A react-toastify pop-up lives 250 ms to 5 s (FBW sets autoClose per call), often between two
+  // polls, and the old scrape read the ones it did catch as plain text nobody heard. A
+  // MutationObserver copies each one the moment FBW adds it. An ERROR stays at the top of the
+  // scrape, with a Dismiss button, until the pilot dismisses it or presses the control that raised
+  // it again (a retry: if it fails, FBW raises a new one). Every other toast type is listed for
+  // NOTICE_FLASH_MS, long enough for a poll to deliver it, so the shell speaks it once.
+  // Inline errors are page text FBW shows only while the problem exists (the throttle-calibration
+  // overlap and deadzone headings); they are read from the DOM each scrape, so fixing the problem
+  // removes them. Dismissing one hides it until FBW hides it and shows it again.
+  // Dismiss buttons carry idx NOTICE_IDX_BASE + id, far above the per-scrape stamps (capped near
+  // 400), and positive, so the client's culture-formatted int needs no minus sign.
+  A.NOTICE_IDX_BASE = 100000;
+  A.NOTICE_FLASH_MS = 6000;
+  A.NOTICE_MAX = 10;
+  // An error FBW raises within this long of a press is that press's (its own validation, the
+  // Takeoff calculation: FBW shows the toast a frame or two later). One arriving later (a failed
+  // download or lookup) may follow another press made meanwhile, so it gets no origin and only
+  // Dismiss clears it: a wrong origin would clear it silently on an unrelated press.
+  A.NOTICE_ORIGIN_MS = 1000;
+  A._notices = [];          // { id, type, text, at, origin }
+  A._noticeSeq = 0;
+  A._inlineIds = {};        // inline error text -> id, while FBW shows it
+  A._dismissedInline = {};  // inline error text -> true, until FBW hides it
+  A._lastPress = null;      // { node, at } of the last control the pilot pressed or set
+
+  A.toastType = function (el) {
+    var m = /(^|\s)Toastify__toast--([a-z]+)(\s|$)/.exec(A.cls(el));
+    return m ? m[2] : "default";
+  };
+
+  // A toast's message: its body's text (FBW's icon-only close button sits outside it).
+  A.toastText = function (el) {
+    var body = el.querySelector(".Toastify__toast-body");
+    return clean((body || el).textContent);
+  };
+
+  // queued: react-toastify let this toast in from its queue (FBW's ToastContainer has limit={2}),
+  // so it was raised earlier and the last press is not its origin; only Dismiss clears it.
+  A.captureToast = function (el, queued) {
+    var text = A.toastText(el);
+    if (!text) return;
+    // Marked on the node, which outlives this agent: a re-install never reads it again, even once
+    // the pilot has dismissed or retried it while FBW still shows it (A.watchToasts).
+    el.__msfsbaToast = true;
+    var now = Date.now();
+    var origin = (!queued && A._lastPress && now - A._lastPress.at < A.NOTICE_ORIGIN_MS) ? A._lastPress.node : null;
+    var keep = [];
+    for (var i = 0; i < A._notices.length; i++) if (A._notices[i].text !== text) keep.push(A._notices[i]);
+    keep.push({ id: ++A._noticeSeq, type: A.toastType(el), text: text, at: now, origin: origin });
+    // Over the cap, drop the oldest passing notice first, the one just added included: a burst of
+    // info toasts must not push out an error the pilot has not dismissed yet.
+    while (keep.length > A.NOTICE_MAX) {
+      var drop = 0;
+      for (var d = 0; d < keep.length; d++) if (keep[d].type !== "error") { drop = d; break; }
+      keep.splice(drop, 1);
+    }
+    A._notices = keep;
+  };
+
+  A.isToastNode = function (n) {
+    return n.nodeType === 1 && A.cls(n).indexOf("Toastify") >= 0;
+  };
+
+  A.onToastMutations = function (muts) {
+    // A toast added in the same batch that removed one is react-toastify filling the freed slot
+    // from its queue: it closes the old toast and mounts the waiting one in one go.
+    var queued = false;
+    for (var r = 0; r < muts.length && !queued; r++) {
+      var removed = muts[r].removedNodes;
+      for (var q = 0; q < removed.length; q++) {
+        var rn = removed[q];
+        if (A.isToastNode(rn) && (A.hasClassToken(rn, "Toastify__toast") || rn.querySelector(".Toastify__toast"))) { queued = true; break; }
+      }
+    }
+    for (var i = 0; i < muts.length; i++) {
+      var added = muts[i].addedNodes;
+      for (var j = 0; j < added.length; j++) {
+        var n = added[j];
+        if (!A.isToastNode(n)) continue;
+        if (A.hasClassToken(n, "Toastify__toast")) { A.captureToast(n, queued); continue; }
+        var inner = n.querySelectorAll(".Toastify__toast");
+        for (var k = 0; k < inner.length; k++) A.captureToast(inner[k], queued);
+      }
+    }
+  };
+
+  // Watch FBW's toast container itself (div.Toastify, which its ToastContainer always renders),
+  // not the whole flyPad, whose clock, maps and charts mutate many times a second. Called at
+  // install and at the top of every scrape: when FBW re-mounts the container (a flyPad power
+  // cycle), the observer moves to the new one.
+  A.watchToasts = function () {
+    if (typeof MutationObserver === "undefined") return;
+    var host = document.querySelector(".Toastify");
+    if (!host || host === A._toastHost) return;
+    if (A._toastObs) A._toastObs.disconnect();
+    else A._toastObs = new MutationObserver(A.onToastMutations);
+    A._toastHost = host;
+    A._toastObs.observe(host, { childList: true, subtree: true });
+    // A toast already open in it is caught now, unless this agent or a previous install caught it
+    // before (its mark), whether it is still listed or the pilot has dismissed or retried it.
+    var open = host.querySelectorAll(".Toastify__toast");
+    for (var i = 0; i < open.length; i++) if (!open[i].__msfsbaToast) A.captureToast(open[i]);
+  };
+
+  // Inline error text FBW is showing now. A heading coloured text-utility-red is an error (the
+  // deadzone warning); the throttle-calibration overlap is a plain h2, told apart from the
+  // harmless "Remember to configure MSFS…" h2 in the same kind of box only by the red strip
+  // holding the exclamation-circle icon just before it (ThrottleConfig.tsx). Only that strip: in
+  // four-axis mode each axis title is an h2 too, beside a pencil icon. The throttle page is known
+  // by the deadzone headings it always renders (hidden until needed), never by its translated h1.
+  A.inlineErrors = function (root) {
+    var out = [], seen = {};
+    var throttlePage = root.querySelector("h2.text-utility-red") !== null;
+    var hs = root.querySelectorAll("h1, h2, h3, h4, h5, h6");
+    for (var i = 0; i < hs.length; i++) {
+      var h = hs[i];
+      if (!A.isVisible(h)) continue;
+      var t = clean(h.textContent);
+      if (!t || seen[t]) continue;
+      var strip = h.previousElementSibling;
+      var overlap = throttlePage && h.tagName === "H2" && !!strip && A.hasClassToken(strip, "bg-utility-red") && !!strip.querySelector("svg");
+      if (A.hasClassToken(h, "text-utility-red") || overlap) { seen[t] = true; out.push(t); }
+    }
+    return out;
+  };
+
+  A.noticePrefix = function (type) {
+    return type === "error" ? "Error: " : type === "warning" ? "Warning: " : "";
+  };
+
+  function noticeItem(kind, key, idx, text) {
+    var button = kind === "button";
+    return {
+      idx: idx, kind: kind, tag: button ? "button" : "p", role: "", text: text, value: "",
+      controlType: "", clickable: button, level: 0, live: button ? "" : "assertive",
+      disabled: false, options: [], key: key
+    };
+  }
+
+  A.noticeItems = function (root) {
+    var out = [], keep = [], now = Date.now();
+    // A control FBW has unmounted can never be pressed again, so it is no retry: let it go, or the
+    // node would hold its whole unmounted React subtree for as long as the error stays.
+    if (A._lastPress && !document.contains(A._lastPress.node)) A._lastPress = null;
+    for (var i = 0; i < A._notices.length; i++) {
+      var n = A._notices[i], error = n.type === "error";
+      if (!error && now - n.at > A.NOTICE_FLASH_MS) continue;
+      if (n.origin && !document.contains(n.origin)) n.origin = null;
+      keep.push(n);
+      out.push(noticeItem("alert", "notice:" + n.id, 0, A.noticePrefix(n.type) + n.text));
+      if (error) out.push(noticeItem("button", "notice-dismiss:" + n.id, A.NOTICE_IDX_BASE + n.id, "Dismiss: " + n.text));
+    }
+    A._notices = keep;
+
+    var shown = A.inlineErrors(root), live = {};
+    for (var j = 0; j < shown.length; j++) {
+      var t = shown[j];
+      live[t] = true;
+      if (!A._inlineIds[t]) A._inlineIds[t] = ++A._noticeSeq;
+      if (A._dismissedInline[t]) continue;
+      out.push(noticeItem("alert", "inline:" + t, 0, "Error: " + t));
+      out.push(noticeItem("button", "inline-dismiss:" + t, A.NOTICE_IDX_BASE + A._inlineIds[t], "Dismiss: " + t));
+    }
+    var k;
+    for (k in A._inlineIds) if (A._inlineIds.hasOwnProperty(k) && !live[k]) delete A._inlineIds[k];
+    for (k in A._dismissedInline) if (A._dismissedInline.hasOwnProperty(k) && !live[k]) delete A._dismissedInline[k];
+    return out;
+  };
+
+  A.dismissNotice = function (id) {
+    var keep = [];
+    for (var i = 0; i < A._notices.length; i++) if (A._notices[i].id !== id) keep.push(A._notices[i]);
+    A._notices = keep;
+    for (var t in A._inlineIds) if (A._inlineIds.hasOwnProperty(t) && A._inlineIds[t] === id) A._dismissedInline[t] = true;
+    return "ok";
+  };
+
+  // A press (or a typed value) on the control that raised an error is a retry: drop that error
+  // now, so a repeat failure arrives as a new notice (spoken again) and a success leaves none.
+  // Matched by the node itself, never its label: the Takeoff and Landing pages both have a
+  // "Calculate". If FBW re-mounts the control, the retry no longer matches and Dismiss clears it.
+  A.notePress = function (node) {
+    A._lastPress = { node: node, at: Date.now() };
+    var keep = [];
+    for (var i = 0; i < A._notices.length; i++) {
+      var n = A._notices[i];
+      if (!(n.type === "error" && n.origin === node)) keep.push(n);
+    }
+    A._notices = keep;
+  };
+
   // ---- public: read ------------------------------------------------------
   A.scrape = function () {
     try {
       var root = A.findRoot();
       if (!root) return JSON.stringify({ ok: false, error: "flyPad root not found (powered up?)" });
-      var els = A.enumerate(root);
+      A.watchToasts();               // follows FBW's toast container if it was re-mounted
+      var els = A.enumerate(root);   // first: it advances A._gen, which inlineErrors' isVisible reads
+      els = A.noticeItems(root).concat(els);
       return JSON.stringify({ ok: true, page: A.pageLabel(root), elements: els });
     } catch (e) {
       return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) });
@@ -2449,9 +2649,11 @@
   };
 
   A.clickElement = function (index) {
+    if (index >= A.NOTICE_IDX_BASE) return A.dismissNotice(index - A.NOTICE_IDX_BASE);
     var node = A.findByIdx(index);
     if (!node) return "missing";
     if (A.disabledFor(node)) return "disabled";
+    A.notePress(node);
     A.clickNode(node);
     return "ok";
   };
@@ -2475,6 +2677,7 @@
     var node = A.findByIdx(index);
     if (!node) return "missing";
     if (A.disabledFor(node)) return "disabled";
+    A.notePress(node);
     var kind = A.classify(node);
     value = (value === null || value === undefined) ? "" : String(value);
 
@@ -2551,6 +2754,24 @@
     } catch (e) {}
     return "ok";
   };
+
+  // A re-install must not leave the previous agent's observer feeding a list nobody reads. The
+  // client also re-installs over a LIVE agent after one slow scrape, so take over its notices and
+  // counter: dropping them loses errors the pilot has not dismissed, and restarting the counter
+  // reuses a key (notice:1) the form has already spoken, so the next error stays silent.
+  var previous = window.__MSFSBA_FLYPAD;
+  if (previous && previous._toastObs) { try { previous._toastObs.disconnect(); } catch (e) {} }
+  // Nodes still carry the previous agent's memo stamps (__msfsbaGen): counting on from its
+  // generation keeps a stamp from ever matching a new scrape's.
+  if (previous && typeof previous._gen === "number") A._gen = previous._gen;
+  if (previous && previous._notices instanceof Array) {
+    A._notices = previous._notices;
+    A._noticeSeq = previous._noticeSeq || 0;
+    A._inlineIds = previous._inlineIds || {};
+    A._dismissedInline = previous._dismissedInline || {};
+    if (previous._lastPress && previous._lastPress.node) A._lastPress = previous._lastPress;
+  }
+  A.watchToasts();
 
   window.__MSFSBA_FLYPAD = A;
   return "MSFSBA_FLYPAD_INSTALLED";

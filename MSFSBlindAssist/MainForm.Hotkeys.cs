@@ -245,6 +245,11 @@ public partial class MainForm
                     // MD-11 — all three MCDUs as text from the MD11MCDU client data area.
                     ShowMd11McduDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "BBS_757")
+                {
+                    // BlueBird 757 — both CDUs as text from the aircraft's Comm Bus, over Coherent.
+                    ShowBBS757CduDialog();
+                }
                 else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
                     // The Headwind A330 MCDU is the same FBW instrument (the Coherent view
@@ -258,7 +263,13 @@ public partial class MainForm
                 }
                 break;
             case HotkeyAction.ShowPMDGEFB:
-                if (currentAircraft is IPMDGAircraft pmdgEFB && pmdgEFB.HasEFBSupport)
+                if (currentAircraft?.AircraftCode == "BBS_757")
+                {
+                    // BlueBird 757 — the tablet window while a simulator runs, BlueBird's settings window while none does.
+                    // First, so no broader test (an interface check) can ever take the 757's Shift+T.
+                    ShowBBS757EfbDialog();
+                }
+                else if (currentAircraft is IPMDGAircraft pmdgEFB && pmdgEFB.HasEFBSupport)
                 {
                     ShowPmdgCoherentEfbDialog(firstOfficer: false);
                 }

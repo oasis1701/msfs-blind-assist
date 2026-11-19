@@ -161,11 +161,11 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
 
         autoCenterPumpsCheck = new CheckBox
         {
-            Text = "Auto-manage center fuel pumps (PMDG 737/777 and iFly MAX8)",
+            Text = "Auto-manage center fuel pumps (PMDG 737/777, iFly MAX8 and BlueBird 757)",
             Location = new Point(20, 370),
             AutoSize = true,
             AccessibleName = "Automatic center fuel pump management",
-            AccessibleDescription = "On the PMDG 737 and 777 and the iFly MAX8, turn the center tank fuel pumps on during ground setup when center fuel is loaded, and off when the center tank runs dry."
+            AccessibleDescription = "On the PMDG 737 and 777, the iFly MAX8 and the BlueBird 757, turn the center tank fuel pumps on during ground setup when center fuel is loaded, and off when the center tank runs dry."
         };
 
         speakFlowProgressCheck = new CheckBox

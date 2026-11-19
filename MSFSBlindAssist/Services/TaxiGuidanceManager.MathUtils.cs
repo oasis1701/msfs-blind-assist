@@ -344,29 +344,6 @@ public partial class TaxiGuidanceManager
         double plat, double plon,
         double alat, double alon,
         double blat, double blon)
-    {
-        const double METERS_PER_DEG_LAT = 111132.0;
-        double latMidRad = (alat + blat) * 0.5 * (Math.PI / 180.0);
-        double metersPerDegLon = METERS_PER_DEG_LAT * Math.Cos(latMidRad);
-
-        double bx = (blon - alon) * metersPerDegLon;
-        double by = (blat - alat) * METERS_PER_DEG_LAT;
-        double px = (plon - alon) * metersPerDegLon;
-        double py = (plat - alat) * METERS_PER_DEG_LAT;
-
-        double lenSq = bx * bx + by * by;
-        if (lenSq < 1e-9)
-            return Math.Sqrt(px * px + py * py);
-
-        double t = (px * bx + py * by) / lenSq;
-        if (t < 0.0) t = 0.0;
-        else if (t > 1.0) t = 1.0;
-
-        double fx = t * bx;
-        double fy = t * by;
-        double ex = px - fx;
-        double ey = py - fy;
-        return Math.Sqrt(ex * ex + ey * ey);
-    }
+        => GuidanceGeometry.PerpendicularDistanceToSegmentMeters(plat, plon, alat, alon, blat, blon);
 
 }

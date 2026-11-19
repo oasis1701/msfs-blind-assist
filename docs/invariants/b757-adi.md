@@ -1,0 +1,18 @@
+# BlueBird 757 ADI reader rules, full text
+
+The rule lines are in `.claude/rules/b757-adi.md`; the shared 757 rules are in [b757.md](b757.md). Background: [docs/b757.md](../b757.md).
+
+## B757-64
+
+- Alt+P opens the "ADI" window only while the ADI reader can run (`Adi.KeyFallsBackToAi()` false), and falls back to the AI read of the ADI while it cannot (unavailable, stopped, not started), whatever the FMA reader is doing (S15). The window's rows are plan 23's `Fma.View()` first (its status row while the FMA reader is down), then the ADI monitor's own. The ADI reader never reads the FMA fields itself: the FMA stays one reader, spoken by plan 23, listed in Ctrl+P as before.
+- Why. The two readers come from different layout parts and fail apart: a layout file can hold the FMA but not the ADI. Falling back on the FMA's state would open a window with only the flight modes in it while the rest of the ADI is unreadable, and the pilot would never get the AI read that still describes the picture. Reading the FMA twice would speak or list two versions of one strip. `Bbs757AdiWiringTests` pins both cases (`Alt_P_falls_back_when_the_adi_reader_cannot_run_even_with_the_fma_running`, `The_fma_status_row_heads_the_window_when_the_fma_is_down`). Plan 27, 2026-11-16. → [b757.md](../b757.md)
+
+## B757-65
+
+- The ADI reader says by itself only its five flags, each once after the settle: "ADI flag: ATT" and "ADI flag gone: ATT", and SPD, LOC, G/S and RA alike (`Bbs757AdiText.Changes`, Ctrl+M row "ADI messages"). Everything else the ADI draws (airspeed, target speed, V1 and VR, the flap maneuvering speed, Mach, ground speed, attitude, the flight director, TCAS pitch limits, the rising runway, the pointers, ALT, the decision height, the radio altitude) is a row in the window only.
+- Why. BlueBird plays its own V1, minimums and altitude callouts, windshear and terrain aurals (docs/b757.md, "Take-off callouts"), and the app has its own approach and landing guidance; a second voice for the same moment talks over the first. The values that move all the time would be chatter. The flags are what a sighted pilot sees appear in amber in place of an instrument, so they are spoken. `Bbs757AdiTextTests.No_line_repeats_a_bluebird_callout` pins it. Plan 27, 2026-11-16. → [b757.md](../b757.md)
+
+## B757-66
+
+- `Bbs757AdiReader.Decode` lists an item only under the condition BlueBird's draw uses, and with the signs measured live, even where a tidier rule looks right. The simulator's `PLANE PITCH DEGREES` is positive nose DOWN and `PLANE BANK DEGREES` positive left (the draw passes them on as it gets them); the rows turn them into "up"/"down" and "left"/"right". The flight director pitch command is positive up (8° at take-off, measured), the localizer pointer positive right of center (fly right) and the glideslope positive up, as on the EHSI ([B757-48]). The draw's conditions include: ALT only while the radio altimeter is valid (its draw returns after the DH otherwise), the DH only with the attitude valid, the ground speed only with the attitude valid, the V1 and VR bugs only while the AFDS timer reads under 120 s, the `F` bug only from 10 s, below 20,000 ft and while it is not 100, the horizon held at 18° nose up.
+- Why. The reader replaces looking at the screen: a row shown where the screen shows nothing, or a sign the other way round, tells the pilot something the aircraft does not. The conditions and signs are in `docs/b757.md` ("The ADI") with the measurements of 2026-11-16 at a KSEA gate (cold and dark, aligning, aligned, ILS 110.30, F/D on). `Bbs757AdiReaderTests` pins each condition. Plan 27. → [b757.md](../b757.md)

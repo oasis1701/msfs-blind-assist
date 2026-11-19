@@ -1,0 +1,1099 @@
+[
+  {
+    "key": 6,
+    "class": "HOME",
+    "controls": []
+  },
+  {
+    "key": 8,
+    "class": "NAVIGATION",
+    "controls": []
+  },
+  {
+    "key": 10,
+    "class": "CHECKLIST",
+    "controls": []
+  },
+  {
+    "key": 12,
+    "class": "SETTINGS",
+    "controls": [
+      {
+        "kind": "grid",
+        "name": "main_grid",
+        "text": "",
+        "x": 0,
+        "y": 32,
+        "w": 1397,
+        "h": 1016,
+        "children": [
+          {
+            "kind": "other",
+            "name": "gradbox_tl",
+            "text": "",
+            "x": 0,
+            "y": 32,
+            "w": 250,
+            "h": 50,
+            "children": [
+              {
+                "kind": "other",
+                "name": "btn_stack",
+                "text": "",
+                "x": 0,
+                "y": 32,
+                "w": 250,
+                "h": 50,
+                "children": [
+                  {
+                    "kind": "button",
+                    "name": "home_btn",
+                    "text": "",
+                    "x": 0,
+                    "y": 32,
+                    "w": 50,
+                    "h": 50,
+                    "children": []
+                  },
+                  {
+                    "kind": "label",
+                    "name": "page_title_label",
+                    "text": "SETTINGS",
+                    "x": 60,
+                    "y": 41.5,
+                    "w": 145,
+                    "h": 36,
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "other",
+            "name": "gradbox_tr",
+            "text": "",
+            "x": 250,
+            "y": 32,
+            "w": 1147,
+            "h": 50,
+            "children": []
+          },
+          {
+            "kind": "other",
+            "name": "gradbox_br",
+            "text": "",
+            "x": 0,
+            "y": 82,
+            "w": 250,
+            "h": 966,
+            "children": [
+              {
+                "kind": "grid",
+                "name": "control_grid",
+                "text": "",
+                "x": 0,
+                "y": 82,
+                "w": 250,
+                "h": 966,
+                "children": [
+                  {
+                    "kind": "other",
+                    "name": "btn_stack",
+                    "text": "",
+                    "x": 0,
+                    "y": 142,
+                    "w": 250,
+                    "h": 716,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "btn_general",
+                        "text": "GENERAL",
+                        "x": 0,
+                        "y": 142,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_aircraft",
+                        "text": "AIRCRAFT",
+                        "x": 0,
+                        "y": 202,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_livery",
+                        "text": "LIVERY OPTIONS",
+                        "x": 0,
+                        "y": 262,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_audio",
+                        "text": "CALLOUTS",
+                        "x": 0,
+                        "y": 322,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_cabin_audio",
+                        "text": "CABIN AUDIO",
+                        "x": 0,
+                        "y": 382,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_airac_data",
+                        "text": "AIRAC DATA",
+                        "x": 0,
+                        "y": 442,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "other",
+                    "name": "label_bbs_img",
+                    "text": "./data/efb/bbs_logo_light.png",
+                    "x": 0,
+                    "y": 798,
+                    "w": 250,
+                    "h": 250,
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "kind": "grid",
+        "name": "page_main_grid",
+        "text": "",
+        "x": 0,
+        "y": 32,
+        "w": 1397,
+        "h": 1016,
+        "children": [
+          {
+            "kind": "grid",
+            "name": "page_control_grid",
+            "text": "",
+            "x": 0,
+            "y": 82,
+            "w": 1397,
+            "h": 966,
+            "children": [
+              {
+                "kind": "other",
+                "name": "page_colorbox",
+                "text": "",
+                "x": 250,
+                "y": 82,
+                "w": 1147,
+                "h": 966,
+                "children": [
+                  {
+                    "kind": "grid",
+                    "name": "airac_data_grid",
+                    "text": "",
+                    "x": 250,
+                    "y": 82,
+                    "w": 1147,
+                    "h": 966,
+                    "children": [
+                      {
+                        "kind": "grid",
+                        "name": "simbrief_id_setting_grid",
+                        "text": "",
+                        "x": 250,
+                        "y": 82,
+                        "w": 1147,
+                        "h": 70,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "simbrief_id_label",
+                            "text": "SIMBRIEF ID NUMBER",
+                            "x": 280,
+                            "y": 82,
+                            "w": 250,
+                            "h": 70,
+                            "children": []
+                          },
+                          {
+                            "kind": "other",
+                            "name": "simbrief_id_input_cell",
+                            "text": "",
+                            "x": 763.5,
+                            "y": 82,
+                            "w": 170,
+                            "h": 70,
+                            "children": [
+                              {
+                                "kind": "label",
+                                "name": "simbrief_id_saved_label",
+                                "text": "123456",
+                                "x": 763.5,
+                                "y": 104,
+                                "w": 170,
+                                "h": 26,
+                                "children": []
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "other",
+                            "name": "simbrief_id_action_cell",
+                            "text": "",
+                            "x": 1197,
+                            "y": 82,
+                            "w": 200,
+                            "h": 70,
+                            "children": [
+                              {
+                                "kind": "button",
+                                "name": "simbrief_id_logout_button",
+                                "text": "LOGOUT",
+                                "x": 1197,
+                                "y": 87,
+                                "w": 200,
+                                "h": 60,
+                                "children": []
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "grid",
+                        "name": "hoppie_logon_code_setting_grid",
+                        "text": "",
+                        "x": 250,
+                        "y": 152,
+                        "w": 1147,
+                        "h": 70,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "hoppie_logon_code_label",
+                            "text": "HOPPIE LOGON CODE",
+                            "x": 280,
+                            "y": 152,
+                            "w": 647,
+                            "h": 70,
+                            "children": []
+                          },
+                          {
+                            "kind": "other",
+                            "name": "hoppie_logon_code_textbox",
+                            "text": "",
+                            "x": 897,
+                            "y": 165,
+                            "w": 300,
+                            "h": 44,
+                            "children": []
+                          },
+                          {
+                            "kind": "label",
+                            "name": "hoppie_logon_code_value_label",
+                            "text": "------",
+                            "x": 1197,
+                            "y": 152,
+                            "w": 200,
+                            "h": 70,
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "grid",
+                        "name": "sayintentions_acars_key_setting_grid",
+                        "text": "",
+                        "x": 250,
+                        "y": 222,
+                        "w": 1147,
+                        "h": 70,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "sayintentions_acars_key_label",
+                            "text": "SAYINTENTIONS ACARS KEY",
+                            "x": 280,
+                            "y": 222,
+                            "w": 487,
+                            "h": 70,
+                            "children": []
+                          },
+                          {
+                            "kind": "other",
+                            "name": "sayintentions_acars_key_textbox",
+                            "text": "",
+                            "x": 737,
+                            "y": 235,
+                            "w": 300,
+                            "h": 44,
+                            "children": []
+                          },
+                          {
+                            "kind": "button",
+                            "name": "sayintentions_fetch_key_button",
+                            "text": "FETCH KEY",
+                            "x": 1047,
+                            "y": 235,
+                            "w": 140,
+                            "h": 44,
+                            "children": []
+                          },
+                          {
+                            "kind": "label",
+                            "name": "sayintentions_acars_key_value_label",
+                            "text": "------",
+                            "x": 1197,
+                            "y": 222,
+                            "w": 200,
+                            "h": 70,
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "grid",
+                        "name": "airac_header_grid",
+                        "text": "",
+                        "x": 250,
+                        "y": 292,
+                        "w": 1147,
+                        "h": 70,
+                        "children": [
+                          {
+                            "kind": "other",
+                            "name": "cycle_stack",
+                            "text": "",
+                            "x": 250,
+                            "y": 292,
+                            "w": 1147,
+                            "h": 70,
+                            "children": [
+                              {
+                                "kind": "grid",
+                                "name": "latest_cycle_row",
+                                "text": "",
+                                "x": 250,
+                                "y": 297,
+                                "w": 1147,
+                                "h": 60,
+                                "children": [
+                                  {
+                                    "kind": "label",
+                                    "name": "latest_cycle_title_label",
+                                    "text": "LATEST CYCLE:",
+                                    "x": 280,
+                                    "y": 282,
+                                    "w": 250,
+                                    "h": 60,
+                                    "children": []
+                                  },
+                                  {
+                                    "kind": "label",
+                                    "name": "latest_cycle_value_label",
+                                    "text": "2611",
+                                    "x": 500,
+                                    "y": 282,
+                                    "w": 350,
+                                    "h": 60,
+                                    "children": []
+                                  },
+                                  {
+                                    "kind": "button",
+                                    "name": "btn_update",
+                                    "text": "REMOVE",
+                                    "x": 1197,
+                                    "y": 297,
+                                    "w": 200,
+                                    "h": 60,
+                                    "children": []
+                                  }
+                                ]
+                              },
+                              {
+                                "kind": "grid",
+                                "name": "installed_cycle_row",
+                                "text": "",
+                                "x": 250,
+                                "y": 352,
+                                "w": 1147,
+                                "h": 38,
+                                "children": [
+                                  {
+                                    "kind": "label",
+                                    "name": "installed_cycle_title_label",
+                                    "text": "INSTALLED CYCLE:",
+                                    "x": 280,
+                                    "y": 322,
+                                    "w": 250,
+                                    "h": 38,
+                                    "children": []
+                                  },
+                                  {
+                                    "kind": "label",
+                                    "name": "installed_cycle_value_label",
+                                    "text": "2611 | EXP: 2026-11-25",
+                                    "x": 500,
+                                    "y": 322,
+                                    "w": 350,
+                                    "h": 38,
+                                    "children": []
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "other",
+                        "name": "waiting_panel_box",
+                        "text": "",
+                        "x": 250,
+                        "y": 362,
+                        "w": 1147,
+                        "h": 686,
+                        "children": [
+                          {
+                            "kind": "other",
+                            "name": "waiting_panel_stack",
+                            "text": "",
+                            "x": 250,
+                            "y": 362,
+                            "w": 1147,
+                            "h": 686,
+                            "children": [
+                              {
+                                "kind": "grid",
+                                "name": "auth_status_grid",
+                                "text": "",
+                                "x": 250,
+                                "y": 362,
+                                "w": 1147,
+                                "h": 60,
+                                "children": [
+                                  {
+                                    "kind": "label",
+                                    "name": "waiting_info_label",
+                                    "text": "CONNECTED TO NAVIGRAPH",
+                                    "x": 280,
+                                    "y": 382,
+                                    "w": 947,
+                                    "h": 60,
+                                    "children": []
+                                  },
+                                  {
+                                    "kind": "button",
+                                    "name": "btn_logout",
+                                    "text": "LOGOUT",
+                                    "x": 1197,
+                                    "y": 367,
+                                    "w": 200,
+                                    "h": 60,
+                                    "children": []
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "key": 9,
+    "class": "SYSTEMS",
+    "controls": []
+  },
+  {
+    "key": 7,
+    "class": "AIRCRAFT",
+    "controls": []
+  },
+  {
+    "key": 5,
+    "class": "SIGN IN",
+    "controls": []
+  },
+  {
+    "key": 2,
+    "class": "app",
+    "controls": [
+      {
+        "kind": "grid",
+        "name": "kb_grid",
+        "text": "",
+        "x": 0,
+        "y": 648,
+        "w": 1397,
+        "h": 400,
+        "children": [
+          {
+            "kind": "grid",
+            "name": "keyboard_grid_container",
+            "text": "",
+            "x": 0,
+            "y": 708,
+            "w": 1396.9999,
+            "h": 340,
+            "children": [
+              {
+                "kind": "grid",
+                "name": "row_1",
+                "text": "",
+                "x": 0,
+                "y": 708,
+                "w": 1396.9999,
+                "h": 85,
+                "children": [
+                  {
+                    "kind": "button",
+                    "name": "btn_delete",
+                    "text": "COMMAND_DELETE",
+                    "x": 5,
+                    "y": 713,
+                    "w": 138.49994,
+                    "h": 75,
+                    "children": []
+                  },
+                  {
+                    "kind": "grid",
+                    "name": "row_1_keys",
+                    "text": "",
+                    "x": 148.49994,
+                    "y": 708,
+                    "w": 1100,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "char_btn_q|Q|1",
+                        "text": "q|Q|1",
+                        "x": 153.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_w|W|2",
+                        "text": "w|W|2",
+                        "x": 263.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_e|E|3",
+                        "text": "e|E|3",
+                        "x": 373.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_r|R|4",
+                        "text": "r|R|4",
+                        "x": 483.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_t|T|5",
+                        "text": "t|T|5",
+                        "x": 593.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_y|Y|6",
+                        "text": "y|Y|6",
+                        "x": 703.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_u|U|7",
+                        "text": "u|U|7",
+                        "x": 813.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_i|I|8",
+                        "text": "i|I|8",
+                        "x": 923.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_o|O|9",
+                        "text": "o|O|9",
+                        "x": 1033.5,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_p|P|0",
+                        "text": "p|P|0",
+                        "x": 1143.5,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "button",
+                    "name": "btn_backspace",
+                    "text": "COMMAND_BACKSPACE",
+                    "x": 1253.5,
+                    "y": 713,
+                    "w": 138.49994,
+                    "h": 75,
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "grid",
+                "name": "row_2",
+                "text": "",
+                "x": 0,
+                "y": 793,
+                "w": 1396.9999,
+                "h": 85,
+                "children": [
+                  {
+                    "kind": "button",
+                    "name": "btn_tab",
+                    "text": "COMMAND_TAB",
+                    "x": 5,
+                    "y": 798,
+                    "w": 193.49994,
+                    "h": 75,
+                    "children": []
+                  },
+                  {
+                    "kind": "grid",
+                    "name": "row_2_keys",
+                    "text": "",
+                    "x": 203.49994,
+                    "y": 793,
+                    "w": 990,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "char_btn_a|A|@",
+                        "text": "a|A|@",
+                        "x": 208.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_s|S|#",
+                        "text": "s|S|#",
+                        "x": 318.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_d|D|$",
+                        "text": "d|D|$",
+                        "x": 428.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_f|F|\u0026",
+                        "text": "f|F|\u0026",
+                        "x": 538.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_g|G|*",
+                        "text": "g|G|*",
+                        "x": 648.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_h|H|(",
+                        "text": "h|H|(",
+                        "x": 758.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_j|J|)",
+                        "text": "j|J|)",
+                        "x": 868.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_k|K|\u0027",
+                        "text": "k|K|\u0027",
+                        "x": 978.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_l|L|\u0022",
+                        "text": "l|L|\u0022",
+                        "x": 1088.5,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "button",
+                    "name": "btn_enter",
+                    "text": "COMMAND_ENTER",
+                    "x": 1198.5,
+                    "y": 798,
+                    "w": 193.49994,
+                    "h": 75,
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "grid",
+                "name": "row_3",
+                "text": "",
+                "x": 0,
+                "y": 878,
+                "w": 1396.9999,
+                "h": 85,
+                "children": [
+                  {
+                    "kind": "grid",
+                    "name": "row_3_left_grid",
+                    "text": "",
+                    "x": 0,
+                    "y": 878,
+                    "w": 260,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "btn_double_shift",
+                        "text": "COMMAND_DOUBLE_SHIFT",
+                        "x": 5,
+                        "y": 883,
+                        "w": 120,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_shift2",
+                        "text": "COMMAND_SHIFT",
+                        "x": 135,
+                        "y": 883,
+                        "w": 120,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "grid",
+                    "name": "row_3_keys",
+                    "text": "",
+                    "x": 260,
+                    "y": 878,
+                    "w": 770,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "char_btn_z|Z|%",
+                        "text": "z|Z|%",
+                        "x": 265,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_x|X|-",
+                        "text": "x|X|-",
+                        "x": 375,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_c|C|\u002B",
+                        "text": "c|C|\u002B",
+                        "x": 485,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_v|V|=",
+                        "text": "v|V|=",
+                        "x": 595,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_b|B|/",
+                        "text": "b|B|/",
+                        "x": 705,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_n|N|;",
+                        "text": "n|N|;",
+                        "x": 815,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_m|M|:",
+                        "text": "m|M|:",
+                        "x": 925,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "grid",
+                    "name": "row_3_right_grid",
+                    "text": "",
+                    "x": 1030,
+                    "y": 878,
+                    "w": 366.99988,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "btn_exclamation",
+                        "text": ",|,|!",
+                        "x": 1035,
+                        "y": 883,
+                        "w": 96.42996,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_question",
+                        "text": ".|.|?",
+                        "x": 1141.4299,
+                        "y": 883,
+                        "w": 96.42996,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_shift",
+                        "text": "COMMAND_SHIFT",
+                        "x": 1247.8599,
+                        "y": 883,
+                        "w": 144.13994,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "grid",
+                "name": "row_4",
+                "text": "",
+                "x": 0,
+                "y": 963,
+                "w": 1396.9999,
+                "h": 85,
+                "children": [
+                  {
+                    "kind": "grid",
+                    "name": "row_4_left_grid",
+                    "text": "",
+                    "x": 0,
+                    "y": 963,
+                    "w": 348.49994,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "btn_home",
+                        "text": "COMMAND_HOME",
+                        "x": 5,
+                        "y": 968,
+                        "w": 164.24997,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_numeric_switch2",
+                        "text": "COMMAND_NUMERIC_SWITCH",
+                        "x": 179.24997,
+                        "y": 968,
+                        "w": 164.24997,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "button",
+                    "name": "btn_space",
+                    "text": "COMMAND_SPACE",
+                    "x": 353.49994,
+                    "y": 968,
+                    "w": 690,
+                    "h": 75,
+                    "children": []
+                  },
+                  {
+                    "kind": "grid",
+                    "name": "row_4_right_grid",
+                    "text": "",
+                    "x": 1048.5,
+                    "y": 963,
+                    "w": 348.49994,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "btn_numeric_switch",
+                        "text": "COMMAND_NUMERIC_SWITCH",
+                        "x": 1053.5,
+                        "y": 968,
+                        "w": 164.24997,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_keyboard_down",
+                        "text": "COMMAND_KEYBOARD_DOWN",
+                        "x": 1227.75,
+                        "y": 968,
+                        "w": 164.24997,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

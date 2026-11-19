@@ -51,14 +51,16 @@ if ($Title -ne "") {
 }
 if ($PageId -lt 0) { Write-Output "ERR: provide -PageId or -Title"; exit 1 }
 
-$expr = ""
+# Named $js, not $expr: PowerShell variable names ignore case, so a $expr here is the -Expr
+# parameter itself, and clearing it threw every inline expression away ("provide -ExprFile or -Expr").
+$js = ""
 # Read JS files as UTF-8 (matches the app's File.ReadAllText). PowerShell 5.1's
 # Get-Content -Raw reads a no-BOM file as ANSI, which mangles non-ASCII literals
 # (e.g. the degree sign "°" -> "Â°"), silently corrupting the injected agent and
 # producing FALSE scrape results (this is what made track readouts look "dropped").
-if ($PreFile -ne "") { $expr += [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $PreFile).ProviderPath) + "`n;`n" }
-if ($ExprFile -ne "") { $expr += [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $ExprFile).ProviderPath) }
-elseif ($Expr -ne "") { $expr += $Expr }
+if ($PreFile -ne "") { $js += [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $PreFile).ProviderPath) + "`n;`n" }
+if ($ExprFile -ne "") { $js += [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $ExprFile).ProviderPath) }
+elseif ($Expr -ne "") { $js += $Expr }
 else { Write-Output "ERR: provide -ExprFile or -Expr"; exit 1 }
 
 $ws = New-Object System.Net.WebSockets.ClientWebSocket
@@ -68,7 +70,7 @@ $cts.CancelAfter(20000)
 try { $ws.ConnectAsync($uri, $cts.Token).GetAwaiter().GetResult() }
 catch { Write-Output "WS_CONNECT_ERR: $($_.Exception.Message)"; exit 1 }
 
-$msg = @{ id = 1; method = "Runtime.evaluate"; params = @{ expression = $expr; returnByValue = $true; awaitPromise = $true } } | ConvertTo-Json -Depth 8 -Compress
+$msg = @{ id = 1; method = "Runtime.evaluate"; params = @{ expression = $js; returnByValue = $true; awaitPromise = $true } } | ConvertTo-Json -Depth 8 -Compress
 $bytes = [System.Text.Encoding]::UTF8.GetBytes($msg)
 $seg = [System.ArraySegment[byte]]::new($bytes)
 $null = $ws.SendAsync($seg, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $cts.Token).GetAwaiter().GetResult()

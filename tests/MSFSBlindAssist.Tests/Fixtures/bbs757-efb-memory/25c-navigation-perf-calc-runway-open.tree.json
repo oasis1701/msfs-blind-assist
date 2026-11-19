@@ -1,0 +1,2709 @@
+{
+  "apps": [
+    {
+      "key": 6,
+      "class": "HOME",
+      "controls": []
+    },
+    {
+      "key": 8,
+      "class": "NAVIGATION",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "main_grid",
+          "text": "",
+          "x": 0,
+          "y": 32,
+          "w": 1397,
+          "h": 1016,
+          "children": [
+            {
+              "kind": "other",
+              "name": "gradbox_tl",
+              "text": "",
+              "x": 0,
+              "y": 32,
+              "w": 250,
+              "h": 50,
+              "children": [
+                {
+                  "kind": "other",
+                  "name": "title_stack",
+                  "text": "",
+                  "x": 0,
+                  "y": 32,
+                  "w": 250,
+                  "h": 50,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "home_btn",
+                      "text": "",
+                      "x": 0,
+                      "y": 32,
+                      "w": 50,
+                      "h": 50,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "label",
+                      "name": "page_title_label",
+                      "text": "NAVIGATION",
+                      "x": 60,
+                      "y": 41.5,
+                      "w": 184,
+                      "h": 36,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "other",
+              "name": "gradbox_tr",
+              "text": "",
+              "x": 250,
+              "y": 32,
+              "w": 1147,
+              "h": 50,
+              "children": []
+            },
+            {
+              "kind": "other",
+              "name": "gradbox_bl",
+              "text": "",
+              "x": 0,
+              "y": 82,
+              "w": 250,
+              "h": 966,
+              "children": [
+                {
+                  "kind": "grid",
+                  "name": "control_grid",
+                  "text": "",
+                  "x": 0,
+                  "y": 82,
+                  "w": 250,
+                  "h": 966,
+                  "children": [
+                    {
+                      "kind": "other",
+                      "name": "btn_stack",
+                      "text": "",
+                      "x": 0,
+                      "y": 142,
+                      "w": 250,
+                      "h": 716,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_acars_dashboard",
+                          "text": "ACARS DASHBOARD",
+                          "x": 0,
+                          "y": 142,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_operating_fp",
+                          "text": "OPERATING FP",
+                          "x": 0,
+                          "y": 202,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_weather_notam",
+                          "text": "WEATHER \u0026 NOTAM",
+                          "x": 0,
+                          "y": 262,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_charts",
+                          "text": "CHARTS",
+                          "x": 0,
+                          "y": 322,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_map",
+                          "text": "MAP",
+                          "x": 0,
+                          "y": 382,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_perf_calc",
+                          "text": "PERF CALC",
+                          "x": 0,
+                          "y": 442,
+                          "w": 250,
+                          "h": 60,
+                          "selected": true,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "image",
+                      "name": "label_bbs_img",
+                      "text": "./data/efb/bbs_logo_light.png",
+                      "x": 0,
+                      "y": 798,
+                      "w": 250,
+                      "h": 250,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "grid",
+          "name": "page_main_grid",
+          "text": "",
+          "x": 0,
+          "y": 32,
+          "w": 1397,
+          "h": 1016,
+          "children": [
+            {
+              "kind": "grid",
+              "name": "page_control_grid",
+              "text": "",
+              "x": 0,
+              "y": 82,
+              "w": 1397,
+              "h": 966,
+              "children": [
+                {
+                  "kind": "other",
+                  "name": "page_colorbox",
+                  "text": "",
+                  "x": 250,
+                  "y": 82,
+                  "w": 1147,
+                  "h": 966,
+                  "children": [
+                    {
+                      "kind": "other",
+                      "name": "planning_perf_calc_canvas",
+                      "text": "",
+                      "x": 250,
+                      "y": 82,
+                      "w": 1147,
+                      "h": 966,
+                      "children": [
+                        {
+                          "kind": "other",
+                          "name": "planning_perf_calc_background",
+                          "text": "",
+                          "x": 250,
+                          "y": 82,
+                          "w": 1147,
+                          "h": 966,
+                          "children": []
+                        },
+                        {
+                          "kind": "grid",
+                          "name": "planning_perf_calc_layout",
+                          "text": "",
+                          "x": 250,
+                          "y": 82,
+                          "w": 1147,
+                          "h": 966,
+                          "children": [
+                            {
+                              "kind": "other",
+                              "name": "planning_perf_calc_card",
+                              "text": "",
+                              "x": 250,
+                              "y": 82,
+                              "w": 1147,
+                              "h": 966,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "planning_perf_calc_card_canvas",
+                                  "text": "",
+                                  "x": 250,
+                                  "y": 82,
+                                  "w": 1147,
+                                  "h": 966,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "planning_perf_calc_content_canvas",
+                                      "text": "",
+                                      "x": 250,
+                                      "y": 82,
+                                      "w": 1147,
+                                      "h": 966,
+                                      "children": [
+                                        {
+                                          "kind": "grid",
+                                          "name": "planning_perf_calc_main_grid",
+                                          "text": "",
+                                          "x": 250,
+                                          "y": 82,
+                                          "w": 1147,
+                                          "h": 966,
+                                          "children": [
+                                            {
+                                              "kind": "grid",
+                                              "name": "planning_perf_calc_top_section_grid",
+                                              "text": "",
+                                              "x": 250,
+                                              "y": 82,
+                                              "w": 1147,
+                                              "h": 386.4,
+                                              "children": [
+                                                {
+                                                  "kind": "other",
+                                                  "name": "planning_perf_calc_top_row_canvas",
+                                                  "text": "",
+                                                  "x": 250,
+                                                  "y": 82,
+                                                  "w": 1147,
+                                                  "h": 50,
+                                                  "children": [
+                                                    {
+                                                      "kind": "other",
+                                                      "name": "planning_perf_calc_header",
+                                                      "text": "",
+                                                      "x": 250,
+                                                      "y": 82,
+                                                      "w": 1147,
+                                                      "h": 50,
+                                                      "children": []
+                                                    },
+                                                    {
+                                                      "kind": "grid",
+                                                      "name": "planning_perf_calc_tabs_grid",
+                                                      "text": "",
+                                                      "x": 613.5,
+                                                      "y": 87,
+                                                      "w": 420,
+                                                      "h": 40,
+                                                      "children": [
+                                                        {
+                                                          "kind": "button",
+                                                          "name": "planning_perf_calc_tab_button_0",
+                                                          "text": "TAKE OFF",
+                                                          "x": 613.5,
+                                                          "y": 87,
+                                                          "w": 209.99998,
+                                                          "h": 40,
+                                                          "selected": true,
+                                                          "children": []
+                                                        },
+                                                        {
+                                                          "kind": "button",
+                                                          "name": "planning_perf_calc_tab_button_1",
+                                                          "text": "LANDING",
+                                                          "x": 823.5,
+                                                          "y": 87,
+                                                          "w": 209.99998,
+                                                          "h": 40,
+                                                          "selected": false,
+                                                          "children": []
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "grid",
+                                                  "name": "planning_perf_calc_second_row_grid",
+                                                  "text": "",
+                                                  "x": 250,
+                                                  "y": 132,
+                                                  "w": 1147,
+                                                  "h": 336.4,
+                                                  "children": [
+                                                    {
+                                                      "kind": "grid",
+                                                      "name": "planning_perf_calc_row1_grid",
+                                                      "text": "",
+                                                      "x": 250,
+                                                      "y": 132,
+                                                      "w": 1147,
+                                                      "h": 84.1,
+                                                      "children": [
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_airport_canvas",
+                                                          "text": "",
+                                                          "x": 250,
+                                                          "y": 132,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_airport_title",
+                                                              "text": "Airport",
+                                                              "x": 346.2,
+                                                              "y": 137,
+                                                              "w": 37,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "textbox",
+                                                              "name": "planning_perf_calc_airport_input",
+                                                              "text": "KSEA",
+                                                              "x": 289.7,
+                                                              "y": 156,
+                                                              "w": 150,
+                                                              "h": 34,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_runway_canvas",
+                                                          "text": "",
+                                                          "x": 479.4,
+                                                          "y": 132,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_runway_title",
+                                                              "text": "Runway",
+                                                              "x": 572.1,
+                                                              "y": 137,
+                                                              "w": 44,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "pulldown",
+                                                              "name": "planning_perf_calc_runway_dropdown",
+                                                              "text": "RW07L",
+                                                              "x": 519.1,
+                                                              "y": 156,
+                                                              "w": 150,
+                                                              "h": 34,
+                                                              "value": "RW07L",
+                                                              "entries": [
+                                                                "RW07L",
+                                                                "RW07R",
+                                                                "RW08",
+                                                                "RW25L",
+                                                                "RW25R",
+                                                                "RW26"
+                                                              ],
+                                                              "open": true,
+                                                              "rows": [
+                                                                {
+                                                                  "kind": "button",
+                                                                  "name": "item_btn_d23e03a7-f117-4b10-81e6-e879ffd62727",
+                                                                  "text": "RW07L",
+                                                                  "x": 519.1,
+                                                                  "y": 189,
+                                                                  "w": 150,
+                                                                  "h": 38,
+                                                                  "selected": false,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "button",
+                                                                  "name": "item_btn_6d75d83a-500a-4f87-a7f6-93e372566d8e",
+                                                                  "text": "RW07R",
+                                                                  "x": 519.1,
+                                                                  "y": 227,
+                                                                  "w": 150,
+                                                                  "h": 38,
+                                                                  "selected": false,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "button",
+                                                                  "name": "item_btn_ae96de94-4279-4772-b5d1-d125e4650e57",
+                                                                  "text": "RW08",
+                                                                  "x": 519.1,
+                                                                  "y": 265,
+                                                                  "w": 150,
+                                                                  "h": 38,
+                                                                  "selected": false,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "button",
+                                                                  "name": "item_btn_057675bd-a89d-4740-bbaf-0c6cc273ddcd",
+                                                                  "text": "RW25L",
+                                                                  "x": 519.1,
+                                                                  "y": 303,
+                                                                  "w": 150,
+                                                                  "h": 38,
+                                                                  "selected": false,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "button",
+                                                                  "name": "item_btn_299e7001-57af-4422-831e-a66e8f91bae9",
+                                                                  "text": "RW25R",
+                                                                  "x": 519.1,
+                                                                  "y": 341,
+                                                                  "w": 150,
+                                                                  "h": 38,
+                                                                  "selected": false,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "button",
+                                                                  "name": "item_btn_bd579327-976c-40e2-8f11-cb5eea837064",
+                                                                  "text": "RW26",
+                                                                  "x": 519.1,
+                                                                  "y": 379,
+                                                                  "w": 150,
+                                                                  "h": 38,
+                                                                  "selected": false,
+                                                                  "children": []
+                                                                }
+                                                              ],
+                                                              "list": {
+                                                                "kind": "scrollbox",
+                                                                "name": "item_scrollbox",
+                                                                "text": "",
+                                                                "x": 519.1,
+                                                                "y": 189,
+                                                                "w": 150,
+                                                                "h": 228,
+                                                                "children": []
+                                                              },
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_length_canvas",
+                                                          "text": "",
+                                                          "x": 708.8,
+                                                          "y": 132,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_length_title",
+                                                              "text": "Length Type",
+                                                              "x": 790,
+                                                              "y": 137,
+                                                              "w": 67,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "pulldown",
+                                                              "name": "planning_perf_calc_tora_dropdown",
+                                                              "text": "FULL",
+                                                              "x": 748.5,
+                                                              "y": 156,
+                                                              "w": 150,
+                                                              "h": 34,
+                                                              "value": "FULL",
+                                                              "entries": [
+                                                                "ASDA",
+                                                                "FULL",
+                                                                "LDA",
+                                                                "Shorten Length",
+                                                                "TODA",
+                                                                "TORA"
+                                                              ],
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_length_value_canvas",
+                                                          "text": "",
+                                                          "x": 938.19995,
+                                                          "y": 132,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_length_value_title",
+                                                              "text": "Length (FT)",
+                                                              "x": 1021.89996,
+                                                              "y": 137,
+                                                              "w": 62,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "textbox",
+                                                              "name": "planning_perf_calc_runway_length_input",
+                                                              "text": "11900",
+                                                              "x": 977.89996,
+                                                              "y": 156,
+                                                              "w": 150,
+                                                              "h": 34,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_units_canvas",
+                                                          "text": "",
+                                                          "x": 1167.6,
+                                                          "y": 132,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_units_title",
+                                                              "text": "Units",
+                                                              "x": 1268.2999,
+                                                              "y": 137,
+                                                              "w": 28,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "other",
+                                                              "name": "planning_perf_calc_units_group",
+                                                              "text": "",
+                                                              "x": 1207.2999,
+                                                              "y": 156,
+                                                              "w": 150,
+                                                              "h": 34,
+                                                              "children": [
+                                                                {
+                                                                  "kind": "button",
+                                                                  "name": "planning_perf_calc_unit_button_0",
+                                                                  "text": "Feet",
+                                                                  "x": 1207.2999,
+                                                                  "y": 156,
+                                                                  "w": 50,
+                                                                  "h": 34,
+                                                                  "selected": false,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "button",
+                                                                  "name": "planning_perf_calc_unit_button_1",
+                                                                  "text": "Pounds",
+                                                                  "x": 1259.2999,
+                                                                  "y": 156,
+                                                                  "w": 62,
+                                                                  "h": 34,
+                                                                  "selected": false,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "button",
+                                                                  "name": "planning_perf_calc_unit_button_2",
+                                                                  "text": "inHg",
+                                                                  "x": 1323.2999,
+                                                                  "y": 156,
+                                                                  "w": 34,
+                                                                  "h": 34,
+                                                                  "selected": false,
+                                                                  "children": []
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "grid",
+                                                      "name": "planning_perf_calc_row2_grid",
+                                                      "text": "",
+                                                      "x": 250,
+                                                      "y": 216.1,
+                                                      "w": 1147,
+                                                      "h": 84.1,
+                                                      "children": [
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_weight_field_canvas",
+                                                          "text": "",
+                                                          "x": 250,
+                                                          "y": 216.1,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_weight_field_title",
+                                                              "text": "Takeoff Weight (LB)",
+                                                              "x": 310.7,
+                                                              "y": 221.1,
+                                                              "w": 108,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "textbox",
+                                                              "name": "planning_perf_calc_weight",
+                                                              "text": "180000",
+                                                              "x": 289.7,
+                                                              "y": 240.1,
+                                                              "w": 150,
+                                                              "h": 34,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_row2_cell_0",
+                                                          "text": "",
+                                                          "x": 479.4,
+                                                          "y": 216.1,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "other",
+                                                              "name": "planning_perf_calc_flap_field_canvas",
+                                                              "text": "",
+                                                              "x": 479.4,
+                                                              "y": 216.1,
+                                                              "w": 229.4,
+                                                              "h": 84.1,
+                                                              "children": [
+                                                                {
+                                                                  "kind": "label",
+                                                                  "name": "planning_perf_calc_flap_field_title",
+                                                                  "text": "Flap Setting",
+                                                                  "x": 562.1,
+                                                                  "y": 221.1,
+                                                                  "w": 64,
+                                                                  "h": 14,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "pulldown",
+                                                                  "name": "planning_perf_calc_flap_dropdown",
+                                                                  "text": "Optimum",
+                                                                  "x": 519.1,
+                                                                  "y": 240.1,
+                                                                  "w": 150,
+                                                                  "h": 34,
+                                                                  "value": "Optimum",
+                                                                  "entries": [
+                                                                    "15",
+                                                                    "20",
+                                                                    "5",
+                                                                    "Optimum"
+                                                                  ],
+                                                                  "children": []
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_row2_cell_1",
+                                                          "text": "",
+                                                          "x": 708.8,
+                                                          "y": 216.1,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "other",
+                                                              "name": "planning_perf_calc_thrust_field_canvas",
+                                                              "text": "",
+                                                              "x": 708.8,
+                                                              "y": 216.1,
+                                                              "w": 229.4,
+                                                              "h": 84.1,
+                                                              "children": [
+                                                                {
+                                                                  "kind": "label",
+                                                                  "name": "planning_perf_calc_thrust_field_title",
+                                                                  "text": "Thrust Setting",
+                                                                  "x": 786,
+                                                                  "y": 221.1,
+                                                                  "w": 75,
+                                                                  "h": 14,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "pulldown",
+                                                                  "name": "planning_perf_calc_thrust_dropdown",
+                                                                  "text": "Optimum",
+                                                                  "x": 748.5,
+                                                                  "y": 240.1,
+                                                                  "w": 150,
+                                                                  "h": 34,
+                                                                  "value": "Optimum",
+                                                                  "entries": [
+                                                                    "Max",
+                                                                    "Optimum"
+                                                                  ],
+                                                                  "children": []
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_row2_cell_2",
+                                                          "text": "",
+                                                          "x": 938.19995,
+                                                          "y": 216.1,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "other",
+                                                              "name": "planning_perf_calc_bleed_field_canvas",
+                                                              "text": "",
+                                                              "x": 938.19995,
+                                                              "y": 216.1,
+                                                              "w": 229.4,
+                                                              "h": 84.1,
+                                                              "children": [
+                                                                {
+                                                                  "kind": "label",
+                                                                  "name": "planning_perf_calc_bleed_field_title",
+                                                                  "text": "Bleed Setting",
+                                                                  "x": 1017.89996,
+                                                                  "y": 221.1,
+                                                                  "w": 70,
+                                                                  "h": 14,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "pulldown",
+                                                                  "name": "planning_perf_calc_bleed_dropdown",
+                                                                  "text": "Auto",
+                                                                  "x": 977.89996,
+                                                                  "y": 240.1,
+                                                                  "w": 150,
+                                                                  "h": 34,
+                                                                  "value": "Auto",
+                                                                  "entries": [
+                                                                    "Auto",
+                                                                    "Off"
+                                                                  ],
+                                                                  "children": []
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_row2_cell_3",
+                                                          "text": "",
+                                                          "x": 1167.6,
+                                                          "y": 216.1,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "other",
+                                                              "name": "planning_perf_calc_antiice_field_canvas",
+                                                              "text": "",
+                                                              "x": 1167.6,
+                                                              "y": 216.1,
+                                                              "w": 229.4,
+                                                              "h": 84.1,
+                                                              "children": [
+                                                                {
+                                                                  "kind": "label",
+                                                                  "name": "planning_perf_calc_antiice_field_title",
+                                                                  "text": "Anti-ice Setting",
+                                                                  "x": 1242.2999,
+                                                                  "y": 221.1,
+                                                                  "w": 80,
+                                                                  "h": 14,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "pulldown",
+                                                                  "name": "planning_perf_calc_antiice_dropdown",
+                                                                  "text": "Auto",
+                                                                  "x": 1207.2999,
+                                                                  "y": 240.1,
+                                                                  "w": 150,
+                                                                  "h": 34,
+                                                                  "value": "Auto",
+                                                                  "entries": [
+                                                                    "Auto",
+                                                                    "Eng",
+                                                                    "Eng/Wing"
+                                                                  ],
+                                                                  "children": []
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "grid",
+                                                      "name": "planning_perf_calc_row3_grid",
+                                                      "text": "",
+                                                      "x": 250,
+                                                      "y": 300.2,
+                                                      "w": 1147,
+                                                      "h": 84.1,
+                                                      "children": [
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_wind_field_canvas",
+                                                          "text": "",
+                                                          "x": 250,
+                                                          "y": 300.2,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_wind_field_title",
+                                                              "text": "Wind",
+                                                              "x": 350.7,
+                                                              "y": 305.2,
+                                                              "w": 28,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "textbox",
+                                                              "name": "planning_perf_calc_wind",
+                                                              "text": "160/05",
+                                                              "x": 289.7,
+                                                              "y": 324.2,
+                                                              "w": 150,
+                                                              "h": 34,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_temp_field_canvas",
+                                                          "text": "",
+                                                          "x": 479.4,
+                                                          "y": 300.2,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_temp_field_title",
+                                                              "text": "Temperature",
+                                                              "x": 559.6,
+                                                              "y": 305.2,
+                                                              "w": 69,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "textbox",
+                                                              "name": "planning_perf_calc_temp",
+                                                              "text": "15",
+                                                              "x": 519.1,
+                                                              "y": 324.2,
+                                                              "w": 150,
+                                                              "h": 34,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_press_field_canvas",
+                                                          "text": "",
+                                                          "x": 708.8,
+                                                          "y": 300.2,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_press_field_title",
+                                                              "text": "Pressure (inHg)",
+                                                              "x": 782.5,
+                                                              "y": 305.2,
+                                                              "w": 82,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "textbox",
+                                                              "name": "planning_perf_calc_press",
+                                                              "text": "30.01",
+                                                              "x": 748.5,
+                                                              "y": 324.2,
+                                                              "w": 150,
+                                                              "h": 34,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_surface_field_canvas",
+                                                          "text": "",
+                                                          "x": 938.19995,
+                                                          "y": 300.2,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_surface_field_title",
+                                                              "text": "Surface Condition",
+                                                              "x": 1004.89996,
+                                                              "y": 305.2,
+                                                              "w": 96,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "pulldown",
+                                                              "name": "planning_perf_calc_surface_dropdown",
+                                                              "text": "Dry",
+                                                              "x": 977.89996,
+                                                              "y": 324.2,
+                                                              "w": 150,
+                                                              "h": 34,
+                                                              "value": "Dry",
+                                                              "entries": [
+                                                                "Dry",
+                                                                "Frost",
+                                                                "Ice",
+                                                                "Slush",
+                                                                "Snow",
+                                                                "Wet"
+                                                              ],
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_metar_status_field_canvas",
+                                                          "text": "",
+                                                          "x": 1167.6,
+                                                          "y": 300.2,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_metar_status_field_title",
+                                                              "text": "Weather Source",
+                                                              "x": 1239.7999,
+                                                              "y": 305.2,
+                                                              "w": 85,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_metar_status_label",
+                                                              "text": "METAR: KPHX Nov 06, 17:54 L",
+                                                              "x": 1175.2999,
+                                                              "y": 361.25,
+                                                              "w": 214,
+                                                              "h": 18,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "button",
+                                                              "name": "planning_perf_calc_metar_refresh_button",
+                                                              "text": "REFRESH",
+                                                              "x": 1242.2999,
+                                                              "y": 328.2,
+                                                              "w": 80,
+                                                              "h": 30,
+                                                              "selected": false,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "grid",
+                                                      "name": "planning_perf_calc_row4_grid",
+                                                      "text": "",
+                                                      "x": 250,
+                                                      "y": 384.3,
+                                                      "w": 1147,
+                                                      "h": 84.1,
+                                                      "children": [
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_row4_cell_0",
+                                                          "text": "",
+                                                          "x": 250,
+                                                          "y": 384.3,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "other",
+                                                              "name": "planning_perf_calc_flex_field_canvas",
+                                                              "text": "",
+                                                              "x": 250,
+                                                              "y": 384.3,
+                                                              "w": 229.4,
+                                                              "h": 84.1,
+                                                              "children": [
+                                                                {
+                                                                  "kind": "label",
+                                                                  "name": "planning_perf_calc_flex_field_title",
+                                                                  "text": "Flex/Assumed Temperature",
+                                                                  "x": 290.7,
+                                                                  "y": 389.3,
+                                                                  "w": 148,
+                                                                  "h": 14,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "pulldown",
+                                                                  "name": "planning_perf_calc_flex_dropdown",
+                                                                  "text": "Enabled",
+                                                                  "x": 289.7,
+                                                                  "y": 408.3,
+                                                                  "w": 150,
+                                                                  "h": 34,
+                                                                  "value": "Enabled",
+                                                                  "entries": [
+                                                                    "Disabled",
+                                                                    "Enabled"
+                                                                  ],
+                                                                  "children": []
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_row4_cell_1",
+                                                          "text": "",
+                                                          "x": 479.4,
+                                                          "y": 384.3,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "other",
+                                                              "name": "planning_perf_calc_impclimb_field_canvas",
+                                                              "text": "",
+                                                              "x": 479.4,
+                                                              "y": 384.3,
+                                                              "w": 229.4,
+                                                              "h": 84.1,
+                                                              "children": [
+                                                                {
+                                                                  "kind": "label",
+                                                                  "name": "planning_perf_calc_impclimb_field_title",
+                                                                  "text": "Improved Climb Calculations",
+                                                                  "x": 517.1,
+                                                                  "y": 389.3,
+                                                                  "w": 154,
+                                                                  "h": 14,
+                                                                  "children": []
+                                                                },
+                                                                {
+                                                                  "kind": "pulldown",
+                                                                  "name": "planning_perf_calc_impclimb_dropdown",
+                                                                  "text": "Disabled",
+                                                                  "x": 519.1,
+                                                                  "y": 408.3,
+                                                                  "w": 150,
+                                                                  "h": 34,
+                                                                  "value": "Disabled",
+                                                                  "entries": [
+                                                                    "Disabled",
+                                                                    "Enabled"
+                                                                  ],
+                                                                  "children": []
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_calc_field_canvas",
+                                                          "text": "",
+                                                          "x": 708.8,
+                                                          "y": 384.3,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_calc_field_title",
+                                                              "text": "",
+                                                              "x": 0,
+                                                              "y": 5,
+                                                              "w": 180,
+                                                              "h": 18,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "button",
+                                                              "name": "planning_perf_calc_calc_btn",
+                                                              "text": "Calculate",
+                                                              "x": 733.5,
+                                                              "y": 408.3,
+                                                              "w": 180,
+                                                              "h": 34,
+                                                              "selected": false,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_status_field_canvas",
+                                                          "text": "",
+                                                          "x": 938.19995,
+                                                          "y": 384.3,
+                                                          "w": 229.4,
+                                                          "h": 84.1,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "planning_perf_calc_status_field_title",
+                                                              "text": "",
+                                                              "x": 0,
+                                                              "y": 5,
+                                                              "w": 180,
+                                                              "h": 18,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "grid",
+                                                              "name": "planning_perf_calc_status_grid",
+                                                              "text": "",
+                                                              "x": 938.19995,
+                                                              "y": 384.3,
+                                                              "w": 229.4,
+                                                              "h": 84.1,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "kind": "grid",
+                                              "name": "planning_perf_calc_third_row_grid",
+                                              "text": "",
+                                              "x": 260,
+                                              "y": 478.4,
+                                              "w": 1127,
+                                              "h": 559.6,
+                                              "children": [
+                                                {
+                                                  "kind": "other",
+                                                  "name": "planning_perf_calc_takeoff_values_box",
+                                                  "text": "",
+                                                  "x": 260,
+                                                  "y": 483.4,
+                                                  "w": 1127,
+                                                  "h": 90,
+                                                  "children": [
+                                                    {
+                                                      "kind": "grid",
+                                                      "name": "planning_perf_calc_takeoff_values_grid",
+                                                      "text": "",
+                                                      "x": 273,
+                                                      "y": 494.4,
+                                                      "w": 1101,
+                                                      "h": 68,
+                                                      "children": [
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "res_V1",
+                                                          "text": "",
+                                                          "x": 273,
+                                                          "y": 494.4,
+                                                          "w": 157.28572,
+                                                          "h": 68,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_title_V1",
+                                                              "text": "V1",
+                                                              "x": 273,
+                                                              "y": 505.4,
+                                                              "w": 157.28572,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_val_V1",
+                                                              "text": "149",
+                                                              "x": 273,
+                                                              "y": 529.4,
+                                                              "w": 157.28572,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "res_VR",
+                                                          "text": "",
+                                                          "x": 430.2857,
+                                                          "y": 494.4,
+                                                          "w": 157.28572,
+                                                          "h": 68,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_title_VR",
+                                                              "text": "VR",
+                                                              "x": 430.2857,
+                                                              "y": 505.4,
+                                                              "w": 157.28572,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_val_VR",
+                                                              "text": "149",
+                                                              "x": 430.2857,
+                                                              "y": 529.4,
+                                                              "w": 157.28572,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "res_V2",
+                                                          "text": "",
+                                                          "x": 587.5714,
+                                                          "y": 494.4,
+                                                          "w": 157.28572,
+                                                          "h": 68,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_title_V2",
+                                                              "text": "V2",
+                                                              "x": 587.5714,
+                                                              "y": 505.4,
+                                                              "w": 157.28572,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_val_V2",
+                                                              "text": "151",
+                                                              "x": 587.5714,
+                                                              "y": 529.4,
+                                                              "w": 157.28572,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "res_FLAP",
+                                                          "text": "",
+                                                          "x": 744.8572,
+                                                          "y": 494.4,
+                                                          "w": 157.28572,
+                                                          "h": 68,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_title_FLAP",
+                                                              "text": "FLAP",
+                                                              "x": 744.8572,
+                                                              "y": 505.4,
+                                                              "w": 157.28572,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_val_FLAP",
+                                                              "text": "5",
+                                                              "x": 744.8572,
+                                                              "y": 529.4,
+                                                              "w": 157.28572,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "res_N1",
+                                                          "text": "",
+                                                          "x": 902.1429,
+                                                          "y": 494.4,
+                                                          "w": 157.28572,
+                                                          "h": 68,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_title_N1",
+                                                              "text": "N1",
+                                                              "x": 902.1429,
+                                                              "y": 505.4,
+                                                              "w": 157.28572,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_val_N1",
+                                                              "text": "D-TO",
+                                                              "x": 902.1429,
+                                                              "y": 529.4,
+                                                              "w": 157.28572,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "res_FLX TMP",
+                                                          "text": "",
+                                                          "x": 1059.4286,
+                                                          "y": 494.4,
+                                                          "w": 157.28572,
+                                                          "h": 68,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_title_FLX TMP",
+                                                              "text": "FLX TMP",
+                                                              "x": 1059.4286,
+                                                              "y": 505.4,
+                                                              "w": 157.28572,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_val_FLX TMP",
+                                                              "text": "57",
+                                                              "x": 1059.4286,
+                                                              "y": 529.4,
+                                                              "w": 157.28572,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "res_TRIM",
+                                                          "text": "",
+                                                          "x": 1216.7144,
+                                                          "y": 494.4,
+                                                          "w": 157.28572,
+                                                          "h": 68,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_title_TRIM",
+                                                              "text": "TRIM",
+                                                              "x": 1216.7144,
+                                                              "y": 505.4,
+                                                              "w": 157.28572,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "lbl_val_TRIM",
+                                                              "text": "4.00",
+                                                              "x": 1216.7144,
+                                                              "y": 529.4,
+                                                              "w": 157.28572,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "other",
+                                                  "name": "planning_perf_calc_runway_lengths_box",
+                                                  "text": "",
+                                                  "x": 260,
+                                                  "y": 583.4,
+                                                  "w": 1127,
+                                                  "h": 90,
+                                                  "children": [
+                                                    {
+                                                      "kind": "grid",
+                                                      "name": "planning_perf_calc_runway_lengths_grid",
+                                                      "text": "",
+                                                      "x": 277,
+                                                      "y": 592.4,
+                                                      "w": 1093,
+                                                      "h": 72,
+                                                      "children": [
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "len_TODA",
+                                                          "text": "",
+                                                          "x": 277,
+                                                          "y": 592.4,
+                                                          "w": 273.24997,
+                                                          "h": 72,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "len_title_TODA",
+                                                              "text": "TODA",
+                                                              "x": 277,
+                                                              "y": 602.4,
+                                                              "w": 273.24997,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "len_val_TODA",
+                                                              "text": "11489",
+                                                              "x": 277,
+                                                              "y": 626.4,
+                                                              "w": 273.24997,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "len_TORA",
+                                                          "text": "",
+                                                          "x": 550.25,
+                                                          "y": 592.4,
+                                                          "w": 273.24997,
+                                                          "h": 72,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "len_title_TORA",
+                                                              "text": "TORA",
+                                                              "x": 550.25,
+                                                              "y": 602.4,
+                                                              "w": 273.24997,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "len_val_TORA",
+                                                              "text": "11489",
+                                                              "x": 550.25,
+                                                              "y": 626.4,
+                                                              "w": 273.24997,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "len_ASDA",
+                                                          "text": "",
+                                                          "x": 823.49994,
+                                                          "y": 592.4,
+                                                          "w": 273.24997,
+                                                          "h": 72,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "len_title_ASDA",
+                                                              "text": "ASDA",
+                                                              "x": 823.49994,
+                                                              "y": 602.4,
+                                                              "w": 273.24997,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "len_val_ASDA",
+                                                              "text": "11489",
+                                                              "x": 823.49994,
+                                                              "y": 626.4,
+                                                              "w": 273.24997,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "len_LDA",
+                                                          "text": "",
+                                                          "x": 1096.7499,
+                                                          "y": 592.4,
+                                                          "w": 273.24997,
+                                                          "h": 72,
+                                                          "children": [
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "len_title_LDA",
+                                                              "text": "LDA",
+                                                              "x": 1096.7499,
+                                                              "y": 602.4,
+                                                              "w": 273.24997,
+                                                              "h": 14,
+                                                              "children": []
+                                                            },
+                                                            {
+                                                              "kind": "label",
+                                                              "name": "len_val_LDA",
+                                                              "text": "11489",
+                                                              "x": 1096.7499,
+                                                              "y": 626.4,
+                                                              "w": 273.24997,
+                                                              "h": 28,
+                                                              "children": []
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "other",
+                                                  "name": "planning_perf_calc_runway_box",
+                                                  "text": "",
+                                                  "x": 260,
+                                                  "y": 683.4,
+                                                  "w": 1127,
+                                                  "h": 350,
+                                                  "children": [
+                                                    {
+                                                      "kind": "grid",
+                                                      "name": "planning_perf_calc_rwy_visual_grid",
+                                                      "text": "",
+                                                      "x": 260,
+                                                      "y": 683.4,
+                                                      "w": 1127,
+                                                      "h": 350,
+                                                      "children": [
+                                                        {
+                                                          "kind": "other",
+                                                          "name": "planning_perf_calc_runway_visual",
+                                                          "text": "RW07L",
+                                                          "x": 260,
+                                                          "y": 683.4,
+                                                          "w": 1127,
+                                                          "h": 350,
+                                                          "children": []
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": 10,
+      "class": "CHECKLIST",
+      "controls": []
+    },
+    {
+      "key": 12,
+      "class": "SETTINGS",
+      "controls": []
+    },
+    {
+      "key": 9,
+      "class": "SYSTEMS",
+      "controls": []
+    },
+    {
+      "key": 7,
+      "class": "AIRCRAFT",
+      "controls": []
+    },
+    {
+      "key": 5,
+      "class": "SIGN IN",
+      "controls": []
+    },
+    {
+      "key": 2,
+      "class": "app",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "kb_grid",
+          "text": "",
+          "x": 0,
+          "y": 648,
+          "w": 1397,
+          "h": 400,
+          "children": [
+            {
+              "kind": "grid",
+              "name": "keyboard_grid_container",
+              "text": "",
+              "x": 0,
+              "y": 708,
+              "w": 1396.9999,
+              "h": 340,
+              "children": [
+                {
+                  "kind": "grid",
+                  "name": "row_1",
+                  "text": "",
+                  "x": 0,
+                  "y": 708,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "btn_delete",
+                      "text": "COMMAND_DELETE",
+                      "x": 5,
+                      "y": 713,
+                      "w": 138.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_1_keys",
+                      "text": "",
+                      "x": 148.49994,
+                      "y": 708,
+                      "w": 1100,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_q|Q|1",
+                          "text": "q|Q|1",
+                          "x": 153.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_w|W|2",
+                          "text": "w|W|2",
+                          "x": 263.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_e|E|3",
+                          "text": "e|E|3",
+                          "x": 373.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_r|R|4",
+                          "text": "r|R|4",
+                          "x": 483.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_t|T|5",
+                          "text": "t|T|5",
+                          "x": 593.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_y|Y|6",
+                          "text": "y|Y|6",
+                          "x": 703.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_u|U|7",
+                          "text": "u|U|7",
+                          "x": 813.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_i|I|8",
+                          "text": "i|I|8",
+                          "x": 923.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_o|O|9",
+                          "text": "o|O|9",
+                          "x": 1033.5,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_p|P|0",
+                          "text": "p|P|0",
+                          "x": 1143.5,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_backspace",
+                      "text": "COMMAND_BACKSPACE",
+                      "x": 1253.5,
+                      "y": 713,
+                      "w": 138.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_2",
+                  "text": "",
+                  "x": 0,
+                  "y": 793,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "btn_tab",
+                      "text": "COMMAND_TAB",
+                      "x": 5,
+                      "y": 798,
+                      "w": 193.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_2_keys",
+                      "text": "",
+                      "x": 203.49994,
+                      "y": 793,
+                      "w": 990,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_a|A|@",
+                          "text": "a|A|@",
+                          "x": 208.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_s|S|#",
+                          "text": "s|S|#",
+                          "x": 318.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_d|D|$",
+                          "text": "d|D|$",
+                          "x": 428.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_f|F|\u0026",
+                          "text": "f|F|\u0026",
+                          "x": 538.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_g|G|*",
+                          "text": "g|G|*",
+                          "x": 648.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_h|H|(",
+                          "text": "h|H|(",
+                          "x": 758.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_j|J|)",
+                          "text": "j|J|)",
+                          "x": 868.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_k|K|\u0027",
+                          "text": "k|K|\u0027",
+                          "x": 978.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_l|L|\u0022",
+                          "text": "l|L|\u0022",
+                          "x": 1088.5,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_enter",
+                      "text": "COMMAND_ENTER",
+                      "x": 1198.5,
+                      "y": 798,
+                      "w": 193.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_3",
+                  "text": "",
+                  "x": 0,
+                  "y": 878,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "grid",
+                      "name": "row_3_left_grid",
+                      "text": "",
+                      "x": 0,
+                      "y": 878,
+                      "w": 260,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_double_shift",
+                          "text": "COMMAND_DOUBLE_SHIFT",
+                          "x": 5,
+                          "y": 883,
+                          "w": 120,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_shift2",
+                          "text": "COMMAND_SHIFT",
+                          "x": 135,
+                          "y": 883,
+                          "w": 120,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_3_keys",
+                      "text": "",
+                      "x": 260,
+                      "y": 878,
+                      "w": 770,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_z|Z|%",
+                          "text": "z|Z|%",
+                          "x": 265,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_x|X|-",
+                          "text": "x|X|-",
+                          "x": 375,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_c|C|\u002B",
+                          "text": "c|C|\u002B",
+                          "x": 485,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_v|V|=",
+                          "text": "v|V|=",
+                          "x": 595,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_b|B|/",
+                          "text": "b|B|/",
+                          "x": 705,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_n|N|;",
+                          "text": "n|N|;",
+                          "x": 815,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_m|M|:",
+                          "text": "m|M|:",
+                          "x": 925,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_3_right_grid",
+                      "text": "",
+                      "x": 1030,
+                      "y": 878,
+                      "w": 366.99988,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_exclamation",
+                          "text": ",|,|!",
+                          "x": 1035,
+                          "y": 883,
+                          "w": 96.42996,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_question",
+                          "text": ".|.|?",
+                          "x": 1141.4299,
+                          "y": 883,
+                          "w": 96.42996,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_shift",
+                          "text": "COMMAND_SHIFT",
+                          "x": 1247.8599,
+                          "y": 883,
+                          "w": 144.13994,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_4",
+                  "text": "",
+                  "x": 0,
+                  "y": 963,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "grid",
+                      "name": "row_4_left_grid",
+                      "text": "",
+                      "x": 0,
+                      "y": 963,
+                      "w": 348.49994,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_home",
+                          "text": "COMMAND_HOME",
+                          "x": 5,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_numeric_switch2",
+                          "text": "COMMAND_NUMERIC_SWITCH",
+                          "x": 179.24997,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_space",
+                      "text": "COMMAND_SPACE",
+                      "x": 353.49994,
+                      "y": 968,
+                      "w": 690,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_4_right_grid",
+                      "text": "",
+                      "x": 1048.5,
+                      "y": 963,
+                      "w": 348.49994,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_numeric_switch",
+                          "text": "COMMAND_NUMERIC_SWITCH",
+                          "x": 1053.5,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_keyboard_down",
+                          "text": "COMMAND_KEYBOARD_DOWN",
+                          "x": 1227.75,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": 1,
+      "class": "overlay",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "overlay_grid",
+          "text": "",
+          "x": 0,
+          "y": 0,
+          "w": 1397,
+          "h": 32,
+          "children": [
+            {
+              "kind": "label",
+              "name": "time_label",
+              "text": "Sat, 7th Nov 2026 | 23:07L | 05:07Z | OAT 4 C",
+              "x": 15,
+              "y": 0,
+              "w": 1382,
+              "h": 32,
+              "children": []
+            }
+          ]
+        },
+        {
+          "kind": "label",
+          "name": "keyboard_locked_label",
+          "text": "",
+          "x": 0,
+          "y": 0,
+          "w": 1397,
+          "h": 32,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "notices": [
+    {
+      "id": 1,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "19:34Z",
+      "unread": false
+    },
+    {
+      "id": 2,
+      "title": "",
+      "text": "SIMBRIEF OFP RECEIVED.",
+      "time": "19:35Z",
+      "unread": false
+    },
+    {
+      "id": 3,
+      "title": "",
+      "text": "DEFUELING INITIATED.",
+      "time": "19:41Z",
+      "unread": false
+    },
+    {
+      "id": 4,
+      "title": "",
+      "text": "IRS ALIGNMENT INITIATED.",
+      "time": "19:41Z",
+      "unread": false
+    },
+    {
+      "id": 5,
+      "title": "",
+      "text": "DEFUELING IS COMPLETE!",
+      "time": "19:42Z",
+      "unread": false
+    },
+    {
+      "id": 6,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 7,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 8,
+      "title": "",
+      "text": "0 PASSENGERS BOARDED!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 9,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 10,
+      "title": "",
+      "text": "IRS ALIGNED.",
+      "time": "19:50Z",
+      "unread": false
+    },
+    {
+      "id": 11,
+      "title": "",
+      "text": "CHOCKS REMOVED.",
+      "time": "20:00Z",
+      "unread": false
+    },
+    {
+      "id": 12,
+      "title": "",
+      "text": "GPU DISCONNECTED.",
+      "time": "20:00Z",
+      "unread": false
+    },
+    {
+      "id": 15,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "21:00Z",
+      "unread": false
+    },
+    {
+      "id": 16,
+      "title": "",
+      "text": "CHOCKS ATTACHED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 17,
+      "title": "",
+      "text": "BOARDING INITIATED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 18,
+      "title": "",
+      "text": "R3 DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 19,
+      "title": "",
+      "text": "FWD CARGO DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 20,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 21,
+      "title": "",
+      "text": "L1 DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 22,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 23,
+      "title": "",
+      "text": "FWD CARGO DOOR CLOSED.",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 24,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 25,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "21:08Z",
+      "unread": false
+    },
+    {
+      "id": 26,
+      "title": "",
+      "text": "R3 DOOR CLOSED.",
+      "time": "21:12Z",
+      "unread": false
+    },
+    {
+      "id": 27,
+      "title": "",
+      "text": "176 PASSENGERS BOARDED!",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 28,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 29,
+      "title": "",
+      "text": "DEBOARDING INITIATED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 30,
+      "title": "",
+      "text": "R3 DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 31,
+      "title": "",
+      "text": "FWD CARGO DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 32,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 33,
+      "title": "",
+      "text": "L1 DOOR CLOSED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 34,
+      "title": "",
+      "text": "CARGO IS UNLOADED!",
+      "time": "21:23Z",
+      "unread": false
+    },
+    {
+      "id": 35,
+      "title": "",
+      "text": "FWD CARGO DOOR CLOSED.",
+      "time": "21:24Z",
+      "unread": false
+    },
+    {
+      "id": 36,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "21:24Z",
+      "unread": false
+    },
+    {
+      "id": 37,
+      "title": "",
+      "text": "R3 DOOR CLOSED.",
+      "time": "21:29Z",
+      "unread": false
+    },
+    {
+      "id": 38,
+      "title": "",
+      "text": "176 PASSENGERS DEBOARDED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 39,
+      "title": "",
+      "text": "DEBOARDING IS COMPLETE!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 40,
+      "title": "",
+      "text": "BOARDING INITIATED.",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 41,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 42,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 43,
+      "title": "",
+      "text": "176 PASSENGERS BOARDED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 44,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 45,
+      "title": "",
+      "text": "CHOCKS REMOVED.",
+      "time": "21:37Z",
+      "unread": false
+    },
+    {
+      "id": 46,
+      "title": "",
+      "text": "GPU DISCONNECTED.",
+      "time": "21:37Z",
+      "unread": false
+    },
+    {
+      "id": 47,
+      "title": "AUTOBRAKE 1",
+      "text": "TARGET 4.5 | ACTUAL 4.5 ft/s2",
+      "time": "00:58Z",
+      "unread": false
+    },
+    {
+      "id": 48,
+      "title": "BRAKE THERMAL EFFICIENCY",
+      "text": "LEFT 96.2% | RIGHT 96.2%",
+      "time": "00:58Z",
+      "unread": false
+    },
+    {
+      "id": 49,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "01:16Z",
+      "unread": false
+    },
+    {
+      "id": 50,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "03:15Z",
+      "unread": true
+    },
+    {
+      "id": 51,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "03:16Z",
+      "unread": true
+    },
+    {
+      "id": 52,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "05:05Z",
+      "unread": true
+    },
+    {
+      "id": 53,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "05:06Z",
+      "unread": true
+    },
+    {
+      "id": 54,
+      "title": "",
+      "text": "CHOCKS ATTACHED.",
+      "time": "05:06Z",
+      "unread": true
+    },
+    {
+      "id": 55,
+      "title": "",
+      "text": "CHOCKS REMOVED.",
+      "time": "05:06Z",
+      "unread": true
+    }
+  ]
+}
