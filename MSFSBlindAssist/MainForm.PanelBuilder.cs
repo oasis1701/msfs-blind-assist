@@ -1227,7 +1227,7 @@ public partial class MainForm
                         else
                         {
                             simConnectManager?.SendEvent(varKey, (uint)value);
-                            announcer.Announce($"{varDef.DisplayName} set to {value}");
+                            announcer.Announce(FormattableString.Invariant($"{varDef.DisplayName} set to {value}"));
                         }
                     }
                     else

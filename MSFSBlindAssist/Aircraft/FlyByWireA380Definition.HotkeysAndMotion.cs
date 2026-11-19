@@ -393,7 +393,8 @@ public partial class FlyByWireA380Definition
         // gated on |value| < 100 — an ×100 encoding was silently IGNORED, not clamped).
         int toSend = Math.Abs(value) < 100 ? (int)Math.Round(value * 10) : (int)Math.Round(value);
         SuppressFcuValueChangeEcho(Fcu.VerticalSpeed, Fcu.FlightPathAngle);
-        s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
+        // Invariant: a descent keeps its ASCII minus. sv-SE writes U+2212, which the RPN parser rejects.
+        s.ExecuteCalculatorCode(FormattableString.Invariant($"{toSend} (>K:A32NX.FCU_VS_SET)"));
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
             a.AnnounceImmediate(FormattableString.Invariant($"FCU flight path angle {value:0.0}"));

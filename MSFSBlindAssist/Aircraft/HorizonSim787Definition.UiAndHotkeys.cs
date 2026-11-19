@@ -866,13 +866,7 @@ public partial class HorizonSim787Definition
                     announcer.AnnounceImmediate("Altimeter not available");
                     return true;
                 }
-                if (Math.Abs(inHg.Value - 29.92) < 0.005)
-                {
-                    announcer.AnnounceImmediate("Altimeter standard");
-                    return true;
-                }
-                int hpa = (int)Math.Round(inHg.Value * 33.8639);
-                announcer.AnnounceImmediate(FormattableString.Invariant($"Altimeter: {hpa}, {inHg.Value:0.00}"));
+                announcer.AnnounceImmediate(AltimeterPhrase.Sentence(inHg.Value));
                 return true;
             }
 

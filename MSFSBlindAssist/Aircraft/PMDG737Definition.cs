@@ -7591,7 +7591,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
     // "Altimeter: <hpa>, <inHg>": the callout, the B readout and Ctrl+B's STD check say it alike.
     private static string AltimeterValuePhrase(double inHg)
-        => FormattableString.Invariant($"Altimeter: {(int)Math.Round(inHg * Pmdg737Baro.HpaPerInHg)}, {inHg:0.00}");
+        => $"Altimeter: {AltimeterPhrase.BothUnits((int)Math.Round(inHg * Pmdg737Baro.HpaPerInHg), inHg)}";
 
     // The captain's baro knob, or null when the event map lacks its turn or its STD push.
     private CaptainBaroKnob? CaptainKnob(SimConnect.SimConnectManager simConnect)

@@ -83,15 +83,16 @@ public partial class PMDG777Definition
     // One decimal place on the continuous readouts so a SUB-UNIT change is visible —
     // integer rounding hid live movement (a reservoir at 96.9% read a static "97").
     // Every formatter with a decimal is invariant: a decimal point whatever the PC's regional settings
-    // (SpokenDecimalCultureTests).
-    private static string Pct(double v) => FormattableString.Invariant($"{v:0.0} percent");
+    // (SpokenDecimalCultureTests). string.Create, not FormattableString.Invariant: these run on every
+    // refresh tick, and it formats without boxing the value or parsing a format string.
+    private static string Pct(double v) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{v:0.0} percent");
     // Stabiliser trim in the UNITS the Shift+T callout speaks (Pmdg777StabTrim), fed from the
     // base MON_ElevatorTrim degrees var — the stock ELEVATOR TRIM PCT row showed a third
     // currency (percent) for the one quantity the FMC and the indicator both give in units.
-    private static string TrimUnits(double v) => FormattableString.Invariant($"{Pmdg777StabTrim.UnitsFromDegrees(v):F2} units");
-    private static string V(double v) => FormattableString.Invariant($"{v:0.0} volts");
-    private static string Psi(double v) => FormattableString.Invariant($"{v:0.0} psi");
-    private static string Cdeg(double v) => FormattableString.Invariant($"{v:0.0} degrees C");
+    private static string TrimUnits(double v) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Pmdg777StabTrim.UnitsFromDegrees(v):F2} units");
+    private static string V(double v) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{v:0.0} volts");
+    private static string Psi(double v) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{v:0.0} psi");
+    private static string Cdeg(double v) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{v:0.0} degrees C");
     // Show weight/fuel in BOTH pounds and kilograms (1 lb = 0.45359237 kg). Applies to
     // every pounds field across all System Display pages (Fuel Flow, Fuel Used, Gross
     // Weight, Total Fuel, per-tank quantities) since they all route through these two.

@@ -6,5 +6,5 @@ could be heard as twelve point three four five. This covered frequencies, Mach, 
 path angle, the altimeter in inches, distances, the system display rows and the flight
 planning windows, on every aircraft.
 
-On such a PC the Weather Radar window should also now load its SIGMETs, pilot reports and
-winds aloft: the addresses it asked for them with were built with decimal commas.
+On such a PC the Weather Radar window should also now load its pilot reports and winds
+aloft: the addresses it asked for them with were built with decimal commas.

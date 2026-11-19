@@ -783,11 +783,11 @@ public partial class FlyByWireA380Definition
     public List<(string label, string var, Func<double, string> fmt)> A380SdRows(int page)
     {
         string Pct(double v) => $"{v:0} %";
-        string Pct1(double v) => FormattableString.Invariant($"{v:0.0} %");
+        string Pct1(double v) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{v:0.0} %");
         string V(double v) => $"{v:0} volts";
         string Psi(double v) => $"{v:0} psi";
         string C(double v) => $"{v:0} degrees";
-        string Qt(double v) => FormattableString.Invariant($"{v:0.0} quarts");
+        string Qt(double v) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{v:0.0} quarts");
         // Weight/fuel rows FOLLOW the metric toggle (WeightUser: kg or lb per the EFB
         // "US Units" setting) so the displays change unit automatically, like the
         // on-demand read-outs. Wt = plain kg in; AWt = ARINC429 kg word in.

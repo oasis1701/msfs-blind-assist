@@ -1219,7 +1219,7 @@ public partial class MainForm
             else
             {
                 // Fallback to display name + value if no descriptions
-                announcer.AnnounceImmediate($"{varDef.DisplayName}: {value}");
+                announcer.AnnounceImmediate(FormattableString.Invariant($"{varDef.DisplayName}: {value}"));
             }
         }
     }

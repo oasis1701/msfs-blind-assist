@@ -7238,7 +7238,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             return $"{v:0} feet";
         }
-        string Lvl(double v) => FormattableString.Invariant($"{v:0.0} gal");
+        string Lvl(double v) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{v:0.0} gal");
         string OnOff(double v) => v > 0.5 ? "powered" : "not powered";
         string OpenShut(double v) => v > 0.5 ? "open" : "closed";
         string YesNo(double v) => v > 0.5 ? "yes" : "no";
@@ -7292,7 +7292,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             // the SD showing XX).
             string FtAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet" : "not available"; }
             string FpmAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet per minute" : "not available"; }
-            string PsiAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? FormattableString.Invariant($"{w.Value:0.0} psi") : "not available"; }
+            string PsiAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{w.Value:0.0} psi") : "not available"; }
             // Select the ACTIVE CPC: CPC 1's discrete word bit 11 set = CPC 1 active, else CPC 2.
             // On the auto-register pass (cache == null) default to CPC 1 and emit the CPC 2
             // candidates as hidden registration rows.
@@ -7530,7 +7530,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         else if (page == 10) // ENGINE — oil + vibration + igniters (N1/N2/EGT/FF are on the E/WD)
         {
-            string Vib(double v) => FormattableString.Invariant($"{v:0.0}");
+            string Vib(double v) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{v:0.0}");
             string IgOnOff(double v) => v > 0.5 ? "on" : "off";
             r.Add(("Engine 1 oil quantity", "ENG_OIL_QUANTITY:1", Pct));
             r.Add(("Engine 1 oil temperature", "GENERAL_ENG_OIL_TEMPERATURE:1", C));
@@ -9549,7 +9549,8 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
                 announcer.AnnounceImmediate("Landing elevation must be -2000 to 15000 feet, or -4000 for Auto.");
                 return true;
             }
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:A32NX_OVHD_PRESS_LDG_ELEV_KNOB)");
+            // Invariant: a negative number (-4000 is Auto) keeps its ASCII minus. sv-SE writes U+2212, which the RPN parser rejects.
+            simConnect.ExecuteCalculatorCode(FormattableString.Invariant($"{(int)Math.Round(value)} (>L:A32NX_OVHD_PRESS_LDG_ELEV_KNOB)"));
             announcer.Announce(value == -4000 ? "Landing elevation Auto" : $"Landing elevation {value:0} feet");
             return true;
         }
@@ -9827,7 +9828,8 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // and is silently ignored by the aircraft — unfixable protocol quirk.
         int toSend = Math.Abs(value) < 100 ? (int)Math.Round(value * 10) : (int)Math.Round(value);
         SuppressFcuValueChangeEcho(Fcu.VerticalSpeed, Fcu.FlightPathAngle);
-        s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
+        // Invariant: a descent keeps its ASCII minus. sv-SE writes U+2212, which the RPN parser rejects.
+        s.ExecuteCalculatorCode(FormattableString.Invariant($"{toSend} (>K:A32NX.FCU_VS_SET)"));
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
             a.AnnounceImmediate(FormattableString.Invariant($"FCU flight path angle {value:0.0}"));
