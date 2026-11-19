@@ -191,6 +191,14 @@ public partial class MainForm : Form
     private CoherentPmdgEfbClient? coherentMd11Efb;
     private Forms.FBWA380.FbwEfbForm? md11EfbForm;
 
+    // MSFS 2024's own tablet (Extras, In-Sim Tablet, for every aircraft): the same shared form and
+    // client, pointed at the sim's "Electronic Flight Bag" view. simTabletImportBusy keeps the
+    // SimBrief import to one run at a time; exit cancels a running one through simTabletImportCts.
+    private CoherentPmdgEfbClient? coherentSimTablet;
+    private Forms.FBWA380.FbwEfbForm? simTabletForm;
+    private bool simTabletImportBusy;
+    private CancellationTokenSource? simTabletImportCts;
+
     // MD-11 monitor manager (Ctrl+M) — the aircraft announces 532 annunciator lamps, so muting
     // them individually is not a nicety here.
     private Forms.MD11.Md11MonitorManagerForm? md11MonitorManagerForm;
@@ -1469,6 +1477,13 @@ public partial class MainForm : Form
         if (md11MonitorManagerForm != null && !md11MonitorManagerForm.IsDisposed) md11MonitorManagerForm.Dispose();
         md11MonitorManagerForm = null;
         coherentMd11Efb?.Dispose();
+
+        // The in-sim tablet's window and client: no aircraft swap closes them (the view is the
+        // sim's), so exit is their one teardown. The window first, then the client, as above.
+        // A SimBrief import still running is cancelled first, so it stops and says nothing.
+        simTabletImportCts?.Cancel();
+        if (simTabletForm != null && !simTabletForm.IsDisposed) simTabletForm.Dispose();
+        coherentSimTablet?.Dispose();
 
         // The 757's windows and the EFB client and bridge they share (same leak class: the CDU
         // window's timer and the client's poll loop and socket), as on the swap path. The CDU's
