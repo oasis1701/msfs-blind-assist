@@ -524,7 +524,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             {
                 uint valueToSend = valueConverter != null ? valueConverter(value) : (uint)value;
                 simConnect.SendEvent(eventName, valueToSend);
-                announcer.AnnounceImmediate($"{parameterType} set to {value}");
+                announcer.AnnounceImmediate(FormattableString.Invariant($"{parameterType} set to {value}"));
                 return true;
             }
             // The validator accepted what TryParseTyped refuses: say so rather than send nothing silently.

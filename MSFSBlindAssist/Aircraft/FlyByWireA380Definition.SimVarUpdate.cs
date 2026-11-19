@@ -751,7 +751,7 @@ public partial class FlyByWireA380Definition
             _reqFlaps = false;
             string[] detents = { "Up", "1", "2", "3", "Full" };
             int i = (int)Math.Round(value);
-            announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : value.ToString()));
+            announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             return true;
         }
         if (_reqGear && varName == "A32NX_GEAR_HANDLE_POSITION")

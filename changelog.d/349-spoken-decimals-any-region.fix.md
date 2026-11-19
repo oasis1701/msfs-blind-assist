@@ -8,3 +8,7 @@ planning windows, on every aircraft.
 
 On such a PC the Weather Radar window should also now load its pilot reports and winds
 aloft: the addresses it asked for them with were built with decimal commas.
+
+On a PC set to Swedish, Norwegian or Finnish, a descent rate or a negative flight path
+angle typed into the vertical speed window of the FlyByWire A32NX or A380 or the Headwind
+A330 should now be set: the minus sign was written in a form the aircraft could not read.

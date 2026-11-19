@@ -96,7 +96,7 @@ public partial class FlyByWireA380Definition
                 if (fv.HasValue)
                 {
                     int i = (int)Math.Round(fv.Value);
-                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < ReadFlapsDetents.Length ? ReadFlapsDetents[i] : fv.Value.ToString()));
+                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < ReadFlapsDetents.Length ? ReadFlapsDetents[i] : fv.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
                 }
                 else if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
                 return true;
@@ -393,8 +393,7 @@ public partial class FlyByWireA380Definition
         // gated on |value| < 100 — an ×100 encoding was silently IGNORED, not clamped).
         int toSend = Math.Abs(value) < 100 ? (int)Math.Round(value * 10) : (int)Math.Round(value);
         SuppressFcuValueChangeEcho(Fcu.VerticalSpeed, Fcu.FlightPathAngle);
-        // Invariant: a descent keeps its ASCII minus. sv-SE writes U+2212, which the RPN parser rejects.
-        s.ExecuteCalculatorCode(FormattableString.Invariant($"{toSend} (>K:A32NX.FCU_VS_SET)"));
+        s.ExecuteCalculatorCode(FcuValueEntry.VerticalSpeedSetCode(toSend));
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
             a.AnnounceImmediate(FormattableString.Invariant($"FCU flight path angle {value:0.0}"));

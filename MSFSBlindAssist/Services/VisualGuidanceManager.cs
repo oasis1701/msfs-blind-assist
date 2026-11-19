@@ -1544,7 +1544,7 @@ public class VisualGuidanceManager : IDisposable
 
         if (roundedDistance >= 0.5)
         {
-            string distanceText = roundedDistance == 1.0 ? "1 mile" : $"{roundedDistance} miles";
+            string distanceText = roundedDistance == 1.0 ? "1 mile" : FormattableString.Invariant($"{roundedDistance} miles");
             announcer.Announce($"{distanceText} behind threshold");
             lastExtendingProgressAnnouncement = now;
         }

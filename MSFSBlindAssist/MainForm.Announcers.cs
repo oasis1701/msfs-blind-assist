@@ -426,11 +426,11 @@ public partial class MainForm
                     if (varDef.ValueDescriptions.TryGetValue(e.Value, out string? desc))
                         description = $"{varDef.DisplayName}: {desc}";
                     else if (!varDef.OnlyAnnounceValueDescriptionMatches)
-                        description = $"{varDef.DisplayName}: {e.Value}";
+                        description = FormattableString.Invariant($"{varDef.DisplayName}: {e.Value}");
                 }
                 else if (string.IsNullOrEmpty(description))
                 {
-                    description = $"{varDef.DisplayName}: {e.Value}";
+                    description = FormattableString.Invariant($"{varDef.DisplayName}: {e.Value}");
                 }
 
                 // Generic ARINC429 auto-decode for the announce path (only reached for vars

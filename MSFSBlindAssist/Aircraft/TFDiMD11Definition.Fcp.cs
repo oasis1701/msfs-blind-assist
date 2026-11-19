@@ -223,7 +223,7 @@ public partial class TFDiMD11Definition
                 if (Md11Fcp.ResolveVerticalUnit(v, CurrentIsFpa()) != null) return (true, "");
                 return Math.Abs(v) > Md11Fcp.MaxVerticalSpeedFpm
                     ? (false, $"Enter a vertical speed within {Md11Fcp.MaxVerticalSpeedFpm} feet per minute")
-                    : (false, $"Enter a vertical speed of at least {Md11Fcp.MinVerticalSpeedFpm} feet per minute, or an FPA between -{Md11Fcp.MaxFpaDegrees} and {Md11Fcp.MaxFpaDegrees} degrees");
+                    : (false, FormattableString.Invariant($"Enter a vertical speed of at least {Md11Fcp.MinVerticalSpeedFpm} feet per minute, or an FPA between -{Md11Fcp.MaxFpaDegrees} and {Md11Fcp.MaxFpaDegrees} degrees"));
             },
             Suppressing(toggles),
             input =>

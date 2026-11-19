@@ -501,7 +501,7 @@ public partial class FlyByWireA380Definition
         {
             if (value < ts.Lo || value > ts.Hi)
             {
-                announcer.AnnounceImmediate($"Temperature must be between {ts.Lo} and {ts.Hi} degrees Celsius.");
+                announcer.AnnounceImmediate(FormattableString.Invariant($"Temperature must be between {ts.Lo} and {ts.Hi} degrees Celsius."));
                 return true;
             }
             // Invariant fixed-point: raw interpolation used CurrentCulture — a fractional
@@ -734,7 +734,7 @@ public partial class FlyByWireA380Definition
         if (varKey.StartsWith("A32NX_EFIS_", StringComparison.Ordinal)
             || varKey.StartsWith("A380X_EFIS_", StringComparison.Ordinal))
         {
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            simConnect.ExecuteCalculatorCode(FormattableString.Invariant($"{(int)Math.Round(value)} (>L:{varKey})"));
             return true;
         }
         // Flight directors (CORRECTED 2026-09 for FBW #10855): ONE FCU pushbutton, read from its
@@ -882,7 +882,7 @@ public partial class FlyByWireA380Definition
             // EMEREXIT XMLVAR stuck via the calculator path.)
             || varKey.StartsWith("XMLVAR_", StringComparison.Ordinal))
         {
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            simConnect.ExecuteCalculatorCode(FormattableString.Invariant($"{(int)Math.Round(value)} (>L:{varKey})"));
             return true;
         }
         // General catch-all for every remaining writable FBW L:var combo whose KEY is
@@ -922,7 +922,7 @@ public partial class FlyByWireA380Definition
             || varKey.StartsWith("A380X_", StringComparison.Ordinal)
             || varKey.StartsWith("FBW_", StringComparison.Ordinal))
         {
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            simConnect.ExecuteCalculatorCode(FormattableString.Invariant($"{(int)Math.Round(value)} (>L:{varKey})"));
             return true;
         }
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);

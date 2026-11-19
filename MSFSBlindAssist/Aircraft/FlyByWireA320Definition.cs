@@ -6720,7 +6720,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
                 if (fv.HasValue)
                 {
                     int i = (int)Math.Round(fv.Value);
-                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < FlapsDetents.Length ? FlapsDetents[i] : fv.Value.ToString()));
+                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < FlapsDetents.Length ? FlapsDetents[i] : fv.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
                 }
                 else if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
                 return true;
@@ -8433,7 +8433,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             _reqFlaps = false;
             int i = (int)Math.Round(value);
-            announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < FlapsDetents.Length ? FlapsDetents[i] : value.ToString()));
+            announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < FlapsDetents.Length ? FlapsDetents[i] : value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             return true;
         }
         if (_reqGear && varName == "GEAR_HANDLE_POSITION")
@@ -9566,7 +9566,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             && (varDef.Name.StartsWith("A32NX_", StringComparison.Ordinal)
                 || varDef.Name.StartsWith("XMLVAR_", StringComparison.Ordinal)))
         {
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varDef.Name})");
+            simConnect.ExecuteCalculatorCode(FormattableString.Invariant($"{(int)Math.Round(value)} (>L:{varDef.Name})"));
             return true;
         }
 
@@ -9828,8 +9828,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // and is silently ignored by the aircraft — unfixable protocol quirk.
         int toSend = Math.Abs(value) < 100 ? (int)Math.Round(value * 10) : (int)Math.Round(value);
         SuppressFcuValueChangeEcho(Fcu.VerticalSpeed, Fcu.FlightPathAngle);
-        // Invariant: a descent keeps its ASCII minus. sv-SE writes U+2212, which the RPN parser rejects.
-        s.ExecuteCalculatorCode(FormattableString.Invariant($"{toSend} (>K:A32NX.FCU_VS_SET)"));
+        s.ExecuteCalculatorCode(FcuValueEntry.VerticalSpeedSetCode(toSend));
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
             a.AnnounceImmediate(FormattableString.Invariant($"FCU flight path angle {value:0.0}"));
