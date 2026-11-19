@@ -14,6 +14,7 @@ public class SpokenDecimalCultureTests
     public static TheoryData<string> Aircraft => new()
     {
         "FlyByWireA320", "HeadwindA330", "FenixA320", "FlyByWireA380", "PMDG737", "PMDG777", "IFly737MAX", "HorizonSim787", "TFDiMD11",
+        "BBS757",
     };
 
     private static IAircraftDefinition Create(string name) => name switch
@@ -27,6 +28,7 @@ public class SpokenDecimalCultureTests
         "IFly737MAX" => new IFly737MAXDefinition(),
         "HorizonSim787" => new HorizonSim787Definition(),
         "TFDiMD11" => new TFDiMD11Definition(),
+        "BBS757" => new BBS757Definition(),
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 
