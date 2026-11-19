@@ -119,8 +119,9 @@ public sealed class Md11EventBus : IDisposable
     /// </summary>
     private sealed class HeldPress
     {
-        public HeldPress(int upId) => UpId = upId;
-        public int UpId { get; }
+        public HeldPress(IReadOnlyList<int> upIds) => UpIds = upIds;
+        /// <summary>The UPs this hold owes, in the order they are written — one for every button but the Long Trim handles.</summary>
+        public IReadOnlyList<int> UpIds { get; }
         public bool DownWritten;
     }
 
@@ -368,10 +369,29 @@ public sealed class Md11EventBus : IDisposable
     /// queue still takes it, <see cref="ReleaseReserve"/>). For a caller that must never report a
     /// dropped test done (the First Officer).
     /// </summary>
-    public async Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs)
+    public Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs)
+        => TryPressAndHoldAsync(control, holdMs, "LEFT_BUTTON_DOWN", "LEFT_BUTTON_UP");
+
+    /// <summary>
+    /// <see cref="TryPressAndHoldAsync(Md11Control, int)"/> on a named DOWN/UP pair — the rudder trim
+    /// knob is held right with RIGHT_BUTTON_DOWN and released, as TFDi's template releases it either
+    /// way, with LEFT_BUTTON_UP (<see cref="Md11TrimButtons"/>). The same guarantees: an UP only for
+    /// a DOWN that was taken, never before it.
+    /// </summary>
+    public Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs, string downField, string upField)
+        => TryPressAndHoldAsync(control, holdMs, downField, new[] { upField });
+
+    /// <summary>
+    /// <see cref="TryPressAndHoldAsync(Md11Control, int)"/> released by SEVERAL UP fields, written in
+    /// order — the Long Trim handles' template lets go with RIGHT_BUTTON_UP then LEFT_BUTTON_UP. One
+    /// hold owes all of them: queued together as its release, and written first by
+    /// <see cref="Dispose"/> when the pump wrote its DOWN. A field the control lacks is skipped; with
+    /// none left it is a press with nothing owed, as before.
+    /// </summary>
+    public async Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs, string downField, IReadOnlyList<string> upFields)
     {
-        var down = control.Event("LEFT_BUTTON_DOWN");
-        var up = control.Event("LEFT_BUTTON_UP");
+        var down = control.Event(downField);
+        var ups = upFields.Select(control.Event).Where(id => id is > 0).Select(id => id!.Value).ToArray();
         // A button with no DOWN was never pressed, so it cannot be released: writing its UP alone
         // sends the aircraft a release for a press that never happened. (Nothing is tracked either
         // — Dispose must not release, or log, a button it never held.)
@@ -379,13 +399,13 @@ public sealed class Md11EventBus : IDisposable
         var backlogMs = BacklogMs;   // sampled before the DOWN joins the queue
         HeldPress? hold = null;
         bool taken;
-        if (up is > 0)
+        if (ups.Length > 0)
         {
             // Registered AND queued under the held table's lock, so Dispose can neither miss this
             // DOWN nor be beaten by it. Refused once Dispose has closed the table, and when the
             // queue would not take the DOWN: a DOWN that never goes out owes nothing, so neither
             // half is written at all.
-            hold = TrackHeldAndFireDown(up.Value, down.Value);
+            hold = TrackHeldAndFireDown(ups, down.Value);
             if (hold == null) return false;
             taken = true;
         }
@@ -437,12 +457,12 @@ public sealed class Md11EventBus : IDisposable
     /// Queuing under the lock is safe: it is the queue's non-blocking TryAdd, and the pump takes this
     /// lock only to record a written DOWN, never while it holds anything else.
     /// </summary>
-    private HeldPress? TrackHeldAndFireDown(int upId, int downId)
+    private HeldPress? TrackHeldAndFireDown(IReadOnlyList<int> upIds, int downId)
     {
         lock (_held)
         {
             if (_closed) return null;
-            var hold = new HeldPress(upId);
+            var hold = new HeldPress(upIds);
             if (!TryEnqueue(new QueuedEvent(downId, hold))) return null;
             _held.Add(hold);
             return hold;
@@ -468,7 +488,10 @@ public sealed class Md11EventBus : IDisposable
         lock (_held)
         {
             if (_closed || !_held.Remove(hold)) return false;
-            return TryEnqueue(new QueuedEvent(hold.UpId, hold, IsRelease: true), release: true);
+            bool taken = true;
+            foreach (var up in hold.UpIds)   // every one queued, in order, even if one was refused
+                taken &= TryEnqueue(new QueuedEvent(up, hold, IsRelease: true), release: true);
+            return taken;
         }
     }
 
@@ -579,7 +602,7 @@ public sealed class Md11EventBus : IDisposable
     /// </summary>
     private static List<int> DisposalOrder(List<HeldPress> holds, List<QueuedEvent> queued)
     {
-        var owedUps = holds.Where(h => h.DownWritten).Select(h => h.UpId)
+        var owedUps = holds.Where(h => h.DownWritten).SelectMany(h => h.UpIds)
             .Concat(queued.Where(IsOwedRelease).Select(item => item.Id))
             .Distinct().ToList();
         var neverPressed = holds.Where(h => !h.DownWritten).ToHashSet();
