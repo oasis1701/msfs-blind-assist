@@ -526,16 +526,17 @@ public class TakeoffAssistManager : IDisposable
 
     /// <summary>
     /// Process IAS update during takeoff assist for speed callouts.
-    /// Announces "80 knots" and "100 knots"; V1, Rotate and V2 ride the aircraft definitions
-    /// (TakeoffVSpeedCallouts, TKO-5).
+    /// Announces the low and high calls <see cref="ConfigureSpeedCallouts"/> set (by default "80 knots" and
+    /// "100 knots"; the DA40's one "Rotate" at Vr, <see cref="TakeoffRollCallouts"/>); V1, Rotate and V2 ride the
+    /// aircraft definitions (TakeoffVSpeedCallouts, TKO-5).
     /// </summary>
     /// <param name="currentIAS">Current indicated airspeed in knots</param>
     /// <param name="aircraftCallsOwnSpeeds">
     /// The loaded aircraft plays its own take-off speed callouts
     /// (<see cref="Aircraft.IAircraftDefinition.PlaysOwnTakeoffSpeedCallouts"/>, the BlueBird 757, which calls
-    /// 80 knots, V1 and rotate): "80 knots" is not spoken then, so a roll never hears it twice; "100 knots",
-    /// which the aircraft does not call, still is. Passed per sample by the one caller, so it always follows
-    /// the aircraft loaded now.
+    /// 80 knots, V1 and rotate): the low call (its "80 knots") is not spoken then, so a roll never hears it twice;
+    /// the high call ("100 knots"), which the aircraft does not call, still is. Passed per sample by the one
+    /// caller, so it always follows the aircraft loaded now.
     /// </param>
     public void ProcessSpeedUpdate(double currentIAS, bool aircraftCallsOwnSpeeds = false)
     {

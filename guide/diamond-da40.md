@@ -185,6 +185,7 @@ The **Simulation** section holds the aircraft's whole failure set, grouped as CO
 - **Silent switches.** BA's panel controls make no cockpit sound. Confirm a change by reading it back.
 - **Guards.** The engine master and emergency battery guards open and close, but in the simulator they do not block their switches, and the aircraft opens the engine master guard by itself when that switch is moved.
 - **Steering assist.** The gear is fixed, so your toggle-landing-gear key switches the nosewheel steering assist instead, as COWS designed it, and BA says the mode: Real, Autobrake or NWS.
+- **Take-off calls.** Takeoff Assist calls *"Rotate"* at the rotation speed (67 knots on the NG, 59 on the XLS) instead of the airliners' *"80 knots"* and *"100 knots"*, which would come after the aeroplane is already flying.
 - **Take-off trim.** Press Centre Trim on the Elevator Trim panel: centred is the take-off position on this aeroplane, and the AFM gives no number to calculate.
 - **Refuelling.** There is no fuel panel in the cockpit, so the Fuel System panel offers the transaction: type the gallons for each tank, or Fill Both Tanks (19.5 gallons each, 39 in all). It reads back in the G1000's fuel units. On the ground with the engine stopped only. With GSX, its own refuelling is the more realistic way.
 

@@ -1370,6 +1370,8 @@ public partial class MainForm
         ifly737MaxMenuItem.Checked = false;
         tfdiMd11MenuItem.Checked = false;
         bbs757MenuItem.Checked = false;
+        cowsDA40NGMenuItem.Checked = false;
+        cowsDA40XLSMenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -1413,6 +1415,11 @@ public partial class MainForm
         else if (currentAircraft is BBS757Definition)
         {
             bbs757MenuItem.Checked = true;
+        }
+        else if (currentAircraft is Aircraft.DA40.CowsDA40Definition da40)
+        {
+            // One definition, two airframes: the item of the airframe it is (DA40-15 swaps it to the one loaded).
+            (da40.Variant == Aircraft.DA40.DA40Variant.XLS ? cowsDA40XLSMenuItem : cowsDA40NGMenuItem).Checked = true;
         }
     }
 

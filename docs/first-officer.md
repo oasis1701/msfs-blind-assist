@@ -980,7 +980,7 @@ a generic type).
 
 ## COWS Diamond DA40 First Officer (2026-10-20)
 
-A ninth profile, and the first general-aviation one: `FirstOfficer/DA40/`, one `DA40FoProfile` for
+A tenth profile, and the first general-aviation one: `FirstOfficer/DA40/`, one `DA40FoProfile` for
 both COWS airframes, the DA40-NG (Austro AE300, FADEC) and the DA40-XLS (Lycoming IO-360, mixture,
 propeller, magnetos), registered in `FirstOfficerWindows` under both aircraft codes ("DA40-NG First
 Officer", "DA40-XLS First Officer"). Its rules are FOD-1 to FOD-7 (`.claude/rules/first-officer-da40.md`);
