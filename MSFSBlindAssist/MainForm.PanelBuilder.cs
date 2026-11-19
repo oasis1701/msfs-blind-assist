@@ -1100,6 +1100,11 @@ public partial class MainForm
 
                 void ApplyTyped()
                 {
+                    // The raw text first, for a field whose words depend on what was typed (the 757's
+                    // squawk: an empty box and letters both parse to NaN below). Default: not handled.
+                    if (currentAircraft.HandleUITypedText(varKey, textBox.Text, varDef, simConnectManager!, announcer))
+                        return;
+
                     // Aircraft delegation: let the loaded aircraft claim _SET keys
                     // (e.g., PMDG 737's EFIS_MinsValueFt_*_SET vars need RST-then-rotate
                     // dispatch). We pass the double value when parseable, else 0 -- or NaN

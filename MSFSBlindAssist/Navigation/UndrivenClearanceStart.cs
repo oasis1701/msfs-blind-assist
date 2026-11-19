@@ -41,19 +41,17 @@ public static class UndrivenClearanceStart
         }
     }
 
-    /// <summary>False when a hold-short pick is keyed to one of the first <paramref name="count"/>
-    /// taxiways: leaving those out would lose the pilot's own stop.</summary>
-    public static bool PicksAllow(int count, IEnumerable<int>? holdShortIndices,
-        IEnumerable<int>? runwayPickIndices, IEnumerable<int>? taxiwayPickIndices)
-        => !new[] { holdShortIndices, runwayPickIndices, taxiwayPickIndices }
-            .Any(indices => indices != null && indices.Any(i => i < count));
+    /// <summary>False when one of the pilot's per-row picks (a hold short of any kind, a Turn) is
+    /// keyed to one of the first <paramref name="count"/> taxiways: leaving those out would lose it.</summary>
+    public static bool PicksAllow(int count, params IEnumerable<int>?[] pickRows)
+        => !pickRows.Any(rows => rows != null && rows.Any(row => row < count));
 
     /// <summary>Picks are keyed by position in the clearance, so they move with it.</summary>
     public static List<int>? Shift(List<int>? indices, int count)
         => indices?.Select(i => i - count).ToList();
 
     /// <inheritdoc cref="Shift(List{int}?, int)"/>
-    public static Dictionary<int, string>? Shift(Dictionary<int, string>? picks, int count)
+    public static Dictionary<int, T>? Shift<T>(Dictionary<int, T>? picks, int count)
         => picks?.ToDictionary(p => p.Key - count, p => p.Value);
 
     /// <summary>What the pilot hears about the taxiways left out.</summary>

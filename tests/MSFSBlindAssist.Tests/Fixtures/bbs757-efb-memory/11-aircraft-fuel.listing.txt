@@ -1,0 +1,22 @@
+title: Aircraft
+slider 70  Left (70%)
+slider 0  Center (0%)
+slider 70  Right (70%)
+button  Quantity: 1539 Gal
+button  Weight: 10308 Lbs
+button  Quantity: 0 Gal
+button  Weight: 0 Lbs
+slider 27  Total fuel (27%)
+button  Quantity: 3077 Gal
+button  Weight: 20617 Lbs
+button  Quantity: 1539 Gal
+button  Weight: 10308 Lbs
+heading 2  Sections
+button  Cockpit presets
+button  Fuel
+button  Weight & balance
+button  Ground services
+button  Cabin & doors
+button  Maintenance
+button  Failures
+button  Home

@@ -581,6 +581,21 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// The pavement map of the installed graph, built lazily once per graph and dropped with it. Shared by
+    /// the off-pavement alert and the Turn picks' off-chart leg test, so both judge the same pavement.
+    /// Callers ensure <c>_graph</c> is set.
+    /// </summary>
+    private Navigation.PavementMap PavementMapForGraph()
+    {
+        if (!ReferenceEquals(_pavementMapGraph, _graph) || _pavementMap == null)
+        {
+            _pavementMap = Navigation.PavementMap.Build(_graph!);
+            _pavementMapGraph = _graph;
+        }
+        return _pavementMap;
+    }
+
+    /// <summary>
     /// "Off pavement." while the aircraft is off every mapped runway and taxiway during the landing roll
     /// or the exit (Navigation.PavementMap / OffPavementAlert), and off the runway being landed on
     /// (<see cref="IsOnRolloutRunwayPavement"/>). Spoken with AnnounceImmediate directly —
@@ -591,14 +606,10 @@ public partial class TaxiGuidanceManager
     private void CheckOffPavement(double lat, double lon, double groundSpeedKts)
     {
         if (_graph == null) return;
-        if (!ReferenceEquals(_pavementMapGraph, _graph))
-        {
-            _pavementMap = Navigation.PavementMap.Build(_graph);
-            _pavementMapGraph = _graph;
-        }
+        var pavementMap = PavementMapForGraph();
         bool onGround = OnGroundProvider?.Invoke() ?? true;
         bool off = Navigation.OffPavementAlert.IsOffPavement(
-            onGround, IsOnRolloutRunwayPavement(lat, lon), _pavementMap!.IsOnMappedPavement(lat, lon));
+            onGround, IsOnRolloutRunwayPavement(lat, lon), pavementMap.IsOnMappedPavement(lat, lon));
         if (off != _offPavementLogged)
         {
             _offPavementLogged = off;
@@ -4046,6 +4057,7 @@ public partial class TaxiGuidanceManager
         _userHoldShortIndices = null;
         _userRunwayHoldShorts = null;
         _userTaxiwayHoldShorts = null;
+        _userHoldingPointHoldShorts = null;
         _rolloutExit = null;
         _isLandingExitRoute = false; // no exit route — runway-end countdown
         _landingExitOffPavement = true;

@@ -40,6 +40,9 @@ public class TaxiRoute
     /// destination hold ("Hold short of Runway 32 and runway 35"), because nothing after it would.
     /// </summary>
     public List<string> RunwayEntryStubAlsoOn { get; set; } = new();
+
+    /// <summary>The Turn picks the planner applied to this route, in row order.</summary>
+    public List<AppliedTurnPick> TurnPicks { get; set; } = new();
 }
 
 /// <summary>
@@ -67,6 +70,40 @@ public class TaxiRouteSegment
     /// still ahead (a rebuild from mid-gap has no charted position to route from).
     /// </summary>
     public bool IsUncharted { get; set; }
+    /// <summary>
+    /// True for a synthetic straight leg built for a Turn pick where the network has no link that
+    /// way. Unnamed; spoken as off-chart. Distinct from <see cref="IsUncharted"/>, which stays the
+    /// apron crossing's.
+    /// </summary>
+    public bool IsOffChartTurn { get; set; }
+}
+
+/// <summary>Which way the pilot picked to turn onto a taxiway.</summary>
+public enum TurnSide
+{
+    Left,
+    Right,
+}
+
+/// <summary>A Turn pick as the planner applied it to a route, with what it took to honor it.</summary>
+public sealed class AppliedTurnPick
+{
+    public int RowIndex { get; init; }
+    public TurnSide Side { get; init; }
+    public string TaxiwayName { get; init; } = "";
+    /// <summary>The departure node (A) the turn is made from.</summary>
+    public int DepartureNodeId { get; init; }
+    /// <summary>The node (u) where the route joins the picked taxiway.</summary>
+    public int JoinNodeId { get; init; }
+    /// <summary>Index of the segment whose FromNode is the departure node.</summary>
+    public int FirstSegmentAfterDeparture { get; init; }
+    /// <summary>Index of the segment from the join node u to v, the first on the taxiway.</summary>
+    public int FirstTaxiwaySegment { get; init; }
+    /// <summary>False when the built route already made the turn.</summary>
+    public bool ChangedRoute { get; init; }
+    public bool IsOffChart { get; init; }
+    public double OffChartLengthMeters { get; init; }
+    public IReadOnlyList<int> BlockedNodeIds { get; init; } = Array.Empty<int>();
 }
 
 /// <summary>

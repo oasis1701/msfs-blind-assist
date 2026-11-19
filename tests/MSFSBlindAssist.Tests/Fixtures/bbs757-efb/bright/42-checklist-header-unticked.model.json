@@ -1,0 +1,580 @@
+{
+  "app": "CHECKLIST",
+  "section": "BEFORE START",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Button",
+      "text": "Reset all",
+      "box": [
+        73,
+        159,
+        102,
+        24
+      ],
+      "hit": [
+        124,
+        171
+      ],
+      "clickable": true,
+      "key": "btn:RESET ALL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Interactive",
+      "box": [
+        73,
+        209,
+        129,
+        27
+      ],
+      "hit": [
+        40,
+        222
+      ],
+      "clickable": true,
+      "key": "tgl:INTERACTIVE",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "Off",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Before start",
+      "box": [
+        37,
+        261,
+        153,
+        27
+      ],
+      "hit": [
+        130,
+        274
+      ],
+      "clickable": true,
+      "key": "menu:BEFORE START",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "After start",
+      "box": [
+        36,
+        314,
+        141,
+        26
+      ],
+      "hit": [
+        130,
+        327
+      ],
+      "clickable": true,
+      "key": "menu:AFTER START",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Before take off",
+      "box": [
+        37,
+        365,
+        181,
+        26
+      ],
+      "hit": [
+        130,
+        378
+      ],
+      "clickable": true,
+      "key": "menu:BEFORE TAKE OFF",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "After take off",
+      "box": [
+        37,
+        417,
+        169,
+        27
+      ],
+      "hit": [
+        130,
+        430
+      ],
+      "clickable": true,
+      "key": "menu:AFTER TAKE OFF",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "In range",
+      "box": [
+        36,
+        468,
+        104,
+        27
+      ],
+      "hit": [
+        130,
+        481
+      ],
+      "clickable": true,
+      "key": "menu:IN RANGE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Approach",
+      "box": [
+        37,
+        521,
+        119,
+        27
+      ],
+      "hit": [
+        130,
+        534
+      ],
+      "clickable": true,
+      "key": "menu:APPROACH",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Before landing",
+      "box": [
+        37,
+        574,
+        174,
+        25
+      ],
+      "hit": [
+        130,
+        586
+      ],
+      "clickable": true,
+      "key": "menu:BEFORE LANDING",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "After landing",
+      "box": [
+        36,
+        625,
+        163,
+        27
+      ],
+      "hit": [
+        130,
+        638
+      ],
+      "clickable": true,
+      "key": "menu:AFTER LANDING",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Shut down",
+      "box": [
+        36,
+        677,
+        130,
+        27
+      ],
+      "hit": [
+        130,
+        690
+      ],
+      "clickable": true,
+      "key": "menu:SHUT DOWN",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Button",
+      "text": "Reset",
+      "box": [
+        1262,
+        92,
+        68,
+        28
+      ],
+      "hit": [
+        1296,
+        106
+      ],
+      "clickable": true,
+      "key": "btn:RESET",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Before start, whole checklist",
+      "box": [
+        753,
+        136,
+        178,
+        30
+      ],
+      "hit": [
+        298,
+        151
+      ],
+      "clickable": true,
+      "key": "chk:BEFORE START",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Parking brake: SET",
+      "box": [
+        317,
+        198,
+        136,
+        31
+      ],
+      "hit": [
+        298,
+        213
+      ],
+      "clickable": true,
+      "key": "chk:Parking brake",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Fuel: OB/PLAN",
+      "box": [
+        317,
+        235,
+        49,
+        32
+      ],
+      "hit": [
+        298,
+        251
+      ],
+      "clickable": true,
+      "key": "chk:Fuel",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Oxygen: CHECKED",
+      "box": [
+        317,
+        274,
+        80,
+        35
+      ],
+      "hit": [
+        298,
+        291
+      ],
+      "clickable": true,
+      "key": "chk:Oxygen",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "IRS: ALIGNED",
+      "box": [
+        317,
+        312,
+        43,
+        30
+      ],
+      "hit": [
+        298,
+        327
+      ],
+      "clickable": true,
+      "key": "chk:IRS",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Altimeters: SET",
+      "box": [
+        316,
+        350,
+        108,
+        31
+      ],
+      "hit": [
+        298,
+        365
+      ],
+      "clickable": true,
+      "key": "chk:Altimeters",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Recall: CHECKED",
+      "box": [
+        316,
+        388,
+        70,
+        32
+      ],
+      "hit": [
+        298,
+        404
+      ],
+      "clickable": true,
+      "key": "chk:Recall",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Doors: CLOSED",
+      "box": [
+        318,
+        428,
+        66,
+        29
+      ],
+      "hit": [
+        298,
+        442
+      ],
+      "clickable": true,
+      "key": "chk:Doors",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Windows: CLOSED \u0026 LOCKED",
+      "box": [
+        317,
+        464,
+        96,
+        31
+      ],
+      "hit": [
+        298,
+        479
+      ],
+      "clickable": true,
+      "key": "chk:Windows",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Hydraulic panel: SET",
+      "box": [
+        318,
+        504,
+        150,
+        30
+      ],
+      "hit": [
+        298,
+        519
+      ],
+      "clickable": true,
+      "key": "chk:Hydraulic panel",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Fuel panel: SET",
+      "box": [
+        316,
+        539,
+        107,
+        34
+      ],
+      "hit": [
+        298,
+        556
+      ],
+      "clickable": true,
+      "key": "chk:Fuel panel",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Seat belt signs: ON",
+      "box": [
+        317,
+        580,
+        144,
+        29
+      ],
+      "hit": [
+        298,
+        594
+      ],
+      "clickable": true,
+      "key": "chk:Seat belt signs",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Duct Pressure: NORMAL",
+      "box": [
+        318,
+        619,
+        137,
+        27
+      ],
+      "hit": [
+        298,
+        632
+      ],
+      "clickable": true,
+      "key": "chk:Duct Pressure",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Checkbox",
+      "text": "Beacon: ON",
+      "box": [
+        318,
+        654,
+        81,
+        31
+      ],
+      "hit": [
+        298,
+        669
+      ],
+      "clickable": true,
+      "key": "chk:Beacon",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications: 23",
+      "box": [
+        1329,
+        6,
+        54,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

@@ -47,4 +47,4 @@ The sentence is published in `LastRouteStartWarning` as well as the summary. `St
 
 A lead-in still starts at the nearest node whatever the heading, so some routes now open with "Taxiway X is behind you" where they used to open with a far-start warning and a straight line.
 
-Measure any change with `VirtualPilot missedexit`, on both navdata sets (`VP_SIM=2024`).
+Measure any change with `VirtualPilot missedexit`, on both navdata sets (`--sim fs2020` and `--sim fs2024`).

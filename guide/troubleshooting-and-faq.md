@@ -55,9 +55,9 @@ Most problems have a simple cause. Work through the matching section below. If n
 
 ## Cockpit Controls Do Not Respond (MobiFlight) {#trouble-mobiflight}
 
-On several aircraft, including the FlyByWire A320neo and A380X, the Fenix A320, the Headwind A330 and the TFDi MD-11 (and for a handful of switches on the HorizonSim 787-9), BA needs the free **MobiFlight WASM module** to operate switches and knobs. Without it, reading and announcements still work, but many controls do nothing.
+On several aircraft, including the FlyByWire A320neo and A380X, the Fenix A320, the Headwind A330, the TFDi MD-11 and the BlueBird 757-200 (and for a handful of switches on the HorizonSim 787-9), BA needs the free **MobiFlight WASM module** to operate switches and knobs. Without it, reading and announcements still work, but many controls do nothing.
 
-If you hear *"MobiFlight calculator path unavailable. Some cockpit controls may not respond."*, install or reinstall the module in your Community folder and restart the simulator (see [What You Need](getting-started.md#gs-requirements)). Only the FlyByWire A320neo and A380X, the Headwind A330 and the TFDi MD-11 give that warning. The Fenix A320 and the HorizonSim 787-9 do not warn you, so if one of their switches never moves, check MobiFlight first.
+If you hear *"MobiFlight calculator path unavailable. Some cockpit controls may not respond."*, install or reinstall the module in your Community folder and restart the simulator (see [What You Need](getting-started.md#gs-requirements)). Only the FlyByWire A320neo and A380X, the Headwind A330, the TFDi MD-11 and the BlueBird 757-200 give that warning. The Fenix A320 and the HorizonSim 787-9 do not warn you, so if one of their switches never moves, check MobiFlight first.
 
 ## PMDG: CDU Window or Readouts Are Empty {#trouble-pmdg}
 

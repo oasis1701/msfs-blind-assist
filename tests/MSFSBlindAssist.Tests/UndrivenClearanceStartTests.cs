@@ -128,6 +128,23 @@ public class UndrivenClearanceStartTests
         Assert.Equal(3, picks!.Keys.Single());
     }
 
+    // Hold-short, runway, taxiway, holding-point and Turn picks are all keyed by row.
+    [Fact]
+    public void PicksAllow_refuses_on_any_one_of_the_pick_lists()
+    {
+        Assert.False(UndrivenClearanceStart.PicksAllow(1, null, null, null, null, new[] { 0 }));
+        Assert.True(UndrivenClearanceStart.PicksAllow(1, new[] { 1 }, null, new[] { 2 }, null, new[] { 3 }));
+    }
+
+    [Fact]
+    public void Shift_moves_picks_of_any_kind()
+    {
+        var picks = UndrivenClearanceStart.Shift(new Dictionary<int, TurnSide> { [2] = TurnSide.Left, [4] = TurnSide.Right }, 1);
+
+        Assert.Equal(TurnSide.Left, picks![1]);
+        Assert.Equal(TurnSide.Right, picks[3]);
+    }
+
     [Fact]
     public void Shift_keeps_null_as_null()
     {
