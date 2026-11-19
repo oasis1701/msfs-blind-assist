@@ -25,17 +25,7 @@ public partial class FlyByWireA380Definition
         v <= -15 ? "Maximum reverse" :
         v < -2 ? "Reverse idle" : null;
 
-    private static string UnpackSixBitIdent(double w0, double w1)
-    {
-        double[] words = { w0, w1 };
-        string s = "";
-        for (int i = 0; i < words.Length * 8; i++)
-        {
-            int code = (int)(words[i / 8] / Math.Pow(2, (i % 8) * 6)) & 0x3F;
-            if (code > 0) s += (char)(code + 31);
-        }
-        return s.Trim();
-    }
+    private static string UnpackSixBitIdent(double w0, double w1) => Services.NdWaypointReadout.UnpackSixBit(w0, w1);
 
     // DecodeArmedModes moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair).
 
