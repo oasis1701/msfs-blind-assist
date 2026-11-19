@@ -438,6 +438,7 @@ The tablet you get depends on the aircraft:
 | TFDi MD-11 | Input Shift+T | MD-11 EFB |
 | Fenix A320 | Input Shift+T | Fenix EFB |
 | iFly 737 MAX8 | Input Shift+T | iFly 737 EFB |
+| BlueBird 757-200 | Input Shift+T | 757 EFB |
 | HorizonSim 787-9 | none | BA says *"787 E F B not available."* |
 
 </div>

@@ -141,6 +141,7 @@ public class ClaudeContextBudgetTests
     [InlineData("plugins/VPilotPlugin/Plugin.cs", ".claude/rules/core.md", "MSFSBlindAssist/**", "", true)]
     [InlineData("MSFSBlindAssist/Resources/flypad-shell.html", ".claude/rules/flypad.md", "MSFSBlindAssist/Resources/coherent-flypad-agent.js", "", true)]
     [InlineData("MSFSBlindAssist/Resources/md11_control_map.json", ".claude/rules/md11.md", "MSFSBlindAssist/Aircraft/MD11/**", "", false)]
+    [InlineData("MSFSBlindAssist/Resources/bbs757_control_map.json", ".claude/rules/b757.md", "MSFSBlindAssist/Aircraft/BBS757/**", "", false)]
     [InlineData("tests/MSFSBlindAssist.Tests/TcasServiceTests.cs", ".claude/rules/core.md", "MSFSBlindAssist/**", "", false)]
     [InlineData("tools/CDUTest/Program.cs", ".claude/rules/core.md", "MSFSBlindAssist/**", "", false)]
     [InlineData("MSFSBlindAssist/Utils/Logging/Log.cs", ".claude/rules/core.md", "MSFSBlindAssist/Services/**", "MSFSBlindAssist/Utils/Logging/", false)]
@@ -760,7 +761,7 @@ public class ClaudeContextBudgetTests
         ["shared code the rule's own code calls or reads: the rule guards the call, and the callee works the same "
             + "without it"] = new[]
         {
-            "A320-7 SetLVar", "A320-23 SetLVar", "DBG-2 SetLVar", "IFLY-2 SetLVar", "MD11-1 SetLVar", "VAR-2 SetLVar",
+            "A320-7 SetLVar", "A320-23 SetLVar", "DBG-2 SetLVar", "IFLY-2 SetLVar", "MD11-1 SetLVar",
             "A380-25 SendEvent", "A380C-24 StopAllMotion", "A320-39 AircraftLoaded",
             "PEFB-6 AnnounceImmediate", "ROL-25 AnnounceImmediate", "TKO-5 AnnounceImmediate", "VAT-3 AnnounceImmediate",
             "VAT-3 AnnounceWithQueue", "VAT-4 QueuedAnnouncementCount", "EXIT-10 AnnounceInstruction",
@@ -770,7 +771,7 @@ public class ClaudeContextBudgetTests
             "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
             "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
             "DCK-19 UpdateHeadingErrorWithThresholds", "RTE-32 StartGuidance", "EXG-8 RefineForPlanner",
-            "FOA-1 FlyByWireA320Definition.ApplyUIVariable",
+            "FOA-1 FlyByWireA320Definition.ApplyUIVariable", "B757-38 HotkeyAction.ReadNDWaypoint",
             "FOA-8 ChecklistItem.LiveValue", "FOA-9 LiveValue", "FOB-1 IsReady", "FOB-2 PmdgSpeedBrakeLever.B777",
             "FOB-6 MOUSE_FLAG_LEFTSINGLE", "FOB-17 IFly737MAXDefinition.ApplyUIVariable",
             "WFD-8 AnnounceImmediate", "WFD-9 CalculateMagneticBearing",

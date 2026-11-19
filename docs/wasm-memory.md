@@ -7,7 +7,9 @@
 > window and the PFD announcements), the layout files they read memory by and the layout store that
 > finds them, the shared module session they use, or the safety model. The layout files come from the
 > layouts store, which a release carries beside the exe, or from the generator, an optional program beside
-> the app that writes layout files.
+> the app that writes layout files. The BlueBird 757's module (`bbs757`: its FMA, both EICAS screens, the
+> EHSI, the tablet's control tree and the rest of the ADI) uses the same groundwork: its layout records and what differs are in
+> [the BlueBird 757 module](#the-bluebird-757-module), its readers in [b757.md](b757.md#displays-read-from-memory).
 > Rules: `.claude/rules/wasm-memory.md` (WASM-n), full text in
 > [invariants/wasm-memory.md](invariants/wasm-memory.md).
 
@@ -107,11 +109,13 @@ nothing in the app:
 | File | Role |
 | --- | --- |
 | `ModuleDescription.cs` | `ModuleDescription`: where a WASM module's file lives (a package name pattern, the folders inside the package, with `OtherPathsInPackage` for a package laid out another way, the file name), its id and its readers. Each `LayoutReader` gives a reader's id, log name, layout type, anchor, layout dump and failed parts. |
-| `ModuleCatalog.cs`, `Pmdg737/Pmdg737Module.cs` | Every module the app knows. So far one: `pmdg737`, the `737NG3.wasm` of the `pmdg-aircraft-73[6-9]` packages, with the readers `fma`, `engineDisplays`, `navDisplay` and `pfd` in that order. |
+| `ModuleCatalog.cs`, `Pmdg737/Pmdg737Module.cs`, `Bbs757/Bbs757Module.cs` | Every module the app knows. Two: `pmdg737`, the `737NG3.wasm` of the `pmdg-aircraft-73[6-9]` packages, with the readers `fma`, `engineDisplays`, `navDisplay` and `pfd` in that order; and `bbs757`, the `BBS752.wasm` of the `bluebirdsim-aircraft-757-200` package, with the readers `fma`, `efb`, `lowerEicas`, `upperEicas`, `ehsi` and `adi` ([the BlueBird 757 module](#the-bluebird-757-module)). |
 | `LayoutFile.cs`, `LayoutFileFormat.cs`, `ReaderResult.cs` | The layout file: its records, and the writer and reader of its text ([WASM-21]). |
 | `WasmFileImage.cs`, `LayoutFit.cs` | The fingerprint: a `.wasm` file's code hash, data segments and searches, and whether a layout file fits it ([the fingerprint](#the-fingerprint)). |
 | `ModuleAnchor.cs` | The bytes a reader's memory is found by, and their wasm address. |
 | `Pmdg737/` | The 737's layout records: `Pmdg737FmaLayout` with `FmaColumnWords`, `FmaDerivation` and `FmaReasons` (the spoken reasons every reader uses), the engine display, ND and PFD layouts, and `PfdExpr`. Also the log's layout dumps (`Pmdg737LayoutDescriptions`) and the PFD's part names (`Pmdg737PfdParts`). These keep the namespace `MSFSBlindAssist.Services.PMDG`. |
+| `Bbs757/` | The 757's layout records, one per reader, with `Bbs757WordTable` and the log's layout dumps (`Bbs757LayoutDescriptions`): [the BlueBird 757 module](#the-bluebird-757-module). These keep the namespace `MSFSBlindAssist.Services.BBS757`. |
+| `LayoutFileOptionalAttribute.cs` | Marks a layout record's member that a file may lack, because it was added after files without it were written (the 757 EHSI's five optional parts). |
 
 `MSFSBlindAssist/Services/WasmMemory/` holds the generic groundwork. `SimProcess.cs`, `ModuleMemory.cs`,
 `WasmMemoryLocator.cs` and `IProcessMemorySource.cs` use no app types and do no logging:
@@ -181,6 +185,8 @@ the generator could not derive one. The generator, an optional program beside th
 - **Loading.** `LayoutFileFormat.TryRead` refuses text that is not JSON, another format version or module,
   a reader missing or extra, a reader holding both or neither of a layout and a failure, a layout record
   missing any member, and null where a record allows none, so a damaged file never loads as offsets of 0.
+  The one exception is a member marked `[LayoutFileOptional]`, which a file may lack and which then keeps its
+  initializer's value; only the 757 EHSI's optional parts use it.
 - **Size.** The file the installed 737-800 and 737-900 share is 1.8 MB.
 
 ### The fingerprint
@@ -246,7 +252,9 @@ unavailable for that load only, and the next load finds the file.
 ## The shared module session
 
 `ModuleSession` ([WASM-11]) does the two slow jobs once for every reader of a module. It takes the
-module's description, so the PMDG 777 can later use it with a reader list of its own:
+module's description, so each module brings a reader list of its own: the BlueBird 757 runs a second session on
+`Bbs757Module.Description` ([the BlueBird 757 module](#the-bluebird-757-module)), and the PMDG 777 can later do
+the same. What follows names the 737's files and logs:
 
 - **`AnalyseAsync`** finds the installed files (`ModuleHost.FindInstalledFiles`: `MsfsPackagesLocator`,
   then `ModuleFiles.FindInstalled`) and gets each one's build from the layout store. A build is kept when
@@ -731,6 +739,190 @@ pointer at the top edge with the aircraft far below the path, the localizer and 
 same side, PULL UP, the minimums bug). Not yet seen live: the flap bugs and bands at each setting, a
 stabilised ILS to touchdown (markers, the minimums bug sliding on, the landing bars), the landing roll's
 IAS difference, the slip's side, the TCAS zones, and the classic look.
+
+## The BlueBird 757 module
+
+The BlueBird 757-200 is the second module on this groundwork: `bbs757`, the `BBS752.wasm` of the one package
+`bluebirdsim-aircraft-757-200`, at `SimObjects\Airplanes\bbs-757-200-base\panel`
+(`MSFSBlindAssist.DisplayLayouts/Bbs757/Bbs757Module.cs`). BlueBird draws the ADI, the EHSI, both EICAS screens
+and its tablet inside that module, with no text behind them. What the pilot gets from each reader, every spoken
+line and the windows are in [b757.md](b757.md#displays-read-from-memory); this section is the module, its layout
+records and what differs from the 737. The same rules apply ([WASM-1], [WASM-2], [WASM-4], [WASM-26], [WASM-31]);
+the 757's own are B757-30 to B757-49 and B757-64 to B757-66 (`.claude/rules/b757.md`, `.claude/rules/b757-ehsi.md`,
+`.claude/rules/b757-adi.md`).
+
+### How the 757's objects are found
+
+This build of `BBS752.wasm` has no name section. Every reader reaches its object through BlueBird's gauge
+manager and C++ run-time type information: each layout holds the manager's static address (`ManagerBase`) and
+how many bytes of pointers to search (`ManagerSpan`), and the display is the pointer there whose target starts
+with the display class's vtable pointer (`PfdVptr`, `UpperEicasVptr`, `LowerVptr`, `NdVptr`, `EfbVptr`). The
+FMA, the ADI, the lower EICAS and the EHSI take the first such pointer (for the FMA, the ADI and the EHSI that is the Captain's
+display; the First Officer's follows it), the upper EICAS requires exactly one. Everything else is an offset into that object or an object it points
+to, and a few static addresses (the EICAS message lists, the clock, the EHSI's path registry). Each layout also
+carries its own anchor (`AnchorAddress`, `Anchor`), by which `WasmMemoryLocator.FindLinearBase` finds the
+module's memory ([WASM-3]). The shapes of `std::vector`, `std::string` and `std::map` are the Emscripten libc++
+ABI and are known to the readers; only BlueBird's own offsets come from the layout.
+
+### The layout records
+
+`MSFSBlindAssist.DisplayLayouts/Bbs757/`, one record per reader, in the module's reader order. Each compares by
+content and ignores `SourceFile`, so the same build installed twice gives one layout.
+
+| Reader id | Record | Holds |
+| --- | --- | --- |
+| `fma` | `Bbs757FmaLayout` (`Bbs757FmaLayout.cs`, with `Bbs757DisplayReasons` and `Bbs757McpValueType`) | The Captain's primary flight display object and the pointers from it to the autoflight and thrust objects (`PfdToAfds`, `PfdToTmc`); the offsets of the autothrottle mode, pitch, pitch armed, roll, roll armed and status values; a `Bbs757WordTable` for each; the word drawn while only the flight director is on (`FdWord`); the two F/D switch bytes; the pointer from the autoflight object to the MCP (`AfdsToMcp`) and the MCP's selected altitude and heading, with how this build stores them (`McpValueType`: a 32-bit integer or a 64-bit float). |
+| `efb` | `Bbs757EfbMemLayout` | The tablet's control tree: [below](#the-efb-layout). |
+| `lowerEicas` | `Bbs757LowerEicasLayout` | The power and blanking bytes, the page field and the three page values by kind (`EnginePage`, `StatusPage`, `EngineOff`), the N2/N3 exceedance latch, the two engines and their data block, engine type and invalid value, and the HP spool's offset for an RR and a PW. Each page is an optional part, null with its reason: `Bbs757LowerEicasEnginePage` (the engine data fields, the four max boxes, the settings object's pounds flag, the start flags and the fields of BlueBird's start-hold test) and `Bbs757LowerEicasStatusPage` (the status message list's static address, stride and cap and a record's text, length and sequence stamp; the hydraulics, APU and oxygen objects' fields; the four flight control pointers; the brake temperatures). No word table and no number format: the lower EICAS's label words and formats are in the app (`Bbs757LowerEicasText`). |
+| `upperEicas` | `Bbs757UpperEicasLayout` | The object's power, failed, timed-blank and compact bytes, the EGT and N1 limits and max memories, the in-flight start rows; the pointers to the computer, both engines, the lower EICAS, the pneumatic, FMS, fire, reverser, thrust management and TAT objects and the fields read in each; the two message lists' static addresses, an entry's text, length, id, cancelled byte and level, and the caps (`MaxMessages`, `MaxTextLength`, `MaxComponents`); the draw's constants (lines per page, how long RECALL shows, the anti-ice valve's ids, states and minimum opening, the reverser's moving and deployed states, the modes that inhibit amber) and its words (the message levels, the thrust reference words and numbers, the manual, D-TO, TAI, REV, PAGE and RECALL words, the start block's title and units). |
+| `ehsi` | `Bbs757EhsiLayout`, with `Bbs757EhsiLegPosition` | The Captain's navigation display object: its power bytes; the pointers to the EFIS panel, the instrument source (and from it the selected IRS), the MCP and the route; mode, centered, range, validity, heading number, track-up and true-reference fields and the mode word table; the map's size, center, rotation and aircraft screen point; the DATA switch and the EXCESS DATA count and limit; the origin and destination airports; the route's vectors and a leg's fields (stride, cap, label, kind, position by kind, terminator, constraint, ETA); the path registry and the top-of-climb, top-of-descent and end-of-descent fields; the draw's own constants as values (`RadiusFactor`, `AircraftYFactor`, `ClipInset`, `MarkerMargin`, `MinEtaGroundSpeed`); and the screen's words. Then five optional parts. |
+| `adi` | `Bbs757AdiLayout` (`Bbs757AdiLayout.cs`) | The Captain's primary flight display object again (the FMA layout's `PfdVptr`, found afresh: no state is shared with the FMA reader) and its power, failed and timed-blank bytes; the pointers from it to the instrument source selector (and from that the selected IRS, the air data computer and the radio altimeter), the MCP, the autoflight object and the FMS; the air data block's and the PFD's ILS block's offsets; a device's powered and failed bytes. Then seven optional parts, each null with its reason (`AttitudeMissing` and the others): `Bbs757AdiAttitude` (the IRS's attitude-valid fields and the ATT word), `Bbs757AdiSpeed` (the speed tape's sources, the AFDS timer, the draw's constants and words), `Bbs757AdiIls` (the ILS block's pointers, scales and flags, the rising runway's modes), `Bbs757AdiRadioAltitude` (the radio altimeter, its self-test, the decision height, ALT), `Bbs757AdiFlightDirector`, `Bbs757AdiTcas` (the resolution advisory's pitch limits) and `Bbs757AdiReferenceSpeeds` (the FMC's VREF 30 and 25, which the ADI does not draw: Shift+1 to Shift+6 speak them). Generator version 9; the measurements are in [b757.md](b757.md#the-adi-altp). |
+
+The EHSI's five optional parts, each a record of its own, null exactly when its reason (`ApproachMissing` and the
+others) is set, which the record checks on save and on load (`CheckParts`):
+
+| Part | Record | Holds |
+| --- | --- | --- |
+| `Approach` | `Bbs757EhsiApproach` | The VOR and ILS picture: course, deviation, bar, dots, flags and TO/FROM fields in the display object, the glideslope in the PFD's ILS block, the DME object, the ILS frequency's receiver, the bearing pointer selectors (L:var handles at static addresses, the cached value at `HandleValue`), the VOR panels' stations and a station record's ident, frequency and position. |
+| `Tcas` | `Bbs757EhsiTcas` | The TCAS computer's powered, failed, level, advisory and test fields, the TFC switch and the message gate byte in the display object, the traffic vector (stride, cap, each entry's kind, trend, relative altitude and position), the tag's divisor and the screen's words. |
+| `MapOptions` | `Bbs757EhsiMapOptions` | The NAV AID, ARPT and WPT switch bytes and the tuned stations; the navigation database's navaid, waypoint and NDB lists and the FMS's airport list with their record fields; the VOR panels the course lines come from; the draw loop's constants (the kinds drawn, the high class and its range, the NDB range and distance, the round limit) and the kind values the app names in its rows. |
+| `MapExtras` | `Bbs757EhsiMapExtras`, with `Bbs757EhsiCapabilityChoice` | TERR (the button's L:var handle, the picture byte, the two elevations in a static record per side, the thresholds their colors come from), the wind's static show byte, the two runway records, the deceleration points' vectors, and a leg's capability set with BlueBird's rule for which of a navaid leg's two positions to take. |
+| `MapGuides` | `Bbs757EhsiMapGuides` | The FIX pages' on bytes, fix objects and entry vectors (radial and distance), the off-path descent circles' center and radii, the altitude range arc's inputs, the VNAV path deviation and its clamp, and the pixel sizes of a radial's dashes. |
+
+`Bbs757WordTable` is one display field's words, verbatim from the module's UTF-32 tables: the raw field value to
+the word the display draws. 0 is always blank and never in the table; any other value with no entry reads
+"unrecognised", spoken and never dropped. `Bbs757LayoutDescriptions` writes each layout in full to
+`bbs757-module.log` (`file analysis: …`), as `Pmdg737LayoutDescriptions` does for the 737, and the module's
+`LowerEicasFailures` names a lower EICAS page whose part was not derived, `AdiFailures` an ADI part.
+
+### The EFB layout
+
+`Bbs757EfbMemLayout` is where one build keeps the tablet's control tree, which the 757 tablet window reads
+instead of capturing the screen. The record's fields, in its order:
+
+- **The tree.** `ManagerBase`, `ManagerSpan` and `EfbVptr` find the EFB object; `EfbToBbos` is its pointer to the
+  tablet's operating system object (BBOS) and `BbosToAppMap` the app map there (a `std::map<int, vector>`). Per
+  app: `AppFront` (the front flag), `AppPage` (the current page) and `AppRoots`; a page's `PageChildren`. Per
+  control: `CtrlName`, `CtrlRect`, `CtrlVisible`, `CtrlChildren`, `CtrlParent`, and `CtrlLabelText` or
+  `CtrlButtonText` for a label's or a button's text. `ClassVptrs` is the list of control and app classes the
+  reader recognizes, each a kind name with the vtable pointer its objects carry (`KindFor`): the reader tells a
+  scrollbox from a slider, text box, drop-down, toggle or button, and the top bar, dialog and keyboard apps from
+  the rest, by it.
+- **Scroll and sliders.** A control's rectangle never moves when its page scrolls. `ScrollboxOffset` is a
+  scrollbox's content offset in tablet pixels (a float): the reader draws the scrollbox's controls that much
+  higher. It is never the scrollbar thumb, which stops short of the content's end ([B757-26]). `SliderKnob` is a
+  slider's knob rectangle (four floats in the slider's own coordinates).
+- **Text boxes and drop-downs.** `TextboxLabel`: a text box's pointer to its text label, a label outside every
+  children vector whose text is the box's. `MultilineText`: a multi-line box's whole text, a `std::string` with
+  '\n' between lines. `PulldownFace`: a drop-down's pointer to its face, a button whose text is the current choice
+  and whose rectangle is the drop-down's. `PulldownList`: its pointer to the list, a scrollbox holding one button
+  per entry. `PulldownEntries` and `PulldownEntryText`: the vector of entry records and a record's text.
+  `PulldownOpen`: 1 while the list is open. A drop-down has no index: its current entry is the one whose text is
+  its face's.
+- **The selected bytes.** `ButtonSelectable` is 1 on the entries of a side menu or tab row; `ButtonUnselected` is
+  0 on the current entry and 1 on the others. The current section or tab is the button with the first 1 and the
+  second 0.
+- **Dialogs and notifications.** `BbosModalOpen`: 1 while a question is up (the dialog app's own front flag stays
+  set after it closes, so this byte is the test). `BbosNotices`: BBOS's vector of notification records, with
+  `NoticeStride` and a record's `NoticeId` (rising with each new one), `NoticeTitle`, `NoticeText`, `NoticeTime`
+  and `NoticeUnread`.
+- **The top bar's notification panel.** BlueBird draws its notification pop-up and list from the top bar app's own
+  fields, not as controls: `OverlayPanelShown` (a pop-up or the list shows), `OverlayListOpen` (the full list is
+  open), `OverlayPanelRect` (x, y and width) and `OverlayPanelHeight`.
+- **The top bar's status.** `OverlayFlightTimeText` (the flight-time text) and `OverlayBoardingRect` (the boarding
+  box, written every frame it is drawn and zeroed otherwise, so a width above 0 is the box showing); and in BBOS
+  `BbosLoadState` (0 idle, 1 just started, 2 running, 3 paused, 4 done), `BbosLoadDeboarding`, `BbosLoadFlown`
+  and `BbosLoadRemaining` (three remaining times in seconds).
+- **The keyboard state.** In the keyboard app: `KeyboardShown` (1 from a text box's tap until the keyboard goes
+  down; the keyboard's controls read visible either way, so this byte is what says it is up), `KeyboardReady` (1
+  once it has settled; a key tapped before lands on the page beneath), `KeyboardKeypad` (the numeric keypad shows
+  instead), `KeyboardTarget` (the text box typed into), `KeypadRect` (the keypad has no controls in any tree, so
+  its keys are placed from this rectangle), and the layer bytes `KeyboardNumeric`, `KeyboardShift` and
+  `KeyboardCaps`.
+- **A text box's typing fields.** `TextboxCaret` (the character boundary a typed character goes in at),
+  `TextboxMaxLength` (a key tapped on a full box is dropped) and `TextboxKeypad` (1 when it opens the numeric
+  keypad).
+- **Toggles.** `ToggleOn`: a settings switch's own byte, whose low bit is its state.
+
+The fields after `SliderKnob` were measured on the live aircraft on 2026-11-07 and are derived for each build
+like every other offset. In the app, `SimConnect/BBS757/Bbs757EfbMemory.cs` walks the tree through
+the layout (over `IEfbMemory`; `ModuleEfbMemory` is the live implementation on `ModuleMemory`) and
+`Bbs757EfbModelReader` turns it into the window's model. The read is `BBS757Definition.ReadEfbModelAsync`, on the
+same session as the display readers: it takes the located build that has an `efb` layout, a lease of the shared
+handle for the length of one read, and returns the model or a reason in the 757's words.
+
+### The session and the readers in the app
+
+`BBS757Definition` owns the one session (`DisplaySession`, [B757-32]): `MainForm.BBS757.cs`'s
+`StartBbs757Displays` makes a `ModuleHost` and a `LayoutStore` for `Bbs757Module.Description`, with the same
+roots and the same optional generator as the 737's, and hands them to `StartDisplays`.
+`MSFSBlindAssist/Services/BBS757/` holds the readers:
+
+| File | Role |
+| --- | --- |
+| `IBbs757DisplayReader.cs` | What one reader supplies (`IBbs757DisplayReader<TLayout, TReading>`), a sampler (`IBbs757DisplaySampler<TReading>`), a reading (`IBbs757Reading.Corrupt`), a simulator input (`Bbs757SimInput`), a spoken line with its Ctrl+M row (`Bbs757SpokenLine`) and the monitor's outside world (`IBbs757DisplayEnvironment`). |
+| `Bbs757DisplayMonitor.cs` | The one state machine every 757 reader runs on: the 737 FMA monitor's states and timings, generic over the reader. |
+| `Bbs757DisplayEnvironment.cs`, `Bbs757DisplayFilesNotice.cs`, `Bbs757DisplaySpeech.cs`, `Bbs757DisplayRegistry.cs` | The app side (the simulator's state and the readers' inputs from SimConnect's cache, the Ctrl+M mutes, the non-interrupting announce, the logs, the session), the once-per-session "files could not be loaded" line, the status lines, and the registry of monitors, rows, keys and windows. |
+| `Bbs757FmaReader.cs`, `Bbs757FmaDisplay.cs`, `Bbs757FmaSpeech.cs` | The FMA: sampler, reader, words. |
+| `Bbs757UpperEicasReader.cs`, `Bbs757UpperEicasReading.cs`, `Bbs757UpperEicasDisplay.cs`, `Bbs757UpperEicasSpeech.cs` | The upper EICAS. |
+| `Bbs757LowerEicasReader.cs`, `Bbs757LowerEicasReading.cs`, `Bbs757LowerEicasDisplay.cs`, `Bbs757LowerEicasText.cs` | The lower EICAS. |
+| `Bbs757EhsiReader*.cs`, `Bbs757EhsiReading*.cs`, `Bbs757EhsiGeometry.cs`, `Bbs757EhsiMapOptionsLoop.cs`, `Bbs757EhsiText*.cs`, `Bbs757EhsiDisplay.cs` | The EHSI: the sampler and the reading in partials by part, BlueBird's projection and clip, its map-options draw loop, the rows and sentences, the reader. |
+
+### What differs from the 737
+
+- **One generic monitor, not a copy per display.** The 737's four monitors are copies of one state machine;
+  the 757's readers share `Bbs757DisplayMonitor<TLayout, TReading>`.
+- **No comparison with the simulator** ([B757-30]). The 737's readers gate every reading on the PMDG SDK or on
+  simulator values ([WASM-6], [WASM-10], [WASM-13], [WASM-19]). The 757's trust a reading on structure alone: the
+  layout fits the file, the object is found by its vtable pointer with every read inside the module, and the
+  reading is not `Corrupt`. BlueBird has no SDK to check against, and the comparisons the first readers shipped
+  with were removed on 2026-11-11, after one failed at both engine starts of a flight while the display was
+  right. So the 757 has no "values do not match" stop. A reader may take a simulator variable as an input where
+  BlueBird's own draw takes it, never as a check.
+- **Waiting for the simulator, not for an SDK.** The monitor waits while SimConnect is disconnected, no flight
+  runs or the loaded title is not a 757's.
+- **The 757's own reasons and notice.** `Bbs757DisplayReasons` ("BlueBird file not recognised", "BlueBird 757
+  files not found", and the reasons the two aircraft word alike); the session words its failures for the 737, so
+  `Bbs757DisplayReasons.FromSession` rewords them before they are spoken. With no layout file loaded,
+  `Bbs757DisplayFilesNotice` says "BlueBird display files could not be loaded; the display keys fall back to AI
+  reading." once per module session, as [WASM-29] does for the 737.
+- **Optional parts.** A lower EICAS page and each of the EHSI's five parts is null with its reason when not
+  derived and costs only its own rows. The EHSI's are also `[LayoutFileOptional]`, so a layout file written
+  before those parts existed still loads, with every part "not in this layout file".
+
+### The 757's layout files
+
+Stored and found exactly as the 737's: `layouts\bbs757\<code hash>-<first 16 characters of the data hash>.json`
+under `%APPDATA%\MSFSBlindAssist\` and beside the exe, one file per build holding every reader's layout or
+failure, chosen by `LayoutStore` as [the layout store](#the-layout-store) describes ([WASM-31]). One file serves
+the display readers and the tablet window alike. Two consequences of the file's strictness ([WASM-26]):
+
+- A reader added to `Bbs757Module.Description` makes every file written before it unreadable (a reader is
+  missing), so that build has no layout until a file from the newer generator is there. An optional part marked
+  `[LayoutFileOptional]` does not have this cost.
+- `tools/LayoutBundle` takes every module of `ModuleCatalog.All`: a release's bundling fails when the layouts
+  store has no layout file for `bbs757`, or holds one this build of the app cannot load, and it copies nothing
+  then.
+
+After a BlueBird update that changes the module's code or the data the generator read, no layout fits: the
+display readers are unavailable with "BlueBird file not recognised" (the pilot hears the one notice line), Alt+E,
+Alt+S and Alt+N use the AI read, and the tablet window shows the same reason as its status, until a
+build carries the new file or the generator beside the app writes one. `bbs757-module.log` shows which happened.
+
+### Logs and tests
+
+`bbs757-module.log` has the store's steps (`layouts:`), each file's layouts (`file analysis:`) and the memory
+search; `bbs757-fma.log`, `bbs757-upper-eicas.log`, `bbs757-lower-eicas.log` and `bbs757-ehsi.log` each reader's
+state changes with their reasons.
+
+The 757's tests build their layouts in code (sample records, never BlueBird's file) and run the samplers on fake
+memory: `Bbs757LayoutFileTests`, `Bbs757UpperEicasLayoutTests`, `Bbs757LowerEicasLayoutTests`,
+`Bbs757EhsiLayoutTests` and `Bbs757EhsiLayoutPartsTests` (each record saves and loads back byte-identical under any
+culture, a damaged file is refused, a file without the EHSI's parts loads with them missing);
+`Bbs757DisplayMonitorTests`, `Bbs757DisplayRegistryTests`, `Bbs757DisplaysWiringTests` and `Bbs757DisplayFormTests`;
+per reader `Bbs757Fma*Tests`, `Bbs757UpperEicas*Tests`, `Bbs757LowerEicas*Tests` and `Bbs757Ehsi*Tests`; and for
+the tablet `Bbs757EfbMemoryTests` and `Bbs757EfbModelReaderTests`. The offsets in the sample records are copies of
+those measured in the build analyzed in November 2026; nothing reads them but the tests.
 
 ## Safety model
 

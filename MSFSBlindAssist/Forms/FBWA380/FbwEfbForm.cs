@@ -74,9 +74,9 @@ public class FbwEfbForm : Form
     private List<EFBElement> _elements = new();
     private string _currentPage = "";
     private string _previousAnnouncedPage = "";
-    // Last alert/confirmation card text we spoke, so a popped-up alert announces once (not every poll);
-    // cleared when no alert is present so re-showing the same alert announces again.
-    private string _lastAnnouncedAlert = "";
+    // The alerts/confirmation cards spoken and still on screen (key, or text when keyless), so a
+    // popped-up alert announces once (not every poll) and again only after it has gone and returned.
+    private readonly HashSet<string> _announcedAlerts = new();
 
     // Browser mode = WebView2 semantic document; otherwise the native list.
     private bool _useBrowser = true;
@@ -336,6 +336,7 @@ public class FbwEfbForm : Form
                 case "disabled":  el.Disabled = kv.Value == "true"; break;
                 case "announceChange": el.AnnounceChange = kv.Value == "true"; break;
                 case "key":       el.Key = kv.Value; break;
+                case "commit":    el.Commit = kv.Value; break;
                 case "options":   el.Options = string.IsNullOrEmpty(kv.Value) ? null : kv.Value.Split(OptionSeparator); break;
                 case "min":       el.Min = ParseInv(kv.Value); break;
                 case "max":       el.Max = ParseInv(kv.Value); break;
@@ -367,13 +368,13 @@ public class FbwEfbForm : Form
         // updated.") the moment it appears. The agent flags it kind 'alert'; the browser/list render
         // still SHOWS it (+ its OK button stays clickable), but a screen reader won't reliably speak
         // a dynamically-injected alert, so we announce it app-side — immediate (it interrupts), once
-        // per appearance. Cleared when the alert is gone so re-showing it speaks again.
-        var alert = _elements.FirstOrDefault(e => e.Kind == "alert" && !string.IsNullOrWhiteSpace(e.Text));
-        if (alert != null)
-        {
-            if (alert.Text != _lastAnnouncedAlert) { _announcer.AnnounceImmediate(alert.Text); _lastAnnouncedAlert = alert.Text; }
-        }
-        else { _lastAnnouncedAlert = ""; }
+        // per appearance. Forgotten when the alert is gone so re-showing it speaks again. The flyPad
+        // can list several at once (its error notices), each under its own key, so a repeat of the
+        // same error text under a new key speaks again. An alert is its key AND its text: the
+        // BlueBird 757 tablet keeps one alert under the fixed key "alert" whose words change, and
+        // each new text is a new alert.
+        var fresh = TakeNewAlerts(_elements.Select(e => (e.Kind, (string?)e.Key, e.Text)), _announcedAlerts);
+        if (fresh.Count > 0) _announcer.AnnounceImmediate(JoinAlerts(fresh));
 
         if (_useBrowser && !_webViewFailed)
         {
@@ -398,6 +399,46 @@ public class FbwEfbForm : Form
         UpdateStatusLabel();
     }
 
+    /// <summary>What makes an alert the same alert from one push to the next: its key and its text
+    /// (the text alone when it has no key). Internal for the tests.</summary>
+    internal static string AlertIdentity(string? key, string text) =>
+        string.IsNullOrEmpty(key) ? text : key + "\u001f" + text;
+
+    /// <summary>The alerts in one push not spoken yet, in order. <paramref name="announced"/> becomes
+    /// the alerts this push shows, so an alert that goes and comes back speaks again. Internal for
+    /// the tests.</summary>
+    internal static List<string> TakeNewAlerts(IEnumerable<(string Kind, string? Key, string Text)> items, HashSet<string> announced)
+    {
+        var present = new HashSet<string>();
+        var fresh = new List<string>();
+        foreach (var (kind, key, text) in items)
+        {
+            if (kind != "alert" || string.IsNullOrWhiteSpace(text)) continue;
+            string id = AlertIdentity(key, text);
+            if (present.Add(id) && !announced.Contains(id)) fresh.Add(text);
+        }
+        announced.Clear();
+        announced.UnionWith(present);
+        return fresh;
+    }
+
+    /// <summary>Several alerts that arrived together, as one announcement: ". " between them, or
+    /// only a space after one that already ends a sentence. Internal for the tests.</summary>
+    internal static string JoinAlerts(IReadOnlyList<string> texts)
+    {
+        var sb = new StringBuilder();
+        foreach (string t in texts)
+        {
+            if (sb.Length > 0)
+            {
+                char last = sb[sb.Length - 1];
+                sb.Append(last is '.' or '!' or '?' ? " " : ". ");
+            }
+            sb.Append(t.Trim());
+        }
+        return sb.ToString();
+    }
+
     // ---- browser-mode rendering ------------------------------------------
 
     private string BuildRenderJson()
@@ -417,6 +458,7 @@ public class FbwEfbForm : Form
             disabled = e.Disabled,
             announceChange = e.AnnounceChange,
             key = e.Key,
+            commit = e.Commit,
             options = e.Options,
             min = e.Min,
             max = e.Max,
@@ -536,11 +578,13 @@ public class FbwEfbForm : Form
     // which does Controls.Clear() and recreates everything — throwing the screen reader's focus off
     // the control the pilot was on, mid-interaction. That is the same failure the browser shell's
     // keyed in-place reconcile exists to prevent, one layer down; the shell already patches disabled
-    // in place (patchEl), and this is the fallback catching up with it.
+    // in place (patchEl), and this is the fallback catching up with it. The key IS here: a flyPad
+    // notice repeated under a new key (notice:1, then notice:2) shows the same text in the same rows,
+    // and only a rebuild gives its row the identity RestoreListFocus looks for.
     private string StructureSignature()
     {
         return _currentPage + "" + string.Join("",
-            _elements.Select(e => e.Index + "|" + (e.ControlType ?? "") + "|" + e.Clickable + "|" + e.Tag + "|" + e.Text));
+            _elements.Select(e => e.Index + "|" + (e.ControlType ?? "") + "|" + e.Clickable + "|" + e.Tag + "|" + e.Text + "|" + e.Key));
     }
 
     // The base (un-dimmed) label each control type shows, derived in ONE place so the build path and
@@ -615,6 +659,9 @@ public class FbwEfbForm : Form
             foreach (var el in _elements)
             {
                 if (!_rendered.TryGetValue(el.Index, out var r)) continue;
+                // The agent re-stamps idx every scrape: the same control may carry a new one, as the
+                // browser shell's patchEl keeps its data-idx current.
+                r.AgentIdx = el.AgentIdx;
                 ApplyDisabledInPlace(el, r);
                 if (r.Control is CheckBox cb)
                 {
@@ -646,13 +693,23 @@ public class FbwEfbForm : Form
 
     private void RebuildControls(string signature)
     {
+        // The control the pilot is on, by what it shows, and the rows around it. A rebuild that only
+        // shifted the rows (a flyPad notice listed or gone above it) puts the focus back on that same
+        // control; one that removed it puts the focus where it stood (FocusRowAfterRebuild).
+        var oldRows = _rendered.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
+        int focusedAt = oldRows.FindIndex(r => r.Control.ContainsFocus);
+
         _contentPanel.SuspendLayout();
+        var stale = _contentPanel.Controls.Cast<Control>().ToList();
         _contentPanel.Controls.Clear();
+        // Clear() only detaches: a removed control keeps its window handle until it is disposed.
+        foreach (var gone in stale) gone.Dispose();
         _rendered.Clear();
 
         int y = 8;
         int tabIndex = 0;
         int innerWidth = InnerWidth();
+        var seen = new Dictionary<string, int>();
 
         foreach (var el in _elements)
         {
@@ -660,9 +717,11 @@ public class FbwEfbForm : Form
             // read r.Disabled LIVE — ApplyDisabledInPlace flips that flag without recreating the
             // control, and a handler that captured the build-time bool would keep answering for a
             // state the control left polls ago.
-            var r = new RenderedControl { Disabled = el.Disabled };
+            var r = new RenderedControl { Disabled = el.Disabled, AgentIdx = el.AgentIdx };
             Control c = CreateControlFor(el, innerWidth, r);
             r.Control = c;
+            string id = (string.IsNullOrEmpty(el.Key) ? "t:" + el.Text : "k:" + el.Key) + "|" + el.ControlType + "|" + el.Clickable;
+            r.Identity = id + "#" + (seen[id] = seen.GetValueOrDefault(id) + 1);
             c.Location = new Point(8, y);
             c.TabIndex = tabIndex++;
             _contentPanel.Controls.Add(c);
@@ -672,6 +731,59 @@ public class FbwEfbForm : Form
 
         _contentPanel.ResumeLayout(true);
         _lastStructureSignature = signature;
+        if (focusedAt >= 0) RestoreListFocus(oldRows, focusedAt);
+    }
+
+    // After a rebuild, put the focus where FocusRowAfterRebuild says, as the browser shell does.
+    private void RestoreListFocus(List<RenderedControl> oldRows, int focusedAt)
+    {
+        var rows = _rendered.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
+        var targets = rows.Select(r => ListFocusTarget(r.Control)).ToList();
+        int at = FocusRowAfterRebuild(oldRows.Select(r => r.Identity).ToList(), focusedAt, oldRows[focusedAt].AgentIdx,
+            rows.Select(r => r.Identity).ToList(), rows.Select(r => r.AgentIdx).ToList(), targets.Select(t => t != null).ToList());
+        if (at >= 0) targets[at]!.Focus();
+    }
+
+    /// <summary>The new row that gets the focus after a list rebuild, or -1. The row showing what
+    /// the focused one showed; when it is gone, the first control after the nearest row before it
+    /// that stayed, else the nearest one before. When no row before it stayed, rows new at the top
+    /// (a flyPad notice listed in the same push) are not its place: the control rebuilt there keeps
+    /// its agent idx; else the first control from the next row that stayed. Rows are compared by
+    /// RenderedControl.Identity. Internal for the tests.</summary>
+    internal static int FocusRowAfterRebuild(IReadOnlyList<string> oldIds, int focusedAt, int focusedIdx,
+        IReadOnlyList<string> newIds, IReadOnlyList<int> newIdx, IReadOnlyList<bool> focusable)
+    {
+        var newAt = new Dictionary<string, int>();
+        for (int i = 0; i < newIds.Count; i++) newAt.TryAdd(newIds[i], i);
+        int Forward(int from) { for (int i = from; i < focusable.Count; i++) if (focusable[i]) return i; return -1; }
+        int Back(int from) { for (int i = from; i >= 0; i--) if (focusable[i]) return i; return -1; }
+
+        if (newAt.TryGetValue(oldIds[focusedAt], out int same) && focusable[same]) return same;
+        for (int b = focusedAt - 1; b >= 0; b--)
+        {
+            if (!newAt.TryGetValue(oldIds[b], out int anchor)) continue;
+            int after = Forward(anchor + 1);
+            return after >= 0 ? after : Back(anchor);
+        }
+        int right = -1;
+        for (int a = focusedAt + 1; a < oldIds.Count && right < 0; a++)
+            if (newAt.TryGetValue(oldIds[a], out int at)) right = at;
+        int end = right < 0 ? newIds.Count : right;
+        var oldSet = new HashSet<string>(oldIds);
+        if (focusedIdx != 0)
+            for (int i = 0; i < end; i++)
+                if (focusable[i] && newIdx[i] == focusedIdx && !oldSet.Contains(newIds[i])) return i;
+        int next = Forward(right < 0 ? 0 : right);
+        return next >= 0 ? next : Back(end - 1);
+    }
+
+    // The control a list row hands the focus to: a Button or CheckBox row itself, else a field
+    // container's TextBox, and only while it can take the focus; null for a Label. FocusContent and
+    // the rebuild's RestoreListFocus both pick by this one rule.
+    private static Control? ListFocusTarget(Control row)
+    {
+        Control? c = row is Button or CheckBox or TextBox ? row : row.Controls.OfType<TextBox>().FirstOrDefault();
+        return c is { CanSelect: true } ? c : null;
     }
 
     // What a dimmed control says when the pilot activates it, the same word the browser shell's
@@ -698,7 +810,7 @@ public class FbwEfbForm : Form
                 // answers a dimmed control.
                 AutoCheck = !cbDisabled
             };
-            int idx = el.AgentIdx;   // stamped agent idx — what click/set look up
+            // r.AgentIdx: the stamped agent idx click/set look up, read LIVE (UpdateControlsInPlace keeps it current).
             // Attached unconditionally and gated on the LIVE flag: the control survives a disabled
             // flip now, so whether it refuses cannot be decided once at build time.
             cb.Click += (_, _) => { if (r.Disabled) AnnounceUnavailable(); };
@@ -707,7 +819,7 @@ public class FbwEfbForm : Form
                 if (_suppressControlEvents || r.Disabled) return;
                 _bridgeServer.EnqueueCommand("set_element_value", new Dictionary<string, string>
                 {
-                    ["index"] = idx.ToString(),
+                    ["index"] = r.AgentIdx.ToString(),
                     ["value"] = cb.Checked ? "true" : "false",
                     ["controlType"] = "checkbox"
                 });
@@ -737,7 +849,7 @@ public class FbwEfbForm : Form
                 // could not reach the field to hear its value, or that it is greyed out.
                 ReadOnly = fieldDisabled
             };
-            int idx = el.AgentIdx;   // stamped agent idx — what click/set look up
+            // r.AgentIdx: the stamped agent idx click/set look up, read LIVE (UpdateControlsInPlace keeps it current).
             string controlType = el.ControlType!;
             string fieldName = el.Text;
             tb.KeyDown += (s, e) =>
@@ -752,7 +864,7 @@ public class FbwEfbForm : Form
                     }
                     _bridgeServer.EnqueueCommand("set_element_value", new Dictionary<string, string>
                     {
-                        ["index"] = idx.ToString(),
+                        ["index"] = r.AgentIdx.ToString(),
                         ["value"] = tb.Text,
                         ["controlType"] = controlType
                     });
@@ -791,7 +903,7 @@ public class FbwEfbForm : Form
                 TextAlign = ContentAlignment.MiddleLeft,
                 AccessibleName = text
             };
-            int idx = el.AgentIdx;   // stamped agent idx — what click/set look up
+            // r.AgentIdx: the stamped agent idx click/set look up, read LIVE (UpdateControlsInPlace keeps it current).
             btn.Click += (_, _) =>
             {
                 // The browser shell's onActivate rule: a dimmed control answers "Unavailable" and posts
@@ -799,7 +911,7 @@ public class FbwEfbForm : Form
                 // refusal was then the only thing between the pilot and a locked EFB page.
                 if (r.Disabled) { AnnounceUnavailable(); return; }   // live flag — see the checkbox note
                 _bridgeServer.EnqueueCommand("click_display_element",
-                    new Dictionary<string, string> { ["index"] = idx.ToString() });
+                    new Dictionary<string, string> { ["index"] = r.AgentIdx.ToString() });
                 var t = new System.Windows.Forms.Timer { Interval = 450 };
                 t.Tick += (_, _) =>
                 {
@@ -825,11 +937,7 @@ public class FbwEfbForm : Form
     {
         if (_useBrowser && !_webViewFailed) { _webView.Focus(); return; }
         foreach (Control c in _contentPanel.Controls)
-        {
-            if (c.CanSelect && (c is CheckBox or Button or TextBox)) { c.Focus(); return; }
-            foreach (Control child in c.Controls)
-                if (child is TextBox tb) { tb.Focus(); return; }
-        }
+            if (ListFocusTarget(c) is { } target) { target.Focus(); return; }
         _contentPanel.Focus();
     }
 
@@ -854,6 +962,12 @@ public class FbwEfbForm : Form
         // The disabled state this control is CURRENTLY rendering, and the live flag its own event
         // handlers read. Mutated by ApplyDisabledInPlace, never by a rebuild.
         public bool Disabled;
+        // What the control shows (its key, else its label, its type and its occurrence): how a rebuild
+        // finds the control the pilot was on (RestoreListFocus).
+        public string Identity = "";
+        // The agent's stamped idx its handlers post, kept current by UpdateControlsInPlace: the agent
+        // re-stamps idx every scrape, and a repeated flyPad notice's Dismiss carries a new one.
+        public int AgentIdx;
     }
 
     private class EFBElement
@@ -872,6 +986,7 @@ public class FbwEfbForm : Form
         public bool Disabled;
         public bool AnnounceChange;   // agent opt-in: speak this control's post-press label change (MD-11 stepper arrows + tiles)
         public string Key = "";       // agent-stamped reconcile key for a control whose LABEL carries changing state; "" = key by label
+        public string Commit = "";    // agent opt-in: "enter" makes a text box post its set only on Enter ("" = on change, as before)
         public string[]? Options;
         public double? Min;      // range (slider) bounds for controlType "range"
         public double? Max;
@@ -1044,8 +1159,40 @@ public class FbwEfbForm : Form
       inp.value = it.value || ''; if (it.disabled) inp.disabled = true;
       inp.setAttribute('data-idx', String(it.idx)); inp.setAttribute('aria-label', text || 'Field');
       function commit() { post({ type: 'set', idx: inp.getAttribute('data-idx'), value: inp.value, controlType: 'text' }); }
-      inp.addEventListener('change', commit);
-      inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } });
+      if (it.commit === 'enter') {
+        // Opt-in Enter-only box (the BlueBird 757 tablet's fields, which TYPE on the tablet's own
+        // keyboard): the set posts ONLY on Enter. Leaving the box any other way puts the item's value
+        // back and says '<label> not changed' once -- the one thing the screen reader cannot say.
+        // inp._val is the item's latest rendered value, the tablet's own text. inp._dirty is true
+        // while the box holds text the pilot typed ('input') since the shell last wrote it: only
+        // that text is ever posted, so Enter never types a stale value back over the tablet's (the
+        // re-review's N1), and Enter on it again after a failed typing is the pilot's retry.
+        // inp._sent is true from Enter until the next keystroke, across every re-render: the
+        // tablet's read-back may differ from what was typed (a box upper-cases it, drops a key, or
+        // rejects it and keeps its old text). Leaving the box shows the tablet's text again, saying
+        // '<label> not changed' only for typed text that Enter never sent (the runner said what
+        // the tablet reads). Its accessible description says Enter types it (NVDA says it after
+        // the name, role and value as the box gets the focus; the final review's M6).
+        inp.setAttribute('aria-description', 'Press Enter to type it on the tablet.');
+        inp._val = it.value || ''; inp._sent = false; inp._dirty = false;
+        inp.addEventListener('input', function () { inp._dirty = true; inp._sent = false; });
+        inp.addEventListener('keydown', function (ev) {
+          if (ev.key !== 'Enter') return;
+          ev.preventDefault();
+          if (!inp._dirty || inp.value === inp._val) return;
+          inp._sent = true; commit();
+        });
+        inp.addEventListener('blur', function () {
+          var unsent = inp._dirty && !inp._sent;
+          inp._dirty = false;
+          if (inp.value === inp._val) return;
+          inp.value = inp._val;
+          if (unsent) announce((text || 'Field') + ' not changed');
+        });
+      } else {
+        inp.addEventListener('change', commit);
+        inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } });
+      }
       fl.appendChild(inp); return fl;
     }
     if (type.charAt(0) === 'h' && type.length === 2) {
@@ -1076,6 +1223,11 @@ public class FbwEfbForm : Form
   }
 
   function ctrlOf(node) { if (node.matches && node.matches('[data-idx]')) return node; return node.querySelector ? node.querySelector('[data-idx]') : null; }
+  // The control a list node holds that can take the focus, or null.
+  function focusableIn(node) {
+    var bc = node.matches('button, a, input, select') ? node : node.querySelector('button, a, input, select');
+    return (bc && !bc.disabled) ? bc : null;
+  }
 
   // Patch a reused node's mutable bits IN PLACE — never recreate it, never write to
   // the control the user is currently editing (preserves the screen-reader cursor).
@@ -1113,7 +1265,15 @@ public class FbwEfbForm : Form
     }
     if (type === 'in') {
       c.disabled = !!it.disabled;
-      if (document.activeElement !== c) { var nv = it.value || ''; if (c.value !== nv) c.value = nv; }
+      if (it.commit === 'enter' && c._val !== undefined) {
+        // The tablet's latest text, put back when the pilot leaves the box; _sent and _dirty are the pilot's to change (by typing,
+        // Enter, leaving), never a re-render's. Text the pilot typed in the box they are in is never written over; any other box,
+        // the one they are in but have not typed in included, shows the item's value.
+        var ev2 = it.value || '';
+        c._val = ev2;
+        if ((document.activeElement !== c || !c._dirty) && c.value !== ev2) c.value = ev2;
+      }
+      else if (document.activeElement !== c) { var nv = it.value || ''; if (c.value !== nv) c.value = nv; }
       var sp2 = node.querySelector('span'); if (sp2) setText(sp2, (text || 'Field') + ': ');
       return;
     }
@@ -1155,23 +1315,69 @@ public class FbwEfbForm : Form
     if (page !== renderedPage) { list.innerHTML = ''; renderedPage = page; }   // page change → clean rebuild
 
     var els = payload.items || [];
+    var focused = document.activeElement;                      // given back below if a move takes it
+    var before = Array.prototype.slice.call(list.children);   // pre-render order, for focus rescue below
     var existing = {};
-    for (var j = 0; j < list.children.length; j++) { var ck = list.children[j].getAttribute('data-key'); if (ck) existing[ck] = list.children[j]; }
+    for (var j = 0; j < before.length; j++) { var ck = before[j].getAttribute('data-key'); if (ck) existing[ck] = before[j]; }
 
-    var used = {}, seen = {}, prev = null;
+    // Every item's key first, so the nodes leaving are known before anything moves.
+    var keys = [], used = {}, seen = {};
     for (var n = 0; n < els.length; n++) {
-      var it = els[n], base = keyOf(it);
+      var base = keyOf(els[n]);
       var occ = (seen[base] = (seen[base] || 0) + 1);
-      var key = base + '#' + occ;                       // disambiguate duplicate labels
+      keys.push(base + '#' + occ);                      // disambiguate duplicate labels
+      used[keys[n]] = true;
+    }
+    // A removed node that held focus (a flyPad notice's Dismiss button the pilot just pressed, a
+    // notice that expired under the cursor) would drop focus to <body>, and the screen reader to
+    // an arbitrary place: remember where it stood, between the nearest nodes before and after it
+    // that stay, and the agent idx a control rebuilt in its place keeps.
+    var holder = null, anchor = null, right = null, holderIdx = null;
+    for (var gone in existing) { if (!used[gone] && existing[gone].contains(focused)) { holder = existing[gone]; break; } }
+    if (holder) {
+      var h = before.indexOf(holder), hc = ctrlOf(holder);
+      for (var b = h - 1; b >= 0 && !anchor; b--) { if (used[before[b].getAttribute('data-key')]) anchor = before[b]; }
+      for (var a = h + 1; a < before.length && !right; a++) { if (used[before[a].getAttribute('data-key')]) right = before[a]; }
+      holderIdx = hc ? hc.getAttribute('data-idx') : null;
+    }
+    // Leaving nodes go BEFORE the rest is placed: while one is still in the list, every node after
+    // it is out of place and moved by insertBefore, and a moved node loses the focus (a flyPad
+    // notice at the top going would take the focus off whatever control the pilot is on).
+    for (var gone2 in existing) { if (!used[gone2]) list.removeChild(existing[gone2]); }
+
+    var prev = null;
+    for (var m = 0; m < els.length; m++) {
+      var it = els[m], key = keys[m];
       var node = existing[key];
       if (node) { patchEl(node, it); }
       else { node = buildEl(it); if (!node) continue; node.setAttribute('data-key', key); }
-      used[key] = true;
       var ref = prev ? prev.nextSibling : list.firstChild;
       if (node !== ref) list.insertBefore(node, ref);    // move only if out of place
       prev = node;
     }
-    for (var gone in existing) { if (!used[gone]) list.removeChild(existing[gone]); }
+    // Focus the first control now standing where the removed one stood (a control rebuilt in its
+    // place, an unkeyed label change, takes it), else the nearest control before it, else the
+    // page heading. With no node before it that stayed, nodes new at the top (a notice listed in
+    // the same render) are not its place: the control rebuilt there keeps its agent idx; else the
+    // first control from the next node that stayed. Mirrored by FbwEfbForm.FocusRowAfterRebuild.
+    var target = null, c, p;
+    if (holder && anchor) {
+      for (c = anchor.nextSibling; c && !target; c = c.nextSibling) target = focusableIn(c);
+      for (p = anchor; p && !target; p = p.previousSibling) target = focusableIn(p);
+    } else if (holder) {
+      if (holderIdx && holderIdx !== '0') {
+        for (c = list.firstChild; c && c !== right && !target; c = c.nextSibling) {
+          var f = focusableIn(c);
+          if (f && f.getAttribute('data-idx') === holderIdx && before.indexOf(c) < 0) target = f;
+        }
+      }
+      for (c = right || list.firstChild; c && !target; c = c.nextSibling) target = focusableIn(c);
+      for (p = right ? right.previousSibling : null; p && !target; p = p.previousSibling) target = focusableIn(p);
+    }
+    if (holder) (target || document.getElementById('pgttl')).focus();
+    // A node that stayed but was moved (a re-sort) lost the focus as insertBefore took it out:
+    // give it back.
+    else if (focused && focused !== document.activeElement && list.contains(focused)) focused.focus();
   };
 
   document.addEventListener('keydown', function (e) {
