@@ -124,7 +124,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     private readonly IGroundTrafficSimSource _sim;
     // Null in the headless constructor (GroundTrafficMonitorHeadlessTests), which drives ticks itself.
     private readonly System.Windows.Forms.Timer? _timer;
-    // The monitor's ONE clock: DateTime.UtcNow in the app; the headless tests pass a simulated one, so
+    // The monitor's ONE clock: SimClock.UtcNow in the app (so tools/VirtualPilot's override applies); the headless tests pass a simulated one, so
     // the time-based rules (the speech policy's spacing, the escalation window, the runway watch's
     // grace and deferral timers) run as they would a second apart in the sim.
     private readonly Func<DateTime> _utcNow;
@@ -272,7 +272,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         _announcer = announcer;
         _sim = source;
-        _utcNow = utcNow ?? (() => DateTime.UtcNow);
+        _utcNow = utcNow ?? (() => MSFSBlindAssist.Utils.SimClock.UtcNow);
         _sim.AiTrafficReceived += OnAiTrafficReceived;
         _sim.GroundTrafficSweepCompleted += OnGroundTrafficSweepCompleted;
         if (!startTimers) return;
@@ -1943,7 +1943,7 @@ internal sealed class TrackedGroundAircraft
     public double LastSpokenZoneDistFt = double.NaN;
     /// <summary>When any callout for this aircraft was last spoken.</summary>
     public DateTime LastAlertTime      = DateTime.MinValue;
-    public DateTime LastSeenTime       = DateTime.UtcNow;
+    public DateTime LastSeenTime       = MSFSBlindAssist.Utils.SimClock.UtcNow;
     public double PreviousDistance     = double.MaxValue;
     public DateTime PreviousDistanceUtc = DateTime.MinValue;
     /// <summary>Its lead along OUR route at the previous evaluation; NaN when it was not on the route ahead then.</summary>

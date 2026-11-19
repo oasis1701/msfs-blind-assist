@@ -55,6 +55,11 @@ internal sealed record LocationReport(WhereYouAre Where, PlaceHit? Nearest, Loca
 /// <summary>A city and where it is.</summary>
 internal sealed record CityPoint(string Name, string State, string Country, double Lat, double Lon);
 
+/// <summary>A town from <see cref="OfflineLocationService.FindTowns"/> whose name is what the pilot
+/// typed in the EFB's Airport Lookup: "Gothenburg" is GeoNames' name for the city the navdata calls
+/// "Goteborg".</summary>
+public sealed record TownMatch(string Name, string State, string Country, double Lat, double Lon, int Population);
+
 /// <summary>
 /// For the Volanta traffic list's major-city mode: the water or land at a position, and the nearest major
 /// city (null when none is in range). The city's position is kept, so a moving aircraft's distance and
@@ -256,6 +261,46 @@ internal sealed class OfflineLocationService
         }
         // No town inside this state outline within range (a remote area): the outline's own name.
         return land ? admins.ForStatePolygon(hits.State!.Name, hits.State.Extra) : (null, null);
+    }
+
+    /// <summary>
+    /// For the EFB's Airport Lookup: every town (<see cref="LocationCategory.Town"/>, 500+ people or
+    /// a seat of administration) whose whole name is <paramref name="query"/>, ignoring case and
+    /// accents (<see cref="SearchText.Fold"/>), most populous first. Villages are not read: a plain
+    /// scan of the 4.9 million of them with the towns took about 400 ms before any comparing, while
+    /// the 236,000 towns are read and compared in 170 to 340 ms. Empty when no usable database is
+    /// installed.
+    /// </summary>
+    internal List<TownMatch> FindTowns(string query, int max)
+    {
+        string folded = SearchText.Fold(query);
+        if (folded.Length == 0 || !_store.IsAvailable) return new List<TownMatch>();
+
+        return _store.Read(c =>
+        {
+            var found = new List<(string Name, double Lat, double Lon, int Population, int AdminId)>();
+            using (var cmd = c.CreateCommand())
+            {
+                cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name FROM place WHERE cat = $cat";
+                cmd.Parameters.AddWithValue("$cat", (int)LocationCategory.Town);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    string name = r.GetString(5);
+                    if (SearchText.Fold(name) != folded) continue;
+                    var (lat, lon) = LocationGrid.Decode(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2));
+                    found.Add((name, lat, lon, r.GetInt32(3), r.GetInt32(4)));
+                }
+            }
+            if (found.Count == 0) return new List<TownMatch>();
+
+            var admins = AdminNames.Load(c);
+            return found.OrderByDescending(f => f.Population).Take(max).Select(f =>
+            {
+                var (state, country) = admins.Of(f.AdminId);
+                return new TownMatch(f.Name, state, country, f.Lat, f.Lon, f.Population);
+            }).ToList();
+        }) ?? new List<TownMatch>();
     }
 
     private static LocationReport Report(SqliteConnection c, double lat, double lon, LocationQuerySettings s, bool details)

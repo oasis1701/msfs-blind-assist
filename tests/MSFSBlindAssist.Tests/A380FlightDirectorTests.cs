@@ -26,8 +26,13 @@ public class A380FlightDirectorTests
     [Fact]
     public void No_a380_variable_reads_the_stock_flight_director_simvar()
     {
+        // Except the First Officer's MSFS 2020 build keys: that build (fs2020-master) predates FBW
+        // #10855, its FCU still writes and reads the stock var, and the First Officer reads it only
+        // when the running simulator is MSFS 2020 (A380BuildNames). No panel row reads them.
+        var fs2020Fo = A380BuildNames.Fs2020FoRegistrations().Select(r => r.Key).ToHashSet(StringComparer.Ordinal);
         var stale = Vars()
             .Where(kv => kv.Value.Name.StartsWith("AUTOPILOT FLIGHT DIRECTOR ACTIVE", StringComparison.Ordinal))
+            .Where(kv => !fs2020Fo.Contains(kv.Key))
             .Select(kv => kv.Key).ToList();
 
         Assert.True(stale.Count == 0,

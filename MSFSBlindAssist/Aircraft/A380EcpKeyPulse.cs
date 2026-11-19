@@ -56,12 +56,21 @@ public static class A380EcpKeyPulse
 
         /// <summary>How long to wait before pressing; records this press's release as that wait
         /// plus <see cref="HoldMs"/> from <paramref name="nowTick"/>.</summary>
-        public int Reserve(long nowTick)
+        public int Reserve(long nowTick) => Reserve(nowTick, HoldMs);
+
+        /// <summary>As <see cref="Reserve(long)"/>, for a press held <paramref name="holdMs"/>,
+        /// longer than <see cref="HoldMs"/>: the First Officer's T.O CONFIG test holds the key 2 s,
+        /// FlyByWire's own preset hold. Never shorter: a press under <see cref="HoldMs"/> can fall
+        /// between two FWS samples.</summary>
+        public int Reserve(long nowTick, int holdMs)
         {
+            if (holdMs < HoldMs)
+                throw new ArgumentOutOfRangeException(nameof(holdMs), holdMs,
+                    $"An ECP key is held at least {HoldMs} ms, or the FWS can miss the press.");
             lock (_lock)
             {
                 int wait = WaitBeforePressMs(_releaseAt, nowTick);
-                _releaseAt = nowTick + wait + HoldMs;
+                _releaseAt = nowTick + wait + holdMs;
                 return wait;
             }
         }

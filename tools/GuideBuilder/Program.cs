@@ -4,6 +4,8 @@ using GuideBuilder;
 //
 //   GuideBuilder check      --guide <dir>
 //       Checks guide/ (GuideChecker): contents, heading ids, links. Exit 1 on any problem.
+//   GuideBuilder contents   --guide <dir>
+//       Rewrites the section list under every chapter in index.md from the chapters' ## headings (GuideContents).
 //   GuideBuilder one-page   --guide <dir> --out <file> [--edition local|release|preview] [--version <v>]
 //       Writes the whole guide as one self-contained HTML page (OnePageBuilder).
 //   GuideBuilder check-site --root <built site> [--under guide]
@@ -15,7 +17,7 @@ using GuideBuilder;
 
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
-    Console.WriteLine("Usage: GuideBuilder check|one-page|check-site|check-pr [options]; see Program.cs.");
+    Console.WriteLine("Usage: GuideBuilder check|contents|one-page|check-site|check-pr [options]; see Program.cs.");
     return args.Length == 0 ? 2 : 0;
 }
 
@@ -35,6 +37,30 @@ switch (args[0])
     {
         if (Need("--guide") is not { } guide) return 2;
         return Report(GuideChecker.Check(GuideSource.FromFolder(guide)), "The guide passes its checks.");
+    }
+
+    case "contents":
+    {
+        if (Need("--guide") is not { } guide) return 2;
+        string path = Path.Combine(guide, GuideSource.ContentsFile);
+        if (!File.Exists(path))
+        {
+            Console.Error.WriteLine($"Not found: {path}");
+            return 2;
+        }
+
+        string current = File.ReadAllText(path);
+        string written = GuideContents.WithSections(current, GuideSource.FromFolder(guide));
+        if (current.Contains("\r\n", StringComparison.Ordinal)) written = written.Replace("\n", "\r\n");
+        if (written == current)
+        {
+            Console.WriteLine($"The section lists in {path} are up to date.");
+            return 0;
+        }
+
+        File.WriteAllText(path, written);
+        Console.WriteLine($"Rewrote the section lists in {path}.");
+        return 0;
     }
 
     case "one-page":

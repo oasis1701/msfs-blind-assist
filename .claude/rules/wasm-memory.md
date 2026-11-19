@@ -1,0 +1,64 @@
+---
+paths:
+  - "MSFSBlindAssist.DisplayLayouts/**"
+  - "MSFSBlindAssist/Services/WasmMemory/**"
+  - "MSFSBlindAssist/Services/PMDG/Pmdg737Fma*.cs"
+  - "MSFSBlindAssist/Services/PMDG/ModuleFmaSampler.cs"
+  - "MSFSBlindAssist/Services/PMDG/IFmaEnvironment.cs"
+  - "MSFSBlindAssist/Services/PMDG/Pmdg737EngineDisplay*.cs"
+  - "MSFSBlindAssist/Services/PMDG/ModuleEngineDisplaySampler.cs"
+  - "MSFSBlindAssist/Services/PMDG/IEngineDisplayEnvironment.cs"
+  - "MSFSBlindAssist/Services/PMDG/Pmdg737ManualN1.cs"
+  - "MSFSBlindAssist/Services/PMDG/Pmdg737SpeedReference.cs"
+  - "MSFSBlindAssist/Services/PMDG/Pmdg737NavDisplay*.cs"
+  - "MSFSBlindAssist/Services/PMDG/ModuleNavDisplaySampler.cs"
+  - "MSFSBlindAssist/Services/PMDG/INavDisplayEnvironment.cs"
+  - "MSFSBlindAssist/Services/PMDG/Pmdg737Pfd*.cs"
+  - "MSFSBlindAssist/Services/PMDG/ModulePfdSampler.cs"
+  - "MSFSBlindAssist/Services/PMDG/IPfdEnvironment.cs"
+  - "MSFSBlindAssist/Services/PMDG/PmdgPrintf.cs"
+  - "MSFSBlindAssist/Services/PMDG/Pmdg737Display*.cs"
+  - "MSFSBlindAssist/MainForm.Pmdg737Displays.cs"
+  - "tests/MSFSBlindAssist.Tests/Wasm*Tests.cs"
+  - "tests/MSFSBlindAssist.Tests/Pmdg737Fma*Tests.cs"
+  - "tests/MSFSBlindAssist.Tests/Pmdg737EngineDisplay*.cs"
+  - "tests/MSFSBlindAssist.Tests/Pmdg737ManualN1Tests.cs"
+  - "tests/MSFSBlindAssist.Tests/Pmdg737SpeedReferenceTests.cs"
+  - "tests/MSFSBlindAssist.Tests/Pmdg737NavDisplay*.cs"
+  - "tests/MSFSBlindAssist.Tests/Pmdg737Pfd*.cs"
+  - "tests/MSFSBlindAssist.Tests/Pmdg737DisplayFilesNoticeTests.cs"
+  - "tests/MSFSBlindAssist.Tests/ModuleFmaSamplerTests.cs"
+  - "tests/MSFSBlindAssist.Tests/ModuleEngineDisplaySamplerTests.cs"
+  - "tests/MSFSBlindAssist.Tests/ModuleNavDisplaySamplerTests.cs"
+  - "tests/MSFSBlindAssist.Tests/NdTestMemory.cs"
+  - "tests/MSFSBlindAssist.Tests/GoldenLayouts.cs"
+  - "tests/MSFSBlindAssist.Tests/TinyWasmFile.cs"
+  - "tests/MSFSBlindAssist.Tests/TinyLayouts.cs"
+  - "tests/MSFSBlindAssist.Tests/FakeProcessMemory.cs"
+---
+# WASM module memory, the PMDG 737 FMA, engine displays, navigation display and primary flight display rules
+
+Loaded when Claude reads matching code. Background: docs/wasm-memory.md. Full text of each rule: docs/invariants/wasm-memory.md.
+
+- [WASM-1] `SimProcess` opens the sim with read rights only (`PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ`); never write, debug, inject, suspend or hook the sim. Full: docs/invariants/wasm-memory.md#wasm-1
+- [WASM-2] The app never derives or hardcodes a wasm address, offset or table base: every one comes from a layout file the generator wrote, loaded by `LayoutStore`; no current layout means the reader is unavailable, never a guess. Full: docs/invariants/wasm-memory.md#wasm-2
+- [WASM-3] The app finds module memory only by the anchor at each `MEM_PRIVATE` allocation base (`WasmMemoryLocator`); `MEM_IMAGE` is excluded (the compiled DLL embeds the data image); the app never scans all of memory. Full: docs/invariants/wasm-memory.md#wasm-3
+- [WASM-4] Bound the FMA object by committed memory of the anchor's reservation (`ModuleMemory.IsInsideModule`), re-walked on every check: it is heap memory that PMDG commits after start (wasm memory growth). Full: docs/invariants/wasm-memory.md#wasm-4
+- [WASM-5] The FMA never suppresses or replaces the MCP-light announcements (owner, 2026-10-23); its changes and status lines use the non-interrupting announce. Full: docs/invariants/wasm-memory.md#wasm-5
+- [WASM-6] Only FMA readings passing ONE gate are announced, become the baseline or reach the PFD window: `PointersAgree`, `Pmdg737FmaCrossCheck.Passes` against the SDK (FD switches, MCP altitude and heading vs 3 s of memory history, heading 0 = 360) and no corrupt value; other readings only count toward the spoken 2 s mismatch and 10-tick corrupt stops. Full: docs/invariants/wasm-memory.md#wasm-6
+- [WASM-7] `Pmdg737FmaEnvironment.ReadSdk` and `Pmdg737EngineDisplayEnvironment.ReadSdk` return null while SimConnect is disconnected, checked first: the PMDG data manager keeps IsReady and its last snapshot after a disconnect, so a closed sim would otherwise read as "aircraft memory not found" two minutes later. Full: docs/invariants/wasm-memory.md#wasm-7
+- [WASM-9] The engine display reader never suppresses or replaces the SDK start-valve, overhead-light, MCP or FMA announcements (owner, 2026-10-23); everything it says by itself uses the non-interrupting announce, and Output Alt+E falls back to the AI read saying nothing ([WASM-29]). Full: docs/invariants/wasm-memory.md#wasm-9
+- [WASM-10] Only engine display readings passing ONE gate are spoken, shown, become the baseline or feed the manual N1: `Pmdg737EngineDisplayCrossCheck.Fingerprint`, `.Passes` (tanks vs the SDK), no `Pmdg737EngineDisplayMonitor.Corrupt` value; nothing is compared while `Pmdg737EngineDisplayPages.DisplaysLit` is false, nor for 10 s after it turns true. Full: docs/invariants/wasm-memory.md#wasm-10
+- [WASM-11] `ModuleSession` gets each installed file's layouts once from its `ILayoutSource` and searches memory once for every reader of the module; a reader never opens the simulator, reads the file or runs the generator itself. Full: docs/invariants/wasm-memory.md#wasm-11
+- [WASM-12] The navigation display reader never suppresses or replaces PMDG's callouts or the app's MCP, FMA, engine display or EFIS selector announcements; all `Pmdg737NavDisplayMonitor` says by itself is the non-interrupting announce, Output Alt+N falls back to the AI read saying nothing ([WASM-29]), and every Output Ctrl+W answer interrupts. Full: docs/invariants/wasm-memory.md#wasm-12
+- [WASM-13] Only ND readings passing ONE gate are shown, spoken, become the baseline or answer Ctrl+W: `Pmdg737NavDisplayCrossCheck.Fingerprint`, `.Passes` (the Captain's EFIS mode and range vs the SDK), no sampler `corrupt`; nothing is compared while `Pmdg737NavDisplayCrossCheck.DisplaysLit` is false, nor for 10 s after it turns true. Full: docs/invariants/wasm-memory.md#wasm-13
+- [WASM-14] `ModuleNavDisplaySampler`'s route, list, traffic and FIX page walks are all-or-nothing: every pointer inside the module, the layout's cap, no route node twice, every element carried checked where PMDG prints it; one failed check discards the whole reading as corrupt, never a partial route or list. Full: docs/invariants/wasm-memory.md#wasm-14
+- [WASM-15] `ModuleMemory.RememberRegions` keeps region answers for ONE reading on its own thread (`ModuleNavDisplaySampler.TryRead` opens it), never across readings: PMDG commits memory after start ([WASM-4]); a missing region is asked again. A VirtualQueryEx costs ~200 µs, a read ~1 µs: asked per field, an ND reading took 25-90 ms on the UI thread. Full: docs/invariants/wasm-memory.md#wasm-15
+- [WASM-18] The PFD reader never suppresses or replaces PMDG's callouts or the app's MCP, FMA, engine display, ND, EFIS or altimeter announcements; all `Pmdg737PfdMonitor` says by itself is the non-interrupting announce, never WINDSHEAR or PULL UP (`PfdMessage.Spoken`), and only Output Alt+P's classic EFIS line, before the AI read, interrupts. Full: docs/invariants/wasm-memory.md#wasm-18
+- [WASM-19] Only PFD readings passing ONE gate are shown, spoken, a baseline or a setter's value: `Pmdg737PfdCrossCheck.Passes` (IAS and altitude vs the simulator's in 3 s; a flagged value skipped; both under a tape's floor within), no sampler `corrupt`. A running reader counts a reading not `Pmdg737PfdSpeech.Visible` unchecked. Full: docs/invariants/wasm-memory.md#wasm-19
+- [WASM-20] `Pmdg737PfdText` names what PMDG draws without a label only by a structural fact the layout gives (the bug that parks, REF's value plus a constant, the armed roll column), never by its index in a list or a field offset: the real files' lists differ from the test layouts', and a PMDG update reorders them. Full: docs/invariants/wasm-memory.md#wasm-20
+- [WASM-21] `LayoutFileFormat.Write` gives byte-identical text for the same layouts on any PC: fixed property order, culture-invariant numbers, \n line ends, no timestamps, and the source file saved empty; the file name and the golden tests rely on it. Full: docs/invariants/wasm-memory.md#wasm-21
+- [WASM-26] `LayoutStore` treats a layout file it cannot read, with an unknown format version, another module or reader set, or that does not fit the installed file, as missing: never a partial layout; it runs the generator when present, and otherwise the readers are unavailable. Full: docs/invariants/wasm-memory.md#wasm-26
+- [WASM-29] With no layout file loaded (no builds), the four readers say only `Pmdg737DisplaySpeech.FilesNotLoaded`, once per module session (`Pmdg737DisplayFilesNotice`), by the first not muted; any other reason keeps a reader's own line. Output Alt+E, Alt+N and Alt+P that cannot read go to the AI read, silent but for the PFD's classic EFIS line. Full: docs/invariants/wasm-memory.md#wasm-29
+- [WASM-30] `ProcessLayoutGenerator` puts every process it starts in its `KillOnCloseJob` right after it starts, so the app exiting, crashing or being killed ends it; the shared instance's job is never disposed, not even on a profile switch. A job Windows refuses only logs once: the run goes on without it, never failing or throwing. Full: docs/invariants/wasm-memory.md#wasm-30
+- [WASM-31] `LayoutStore` reads layouts from `%APPDATA%\MSFSBlindAssist\layouts` and the bundled `layouts` folder beside the exe (`LayoutStore.BundledRoot`), writes to neither, and of the current files uses the highest generator version, `%APPDATA%` first on a tie; the generator writes only under `%APPDATA%`. Full: docs/invariants/wasm-memory.md#wasm-31

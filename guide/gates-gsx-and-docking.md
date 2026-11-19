@@ -4,7 +4,7 @@ title: "Gates, GSX and Docking"
 
 <div class="guide-part" markdown="1">
 
-Chapter 4 of 4 in [Part 4: On the Ground](index.md#part-4-on-the-ground) of the MSFS Blind Assist user guide.
+Chapter 4 of 4 in [Part 5: On the Ground](index.md#part-4-on-the-ground) of the MSFS Blind Assist user guide.
 
 </div>
 

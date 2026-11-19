@@ -4,7 +4,7 @@ title: "Weather"
 
 <div class="guide-part" markdown="1">
 
-Chapter 2 of 2 in [Part 3: Planning and Preflight](index.md#part-3-planning-and-preflight) of the MSFS Blind Assist user guide.
+Chapter 2 of 2 in [Part 4: Planning and Preflight](index.md#part-3-planning-and-preflight) of the MSFS Blind Assist user guide.
 
 </div>
 
@@ -78,6 +78,8 @@ If you are not connected to the simulator you hear *"Not connected to simulator.
 ## Outside Temperature: Output O {#wx-temperature}
 
 Press \], then O. BA speaks the outside air temperature at the aircraft, for example *"-42 degrees Celsius"* in cruise or *"15 degrees Celsius"* on the ground. This always comes from the simulator. It is useful for checking engine and wing anti-ice conditions and for the cold temperature calculator later in this chapter (use the airport's reported temperature for that, not the temperature at cruise altitude).
+
+To hear Fahrenheit, open **File**, **Settings**, **Weather** and tick **Use Fahrenheit for outside temperature (default: Celsius)** in the **Temperature units** group, the last setting on the tab. Save with **OK**. Output O then says, for example, *"59 degrees Fahrenheit"* for 15°C, on every aircraft. Untick it to return to Celsius. The choice is remembered after restarting BA. This setting applies to Output O; weather reports, cockpit displays and the cold temperature calculator keep their existing units.
 
 ## The METAR Report Window {#wx-metar}
 

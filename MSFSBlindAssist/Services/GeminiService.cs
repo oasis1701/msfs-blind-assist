@@ -208,8 +208,10 @@ public class GeminiService : IAiProvider
         UpperECAM,     // Upper ECAM / Engine Warning Display
         ND,            // Navigation Display
         ISIS,          // Integrated Standby Instrument System
-        NDFenix,       // Navigation Display (Fenix A320) — its frame holds BOTH NDs, so this one names the captain's
+        NDFenix,       // Navigation Display (Fenix A320) — its frame holds the captain's PFD and ND, so this one names the ND
         StandbyFenix,  // Standby instruments (Fenix A320) — three round gauges on some variants, a digital ISIS on others
+        StandbyFenixIsis,     // Standby (Fenix A320) when the livery fits an ISIS, B_CONFIG_STDBY 0
+        StandbyFenixAnalogue, // Standby (Fenix A320) when the livery fits the three round standby gauges
         EICAS,         // Engine Indicating and Crew Alerting System (Boeing 777)
         PFD777,        // Primary Flight Display (Boeing 777)
         ND777,         // Navigation Display (Boeing 777)
@@ -228,7 +230,11 @@ public class GeminiService : IAiProvider
         NDMd11,        // Captain's Navigation Display (TFDi MD-11) — instrument view 1
         EADMd11,       // Engine and Alert Display, the MD-11's EICAS (TFDi MD-11) — instrument view 1
         SDMd11,        // System Display, the page currently selected (TFDi MD-11) — instrument view 3
-        ISFDMd11       // Standby instrument on the forward pedestal (TFDi MD-11) — instrument view 4
+        ISFDMd11,      // Standby instrument on the forward pedestal (TFDi MD-11) — instrument view 4
+        Adi757,        // Attitude Director Indicator, the 757's PFD-equivalent (BlueBird 757-200) — instrument view 1
+        Ehsi757,       // Electronic Horizontal Situation Indicator, the map display (BlueBird 757-200) — instrument view 1
+        UpperEicas757, // Upper EICAS: engine gauges and crew alert messages (BlueBird 757-200) — instrument view 2
+        LowerEicas757  // Lower EICAS: secondary engine data or a system page (BlueBird 757-200) — instrument view 2
     }
 
     /// <summary>
@@ -357,8 +363,8 @@ Use line breaks to separate information. Put mode and range on the first line, h
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             DisplayType.NDFenix => @"You are reading the CAPTAIN'S Navigation Display of an Airbus A320 for a screen reader user.
-The image contains two navigation displays side by side, one for each pilot. Describe ONLY the LEFT-HAND one, which is the captain's. Ignore the right-hand navigation display, the ECAM displays in the centre, the standby instruments and everything else.
-The two can show different modes and ranges, so do not merge them or fall back to the other one: if the left-hand display is blank or off, say so in one line and stop.
+The image contains the captain's two main displays side by side: the Primary Flight Display (attitude, speed and altitude tapes) on the left and the Navigation Display (the map) on the right. Describe ONLY the Navigation Display, the right-hand display. Ignore the Primary Flight Display, the standby instruments, any part of the ECAM displays at the edge and everything else.
+Do not report values from the Primary Flight Display instead: if the Navigation Display is blank or off, say so in one line and stop.
 Be extremely concise and direct. Skip descriptions of map layouts, visual positioning, and symbology explanations. Only report actual values, modes, and navigation data.
 Skip normal colors (green, white, magenta) - only mention warning/alert colors (amber, red).
 Report: display mode (ROSE NAV, ARC, PLAN), range setting, aircraft heading/track, ground speed and true airspeed, wind direction and speed, active waypoints in sequence, distance/time to next waypoint, course deviation if present, weather radar returns if shown, TCAS traffic if present.
@@ -373,6 +379,20 @@ If it is THREE ROUND DIAL GAUGES - first line ""Round standby gauges"" - report 
 
 If it is a SINGLE DIGITAL SCREEN - first line ""Digital ISIS"" - report airspeed, altitude, barometric setting (including STD if standard is selected), pitch and bank if other than level, and any mode annunciations or flags.
 
+If the standby instruments are dark or not visible in this image, say so in one line and stop. Do not report values from the navigation displays or the ECAM instead.
+Skip normal colors - only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.StandbyFenixIsis => @"You are reading the ISIS (integrated standby instrument system) of an Airbus A320 for a screen reader user.
+The image contains the whole centre panel. Describe ONLY the ISIS, the single small digital screen between the captain's navigation display and the ECAM displays. Ignore the navigation displays, the ECAM displays, and the landing gear and autobrake panels. It may be the older or the newer ISIS style; read either the same way.
+Report, each on its own line: airspeed, altitude, the barometric setting (the number and whether it is hPa or inches of mercury, or STD), pitch and bank if either is other than level, and any flags or annunciations.
+If the standby instruments are dark or not visible in this image, say so in one line and stop. Do not report values from the navigation displays or the ECAM instead.
+Skip normal colors - only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.StandbyFenixAnalogue => @"You are reading the STANDBY INSTRUMENTS of an Airbus A320 for a screen reader user.
+The image contains the whole centre panel. Describe ONLY the standby instruments, three round dial gauges: airspeed, altimeter and attitude. They sit between the captain's navigation display and the ECAM displays. Ignore the navigation displays, the ECAM displays, and the landing gear and autobrake panels.
+Report each on its own line: the standby airspeed in knots from the pointer, the standby altitude in feet from the drum or pointers, the barometric setting in the small window on the altimeter face (give the number and say whether it is hPa or inches of mercury), and the pitch and bank from the standby attitude indicator if either is other than level. If a separate metric altitude gauge is fitted, report its reading too. If a DME or VOR bearing indicator is beside them, report its distance and bearing last.
 If the standby instruments are dark or not visible in this image, say so in one line and stop. Do not report values from the navigation displays or the ECAM instead.
 Skip normal colors - only mention warning/alert colors (amber, red).
 Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
@@ -647,7 +667,50 @@ Skip descriptions of layouts, diagrams and visual positioning. Skip normal colou
 Report, one per line: pitch and bank only if unusual (otherwise say wings level); airspeed and the Mach number; altitude and the metric altitude in the box beside it if shown; the barometric setting (IN or HPA, or STD); heading at the bottom; and any flags or amber or red annunciations.
 Skip normal colours; only call out amber and red. Skip descriptions of instrument layout and positioning. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
 
-            _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
+            DisplayType.Adi757 => @"You are reading the Attitude Director Indicator (ADI) of a Boeing 757 for a screen reader user. The image may contain several displays. ONLY describe the ADI — the display with the artificial horizon (the attitude sphere) and the flight mode annunciations across the top. Ignore the EHSI (the compass or map display) and everything else in the frame, including any separate airspeed indicator, altimeter or standby instrument beside the ADI.
+The flight mode annunciations across the top of the ADI are the most important part: they are the only place the engaged autoflight modes show. Report them first, left to right: the autothrottle mode (e.g. SPD, EPR, THR HLD, IDLE, GA), the roll mode (e.g. HDG SEL, HDG HOLD, LNAV, LOC, B/CRS, ROLLOUT) and the pitch mode (e.g. V/S, FLCH, ALT HOLD, ALT CAP, VNAV PTH, VNAV SPD, G/S, FLARE). Then any armed modes, and the autopilot or flight director status (CMD, FD). Read each word exactly as written.
+Next, the AUTOLAND STATUS annunciator, the small separate annunciator beside the ADI: if it shows a message (for example LAND 3, LAND 2, NO LAND 3 or NO AUTOLAND), report it on its own line exactly as written, with its color if it is amber or red; if it is blank, leave it out.
+Then report the following, one per line, only if the ADI itself shows it. Never read a separate instrument beside the ADI, except the AUTOLAND STATUS annunciator above, and never guess or estimate a value: leave out anything the ADI does not show.
+Airspeed: the indicated airspeed, the selected speed and any speed bugs.
+Attitude: pitch and bank only if unusual (otherwise say wings level).
+Altitude: the current altitude, the selected altitude and the barometric setting.
+Vertical speed.
+Heading or track.
+Radio altitude, and decision height or minimums.
+Localizer and glideslope deviation, if an approach is displayed and they are not centered.
+Any flags, failure flags, or amber or red annunciations.
+Be extremely concise and direct. Skip descriptions of scales, layouts and positioning. Skip normal colors (green, white, magenta); only call out amber and red. Give every word exactly as the display presents it. Do not expand abbreviations or convert units. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.Ehsi757 => @"You are reading the Electronic Horizontal Situation Indicator (EHSI) of a Boeing 757 for a screen reader user. The image may contain several displays. ONLY describe the EHSI — the display showing the compass rose or the map with the aircraft symbol. Ignore the ADI, the display with the artificial horizon, and everything else in the frame.
+Report in this order, one item per line:
+Display mode as shown (e.g. MAP, CTR MAP, PLN, VOR, APP) and the range.
+Heading or track at the top of the compass, and whether MAG or TRUE is shown.
+Ground speed (GS) and true airspeed (TAS) if shown.
+Wind direction and speed.
+The active waypoint: its name, distance, and time or ETA.
+Further waypoints along the route in order, if legible.
+In a VOR or APP mode: the selected course, the deviation bar, and the tuned station with its distance.
+Bearing pointers and the stations they point to, if shown.
+TCAS traffic: relative bearing, range and relative altitude of each symbol, and any TA or RA.
+Weather radar returns and terrain shading, with their colors, if displayed.
+Any flags or messages.
+Be extremely concise and direct. Skip descriptions of map layout and symbology. Skip normal colors (green, white, magenta, cyan); only call out amber and red. Give every word exactly as the display presents it. Do not expand abbreviations or convert units. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.UpperEicas757 => @"You are reading the upper EICAS display of a Boeing 757 for a screen reader user. The upper EICAS is the upper of the two EICAS CRTs: it shows the primary engine gauges and the crew alert messages. The image may contain several displays. ONLY describe the upper EICAS. Ignore the lower EICAS below it, the MCP, the standby instruments, the autobrake selector, the flap gauge, the gear lever, the first officer's airspeed indicator, and everything else in the frame.
+Report in this order, one item per line:
+The thrust mode or limit label at the top if shown (e.g. TO, CLB, CRZ, GA) and TAT.
+For each engine, left then right: EPR with its limit or command bug value if shown, N1, and EGT. Also any other engine value this display shows.
+Then, most important, the alert messages: read every message exactly as written, top to bottom. Name the color only for red or amber messages. Include the page indicator if one is shown (e.g. PAGE 1) and a STATUS cue if one is shown. If there are no messages, say ""No alerts"".
+If the screen is blank or off, say so in one line and stop.
+Be extremely concise and direct. Skip descriptions of gauge layout, arc positions and visual formatting. Skip normal colors (green, white); call out amber and red in the alert area only. Give every word and number exactly as the display presents it. Do not expand abbreviations or convert units. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.LowerEicas757 => @"You are reading the lower EICAS display of a Boeing 757 for a screen reader user. The lower EICAS is the lower of the two EICAS CRTs, below the upper EICAS: it shows either the secondary engine data or one system page. The image may contain several displays. ONLY describe the lower EICAS. Ignore the upper EICAS above it, the MCP, the standby instruments, the autobrake selector, the flap gauge, the gear lever, the first officer's airspeed indicator, and everything else in the frame.
+First line: the page title exactly as shown on the display. If the display shows the engine columns with no page title, the first line is ""Secondary engine data"". Apart from that label, never name a page the display does not title.
+Then report every value and every system state, one per line, left to right and top to bottom: quantities, pressures, temperatures, voltages, ON/OFF, OPEN/CLOSED, pump and valve states, and any messages on the page, each exactly as written. For the engine columns that means each value with its own label as the display writes it, left engine then right, for example N2, fuel flow, oil pressure, oil temperature, oil quantity and vibration.
+If the screen is blank or off, say so in one line and stop.
+Be extremely concise and direct. Skip descriptions of layouts, diagrams and visual positioning. Skip normal colors (green, white, cyan); only call out amber and red. Give every word and number exactly as the display presents it. Do not expand abbreviations or convert units. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            _ =>"Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
         };
     }
 

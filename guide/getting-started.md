@@ -36,11 +36,11 @@ Chapter 2 of 2 in [Part 1: Getting Started](index.md#part-1-getting-started) of 
 - **Microsoft Flight Simulator 2020 or Microsoft Flight Simulator 2024.** BA works with both, and detects which one is running.
 - **A screen reader.** NVDA or JAWS is recommended. Without one, BA uses Windows speech instead.
 - **The .NET 10 Desktop Runtime (x64)** from Microsoft. BA is built on it. Download it from Microsoft's .NET 10 download page; choose the Desktop Runtime for x64. If it is missing or too old, BA tells you when you start it, in a message box titled *"MSFS Blind Assist - Missing Requirements"*, and closes.
-- **The MobiFlight WASM module** (free), for some aircraft. BA uses it to operate cockpit controls on the FlyByWire A320neo, the FlyByWire A380X, the Headwind A330-900neo, the Fenix A320 and the TFDi MD-11. Without it, many controls on those aircraft will not respond, although reading values and hearing announcements still work. On the HorizonSim 787-9 a handful of switches, such as the batteries and generators, also need it. The PMDG and iFly aircraft do not need it. Download it from the MobiFlight website's WASM module page, place it in your simulator's Community folder (the same folder your add-on aircraft live in), and restart the simulator.
+- **The MobiFlight WASM module** (free), for some aircraft. BA uses it to operate cockpit controls on the FlyByWire A320neo, the FlyByWire A380X, the Headwind A330-900neo, the Fenix A320, the TFDi MD-11 and the BlueBird 757-200. Without it, many controls on those aircraft will not respond, although reading values and hearing announcements still work. On the HorizonSim 787-9 a handful of switches, such as the batteries and generators, also need it. The PMDG and iFly aircraft do not need it. Download it from the MobiFlight website's WASM module page, place it in your simulator's Community folder (the same folder your add-on aircraft live in), and restart the simulator.
 
 <div class="callout note" role="note" markdown="1">
 
-**Note:** On the FlyByWire A320neo, the FlyByWire A380X, the Headwind A330-900neo and the TFDi MD-11, if the module is missing, BA tells you a short while after connecting: *"MobiFlight calculator path unavailable. Some cockpit controls may not respond."* If you hear that, install or reinstall the module and restart the simulator. The Fenix A320 and the HorizonSim 787-9 do not give this warning, so on those check the module yourself if a control never responds.
+**Note:** On the FlyByWire A320neo, the FlyByWire A380X, the Headwind A330-900neo, the TFDi MD-11 and the BlueBird 757-200, if the module is missing, BA tells you a short while after connecting: *"MobiFlight calculator path unavailable. Some cockpit controls may not respond."* If you hear that, install or reinstall the module and restart the simulator. The Fenix A320 and the HorizonSim 787-9 do not give this warning, so on those check the module yourself if a control never responds.
 
 </div>
 
@@ -215,7 +215,7 @@ If the simulator closes or the connection drops, BA says *"Disconnected from sim
 
 BA has a separate profile for each aircraft it supports: its own panels, hotkeys and announcements. BA does not switch profiles for you when you load a different aircraft in the simulator. Choose the matching profile from the **Aircraft** menu. BA remembers your choice and uses it the next time it starts. The first time you run BA, the FlyByWire A320neo is selected.
 
-The Aircraft menu lists the nine supported aircraft, in this order:
+The Aircraft menu lists the ten supported aircraft, in this order:
 
 1. FlyByWire Airbus A320neo
 2. FlyByWire Airbus A380X
@@ -226,6 +226,7 @@ The Aircraft menu lists the nine supported aircraft, in this order:
 7. HorizonSim Boeing 787-9
 8. iFly Boeing 737 MAX8
 9. TFDi Design MD-11
+10. BlueBird 757-200
 
 To open the menu, press Alt, then use Right Arrow to reach Aircraft and Down Arrow to move through the list; the current aircraft is marked as checked. Press Enter on the one you are flying. You hear *"Switched to"* and the aircraft name, and the main window's Sections list fills with that aircraft's sections.
 
@@ -235,7 +236,7 @@ To open the menu, press Alt, then use Right Arrow to reach Aircraft and Down Arr
 
 </div>
 
-Each aircraft has its own chapter in Part 7: see [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
+Each aircraft has its own chapter in Part 8: see [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
 
 ## The Main Window {#main-window}
 
@@ -396,7 +397,7 @@ BA's menu bar has four menus. Press Alt to reach it, then use the arrow keys.
 
 ### The Aircraft menu {#the-aircraft-menu}
 
-Lists the nine supported aircraft, with the current one checked. See [Choosing Your Aircraft](#gs-aircraft).
+Lists the ten supported aircraft, with the current one checked. See [Choosing Your Aircraft](#gs-aircraft).
 
 ### The Extras menu {#the-extras-menu}
 
@@ -429,7 +430,7 @@ Open the Settings window from the **File** menu, **Settings…**. It holds nearl
 | Tab | What it covers |
 |---|---|
 | Announcements | Whether BA speaks through your screen reader or through Windows speech, and general announcement options: the nearest-city auto-announce, seconds in time readouts, GSX tooltips, 1,000-foot crossings. |
-| Weather | ActiveSky integration, and the automatic weather, turbulence, icing and SIGMET/AIRMET announcements. |
+| Weather | ActiveSky integration, the automatic weather, turbulence, icing and SIGMET/AIRMET announcements, and outside-temperature units. |
 | VATSIM | Announcing VATSIM activity from vPilot. |
 | GeoNames | Downloading the offline location data used by Output C and Location Info, and the distance ranges and units it uses. |
 | SimBrief | Your SimBrief username, for loading flight plans. |
@@ -437,6 +438,7 @@ Open the Settings window from the **File** menu, **Settings…**. It holds nearl
 | Audio | Which sound device BA's guidance tones play through. |
 | Hand Fly | Hand-flying feedback, visual guidance tones, Takeoff Assist and the rollout centreline tone. |
 | Taxi Guidance | The taxi steering tone, taxi callouts, distance units, docking guidance, online taxiway names, airport buildings, and SayIntentions taxi import. |
+| First Officer | The [First Officer](first-officer.md#fo-settings)'s automation (gear, flaps, autopilot, landing lights, altimeters, seat belt signs, center fuel pumps), the PMDG 737 GPWS test type, and whether flows speak each step. |
 | Updates | Release or preview builds, automatic update checks, the startup data check, and the version you are running. |
 
 </div>
@@ -523,6 +525,7 @@ If you want to try BA straight away, follow these steps. Each links to the secti
 7. Press \], hear *"output"*, then press A. BA reads your altitude. Try Output H for heading and Output S for airspeed.
 8. Switch to BA's window (Alt+Tab), press Ctrl+1, and arrow through the Sections list. Tab into the Panels list and then into a panel's controls to explore. Press Ctrl+3 to jump to a panel's Status Display.
 9. Open File, Hotkey List, and search for something you want to do.
+10. Press Output Shift+C to open the First Officer, if your aircraft has one. Press Ctrl+Tab to move between its Flows and Checklists tabs, and Escape to close it. See [The First Officer and Checklists](first-officer.md).
 
 When you are comfortable with those, read [Core Concepts](core-concepts.md) to learn what BA announces and what its tones mean, then follow the guide through [Planning Your Flight](planning-your-flight.md) and on to the ground.
 

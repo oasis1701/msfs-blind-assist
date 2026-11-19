@@ -17,9 +17,10 @@ namespace MSFSBlindAssist.Services.SayIntentions;
 public static class SayIntentionsClearanceParser
 {
     /// <summary>The written side suffix of a runway designator, bound tightly (see
-    /// RunwayToken's doc). One spelling shared by the main token and the list tail.</summary>
+    /// RunwayToken's doc). One spelling shared by the main token and the list tail.
+    /// W is a water runway (PHNL 04W/22W): without it "runway 04W" routed to "04".</summary>
     private const string WrittenRunwaySide =
-        @"(?:LEFT\b|RIGHT\b|CENTER\b|CENTRE\b|[LCR](?![A-Za-z0-9]))";
+        @"(?:LEFT\b|RIGHT\b|CENTER\b|CENTRE\b|[LCRW](?![A-Za-z0-9]))";
 
     /// <summary>Runway token: written ("15", "15L", "15 left") or spoken
     /// ("one five left"). The written branch absorbs an optional spoken side so
@@ -165,7 +166,7 @@ public static class SayIntentionsClearanceParser
             new Regex($@"\b{w.Word}\b", RegexOptions.CultureInvariant | RegexOptions.Compiled),
             w.Digit)).ToArray();
 
-    private static readonly Regex NonRunwayCharacters = new(@"[^0-9LCR]", RegexOptions.Compiled);
+    private static readonly Regex NonRunwayCharacters = new(@"[^0-9LCRW]", RegexOptions.Compiled);
 
     /// <summary>True when the text is shaped like a taxi clearance. Guards the
     /// "fall back to the last radio transmission" path — without it a landing
@@ -682,7 +683,7 @@ public static class SayIntentionsClearanceParser
     /// be confused for one another.</summary>
     private static readonly Regex CleanRunwayWord = new(@"\bRUNWAY\b", RegexOptions.Compiled);
 
-    private static readonly Regex RunwayDesignator = new(@"([0-9]{1,2})\s*([LCR])?", RegexOptions.Compiled);
+    private static readonly Regex RunwayDesignator = new(@"([0-9]{1,2})\s*([LCRW])?", RegexOptions.Compiled);
 
     /// <summary>Canonicalizes a runway identifier to zero-padded digits plus an
     /// optional side. Returns null when the text carries no runway number.</summary>

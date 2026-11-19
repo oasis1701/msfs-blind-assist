@@ -12,7 +12,7 @@ public partial class FlyByWireA380Definition
     // set read back as "29.80"; the aircraft held 29.79 exactly — verified live).
     // The FBW _HPA var is hPa, but range-detect inHg too so the read-out still
     // works if the EFIS is switched to inches and the value comes through scaled.
-    private static bool BaroHpa(double raw, out double hpa)
+    internal static bool BaroHpa(double raw, out double hpa)
     {
         if (raw >= 800 && raw <= 1100) { hpa = raw; return true; }
         if (raw >= 22 && raw <= 33) { hpa = raw * 33.8639; return true; }

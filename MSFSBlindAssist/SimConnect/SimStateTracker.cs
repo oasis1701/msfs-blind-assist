@@ -73,6 +73,9 @@ public sealed class SimStateTracker
     /// <summary>The "Sim" system event: true while a flight runs. While false, changes are tracked silently.</summary>
     public void OnSimRunning(bool running) => _simRunning = running;
 
+    /// <summary>The last "Sim" system event: false while no flight runs (the menus, a flight's load); true until one says so.</summary>
+    public bool SimRunning => _simRunning;
+
     /// <summary>A "Pause_EX1" delivery. Returns what changed aloud.</summary>
     public SimStateChange OnPauseFlags(uint flags)
     {

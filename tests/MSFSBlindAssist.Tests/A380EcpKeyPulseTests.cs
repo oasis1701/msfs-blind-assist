@@ -79,6 +79,24 @@ public class A380EcpKeyPulseTests
     }
 
     [Fact]
+    public void A_longer_press_reserves_its_whole_hold()
+    {
+        // The First Officer's T.O CONFIG test holds the key 2 s (FBW's own preset): a panel press begun
+        // during it waits for its release, then the release time.
+        var clock = new A380EcpKeyPulse.PressClock();
+
+        Assert.Equal(0, clock.Reserve(1_000, 2_000));      // held 1000-3000
+        Assert.Equal(2_250, clock.Reserve(1_000));         // pressed at 3250
+    }
+
+    [Fact]
+    public void No_press_is_reserved_shorter_than_the_hold()
+    {
+        var clock = new A380EcpKeyPulse.PressClock();
+        Assert.Throws<ArgumentOutOfRangeException>(() => clock.Reserve(1_000, A380EcpKeyPulse.HoldMs - 1));
+    }
+
+    [Fact]
     public void The_cycle_is_the_throttle_fbw_ships()
     {
         // FwsCore.ts: `fwsUpdateThrottler = new UpdateThrottler(125)`. Re-derive both constants

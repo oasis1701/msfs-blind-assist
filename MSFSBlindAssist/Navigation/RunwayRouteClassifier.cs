@@ -118,7 +118,47 @@ public static class RunwayRouteClassifier
             if (runway is null) continue;
             all.AddRange(Classify(nodes, RunwayShape.For(runway)));
         }
-        return all.OrderBy(p => p.ReachIndex).ThenBy(p => p.EntryIndex).ToList();
+        return MergeDuplicateRunways(all.OrderBy(p => p.ReachIndex).ThenBy(p => p.EntryIndex));
+    }
+
+    /// <summary>
+    /// One passage per physical runway meeting. An airport whose navdata carries two sets of
+    /// `start` rows (KBOS: two scenery layers, two rows per runway end) builds TWO centerlines for
+    /// every runway, so each crossing was classified twice and the summary said "crossing runways
+    /// 22R twice and 15R twice" for a route that crosses each once. Two passages are the same
+    /// meeting when their centerlines carry the same pair of designators and their node ranges
+    /// overlap; a genuine second crossing of one runway (KSFO Q) comes back after the first has
+    /// ended, so it never overlaps. Where the copies disagree, a Crossing wins over an Entry —
+    /// the verdict that keeps the stop.
+    /// </summary>
+    private static List<RunwayPassage> MergeDuplicateRunways(IEnumerable<RunwayPassage> ordered)
+    {
+        var kept = new List<RunwayPassage>();
+        foreach (var p in ordered)
+        {
+            int dup = kept.FindIndex(k => SameRunway(k.Runway, p.Runway) && RangesOverlap(k, p));
+            if (dup < 0) { kept.Add(p); continue; }
+            if (p.Kind == RunwayEventKind.Crossing && kept[dup].Kind == RunwayEventKind.Entry)
+                kept[dup] = p;
+        }
+        return kept;
+    }
+
+    private static bool SameRunway(TaxiGraph.RunwayCenterline a, TaxiGraph.RunwayCenterline b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        string a1 = Norm(a.Name1), a2 = Norm(a.Name2), b1 = Norm(b.Name1), b2 = Norm(b.Name2);
+        if (a1.Length == 0 || a2.Length == 0) return false;
+        return (a1 == b1 && a2 == b2) || (a1 == b2 && a2 == b1);
+
+        static string Norm(string? s) => s?.Trim().ToUpperInvariant() ?? "";
+    }
+
+    private static bool RangesOverlap(RunwayPassage a, RunwayPassage b)
+    {
+        int aEnd = a.ExitIndex < 0 ? int.MaxValue : a.ExitIndex;
+        int bEnd = b.ExitIndex < 0 ? int.MaxValue : b.ExitIndex;
+        return a.EntryIndex <= bEnd && b.EntryIndex <= aEnd;
     }
 
     public static List<RunwayPassage> Classify(IReadOnlyList<TaxiNode?> nodes, RunwayShape shape)

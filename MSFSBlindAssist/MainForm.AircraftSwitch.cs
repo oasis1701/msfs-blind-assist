@@ -157,6 +157,7 @@ public partial class MainForm
             "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
             "TFDI_MD11" => new TFDiMD11Definition(),
+            "BBS_757" => new BBS757Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -201,6 +202,14 @@ public partial class MainForm
         }
         _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
+        RestartPmdg737DisplaysIfSimulatorChanged();
+        RestartBbs757DisplaysIfSimulatorChanged();
+        // The First Officer window outlives a flight load (only an aircraft switch disposes it):
+        // the last flight's SimBrief plan and phase latches are dropped here, and so are the
+        // universal automation's legs (a flight loaded in the air is no takeoff it watched).
+        if (firstOfficerForm is { IsDisposed: false } foForm)
+            foForm.OnFlightLoaded();
+        ResetUniversalAutomation();
         ScheduleCurrentAirportWarmUp();
     }
 
@@ -310,7 +319,6 @@ public partial class MainForm
                 }
                 EnsurePMDGProgPageMonitor();
             }
-
             else if (currentAircraft?.AircraftCode == "TFDI_MD11")
             {
                 // The MD-11 is NOT an IPMDGAircraft, but it still reads a SimConnect client data
@@ -320,6 +328,10 @@ public partial class MainForm
                 // those are PMDG-only and InitializePMDG leaves PMDGDataManager null for the MD-11.
                 simConnectManager.InitializePMDG(currentAircraft);
             }
+
+            // Notify the First Officer window so it can re-wire its data manager references
+            if (firstOfficerForm is { IsDisposed: false } foForm)
+                foForm.OnSimConnectChanged();
 
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
@@ -769,6 +781,13 @@ public partial class MainForm
         // and `currentAircraft` already points at the new aircraft by the time the
         // cleanup block runs.
         var oldAircraft = currentAircraft;
+        // The First Officer window FIRST, before anything below tears the old definition down: its
+        // Dispose cancels a running flow and detaches the executor, so no flow step or queued write
+        // runs into the switch. Disposed late, a flow could still write the old aircraft's event ids
+        // into the new one, and say "flow complete" after the switch. Shift+C and the menu then
+        // build the new aircraft's window. Dispose() is idempotent, and unconditional nulling
+        // releases an already-disposed form a `!IsDisposed` guard would leave referenced.
+        firstOfficerForm?.Dispose(); firstOfficerForm = null;
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
         // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
         // Both FBW defs' StopAllMotion also disposes that def's TCAS RA compose timer.
@@ -791,6 +810,11 @@ public partial class MainForm
         // never a per-type line — but never on the instance being switched TO.
         if (!ReferenceEquals(oldAircraft, newAircraft))
             (oldAircraft as BaseAircraftDefinition)?.OnSwitchedAway();
+
+        // A manually-engaged 737 warning test (stick shaker / overspeed clacker) holds its
+        // spring switch open-ended via a transmit press — release it on swap so it can't
+        // keep sounding or bleed into the next aircraft (mirrors StopAllMotion above).
+        (oldAircraft as PMDG737Definition)?.ReleaseEngagedWarningTests(simConnectManager);
 
         // The MD-11 def owns the CEVENT pump — a background task draining a queue of event ids
         // into L:CEVENT. Left running it would keep actuating controls on whatever aircraft is
@@ -816,6 +840,7 @@ public partial class MainForm
 
         // Update the aircraft instance
         currentAircraft = newAircraft;
+        WatchPanelVariant();
 
         // A profile picked while a flight is still loading (AircraftLoaded fired, the new aircraft has not
         // published yet) would take the pre-publish values as its FCU callout baselines and then speak the
@@ -829,8 +854,13 @@ public partial class MainForm
         // every button shows a bare label (Attach used to run only from a press or a hotkey).
         if (newAircraft is TFDiMD11Definition newMd11)
             newMd11.Attach(simConnectManager);
+        // The 757 reads the loaded aircraft's title through it, for the engine type its section lists follow.
+        if (newAircraft is BBS757Definition newBbs757)
+            newBbs757.Attach(simConnectManager);
 
         taxiGuidanceManager.TurnLeadSeconds = newAircraft.TaxiTurnLeadSeconds;
+        taxiGuidanceManager.SharpTurnLeadSeconds = newAircraft.TaxiSharpTurnLeadSeconds;
+        taxiGuidanceManager.TurnLeadMaxDegrees = newAircraft.TaxiTurnLeadMaxDegrees;
 
         // Refresh aircraft-conditional menu items (FMC Settings is PMDG-only).
         UpdateAircraftSpecificMenuItems();
@@ -868,6 +898,11 @@ public partial class MainForm
         // This prevents flooding TTS with hundreds of "initial" values when switching aircraft
         simVarMonitor.Reset();
         simConnectManager.SuppressECAMAnnouncements = true;
+
+        ResetUniversalAutomation();
+        // The NEW aircraft's floor, press spacing and wait flag now (currentAircraft is already the new
+        // definition), not at the next 1 s tick: an Update in between would act on the previous aircraft's.
+        PushUniversalAircraftLimits();
 
         // Hazard announcers re-baseline on switch — stale category/ice baselines
         // from the previous airframe must not announce as "changes".
@@ -921,13 +956,6 @@ public partial class MainForm
         sectionsListBox.Items.Clear();
         panelsListBox.Items.Clear();
         controlsContainer.Controls.Clear();
-
-        // Dispose checklistForm so it reloads for new aircraft
-        if (checklistForm != null && !checklistForm.IsDisposed)
-        {
-            checklistForm.Dispose();
-            checklistForm = null;
-        }
 
         // Dispose A380 monitor manager when switching aircraft
         if (fbwA380MonitorManagerForm != null && !fbwA380MonitorManagerForm.IsDisposed)
@@ -1054,6 +1082,9 @@ public partial class MainForm
         pmdgCoherentEfbFirstOfficerForm?.Dispose(); pmdgCoherentEfbFirstOfficerForm = null;
         coherentPmdgEfbCaptain?.Dispose(); coherentPmdgEfbCaptain = null;
         coherentPmdgEfbFirstOfficer?.Dispose(); coherentPmdgEfbFirstOfficer = null;
+
+        // The First Officer window was disposed at the top of this method.
+
         if (coherentNDClient != null)
         {
             coherentNDClient.Dispose();
@@ -1179,6 +1210,15 @@ public partial class MainForm
         // Starting the SDK bridge is a no-op unless the new aircraft is the iFly.
         StartIFlySdkBridge();
 
+        // The 757's windows, on every switch: the monitor manager lists the definition it was
+        // built for, so the next Ctrl+M rebuilds it from the live one. Before the readers start, as
+        // StartBbs757Displays makes the hidden CDU window the closed-window message watch needs.
+        DisposeBBS757Forms();
+
+        // Likewise the PMDG 737 display readers unless it is the PMDG 737 (a reader already running restarts).
+        StartPmdg737Displays();
+        StartBbs757Displays();   // and the BlueBird 757's (with its CDU message watch) unless it is the 757
+
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
         {
@@ -1252,6 +1292,15 @@ public partial class MainForm
         bool isHs787 = currentAircraft != null &&
                        currentAircraft.AircraftCode.StartsWith("HS_", StringComparison.Ordinal);
         fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787;
+
+        // The one First Officer item shows only for an aircraft that has one, read with that
+        // aircraft's name ("Fenix A320 First Officer"). FirstOfficerWindows decides (FO-24).
+        string? firstOfficerName = Forms.FirstOfficer.FirstOfficerWindows.NameFor(currentAircraft);
+        firstOfficerMenuItem.Visible = firstOfficerName != null;
+        if (firstOfficerName != null)
+            firstOfficerMenuItem.AccessibleName = firstOfficerName;
+        // First Officer automation settings now live in the unified Settings dialog
+        // (Forms/Settings/FirstOfficerPanel.cs), always reachable regardless of aircraft.
     }
 
     /// <summary>
@@ -1269,6 +1318,7 @@ public partial class MainForm
         headwindA330MenuItem.Checked = false;
         ifly737MaxMenuItem.Checked = false;
         tfdiMd11MenuItem.Checked = false;
+        bbs757MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -1308,6 +1358,10 @@ public partial class MainForm
         else if (currentAircraft is IFly737MAXDefinition)
         {
             ifly737MaxMenuItem.Checked = true;
+        }
+        else if (currentAircraft is BBS757Definition)
+        {
+            bbs757MenuItem.Checked = true;
         }
     }
 

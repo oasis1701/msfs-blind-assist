@@ -456,4 +456,111 @@ public class HoldingPointEntryTests
             new List<(string, double, double)>(),
             0, 0, 0, FarLon, HalfWidthM, AcLat, AcLon));
     }
+
+    // ── Starter extensions (iniBuilds EGLL 09L) ──────────────────────────────────
+    // Some runways are entered ONLY from pavement BEHIND the runway_end threshold.
+    // EGLL 09L's sole on-centreline junction is AB13, whose 19 nodes sit 300-355 m
+    // back; the flat -40 m entry floor discarded every one, so the runway had no
+    // full-length entry, its picker showed only PARTWAY (intersection) entries, and
+    // AnnounceDefaultHoldingPoint fell silent — while 27R, entered from A1 at
+    // +66…+77 m, announced normally. A point admitted by the three behind-threshold
+    // gates may now bind an entry as far back as the painted line itself (+60 m).
+
+    private static TaxiGraph BuildGraphWithStarterExtension()
+    {
+        var paths = new List<TaxiPath>
+        {
+            // Spine running back to the extension stub's off-runway end, which the two
+            // therefore share as one node (same idiom as BuildGraphWithFullLengthEntry —
+            // a spine that merely PASSES the stub leaves it in its own component).
+            new TaxiPath { StartLat = OffLat, StartLon = -0.0032, EndLat = OffLat, EndLon = 0.006 },
+            // The starter-extension junction: meets the centreline 355 m BEHIND the
+            // threshold (EGLL 09L's AB13 sits 300-355 m back).
+            new TaxiPath { StartLat = OffLat, StartLon = -0.0032, EndLat = 0, EndLon = -0.0032 },
+            // A mid-field entrance at 667 m — the entry the old floor forced points onto.
+            new TaxiPath { StartLat = OffLat, StartLon = 0.006, EndLat = 0, EndLon = 0.006 },
+        };
+        return TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+    }
+
+    [Fact]
+    public void Behind_threshold_hold_binds_an_entry_on_a_starter_extension()
+    {
+        var g = BuildGraphWithStarterExtension();
+        // AB13: painted 389 m back, its junction 355 m back.
+        var points = new List<(string, double, double)> { ("AB13", HoldLat, -0.0035) };
+
+        var entry = Assert.Single(g.ResolveHoldingPointEntries(
+            points, 0, 0, 0, FarLon, HalfWidthM, OffLat, 0.006,
+            behindThresholdEligible: RunwayKind, runwayName: "09"));
+
+        Assert.Equal("AB13", entry.TaxiwayName);
+        Assert.Equal(-0.0032 * 111132.0, entry.AlongMetersFromThreshold, 0);
+        // Full length, not partway: the caller's Partway test is along > lineup + 50 m.
+        Assert.True(entry.AlongMetersFromThreshold < 0);
+        // The extension really is usable pavement ahead of the threshold, so the
+        // runway remaining it reports exceeds the published length.
+        Assert.True(entry.RemainingMeters > FarLon * 111132.0);
+    }
+
+    [Fact]
+    public void Starter_extension_relaxation_stops_at_the_painted_line()
+    {
+        // Only an off-end nub, 556 m back — FARTHER back than the point that would
+        // admit it (389 m + 60 m slack). The relaxation may not reach it, and the
+        // 667 m entrance is past the bind cap, so nothing resolves.
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = OffLat, StartLon = -0.0050, EndLat = OffLat, EndLon = 0.006 },
+            new TaxiPath { StartLat = OffLat, StartLon = -0.0050, EndLat = 0, EndLon = -0.0050 },
+            new TaxiPath { StartLat = OffLat, StartLon = 0.006, EndLat = 0, EndLon = 0.006 },
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+        var points = new List<(string, double, double)> { ("AB13", HoldLat, -0.0035) };
+
+        Assert.Empty(g.ResolveHoldingPointEntries(
+            points, 0, 0, 0, FarLon, HalfWidthM, OffLat, 0.006,
+            behindThresholdEligible: RunwayKind, runwayName: "09"));
+    }
+
+    [Fact]
+    public void Starter_extension_scan_never_moves_a_point_that_already_had_an_entry()
+    {
+        // The relaxed floor is a FALLBACK, never a preference. Any taxiway crossing the
+        // extended centreline behind the threshold leaves nodes within maxPerp with an
+        // off-runway neighbour, so a first-class relaxed scan binds to whichever is
+        // NEARER THE PAINT — which is the crossing, not the runway entrance. Measured on
+        // real data, that moved four EDDF 25C holds from the +41 m entrance to nodes
+        // 561-680 m behind the runway and changed the announced default from T to U2.
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = OffLat, StartLon = -0.0036, EndLat = OffLat, EndLon = -0.0002 },
+            new TaxiPath { StartLat = OffLat, StartLon = -0.0002, EndLat = OffLat, EndLon = 0.006 },
+            // The real full-length entrance, 22 m behind the lineup point.
+            new TaxiPath { StartLat = OffLat, StartLon = -0.0002, EndLat = 0, EndLon = -0.0002 },
+            // Something touching the extended centreline 400 m back — far nearer to the
+            // painted line than the entrance is.
+            new TaxiPath { StartLat = OffLat, StartLon = -0.0036, EndLat = 0, EndLon = -0.0036 },
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+        var points = new List<(string, double, double)> { ("T", HoldLat, -0.0035) };
+
+        var entry = Assert.Single(g.ResolveHoldingPointEntries(
+            points, 0, 0, 0, FarLon, HalfWidthM, OffLat, 0.006,
+            behindThresholdEligible: RunwayKind, runwayName: "09"));
+
+        Assert.Equal(-0.0002 * 111132.0, entry.AlongMetersFromThreshold, 0);
+    }
+
+    [Fact]
+    public void Starter_extension_entry_is_not_offered_without_the_behind_threshold_opt_in()
+    {
+        // The relaxed floor rides the three gates and nothing else: with no kind
+        // vouch the point never reaches the node scan, exactly as before.
+        var g = BuildGraphWithStarterExtension();
+        var points = new List<(string, double, double)> { ("AB13", HoldLat, -0.0035) };
+
+        Assert.Empty(g.ResolveHoldingPointEntries(
+            points, 0, 0, 0, FarLon, HalfWidthM, OffLat, 0.006));
+    }
 }

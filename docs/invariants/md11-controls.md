@@ -47,6 +47,10 @@ Moved 2026-10-10 from md11.md (split for the rule budget).
 
 Moved 2026-10-10 from md11.md (split for the rule budget).
 
+**Whether the bus took the press (2026-10-18, PR #160 second review).** The First Officer's holds go through `TryPressAndHoldAsync`, false when the bus did not take the DOWN or the UP (closing, or the queue full), so a dropped test is never reported done; `PressAndHoldAsync` forwards to it unchanged. Pinned by `Md11FoSecondReviewTests`.
+
+**A release is never refused by a full queue (2026-10-18).** The queue keeps `ReleaseReserve` (32) places above `MaxQueued` that only a release may take: the UP a hold owes (`ReleaseHeldAndFireUp`) and the UP of a press whose DOWN the queue took (`TryFirePressRelease`, which `FirePressRelease` now forwards to, so a refused DOWN gets no UP either). A full queue once refused such an UP after its DOWN had gone out, leaving the button held. An ordinary id's room check and add are one step under `_enqueueLock`, so racing producers cannot spill into the reserve. Pinned by `Md11FoResidualGapTests`.
+
 ## MD11-15
 
 - `MD11_EXTCTL_{CAP,FO}_MIN` set the BARO minimums only and idle at -9999 (not -1); the export shows whichever mode the switch selects; the rows' mode word comes from the silent batch-covered mirror, never from the OnRequest switch — batch-covering the switch itself breaks its walk. → [md11.md](../md11.md)

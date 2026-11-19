@@ -1,3 +1,4 @@
+using System.Globalization;
 using MSFSBlindAssist.Utils;
 
 namespace MSFSBlindAssist.Tests;
@@ -9,6 +10,41 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class ReadoutFormatTests
 {
+    [Theory]
+    [InlineData(0, false, "0 degrees Celsius")]
+    [InlineData(15, false, "15 degrees Celsius")]
+    [InlineData(-42, false, "-42 degrees Celsius")]
+    [InlineData(0, true, "32 degrees Fahrenheit")]
+    [InlineData(100, true, "212 degrees Fahrenheit")]
+    [InlineData(-40, true, "-40 degrees Fahrenheit")]
+    [InlineData(-42, true, "-44 degrees Fahrenheit")]
+    [InlineData(15, true, "59 degrees Fahrenheit")]
+    [InlineData(20.4, false, "20 degrees Celsius")]
+    [InlineData(20.4, true, "69 degrees Fahrenheit")]
+    // A value that rounds to zero reads "0", never "-0": -0.3 °C, and -17.9 °C (-0.22 °F).
+    [InlineData(-0.3, false, "0 degrees Celsius")]
+    [InlineData(-17.9, true, "0 degrees Fahrenheit")]
+    // Halves round away from zero, as the readout always has.
+    [InlineData(2.5, false, "3 degrees Celsius")]
+    [InlineData(-2.5, false, "-3 degrees Celsius")]
+    public void OutsideTemperature_ConvertsBeforeRounding_AndNamesTheUnit(
+        double celsius, bool useFahrenheit, string expected)
+    {
+        foreach (string culture in new[] { "en-US", "de-DE", "sv-SE" })
+        {
+            var previous = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = new CultureInfo(culture);
+                Assert.Equal(expected, ReadoutFormat.OutsideTemperature(celsius, useFahrenheit));
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previous;
+            }
+        }
+    }
+
     [Theory]
     [InlineData("50", "number", "50")]
     [InlineData("50", "Number", "50")]

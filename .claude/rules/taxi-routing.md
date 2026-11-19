@@ -10,6 +10,7 @@ paths:
   - "MSFSBlindAssist/Navigation/LoadRefusalRollback.cs"
   - "MSFSBlindAssist/Navigation/ReachabilityRefusalGate.cs"
   - "MSFSBlindAssist/Navigation/RunwayReachGate.cs"
+  - "MSFSBlindAssist/Navigation/TurnShape.cs"
   - "MSFSBlindAssist/Forms/TaxiAssistForm.cs"
   - "MSFSBlindAssist/Services/LiveRouteStates.cs"
   - "tests/MSFSBlindAssist.Tests/**/*TaxiGraph*.cs"
@@ -28,10 +29,19 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*TaxiwayEntryNode*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*OrphanParkingIsland*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayReachGate*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TurnShape*.cs"
+  - "MSFSBlindAssist/Navigation/OffChartLeg.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OffChartLeg*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*KbosHcJunction*.cs"
+  - "MSFSBlindAssist/Navigation/TurnPick*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TurnPick*.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.Announcements.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
   - "MSFSBlindAssist/Database/Models/TaxiNode.cs"
   - "MSFSBlindAssist/Database/Models/TaxiPath.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RepeatedTaxiwayClearance*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*CrossComponentRoute*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RouteStartGate*.cs"
 ---
 # Taxi routing rules
 
@@ -48,11 +58,11 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [RTE-15] Taxiway exit/intersection picking must use GRAPH distance (Dijkstra from the destination), never Euclidean, which silently fails on a graph dead-end. Full: docs/invariants/taxi-routing.md#rte-15
 - [RTE-16] `FindBestIntersection` has no Euclidean fallback by design: returning -1 (unreachable) on a malformed graph is intentional; never add one back, it produced silently wrong routes. Full: docs/invariants/taxi-routing.md#rte-16
 - [RTE-17] The last cleared taxiway must be honored as the route terminus when it branches off the destination; never let the final unconstrained leg silently drop it. Full: docs/invariants/taxi-routing.md#rte-17
-- [RTE-18] The post-recalc sanity gate needs BOTH the length-blowup and the backwards-bearing indicators, OR'd (not AND'd); either alone misses real dead-end-backtrack recalcs. Full: docs/invariants/taxi-routing.md#rte-18
+- [RTE-18] The post-recalc sanity gate ORs the length-blowup and backwards-bearing indicators (never AND: either alone misses dead-end backtracks); a missed Turn pick waives the bearing one. Full: docs/invariants/taxi-routing.md#rte-18
 - [RTE-19] The initial-load sanity advisory must compare against the PRE-truncation `fullRouteMeters`, never the truncated total, which can hide a genuine backtrack detour. Full: docs/invariants/taxi-routing.md#rte-19
 - [RTE-20] `TryRecalculateRoute` must fall back to shortest path, never the full original clearance sequence, when the aircraft isn't near any sequence taxiway; reapplying it routes the pilot backwards through the whole clearance. Full: docs/invariants/taxi-routing.md#rte-20
 - [RTE-21] `TaxiAssistForm.OnCalculateClicked` must refresh the aircraft position from `LastKnownPosition` immediately before building the route, or the route starts from a stale pre-pushback position and off-routes on frame one. Full: docs/invariants/taxi-routing.md#rte-21
-- [RTE-22] A recalculated route identical to the current remaining sequence must skip the "Route changed" callout, latch resets and tone re-slew entirely, or a sharp corner-cut trips a spurious "Route changed". Full: docs/invariants/taxi-routing.md#rte-22
+- [RTE-22] A recalc repeating the remaining sequence skips "Route changed", latch resets and tone re-slew (else corner-cuts trip a spurious one), unless a Turn pick is missed or not kept. Full: docs/invariants/taxi-routing.md#rte-22
 - [RTE-23] Do NOT remove the first-taxiway pre-snap (the anchoring fix); the pavement lead-in replaces it only when the first cleared taxiway is far (>75 m from the aircraft). Full: docs/invariants/taxi-routing.md#rte-23
 - [RTE-24] Never drop `FindRunwayBridge`'s `MAX_BRIDGE_METERS` cap (400 m, raised from 200 m in #76) or go back to scoring a bridge by gap alone: candidates are scored by total route cost, and the cap still prevents a silent half-airport jump when an ATC clearance is genuinely wrong (those fall back to shortest path with a log line). Full: docs/invariants/taxi-routing.md#rte-24
 - [RTE-25] One taxiway has ONE spelling: `TaxiGraph.BuildCanonicalTaxiwayNames` folds case variants by PROVENANCE first (navdata beats online, `TaxiPath.NameFromOnlineSource`), then the majority spelling, then ordinal-smallest; never ordinal-smallest alone, as `TaxiwayName` is spoken verbatim (more: see full). Full: docs/invariants/taxi-routing.md#rte-25
@@ -60,6 +70,11 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [RTE-28] Reachability sentences name a stand by its identifier only (the label up to its first spaced dash, `RouteReachabilityMessages.SpokenDestinationName`), never the whole label. Full: docs/invariants/taxi-routing.md#rte-28
 - [RTE-29] A refused `LoadRoute` must put back the destination, lineup and graph state it had already overwritten (`LoadRefusalRollback`), so a refusal mid-taxi leaves the route being flown untouched; the older failure returns do not roll back. Full: docs/invariants/taxi-routing.md#rte-29
 - [RTE-30] Post-Build `TaxiGraph` structure changes run on the UI thread only (UI-thread readers take no lock) and only through TaxiGraph's own mutators, which drop the cell index (`InvalidateCellIndex`); never write `Nodes`/`Adjacency` directly on a graph `DescribeLocation` serves, nor detect staleness by recounting adjacency per query. Full: docs/invariants/taxi-routing.md#rte-30
+- [RTE-31] The stand list is ordered by TAXI distance (`TaxiAssistForm.GetGateTaxiDistances` → `TaxiRouter.ComputeGraphDistancesFrom`, cached per airport + anchor), never straight-line; unreachable stands rank last by a FINITE offset; no anchor keeps the old order. Full: docs/invariants/taxi-routing.md#rte-31
+- [RTE-32] A landing-exit route never opens with an avoidable U-turn; `LoadRoute`'s backwards-start retry (`RouteStartsBackwards`, `FirstLegPointsBack`, `RouteHairpinsEarly`) keeps every measured gate; touchdown's `StartGuidance(announceStart: false)` stays silent. Full: docs/invariants/taxi-routing.md#rte-32
+- [RTE-33] A clearance returning to a taxiway it just left ("A, C, A") is routed plain AND honoured (`FindConstrainedPathCore(honourRepeats)`), never "shorter wins"; the branch-off terminal rule never fires on the destination runway (`IsOnDestinationRunway`). Full: docs/invariants/taxi-routing.md#rte-33
+- [RTE-35] Cross-component notes say WHICH side is cut off (`AircraftIsOnTheSmallerIsland`); refusing an unmapped first leg over a runway stays `RouteReachability.CheckFirstLeg`'s job. Full: docs/invariants/taxi-routing.md#rte-35
+- [RTE-36] A landing-exit handoff route that DETOURS (> 3× and > 500 m over the straight line, `RouteDetoursFromExit`) is retried from each exit-taxiway candidate; shortest non-detour wins. Full: docs/invariants/taxi-routing.md#rte-36
 
 Mirrored from surroundings.md (it governs the Place list in TaxiAssistForm.cs; change it there and here together):
 - [SUR-13] `TaxiAssistForm` never builds a Place catalog: it reads `SurroundingsCatalogCached` and starts at most ONE `LoadPlaces` (never while `_placesLoading` or `_placesSettling`), listing meanwhile from the catalog last loaded for that airport; a pick a rebuild lost is cleared and spoken (`PlaceListUpdatedMessage`). Full: docs/invariants/surroundings.md#sur-13

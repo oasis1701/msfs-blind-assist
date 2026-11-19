@@ -411,11 +411,13 @@ public class RunwayVacateResolverTests
         Assert.Equal(NodeAtLon(g, 33), LandingExitDestination.Pick(g, exit, all, out string src));
         Assert.Equal("ext", src);
 
-        // (b) furthest same-named non-End exit outranks the extension node.
+        // (b) furthest same-named non-End exit outranks the extension node —
+        // provided it CHAINS from the chosen exit (300 ft here, a realistic
+        // multi-segment RET step; see the chained-continuation cap test below).
         all.Add(new LandingExit
         {
             NodeId = NodeAtLon(g, 89), TaxiwayName = "B",
-            DistanceFromThresholdFeet = 2000.0, ExitType = "Normal",
+            DistanceFromThresholdFeet = 1300.0, ExitType = "Normal",
         });
         Assert.Equal(NodeAtLon(g, 89), LandingExitDestination.Pick(g, exit, all, out src));
         Assert.Equal("sameNamedRet", src);
@@ -542,5 +544,390 @@ public class RunwayVacateResolverTests
 
         Assert.Equal(nodeA, dest);
         Assert.Equal("ext", src);
+    }
+
+    [Fact]
+    public void DestinationPickIgnoresAFarSameNamedSiblingAsAContinuation()
+    {
+        // KBNA class: single-letter-named sceneries carry several PHYSICALLY
+        // SEPARATE turnoffs under one name (the coverage gap fill re-admits them
+        // ≥ 1400 ft apart; EGLL 09R keeps both S5W junctions of a U-link 946 ft
+        // apart). Those are siblings, not continuations of the chosen RET's arc —
+        // an uncapped "furthest same-named" resolved the vacate destination to a
+        // junction thousands of feet downfield and steered the pilot along the
+        // runway-parallel taxiway past their own exit. A continuation must CHAIN
+        // in short steps from the chosen exit.
+        var g = BuildEvraStyleB();
+        var exit = new LandingExit
+        {
+            NodeId = NodeAtLon(g, 0), TaxiwayName = "G", ExitBearingTrue = 90.0,
+            DistanceFromThresholdFeet = 3700.0, ApronNodeId = -1,
+        };
+        var all = new List<LandingExit>
+        {
+            exit,
+            new LandingExit
+            {
+                NodeId = NodeAtLon(g, 89), TaxiwayName = "G",
+                DistanceFromThresholdFeet = 6155.0, ExitType = "Normal",
+            },
+        };
+
+        Assert.Equal(NodeAtLon(g, 33), LandingExitDestination.Pick(g, exit, all, out string src));
+        Assert.Equal("ext", src);
+
+        // A genuine multi-segment arc still chains THROUGH intermediate nodes:
+        // 3700 → 4000 → 4350 walks two ≤500 ft steps and returns the furthest.
+        all.Add(new LandingExit
+        {
+            NodeId = NodeAtLon(g, 33), TaxiwayName = "G",
+            DistanceFromThresholdFeet = 4000.0, ExitType = "High-speed",
+        });
+        all.Add(new LandingExit
+        {
+            NodeId = NodeAtLon(g, 106), TaxiwayName = "G",
+            DistanceFromThresholdFeet = 4350.0, ExitType = "High-speed",
+        });
+        Assert.Equal(NodeAtLon(g, 106), LandingExitDestination.Pick(g, exit, all, out src));
+        Assert.Equal("sameNamedRet", src);
+    }
+
+    // ---------------------------------------------------------------- crossing runway
+    //
+    // KDTW class (04R × 09L, found by the 2026-08-26 consistency sweep: 2,212 exits
+    // DB-wide): at a runway intersection the exit's ApronNodeId can sit dead-centre
+    // ON the crossing runway while being 95 m from the LANDING runway's axis. The
+    // lateral-only "already vacated" early-exit then returned it untouched, and the
+    // arrival callout told the pilot to stop and hold position — parked on 09L.
+    //
+    // Fixture: landing runway 18 as above; a crossing runway 09/27 built from start
+    // rows running east-west through lat 0.010. Taxiway Y leaves the 18 centreline
+    // at (0.0102, 0), reaches node A ON the 09/27 centreline 95 m east of 18's axis,
+    // then continues north-east to node B — 150 m east of 18's axis and 60 m north
+    // of the 09/27 centreline (default centerline half-width is 22.86 m), i.e.
+    // genuinely clear of both runways.
+
+    private const double CrossLat = 0.010;   // 09/27 centreline latitude
+
+    private static StartPosition Start(string name, double heading, double lat, double lon)
+        => new StartPosition { RunwayName = name, Type = "R", Heading = heading, Latitude = lat, Longitude = lon };
+
+    private static TaxiGraph BuildCrossingRunwayGraph(bool withCrossingRunway)
+    {
+        double jLat = 0.0102;
+        double aLat = CrossLat,               aLon = Lon(95);
+        double bLat = CrossLat + 60.0 * DEG_PER_M, bLon = Lon(150);
+
+        var paths = new List<TaxiPath>
+        {
+            Path(jLat, Lon(0), aLat, aLon, "Y"),
+            Path(aLat, aLon,   bLat, bLon, "Y"),
+        };
+        var starts = new List<StartPosition>();
+        if (withCrossingRunway)
+        {
+            starts.Add(Start("09", 90.0, CrossLat, -0.005));
+            starts.Add(Start("27", 270.0, CrossLat, 0.005));
+        }
+        return TaxiGraph.Build(paths, new List<ParkingSpot>(), starts,
+                               new List<Runway> { Runway18() });
+    }
+
+    [Fact]
+    public void DestinationOnACrossingRunway_IsWalkedOffIt()
+    {
+        var g = BuildCrossingRunwayGraph(withCrossingRunway: true);
+        Assert.NotEmpty(g.RunwayCenterlines);
+        int junction = NodeAtLon(g, 0);
+        int a = NodeAtLon(g, 95);
+        int b = NodeAtLon(g, 150);
+
+        int dest = RunwayVacateResolver.ExtendClearOfRunway(
+            g, a, junction, Runway18(), 180.0,
+            out double startLateral, out double endLateral);
+
+        // Node A is 95 m from 18's axis — "already vacated" by the lateral-only test —
+        // but sits ON the 09/27 centreline. The walk must continue to B.
+        Assert.Equal(95.0, startLateral, 0);
+        Assert.Equal(b, dest);
+        Assert.Equal(150.0, endLateral, 0);
+    }
+
+    [Fact]
+    public void AnotherRunwaysHoldLine_StopsTheWalkBeforeIt()
+    {
+        // Landing 18; the exit path leads toward crossing runway 09/27's own
+        // hold-short line. The walk must stop at the node BEFORE that line — the
+        // protected area between another runway's hold line and its pavement is
+        // "off-pavement" by the landing runway's test, but parking in it is the
+        // incursion the line exists to prevent. Gate fires only when the name
+        // AND the geometry agree (the hold sits closer to 09/27's centreline
+        // than to 18's axis).
+        double jLat = 0.0106;                       // 66.7 m north of 09/27's centreline
+        double hLat = 0.0105;                       // hold: 55.6 m from 09/27, 70 m from 18
+        double tLat = 0.0104;
+        var paths = new List<TaxiPath>
+        {
+            Path(jLat, Lon(0),  jLat, Lon(45), "Y"),
+            Path(jLat, Lon(45), hLat, Lon(70), "Y", endType: "HSND"),
+            Path(hLat, Lon(70), tLat, Lon(100), "Y"),
+        };
+        var starts = new List<StartPosition>
+        {
+            Start("09", 90.0, CrossLat, -0.005),
+            Start("27", 270.0, CrossLat, 0.005),
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), starts,
+                                new List<Runway> { Runway18() });
+        int junction = NodeAtLon(g, 0);
+
+        int dest = RunwayVacateResolver.ExtendClearOfRunway(
+            g, NodeAtLon(g, 45), junction, Runway18(), 180.0,
+            out _, out double endLateral);
+
+        // Stops at the 45 m node — off 18's pavement (edge + margin is 37.6 m),
+        // short of 09/27's hold line at 70 m; never at or past the line itself.
+        Assert.Equal(NodeAtLon(g, 45), dest);
+        Assert.Equal(45.0, endLateral, 0);
+    }
+
+    [Fact]
+    public void MisBoundHoldName_DoesNotStopTheWalk()
+    {
+        // The same crossing runway exists, but the hold node sits NEARER the
+        // landing runway's axis (50 m) than 09/27's centreline (66.7 m) — the
+        // classic nearest-centerline naming mis-bind at close parallels (12TS
+        // class): the node is really the landing runway's own hold wearing the
+        // other runway's name. Geometry outvotes the name and the walk proceeds
+        // past it to the clearance target, exactly as before the gate existed.
+        double jLat = 0.0106;
+        var paths = new List<TaxiPath>
+        {
+            Path(jLat, Lon(0),  jLat, Lon(50), "Y", endType: "HSND"),
+            Path(jLat, Lon(50), jLat, Lon(100), "Y"),
+            Path(jLat, Lon(100), jLat, Lon(134), "Y"),
+        };
+        var starts = new List<StartPosition>
+        {
+            Start("09", 90.0, CrossLat, -0.005),
+            Start("27", 270.0, CrossLat, 0.005),
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), starts,
+                                new List<Runway> { Runway18() });
+        int junction = NodeAtLon(g, 0);
+
+        int dest = RunwayVacateResolver.ExtendClearOfRunway(
+            g, NodeAtLon(g, 50), junction, Runway18(), 180.0,
+            out _, out double endLateral);
+
+        // Past the mis-named hold, stopping at the first plain node beyond the
+        // 90 m holding-position target.
+        Assert.Equal(NodeAtLon(g, 100), dest);
+        Assert.Equal(100.0, endLateral, 0);
+    }
+
+    [Fact]
+    public void ClearOfOtherRunways_TellsTheTwoNodesApart()
+    {
+        var g = BuildCrossingRunwayGraph(withCrossingRunway: true);
+        int a = NodeAtLon(g, 95);
+        int b = NodeAtLon(g, 150);
+
+        Assert.False(RunwayVacateResolver.IsClearOfOtherRunways(g, a, Runway18(), 180.0));
+        Assert.True(RunwayVacateResolver.IsClearOfOtherRunways(g, b, Runway18(), 180.0));
+    }
+
+    [Fact]
+    public void CenterlineHalfWidth_ComesFromTheRealRunwayWidth()
+    {
+        // The 75 ft default corridor under-reads a wide runway: a node 26 m off a
+        // 200 ft-wide runway's centreline is ON its pavement but outside the 22.86 m
+        // default, so IsOnDifferentRunway called it clear (708 resolver-invisible
+        // stop points DB-wide). Build now matches each centerline to its runway by
+        // collinearity and takes the real half-width.
+        double jLat = 0.0102;
+        var paths = new List<TaxiPath>
+        {
+            Path(jLat, Lon(0), CrossLat, Lon(95), "Y"),
+        };
+        // Crossing runway 09/27 through lat 0.010, 200 ft wide (half 30.48 m).
+        var starts = new List<StartPosition>
+        {
+            Start("09", 90.0, CrossLat, -0.005),
+            Start("27", 270.0, CrossLat, 0.005),
+        };
+        var wide = new Runway
+        {
+            RunwayID = "09",
+            StartLat = CrossLat, StartLon = -0.005,
+            EndLat = CrossLat, EndLon = 0.005,
+            Heading = 90.0,
+            Length = 0.01 * M_PER_DEG / 0.3048,
+            Width = 200.0,
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), starts,
+                                new List<Runway> { Runway18(), wide });
+
+        var cl = Assert.Single(g.RunwayCenterlines);
+        Assert.Equal(200.0 * 0.5 * 0.3048, cl.HalfWidthMeters, 2);
+
+        // A node 26 m from the 09/27 centreline: on the real pavement, outside the
+        // old default corridor — must now read as ON the runway.
+        var probe = new TaxiPath
+        {
+            StartLat = CrossLat + 26.0 * DEG_PER_M, StartLon = Lon(95),
+            EndLat = CrossLat + 120.0 * DEG_PER_M, EndLon = Lon(95),
+            Name = "Z", StartType = "N", EndType = "N", Width = 98.0,
+        };
+        var g2 = TaxiGraph.Build(new List<TaxiPath>(paths) { probe },
+                                 new List<ParkingSpot>(), starts,
+                                 new List<Runway> { Runway18(), wide });
+        int onPavement = 0;
+        foreach (var n in g2.Nodes.Values)
+            if (Math.Abs((n.Latitude - CrossLat) * M_PER_DEG - 26.0) < 1.0)
+                onPavement = n.NodeId;
+        Assert.True(onPavement > 0);
+        Assert.False(RunwayVacateResolver.IsClearOfOtherRunways(g2, onPavement, Runway18(), 180.0));
+    }
+
+    [Fact]
+    public void ExtBranchThatStalls_FallsBackToTheJunctionWalk()
+    {
+        // The extension-node pick commits the vacate walk to one branch of the
+        // junction. Fixture: bearing points down branch A (10 m out, dead end);
+        // branch B walks clear past 90 m. The junction-anchored walk (the pre-ext
+        // behaviour) must win when the ext branch stalls inside the pavement.
+        double l0 = JunctionLat;
+        // Branch A: barely off the pavement side, dead end at 10 m east.
+        double aLat = JunctionLat - 4.0 * DEG_PER_M;
+        // Branch B: clean escape west... same side (east) to satisfy the side latch:
+        // 40 m then 110 m east, stepping south.
+        var paths = new List<TaxiPath>
+        {
+            Path(l0, Lon(0),  aLat, Lon(10), "", endType: "N"),                     // A (stalls)
+            Path(l0, Lon(0),  JunctionLat - 30.0 * DEG_PER_M, Lon(40), ""),         // B leg 1
+            Path(JunctionLat - 30.0 * DEG_PER_M, Lon(40),
+                 JunctionLat - 60.0 * DEG_PER_M, Lon(110), ""),                     // B leg 2
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>(),
+                                new List<Runway> { Runway18() });
+        int junction = NodeAtLon(g, 0);
+        int stallNode = NodeAtLon(g, 10);
+        int clearNode = NodeAtLon(g, 110);
+
+        // Exit whose bearing points at branch A: due east = 90 deg true.
+        var exit = new LandingExit
+        {
+            NodeId = junction, TaxiwayName = "", ExitBearingTrue = 90.0,
+            DistanceFromThresholdFeet = 1000.0, ApronNodeId = -1,
+        };
+
+        int dest = LandingExitDestination.Resolve(
+            g, exit, new List<LandingExit> { exit }, Runway18(), 180.0,
+            out _, out double endLateralM, out string src);
+
+        Assert.NotEqual(stallNode, dest);
+        Assert.Equal(clearNode, dest);
+        Assert.True(endLateralM >= RunwayVacateResolver.VacatedClearanceMetres);
+        Assert.Contains("junctionWalk", src);
+    }
+
+    [Fact]
+    public void WithoutTheCrossingRunway_TheAlreadyClearDestinationIsStillLeftAlone()
+    {
+        // Control: identical geometry, no crossing runway in the graph. The 95 m node
+        // is genuinely clear, and the early-exit must return it untouched — pinning
+        // that the fix changes nothing for ordinary already-vacated destinations.
+        var g = BuildCrossingRunwayGraph(withCrossingRunway: false);
+        int junction = NodeAtLon(g, 0);
+        int a = NodeAtLon(g, 95);
+
+        int dest = RunwayVacateResolver.ExtendClearOfRunway(
+            g, a, junction, Runway18(), 180.0, out _, out double endLateral);
+
+        Assert.Equal(a, dest);
+        Assert.Equal(95.0, endLateral, 0);
+        Assert.True(RunwayVacateResolver.IsClearOfOtherRunways(g, a, Runway18(), 180.0));
+    }
+
+    // ---- EGLL 09L -> A1 shape (VirtualPilot 2026-09-25) ----
+    // The exit taxiway CURVES after clearing 90 m: 120 m, 123 m, then back to 120 m before the
+    // runway's own painted line at 141 m. The greedy walk needs every step to get further out,
+    // so it stopped at the first node past 90 m — 21 m short of the line — and the pilot was told "Off the runway"
+    // inside the protected area. RunwayVacateResolver.ExtendPastOwnHoldAhead finds the line.
+    private static TaxiGraph BuildCurvingExit(double holdM, double pastHoldM, bool shortHopPast = true)
+    {
+        double l0 = JunctionLat;
+        double l1 = JunctionLat - 30.0 * DEG_PER_M;
+        double l2 = JunctionLat - 60.0 * DEG_PER_M;
+        double l3 = JunctionLat - 70.0 * DEG_PER_M;
+        double l4 = JunctionLat - 85.0 * DEG_PER_M;
+        double l5 = JunctionLat - 100.0 * DEG_PER_M;
+        double l6 = JunctionLat - (shortHopPast ? 104.0 : 400.0) * DEG_PER_M;
+        var paths = new List<TaxiPath>
+        {
+            Path(l0, Lon(0),   l1, Lon(60),  "A1"),
+            Path(l1, Lon(60),  l2, Lon(120), "A1"),
+            Path(l2, Lon(120), l3, Lon(123), "A1"),
+            Path(l3, Lon(123), l4, Lon(120.5), "A1"),
+            Path(l4, Lon(120.5), l5, Lon(holdM), "A1", endType: "HSND"),
+            Path(l5, Lon(holdM), l6, Lon(pastHoldM), "A1"),
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>(),
+                                new List<Runway> { Runway18() });
+        // Name the painted line for the runway just landed on, as the scenery does.
+        g.Nodes[NodeAtLon(g, holdM)].HoldShortName = "A1, Runway 36";
+        return g;
+    }
+
+    [Fact]
+    public void CurvingExit_StopsPastTheLandedRunwaysOwnLine()
+    {
+        var g = BuildCurvingExit(141, 145);
+        int dest = RunwayVacateResolver.ExtendClearOfRunway(
+            g, NodeAtLon(g, 60), NodeAtLon(g, 0), Runway18(), 180.0,
+            out _, out double endLateral);
+        Assert.Equal(NodeAtLon(g, 145), dest);
+        Assert.Equal(145.0, endLateral, 1);
+    }
+
+    [Fact]
+    public void CurvingExit_WithoutTheSearch_KeepsTheOldStop()
+    {
+        var g = BuildCurvingExit(141, 145);
+        int dest = RunwayVacateResolver.ExtendClearOfRunway(
+            g, NodeAtLon(g, 60), NodeAtLon(g, 0), Runway18(), 180.0,
+            out _, out _, ownHoldSearch: false);
+        Assert.Equal(NodeAtLon(g, 120), dest);
+    }
+
+    [Fact]
+    public void CurvingExit_NoShortHopPastTheLine_KeepsTheOldStop()
+    {
+        // Stopping ON the line with only a long leg onward leaves the taxi planner starting the
+        // route somewhere else (KCVG 09 C: 298 m) — not worth it.
+        var g = BuildCurvingExit(141, 300, shortHopPast: false);
+        int dest = RunwayVacateResolver.ExtendClearOfRunway(
+            g, NodeAtLon(g, 60), NodeAtLon(g, 0), Runway18(), 180.0, out _, out _);
+        Assert.Equal(NodeAtLon(g, 120), dest);
+    }
+
+    [Fact]
+    public void CurvingExit_ALineBeyond180m_IsNotAHoldingPosition()
+    {
+        var g = BuildCurvingExit(190, 194);
+        int dest = RunwayVacateResolver.ExtendClearOfRunway(
+            g, NodeAtLon(g, 60), NodeAtLon(g, 0), Runway18(), 180.0, out _, out _);
+        Assert.Equal(NodeAtLon(g, 120), dest);
+    }
+
+    [Fact]
+    public void CurvingExit_ALineNamedForAnotherRunway_IsNotFollowed()
+    {
+        var g = BuildCurvingExit(141, 145);
+        g.Nodes[NodeAtLon(g, 141)].HoldShortName = "A1, Runway 09";
+        int dest = RunwayVacateResolver.ExtendClearOfRunway(
+            g, NodeAtLon(g, 60), NodeAtLon(g, 0), Runway18(), 180.0, out _, out _);
+        Assert.Equal(NodeAtLon(g, 120), dest);
     }
 }

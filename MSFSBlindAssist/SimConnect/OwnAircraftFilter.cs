@@ -37,6 +37,10 @@ namespace MSFSBlindAssist.SimConnect;
 /// while an id is held, and the position backstop does not reach it once the avatar walks away.
 /// Restoring the callsign match would bring back the dropped-traffic failure above, so it stays
 /// off until a walkaround is measured.</para>
+///
+/// <para>Also dropped, by type: the invisible helper objects an add-on spawns in the "airplane"
+/// category, which every AIRCRAFT sweep returns as if they were aircraft
+/// (<see cref="IsAddOnHelperObject"/>).</para>
 /// </summary>
 public sealed class OwnAircraftFilter
 {
@@ -97,4 +101,24 @@ public sealed class OwnAircraftFilter
         if (lat == 0 && lon == 0) return false;   // an unset position, never a real stand
         return TaxiGraph.FastDistanceMeters(entryLat, entryLon, lat, lon) <= SamePositionMetres;
     }
+
+    /// <summary>
+    /// ATC TYPE / ATC MODEL values of add-on helper objects. The Fenix update of 2026-10-22 ships
+    /// <c>SimObjects/Misc/FNX_DUMMY</c> (category "airplane", atc_type and atc_model "Fenix Dummy Object",
+    /// icao_type_designator "FNXDUMMY") and spawns it at its own gear as nose-FNX, left-FNX and
+    /// right-FNX, each a separate object whose id changes within a second, so neither the id nor
+    /// the position filter reaches it: "Stop, nose-FNX, Fenix very close, ahead, 25 feet." all
+    /// through the taxi (live 2026-10-22/23).
+    /// </summary>
+    private static readonly HashSet<string> HelperObjectTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Fenix Dummy Object", "FNXDUMMY",
+    };
+
+    /// <summary>
+    /// True when a sweep entry is an add-on's invisible helper object rather than an aircraft, by its
+    /// ATC TYPE or ATC MODEL. Whoever spawned it, it is never traffic.
+    /// </summary>
+    public static bool IsAddOnHelperObject(string? atcType, string? atcModel) =>
+        HelperObjectTypes.Contains(atcType?.Trim() ?? "") || HelperObjectTypes.Contains(atcModel?.Trim() ?? "");
 }

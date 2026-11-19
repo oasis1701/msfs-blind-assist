@@ -227,7 +227,22 @@ public static class OnePageBuilder
             foreach (string file in part.ChapterFiles)
             {
                 GuidePage page = source.Pages[file];
-                contents.Append("<li><a href=\"#").Append(E(page.Slug)).Append("\">").Append(E(page.Title)).Append("</a></li>\n");
+                contents.Append("<li><a href=\"#").Append(E(page.Slug)).Append("\">").Append(E(page.Title)).Append("</a>");
+
+                // Each chapter's sections, as the site's contents page lists them.
+                List<GuideHeading> sections = GuideMarkdown.Headings(page.Body).Where(h => h.Level == 2).ToList();
+                if (sections.Count > 0)
+                {
+                    contents.Append("\n<ul>\n");
+                    foreach (GuideHeading section in sections)
+                    {
+                        contents.Append("<li><a href=\"#").Append(E(section.Id)).Append("\">").Append(E(section.Text)).Append("</a></li>\n");
+                    }
+
+                    contents.Append("</ul>\n");
+                }
+
+                contents.Append("</li>\n");
             }
 
             contents.Append("</ul>\n</li>\n");

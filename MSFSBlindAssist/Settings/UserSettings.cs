@@ -144,7 +144,7 @@ public class UserSettings
         // error exceeds N degrees. Default 1 = silent when on track, only sounds
         // when you need to steer back — matches "silent on the deadband".
         public int TakeoffAssistHeadingToneThreshold { get; set; } = 1;
-        public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
+        public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable the 80kt and 100kt callouts (V1, Rotate and V2 come from the aircraft definitions)
 
         /// <summary>
         /// When true (default), a destination runway or a landing exit plan arms the landing assist's
@@ -253,6 +253,9 @@ public class UserSettings
         /// </summary>
         public DistanceUnit GroundDistanceUnit { get; set; } = DistanceUnit.Metres;
 
+        /// <summary>Use Fahrenheit for the Output O outside-temperature readout. Default is Celsius.</summary>
+        public bool UseFahrenheitForOutsideTemperature { get; set; } = false;
+
         // Independent of GroundDistanceUnit: ground-traffic proximity alerts have their own
         // metres/feet toggle (default feet). Not governed by the app-wide distance-units setting.
         public bool GroundTrafficUseMetres { get; set; } = false;
@@ -269,6 +272,54 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> FenixDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // First Officer (PMDG 777/737) automation.
+        // Gear management is split into two independent toggles: raise on the climb
+        // (positive rate) and lower on the descent (2000 ft AGL). The legacy single
+        // FOAutoGearEnabled flag is kept ONLY so old settings files still deserialize;
+        // SettingsManager.MigrateFOGearSplit seeds the two new flags from it once.
+        public bool FOAutoGearEnabled     { get; set; } = false;  // legacy — migrated, do not read directly
+        public bool FOAutoGearUpEnabled   { get; set; } = false;  // auto-raise gear on positive rate (climb)
+        public bool FOAutoGearDownEnabled { get; set; } = false;  // auto-lower gear at 2000 ft AGL (descent)
+        public bool FOAutoGearSplitMigrated { get; set; } = false; // one-time migration guard
+        public bool FOAutoFlapsEnabled    { get; set; } = false;
+        public bool FOAutoApEnabled       { get; set; } = false;
+
+        // Height (ft AGL) at which the FO auto-engages the autopilot on climbout —
+        // one global value shared by all four aircraft (default 350).
+        public int FOAutoApEngageAltitudeAgl { get; set; } = 350;
+
+        // Phase-monitor light automation: switch the landing (and nose, where fitted)
+        // lights at the 10,000 ft crossing. Default ON — matches the behavior before
+        // this toggle existed; a missing key in old settings files deserializes to it.
+        public bool FOAutoLights10kEnabled { get; set; } = true;
+
+        // Phase-monitor altimeter automation: STD climbing through the transition altitude,
+        // out of STD descending through the transition level. Default ON — matches the
+        // behavior before this toggle existed. Off, the FO only reminds (FO-23).
+        public bool FOAutoAltimetersEnabled { get; set; } = true;
+
+        // "Speak flow progress": a flow speaks each step as it goes. Default ON — the behavior
+        // before this toggle existed. Off, only the step-by-step lines go quiet; Captain actions,
+        // skips, timeouts, failures and "flow complete" still speak (FlowManager.SpeakProgress).
+        public bool FOSpeakFlowProgress { get; set; } = true;
+
+        // PMDG 737/777 center-tank fuel pump auto-management. Default OFF (F11): opt-in like
+        // every other FO automation, it actuates a safety-relevant switch and speaks unprompted,
+        // and it has a long defect history — it should not be on for users who never asked.
+        // Only the two PMDG jets act on it; other aircraft store-and-ignore.
+        public bool FOAutoCenterPumpsEnabled { get; set; } = false;
+
+        // Auto seat-belt-sign automation, actuated via each aircraft's own seatbelt control:
+        // 0 = Disabled (default), 1 = switch at the 10,000 ft crossing, 2 = off at Top of
+        // Climb / on at Top of Descent (vertical-speed profile). See FoSeatbeltMode.
+        public int FOAutoSeatbeltMode { get; set; } = 0;
+
+        /// <summary>737 GPWS self-test variant run by the First Officer preflight flow and
+        /// checklist tick: false = short test (quick press), true = long test (5 s hold).
+        /// Both panel buttons exist regardless; this only selects the flow/checklist variant.
+        /// Read at DISPATCH time by the 737 executor, so a change applies immediately.</summary>
+        public bool FOGpws737LongTest { get; set; } = false;
+
         // One-time seed marker (SettingsManager.SeedFenixMonitorDefaults). Two groups
         // are added to FenixDisabledMonitorVariables by default so they don't speak:
         //   * the raw-seconds clock counters (CLOCK CHRONO / CLOCK ELAPSED), which tick
@@ -278,6 +329,15 @@ public class UserSettings
         // All stay toggleable in the Ctrl+M monitor; this flag stops them being re-seeded
         // after the user deliberately re-enables one.
         public bool FenixMonitorDefaultsSeeded { get; set; } = false;
+
+        // One-time seed marker (SettingsManager.SeedPmdgMonitorDefaults). The 737's
+        // window-heat ON annunciators (ICE_annunON_0..3) are added to
+        // PMDGDisabledMonitorVariables by default: the window-heat controller cycles
+        // them thermostatically (especially on the ground), so every cycle spoke
+        // "Window N Heat On: on/off" with no switch moving. They stay toggleable in
+        // the PMDG Announcement Monitor; this flag stops re-seeding after a
+        // deliberate re-enable.
+        public bool PmdgMonitorDefaultsSeeded { get; set; } = false;
 
         // PMDG Announcement Monitor Settings — variable keys that the user has
         // unticked in PMDGAnnouncementMonitorForm. The MainForm continuous-
@@ -343,6 +403,17 @@ public class UserSettings
         /// <summary>Runtime-only HashSet sidecar of <see cref="Md11DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
         [JsonIgnore]
         public HashSet<string> Md11DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
+        // Auto-announced BlueBird 757-200 variables the user has muted via the 757 Monitor Manager
+        // (Ctrl+M, BBS757MonitorManagerForm). Consulted in MainForm.OnSimVarUpdated when
+        // AircraftCode == "BBS_757" — at the generic gate (the status rows) AND via the Suppressed
+        // wrap (the base trim and glideslope call-outs speak from INSIDE ProcessSimVarUpdate).
+        // Persisted across sessions.
+        public List<string> BBS757DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="BBS757DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> BBS757DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
         // The MD-11 walker's learned step polarity (docs/md11.md §3): node ids whose step events run
         // INVERTED relative to the walker's conventional guess (left click / wheel up = increase).
@@ -426,8 +497,8 @@ public class UserSettings
         /// blind pilots monitoring taxi speed against the FAA / SOP caps (30 kt
         /// straight, 10 kt turns) and for the takeoff roll. Suggested values: 5 or
         /// 10 kt. Active during BOTH taxi guidance and takeoff assist phases — the
-        /// callouts complement each other (10/20/30 kt taxi → 80/100/V1/rotate
-        /// takeoff). Default 0 (off) so existing users see no behaviour change.
+        /// callouts complement each other (10/20/30 kt taxi → the 80 and 100 kt
+        /// takeoff calls). Default 0 (off) so existing users see no behaviour change.
         /// </summary>
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 
@@ -576,8 +647,8 @@ public class UserSettings
         }
 
     /// <summary>
-    /// Rebuilds the seven *DisabledMonitorVariables HashSet sidecars from their backing Lists.
-    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX/iFly/MD-11 monitor-manager
+    /// Rebuilds the eight *DisabledMonitorVariables HashSet sidecars from their backing Lists.
+    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX/iFly/MD-11/757 monitor-manager
     /// forms' ItemCheck handlers, FlyByWireA380Definition's ToggleECAMMonitoring hotkey, and
     /// SettingsManager.SeedFenixMonitorDefaults) is immediately followed by SettingsManager.Save,
     /// which calls this — so a mutation is never visible to the List without also being visible
@@ -593,6 +664,7 @@ public class UserSettings
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
         IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
         Md11DisabledMonitorVariablesSet = new HashSet<string>(Md11DisabledMonitorVariables);
+        BBS757DisabledMonitorVariablesSet = new HashSet<string>(BBS757DisabledMonitorVariables);
     }
 
     /// <summary>

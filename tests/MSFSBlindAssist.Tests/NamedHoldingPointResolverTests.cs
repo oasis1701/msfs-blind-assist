@@ -382,4 +382,17 @@ public class NamedHoldingPointResolverTests
         var hp = new NamedHoldingPoint { Name = name, Kind = kind };
         Assert.Equal(expected, hp.DisplayLabel);
     }
+
+    // ONE test for "was this point read off a sign" ([HLD-18]): the row hold-short list, the
+    // cross-at list and both labels ask it, and it must not depend on how the kind was typed.
+    [Theory]
+    [InlineData("sign", true)]
+    [InlineData("  SIGN ", true)]
+    [InlineData("intermediate", false)]
+    [InlineData("runway", false)]
+    [InlineData("", false)]
+    public void IsFromSign_reads_the_sign_kind_whatever_its_casing(string kind, bool expected)
+    {
+        Assert.Equal(expected, new NamedHoldingPoint { Name = "KK", Kind = kind }.IsFromSign);
+    }
 }

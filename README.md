@@ -71,7 +71,7 @@ MSFS Blind Assist now supports the Fenix A320. It allows totally blind individua
 - Using the power of Google Gemini to read Fenix displays, such as ECAM, ISIS, PFD and Navigation displays, Requires users own free AIStudio API key.
 - All our previous features are already integrated to this aircraft as well, including the route viewer, gate/runway teleport, metar report, our full-featured location info and text-based map and many more.
 - Comes with a hotkey list guide that shows all the global hotkeys that are currently supported through the input and output modes.
-- Work in progress checklist viewer, easily editable and readable by screen readers.
+- A First Officer, opened with Shift+C in output mode: interactive checklists that tick themselves as the aircraft is set up, and flows the First Officer runs for you.
 
 #### Fenix A320 MCDU access
 

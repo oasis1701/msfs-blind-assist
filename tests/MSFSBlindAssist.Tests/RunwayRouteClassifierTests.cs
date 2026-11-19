@@ -198,4 +198,31 @@ public class RunwayRouteClassifierTests
         Assert.Empty(RunwayRouteClassifier.NodesFrom(new List<TaxiRouteSegment>(), 0));
         Assert.Empty(RunwayRouteClassifier.NodesFrom(Route(Node(1, 0, 0), Node(2, 1, 1)), 5));
     }
+
+    [Fact]
+    public void A_runway_built_twice_from_two_sets_of_start_rows_is_crossed_once()
+    {
+        // KBOS: two scenery layers give two start rows per runway end, so 04L/22R exists as two
+        // centerlines a few metres apart (one named from each end). One crossing, not "twice".
+        var copyA = EastWest("09", "27", northM: 0.0);
+        var copyB = EastWest("27", "09", northM: 3.0);
+        var nodes = Nodes((700.0, 150.0), (700.0, 0.0), (700.0, -150.0));
+
+        var passage = Assert.Single(RunwayRouteClassifier.ClassifyAll(nodes, new[] { copyA, copyB }));
+        Assert.Equal(RunwayEventKind.Crossing, passage.Kind);
+    }
+
+    [Fact]
+    public void A_genuine_second_crossing_of_a_runway_built_twice_is_still_counted()
+    {
+        // Across, along the far side, and back across further down: two real crossings.
+        var copyA = EastWest("09", "27", northM: 0.0);
+        var copyB = EastWest("09", "27", northM: 3.0);
+        var nodes = Nodes((700.0, 150.0), (700.0, 0.0), (700.0, -150.0),
+                          (1500.0, -150.0), (1500.0, 0.0), (1500.0, 150.0));
+
+        var passages = RunwayRouteClassifier.ClassifyAll(nodes, new[] { copyA, copyB });
+        Assert.Equal(2, passages.Count);
+        Assert.All(passages, p => Assert.Equal(RunwayEventKind.Crossing, p.Kind));
+    }
 }
