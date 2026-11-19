@@ -153,9 +153,11 @@ namespace MSFSBlindAssist.SimConnect
 
         /// <summary>
         /// Runs one expression in the view, on the client's socket (Coherent takes one per page), and
-        /// returns its value: "" when the socket is not open or the call times out.
+        /// returns its value: "" when the socket is not open, the call times out or the client is
+        /// disposed (exit can dispose it while an import is between steps; reading the disposed
+        /// token would throw).
         /// </summary>
-        public Task<string> EvaluateAsync(string expression) => EvalAsync(expression);
+        public Task<string> EvaluateAsync(string expression) => _disposed ? Task.FromResult("") : EvalAsync(expression);
 
         public void Start()
         {

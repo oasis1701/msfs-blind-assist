@@ -107,6 +107,23 @@ public static class SimTabletRoute
         string.Equals(st.airports[1].icao, dest, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// What the plan holds, as one string: the airports with their runways, the procedures, the
+    /// en-route fixes and the cruise altitude. Two readings with the same signature show the same
+    /// plan, so the import can tell when a plan between the same two airports has been re-read.
+    /// </summary>
+    internal static string PlanSignature(RouteState st)
+    {
+        const char sep = '\u001f';
+        var sb = new StringBuilder();
+        foreach (var a in st.airports) sb.Append(a.icao).Append('/').Append(a.runwayKey).Append(sep);
+        sb.Append('|');
+        foreach (var p in st.procedures) sb.Append(p).Append(sep);
+        sb.Append('|');
+        foreach (var w in st.waypoints) sb.Append(w).Append(sep);
+        return sb.Append('|').Append(st.cruise).Append(' ').Append(st.cruiseUnit).ToString();
+    }
+
+    /// <summary>
     /// The sentence spoken once the route is in: both ends with their runways, how many en-route
     /// fixes, and every procedure the tablet chose, because it picks one by itself when a runway is
     /// set (arrival runway 01 at KSAV brought "ILS 1 via Direct"). <paramref name="notes"/> are the

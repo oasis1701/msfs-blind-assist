@@ -37,7 +37,7 @@ The tablet has no SimBrief link of its own; Navigraph's SimBrief tablet app is a
 1. open the Flight Planner from the dock and its Route panel;
 2. open Import, "Enter route string", by its place in the menu, and type `ORIGIN N0030F030 [SID] route [STAR] DESTINATION` (`SimTabletRoute.Build`), the shape measured to load: the group sets the plan's cruise altitude from SimBrief's initial altitude, written with the level in both fields because the tablet's parser takes the level from the speed digits; the parser takes a SID right after the departure airport and a STAR right before the destination, by name, never their transitions or an approach (STAB-10);
 3. press SAVE once the tablet enables it, unless the box already held this route (the plan is loaded), when SAVE never enables and the box is closed instead (STAB-9);
-4. wait until both airports show;
+4. wait until both airports show. When the Flight Planner already held a plan between the same two airports, they match before the tablet has read the new route, so the import also waits for any reading unlike the one taken just before SAVE (a cleared planner counts); if none comes within 3 s (`ChangeTries`), it goes on with what shows. How fast the tablet re-reads a route between the same airports has not been measured, so nothing here depends on it;
 5. pick SimBrief's runways on the airports' runway dropdowns (a runway written into the route string is ignored, STAB-7);
 6. speak a summary: both ends with their runways, the number of waypoints, the cruise altitude the plan holds (with any cruise warning the tablet shows), and every procedure the tablet chose, which it does by itself when a runway is set (arrival runway 01 at KSAV brought "ILS 1 via Direct").
 
@@ -49,7 +49,7 @@ Untested live: a jet OFP through the route box (SID and STAR names, airways); wh
 
 Extras, In-Sim Tablet (FS2024 Native) (`MainForm.MenuHandlers.cs`, then `ShowSimTabletDialog` in `MainForm.Dialogs.cs`) opens it for every aircraft, beside the aircraft's own tablet and never in place of it: Input Shift+T stays the aircraft's own (STAB-11, the owner's decision of 2026-10-19, replacing the first design, an opt-in per aircraft on Shift+T, STAB-8). There is no hotkey for it yet. On MSFS 2020 the menu item says the tablet is MSFS 2024 only and opens nothing; before the sim connects the version is unknown, so the window opens and connects once MSFS 2024 runs.
 
-The window and its client stay open across aircraft switches, as the view is the sim's and the client reconnects by itself when the sim rebuilds it; exit closes them (`MainForm.cs`).
+The window and its client stay open across aircraft switches, as the view is the sim's and the client reconnects by itself when the sim rebuilds it; exit closes them (`MainForm.cs`), after cancelling a SimBrief import still running so it says nothing on the way out.
 
 Who it is for: MSFS 2024's default aircraft, which have no tablet of their own. Every aircraft BA has a profile for on main has its own tablet and flight computer, and sending a flight plan to one of them from the sim tablet causes problems (the owner, 2026-10-19), so the guide's section ("The In-Sim Tablet (MSFS 2024)", `guide/planning-your-flight.md`) carries a warning listing them, and the SimBrief import never sends (STAB-5). The owner chose that warning over an in-app guard. A new aircraft with its own flight computer joins the guide's list; a default aircraft such as the Cessna 172 does not.
 
