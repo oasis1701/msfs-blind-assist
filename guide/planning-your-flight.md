@@ -555,7 +555,7 @@ You need your SimBrief username in BA's settings first: see [Setting your SimBri
 ### What you will hear {#in-sim-tablet-hear}
 
 - *"Loading your SimBrief plan."* when you press the button, then a summary: both airports with their runways, the number of waypoints, the cruise altitude, and any procedure the tablet chose.
-- *"The Flight Planner already had this route."* at the end of the summary, when the tablet already held this plan.
+- The same summary again if you press the button a second time, as the tablet loads the plan again.
 - *"The SimBrief plan is still loading."* if you press the button again before the first press has finished.
 
 ### If something goes wrong {#in-sim-tablet-problems}
