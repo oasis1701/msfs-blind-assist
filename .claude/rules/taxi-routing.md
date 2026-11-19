@@ -68,6 +68,5 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [RTE-33] A clearance returning to a taxiway it just left ("A, C, A") is routed plain AND honoured (`FindConstrainedPathCore(honourRepeats)`), never "shorter wins"; the branch-off terminal rule never fires on the destination runway (`IsOnDestinationRunway`). Full: docs/invariants/taxi-routing.md#rte-33
 - [RTE-35] Cross-component notes say WHICH side is cut off (`AircraftIsOnTheSmallerIsland`); refusing an unmapped first leg over a runway stays `RouteReachability.CheckFirstLeg`'s job. Full: docs/invariants/taxi-routing.md#rte-35
 - [RTE-36] A landing-exit handoff route that DETOURS (> 3× and > 500 m over the straight line, `RouteDetoursFromExit`) is retried from each exit-taxiway candidate; shortest non-detour wins. Full: docs/invariants/taxi-routing.md#rte-36
-
 Mirrored from surroundings.md (it governs the Place list in TaxiAssistForm.cs; change it there and here together):
 - [SUR-13] `TaxiAssistForm` never builds a Place catalog: it reads `SurroundingsCatalogCached` and starts at most ONE `LoadPlaces` (never while `_placesLoading` or `_placesSettling`), listing meanwhile from the catalog last loaded for that airport; a pick a rebuild lost is cleared and spoken (`PlaceListUpdatedMessage`). Full: docs/invariants/surroundings.md#sur-13

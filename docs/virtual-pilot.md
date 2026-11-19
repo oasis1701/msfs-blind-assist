@@ -43,6 +43,8 @@ tools/VirtualPilot/bin/x64/Release/net10.0-windows/VirtualPilot.exe <mode> [opti
 | `landings` | every listed exit of every runway: once **following the tone**, once **rolling straight past** (skipped for End exits / exits < 600 m from the runway end) |
 | `taxi` | per airport, K plans: gate → runway (lineup) and landing-exit vacate point → gate; each flown on the **shortest path** and again on an **ATC-style clearance** (the shortest route's taxiway names in order) |
 | `wrongturn` | follows a gate → runway route, then deliberately turns into a branch that leads to a runway hold line not on the route; the app must say "off route" first |
+| `rwystop` | a route loaded while stopped on a runway, midway across the widest gap between two exits, to a random gate, with and without a clearance. `VP_LEGACY_RWYSTART=1` and `VP_LEGACY_TURNSIDE=1` restore the older route start and opening turn for an A/B |
+| `missedexit` | per runway, two flights where the pilot rolled past the planned exit and vacated at the next one, then loaded the gate route with the clearance given for the planned exit (VTBS 20L, 2026-11-18) |
 | `all` | landings + taxi |
 | `departures` | per runway end: named (OSM) holding-point departures (`HP`, flown free and on a clearance), intersection departures (`IX`), full-length backtracks where the runway list would say "(backtrack required)" (`BT`); per airport: gate → gate taxis across the field (`G2G`) and ATC clearances with explicit "hold short of runway X" instructions (`HSCLR`) — each also voiced as a written and a spoken-NATO clearance and fed to the SayIntentions import's own parser (`CLR_*`) |
 | `fetchosm` | downloads the raw Overpass answer for each airport into `runs/_osm/ICAO.json` (one polite request at a time — Overpass rate-limits hard, expect ~1 airport a minute). Every mode then builds the app's OWN OSM-augmented graph from that snapshot (names, holding points); `VP_NOOSM=1` flies plain navdata, `VP_OSMDIR` points elsewhere. The snapshot pins the data so a before/after run measures the code, not OSM churn |
@@ -52,6 +54,11 @@ Options: `--airports N` (busiest by taxi-path count, default 100), `--icao A,B`,
 thread), `--taxi-per-airport K`, `--out file`, and
 `--trace ICAO:RWY:EXIT[:straight]` / `--trace ICAO:taxi:N[:clearance]` for one scenario frame by
 frame (speech, state changes, routes, the harness's view of the runway frame).
+
+`VP_SIM=2024` flies the MSFS 2024 navdata (`fs2024.sqlite`); the default is 2020. The two simulators
+draw the same airport differently, so measure a routing or guidance change on both.
+`--trace ICAO:from:<lat>,<lon>,<heading>:<text in the gate's name>[:A,B,C]` loads a route where a real
+flight loaded it, with the clearance it had, taken from the taxi and router logs.
 
 Every run writes `<out>` (findings) and `<out>.results.txt` (one outcome line per landing).
 `tools/VirtualPilot/compare.py BEFORE.results.txt AFTER.results.txt` diffs two runs landing by
@@ -339,6 +346,33 @@ Follow-up the same evening (A/B against the round's end, 0 new findings, wrong t
     is rescued by it), a close exit is still taken when nothing further qualifies, and
     `RetargetLandingExit` tries it last when every further exit fails to route (KEDW 23L past C).
     314 straight-roll retargets now name an exit a median 100 m ahead instead of 35 m.
+
+## Sixth round — route starts off the pavement (2026-11-08, same 100 airports, plain navdata)
+
+A/B with both legacy switches on and off, 6,893 scenarios. `TAXI_OFF_PAVEMENT` went away on 610 scenarios and appeared on 22. In `rwystop` alone, 843 of 1,124 flights were flagged before and 265 after, `TAXI_NOT_ARRIVED` went from 12 to 1 and stops on runway pavement from 9 to 4. Silent wrong turns stayed at 14.
+
+The first attempt took the nearest exit whatever the route did next, which added 10 stops short of the runway just left (KFLL 10L Q); an exit whose route comes back onto the runway is now skipped. The walk target also aimed the roll beside the runway where the first segment leaves at an angle, so the tone now aims at the start node until the aircraft arrives.
+
+Accepted: 13 new `TAXI_RECALC_WHILE_FOLLOWING` against 32 gone. `RUNWAY_ENTERED_UNHELD` in `rwystop` rose from 17 flights to 25, but 22 of the 25 name the runway the flight started on, which the check reads as an entry after drifting to the edge, not a real entry.
+
+## Seventh round — a clearance that starts behind the aircraft (2026-11-19, 100 busiest airports of each navdata, plain navdata)
+
+Two flights on 2026-11-18 left the pavement following the tone: VTBS 20L (cleared E7, vacated at E9) and VHHH 07L (cleared C8, stopped on the runway 600 m before it). Both replay exactly with `--trace ICAO:from:…` on the 2024 navdata. The sixth round's runway start already covers VHHH; VTBS needed RTE-38 and RTE-39 ([route-runway-start.md](invariants/route-runway-start.md)).
+
+A/B against a frozen build, modes `missedexit taxi rwystop departures wrongturn`, on both navdata sets:
+
+| | 2024 | 2020 |
+|---|---|---|
+| scenarios | 7,974 | 8,013 |
+| `TAXI_OFF_PAVEMENT` gone / appeared | 196 / 4 | 165 / 4 |
+| `RUNWAY_ENTERED_UNHELD` gone / appeared | 38 / 1 | 36 / 1 |
+| `HOLD_FAR_BEFORE_RUNWAY` gone | 37 | 35 |
+| `missedexit` flights more than 40 m off the pavement, before / after | 135 / 30 | 144 / 46 |
+| scenarios changed outside `missedexit` | 24 of 6,868 | 18 of 6,893 |
+
+Leaving out every cleared taxiway the route does not drive was measured first and rejected: at VTBS it dropped the cleared D6 and took D7.
+
+Accepted: 21 (2024) and 20 (2020) new `TAXI_RECALC_WHILE_FOLLOWING` against 10 and 8 gone, and the four new `TAXI_OFF_PAVEMENT` on each. In the cases traced (KIAD 19R U3, LTFM 35R C14, KATL 27R L, ZBAD 17L C4, VTBS 20R F3) the lead-in is now kept and starts behind the aircraft, so the flight opens with "Taxiway X is behind you" and a turn the pilot model swings wide on, where it used to be sent 180 to 380 m in a straight line. At ZBAD the route change during that turn has no stop left for the runway just vacated, and says so. Three 2020 `rwystop` flights gained `RUNWAY_ENTERED_UNHELD_WARNED`; the one traced, VTBS 20R, now loads a route that leaves by the exit behind it and announces that the runway it stands on has no hold short point. The other new codes were not traced one by one.
 
 **Open:** OSM hold names like "C@10/28" (KTPA, KDFW, KONT, KABQ) are read out verbatim. EGLL 09R S6
 → Gate 223 routes back up S6 onto the runway and along it (the known "runway used as a taxiway"

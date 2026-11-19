@@ -4618,6 +4618,8 @@ The lead-in is **accepted** only when two conditions hold:
 1. The router honoured the full clearance (`ConstrainedFallbackReason == null`) — a fallback to shortest path means the lead-in segment is suspect.
 2. The lead-in distance is within `gap × 2.5 + 300 m` (`TaxiLeadIn.IsAcceptable`) — this dead-end guard rejects a route that had to backtrack through a graph dead-end, which would inflate the lead-in far beyond the straight-line gap.
 
+The lead-in distance runs to where the route meets the first cleared taxiway: its first segment of that name, or its first node on it when the router joined the taxiway exactly at its junction with the next one and no segment carries the name [RTE-38].
+
 If either condition fails, `LoadRoute` falls back to the pre-snap behaviour (start on the taxiway) and prepends *"Could not compute a path onto taxiway A along the apron; route starts on A."* to the spoken summary. The pilot knows the route may not begin on pavement.
 
 On success the summary names the lead-in explicitly — *"Route to Runway 23 via A, H. First taxi via 4 and AJ to reach A. …"* — using `TaxiLeadIn.Clause`, so a screen reader announces it before the constrained sequence.
@@ -4629,6 +4631,14 @@ On success the summary names the lead-in explicitly — *"Route to Runway 23 via
 - `TryRecalculateRoute`: always uses the heading-aware `FindNearestNodeInDirection`; the lead-in is a `LoadRoute`-only feature.
 
 **Verification:** verified in-sim — the CYYZ GB/GC stand → runway 23 via A, H departure (2026-06-17). The route now starts at the apron node nearest the aircraft, and the lead-in follows the AJ taxiway onto A — the steering-tone target tracks the AJ centreline within ~3 m — instead of the earlier ~64 m straight beeline across the grass north of AJ; the route summary names the lead-in. The pure helper math (`TaxiLeadIn.Extract` / `IsAcceptable` / `Clause`) is small and self-contained in `Navigation/TaxiLeadIn.cs`.
+
+### Route start on a runway [RTE-37]
+
+The lead-in above assumes the aircraft stands on or near the taxi network. On a runway it may not: runway pavement is not a routable corridor, and the nearest graph node can be a parallel taxiway across the infield. `RouteRunwayStart.Candidates` runs first for a plain taxi route and offers nodes on the runway's own pavement: the first cleared taxiway's node ahead, then the nodes ahead by distance, then those behind. Route loading takes the first whose route does not come back onto the runway, and the tone aims straight at it until the aircraft arrives, so the roll stays on the pavement. The opening "Join taxiway X in N" counts that roll. A census of the fs2024 database found on-pavement taxi nodes on 939 of 947 hard runways at the 400 largest airports. Where the runway has none, the older start stands.
+
+### A first cleared taxiway the aircraft has passed [RTE-39]
+
+A clearance given for one runway exit is often loaded after vacating at another (VTBS 20L: cleared E7, E8, D6, vacated at E9). The router then meets the first cleared taxiway only at its junction with the second, and the route runs out to that junction and straight back. `UndrivenClearanceStart.Count` finds that shape before the start node is chosen: the route never drives the first cleared taxiway and turns 150° or more at the node where it meets it. `LoadRoute` removes that taxiway from the clearance, moves the hold-short picks down with it, and puts *"Taxiway E7 is not on the way from here and was left out."* ahead of the summary. A taxiway the route passes through without turning back stays, as does the last cleared taxiway and any taxiway a hold-short pick is keyed to.
 
 ## Taxi-Data Augmentation Pipeline (Phase 5)
 

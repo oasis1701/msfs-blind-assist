@@ -238,6 +238,7 @@ public partial class TaxiGuidanceManager
             // Cleared for every load, so a failed load can never leave the previous route's
             // unmapped-start warning for the form or the one-shot to speak.
             LastRouteUnmappedStartWarning = null;
+            _routeStartGapMeters = 0.0;
             // A new route/destination must be able to speak its own first recalculation
             // reachability refusal (ReachabilityRefusalGate), not stay silent because the
             // PREVIOUS route already spoke an identically-keyed one.
@@ -450,6 +451,7 @@ public partial class TaxiGuidanceManager
             int routeStartNodeId;
             TaxiLeadIn.LeadInInfo leadIn = default;
             bool leadInFallback = false;
+            string? undrivenStartNote = null;
 
             if (isCrossComponentRoute)
             {
@@ -458,11 +460,73 @@ public partial class TaxiGuidanceManager
             }
             else
             {
-            firstTwNode = firstCleared != null
+            // On a runway the nearest graph node can be a parallel taxiway across the infield, and a
+            // beeline at it is a beeline over the grass (RJAA 34L). Start on the runway's own nodes.
+            TaxiNode? runwayStart = null;
+            if (!LegacyRunwayStartForHarness
+                && RouteRunwayStart.Applies(isRunwayDestination, startTaxiwayName, landingRolloutRoute))
+            {
+                double headingTrue = aircraftHeading + aircraftHeadingMagVar;
+                var candidates = RouteRunwayStart.Candidates(
+                    _graph, aircraftLat, aircraftLon, headingTrue, firstCleared, destComponentId);
+                // The first exit whose route stays off this runway once it has left. With none, the
+                // older start stands: a stop on the pavement is never acceptable [HLD-4].
+                runwayStart = candidates.FirstOrDefault(c =>
+                {
+                    var trial = taxiwaySequence is { Count: > 0 }
+                        ? router.FindConstrainedPath(c.NodeId, destinationNodeId, taxiwaySequence,
+                            destinationIsRunway: isRunwayDestination)
+                        : router.FindShortestPath(c.NodeId, destinationNodeId);
+                    return trial is { Segments.Count: > 0 }
+                           && !RouteRunwayStart.RouteReturnsToRunway(
+                               _graph, trial.Segments, aircraftLat, aircraftLon, headingTrue);
+                });
+            }
+            if (runwayStart != null)
+                _guidanceLog.Info($"Route start on the runway: node {runwayStart.NodeId} " +
+                                  $"({runwayStart.Latitude:F6},{runwayStart.Longitude:F6}) ac={aircraftLat:F6},{aircraftLon:F6}");
+
+            firstTwNode = runwayStart == null && firstCleared != null
                 ? SelectFirstTaxiwayEntry(aircraftLat, aircraftLon, firstCleared, destComponentId, destinationNodeId)
                 : null;
 
-            if (firstTwNode != null)
+            // A clearance can open with taxiways the aircraft is no longer placed to drive (VTBS 20L:
+            // cleared E7, E8, D6, vacated at E9). The route would run out to their junction and straight
+            // back, so they are left out and the pilot is told. Only where a lead-in would be built: a
+            // first cleared taxiway within reach keeps its pre-snap [RTE-23].
+            if (firstTwNode != null && taxiwaySequence is { Count: > 1 }
+                && TaxiGraph.FastDistanceMeters(aircraftLat, aircraftLon, firstTwNode.Latitude, firstTwNode.Longitude)
+                   > TaxiLeadIn.TriggerMeters
+                && _graph.FindNearestNode(aircraftLat, aircraftLon, requiredComponentId: destComponentId,
+                       excludeBridgeOnlyStandStubs: true) is { } leadInEntry
+                && leadInEntry.NodeId != firstTwNode.NodeId)
+            {
+                int undriven = UndrivenClearanceStart.Count(
+                    router, leadInEntry.NodeId, destinationNodeId, taxiwaySequence, isRunwayDestination);
+                if (undriven > 0 && UndrivenClearanceStart.PicksAllow(
+                        undriven, userHoldShortIndices, userRunwayHoldShorts?.Keys, userTaxiwayHoldShorts?.Keys))
+                {
+                    var leftOut = taxiwaySequence.Take(undriven).ToList();
+                    undrivenStartNote = UndrivenClearanceStart.Note(leftOut);
+                    _guidanceLog.Info($"Clearance start not driven from here: left out {string.Join(",", leftOut)} " +
+                                      $"ac={aircraftLat:F6},{aircraftLon:F6}");
+                    // In place: _originalTaxiwaySequence is this list, and the picks are keyed by position in it.
+                    taxiwaySequence.RemoveRange(0, undriven);
+                    userHoldShortIndices = _userHoldShortIndices = UndrivenClearanceStart.Shift(userHoldShortIndices, undriven);
+                    userRunwayHoldShorts = _userRunwayHoldShorts = UndrivenClearanceStart.Shift(userRunwayHoldShorts, undriven);
+                    userTaxiwayHoldShorts = _userTaxiwayHoldShorts = UndrivenClearanceStart.Shift(userTaxiwayHoldShorts, undriven);
+                    firstCleared = taxiwaySequence[0];
+                    firstTwNode = SelectFirstTaxiwayEntry(aircraftLat, aircraftLon, firstCleared, destComponentId, destinationNodeId);
+                }
+            }
+
+            if (runwayStart != null)
+            {
+                startNode = runwayStart;
+                _routeStartGapMeters = TaxiGraph.FastDistanceMeters(
+                    aircraftLat, aircraftLon, runwayStart.Latitude, runwayStart.Longitude);
+            }
+            else if (firstTwNode != null)
             {
                 leadInGap = TaxiGraph.FastDistanceMeters(
                     aircraftLat, aircraftLon, firstTwNode.Latitude, firstTwNode.Longitude);
@@ -1006,7 +1070,8 @@ public partial class TaxiGuidanceManager
                     double firstTwDist = TaxiGraph.FastDistanceMeters(
                         aircraftLat, aircraftLon,
                         (firstTwNode ?? startNode!).Latitude, (firstTwNode ?? startNode!).Longitude);
-                    string firstTwNote = firstTwDist > CONSTRAINED_WARN_FIRST_TW_M
+                    // A runway start's node need not be on that taxiway, so its distance says nothing about it.
+                    string firstTwNote = firstTwDist > CONSTRAINED_WARN_FIRST_TW_M && _routeStartGapMeters <= 0.0
                         ? $" Taxiway {taxiwaySequence[0]} is {FormatDistance(firstTwDist)} from your position."
                         : "";
                     constrainedLengthWarning =
@@ -1047,7 +1112,8 @@ public partial class TaxiGuidanceManager
                 var firstRouteNode = route.Segments[0].FromNode;
                 double startGapM = TaxiGraph.FastDistanceMeters(
                     aircraftLat, aircraftLon, firstRouteNode.Latitude, firstRouteNode.Longitude);
-                if (startGapM > RouteStartGate.FAR_START_WARN_M)
+                // A start picked on the aircraft's own runway is a roll along it, not a far-away route.
+                if (startGapM > RouteStartGate.FAR_START_WARN_M && _routeStartGapMeters <= 0.0)
                     routeStartWarning =
                         $"Warning: the route begins {FormatDistance(startGapM)} from your position.";
             }
@@ -1121,7 +1187,8 @@ public partial class TaxiGuidanceManager
             // Naming from the route is a robustness improvement for the paths that run
             // LoadRoute WITHOUT StartGuidance — the three Rollout re-routes and
             // LandingExitPlanner — where _lastAnnouncedTaxiway really is still empty.
-            ComposeInitialTurnCue(aircraftLat, aircraftLon, aircraftHeading + aircraftHeadingMagVar);
+            ComposeInitialTurnCue(aircraftLat, aircraftLon, aircraftHeading + aircraftHeadingMagVar,
+                preferRampSide: !LegacyTurnSideForHarness && string.IsNullOrEmpty(startTaxiwayName) && !landingRolloutRoute);
             // Reset the tone slew-limiter baseline too. LoadRoute is only ever a
             // FRESH route (the form's Calculate path doesn't call StopGuidance
             // first, and recalcs swap the route in place via TryRecalculateRoute
@@ -1214,6 +1281,10 @@ public partial class TaxiGuidanceManager
                 // guidance cannot honour before tactical callouts start.
                 if (!string.IsNullOrEmpty(runwayLegNote))
                     summary = runwayLegNote + " " + summary;
+                // Cleared taxiways left out are said up front for the same reason: the pilot heard
+                // them in the clearance and must know why the route names others.
+                if (undrivenStartNote != null)
+                    summary = undrivenStartNote + " " + summary;
                 // Route-start warning goes FIRST of all (prepended last): a route the
                 // aircraft cannot join (island) or must turn around for is the single
                 // most important thing to hear, and the first tactical callout after
@@ -2049,6 +2120,7 @@ public partial class TaxiGuidanceManager
         // with every intermediate crossing untagged (PHNL 2026-09-03 — see AdoptRoute). It sits
         // BELOW the no-op guard so a discarded recalc neither re-tags a route nobody adopts nor
         // writes a crossings line claiming it did.
+        _routeStartGapMeters = 0.0;   // a recalculated route starts where the aircraft is, not on a runway roll
         AdoptRoute(newRoute, _isRunwayLineup, _destinationName, lat, lon, phase: "recalc",
             userPickEvents: recalcPickEvents, recalculation: true);
         // A remapped pick that met its runway with no stop before that pass may share the stop
@@ -3179,6 +3251,12 @@ public partial class TaxiGuidanceManager
 
     /// <summary>Virtual-pilot harness only: disable the backwards-start retry for A/B measurement. Never set in the app.</summary>
     internal static bool LegacyExitAnchorForHarness;
+
+    /// <summary>Virtual-pilot harness only: keep the pre-RouteRunwayStart route start for A/B measurement. Never set in the app.</summary>
+    internal static bool LegacyRunwayStartForHarness;
+
+    /// <summary>Virtual-pilot harness only: keep the short way round on an opening near-reversal for A/B measurement. Never set in the app.</summary>
+    internal static bool LegacyTurnSideForHarness;
 
     /// <summary>How far back along the route a destination hold found on runway pavement may move.</summary>
     private const double HOLD_OFF_PAVEMENT_LOOKBACK_M = 200.0;

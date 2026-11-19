@@ -453,6 +453,8 @@ Most routes produce a clean summary. When something is not right, a warning is a
 
 **"Note: requested hold-short(s) could not be set — runway 22R (route does not cross it after taxiway B)."** You asked for a runway hold short that the route never reaches after that taxiway. Check you put the hold short on the right row. If it says *"(no safe place to hold short after taxiway B)"*, the route does meet that runway, but there is nowhere safe to stop before it.
 
+**"Taxiway E7 is not on the way from here and was left out."** Your clearance starts with a taxiway you can no longer use from where you are. This happens when the clearance was given for one runway exit and you vacated at another: reaching the first taxiway would mean taxiing out to it and turning straight back. BA drops that taxiway and follows the rest of the clearance from your position. The route summary that follows names the taxiways it kept.
+
 **"Could not compute a path onto taxiway A along the apron; route starts on A."** BA could not find its own way from your stand to the first taxiway, so the route begins on that taxiway. Taxi onto it carefully; the tone will guide you to it.
 
 **"Your position isn't connected to the taxiway network. The first 40 metres to taxiway A aren't mapped."** Your stand, or the spot you are on, is not joined to the taxiways in the airport's data. BA will steer you straight across that unmapped stretch towards the start of the route, so check it is clear. A similar warning, *"Gate X isn't connected to the taxiway network you're on. The first N of the route aren't mapped."*, means the destination is the part that is cut off.
@@ -476,7 +478,7 @@ Guidance starts as soon as the route is calculated. You do not need to press any
 The first thing you hear is one of:
 
 - *"Taxiway A. Steering guidance active."* You are already on your first taxiway.
-- *"Steering guidance active. Join taxiway A in 60 metres."* You are on a stand or apron, and the first named taxiway is that far ahead.
+- *"Steering guidance active. Join taxiway A in 60 metres."* You are on a stand or apron, and the first named taxiway is that far ahead. If you load a route while stopped on a runway, the route starts at an exit further along that runway, your first cleared taxiway if it has one ahead, and the tone leads you down the runway to it.
 - *"Steering guidance active."* The route has no named taxiways.
 - *"Stop. Hold short of runway 22R. Press continue when cleared."* You are already standing at a runway hold line that is the route's first stop. The tone stays silent until you press Continue.
 
@@ -484,7 +486,7 @@ Straight after that, BA may add:
 
 - Your intersection or holding point, for example *"Intersection B3 departure, runway 27L. About 2400 metres of runway ahead."*
 - Any warning about unmapped ground at the start, or a route that does not reach the runway.
-- **A turn cue, when the route starts behind you or at a sharp angle.** This is common after a pushback, when you are facing the wrong way. You may hear *"Taxiway A is behind you. Turn left to come around."*, *"Make a U-turn to the right."*, *"Sharp turn left onto taxiway K."* or *"Sharp turn right."*
+- **A turn cue, when the route starts behind you or at a sharp angle.** This is common after a pushback, when you are facing the wrong way. You may hear *"Taxiway A is behind you. Turn left to come around."*, *"Make a U-turn to the right."*, *"Sharp turn left onto taxiway K."* or *"Sharp turn right."* When you are facing almost directly away from the route and every stand nearby is on one side, BA sends you round on that side, over the ramp, even if the other way is slightly shorter.
 
 When a warning is spoken at the start, BA holds back its other early callouts for about twelve seconds so they do not talk over it. The tone works throughout.
 
