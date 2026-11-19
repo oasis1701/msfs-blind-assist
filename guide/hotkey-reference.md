@@ -449,7 +449,7 @@ F and Shift+F read fuel tank by tank; D adds the time en route.
 
 ### Input keys {#input-keys-5}
 
-The Ctrl+P window is the 787 Autopilot: A/P, A/T, LNAV, VNAV, approach, level change, altitude hold, heading hold, V/S and A/P disconnect. The Ctrl+B window takes the QNH in hectopascals, with a Standard button.
+The Ctrl+P window is the 787 Autopilot: A/P, A/T, LNAV, VNAV, approach, level change, altitude hold, heading hold, V/S and A/P disconnect. The Ctrl+B window takes the setting in hectopascals or inches, with a Standard (STD) button that switches standard pressure on and off.
 
 ### FMC window (Input Shift+M) {#fmc-window-input-shift-m}
 
