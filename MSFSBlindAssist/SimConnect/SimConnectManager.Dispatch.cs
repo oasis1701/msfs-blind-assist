@@ -1045,8 +1045,12 @@ public partial class SimConnectManager
                 data.Latitude, data.Longitude,
                 runway.StartLat, runway.StartLon);
 
-            // Check if approaching from behind (wrong direction)
-            // Provide extension guidance regardless of distance - always correct to turn around when on wrong side
+            // The one course the report speaks: the runway's chart course (EFB-14).
+            int courseMag = IlsGuidanceText.CourseFor(ilsData, runway, data.MagneticVariation);
+
+            // Check if approaching from behind (wrong direction). Inside the aid's range the
+            // reply is the heading to extend outbound; beyond it, the threshold's bearing
+            // (IlsGuidanceText.Behind).
             bool fromBehind = NavigationCalculator.IsApproachingFromBehind(
                 data.Latitude, data.Longitude,
                 data.HeadingMagnetic, // Already magnetic from SimConnect
@@ -1057,17 +1061,20 @@ public partial class SimConnectManager
 
             if (fromBehind)
             {
-                // Calculate extension heading to fly away from runway
-                double extensionHeading = NavigationCalculator.CalculateExtensionHeading(
-                    ilsData.LocalizerHeading,
-                    data.MagneticVariation);
+                double thresholdBearingMag = (NavigationCalculator.CalculateBearing(
+                    data.Latitude, data.Longitude, runway.StartLat, runway.StartLon)
+                    - data.MagneticVariation + 360) % 360;
+
+                string behind = IlsGuidanceText.Behind(ilsData, courseMag, runway.RunwayID,
+                    distanceToThreshold, thresholdBearingMag);
 
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "ILS_GUIDANCE",
                     Value = 0,
-                    Description = $"Approaching from opposite direction. Fly heading {extensionHeading:000} to extend outbound."
+                    Description = behind
                 });
+                Log.Debug("SimConnect", $"ILS Guidance: {behind}");
                 return;
             }
 
@@ -1088,20 +1095,14 @@ public partial class SimConnectManager
 
             string announcement;
 
-            // Check if beyond ILS signal range
-            string rangeWarning = "";
-            if (ilsData.Range > 0 && distanceToThreshold > ilsData.Range)
-            {
-                rangeWarning = $"Warning: ILS signal range is {ilsData.Range} nautical miles. ";
-            }
-
-            // Calculate glideslope deviation (always, regardless of zone or lateral position)
+            // Glideslope deviation within 25 NM, regardless of zone or lateral position, and
+            // only when the aid has a glideslope (a localizer has none to be above or below).
             bool withinGSRange = NavigationCalculator.IsWithinGlideslopeRange(distanceToThreshold, 25);
-            string glideslopeInfo = "";
+            double? gsDeviation = null;
 
-            if (withinGSRange)
+            if (withinGSRange && ilsData.HasGlideslope)
             {
-                double gsDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
+                gsDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
                     data.Altitude,
                     distanceToThreshold,
                     ilsData.GlideslopePitch,
@@ -1111,18 +1112,14 @@ public partial class SimConnectManager
                     ilsData.GlideslopeAltitude,
                     data.Latitude,
                     data.Longitude);
-
-                string gsDirection = gsDeviation > 0 ? "above" : "below";
-                glideslopeInfo = $" {Math.Abs(gsDeviation):F0} feet {gsDirection} glideslope.";
             }
 
             // LOCALIZER GUIDANCE (all distances)
             if (onCenterline)
             {
                 // On centerline - just track it
-                double localizerMagneticHeading = (ilsData.LocalizerHeading - data.MagneticVariation + 360) % 360;
-                announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, on centerline.{glideslopeInfo} " +
-                              $"Runway heading {localizerMagneticHeading:000}.";
+                announcement = IlsGuidanceText.OnCenterline(ilsData, courseMag,
+                    distanceToThreshold, gsDeviation);
             }
             else
             {
@@ -1134,20 +1131,16 @@ public partial class SimConnectManager
                         ilsData.LocalizerHeading,
                         data.MagneticVariation);
 
-                string direction = crossTrackError < 0 ? "left" : "right";
-
                 // TRUE angular deviation, not |crossTrackError|: the latter is
                 // 180 minus the real angle for an aircraft behind the threshold, which is
                 // every aircraft on final. See NavigationCalculator.AngularDeviationFromCenterlineDeg.
                 double angularDeviationDeg = NavigationCalculator.AngularDeviationFromCenterlineDeg(
                     distanceToLocalizer, distanceToThreshold);
 
-                announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, " +
-                              $"{distanceToLocalizer:F1} nautical miles {direction} of centerline, " +
-                              $"{angularDeviationDeg:F0} degrees {direction} of centerline.{glideslopeInfo} " +
-                              $"Fly heading {directHeading:000} for 60 degree intercept, " +
-                              $"{mediumHeading:000} for 45 degree intercept, " +
-                              $"or {shallowHeading:000} for 30 degree intercept.";
+                announcement = IlsGuidanceText.OffCenterline(ilsData, courseMag,
+                    distanceToThreshold, distanceToLocalizer, angularDeviationDeg,
+                    left: crossTrackError < 0, gsDeviation,
+                    directHeading, mediumHeading, shallowHeading);
             }
 
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
