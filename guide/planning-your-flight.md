@@ -516,7 +516,7 @@ MSFS 2020 has no such tablet.
 
 <div class="callout warning" role="note" markdown="1">
 
-**Warning:** These aircraft have their own tablet and flight computer: the FlyByWire A320neo and A380X, the Headwind A330-900neo, the Fenix A320, the PMDG 737 and 777, the iFly 737 MAX8, the TFDi MD-11 and the HorizonSim 787-9. On them, use the aircraft's own tablet (Input Shift+T, see [Aircraft EFBs](#aircraft-efb)) and flight computer, and never send a flight plan from the in-sim tablet: it causes problems with the aircraft.
+**Warning:** These aircraft have their own tablet and flight computer: the FlyByWire A320neo and A380X, the Headwind A330-900neo, the Fenix A320, the PMDG 737 and 777, the iFly 737 MAX8, the TFDi MD-11, the BlueBird 757-200 and the HorizonSim 787-9. On them, use the aircraft's own tablet (Input Shift+T, see [Aircraft EFBs](#aircraft-efb)) and flight computer, and never send a flight plan from the in-sim tablet: it causes problems with the aircraft.
 
 </div>
 
