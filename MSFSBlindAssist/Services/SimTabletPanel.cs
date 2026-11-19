@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Utils.Logging;
 
@@ -31,9 +30,11 @@ public static class SimTabletPanel
     /// <summary>
     /// What a Show or Hide did. Unknown and Failed press nothing (the reader did not answer; the
     /// button could not be pressed); Unverified and StillShown follow a press (no answer after it;
-    /// the frames kept coming), so the caller never presses again on them.
+    /// the frames kept coming), so the caller never presses again on them. NotDrawn presses nothing
+    /// either: MSFSBA showed the panel and its view gets no frames, so the pilot closed it, or the
+    /// sim shows it without drawing it (paused, in a menu); the mark is kept.
     /// </summary>
-    public enum Outcome { Shown, NotShown, Hidden, AlreadyHidden, Unknown, Failed, Unverified, StillShown }
+    public enum Outcome { Shown, NotShown, Hidden, AlreadyHidden, Unknown, Failed, Unverified, StillShown, NotDrawn }
 
     /// <summary>
     /// Clicks the toolbar's tablet button, the nearest ancestor of its "EFB" icon that has a click
@@ -84,28 +85,44 @@ public static class SimTabletPanel
         if (_shutDown || !await OnePress.WaitAsync(0)) return false;
         try
         {
-            string r = await CoherentEvalClient.EvalAsync(ToolbarTitle, ToggleScript, exactTitle: true, commandLineApi: true);
+            // The close is bounded here alone: exit waits for this press (HideSimTabletPanelOnExit).
+            string r = await CoherentEvalClient.EvalAsync(ToolbarTitle, ToggleScript, exactTitle: true, commandLineApi: true, closeTimeoutMs: 500);
             if (r != "clicked") Log.Warn("SimTablet", $"toolbar: tablet button not pressed ({(r.Length == 0 ? "no answer" : r)})");
             return r == "clicked";
         }
         finally { OnePress.Release(); }
     }
 
+    // Waits (Task.Delay, or a test's own) and counts the time waited: a timeout here is the sum of the
+    // waits asked for, never the wall clock, so the tests run at once and never depend on a loaded
+    // machine's timing.
+    private sealed class Waiter
+    {
+        private readonly Func<int, Task> _delay;
+        public int Waited { get; private set; }
+        public Waiter(Func<int, Task>? delay) => _delay = delay ?? (ms => Task.Delay(ms));
+        public async Task Wait(int ms) { await _delay(ms); Waited += ms; }
+    }
+
     /// <summary>
     /// Whether the tablet's view gets frames: true when one arrives within <paramref name="timeoutMs"/>,
-    /// false when none does, null when the reader did not answer.
+    /// false when none does, null when the reader did not answer. <paramref name="delay"/> stands in
+    /// for Task.Delay in the tests.
     /// </summary>
-    public static async Task<bool?> ViewGetsFramesAsync(Func<string, Task<string>> eval, int timeoutMs = 1500, int stepMs = 250)
+    public static Task<bool?> ViewGetsFramesAsync(Func<string, Task<string>> eval, int timeoutMs = 1500, int stepMs = 250, Func<int, Task>? delay = null)
+        => ViewGetsFramesAsync(eval, new Waiter(delay), timeoutMs, stepMs);
+
+    private static async Task<bool?> ViewGetsFramesAsync(Func<string, Task<string>> eval, Waiter wait, int timeoutMs, int stepMs)
     {
         if (await eval(FrameProbeStart) != "ok") return null;
-        var clock = Stopwatch.StartNew();
+        int from = wait.Waited;
         while (true)
         {
-            await Task.Delay(stepMs);
+            await wait.Wait(stepMs);
             string r = await eval(FrameProbeRead);
             if (r == "frames") return true;
             if (r != "none") return null;
-            if (clock.ElapsedMilliseconds >= timeoutMs) return false;
+            if (wait.Waited - from >= timeoutMs) return false;
         }
     }
 
@@ -113,16 +130,19 @@ public static class SimTabletPanel
     /// Whether the view's frames stop after a Hide: none for a whole probe, after 500 ms for the
     /// panel's close, within <paramref name="timeoutMs"/>. Null when the reader did not answer.
     /// </summary>
-    public static async Task<bool?> ViewStopsFramesAsync(Func<string, Task<string>> eval, int timeoutMs = 2500, int settleMs = 500, int stepMs = 250)
+    public static Task<bool?> ViewStopsFramesAsync(Func<string, Task<string>> eval, int timeoutMs = 2500, int settleMs = 500, int stepMs = 250, Func<int, Task>? delay = null)
+        => ViewStopsFramesAsync(eval, new Waiter(delay), timeoutMs, settleMs, stepMs);
+
+    private static async Task<bool?> ViewStopsFramesAsync(Func<string, Task<string>> eval, Waiter wait, int timeoutMs, int settleMs, int stepMs)
     {
-        var clock = Stopwatch.StartNew();
-        await Task.Delay(settleMs);
+        int from = wait.Waited;
+        await wait.Wait(settleMs);
         while (true)
         {
-            bool? frames = await ViewGetsFramesAsync(eval, 600, stepMs);
+            bool? frames = await ViewGetsFramesAsync(eval, wait, 600, stepMs);
             if (frames == null) return null;
             if (frames == false) return true;
-            if (clock.ElapsedMilliseconds >= timeoutMs) return false;
+            if (wait.Waited - from >= timeoutMs) return false;
         }
     }
 
@@ -132,15 +152,16 @@ public static class SimTabletPanel
     /// so the panel is left as it was. Nothing is pressed while the reader does not answer, as no
     /// press could then be checked or undone.
     /// </summary>
-    public static async Task<Outcome> ShowAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle)
+    public static async Task<Outcome> ShowAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle, Func<int, Task>? delay = null)
     {
+        var wait = new Waiter(delay);
         if (await eval(ReadShown) is not ("true" or "false")) return Outcome.Unknown;
         await eval(ClearFocusRecord);
         if (!await PressAsync(eval, toggle)) return Outcome.Failed;
-        bool? frames = await ViewGetsFramesAsync(eval);
+        bool? frames = await ViewGetsFramesAsync(eval, wait, 1500, 250);
         // A check that got no answer is asked once more after a moment (the reader re-installing): a
         // panel up but unmarked could not be hidden from the window later.
-        if (frames == null) { await Task.Delay(1000); frames = await ViewGetsFramesAsync(eval); }
+        if (frames == null) { await wait.Wait(1000); frames = await ViewGetsFramesAsync(eval, wait, 1500, 250); }
         if (frames == true)
         {
             await eval(MarkShown);
@@ -163,24 +184,28 @@ public static class SimTabletPanel
     }
 
     /// <summary>
-    /// Hides the panel MSFSBA showed, when it still shows: a panel the pilot already closed, or one
-    /// MSFSBA never showed, is left alone. <paramref name="cancel"/>, checked after the frame check,
+    /// Hides the panel MSFSBA showed, when it still shows: one MSFSBA never showed is left alone
+    /// (AlreadyHidden), and so is one whose view gets no frames (NotDrawn): the pilot closed it, or
+    /// the sim shows it without drawing it (paused, in a menu). The two cannot be told apart, so
+    /// nothing is pressed (a press would open a closed panel) and the mark is kept: the next Hide
+    /// tries again once frames come. <paramref name="cancel"/>, checked after the frame check,
     /// stops it (the window opened again meanwhile). The press counts only once the frames stop
     /// (<paramref name="verify"/>; exit skips it to stay within its time); else StillShown, keeping
     /// the mark, or Unverified when the check got no answer. Unknown (nothing pressed) keeps it too.
     /// </summary>
-    public static async Task<Outcome> HideAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle, Func<bool>? cancel = null, bool verify = true)
+    public static async Task<Outcome> HideAsync(Func<string, Task<string>> eval, Func<Task<bool>> toggle, Func<bool>? cancel = null, bool verify = true, Func<int, Task>? delay = null)
     {
+        var wait = new Waiter(delay);
         string mark = await eval(ReadShown);
         if (mark == "false") return Outcome.AlreadyHidden;
         if (mark != "true") return Outcome.Unknown;
-        bool? frames = await ViewGetsFramesAsync(eval, 1000);
+        bool? frames = await ViewGetsFramesAsync(eval, wait, 1000, 250);
         if (frames == null || cancel?.Invoke() == true) return Outcome.Unknown;
-        if (frames == false) { await eval(MarkHidden); return Outcome.AlreadyHidden; }
+        if (frames == false) return Outcome.NotDrawn;
         if (!await PressAsync(eval, toggle)) return Outcome.Failed;
         if (verify)
         {
-            bool? stopped = await ViewStopsFramesAsync(eval);
+            bool? stopped = await ViewStopsFramesAsync(eval, wait, 2500, 500, 250);
             if (stopped == null) return Outcome.Unverified;
             if (stopped == false) return Outcome.StillShown;
         }

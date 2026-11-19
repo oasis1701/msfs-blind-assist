@@ -108,6 +108,10 @@ namespace MSFSBlindAssist.SimConnect
         // on it still has to be read.
         private List<ScrapeElement>? _lastMainElements;
         private string? _lastMainPage;
+        // Runtime.enable on the current socket (STAB-14): answered yet, and how often it was sent.
+        private bool _runtimeEnabled;
+        private int _runtimeEnableTries;
+        private const int RuntimeEnableMaxTries = 3;
 
         private readonly SynchronizationContext? _syncContext;
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(4) };
@@ -363,7 +367,11 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task<bool> EnsureConnected(CancellationToken ct)
         {
-            if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
+            if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled)
+            {
+                await EnableFrameContextsAsync(ct);   // nothing once it was answered
+                return true;
+            }
 
             // Socket still OPEN but the agent went missing (an eval timed out / the page
             // re-evaluated) — re-install the agent on the SAME socket instead of reconnecting.
@@ -371,7 +379,7 @@ namespace MSFSBlindAssist.SimConnect
             {
                 string reinstall = await EvalAsync(_agentJs, ct);
                 _agentInstalled = reinstall.IndexOf(_installMarker, StringComparison.Ordinal) >= 0;
-                if (_agentInstalled) { _connected = true; return true; }
+                if (_agentInstalled) { _connected = true; await EnableFrameContextsAsync(ct); return true; }
             }
 
             // CRITICAL: tear down any existing socket BEFORE opening a new one. Coherent GT
@@ -410,25 +418,40 @@ namespace MSFSBlindAssist.SimConnect
             _ws = ws;
             foreach (var kv in _pending) kv.Value.TrySetCanceled();   // cancel evals orphaned by the reconnect (else they hang to timeout)
             _pending.Clear();
-            _ = Task.Run(() => ReceiveLoop(ws, ct));
-
-            string install = await EvalAsync(_agentJs, ct);
-            _agentInstalled = install.IndexOf(_installMarker, StringComparison.Ordinal) >= 0;
-            _connected = _agentInstalled;
-            if (_agentInstalled && _readFrames)
+            if (_readFrames)
             {
-                // Context ids belong to this socket. Runtime.enable reports every context there is
-                // (and every new one), which is all it sends on the tablet view: measured 2026-11-15,
-                // ten context events in ten seconds and nothing else. It is never disabled: the
-                // debugger does not answer Runtime.disable, and an eval sent after one hung.
+                // Context ids belong to this socket, and so does its Runtime.enable.
                 _frameContexts.Clear();
                 _frameCache.Clear();
                 _frameInstalled.Clear();
                 _frameMisses.Clear();
                 _frameSlots = new Dictionary<int, int>();
-                await SendCommandAsync("Runtime.enable", new { }, ct, EvalTimeoutMs);
+                _runtimeEnabled = false;
+                _runtimeEnableTries = 0;
             }
+            _ = Task.Run(() => ReceiveLoop(ws, ct));
+
+            string install = await EvalAsync(_agentJs, ct);
+            _agentInstalled = install.IndexOf(_installMarker, StringComparison.Ordinal) >= 0;
+            _connected = _agentInstalled;
+            if (_agentInstalled) await EnableFrameContextsAsync(ct);
             return _agentInstalled;
+        }
+
+        // Runtime.enable reports every context there is (and every new one), which is all it sends on
+        // the tablet view: measured 2026-11-15, ten context events in ten seconds and nothing else. It
+        // is never disabled: the debugger does not answer Runtime.disable, and an eval sent after one
+        // hung. It goes out once the reader is installed on this socket, by the first install or by the
+        // same-socket reinstall, whichever succeeds: sent only after the first, a socket whose first
+        // install failed never reported a context, and every frame read "still loading". While it has
+        // not been answered it is sent again on the next rounds, RuntimeEnableMaxTries at most, so a
+        // debugger that never answers cannot hold up every poll.
+        private async Task EnableFrameContextsAsync(CancellationToken ct)
+        {
+            if (!_readFrames || _runtimeEnabled || _runtimeEnableTries >= RuntimeEnableMaxTries) return;
+            _runtimeEnableTries++;
+            var reply = await SendCommandAsync("Runtime.enable", new { }, ct, EvalTimeoutMs);
+            _runtimeEnabled = reply is JsonElement r && !r.TryGetProperty("error", out _);
         }
 
         private async Task<int?> ResolveEfbPageId(CancellationToken ct)

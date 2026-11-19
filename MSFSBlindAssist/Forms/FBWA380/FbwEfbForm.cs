@@ -551,11 +551,22 @@ public class FbwEfbForm : Form
     {
         "select" => " (choice — type a value)",
         // A slider, in the list fallback, is typed as a number between its bounds.
-        "range" => $" (slider, {FormatBound(el.Min, 0)} to {FormatBound(el.Max, 100)})",
+        "range" => SliderCaption(el.Min, el.Max),
         _ => ""
     });
+    // The bounds as the pilot writes numbers ("0,5" under sv-SE); internal for SimTabletSliderEntryTests.
+    internal static string SliderCaption(double? min, double? max) =>
+        $" (slider, {FormatBound(min, 0)} to {FormatBound(max, 100)})";
     private static string FormatBound(double? v, double fallback) =>
         (v ?? fallback).ToString(System.Globalization.CultureInfo.CurrentCulture);
+    // A slider takes a number in the page's own form ("0.5"): the pilot types it in theirs ("0,5"
+    // under sv-SE), read as typed input (CORE-17). False when it is no number; `sent` is then as typed.
+    internal static bool TrySliderValue(string typed, out string sent)
+    {
+        bool ok = MSFSBlindAssist.Utils.NumberParsing.TryParseTyped(typed, out double v);
+        sent = ok ? v.ToString(System.Globalization.CultureInfo.InvariantCulture) : typed;
+        return ok;
+    }
     private static string ButtonLabel(EFBElement el) => string.IsNullOrEmpty(el.Text) ? "(unnamed button)" : el.Text;
 
     private int InnerWidth()
@@ -758,18 +769,12 @@ public class FbwEfbForm : Form
                         e.Handled = true; e.SuppressKeyPress = true;
                         return;
                     }
-                    // A slider takes a number in the page's own form ("0.5"): the pilot types it in
-                    // theirs ("0,5" under sv-SE), read as typed input (CORE-17).
                     string sent = tb.Text;
-                    if (controlType == "range")
+                    if (controlType == "range" && !TrySliderValue(tb.Text, out sent))
                     {
-                        if (!MSFSBlindAssist.Utils.NumberParsing.TryParseTyped(tb.Text, out double typed))
-                        {
-                            _announcer.Announce("Type a number");   // a validation error always speaks (CORE-7)
-                            e.Handled = true; e.SuppressKeyPress = true;
-                            return;
-                        }
-                        sent = typed.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        _announcer.Announce("Type a number");   // a validation error always speaks (CORE-7)
+                        e.Handled = true; e.SuppressKeyPress = true;
+                        return;
                     }
                     _bridgeServer.EnqueueCommand("set_element_value", new Dictionary<string, string>
                     {

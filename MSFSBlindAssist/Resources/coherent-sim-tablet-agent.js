@@ -131,18 +131,25 @@
     } catch (e) { return null; }
   };
 
-  A.isHidden = function (el) {
-    if (!el || !el.getBoundingClientRect) return false;
+  // What hides an element: 0 nothing, 1 for good (no box, display:none), 2 its visibility or opacity.
+  A.hiding = function (el) {
+    if (!el || !el.getBoundingClientRect) return 0;
     var r = el.getBoundingClientRect();
-    if (r.width <= 0 && r.height <= 0) return true;
+    if (r.width <= 0 && r.height <= 0) return 1;
     var st = A.styleOf(el);
-    if (!st) return false;
-    if (st.display === 'none') return true;
-    // Hidden until the mouse is over it: a control a sighted pilot finds by hovering (the Flight
-    // Planner's "Clear Selected Facility", shown by ".atlas-nav-bar-facility:hover
-    // .icon-button-close-facility { visibility: visible }") is on screen for the reader too.
-    if (st.visibility === 'hidden' || st.opacity === '0') return !A.hoverRevealed(el);
-    return false;
+    if (!st) return 0;
+    if (st.display === 'none') return 1;
+    return st.visibility === 'hidden' || st.opacity === '0' ? 2 : 0;
+  };
+  // Not on screen now, whatever a hover would show: the answer for what asks about STATE (is this
+  // list open, this popup up, this view the one shown), where a hover rule must never count.
+  A.notShown = function (el) { return A.hiding(el) > 0; };
+  // Not READ: hidden, unless only until the mouse is over it: a control a sighted pilot finds by
+  // hovering (the Flight Planner's "Clear Selected Facility", shown by ".atlas-nav-bar-facility:hover
+  // .icon-button-close-facility { visibility: visible }") is on screen for the reader too.
+  A.isHidden = function (el) {
+    var h = A.hiding(el);
+    return h === 1 || (h === 2 && !A.hoverRevealed(el));
   };
 
   // The page's own hover rules that make something visible when the mouse is over an ANCESTOR of it
@@ -597,6 +604,10 @@
   // exists only inside an eval that asked for the command line API (CoherentPmdgEfbClient.ListenerArg).
   // Null when absent (the jsdom tests, an older client).
   A._gel = null;
+  // Carried on from a reader this one replaces, like A._scrapeId: each element keeps the listeners
+  // read for it under the stamp of that call, and a counter restarting from 1 would match a set read
+  // long ago.
+  A._gelStamp = (window.__MSFSBA_SIM_TABLET && window.__MSFSBA_SIM_TABLET._gelStamp) || 0;
   A.withListeners = function (gel, fn) {
     var prev = A._gel;
     A._gel = typeof gel === 'function' ? gel : null;
@@ -604,16 +615,19 @@
     try { return fn(); } finally { A._gel = prev; }
   };
   A.PRESS_EVENTS = ['click', 'mousedown', 'pointerdown', 'mouseup', 'pointerup', 'touchstart'];
+  // The up that ends a down, for a control that listens to both (A.pressNow).
+  A.RELEASE_OF = { mousedown: 'mouseup', pointerdown: 'pointerup' };
   // Which press events the element itself listens to: on* properties, getEventListeners when the client
   // handed it in (exact, whenever the listener was bound), else the hook's record (bound after the
-  // reader was installed).
+  // reader was installed). Never both: the hook's record is not taken back when a listener is
+  // removed, so beside the exact answer it would only keep a listener that is gone.
   A.pressEventsOf = function (el) {
     if (el.__msfsbaGelStamp === A._gelStamp && el.__msfsbaGel) return el.__msfsbaGel;
     var out = {}, h = el.__msfsbaEv || {}, l = null;
     if (A._gel) { try { l = A._gel(el); } catch (e) { l = null; } }
     for (var i = 0; i < A.PRESS_EVENTS.length; i++) {
       var t = A.PRESS_EVENTS[i];
-      if (typeof el['on' + t] === 'function' || h[t] || (l && l[t] && l[t].length)) out[t] = true;
+      if (typeof el['on' + t] === 'function' || (l ? l[t] && l[t].length : h[t])) out[t] = true;
     }
     if (A._gel) { el.__msfsbaGel = out; el.__msfsbaGelStamp = A._gelStamp; }
     return out;
@@ -894,7 +908,7 @@
   A.shownView = function () {
     if (!A.inEfb()) return document.body;
     var vs = A.root().querySelectorAll('.efb-container > .efb-view');
-    for (var i = 0; i < vs.length; i++) if (!A.isHidden(vs[i])) return vs[i];
+    for (var i = 0; i < vs.length; i++) if (!A.notShown(vs[i])) return vs[i];
     return null;
   };
   A.viewKey = function (v) {
@@ -1252,7 +1266,7 @@
     function (el, els) {
       var t = A.lineText(el.querySelector('.title') || el);
       var content = el.nextElementSibling;
-      var open = !!content && !A.isHidden(content);
+      var open = !!content && !A.notShown(content);
       els.push(A.button(el, t + (open ? ' (expanded)' : ' (collapsed)'), { key: 'accordion:' + t, announceChange: true }));
     });
 
@@ -1275,7 +1289,7 @@
       // anything is typed).
       var list = el.querySelector('.search-bar-list');
       if (!list || !inp) return;
-      var shown = !A.isHidden(list) && !(list.parentElement && A.isHidden(list.parentElement));
+      var shown = !A.notShown(list) && !(list.parentElement && A.notShown(list.parentElement));
       if (!A.norm(inp.value) && !shown) return;
       for (var i = 0; i < list.children.length; i++) {
         var r = list.children[i];
@@ -1539,7 +1553,7 @@
   A.popups = function (view) {
     var cands = view.querySelectorAll('[class*="popup"], [class*="modal"], [class*="dialog"], [class*="overlay"], [class*="backdrop"], [class*="scrim"], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'), out = [];
     for (var i = 0; i < cands.length; i++) {
-      if (!A.isPopup(cands[i]) || A.isHidden(cands[i])) continue;
+      if (!A.isPopup(cands[i]) || A.notShown(cands[i])) continue;
       var inner = false;
       for (var k = 0; k < out.length; k++) if (out[k].contains(cands[i])) { inner = true; break; }
       if (!inner) out.push(cands[i]);
@@ -1619,11 +1633,8 @@
         var n = all[i];
         if (n === b) break;
         if (n.contains(b) || A.isHidden(n)) continue;
-        var own = '';
-        for (var k = 0; k < n.childNodes.length; k++) if (n.childNodes[k].nodeType === 3) own += n.childNodes[k].nodeValue;
-        if (!A.norm(own)) continue;
-        var line = A.norm(own);
-        if (line === skip) continue;
+        var line = A.ownWords(n);
+        if (!line || line === skip) continue;
         if (!A.isNameText(line)) continue;                   // a name, never a value ("29", "GAL", "14947 L")
         var inCtl = false;
         for (var p = n; p && p !== anc; p = p.parentElement) if (A.isControlEl(p)) { inCtl = true; break; }
@@ -1668,12 +1679,11 @@
       for (var i = 0; i < all.length; i++) {
         var n = all[i];
         if (n === b || b.contains(n) || n.contains(b) || A.isHidden(n)) continue;
-        var own = '';
-        for (var k = 0; k < n.childNodes.length; k++) if (n.childNodes[k].nodeType === 3) own += n.childNodes[k].nodeValue;
-        if (!A.norm(own) || A.norm(own) === skip) continue;
+        var own = A.ownWords(n);
+        if (!own || own === skip) continue;
         var inCtl = false;
         for (var p = n; p && p !== anc; p = p.parentElement) if (A.isControlEl(p)) { inCtl = true; break; }
-        if (!inCtl) parts.push(A.norm(own));
+        if (!inCtl) parts.push(own);
       }
       if (parts.length) { var line = parts.join(' '); return line.length <= A.ROW_LINE_MAX ? line : ''; }
     }
@@ -1809,9 +1819,9 @@
 
     // The first-run tour, over everything else.
     var tour = efb ? root.querySelector('.onboarding-container') : null;
-    if (tour && !A.isHidden(tour)) {
+    if (tour && !A.notShown(tour)) {
       var step = tour.querySelector('.step');
-      if (step && !A.isHidden(step)) {
+      if (step && !A.notShown(step)) {
         var tt = A.lineText(step.querySelector('.title') || step);
         var td = A.lineText(step.querySelector('.description') || step);
         els.push(A.el(step, { kind: 'alert', live: 'assertive', text: tt + (td ? ': ' + td : '') }));
@@ -2323,9 +2333,11 @@
 
   // One press, with the one event the element listens to (STAB-2). el.click() is a real click
   // (onclick, or a click listener); an element that answers only mousedown (or only pointerdown,
-  // mouseup…) gets that event alone, a <button> too. Never two: a handler that listens to both would
-  // run twice, and a mousedown reaching a text box focuses it. A control that shows no listener of its
-  // own (a delegated one) gets click(), which bubbles.
+  // mouseup…) gets that event alone, a <button> too. Never a click and a mousedown: a handler that
+  // listens to both would run twice, and a mousedown reaching a text box focuses it. One that listens
+  // to a down and to its up, and to no click, is held between the two, so it gets the down and then
+  // that up (A.RELEASE_OF). A control that shows no listener of its own (a delegated one) gets
+  // click(), which bubbles.
   // An element whose click does something of its own (a link opens, a form submits or resets, a
   // <summary> folds) is always clicked, whatever else it listens to.
   A.hasDefaultClick = function (el) {
@@ -2351,8 +2363,13 @@
       try { te = new Event('touchstart', { bubbles: true, cancelable: true }); } catch (e) { te = document.createEvent('Event'); te.initEvent('touchstart', true, true); }
       el.dispatchEvent(te);
     } else {
-      var r = el.getBoundingClientRect();
-      A.mouse(el, h, (r.left + r.right) / 2, (r.top + r.bottom) / 2);
+      var r = el.getBoundingClientRect(), x = (r.left + r.right) / 2, y = (r.top + r.bottom) / 2;
+      A.mouse(el, h, x, y);
+      // A control held between a down and its up (push to talk, a step that repeats while held)
+      // listens to both and to no click: its up follows, as a pilot's press ends, where the down
+      // alone would hold it for good (STAB-2).
+      var up = A.RELEASE_OF[h];
+      if (up && A.pressEventsOf(el)[up]) A.mouse(el, up, x, y);
     }
     A._dirty = true;
     A.releaseKeyboard();
@@ -2465,9 +2482,13 @@
 
   // Move an OS slider: a mousedown on its bar, then a mousemove at the target and a mouseup, both on
   // the document, which is what the slider listens to while dragging (STAB-12). The first move goes
-  // one pixel aside, as the slider ignores a move to the x it last saw.
+  // one pixel aside, as the slider ignores a move to the x it last saw. The place is measured along
+  // the BAR, which is the slider's travel and sits inset in the slider's own box (AtmosphereMod:
+  // slider 20 to 430 px, bar 28 to 421): measured on the slider, 10 % landed at 8.4 % and 2 % on the
+  // very end.
   A.dragSlider = function (el, pct) {
-    var bar = el.querySelector('.slider-bar') || el, r = el.getBoundingClientRect();
+    var bar = el.querySelector('.slider-bar') || el, r = bar.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) r = el.getBoundingClientRect();   // a bar with no box of its own
     var vertical = A.hasClass(el, 'vertical');
     var p = Math.max(0, Math.min(100, pct)) / 100;
     var x = vertical ? (r.left + r.right) / 2 : r.left + r.width * p;
@@ -2509,17 +2530,21 @@
       return true;
     }
     function read() { return A.readoutNumber(A.lineText(ro)); }
-    function giveUp() { if (start !== null) A.dragSlider(el, start); return false; }
+    function giveUp() { A.dragSlider(el, start); return false; }
     var now = read();
-    // An end that reads as a word ("Off") is measured just inside it.
-    A.dragSlider(el, 0); var lo = read();
-    if (lo === null) { A.dragSlider(el, 2); lo = read(); }
-    A.dragSlider(el, 100); var hi = read();
-    if (hi === null) { A.dragSlider(el, 98); hi = read(); }
-    if (now === null || lo === null || hi === null || lo === hi) return giveUp();
+    // Nothing is moved that is refused anyway or could not be put back: a read-out that is no number
+    // where the slider stands, a slider whose place is not shown (no --ratio-value).
+    if (now === null || start === null) return false;
+    // An end that reads as a word ("Off") is measured just inside it, and its value is then set
+    // there (loAt, hiAt), never on the end itself.
+    A.dragSlider(el, 0); var lo = read(), loAt = 0;
+    if (lo === null) { A.dragSlider(el, 2); lo = read(); loAt = 2; }
+    A.dragSlider(el, 100); var hi = read(), hiAt = 100;
+    if (hi === null) { A.dragSlider(el, 98); hi = read(); hiAt = 98; }
+    if (lo === null || hi === null || lo === hi) return giveUp();
     if (signed && (/^\s*\+/.test(String(text)) || Math.min(lo, hi) >= 0)) want = now + want;
-    var up = hi >= lo, a = 0, b = 100, best = 100, bestErr = Math.abs(hi - want);
-    if (Math.abs(lo - want) < bestErr) { best = 0; bestErr = Math.abs(lo - want); }
+    var up = hi >= lo, a = 0, b = 100, best = hiAt, bestErr = Math.abs(hi - want);
+    if (Math.abs(lo - want) < bestErr) { best = loAt; bestErr = Math.abs(lo - want); }
     for (var i = 0; i < 14 && bestErr > 0; i++) {
       var mid = (a + b) / 2;
       A.dragSlider(el, mid);
@@ -2558,7 +2583,7 @@
           if (cs.texts[ci].toLowerCase() !== A.norm(want).toLowerCase()) continue;
           if (A.isDisabled(cs.opts[ci])) return false;
           if (cs.texts[ci] === cs.value) return true;          // already the choice: nothing pressed
-          if (A.isHidden(cs.list)) A.press(cs.btn);           // open it, as a pilot does (a press on an open one closes it)
+          if (A.notShown(cs.list)) A.press(cs.btn);           // open it, as a pilot does (a press on an open one closes it)
           A.press(cs.opts[ci]);
           return true;
         }
@@ -2670,7 +2695,7 @@
         return JSON.stringify({ ok: true, done: false });
       }
       var rv = A.route.view();
-      if (rv && !A.isHidden(rv)) return JSON.stringify({ ok: true, done: true });
+      if (rv && !A.notShown(rv)) return JSON.stringify({ ok: true, done: true });
       var imgs = A.route.atlas().querySelectorAll('.nav-bar-icon-button img');
       for (var i = 0; i < imgs.length; i++) {
         if ((imgs[i].getAttribute('src') || '').indexOf('arrow-roadmap') < 0) continue;
@@ -2718,10 +2743,7 @@
         A.route.closeBox();
         return JSON.stringify({ ok: true, unchanged: true });
       }
-      ta.value = String(text);
-      var ev;
-      try { ev = new InputEvent('input'); } catch (e1) { ev = document.createEvent('Event'); ev.initEvent('input', true, true); }
-      ta.dispatchEvent(ev);
+      A.typeInto(ta, String(text), false);
       A.releaseKeyboard();
       return JSON.stringify({ ok: true });
     } catch (e) { return JSON.stringify({ ok: false, error: String(e) }); }
@@ -2743,7 +2765,7 @@
   A.route.closeBox = function () {
     try {
       var popup = A.root().querySelector('.efb-view.AtlasApp .route-parsing-popup');
-      if (!popup || A.isHidden(popup)) return JSON.stringify({ ok: true, done: true });
+      if (!popup || A.notShown(popup)) return JSON.stringify({ ok: true, done: true });
       var b = popup.querySelector('[class*="popup-header"] button');
       if (!b) return JSON.stringify({ ok: false, error: 'no-close-button' });
       A.press(b);
@@ -2789,7 +2811,7 @@
     try {
       A.pumpIfStalled(true);         // the import's waits read a current Flight Planner (STAB-15)
       var rv = A.route.view();
-      var st = { ok: true, atlas: !!A.route.atlas(), routeShown: !!rv && !A.isHidden(rv), airports: [], procedures: [], waypoints: [] };
+      var st = { ok: true, atlas: !!A.route.atlas(), routeShown: !!rv && !A.notShown(rv), airports: [], procedures: [], waypoints: [] };
       if (!rv) return JSON.stringify(st);
       var ap = A.route.airportSteps();
       for (var i = 0; i < ap.length; i++) st.airports.push(A.route.airport(ap[i]));
@@ -2805,7 +2827,7 @@
         break;
       }
       var popup = A.root().querySelector('.efb-view.AtlasApp .route-parsing-popup');
-      st.routeBoxOpen = !!popup && !A.isHidden(popup);
+      st.routeBoxOpen = !!popup && !A.notShown(popup);
       var c = A.route.cruise();
       if (c) { st.cruise = c.value; st.cruiseUnit = c.unit; st.cruiseWarnings = c.warnings; }
       return JSON.stringify(st);

@@ -677,8 +677,10 @@ public partial class MainForm
         simTabletPanelBusy = true;
         try
         {
-            // Hide first when MSFSBA showed it; a panel the pilot already closed falls through to Show.
-            // Any outcome that followed a press ends here: never a second press on an unclear first.
+            // Hide first when MSFSBA showed it; a panel that gets no frames (the pilot closed it, or the
+            // sim shows it without drawing it) falls through to Show, whose press is undone when it
+            // brings none. Any outcome that followed a press ends here: never a second press on an
+            // unclear first.
             var hide = await SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync);
             string? said = hide switch
             {
@@ -686,18 +688,15 @@ public partial class MainForm
                 SimTabletPanel.Outcome.StillShown or SimTabletPanel.Outcome.Failed => "Could not hide the tablet in the sim.",
                 SimTabletPanel.Outcome.Unverified => "The tablet button was pressed, but it is not known whether the sim still shows the tablet.",
                 SimTabletPanel.Outcome.Unknown => "The tablet in the sim cannot be reached right now.",
-                _ => null,                                     // AlreadyHidden: on to Show
+                _ => null,                                     // AlreadyHidden, NotDrawn: on to Show
             };
-            if (hide == SimTabletPanel.Outcome.Hidden) simTabletPanelShown = false;
             if (said != null) { SayPanel(said); return; }
 
             var show = await SimTabletPanel.ShowAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync);
-            if (show == SimTabletPanel.Outcome.Shown) simTabletPanelShown = true;
             if (show == SimTabletPanel.Outcome.Shown && !SimTabletWindowShown)
             {
                 // The window closed while the panel opened: hide it again, as the close would have.
-                var undo = await SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync, () => SimTabletWindowShown);
-                if (undo is SimTabletPanel.Outcome.Hidden or SimTabletPanel.Outcome.AlreadyHidden) simTabletPanelShown = false;
+                await SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync, () => SimTabletWindowShown);
                 return;
             }
             SayPanel(show switch
@@ -726,17 +725,18 @@ public partial class MainForm
     /// <summary>
     /// The window closing hides the panel MSFSBA showed, silently, when it still shows (frames
     /// arrive); a panel the pilot closed is left closed, and the window opening again meanwhile stops
-    /// it. While a press runs, that press checks the window itself when it ends.
+    /// it. Whether MSFSBA showed one is asked of the page, which alone remembers it (HideAsync reads
+    /// its mark first and presses nothing without it). While a press runs, that press checks the
+    /// window itself when it ends.
     /// </summary>
     private async Task HideSimTabletPanelOnCloseAsync()
     {
         var client = coherentSimTablet;
-        if (client == null || !simTabletPanelShown || simTabletPanelBusy) return;
+        if (client == null || simTabletPanelBusy) return;
         simTabletPanelBusy = true;
         try
         {
-            var r = await SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync, () => SimTabletWindowShown);
-            if (r is SimTabletPanel.Outcome.Hidden or SimTabletPanel.Outcome.AlreadyHidden) simTabletPanelShown = false;
+            await SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync, () => SimTabletWindowShown);
         }
         catch (Exception ex) { Log.Warn("SimTablet", $"hide panel: {ex.Message}"); }
         finally { simTabletPanelBusy = false; }
@@ -755,12 +755,14 @@ public partial class MainForm
         var client = coherentSimTablet;
         try
         {
-            if (client == null || !simTabletPanelShown) return;
+            if (client == null) return;
+            // The page says whether MSFSBA showed a panel (HideAsync reads its mark first): AlreadyHidden
+            // when it showed none, Unknown when the tablet does not answer (no sim, MSFS 2020), which
+            // returns at once and leaves nothing known to hide.
             var hide = Task.Run(() => SimTabletPanel.HideAsync(client.EvaluateAsync, SimTabletPanel.ToggleAsync, verify: false));
             if (!hide.Wait(2500)) Log.Warn("SimTablet", "hide panel on exit: timed out");
-            else if (hide.Result is not (SimTabletPanel.Outcome.Hidden or SimTabletPanel.Outcome.AlreadyHidden))
+            else if (hide.Result is not (SimTabletPanel.Outcome.Hidden or SimTabletPanel.Outcome.AlreadyHidden or SimTabletPanel.Outcome.Unknown))
                 Log.Warn("SimTablet", $"hide panel on exit: {hide.Result}");
-            else simTabletPanelShown = false;
         }
         catch (Exception ex) { Log.Warn("SimTablet", $"hide panel on exit: {ex.Message}"); }
         finally { SimTabletPanel.ShutDown(); }

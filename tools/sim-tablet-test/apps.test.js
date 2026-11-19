@@ -1574,3 +1574,110 @@ test('a read-only or fieldset-disabled box refuses a typed value', () => {
   assert.equal(els[1].disabled, true);
   assert.equal(A.setValue(els[1].idx, 'z'), false);
 });
+
+// An OS slider whose bar sits inset in the slider's own box, as live (AtmosphereMod's haze: slider 20
+// to 430 px, bar 28 to 421): its travel is the bar. `words`: its ends read "Off" and "Max"; `frozen`:
+// the read-out never follows; `noRatio`: the page does not show where it stands. p.drags lists every
+// place it was dragged to.
+function insetSlider(opts) {
+  opts = opts || {};
+  const p = page('<div class="row"><span class="name">Haze</span>' +
+    '<div class="slider"' + (opts.noRatio ? '' : ' style="--ratio-value: 50%;"') + ' data-rect="473,20,430,488">' +
+    '<div class="slider-bar" data-rect="473,28,421,488"></div></div>' +
+    (opts.readout ? '<span class="val">50</span>' : '') + '</div>');
+  const sl = p.document.querySelector('.slider'), ro = p.document.querySelector('.val');
+  let dragging = false;
+  p.drags = [];
+  const show = x => {
+    const pct = Math.max(0, Math.min(100, (x - 28) / 393 * 100)), v = Math.round(pct);
+    p.drags.push(v);
+    if (!opts.noRatio) sl.setAttribute('style', '--ratio-value: ' + pct + '%;');
+    if (ro && !opts.frozen) ro.textContent = opts.words && v === 0 ? 'Off' : opts.words && v === 100 ? 'Max' : String(v);
+  };
+  p.document.querySelector('.slider-bar').onmousedown = e => { dragging = true; show(e.clientX); };
+  p.document.addEventListener('mousemove', e => { if (dragging) show(e.clientX); });
+  p.document.addEventListener('mouseup', () => { dragging = false; });
+  return p;
+}
+
+test('a slider is dragged along its bar, which sits inset in the slider\'s own box', () => {
+  const p = insetSlider();
+  const el = scraped(p.A).find(e => e.controlType === 'range');
+  for (const want of [10, 25, 90]) {
+    assert.equal(p.A.setValue(el.idx, String(want)), true);
+    assert.ok(Math.abs(p.A.ratioOf(p.document.querySelector('.slider')) - want) < 0.5, want + ' % of the bar, not of the box around it');
+  }
+});
+
+test('a slider whose end reads as a word is measured just inside it, and that value is set there, never on the end', () => {
+  const p = insetSlider({ readout: true, words: true });
+  const el = find(scraped(p.A), 'Haze (slider)'), val = p.document.querySelector('.val');
+  assert.equal(p.A.setValue(el.idx, '30'), true);
+  assert.equal(val.textContent, '30');
+  assert.equal(p.A.setValue(el.idx, '2'), true, 'the value read at the 2 % probe');
+  assert.equal(val.textContent, '2', 'never "Off"');
+  assert.equal(p.A.setValue(el.idx, '98'), true);
+  assert.equal(val.textContent, '98', 'never "Max"');
+});
+
+test('a slider that could not be put back is refused before it is moved', () => {
+  const p = insetSlider({ readout: true, noRatio: true, frozen: true });
+  const el = scraped(p.A).find(e => /^Haze/.test(e.text));
+  assert.equal(p.A.setValue(el.idx, '70'), false);
+  assert.deepStrictEqual(p.drags, [], 'its place is not shown, so it is never dragged');
+});
+
+test('a control that listens to a down and to its up, and to no click, gets both: the down alone would hold it for good', () => {
+  const p = page('<div class="ptt" data-rect="0,0,50,20">Talk</div><div class="jet" data-rect="0,50,100,20">Dock</div>');
+  const seen = [], ptt = p.document.querySelector('.ptt'), jet = p.document.querySelector('.jet');
+  ptt.addEventListener('mousedown', () => seen.push('ptt:down'));
+  ptt.addEventListener('mouseup', () => seen.push('ptt:up'));
+  jet.addEventListener('mousedown', () => seen.push('jet:down'));
+  // As live: the debugger's getEventListeners says what each one listens to.
+  const gel = el => (el === ptt ? { mousedown: [{}], mouseup: [{}] } : el === jet ? { mousedown: [{}] } : {});
+  const els = scraped(p.A, gel);
+  assert.deepStrictEqual(lines(els), ['button|Talk', 'button|Dock']);
+  assert.equal(p.A.clickElement(find(els, 'Talk').idx, gel), true);
+  assert.equal(p.A.clickElement(find(els, 'Dock').idx, gel), true);
+  assert.deepStrictEqual(seen, ['ptt:down', 'ptt:up', 'jet:down'], 'a mousedown-only control still gets its one event (STAB-2)');
+});
+
+test('with getEventListeners at hand, a listener the page took back no longer makes a button (the hook only ever adds)', () => {
+  const row = () => {
+    // The reader hooks the bare EventTarget, which in the tablet is the page's own; here that name is
+    // Node's, so it is pointed at the page's while the reader installs, for the hook to record as live.
+    const nodeEventTarget = global.EventTarget;
+    const p = page('<div class="drag" data-rect="0,0,50,20">Row one</div>', { before: w => { global.EventTarget = w.EventTarget; } });
+    global.EventTarget = nodeEventTarget;
+    const d = p.document.querySelector('.drag'), f = () => {};
+    d.addEventListener('mousedown', f);
+    d.removeEventListener('mousedown', f);
+    return p.A;
+  };
+  assert.deepStrictEqual(lines(scraped(row(), () => ({}))), ['static|Row one'], 'the exact listeners: none');
+  assert.deepStrictEqual(lines(scraped(row())), ['button|Row one'], 'without them the hook\'s record is all there is (STAB-13)');
+});
+
+test('a reader installed again carries its listener stamp on, as it does its scrape id', () => {
+  const p = page('<button>Go</button>');
+  scraped(p.A, () => ({}));
+  const stamp = p.A._gelStamp;
+  assert.ok(stamp > 0);
+  p.window.eval(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'MSFSBlindAssist', 'Resources', 'coherent-sim-tablet-agent.js'), 'utf8'));
+  assert.notEqual(p.window.__MSFSBA_SIM_TABLET, p.A, 'a new reader');
+  assert.equal(p.window.__MSFSBA_SIM_TABLET._gelStamp, stamp, 'never back to 0: listeners read under an old stamp would match again');
+});
+
+test('a hover rule makes a control readable, never a list open: a dropdown its hover would show is still opened first', () => {
+  const p = styled('<style>.set-dropdown:hover .dd-list { visibility: visible; }</style>' +
+    '<div class="f"><div class="set-label">Mode</div><div class="set-ctrl"><div class="set-dropdown">' +
+    '<button class="dd-btn" type="button"><span class="dd-label">Yes</span></button>' +
+    '<div class="dd-list"><div class="dd-opt">No</div><div class="dd-opt is-sel">Yes</div></div></div></div></div>',
+    el => (el.closest && el.closest('.dd-list') ? { visibility: 'hidden' } : null));
+  const did = [];
+  p.document.querySelector('.dd-btn').addEventListener('click', () => did.push('toggle'));
+  p.document.querySelectorAll('.dd-opt').forEach(o => o.addEventListener('click', () => did.push('pick:' + o.textContent)));
+  const dd = scraped(p.A).find(e => e.controlType === 'select');
+  assert.equal(p.A.setValue(dd.idx, 'No'), true);
+  assert.deepStrictEqual(did, ['toggle', 'pick:No']);
+});

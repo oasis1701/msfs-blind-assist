@@ -26,13 +26,17 @@ namespace MSFSBlindAssist.SimConnect
         private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(4) };
 
         public static Task<string> EvalAsync(string titleNeedle, string js, CancellationToken ct = default)
-            => EvalAsync(titleNeedle, js, exactTitle: false, commandLineApi: false, ct);
+            => EvalAsync(titleNeedle, js, exactTitle: false, commandLineApi: false, closeTimeoutMs: Timeout.Infinite, ct);
 
         /// <param name="exactTitle">The view whose title IS the needle, never one that only holds it
         /// (the sim's "Toolbar" view, STAB-16).</param>
         /// <param name="commandLineApi">Evaluate with the debugger's command line API, whose
         /// <c>getEventListeners</c> finds the element that takes a click.</param>
-        public static async Task<string> EvalAsync(string titleNeedle, string js, bool exactTitle, bool commandLineApi, CancellationToken ct = default)
+        /// <param name="closeTimeoutMs">How long the close waits for the view's answer before the socket
+        /// is aborted. <see cref="Timeout.Infinite"/> waits for it, as every read does: an aborted socket
+        /// can hold the page for tens of seconds (measured, see CoherentPmdgEfbClient.Stop). Only a caller
+        /// that must not be held bounds it: the toolbar press, which exit waits for (STAB-16).</param>
+        public static async Task<string> EvalAsync(string titleNeedle, string js, bool exactTitle, bool commandLineApi, int closeTimeoutMs, CancellationToken ct = default)
         {
             // Never a second socket on a view a persistent client owns; while this one runs, the
             // owner-to-be waits for it instead of connecting on top of it.
@@ -100,13 +104,14 @@ namespace MSFSBlindAssist.SimConnect
             catch { return ""; }
             finally
             {
-                // Bounded: a view that never answers the close frame must not hold the caller (and its
-                // one-shot entry) for good; a cancelled close aborts the socket.
+                // The close waits for the view's answer unless the caller bounds it (closeTimeoutMs): a
+                // cancelled close aborts the socket, which is what must not happen to a view that is
+                // read again.
                 try
                 {
                     if (ws.State == WebSocketState.Open)
                     {
-                        using var closeCts = new CancellationTokenSource(500);
+                        using var closeCts = new CancellationTokenSource(closeTimeoutMs);
                         await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", closeCts.Token);
                     }
                 }
