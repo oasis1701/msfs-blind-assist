@@ -1,0 +1,17 @@
+title: Settings
+text  SIMBRIEF ID number: 123456
+button  SIMBRIEF ID number: Logout
+text  Hoppie logon code: ------
+text  Sayintentions ACARS key: ------
+button  Sayintentions ACARS key: Fetch key
+text  Latest cycle: 2611
+text  Installed cycle: 2611 | EXP: 2026-11-25
+button  Sign in to Navigraph: Sign in
+heading 2  Sections
+button  General
+button  Aircraft
+button  Livery options
+button  Callouts
+button  Cabin audio
+button  AIRAC data
+button  Home

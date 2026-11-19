@@ -387,7 +387,7 @@ public class Pmdg737SecondReviewTests
         string source = File.ReadAllText(DefinitionSourcePath());
         foreach (var signature in new[]
                  {
-                     "private static async Task HeldTransmitAsync(",
+                     "internal static async Task HeldTransmitAsync(",
                      "private static async Task WxrTestSequenceAsync(",
                  })
             Assert.DoesNotContain("ConfigureAwait(false)", MethodBody(source, signature));

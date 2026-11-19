@@ -17,6 +17,7 @@ Chapter 1 of 2 in [Part 4: Planning and Preflight](index.md#part-3-planning-and-
 - [The Flight Planning Window](#flight-planning-efb)
 - [The AI Route Briefing](#planning-route-briefing)
 - [Aircraft EFBs](#aircraft-efb)
+- [The In-Sim Tablet (MSFS 2024)](#in-sim-tablet)
 - [Flows and Checklists](#checklists)
 - [Tracking Waypoints](#fix-tracking)
 - [NAV Radios](#planning-nav-radios)
@@ -268,7 +269,7 @@ The STAR tab works exactly like the SID tab: type the arrival airport in **STAR 
 This tab sets the departure airport and runway at the very start of the plan.
 
 1. In **Departure ICAO**, type the airport's code.
-2. The **Departure Runways** list fills with every runway, each with its length, width, surface and, if it has one, its ILS frequency and course. Lengths are shown in the ground distance unit you chose in Settings (**Use feet for distances (default: metres)** on the Taxi Guidance tab).
+2. The **Departure Runways** list fills with every runway, each with its length, width, surface and, if it has one, its localizer: "ILS" (localizer and glideslope), "Localizer" (no glideslope), or "LDA" or "IGS" for an offset approach that does not line up with the runway, with its frequency and magnetic course. Lengths are shown in the ground distance unit you chose in Settings (**Use feet for distances (default: metres)** on the Taxi Guidance tab).
 3. Choose the runway and press **Load Departure**. BA says, for example, *"Loaded departure EGLL runway 27R"*.
 
 The departure runway you set here is also the runway the taxi-out part of the AI briefing plans to.
@@ -303,7 +304,7 @@ This tab is a reference page for any airport in your navigation database. You ca
 
 The **Airport Information** box starts with the airport's code and name, then is grouped under headings: basic information (ident and name), from aircraft (the distance and direction, when connected), location (coordinates, elevation and magnetic variation), frequencies (Tower, ATIS, AWOS, ASOS and UNICOM), status (closed, military, add-on scenery), fuel, a count of facilities (gates, ramps, runways, approaches and so on), a runway summary, parking, the tower position, the transition altitude and level where the navigation data has them, and the scenery file the airport comes from.
 
-The **Runway Information** box starts with the ILS, if the runway has one (ident, frequency, localizer heading and width, glideslope angle and DME), then gives the dimensions, surface, true and magnetic heading, threshold position, displaced threshold, blast pad and overrun, pattern altitude and runway elevation, lighting, markings, whether the runway is used for take-off and landing, and any VASI or PAPI.
+The **Runway Information** box starts with the runway's localizer under **Localizer and glideslope**. Its first line says what it is, in the same words as the runway lists: "ILS 110.10, course 171", "Localizer 108.70, course 152", "LDA 111.35, course 147", or "No localizer". A glideslope that is not 3 degrees is added, and CAT II or CAT III is named. The details follow (ident, frequency, localizer heading and width, glideslope angle and DME). Then it gives the dimensions, surface, true and magnetic heading, threshold position, displaced threshold, blast pad and overrun, pattern altitude and runway elevation, lighting, markings, whether the runway is used for take-off and landing, and any VASI or PAPI.
 
 A localizer heading is marked as a true heading ("0.5° true"), so do not mistake it for the magnetic course. Fields the navigation data leaves empty are left out or read "N/A".
 
@@ -438,6 +439,7 @@ The tablet you get depends on the aircraft:
 | TFDi MD-11 | Input Shift+T | MD-11 EFB |
 | Fenix A320 | Input Shift+T | Fenix EFB |
 | iFly 737 MAX8 | Input Shift+T | iFly 737 EFB |
+| BlueBird 757-200 | Input Shift+T | 757 EFB |
 | HorizonSim 787-9 | none | BA says *"787 E F B not available."* |
 
 </div>
@@ -449,6 +451,8 @@ The tablet you get depends on the aircraft:
 </div>
 
 The aircraft must be loaded and its tablet working; nothing needs installing in your Community folder. Each tablet's pages are described in [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
+
+MSFS 2024 also has a tablet of its own, meant for its default aircraft, which have no tablet of their own. BA opens it from the Extras menu, but it is not a replacement for the tablets above: see [The In-Sim Tablet (MSFS 2024)](#in-sim-tablet).
 
 ### The flyPad, PMDG and MD-11 tablets {#the-flypad-pmdg-and-md-11-tablets}
 
@@ -495,12 +499,73 @@ If BA cannot reach the tablet, F6 says, for example, *"flyPad not connected. Mak
 
 ### The Fenix and iFly EFBs {#the-fenix-and-ifly-efbs}
 
-The Fenix A320 and the iFly 737 MAX8 serve their tablets as real web sites on your own computer, and those sites already work with a screen reader. BA simply shows the live site in its window, so you read and use it exactly like a web page, with browse mode and quick keys.
+The Fenix A320 and the iFly 737 MAX8 serve their tablets as real web sites on your own computer. BA shows the live site in its window, so you read and use it exactly like a web page, with browse mode and quick keys. The iFly site already works with a screen reader; the Fenix v3 site does not on its own, so BA adds the names, states and keys it lacks.
 
-- **Fenix EFB:** opens the Fenix tablet site. If the Fenix A320 has not finished loading, the window shows a message instead: *"Fenix EFB is not reachable at http://localhost:8083. Make sure the Fenix A320 is fully loaded, then press Retry."* Press **Retry** once it has loaded. Press Escape to close the window.
+- **Fenix EFB:** opens the Fenix tablet site. Every app is a button you can Tab to, and Alt+Home goes back to the EFB's home screen from anywhere; the details are in [the Fenix chapter's EFB section](airbus-aircraft.md#efb-2). If the Fenix A320 has not finished loading, the window says so instead, in a message you can reach with Tab: *"Fenix EFB is not reachable at http://127.0.0.1:8083. Make sure the Fenix A320 is fully loaded, then press Retry."* Press **Retry** once it has loaded. Escape closes an open menu or pop-up on the page first, then the window.
 - **iFly 737 EFB:** opens the iFly SP1 tablet, with its Performance, Navigraph and SimBrief, Payload and Balance, Ground Services, Doors and other apps. BA says *"iFly EFB loaded."* when the page is ready. If the iFly EFB is not running yet, a message explains why and a **Retry** button is focused. Press Escape to close, F5 to reload, and Alt+Home to go back to the EFB's main page.
 
 Both windows hide rather than close, so when you reopen them you are back on the page you left.
+
+## The In-Sim Tablet (MSFS 2024) {#in-sim-tablet}
+
+### What it is {#in-sim-tablet-what}
+
+Microsoft Flight Simulator 2024 has a tablet of its own, with a Flight Planner, an Aircraft app (mass and balance, take-off and landing performance, checklists) and other apps. BA opens it in an accessible window called "In-Sim Tablet". It is meant for MSFS 2024's default aircraft, which have no tablet of their own.
+
+MSFS 2020 has no such tablet.
+
+<div class="callout warning" role="note" markdown="1">
+
+**Warning:** These aircraft have their own tablet and flight computer: the FlyByWire A320neo and A380X, the Headwind A330-900neo, the Fenix A320, the PMDG 737 and 777, the iFly 737 MAX8, the TFDi MD-11, the BlueBird 757-200 and the HorizonSim 787-9. On them, use the aircraft's own tablet (Input Shift+T, see [Aircraft EFBs](#aircraft-efb)) and flight computer, and never send a flight plan from the in-sim tablet: it causes problems with the aircraft.
+
+</div>
+
+### When to use it {#in-sim-tablet-when}
+
+With one of MSFS 2024's default aircraft:
+
+- To load your latest SimBrief plan into the simulator's Flight Planner with one press, then send it to the aircraft.
+- To use the tablet's mass and balance, performance and checklist pages.
+
+### How to use it {#in-sim-tablet-how}
+
+In the main window, open the **Extras** menu and choose **In-Sim Tablet (FS2024 Native)**. The window is the same kind as the flyPad, PMDG and MD-11 tablet windows, so you read it in browse mode and use the same keys (F5 to re-read, F6 for the connection status, Alt+F4 to hide it): see [The flyPad, PMDG and MD-11 tablets](#the-flypad-pmdg-and-md-11-tablets).
+
+What the window shows:
+
+- **The dock comes first:** one tab per app, the open one marked *"(current page)"*. Press a tab to open that app.
+- **A pop-up comes before the page,** such as the box for typing a route, and its title is spoken as it opens.
+- **Seats, cargo and fuel tanks** are edit fields named with their unit and limit, for example *"Co-Pilot (LBS, max 300)"*. Type a weight and press Enter.
+- **Checklist items and switches** are check boxes.
+- **The Import, Save and Send menus** show as one button for each choice in them.
+- **Flight Planner waypoints** are one line each, for example *"SOONE: Hdg 138°, Dist 24.6 NM"*.
+- The map and the charts are pictures, so they cannot be read.
+
+The tablet does not need to be on screen: the window works with the toolbar tablet closed and the camera anywhere. Typing in the window never takes your keyboard away from the simulator, so the sim's keys and BA's hotkeys keep working. The window stays open when you change aircraft.
+
+### Loading your SimBrief plan {#in-sim-tablet-simbrief}
+
+You need your SimBrief username in BA's settings first: see [Setting your SimBrief username](#setting-your-simbrief-username).
+
+1. Open the Flight Planner from the dock. A **Load latest SimBrief plan** button appears right after the dock.
+2. Press it. BA fetches your latest SimBrief plan, types its route into the tablet with the cruise altitude, adds SimBrief's SID and STAR by name, and sets SimBrief's departure and arrival runways.
+3. Listen to the summary, then check the plan on the Route page. When a runway is set, the tablet can choose an approach by itself (for example *"ILS 1 via Direct"*); the summary names every procedure the tablet chose, so you know what you will be sending. The tablet does not take the SID's or STAR's transitions from the route.
+4. Send it yourself, and only to a default aircraft: BA never sends the plan for you. On the Route page, press the Send button for the avionics (there are also buttons to send it to ATC, or to both). Never send it to an aircraft that has its own flight computer (see the warning above).
+
+### What you will hear {#in-sim-tablet-hear}
+
+- *"Loading your SimBrief plan."* when you press the button, then a summary: both airports with their runways, the number of waypoints, the cruise altitude, and any procedure the tablet chose.
+- The same summary again if you press the button a second time, as the tablet loads the plan again.
+- *"The SimBrief plan is still loading."* if you press the button again before the first press has finished.
+
+### If something goes wrong {#in-sim-tablet-problems}
+
+- ***"The in-sim tablet is only in MSFS 2024."*** You are flying MSFS 2020, which has no such tablet.
+- **F6 says the tablet is not connected.** MSFS 2024 is not running or is still loading the flight. The window connects by itself once the flight has loaded.
+- ***"Add your SimBrief username in Settings, SimBrief, to load a plan."*** See [Setting your SimBrief username](#setting-your-simbrief-username).
+- ***"Could not fetch your SimBrief plan: …"*** BA could not get a plan from SimBrief, for example with no internet connection or no plan generated yet for your username. Check both and press the button again.
+- ***"The sim tablet's flight plan is locked, so a route cannot be entered now."*** The tablet is not taking a new route at the moment. Try again later.
+- ***"The sim tablet did not take the route."*** The tablet would not save the route. Check the plan in SimBrief and press the button again.
 
 ## Flows and Checklists {#checklists}
 

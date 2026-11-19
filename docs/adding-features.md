@@ -148,7 +148,8 @@ case DATA_REQUESTS.REQUEST_OUTSIDE_TEMP:
     {
         VarName = "OUTSIDE_TEMP",
         Value = oatData.value,
-        Description = $"{oatData.value:0} degrees Celsius"
+        Description = Utils.ReadoutFormat.OutsideTemperature(oatData.value,
+            Settings.SettingsManager.Current.UseFahrenheitForOutsideTemperature)
     });
     break;
 ```

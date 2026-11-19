@@ -10,9 +10,10 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// descending through 9,700 → landing lights ON + nose light T.O.
 ///
 /// Transition altitude / level (SimBrief-sourced only, NO default): climbing through the
-/// TA → both EFIS baro refs to STD (direct S_FCU_EFIS*_BARO_STD=1 — a plain state write,
-/// unlike the 737's blind toggle push); descending through the TL → both back to QNH mode
-/// (=0) + "set local QNH" announcement.
+/// TA → both EFIS baro refs to STD (SetBaroStdBoth(true): each baro knob is a push/pull counter,
+/// so this steps it +1, a pull, which selects STD and stays STD on extra pulls — idempotent, unlike
+/// the 737's blind toggle push); descending through the TL → both back to QNH mode
+/// (SetBaroStdBoth(false): -1, a push) + "set local QNH" announcement.
 ///
 /// Direction gates are "!descending"/"!climbing" so a VS lull on the crossing tick can't
 /// burn the latch without firing (the 737 lesson). Thread-safe: Update() is called from

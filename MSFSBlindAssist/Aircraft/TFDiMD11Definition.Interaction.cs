@@ -1289,6 +1289,9 @@ public partial class TFDiMD11Definition
         // The DC-power gate: consumed silently; the hook reads it from the cache.
         if (varName == DcPowerKey) return true;
 
+        // The sim's fuel weight: consumed silently; only the fuel read-outs read it, from the cache.
+        if (varName == Md11FuelUnits.SimFuelKey) return true;
+
         // Every lamp is handled here (owner state or standalone lit/dark) and consumed, so the
         // generic announce path never speaks a raw "X light: on" again.
         if (_byNodeId.TryGetValue(varName, out var ctrl) && ctrl.Kind == Md11Kinds.Annunciator)
@@ -1553,9 +1556,8 @@ public partial class TFDiMD11Definition
                 (parentForm as MainForm)?.ShowMd11MonitorManagerDialog();
                 return true;
 
-            // Fuel twice, matching the PMDG convention: ReadFuelQuantity in pounds (the unit the
-            // aircraft itself reports and the CDU shows), ReadFuelInfo in kilograms for pilots who
-            // plan in metric.
+            // Fuel twice, matching the PMDG convention: ReadFuelQuantity in pounds, ReadFuelInfo in
+            // kilograms, whichever unit the EFB has the aircraft reporting in (Md11FuelUnits).
             case HotkeyAction.ReadFuelQuantity:
                 AnnounceFuel(simConnect, announcer, kilograms: false);
                 return true;
@@ -1729,43 +1731,16 @@ public partial class TFDiMD11Definition
     /// has a tail trim tank and an auxiliary tank that the stock left/right/center model has no
     /// slot for, so the stock read would omit real fuel. With no readable SD page these five vars
     /// are the pilot's only fuel picture.
+    ///
+    /// The vars read in the EFB's weight unit (<see cref="Md11FuelUnits"/>), so each value is
+    /// converted from that unit to the one asked for; with the unit unknown nothing is converted
+    /// and nothing is read, because a guess could halve or double the fuel the pilot hears.
     /// </summary>
     private static void AnnounceFuel(SimConnectManager sim, ScreenReaderAnnouncer announcer, bool kilograms)
     {
-        var tanks = new (string Key, string Name)[]
-        {
-            ("MD11_OVHD_TANK_1_VAL", "Tank 1"),
-            ("MD11_OVHD_TANK_2_VAL", "Tank 2"),
-            ("MD11_OVHD_TANK_3_VAL", "Tank 3"),
-            ("MD11_OVHD_TANK_AUX_VAL", "Auxiliary"),
-            ("MD11_OVHD_TANK_TAIL_VAL", "Tail"),
-        };
-
-        var parts = new List<string>(tanks.Length + 1);
-        double total = 0;
-        var anyRead = false;
-
-        foreach (var (key, name) in tanks)
-        {
-            var v = sim.GetCachedVariableValue(key);
-            if (v == null) continue;
-            anyRead = true;
-            total += v.Value;
-            // An empty aux/tail tank is normal on this aircraft, not a fault — say zero rather than
-            // omitting it, so the pilot can tell "empty" from "not reported".
-            parts.Add($"{name} {Convert(v.Value).ToString("0", CultureInfo.InvariantCulture)}");
-        }
-
-        if (!anyRead)
-        {
-            announcer.AnnounceImmediate("Fuel quantity unavailable");
-            return;
-        }
-
-        parts.Add($"Total {Convert(total).ToString("0", CultureInfo.InvariantCulture)} {(kilograms ? "kilograms" : "pounds")}");
-        announcer.AnnounceImmediate(string.Join(", ", parts));
-
-        double Convert(double lb) => kilograms ? lb * 0.45359237 : lb;
+        var readings = Md11FuelUnits.Tanks.Select(t => (t.Name, sim.GetCachedVariableValue(t.Key))).ToList();
+        announcer.AnnounceImmediate(Md11FuelUnits.Describe(readings, sim.GetCachedVariableValue(Md11FuelUnits.OptionsKey),
+            sim.GetCachedVariableValue(Md11FuelUnits.SimFuelKey), kilograms));
     }
 
     /// <summary>

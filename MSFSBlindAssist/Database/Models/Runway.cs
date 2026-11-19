@@ -17,6 +17,22 @@ public class Runway
         public int Surface { get; set; }
         public double ILSFreq { get; set; }
         public double ILSHeading { get; set; }
+
+        /// <summary>Whether this end's localizer has a glideslope: an ILS when true, a
+        /// localizer only when false. Meaningless while <see cref="ILSFreq"/> is 0.</summary>
+        public bool ILSHasGlideslope { get; set; }
+
+        /// <summary>navdatareader's `ils.type` code ("1"/"2"/"3" = CAT I/II/III, "0" = no
+        /// glideslope, "U" = uncategorised, and in an MSFS 2024 build "A"/"L" = LDA
+        /// without/with glideslope, "I" = IGS); see <see cref="LandingAidText.Category"/> and
+        /// <see cref="LandingAidText.OffsetFacility"/>.</summary>
+        public string ILSType { get; set; } = string.Empty;
+
+        /// <summary>The localizer's magnetic course, 1-360: the approach chart's
+        /// (<see cref="PublishedLocalizerCourse"/>), or worked out from its heading when no
+        /// procedure flies it. 0 while there is no localizer.</summary>
+        public int ILSCourseMag { get; set; }
+
         public double ThresholdOffset { get; set; }
 
         /// <summary>Threshold elevation in feet MSL, sourced from runway_end.altitude.
@@ -88,9 +104,12 @@ public class Runway
                 baseInfo = $"Runway {RunwayID} - {len} {GetSurfaceType()}";
             }
 
+            // Named by the same rule as the EFB runway page (LandingAidText): a localizer
+            // without a glideslope is never called an ILS, and the course is magnetic.
             if (ILSFreq > 0)
             {
-                baseInfo += $" - ILS {ILSFreq:F2} ({ILSHeading:000}°)";
+                baseInfo += " - " + LandingAidText.Describe(ILSHasGlideslope, ILSType, ILSFreq,
+                    ILSCourseMag, GlideslopeAngleDeg);
             }
 
             return baseInfo;

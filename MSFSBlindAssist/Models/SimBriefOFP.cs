@@ -34,6 +34,9 @@ public class SimBriefOFP
     public string AvgWindComp       { get; set; } = "";
     public string AvgIsaDev         { get; set; } = "";
     public string Units             { get; set; } = "lbs";
+    /// <summary>The SID and STAR from &lt;general&gt; (sid_ident, star_ident); empty when the plan has none.</summary>
+    public string SidIdent          { get; set; } = "";
+    public string StarIdent         { get; set; } = "";
 
     // ── Aircraft ──────────────────────────────────────────────────────────────
     public string AircraftName      { get; set; } = "";
@@ -132,6 +135,16 @@ public class SimBriefOFP
 
     // ── TLR (Takeoff and Landing Report) raw text ─────────────────────────────
     public string TlrText         { get; set; } = "";
+
+    // ── TLR structured values (OFP/tlr), in feet ──────────────────────────────
+    // Runway identifier → TORA (takeoff) or LDA (landing).
+    public Dictionary<string, string> TlrTakeoffToraFt { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> TlrLandingLdaFt  { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    // Landing distances at the planned landing weight.
+    public string TlrLdgActualDryFt   { get; set; } = "";
+    public string TlrLdgActualWetFt   { get; set; } = "";
+    public string TlrLdgFactoredDryFt { get; set; } = "";
+    public string TlrLdgFactoredWetFt { get; set; } = "";
 
     // ── Nav Log ───────────────────────────────────────────────────────────────
     public List<SimBriefNavFix> NavLog { get; set; } = new();

@@ -26,6 +26,22 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     protected bool _trimAnnouncementsEnabled = true;
     private double _lastAnnouncedTrimKey = double.NaN;
 
+    // A typed trim the pilot was just told about (NoteElevatorTrimAnnounced), by its key, and until when the call-out
+    // waits for the trim to arrive at it. NaN while there is none.
+    private double _typedTrimTargetKey = double.NaN;
+    private long _typedTrimUntilMs;
+
+    /// <summary>
+    /// How long after a typed trim the call-out waits, at most, for the value to arrive at it, in milliseconds. Until then
+    /// every value on the way, and the old trim if it is delivered first, is the pilot's own action and is not spoken
+    /// (CORE-7). Long enough for the A320's whole THS travel (DN 4.0 to UP 13.5) at the trim motor's rate; the travel was
+    /// not measured on the Fenix, so the wait ends early as soon as the target is reached.
+    /// </summary>
+    internal const long TypedTrimTravelMs = 20_000;
+
+    /// <summary>For tests: the clock the typed-trim wait reads, in milliseconds.</summary>
+    internal Func<long> TrimClockMs { get; set; } = () => Environment.TickCount64;
+
     /// <summary>
     /// How far past a step boundary a trim value must travel before the new step is spoken, in
     /// the scale the value ARRIVES in (degrees for <c>MON_ElevatorTrim</c>, units for the PMDG
@@ -36,6 +52,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
     // Glideslope alive/lost tracking
     private bool _previousGlideSlopeAlive = false;
+
+    /// <summary>
+    /// True when the aircraft's VOR and ILS receivers are the sim's own NAV radios, so the stock
+    /// NAV variables say what the cockpit shows. False for an aircraft whose own receivers leave
+    /// the sim's NAV radios untouched: it registers no glideslope row (and so no Ctrl+M row) and the
+    /// shared "Glideslope alive / lost" call-out never speaks, since NAV 1 would be wrong there.
+    /// </summary>
+    public virtual bool UsesStockNavReceivers => true;
 
     // Abstract members from IAircraftDefinition that must be implemented
     public abstract string AircraftName { get; }
@@ -58,7 +82,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     protected virtual Dictionary<string, SimConnect.SimVarDefinition> GetBaseVariables()
     {
-        return new Dictionary<string, SimConnect.SimVarDefinition>
+        var vars = new Dictionary<string, SimConnect.SimVarDefinition>
         {
             // Ground state - universal SimConnect variable that works with all aircraft
             ["SIM_ON_GROUND"] = new SimConnect.SimVarDefinition
@@ -267,6 +291,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Units = "degrees"
             }
         };
+
+        // NAV 1's glideslope is wrong on an aircraft whose own receivers leave the sim's NAV radios
+        // untouched (the BlueBird 757, [B757-5]): no row, so no Ctrl+M row either.
+        if (!UsesStockNavReceivers) vars.Remove("MON_GlideSlopeAlive");
+        return vars;
     }
 
     /// <summary>
@@ -698,6 +727,30 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Variable Update Processing
 
     /// <summary>
+    /// Converts the value <c>MON_ElevatorTrim</c> delivers into degrees, positive = UP, before the
+    /// shared call-out describes and debounces it. The default is the stock <c>ELEVATOR TRIM
+    /// POSITION</c>, already degrees. An airframe that points <c>MON_ElevatorTrim</c> at its own
+    /// variable in another scale converts here (the Fenix: thousandths of a degree), so
+    /// <see cref="TrimHysteresis"/> and <see cref="DescribeElevatorTrim"/> keep working in degrees.
+    /// </summary>
+    protected virtual double ElevatorTrimDegrees(double value) => value;
+
+    /// <summary>
+    /// Records a trim the pilot just set and was told about as already announced, so its arrival
+    /// on <c>MON_ElevatorTrim</c> is not spoken a second time (CORE-7). Neither is the way there:
+    /// until a value arrives at the target's key, or <see cref="TypedTrimTravelMs"/> has passed,
+    /// the values on the way are taken silently (the old trim delivered first, the stabilizer
+    /// traveling). A trim that stops elsewhere is spoken once the wait is over, as any change.
+    /// </summary>
+    protected void NoteElevatorTrimAnnounced(double degrees)
+    {
+        double key = DescribeElevatorTrim(degrees).Key;
+        _lastAnnouncedTrimKey = key;
+        _typedTrimTargetKey = key;
+        _typedTrimUntilMs = TrimClockMs() + TypedTrimTravelMs;
+    }
+
+    /// <summary>
     /// Renders <c>ELEVATOR TRIM POSITION</c> (degrees) for announcement, returning BOTH the
     /// spoken phrase and the key the debounce compares — the two must move together, or a type
     /// announcing a coarser scale would re-speak the same phrase on every sub-step change.
@@ -746,7 +799,21 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             if (!_trimAnnouncementsEnabled)
                 return true; // Suppress when toggled off
 
-            var (key, phrase) = DescribeElevatorTrim(value);
+            double degrees = ElevatorTrimDegrees(value);
+            var (key, phrase) = DescribeElevatorTrim(degrees);
+
+            // A typed trim on its way: silent until it arrives or the wait is over (NoteElevatorTrimAnnounced).
+            // Past the wait, a value that never reached the target falls through and is compared with it.
+            if (!double.IsNaN(_typedTrimTargetKey))
+            {
+                if (key == _typedTrimTargetKey || TrimClockMs() < _typedTrimUntilMs)
+                {
+                    if (key == _typedTrimTargetKey) _typedTrimTargetKey = double.NaN;
+                    return true;
+                }
+
+                _typedTrimTargetKey = double.NaN;
+            }
 
             // First update: store silently, don't announce initial value on app load
             if (double.IsNaN(_lastAnnouncedTrimKey))
@@ -767,7 +834,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             // flips 1.4 / 1.5 every sample. Done here, on the raw degrees every override receives,
             // so each override's own step gets the same band.
             double pullBack = key > _lastAnnouncedTrimKey ? -TrimHysteresis : TrimHysteresis;
-            if (DescribeElevatorTrim(value + pullBack).Key == _lastAnnouncedTrimKey)
+            if (DescribeElevatorTrim(degrees + pullBack).Key == _lastAnnouncedTrimKey)
                 return true;
 
             _lastAnnouncedTrimKey = key;
@@ -777,6 +844,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
         if (varName == "MON_GlideSlopeAlive")
         {
+            // NAV 1 is not this aircraft's receiver: never registered, and silent should it arrive.
+            if (!UsesStockNavReceivers) return true;
             bool alive = value > 0;
             if (alive && !_previousGlideSlopeAlive)
                 announcer.Announce("Glideslope alive");
@@ -819,6 +888,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         // Default: not handled - let MainForm use generic logic
         return false;
     }
+
+    /// <summary>Default: the raw text is not handled, and MainForm parses it for <see cref="HandleUIVariableSet"/> as always.</summary>
+    public virtual bool HandleUITypedText(string varKey, string text, SimConnect.SimVarDefinition varDef,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer) => false;
 
     /// <summary>
     /// Default autopilot engage: the stock <c>AUTOPILOT_ON</c> event (idempotent in the stock
@@ -951,8 +1024,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
 
     public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
+    public virtual double TaxiSharpTurnLeadSeconds => TaxiTurnLeadSeconds;   // constant lead unless measured otherwise
+    public virtual double TaxiTurnLeadMaxDegrees => 30.0;
 
     public virtual bool HasOwnIcingAnnouncer => false;
+
+    /// <inheritdoc />
+    public virtual bool PlaysOwnTakeoffSpeedCallouts => false;
 
     public virtual string? StockComTuningRefusal => null;
 

@@ -90,7 +90,17 @@ first, then builds, force-moves the `preview` tag and updates one pre-release in
 The notes are the changelog fragments added since the last `v` tag, so a preview and the
 release that eventually contains it describe the same changes.
 
-Four things there are load-bearing:
+`release.yml` and `preview.yml` both run the same two steps after "Download Navdatareader"
+and before the zip (UPD-10). "Fetch the display layouts" checks out the layouts store's
+`layouts` branch with a deploy key (secrets `LAYOUTS_REPO` and `LAYOUTS_DEPLOY_KEY`), and
+"Bundle the display layouts" runs `tools/LayoutBundle`, which copies the layout files into a
+`layouts` folder beside the exe. The run fails when the fetch fails, a known module has no
+layout, or a file does not load in that build, so no ZIP ships without its layouts. With
+`LAYOUTS_REPO` unset, actions/checkout falls back to the repo the workflow runs in, which has
+no `layouts` branch, and fails saying `layouts` was not found: that error means the secret is
+missing.
+
+Five things there are load-bearing:
 
 - **The preview tag must never start with `v`.** `release.yml` triggers on `tags: ['v*']`
   and would publish a duplicate full release.
@@ -104,6 +114,8 @@ Four things there are load-bearing:
   version from the `Preview build <version>` name via
   `UpdateCandidateSelector.PreviewNamePrefix`. Change that format in either place and the
   preview channel silently stops offering anything.
+- **The display layouts are bundled into every ZIP, and a missing one fails the run.** See
+  the two steps above.
 
 Force-moving the tag means a local clone that has fetched it will report *"would clobber
 existing tag"*; `git fetch --tags --force` clears that.

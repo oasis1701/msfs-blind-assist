@@ -1,0 +1,78 @@
+title: Aircraft, Weight & balance
+text  Empty: 136940 Lbs
+text  ZFW: 176060 Lbs
+text  ZFW CG: 22.5 %
+text  Blk fuel: 10212 Lbs
+text  Take-off: 207322 Lbs
+text  Landing: 188060 Lbs
+slider 100  Business pax (16/16)
+button  Weight: 2960 Lbs
+slider 100  Economy pax (160/160)
+button  Weight: 29600 Lbs
+slider 60  Forward cargo
+button  Weight: 6160 Lbs
+slider 0  AFT cargo
+button  Weight: 0 Lbs
+text  Gross weight: 186272 Lbs
+text  Center of gravity: 23.8 %
+heading 2  Status bar
+text  Sat, 7th Nov 2026 | 23:03L | 05:03Z | OAT 4 C
+heading 2  Notifications
+text  03:16Z AFT cargo door closed.
+text  03:15Z AFT cargo door opened.
+text  01:16Z GPU connected.
+text  00:58Z Brake thermal efficiency: Left 96.2% | right 96.2%
+text  00:58Z Autobrake 1: TARGET 4.5 | ACTUAL 4.5 ft/s2
+text  21:37Z GPU disconnected.
+text  21:37Z Chocks removed.
+text  21:35Z Boarding is complete!
+text  21:35Z 176 passengers boarded!
+text  21:35Z Cargo is loaded!
+text  21:35Z Fuel is set!
+text  21:35Z Boarding initiated.
+text  21:35Z Deboarding is complete!
+text  21:35Z 176 passengers deboarded!
+text  21:29Z R3 door closed.
+text  21:24Z AFT cargo door closed.
+text  21:24Z FWD cargo door closed.
+text  21:23Z Cargo is unloaded!
+text  21:21Z L1 door closed.
+text  21:21Z AFT cargo door opened.
+text  21:21Z FWD cargo door opened.
+text  21:21Z R3 door opened.
+text  21:21Z Deboarding initiated.
+text  21:21Z Boarding is complete!
+text  21:21Z 176 passengers boarded!
+text  21:12Z R3 door closed.
+text  21:08Z Fuel is set!
+text  21:07Z AFT cargo door closed.
+text  21:07Z FWD cargo door closed.
+text  21:07Z Cargo is loaded!
+text  21:04Z L1 door opened.
+text  21:04Z AFT cargo door opened.
+text  21:04Z FWD cargo door opened.
+text  21:04Z R3 door opened.
+text  21:04Z Boarding initiated.
+text  21:04Z Chocks attached.
+text  21:00Z GPU connected.
+text  20:00Z GPU disconnected.
+text  20:00Z Chocks removed.
+text  19:50Z IRS aligned.
+text  19:45Z Boarding is complete!
+text  19:45Z 0 passengers boarded!
+text  19:45Z Cargo is loaded!
+text  19:45Z Fuel is set!
+text  19:42Z Defueling is complete!
+text  19:41Z IRS alignment initiated.
+text  19:41Z Defueling initiated.
+text  19:35Z SIMBRIEF OFP received.
+text  19:34Z GPU connected.
+heading 2  Sections
+button  Cockpit presets
+button  Fuel
+button  Weight & balance (current page)
+button  Ground services
+button  Cabin & doors
+button  Maintenance
+button  Failures
+button  Home

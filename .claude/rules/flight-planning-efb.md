@@ -14,6 +14,10 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*NavDataFixture*.cs"
   - "MSFSBlindAssist/Database/LittleNavMapProvider.cs"
   - "MSFSBlindAssist/Database/IAirportDataProvider.cs"
+  - "MSFSBlindAssist/Database/LandingAidText.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*LandingAid*.cs"
+  - "MSFSBlindAssist/Database/PublishedLocalizerCourse.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PublishedLocalizerCourse*.cs"
   - "MSFSBlindAssist/Database/AirportNameSearch.cs"
   - "MSFSBlindAssist/Forms/AirportSearchResultsForm.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AirportNameSearch*.cs"
@@ -34,6 +38,8 @@ Loaded when Claude reads matching code. Background: docs/architecture.md. Full t
 - [EFB-10] `OrphanIlsMatcher` links an orphaned `ils` row by nearest runway CENTERLINE, only when no other end at that airport is nearer and it lies ahead within `LengthMetres + MaxLocalizerSetbackMetres` (an end of unknown length, 0, skips that ceiling); never revert to nearest-threshold, tune `MaxCrossTrackMetres` or widen the competitor set. Full: docs/invariants/flight-planning-efb.md#efb-10
 - [EFB-11] The Airport Lookup runway list repopulates the runway-info box on `SelectedIndexChanged` (`AirportLookupRunwaysListBox_SelectedIndexChanged`), never only from a button (the tab has none: Enter in the ICAO field is its only search): picking a runway must show that runway's details. Full: docs/invariants/flight-planning-efb.md#efb-11
 - [EFB-12] Airport Lookup sets the Airport Information box ONCE per airport (`ShowAirportInfo`, `FillAirportInfoWithDistanceAsync`), never again after: new text puts the caret on line 1 and the screen reader loses its place. Its first line stays the ident and name, which Tab from the field reads. Full: docs/invariants/flight-planning-efb.md#efb-12
+- [EFB-13] A runway end's localizer is named only by `LandingAidText.Describe`: "ILS" only when its row has glideslope data (gs_range or gs_pitch above 0, never its name or ILSData's 3.0 default), "Localizer" when not, and type "A", "L" or "I" (`LandingAidText.OffsetFacility`) as LDA or IGS, never ILS or Localizer. Full: docs/invariants/flight-planning-efb.md#efb-13
+- [EFB-14] A localizer's spoken course is the approach chart's, `PublishedLocalizerCourse.Select` over the airport's procedure legs, and `LandingAidText.MagneticCourse` only when no procedure flies it: in an MSFS 2024 build ils.mag_var is today's variation, and true less it was off the chart for 57% of localizers. Full: docs/invariants/flight-planning-efb.md#efb-14
 
 Mirrored from taxi-augmentation.md (it governs `FlightPlan.CopyFrom`; change it there and here together):
 - [AUG-2] Every non-null assignment of `MainForm.airportDataProvider` must go through `MainForm.WithTaxiAugmentation`, or online names, aliases and the briefing's OSM tier are silently lost; a database switch carries the plan via `FlightPlan.CopyFrom`, never a field-by-field copy. Full: docs/invariants/taxi-augmentation.md#aug-2

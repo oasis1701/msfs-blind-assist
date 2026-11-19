@@ -144,7 +144,7 @@ public class UserSettings
         // error exceeds N degrees. Default 1 = silent when on track, only sounds
         // when you need to steer back — matches "silent on the deadband".
         public int TakeoffAssistHeadingToneThreshold { get; set; } = 1;
-        public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
+        public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable the 80kt and 100kt callouts (V1, Rotate and V2 come from the aircraft definitions)
 
         /// <summary>
         /// When true (default), a destination runway or a landing exit plan arms the landing assist's
@@ -252,6 +252,9 @@ public class UserSettings
         /// Feet (1) is the North American / FAA convention.
         /// </summary>
         public DistanceUnit GroundDistanceUnit { get; set; } = DistanceUnit.Metres;
+
+        /// <summary>Use Fahrenheit for the Output O outside-temperature readout. Default is Celsius.</summary>
+        public bool UseFahrenheitForOutsideTemperature { get; set; } = false;
 
         // Independent of GroundDistanceUnit: ground-traffic proximity alerts have their own
         // metres/feet toggle (default feet). Not governed by the app-wide distance-units setting.
@@ -401,6 +404,17 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> Md11DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // Auto-announced BlueBird 757-200 variables the user has muted via the 757 Monitor Manager
+        // (Ctrl+M, BBS757MonitorManagerForm). Consulted in MainForm.OnSimVarUpdated when
+        // AircraftCode == "BBS_757" — at the generic gate (the status rows) AND via the Suppressed
+        // wrap (the base trim and glideslope call-outs speak from INSIDE ProcessSimVarUpdate).
+        // Persisted across sessions.
+        public List<string> BBS757DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="BBS757DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> BBS757DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // The MD-11 walker's learned step polarity (docs/md11.md §3): node ids whose step events run
         // INVERTED relative to the walker's conventional guess (left click / wheel up = increase).
         // Absent = conventional. Written the moment a wrong-way step teaches the walker, read on the
@@ -483,8 +497,8 @@ public class UserSettings
         /// blind pilots monitoring taxi speed against the FAA / SOP caps (30 kt
         /// straight, 10 kt turns) and for the takeoff roll. Suggested values: 5 or
         /// 10 kt. Active during BOTH taxi guidance and takeoff assist phases — the
-        /// callouts complement each other (10/20/30 kt taxi → 80/100/V1/rotate
-        /// takeoff). Default 0 (off) so existing users see no behaviour change.
+        /// callouts complement each other (10/20/30 kt taxi → the 80 and 100 kt
+        /// takeoff calls). Default 0 (off) so existing users see no behaviour change.
         /// </summary>
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 
@@ -633,8 +647,8 @@ public class UserSettings
         }
 
     /// <summary>
-    /// Rebuilds the seven *DisabledMonitorVariables HashSet sidecars from their backing Lists.
-    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX/iFly/MD-11 monitor-manager
+    /// Rebuilds the eight *DisabledMonitorVariables HashSet sidecars from their backing Lists.
+    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX/iFly/MD-11/757 monitor-manager
     /// forms' ItemCheck handlers, FlyByWireA380Definition's ToggleECAMMonitoring hotkey, and
     /// SettingsManager.SeedFenixMonitorDefaults) is immediately followed by SettingsManager.Save,
     /// which calls this — so a mutation is never visible to the List without also being visible
@@ -650,6 +664,7 @@ public class UserSettings
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
         IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
         Md11DisabledMonitorVariablesSet = new HashSet<string>(Md11DisabledMonitorVariables);
+        BBS757DisabledMonitorVariablesSet = new HashSet<string>(BBS757DisabledMonitorVariables);
     }
 
     /// <summary>

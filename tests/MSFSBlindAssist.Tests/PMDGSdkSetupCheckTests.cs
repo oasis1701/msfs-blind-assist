@@ -139,6 +139,7 @@ public class PMDGSdkSetupCheckTests : IDisposable
     [Theory]
     [InlineData("TFDI_MD11")]
     [InlineData("IFLY_737MAX8")]
+    [InlineData("BBS_757")]
     [InlineData(null)]
     public void Any_other_profile_is_not_checked(string? aircraftCode)
     {

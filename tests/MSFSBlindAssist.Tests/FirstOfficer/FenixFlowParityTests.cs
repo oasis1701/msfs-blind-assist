@@ -42,21 +42,31 @@ public class FenixFlowParityTests
         Assert.False(fallback.SkipCondition!(e));            // plan loaded, lever unread → still speaks
     }
 
-    /// <summary>Each engine-start wait reads N2 (55 % or more; CFM56 idle is ~58-60 %), stops the
-    /// flow on a 120 s timeout, and completes its own "Engine n: running" line, which reads the same
-    /// N2 field (FO-6).</summary>
+    /// <summary>Each engine-start wait reads the Fenix's own running flag (FO_ENGn_RUNNING, the A32NX's
+    /// name; N2 55 % only while the flag is unknown), stops the flow on a 180 s timeout, and completes
+    /// its own "Engine n: running" line, which reads the same field (FO-6). The 180 s is assumed margin
+    /// over the IAE's sourced 30 s dry crank (the Fenix offers 30 or 50 s); the in-sim check measured the
+    /// whole start at about 66 s per engine.</summary>
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
-    public void Engine_start_waits_for_N2_and_completes_its_running_line(int n)
+    public void Engine_start_waits_for_the_running_flag_and_completes_its_running_line(int n)
     {
         var s = Step("ENGINE_START", $"ES_ENG{n}_N2");
         Assert.Equal(FlowStepActionType.WaitForCondition, s.ActionType);
-        Assert.Equal($"FO_ENG{n}_N2", s.ConditionFieldName);
+        Assert.Equal($"FO_ENG{n}_RUNNING", s.ConditionFieldName);
+        Assert.True(s.Condition!(1.0));
+        Assert.False(s.Condition!(0.0));
+        Assert.False(s.Condition!(double.NaN));
         Assert.Equal(FlowStepFailurePolicy.Stop, s.FailurePolicy);
-        Assert.Equal(120, s.TimeoutSeconds);
+        Assert.Equal(180, s.TimeoutSeconds);
         Assert.Equal(new[] { $"ES_ENG{n}_RUN" }, s.LinkedChecklistItemIds);
-        Assert.Equal(s.ConditionFieldName, Item($"ES_ENG{n}_RUN").StateFieldName);
+
+        var line = Item($"ES_ENG{n}_RUN");
+        Assert.Equal(s.ConditionFieldName, line.StateFieldName);
+        Assert.True(line.StateCondition!(1.0));
+        Assert.False(line.StateCondition!(0.0));
+        Assert.False(line.StateCondition!(double.NaN));
     }
 
     /// <summary>The Approach flow sets the seat belts (skipped when the switch already reads on, as

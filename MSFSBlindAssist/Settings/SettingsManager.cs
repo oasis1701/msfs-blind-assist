@@ -150,14 +150,17 @@ public static class SettingsManager
         /// FD_1_CTL/FD_2_CTL became the one FD light, the altitude increment moved to the FCU's own
         /// input, and the per-side baro-unit selectors moved to the EFIS-CP's BARO_IS_INHG inputs.
         /// The iFly 737 MAX's trim call-out moved from the shared degrees row (MON_ElevatorTrim) to
-        /// its own units field (2026-09-30). Idempotent without a flag because the OLD key leaves the list: left in place, it
-        /// would re-mute the new row on every launch after the pilot un-ticked it, and no Ctrl+M row
-        /// is left to clear it from. Returns whether anything moved (the caller saves).
+        /// its own units field (2026-09-30). Fenix v3 renamed two lamps (2026-10-21): the DC SERVICE bus
+        /// (a typo fixed) and the overhead cockpit-door VIDEO light. Idempotent without a flag because
+        /// the OLD key leaves the list: left in place, it would re-mute the new row on every launch
+        /// after the pilot un-ticked it, and no Ctrl+M row is left to clear it from. Returns whether
+        /// anything moved (the caller saves).
         /// </summary>
         internal static bool CarryRenamedMonitorMutes(UserSettings settings)
         {
             bool moved = Carry(settings.A380DisabledMonitorVariables, A380RenamedMonitorKeys);
             moved |= Carry(settings.IFlyDisabledMonitorVariables, IFlyRenamedMonitorKeys);
+            moved |= Carry(settings.FenixDisabledMonitorVariables, FenixRenamedMonitorKeys);
             return moved;
 
             static bool Carry(List<string> muted, (string Old, string New)[] renamed)
@@ -192,6 +195,13 @@ public static class SettingsManager
             ("MON_ElevatorTrim", "Stabilizer_Trim_Pointer_Status"),
         };
 
+        // Fenix v3 (3.0.0.7426) renamed two lamps; the new names are registered in FenixA320Definition.
+        private static readonly (string Old, string New)[] FenixRenamedMonitorKeys =
+        {
+            ("B_ELEC_BUS_POWER_DC_SERIVICE", "B_ELEC_BUS_POWER_DC_SERVICE"),
+            ("I_OH_DOOR_VIDEO", "I_OH_COCKPIT_DOOR_VIDEO"),
+        };
+
         /// <summary>
         /// One-time seed for the PR #111 takeoff-tone changes (Robin-confirmed
         /// 2026-07-03). Two migrations under one flag:
@@ -223,7 +233,7 @@ public static class SettingsManager
         /// One-time seed of Fenix vars that should be auto-monitored but NOT spoken by
         /// default — added to the Fenix disabled-monitor list (the combo/display still
         /// tracks them; only the spoken call-out is gated off):
-        ///   * CLOCK CHRONO / ELAPSED / UTC and the FenixQuartz chrono/ET counters —
+        ///   * CLOCK CHRONO / ELAPSED / UTC —
         ///     raw-seconds counters that tick every second.
         ///   * the four seat height/distance switches — Continuous so the combo can spring
         ///     to "Stop" at the travel limit, but silent (the user just wants the value).
@@ -237,7 +247,6 @@ public static class SettingsManager
             string[] defaultSilent =
             {
                 "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED", "N_MIP_CLOCK_UTC",
-                "FNX2PLD_clockChr", "FNX2PLD_clockEt",
                 "S_SEAT_HEIGHT_CAPT", "S_SEAT_DISTANCE_CAPT",
                 "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO",
             };

@@ -17,9 +17,10 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// through an atomic read-modify-write calculator string rather than an app-side counter:
 /// the def's panel (FenixA320Definition.HandleUIVariableSet, S_FCU_SPEED/HEADING/ALTITUDE_PUSH/PULL)
 /// ALSO writes these same L:vars via its own atomic RPN read-modify-write
-/// (AdjustFcuPushPullCounter) rather than its rmpCounters absolute counter — both writers
-/// now read the live sim value before modifying, so they stay coherent no matter which one
-/// fires. Both send through SimConnectManager.ExecuteCalculatorCodeUnique, whose "{seq} 0 *"
+/// (AdjustFcuPushPullCounter) rather than an app-side absolute counter — both writers
+/// read the live sim value before modifying, so they stay coherent no matter which one
+/// fires; the panel's knobs step the same way with FenixA320Definition.CounterStepCode.
+/// Both send through SimConnectManager.ExecuteCalculatorCodeUnique, whose "{seq} 0 *"
 /// prefix (a numeric no-op) comes from the manager's ONE counter, so MobiFlight's command
 /// channel — which coalesces two consecutive IDENTICAL calc strings — never drops a repeated
 /// push, even a panel push straight after an FO push (SIM-17; two private counters each
@@ -54,13 +55,6 @@ public sealed class FenixActionExecutor : LVarActionExecutor
 
     /// <summary>AVAIL poll cadence — the FlowManager's WaitForCondition uses the same 1 s.</summary>
     private const int ApuAvailPollMs = 1000;
-
-    /// <summary>Hold time (ms) for the TO CONFIG test button. Longer than the default pulse
-    /// hold because the test is level-triggered (active only while held): the button must
-    /// stay pressed long enough for the FWC to evaluate the config and drive the master
-    /// warning before we read the result and release (matches the panel path's
-    /// FenixA320Definition.TakeoffConfigTestHoldMs).</summary>
-    private const int TakeoffConfigTestHoldMs = 1500;
 
     // The app announcer, injected by FenixFoProfile (FbwA380ActionExecutor precedent) —
     // used only for the TO CONFIG result readout; all step narration stays FlowManager's.
@@ -212,30 +206,65 @@ public sealed class FenixActionExecutor : LVarActionExecutor
 
     public Task<bool> Pulse(string lvar) => PulseAsync(lvar);
 
-    /// <summary>ECAM TO CONFIG test: press-hold-release with the result spoken while the
-    /// button is still held. The test is level-triggered — it simulates takeoff power and
-    /// checks the config only WHILE pressed — so the button is held 1.5 s for the FWC to
-    /// evaluate, the cached master-warning outcome is announced (the blind-pilot equivalent
-    /// of the sighted "TO CONFIG NORMAL", which is otherwise completely silent on a good
-    /// config), then the button is RELEASED. The release is what prevents the held test
-    /// re-firing against the landing config after touchdown (FWC phase 9 → spurious red
-    /// CONFIG + master-warning aural on rollout — the original stuck-button bug).</summary>
-    public Task<bool> TakeoffConfigTest()
-        => PulseAsync("S_ECAM_TO", TakeoffConfigTestHoldMs, AnnounceTakeoffConfigResult);
+    /// <summary>ECAM TO CONFIG test: press-hold-release, with the verdict spoken from the shared
+    /// <see cref="FenixTakeoffConfigVerdict"/> watch of fresh reads (v3 delays the master warning
+    /// after the press, so a cached read could say "normal" over a bad config). The test is
+    /// level-triggered, so the button is held <c>HoldMs</c> and then RELEASED, which prevents the
+    /// held test re-firing against the landing config after touchdown (the original stuck-button
+    /// bug). The watch starts BEFORE the pulse: the dispatch gate may delay the press, and the
+    /// watch must see the button released first.</summary>
+    public async Task<bool> TakeoffConfigTest()
+    {
+        var sc = Sc;
+        if (sc is not { IsConnected: true }) return false;
+        // ReadFreshAsync returns null on a timeout or disconnect; a throw is made null too, so the
+        // watch (which has no try/catch around reads) always reaches a verdict.
+        using var cancelWatch = new CancellationTokenSource();
+        var watch = FenixTakeoffConfigVerdict.WatchAsync(
+            async k =>
+            {
+                // Detached (an aircraft switch, the FO stopped) or disconnected: the verdict would be dropped,
+                // so the watch stops at its next read instead of polling for up to 30 s.
+                if (!sc.IsConnected || !StillAttached(sc))
+                {
+                    cancelWatch.Cancel();
+                    return null;
+                }
+                try { return await sc.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs); }
+                catch (Exception) { return null; }
+            },
+            FenixTakeoffConfigVerdict.FirstOfficerPressWait, cancelWatch.Token);
+        bool pressed;
+        try
+        {
+            pressed = await PulseAsync(FenixTakeoffConfigVerdict.ButtonKey, FenixTakeoffConfigVerdict.HoldMs);
+        }
+        catch
+        {
+            cancelWatch.Cancel();
+            throw;
+        }
+        // Not pressed: nothing to judge. The watch stops at its next read instead of polling the button for
+        // up to 30 s, and a second test run cannot overlap it (its string is dropped).
+        if (!pressed)
+        {
+            cancelWatch.Cancel();
+            return false;
+        }
+        string verdict = await watch;
+        AnnounceTakeoffConfigResult(sc, verdict);
+        return true;
+    }
 
-    /// <summary>Reads the outcome of the TO CONFIG test (while the button is still held) through
-    /// the manager that pressed it, and announces it in <see cref="FenixTakeoffConfigVerdict"/>'s
-    /// words, the same as the panel's TO CONFIG button (FenixA320Definition.AnnounceTakeoffConfigResult).
-    /// Fail-safe direction: an already-active unrelated warning or caution yields a conservative
-    /// "check" (never harmful); disambiguating via a pre-press baseline delta would mask a
-    /// genuinely-bad config behind a pre-existing warning as a DANGEROUS false "normal".</summary>
-    private void AnnounceTakeoffConfigResult(SimConnectManager sc)
+    /// <summary>Speaks the TO CONFIG verdict in <see cref="FenixTakeoffConfigVerdict"/>'s words, the
+    /// same as the panel's TO CONFIG button (FenixA320Definition.RunTakeoffConfigTestAsync), only
+    /// while the executor is still attached to the manager that pressed. Fail-safe direction: any
+    /// lit master light is a "check"; an unread one is never "normal".</summary>
+    private void AnnounceTakeoffConfigResult(SimConnectManager sc, string verdict)
     {
         try
         {
-            _announcer?.AnnounceImmediate(FenixTakeoffConfigVerdict.Text(
-                sc.GetCachedVariableValue(FenixTakeoffConfigVerdict.MasterWarningKey),
-                sc.GetCachedVariableValue(FenixTakeoffConfigVerdict.MasterCautionKey)));
+            if (sc.IsConnected && StillAttached(sc)) _announcer?.AnnounceImmediate(verdict);
         }
         catch (Exception ex)
         {
@@ -260,21 +289,37 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     public Task<bool> CabinCall(string lvar) => HoldAsync(lvar, CabinCallHoldMs);
 
     /// <summary>Open (true) or close (false) the physical cockpit door via
-    /// <c>S_COCKPIT_DOOR</c> (0 = closed, 1 = open). Live-verified 2026-07-05: a calc-path
-    /// write holds and drives the "Cockpit Door Open" indicator <c>I_PED_COCKPIT_DOOR_U</c>
-    /// 0↔1. Do NOT use the pedestal lock selector <c>S_PED_COCKPIT_DOOR</c> — it is a
-    /// spring-loaded UNLOCK/NORM/LOCK switch that rests at NORM(1), so an absolute write is
-    /// a no-op (1) or a momentary pulse that springs back (0) and never moves the door.</summary>
+    /// <c>S_COCKPIT_DOOR</c> (0 = closed, 1 = open). Live-verified 2026-07-05 and again on v3
+    /// (2026-10-23): a calc-path write holds and drives the pedestal OPEN light
+    /// <c>I_PED_COCKPIT_DOOR_U</c> and the overhead CTL upper light 0↔1. Do NOT use the pedestal
+    /// lock selector <c>S_PED_COCKPIT_DOOR</c>: a three-position UNLOCK(0)/NORM(1)/LOCK(2) switch
+    /// whose written position holds until written back (only the cockpit's mouse release returns it
+    /// to NORM), and neither end moves the door or lights anything (measured 2026-10-23).</summary>
     public Task<bool> SetCockpitDoor(bool open) => DispatchAsync("S_COCKPIT_DOOR", open ? 1 : 0);
 
-    /// <summary>Set both EFIS baro references to STD (true) or QNH mode (false). The Fenix
-    /// STD state is a plain settable L:var per side — no toggle-push ambiguity.</summary>
+    /// <summary>Set both EFIS baro references to STD (true) or QNH mode (false). Each side's baro
+    /// knob is a push/pull counter (v3 <c>Knob_PushPullButton</c>): any increase selects STD, any
+    /// decrease QNH, and extra pulls stay STD, extra pushes QNH. So each side is stepped +1 (pull,
+    /// STD) or -1 (push, QNH) from the sim's own count, the panel's own step
+    /// (FenixA320Definition.CounterStepCode): idempotent, so no prior read is needed. An absolute
+    /// write of 1 after two cockpit pulls was a decrease and selected QNH. Sent through
+    /// ExecuteCalculatorCodeUnique (SIM-17), on the manager's one counter shared with the panel.</summary>
     public async Task<bool> SetBaroStdBoth(bool std)
     {
-        int v = std ? 1 : 0;
-        bool ok = await DispatchAsync("S_FCU_EFIS1_BARO_STD", v);
-        ok &= await DispatchAsync("S_FCU_EFIS2_BARO_STD", v);
-        return ok;
+        var sc = Sc;
+        if (sc is not { IsConnected: true }) return false;
+        int step = std ? 1 : -1;
+        bool sent = false;
+        await RunGatedAsync(() =>
+        {
+            // Detached while it waited for the gate (the window closed): never sent.
+            if (!StillAttached(sc)) return Task.CompletedTask;
+            sc.ExecuteCalculatorCodeUnique(MSFSBlindAssist.Aircraft.FenixA320Definition.CounterStepCode("S_FCU_EFIS1_BARO_STD", step));
+            sc.ExecuteCalculatorCodeUnique(MSFSBlindAssist.Aircraft.FenixA320Definition.CounterStepCode("S_FCU_EFIS2_BARO_STD", step));
+            sent = true;
+            return Task.CompletedTask;
+        });
+        return sent;
     }
 
     /// <summary>Both landing-light switches: 0=Retract, 1=Off, 2=On.</summary>

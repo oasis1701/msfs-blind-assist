@@ -2,6 +2,7 @@ using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Models;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Utils;
 using TreeView = MSFSBlindAssist.Controls.NativeAccessibleTreeView;
 
 namespace MSFSBlindAssist.Forms;
@@ -1277,7 +1278,7 @@ public class SimBriefPlannerForm : Form
         TlrRow(sb, "Runway surface",  string.IsNullOrEmpty(surface) ? "" : surface);
         TlrRow(sb, "Wind",            TlrFmtWind(TlrV(vals, "PWIND")));
         TlrRow(sb, "OAT",             TlrV(vals, "POAT"),  "°C");
-        TlrRow(sb, "QNH",             TlrV(vals, "PQNH"),  " hPa");
+        TlrRow(sb, "QNH",             TlrFmtQnh(TlrV(vals, "PQNH")));
         TlrRow(sb, "Limiting factor", TlrFmtLimit(TlrV(vals, "LIMIT")));
         if (notes.Count > 0)
         {
@@ -1291,7 +1292,8 @@ public class SimBriefPlannerForm : Form
         {
             sb.AppendLine();
             sb.AppendLine("─── Additional Info ──────────────────");
-            var (rwyLen, maxTowRwy) = TlrAcarsRunway(lines, rwy, isTakeoff: true);
+            var (textRwyLen, maxTowRwy) = TlrAcarsRunway(lines, rwy, isTakeoff: true);
+            string rwyLen = TlrPreferStructured(_ofp.TlrTakeoffToraFt.GetValueOrDefault(rwy), textRwyLen);
             if (!string.IsNullOrEmpty(rwyLen))
                 TlrRow(sb, "Runway length (TORA)", TlrFmtFt(rwyLen));
             // ASDA: SimBrief TLR doesn't separate TORA/TODA/ASDA; show runway length
@@ -1351,7 +1353,7 @@ public class SimBriefPlannerForm : Form
         TlrRow(sb, "Runway surface",   string.IsNullOrEmpty(surface) ? "" : surface);
         TlrRow(sb, "Wind",             TlrFmtWind(TlrV(vals, "PWIND")));
         TlrRow(sb, "OAT",              TlrV(vals, "POAT"), "°C");
-        TlrRow(sb, "QNH",              TlrV(vals, "PQNH"), " hPa");
+        TlrRow(sb, "QNH",              TlrFmtQnh(TlrV(vals, "PQNH")));
         TlrRow(sb, "Planned landing wt", TlrFmtWt(TlrV(vals, "PLDW"), units));
         TlrRow(sb, "Limiting factor",  TlrFmtLimit(TlrV(vals, "LIMIT")));
         if (notes.Count > 0)
@@ -1365,17 +1367,22 @@ public class SimBriefPlannerForm : Form
         {
             sb.AppendLine();
             sb.AppendLine("─── Additional Info ──────────────────");
-            var (rwyLen, maxLw) = TlrAcarsRunway(lines, rwy, isTakeoff: false);
+            var (textRwyLen, maxLw) = TlrAcarsRunway(lines, rwy, isTakeoff: false);
+            string rwyLen  = TlrPreferStructured(_ofp.TlrLandingLdaFt.GetValueOrDefault(rwy), textRwyLen);
+            string factDry = TlrPreferStructured(_ofp.TlrLdgFactoredDryFt, dist.FactDry);
+            string factWet = TlrPreferStructured(_ofp.TlrLdgFactoredWetFt, dist.FactWet);
+            string actDry  = TlrPreferStructured(_ofp.TlrLdgActualDryFt,   dist.ActDry);
+            string actWet  = TlrPreferStructured(_ofp.TlrLdgActualWetFt,   dist.ActWet);
             if (!string.IsNullOrEmpty(rwyLen))
                 TlrRow(sb, "Landing dist available", TlrFmtFt(rwyLen));
-            if (!string.IsNullOrEmpty(dist.FactDry))
-                TlrRow(sb, "Required (factored dry)", TlrFmtFt(dist.FactDry));
-            if (!string.IsNullOrEmpty(dist.FactWet))
-                TlrRow(sb, "Required (factored wet)", TlrFmtFt(dist.FactWet));
-            if (!string.IsNullOrEmpty(dist.ActDry))
-                TlrRow(sb, "Actual dry distance",    TlrFmtFt(dist.ActDry));
-            if (!string.IsNullOrEmpty(dist.ActWet))
-                TlrRow(sb, "Actual wet distance",    TlrFmtFt(dist.ActWet));
+            if (!string.IsNullOrEmpty(factDry))
+                TlrRow(sb, "Required (factored dry)", TlrFmtFt(factDry));
+            if (!string.IsNullOrEmpty(factWet))
+                TlrRow(sb, "Required (factored wet)", TlrFmtFt(factWet));
+            if (!string.IsNullOrEmpty(actDry))
+                TlrRow(sb, "Actual dry distance",    TlrFmtFt(actDry));
+            if (!string.IsNullOrEmpty(actWet))
+                TlrRow(sb, "Actual wet distance",    TlrFmtFt(actWet));
             if (!string.IsNullOrEmpty(maxLw))
                 TlrRow(sb, "Max regulated LW",       TlrFmtWt(maxLw, units));
         }
@@ -1689,15 +1696,25 @@ public class SimBriefPlannerForm : Form
         return $"{displayed:N0} {units}";
     }
 
-    private static string TlrFmtFt(string rawFt)
+    // TLR QNH is in the airport's own unit: one plan's TLR had "1011" at YPDN and "29.88" at
+    // AYPY. Told apart by size: every real QNH in inHg is under 100, every one in hPa above it.
+    internal static string TlrFmtQnh(string rawQnh)
+    {
+        if (string.IsNullOrEmpty(rawQnh)) return "";
+        if (!NumberParsing.TryParseExternal(rawQnh, out double v)) return rawQnh;
+        return v < 100 ? $"{rawQnh} inHg" : $"{rawQnh} hPa";
+    }
+
+    // The OFP's tlr fields when it has them, else what the TLR text table gave.
+    internal static string TlrPreferStructured(string? structured, string text) =>
+        string.IsNullOrEmpty(structured) ? text : structured;
+
+    // TLR runway lengths and landing distances are feet (the TLR text labels them "FT"), short
+    // ones included: never guess metres from a small value (a 3,775 ft landing distance is real).
+    internal static string TlrFmtFt(string rawFt)
     {
         if (string.IsNullOrEmpty(rawFt)) return "";
         if (!int.TryParse(rawFt, out int v)) return $"{rawFt} ft";
-        // SimBrief ACARS RUNWAYS table uses metres for European OFP formats.
-        // Commercial runways: 1500–4800 m, or 5000–15750 ft.
-        // A value < 5000 is almost certainly metres — convert to feet.
-        if (v > 0 && v < 5000)
-            return $"{(int)Math.Round(v * 3.28084):N0} ft";
         return $"{v:N0} ft";
     }
 
@@ -1786,7 +1803,7 @@ public class SimBriefPlannerForm : Form
     private static string Wt(string raw, string units)
     {
         if (string.IsNullOrEmpty(raw)) return "";
-        // SimBrief returns fuel/weight in lbs; format with thousands separator
+        // In the plan's own weight unit (SimBriefOFP.Units); format with thousands separator
         if (int.TryParse(raw, out int v))
             return $"{v:N0} {units}";
         return $"{raw} {units}";

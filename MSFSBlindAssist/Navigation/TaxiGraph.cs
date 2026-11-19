@@ -5676,15 +5676,18 @@ public partial class TaxiGraph
     /// <see cref="GetLandingExits"/>' list holds nothing further down the runway.
     ///
     /// <para><b>Why this is not GetLandingExits with a filter.</b> That list is built for the
-    /// planner DIALOG and is deliberately lossy in two ways. It keeps one entry per taxiway
-    /// name, and - decisively - the moment ONE node in the runway corridor carries a
-    /// hold-short marker with a forward exit it stops considering unmarked junctions for the
-    /// WHOLE runway (`hasHoldShortOnRunway`). Rapid-exit taxiways are routinely modelled
-    /// without a hold-short bar, because they are one-way turnoffs, so a single marked
-    /// crossing taxiway near the threshold can hide every RET behind it. Both choices are
-    /// right for a menu the pilot reads before the flight. Neither is an acceptable answer to
-    /// "is there any way off this runway ahead of me?", which is asked at 90 kt and whose
-    /// fallback is a 180-degree backtrack on an active runway (CYYZ 23, 2026-08-23: the
+    /// planner DIALOG and is deliberately lossy: it keeps one entry per taxiway name, and a
+    /// name's later turnoff stays out wherever another listed exit stands within
+    /// EXIT_COVERAGE_GAP_FT of it. This scan brings such a turnoff back when that exit has
+    /// another name; beside one of its own name RolloutExitGate.MergeRescueExits drops it too.
+    /// It was lossier when this scan was written: the moment ONE node in the
+    /// runway corridor carried a hold-short marker with a forward exit, it stopped considering
+    /// unmarked junctions for the WHOLE runway (`hasHoldShortOnRunway`), so a single marked
+    /// crossing taxiway near the threshold hid every RET behind it - rapid exits are routinely
+    /// modelled without a hold-short bar, because they are one-way turnoffs. Hold-short mode
+    /// now adds the turnoffs its markers never drew (KJFK 13L), but what remains is still no
+    /// answer to "is there any way off this runway ahead of me?", which is asked at 90 kt and
+    /// whose fallback is a 180-degree backtrack on an active runway (CYYZ 23, 2026-08-23: the
     /// rollout declared the missed exit the last one with 5,400 ft of pavement and three
     /// further turnoffs ahead).</para>
     ///
@@ -6176,7 +6179,9 @@ public partial class TaxiGraph
                 // Fallback gate: only consider Normal nodes when THIS runway has
                 // no explicit hold-short nodes at all. Otherwise the HS/IHS data
                 // is authoritative and we shouldn't muddy the list with implicit
-                // junctions (which tend to dedupe awkwardly).
+                // junctions (which tend to dedupe awkwardly) - the turnoffs the
+                // markers never drew are ADDED after the list's dedups instead
+                // (see "for the turnoffs they never drew" below).
                 if (hasHoldShortOnRunway) continue;
                 if (node.Type != TaxiNodeType.Normal) continue;
                 if (!Adjacency.TryGetValue(node.NodeId, out var ee)) continue;
@@ -6520,25 +6525,33 @@ public partial class TaxiGraph
             return c;
         });
 
-        var deduped = new List<LandingExit>(exits.Count);
-        foreach (var e in exits)
+        var deduped = DedupWithinWindow(exits);
+
+        // The 50 ft window over a distance-sorted list - one rule for the main pass, the hsOnlyEnds merge and the
+        // turnoffs hold-short mode adds (EXIT-19).
+        static List<LandingExit> DedupWithinWindow(List<LandingExit> sorted)
         {
-            bool merged = false;
-            for (int i = deduped.Count - 1; i >= 0; i--)
+            var kept = new List<LandingExit>(sorted.Count);
+            foreach (var e in sorted)
             {
-                var d = deduped[i];
-                if (Math.Abs(d.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) > DEDUP_WINDOW_FT)
-                    break; // list is sorted; no further candidates within DEDUP_WINDOW_FT
-                if (string.Equals(d.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
+                bool merged = false;
+                for (int i = kept.Count - 1; i >= 0; i--)
                 {
-                    // Keep the one with smaller exit angle.
-                    if (ReplacesInDedupWindow(e, d))
-                        deduped[i] = e;
-                    merged = true;
-                    break;
+                    var d = kept[i];
+                    if (Math.Abs(d.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) > DEDUP_WINDOW_FT)
+                        break; // list is sorted; no further candidates within DEDUP_WINDOW_FT
+                    if (string.Equals(d.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Keep the one with smaller exit angle.
+                        if (ReplacesInDedupWindow(e, d))
+                            kept[i] = e;
+                        merged = true;
+                        break;
+                    }
                 }
+                if (!merged) kept.Add(e);
             }
-            if (!merged) deduped.Add(e);
+            return kept;
         }
 
         // Candidate pool for the coverage gap fill at the very end. Snapshotted HERE, before
@@ -6608,15 +6621,33 @@ public partial class TaxiGraph
         // whether the strict per-name dedup at the very end applies — see there.
         bool onFallbackPath = !hasHoldShortOnRunway || hsOnlyEnds || hsYieldedNothing;
 
-        if (onFallbackPath)
+        // A runway in hold-short mode still gets the Normal-node pass: merged in when its markers gave
+        // nothing usable (hsOnlyEnds, hsYieldedNothing), otherwise for the turnoffs they never drew (below).
+        if (hasHoldShortOnRunway)
         {
-            if (hsOnlyEnds || hsYieldedNothing)
+            // Every Normal junction that turns off the runway - the main loop's fallback, as a runway
+            // without markers gets it.
+            List<LandingExit> GeometricExits()
             {
-                var fallbackExits = new List<LandingExit>();
+                var found = new List<LandingExit>();
                 foreach (var node in Nodes.Values)
                 {
                     if (node.Type != TaxiNodeType.Normal) continue;
                     if (!Adjacency.TryGetValue(node.NodeId, out var ee)) continue;
+
+                    // On this runway, before anything walks: this pass runs on every hold-short-mode runway, and
+                    // the corridor walk below would otherwise run from every parallel-taxiway node at the airport.
+                    const double MPD2 = 111132.0;
+                    double latR2 = (rwy.StartLat + node.Latitude) * 0.5 * Math.PI / 180.0;
+                    double mPL2 = MPD2 * Math.Cos(latR2);
+                    double dN2 = (node.Latitude - rwy.StartLat) * MPD2;
+                    double dE2 = (node.Longitude - rwy.StartLon) * mPL2;
+                    double aM2 = dE2 * sinH + dN2 * cosH;
+                    double lM2 = dE2 * cosH - dN2 * sinH;
+                    if (Math.Abs(lM2) > lateralToleranceM || aM2 < 0 || aM2 > lengthM + 50.0) continue;
+                    double aFt2 = aM2 / 0.3048;
+                    double dft2 = aFt2 - landingThresholdOffsetFt;
+                    if (dft2 < MIN_DIST_FT || aFt2 > maxDistFt) continue;
 
                     bool hasOffAxis = false;
                     int apronNode = -1;
@@ -6645,18 +6676,6 @@ public partial class TaxiGraph
                         if (shiftM2 < 0.0) continue;
                         turnPointOffsetM2 = shiftM2;
                     }
-
-                    const double MPD2 = 111132.0;
-                    double latR2 = (rwy.StartLat + node.Latitude) * 0.5 * Math.PI / 180.0;
-                    double mPL2 = MPD2 * Math.Cos(latR2);
-                    double dN2 = (node.Latitude - rwy.StartLat) * MPD2;
-                    double dE2 = (node.Longitude - rwy.StartLon) * mPL2;
-                    double aM2 = dE2 * sinH + dN2 * cosH;
-                    double lM2 = dE2 * cosH - dN2 * sinH;
-                    if (Math.Abs(lM2) > lateralToleranceM || aM2 < 0 || aM2 > lengthM + 50.0) continue;
-                    double aFt2 = aM2 / 0.3048;
-                    double dft2 = aFt2 - landingThresholdOffsetFt;
-                    if (dft2 < MIN_DIST_FT || aFt2 > maxDistFt) continue;
 
                     string txName2 = "";
                     double angle2 = 90.0;
@@ -6752,41 +6771,71 @@ public partial class TaxiGraph
                         refinedFallback.ExitSide = ResolveExitSide(refinedFallback.ExitBearingTrue, rwyHeadingTrue,
                             refinedFallback.ApronNodeId, rwy.StartLat, rwy.StartLon, cosH, sinH, halfWidthFt * 0.3048,
                             node, refinedFallback.TaxiwayName, lateralToleranceM);
-                    fallbackExits.Add(refinedFallback);
+                    found.Add(refinedFallback);
                 }
+                return found;
+            }
 
+            var fallbackExits = GeometricExits();
+            // The 50 ft window over the geometric exits alone. OrderBy is a stable sort, so `fallbackExits` keeps
+            // the order the hsOnlyEnds merge below has always sorted from.
+            var fallbackWindowed = DedupWithinWindow(fallbackExits.OrderBy(e => e.DistanceFromThresholdFeet).ToList());
+            bool mergeFallback = hsOnlyEnds || hsYieldedNothing;
+            if (mergeFallback)
+            {
                 if (fallbackExits.Count > 0)
                 {
                     var merged = new List<LandingExit>(deduped.Count + fallbackExits.Count);
                     merged.AddRange(deduped);
                     merged.AddRange(fallbackExits);
                     merged.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
-                    deduped = new List<LandingExit>(merged.Count);
-                    foreach (var e in merged)
-                    {
-                        bool wasMerged = false;
-                        for (int i = deduped.Count - 1; i >= 0; i--)
-                        {
-                            var d = deduped[i];
-                            if (Math.Abs(d.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) > DEDUP_WINDOW_FT) break;
-                            if (string.Equals(d.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (ReplacesInDedupWindow(e, d)) deduped[i] = e;
-                                wasMerged = true; break;
-                            }
-                        }
-                        if (!wasMerged) deduped.Add(e);
-                    }
-
-                    // These arrived after the pool snapshot above, so add them or a runway
-                    // WITH hold-short markers could never gap-fill from its Normal-junction
-                    // exits. KBNA 13 is that case: 11031 ft of runway whose last listed exit
-                    // was at 4988 ft. Duplicates against already-kept entries are harmless —
-                    // the coverage test measures zero distance to itself.
-                    gapFillPool.AddRange(fallbackExits);
-                    gapFillPool.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
+                    deduped = DedupWithinWindow(merged);
                 }
             }
+            else
+            {
+                // The markers gave a usable exit, so their list stands exactly as built - but a turnoff they
+                // never drew is still a way off the runway. KJFK 13L: the strip's one hold-short node, on V,
+                // turns off forward for 13L, so the planner offered V alone, while 31R (which reads that node
+                // as a turnaround and never enters hold-short mode) offered thirteen exits on the same pavement.
+                //
+                // The marked list is settled first, its own coverage gap fill included, so it is exactly the list
+                // the markers gave before: nothing added below covers one of its exits away or stands in for one.
+                //
+                // The geometric exits go through the rules the same pass gets on a runway without markers - the
+                // 50 ft window, one exit per name with forward exits first, then the coverage gap fill - and are
+                // ADDED, never merged. A windowed geometric exit is already listed when an exit of its own taxiway
+                // name stands within EXIT_COVERAGE_GAP_FT: the marked node and the centreline junction of one
+                // crossing sit apart along the runway (13L V: 352 ft, on opposite banks), a curved rapid exit's arc
+                // nodes further still - except that a turnaround, or an exit read forward only from its own node,
+                // never stands for a forward exit of its name (the gap fill's own rule, below), and an unnamed exit
+                // never stands for another (as in every name pass here). Merging them instead (as hsOnlyEnds does,
+                // strict per-name pass and all) moved 393 exits and dropped 89 across the fs2024 database.
+                if (FillCoverageGaps(deduped, gapFillPool))
+                    deduped.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
+                var unmarked = fallbackWindowed.FindAll(e => !deduped.Exists(d =>
+                    !string.IsNullOrEmpty(e.TaxiwayName)
+                    && string.Equals(d.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase)
+                    && Math.Abs(d.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) <= EXIT_COVERAGE_GAP_FT
+                    && !(FillsAGapOnly(d) && !FillsAGapOnly(e))));
+                var unmarkedKept = KeepOnePerNameForwardFirst(unmarked);
+                if (unmarkedKept.Count > 0)
+                {
+                    deduped.AddRange(unmarked.Where(unmarkedKept.Contains));
+                    deduped.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
+                }
+            }
+
+            // These arrived after the pool snapshot above, so add them or a runway WITH hold-short markers could
+            // never gap-fill from its Normal-junction exits: KBNA 13 (11031 ft of runway whose last listed exit was
+            // at 4988 ft), or a second turnoff of the one name a scenery gives a whole side. The added turnoffs
+            // come windowed, as a runway without markers snapshots its pool after the 50 ft window, so an arm that
+            // lost the window never comes back through the fill. The merge keeps the unwindowed exits it has
+            // always offered: windowing them too changed 7 runway directions' existing lists in fs2024 and 10 in
+            // fs2020 (KFSD 03 and ZKCH 10 lost their end exit). Duplicates against already-kept entries are
+            // harmless - the coverage test measures zero distance to itself.
+            gapFillPool.AddRange(mergeFallback ? fallbackExits : fallbackWindowed);
+            gapFillPool.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
         }
 
         // Name dedup on the FALLBACK PATH ONLY, then a COVERAGE GAP FILL in every path.
@@ -6854,19 +6903,26 @@ public partial class TaxiGraph
         // junction (KLIT 22R: D's crossing near the threshold displaced the D rapid exit 4,600 ft on).
         static bool IsTurnaroundExit(LandingExit x) => x.ExitAngleDegrees > RolloutExitGate.MaxUsableExitTurnDeg;
         static bool FillsAGapOnly(LandingExit x) => IsTurnaroundExit(x) || x.ForwardOnlyFromItsNode;
-        var dedupedFinal = new List<LandingExit>(deduped.Count);
-        if (onFallbackPath)
+        // One exit per name, a name's forward exits considered before its gap fillers; unnamed exits all stay. The
+        // strict pass here and the turnoffs hold-short mode adds (EXIT-19) share it.
+        static HashSet<LandingExit> KeepOnePerNameForwardFirst(List<LandingExit> list)
         {
             var keptByName = new HashSet<LandingExit>(ReferenceEqualityComparer.Instance);
             var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (bool gapFillers in new[] { false, true })
             {
-                foreach (var e in deduped)
+                foreach (var e in list)
                 {
                     if (FillsAGapOnly(e) != gapFillers) continue;
                     if (string.IsNullOrEmpty(e.TaxiwayName) || seenNames.Add(e.TaxiwayName)) keptByName.Add(e);
                 }
             }
+            return keptByName;
+        }
+        var dedupedFinal = new List<LandingExit>(deduped.Count);
+        if (onFallbackPath)
+        {
+            var keptByName = KeepOnePerNameForwardFirst(deduped);
             foreach (var e in deduped)
                 if (keptByName.Contains(e)) dedupedFinal.Add(e);
         }
@@ -6880,28 +6936,33 @@ public partial class TaxiGraph
         // becomes coverage for the next — an arc of many nodes still contributes at most one
         // entry per EXIT_COVERAGE_GAP_FT. Reference identity is the right "already kept"
         // test: every LandingExit instance flows through the pipeline by reference, never
-        // copied.
-        bool addedAny = false;
-        foreach (var e in gapFillPool)
+        // copied. Appends to `kept`; true when it added any.
+        static bool FillCoverageGaps(List<LandingExit> kept, List<LandingExit> pool)
         {
-            bool covered = false;
-            foreach (var kept in dedupedFinal)
+            bool addedAny = false;
+            foreach (var e in pool)
             {
-                if (ReferenceEquals(kept, e)) { covered = true; break; }
-                if (Math.Abs(kept.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) > EXIT_COVERAGE_GAP_FT)
-                    continue;
-                // A turnaround, or an exit read forward only from its own node, is never coverage for an
-                // exit read forward from its junction of its own name (see above).
-                if (FillsAGapOnly(kept) && !FillsAGapOnly(e)
-                    && !string.IsNullOrEmpty(e.TaxiwayName)
-                    && string.Equals(kept.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                covered = true; break;
+                bool covered = false;
+                foreach (var k in kept)
+                {
+                    if (ReferenceEquals(k, e)) { covered = true; break; }
+                    if (Math.Abs(k.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) > EXIT_COVERAGE_GAP_FT)
+                        continue;
+                    // A turnaround, or an exit read forward only from its own node, is never coverage for an
+                    // exit read forward from its junction of its own name (see above).
+                    if (FillsAGapOnly(k) && !FillsAGapOnly(e)
+                        && !string.IsNullOrEmpty(e.TaxiwayName)
+                        && string.Equals(k.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    covered = true; break;
+                }
+                if (covered) continue;
+                kept.Add(e);
+                addedAny = true;
             }
-            if (covered) continue;
-            dedupedFinal.Add(e);
-            addedAny = true;
+            return addedAny;
         }
+        bool addedAny = FillCoverageGaps(dedupedFinal, gapFillPool);
 
         // Callers (LandingExitPlanner's downfield scan, the planner form's default
         // selection, RetargetLandingExit) all rely on nearest-first ordering.

@@ -167,8 +167,8 @@ whole forward panel — the ISFD, the upper EICAS, the lower display, both CDUs 
 officer's displays.
 
 The titles happen to be honest on this airframe. That is **not** a reason to trust them next
-time: on the PMDG 737 the camera titled "PFD" frames the ND as well, and on the Fenix A320 the
-live index is not even the camera's position in the file. Measure, then write the number down.
+time: on the PMDG 737 the camera titled "PFD" frames the ND as well, and on the Fenix A320 v2 the
+live index was not even the camera's position in the file (v3 restored the missing camera, so it is again). Measure, then write the number down.
 
 ⚠️ **The camera list is in `common/config/cameras.cfg`** and the per-livery preset is a 48-byte
 `[MODULAR_MERGE] auto = true` stub — the same layout as the PMDG 737-900 and the OPPOSITE of the

@@ -1394,11 +1394,14 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
-    public void Before_calling_no_exit_comfortable_the_graph_is_asked_for_exits_the_list_left_out()
+    public void A_late_unmarked_exit_is_briefed_when_the_marked_one_comes_too_early()
     {
+        // One marked hold short used to switch GetLandingExits' geometric pass off for the whole runway, and U reached the
+        // briefing only through the downfield rescue. The list offers it itself now (KJFK 13L); either way the block must
+        // not call no exit comfortable while U is there.
         var bundle = AirportWithUnmarkedExit(600);   // C at 1,969 ft: too early for a 737
         var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "09")!;
-        Assert.DoesNotContain(bundle.Graph.GetLandingExits(rwy), e => e.TaxiwayName == "U");   // the list is lossy here
+        Assert.Contains(bundle.Graph.GetLandingExits(rwy), e => e.TaxiwayName == "U");
 
         var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738), bundle);
         Assert.Equal("U", leg.Exit!.Exit.TaxiwayName);
@@ -1406,11 +1409,37 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void Before_calling_no_exit_comfortable_the_graph_is_asked_for_exits_the_list_left_out()
+    {
+        // C (4,921 ft) and U's first turnoff (3,281 ft) are both too early for a 737. U's second turnoff (5,906 ft) is
+        // comfortable, but the list keeps one U, and C stands 985 ft before the second, so the list leaves it out. With
+        // nothing comfortable the graph is asked from the aim point, and the rescue brings it back.
+        var bundle = AirportWithUnmarkedExit(1500, unmarkedExitEastMetres: 1800, namesakeEastMetres: 1000);
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "09")!;
+        var listed = bundle.Graph.GetLandingExits(rwy);
+        Assert.DoesNotContain(listed, e => e.TaxiwayName == "U" && e.DistanceFromThresholdFeet > 5000.0);   // preconditions:
+        Assert.DoesNotContain(listed, e => BriefingExitPicker.IsComfortablyReachable(e, B738.TouchdownSpeedKts)); // lossy, none comfortable
+
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738), bundle);
+        Assert.Equal("U", leg.Exit!.Exit.TaxiwayName);
+        Assert.InRange(leg.Exit.Exit.DistanceFromThresholdFeet, 5856.0, 5956.0);   // 1,800 m
+        Assert.True(leg.Exit.ComfortablyReachable);
+    }
+
+    [Fact]
     public void Before_saying_no_exit_follows_the_briefed_one_the_graph_is_asked_too()
     {
-        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738), AirportWithUnmarkedExit(1800));   // C at 5,906 ft
+        // U's first turnoff (4,265 ft, too early for a 737) takes its name in the list, and its second, 656 ft past C,
+        // stands within 1,400 ft of C, so the list leaves it out.
+        var bundle = AirportWithUnmarkedExit(1800, unmarkedExitEastMetres: 2000, namesakeEastMetres: 1300);   // C at 5,906 ft
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "09")!;
+        Assert.DoesNotContain(bundle.Graph.GetLandingExits(rwy),
+            e => e.TaxiwayName == "U" && e.DistanceFromThresholdFeet > 5000.0);   // the list is lossy here
+
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738), bundle);
         Assert.Equal("C", leg.Exit!.Exit.TaxiwayName);
         Assert.Equal("U", leg.Exit.NextExit!.TaxiwayName);
+        Assert.InRange(leg.Exit.NextExit.DistanceFromThresholdFeet, 6512.0, 6612.0);   // 2,000 m
     }
 
     [Fact]
@@ -1419,11 +1448,12 @@ public class TaxiBriefingPlannerTests
         // Review M-1: C (6,562 ft) is comfortable with no next exit in the list, so the graph is asked from C on. It finds
         // U, a HIGH-SPEED exit 1,312 ft further — inside the preference window, where a fresh pick prefers it to C. The
         // rescue answers only "what follows C"; it never swaps the exit the pilot is briefed to take.
-        var bundle = AirportWithUnmarkedExit(2000, unmarkedExitAngled: true);
+        var bundle = AirportWithUnmarkedExit(2000, unmarkedExitAngled: true, namesakeEastMetres: 1300);
         var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "09")!;
         var listed = bundle.Graph.GetLandingExits(rwy);
-        Assert.DoesNotContain(listed, e => e.TaxiwayName == "U");                                   // preconditions: U is
-        var c = listed.Single(e => e.TaxiwayName == "C");                                            // left out of the list,
+        var c = listed.Single(e => e.TaxiwayName == "C");
+        Assert.DoesNotContain(listed, e => e.TaxiwayName == "U"                                      // preconditions: U is
+            && e.DistanceFromThresholdFeet > c.DistanceFromThresholdFeet);                           // left out of the list,
         var rescued = bundle.Graph.FindDownfieldExits(rwy, c.DistanceFromThresholdFeet);
         var u = Assert.Single(rescued, e => e.TaxiwayName == "U");                                   // the graph finds it,
         Assert.Equal("High-speed", u.ExitType);                                                      // high-speed,
@@ -1434,6 +1464,7 @@ public class TaxiBriefingPlannerTests
         Assert.Equal("C", leg.Exit!.Exit.TaxiwayName);
         Assert.True(leg.Exit.ComfortablyReachable);
         Assert.Equal("U", leg.Exit.NextExit!.TaxiwayName);
+        Assert.Equal(u.DistanceFromThresholdFeet, leg.Exit.NextExit.DistanceFromThresholdFeet, 1.0);
     }
 
     // ── notes and holds that say what is true ────────────────────────────────────────────────

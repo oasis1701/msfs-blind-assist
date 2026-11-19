@@ -1,0 +1,543 @@
+{
+  "app": "AIRCRAFT",
+  "section": "GROUND SERVICES",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "Cockpit presets",
+      "box": [
+        42,
+        154,
+        191,
+        32
+      ],
+      "hit": [
+        130,
+        170
+      ],
+      "clickable": true,
+      "key": "menu:COCKPIT PRESETS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Fuel",
+      "box": [
+        41,
+        216,
+        60,
+        29
+      ],
+      "hit": [
+        130,
+        230
+      ],
+      "clickable": true,
+      "key": "menu:FUEL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Weight \u0026 balance",
+      "box": [
+        41,
+        276,
+        204,
+        29
+      ],
+      "hit": [
+        130,
+        290
+      ],
+      "clickable": true,
+      "key": "menu:WEIGHT \u0026 BALANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Ground services",
+      "box": [
+        42,
+        334,
+        193,
+        30
+      ],
+      "hit": [
+        130,
+        349
+      ],
+      "clickable": true,
+      "key": "menu:GROUND SERVICES",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin \u0026 doors",
+      "box": [
+        44,
+        397,
+        161,
+        27
+      ],
+      "hit": [
+        130,
+        410
+      ],
+      "clickable": true,
+      "key": "menu:CABIN \u0026 DOORS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Maintenance",
+      "box": [
+        42,
+        456,
+        156,
+        29
+      ],
+      "hit": [
+        130,
+        470
+      ],
+      "clickable": true,
+      "key": "menu:MAINTENANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Failures",
+      "box": [
+        42,
+        517,
+        104,
+        28
+      ],
+      "hit": [
+        130,
+        531
+      ],
+      "clickable": true,
+      "key": "menu:FAILURES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Button",
+      "text": "Remove all",
+      "box": [
+        727,
+        124,
+        195,
+        41
+      ],
+      "hit": [
+        824,
+        144
+      ],
+      "clickable": true,
+      "key": "btn:|REMOVE ALL@36,6",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Jetway removed",
+      "box": [
+        547,
+        194,
+        196,
+        42
+      ],
+      "hit": [
+        645,
+        215
+      ],
+      "clickable": true,
+      "key": "btn:|JETWAY@27,9",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "GPU connected",
+      "box": [
+        913,
+        196,
+        193,
+        38
+      ],
+      "hit": [
+        1009,
+        215
+      ],
+      "clickable": true,
+      "key": "btn:|GPU@45,9",
+      "tint": "Green",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Req FWD stair",
+      "box": [
+        544,
+        255,
+        150,
+        40
+      ],
+      "hit": [
+        619,
+        275
+      ],
+      "clickable": true,
+      "key": "btn:|REQ FWD STAIR@27,12",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Heading",
+      "text": "In use",
+      "box": [
+        898,
+        276,
+        65,
+        26
+      ],
+      "hit": [
+        930,
+        289
+      ],
+      "clickable": false,
+      "key": "h:IN USE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Heading",
+      "text": "Ground services",
+      "box": [
+        871,
+        298,
+        121,
+        17
+      ],
+      "hit": [
+        931,
+        306
+      ],
+      "clickable": false,
+      "key": "h:GROUND SERVICES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Ground A/C",
+      "box": [
+        311,
+        351,
+        199,
+        42
+      ],
+      "hit": [
+        410,
+        372
+      ],
+      "clickable": true,
+      "key": "btn:|GROUND A/C@15,17",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Req cargo SVC",
+      "box": [
+        912,
+        352,
+        196,
+        41
+      ],
+      "hit": [
+        1010,
+        372
+      ],
+      "clickable": true,
+      "key": "btn:|REQ CARGO SVC@45,17",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Left air start",
+      "box": [
+        546,
+        414,
+        148,
+        42
+      ],
+      "hit": [
+        620,
+        435
+      ],
+      "clickable": true,
+      "key": "btn:|LEFT AIR START@27,20",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Right air start",
+      "box": [
+        961,
+        414,
+        148,
+        43
+      ],
+      "hit": [
+        1035,
+        435
+      ],
+      "clickable": true,
+      "key": "btn:|RIGHT AIR START@48,20",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Chocks",
+      "box": [
+        313,
+        515,
+        194,
+        40
+      ],
+      "hit": [
+        410,
+        535
+      ],
+      "clickable": true,
+      "key": "btn:|CHOCKS@15,25",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Req fuel truck",
+      "box": [
+        1132,
+        577,
+        196,
+        42
+      ],
+      "hit": [
+        1230,
+        598
+      ],
+      "clickable": true,
+      "key": "btn:|REQ FUEL TRUCK@56,28",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Stairs disabled",
+      "box": [
+        546,
+        723,
+        198,
+        43
+      ],
+      "hit": [
+        645,
+        744
+      ],
+      "clickable": true,
+      "key": "btn:|STAIRS DISABLED@27,36",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Req catering",
+      "box": [
+        912,
+        723,
+        196,
+        42
+      ],
+      "hit": [
+        1010,
+        744
+      ],
+      "clickable": true,
+      "key": "btn:|REQ CATERING@45,36",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "GND SRVC Mode: MSFS",
+      "box": [
+        325,
+        891,
+        160,
+        32
+      ],
+      "hit": [
+        405,
+        907
+      ],
+      "clickable": true,
+      "key": "btn:GND SRVC Mode|MSFS@16,44",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Req PB tug",
+      "box": [
+        636,
+        896,
+        179,
+        44
+      ],
+      "hit": [
+        725,
+        918
+      ],
+      "clickable": true,
+      "key": "btn:|REQ PB TUG@31,44",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Remove tug",
+      "box": [
+        836,
+        896,
+        177,
+        44
+      ],
+      "hit": [
+        924,
+        918
+      ],
+      "clickable": true,
+      "key": "btn:|REMOVE TUG@41,44",
+      "tint": "Grey",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications: 55",
+      "box": [
+        1329,
+        6,
+        54,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [
+    {
+      "text": "GPU connected.",
+      "time": "14:17Z"
+    }
+  ],
+  "question": null
+}

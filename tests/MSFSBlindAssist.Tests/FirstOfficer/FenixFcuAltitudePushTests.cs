@@ -15,13 +15,12 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// The Fenix FCU knob push/pull writers, and the First Officer's Before Start altitude push.
 ///
 /// The Fenix FCU knobs (S_FCU_SPEED / S_FCU_HEADING / S_FCU_ALTITUDE) are relative encoders:
-/// a push takes 1 off the L:var, a pull adds 1. The panel and the FCU hotkeys used to keep
-/// their own running count per knob (rmpCounters) and write that count; the First Officer
-/// (FenixActionExecutor.PushFcuManaged) reads the live value and writes value - 1. Two such
-/// writers on one knob desync: after an FO push, the panel's next counted write can swallow
-/// or double a press. Speed and heading moved to the atomic read-modify-write
-/// (AdjustFcuPushPullCounter) first; the altitude knob follows here, before the First Officer
-/// starts pushing it too.
+/// a push takes 1 off the L:var, a pull adds 1. The panel and the FCU hotkeys step the sim's own
+/// value (the atomic AdjustFcuPushPullCounter for push and pull, FenixA320Definition.CounterStepCode
+/// through ExecuteCalculatorCodeUnique for the turns), and the First Officer
+/// (FenixActionExecutor.PushFcuManaged) reads the live value and writes value - 1. A writer that kept
+/// its own absolute count would desync from the others: after an FO push, the panel's next counted
+/// write could swallow or double a press.
 ///
 /// The writers cannot run in a test (every write goes through SimConnectManager, whose
 /// IsConnected setter is private), so the panel and hotkey call sites are pinned in source,

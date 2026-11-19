@@ -1,0 +1,1 @@
+Taxiing the Fenix, the steering tone now goes quiet earlier in a big turn than in a small one, so 90-degree corners no longer swing you past the new taxiway, and gentle turns still roll out on the line.

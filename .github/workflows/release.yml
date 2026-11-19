@@ -63,6 +63,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+      # The PMDG display layouts come from the layouts store: the repo named by the
+      # LAYOUTS_REPO secret, read with the LAYOUTS_DEPLOY_KEY deploy key. LayoutBundle copies
+      # them beside the exe and fails the run when any does not load in this build, or a
+      # module has none (UPD-10).
+      - name: Fetch the display layouts
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ secrets.LAYOUTS_REPO }}
+          ref: layouts
+          ssh-key: ${{ secrets.LAYOUTS_DEPLOY_KEY }}
+          path: layout-store
+          persist-credentials: false
+
+      - name: Bundle the display layouts
+        run: dotnet run --project tools/LayoutBundle/LayoutBundle.csproj -c Release --property:Platform=x64 -- layout-store MSFSBlindAssist\bin\x64\Release\net10.0-windows\layouts
+        shell: pwsh
+
       - name: Create release zip
         run: |
           Compress-Archive -Path MSFSBlindAssist\bin\x64\Release\net10.0-windows\* -DestinationPath MSFSBA.zip
