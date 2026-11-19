@@ -1,9 +1,10 @@
 namespace MSFSBlindAssist.Services.Geography;
 
 /// <summary>
-/// The two small GeoNames name files the database needs beside the dump:
-/// <c>countryInfo.txt</c> (ISO code → country name, column 4; comment lines start with '#') and
-/// <c>admin1CodesASCII.txt</c> ("US.MD" → "Maryland").
+/// The small GeoNames name files the database needs beside the dump:
+/// <c>countryInfo.txt</c> (ISO code → country name, column 4; comment lines start with '#'),
+/// and <c>admin1CodesASCII.txt</c> ("US.MD" → "Maryland"). Kinds of place are named by
+/// <see cref="LocationFeatureCatalog"/>, never by GeoNames' featureCodes_en.txt.
 /// </summary>
 internal static class GeoNamesNameFiles
 {

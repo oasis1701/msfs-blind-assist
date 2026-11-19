@@ -318,7 +318,8 @@ internal sealed class LocationDataDownloader : IDisposable
         string country = Path.Combine(folder, "countryInfo.txt");
         string admin1 = Path.Combine(folder, "admin1CodesASCII.txt");
         // A whole dump a failed or cancelled build left is built without the network, as the status
-        // box promises ("nothing is downloaded again"): its name files are still beside it.
+        // box promises ("nothing is downloaded again"): its name files are still beside it. Kinds of
+        // place are named by LocationFeatureCatalog, never by GeoNames' featureCodes_en.txt.
         if (CompleteDump() is null || !File.Exists(country) || !File.Exists(admin1))
         {
             SetStatus(new DownloadStatus(DownloadJobPhase.Downloading, "Downloading GeoNames country and state names.", 0));

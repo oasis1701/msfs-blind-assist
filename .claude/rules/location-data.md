@@ -1,7 +1,6 @@
 ---
 paths:
   - "MSFSBlindAssist/Services/Geography/**"
-  - "MSFSBlindAssist/Models/LocationData.cs"
   - "MSFSBlindAssist/Forms/LocationInfoForm.cs"
   - "MSFSBlindAssist/Forms/Settings/GeoNamesPanel.cs"
   - "tests/MSFSBlindAssist.Tests/Geography/**"

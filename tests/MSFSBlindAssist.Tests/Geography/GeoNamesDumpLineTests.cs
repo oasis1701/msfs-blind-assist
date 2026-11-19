@@ -101,4 +101,18 @@ public class GeoNamesDumpLineTests
             Assert.Equal(-76.48357, row.Longitude, 6);
         });
     }
+
+    [Fact]
+    public void An_airport_keeps_its_alternate_names_and_other_places_do_not()
+    {
+        const string airport = "2667304	Trollhättan–Vänersborg Airport	Trollhattan-Vanersborg Airport	ESGT,THN,Trollhättan flygplats"
+            + "	58.31806	12.345	S	AIRP	SE		28				0		42	Europe/Stockholm	2020-01-01";
+        Assert.True(GeoNamesDumpLine.TryParse(airport, out var row));
+        Assert.Equal(LocationCategory.Airport, row.Category);
+        Assert.Equal("ESGT,THN,Trollhättan flygplats", row.AlternateNames);
+
+        const string lake = "2700000	Vänern	Vanern	Lake Vanern,Vänersjön	58.9	13.3	H	LK	SE		28				0		44	Europe/Stockholm	2020-01-01";
+        Assert.True(GeoNamesDumpLine.TryParse(lake, out var water));
+        Assert.Equal("", water.AlternateNames);
+    }
 }

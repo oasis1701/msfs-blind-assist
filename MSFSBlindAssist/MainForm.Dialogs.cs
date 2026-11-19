@@ -134,13 +134,16 @@ public partial class MainForm
                 try
                 {
                     var report = await Task.Run(() => offlineLocationService.GetLocationInfo(position.Latitude, position.Longitude, query));
-                    if (report?.Details is null)
+                    if (report is null)
                     {
                         announcer.AnnounceImmediate(LocationDataUnavailableText());
                         return;
                     }
-                    var locationForm = new Forms.LocationInfoForm(report, query.Kilometres);
-                    locationForm.Show();
+                    // One window at a time: a second Shift+L opens it afresh from where the aircraft is now.
+                    if (locationInfoForm is { IsDisposed: false }) locationInfoForm.Close();
+                    locationInfoForm = new Forms.LocationInfoForm(offlineLocationService, simConnectManager, announcer,
+                        waypointTracker, report, position.Latitude, position.Longitude);
+                    locationInfoForm.Show();
                 }
                 catch (Exception ex)
                 {

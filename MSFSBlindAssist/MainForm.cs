@@ -232,6 +232,7 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.VPilot.VatsimAnnouncementService? vatsimService;
 
     private Forms.WeatherRadarForm? weatherRadarForm;
+    private Forms.LocationInfoForm? locationInfoForm;
 
     private MSFSBlindAssist.Forms.SayIntentionsInfoForm? surroundingsForm;
 
