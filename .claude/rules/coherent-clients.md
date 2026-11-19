@@ -1,6 +1,7 @@
 ---
 paths:
   - "MSFSBlindAssist/SimConnect/Coherent*.cs"
+  - "MSFSBlindAssist/SimConnect/*/Coherent*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Coherent*.cs"
   - "MSFSBlindAssist/MSFSBlindAssist.csproj"
   - "MSFSBlindAssist/Resources/coherent-*.js"
@@ -10,7 +11,7 @@ paths:
 Loaded when Claude reads matching code. Background: docs/tooling.md. Full text of each rule: docs/invariants/coherent-clients.md.
 
 - [A380C-2] Every Coherent client's `EnsureConnected` must re-install the agent on a still-open socket instead of reconnecting, and Abort+Dispose any existing socket before `ConnectAsync`; skipping either loses the page for the process. Full: docs/invariants/coherent-clients.md#a380c-2
-- [A380C-3] A public on-demand scrape competing with a background `RunLoop` must be serialized by its own `_connectLock`; `_sendLock` covers only `SendAsync`, not connection setup. Full: docs/invariants/coherent-clients.md#a380c-3
+- [A380C-3] A public on-demand scrape competing with a background `RunLoop` must be serialized by its own `_connectLock`, or never connect (it uses only the loop's socket, as `CoherentBbs757TabletClient.ScrapeAsync` does); `_sendLock` covers only `SendAsync`, not connection setup. Full: docs/invariants/coherent-clients.md#a380c-3
 - [HS-4] Every `Resources\coherent-*.js` agent script needs its own explicit `<None Update=...>` entry in `MSFSBlindAssist.csproj`: the build does not wildcard-copy `Resources\`, and each client reads its script from the output folder's `Resources` at run time, so a missing entry fails only in the sim. Full: docs/invariants/coherent-clients.md#hs-4
 
 Mirrored from troubleshooting.md (it governs every Coherent client in SimConnect/Coherent*.cs; change it there and here together):

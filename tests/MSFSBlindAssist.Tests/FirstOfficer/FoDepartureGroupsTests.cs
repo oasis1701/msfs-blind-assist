@@ -11,6 +11,7 @@ using HwA330 = MSFSBlindAssist.FirstOfficer.HWA330;
 using B737 = MSFSBlindAssist.FirstOfficer.PMDG737;
 using IFly737 = MSFSBlindAssist.FirstOfficer.IFly737;
 using Md11 = MSFSBlindAssist.FirstOfficer.MD11;
+using B757 = MSFSBlindAssist.FirstOfficer.BBS757;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
@@ -26,7 +27,7 @@ public class FoDepartureGroupsTests
     {
         new object[] { "PMDG 777" }, new object[] { "PMDG 737" }, new object[] { "iFly 737 MAX8" },
         new object[] { "Fenix A320" }, new object[] { "FBW A32NX" }, new object[] { "Headwind A330" },
-        new object[] { "FBW A380" }, new object[] { "TFDi MD-11" },
+        new object[] { "FBW A380" }, new object[] { "TFDi MD-11" }, new object[] { "BlueBird 757" },
         new object[] { "DA40-NG" }, new object[] { "DA40-XLS" },
     };
 
@@ -42,6 +43,7 @@ public class FoDepartureGroupsTests
         "TFDi MD-11" => Md11.Md11FoChecklistDefinitions.Build().Select(g => g.Id).ToArray(),
         "DA40-NG" => DA40.DA40FoTestData.StandInGroups(MSFSBlindAssist.Aircraft.DA40.DA40Variant.NG).Select(g => g.Id).ToArray(),
         "DA40-XLS" => DA40.DA40FoTestData.StandInGroups(MSFSBlindAssist.Aircraft.DA40.DA40Variant.XLS).Select(g => g.Id).ToArray(),
+        "BlueBird 757" => B757.Bbs757FoChecklistDefinitions.Build().Select(g => g.Id).ToArray(),
         _ => throw new System.ArgumentException(profile),
     };
 

@@ -26,6 +26,11 @@ namespace MSFSBlindAssist.Services;
 /// It was the one left out until 2026-09-25 and relied on each branch checking
 /// <c>A380DisabledMonitorVariablesSet</c> itself; the baro branches never did, so their rows muted
 /// nothing. The branches that check locally are unaffected.</item>
+/// <item>the BlueBird 757 — its flaps, speedbrake, parking brake, MCP light and EXEC light call-outs,
+/// its radio, autoflight and ground power rows and the base class's trim call-out (the 757 has no
+/// glideslope call-out: it does not use the simulator's nav radio; its map's status rows speak on the generic
+/// path, where the same list gates them; its three gear legs speak the one "Gear" row's call-out,
+/// so they are <see cref="IAircraftDefinition.IsMuteWrapExempt"/> and check that row themselves).</item>
 /// </list>
 /// The Fenix announces on the generic path, where its own gate lives, so it is not wrapped. Anything
 /// a definition speaks from a TIMER or a batch hook runs outside this wrap and must still check its
@@ -47,6 +52,7 @@ public static class DefAnnounceMuteSets
         "IFLY_737MAX8" => settings.IFlyDisabledMonitorVariablesSet,
         "TFDI_MD11" => settings.Md11DisabledMonitorVariablesSet,
         "FBW_A380" => settings.A380DisabledMonitorVariablesSet,
+        "BBS_757" => settings.BBS757DisabledMonitorVariablesSet,
         _ when aircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) => settings.PMDGDisabledMonitorVariablesSet,
         _ when aircraftCode.StartsWith("COWS_DA40", StringComparison.Ordinal) => settings.DA40DisabledMonitorVariablesSet,
         _ => null,

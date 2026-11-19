@@ -125,7 +125,7 @@ Nothing is spoken while a flight is loading, and BA does not announce the state 
 
 As you fly, BA watches hundreds of cockpit values and announces them when they change: lights, switches, flight modes, warnings, autopilot states and more. Most pilots want most of these, but nobody wants all of them all the time. The Monitor Manager is a checklist of every automatic announcement for the aircraft you are flying, where you can silence any one of them.
 
-Every aircraft has its own Monitor Manager, because every aircraft announces different things. Its title names the aircraft, for example "A320 Monitor Manager", "A380 Monitor Manager", "Fenix Monitor Manager", "PMDG Announcement Monitor", "787 Monitor Manager", "iFly 737 Monitor Manager" or "MD-11 Monitor Manager". The Headwind A330 uses the A320 one.
+Every aircraft has its own Monitor Manager, because every aircraft announces different things. Its title names the aircraft, for example "A320 Monitor Manager", "A380 Monitor Manager", "Fenix Monitor Manager", "PMDG Announcement Monitor", "787 Monitor Manager", "iFly 737 Monitor Manager", "757 Monitor Manager" or "MD-11 Monitor Manager". The Headwind A330 uses the A320 one.
 
 ### When to use it {#when-to-use-it}
 
@@ -198,7 +198,7 @@ The common set below works on most aircraft. Each aircraft adds its own keys, an
 
 | Key | What it reads |
 |---|---|
-| Output F | Fuel on board in pounds (on the PMDG Boeings, the 787 and the MD-11, tank by tank) |
+| Output F | Fuel on board in pounds (on the PMDG Boeings, the 787, the BlueBird 757 and the MD-11, tank by tank) |
 | Output Shift+F | Fuel in kilograms |
 | Output W | Gross weight in pounds (on the FlyByWire aircraft, with centre of gravity) |
 | Output Shift+W | Gross weight in kilograms |
@@ -336,13 +336,13 @@ You choose between two AI services: **Google Gemini** or **Anthropic Claude**. Y
 ### What it can read {#what-it-can-read}
 
 - **Alt+D, scene description:** on every aircraft, Output Alt+D describes the outside scene: what the simulator window is showing.
-- **Cockpit displays:** on the aircraft whose screens cannot be read as text, Output Alt+P, Alt+N, Alt+E, Alt+S and Alt+I read the PFD, the navigation display, the engine/warning display, the lower or system display, and the standby instruments. Which keys exist depends on the aircraft: the PMDG 737 and 777, iFly 737 MAX, HorizonSim 787 and TFDi MD-11 have AI display reads. The Fenix A320 opens live windows of its displays and uses the AI read only when it cannot read a display directly. The FlyByWire aircraft read their displays as text instead, from the Panels list, and need no AI, and the COWS DA40 opens its G1000 PFD and MFD as windows you read and operate (see [COWS Diamond DA40](diamond-da40.md#da40-g1000)). See your aircraft's chapter for exactly what each key reads.
+- **Cockpit displays:** on the aircraft whose screens cannot be read as text, Output Alt+P, Alt+N, Alt+E, Alt+S and Alt+I read the PFD, the navigation display, the engine/warning display, the lower or system display, and the standby instruments. Which keys exist depends on the aircraft: the PMDG 737 and 777, iFly 737 MAX, HorizonSim 787, BlueBird 757 and TFDi MD-11 have AI display reads. The Fenix A320 opens live windows of its displays and uses the AI read only when it cannot read a display directly. The FlyByWire aircraft read their displays as text instead, from the Panels list, and need no AI, and the COWS DA40 opens its G1000 PFD and MFD as windows you read and operate (see [COWS Diamond DA40](diamond-da40.md#da40-g1000)). See your aircraft's chapter for exactly what each key reads.
 
 The AI is also used for the route briefing in the flight planning window; see [The Flight Planning Window](planning-your-flight.md#flight-planning-efb).
 
 ### You do not need to look at the display first {#you-do-not-need-to-look-at-the-display-first}
 
-On the Fenix A320, the PMDG 737 and 777, the iFly 737 MAX and the TFDi MD-11, BA moves the simulator's camera to the cockpit view that shows the display, takes the picture, and puts your own view straight back, including a saved custom view such as a cabin or wing view. The camera is away for well under a second, and your view is back before the AI is even asked. On the HorizonSim 787 the camera is not moved for you, so switch to a cockpit view that shows the display first.
+On the Fenix A320, the PMDG 737 and 777, the iFly 737 MAX, the BlueBird 757 and the TFDi MD-11, BA moves the simulator's camera to the cockpit view that shows the display, takes the picture, and puts your own view straight back, including a saved custom view such as a cabin or wing view. The camera is away for well under a second, and your view is back before the AI is even asked. On the HorizonSim 787 the camera is not moved for you, so switch to a cockpit view that shows the display first.
 
 You may hear:
 

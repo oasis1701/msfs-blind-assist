@@ -530,7 +530,14 @@ public class TakeoffAssistManager : IDisposable
     /// (TakeoffVSpeedCallouts, TKO-5).
     /// </summary>
     /// <param name="currentIAS">Current indicated airspeed in knots</param>
-    public void ProcessSpeedUpdate(double currentIAS)
+    /// <param name="aircraftCallsOwnSpeeds">
+    /// The loaded aircraft plays its own take-off speed callouts
+    /// (<see cref="Aircraft.IAircraftDefinition.PlaysOwnTakeoffSpeedCallouts"/>, the BlueBird 757, which calls
+    /// 80 knots, V1 and rotate): "80 knots" is not spoken then, so a roll never hears it twice; "100 knots",
+    /// which the aircraft does not call, still is. Passed per sample by the one caller, so it always follows
+    /// the aircraft loaded now.
+    /// </param>
+    public void ProcessSpeedUpdate(double currentIAS, bool aircraftCallsOwnSpeeds = false)
     {
         // Cache BEFORE the guards — the trace's iasKt column must stay fresh
         // even when callouts are disabled.
@@ -548,13 +555,14 @@ public class TakeoffAssistManager : IDisposable
         // The speeds now come from the aircraft (ConfigureSpeedCallouts). The default is still
         // 80/100, so every airframe that has not been given a profile behaves as before.
         // Use Announce() (queued, non-interrupting) so callouts don't cut each other off.
-        if (!hasAnnounced80Knots && lowCalloutKts.HasValue && currentIAS >= lowCalloutKts.Value)
+        if (!aircraftCallsOwnSpeeds && !hasAnnounced80Knots && lowCalloutKts.HasValue && currentIAS >= lowCalloutKts.Value)
         {
             announcer.Announce(lowCalloutPhrase);
             hasAnnounced80Knots = true;
             Log.Debug("TakeoffAssist", $"Speed callout: {lowCalloutPhrase} (IAS={currentIAS:F1})");
         }
 
+        // The high call (100 knots by default) is every aircraft's, an aircraft that calls its own speeds included (#358).
         if (!hasAnnounced100Knots && highCalloutKts.HasValue && currentIAS >= highCalloutKts.Value)
         {
             announcer.Announce(highCalloutPhrase);

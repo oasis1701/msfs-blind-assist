@@ -54,6 +54,7 @@ public class FoEngineAndGroundGuardTests
         AssertGuardFirst(PMDG777FlowDefinitions.Build(), "ELECTRICAL_POWER_UP", "EPU_ENGINES_STOPPED", Pmdg777State.EnginesStoppedField);
         AssertGuardFirst(PMDG777FlowDefinitions.Build(), "COCKPIT_PREP", "CP_ENGINES_STOPPED", Pmdg777State.EnginesStoppedField);
         AssertGuardFirst(Md11FoFlowDefinitions.Build(), "POWER_UP", "PU_ENGINES_STOPPED", "FO_ENGINES_STOPPED");
+        AssertGuardFirst(MSFSBlindAssist.FirstOfficer.BBS757.Bbs757FoFlowDefinitions.Build(), "POWER_UP", "PU_ENGINES_STOPPED", "FO_ENGINES_STOPPED");
     }
 
     [Fact]
@@ -73,6 +74,8 @@ public class FoEngineAndGroundGuardTests
         AssertGuardFirst(Pmdg737Flows.Build(), "SECURE", "SE_ON_GROUND", Pmdg737State.OnGroundField);
         AssertGuardFirst(IFly737FlowDefinitions.Build(), "SHUTDOWN", "SD_ON_GROUND", IFly737StateEvaluator.OnGroundField);
         AssertGuardFirst(IFly737FlowDefinitions.Build(), "SECURE", "SE_ON_GROUND", IFly737StateEvaluator.OnGroundField);
+        AssertGuardFirst(MSFSBlindAssist.FirstOfficer.BBS757.Bbs757FoFlowDefinitions.Build(), "SHUTDOWN", "SD_ON_GROUND", "SIM_ON_GROUND");
+        AssertGuardFirst(MSFSBlindAssist.FirstOfficer.BBS757.Bbs757FoFlowDefinitions.Build(), "SECURE", "SC_ON_GROUND", "SIM_ON_GROUND");
     }
 
     private static void AssertPowerWaitBefore<T>(IEnumerable<FlowDefinition<T>> flows, string flowId, string waitId,
@@ -177,6 +180,10 @@ public class FoEngineAndGroundGuardTests
         var md11 = new Md11FoStateEvaluator();
         foreach (var id in new[] { "PU_FUEL_OFF", "PK_FUEL", "SD_IRS", "SD_BATTERY" })
             Assert.True(GuardOf(Md11FoChecklistDefinitions.Build(), id)(md11), id);
+
+        var b757 = new MSFSBlindAssist.FirstOfficer.BBS757.Bbs757FoStateEvaluator();
+        foreach (var id in new[] { "PU_FUEL_CUTOFF", "SD_FUEL_CUTOFF", "SC_IRS", "SC_BATTERY" })
+            Assert.True(GuardOf(MSFSBlindAssist.FirstOfficer.BBS757.Bbs757FoChecklistDefinitions.Build(), id)(b757), id);
     }
 
     [Fact]

@@ -15,6 +15,8 @@ public enum McduWindow
     /// <summary>The FBW A32NX MCDU, also serving the Headwind A330 (same instrument).</summary>
     FbwA320Mcdu,
     FenixMcdu,
+    /// <summary>The BlueBird 757's two CDUs, as text from the aircraft's Comm Bus over Coherent.</summary>
+    Bbs757Cdu,
 }
 
 /// <summary>
@@ -41,6 +43,7 @@ public static class McduWindowRouting
             "HS_787" => McduWindow.Hs787Fmc,
             "IFLY_737MAX8" => McduWindow.IFlyCdu,
             "TFDI_MD11" => McduWindow.Md11Mcdu,
+            "BBS_757" => McduWindow.Bbs757Cdu,
             // The Headwind A330 MCDU is the same FBW instrument (the Coherent view
             // "A339X_MCDU" and the same SimBridge relay), so one form serves both.
             "A320" or "HW_A330" => McduWindow.FbwA320Mcdu,

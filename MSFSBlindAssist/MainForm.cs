@@ -590,6 +590,7 @@ public partial class MainForm : Form
 
         // PMDG 737: the display readers wait for the PMDG SDK themselves, so they start with the aircraft.
         StartPmdg737Displays();
+        StartBbs757Displays();   // likewise the BlueBird 757's, which wait for the simulator themselves
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
@@ -618,8 +619,8 @@ public partial class MainForm : Form
 
         if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
 
-        // A location download started from that dialog may still run: an update accepted now
-        // restarts the app and Shutdown cancels the download without a word. Skip this launch's
+        // A location data download started from those dialogs may still run: an update
+        // accepted now restarts the app and Shutdown cancels the download without a word. Skip this launch's
         // check; the next launch asks again (UPD-9).
         if (locationDataDownloader.IsRunning)
         {
@@ -744,6 +745,8 @@ public partial class MainForm : Form
         // to happen here as well — otherwise every panel row opens without a state, and nothing
         // is described until the pilot's first press. Idempotent: a later switch re-attaches.
         if (currentAircraft is TFDiMD11Definition startupMd11) startupMd11.Attach(simConnectManager);
+        // Likewise the 757's, for the engine type its first section list follows.
+        if (currentAircraft is BBS757Definition startupBbs757) startupBbs757.Attach(simConnectManager);
         simConnectManager.ConnectionStatusChanged += OnConnectionStatusChanged;
         // A calc path that never came up is a DEGRADED session on FBW aircraft — overhead
         // switches can silently revert and the FCU can ignore commands. Say so once, rather
@@ -1506,6 +1509,11 @@ public partial class MainForm : Form
         if (md11MonitorManagerForm != null && !md11MonitorManagerForm.IsDisposed) md11MonitorManagerForm.Dispose();
         md11MonitorManagerForm = null;
         coherentMd11Efb?.Dispose();
+
+        // The 757's windows and the EFB client and bridge they share (same leak class: the CDU
+        // window's timer and the client's poll loop and socket), as on the swap path. The CDU's
+        // tablet client is the definition's own, disposed in its OnSwitchedAway.
+        DisposeBBS757Forms();
 
         // Clean up 787 forms + the IRS / CAS Coherent clients
         hs787FMCForm?.Dispose();

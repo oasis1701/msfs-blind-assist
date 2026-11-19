@@ -142,7 +142,8 @@ public partial class HotkeyListForm : Form
             { "IFLY_737MAX8", "iFly_737MAX8_Hotkeys.txt" },
             { "COWS_DA40NG", "COWS_DA40_Hotkeys.txt" },
             { "COWS_DA40XLS", "COWS_DA40_Hotkeys.txt" },
-            { "TFDI_MD11", "TFDi_MD11_Hotkeys.txt" }
+            { "TFDI_MD11", "TFDi_MD11_Hotkeys.txt" },
+            { "BBS_757", "BBS757_Hotkeys.txt" }
         };
 
         // Determine which file to load

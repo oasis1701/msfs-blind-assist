@@ -49,6 +49,7 @@ public class McduWindowRoutingTests
     [InlineData("TFDI_MD11", McduWindow.Md11Mcdu)]
     [InlineData("A320", McduWindow.FbwA320Mcdu)]
     [InlineData("HW_A330", McduWindow.FbwA320Mcdu)]
+    [InlineData("BBS_757", McduWindow.Bbs757Cdu)]   // #358, merged into main while this routing was on #242
     public void EveryOtherAircraftKeepsItsOwnWindow(string code, McduWindow expected)
     {
         Assert.Equal(expected, McduWindowRouting.For(code, isPmdg: false, pmdgDataReady: false));

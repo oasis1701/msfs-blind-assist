@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A SimBrief OFP cut down to the fields the 757's fuel and payload load reads, with the numbers
+     of the plan BlueBird's own EFB loaded on 2026-10-25. The airline, flight number and IDs are made up. -->
+<OFP>
+  <fetch>
+    <userid>1</userid>
+    <static_id></static_id>
+    <status>Success</status>
+  </fetch>
+  <params>
+    <request_id>1</request_id>
+    <user_id>1</user_id>
+    <units>lbs</units>
+  </params>
+  <general>
+    <icao_airline>QQX</icao_airline>
+    <flight_number>1234</flight_number>
+  </general>
+  <origin>
+    <icao_code>KSEA</icao_code>
+  </origin>
+  <destination>
+    <icao_code>KDEN</icao_code>
+  </destination>
+  <aircraft>
+    <icaocode>B752</icaocode>
+    <name>B757-200</name>
+  </aircraft>
+  <fuel>
+    <taxi>600</taxi>
+    <plan_takeoff>24950</plan_takeoff>
+    <plan_ramp>25550</plan_ramp>
+  </fuel>
+  <weights>
+    <pax_count>224</pax_count>
+    <pax_count_actual>224</pax_count_actual>
+    <pax_weight>175</pax_weight>
+    <bag_weight>55</bag_weight>
+    <freight_added>0</freight_added>
+    <cargo>12259</cargo>
+    <payload>51459</payload>
+    <est_zfw>184000</est_zfw>
+    <max_zfw>184000</max_zfw>
+  </weights>
+</OFP>

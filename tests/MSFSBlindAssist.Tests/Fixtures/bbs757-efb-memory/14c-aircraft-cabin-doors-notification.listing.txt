@@ -1,0 +1,82 @@
+title: Aircraft, Cabin & doors
+button  Left FWD: Closed
+button  Left mid: Closed
+button  Left AFT: Closed
+button  Right FWD: Closed
+button  Right mid: Closed
+button  Right AFT: Closed
+button  FWD cargo: Closed
+button  AFT cargo: Moving
+button  Close all
+button  Cockpit open
+heading 2  Cabin lighting
+button  Ground service off
+slider 0  Ceiling (OFF)
+slider 0  Window (OFF)
+slider 0  Entry (OFF)
+heading 2  Status bar
+text  Sat, 7th Nov 2026 | 05:49L | 11:49Z | OAT 1 C
+heading 2  Notifications
+text  11:49Z AFT cargo door opened.
+text  05:06Z Chocks removed.
+text  05:06Z Chocks attached.
+text  05:06Z AFT cargo door closed.
+text  05:05Z AFT cargo door opened.
+text  03:16Z AFT cargo door closed.
+text  03:15Z AFT cargo door opened.
+text  01:16Z GPU connected.
+text  00:58Z Brake thermal efficiency: Left 96.2% | right 96.2%
+text  00:58Z Autobrake 1: TARGET 4.5 | ACTUAL 4.5 ft/s2
+text  21:37Z GPU disconnected.
+text  21:37Z Chocks removed.
+text  21:35Z Boarding is complete!
+text  21:35Z 176 passengers boarded!
+text  21:35Z Cargo is loaded!
+text  21:35Z Fuel is set!
+text  21:35Z Boarding initiated.
+text  21:35Z Deboarding is complete!
+text  21:35Z 176 passengers deboarded!
+text  21:29Z R3 door closed.
+text  21:24Z AFT cargo door closed.
+text  21:24Z FWD cargo door closed.
+text  21:23Z Cargo is unloaded!
+text  21:21Z L1 door closed.
+text  21:21Z AFT cargo door opened.
+text  21:21Z FWD cargo door opened.
+text  21:21Z R3 door opened.
+text  21:21Z Deboarding initiated.
+text  21:21Z Boarding is complete!
+text  21:21Z 176 passengers boarded!
+text  21:12Z R3 door closed.
+text  21:08Z Fuel is set!
+text  21:07Z AFT cargo door closed.
+text  21:07Z FWD cargo door closed.
+text  21:07Z Cargo is loaded!
+text  21:04Z L1 door opened.
+text  21:04Z AFT cargo door opened.
+text  21:04Z FWD cargo door opened.
+text  21:04Z R3 door opened.
+text  21:04Z Boarding initiated.
+text  21:04Z Chocks attached.
+text  21:00Z GPU connected.
+text  20:00Z GPU disconnected.
+text  20:00Z Chocks removed.
+text  19:50Z IRS aligned.
+text  19:45Z Boarding is complete!
+text  19:45Z 0 passengers boarded!
+text  19:45Z Cargo is loaded!
+text  19:45Z Fuel is set!
+text  19:42Z Defueling is complete!
+text  19:41Z IRS alignment initiated.
+text  19:41Z Defueling initiated.
+text  19:35Z SIMBRIEF OFP received.
+text  19:34Z GPU connected.
+heading 2  Sections
+button  Cockpit presets
+button  Fuel
+button  Weight & balance
+button  Ground services
+button  Cabin & doors (current page)
+button  Maintenance
+button  Failures
+button  Home

@@ -402,6 +402,14 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Check if disabled in the BlueBird 757 Monitor Manager (its status rows speak here;
+                // the base call-outs it speaks from ProcessSimVarUpdate take the Step-2.5 wrap).
+                if (currentAircraft.AircraftCode == "BBS_757" &&
+                    Settings.SettingsManager.Current.BBS757DisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
                 // Suppress the generic announce for a var the iFly autopilot window
                 // JUST wrote: the focused button's label rename is the screen-reader
                 // feedback (NVDA reads the name change), so the Step-6 announce would
@@ -649,10 +657,13 @@ public partial class MainForm
             takeoffAssistManager.ProcessPitchUpdate(e.Value);
         }
 
-        // Handle takeoff assist IAS updates (for speed callouts)
+        // Handle takeoff assist IAS updates (for speed callouts). An aircraft that plays its own
+        // speed callouts (the BlueBird 757) hears takeoff assist's "100 knots" but not its "80 knots";
+        // read per sample, so it follows the aircraft loaded now.
         if (e.VarName == "TAKEOFF_ASSIST_IAS" && takeoffAssistManager.IsActive)
         {
-            takeoffAssistManager.ProcessSpeedUpdate(e.Value);
+            takeoffAssistManager.ProcessSpeedUpdate(e.Value,
+                aircraftCallsOwnSpeeds: currentAircraft.PlaysOwnTakeoffSpeedCallouts);
         }
 
         // Handle taxi guidance position updates (active during Taxiing, LiningUp,
