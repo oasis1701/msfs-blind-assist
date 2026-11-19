@@ -88,8 +88,12 @@ public class SpokenDecimalCultureTests
         // Sanity first: under en-US nothing the aircraft says has a digit, a comma and a digit, so the same pattern
         // under de-DE can only be a decimal comma.
         Assert.DoesNotContain(Spoken(aircraft, "en-US"), line => CommaDecimal.IsMatch(line));
+        var spoken = Spoken(aircraft, "de-DE");
+        // A floor: Spoken swallows a handler's exception, so an aircraft whose handlers all threw before they spoke
+        // would say nothing and pass with nothing checked.
+        Assert.True(spoken.Count > 0, $"{aircraft} said nothing, so nothing was checked");
         // One line a phrase, whatever the sample: the first of each wording with its numbers taken out.
-        var wrong = Spoken(aircraft, "de-DE").Where(line => CommaDecimal.IsMatch(line))
+        var wrong = spoken.Where(line => CommaDecimal.IsMatch(line))
             .DistinctBy(line => Numbers.Replace(line, "#")).ToList();
         Assert.True(wrong.Count == 0, Fail(wrong));
     }
@@ -118,22 +122,20 @@ public class SpokenDecimalCultureTests
     {
         var def = Create(aircraft);
         var wrong = new List<string>();
+        int rowsChecked = 0;
         for (int page = 0; page <= 40; page++)
         {
-            List<(string label, string var, Func<double, string> fmt)> rows;
-            try
+            // A page number the display does not have gives no rows; a builder that throws fails the test.
+            List<(string label, string var, Func<double, string> fmt)> rows = def switch
             {
-                rows = def switch
-                {
-                    FlyByWireA380Definition a380 => a380.A380SdRows(page),
-                    FlyByWireA320Definition a320 => a320.SdSystemRows(page, _ => 1.25),
-                    PMDG777Definition b777 => b777.PMDG777SdRows(page),
-                    _ => throw new InvalidOperationException(aircraft),
-                };
-            }
-            catch (Exception) when (def is not null) { continue; }   // a page number the display does not have
+                FlyByWireA380Definition a380 => a380.A380SdRows(page),
+                FlyByWireA320Definition a320 => a320.SdSystemRows(page, _ => 1.25),
+                PMDG777Definition b777 => b777.PMDG777SdRows(page),
+                _ => throw new InvalidOperationException(aircraft),
+            };
             foreach (var (label, _, fmt) in rows)
             {
+                rowsChecked++;
                 foreach (double sample in Samples)
                 {
                     string plain = TestCulture.Run("en-US", () => fmt(sample)), comma = TestCulture.Run("de-DE", () => fmt(sample));
@@ -143,6 +145,8 @@ public class SpokenDecimalCultureTests
                 }
             }
         }
+        // A floor: a display that builds no row outside the sim would pass with nothing checked.
+        Assert.True(rowsChecked > 0, $"{aircraft} built no system-display row, so nothing was checked");
         Assert.True(wrong.Count == 0, Fail(wrong));
     }
 }

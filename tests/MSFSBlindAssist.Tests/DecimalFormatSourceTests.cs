@@ -6,7 +6,12 @@
 // be a log call.
 //
 // A failure names the file and line. Wrap the string in FormattableString.Invariant(...) (or
-// string.Create(CultureInfo.InvariantCulture, ...)); only a new LOG helper belongs in LogCallees.
+// string.Create(CultureInfo.InvariantCulture, ...)); only a new LOG helper belongs in LogHelpers, and
+// only a new logger's name in LoggerName.
+//
+// What the scan cannot see: a number with no format at all ($"{value}"), a bare G or R (they write
+// what no format writes) and a format held in a variable (x.ToString(fmt)). SpokenDecimalCultureTests
+// is for those.
 
 using System.Text;
 using System.Text.RegularExpressions;
@@ -22,17 +27,28 @@ public class DecimalFormatSourceTests
         throw new InvalidOperationException($"MSFSBlindAssist.sln was not found above {AppContext.BaseDirectory}");
     }
 
+    /// <summary>The shipped projects: what they write can reach the pilot or another program.</summary>
+    private static readonly string[] ShippedProjects =
+    {
+        "MSFSBlindAssist", "MSFSBlindAssist.DisplayLayouts", "MSFSBlindAssistUpdater", "plugins/MSFSBlindAssist.VPilotPlugin",
+    };
+
     [Fact]
     public void No_decimal_is_formatted_in_the_pcs_culture_outside_a_log_line()
     {
-        string app = Path.Combine(RepoRoot(), "MSFSBlindAssist");
+        string root = RepoRoot();
         var found = new List<string>();
-        foreach (string file in Directory.EnumerateFiles(app, "*.cs", SearchOption.AllDirectories).OrderBy(f => f, StringComparer.Ordinal))
+        foreach (string project in ShippedProjects)
         {
-            string relative = Path.GetRelativePath(app, file).Replace('\\', '/');
-            if (relative.StartsWith("obj/", StringComparison.Ordinal) || relative.StartsWith("bin/", StringComparison.Ordinal)) continue;
-            foreach (var hit in DecimalFormatScan.Find(File.ReadAllText(file)))
-                found.Add($"{relative}:{hit.Line}: {hit.Text}");
+            string dir = Path.Combine(root, project);
+            Assert.True(Directory.Exists(dir), $"{project} was not found under {root}");
+            foreach (string file in Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories).OrderBy(f => f, StringComparer.Ordinal))
+            {
+                string relative = Path.GetRelativePath(dir, file).Replace('\\', '/');
+                if (relative.StartsWith("obj/", StringComparison.Ordinal) || relative.StartsWith("bin/", StringComparison.Ordinal)) continue;
+                foreach (var hit in DecimalFormatScan.Find(File.ReadAllText(file)))
+                    found.Add($"{project}/{relative}:{hit.Line}: {hit.Text}");
+            }
         }
         Assert.True(found.Count == 0,
             $"{found.Count} format a decimal in the PC's culture (wrap in FormattableString.Invariant):\n" + string.Join("\n", found.Take(400)));
@@ -51,6 +67,16 @@ public class DecimalFormatSourceTests
     [InlineData("var s = $@\"path {x:0.#}\";")]
     [InlineData("list.Add($\"{x:+0.0;-0.0} m\");")]
     [InlineData("Run(() => { double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out var v); announcer.Announce($\"Set to {v:F3}\"); });")]
+    // A string further along than a provider's place, and a Create that takes no provider.
+    [InlineData("var s = string.Format(\"{0}: {1}\", label, $\"{nm:F1} NM\");")]
+    [InlineData("var t = Tuple.Create(label, $\"{v:0.0} volts\");")]
+    // A log method's name on something that is no logger.
+    [InlineData("writer.WriteLine($\"{lat:F6},{lon:F6}\");")]
+    [InlineData("speech.Error($\"Mach {m:0.00}\");")]
+    // A bare F, N or P of a number (two decimals), and G with its digits.
+    [InlineData("var s = $\"{value:F} and {ratio:P}\";")]
+    [InlineData("var s = value.ToString(\"N\");")]
+    [InlineData("var s = $\"{tolerance:G3} degrees\";")]
     public void A_decimal_formatted_in_the_pcs_culture_is_found(string code) => Assert.Single(Scan(code));
 
     [Theory]
@@ -68,6 +94,12 @@ public class DecimalFormatSourceTests
     [InlineData("var s = Inv($\"{nm:0.0} miles\");")]
     [InlineData("string tmp = $\"{cache}.{Guid.NewGuid():N}.tmp\";")]
     [InlineData("var s = string.Create(inv, $\"{count:N0} places\");")]
+    [InlineData("sb.AppendFormat(provider, \"{0:F1} miles\", d);")]
+    [InlineData("Startup.Info($\"took {seconds:F1} s\");")]
+    [InlineData("System.Diagnostics.Debug.WriteLine($\"{x:F2}\");")]
+    [InlineData("_taxiFormLog.Error($\"gap {gap:F1} m\");")]
+    [InlineData("var s = $\"{startTime:F} {sessionGuid:N}\";")]
+    [InlineData("var s = Guid.NewGuid().ToString(\"N\");")]
     public void An_invariant_or_logged_or_whole_number_format_is_left_alone(string code) => Assert.Empty(Scan(code));
 
     [Fact]
@@ -83,11 +115,45 @@ internal static class DecimalFormatScan
 {
     public sealed record Hit(int Line, string Text);
 
-    /// <summary>Calls whose text goes to a log file, never to the pilot: their numbers may follow the PC's culture.</summary>
-    private static readonly HashSet<string> LogCallees = new(StringComparer.Ordinal)
+    /// <summary>Log helpers known by their own name, whatever they are called on. Their text goes to a log file,
+    /// never to the pilot: its numbers may follow the PC's culture.</summary>
+    private static readonly HashSet<string> LogHelpers = new(StringComparer.Ordinal)
     {
-        "Debug", "Info", "Warn", "Error", "WriteLine", "RolloutDiag", "DiagLog", "Log", "LogLine", "Trace",
+        "RolloutDiag", "DiagLog", "Log", "LogLine",
     };
+
+    /// <summary>Names a logger's methods share with other types (a TextWriter's WriteLine into a file another program
+    /// reads, a speech helper's Error): they log only when called on a logger.</summary>
+    private static readonly HashSet<string> LogMethods = new(StringComparer.Ordinal)
+    {
+        "Debug", "Info", "Warn", "Error", "WriteLine", "Trace",
+    };
+
+    /// <summary>What a logger is called in this code: Log, _log, _taxiFormLog, PluginLog, a LogChannel held as Channel
+    /// or _channel, the Startup log and the framework's Debug.</summary>
+    private static readonly Regex LoggerName = new(@"(log|channel)$|^Startup$|^Debug$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>Whether a call writes a log line: a log helper, or a log method called on a logger.</summary>
+    private static bool IsLogCall(string name, string last) =>
+        LogHelpers.Contains(last) || (LogMethods.Contains(last) && LoggerName.IsMatch(ReceiverOf(name, last)));
+
+    /// <summary>What a call is made on, without its namespaces: "Log" of Utils.Logging.Log.Warn, "" of a bare call.</summary>
+    private static string ReceiverOf(string name, string last)
+    {
+        if (name.Length <= last.Length) return "";
+        string receiver = name[..(name.Length - last.Length - 1)];
+        return receiver[(receiver.LastIndexOf('.') + 1)..];
+    }
+
+    /// <summary>Whether the code between a call's parenthesis and a string is ONE argument and its comma, and that
+    /// argument no string itself: the place of a format provider.</summary>
+    private static bool IsLoneProvider(ReadOnlySpan<char> before)
+    {
+        var argument = before.Trim();
+        if (argument.Length < 2 || argument[^1] != ',') return false;
+        argument = argument[..^1].Trim();
+        return argument.Length > 0 && argument.IndexOfAny(',', '"') < 0;
+    }
 
     /// <summary>Calls that format what they are handed with the invariant culture.</summary>
     private static readonly HashSet<string> InvariantCallees = new(StringComparer.Ordinal)
@@ -108,13 +174,20 @@ internal static class DecimalFormatScan
         return scanner.Hits;
     }
 
-    /// <summary>Whether a format specifier writes a decimal or a group separator.</summary>
-    internal static bool IsDecimalSpec(string spec)
+    /// <summary>Code named as a Guid, a date or a time: sessionGuid, Guid.NewGuid(), startTime, DateTime.Now.</summary>
+    private static readonly Regex NotANumber = new(@"(?:Guid|Date|Time|Now|(?<![A-Za-z])(?:guid|date|time|now))(?![a-z])");
+
+    /// <summary>Whether a format specifier writes a decimal or a group separator. <paramref name="subject"/> is the
+    /// code being formatted, where the scan has it.</summary>
+    internal static bool IsDecimalSpec(string spec, string subject = "")
     {
         spec = spec.Trim();
         if (spec.Length == 0 || spec.IndexOfAny(new[] { '(', ')', '?', '"', '\'' }) >= 0) return false;
-        // N, P and C need their digit: a bare "N" or "P" is also a Guid's format ({Guid.NewGuid():N}).
-        if (Regex.IsMatch(spec, @"^[FfEe][1-9]\d*$|^[NnPpCc]\d+$")) return true;
+        // With its digit, and a bare E: a number's format and nothing else's.
+        if (Regex.IsMatch(spec, @"^[FfEeGg][1-9]\d*$|^[NnPpCc]\d+$|^[Ee]$")) return true;
+        // A bare F, N or P writes a number with two decimals, but is also a Guid's format (N, P) and a date's (F):
+        // it counts unless what it formats is named as one ({Guid.NewGuid():N}, {startTime:F}).
+        if (Regex.IsMatch(spec, @"^[FfNnPp]$")) return !NotANumber.IsMatch(subject);
         return Regex.IsMatch(spec, @"^[+\-0#.,;% ]+$") && Regex.IsMatch(spec, @"[.,][0#]");
     }
 
@@ -216,7 +289,7 @@ internal static class DecimalFormatScan
             foreach (Match m in Regex.Matches(literal, @"\{\d+(?:,-?\d+)?:([^{}]+)\}"))
                 if (IsDecimalSpec(m.Groups[1].Value)) { Report(start); return; }
             // x.ToString("F2") with no culture after it.
-            if (IsDecimalSpec(literal) && Before(start).EndsWith("ToString(", StringComparison.Ordinal) && NextCode(_i) == ')')
+            if (Before(start).EndsWith("ToString(", StringComparison.Ordinal) && NextCode(_i) == ')' && IsDecimalSpec(literal, ToStringReceiver(start)))
                 Report(start);
         }
 
@@ -262,7 +335,7 @@ internal static class DecimalFormatScan
             string hole = _s.Substring(from, Math.Min(_i, _s.Length) - from);
             if (At(_i) == '}') _i++;
             int colon = hole.LastIndexOf(':');
-            if (colon >= 0 && At(from + colon - 1) != ':' && IsDecimalSpec(hole[(colon + 1)..]))
+            if (colon >= 0 && At(from + colon - 1) != ':' && IsDecimalSpec(hole[(colon + 1)..], hole[..colon]))
                 Report(stringStart, at: from);
         }
 
@@ -272,15 +345,19 @@ internal static class DecimalFormatScan
             foreach (var (name, open) in _calls)
             {
                 string last = name.Contains('.') ? name[(name.LastIndexOf('.') + 1)..] : name;
-                if (LogCallees.Contains(last) || InvariantCallees.Contains(name) || InvariantCallees.Contains(last)) return;
+                if (IsLogCall(name, last) || InvariantCallees.Contains(name) || InvariantCallees.Contains(last)) return;
                 // A formatting call handed the invariant culture before the string. Only a formatting call: any other
                 // call around the string may mention the culture for a reason of its own (a parse two lines up).
                 if (!CultureTakingCallees.Contains(last)) continue;
                 var before = _s.AsSpan(open + 1, start - open - 1);
                 if (before.Contains("InvariantCulture", StringComparison.Ordinal)) return;
-                // string.Create(inv, $"…") and string.Format(provider, "…"): a format provider handed in before the
-                // string, under whatever name, is a culture chosen on purpose.
-                if (last is "Create" or "Format" or "AppendFormat" && before.TrimEnd().EndsWith(",", StringComparison.Ordinal)) return;
+                // string.Create(inv, $"…"), string.Format(provider, "…") and sb.AppendFormat(provider, "…"): a format
+                // provider handed in as the FIRST argument, under whatever name, is a culture chosen on purpose. A
+                // string further along is an argument, formatted before the call (string.Format("{0}: {1}", label,
+                // $"{nm:F1} NM")), and another type's Create or Format takes no provider (Tuple.Create(label, $"…")).
+                bool takesProvider = last == "AppendFormat"
+                    || ((last is "Create" or "Format") && ReceiverOf(name, last) is "string" or "String");
+                if (takesProvider && IsLoneProvider(before)) return;
             }
             int where = at < 0 ? start : at, line = 1;
             for (int j = 0; j < where; j++) if (_s[j] == '\n') line++;
@@ -295,6 +372,17 @@ internal static class DecimalFormatScan
             int j = k;
             while (j > 0 && char.IsWhiteSpace(_s[j - 1])) j--;
             return _s[Math.Max(0, j - 12)..j];
+        }
+
+        /// <summary>What the x.ToString( before <paramref name="k"/> is called on: "freq.", "Guid.NewGuid().".</summary>
+        private string ToStringReceiver(int k)
+        {
+            int end = k;
+            while (end > 0 && char.IsWhiteSpace(_s[end - 1])) end--;
+            end = Math.Max(0, end - "ToString(".Length);
+            int j = end;
+            while (j > 0 && (char.IsLetterOrDigit(_s[j - 1]) || _s[j - 1] is '_' or '.' or '?' or '!' or '(' or ')')) j--;
+            return _s[j..end];
         }
 
         private char NextCode(int k)

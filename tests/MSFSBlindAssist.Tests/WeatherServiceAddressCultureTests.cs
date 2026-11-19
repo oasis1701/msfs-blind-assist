@@ -1,7 +1,7 @@
 // The weather radar's web addresses carry coordinates with a decimal point whatever the PC's
 // regional settings. Under a comma-decimal culture the bounding box was eight numbers
 // ("11,25,48,10,…") and the winds address "latitude=48,3538", which the services refuse or misread,
-// so a German or Swedish Windows got no SIGMETs, PIREPs or winds aloft.
+// so a German or Swedish Windows got no PIREPs or winds aloft.
 
 using MSFSBlindAssist.Services;
 
