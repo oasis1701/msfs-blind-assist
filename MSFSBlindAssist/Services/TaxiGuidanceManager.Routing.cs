@@ -163,8 +163,10 @@ public partial class TaxiGuidanceManager
         var priorGraphGeneration = _graphGeneration;
         var priorHoldShortWarning = LastRouteHoldShortWarning;
         var priorStartWarning = LastRouteStartWarning;
+        var priorRouteStartGapMeters = _routeStartGapMeters;
         string? Fail(string message)
         {
+            _routeStartGapMeters = priorRouteStartGapMeters;
             _dataProvider = priorDataProvider;
             _destinationNodeId = priorDestinationNodeId;
             _destinationName = priorDestinationName;
@@ -452,6 +454,8 @@ public partial class TaxiGuidanceManager
             TaxiLeadIn.LeadInInfo leadIn = default;
             bool leadInFallback = false;
             string? undrivenStartNote = null;
+            TaxiRoute? settledRoute = null;
+            int settledStartNodeId = 0;
 
             if (isCrossComponentRoute)
             {
@@ -492,19 +496,34 @@ public partial class TaxiGuidanceManager
 
             // A clearance can open with taxiways the aircraft is no longer placed to drive (VTBS 20L:
             // cleared E7, E8, D6, vacated at E9). The route would run out to their junction and straight
-            // back, so they are left out and the pilot is told. Only where a lead-in would be built: a
-            // first cleared taxiway within reach keeps its pre-snap [RTE-23].
-            if (firstTwNode != null && taxiwaySequence is { Count: > 1 }
+            // back, so they are left out and the pilot is told. Judged from the node the route will start
+            // at: the runway start, else the lead-in's. A first cleared taxiway within reach keeps its
+            // pre-snap [RTE-23].
+            TaxiNode? clearanceEntry = runwayStart;
+            if (clearanceEntry == null && firstTwNode != null
                 && TaxiGraph.FastDistanceMeters(aircraftLat, aircraftLon, firstTwNode.Latitude, firstTwNode.Longitude)
                    > TaxiLeadIn.TriggerMeters
                 && _graph.FindNearestNode(aircraftLat, aircraftLon, requiredComponentId: destComponentId,
                        excludeBridgeOnlyStandStubs: true) is { } leadInEntry
                 && leadInEntry.NodeId != firstTwNode.NodeId)
+                clearanceEntry = leadInEntry;
+            if (clearanceEntry != null && taxiwaySequence is { Count: > 1 })
             {
                 int undriven = UndrivenClearanceStart.Count(
-                    router, leadInEntry.NodeId, destinationNodeId, taxiwaySequence, isRunwayDestination);
-                if (undriven > 0 && UndrivenClearanceStart.PicksAllow(
-                        undriven, userHoldShortIndices, userRunwayHoldShorts?.Keys, userTaxiwayHoldShorts?.Keys))
+                    router, clearanceEntry.NodeId, destinationNodeId, taxiwaySequence, isRunwayDestination, out var settled);
+                bool leaveOut = undriven > 0
+                    && UndrivenClearanceStart.PicksAllow(
+                        undriven, userHoldShortIndices, userRunwayHoldShorts?.Keys, userTaxiwayHoldShorts?.Keys)
+                    // A runway start keeps its own rule: the route taken must not come back onto the runway.
+                    && (runwayStart == null || !RouteRunwayStart.RouteReturnsToRunway(
+                            _graph, settled!.Segments, aircraftLat, aircraftLon, aircraftHeading + aircraftHeadingMagVar));
+                // The route just built is the one the start from this node builds below.
+                if (undriven == 0 || leaveOut)
+                {
+                    settledRoute = settled;
+                    settledStartNodeId = clearanceEntry.NodeId;
+                }
+                if (leaveOut)
                 {
                     var leftOut = taxiwaySequence.Take(undriven).ToList();
                     undrivenStartNote = UndrivenClearanceStart.Note(leftOut);
@@ -516,7 +535,8 @@ public partial class TaxiGuidanceManager
                     userRunwayHoldShorts = _userRunwayHoldShorts = UndrivenClearanceStart.Shift(userRunwayHoldShorts, undriven);
                     userTaxiwayHoldShorts = _userTaxiwayHoldShorts = UndrivenClearanceStart.Shift(userTaxiwayHoldShorts, undriven);
                     firstCleared = taxiwaySequence[0];
-                    firstTwNode = SelectFirstTaxiwayEntry(aircraftLat, aircraftLon, firstCleared, destComponentId, destinationNodeId);
+                    if (runwayStart == null)
+                        firstTwNode = SelectFirstTaxiwayEntry(aircraftLat, aircraftLon, firstCleared, destComponentId, destinationNodeId);
                 }
             }
 
@@ -627,8 +647,10 @@ public partial class TaxiGuidanceManager
             routeStartNodeId = startNode.NodeId;
 
             if (taxiwaySequence != null && taxiwaySequence.Count > 0)
-                route = router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence,
-                    destinationIsRunway: isRunwayDestination);
+                route = settledRoute != null && startNode.NodeId == settledStartNodeId
+                    ? settledRoute
+                    : router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence,
+                        destinationIsRunway: isRunwayDestination);
             else
                 route = router.FindShortestPath(startNode.NodeId, destinationNodeId);
 
@@ -1313,6 +1335,7 @@ public partial class TaxiGuidanceManager
                 // LastRouteStartWarning): the summary they also ride in is cut by StartGuidance.
                 var mustHear = new List<string>();
                 if (!string.IsNullOrEmpty(routeStartWarning)) mustHear.Add(routeStartWarning);
+                if (undrivenStartNote != null) mustHear.Add(undrivenStartNote);
                 string unheldRunways = RouteRunwayCrossings.DescribeUnheldRunways(route.RunwayEvents);
                 if (unheldRunways.Length > 0)
                     mustHear.Add("Warning: " + unheldRunways + ".");

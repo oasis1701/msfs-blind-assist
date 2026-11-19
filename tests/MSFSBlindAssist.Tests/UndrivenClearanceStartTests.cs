@@ -31,7 +31,44 @@ public class UndrivenClearanceStartTests
     }, new List<ParkingSpot>(), new List<StartPosition>());
 
     private static int CountFrom(TaxiGraph g, params string[] clearance)
-        => UndrivenClearanceStart.Count(new TaxiRouter(g), NodeAt(g, 0, 0), NodeAt(g, 0.005, 0.004), clearance, destinationIsRunway: false);
+        => UndrivenClearanceStart.Count(new TaxiRouter(g), NodeAt(g, 0, 0), NodeAt(g, 0.005, 0.004), clearance,
+            destinationIsRunway: false, out _);
+
+    private static TaxiRoute? RouteFrom(TaxiGraph g, params string[] clearance)
+    {
+        UndrivenClearanceStart.Count(new TaxiRouter(g), NodeAt(g, 0, 0), NodeAt(g, 0.005, 0.004), clearance,
+            destinationIsRunway: false, out var route);
+        return route;
+    }
+
+    // Route loading takes this route as built, so the router runs once and logs one route.
+    [Fact]
+    public void Count_hands_back_the_route_for_the_clearance_it_settled_on()
+    {
+        var route = RouteFrom(MissedExit(), "E7", "E8", "D6");
+
+        Assert.NotNull(route);
+        Assert.Equal(new[] { "E", "D6" }, route!.Segments.Select(s => s.TaxiwayName).Distinct());
+    }
+
+    [Fact]
+    public void Count_hands_back_the_full_clearances_route_when_nothing_is_left_out()
+    {
+        var route = RouteFrom(MissedExit(), "E", "D6");
+
+        Assert.NotNull(route);
+        Assert.Null(route!.ConstrainedFallbackReason);
+        Assert.Equal(new[] { "E", "D6" }, route.Segments.Select(s => s.TaxiwayName).Distinct());
+    }
+
+    [Fact]
+    public void Count_hands_back_the_fallback_route_when_the_router_cannot_honour_the_clearance()
+    {
+        var route = RouteFrom(MissedExit(), "ZZ", "D6");
+
+        Assert.NotNull(route);
+        Assert.NotNull(route!.ConstrainedFallbackReason);
+    }
 
     [Fact]
     public void Count_finds_the_cleared_taxiway_the_route_would_double_back_at()

@@ -237,6 +237,16 @@ void RunMissedExits(World w)
             plan.Describe = $"Rwy {rwy.RunwayID} cleared {exits[i].TaxiwayName} vacated {exits[i + 1].TaxiwayName} n{exits[i + 1].NodeId} -> {gate} via {string.Join(",", clearance)}";
             Codes("MISSEDEXIT", w.Icao, plan.Describe, FlyTaxi(w, plan, withClearance: false, trace: false));
             taxis++;
+
+            // The same clearance loaded before vacating: still on the runway, 150 m past the planned exit.
+            double gapM = (exits[i + 1].DistanceFromThresholdFeet - exits[i].DistanceFromThresholdFeet) * 0.3048;
+            if (gapM < 300) continue;
+            double along = TaxiPlan.Bearing(exits[i].Latitude, exits[i].Longitude, exits[i + 1].Latitude, exits[i + 1].Longitude);
+            var (rlat, rlon) = Geo.Move(exits[i].Latitude, exits[i].Longitude, along, 150);
+            var rolling = TaxiPlan.FromPosition(w, rlat, rlon, along, gate, clearance);
+            rolling.Describe = $"Rwy {rwy.RunwayID} cleared {exits[i].TaxiwayName} on the runway 150 m past it n{exits[i].NodeId} -> {gate} via {string.Join(",", clearance)}";
+            Codes("MISSEDEXIT_RWY", w.Icao, rolling.Describe, FlyTaxi(w, rolling, withClearance: false, trace: false));
+            taxis++;
         }
     }
 }
@@ -1986,7 +1996,7 @@ sealed class TaxiPlan
         };
     }
 
-    static double Bearing(double la1, double lo1, double la2, double lo2)
+    public static double Bearing(double la1, double lo1, double la2, double lo2)
         => (Math.Atan2((lo2 - lo1) * Math.Cos(la1 * Math.PI / 180), la2 - la1) * 180 / Math.PI + 360) % 360;
 }
 

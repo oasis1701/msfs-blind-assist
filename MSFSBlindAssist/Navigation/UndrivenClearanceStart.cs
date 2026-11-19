@@ -16,16 +16,25 @@ public static class UndrivenClearanceStart
     /// honour the clearance, with or without them. The last cleared taxiway decides where a runway
     /// route ends [RTE-17] and always stays.
     /// </summary>
+    /// <param name="route">The route built for the clearance with that many taxiways left out, so the
+    /// caller need not build it again. When the router cannot honour the full clearance, its answer
+    /// for the full clearance (a shortest-path fallback, or null).</param>
     public static int Count(TaxiRouter router, int entryNodeId, int destinationNodeId,
-        IReadOnlyList<string> taxiwaySequence, bool destinationIsRunway)
+        IReadOnlyList<string> taxiwaySequence, bool destinationIsRunway, out TaxiRoute? route)
     {
         var remaining = taxiwaySequence.ToList();
         int confirmed = 0;
+        route = null;
         while (true)
         {
             var trial = router.FindConstrainedPath(entryNodeId, destinationNodeId, remaining, destinationIsRunway);
-            if (trial is not { Segments.Count: > 0 } || trial.ConstrainedFallbackReason != null) return confirmed;
+            if (trial is not { Segments.Count: > 0 } || trial.ConstrainedFallbackReason != null)
+            {
+                if (remaining.Count == taxiwaySequence.Count) route = trial;
+                return confirmed;
+            }
             confirmed = taxiwaySequence.Count - remaining.Count;
+            route = trial;
 
             if (remaining.Count == 1 || !TaxiLeadIn.DoublesBackAtUndrivenStart(trial, remaining[0])) return confirmed;
             remaining.RemoveAt(0);
