@@ -1,0 +1,559 @@
+{
+  "app": "SETTINGS",
+  "section": "CALLOUTS",
+  "scrollable": true,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "General",
+      "box": [
+        41,
+        150,
+        105,
+        37
+      ],
+      "hit": [
+        130,
+        168
+      ],
+      "clickable": true,
+      "key": "menu:GENERAL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Aircraft",
+      "box": [
+        39,
+        210,
+        115,
+        38
+      ],
+      "hit": [
+        130,
+        229
+      ],
+      "clickable": true,
+      "key": "menu:AIRCRAFT",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Livery options",
+      "box": [
+        40,
+        273,
+        176,
+        34
+      ],
+      "hit": [
+        130,
+        290
+      ],
+      "clickable": true,
+      "key": "menu:LIVERY OPTIONS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Callouts",
+      "box": [
+        38,
+        329,
+        124,
+        38
+      ],
+      "hit": [
+        130,
+        348
+      ],
+      "clickable": true,
+      "key": "menu:CALLOUTS",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin audio",
+      "box": [
+        40,
+        391,
+        144,
+        37
+      ],
+      "hit": [
+        130,
+        409
+      ],
+      "clickable": true,
+      "key": "menu:CABIN AUDIO",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "AIRAC data",
+      "box": [
+        39,
+        453,
+        136,
+        33
+      ],
+      "hit": [
+        130,
+        469
+      ],
+      "clickable": true,
+      "key": "menu:AIRAC DATA",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Text",
+      "text": "Selections save automatically for this aircraft registration.",
+      "box": [
+        265,
+        94,
+        474,
+        32
+      ],
+      "hit": [
+        502,
+        110
+      ],
+      "clickable": false,
+      "key": "txt:Selections save automatically for this aircraft registration.",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Heading",
+      "text": "Pilot callouts",
+      "box": [
+        265,
+        134,
+        192,
+        36
+      ],
+      "hit": [
+        361,
+        152
+      ],
+      "clickable": false,
+      "key": "h:PILOT CALLOUTS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "80 KTS",
+      "box": [
+        293,
+        183,
+        100,
+        42
+      ],
+      "hit": [
+        1247,
+        204
+      ],
+      "clickable": true,
+      "key": "tgl:80 KTS",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "V1",
+      "box": [
+        290,
+        233,
+        52,
+        44
+      ],
+      "hit": [
+        1247,
+        255
+      ],
+      "clickable": true,
+      "key": "tgl:V1",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Rotate",
+      "box": [
+        294,
+        289,
+        112,
+        38
+      ],
+      "hit": [
+        1247,
+        308
+      ],
+      "clickable": true,
+      "key": "tgl:ROTATE",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Positive rate",
+      "box": [
+        292,
+        338,
+        192,
+        42
+      ],
+      "hit": [
+        1247,
+        359
+      ],
+      "clickable": true,
+      "key": "tgl:POSITIVE RATE",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Heading",
+      "text": "EGPWS callouts",
+      "box": [
+        267,
+        394,
+        203,
+        33
+      ],
+      "hit": [
+        368,
+        410
+      ],
+      "clickable": false,
+      "key": "h:EGPWS CALLOUTS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "Captain DH must be above -20 for EGPWS callouts to play.",
+      "box": [
+        266,
+        438,
+        475,
+        32
+      ],
+      "hit": [
+        503,
+        454
+      ],
+      "clickable": false,
+      "key": "txt:Captain DH must be above -20 for EGPWS callouts to play.",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Heading",
+      "text": "Radio altitude",
+      "box": [
+        266,
+        480,
+        188,
+        34
+      ],
+      "hit": [
+        360,
+        497
+      ],
+      "clickable": false,
+      "key": "h:RADIO ALTITUDE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "2500",
+      "box": [
+        290,
+        526,
+        79,
+        44
+      ],
+      "hit": [
+        1247,
+        548
+      ],
+      "clickable": true,
+      "key": "tgl:2500",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Radio altimeter (2500)",
+      "box": [
+        291,
+        578,
+        301,
+        45
+      ],
+      "hit": [
+        1247,
+        600
+      ],
+      "clickable": true,
+      "key": "tgl:RADIO ALTIMETER (2500)",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "Off",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "1000",
+      "box": [
+        288,
+        624,
+        84,
+        52
+      ],
+      "hit": [
+        1246,
+        650
+      ],
+      "clickable": true,
+      "key": "tgl:1000",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "500",
+      "box": [
+        289,
+        681,
+        70,
+        45
+      ],
+      "hit": [
+        1247,
+        703
+      ],
+      "clickable": true,
+      "key": "tgl:500",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "400",
+      "box": [
+        288,
+        729,
+        72,
+        50
+      ],
+      "hit": [
+        1247,
+        754
+      ],
+      "clickable": true,
+      "key": "tgl:400",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "300",
+      "box": [
+        288,
+        784,
+        69,
+        46
+      ],
+      "hit": [
+        1247,
+        807
+      ],
+      "clickable": true,
+      "key": "tgl:300",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "200",
+      "box": [
+        287,
+        834,
+        72,
+        48
+      ],
+      "hit": [
+        1247,
+        858
+      ],
+      "clickable": true,
+      "key": "tgl:200",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "100",
+      "box": [
+        288,
+        887,
+        72,
+        50
+      ],
+      "hit": [
+        1247,
+        912
+      ],
+      "clickable": true,
+      "key": "tgl:100",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "80",
+      "box": [
+        287,
+        939,
+        57,
+        47
+      ],
+      "hit": [
+        1247,
+        962
+      ],
+      "clickable": true,
+      "key": "tgl:80",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "60",
+      "box": [
+        288,
+        990,
+        54,
+        49
+      ],
+      "hit": [
+        1247,
+        1014
+      ],
+      "clickable": true,
+      "key": "tgl:60",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications",
+      "box": [
+        1364,
+        6,
+        19,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

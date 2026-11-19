@@ -247,6 +247,29 @@ public static class GuidanceGeometry
         return errorDeg - lead;
     }
 
+    // Where a turn stops counting as gentle, by the heading already turned in the current
+    // sustained-yaw episode: below the start the gentle lead applies, past the end the sharp one,
+    // linear between. Fenix v3, 2026-10-23: of the turns that needed far more lead than 1.3 s,
+    // every one had already turned 40-138 deg when the tone centred; the turns 1.3 s served
+    // well had turned 14-45 deg.
+    public const double SHARP_TURN_RAMP_START_DEG = 30.0;
+    public const double SHARP_TURN_RAMP_END_DEG = 60.0;
+
+    /// <summary>
+    /// The rollout-anticipation lead for a turn that has already swept
+    /// <paramref name="turnedDeg"/> degrees: <paramref name="gentleLeadSec"/> up to
+    /// <see cref="SHARP_TURN_RAMP_START_DEG"/>, <paramref name="sharpLeadSec"/> from
+    /// <see cref="SHARP_TURN_RAMP_END_DEG"/>, linear between. A big turn needs the longer lead:
+    /// the aircraft carries more swing out of it. Equal leads give a constant lead.
+    /// </summary>
+    public static double TurnLeadSeconds(double turnedDeg, double gentleLeadSec, double sharpLeadSec)
+    {
+        double f = Math.Clamp(
+            (Math.Abs(turnedDeg) - SHARP_TURN_RAMP_START_DEG) / (SHARP_TURN_RAMP_END_DEG - SHARP_TURN_RAMP_START_DEG),
+            0.0, 1.0);
+        return gentleLeadSec + (sharpLeadSec - gentleLeadSec) * f;
+    }
+
     private static double SegLenM(double[] lats, double[] lons, int i)
     {
         double cl = Math.Cos(lats[i] * Math.PI / 180.0);
@@ -261,5 +284,39 @@ public static class GuidanceGeometry
         double ex = (lons[i + 1] - lons[i]) * MPD * cl;
         double ey = (lats[i + 1] - lats[i]) * MPD;
         return (Math.Atan2(ex, ey) * 180.0 / Math.PI + 360.0) % 360.0;
+    }
+
+    /// <summary>
+    /// Perpendicular (cross-track) distance in meters from (plat, plon) to the segment
+    /// (a→b), clamped to endpoints so points beyond either end use the nearest endpoint.
+    /// Uses equirectangular projection — sub-cm accuracy at taxi scale. The one copy: the
+    /// manager's off-route test and the Turn picks both call it.
+    /// </summary>
+    public static double PerpendicularDistanceToSegmentMeters(
+        double plat, double plon,
+        double alat, double alon,
+        double blat, double blon)
+    {
+        double latMidRad = (alat + blat) * 0.5 * (Math.PI / 180.0);
+        double metersPerDegLon = MPD * Math.Cos(latMidRad);
+
+        double bx = (blon - alon) * metersPerDegLon;
+        double by = (blat - alat) * MPD;
+        double px = (plon - alon) * metersPerDegLon;
+        double py = (plat - alat) * MPD;
+
+        double lenSq = bx * bx + by * by;
+        if (lenSq < 1e-9)
+            return Math.Sqrt(px * px + py * py);
+
+        double t = (px * bx + py * by) / lenSq;
+        if (t < 0.0) t = 0.0;
+        else if (t > 1.0) t = 1.0;
+
+        double fx = t * bx;
+        double fy = t * by;
+        double ex = px - fx;
+        double ey = py - fy;
+        return Math.Sqrt(ex * ex + ey * ey);
     }
 }

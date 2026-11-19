@@ -57,6 +57,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_SHOW_DCDU = 9251;        // Ctrl+Shift+D (A32NX DCDU / CPDLC window) — input mode
         private const int HOTKEY_VATSIM_MUTE = 9252;      // Alt+V (Toggle VATSIM announcements) — output mode
         private const int HOTKEY_VOLANTA = 9253;          // Shift+O (Volanta live map window) — output mode
+        private const int HOTKEY_SHOW_AIRCRAFT_WINDOWS = 9254; // Ctrl+Shift+F (the aircraft's own window list: Fenix windows) — input mode
         private const int HOTKEY_ND_WAYPOINT = 9243;      // Ctrl+W (FBW ND TO-waypoint: name/distance/bearing) — output mode
 
         // FCU push/pull hotkey IDs
@@ -82,7 +83,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_SPEED_VFE = 9049;
         private const int HOTKEY_SPEED_VLS = 9050;
         private const int HOTKEY_SPEED_VS = 9051;
-        private const int HOTKEY_CHECKLIST = 9052;
+        private const int HOTKEY_FIRST_OFFICER = 9052;   // Shift+C (First Officer window)
         private const int HOTKEY_CHECKLIST_ECL = 9213;   // Ctrl+Shift+C (A380 live ECL)
         private const int HOTKEY_FUEL_QUANTITY = 9053;
         private const int HOTKEY_WAYPOINT_INFO = 9055;
@@ -406,8 +407,8 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_SPEED_VS:
                             TriggerHotkey(HotkeyAction.ReadSpeedVS);
                             break;
-                        case HOTKEY_CHECKLIST:
-                            TriggerHotkey(HotkeyAction.ShowChecklist);
+                        case HOTKEY_FIRST_OFFICER:
+                            TriggerHotkey(HotkeyAction.ShowFirstOfficer);
                             break;
                         case HOTKEY_CHECKLIST_ECL:
                             TriggerHotkey(HotkeyAction.ShowChecklistECL);
@@ -649,6 +650,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_SHOW_DCDU:
                             TriggerHotkey(HotkeyAction.ShowDCDU);
                             break;
+                        case HOTKEY_SHOW_AIRCRAFT_WINDOWS:
+                            TriggerHotkey(HotkeyAction.ShowAircraftWindows);
+                            break;
                         case HOTKEY_TAXI_FORM:
                             TriggerHotkey(HotkeyAction.TaxiAssistForm);
                             break;
@@ -766,7 +770,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_SPEED_VLS, MOD_SHIFT, 0x34);     // Shift+4 (Minimum Selectable Speed)
             RegisterHotKey(windowHandle, HOTKEY_SPEED_VS, MOD_SHIFT, 0x35);      // Shift+5 (Stall Speed)
             RegisterHotKey(windowHandle, HOTKEY_SPEED_VFE, MOD_SHIFT, 0x36);     // Shift+6 (V FE Speed)
-            RegisterHotKey(windowHandle, HOTKEY_CHECKLIST, MOD_SHIFT, 0x43);     // Shift+C (static text checklist)
+            RegisterHotKey(windowHandle, HOTKEY_FIRST_OFFICER, MOD_SHIFT, 0x43); // Shift+C (First Officer window)
             RegisterHotKey(windowHandle, HOTKEY_CHECKLIST_ECL, MOD_CONTROL | MOD_SHIFT, 0x43); // Ctrl+Shift+C (A380 live ECL)
             RegisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY, MOD_NONE, 0x46);  // F (Fuel Quantity)
             RegisterHotKey(windowHandle, HOTKEY_FLAPS, MOD_NONE, 0x4C);          // L (Flaps)
@@ -881,7 +885,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_SPEED_VLS);
             UnregisterHotKey(windowHandle, HOTKEY_SPEED_VS);
             UnregisterHotKey(windowHandle, HOTKEY_SPEED_VFE);
-            UnregisterHotKey(windowHandle, HOTKEY_CHECKLIST);
+            UnregisterHotKey(windowHandle, HOTKEY_FIRST_OFFICER);
             UnregisterHotKey(windowHandle, HOTKEY_CHECKLIST_ECL);
             UnregisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY);
             UnregisterHotKey(windowHandle, HOTKEY_FLAPS);
@@ -977,6 +981,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB_FO, MOD_CONTROL | MOD_SHIFT, 0x54); // Ctrl+Shift+T (PMDG EFB First Officer)
             RegisterHotKey(windowHandle, HOTKEY_SHOW_RMP, MOD_CONTROL | MOD_SHIFT, 0x52);  // Ctrl+Shift+R (A380 Radio Management Panel)
             RegisterHotKey(windowHandle, HOTKEY_SHOW_DCDU, MOD_CONTROL | MOD_SHIFT, 0x44); // Ctrl+Shift+D (A32NX DCDU / CPDLC window)
+            RegisterHotKey(windowHandle, HOTKEY_SHOW_AIRCRAFT_WINDOWS, MOD_CONTROL | MOD_SHIFT, 0x46); // Ctrl+Shift+F (Fenix windows list)
 
             // Taxi guidance hotkeys (Input mode)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_FORM, MOD_SHIFT, 0x59);            // Shift+Y (Open Taxi Form)
@@ -1037,6 +1042,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB_FO);
             UnregisterHotKey(windowHandle, HOTKEY_SHOW_RMP);
             UnregisterHotKey(windowHandle, HOTKEY_SHOW_DCDU);
+            UnregisterHotKey(windowHandle, HOTKEY_SHOW_AIRCRAFT_WINDOWS);
 
             // Taxi guidance hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_FORM);
@@ -1346,7 +1352,7 @@ public class HotkeyManager : IDisposable
         ReadSpeedVFE,
         ReadSpeedVLS,
         ReadSpeedVS,
-        ShowChecklist,
+        ShowFirstOfficer,
         ShowChecklistECL,
         ReadFuelQuantity,
         ReadFlaps,
@@ -1412,4 +1418,5 @@ public class HotkeyManager : IDisposable
         SayIntentionsLastTransmission,
         SayIntentionsAssignedStatus,
         SayIntentionsBuildTaxiRoute,
+        ShowAircraftWindows,   // Ctrl+Shift+F (input) — the aircraft's own window list (the Fenix windows)
     }

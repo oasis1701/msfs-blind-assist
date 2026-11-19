@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Tests;
@@ -10,6 +11,37 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class UserSettingsCloneTests
 {
+    [Fact]
+    public void A_settings_file_with_a_retired_key_still_loads()
+    {
+        // OfferTextRecognitionFor757 was removed with PaddleOCR (plan 20); old files still hold it.
+        var loaded = JsonSerializer.Deserialize<UserSettings>(
+            "{\"OfferTextRecognitionFor757\": false, \"UseFahrenheitForOutsideTemperature\": true}",
+            SettingsManager.JsonOptions)!;
+        Assert.True(loaded.UseFahrenheitForOutsideTemperature);
+    }
+
+    [Fact]
+    public void OutsideTemperature_DefaultsToCelsius_ForNewAndExistingSettings()
+    {
+        Assert.False(new UserSettings().UseFahrenheitForOutsideTemperature);
+        var existing = JsonSerializer.Deserialize<UserSettings>("{}", SettingsManager.JsonOptions)!;
+        Assert.False(existing.UseFahrenheitForOutsideTemperature);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OutsideTemperatureUnit_SurvivesCloneAndJsonRoundTrip(bool useFahrenheit)
+    {
+        var settings = new UserSettings { UseFahrenheitForOutsideTemperature = useFahrenheit };
+        Assert.Equal(useFahrenheit, settings.Clone().UseFahrenheitForOutsideTemperature);
+
+        string json = JsonSerializer.Serialize(settings, SettingsManager.JsonOptions);
+        var reloaded = JsonSerializer.Deserialize<UserSettings>(json, SettingsManager.JsonOptions)!;
+        Assert.Equal(useFahrenheit, reloaded.UseFahrenheitForOutsideTemperature);
+    }
+
     [Fact]
     public void CloneCopiesTheMd11MuteListAndLearnedPolarity_AsFreshLists()
     {

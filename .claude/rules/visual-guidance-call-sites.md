@@ -10,6 +10,7 @@ paths:
   - "MSFSBlindAssist/MainForm.MenuHandlers.cs"
   - "MSFSBlindAssist/MainForm.PanelBuilder.cs"
   - "MSFSBlindAssist/MainForm.SayIntentions.cs"
+  - "MSFSBlindAssist/MainForm.UniversalAutomation.cs"
 ---
 # Visual guidance and hand fly rules for MainForm's partials
 

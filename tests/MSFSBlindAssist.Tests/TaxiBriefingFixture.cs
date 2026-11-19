@@ -154,13 +154,25 @@ internal static class TaxiBriefingFixture
     /// <see cref="AirportWithSouthStand"/> plus taxiway Q, which leaves runway 09/27 twice, once to each side:
     ///   east 1900: Q from 09's centreline (HS) north-east at 45° to A at 2000 E — a high-speed exit on the LEFT
     ///              landing 09, 328 ft beyond C, so as the high-speed exit within 1,500 ft it is preferred to C.
-    ///   east 2300: Q from 09's centreline (HS) straight south to north -100, where S now continues east from 2000 E
-    ///              to meet it.
-    /// LandingExitDestination resolves the first Q to the furthest same-named exit further down the runway — the
-    /// second Q — and vacates that one to the SOUTH: the route of "the exit on the left" begins on the right, on S,
-    /// and to a stand north of the runway it crosses 09 back at X.
+    ///   east 2000: Q from 09's centreline (HS) straight south to S's east end at north -100.
+    /// The second Q is 328 ft down the runway from the first — within LandingExitDestination's chained-continuation
+    /// step (RET_CONTINUATION_MAX_STEP_FT, 500 ft) — so the first Q resolves to it as one rapid-exit arc and vacates
+    /// to the SOUTH: the route of "the exit on the left" begins on the right, on S, and to a stand north of the
+    /// runway it crosses 09 back at X.
     /// </summary>
     public static GraphBundle AirportWithOppositeSideNamesake() => AirportWith(
+        SouthStandPaths().Concat(new[]
+        {
+            Path("Q", 1900, 0, 2000, 100, startType: "HS"),
+            Path("Q", 2000, 0, 2000, -100, startType: "HS"),
+        }), SouthStandSpots());
+
+    /// <summary>
+    /// As <see cref="AirportWithOppositeSideNamesake"/>, but the second Q leaves the runway 400 m (1,312 ft) further
+    /// down, at east 2300, with S continuing east from 2000 E to meet it. That gap is wider than one rapid-exit arc
+    /// (RET_CONTINUATION_MAX_STEP_FT): the two Qs are separate turnoffs, and the first vacates on its own side.
+    /// </summary>
+    public static GraphBundle AirportWithDistantOppositeSideNamesake() => AirportWith(
         SouthStandPaths().Concat(new[]
         {
             Path("Q", 1900, 0, 2000, 100, startType: "HS"),
@@ -396,26 +408,32 @@ internal static class TaxiBriefingFixture
     }
 
     /// <summary>
-    /// A standalone airport where GetLandingExits leaves an exit out:
-    ///   north 100: taxiway A, east 0 → 3000 (nodes at 0, 300, <paramref name="markedExitEastMetres"/>, 2400, 3000).
+    /// A standalone airport with one exit marked and one not:
+    ///   north 100: taxiway A, east 0 → 3000 (nodes at 0, 300, every exit's top, 3000).
     ///   north 0:   runway 09/27, east 0 → 3000 as at TEST. Exit C from 09's centreline at
-    ///              <paramref name="markedExitEastMetres"/> (HS) north to A; exit U at 2400 E north to A with NO
-    ///              hold-short mark.
+    ///              <paramref name="markedExitEastMetres"/> (HS) north to A; exit U at <paramref name="unmarkedExitEastMetres"/>
+    ///              north to A with NO hold-short mark, and with <paramref name="namesakeEastMetres"/> a second unmarked U
+    ///              there, earlier on the runway.
     ///   north 250: stand G 1 (300 E, gate, r=150 ft), its lead-in running south to A.
-    /// With one exit marked, GetLandingExits' geometric fallback is off for the whole runway and U is left out;
-    /// TaxiGraph.FindDownfieldExits finds it. With <paramref name="unmarkedExitAngled"/> U runs north-east at 45° to A at
-    /// 2500 E instead — a high-speed exit.
+    /// The list offers U beside the marked C. With a namesake it keeps U's first turnoff only, and a later U within
+    /// 1,400 ft of C stays out (GetLandingExits' one-per-name pass and coverage gap fill); TaxiGraph.FindDownfieldExits,
+    /// asked from C on, finds it. With <paramref name="unmarkedExitAngled"/> U runs north-east at 45° to A 100 m further
+    /// east instead — a high-speed exit.
     /// </summary>
-    public static GraphBundle AirportWithUnmarkedExit(double markedExitEastMetres, bool unmarkedExitAngled = false)
+    public static GraphBundle AirportWithUnmarkedExit(double markedExitEastMetres, bool unmarkedExitAngled = false,
+        double unmarkedExitEastMetres = 2400, double? namesakeEastMetres = null)
     {
         var runways = new List<Runway> { Runway("09", 0, 0, 3000, 0, 90), Runway("27", 3000, 0, 0, 0, 270) };
         var starts = new List<StartPosition> { Start("09", 10, 0, 90), Start("27", 2990, 0, 270) };
         var paths = new List<TaxiPath>();
-        double uTop = unmarkedExitAngled ? 2500 : 2400;
-        double[] xs = { 0, 300, markedExitEastMetres, uTop, 3000 };
-        for (int i = 1; i < xs.Length; i++) paths.Add(Path("A", xs[i - 1], 100, xs[i], 100));
+        double uTop = unmarkedExitAngled ? unmarkedExitEastMetres + 100 : unmarkedExitEastMetres;
+        var xs = new List<double> { 0, 300, markedExitEastMetres, uTop, 3000 };
+        if (namesakeEastMetres is double n) xs.Add(n);
+        xs.Sort();
+        for (int i = 1; i < xs.Count; i++) paths.Add(Path("A", xs[i - 1], 100, xs[i], 100));
         paths.Add(Path("C", markedExitEastMetres, 0, markedExitEastMetres, 100, startType: "HS"));
-        paths.Add(Path("U", 2400, 0, uTop, 100));
+        paths.Add(Path("U", unmarkedExitEastMetres, 0, uTop, 100));
+        if (namesakeEastMetres is double ns) paths.Add(Path("U", ns, 0, ns, 100));
         paths.Add(LeadIn(300, 100, 300, 250));
         var spots = new List<ParkingSpot> { Spot("G", 1, 10, 300, 250, 150) };
         var graph = TaxiGraph.Build(paths, spots, starts, runways);

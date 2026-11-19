@@ -57,6 +57,8 @@ Corrected 2026-10-09: the rule said every CDU button goes through CDA, but FMCCO
 
 - The emergency-lights guard→switch 80 ms settle gap is load-bearing (the two writes use DIFFERENT transports — CDA vs TransmitClientEvent — and arrive out of order without it, forcing the pilot to pick the position twice) — never drop it to zero; and the sequence must stay SERIALIZED (`_emerLightsGate`, latest-selection-wins) and fired as a plain async local function, NEVER `Task.Run` (which would race `SimConnectManager.SendEvent`'s unlocked `eventIds` dictionary from a pool thread). → [pmdg-777.md](../pmdg-777.md)
 
+  **The First Officer takes the same gate (2026-10-18, PR #160 second review).** The First Officer's own sequence (`AircraftActionExecutor.SetEmerExitLightsAsync`: the Power Up and Secure flows and their lines) takes the panel's gate through `PMDG777Definition.EmerLightsSequenceGate`, inside its own `_dispatchGate` (the panel never takes `_dispatchGate`, so the two cannot wait on each other), and reads the switch position only once inside, so a combo pick never lands between its guard and switch writes. It takes no part in `_emerLightsRequest`'s collapse: the gate's first-come order lets the later of the two finish last. Pinned by `Pmdg777SecondReviewTests`.
+
 ## P777-14
 
 - `RequestVariable(key, forceUpdate: true)` is a NO-OP for any `PMDGVar` (CDA-broadcast, so in neither the data-def nor the continuous-batch map) — never use it to snap a PMDG combo back; that trick only works for the L:var-typed controls (e.g. the temp-knob variant guards). → [pmdg-777.md](../pmdg-777.md)

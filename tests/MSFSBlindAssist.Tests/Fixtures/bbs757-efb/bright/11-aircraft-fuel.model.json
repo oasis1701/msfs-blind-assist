@@ -1,0 +1,454 @@
+{
+  "app": "AIRCRAFT",
+  "section": "FUEL",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "Cockpit presets",
+      "box": [
+        40,
+        152,
+        194,
+        35
+      ],
+      "hit": [
+        130,
+        169
+      ],
+      "clickable": true,
+      "key": "menu:COCKPIT PRESETS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Fuel",
+      "box": [
+        39,
+        211,
+        64,
+        35
+      ],
+      "hit": [
+        130,
+        228
+      ],
+      "clickable": true,
+      "key": "menu:FUEL",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Weight \u0026 balance",
+      "box": [
+        42,
+        275,
+        204,
+        30
+      ],
+      "hit": [
+        130,
+        290
+      ],
+      "clickable": true,
+      "key": "menu:WEIGHT \u0026 BALANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Ground services",
+      "box": [
+        42,
+        334,
+        194,
+        31
+      ],
+      "hit": [
+        130,
+        349
+      ],
+      "clickable": true,
+      "key": "menu:GROUND SERVICES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin \u0026 doors",
+      "box": [
+        44,
+        395,
+        163,
+        30
+      ],
+      "hit": [
+        130,
+        410
+      ],
+      "clickable": true,
+      "key": "menu:CABIN \u0026 DOORS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Maintenance",
+      "box": [
+        41,
+        456,
+        157,
+        29
+      ],
+      "hit": [
+        130,
+        470
+      ],
+      "clickable": true,
+      "key": "menu:MAINTENANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Failures",
+      "box": [
+        43,
+        516,
+        104,
+        28
+      ],
+      "hit": [
+        130,
+        530
+      ],
+      "clickable": true,
+      "key": "menu:FAILURES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Row",
+      "text": "Left tank",
+      "box": [
+        430,
+        405,
+        140,
+        40
+      ],
+      "hit": [
+        500,
+        425
+      ],
+      "clickable": false,
+      "key": "slot:Left tank@405",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "45%",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Center tank",
+      "box": [
+        755,
+        325,
+        140,
+        40
+      ],
+      "hit": [
+        825,
+        345
+      ],
+      "clickable": false,
+      "key": "slot:Center tank@325",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "14%",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Right tank",
+      "box": [
+        1080,
+        405,
+        140,
+        40
+      ],
+      "hit": [
+        1150,
+        425
+      ],
+      "clickable": false,
+      "key": "slot:Right tank@405",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "45%",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Left tank volume",
+      "box": [
+        372,
+        778,
+        230,
+        38
+      ],
+      "hit": [
+        487,
+        797
+      ],
+      "clickable": false,
+      "key": "slot:Left tank volume@778",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "1000 gal",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Left tank weight",
+      "box": [
+        372,
+        818,
+        230,
+        38
+      ],
+      "hit": [
+        487,
+        837
+      ],
+      "clickable": false,
+      "key": "slot:Left tank weight@818",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "6700 lbs",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Center tank volume",
+      "box": [
+        717,
+        778,
+        230,
+        38
+      ],
+      "hit": [
+        832,
+        797
+      ],
+      "clickable": false,
+      "key": "slot:Center tank volume@778",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "1000 gal",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Center tank weight",
+      "box": [
+        717,
+        818,
+        230,
+        38
+      ],
+      "hit": [
+        832,
+        837
+      ],
+      "clickable": false,
+      "key": "slot:Center tank weight@818",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "6700 lbs",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Right tank volume",
+      "box": [
+        1062,
+        778,
+        230,
+        38
+      ],
+      "hit": [
+        1177,
+        797
+      ],
+      "clickable": false,
+      "key": "slot:Right tank volume@778",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "1000 gal",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Right tank weight",
+      "box": [
+        1062,
+        818,
+        230,
+        38
+      ],
+      "hit": [
+        1177,
+        837
+      ],
+      "clickable": false,
+      "key": "slot:Right tank weight@818",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "6700 lbs",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Total fuel quantity",
+      "box": [
+        925,
+        878,
+        100,
+        40
+      ],
+      "hit": [
+        975,
+        898
+      ],
+      "clickable": false,
+      "key": "slot:Total fuel quantity@878",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "26%",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Total fuel volume",
+      "box": [
+        717,
+        912,
+        230,
+        38
+      ],
+      "hit": [
+        832,
+        931
+      ],
+      "clickable": false,
+      "key": "slot:Total fuel volume@912",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "3000 gal",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Total fuel weight",
+      "box": [
+        717,
+        952,
+        230,
+        38
+      ],
+      "hit": [
+        832,
+        971
+      ],
+      "clickable": false,
+      "key": "slot:Total fuel weight@952",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "20100 lbs",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "Tank figures as the tablet shows them.",
+      "box": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "hit": [
+        0,
+        0
+      ],
+      "clickable": false,
+      "key": "txt:note",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications",
+      "box": [
+        1364,
+        6,
+        19,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

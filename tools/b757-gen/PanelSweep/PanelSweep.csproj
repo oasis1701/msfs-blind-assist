@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Live sweep of every positional control on the BlueBird 757's panels: reads each control, writes
+    each of its other positions the way the app does, reads back, and puts the control back. It
+    compiles the app's own planner (Bbs757ControlMap, Bbs757Write, Bbs757Rpn, linked, never copied),
+    so what it proves is the shipped writer. Not part of the solution (CORE-4); build on its own:
+      dotnet build tools/b757-gen/PanelSweep -c Debug -p:Platform=x64
+    See tools/b757-gen/PanelSweep/README.md.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>PanelSweep</RootNamespace>
+    <AssemblyName>PanelSweep</AssemblyName>
+    <!-- CS0649: fields filled by a marshaller (SimLink.SingleValue) or only by the app's own harness (Log.Redirect). -->
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The app's GlobalUsings.cs gives its files System.Diagnostics (SimulatorDetector uses Process). -->
+    <Using Include="System.Diagnostics" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.FlightSimulator.SimConnect">
+      <HintPath>..\..\..\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The map, the planner and the RPN builders: the app's own files. -->
+    <Compile Include="..\..\..\MSFSBlindAssist\Aircraft\BBS757\Bbs757ControlMap.cs" Link="Linked\Bbs757ControlMap.cs" />
+    <Compile Include="..\..\..\MSFSBlindAssist\Aircraft\BBS757\Bbs757Write.cs" Link="Linked\Bbs757Write.cs" />
+    <Compile Include="..\..\..\MSFSBlindAssist\Aircraft\BBS757\Bbs757Rpn.cs" Link="Linked\Bbs757Rpn.cs" />
+    <!-- Bbs757ControlMap logs through Utils/Logging/Log ([CORE-15]) and SimulatorDetector does too, so
+         the logger and its path authority ride along (as in tools/LandingExitSweep). The logger is never
+         started here, so nothing is written to the pilot's logs. -->
+    <Compile Include="..\..\..\MSFSBlindAssist\Utils\Logging\*.cs" Link="Linked\Logging\%(Filename)%(Extension)" />
+    <Compile Include="..\..\..\MSFSBlindAssist\Utils\AppLogs.cs" Link="Linked\AppLogs.cs" />
+    <!-- Picks the SimConnect.dll for the running sim, as the app does at start-up. -->
+    <Compile Include="..\..\..\MSFSBlindAssist\Utils\SimulatorDetector.cs" Link="Linked\SimulatorDetector.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Embedded under the bare name Bbs757ControlMap.Load() matches on (a suffix match), exactly as the app ships it. -->
+    <EmbeddedResource Include="..\..\..\MSFSBlindAssist\Resources\bbs757_control_map.json" LogicalName="bbs757_control_map.json" Link="Linked\bbs757_control_map.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The app copies the right one of these to SimConnect.dll when it starts (Program.EnsureCorrectSimConnectDll);
+         so does the live sweep, which is why the tool ships both rather than copying the app's output. -->
+    <None Include="..\..\..\SimConnect_msfs_2020.dll" Link="SimConnect_msfs_2020.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\SimConnect_msfs_2024.dll" Link="SimConnect_msfs_2024.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="denylist.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

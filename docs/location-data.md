@@ -139,11 +139,17 @@ Numbers are invariant everywhere (LOC-3).
 
 - Pure, unit-tested: `GeoNamesDumpLine`, `GeoNamesNameFiles`, `LocationFeatureCatalog`,
   `LocationGrid`, `LocationGeometry`, `NaturalEarthShapes`, `DownloadGuards` (progress gate, stall
-  detector, retry budget, resume decision, disk space), `LocationPhrases`, `LocationDataStatusText`.
+  detector, retry budget, resume decision, disk space), `LocationPhrases`, `LocationDataStatusText`,
+  `SearchText` (the name folding the EFB's airport search and `FindTowns` share).
 - I/O: `LocationDataStore`, `LocationDataBuilder`, `LocationDataDownloader`, `OfflineLocationService`.
 - Callers: `MainForm.AnnounceNearestCity` (Output C and its timer), `MainForm.ShowLocationInfoDialog`,
-  `Forms/LocationInfoForm.cs`, `Forms/Settings/GeoNamesPanel.cs`, and the Volanta window
-  (`Forms/Volanta/VolantaLiveMapForm.cs`, through `GetPlaces` and `GetMajorCities`).
+  `Forms/LocationInfoForm.cs`, `Forms/Settings/GeoNamesPanel.cs`, the Volanta window
+  (`Forms/Volanta/VolantaLiveMapForm.cs`, through `GetPlaces` and `GetMajorCities`), and the EFB's
+  Airport Lookup search (`ElectronicFlightBagForm`), which asks `OfflineLocationService.FindTowns` for the towns
+  named what the pilot typed and lists the airports around them (`Database/AirportNameSearch.cs`):
+  "Gothenburg" finds Landvetter, which the navdata files under "Goteborg". Towns only: their
+  236,000 names are read and compared in 170 to 340 ms on the owner's PC, while a plain SQL name
+  scan of towns and the 4.9 million villages together took about 400 ms before any comparing.
 
 Tests in `tests/MSFSBlindAssist.Tests/Geography/` build a small fixture world
 (`GeographyFixtureWorld`) with the real builder and run the whole download job against a fake

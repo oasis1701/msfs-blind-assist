@@ -818,4 +818,14 @@ public class SayIntentionsClearanceParserTests
     {
         Assert.Equal(expected, SayIntentionsClearanceParser.ParseDestinationGate(clearance));
     }
+
+    [Fact]
+    public void WaterRunwayKeepsItsSuffix()
+    {
+        // PHNL's sealanes 04W/22W: "runway 04W" used to route to "04" (VirtualPilot 2026-09-18).
+        Assert.Equal("04W", SayIntentionsClearanceParser.ParseDestinationRunway("Runway 04W, taxi via Y, D"));
+        Assert.Equal("22W", SayIntentionsClearanceParser.CleanRunway("22W"));
+        // Bound as tightly as L/C/R: a word starting with W is not a side.
+        Assert.Equal("22", SayIntentionsClearanceParser.ParseDestinationRunway("Taxi to runway 22 wait for traffic"));
+    }
 }

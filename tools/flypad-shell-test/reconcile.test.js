@@ -259,3 +259,22 @@ test('the ATC pair keeps two keys: a re-sort leaves each label on its own node',
   assert.strictEqual(find('UNICOM 122.800: Set Active'), a, 'Set Active was re-homed onto another node');
   assert.strictEqual(find('UNICOM 122.800: Set Standby'), sb, 'Set Standby was re-homed onto another node');
 });
+
+// Mirrors the shipping shell's focus handling (efb-shell.test.js): a node leaving from above moves
+// nothing below it, a focused node that leaves hands the focus to the next control, and a focused
+// node moved by a re-sort gets the focus back.
+test('the focus stays on its control as nodes leave and re-sort', () => {
+  const s = loadShell();
+  const b = (idx, text) => ({ idx, kind: 'button', controlType: '', text, clickable: true });
+  const find = (t) => [...s.root().querySelectorAll('button')].find((x) => x.textContent === t);
+  const active = () => s.window.document.activeElement;
+  s.render({ page: 'Ground', elements: [b(1, 'Dismiss'), b(2, 'Catering'), b(3, 'Fuel Truck')] });
+  const fuel = find('Fuel Truck');
+  fuel.focus();
+  s.render({ page: 'Ground', elements: [b(2, 'Catering'), b(3, 'Fuel Truck')] });
+  assert.strictEqual(active(), fuel, 'a node leaving from above took the focus');
+  s.render({ page: 'Ground', elements: [b(3, 'Fuel Truck'), b(2, 'Catering')] });
+  assert.strictEqual(active(), fuel, 'a re-sort took the focus');
+  s.render({ page: 'Ground', elements: [b(2, 'Catering'), b(4, 'Baggage')] });
+  assert.strictEqual(active(), find('Catering'), 'the focus did not go to the control after the one that left');
+});

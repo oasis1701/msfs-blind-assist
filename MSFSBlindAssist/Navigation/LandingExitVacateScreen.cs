@@ -27,10 +27,18 @@ public static class LandingExitVacateScreen
         foreach (var exit in exits)
         {
             if (exit == null) continue;
-            LandingExitDestination.Resolve(
+            int resolvedDest = LandingExitDestination.Resolve(
                 graph, exit, exits, runway, runway.Heading,
                 out _, out double endLateralM, out _);
-            exit.VacatesRunway = RunwayVacateResolver.IsOffPavement(endLateralM, runway);
+            // Two-part verdict, the same as the handoff's _landingExitOffPavement: off the landing
+            // runway's pavement AND clear of every other runway — a stop point on a CROSSING runway
+            // (KDTW 04R exits resolving onto 09L) is not a vacate.
+            exit.VacatesRunway = RunwayVacateResolver.IsOffPavement(endLateralM, runway)
+                && RunwayVacateResolver.IsClearOfOtherRunways(graph, resolvedDest, runway, runway.Heading);
+            // "(sharp turn back)" in the list and "Sharp turn back, slow down early." on the rollout —
+            // marked here so an exit chosen by the touchdown re-plan carries it as well.
+            exit.RequiresTurnBack = LandingExitDestination.RequiresTurnBack(
+                graph, exit, runway, runway.Heading, resolvedDest);
         }
     }
 }

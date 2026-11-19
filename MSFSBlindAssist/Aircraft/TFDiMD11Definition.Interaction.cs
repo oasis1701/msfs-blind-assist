@@ -25,6 +25,14 @@ public partial class TFDiMD11Definition
     /// </summary>
     private string _lastFlapSpoken = string.Empty;
 
+    /// <summary>
+    /// What a First Officer flap walk's quiet window held back: the read-out recorded before it
+    /// first held one back (null while nothing is held), and the announcer that would have spoken
+    /// it. <see cref="EndFoFlapWalk"/> settles both when the walk ends.
+    /// </summary>
+    private string? _flapTextBeforeFoWalk;
+    private ScreenReaderAnnouncer? _flapFoWalkAnnouncer;
+
     // Speedbrake: the lever's travel (detents) and its pull (armed), see Md11SpeedbrakeSystem.
     private double _spdbrkRng = double.NaN;
     private double _spdbrkHandle = double.NaN;
@@ -175,7 +183,8 @@ public partial class TFDiMD11Definition
         if (string.Equals(text, _lastSpoilerSpoken, StringComparison.Ordinal)) return;
         bool first = _lastSpoilerSpoken.Length == 0;
         _lastSpoilerSpoken = text;
-        if (!first) announcer.Announce(text);
+        // A First Officer stow runs the lever 50 -> 0 through every detent; its flow already said so.
+        if (!first && !_gate.IsQuietFor(Md11SpeedbrakeSystem.LeverKey, Environment.TickCount64)) announcer.Announce(text);
     }
 
     /// <summary>The pull var: armed / disarmed / extended, baseline-first, spoken on a real change.</summary>
@@ -185,6 +194,8 @@ public partial class TFDiMD11Definition
         bool changed = !first && (int)Math.Round(handle) != (int)Math.Round(_spdbrkHandle);
         _spdbrkHandle = handle;
         if (first || !changed) return;
+        // Quiet after a First Officer click: its stow passes through 1 ("armed") on its way to 0.
+        if (_gate.IsQuietFor(Md11SpeedbrakeSystem.LeverKey, Environment.TickCount64)) return;
         var text = Md11SpeedbrakeSystem.DescribeArm(handle);
         if (text != null) announcer.Announce(text);
     }
@@ -1278,6 +1289,9 @@ public partial class TFDiMD11Definition
         // The DC-power gate: consumed silently; the hook reads it from the cache.
         if (varName == DcPowerKey) return true;
 
+        // The sim's fuel weight: consumed silently; only the fuel read-outs read it, from the cache.
+        if (varName == Md11FuelUnits.SimFuelKey) return true;
+
         // Every lamp is handled here (owner state or standalone lit/dark) and consumed, so the
         // generic announce path never speaks a raw "X light: on" again.
         if (_byNodeId.TryGetValue(varName, out var ctrl) && ctrl.Kind == Md11Kinds.Annunciator)
@@ -1368,9 +1382,46 @@ public partial class TFDiMD11Definition
         // wheel too, whose first sample may land after the lever's.
         bool complete = dial != null || _flaps.DetentFor(_flapRng)?.Dial != true;
 
+        string before = _lastFlapSpoken;
         var (speak, record) = Md11FlapSystem.ReadoutDecision(_lastFlapSpoken, text, complete);
         if (record) _lastFlapSpoken = text;
-        if (speak) announcer.Announce(text);
+        if (!speak) return;
+        // A First Officer flap move walks the handle through every detent between, and its flow
+        // already says where it is going: recorded, never spoken, inside its quiet window (the
+        // spoilers' rule above). The window was opened and never read here, so After Landing's walk
+        // from FULL spoke every detent on its way to UP over the flow's own step. Held back, not
+        // lost: a walk that stops short has its resting detent spoken when it ends (EndFoFlapWalk).
+        if (_gate.IsQuietFor(Md11FlapSystem.LeverKey, Environment.TickCount64))
+        {
+            _flapTextBeforeFoWalk ??= before;
+            _flapFoWalkAnnouncer = announcer;
+            return;
+        }
+        _flapTextBeforeFoWalk = null;
+        _flapFoWalkAnnouncer = null;
+        announcer.Announce(text);
+    }
+
+    /// <summary>
+    /// A First Officer flap walk is over (<see cref="EndFoActuation"/>). Reached, its flow step said
+    /// where the handle went: nothing is spoken. Stopped short — a lost wheel event, TFDi's gate at
+    /// 28 — the flow says only "Skipping", and every detent the walk passed was recorded quietly, so
+    /// the one the handle rests in would never be heard: it is spoken now, once, unless the handle is
+    /// back where the walk began, or still between detents (the delivery that lands it speaks, the
+    /// window being closed). Spoken outside ProcessSimVarUpdate, so it honours the Ctrl+M mute
+    /// itself (MD11-18).
+    /// </summary>
+    private void EndFoFlapWalk(bool reached)
+    {
+        var before = _flapTextBeforeFoWalk;
+        var announcer = _flapFoWalkAnnouncer;
+        _flapTextBeforeFoWalk = null;
+        _flapFoWalkAnnouncer = null;
+        if (reached || before == null || announcer == null || double.IsNaN(_flapRng)) return;
+        if (_flaps.DetentFor(_flapRng) == null) return;
+        if (string.Equals(_lastFlapSpoken, before, StringComparison.Ordinal)) return;
+        if (Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(Md11FlapSystem.LeverKey)) return;
+        announcer.Announce(_lastFlapSpoken);
     }
 
     /// <summary>The thumbwheel's last sample, or null before the first — never a stand-in 0, which is a real 10°.</summary>
@@ -1505,9 +1556,8 @@ public partial class TFDiMD11Definition
                 (parentForm as MainForm)?.ShowMd11MonitorManagerDialog();
                 return true;
 
-            // Fuel twice, matching the PMDG convention: ReadFuelQuantity in pounds (the unit the
-            // aircraft itself reports and the CDU shows), ReadFuelInfo in kilograms for pilots who
-            // plan in metric.
+            // Fuel twice, matching the PMDG convention: ReadFuelQuantity in pounds, ReadFuelInfo in
+            // kilograms, whichever unit the EFB has the aircraft reporting in (Md11FuelUnits).
             case HotkeyAction.ReadFuelQuantity:
                 AnnounceFuel(simConnect, announcer, kilograms: false);
                 return true;
@@ -1681,43 +1731,16 @@ public partial class TFDiMD11Definition
     /// has a tail trim tank and an auxiliary tank that the stock left/right/center model has no
     /// slot for, so the stock read would omit real fuel. With no readable SD page these five vars
     /// are the pilot's only fuel picture.
+    ///
+    /// The vars read in the EFB's weight unit (<see cref="Md11FuelUnits"/>), so each value is
+    /// converted from that unit to the one asked for; with the unit unknown nothing is converted
+    /// and nothing is read, because a guess could halve or double the fuel the pilot hears.
     /// </summary>
     private static void AnnounceFuel(SimConnectManager sim, ScreenReaderAnnouncer announcer, bool kilograms)
     {
-        var tanks = new (string Key, string Name)[]
-        {
-            ("MD11_OVHD_TANK_1_VAL", "Tank 1"),
-            ("MD11_OVHD_TANK_2_VAL", "Tank 2"),
-            ("MD11_OVHD_TANK_3_VAL", "Tank 3"),
-            ("MD11_OVHD_TANK_AUX_VAL", "Auxiliary"),
-            ("MD11_OVHD_TANK_TAIL_VAL", "Tail"),
-        };
-
-        var parts = new List<string>(tanks.Length + 1);
-        double total = 0;
-        var anyRead = false;
-
-        foreach (var (key, name) in tanks)
-        {
-            var v = sim.GetCachedVariableValue(key);
-            if (v == null) continue;
-            anyRead = true;
-            total += v.Value;
-            // An empty aux/tail tank is normal on this aircraft, not a fault — say zero rather than
-            // omitting it, so the pilot can tell "empty" from "not reported".
-            parts.Add($"{name} {Convert(v.Value).ToString("0", CultureInfo.InvariantCulture)}");
-        }
-
-        if (!anyRead)
-        {
-            announcer.AnnounceImmediate("Fuel quantity unavailable");
-            return;
-        }
-
-        parts.Add($"Total {Convert(total).ToString("0", CultureInfo.InvariantCulture)} {(kilograms ? "kilograms" : "pounds")}");
-        announcer.AnnounceImmediate(string.Join(", ", parts));
-
-        double Convert(double lb) => kilograms ? lb * 0.45359237 : lb;
+        var readings = Md11FuelUnits.Tanks.Select(t => (t.Name, sim.GetCachedVariableValue(t.Key))).ToList();
+        announcer.AnnounceImmediate(Md11FuelUnits.Describe(readings, sim.GetCachedVariableValue(Md11FuelUnits.OptionsKey),
+            sim.GetCachedVariableValue(Md11FuelUnits.SimFuelKey), kilograms));
     }
 
     /// <summary>

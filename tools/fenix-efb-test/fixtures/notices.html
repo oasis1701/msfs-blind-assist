@@ -1,0 +1,9 @@
+<!-- HAND-MADE test fixture, NOT a live capture of the Fenix page. Written by hand from the markup in the FAP part of the Fenix page bundle (Fenix 3.0.0.7438): a loading notice with a progress bar, a bare door-status notice and a no-data notice. The page keeps the bar's progress in the width of span.bar, not in the bar's value attribute (which is empty). Used only by fenix-app.test.js. -->
+<!doctype html>
+<html>
+<body>
+<fap-notification class="loading-notification"><div class="notification-content"><p>Wait until all CIDS components have sent their configuration</p><fap-progress-bar class="progress-bar" value=""><fap-panel><fap-inset class="inset"><span class="bar" style="width: 40%"></span></fap-inset></fap-panel></fap-progress-bar></div></fap-notification>
+<fap-notification> No Door Status Available </fap-notification>
+<fap-notification class="no-data-notification"><p> No temperature data available <br>&nbsp; </p></fap-notification>
+</body>
+</html>

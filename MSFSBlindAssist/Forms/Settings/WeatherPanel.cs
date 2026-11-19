@@ -4,11 +4,12 @@ namespace MSFSBlindAssist.Forms.Settings;
 
 /// <summary>Weather section of the unified Settings dialog: the ActiveSky master switch
 /// plus the weather auto-announcement toggles (moved here from AnnouncementsPanel so all
-/// weather behavior lives on one tab). The ActiveSky switch is the ONLY control that
+/// weather behavior lives on one tab), then the outside-temperature units, last. The ActiveSky switch is the ONLY control that
 /// enables AS integration — default off; when off, ActiveSkyClient.IsRunningAsync
 /// short-circuits and no AS probing runs anywhere (see [WX-7]).</summary>
 public class WeatherPanel : UserControl, ISettingsPanel
 {
+    private CheckBox _useFahrenheitForOutsideTemperature = null!;
     private CheckBox _activeSkyEnabled = null!;
 
     private CheckBox _weatherAutoAnnounce = null!;
@@ -38,11 +39,18 @@ public class WeatherPanel : UserControl, ISettingsPanel
         AutoScroll = true;
 
         var activeSkyGroup = BuildActiveSkyGroup();
+        activeSkyGroup.TabIndex = 0;
         var announceGroup = BuildAnnouncementsGroup();
         announceGroup.Location = new System.Drawing.Point(12, activeSkyGroup.Bottom + 12);
+        announceGroup.TabIndex = 1;
+        // Last on the tab, after the announcement settings, on screen and in the tab order.
+        var temperatureGroup = BuildTemperatureGroup();
+        temperatureGroup.Location = new System.Drawing.Point(12, announceGroup.Bottom + 12);
+        temperatureGroup.TabIndex = 2;
 
         Controls.Add(activeSkyGroup);
         Controls.Add(announceGroup);
+        Controls.Add(temperatureGroup);
 
         // The announcement interval throttles the ActiveSky decoded-weather monitor,
         // and nothing else — WeatherAutoAnnounceIntervalMinutes is read in exactly one
@@ -87,6 +95,27 @@ public class WeatherPanel : UserControl, ISettingsPanel
         // stored value — LoadFrom/ApplyTo read the control regardless of visibility.
         _routeAdvisoryDistanceLabel.Visible = _activeSkyEnabled.Checked;
         _routeAdvisoryDistance.Visible = _activeSkyEnabled.Checked;
+    }
+
+    private GroupBox BuildTemperatureGroup()
+    {
+        var group = new GroupBox
+        {
+            Text = "Temperature units",
+            Size = new System.Drawing.Size(460, 84),
+            AccessibleName = "Temperature units"
+        };
+        _useFahrenheitForOutsideTemperature = new CheckBox
+        {
+            Text = "Use Fahrenheit for outside temperature (default: Celsius)",
+            Location = new System.Drawing.Point(12, 24),
+            Size = new System.Drawing.Size(430, 40),
+            TabIndex = 0,
+            AccessibleName = "Use Fahrenheit for outside temperature",
+            AccessibleDescription = "When enabled, Output O announces the outside air temperature in degrees Fahrenheit on every aircraft. Unchecked uses Celsius. Applies after saving settings."
+        };
+        group.Controls.Add(_useFahrenheitForOutsideTemperature);
+        return group;
     }
 
     private GroupBox BuildActiveSkyGroup()
@@ -268,6 +297,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
 
     public void LoadFrom(UserSettings settings)
     {
+        _useFahrenheitForOutsideTemperature.Checked = settings.UseFahrenheitForOutsideTemperature;
         _activeSkyEnabled.Checked = settings.ActiveSkyEnabled;
 
         _weatherAutoAnnounce.Checked = settings.WeatherAutoAnnounceEnabled;
@@ -290,6 +320,7 @@ public class WeatherPanel : UserControl, ISettingsPanel
 
     public void ApplyTo(UserSettings settings)
     {
+        settings.UseFahrenheitForOutsideTemperature = _useFahrenheitForOutsideTemperature.Checked;
         settings.ActiveSkyEnabled = _activeSkyEnabled.Checked;
 
         settings.WeatherAutoAnnounceEnabled = _weatherAutoAnnounce.Checked;

@@ -224,6 +224,95 @@ public partial class SimConnectManager
                 });
                 break;
 
+            case DATA_REQUESTS.REQUEST_FO_ALTITUDE_AGL:
+                SingleValue foAltAglData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_ALTITUDE_AGL",
+                    Value = foAltAglData.value,
+                    Description = $"{foAltAglData.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_AIRSPEED_IAS:
+                SingleValue foIasData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_AIRSPEED_IAS",
+                    Value = foIasData.value,
+                    Description = $"{foIasData.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_ENG1_N2:
+                SingleValue foEng1N2Data = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_ENG1_N2",
+                    Value = foEng1N2Data.value,
+                    Description = $"{foEng1N2Data.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_ENG2_N2:
+                SingleValue foEng2N2Data = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_ENG2_N2",
+                    Value = foEng2N2Data.value,
+                    Description = $"{foEng2N2Data.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_ENG3_N2:
+                SingleValue foEng3N2Data = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_ENG3_N2",
+                    Value = foEng3N2Data.value,
+                    Description = $"{foEng3N2Data.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_GEAR_HANDLE:
+                SingleValue foGearHandle = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_GEAR_HANDLE",
+                    Value = foGearHandle.value,
+                    Description = $"{foGearHandle.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_CENTER_FUEL_LBS:
+                // gallons x pounds-per-gallon -> pounds (see RequestFOCenterFuelLbs).
+                DoubleValuePair foCtrFuel = (DoubleValuePair)data.dwData[0];
+                double foCtrFuelLbs = foCtrFuel.value1 * foCtrFuel.value2;
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_CENTER_FUEL_LBS",
+                    Value = foCtrFuelLbs,
+                    Description = $"{foCtrFuelLbs:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_GEAR_POSITIONS:
+                // Left, center, right gear-leg positions (percent) — see RequestFOGearPositions.
+                DoubleValueTriple foGear = (DoubleValueTriple)data.dwData[0];
+                foreach (var (name, pct) in new[] {
+                    ("FO_GEAR_LEFT_POS", foGear.value1),
+                    ("FO_GEAR_CENTER_POS", foGear.value2),
+                    ("FO_GEAR_RIGHT_POS", foGear.value3) })
+                {
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = name,
+                        Value = pct,
+                        Description = $"{pct:0}"
+                    });
+                }
+                break;
+
             case DATA_REQUESTS.REQUEST_AIRSPEED_TAS:
                 SingleValue tasData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -321,7 +410,8 @@ public partial class SimConnectManager
                 {
                     VarName = "OUTSIDE_TEMP",
                     Value = oatData.value,
-                    Description = $"{oatData.value:0} degrees Celsius"
+                    Description = Utils.ReadoutFormat.OutsideTemperature(oatData.value,
+                        Settings.SettingsManager.Current.UseFahrenheitForOutsideTemperature)
                 });
                 break;
 
@@ -1421,8 +1511,10 @@ public partial class SimConnectManager
         // Filter out own aircraft: by its learned object id (a sweep never reports it as 0, the
         // SIMCONNECT_OBJECT_ID_USER alias). The callsign match is used ONLY until that id is learned
         // (after a connect or an aircraft load) and is ignored once it is. Independent of both, an
-        // entry on the ground at the own aircraft's own position is the own aircraft.
+        // entry on the ground at the own aircraft's own position is the own aircraft. An add-on's
+        // invisible helper objects (the Fenix's gear dummies) are "airplanes" to the sim, never traffic.
         if (_ownAircraft.IsOwnAircraft(data.dwObjectID, raw.AtcId, currentAircraftAtcId)) return;
+        if (OwnAircraftFilter.IsAddOnHelperObject(raw.AtcType, raw.AtcModel)) return;
         var own = lastKnownPosition;
         if (OwnAircraftFilter.SharesOwnPosition(raw.Latitude, raw.Longitude, raw.SimOnGround >= 0.5,
                 own?.Latitude, own?.Longitude, own is { SimOnGround: >= 0.5 })) return;

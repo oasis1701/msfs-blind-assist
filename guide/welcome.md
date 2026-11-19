@@ -8,7 +8,7 @@ Chapter 1 of 2 in [Part 1: Getting Started](index.md#part-1-getting-started) of 
 
 </div>
 
-Welcome to MSFS Blind Assist. This guide takes you from a fresh download to your first flight, and then on through every feature the app offers. It is written for blind and visually impaired pilots, and it assumes no experience with the app. If you have never flown a simulator before, that is fine too: Part 8 explains the general flying ideas the rest of the guide relies on.
+Welcome to MSFS Blind Assist. This guide takes you from a fresh download to your first flight, and then on through every feature the app offers. It is written for blind and visually impaired pilots, and it assumes no experience with the app. If you have never flown a simulator before, that is fine too: Part 9 explains the general flying ideas the rest of the guide relies on.
 
 ## What MSFS Blind Assist Is {#gs-what-it-is}
 
@@ -26,8 +26,8 @@ BA works alongside your screen reader, not instead of it: when you press a butto
 
 The guide is long, because it is the complete manual. You do not need to read it from start to finish. It is built so you can jump straight to what you need using headings.
 
-- **Parts** are the top level. Part 1 (this part) gets you set up. Part 2 opens with [a walk-through of a whole flight](core-concepts.md#concepts-story) showing how the features fit together, then explains the ideas used everywhere, such as readout hotkeys and what the tones mean. Parts 3 to 6 follow a flight in order: planning, the ground, flying, landing, and networks such as VATSIM. Part 7 covers each aircraft. Part 8 explains general flying concepts. The appendices hold a tone cheat sheet, a glossary, troubleshooting and the full hotkey reference for every aircraft.
-- On this website each chapter is its own page. The chapter title is heading level 1, **sections** are level 2 and **subsections** level 3. The [guide contents page](index.md) lists every part and chapter, and each chapter page ends with links to the previous and next chapters.
+- **Parts** are the top level. Part 1 (this part) gets you set up. Part 2 opens with [a walk-through of a whole flight](core-concepts.md#concepts-story) showing how the features fit together, then explains the ideas used everywhere, such as readout hotkeys and what the tones mean. Part 3 is [the First Officer](first-officer.md), who works your aircraft's flows and checklists with you. Parts 4 to 7 follow a flight in order: planning, the ground, flying, landing, and networks such as VATSIM. Part 8 covers each aircraft. Part 9 explains general flying concepts. The appendices hold a tone cheat sheet, a glossary, troubleshooting and the full hotkey reference for every aircraft.
+- On this website each chapter is its own page. The chapter title is heading level 1, **sections** are level 2 and **subsections** level 3. The [guide contents page](index.md) lists every part, chapter and section, and each chapter page ends with links to the previous and next chapters.
 - The whole guide is also available as **one long page**, which is the copy that comes with BA: open the Help menu and choose User Guide, and it opens in your web browser, matching the version of BA you have installed. On that page parts are heading level 2, chapters level 3, sections level 4 and subsections level 5, and your browser's find command searches the whole guide at once.
 
 To move by heading in your web browser:

@@ -46,6 +46,13 @@ jobs:
       - name: MD-11 generator path tests (Python)
         run: python -m unittest discover -s tools/md11-gen -p "test_*.py" -v
 
+      # The BlueBird 757 control-map generator (tools/b757-gen) is pure logic on
+      # hand-built rows plus one tiny fixture package written to a temp folder, so
+      # it needs no aircraft install and no pip packages. The committed
+      # bbs757_control_map.json is made by it; these tests pin its rules.
+      - name: BlueBird 757 generator tests (Python)
+        run: python -m unittest discover -s tools/b757-gen -p "test_*.py" -v
+
   efb-readers:
     name: EFB reader tests (jsdom)
     runs-on: ubuntu-latest

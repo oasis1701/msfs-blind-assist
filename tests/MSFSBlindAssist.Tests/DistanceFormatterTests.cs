@@ -186,4 +186,29 @@ public class DistanceFormatterTests
         DistanceFormatter.UnitProvider = () => DistanceUnit.Feet;
         Assert.Equal(expected, DistanceFormatter.FromFeet(input));
     }
+
+    // --- Comma-decimal cultures ------------------------------------------------
+    // Every distance the taxi and landing guidance speaks goes through here ("LAHSO hold point in …",
+    // "New exit, taxiway H, … ahead", "Next hold short of … in …", the LAHSO combo label). CI runs
+    // under en-US, so these pin that a sv-SE or de-DE PC hears the same digits: no decimal comma, no
+    // thousands separator.
+
+    [Theory]
+    [InlineData("sv-SE")]
+    [InlineData("de-DE")]
+    public void Spoken_distances_do_not_change_under_a_comma_decimal_culture(string culture)
+    {
+        var (feetExact, feetRounded, metresExact) = TestCulture.Run(culture, () =>
+        {
+            DistanceFormatter.UnitProvider = () => DistanceUnit.Feet;
+            string a = DistanceFormatter.FromFeet(12467.6, round: false);
+            string b = DistanceFormatter.FromFeet(1234.4);
+            DistanceFormatter.UnitProvider = () => DistanceUnit.Metres;
+            return (a, b, DistanceFormatter.FromFeet(12467.6, round: false));
+        });
+
+        Assert.Equal("12468 feet", feetExact);
+        Assert.Equal("1250 feet", feetRounded);
+        Assert.Equal("3800 metres", metresExact);
+    }
 }

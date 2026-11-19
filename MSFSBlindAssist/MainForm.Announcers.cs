@@ -146,6 +146,10 @@ public partial class MainForm
         // Step 1: ALWAYS store the value first (needed by all consumers)
         currentSimVarValues[e.VarName] = e.Value;
 
+        if (e.VarName == "FO_ALTITUDE_AGL") _universalLatestAgl = e.Value;
+        else if (e.VarName == "FO_GEAR_HANDLE") _universalLatestGearHandle = e.Value;
+        else if (e.VarName == "FO_AIRSPEED_IAS") _universalLatestIas = e.Value;
+
         // Composed-state controls (MD-11): relabel every dependent of this key, on EVERY path
         // below — initial snapshot, def-handled (ProcessSimVarUpdate returns true and exits
         // early) and generic. The SimConnect cache already holds the new value here, which is
@@ -382,6 +386,14 @@ public partial class MainForm
                 // on the generic path.
                 if (currentAircraft.AircraftCode == "IFLY_737MAX8" &&
                     Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Check if disabled in the BlueBird 757 Monitor Manager (its status rows speak here;
+                // the base call-outs it speaks from ProcessSimVarUpdate take the Step-2.5 wrap).
+                if (currentAircraft.AircraftCode == "BBS_757" &&
+                    Settings.SettingsManager.Current.BBS757DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -633,10 +645,13 @@ public partial class MainForm
             takeoffAssistManager.ProcessPitchUpdate(e.Value);
         }
 
-        // Handle takeoff assist IAS updates (for speed callouts)
+        // Handle takeoff assist IAS updates (for speed callouts). An aircraft that plays its own
+        // speed callouts (the BlueBird 757) hears takeoff assist's "100 knots" but not its "80 knots";
+        // read per sample, so it follows the aircraft loaded now.
         if (e.VarName == "TAKEOFF_ASSIST_IAS" && takeoffAssistManager.IsActive)
         {
-            takeoffAssistManager.ProcessSpeedUpdate(e.Value);
+            takeoffAssistManager.ProcessSpeedUpdate(e.Value,
+                aircraftCallsOwnSpeeds: currentAircraft.PlaysOwnTakeoffSpeedCallouts);
         }
 
         // Handle taxi guidance position updates (active during Taxiing, LiningUp,
@@ -1391,7 +1406,7 @@ public partial class MainForm
                 var btnVarDef = currentAircraft.GetVariables()[kvp.Key];
                 if (btnVarDef.StateVariable == varName)
                 {
-                    string stateLabel = $"{btnVarDef.DisplayName}: {(value != 0 ? "On" : "Off")}";
+                    string stateLabel = $"{btnVarDef.DisplayName}: {btnVarDef.DescribeStateLight(value)}";
                     stateBtn.Text = stateLabel;
                     stateBtn.AccessibleName = stateLabel;
                 }
