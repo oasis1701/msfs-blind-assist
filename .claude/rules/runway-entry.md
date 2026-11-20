@@ -1,7 +1,6 @@
 ---
 paths:
   - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
-  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Routing.cs"
   - "MSFSBlindAssist/Forms/TaxiAssistForm.cs"
   - "MSFSBlindAssist/Navigation/RunwayEntryDirection.cs"
   - "tests/MSFSBlindAssist.Tests/**/*DepartureLineupPoint*.cs"
