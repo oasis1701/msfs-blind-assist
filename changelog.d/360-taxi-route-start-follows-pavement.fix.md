@@ -4,4 +4,4 @@ Loaded on a runway, it starts at an exit ahead on that runway and says "Join tax
 
 When the route starts almost directly behind you and every stand nearby is on one side, the opening turn cue now sends you round on that side.
 
-If your clearance uses a runway as a taxi leg and you set a hold short on that row, you now hear "The hold short set on a skipped runway leg was dropped." instead of losing it without a word.
+If your clearance uses a runway as a taxi leg and a hold short was set on that row, you now hear "The hold short set on a skipped runway leg was dropped." instead of losing it without a word.

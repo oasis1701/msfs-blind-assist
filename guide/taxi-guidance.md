@@ -496,7 +496,7 @@ Most routes produce a clean summary. When something is not right, a warning is a
 
 **"Note: requested hold-short(s) could not be set — runway 22R (route does not cross it after taxiway B)."** You asked for a runway hold short that the route never reaches after that taxiway. Check you put the hold short on the right row. If it says *"(no safe place to hold short after taxiway B)"*, the route does meet that runway, but there is nowhere safe to stop before it.
 
-**"The hold short set on a skipped runway leg was dropped."** Your clearance uses a runway as one of its taxi legs, and you put a hold short on that row. BA cannot route along a runway, so it skips the row, and the hold short goes with it. Put the hold short on the row before or after, and calculate again.
+**"The hold short set on a skipped runway leg was dropped."** Your clearance uses a runway as one of its taxi legs, and a hold short was set on that row. BA cannot route along a runway, so it skips the row, and the hold short goes with it. Put the hold short on the row before or after, and calculate again.
 
 **"Taxiway E7 is not on the way from here and was left out."** Your clearance starts with a taxiway you can no longer use from where you are. This happens when the clearance was given for one runway exit and you vacated at another: reaching the first taxiway would mean taxiing out to it and turning straight back. BA drops that taxiway and follows the rest of the clearance from your position. The route summary that follows names the taxiways it kept.
 
