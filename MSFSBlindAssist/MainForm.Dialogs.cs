@@ -646,6 +646,10 @@ public partial class MainForm
         }
 
         simTabletImportBusy = true;
+        // Exit cancels this (MainForm.cs): the import stops at its next wait, and nothing is said
+        // on the way out, whatever the client answers once it is disposed.
+        var cts = new CancellationTokenSource();
+        simTabletImportCts = cts;
         try
         {
             announcer.Announce("Loading your SimBrief plan.");
@@ -653,19 +657,27 @@ public partial class MainForm
             try { ofp = await new SimBriefService().FetchFullOFPAsync(username.Trim()); }
             catch (Exception ex)
             {
-                announcer.Announce($"Could not fetch your SimBrief plan: {ex.Message}");
+                if (!cts.IsCancellationRequested) announcer.Announce($"Could not fetch your SimBrief plan: {ex.Message}");
                 return;
             }
-            var result = await new SimTabletSimBriefImport(client.EvaluateAsync).RunAsync(ofp);
+            if (cts.IsCancellationRequested) return;
+            var result = await new SimTabletSimBriefImport(client.EvaluateAsync).RunAsync(ofp, cts.Token);
+            if (cts.IsCancellationRequested) return;
             Log.Info("SimTablet", $"SimBrief import {(result.Success ? "done" : "failed")}: {result.Message}");
             announcer.Announce(result.Message);
         }
+        catch (Exception) when (cts.IsCancellationRequested) { }   // MSFSBA is closing
         catch (Exception ex)
         {
             Log.Warn("SimTablet", $"SimBrief import: {ex.Message}");
             announcer.Announce("The SimBrief plan could not be loaded.");
         }
-        finally { simTabletImportBusy = false; }
+        finally
+        {
+            simTabletImportBusy = false;
+            if (simTabletImportCts == cts) simTabletImportCts = null;
+            cts.Dispose();
+        }
     }
 
     private bool SimTabletWindowShown => simTabletForm is { IsDisposed: false, Visible: true };

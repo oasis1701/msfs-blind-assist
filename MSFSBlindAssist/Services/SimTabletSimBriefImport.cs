@@ -28,6 +28,7 @@ public sealed class SimTabletSimBriefImport
     internal const int OpenTries = 15;     // 4.5 s for the Flight Planner and its Route panel to show
     internal const int SaveTries = 10;     // 3 s for SAVE to enable once the box holds the text
     internal const int LoadTries = 30;     // 9 s for both airports to load
+    internal const int ChangeTries = 10;   // 3 s for a plan between the same airports to show the new route
     internal const int RunwayTries = 15;   // 4.5 s for a runway pick to show
 
     internal const string NotConnected = "The sim tablet is not connected.";
@@ -77,12 +78,14 @@ public sealed class SimTabletSimBriefImport
         //    held this route (the plan is loaded) SAVE never enables, so the reader closed the box
         //    and said unchanged: there is nothing to save.
         var notes = new List<string>();
+        SimTabletRoute.RouteState? before = null;
         if (entered.Unchanged)
         {
             notes.Add("The Flight Planner already had this route.");
         }
         else
         {
+            before = await State();   // the plan as it stands, before SAVE replaces it
             bool saved = false;
             for (int i = 0; i < SaveTries && !saved; i++)
             {
@@ -99,14 +102,26 @@ public sealed class SimTabletSimBriefImport
             }
         }
 
-        // 4. Both airports loaded.
+        // 4. Both airports loaded, from the route just saved. When the Flight Planner already held a
+        //    plan between the same two airports, the airports match before the tablet has read the
+        //    new route, so the import also waits to see the plan change (any reading unlike the one
+        //    before SAVE, a cleared one too). If nothing it reads changes within ChangeTries, it goes
+        //    on with what the tablet shows.
+        string? beforeSignature = before != null && SimTabletRoute.HasAirports(before, origin, dest)
+            ? SimTabletRoute.PlanSignature(before) : null;
+        bool changed = beforeSignature == null;
         SimTabletRoute.RouteState? st = null;
         for (int i = 0; i < LoadTries; i++)
         {
             await _delay(PollMs, ct);
-            st = await State();
-            if (st != null && SimTabletRoute.HasAirports(st, origin, dest)) break;
-            st = null;
+            var now = await State();
+            if (now == null) continue;
+            if (!changed && SimTabletRoute.PlanSignature(now) != beforeSignature) changed = true;
+            if (SimTabletRoute.HasAirports(now, origin, dest) && (changed || i + 1 >= ChangeTries))
+            {
+                st = now;
+                break;
+            }
         }
         if (st == null) return new Result(false, $"The sim tablet did not load the route from {origin} to {dest}.");
 
@@ -171,7 +186,7 @@ public sealed class SimTabletSimBriefImport
             var root = doc.RootElement;
             bool ok = root.TryGetProperty("ok", out var o) && o.ValueKind == JsonValueKind.True;
             bool done = root.TryGetProperty("done", out var d) && d.ValueKind == JsonValueKind.True;
-            string err = root.TryGetProperty("error", out var e) ? e.GetString() ?? "" : "";
+            string err = root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : "";
             bool unchanged = root.TryGetProperty("unchanged", out var u) && u.ValueKind == JsonValueKind.True;
             return new Step(ok, done, err, unchanged);
         }

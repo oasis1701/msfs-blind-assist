@@ -516,7 +516,7 @@ MSFS 2020 has no such tablet.
 
 <div class="callout warning" role="note" markdown="1">
 
-**Warning:** These aircraft have their own tablet and flight computer: the FlyByWire A320neo and A380X, the Headwind A330-900neo, the Fenix A320, the PMDG 737 and 777, the iFly 737 MAX8, the TFDi MD-11 and the HorizonSim 787-9. On them, use the aircraft's own tablet (Input Shift+T, see [Aircraft EFBs](#aircraft-efb)) and flight computer, and never send a flight plan from the in-sim tablet: it causes problems with the aircraft.
+**Warning:** These aircraft have their own tablet and flight computer: the FlyByWire A320neo and A380X, the Headwind A330-900neo, the Fenix A320, the PMDG 737 and 777, the iFly 737 MAX8, the TFDi MD-11, the BlueBird 757-200 and the HorizonSim 787-9. On them, use the aircraft's own tablet (Input Shift+T, see [Aircraft EFBs](#aircraft-efb)) and flight computer, and never send a flight plan from the in-sim tablet: it causes problems with the aircraft.
 
 </div>
 
@@ -572,7 +572,7 @@ You need your SimBrief username in BA's settings first: see [Setting your SimBri
 ### What you will hear {#in-sim-tablet-hear}
 
 - *"Loading your SimBrief plan."* when you press the button, then a summary: both airports with their runways, the number of waypoints, the cruise altitude, and any procedure the tablet chose.
-- *"The Flight Planner already had this route."* at the end of the summary, when the tablet already held this plan.
+- The same summary again if you press the button a second time, as the tablet loads the plan again.
 - *"The SimBrief plan is still loading."* if you press the button again before the first press has finished.
 - *"The tablet is showing in the sim. Closing this window hides it again."* after Show the tablet in the sim, and *"The tablet is hidden in the sim."* after Hide.
 

@@ -72,4 +72,51 @@ public static class RouteStartTurnCue
             ? $"Sharp turn {dir} onto taxiway {name}."
             : $"Sharp turn {dir}.";
     }
+
+    /// <summary>At or above this the way round is close to a coin toss, so pavement can decide it.</summary>
+    public const double RampSideMinErrorDeg = 150.0;
+
+    /// <summary>How far from the aircraft a stand can say which side the ramp is on.</summary>
+    public const double RampSideSearchMeters = 200.0;
+
+    /// <summary>A stand closer to the aircraft's axis than this is ahead or behind, not to a side.</summary>
+    public const double RampSideMinLateralMeters = 30.0;
+
+    private const double MetersPerDegree = 111132.0;
+
+    /// <summary>
+    /// The opening heading error, turned the other way round when a near-reversal's short way leads
+    /// away from the only stands nearby. The navdata has no apron polygons, so stands are the evidence
+    /// for which side is paved. PHNL taxiway C, 2026-11-06: the short way was left, onto the grass; every
+    /// stand lay to the right, across the ramp the aircraft had just been pushed over.
+    /// </summary>
+    /// <returns>The error unchanged, or the same turn expressed the other way, capped at 179 degrees
+    /// as the tone caps it. Stands on both sides, or on neither, change nothing.</returns>
+    public static double PreferRampSide(
+        double headingErrorDeg, double lat, double lon, double headingTrue,
+        IEnumerable<(double Lat, double Lon)> stands)
+    {
+        double abs = Math.Abs(headingErrorDeg);
+        if (abs < RampSideMinErrorDeg) return headingErrorDeg;
+
+        double radians = headingTrue * Math.PI / 180.0;
+        double metersPerDegLon = MetersPerDegree * Math.Cos(lat * Math.PI / 180.0);
+        bool right = false, left = false;
+        foreach (var stand in stands)
+        {
+            double north = (stand.Lat - lat) * MetersPerDegree;
+            double east = (stand.Lon - lon) * metersPerDegLon;
+            if (Math.Sqrt(north * north + east * east) > RampSideSearchMeters) continue;
+
+            double lateral = east * Math.Cos(radians) - north * Math.Sin(radians);
+            if (lateral >= RampSideMinLateralMeters) right = true;
+            else if (lateral <= -RampSideMinLateralMeters) left = true;
+        }
+        if (right == left) return headingErrorDeg;
+
+        int side = right ? 1 : -1;
+        return side == Math.Sign(headingErrorDeg)
+            ? headingErrorDeg
+            : side * Math.Min(360.0 - abs, 179.0);
+    }
 }
