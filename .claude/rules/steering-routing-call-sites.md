@@ -11,5 +11,9 @@ MIRRORS: copied word for word from taxi-steering.md, which leaves this partial o
 - [STR-20] An entry stub ending on the destination centreline up to `ENTRY_STUB_BEYOND_END_M` (100 m) past the recorded end still reaches the runway (`RunwaysOnEntryStub` fallback); never widen its lateral bound past the runway's half-width. Full: docs/invariants/taxi-steering.md#str-20
 - [STR-21] `AdvanceToNearestSegment` must not skip past a SHARP junction early (the `ADVANCE_*` hairpin guard, covering every segment past the junction); each gate is measured, so re-run a VirtualPilot A/B before touching one. Full: docs/invariants/taxi-steering.md#str-21
 
+Mirrored from runway-entry.md (it governs `ApplyHoldingPointPin` and `TryForwardFacingRunwayEntry`, and leaves this partial out for the rule budget; change them there and here together):
+- [ENT-3] The departure-entry holding-point picker skips DESCRIPTIVE OSM hold labels (`TaxiGraph.IsDescriptiveHoldLabel`); Progressive Taxi's hold-short list is not filtered; a holding-point pin that cannot be made is SPOKEN, never only logged. Full: docs/invariants/runway-entry.md#ent-3
+- [ENT-4] A full-length route arriving facing the reciprocal is re-routed to a forward-facing entry (`TryForwardFacingRunwayEntry`, `RunwayEntryDirection`), never for an intersection, holding point, backtrack or cross-component route; pilot picks run AFTER it and the pin. Full: docs/invariants/runway-entry.md#ent-4
+
 Mirrored from taxi-turn-picks.md (it governs `TryRecalculateRoute`; change it there and here together):
 - [TURN-3] A recalculation (`TryRecalculateRoute`) never re-judges a Turn pick from the aircraft: one ahead keeps the loaded turn and tail (`TurnPickCarryOver.TailFrom`) or is said; one in the turn is missed unless on its taxiway (`MadeByCut`); neither is a no-op; a made junction stays blocked (`BlocksToKeep`); blocks change only on adoption. Full: docs/invariants/taxi-turn-picks.md#turn-3
