@@ -130,6 +130,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [adding-features.md](docs/adding-features.md) | Step-by-step workflows for common tasks | — |
 | [variable-system.md](docs/variable-system.md) | The three variable patterns (panel, monitoring, hotkey) | — |
 | [hotkey-system.md](docs/hotkey-system.md) | Adding or changing hotkeys | — |
+| [controller-buttons.md](docs/controller-buttons.md) | Yoke, joystick and throttle buttons bound to hotkey commands (Settings > Controller Buttons) | controller-buttons |
 | [development.md](docs/development.md) | Dependencies, key files, build output paths and traps, and the Claude Code hooks | claude-tooling |
 | [tooling.md](docs/tooling.md) | Live debugging over the Coherent debugger (`:19999`), the probes in `tools/`, crash diagnosis | coherent-clients |
 | [troubleshooting-playbook.md](docs/troubleshooting-playbook.md) | A control "doesn't work": read this FIRST, before calling it broken or unsettable | troubleshooting |
