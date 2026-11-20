@@ -43,6 +43,8 @@ tools/VirtualPilot/bin/x64/Release/net10.0-windows/VirtualPilot.exe <mode> [opti
 | `landings` | every listed exit of every runway: once **following the tone**, once **rolling straight past** (skipped for End exits / exits < 600 m from the runway end) |
 | `taxi` | per airport, K plans: gate → runway (lineup) and landing-exit vacate point → gate; each flown on the **shortest path** and again on an **ATC-style clearance** (the shortest route's taxiway names in order) |
 | `wrongturn` | follows a gate → runway route, then deliberately turns into a branch that leads to a runway hold line not on the route; the app must say "off route" first |
+| `rwystop` | a route loaded while stopped on a runway, midway across the widest gap between two exits, to a random gate, with and without a clearance. `VP_LEGACY_RWYSTART=1` and `VP_LEGACY_TURNSIDE=1` restore the older route start and opening turn for an A/B |
+| `missedexit` | per runway, two flights where the pilot rolled past the planned exit and vacated at the next one, then loaded the gate route with the clearance given for the planned exit. The flight that prompted it (VTBS 02R, 2026-11-18) vacated one exit EARLY, which this mode does not fly; that one is replayed with `--trace ICAO:from:…`. Where the two exits are 300 m or more apart, the same clearance is also loaded while still on the runway, 150 m past the planned exit (`MISSEDEXIT_RWY`) |
 | `all` | landings + taxi |
 | `departures` | per runway end: named (OSM) holding-point departures (`HP`, flown free and on a clearance), intersection departures (`IX`), full-length backtracks where the runway list would say "(backtrack required)" (`BT`); per airport: gate → gate taxis across the field (`G2G`) and ATC clearances with explicit "hold short of runway X" instructions (`HSCLR`) — each also voiced as a written and a spoken-NATO clearance and fed to the SayIntentions import's own parser (`CLR_*`) |
 | `turnpicks` | per taxi plan, the clearance a controller would give, then, for every row and both sides, the Turn pick a pilot could set on that row: each is loaded as the planner loads it and what became of it is recorded (already made, charted, off-chart leg, or refused and why); a pick that changes the route is flown following the tone, and flown once more with the pilot taking the charted way at the junction instead. `turn_report.py runs/NAME` summarises it |
@@ -54,12 +56,16 @@ thread), `--taxi-per-airport K`, `--out file`, and
 `--trace ICAO:RWY:EXIT[:straight]` / `--trace ICAO:taxi:N[:clearance]` for one scenario frame by
 frame (speech, state changes, routes, the harness's view of the runway frame).
 
+`--trace ICAO:from:<lat>,<lon>,<heading>:<text in the gate's name>[:A,B,C]` loads a route where a real
+flight loaded it, with the clearance it had, taken from the taxi and router logs.
+
 **Which navdata.** `--sim fs2020|fs2024` (or `VP_SIM`) picks the simulator whose database is flown,
 found where the app finds it (`DatabasePathResolver`); `--db file` (or `VP_DB`) names a database by
 path. With neither, the MSFS 2020 database is flown when it is installed (the rounds below up to the
 fifth flew it) and the MSFS 2024 one when it is not. The run prints the choice and writes it into the
 findings header. **A before/after pair only compares when both runs fly the same database**: the
-airports, the plans drawn and every finding differ between the two.
+airports, the plans drawn and every finding differ between the two. The two simulators draw the same
+airport differently, so measure a routing or guidance change on both.
 
 Every run writes `<out>` (findings) and `<out>.results.txt` (one outcome line per landing).
 `tools/VirtualPilot/compare.py BEFORE.results.txt AFTER.results.txt` diffs two runs landing by
@@ -359,6 +365,57 @@ Follow-up the same evening (A/B against the round's end, 0 new findings, wrong t
     is rescued by it), a close exit is still taken when nothing further qualifies, and
     `RetargetLandingExit` tries it last when every further exit fails to route (KEDW 23L past C).
     314 straight-roll retargets now name an exit a median 100 m ahead instead of 35 m.
+
+## Sixth round — route starts off the pavement (2026-11-08, same 100 airports, plain navdata)
+
+A/B with both legacy switches on and off, 6,893 scenarios. `TAXI_OFF_PAVEMENT` went away on 610 scenarios and appeared on 22. In `rwystop` alone, 843 of 1,124 flights were flagged before and 265 after, `TAXI_NOT_ARRIVED` went from 12 to 1 and stops on runway pavement from 9 to 4. Silent wrong turns stayed at 14.
+
+The first attempt took the nearest exit whatever the route did next, which added 10 stops short of the runway just left (KFLL 10L Q); an exit whose route comes back onto the runway is now skipped. The walk target also aimed the roll beside the runway where the first segment leaves at an angle, so the tone now aims at the start node until the aircraft arrives.
+
+Accepted: 13 new `TAXI_RECALC_WHILE_FOLLOWING` against 32 gone. `RUNWAY_ENTERED_UNHELD` in `rwystop` rose from 17 flights to 25, but 22 of the 25 name the runway the flight started on, which the check reads as an entry after drifting to the edge, not a real entry.
+
+## Seventh round — a clearance that starts behind the aircraft (2026-11-19, 100 busiest airports of each navdata, plain navdata)
+
+Two flights on 2026-11-18 left the pavement following the tone: VTBS 02R (cleared E7, vacated one exit early at E10 after the rollout switched to it at 20 kt) and VHHH 07L (cleared C8, stopped on the runway 600 m before it). Both replay exactly with `--trace ICAO:from:…` on the 2024 navdata. `missedexit` flies the other way round, past the planned exit and off at the next; the early case rests on the VTBS replay alone. The sixth round's runway start already covers VHHH; VTBS needed RTE-38 and RTE-39 ([route-runway-start.md](invariants/route-runway-start.md)).
+
+A/B against a frozen build, modes `missedexit taxi rwystop departures wrongturn`, on both navdata sets:
+
+| | 2024 | 2020 |
+|---|---|---|
+| scenarios | 7,974 | 8,013 |
+| `TAXI_OFF_PAVEMENT` gone / appeared | 196 / 4 | 165 / 4 |
+| `RUNWAY_ENTERED_UNHELD` gone / appeared | 38 / 1 | 36 / 1 |
+| `HOLD_FAR_BEFORE_RUNWAY` gone | 37 | 35 |
+| `missedexit` flights more than 40 m off the pavement, before / after | 135 / 30 | 144 / 46 |
+| scenarios changed outside `missedexit` | 24 of 6,868 | 18 of 6,893 |
+
+Leaving out every cleared taxiway the route does not drive was measured first and rejected: at VTBS it dropped the cleared D6 and took D7.
+
+A review of that change found the same out-and-back on a route loaded while still on the runway past the cleared exit, where the runway start (RTE-37) had kept RTE-39 from running. `MISSEDEXIT_RWY` flies it: 603 flights on 2024 and 640 on 2020. With the check run from the runway start too, `TAXI_OFF_PAVEMENT` went away on 8 and 7 of them, and no code appeared in any of the 8,577 and 8,653 scenarios.
+
+Accepted: 21 (2024) and 20 (2020) new `TAXI_RECALC_WHILE_FOLLOWING` against 10 and 8 gone, and the four new `TAXI_OFF_PAVEMENT` on each. In the cases traced (KIAD 19R U3, LTFM 35R C14, KATL 27R L, ZBAD 17L C4, VTBS 20R F3) the lead-in is now kept and starts behind the aircraft, so the flight opens with "Taxiway X is behind you" and a turn the pilot model swings wide on, where it used to be sent 180 to 380 m in a straight line. At ZBAD the route change during that turn has no stop left for the runway just vacated, and says so. Three 2020 `rwystop` flights gained `RUNWAY_ENTERED_UNHELD_WARNED`; the one traced, VTBS 20R, now loads a route that leaves by the exit behind it and announces that the runway it stands on has no hold short point. The other new codes were not traced one by one.
+
+## Eighth round — review fixes to the route start (2026-11-19, 100 busiest airports of each navdata, plain navdata)
+
+A/B of the review fixes against a frozen build of the seventh round's end, the same harness, modes `missedexit taxi rwystop departures wrongturn`: every scenario matched, 8,579 on fs2024 and 8,516 on fs2020. Kept, with no finding new on either database:
+
+| | 2024 | 2020 |
+|---|---|---|
+| `TAXI_OFF_PAVEMENT` gone | 4 | 6 |
+| `HOLD_WITHOUT_RUNWAY` gone | 0 | 2 |
+| `RUNWAY_ENTERED_UNHELD` gone | 0 | 1 |
+| `TAXI_RECALC_WHILE_FOLLOWING` gone | 0 | 1 |
+
+The traced gains come from the near-cleared test ([RTE-37](invariants/route-runway-start.md#rte-37)): a first cleared taxiway within 75 m cancels the runway start only when it is on the runway or at its edge. KIAH 15L (WM, 43 m off the pavement before, 0 after) and KBNA 31 (K, 99 m before, 2 after) now start at an exit along the runway instead of a node across the grass.
+
+With the OSM snapshot loaded (fs2024, modes `missedexit taxi rwystop departures`, the 37 busiest airports fetched, 3,425 scenarios), measured because RTE-38 and RTE-39 find the junction by the names on its nodes and online names add more: the review fixes against the seventh round's end, `TAXI_OFF_PAVEMENT` gone on 1, nothing new. The route-start work as a whole against the build before it (that harness compiled against the older app), `TAXI_OFF_PAVEMENT` gone on 396 and new on 13. None of the three new ones traced reads a junction wrongly from an online name: KORD 04L E is a runway start, KMSP 04 M6 flies the same route with a different opening turn, and LTFM 35R B12B leaves out a taxiway at a real out-and-back.
+
+Measured and rejected along the way, each with its own A/B:
+
+- Reading the turn-back over 30 m of route either side of the junction ([RTE-39](invariants/route-runway-start.md#rte-39)): 4 scenarios better and 3 worse. KDEN 07 B4 reaches the cleared taxiway by a 3.3 m spur and back, which the smoothed reading missed, and EDDB 24R K1 gained three findings. Every reversal the per-node test flagged in those flights was a real out-and-back over one edge, 3.3 to 56 m long.
+- The opening turn's stand evidence from the stand rows instead of the graph's Parking nodes ([STR-24](invariants/taxi-steering.md#str-24)): more opening turns flipped, at gate departures (KMCI gates 25 and 26 on fs2020) and after an exit vacate (KPIT 28C exit C, both databases), and those flights left the pavement or were re-routed where before they had not.
+- Preferring a start that follows the clearance over every start ahead: KLSV 21L took an exit behind and turned round on the runway, 99 m off the pavement. The preference now applies only among the exits one way.
+- Splitting the exits by bank with the six-place cap unchanged: the two halves of a crossing took two places and KBNA 02L (fs2020) lost the only exit whose route stayed off the runway. A twin on the other bank no longer takes a place.
 
 **Open:** OSM hold names like "C@10/28" (KTPA, KDFW, KONT, KABQ) are read out verbatim. EGLL 09R S6
 → Gate 223 routes back up S6 onto the runway and along it (the known "runway used as a taxiway"
