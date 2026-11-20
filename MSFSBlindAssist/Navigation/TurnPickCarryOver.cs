@@ -181,16 +181,5 @@ internal static class TurnPickCarryOver
         return picks;
     }
 
-    /// Re-keys picks after rows were removed from the sequence (removedRowIndices in the old numbering).
-    public static Dictionary<int, TurnSide> WithoutRows(IReadOnlyDictionary<int, TurnSide> picks,
-        IReadOnlyCollection<int> removedRowIndices)
-    {
-        var result = new Dictionary<int, TurnSide>();
-        foreach (var (row, side) in picks)
-        {
-            if (removedRowIndices.Contains(row)) continue;
-            result[row - removedRowIndices.Count(r => r < row)] = side;
-        }
-        return result;
-    }
+    // Re-keying the picks when rows leave the sequence is ClearanceRows.Without, shared with the hold-short picks.
 }

@@ -23,7 +23,9 @@ internal sealed record TurnPickContext(
     double MaxLengthRatio, double MaxLengthPadMeters,
     // True when the aircraft is off the destination's network: the route's start node is the one
     // LoadRoute's first-leg check (RouteReachability.CheckFirstLeg) passed, so a first-row pick
-    // works from it and never re-starts the route at another node.
+    // works from it and never re-starts the route at another node. Also true for a start picked on
+    // the aircraft's runway (RouteRunwayStart, RTE-37): the node nearest the aircraft there can be a
+    // parallel taxiway across the infield.
     bool KeepRouteStart = false,
     Action<string>? Log = null);
 
@@ -192,7 +194,9 @@ internal static class TurnPickApplier
         // Steps 2 and 3 work from A and the route before it; a first row with nothing arriving at A
         // starts from the node nearest the aircraft, with an empty prefix. Off the destination's
         // network it starts from the route's own start instead: that is the node the unmapped
-        // first leg was checked from (RTE-26), and another one would skip that check.
+        // first leg was checked from (RTE-26), and another one would skip that check. A start on the
+        // aircraft's runway (RTE-37) is kept the same way: the node nearest the aircraft there can be
+        // a parallel taxiway across the infield.
         int a;
         var prefix = new List<int>();
         if (incomingOrNull == null && ctx.KeepRouteStart)

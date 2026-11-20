@@ -29,6 +29,7 @@
         private System.Windows.Forms.ToolStripMenuItem bbs757MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem extrasMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem volantaMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem simTabletMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem helpMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem userGuideMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem projectWebsiteMenuItem = null!;
@@ -74,6 +75,7 @@
             this.bbs757MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.extrasMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.volantaMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.simTabletMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.helpMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.userGuideMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.projectWebsiteMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -351,7 +353,8 @@
             this.extrasMenuItem.AccessibleName = "Extras menu";
             this.extrasMenuItem.AccessibleDescription = "Tools that work alongside the simulator";
             this.extrasMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.volantaMenuItem});
+            this.volantaMenuItem,
+            this.simTabletMenuItem});
             this.extrasMenuItem.Name = "extrasMenuItem";
             this.extrasMenuItem.Size = new System.Drawing.Size(65, 24);
             this.extrasMenuItem.Text = "E&xtras";
@@ -364,6 +367,15 @@
             this.volantaMenuItem.Size = new System.Drawing.Size(220, 26);
             this.volantaMenuItem.Text = "&Volanta…";
             this.volantaMenuItem.Click += new System.EventHandler(this.VolantaMenuItem_Click);
+            //
+            // simTabletMenuItem
+            //
+            this.simTabletMenuItem.AccessibleName = "In-Sim Tablet (FS2024 Native)";
+            this.simTabletMenuItem.AccessibleDescription = "MSFS 2024's own tablet";
+            this.simTabletMenuItem.Name = "simTabletMenuItem";
+            this.simTabletMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.simTabletMenuItem.Text = "&In-Sim Tablet (FS2024 Native)…";
+            this.simTabletMenuItem.Click += new System.EventHandler(this.SimTabletMenuItem_Click);
             //
             // helpMenuItem
             //

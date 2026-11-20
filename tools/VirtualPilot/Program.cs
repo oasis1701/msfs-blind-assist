@@ -39,6 +39,8 @@ TaxiSteeringTone.Headless = true;
 #if !MAINAPP
 if (Environment.GetEnvironmentVariable("VP_LEGACY_ANCHOR") == "1") TaxiGuidanceManager.LegacyExitAnchorForHarness = true;
 if (Environment.GetEnvironmentVariable("VP_LEGACY_REVENTRY") == "1") TaxiGuidanceManager.LegacyReversedEntryForHarness = true;
+if (Environment.GetEnvironmentVariable("VP_LEGACY_RWYSTART") == "1") TaxiGuidanceManager.LegacyRunwayStartForHarness = true;
+if (Environment.GetEnvironmentVariable("VP_LEGACY_TURNSIDE") == "1") TaxiGuidanceManager.LegacyTurnSideForHarness = true;
 #endif
 var logSink = new List<string>();
 bool captureLog = false;
@@ -97,6 +99,8 @@ foreach (var icao in airports)
         if (opt.Mode is "landings" or "all") RunLandings(w);
         if (opt.Mode is "taxi" or "all") RunTaxis(w);
         if (opt.Mode is "wrongturn") RunWrongTurns(w);
+        if (opt.Mode is "rwystop") RunRunwayStops(w);
+        if (opt.Mode is "missedexit") RunMissedExits(w);
         if (opt.Mode is "departures" or "taxi2") RunDepartures(w);
 #if !OLDAPP
         if (opt.Mode is "traffic") RunTraffic(w);
@@ -190,6 +194,82 @@ List<Finding> RunWrongTurnsCollect(World w)
     foreach (var (plan, kind) in PlanTaxis(w))
         if (kind == "out") all.AddRange(FlyWrongTurn(w, plan));
     return all;
+}
+
+// A route loaded while stopped on a runway, midway between two exits (RJAA 34L, 2026-11-06).
+void RunRunwayStops(World w)
+{
+    int seed = 23; foreach (char ch in w.Icao) seed = seed * 31 + ch;
+    var rnd = new Random(seed);
+    var gates = w.Parking.Where(p => w.NodeNear(p.Latitude, p.Longitude, 100) != null)
+                         .OrderBy(p => p.ToString(), StringComparer.Ordinal).ToList();
+    if (gates.Count == 0) return;
+    foreach (var rwy in w.Runways.Where(r => !r.IsClosed).OrderBy(r => r.RunwayID, StringComparer.Ordinal))
+    {
+        List<LandingExit> exits;
+        try { exits = w.Graph.GetLandingExits(rwy); } catch { continue; }
+        var plan = TaxiPlan.RunwayStopToGate(w, rwy, exits, gates[rnd.Next(gates.Count)]);
+        if (plan == null) continue;
+        Codes("RWYSTOP", w.Icao, plan.Describe, FlyTaxi(w, plan, withClearance: false, trace: false));
+        Codes("RWYSTOP_CLR", w.Icao, plan.Describe, FlyTaxi(w, plan, withClearance: true, trace: false));
+        taxis += 2;
+    }
+}
+
+// The pilot rolled past the planned exit, vacated at the next one, and loaded the gate route with the
+// clearance given for the planned exit. The flight behind it (VTBS 02R, 2026-11-18: cleared E7,
+// vacated one exit EARLY at E10) is the other way round and is replayed with --trace ICAO:from:.
+void RunMissedExits(World w)
+{
+    int seed = 31; foreach (char ch in w.Icao) seed = seed * 31 + ch;
+    var rnd = new Random(seed);
+    var gates = w.Parking.Where(p => w.NodeNear(p.Latitude, p.Longitude, 100) != null)
+                         .OrderBy(p => p.ToString(), StringComparer.Ordinal).ToList();
+    if (gates.Count == 0) return;
+    foreach (var rwy in w.Runways.Where(r => !r.IsClosed).OrderBy(r => r.RunwayID, StringComparer.Ordinal))
+    {
+        List<LandingExit> exits;
+        try { exits = w.Graph.GetLandingExits(rwy).OrderBy(e => e.DistanceFromThresholdFeet).ToList(); } catch { continue; }
+        for (int k = 0; k < 2 && exits.Count >= 2; k++)
+        {
+            int i = rnd.Next(exits.Count - 1);
+            var gate = gates[rnd.Next(gates.Count)];
+            var planned = TaxiPlan.ExitToGate(w, rwy, exits, exits[i], gate);
+            var taken = TaxiPlan.ExitToGate(w, rwy, exits, exits[i + 1], gate);
+            if (planned == null || taken == null) continue;
+            var clearance = ClearanceOf(w, planned);
+            if (clearance == null) continue;
+            var plan = TaxiPlan.FromPosition(w, taken.StartLat, taken.StartLon, taken.StartHeading, gate, clearance);
+            plan.Describe = $"Rwy {rwy.RunwayID} cleared {exits[i].TaxiwayName} vacated {exits[i + 1].TaxiwayName} n{exits[i + 1].NodeId} -> {gate} via {string.Join(",", clearance)}";
+            Codes("MISSEDEXIT", w.Icao, plan.Describe, FlyTaxi(w, plan, withClearance: false, trace: false));
+            taxis++;
+
+            // The same clearance loaded before vacating: still on the runway, 150 m past the planned exit.
+            double gapM = (exits[i + 1].DistanceFromThresholdFeet - exits[i].DistanceFromThresholdFeet) * 0.3048;
+            if (gapM < 300) continue;
+            double along = TaxiPlan.Bearing(exits[i].Latitude, exits[i].Longitude, exits[i + 1].Latitude, exits[i + 1].Longitude);
+            var (rlat, rlon) = Geo.Move(exits[i].Latitude, exits[i].Longitude, along, 150);
+            var rolling = TaxiPlan.FromPosition(w, rlat, rlon, along, gate, clearance);
+            rolling.Describe = $"Rwy {rwy.RunwayID} cleared {exits[i].TaxiwayName} on the runway 150 m past it n{exits[i].NodeId} -> {gate} via {string.Join(",", clearance)}";
+            Codes("MISSEDEXIT_RWY", w.Icao, rolling.Describe, FlyTaxi(w, rolling, withClearance: false, trace: false));
+            taxis++;
+        }
+    }
+}
+
+// What ATC would say for a plan: the taxiway names of its shortest route, in order.
+List<string>? ClearanceOf(World w, TaxiPlan plan)
+{
+    var probe = new TaxiGuidanceManager(new Cap(() => simNow));
+    try
+    {
+        if (plan.Load(probe, provider, w, null) != null || probe.RouteForHarness is not { } route) return null;
+        var seq = new List<string>();
+        foreach (var s in route.Segments)
+            if (!string.IsNullOrEmpty(s.TaxiwayName) && (seq.Count == 0 || seq[^1] != s.TaxiwayName)) seq.Add(s.TaxiwayName);
+        return seq.Count == 0 ? null : seq;
+    }
+    finally { probe.Dispose(); }
 }
 
 void RunWrongTurns(World w)
@@ -857,6 +937,34 @@ void RunTrace(string spec)
         // --trace ICAO:any:<text in the scenario description> — every taxi and departure scenario
         depTraceFilter = string.Join(":", parts.Skip(2));
         RunTaxis(w); RunDepartures(w);
+        if (Environment.GetEnvironmentVariable("VP_ALLLOG") == "1") foreach (var l in logSink) Console.WriteLine("LOG " + l);
+        return;
+    }
+    if (parts.Length >= 3 && parts[1].Equals("rwystop", StringComparison.OrdinalIgnoreCase))
+    {
+        // --trace ICAO:rwystop:<text in the scenario description>
+        depTraceFilter = string.Join(":", parts.Skip(2));
+        RunRunwayStops(w);
+        return;
+    }
+    if (parts.Length >= 3 && parts[1].Equals("missedexit", StringComparison.OrdinalIgnoreCase))
+    {
+        // --trace ICAO:missedexit:<text in the scenario description>
+        depTraceFilter = string.Join(":", parts.Skip(2));
+        RunMissedExits(w);
+        return;
+    }
+    if (parts.Length >= 4 && parts[1].Equals("from", StringComparison.OrdinalIgnoreCase))
+    {
+        // --trace ICAO:from:<lat>,<lon>,<heading>:<text in the gate's name>[:A,B,C]
+        // A route loaded where a real flight loaded it, with the clearance it had (from the taxi log).
+        var pos = parts[2].Split(',').Select(v => double.Parse(v, CultureInfo.InvariantCulture)).ToArray();
+        var seq = parts.Length > 4 ? parts[4].Split(',').ToList() : null;
+        var gate = w.Parking.FirstOrDefault(p => p.ToString().Contains(parts[3], StringComparison.OrdinalIgnoreCase)
+                                                 && w.NodeNear(p.Latitude, p.Longitude, 100) != null);
+        if (gate == null) { Console.WriteLine($"no gate matching \"{parts[3]}\""); return; }
+        foreach (var f in FlyTaxi(w, TaxiPlan.FromPosition(w, pos[0], pos[1], pos[2], gate, seq), withClearance: false, trace: true))
+            Console.WriteLine("FINDING " + f);
         if (Environment.GetEnvironmentVariable("VP_ALLLOG") == "1") foreach (var l in logSink) Console.WriteLine("LOG " + l);
         return;
     }
@@ -2196,6 +2304,44 @@ sealed class TaxiPlan
         return tp;
     }
 
+    /// <summary>Stopped on the centreline midway across the widest gap between two exits, facing the rollout direction.</summary>
+    public static TaxiPlan? RunwayStopToGate(World w, Runway rwy, List<LandingExit> exits, ParkingSpot gate)
+    {
+        var ordered = exits.OrderBy(e => e.DistanceFromThresholdFeet).ToList();
+        LandingExit? from = null, to = null;
+        double widest = 300.0 / 0.3048;
+        for (int i = 0; i + 1 < ordered.Count; i++)
+        {
+            double gap = ordered[i + 1].DistanceFromThresholdFeet - ordered[i].DistanceFromThresholdFeet;
+            if (gap >= widest) { widest = gap; from = ordered[i]; to = ordered[i + 1]; }
+        }
+        var gateNode = w.NodeNear(gate.Latitude, gate.Longitude, 100);
+        if (from == null || to == null || gateNode == null) return null;
+        double lat = (from.Latitude + to.Latitude) / 2.0, lon = (from.Longitude + to.Longitude) / 2.0;
+        double hdg = Bearing(from.Latitude, from.Longitude, to.Latitude, to.Longitude);
+        int dest = gateNode.NodeId;
+        return new TaxiPlan
+        {
+            Describe = $"Rwy {rwy.RunwayID} stop {from.TaxiwayName}..{to.TaxiwayName} -> {gate}",
+            StartLat = lat, StartLon = lon, StartHeading = hdg,
+            LoadFn = (m, p, wo, seq) => m.LoadRoute(p, wo.Icao, lat, lon, hdg, dest, gate.ToString(),
+                seq, prebuiltGraph: wo.Graph, announceSummary: true),
+        };
+    }
+
+    /// <summary>A route loaded at a given position and heading, with the clearance given (or none).</summary>
+    public static TaxiPlan FromPosition(World w, double lat, double lon, double hdg, ParkingSpot gate, List<string>? clearance)
+    {
+        int dest = w.NodeNear(gate.Latitude, gate.Longitude, 100)!.NodeId;
+        return new TaxiPlan
+        {
+            Describe = $"From {lat:F6},{lon:F6} hdg {hdg:F0} -> {gate}" + (clearance == null ? "" : " via " + string.Join(",", clearance)),
+            StartLat = lat, StartLon = lon, StartHeading = hdg,
+            LoadFn = (m, p, wo, _) => m.LoadRoute(p, wo.Icao, lat, lon, hdg, dest, gate.ToString(),
+                clearance == null ? null : new List<string>(clearance), prebuiltGraph: wo.Graph, announceSummary: true),
+        };
+    }
+
     public static TaxiPlan? ExitToGate(World w, Runway rwy, List<LandingExit> exits, LandingExit exit, ParkingSpot gate)
     {
         int startNode = LandingExitDestination.Resolve(w.Graph, exit, exits, rwy, rwy.Heading, out _, out _, out _);
@@ -2219,7 +2365,7 @@ sealed class TaxiPlan
         return tp;
     }
 
-    static double Bearing(double la1, double lo1, double la2, double lo2)
+    public static double Bearing(double la1, double lo1, double la2, double lo2)
         => (Math.Atan2((lo2 - lo1) * Math.Cos(la1 * Math.PI / 180), la2 - la1) * 180 / Math.PI + 360) % 360;
 }
 

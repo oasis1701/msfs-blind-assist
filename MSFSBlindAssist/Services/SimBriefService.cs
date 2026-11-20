@@ -817,6 +817,11 @@ public class SimBriefService
             ofp.AvgWindComp     = V(gen, "avg_wind_comp");
             ofp.AvgIsaDev       = V(gen, "avg_temp_dev");
             ofp.StepClimbString = V(gen, "stepclimb_string");
+            // The plan's SID and STAR as SimBrief names them in <general>; the sim tablet's route
+            // import writes them where its parser looks for them. OriginSid/DestStar keep their own
+            // sources for the planner window.
+            ofp.SidIdent        = V(gen, "sid_ident");
+            ofp.StarIdent       = V(gen, "star_ident");
         }
 
         // ── Aircraft ─────────────────────────────────────────────────────────
