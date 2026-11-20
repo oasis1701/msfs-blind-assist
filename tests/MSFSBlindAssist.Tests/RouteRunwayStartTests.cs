@@ -393,6 +393,56 @@ public class RouteRunwayStartTests
         Assert.Equal(2, Pick(graph)!.NodeId);
     }
 
+    // A closed runway is not one the aircraft rolls along to an exit. The fs2020 navdata keeps start rows
+    // for 1,226 runway ends with closed markings, and taxiways are often drawn along a closed runway.
+    [Fact]
+    public void A_closed_runway_under_the_aircraft_offers_no_start()
+    {
+        var graph = Graph(Named(1, 1400, 1, "A2"));
+        graph.RunwayCenterlines[0].IsClosed = true;
+
+        Assert.Null(Pick(graph));
+    }
+
+    // Still a runway the roll must not cross: no stop can be placed on its pavement either.
+    [Fact]
+    public void A_closed_runway_across_the_roll_still_drops_the_nodes_beyond_it()
+    {
+        var graph = Graph(Named(1, 1100, 1, "B"), Named(2, 1400, 1, "A2"));
+        var crossing = NorthSouth("18", "36", 1200.0, -1500.0, 1500.0);
+        crossing.IsClosed = true;
+        graph.RunwayCenterlines.Add(crossing);
+
+        var ids = RouteRunwayStart.Candidates(graph, Lat(0), Lon(1000), 90.0, null, Component).Select(n => n.NodeId);
+
+        Assert.Equal(new[] { 1 }, ids);
+    }
+
+    private static List<StartPosition> Starts0927() => new()
+    {
+        new() { RunwayName = "09", Latitude = Lat(0), Longitude = Lon(0), Heading = 90 },
+        new() { RunwayName = "27", Latitude = Lat(0), Longitude = Lon(3000), Heading = 270 },
+    };
+
+    private static List<Runway> Rows0927(bool closed09, bool closed27) => new()
+    {
+        new() { RunwayID = "09", Heading = 90, StartLat = Lat(0), StartLon = Lon(0), EndLat = Lat(0), EndLon = Lon(3000), Width = 200.0, IsClosed = closed09 },
+        new() { RunwayID = "27", Heading = 270, StartLat = Lat(0), StartLon = Lon(3000), EndLat = Lat(0), EndLon = Lon(0), Width = 200.0, IsClosed = closed27 },
+    };
+
+    // The runway table flags closed markings per END. A runway is closed when both ends are; one closed
+    // end (328 runways in the fs2020 navdata) leaves it open.
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, false, false)]
+    public void The_graph_marks_a_centreline_closed_only_when_both_ends_are(bool closed09, bool closed27, bool expected)
+    {
+        var graph = TaxiGraph.Build(new List<TaxiPath>(), new List<ParkingSpot>(), Starts0927(), Rows0927(closed09, closed27));
+
+        Assert.Equal(expected, Assert.Single(graph.RunwayCenterlines).IsClosed);
+    }
+
     [Theory]
     [InlineData(true, false, 0, 400.0, true)]    // on the roll to the start node
     [InlineData(true, false, 0, 40.0, false)]    // inside the look-ahead: the walk takes over

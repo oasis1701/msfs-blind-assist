@@ -87,11 +87,14 @@ public static class TaxiLeadIn
     /// edges that meet at that node, however short: the route comes back over the edge it arrived by,
     /// so the turn is 180 degrees whatever the edge's length. A reading smoothed over the route either
     /// side lost the KDEN 07 shape (a 3.3 m spur from WA out to the B4 node and back read as a 119
-    /// degree turn; VirtualPilot, 2026-11-19).
+    /// degree turn; VirtualPilot, 2026-11-19). A route that starts on the taxiway has met it there, as
+    /// <see cref="Extract"/> reads it; a later node carrying the same name (navdata repeats names on
+    /// separate pieces, and merged path ends carry them onto junctions) is not where it meets it.
     /// </summary>
     public static bool DoublesBackAtUndrivenStart(TaxiRoute route, string firstClearedTaxiway)
     {
         var segments = route.Segments;
+        if (segments.Count == 0 || segments[0].FromNode.TaxiwayNames.Contains(firstClearedTaxiway)) return false;
         if (segments.Any(s => s.TaxiwayName.Equals(firstClearedTaxiway, StringComparison.OrdinalIgnoreCase))) return false;
 
         int arrival = segments.FindIndex(s => s.ToNode.TaxiwayNames.Contains(firstClearedTaxiway));

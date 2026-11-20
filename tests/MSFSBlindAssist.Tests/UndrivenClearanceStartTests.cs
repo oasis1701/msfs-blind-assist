@@ -127,6 +127,24 @@ public class UndrivenClearanceStartTests
         Assert.True(UndrivenClearanceStart.PicksAllow(1, new[] { 1 }, null, new[] { 2 }, null, new[] { 3 }));
     }
 
+    // A Turn pick names the turn ONTO its row's taxiway from the row before. On the first taxiway that
+    // stays, that turn was given for arriving from a taxiway that would go: from wherever the route now
+    // arrives it can be the other way round, so the taxiway it turns from stays too.
+    [Fact]
+    public void TurnPicksAllow_refuses_a_turn_onto_the_first_taxiway_that_stays()
+    {
+        Assert.False(UndrivenClearanceStart.TurnPicksAllow(1, new[] { 1 }));
+        Assert.False(UndrivenClearanceStart.TurnPicksAllow(1, new[] { 0 }));
+    }
+
+    [Fact]
+    public void TurnPicksAllow_accepts_a_turn_further_on_or_none()
+    {
+        Assert.True(UndrivenClearanceStart.TurnPicksAllow(1, new[] { 2, 3 }));
+        Assert.True(UndrivenClearanceStart.TurnPicksAllow(1, null));
+        Assert.True(UndrivenClearanceStart.TurnPicksAllow(1, Array.Empty<int>()));
+    }
+
     // --- a route already built for the full clearance ------------------------------
 
     // Route loading has often just built this route while choosing a start on the runway: Count takes

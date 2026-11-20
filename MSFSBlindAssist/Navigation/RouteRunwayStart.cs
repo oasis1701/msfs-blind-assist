@@ -256,7 +256,10 @@ public static class RouteRunwayStart
         }
     }
 
-    // Of the runways under the aircraft, the one best aligned with its heading.
+    // Of the runways under the aircraft, the one best aligned with its heading. A closed runway is not
+    // one: taxiways are drawn along closed runways, and the aircraft there is taxiing, not rolling to an
+    // exit (the fs2020 navdata keeps start rows for 1,226 closed runway ends). It still blocks the roll
+    // across it above, like any runway.
     private static bool TryFindRunway(
         IReadOnlyList<RunwayShape> shapes, double lat, double lon, double headingTrue,
         out RunwayShape runway, out double aircraftAlong, out double direction)
@@ -270,7 +273,7 @@ public static class RouteRunwayStart
 
         foreach (var shape in shapes)
         {
-            if (!shape.Contains(lat, lon, 0.0)) continue;
+            if (shape.Centerline.IsClosed || !shape.Contains(lat, lon, 0.0)) continue;
 
             double along = shape.Project(lat, lon).Along;
             double travelled = shape.Project(probeLat, probeLon).Along - along;

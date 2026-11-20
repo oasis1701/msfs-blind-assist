@@ -30,5 +30,19 @@ public static class ClearanceRows
         return result;
     }
 
+    /// <summary>How many of the picks in <paramref name="pickRows"/> sit on one of
+    /// <paramref name="removedRows"/>, and so go with it.</summary>
+    public static int CountOn(IReadOnlyCollection<int> removedRows, params IEnumerable<int>?[] pickRows)
+        => pickRows.Sum(rows => rows?.Count(removedRows.Contains) ?? 0);
+
+    /// <summary>What the pilot hears when hold shorts went with a runway leg route loading skipped:
+    /// a stop they set, and would otherwise expect, is not there. Null when none did.</summary>
+    public static string? DroppedHoldShortsNote(int dropped) => dropped switch
+    {
+        <= 0 => null,
+        1 => "The hold short set on a skipped runway leg was dropped.",
+        _ => "The hold shorts set on skipped runway legs were dropped.",
+    };
+
     private static int Renumber(int row, IReadOnlyCollection<int> removedRows) => row - removedRows.Count(r => r < row);
 }

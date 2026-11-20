@@ -226,6 +226,20 @@ public class TaxiLeadInTests
         Assert.True(TaxiLeadIn.DoublesBackAtUndrivenStart(route, "B4"));
     }
 
+    // A route that STARTS on the cleared taxiway has met it there (as Extract reads it: no lead-in), so a
+    // later node that carries the same name is not where it meets it. Navdata names repeat on separate
+    // pieces and reach junction nodes through merged path ends.
+    [Fact]
+    public void DoublesBackAtUndrivenStart_is_false_when_the_route_starts_on_the_cleared_taxiway()
+    {
+        var start = At(0, 0, "A", "B");
+        var later = At(200, 0, "B", "A");
+        var back = At(100, 0, "B");
+        var route = new TaxiRoute { Segments = { Edge("B", start, later), Edge("B", later, back) } };
+
+        Assert.False(TaxiLeadIn.DoublesBackAtUndrivenStart(route, "A"));
+    }
+
     // --- IsAcceptable ------------------------------------------------------------
 
     [Fact]

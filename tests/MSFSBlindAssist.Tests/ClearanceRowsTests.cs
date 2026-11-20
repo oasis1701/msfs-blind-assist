@@ -64,6 +64,23 @@ public class ClearanceRowsTests
         Assert.Null(ClearanceRows.Without((Dictionary<int, string>?)null, new[] { 0 }));
     }
 
+    // A pick on a removed row goes with it, so route loading must be able to say so.
+    [Fact]
+    public void CountOn_counts_the_picks_sitting_on_removed_rows_across_every_list()
+    {
+        Assert.Equal(3, ClearanceRows.CountOn(new[] { 1, 3 }, new[] { 1, 2 }, null, new[] { 3 }, new[] { 1 }));
+        Assert.Equal(0, ClearanceRows.CountOn(new[] { 1 }, new[] { 0, 2 }, null));
+        Assert.Equal(0, ClearanceRows.CountOn(Array.Empty<int>(), new[] { 0, 1 }));
+    }
+
+    [Fact]
+    public void DroppedHoldShortsNote_says_a_hold_short_went_with_a_skipped_runway_leg()
+    {
+        Assert.Null(ClearanceRows.DroppedHoldShortsNote(0));
+        Assert.Equal("The hold short set on a skipped runway leg was dropped.", ClearanceRows.DroppedHoldShortsNote(1));
+        Assert.Equal("The hold shorts set on skipped runway legs were dropped.", ClearanceRows.DroppedHoldShortsNote(2));
+    }
+
     [Fact]
     public void Leading_names_the_first_rows()
     {

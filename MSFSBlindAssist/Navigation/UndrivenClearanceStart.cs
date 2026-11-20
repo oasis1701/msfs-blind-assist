@@ -53,6 +53,15 @@ public static class UndrivenClearanceStart
         => !pickRows.Any(rows => rows != null && rows.Any(row => row < count));
 
     /// <summary>
+    /// False when a Turn pick is keyed to one of the first <paramref name="count"/> taxiways or to the
+    /// first one that stays. A Turn pick names the turn ONTO its row's taxiway from the row before; on
+    /// the first taxiway that stays, that row is one being left out, and from wherever the route now
+    /// arrives the same turn can be the other way round.
+    /// </summary>
+    public static bool TurnPicksAllow(int count, IEnumerable<int>? turnPickRows)
+        => turnPickRows == null || !turnPickRows.Any(row => row <= count);
+
+    /// <summary>
     /// What the pilot hears when the route still turns straight back at the first cleared taxiway:
     /// it could not be left out (a pick keyed to it, the only cleared taxiway, or a clearance the
     /// router cannot honour without it). The route is kept, on the pavement, and said.

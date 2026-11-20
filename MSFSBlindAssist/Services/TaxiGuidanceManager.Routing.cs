@@ -108,8 +108,11 @@ public partial class TaxiGuidanceManager
         double aircraftHeadingMagVar = 0.0,
         // Whether this route is being adopted FOR THE LANDING ROLLOUT — LandingExitPlanner's
         // touchdown route, RetargetLandingExit's route to another exit, and both landing-handoff
-        // re-routes. It LABELS the "Route crossings:" log line (phase=touchdown) and does nothing
-        // else: whether the route may start held is now decided by the pass, from the aircraft's own
+        // re-routes. It LABELS the "Route crossings:" log line (phase=touchdown), and keeps such a
+        // route out of the plain-route start rules, as a landing route has its own anchor: the start
+        // on the aircraft's runway [RTE-37] (RouteRunwayStart.Applies) and the stand-side opening turn
+        // [STR-24]. It decides nothing about holds: whether the route may start held is now decided
+        // by the pass, from the aircraft's own
         // position and AircraftPosition.MayStartHeld (false only from TryRecalculateRoute), never
         // from ground speed, a gate tried and withdrawn; that is the whole of PR #238 deferred
         // finding §2. The old
@@ -389,6 +392,7 @@ public partial class TaxiGuidanceManager
             // A leg that IS a known taxiway name is never touched, even if it looks
             // like a designator — some sceneries genuinely name taxiways "25".
             string? runwayLegNote = null;
+            string? skippedLegHoldShortNote = null;
             if (taxiwaySequence is { Count: > 0 })
             {
                 var knownTaxiways = new HashSet<string>(
@@ -409,9 +413,13 @@ public partial class TaxiGuidanceManager
                 // Every per-row pick indexes the rows as the pilot entered them: re-key them all onto
                 // the rows that remain, or a pick would land on the taxiway after the skipped leg. The
                 // stored copies too, which a recalculation reads against _originalTaxiwaySequence (this
-                // list). A pick on the skipped leg's own row goes with it.
+                // list). A pick on the skipped leg's own row goes with it, and a hold short that went is
+                // said with the hold-short notes: the pilot set that stop and would otherwise expect it.
                 if (droppedRowIndices != null)
                 {
+                    skippedLegHoldShortNote = ClearanceRows.DroppedHoldShortsNote(ClearanceRows.CountOn(
+                        droppedRowIndices, userHoldShortIndices, userRunwayHoldShorts?.Keys, userTaxiwayHoldShorts?.Keys,
+                        userHoldingPointHoldShorts?.Keys));
                     turnPicks = ClearanceRows.Without(turnPicks, droppedRowIndices);
                     userHoldShortIndices = _userHoldShortIndices = ClearanceRows.Without(userHoldShortIndices, droppedRowIndices);
                     userRunwayHoldShorts = _userRunwayHoldShorts = ClearanceRows.Without(userRunwayHoldShorts, droppedRowIndices);
@@ -564,7 +572,9 @@ public partial class TaxiGuidanceManager
                 bool leaveOut = undriven > 0
                     && UndrivenClearanceStart.PicksAllow(
                         undriven, userHoldShortIndices, userRunwayHoldShorts?.Keys, userTaxiwayHoldShorts?.Keys,
-                        userHoldingPointHoldShorts?.Keys, turnPicks?.Keys)
+                        userHoldingPointHoldShorts?.Keys)
+                    // A Turn pick on the first taxiway that stays names the turn from one that would go.
+                    && UndrivenClearanceStart.TurnPicksAllow(undriven, turnPicks?.Keys)
                     // A runway start keeps its own rule: the route taken must not come back onto the runway.
                     && (runwayStart == null || !RouteRunwayStart.RouteReturnsToRunway(
                             runwayShapes!, settled!.Segments, aircraftLat, aircraftLon, headingTrue));
@@ -947,6 +957,9 @@ public partial class TaxiGuidanceManager
             string? runwayHoldShortWarning = holdingPointPinRejected && _holdingPointName.Length > 0
                 ? $"Holding point {_holdingPointName} is not on a usable route to {destinationName}. Holding at the runway entry instead."
                 : null;
+            if (skippedLegHoldShortNote != null)
+                runwayHoldShortWarning = runwayHoldShortWarning == null
+                    ? skippedLegHoldShortNote : runwayHoldShortWarning + " " + skippedLegHoldShortNote;
 
             // A route that arrives on its runway facing the WRONG WAY (EGLL 09R via NB10's 27L curve)
             // is re-routed to where the same clearance meets the runway facing the takeoff direction,
@@ -1459,7 +1472,10 @@ public partial class TaxiGuidanceManager
                 // A first cleared taxiway the route still turns straight back at, because it could not be
                 // left out (a pick keyed to it, the only cleared taxiway, a clearance the router cannot
                 // honour without it): the route stays on the pavement, and the pilot hears what it does.
-                string? turnBackNote = firstCleared != null && TaxiLeadIn.DoublesBackAtUndrivenStart(route, firstCleared)
+                // Not for a route the router built ignoring the clearance: it never goes out to the taxiway,
+                // and its fallback reason is said already.
+                string? turnBackNote = firstCleared != null && string.IsNullOrEmpty(route.ConstrainedFallbackReason)
+                                       && TaxiLeadIn.DoublesBackAtUndrivenStart(route, firstCleared)
                     ? UndrivenClearanceStart.TurnBackNote(firstCleared) : null;
                 if (turnBackNote != null)
                 {
@@ -2050,59 +2066,6 @@ public partial class TaxiGuidanceManager
             }
         }
 
-        // Still on a runway, the nearest node (or one in the heading cone) can be the parallel taxiway
-        // across the infield, the beeline route loading avoids [RTE-37]: a recalculation there starts on
-        // the runway's own nodes too, with the same candidates and the same "does not come back onto the
-        // runway" test, so a pilot who rolls past the start exit is sent to another exit along the
-        // runway. A route to a runway, and a landing-exit route, keep their own starts.
-        double recalcRunwayStartGapMeters = 0.0;
-        if (!LegacyRunwayStartForHarness && !_isRunwayLineup && !_isLandingExitRoute && destComponentId.HasValue)
-        {
-            var runwayShapes = RunwayPavement.BuildShapes(_graph.RunwayCenterlines);
-            string? firstRemaining = remainingSequence is { Count: > 0 } ? remainingSequence[0] : null;
-            var probe = new TaxiRouter(_graph);
-            var recalcCandidates = RouteRunwayStart.Candidates(
-                _graph, runwayShapes, lat, lon, headingTrue, firstRemaining, destComponentId.Value, out int recalcAhead);
-            var chosen = RouteRunwayStart.Choose(recalcCandidates,
-                c => remainingSequence is { Count: > 0 }
-                    ? probe.FindConstrainedPath(c.NodeId, _destinationNodeId, remainingSequence, destinationIsRunway: _isRunwayLineup)
-                    : probe.FindShortestPath(c.NodeId, _destinationNodeId),
-                trial => RouteRunwayStart.RouteReturnsToRunway(runwayShapes, trial.Segments, lat, lon, headingTrue),
-                recalcAhead);
-            if (chosen is { } runwayStart)
-            {
-                _guidanceLog.Info($"Recalc start on the runway: node {runwayStart.Node.NodeId} (was {nearestNode.NodeId}) " +
-                                  $"ac={lat:F6},{lon:F6}");
-                nearestNode = runwayStart.Node;
-                recalcRunwayStartGapMeters = TaxiGraph.FastDistanceMeters(lat, lon, nearestNode.Latitude, nearestNode.Longitude);
-            }
-        }
-
-        var router = new TaxiRouter(_graph);
-        int recalcStartNodeId = nearestNode.NodeId;
-
-        // Prefer getting back onto the ATC-cleared taxiway sequence when possible —
-        // only fall back to shortest path if the constrained route fails. This honors
-        // the pilot's ATC clearance during brief deviations (e.g., wide turn, wrong
-        // turn they corrected). FindConstrainedPath already falls back internally if
-        // no valid path exists, setting ConstrainedFallbackReason.
-        TaxiRoute? BuildNormalRecalcRoute(TaxiRouter r)
-        {
-            if (remainingSequence != null && remainingSequence.Count > 0)
-            {
-                return r.FindConstrainedPath(recalcStartNodeId, _destinationNodeId, remainingSequence,
-                    destinationIsRunway: _isRunwayLineup);
-            }
-            // The aircraft is near NO taxiway of the cleared sequence — it is
-            // either past the whole clearance or far off it. Re-applying the
-            // FULL original sequence from here routes the pilot BACKWARDS
-            // through the entire clearance (KIAH 2026-06-10 15:24: a via-FE
-            // recalc built a 126-node loop back to a taxiway 1.5 km behind;
-            // only the post-recalc sanity gate stopped it). Shortest path to
-            // the destination is the honest recovery.
-            return r.FindShortestPath(recalcStartNodeId, _destinationNodeId);
-        }
-
         // Turn picks (spec section 7): a pick is never judged again from where the aircraft now is. One
         // still ahead keeps its loaded turn and everything after it; one the aircraft was in the middle of
         // is said to be missed; one already made keeps its junction blocked for every later recalculation.
@@ -2111,6 +2074,8 @@ public partial class TaxiGuidanceManager
         // FindRemainingSequenceByPosition above and the holding-point pin below. The sanity gate and the
         // no-op guard judge newRoute as they always have, bar one case each: a missed pick waives the
         // gate's backwards-bearing indicator, and a missed or not-kept pick is never discarded as a no-op.
+        // Worked out before the start node is chosen, as none of it depends on the start: a start chosen
+        // on the runway is judged on the route built with these blocks and this kept tail.
         bool turnPicksInPlay = (_route?.TurnPicks.Count ?? 0) > 0 || _turnBlockedNodes.Count > 0;
         // Sentences for the "Route changed" callout: missed picks here, then could-not-be-kept at adoption.
         var turnPickRecalcNote = new List<string>();
@@ -2118,10 +2083,8 @@ public partial class TaxiGuidanceManager
         var turnBlocks = new HashSet<int>();
         // A pick the aircraft was in the middle of: the route being replaced is known to be wrong.
         bool turnPickMissed = false;
-        // The kept-tail route, while newRoute is still that object (the pin can replace it).
-        TaxiRoute? keptTailRoute = null;
-        int keptTailRow = -1;
-        TaxiRoute? newRoute = null;
+        // A pick still ahead, whose loaded turn and tail the recalculated route keeps.
+        AppliedTurnPick? aheadPick = null;
         // Picks the index has not counted as made while the aircraft is already on their taxiway: made by
         // cutting the corner (which is what trips off-route there), so neither missed nor still ahead. They
         // say nothing, keep their junction closed like a made pick, and leave the no-op guard and the
@@ -2134,7 +2097,7 @@ public partial class TaxiGuidanceManager
             turnPickMissed = missedPicks.Count > 0;
             foreach (var p in missedPicks)
                 turnPickRecalcNote.Add(TurnPickMessages.Missed(p.Side, p.TaxiwayName));
-            var aheadPick = missedPicks.Count == 0
+            aheadPick = missedPicks.Count == 0
                 ? TurnPickCarryOver.FirstAhead(_route, _currentSegmentIndex, cutPicks) : null;
             turnBlocks = TurnPickCarryOver.BlocksToKeep(_route, _currentSegmentIndex, _turnBlockedNodes);
             foreach (var p in cutPicks)
@@ -2142,29 +2105,93 @@ public partial class TaxiGuidanceManager
                 turnBlocks.UnionWith(p.BlockedNodeIds);
                 _guidanceLog.Info($"Turn pick: row {p.RowIndex} {p.Side} onto {p.TaxiwayName} made by a corner cut at segment {_currentSegmentIndex}");
             }
-            // The start node is exempt on this recalculation's router only: a route cannot start at a
-            // blocked node, but the junction stays in the committed set for every later one.
-            router.BlockedNodes.UnionWith(turnBlocks);
-            router.BlockedNodes.Remove(recalcStartNodeId);
-            if (aheadPick != null && _route != null)
+        }
+
+        // Prefer getting back onto the ATC-cleared taxiway sequence when possible —
+        // only fall back to shortest path if the constrained route fails. This honors
+        // the pilot's ATC clearance during brief deviations (e.g., wide turn, wrong
+        // turn they corrected). FindConstrainedPath already falls back internally if
+        // no valid path exists, setting ConstrainedFallbackReason.
+        TaxiRoute? BuildNormalRecalcRoute(TaxiRouter r, int startNodeId)
+        {
+            if (remainingSequence != null && remainingSequence.Count > 0)
             {
-                newRoute = keptTailRoute =
-                    BuildRecalcRouteKeepingTurn(router, _route, aheadPick, remainingSequence, recalcStartNodeId);
-                keptTailRow = aheadPick.RowIndex;
+                return r.FindConstrainedPath(startNodeId, _destinationNodeId, remainingSequence,
+                    destinationIsRunway: _isRunwayLineup);
+            }
+            // The aircraft is near NO taxiway of the cleared sequence — it is
+            // either past the whole clearance or far off it. Re-applying the
+            // FULL original sequence from here routes the pilot BACKWARDS
+            // through the entire clearance (KIAH 2026-06-10 15:24: a via-FE
+            // recalc built a 126-node loop back to a taxiway 1.5 km behind;
+            // only the post-recalc sanity gate stopped it). Shortest path to
+            // the destination is the honest recovery.
+            return r.FindShortestPath(startNodeId, _destinationNodeId);
+        }
+
+        // The recalculated route from one start node, built as it is adopted, with the router that built
+        // it (the holding-point pin below re-routes on it) and the kept-tail route when that is the one.
+        (TaxiRoute? Route, TaxiRouter Router, TaxiRoute? KeptTail) BuildRecalcFrom(int startNodeId)
+        {
+            var r = new TaxiRouter(_graph);
+            TaxiRoute? kept = null;
+            if (turnPicksInPlay)
+            {
+                // The start node is exempt on this recalculation's router only: a route cannot start at a
+                // blocked node, but the junction stays in the committed set for every later one.
+                r.BlockedNodes.UnionWith(turnBlocks);
+                r.BlockedNodes.Remove(startNodeId);
+                if (aheadPick != null && _route != null)
+                    kept = BuildRecalcRouteKeepingTurn(r, _route, aheadPick, remainingSequence, startNodeId);
+            }
+
+            // The normal build: the only build without picks, and the fallback when no kept-tail route was made.
+            var built = kept ?? BuildNormalRecalcRoute(r, startNodeId);
+
+            // The blocks are dropped, for this recalculation only, when the router finds no route at all
+            // with them (spec section 7); turnBlocks, the committed set, is left whole.
+            if ((built == null || built.Segments.Count == 0) && r.BlockedNodes.Count > 0)
+            {
+                _guidanceLog.Info($"Turn pick: recalc found no route with {r.BlockedNodes.Count} blocked node(s); retrying without them");
+                r = new TaxiRouter(_graph);
+                built = BuildNormalRecalcRoute(r, startNodeId);
+            }
+            return (built, r, kept);
+        }
+
+        // Still on a runway, the nearest node (or one in the heading cone) can be the parallel taxiway
+        // across the infield, the beeline route loading avoids [RTE-37]: a recalculation there starts on
+        // the runway's own nodes too, with the same candidates and the same "does not come back onto the
+        // runway" test, so a pilot who rolls past the start exit is sent to another exit along the
+        // runway. A route to a runway, and a landing-exit route, keep their own starts. Each candidate's
+        // route is built as above, Turn-pick blocks and kept tail included, so the test judges the route
+        // that is adopted, and the chosen one is not built again.
+        double recalcRunwayStartGapMeters = 0.0;
+        (TaxiRoute? Route, TaxiRouter Router, TaxiRoute? KeptTail)? runwayStartBuild = null;
+        if (!LegacyRunwayStartForHarness && !_isRunwayLineup && !_isLandingExitRoute && destComponentId.HasValue)
+        {
+            var runwayShapes = RunwayPavement.BuildShapes(_graph.RunwayCenterlines);
+            string? firstRemaining = remainingSequence is { Count: > 0 } ? remainingSequence[0] : null;
+            var recalcCandidates = RouteRunwayStart.Candidates(
+                _graph, runwayShapes, lat, lon, headingTrue, firstRemaining, destComponentId.Value, out int recalcAhead);
+            var candidateBuilds = new Dictionary<int, (TaxiRoute? Route, TaxiRouter Router, TaxiRoute? KeptTail)>();
+            var chosen = RouteRunwayStart.Choose(recalcCandidates,
+                c => (candidateBuilds[c.NodeId] = BuildRecalcFrom(c.NodeId)).Route,
+                trial => RouteRunwayStart.RouteReturnsToRunway(runwayShapes, trial.Segments, lat, lon, headingTrue),
+                recalcAhead);
+            if (chosen is { } runwayStart)
+            {
+                _guidanceLog.Info($"Recalc start on the runway: node {runwayStart.Node.NodeId} (was {nearestNode.NodeId}) " +
+                                  $"ac={lat:F6},{lon:F6}");
+                nearestNode = runwayStart.Node;
+                recalcRunwayStartGapMeters = TaxiGraph.FastDistanceMeters(lat, lon, nearestNode.Latitude, nearestNode.Longitude);
+                runwayStartBuild = candidateBuilds[runwayStart.Node.NodeId];
             }
         }
 
-        // The normal build: the only build without picks, and the fallback when no kept-tail route was made.
-        newRoute ??= BuildNormalRecalcRoute(router);
-
-        // The blocks are dropped, for this recalculation only, when the router finds no route at all
-        // with them (spec section 7); turnBlocks, the committed set, is left whole.
-        if ((newRoute == null || newRoute.Segments.Count == 0) && router.BlockedNodes.Count > 0)
-        {
-            _guidanceLog.Info($"Turn pick: recalc found no route with {router.BlockedNodes.Count} blocked node(s); retrying without them");
-            router = new TaxiRouter(_graph);
-            newRoute = BuildNormalRecalcRoute(router);
-        }
+        var (newRoute, router, keptTailRoute) = runwayStartBuild ?? BuildRecalcFrom(nearestNode.NodeId);
+        // The kept-tail route's row, while newRoute is still that object (the pin can replace it).
+        int keptTailRow = aheadPick != null && _route != null ? aheadPick.RowIndex : -1;
 
         if (newRoute == null || newRoute.Segments.Count == 0)
         {
