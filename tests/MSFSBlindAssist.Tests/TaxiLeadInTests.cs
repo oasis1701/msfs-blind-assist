@@ -187,6 +187,45 @@ public class TaxiLeadInTests
         Assert.False(TaxiLeadIn.DoublesBackAtUndrivenStart(route, "A"));
     }
 
+    // Equator fixture: metres = degrees x 111132.
+    private static TaxiNode At(double eastM, double northM, params string[] taxiways)
+    {
+        var node = NodeOn(taxiways);
+        node.Latitude = northM / 111132.0;
+        node.Longitude = eastM / 111132.0;
+        return node;
+    }
+
+    private static TaxiRouteSegment Edge(string taxiway, TaxiNode from, TaxiNode to)
+    {
+        double north = (to.Latitude - from.Latitude) * 111132.0, east = (to.Longitude - from.Longitude) * 111132.0;
+        return new TaxiRouteSegment
+        {
+            FromNode = from, ToNode = to, TaxiwayName = taxiway,
+            DistanceMeters = Math.Sqrt(north * north + east * east),
+            BearingDegrees = (Math.Atan2(east, north) * 180.0 / Math.PI + 360.0) % 360.0,
+        };
+    }
+
+    // KDEN 07, cleared B4, vacated at B3 (VirtualPilot, fs2024): the route reaches B4 only by a 3.3 m
+    // spur from WA out to the B4 node and straight back, then carries on east along WA. The spur is the
+    // reversal, short as it is; read over 30 m of route either side it smoothed into a 119 degree turn
+    // and B4 stayed, sending the pilot 450 m in a straight line to it.
+    [Fact]
+    public void DoublesBackAtUndrivenStart_catches_a_short_spur_out_to_the_junction_and_back()
+    {
+        var approach = At(0, -20, "");
+        var wa = At(0, 0, "WA");
+        var b4 = At(-3.3, 0, "B4", "WA");
+        var on = At(47.6, 0, "WA", "AA");
+        var route = new TaxiRoute
+        {
+            Segments = { Edge("", approach, wa), Edge("WA", wa, b4), Edge("WA", b4, wa), Edge("WA", wa, on) },
+        };
+
+        Assert.True(TaxiLeadIn.DoublesBackAtUndrivenStart(route, "B4"));
+    }
+
     // --- IsAcceptable ------------------------------------------------------------
 
     [Fact]

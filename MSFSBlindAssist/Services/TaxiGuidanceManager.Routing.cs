@@ -406,10 +406,19 @@ public partial class TaxiGuidanceManager
                     (droppedRowIndices ??= new List<int>()).Add(i);
                     taxiwaySequence.RemoveAt(i);
                 }
-                // The Turn picks index the rows as the pilot entered them: re-key them onto the rows
-                // that remain, or a pick would land on the taxiway after the skipped leg.
-                if (droppedRowIndices != null && turnPicks is { Count: > 0 })
-                    turnPicks = TurnPickCarryOver.WithoutRows(turnPicks, droppedRowIndices);
+                // Every per-row pick indexes the rows as the pilot entered them: re-key them all onto
+                // the rows that remain, or a pick would land on the taxiway after the skipped leg. The
+                // stored copies too, which a recalculation reads against _originalTaxiwaySequence (this
+                // list). A pick on the skipped leg's own row goes with it.
+                if (droppedRowIndices != null)
+                {
+                    turnPicks = ClearanceRows.Without(turnPicks, droppedRowIndices);
+                    userHoldShortIndices = _userHoldShortIndices = ClearanceRows.Without(userHoldShortIndices, droppedRowIndices);
+                    userRunwayHoldShorts = _userRunwayHoldShorts = ClearanceRows.Without(userRunwayHoldShorts, droppedRowIndices);
+                    userTaxiwayHoldShorts = _userTaxiwayHoldShorts = ClearanceRows.Without(userTaxiwayHoldShorts, droppedRowIndices);
+                    userHoldingPointHoldShorts = _userHoldingPointHoldShorts =
+                        ClearanceRows.Without(userHoldingPointHoldShorts, droppedRowIndices);
+                }
                 if (droppedRunwayLegs != null)
                 {
                     runwayLegNote = droppedRunwayLegs.Count == 1
@@ -483,6 +492,8 @@ public partial class TaxiGuidanceManager
             string? undrivenStartNote = null;
             TaxiRoute? settledRoute = null;
             int settledStartNodeId = 0;
+            // The start picked on the aircraft's own runway [RTE-37]; 0 for every other start.
+            int runwayStartNodeId = 0;
 
             if (isCrossComponentRoute)
             {
@@ -494,28 +505,38 @@ public partial class TaxiGuidanceManager
             // On a runway the nearest graph node can be a parallel taxiway across the infield, and a
             // beeline at it is a beeline over the grass (RJAA 34L). Start on the runway's own nodes.
             TaxiNode? runwayStart = null;
+            TaxiRoute? runwayStartRoute = null;
+            double headingTrue = aircraftHeading + aircraftHeadingMagVar;
+            IReadOnlyList<RunwayShape>? runwayShapes = null;
             if (!LegacyRunwayStartForHarness
                 && RouteRunwayStart.Applies(isRunwayDestination, startTaxiwayName, landingRolloutRoute))
             {
-                double headingTrue = aircraftHeading + aircraftHeadingMagVar;
+                runwayShapes = RunwayPavement.BuildShapes(_graph.RunwayCenterlines);
                 var candidates = RouteRunwayStart.Candidates(
-                    _graph, aircraftLat, aircraftLon, headingTrue, firstCleared, destComponentId);
-                // The first exit whose route stays off this runway once it has left. With none, the
-                // older start stands: a stop on the pavement is never acceptable [HLD-4].
-                runwayStart = candidates.FirstOrDefault(c =>
-                {
-                    var trial = taxiwaySequence is { Count: > 0 }
+                    _graph, runwayShapes, aircraftLat, aircraftLon, headingTrue, firstCleared, destComponentId,
+                    out int candidatesAhead);
+                // The first exit whose route stays off this runway once it has left: ahead before behind,
+                // and among those one way, one that follows the clearance before one the router had to fall
+                // back on. With none, the older start stands: a stop on the pavement is never acceptable [HLD-4].
+                var chosen = RouteRunwayStart.Choose(candidates,
+                    c => taxiwaySequence is { Count: > 0 }
                         ? router.FindConstrainedPath(c.NodeId, destinationNodeId, taxiwaySequence,
                             destinationIsRunway: isRunwayDestination)
-                        : router.FindShortestPath(c.NodeId, destinationNodeId);
-                    return trial is { Segments.Count: > 0 }
-                           && !RouteRunwayStart.RouteReturnsToRunway(
-                               _graph, trial.Segments, aircraftLat, aircraftLon, headingTrue);
-                });
+                        : router.FindShortestPath(c.NodeId, destinationNodeId),
+                    trial => RouteRunwayStart.RouteReturnsToRunway(
+                        runwayShapes, trial.Segments, aircraftLat, aircraftLon, headingTrue),
+                    candidatesAhead);
+                runwayStart = chosen?.Node;
+                runwayStartRoute = chosen?.Route;
             }
             if (runwayStart != null)
+            {
                 _guidanceLog.Info($"Route start on the runway: node {runwayStart.NodeId} " +
                                   $"({runwayStart.Latitude:F6},{runwayStart.Longitude:F6}) ac={aircraftLat:F6},{aircraftLon:F6}");
+                // The route just built for that start is the one the start builds below.
+                settledRoute = runwayStartRoute;
+                settledStartNodeId = runwayStart.NodeId;
+            }
 
             firstTwNode = runwayStart == null && firstCleared != null
                 ? SelectFirstTaxiwayEntry(aircraftLat, aircraftLon, firstCleared, destComponentId, destinationNodeId)
@@ -536,15 +557,17 @@ public partial class TaxiGuidanceManager
                 clearanceEntry = leadInEntry;
             if (clearanceEntry != null && taxiwaySequence is { Count: > 1 })
             {
+                // From a runway start the full clearance's route was built just above: Count starts from it.
                 int undriven = UndrivenClearanceStart.Count(
-                    router, clearanceEntry.NodeId, destinationNodeId, taxiwaySequence, isRunwayDestination, out var settled);
+                    router, clearanceEntry.NodeId, destinationNodeId, taxiwaySequence, isRunwayDestination, out var settled,
+                    fullClearanceRoute: runwayStart != null ? runwayStartRoute : null);
                 bool leaveOut = undriven > 0
                     && UndrivenClearanceStart.PicksAllow(
                         undriven, userHoldShortIndices, userRunwayHoldShorts?.Keys, userTaxiwayHoldShorts?.Keys,
                         userHoldingPointHoldShorts?.Keys, turnPicks?.Keys)
                     // A runway start keeps its own rule: the route taken must not come back onto the runway.
                     && (runwayStart == null || !RouteRunwayStart.RouteReturnsToRunway(
-                            _graph, settled!.Segments, aircraftLat, aircraftLon, aircraftHeading + aircraftHeadingMagVar));
+                            runwayShapes!, settled!.Segments, aircraftLat, aircraftLon, headingTrue));
                 // The route just built is the one the start from this node builds below.
                 if (undriven == 0 || leaveOut)
                 {
@@ -559,12 +582,13 @@ public partial class TaxiGuidanceManager
                                       $"ac={aircraftLat:F6},{aircraftLon:F6}");
                     // In place: _originalTaxiwaySequence is this list, and the picks are keyed by position in it.
                     taxiwaySequence.RemoveRange(0, undriven);
-                    userHoldShortIndices = _userHoldShortIndices = UndrivenClearanceStart.Shift(userHoldShortIndices, undriven);
-                    userRunwayHoldShorts = _userRunwayHoldShorts = UndrivenClearanceStart.Shift(userRunwayHoldShorts, undriven);
-                    userTaxiwayHoldShorts = _userTaxiwayHoldShorts = UndrivenClearanceStart.Shift(userTaxiwayHoldShorts, undriven);
+                    var leftOutRows = ClearanceRows.Leading(undriven);
+                    userHoldShortIndices = _userHoldShortIndices = ClearanceRows.Without(userHoldShortIndices, leftOutRows);
+                    userRunwayHoldShorts = _userRunwayHoldShorts = ClearanceRows.Without(userRunwayHoldShorts, leftOutRows);
+                    userTaxiwayHoldShorts = _userTaxiwayHoldShorts = ClearanceRows.Without(userTaxiwayHoldShorts, leftOutRows);
                     userHoldingPointHoldShorts = _userHoldingPointHoldShorts =
-                        UndrivenClearanceStart.Shift(userHoldingPointHoldShorts, undriven);
-                    turnPicks = UndrivenClearanceStart.Shift(turnPicks, undriven);
+                        ClearanceRows.Without(userHoldingPointHoldShorts, leftOutRows);
+                    turnPicks = ClearanceRows.Without(turnPicks, leftOutRows);
                     firstCleared = taxiwaySequence[0];
                     if (runwayStart == null)
                         firstTwNode = SelectFirstTaxiwayEntry(aircraftLat, aircraftLon, firstCleared, destComponentId, destinationNodeId);
@@ -574,6 +598,7 @@ public partial class TaxiGuidanceManager
             if (runwayStart != null)
             {
                 startNode = runwayStart;
+                runwayStartNodeId = runwayStart.NodeId;
                 _routeStartGapMeters = TaxiGraph.FastDistanceMeters(
                     aircraftLat, aircraftLon, runwayStart.Latitude, runwayStart.Longitude);
             }
@@ -677,11 +702,12 @@ public partial class TaxiGuidanceManager
             // from this node, so it must follow the route, not the original pick.
             routeStartNodeId = startNode.NodeId;
 
-            if (taxiwaySequence != null && taxiwaySequence.Count > 0)
-                route = settledRoute != null && startNode.NodeId == settledStartNodeId
-                    ? settledRoute
-                    : router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence,
-                        destinationIsRunway: isRunwayDestination);
+            // A route already built from this start (the runway start's, or the leave-out's) is reused.
+            if (settledRoute != null && startNode.NodeId == settledStartNodeId)
+                route = settledRoute;
+            else if (taxiwaySequence != null && taxiwaySequence.Count > 0)
+                route = router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence,
+                    destinationIsRunway: isRunwayDestination);
             else
                 route = router.FindShortestPath(startNode.NodeId, destinationNodeId);
 
@@ -989,8 +1015,10 @@ public partial class TaxiGuidanceManager
                         progressiveTerminator, _holdingPointHoldNodeId,
                         RECALC_LENGTH_BLOWUP_RATIO, RECALC_LENGTH_BLOWUP_PAD_M,
                         // Off the destination's network the first leg was checked from the route's
-                        // start above (RTE-26): a first-row pick keeps that start.
-                        KeepRouteStart: RouteReachability.IsOffDestinationNetwork(reachability),
+                        // start above (RTE-26): a first-row pick keeps that start. So does a start picked
+                        // on the aircraft's runway (RTE-37): the node nearest the aircraft there can be
+                        // the parallel taxiway across the infield.
+                        KeepRouteStart: RouteReachability.IsOffDestinationNetwork(reachability) || runwayStartNodeId != 0,
                         Log: m => _guidanceLog.Info(m)));   // the applier's lines start "Turn pick row ..."
                     if (!ReferenceEquals(turnPickResult.Route, route))
                     {
@@ -1007,6 +1035,16 @@ public partial class TaxiGuidanceManager
                         _destinationNodeId = turnPickResult.DestinationNodeId;
                     }
                 }
+            }
+
+            // The runway roll is the route's own start, or nothing: a pass above that rebuilt the route
+            // from another node takes the far-start warning, the "Join taxiway X in N" roll and the tone's
+            // aim at the start node back to an ordinary route's.
+            if (runwayStartNodeId != 0 && (route.Segments.Count == 0 || route.Segments[0].FromNode.NodeId != runwayStartNodeId))
+            {
+                _guidanceLog.Info($"Route start on the runway dropped: the route now starts at node " +
+                                  $"{(route.Segments.Count > 0 ? route.Segments[0].FromNode.NodeId : -1)}");
+                _routeStartGapMeters = 0.0;
             }
 
             // The pilot's own picks, applied to the route object that will actually be ADOPTED.
@@ -1418,6 +1456,16 @@ public partial class TaxiGuidanceManager
                 // them in the clearance and must know why the route names others.
                 if (undrivenStartNote != null)
                     summary = undrivenStartNote + " " + summary;
+                // A first cleared taxiway the route still turns straight back at, because it could not be
+                // left out (a pick keyed to it, the only cleared taxiway, a clearance the router cannot
+                // honour without it): the route stays on the pavement, and the pilot hears what it does.
+                string? turnBackNote = firstCleared != null && TaxiLeadIn.DoublesBackAtUndrivenStart(route, firstCleared)
+                    ? UndrivenClearanceStart.TurnBackNote(firstCleared) : null;
+                if (turnBackNote != null)
+                {
+                    summary = turnBackNote + " " + summary;
+                    _guidanceLog.Info($"Clearance start turned back at: {firstCleared} kept ac={aircraftLat:F6},{aircraftLon:F6}");
+                }
                 // Route-start warning goes FIRST of all (prepended last): a route the
                 // aircraft cannot join (island) or must turn around for is the single
                 // most important thing to hear, and the first tactical callout after
@@ -1447,6 +1495,7 @@ public partial class TaxiGuidanceManager
                 var mustHear = new List<string>();
                 if (!string.IsNullOrEmpty(routeStartWarning)) mustHear.Add(routeStartWarning);
                 if (undrivenStartNote != null) mustHear.Add(undrivenStartNote);
+                if (turnBackNote != null) mustHear.Add(turnBackNote);
                 // The Turn pick notes, a charted pick's "as picked" included: a Turn value left from an
                 // earlier route can turn this one, and the summary alone is cut by StartGuidance.
                 if (!string.IsNullOrEmpty(turnPickNote)) mustHear.Add(turnPickNote);
@@ -2001,6 +2050,34 @@ public partial class TaxiGuidanceManager
             }
         }
 
+        // Still on a runway, the nearest node (or one in the heading cone) can be the parallel taxiway
+        // across the infield, the beeline route loading avoids [RTE-37]: a recalculation there starts on
+        // the runway's own nodes too, with the same candidates and the same "does not come back onto the
+        // runway" test, so a pilot who rolls past the start exit is sent to another exit along the
+        // runway. A route to a runway, and a landing-exit route, keep their own starts.
+        double recalcRunwayStartGapMeters = 0.0;
+        if (!LegacyRunwayStartForHarness && !_isRunwayLineup && !_isLandingExitRoute && destComponentId.HasValue)
+        {
+            var runwayShapes = RunwayPavement.BuildShapes(_graph.RunwayCenterlines);
+            string? firstRemaining = remainingSequence is { Count: > 0 } ? remainingSequence[0] : null;
+            var probe = new TaxiRouter(_graph);
+            var recalcCandidates = RouteRunwayStart.Candidates(
+                _graph, runwayShapes, lat, lon, headingTrue, firstRemaining, destComponentId.Value, out int recalcAhead);
+            var chosen = RouteRunwayStart.Choose(recalcCandidates,
+                c => remainingSequence is { Count: > 0 }
+                    ? probe.FindConstrainedPath(c.NodeId, _destinationNodeId, remainingSequence, destinationIsRunway: _isRunwayLineup)
+                    : probe.FindShortestPath(c.NodeId, _destinationNodeId),
+                trial => RouteRunwayStart.RouteReturnsToRunway(runwayShapes, trial.Segments, lat, lon, headingTrue),
+                recalcAhead);
+            if (chosen is { } runwayStart)
+            {
+                _guidanceLog.Info($"Recalc start on the runway: node {runwayStart.Node.NodeId} (was {nearestNode.NodeId}) " +
+                                  $"ac={lat:F6},{lon:F6}");
+                nearestNode = runwayStart.Node;
+                recalcRunwayStartGapMeters = TaxiGraph.FastDistanceMeters(lat, lon, nearestNode.Latitude, nearestNode.Longitude);
+            }
+        }
+
         var router = new TaxiRouter(_graph);
         int recalcStartNodeId = nearestNode.NodeId;
 
@@ -2409,7 +2486,18 @@ public partial class TaxiGuidanceManager
                               $"{turnBlocks.Count} blocked node(s); note=\"{string.Join(" ", turnPickRecalcNote)}\"");
             _turnBlockedNodes = turnBlocks;
         }
-        _routeStartGapMeters = 0.0;   // a recalculated route starts where the aircraft is, not on a runway roll
+        // A recalculated route starts where the aircraft is, unless it starts on the runway the aircraft
+        // is rolling along [RTE-37]: then, as after a load, the tone aims at that node until the aircraft
+        // gets there, and the route is not joined until then (the never-joined escape still watches the
+        // roll, [RTE-7]).
+        bool recalcStartsOnRunway = recalcRunwayStartGapMeters > 0.0 && newRoute.Segments.Count > 0
+                                    && newRoute.Segments[0].FromNode.NodeId == nearestNode.NodeId;
+        _routeStartGapMeters = recalcStartsOnRunway ? recalcRunwayStartGapMeters : 0.0;
+        if (recalcStartsOnRunway)
+        {
+            _hasJoinedRoute = false;
+            _minPerpWhileUnjoinedM = double.MaxValue;
+        }
         AdoptRoute(newRoute, _isRunwayLineup, _destinationName, lat, lon, phase: "recalc",
             userPickEvents: recalcPickEvents, recalculation: true);
         // A remapped pick that met its runway with no stop before that pass may share the stop

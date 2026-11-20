@@ -118,17 +118,8 @@ public class UndrivenClearanceStartTests
         Assert.True(UndrivenClearanceStart.PicksAllow(2, null, null, null));
     }
 
-    [Fact]
-    public void Shift_moves_every_pick_down_by_the_taxiways_that_went()
-    {
-        Assert.Equal(new List<int> { 0, 3 }, UndrivenClearanceStart.Shift(new List<int> { 2, 5 }, 2));
-
-        var picks = UndrivenClearanceStart.Shift(new Dictionary<int, string> { [5] = "07C" }, 2);
-        Assert.Equal("07C", Assert.Single(picks!).Value);
-        Assert.Equal(3, picks!.Keys.Single());
-    }
-
-    // Hold-short, runway, taxiway, holding-point and Turn picks are all keyed by row.
+    // Hold-short, runway, taxiway, holding-point and Turn picks are all keyed by row. Moving them with
+    // the rows that remain is ClearanceRows' job (ClearanceRowsTests).
     [Fact]
     public void PicksAllow_refuses_on_any_one_of_the_pick_lists()
     {
@@ -136,23 +127,50 @@ public class UndrivenClearanceStartTests
         Assert.True(UndrivenClearanceStart.PicksAllow(1, new[] { 1 }, null, new[] { 2 }, null, new[] { 3 }));
     }
 
-    [Fact]
-    public void Shift_moves_picks_of_any_kind()
-    {
-        var picks = UndrivenClearanceStart.Shift(new Dictionary<int, TurnSide> { [2] = TurnSide.Left, [4] = TurnSide.Right }, 1);
+    // --- a route already built for the full clearance ------------------------------
 
-        Assert.Equal(TurnSide.Left, picks![1]);
-        Assert.Equal(TurnSide.Right, picks[3]);
+    // Route loading has often just built this route while choosing a start on the runway: Count takes
+    // it as its first answer instead of asking the router again.
+    [Fact]
+    public void Count_starts_from_a_full_clearance_route_it_is_handed()
+    {
+        var g = MissedExit();
+        var router = new TaxiRouter(g);
+        var built = router.FindConstrainedPath(NodeAt(g, 0, 0), NodeAt(g, 0.005, 0.004), new List<string> { "E", "D6" });
+
+        int count = UndrivenClearanceStart.Count(router, NodeAt(g, 0, 0), NodeAt(g, 0.005, 0.004), new[] { "E", "D6" },
+            destinationIsRunway: false, out var route, fullClearanceRoute: built);
+
+        Assert.Equal(0, count);
+        Assert.Same(built, route);
     }
 
     [Fact]
-    public void Shift_keeps_null_as_null()
+    public void Count_still_leaves_out_from_a_handed_route_that_doubles_back()
     {
-        Assert.Null(UndrivenClearanceStart.Shift((List<int>?)null, 2));
-        Assert.Null(UndrivenClearanceStart.Shift((Dictionary<int, string>?)null, 2));
+        var g = MissedExit();
+        var router = new TaxiRouter(g);
+        var clearance = new List<string> { "E7", "E8", "D6" };
+        var built = router.FindConstrainedPath(NodeAt(g, 0, 0), NodeAt(g, 0.005, 0.004), clearance);
+
+        int count = UndrivenClearanceStart.Count(router, NodeAt(g, 0, 0), NodeAt(g, 0.005, 0.004), clearance,
+            destinationIsRunway: false, out var route, fullClearanceRoute: built);
+
+        Assert.Equal(1, count);
+        Assert.NotSame(built, route);
     }
 
     // --- note ----------------------------------------------------------------------
+
+    // A first cleared taxiway the route turns straight back at, but that could not be left out (a pick
+    // keyed to it, the only cleared taxiway, a clearance the router cannot honour without it): the
+    // route is kept, on the pavement, and the pilot is told what it does.
+    [Fact]
+    public void TurnBackNote_says_the_route_goes_out_to_the_taxiway_and_turns_back()
+    {
+        Assert.Equal("Taxiway E7 is not on the way from here. The route goes out to it and turns back the way it came.",
+            UndrivenClearanceStart.TurnBackNote("E7"));
+    }
 
     [Fact]
     public void Note_names_one_taxiway()

@@ -19,15 +19,21 @@ public static class UndrivenClearanceStart
     /// <param name="route">The route built for the clearance with that many taxiways left out, so the
     /// caller need not build it again. When the router cannot honour the full clearance, its answer
     /// for the full clearance (a shortest-path fallback, or null).</param>
+    /// <param name="fullClearanceRoute">The route the caller already built from this node for the full
+    /// clearance (choosing a runway start builds it), taken as the first answer instead of asking the
+    /// router again; null to build it here.</param>
     public static int Count(TaxiRouter router, int entryNodeId, int destinationNodeId,
-        IReadOnlyList<string> taxiwaySequence, bool destinationIsRunway, out TaxiRoute? route)
+        IReadOnlyList<string> taxiwaySequence, bool destinationIsRunway, out TaxiRoute? route,
+        TaxiRoute? fullClearanceRoute = null)
     {
         var remaining = taxiwaySequence.ToList();
         int confirmed = 0;
         route = null;
         while (true)
         {
-            var trial = router.FindConstrainedPath(entryNodeId, destinationNodeId, remaining, destinationIsRunway);
+            var trial = remaining.Count == taxiwaySequence.Count && fullClearanceRoute != null
+                ? fullClearanceRoute
+                : router.FindConstrainedPath(entryNodeId, destinationNodeId, remaining, destinationIsRunway);
             if (trial is not { Segments.Count: > 0 } || trial.ConstrainedFallbackReason != null)
             {
                 if (remaining.Count == taxiwaySequence.Count) route = trial;
@@ -46,13 +52,13 @@ public static class UndrivenClearanceStart
     public static bool PicksAllow(int count, params IEnumerable<int>?[] pickRows)
         => !pickRows.Any(rows => rows != null && rows.Any(row => row < count));
 
-    /// <summary>Picks are keyed by position in the clearance, so they move with it.</summary>
-    public static List<int>? Shift(List<int>? indices, int count)
-        => indices?.Select(i => i - count).ToList();
-
-    /// <inheritdoc cref="Shift(List{int}?, int)"/>
-    public static Dictionary<int, T>? Shift<T>(Dictionary<int, T>? picks, int count)
-        => picks?.ToDictionary(p => p.Key - count, p => p.Value);
+    /// <summary>
+    /// What the pilot hears when the route still turns straight back at the first cleared taxiway:
+    /// it could not be left out (a pick keyed to it, the only cleared taxiway, or a clearance the
+    /// router cannot honour without it). The route is kept, on the pavement, and said.
+    /// </summary>
+    public static string TurnBackNote(string taxiway)
+        => $"Taxiway {taxiway} is not on the way from here. The route goes out to it and turns back the way it came.";
 
     /// <summary>What the pilot hears about the taxiways left out.</summary>
     public static string Note(IReadOnlyList<string> dropped)

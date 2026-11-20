@@ -18,7 +18,8 @@ public static class RouteRunwayStart
     /// Below it the aircraft is crossing or turning off, and has no "ahead" along this runway.</summary>
     public const double MinAlignment = 0.7;
 
-    /// <summary>How many exits route loading tries before it settles for the first.</summary>
+    /// <summary>How many exits route loading tries before it settles for the first. An exit on the other
+    /// bank beside one already offered comes along without taking a place of its own.</summary>
     public const int MaxCandidates = 6;
 
     /// <summary>Nodes closer together than this along the runway belong to one exit's curve.</summary>
@@ -43,13 +44,59 @@ public static class RouteRunwayStart
     /// <summary>
     /// Start nodes on the runway under the aircraft, best first: the first cleared taxiway's nearest
     /// node ahead, then the nodes ahead by distance, then those behind. Nodes of one exit's curve
-    /// collapse to its nearest, so the list offers different exits. Empty when the aircraft is not
-    /// rolling along a runway.
+    /// collapse to its nearest, so the list offers different exits; exits on opposite banks at about
+    /// the same distance are both offered. Empty when the aircraft is not rolling along a runway, or
+    /// when the first cleared taxiway is right here, on this runway or at its edge.
     /// </summary>
     public static IReadOnlyList<TaxiNode> Candidates(
         TaxiGraph graph, double lat, double lon, double headingTrue, string? firstCleared, int requiredComponentId)
+        => Candidates(graph, RunwayPavement.BuildShapes(graph.RunwayCenterlines), lat, lon, headingTrue,
+            firstCleared, requiredComponentId);
+
+    /// <summary>
+    /// The first candidate whose route can be built and does not come back onto the runway, with that
+    /// route, so route loading need not build it again. The exits ahead (the first
+    /// <paramref name="aheadCount"/>) are tried before those behind, which would turn the aircraft round
+    /// on the runway. Among the exits one way, a route that follows the clearance wins over one where the
+    /// router fell back to a shortest path (<see cref="TaxiRoute.ConstrainedFallbackReason"/>), so a
+    /// later exit that honours the clearance beats an earlier one that ignores it; with none following
+    /// it, the first fallback. With nothing usable either way, null and the older start stands.
+    /// </summary>
+    public static (TaxiNode Node, TaxiRoute Route)? Choose(
+        IReadOnlyList<TaxiNode> candidates, Func<TaxiNode, TaxiRoute?> build, Func<TaxiRoute, bool> returnsToRunway,
+        int aheadCount = int.MaxValue)
     {
-        var shapes = RunwayPavement.BuildShapes(graph.RunwayCenterlines);
+        int split = Math.Min(Math.Max(0, aheadCount), candidates.Count);
+        return Best(candidates.Take(split)) ?? Best(candidates.Skip(split));
+
+        (TaxiNode Node, TaxiRoute Route)? Best(IEnumerable<TaxiNode> group)
+        {
+            (TaxiNode Node, TaxiRoute Route)? fallback = null;
+            foreach (var candidate in group)
+            {
+                var route = build(candidate);
+                if (route is not { Segments.Count: > 0 } || returnsToRunway(route)) continue;
+                if (route.ConstrainedFallbackReason == null) return (candidate, route);
+                fallback ??= (candidate, route);
+            }
+            return fallback;
+        }
+    }
+
+    /// <inheritdoc cref="Candidates(TaxiGraph, double, double, double, string?, int)"/>
+    /// <param name="shapes">The graph's runway shapes, built once by the caller (<see cref="RunwayPavement.BuildShapes"/>).</param>
+    public static IReadOnlyList<TaxiNode> Candidates(
+        TaxiGraph graph, IReadOnlyList<RunwayShape> shapes, double lat, double lon, double headingTrue,
+        string? firstCleared, int requiredComponentId)
+        => Candidates(graph, shapes, lat, lon, headingTrue, firstCleared, requiredComponentId, out _);
+
+    /// <inheritdoc cref="Candidates(TaxiGraph, IReadOnlyList{RunwayShape}, double, double, double, string?, int)"/>
+    /// <param name="aheadCount">How many of the candidates lie ahead; the rest are behind.</param>
+    public static IReadOnlyList<TaxiNode> Candidates(
+        TaxiGraph graph, IReadOnlyList<RunwayShape> shapes, double lat, double lon, double headingTrue,
+        string? firstCleared, int requiredComponentId, out int aheadCount)
+    {
+        aheadCount = 0;
         if (!TryFindRunway(shapes, lat, lon, headingTrue, out var runway, out double aircraftAlong, out double direction))
             return Array.Empty<TaxiNode>();
 
@@ -60,21 +107,27 @@ public static class RouteRunwayStart
         double clearedAt = double.MaxValue;
         var ahead = new List<(TaxiNode Node, double Metres)>();
         var behind = new List<(TaxiNode Node, double Metres)>();
+        var onPavement = new HashSet<int>();
 
         foreach (var node in graph.Nodes.Values)
         {
             if (node.ComponentId != requiredComponentId || graph.IsBridgeOnlyStandStub(node.NodeId)) continue;
 
-            // The cleared taxiway is right here: the usual pre-snap starts on it [RTE-23], and rolling
-            // to the next exit would only bring the aircraft back along the parallel.
+            var (along, lateral) = runway.Project(node.Latitude, node.Longitude);
+
+            // The cleared taxiway is right here, on this runway or at its edge: the usual pre-snap
+            // starts on it [RTE-23], and rolling to the next exit would only bring the aircraft back
+            // along the parallel. A cleared parallel across the grass strip is not: the pre-snap would
+            // aim straight over the grass at it.
             if (firstCleared != null && node.TaxiwayNames.Contains(firstCleared)
+                && Math.Abs(lateral) <= runway.HalfWidthMeters + ClearedEdgeMarginMeters
                 && TaxiGraph.FastDistanceMeters(lat, lon, node.Latitude, node.Longitude) <= TaxiLeadIn.TriggerMeters)
                 return Array.Empty<TaxiNode>();
 
-            var (along, lateral) = runway.Project(node.Latitude, node.Longitude);
             if (!runway.ContainsAlongLateral(along, lateral, 0.0)) continue;
             if (RunwayPavement.SegmentTouchesPavement(lat, lon, node.Latitude, node.Longitude, otherRunways, out _)) continue;
 
+            onPavement.Add(node.NodeId);
             double forward = (along - aircraftAlong) * direction;
             if (forward < MinAheadMeters)
             {
@@ -89,11 +142,71 @@ public static class RouteRunwayStart
             }
         }
 
-        var ordered = new List<TaxiNode>(MaxCandidates);
-        if (cleared != null) ordered.Add(cleared);
-        ordered.AddRange(OneNodePerExit(ahead).Where(n => n != cleared));
-        ordered.AddRange(OneNodePerExit(behind));
-        return ordered.Take(MaxCandidates).ToList();
+        var banks = BanksOf(graph, runway, onPavement);
+        var keptAhead = new List<(double Metres, int Banks)>();
+        var entries = new List<(TaxiNode Node, bool Twin, bool Ahead)>();
+        if (cleared != null)
+        {
+            entries.Add((cleared, false, true));
+            keptAhead.Add((clearedAt, banks[cleared.NodeId]));
+        }
+        entries.AddRange(OneNodePerExit(ahead, banks, keptAhead).Select(e => (e.Node, e.Twin, true)));
+        entries.AddRange(OneNodePerExit(behind, banks, new List<(double Metres, int Banks)>()).Select(e => (e.Node, e.Twin, false)));
+
+        // MaxCandidates exits, counted as one bank's exits are; an exit on the other bank beside one
+        // already offered comes along without taking a place, so splitting the banks never cuts the
+        // reach along the runway short.
+        var ordered = new List<TaxiNode>();
+        int exits = 0;
+        foreach (var (node, twin, isAhead) in entries)
+        {
+            if (!twin && exits++ == MaxCandidates) break;
+            ordered.Add(node);
+            if (isAhead) aheadCount++;
+        }
+        return ordered;
+    }
+
+    /// <summary>A first cleared taxiway's node this far past the runway edge is still at its edge:
+    /// an exit drawn from the edge rather than the centreline. A parallel is further out.</summary>
+    public const double ClearedEdgeMarginMeters = 15.0;
+
+    private const int LeftBank = 1, RightBank = 2;
+
+    // Which bank or banks each node on the pavement leads to: the sides of the runway its taxiways
+    // leave by, shared across the nodes linked to it on the pavement (one exit's curve). 0 when it
+    // leads off neither side (no off-pavement neighbour, or only beyond the runway's end).
+    private static Dictionary<int, int> BanksOf(TaxiGraph graph, RunwayShape runway, HashSet<int> onPavement)
+    {
+        var own = new Dictionary<int, int>();
+        foreach (int id in onPavement)
+        {
+            int bits = 0;
+            if (graph.Adjacency.TryGetValue(id, out var edges))
+                foreach (var edge in edges)
+                {
+                    if (onPavement.Contains(edge.ToNodeId) || !graph.Nodes.TryGetValue(edge.ToNodeId, out var next)) continue;
+                    double lateral = runway.Project(next.Latitude, next.Longitude).Lateral;
+                    if (Math.Abs(lateral) <= runway.HalfWidthMeters) continue;
+                    bits |= lateral > 0 ? LeftBank : RightBank;
+                }
+            own[id] = bits;
+        }
+
+        var banks = new Dictionary<int, int>();
+        foreach (int start in onPavement)
+        {
+            if (banks.ContainsKey(start)) continue;
+            var group = new List<int> { start };
+            var seen = new HashSet<int> { start };
+            for (int i = 0; i < group.Count; i++)
+                if (graph.Adjacency.TryGetValue(group[i], out var edges))
+                    foreach (var edge in edges)
+                        if (onPavement.Contains(edge.ToNodeId) && seen.Add(edge.ToNodeId)) group.Add(edge.ToNodeId);
+            int bits = group.Aggregate(0, (acc, id) => acc | own[id]);
+            foreach (int id in group) banks[id] = bits;
+        }
+        return banks;
     }
 
     /// <summary>
@@ -112,22 +225,34 @@ public static class RouteRunwayStart
     /// </summary>
     public static bool RouteReturnsToRunway(
         TaxiGraph graph, IReadOnlyList<TaxiRouteSegment> segments, double lat, double lon, double headingTrue)
+        => RouteReturnsToRunway(RunwayPavement.BuildShapes(graph.RunwayCenterlines), segments, lat, lon, headingTrue);
+
+    /// <inheritdoc cref="RouteReturnsToRunway(TaxiGraph, IReadOnlyList{TaxiRouteSegment}, double, double, double)"/>
+    /// <param name="shapes">The graph's runway shapes, built once by the caller (<see cref="RunwayPavement.BuildShapes"/>).</param>
+    public static bool RouteReturnsToRunway(
+        IReadOnlyList<RunwayShape> shapes, IReadOnlyList<TaxiRouteSegment> segments, double lat, double lon, double headingTrue)
     {
-        var shapes = RunwayPavement.BuildShapes(graph.RunwayCenterlines);
         if (!TryFindRunway(shapes, lat, lon, headingTrue, out var runway, out _, out _)) return false;
 
         var nodes = RunwayRouteClassifier.NodesFrom(segments, 0, new RouteRunwayCrossings.AircraftPosition(lat, lon));
         return RunwayRouteClassifier.Classify(nodes, runway).Count > 0;
     }
 
-    private static IEnumerable<TaxiNode> OneNodePerExit(IEnumerable<(TaxiNode Node, double Metres)> nodes)
+    // Nearest first, skipping a node within ExitSpacingMeters of one already kept that leads to the
+    // same bank: that is the same exit's curve. Exits on opposite banks at about the same distance are
+    // two exits, and the far bank's route would come back over the runway: the second is a twin of the
+    // first. A node leading to neither bank, or to both (a crossing), is the same exit as anything beside it.
+    private static IEnumerable<(TaxiNode Node, bool Twin)> OneNodePerExit(
+        IEnumerable<(TaxiNode Node, double Metres)> nodes, IReadOnlyDictionary<int, int> banks,
+        List<(double Metres, int Banks)> kept)
     {
-        double last = double.NegativeInfinity;
         foreach (var (node, metres) in nodes.OrderBy(n => n.Metres))
         {
-            if (metres - last < ExitSpacingMeters) continue;
-            last = metres;
-            yield return node;
+            int bits = banks[node.NodeId];
+            var beside = kept.Where(k => Math.Abs(metres - k.Metres) < ExitSpacingMeters).ToList();
+            if (beside.Any(k => k.Banks == 0 || bits == 0 || (k.Banks & bits) != 0)) continue;
+            kept.Add((metres, bits));
+            yield return (node, beside.Count > 0);
         }
     }
 

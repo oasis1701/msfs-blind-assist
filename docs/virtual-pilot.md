@@ -395,6 +395,28 @@ A review of that change found the same out-and-back on a route loaded while stil
 
 Accepted: 21 (2024) and 20 (2020) new `TAXI_RECALC_WHILE_FOLLOWING` against 10 and 8 gone, and the four new `TAXI_OFF_PAVEMENT` on each. In the cases traced (KIAD 19R U3, LTFM 35R C14, KATL 27R L, ZBAD 17L C4, VTBS 20R F3) the lead-in is now kept and starts behind the aircraft, so the flight opens with "Taxiway X is behind you" and a turn the pilot model swings wide on, where it used to be sent 180 to 380 m in a straight line. At ZBAD the route change during that turn has no stop left for the runway just vacated, and says so. Three 2020 `rwystop` flights gained `RUNWAY_ENTERED_UNHELD_WARNED`; the one traced, VTBS 20R, now loads a route that leaves by the exit behind it and announces that the runway it stands on has no hold short point. The other new codes were not traced one by one.
 
+## Eighth round — review fixes to the route start (2026-11-19, 100 busiest airports of each navdata, plain navdata)
+
+A/B of the review fixes against a frozen build of the seventh round's end, the same harness, modes `missedexit taxi rwystop departures wrongturn`: every scenario matched, 8,579 on fs2024 and 8,516 on fs2020. Kept, with no finding new on either database:
+
+| | 2024 | 2020 |
+|---|---|---|
+| `TAXI_OFF_PAVEMENT` gone | 4 | 6 |
+| `HOLD_WITHOUT_RUNWAY` gone | 0 | 2 |
+| `RUNWAY_ENTERED_UNHELD` gone | 0 | 1 |
+| `TAXI_RECALC_WHILE_FOLLOWING` gone | 0 | 1 |
+
+The traced gains come from the near-cleared test ([RTE-37](invariants/route-runway-start.md#rte-37)): a first cleared taxiway within 75 m cancels the runway start only when it is on the runway or at its edge. KIAH 15L (WM, 43 m off the pavement before, 0 after) and KBNA 31 (K, 99 m before, 2 after) now start at an exit along the runway instead of a node across the grass.
+
+With the OSM snapshot loaded (fs2024, modes `missedexit taxi rwystop departures`, the 37 busiest airports fetched, 3,425 scenarios), measured because RTE-38 and RTE-39 find the junction by the names on its nodes and online names add more: the review fixes against the seventh round's end, `TAXI_OFF_PAVEMENT` gone on 1, nothing new. The route-start work as a whole against the build before it (that harness compiled against the older app), `TAXI_OFF_PAVEMENT` gone on 396 and new on 13. None of the three new ones traced reads a junction wrongly from an online name: KORD 04L E is a runway start, KMSP 04 M6 flies the same route with a different opening turn, and LTFM 35R B12B leaves out a taxiway at a real out-and-back.
+
+Measured and rejected along the way, each with its own A/B:
+
+- Reading the turn-back over 30 m of route either side of the junction ([RTE-39](invariants/route-runway-start.md#rte-39)): 4 scenarios better and 3 worse. KDEN 07 B4 reaches the cleared taxiway by a 3.3 m spur and back, which the smoothed reading missed, and EDDB 24R K1 gained three findings. Every reversal the per-node test flagged in those flights was a real out-and-back over one edge, 3.3 to 56 m long.
+- The opening turn's stand evidence from the stand rows instead of the graph's Parking nodes ([STR-24](invariants/taxi-steering.md#str-24)): more opening turns flipped, at gate departures (KMCI gates 25 and 26 on fs2020) and after an exit vacate (KPIT 28C exit C, both databases), and those flights left the pavement or were re-routed where before they had not.
+- Preferring a start that follows the clearance over every start ahead: KLSV 21L took an exit behind and turned round on the runway, 99 m off the pavement. The preference now applies only among the exits one way.
+- Splitting the exits by bank with the six-place cap unchanged: the two halves of a crossing took two places and KBNA 02L (fs2020) lost the only exit whose route stayed off the runway. A twin on the other bank no longer takes a place.
+
 **Open:** OSM hold names like "C@10/28" (KTPA, KDFW, KONT, KABQ) are read out verbatim. EGLL 09R S6
 → Gate 223 routes back up S6 onto the runway and along it (the known "runway used as a taxiway"
 residual).

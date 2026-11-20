@@ -83,7 +83,11 @@ public static class TaxiLeadIn
 
     /// <summary>
     /// True when the route never drives the first cleared taxiway and turns straight back at the
-    /// junction where it meets it: out along the next taxiway and back the same way.
+    /// junction where it meets it: out along the next taxiway and back the same way. Read from the two
+    /// edges that meet at that node, however short: the route comes back over the edge it arrived by,
+    /// so the turn is 180 degrees whatever the edge's length. A reading smoothed over the route either
+    /// side lost the KDEN 07 shape (a 3.3 m spur from WA out to the B4 node and back read as a 119
+    /// degree turn; VirtualPilot, 2026-11-19).
     /// </summary>
     public static bool DoublesBackAtUndrivenStart(TaxiRoute route, string firstClearedTaxiway)
     {
