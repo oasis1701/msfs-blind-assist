@@ -49,6 +49,11 @@ public static class FirstOfficerWindows
             (md11, sc, a, s) => Window(new Fo.MD11.Md11FoProfile(md11), sc, a, s)),
         ["BBS_757"] = Of<BBS757Definition>("BlueBird 757 First Officer",
             (b757, sc, a, s) => Window(new Fo.BBS757.Bbs757FoProfile(b757, a), sc, a, s)),
+        // One profile for both COWS airframes; the definition says which (DA40-15 swaps it).
+        ["COWS_DA40NG"] = Of<Aircraft.DA40.CowsDA40Definition>("DA40-NG First Officer",
+            (da40, sc, a, s) => Window(new Fo.DA40.DA40FoProfile(da40, a), sc, a, s)),
+        ["COWS_DA40XLS"] = Of<Aircraft.DA40.CowsDA40Definition>("DA40-XLS First Officer",
+            (da40, sc, a, s) => Window(new Fo.DA40.DA40FoProfile(da40, a), sc, a, s)),
     };
 
     private static Row? RowFor(IAircraftDefinition? aircraft) =>

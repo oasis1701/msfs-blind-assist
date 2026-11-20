@@ -73,6 +73,13 @@ public class TakeoffAssistManager : IDisposable
     private bool hasAnnounced80Knots = false;
     private bool hasAnnounced100Knots = false;
 
+    // The two configurable roll callouts. Defaults are the airliner pair, so any aircraft
+    // that never calls ConfigureSpeedCallouts is byte-for-byte unchanged.
+    private double? lowCalloutKts = 80.0;
+    private double? highCalloutKts = 100.0;
+    private string lowCalloutPhrase = "80 knots";
+    private string highCalloutPhrase = "100 knots";
+
     // Configuration constants - shared
     private const int ANNOUNCEMENT_INTERVAL_MS = 500; // 500ms between announcements
     private const double PITCH_THRESHOLD = 1.0; // Announce if pitch changes by >1 degree
@@ -519,16 +526,17 @@ public class TakeoffAssistManager : IDisposable
 
     /// <summary>
     /// Process IAS update during takeoff assist for speed callouts.
-    /// Announces "80 knots" and "100 knots"; V1, Rotate and V2 ride the aircraft definitions
-    /// (TakeoffVSpeedCallouts, TKO-5).
+    /// Announces the low and high calls <see cref="ConfigureSpeedCallouts"/> set (by default "80 knots" and
+    /// "100 knots"; the DA40's one "Rotate" at Vr, <see cref="TakeoffRollCallouts"/>); V1, Rotate and V2 ride the
+    /// aircraft definitions (TakeoffVSpeedCallouts, TKO-5).
     /// </summary>
     /// <param name="currentIAS">Current indicated airspeed in knots</param>
     /// <param name="aircraftCallsOwnSpeeds">
     /// The loaded aircraft plays its own take-off speed callouts
     /// (<see cref="Aircraft.IAircraftDefinition.PlaysOwnTakeoffSpeedCallouts"/>, the BlueBird 757, which calls
-    /// 80 knots, V1 and rotate): "80 knots" is not spoken then, so a roll never hears it twice; "100 knots",
-    /// which the aircraft does not call, still is. Passed per sample by the one caller, so it always follows
-    /// the aircraft loaded now.
+    /// 80 knots, V1 and rotate): the low call (its "80 knots") is not spoken then, so a roll never hears it twice;
+    /// the high call ("100 knots"), which the aircraft does not call, still is. Passed per sample by the one
+    /// caller, so it always follows the aircraft loaded now.
     /// </param>
     public void ProcessSpeedUpdate(double currentIAS, bool aircraftCallsOwnSpeeds = false)
     {
@@ -539,22 +547,48 @@ public class TakeoffAssistManager : IDisposable
         if (!isActive) return;
         if (!enableCallouts) return;
 
-        // 80 knots callout (every aircraft but one that calls its own)
-        // Use Announce() (queued, non-interrupting) so callouts don't cut each other off
-        if (!aircraftCallsOwnSpeeds && !hasAnnounced80Knots && currentIAS >= 80.0)
+        // ⚠️ THE 80 AND 100 KNOT CALLS ARE AIRLINER CALLS AND THEY ARE WRONG ON A LIGHT
+        // SINGLE. They were hardcoded "all aircraft". A DA40 rotates at 67 KIAS, so "80 knots"
+        // arrives when the aeroplane is already flying and "100 knots" well into the climb -
+        // two callouts during the busiest ten seconds of the flight, neither of which marks
+        // anything. Reported from the cockpit as exactly that.
+        //
+        // The speeds now come from the aircraft (ConfigureSpeedCallouts). The default is still
+        // 80/100, so every airframe that has not been given a profile behaves as before.
+        // Use Announce() (queued, non-interrupting) so callouts don't cut each other off.
+        if (!aircraftCallsOwnSpeeds && !hasAnnounced80Knots && lowCalloutKts.HasValue && currentIAS >= lowCalloutKts.Value)
         {
-            announcer.Announce("80 knots");
+            announcer.Announce(lowCalloutPhrase);
             hasAnnounced80Knots = true;
-            Log.Debug("TakeoffAssist", $"Speed callout: 80 knots (IAS={currentIAS:F1})");
+            Log.Debug("TakeoffAssist", $"Speed callout: {lowCalloutPhrase} (IAS={currentIAS:F1})");
         }
 
-        // 100 knots callout (all aircraft)
-        if (!hasAnnounced100Knots && currentIAS >= 100.0)
+        // The high call (100 knots by default) is every aircraft's, an aircraft that calls its own speeds included (#358).
+        if (!hasAnnounced100Knots && highCalloutKts.HasValue && currentIAS >= highCalloutKts.Value)
         {
-            announcer.Announce("100 knots");
+            announcer.Announce(highCalloutPhrase);
             hasAnnounced100Knots = true;
-            Log.Debug("TakeoffAssist", $"Speed callout: 100 knots (IAS={currentIAS:F1})");
+            Log.Debug("TakeoffAssist", $"Speed callout: {highCalloutPhrase} (IAS={currentIAS:F1})");
         }
+    }
+
+    /// <summary>
+    /// Replace the two takeoff-roll speed callouts for this aircraft.
+    ///
+    /// A callout is only worth making if it MARKS something on the roll. On an airliner 80 and
+    /// 100 knots are checks in their own right; on a light single they are just numbers said
+    /// after the aeroplane has already flown. Pass null for either to have it not called at all.
+    /// </summary>
+    public void ConfigureSpeedCallouts(double? lowKts, string lowPhrase,
+                                       double? highKts, string highPhrase)
+    {
+        lowCalloutKts = lowKts;
+        highCalloutKts = highKts;
+        lowCalloutPhrase = lowPhrase;
+        highCalloutPhrase = highPhrase;
+        Log.Debug("TakeoffAssist",
+            $"Speed callouts configured: {lowKts?.ToString() ?? "none"} '{lowPhrase}', " +
+            $"{highKts?.ToString() ?? "none"} '{highPhrase}'");
     }
 
     /// <summary>

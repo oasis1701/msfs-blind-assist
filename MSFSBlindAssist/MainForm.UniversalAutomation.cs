@@ -108,8 +108,8 @@ public partial class MainForm
     /// <summary>
     /// Pushes the CURRENT aircraft's own auto-engage limits to the universal automation: the engage floor
     /// (the 737 refuses CMD below 400 ft RA after takeoff, FO-17), the spacing between presses (the FlyByWire
-    /// AP 1 push is a toggle) and whether a null engaged-readback waits for a definite reading instead of
-    /// pressing blind (FO-21). Called by the 1 Hz universal timer and by <c>SwitchAircraft</c> right after it
+    /// AP 1 push is a toggle), whether a null engaged-readback waits for a definite reading instead of
+    /// pressing blind (FO-21), and whether there is gear to move at all (FO-27). Called by the 1 Hz universal timer and by <c>SwitchAircraft</c> right after it
     /// resets the service: an <c>Update</c> that ran between a switch and the next tick would otherwise act on
     /// the previous aircraft's values. The user-setting pushes (gear, AP enable, engage height) stay in the timer.
     /// </summary>
@@ -119,6 +119,7 @@ public partial class MainForm
         universalAutomation.MinimumApEngageAltitudeAgl = currentAircraft?.MinimumAutopilotEngageAltitudeAgl ?? 0;
         universalAutomation.ApRetryIntervalMs = currentAircraft?.AutopilotEngageRetryIntervalMs ?? 0;
         universalAutomation.WaitForApState = currentAircraft?.AutopilotEngageWaitsForState ?? false;
+        universalAutomation.HasRetractableGear = currentAircraft?.HasRetractableGear ?? true;
     }
 
     /// <summary>Universal auto-gear/AP feed — runs for every aircraft, independent of the

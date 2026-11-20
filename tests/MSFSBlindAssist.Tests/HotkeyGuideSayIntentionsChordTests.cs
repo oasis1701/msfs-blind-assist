@@ -1,12 +1,12 @@
-// The SayIntentions taxi-route chord is documented in EIGHT shipped guide files
+// The SayIntentions taxi-route chord is documented in NINE shipped guide files
 // (MSFSBlindAssist\HotkeyGuides\*.txt) as well as in the code that registers it. Those
 // guides are the ONLY place a blind pilot can look the key up — the app reads them
 // verbatim into the Hotkey List window — so a chord change that lands in HotkeyManager
-// and in six of the eight guides leaves two aircraft documenting a key that no longer
+// and in seven of the nine guides leaves two aircraft documenting a key that no longer
 // does anything, with nothing to reveal which.
 //
 // That is exactly the failure this file pins: the guides are prose, nothing else
-// compiles against them, and "did I update all eight?" is not answerable by the build.
+// compiles against them, and "did I update all nine?" is not answerable by the build.
 //
 // Stated POSITIVELY — "the entry exists exactly once and carries the registered chord" —
 // rather than as a ban on the previous chord. A test naming the retired chord would be
@@ -38,6 +38,7 @@ public class HotkeyGuideSayIntentionsChordTests
 
     private static readonly string[] GuideFiles =
     {
+        "COWS_DA40_Hotkeys.txt",
         "FBW_A320_Hotkeys.txt",
         "FBW_A330_Hotkeys.txt",
         "FBW_A380_Hotkeys.txt",
