@@ -22,7 +22,7 @@ The lead-in ends where the route meets the first cleared taxiway (`TaxiLeadIn.Ex
 
 The router may join the first cleared taxiway exactly where the next one leaves it (`FindConstrainedPathCore` step 1, entry node equal to the first target). The route then has no segment of that name. `Extract` used to walk to the first such segment, found none, and measured the whole route as lead-in. The length guard (`IsAcceptable`, gap × 2.5 + 300 m) then rejected it, and the route started on the cleared taxiway's node however far away that was.
 
-VTBS 20L, 2026-11-18: cleared E7, E8, D6 but vacated at E9, with the E7/E8 junction 550 m away. A 620 m lead-in was measured as the whole 2,213 m route and rejected, and the tone aimed 550 m in a straight line that left taxiway E by 55 m, over grass and water. VHHH 07L the same evening: cleared C8 with the C8/C junction 600 m ahead on the parallel, the whole route of nearly 5 km measured as lead-in, and the tone led off the runway edge across the infield.
+VTBS 02R, 2026-11-18: cleared E7, E8, D6, but the aircraft vacated one exit early at E10 (the rollout's own switch to an earlier exit, at 20 kt and 190 m short of E7) and stopped where E10 and E9 meet taxiway E, with the E7/E8 junction 550 m away. A 620 m lead-in was measured as the whole 2,213 m route and rejected, and the tone aimed 550 m in a straight line that left taxiway E by 55 m, over grass and water. VHHH 07L the same evening: cleared C8 with the C8/C junction 600 m ahead on the parallel, the whole route of nearly 5 km measured as lead-in, and the tone led off the runway edge across the infield.
 
 A route that never touches the taxiway at all is still measured whole, so a router fallback keeps failing the guard.
 
@@ -39,7 +39,7 @@ It stops at the first taxiway the route can keep:
 - A taxiway a hold-short pick is keyed to stays (`PicksAllow`), so the pilot's own stop is never lost. The picks that remain move down with the clearance (`Shift`), in the stored copies too, because a recalculation reads them against `_originalTaxiwaySequence`.
 - A clearance the router cannot honour once the taxiway is gone keeps it.
 
-It is judged from the node the route will start at: the runway start (RTE-37), else the lead-in's entry node. On a runway the route kept must still not come back onto that runway (`RouteReturnsToRunway`). VTBS 20L loaded 150 m past E7 while still on the runway started at E13 and ran the same out-and-back along E8 until the runway start was included. A first cleared taxiway within 75 m keeps its pre-snap (RTE-23).
+It is judged from the node the route will start at: the runway start (RTE-37), else the lead-in's entry node. On a runway the route kept must still not come back onto that runway (`RouteReturnsToRunway`). A replay on VTBS 20L, loaded 150 m past E7 while still on the runway, started at E13 and ran the same out-and-back along E8 until the runway start was included. A first cleared taxiway within 75 m keeps its pre-snap (RTE-23).
 
 The sentence is published in `LastRouteStartWarning` as well as the summary. `StartGuidance`'s first callout cuts the queued summary off, and the form's standstill utterance is the one place a route's own warnings are reliably heard (HLD-17).
 

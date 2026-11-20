@@ -4,8 +4,8 @@ namespace MSFSBlindAssist.Navigation;
 
 /// <summary>
 /// The taxiways at the front of a clearance that a route from the aircraft's own position can only
-/// reach by turning straight back. VTBS 20L, 2026-11-18: cleared E7, E8, D6 after landing, but the
-/// aircraft rolled past E7 and vacated at E9. The router met E7 only at its junction with E8, so the
+/// reach by turning straight back. VTBS 02R, 2026-11-18: cleared E7, E8, D6 after landing, but the
+/// aircraft vacated one exit early, at E10. The router met E7 only at its junction with E8, so the
 /// route ran up the parallel, out along E8 to that junction and straight back.
 /// </summary>
 public static class UndrivenClearanceStart

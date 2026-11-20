@@ -89,7 +89,7 @@ public class TaxiLeadInTests
         DistanceMeters = distM,
     };
 
-    // VTBS 20L, 2026-11-18: cleared E7, E8, D6 but vacated at E9. The router met E7 only at its
+    // VTBS 02R, 2026-11-18: cleared E7, E8, D6 but vacated at E10. The router met E7 only at its
     // junction with E8, so no segment carried the name and the whole 2.2 km route was measured.
     [Fact]
     public void Extract_ends_the_lead_in_at_the_cleared_taxiways_junction_when_no_segment_carries_its_name()
@@ -138,7 +138,7 @@ public class TaxiLeadInTests
         BearingDegrees = bearing,
     };
 
-    // VTBS 20L: up the parallel E, out along E8 to the E7 junction, and straight back along E8.
+    // VTBS 02R: up the parallel E, out along E8 to the E7 junction, and straight back along E8.
     [Fact]
     public void DoublesBackAtUndrivenStart_is_true_when_the_route_reverses_where_it_meets_the_cleared_taxiway()
     {

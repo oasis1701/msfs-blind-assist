@@ -521,8 +521,8 @@ public partial class TaxiGuidanceManager
                 ? SelectFirstTaxiwayEntry(aircraftLat, aircraftLon, firstCleared, destComponentId, destinationNodeId)
                 : null;
 
-            // A clearance can open with taxiways the aircraft is no longer placed to drive (VTBS 20L:
-            // cleared E7, E8, D6, vacated at E9). The route would run out to their junction and straight
+            // A clearance can open with taxiways the aircraft is no longer placed to drive (VTBS 02R:
+            // cleared E7, E8, D6, vacated at E10). The route would run out to their junction and straight
             // back, so they are left out and the pilot is told. Judged from the node the route will start
             // at: the runway start, else the lead-in's. A first cleared taxiway within reach keeps its
             // pre-snap [RTE-23].

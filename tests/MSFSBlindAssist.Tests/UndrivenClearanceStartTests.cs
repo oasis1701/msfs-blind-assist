@@ -1,6 +1,6 @@
 // Tests for MSFSBlindAssist.Navigation.UndrivenClearanceStart.
-// VTBS 20L, 2026-11-18: cleared E7, E8, D6 after landing, but the aircraft rolled past E7 and vacated
-// at E9 onto the parallel E. The router met E7 only at its junction with E8, so the route ran up E,
+// VTBS 02R, 2026-11-18: cleared E7, E8, D6 after landing, but the aircraft vacated one exit early, at
+// E10, onto the parallel E. The router met E7 only at its junction with E8, so the route ran up E,
 // out along E8 to that junction and straight back. Equator fixture: metres = degrees x 111132.
 
 using MSFSBlindAssist.Database.Models;
@@ -19,8 +19,8 @@ public class UndrivenClearanceStartTests
     private static int NodeAt(TaxiGraph g, double lat, double lon)
         => g.Nodes.Values.OrderBy(n => TaxiGraph.FastDistanceMeters(lat, lon, n.Latitude, n.Longitude)).First().NodeId;
 
-    // The parallel E runs north. E9 (the exit taken) joins it at the south end. 556 m north, E8 leaves
-    // west to the planned exit E7, and D6 leaves east to the stand.
+    // The parallel E runs north. E9 (where the aircraft stopped after vacating) joins it at the south
+    // end. 556 m north, E8 leaves west to the planned exit E7, and D6 leaves east to the stand.
     private static TaxiGraph MissedExit() => TaxiGraph.Build(new List<TaxiPath>
     {
         P(0, -0.0005, 0, 0, "E9"),

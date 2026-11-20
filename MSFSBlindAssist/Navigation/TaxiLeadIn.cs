@@ -68,7 +68,7 @@ public static class TaxiLeadIn
     }
 
     // The router can join the cleared taxiway exactly where the next one leaves it. No segment then
-    // carries its name, and the lead-in ends at the first node that does (VTBS 20L, 2026-11-18: the
+    // carries its name, and the lead-in ends at the first node that does (VTBS 02R, 2026-11-18: the
     // whole 2.2 km route was measured as lead-in, rejected, and the route started 550 m away).
     private static int SegmentsBeforeJunction(TaxiRoute route, string taxiway)
     {

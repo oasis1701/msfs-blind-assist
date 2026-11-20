@@ -217,7 +217,8 @@ void RunRunwayStops(World w)
 }
 
 // The pilot rolled past the planned exit, vacated at the next one, and loaded the gate route with the
-// clearance given for the planned exit (VTBS 20L, 2026-11-18: cleared E7, vacated at E9).
+// clearance given for the planned exit. The flight behind it (VTBS 02R, 2026-11-18: cleared E7,
+// vacated one exit EARLY at E10) is the other way round and is replayed with --trace ICAO:from:.
 void RunMissedExits(World w)
 {
     int seed = 31; foreach (char ch in w.Icao) seed = seed * 31 + ch;
