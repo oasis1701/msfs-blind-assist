@@ -13,7 +13,7 @@ dotnet build MSFSBlindAssist.sln -c Debug
 dotnet build MSFSBlindAssist.sln -c Release
 ```
 
-The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds nine projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder`, `tools/GuideBuilder`, `tools/LayoutBundle`, the vPilot plugin and `MSFSBlindAssist.DisplayLayouts` among them; the other 16 `tools/*` projects (`tools/CDUTest`, the probes and the sweeps) build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
+The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds nine projects, the vPilot plugin and `MSFSBlindAssist.DisplayLayouts` among them; [CORE-4] says which `tools/*` projects build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
 
 - [CORE-1] Always build the `.sln` or pass `-p:Platform=x64`; never the bare `.csproj`, which defaults to AnyCPU and writes to `bin\Debug\…`, so the x64 exe the app runs from never updates. Full: docs/invariants/core.md#core-1
 - [CORE-2] Keep `RuntimeIdentifier=win-x64` (else the build ships every platform's SQLite binaries) and `AppendRuntimeIdentifierToOutputPath=false` (else it writes to a `win-x64\` folder the app, release.yml and PostBuild never use) in the csproj. `dotnet publish` writes `win-x64\publish\`; other `win-x64\` build output predates 2026-08-25: stale. Full: docs/invariants/core.md#core-2
