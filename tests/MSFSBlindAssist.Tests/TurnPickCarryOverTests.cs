@@ -248,6 +248,7 @@ public class TurnPickCarryOverTests
         Assert.Equal(new Dictionary<int, TurnSide> { [1] = TurnSide.Right, [2] = TurnSide.Left }, picks);
     }
 
+    // A skipped runway leg re-keys the Turn picks through the one row helper every pick kind uses.
     [Fact]
     public void Without_rows_re_keys_and_drops_the_removed_rows_own_picks()
     {
@@ -258,8 +259,8 @@ public class TurnPickCarryOverTests
 
         Assert.Equal(new Dictionary<int, TurnSide>
             { [0] = TurnSide.Left, [1] = TurnSide.Right, [2] = TurnSide.Left },
-            TurnPickCarryOver.WithoutRows(picks, new[] { 1 }));
+            ClearanceRows.Without(picks, new[] { 1 }));
         Assert.Equal(new Dictionary<int, TurnSide> { [0] = TurnSide.Left, [2] = TurnSide.Left },
-            TurnPickCarryOver.WithoutRows(picks, new[] { 2 }));
+            ClearanceRows.Without(picks, new[] { 2 }));
     }
 }

@@ -1168,7 +1168,8 @@ public partial class TaxiGuidanceManager
                     exitPathNodeIds: _rolloutExit.TaxiwayName.Length > 0
                                      && distToExitFeet <= ROLLOUT_STOPPED_HANDOFF_MAX_DIST_FT
                         ? GetRolloutExitPathNodeIds() : null,
-                    // A log label only (phase=touchdown). Whether the route may start held is the
+                    // Labels the log line (phase=touchdown) and keeps the plain-route start rules
+                    // (RTE-37, STR-24) off this landing route. Whether the route may start held is the
                     // pass's own call, from the aircraft's position: none while it stands within
                     // the clear margin of any runway, none once it has rolled 10 m along the route.
                     landingRolloutRoute: true);
@@ -2252,7 +2253,8 @@ public partial class TaxiGuidanceManager
             announceSummary: false,
             startTaxiwayName: startTwy,
             exitPathNodeIds: startTwy != null ? GetRolloutExitPathNodeIds() : null,
-            // A log label only (phase=touchdown), as at UpdateLandingRollout's handoff. The pass
+            // Labels the log line (phase=touchdown) and keeps the plain-route start rules off this
+            // landing route, as at UpdateLandingRollout's handoff. The pass
             // itself refuses a start hold while the aircraft stands within the clear margin of any
             // runway, so nothing here has to say whether it is on the pavement.
             landingRolloutRoute: true);
