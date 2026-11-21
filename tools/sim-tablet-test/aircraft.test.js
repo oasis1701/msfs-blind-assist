@@ -39,6 +39,8 @@ test('Environment: exclusive buttons, captioned unit boxes, and dropdowns as sel
   assert.deepStrictEqual(flaps.options, ['Flaps up', 'Flaps 10°']);
   const surface = els.find(e => e.controlType === 'select' && e.value === 'Dry runway');
   assert.ok(surface, 'the selector shows "Dry"; the value is the option it stands for');
+  assert.equal(surface.text, 'Runway condition', 'never a second "Runway" beside the runway itself');
+  assert.ok(els.some(e => e.controlType === 'select' && e.text === 'Runway' && e.value === 'runway 16L'));
 });
 
 test('Environment: the take-off results read as lines', () => {

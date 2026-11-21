@@ -70,7 +70,10 @@ test('an open popup is read first, its title an alert', () => {
   const els = scrape('atlas-route-string');
   const i = els.findIndex(e => e.kind === 'alert' && e.text === 'Enter route string');
   assert.ok(i > 0 && i < 10, 'near the top');
-  assert.equal(els[i + 1].text, 'Close');
+  // The page has three Close buttons (this box, the saved plans list, the Route panel): each says
+  // whose it is, while its key stays 'button:Close' (apps.test.js, "repeated buttons").
+  assert.equal(els[i + 1].text, 'Enter route string: Close');
+  assert.equal(els[i + 1].key, 'button:Close');
   assert.equal(els[i + 2].controlType, 'text');
   assert.equal(els[i + 2].text, 'Enter route string');
   assert.equal(els[i + 3].text, 'SAVE');

@@ -3,16 +3,24 @@
 // fixture with the live state baked in, the same convention as tools/md11-efb-test:
 //   data-vis="1"         the element is rendered (no attribute = hidden)
 //   data-rect="t,l,r,b"  its live bounding box
-//   data-h="click"       the element carries an onclick handler ("mousedown" for onmousedown;
-//                        both names, comma-joined, when it has both)
-// Inputs carry their LIVE value/checked as attributes. SVGs are reduced to one empty <svg> naming
-// the icon (data-icon = the first id inside it, data-title = its <title>), which keeps a page to
-// tens of kilobytes. ES5: Coherent GT is Chromium 49.
+//   data-h="click"       the press events the element listens to, comma-joined: its onclick /
+//                        onmousedown, and, when the eval asked for the command line API, every
+//                        listener getEventListeners shows (an add-on's addEventListener ones)
+//   data-ptr="1"         the page sets a pointer cursor on the element itself, not inherited
+//                        from its parent (what the reader's A.ownPointer reads)
+// Inputs carry their LIVE value/checked as attributes, a select its chosen option as `selected`, and
+// an OS slider its --ratio-value style. SVGs are reduced to one empty <svg> naming the icon
+// (data-icon = the first id inside it, data-title = its <title>), which keeps a page to tens of
+// kilobytes. Outside the EFB OS document (an app's own frame, evaluated in the frame's context) the
+// whole body is captured. ES5: Coherent GT is Chromium 49.
 //
 //   pwsh -File tools/coherent-eval.ps1 -Title "Electronic Flight Bag" -ExprFile tools/sim-tablet-test/capture.js > out.txt
-// then keep the last line of out.txt as fixtures/<page>.html.
+// then keep the last line of out.txt as fixtures/<page>.html. getEventListeners exists only when the
+// eval passes includeCommandLineAPI; without it data-h carries the on* handlers alone.
 (function () {
   try {
+    var gel = typeof getEventListeners === 'function' ? getEventListeners : null;
+    var PRESS = ['click', 'mousedown', 'pointerdown', 'mouseup', 'pointerup', 'touchstart'];
     function hidden(el) {
       var r = el.getBoundingClientRect();
       if (r.width <= 0 && r.height <= 0) return true;
@@ -24,21 +32,37 @@
     }
     function attrs(el, visible) {
       var out = '';
-      var keep = ['class', 'id', 'type', 'placeholder', 'disabled', 'inputmode', 'arguments', 'icon-url', 'src'];
+      var keep = ['class', 'id', 'type', 'placeholder', 'disabled', 'inputmode', 'arguments', 'icon-url', 'src',
+        'role', 'title', 'alt', 'href', 'for', 'name', 'min', 'max', 'step', 'readonly', 'hidden', 'tabindex',
+        'data-state', 'data-active', 'data-selected', 'data-on', 'data-checked', 'data-label'];
       for (var i = 0; i < keep.length; i++) {
         var v = el.getAttribute(keep[i]);
+        if (keep[i] === 'src' && v && v.indexOf('data:') === 0) v = 'data:';   // an inline picture's bytes say nothing
         // disabled="" is how the OS disables a control: an empty boolean attribute is kept.
-        if (v !== null && (v !== '' || keep[i] === 'disabled')) out += ' ' + keep[i] + '="' + esc(v) + '"';
+        if (v !== null && (v !== '' || keep[i] === 'disabled' || keep[i] === 'readonly' || keep[i] === 'hidden')) out += ' ' + keep[i] + '="' + esc(v) + '"';
       }
+      for (var a = 0; a < el.attributes.length; a++) {
+        var an = el.attributes[a].name;
+        if (an.indexOf('aria-') === 0) out += ' ' + an + '="' + esc(el.attributes[a].value) + '"';
+      }
+      var style = el.getAttribute('style') || '';
+      var ratio = /--ratio-value:\s*[^;]+;?/.exec(style);
+      if (ratio) out += ' style="' + esc(ratio[0]) + '"';
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
         out += ' value="' + esc(el.value == null ? '' : el.value) + '"';
         if (el.checked) out += ' checked';
       }
-      var h = [];
-      if (typeof el.onclick === 'function') h.push('click');
-      if (typeof el.onmousedown === 'function') h.push('mousedown');
+      if (el.tagName === 'OPTION' && el.selected) out += ' selected';
+      var h = [], l = null;
+      if (gel) { try { l = gel(el); } catch (eg) { l = null; } }
+      for (var p = 0; p < PRESS.length; p++) {
+        var ev = PRESS[p];
+        if (typeof el['on' + ev] === 'function' || (l && l[ev] && l[ev].length)) h.push(ev);
+      }
       if (h.length) out += ' data-h="' + h.join(',') + '"';
       if (visible) {
+        var cs = window.getComputedStyle(el), pcs = el.parentElement ? window.getComputedStyle(el.parentElement) : null;
+        if (cs && cs.cursor === 'pointer' && !(pcs && pcs.cursor === 'pointer')) out += ' data-ptr="1"';
         var r = el.getBoundingClientRect();
         out += ' data-vis="1" data-rect="' + Math.round(r.top) + ',' + Math.round(r.left) + ',' + Math.round(r.right) + ',' + Math.round(r.bottom) + '"';
       }
@@ -76,7 +100,7 @@
       if (tag === 'input' || tag === 'img' || tag === 'br') return s;
       return s + '</' + tag + '>';
     }
-    var root = document.querySelector('.efb') || document.body;
+    var root = (document.querySelector('.efb .efb-container') && document.querySelector('.efb')) || document.body;
     return ser(root, false);
   } catch (e) {
     return 'ERR ' + e + ' ' + (e && e.stack);
