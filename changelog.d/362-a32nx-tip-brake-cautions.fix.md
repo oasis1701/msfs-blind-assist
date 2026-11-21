@@ -1,0 +1,1 @@
+FlyByWire A32NX: the two wing tip brake cautions FlyByWire added in November are now spoken, "F/CTL SLAT TIP BRK FAULT" and "F/CTL FLAP TIP BRK FAULT". The aircraft gives no chime and no master caution for them, so the ECAM line is the only sign of the fault, and it was silent, with a blank line in the E/WD window.

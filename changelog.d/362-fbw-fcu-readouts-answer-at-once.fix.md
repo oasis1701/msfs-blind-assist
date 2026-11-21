@@ -1,0 +1,1 @@
+FlyByWire A32NX, Headwind A330 and FlyByWire A380: the FCU readouts answer at once. Output Shift+H, Shift+S and Shift+A, and Shift+V on the A380, used to speak up to a second after the key. The wording is unchanged.

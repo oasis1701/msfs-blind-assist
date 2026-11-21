@@ -225,25 +225,37 @@ public partial class FlyByWireA380Definition
         }
     }
 
+    // The four readouts below share two guards ([A320-42]). A pending latch is set only when every
+    // value the readout waits for has a data definition: the latches have no timeout and mute their
+    // window's dial callout, so one waiting on a read that is never sent stayed set. And the reads go
+    // through RequestFcuReadoutValues, which holds them after an MSFSBA FCU event until the FCU has
+    // acted and the batches have delivered: read straight after a push or pull (OnPanelButtonFired),
+    // the readout spoke the state from before the press.
     public void RequestFCUHeadingWithStatus(SimConnectManager s)
     {
-        if (!s.IsConnected) return;
+        if (!s.IsConnected || !s.HasDataDefinition(HeadingReadout) || !s.HasDataDefinition(HeadingManagedReadout)) return;
         _reqHdg = true; _pHdgVal = _pHdgMgd = null;
-        s.RequestVariable("A32NX_AUTOPILOT_HEADING_SELECTED", forceUpdate: true);
-        s.RequestVariable("A32NX_FCU_HDG_MANAGED_DASHES", forceUpdate: true);
+        RequestFcuReadoutValues(() =>
+        {
+            s.RequestVariable(HeadingReadout, forceUpdate: true);
+            s.RequestVariable(HeadingManagedReadout, forceUpdate: true);
+        });
     }
 
     public void RequestFCUSpeedWithStatus(SimConnectManager s)
     {
-        if (!s.IsConnected) return;
+        if (!s.IsConnected || !s.HasDataDefinition(SpeedReadout) || !s.HasDataDefinition(SpeedManagedReadout)) return;
         _reqSpd = true; _pSpdVal = _pSpdMgd = null;
-        s.RequestVariable("A32NX_AUTOPILOT_SPEED_SELECTED", forceUpdate: true);
-        s.RequestVariable("A32NX_FCU_SPD_MANAGED_DOT", forceUpdate: true);
+        RequestFcuReadoutValues(() =>
+        {
+            s.RequestVariable(SpeedReadout, forceUpdate: true);
+            s.RequestVariable(SpeedManagedReadout, forceUpdate: true);
+        });
     }
 
     public void RequestFCUAltitudeWithStatus(SimConnectManager s)
     {
-        if (!s.IsConnected) return;
+        if (!s.IsConnected || !s.HasDataDefinition(AltitudeReadout)) return;
         // Only the VALUE is requested. The managed/selected word comes from the derived
         // AltitudeModeTracker at emit time, not from A32NX_FCU_ALT_MANAGED itself — that key
         // points at FBW #10855's dead L:var (hardcoded to 0) and its value is never read, so
@@ -252,8 +264,9 @@ public partial class FlyByWireA380Definition
         // those three genuinely await a SECOND sim delivery to pair up, but altitude's other half
         // is read straight off the derived tracker at emit time (see the FCU_ALT_VALUE branch in
         // .SimVarUpdate.cs) — _reqAlt alone is enough. Don't add one back for symmetry.
+        // The value is read through its on-request twin ([A320-42]).
         _reqAlt = true;
-        s.RequestVariable("FCU_ALT_VALUE", forceUpdate: true);
+        RequestFcuReadoutValues(() => s.RequestVariable(AltitudeReadout, forceUpdate: true));
     }
 
     /// <summary>Mark a Shift+V readout pending (the three halves it pairs up start empty). Split out of
@@ -265,7 +278,8 @@ public partial class FlyByWireA380Definition
 
     public void RequestFCUVSWithStatus(SimConnectManager s)
     {
-        if (!s.IsConnected) return;
+        if (!s.IsConnected || !s.HasDataDefinition(TrkFpaModeReadout)
+            || !s.HasDataDefinition("A32NX_AUTOPILOT_VS_SELECTED") || !s.HasDataDefinition("A32NX_AUTOPILOT_FPA_SELECTED")) return;
         BeginVsReadout();
         // All three via the SimConnect data-def path, same as the heading/speed/alt
         // readouts that work. (VS is non-angular so it reads back unscaled — the
@@ -273,9 +287,12 @@ public partial class FlyByWireA380Definition
         // artifact, and routing VS through MobiFlight ReadLedVariable regressed the
         // read-out to silence: its numeric response was being consumed by the
         // shared ECAM string-read channel before the LED-value handler saw it.)
-        s.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
-        s.RequestVariable("A32NX_AUTOPILOT_VS_SELECTED", forceUpdate: true);
-        s.RequestVariable("A32NX_AUTOPILOT_FPA_SELECTED", forceUpdate: true);
+        RequestFcuReadoutValues(() =>
+        {
+            s.RequestVariable(TrkFpaModeReadout, forceUpdate: true);
+            s.RequestVariable("A32NX_AUTOPILOT_VS_SELECTED", forceUpdate: true);
+            s.RequestVariable("A32NX_AUTOPILOT_FPA_SELECTED", forceUpdate: true);
+        });
     }
 
     // Base FCU readout virtuals (rarely used path) → route to the paired readout.

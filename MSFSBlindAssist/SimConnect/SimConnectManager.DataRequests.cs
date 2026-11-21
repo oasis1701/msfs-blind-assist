@@ -160,6 +160,14 @@ public partial class SimConnectManager
         => FreshReadPolicy.SupportsFreshReads(variableDataDefinitions.ContainsKey(varKey), DefinitionOf(varKey));
 
     /// <summary>
+    /// True when <paramref name="varKey"/> has its own data definition, so a <see cref="RequestVariable(string, bool)"/>
+    /// of it is sent. False for a key dropped at the individual-definition cap or by a failed
+    /// registration, whose request returns without a word: a caller that latches on the answer
+    /// (the FBW FCU readouts) must not latch on one that cannot come.
+    /// </summary>
+    public bool HasDataDefinition(string varKey) => variableDataDefinitions.ContainsKey(varKey);
+
+    /// <summary>
     /// Force-reads <paramref name="varKey"/> and completes on the NEXT delivery of it: the
     /// PERIOD.ONCE response of an individual-def var (a frame or two), or the next continuous batch
     /// of a batch-covered one (up to one period; the force flag makes an unchanged value re-fire).
