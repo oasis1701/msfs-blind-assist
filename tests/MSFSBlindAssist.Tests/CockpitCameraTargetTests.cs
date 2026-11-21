@@ -21,10 +21,27 @@ public class CockpitCameraTargetTests
     [InlineData("CDU", CockpitCameraTarget.MCDU)]
     [InlineData("EFB", CockpitCameraTarget.EFB)]
     [InlineData("flyPad", CockpitCameraTarget.EFB)]
+    [InlineData("EVT_OH_ELEC_BATTERY_SWITCH", CockpitCameraTarget.Overhead)]
+    [InlineData("Battery 1: ON", CockpitCameraTarget.Overhead)]
+    [InlineData("Landing lights: ON", CockpitCameraTarget.Overhead)]
+    [InlineData("Fuel pumps: ON", CockpitCameraTarget.Overhead)]
+    [InlineData("EVT_MCP_HDG_SEL_SWITCH", CockpitCameraTarget.Glareshield)]
+    [InlineData("Flight Director: ON", CockpitCameraTarget.Glareshield)]
+    [InlineData("EVT_PED_SPEEDBRAKE_LEVER", CockpitCameraTarget.Pedestal)]
+    [InlineData("Flaps: 1", CockpitCameraTarget.Pedestal)]
+    [InlineData("Autobrake: RTO", CockpitCameraTarget.MainPanel)]
+    [InlineData("Landing Gear: DOWN", CockpitCameraTarget.MainPanel)]
     public void ResolveSection_ResolvesKnownKeywords(string sectionName, CockpitCameraTarget expected)
     {
         var resolved = CockpitCameraTargetExtensions.ResolveSection(sectionName);
         Assert.Equal(expected, resolved);
+    }
+
+    [Fact]
+    public void ResolveSection_MultipleCandidates_ResolvesFirstMatch()
+    {
+        var resolved = CockpitCameraTargetExtensions.ResolveSection(null, "Unknown", "Battery: ON");
+        Assert.Equal(CockpitCameraTarget.Overhead, resolved);
     }
 
     [Theory]

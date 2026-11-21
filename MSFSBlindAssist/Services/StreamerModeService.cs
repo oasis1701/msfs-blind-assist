@@ -28,15 +28,20 @@ public class StreamerModeService
     /// <summary>
     /// Initializes or replaces the shared instance with configured dependencies.
     /// </summary>
-    public static void Initialize(ICameraViewIo? io, Func<UserSettings> getSettings, ScreenReaderAnnouncer? announcer)
+    public static void Initialize(
+        ICameraViewIo? io,
+        Func<UserSettings> getSettings,
+        ScreenReaderAnnouncer? announcer,
+        Func<IAircraftDefinition?>? getAircraft = null)
     {
-        _instance = new StreamerModeService(io, getSettings, announcer);
+        _instance = new StreamerModeService(io, getSettings, announcer, null, getAircraft);
     }
 
     private readonly ICameraViewIo? _io;
     private readonly Func<UserSettings> _getSettings;
     private readonly ScreenReaderAnnouncer? _announcer;
     private readonly Func<int, Task> _delay;
+    private readonly Func<IAircraftDefinition?>? _getAircraft;
 
     private readonly object _lock = new();
     private CancellationTokenSource? _returnTimerCts;
@@ -53,19 +58,21 @@ public class StreamerModeService
         ICameraViewIo? io = null,
         Func<UserSettings>? getSettings = null,
         ScreenReaderAnnouncer? announcer = null,
-        Func<int, Task>? delay = null)
+        Func<int, Task>? delay = null,
+        Func<IAircraftDefinition?>? getAircraft = null)
     {
         _io = io;
         _getSettings = getSettings ?? (() => SettingsManager.Current);
         _announcer = announcer;
         _delay = delay ?? (ms => Task.Delay(ms));
+        _getAircraft = getAircraft;
     }
 
     /// <summary>
     /// Prepares camera for a manual panel interaction: moves camera to section if needed,
     /// waits for human head-turn transition, and arms the 2-second return timer.
     /// </summary>
-    public async Task<bool> PrepareManualActionAsync(string? sectionName, IAircraftDefinition? aircraft)
+    public async Task<bool> PrepareManualActionAsync(string? sectionName, IAircraftDefinition? aircraft = null)
     {
         if (!_getSettings().StreamerModeEnabled) return false;
 
@@ -82,7 +89,8 @@ public class StreamerModeService
 
         if (CurrentTarget != target.Value)
         {
-            int? viewIndex = aircraft?.GetCameraViewForTarget(target.Value);
+            var effectiveAircraft = aircraft ?? _getAircraft?.Invoke();
+            int? viewIndex = effectiveAircraft?.GetCameraViewForTarget(target.Value);
             if (viewIndex.HasValue && _io != null)
             {
                 Log.Debug("StreamerMode", $"Moving camera to {target.Value} (index {viewIndex.Value}) for manual action");
@@ -108,7 +116,7 @@ public class StreamerModeService
     /// Prepares camera for an automated flow step: moves camera to section if needed,
     /// or stays looking at current section if consecutive steps are in the same section.
     /// </summary>
-    public async Task<bool> PrepareFlowStepAsync(string? sectionName, IAircraftDefinition? aircraft)
+    public async Task<bool> PrepareFlowStepAsync(string? sectionName, IAircraftDefinition? aircraft = null)
     {
         if (!_getSettings().StreamerModeEnabled) return false;
 
@@ -126,7 +134,8 @@ public class StreamerModeService
             return true;
         }
 
-        int? viewIndex = aircraft?.GetCameraViewForTarget(target.Value);
+        var effectiveAircraft = aircraft ?? _getAircraft?.Invoke();
+        int? viewIndex = effectiveAircraft?.GetCameraViewForTarget(target.Value);
         if (viewIndex.HasValue && _io != null)
         {
             Log.Debug("StreamerMode", $"Moving camera to {target.Value} (index {viewIndex.Value}) for flow step");
@@ -176,7 +185,7 @@ public class StreamerModeService
     /// <summary>
     /// Toggles dedicated close-up camera focus on an instrument (MCDU or EFB).
     /// </summary>
-    public async Task<bool> SetCameraFocusAsync(CockpitCameraTarget target, bool focus, IAircraftDefinition? aircraft)
+    public async Task<bool> SetCameraFocusAsync(CockpitCameraTarget target, bool focus, IAircraftDefinition? aircraft = null)
     {
         if (!_getSettings().StreamerModeEnabled) return false;
 
@@ -189,7 +198,8 @@ public class StreamerModeService
                 FocusedTarget = target;
             }
 
-            int? viewIndex = aircraft?.GetCameraViewForTarget(target);
+            var effectiveAircraft = aircraft ?? _getAircraft?.Invoke();
+            int? viewIndex = effectiveAircraft?.GetCameraViewForTarget(target);
             if (viewIndex.HasValue && _io != null)
             {
                 Log.Debug("StreamerMode", $"Focusing camera close-up on {target} (index {viewIndex.Value})");

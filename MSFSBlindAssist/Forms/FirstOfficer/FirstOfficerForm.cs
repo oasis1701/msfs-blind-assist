@@ -729,7 +729,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         }
     }
 
-    private void ChecklistTree_AfterCheck(object? sender, TreeViewEventArgs e)
+    private async void ChecklistTree_AfterCheck(object? sender, TreeViewEventArgs e)
     {
         if (_suppressTreeEvents) return;
         if (e.Node == null) return;
@@ -750,6 +750,10 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         }
 
         if (e.Node.Checked == item.IsChecked) return; // Prevent loop
+
+        await StreamerModeService.Instance.PrepareManualActionAsync(
+            groupId + " " + item.Label,
+            _simConnect.CurrentAircraft);
 
         _suppressTreeEvents = true;
         if (_checklistMgr.ToggleItem(groupId, itemId, out string? leftAloneText) == null)

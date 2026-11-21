@@ -709,7 +709,7 @@ public partial class MainForm : Form
 
         simConnectManager = new SimConnectManager(this.Handle);
         simConnectManager.CurrentAircraft = currentAircraft;
-        StreamerModeService.Initialize(simConnectManager, () => SettingsManager.Current, announcer);
+        StreamerModeService.Initialize(simConnectManager, () => SettingsManager.Current, announcer, () => currentAircraft);
         // The saved-aircraft path never goes through SwitchAircraft, so the MD-11's Attach (the
         // SimConnect handle and the UI SynchronizationContext its control-state hook needs) has
         // to happen here as well — otherwise every panel row opens without a state, and nothing

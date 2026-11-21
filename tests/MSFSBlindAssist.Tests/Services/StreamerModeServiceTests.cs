@@ -152,5 +152,19 @@ public class StreamerModeServiceTests
         Assert.False(service.IsFocused);
         Assert.Equal(CockpitCameraTarget.Forward, service.CurrentTarget);
     }
+
+    [Fact]
+    public async Task WhenAircraftOmitted_UsesFallbackResolver()
+    {
+        var io = new FakeCameraIo();
+        var settings = new UserSettings { StreamerModeEnabled = true };
+        var aircraft = new FakeAircraft();
+        var service = new StreamerModeService(io, () => settings, delay: _ => Task.CompletedTask, getAircraft: () => aircraft);
+
+        bool result = await service.PrepareManualActionAsync("Overhead");
+        Assert.True(result);
+        Assert.Single(io.SetCalls);
+        Assert.Equal((2, 4), io.SetCalls[0]);
+    }
 }
 

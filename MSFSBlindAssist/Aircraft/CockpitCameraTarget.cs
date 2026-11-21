@@ -35,40 +35,100 @@ public enum CockpitCameraTarget
 public static class CockpitCameraTargetExtensions
 {
     /// <summary>
-    /// Resolves a section name or panel identifier to a <see cref="CockpitCameraTarget"/>.
+    /// Resolves one or more candidate strings (e.g. section name, item label, event name) to a <see cref="CockpitCameraTarget"/>.
+    /// Checks candidates in order and returns the first resolved target.
     /// </summary>
-    public static CockpitCameraTarget? ResolveSection(string? sectionName)
+    public static CockpitCameraTarget? ResolveSection(params string?[] candidates)
     {
-        if (string.IsNullOrWhiteSpace(sectionName)) return null;
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate)) continue;
 
-        if (sectionName.Contains("Overhead", StringComparison.OrdinalIgnoreCase))
-            return CockpitCameraTarget.Overhead;
+            if (candidate.Contains("Overhead", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("_OH_", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Battery", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Ext Power", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("External Power", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Standby Power", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("APU", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Fuel Pump", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Fuel", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Hydraulic", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Bleed", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Air Cond", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Pressurization", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Oxygen", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Wiper", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Anti-ice", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Anti Ice", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Seatbelt", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Landing Light", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Strobe", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Beacon", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Nav Light", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Taxi Light", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Logo Light", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("IRS", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("ADIRS", StringComparison.OrdinalIgnoreCase))
+                return CockpitCameraTarget.Overhead;
 
-        if (sectionName.Contains("Glareshield", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("FCU", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("MCP", StringComparison.OrdinalIgnoreCase))
-            return CockpitCameraTarget.Glareshield;
+            if (candidate.Contains("Glareshield", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("FCU", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("MCP", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("_MCP_", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("_FCU_", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Flight Director", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Autopilot", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Autothrottle", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("A/THR", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("EFIS", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Altimeter", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Baro", StringComparison.OrdinalIgnoreCase))
+                return CockpitCameraTarget.Glareshield;
 
-        if (sectionName.Contains("Pedestal", StringComparison.OrdinalIgnoreCase))
-            return CockpitCameraTarget.Pedestal;
+            if (candidate.Contains("Pedestal", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("_PED_", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Engine Mode", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Master Switch", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Engine Master", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Throttle", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Thrust", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Speedbrake", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Spoiler", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Flap", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Parking Brake", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Trim", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Transponder", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("XPNDR", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("TCAS", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Radio", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Weather Radar", StringComparison.OrdinalIgnoreCase))
+                return CockpitCameraTarget.Pedestal;
 
-        if (sectionName.Contains("Main", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("Forward", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("Center", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("Display", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("Instrument", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("Cockpit", StringComparison.OrdinalIgnoreCase))
-            return CockpitCameraTarget.MainPanel;
+            if (candidate.Contains("Main", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Forward", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Center", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Display", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Instrument", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Cockpit", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("MIP", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("_MIP_", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Autobrake", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Landing Gear", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Gear", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Clock", StringComparison.OrdinalIgnoreCase))
+                return CockpitCameraTarget.MainPanel;
 
-        if (sectionName.Contains("MCDU", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("CDU", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("FMC", StringComparison.OrdinalIgnoreCase))
-            return CockpitCameraTarget.MCDU;
+            if (candidate.Contains("MCDU", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("CDU", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("FMC", StringComparison.OrdinalIgnoreCase))
+                return CockpitCameraTarget.MCDU;
 
-        if (sectionName.Contains("EFB", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("Tablet", StringComparison.OrdinalIgnoreCase) ||
-            sectionName.Contains("flyPad", StringComparison.OrdinalIgnoreCase))
-            return CockpitCameraTarget.EFB;
+            if (candidate.Contains("EFB", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Tablet", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("flyPad", StringComparison.OrdinalIgnoreCase))
+                return CockpitCameraTarget.EFB;
+        }
 
         return null;
     }
