@@ -96,7 +96,7 @@ public partial class FlyByWireA380Definition
                 if (fv.HasValue)
                 {
                     int i = (int)Math.Round(fv.Value);
-                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < ReadFlapsDetents.Length ? ReadFlapsDetents[i] : fv.Value.ToString()));
+                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < ReadFlapsDetents.Length ? ReadFlapsDetents[i] : fv.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
                 }
                 else if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
                 return true;
@@ -186,7 +186,7 @@ public partial class FlyByWireA380Definition
                 double hpaNow = _lastBaroL;
                 double? baroWord = simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO_HPA");
                 if (baroWord.HasValue && BaroHpa(new Arinc429Word(baroWord.Value).ValueOr(0), out double hpaDec) && hpaDec > 0) hpaNow = hpaDec;
-                if (hpaNow > 0) { announcer.AnnounceImmediate($"Altimeter: {hpaNow:0}, {hpaNow / 33.8639:0.00}"); return true; }
+                if (hpaNow > 0) { announcer.AnnounceImmediate(FormattableString.Invariant($"Altimeter: {hpaNow:0}, {hpaNow / 33.8639:0.00}")); return true; }
                 // Fallback (EIS baro not seeded yet): stock KOHLSMAN.
                 if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
                 return true;
@@ -357,7 +357,7 @@ public partial class FlyByWireA380Definition
         // plus the cached managed dot, once. internalSpeed < 100 is Mach*100 (e.g. 78 = 0.78).
         string spdStatus = (s.GetCachedVariableValue("A32NX_FCU_SPD_MANAGED_DOT") ?? 0) > 0.5 ? "managed" : "selected";
         if (internalSpeed < 100)
-            a.AnnounceImmediate($"FCU speed mach {internalSpeed / 100.0:0.00}, {spdStatus}");
+            a.AnnounceImmediate(FormattableString.Invariant($"FCU speed mach {internalSpeed / 100.0:0.00}, {spdStatus}"));
         else
             a.AnnounceImmediate($"FCU speed {internalSpeed}, {spdStatus}");
         return true;
@@ -410,10 +410,10 @@ public partial class FlyByWireA380Definition
         // gated on |value| < 100 — an ×100 encoding was silently IGNORED, not clamped).
         int toSend = Math.Abs(value) < 100 ? (int)Math.Round(value * 10) : (int)Math.Round(value);
         SuppressFcuValueChangeEcho(Fcu.VerticalSpeed, Fcu.FlightPathAngle);
-        s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
+        s.ExecuteCalculatorCode(FcuValueEntry.VerticalSpeedSetCode(toSend));
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
-            a.AnnounceImmediate($"FCU flight path angle {value:0.0}");
+            a.AnnounceImmediate(FormattableString.Invariant($"FCU flight path angle {value:0.0}"));
         else
             a.AnnounceImmediate($"FCU vertical speed {value:0}");
         return true;

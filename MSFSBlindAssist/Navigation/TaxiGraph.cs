@@ -4434,7 +4434,9 @@ public partial class TaxiGraph
 
     private static string GetSpatialHashKey(double lat, double lon)
     {
-        return $"{Math.Round(lat, SPATIAL_HASH_PRECISION)},{Math.Round(lon, SPATIAL_HASH_PRECISION)}";
+        // Invariant: under a comma-decimal culture the two numbers and their separator would share one character.
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"{Math.Round(lat, SPATIAL_HASH_PRECISION)},{Math.Round(lon, SPATIAL_HASH_PRECISION)}");
     }
 
     /// <summary>

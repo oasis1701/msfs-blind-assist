@@ -372,7 +372,7 @@ public partial class SimConnectManager
                 {
                     VarName = "MACH_SPEED",
                     Value = machData.value,
-                    Description = $"{machData.value:0.00}"
+                    Description = FormattableString.Invariant($"{machData.value:0.00}")
                 });
                 break;
 
@@ -380,8 +380,8 @@ public partial class SimConnectManager
                 SingleValue bankData = (SingleValue)data.dwData[0];
                 double bankInDegrees = -bankData.value * (180.0 / Math.PI); // Convert radians to degrees, negated so right bank = positive
                 string bankFormatted = bankInDegrees >= 0
-                    ? (bankInDegrees == 0 ? "0" : $"+{bankInDegrees:F1}")
-                    : $"{bankInDegrees:F1}";
+                    ? (bankInDegrees == 0 ? "0" : FormattableString.Invariant($"+{bankInDegrees:F1}"))
+                    : FormattableString.Invariant($"{bankInDegrees:F1}");
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "BANK_ANGLE",
@@ -394,8 +394,8 @@ public partial class SimConnectManager
                 SingleValue pitchData = (SingleValue)data.dwData[0];
                 double pitchInDegrees = -(pitchData.value * (180.0 / Math.PI)); // Convert radians to degrees and negate (SimConnect: negative = nose up)
                 string pitchFormatted = pitchInDegrees >= 0
-                    ? $"+{pitchInDegrees:F1}"
-                    : $"{pitchInDegrees:F1}";
+                    ? FormattableString.Invariant($"+{pitchInDegrees:F1}")
+                    : FormattableString.Invariant($"{pitchInDegrees:F1}");
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "PITCH_ANGLE",
@@ -640,7 +640,7 @@ public partial class SimConnectManager
                     // Normalize to 0-360 range
                     if (bearingDegrees < 0) bearingDegrees += 360;
 
-                    description = $"{waypointName}, {waypointData.distance:0.0} NM, {bearingDegrees:0} degrees";
+                    description = FormattableString.Invariant($"{waypointName}, {waypointData.distance:0.0} NM, {bearingDegrees:0} degrees");
                 }
 
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -669,7 +669,7 @@ public partial class SimConnectManager
                     // Normalize to 0-360 range
                     if (bearingDegrees370 < 0) bearingDegrees370 += 360;
 
-                    description370 = $"{waypointName370}, {waypointData370.distance:0.0} NM, {bearingDegrees370:0} degrees";
+                    description370 = FormattableString.Invariant($"{waypointName370}, {waypointData370.distance:0.0} NM, {bearingDegrees370:0} degrees");
                 }
 
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1121,7 +1121,7 @@ public partial class SimConnectManager
             {
                 // On centerline - just track it
                 double localizerMagneticHeading = (ilsData.LocalizerHeading - data.MagneticVariation + 360) % 360;
-                announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, on centerline.{glideslopeInfo} " +
+                announcement = FormattableString.Invariant($"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, on centerline.{glideslopeInfo} ") +
                               $"Runway heading {localizerMagneticHeading:000}.";
             }
             else
@@ -1142,8 +1142,8 @@ public partial class SimConnectManager
                 double angularDeviationDeg = NavigationCalculator.AngularDeviationFromCenterlineDeg(
                     distanceToLocalizer, distanceToThreshold);
 
-                announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, " +
-                              $"{distanceToLocalizer:F1} nautical miles {direction} of centerline, " +
+                announcement = FormattableString.Invariant($"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, ") +
+                              FormattableString.Invariant($"{distanceToLocalizer:F1} nautical miles {direction} of centerline, ") +
                               $"{angularDeviationDeg:F0} degrees {direction} of centerline.{glideslopeInfo} " +
                               $"Fly heading {directHeading:000} for 60 degree intercept, " +
                               $"{mediumHeading:000} for 45 degree intercept, " +

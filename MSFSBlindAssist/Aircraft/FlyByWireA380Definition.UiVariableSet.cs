@@ -504,7 +504,7 @@ public partial class FlyByWireA380Definition
         {
             if (value < ts.Lo || value > ts.Hi)
             {
-                announcer.AnnounceImmediate($"Temperature must be between {ts.Lo} and {ts.Hi} degrees Celsius.");
+                announcer.AnnounceImmediate(FormattableString.Invariant($"Temperature must be between {ts.Lo} and {ts.Hi} degrees Celsius."));
                 return true;
             }
             // Invariant fixed-point: raw interpolation used CurrentCulture — a fractional
@@ -520,7 +520,7 @@ public partial class FlyByWireA380Definition
         {
             string knob = varKey == "PRESS_MAN_ALT_SET" ? "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB" : "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB";
             simConnect.ExecuteCalculatorCode($"{value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} (>L:{knob})");
-            announcer.Announce($"Set to {value:0.0}");
+            announcer.Announce(FormattableString.Invariant($"Set to {value:0.0}"));
             return true;
         }
         // Cabin lighting (passenger-cabin brightness). Calc-path write (the reliable FBW
@@ -688,7 +688,7 @@ public partial class FlyByWireA380Definition
             }
             simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(hpa * 16.0));
             announcer.Announce(inHg
-                ? $"Altimeter set {hpa / 33.8639:0.00} inches"
+                ? FormattableString.Invariant($"Altimeter set {hpa / 33.8639:0.00} inches")
                 : $"Altimeter set {hpa:0} hectopascals");
             return true;
         }
@@ -737,7 +737,7 @@ public partial class FlyByWireA380Definition
         if (varKey.StartsWith("A32NX_EFIS_", StringComparison.Ordinal)
             || varKey.StartsWith("A380X_EFIS_", StringComparison.Ordinal))
         {
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            simConnect.ExecuteCalculatorCode(FormattableString.Invariant($"{(int)Math.Round(value)} (>L:{varKey})"));
             return true;
         }
         // Flight directors (CORRECTED 2026-09 for FBW #10855): ONE FCU pushbutton, read from its
@@ -885,7 +885,7 @@ public partial class FlyByWireA380Definition
             // EMEREXIT XMLVAR stuck via the calculator path.)
             || varKey.StartsWith("XMLVAR_", StringComparison.Ordinal))
         {
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            simConnect.ExecuteCalculatorCode(FormattableString.Invariant($"{(int)Math.Round(value)} (>L:{varKey})"));
             return true;
         }
         // General catch-all for every remaining writable FBW L:var combo whose KEY is
@@ -925,7 +925,7 @@ public partial class FlyByWireA380Definition
             || varKey.StartsWith("A380X_", StringComparison.Ordinal)
             || varKey.StartsWith("FBW_", StringComparison.Ordinal))
         {
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            simConnect.ExecuteCalculatorCode(FormattableString.Invariant($"{(int)Math.Round(value)} (>L:{varKey})"));
             return true;
         }
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);

@@ -70,7 +70,7 @@ public static class NdWaypointReadout
 
             double dist = R("A32NX_EFIS_L_TO_WPT_DISTANCE");
             announcer.AnnounceImmediate(
-                $"{ident}, distance {dist:0.0} nautical miles, bearing {brg:000} degrees {brgRef}");
+                FormattableString.Invariant($"{ident}, distance {dist:0.0} nautical miles, bearing {brg:000} degrees {brgRef}"));
         }
         catch (Exception ex)
         {
