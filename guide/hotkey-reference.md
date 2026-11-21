@@ -192,6 +192,7 @@ Each opens a window where you type a value, with the related mode buttons. The b
 - **Access GSX window**: **F5** opens the GSX menu, **1** to **9**, **0** and **A** to **E** choose a menu option, **C** opens GSX Settings, **Escape** hides the window.
 - **SayIntentions flight information window**: arrow keys read line by line, **Escape** closes.
 - **Every MCDU, CDU and FMC window except the A380's MFD**: **Ctrl+1** to **Ctrl+6** are the left line select keys and **Alt+1** to **Alt+6** the right ones. With **Alternate line select keys** ticked in **File**, **FMC Settings**, they become **F1** to **F6** and **F7** to **F12**. **Alt+S** jumps to the scratchpad box, **Enter** sends what you typed, and **Alt+Home** returns to the screen. The A380's MFD window has no line select keys; see its section.
+- **MCDU and EFB windows (when Streamer Mode is enabled)**: **Alt+Shift+C** toggles "Focus camera here", zooming the simulator's camera directly onto the instrument for your stream viewers.
 
 ### Hand Fly and Visual Guidance quick keys {#hand-fly-and-visual-guidance-quick-keys}
 

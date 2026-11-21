@@ -439,6 +439,7 @@ Open the Settings window from the **File** menu, **Settings…**. It holds nearl
 | Hand Fly | Hand-flying feedback, visual guidance tones, Takeoff Assist and the rollout centreline tone. |
 | Taxi Guidance | The taxi steering tone, taxi callouts, distance units, docking guidance, online taxiway names, airport buildings, and SayIntentions taxi import. |
 | First Officer | The [First Officer](first-officer.md#fo-settings)'s automation (gear, flaps, autopilot, landing lights, altimeters, seat belt signs, center fuel pumps), the PMDG 737 GPWS test type, and whether flows speak each step. |
+| Streamer Mode | Cockpit camera movements, instrument focus and the Cockpit Views window for live streaming. |
 | Updates | Release or preview builds, automatic update checks, the startup data check, and the version you are running. |
 
 </div>

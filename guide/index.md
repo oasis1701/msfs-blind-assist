@@ -167,6 +167,7 @@ Part 5 is about the airport, from the gate to the runway and back: knowing where
    - [Volanta](networks-and-integrations.md#volanta)
    - [ActiveSky](networks-and-integrations.md#integrations-activesky)
    - [AI Providers](networks-and-integrations.md#integrations-ai)
+   - [Streamer Mode](networks-and-integrations.md#streamer-mode)
 
 ## Part 8: Aircraft Guides {#part-7-aircraft-guides}
 
