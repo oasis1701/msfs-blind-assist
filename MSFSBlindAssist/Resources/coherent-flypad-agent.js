@@ -1692,6 +1692,173 @@
     return out.length ? out : null;
   };
 
+  // ---- Performance page: Top of Descent and Temperature Correction ----------
+  // Both tabs lay FBW "Card"s side by side (Top of Descent: Ground Speed | Data | Result;
+  // Temperature Correction: Airfield Data over Published Altitudes | Results). The row-wise read
+  // zippered the cards ("Ground Speed, Data, Result" and then their fields interleaved), named the
+  // manual ground speed inputs from two merged column titles ("Min. Altitude 1Ground Speed (feet)"),
+  // gave every published altitude box the same name, left the SYNC and X buttons without a field,
+  // and spread a result over four lines. The reader keeps the generic passes (dropdowns and their
+  // open option lists keep working) and adds three things for these two tabs:
+  //   1. every item is tagged with its card and its document position, and A.orderPerformance
+  //      reads the cards one after another, each in document order;
+  //   2. A.performanceLabel names an input from its own label and a SYNC / DESYNC / X button from
+  //      its field, with a stable `key`: FBW flips the altitude button's text SYNC <-> DESYNC
+  //      (#10981), and a key made from the label rebuilt the button under the pilot's focus [FPD-5];
+  //   3. A.performanceResults owns the result card and the results table and emits one line each.
+  // All of it is keyed on structure and the router href, never on FBW's translated wording; only
+  // SYNC, DESYNC and X are matched as text, because FBW hard-codes them in English. The Takeoff
+  // and Landing calculators (A32NX only) are left to the generic passes.
+
+  // The Performance sub-tab on show ("top-of-descent", "temperature-correction", "takeoff",
+  // "landing"), or "" off the Performance page.
+  A.performanceTab = function (root) {
+    try {
+      var links = root.querySelectorAll('a[href^="/performance/"]');
+      for (var i = 0; i < links.length; i++) {
+        if (A.isVisible(links[i]) && A.isActiveTab(links[i]))
+          return (links[i].getAttribute("href") || "").replace(/^\/performance\//, "");
+      }
+    } catch (e) {}
+    return "";
+  };
+
+  // FBW's Card component (UtilComponents/Card): a wrapper whose <h1> title is followed by the
+  // bordered body. A result's own <h1> (followed by a <span>) is not a card.
+  A.performanceCards = function (root) {
+    var out = [], hs = root.getElementsByTagName("h1");
+    for (var i = 0; i < hs.length; i++) {
+      var h = hs[i], body = h.nextElementSibling;
+      if (!body || !h.parentElement || !A.isVisible(h)) continue;
+      if (!A.hasClassToken(body, "border-theme-accent") || !A.hasClassToken(body, "rounded-md")) continue;
+      out.push({ title: h, body: body, wrap: h.parentElement, name: clean(h.textContent), inputs: 0 });
+    }
+    return out;
+  };
+
+  // The label <p> of the field a control belongs to: the nearest ancestor, up to the card body,
+  // whose FIRST child is a <p> ("Current Altitude" over its input row; "Airport" beside its box).
+  A.performanceFieldLabel = function (n, card) {
+    var cur = n.parentElement, hops = 0;
+    while (cur && cur !== card.body && hops < 4) {
+      var first = cur.firstElementChild;
+      if (first && first !== n && first.tagName === "P" && clean(first.textContent)) return first;
+      cur = cur.parentElement; hops++;
+    }
+    return null;
+  };
+
+  // The column title of an input that sits in a row of bare cells under a row of titles (the
+  // manual ground speed table: "Min. Altitude 1" | "Ground Speed" over two inputs).
+  A.performanceColumnLabel = function (input) {
+    var cell = input.parentElement, row = cell ? cell.parentElement : null;
+    var hdr = row ? row.previousElementSibling : null;
+    if (!row || !hdr || hdr.children.length !== row.children.length || row.children.length < 2) return null;
+    var at = Array.prototype.indexOf.call(row.children, cell);
+    var p = at >= 0 && hdr.children[at].querySelector ? hdr.children[at].querySelector("p") : null;
+    if (!p || !clean(p.textContent)) return null;
+    // Only the first title carries the row's number ("Min. Altitude 2"): lend it to the others.
+    var text = clean(p.textContent);
+    if (!/\d/.test(text)) {
+      var num = /(\d+)\s*$/.exec(clean(hdr.children[0].textContent));
+      if (num) text = text + " " + num[1];
+    }
+    return { node: p, text: text, header: hdr };
+  };
+
+  // Name one control inside a Performance card, or null to keep the generic label. Marks the
+  // label nodes it folds in as consumed (gen-stamped), so pass 2 does not read them again.
+  A.performanceLabel = function (n, kind, text, card) {
+    function consume(p) { if (p) p.__msfsbaPerfLabel = A._gen; }
+    if (kind === "input") {
+      var unit = clean(n.getAttribute("placeholder") || "");
+      var label = "";
+      var own = A.performanceFieldLabel(n, card);
+      if (own) { label = clean(own.textContent); consume(own); }
+      else {
+        var col = A.performanceColumnLabel(n);
+        if (col) {
+          label = col.text;
+          var ps = col.header.getElementsByTagName("p");
+          for (var i = 0; i < ps.length; i++) consume(ps[i]);
+        }
+      }
+      card.inputs++;
+      // A grid of unlabelled boxes (the published altitudes): the card's title and a number.
+      if (!label && card.name) label = card.name + " " + card.inputs;
+      if (!label) return null;
+      return { text: (unit && label.indexOf(unit) < 0) ? label + " (" + unit + ")" : label, key: "" };
+    }
+    if (kind === "button" && /^(SYNC|DESYNC|X)$/.test(text)) {
+      var fp = A.performanceFieldLabel(n, card);
+      var field = fp ? clean(fp.textContent) : card.name;
+      if (!field) return null;
+      if (text === "X") return { text: field + ": Clear", key: "perf:clear:" + field };
+      // A calculation row's SYNC keeps its text and shows it is on by its fill alone; the altitude
+      // and ground speed buttons are always filled (they carry a hover swap) and say it in words.
+      var on = text === "SYNC" && A.hasClassToken(n, "bg-theme-highlight") && A.cls(n).indexOf("hover:bg-theme-body") < 0;
+      return { text: field + ": " + text + (on ? " (active)" : ""), key: "perf:sync:" + field };
+    }
+    return null;
+  };
+
+  // Own the result card (Top of Descent) and the results table (Temperature Correction) and emit
+  // one line per result: "Start your descent about 100 NM before target"; "Published 3000,
+  // Corrected 3130". Returns the items, tagged for A.orderPerformance.
+  A.performanceResults = function (cards) {
+    var out = [];
+    function line(node, cardNo, text) {
+      var it = A.textItem(text);
+      it.top = 0; it.left = 0; it._axis = 0; it.navRail = false; it._selRoot = null; it._selOpt = false;
+      it._card = cardNo; it._dom = node.__msfsbaDom || 0;
+      out.push(it);
+    }
+    for (var c = 0; c < cards.length; c++) {
+      var body = cards[c].body, owned = false;
+      var tables = body.getElementsByTagName("table");
+      for (var t = 0; t < tables.length; t++) {
+        var heads = tables[t].querySelectorAll("thead th"), rows = tables[t].querySelectorAll("tbody tr");
+        for (var r = 0; r < rows.length; r++) {
+          var cells = rows[r].children, parts = [];
+          for (var d = 0; d < cells.length; d++) {
+            var v = clean(cells[d].textContent), hd = heads[d] ? clean(heads[d].textContent) : "";
+            if (v) parts.push(hd ? hd + " " + v : v);
+          }
+          if (parts.length) line(rows[r], c + 1, parts.join(", "));
+        }
+        A.markOwned(tables[t]);
+        owned = true;
+      }
+      if (owned) continue;
+      // A result block: an element holding its own <h1> and the value, unit and footer spans.
+      var hs = body.getElementsByTagName("h1");
+      for (var h = 0; h < hs.length; h++) {
+        var block = hs[h].parentElement;
+        if (!block || block === body || !A.isVisible(hs[h])) continue;
+        var kids = block.children, words = [];
+        for (var k = 0; k < kids.length; k++) { var w = clean(kids[k].textContent); if (w) words.push(w); }
+        if (words.length) line(block, c + 1, words.join(" "));
+        A.markOwned(block);
+      }
+    }
+    return out;
+  };
+
+  // Read the Performance cards one after another, each in document order: everything outside a
+  // card first (the sub-tabs, "Fill data from"), then the cards, then the nav rail. No-op when no
+  // item is tagged, so every other page keeps its order.
+  A.orderPerformance = function (items) {
+    var head = [], cards = [], rail = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (it._card) cards.push(it); else if (it.navRail) rail.push(it); else head.push(it);
+    }
+    if (!cards.length) return;
+    cards.sort(function (a, b) { return (a._card - b._card) || (a._dom - b._dom); });
+    items.length = 0;
+    Array.prototype.push.apply(items, head.concat(cards, rail));
+  };
+
   // ---- Settings builder ---------------------------------------------------
   // The flyPad Settings detail pages (/settings/<category>) flow through the
   // generic pass, producing cluttered output (loose option buttons, mislabeled
@@ -1988,6 +2155,23 @@
       return 0;
     }
 
+    // Performance (Top of Descent / Temperature Correction): the cards, every node's document
+    // position, and the result lines the reader composes itself. Empty on every other page and
+    // on the Takeoff / Landing tabs, where nothing below changes.
+    var perfTab = A.performanceTab(root);
+    var perf = (perfTab === "top-of-descent" || perfTab === "temperature-correction") ? A.performanceCards(root) : [];
+    function perfCardOf(n) {
+      for (var k = 0; k < perf.length; k++) {
+        try { if (perf[k].wrap.contains(n)) return k + 1; } catch (e) {}
+      }
+      return 0;
+    }
+    if (perf.length) {
+      for (var pd = 0; pd < all.length; pd++) all[pd].__msfsbaDom = pd;
+      var perfLines = A.performanceResults(perf);
+      for (var pl = 0; pl < perfLines.length; pl++) items.push(perfLines[pl]);
+    }
+
     // Dedicated Ground-form builders (Payload/Fuel) own + replace their content
     // region with clean lines. They stamp idx on the real inputs and mark the
     // suppressed/replaced subtrees data-fbw-ground-region; the generic passes
@@ -2039,6 +2223,14 @@
       var text = A.labelFor(n);
       var ctype = A.controlType(kind, n);
       var clickable = A.isClickable(kind);
+
+      // Inside a Performance card: the field's own name, and a stable key for a button whose
+      // text is its state (see the Performance block above A.performanceTab).
+      var cardNo = perf.length ? perfCardOf(n) : 0, perfKey = "";
+      if (cardNo) {
+        var named = A.performanceLabel(n, kind, text, perf[cardNo - 1]);
+        if (named) { text = named.text; perfKey = named.key; }
+      }
 
       var r = n.getBoundingClientRect();
       var topRel = r.top - rootRect.top, leftRel = r.left - rootRect.left;
@@ -2122,7 +2314,7 @@
         text = text + (navRail ? " (current page)" : " (selected)");
       }
 
-      items.push({
+      var item = {
         top: topRel, left: leftRel,
         idx: thisIdx, kind: kind, tag: n.tagName.toLowerCase(),
         role: lower(n.getAttribute && n.getAttribute("role") || ""),
@@ -2136,8 +2328,12 @@
         // Quick Controls pane membership — grouped right after the gear by
         // orderQuickControls (only set when the pane is open).
         _qc: A.insideQuickControlsPane(n),
-        _selRoot: selCtx ? selCtx.root : null, _selOpt: !!(selCtx && selCtx.isOpt)
-      });
+        _selRoot: selCtx ? selCtx.root : null, _selOpt: !!(selCtx && selCtx.isOpt),
+        // Performance card (0 = none) and document position, for A.orderPerformance.
+        _card: cardNo, _dom: i
+      };
+      if (perfKey) item.key = perfKey;
+      items.push(item);
     }
 
     // Pass 2: visible DESCRIPTIVE TEXT leaves (setting names like "ADIRS Align
@@ -2196,6 +2392,14 @@
       // are the rail's full-name tooltips (e.g. "Navigation & Charts", "Air Traffic
       // Control") that duplicate the nav LINKS and aren't clickable.
       if (tLeft < 100 && tTop > 12) continue;
+      var tCard = perf.length ? perfCardOf(tn) : 0;
+      if (tCard) {
+        // A label already folded into its control's name, and FBW's hover tooltips (the
+        // "Synchronize Input with Aircraft's Current Altitude" caption), which only repeat it.
+        if (tn.__msfsbaPerfLabel === A._gen) continue;
+        var tcl = " " + lower(A.cls(tn)) + " ";
+        if (tcl.indexOf(" pointer-events-none ") >= 0 && tcl.indexOf(" absolute ") >= 0) continue;
+      }
       var tSelCtx = A.selectInputContext(tn);
       items.push({
         top: tTop, left: tLeft,
@@ -2203,7 +2407,8 @@
         text: own, value: "", controlType: "", clickable: false,
         level: 0, live: A.liveFor(tn), disabled: false, options: [],
         _axis: axisPanels.length ? axisOfNode(tn) : 0, navRail: false,
-        _selRoot: tSelCtx ? tSelCtx.root : null, _selOpt: !!(tSelCtx && tSelCtx.isOpt)
+        _selRoot: tSelCtx ? tSelCtx.root : null, _selOpt: !!(tSelCtx && tSelCtx.isOpt),
+        _card: tCard, _dom: ti
       });
     }
 
@@ -2259,6 +2464,8 @@
     A.orderGroundServices(items);
     // Group the open Quick Controls pane right after the gear (no-op when closed).
     A.orderQuickControls(items);
+    // Read the Performance cards one after another (no-op off those two tabs).
+    A.orderPerformance(items);
     // Group an open SelectInput's options right after the dropdown (no-op closed).
     A.orderSelectOptions(items);
     // _selRoot holds a DOM ELEMENT (identity key for the regroup) — strip it
