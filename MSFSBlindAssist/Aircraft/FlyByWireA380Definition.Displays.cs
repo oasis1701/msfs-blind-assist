@@ -628,9 +628,12 @@ public partial class FlyByWireA380Definition
                     "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
                 };
                 // Autothrust mode message (the amber/white E/WD memo above the thrust gauges):
-                // THR LK / LVR TOGA / LVR CLB / LVR MCT / LVR ASYM.
+                // THR LK / LVR TOGA / LVR CLB / LVR MCT / LVR ASYM. THR LK comes from the ECU
+                // words, never from the message var (A380ThrustLock).
                 string[] athrMsgs = { "", "THR LK", "LVR TOGA", "LVR CLB", "LVR MCT", "LVR ASYM" };
-                int athrMsg = (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_MODE_MESSAGE") ?? 0);
+                int athrMsg = A380ThrustLock.EffectiveMessage(
+                    A380ThrustLock.AnyLocked(simConnect.GetCachedVariableValue),
+                    (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_MODE_MESSAGE") ?? 0));
                 if (athrMsg >= 1 && athrMsg < athrMsgs.Length) ewdLines.Add("Autothrust message: " + athrMsgs[athrMsg]);
                 // Inboard thrust reversers (engines 2 & 3 on the A380).
                 var revOn = new[] { 2, 3 }.Where(e => (simConnect.GetCachedVariableValue($"A32NX_AUTOTHRUST_REVERSE:{e}") ?? 0) > 0.5).ToList();
@@ -1294,7 +1297,9 @@ public partial class FlyByWireA380Definition
             "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
         };
         string[] athrMsgs = { "", "THR LK", "LVR TOGA", "LVR CLB", "LVR MCT", "LVR ASYM" };
-        int athrMsg = (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_MODE_MESSAGE") ?? 0);
+        int athrMsg = A380ThrustLock.EffectiveMessage(
+            A380ThrustLock.AnyLocked(simConnect.GetCachedVariableValue),
+            (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_MODE_MESSAGE") ?? 0));
         if (athrMsg >= 1 && athrMsg < athrMsgs.Length) lines.Add("Autothrust message: " + athrMsgs[athrMsg]);
         var revOn = new[] { 2, 3 }.Where(e => (simConnect.GetCachedVariableValue($"A32NX_AUTOTHRUST_REVERSE:{e}") ?? 0) > 0.5).ToList();
         if (revOn.Count > 0) lines.Add("Reverser: " + string.Join(" and ", revOn.Select(e => $"engine {e}")) + " deployed");

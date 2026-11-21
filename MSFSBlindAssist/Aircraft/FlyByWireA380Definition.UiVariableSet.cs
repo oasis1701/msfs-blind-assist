@@ -246,6 +246,9 @@ public partial class FlyByWireA380Definition
         // handled by the WASM (spd_mach_button_pressed) — the same event the A32NX uses.
         if (varKey == "A32NX.FCU_SPD_MACH_TOGGLE_PUSH")
         {
+            // Armed here too, as OnPanelButtonFiring does: the arm is also what holds the read-back
+            // below until the FCU has acted on the press (RequestFcuReadoutValues).
+            ArmFcuEchoFor(varKey, FcuConfirmation.ValueReadout);
             simConnect.SendEvent(varKey);
             RequestFCUSpeedWithStatus(simConnect);
             return true;
