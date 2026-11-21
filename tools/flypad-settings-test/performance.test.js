@@ -164,6 +164,16 @@ test('temperature correction: published altitudes are numbered and each result i
   ]);
 });
 
+test('two results that read alike keep one line each', () => {
+  // The same altitude published twice: two table rows with the same words. The de-duplication
+  // that drops a repeated text line must not take the second for an echo of the first.
+  const env = loadFixture('perf-tempcorr-result');
+  const row = env.window.document.querySelector('tbody tr');
+  row.parentNode.appendChild(row.cloneNode(true));
+  const lines = rescrape(env).filter(e => e.text === 'Published 3000, Corrected 3130');
+  assert.strictEqual(lines.length, 2);
+});
+
 test('temperature correction: the Clear button follows FBW\'s own enabling', () => {
   assert.strictEqual(byText(scrape('perf-tempcorr').elements, 'Clear').disabled, true);
   assert.strictEqual(byText(scrape('perf-tempcorr-result').elements, 'Clear').disabled, false);

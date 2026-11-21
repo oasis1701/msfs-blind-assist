@@ -576,8 +576,15 @@ public partial class FlyByWireA380Definition
             return true;
         }
         // The FG shim's own message (LVR CLB / LVR MCT / LVR ASYM): kept for the release above,
-        // and left to the generic monitor to speak.
-        if (varName == A380ThrustLock.MessageRow) _athrShimMessage = (int)Math.Round(value);
+        // and left to the generic monitor to speak, except under the lock. There the FMA cell
+        // shows THR LK whatever the shim says, so a change is kept silently (consumed) and the
+        // release speaks what the cell then shows, once: spoken here as well, the pilot heard
+        // "None" while the thrust was still locked, or the same lever message twice.
+        if (varName == A380ThrustLock.MessageRow)
+        {
+            _athrShimMessage = (int)Math.Round(value);
+            if (_thrustLock.Locked) return true;
+        }
 
         // ---- TCAS resolution-advisory guidance (cache + composed announce) ----
         // The detail vars cache silently; during an RA each update recomposes the

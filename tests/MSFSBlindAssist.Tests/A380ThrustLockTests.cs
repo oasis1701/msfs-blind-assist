@@ -293,6 +293,24 @@ public class A380ThrustLockTests : IDisposable
     }
 
     [Fact]
+    public void A_lever_message_changing_under_the_lock_is_kept_silently_for_the_release()
+    {
+        var speech = new GatedSpeechCapture();
+        var def = new FlyByWireA380Definition();
+        DeliverAll(def, speech, Free);
+        Assert.False(Deliver(def, speech, MessageRow, 3));    // LVR CLB before the lock: the monitor's
+        DeliverAll(def, speech, Locked);
+        speech.All.Clear();
+
+        // Consumed: the generic monitor must not say "None" while the FMA cell shows THR LK.
+        Assert.True(Deliver(def, speech, MessageRow, 0));
+        Assert.Empty(speech.All);
+
+        DeliverAll(def, speech, Free);
+        Assert.Equal(new[] { "Autothrust Message: None" }, speech.All);
+    }
+
+    [Fact]
     public void Muting_the_autothrust_message_row_silences_the_lock()
     {
         Mute(MessageRow);

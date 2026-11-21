@@ -9655,9 +9655,17 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         return (target > 0.5) == (lightOn.Value > 0.5) ? null : varKey;
     }
 
+    // The four readouts below share two guards ([A320-42]). The pending flag is set only when both
+    // values have a data definition: the flags have no timeout and mute their window's dial callout,
+    // so one waiting on a read that is never sent stayed set. And the reads go through
+    // RequestFcuReadoutValues, which holds them after an MSFSBA FCU event until the FCU has acted and
+    // the batches have delivered: the readout's words (dashes or a value) come from those batches.
+    private static bool CanPair(SimConnect.SimConnectManager s, string valueKey, string statusKey) =>
+        s.IsConnected && s.HasDataDefinition(valueKey) && s.HasDataDefinition(statusKey);
+
     private void RequestFCUHeadingWithStatus(SimConnect.SimConnectManager simConnectMgr)
     {
-        if (simConnectMgr.IsConnected)
+        if (CanPair(simConnectMgr, "A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", HeadingManagedReadout))
         {
             // Set flag to indicate we're actively requesting heading
             isRequestingHeading = true;
@@ -9668,14 +9676,17 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // The value and the managed flag's on-request twin ([A320-42]);
             // ProcessSimVarUpdate combines them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", forceUpdate: true);
-            simConnectMgr.RequestVariable(HeadingManagedReadout, forceUpdate: true);
+            RequestFcuReadoutValues(() =>
+            {
+                simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", forceUpdate: true);
+                simConnectMgr.RequestVariable(HeadingManagedReadout, forceUpdate: true);
+            });
         }
     }
 
     private void RequestFCUSpeedWithStatus(SimConnect.SimConnectManager simConnectMgr)
     {
-        if (simConnectMgr.IsConnected)
+        if (CanPair(simConnectMgr, "A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", SpeedManagedReadout))
         {
             // Set flag to indicate we're actively requesting speed
             isRequestingSpeed = true;
@@ -9686,14 +9697,17 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // The value and the managed flag's on-request twin ([A320-42]);
             // ProcessSimVarUpdate combines them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", forceUpdate: true);
-            simConnectMgr.RequestVariable(SpeedManagedReadout, forceUpdate: true);
+            RequestFcuReadoutValues(() =>
+            {
+                simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", forceUpdate: true);
+                simConnectMgr.RequestVariable(SpeedManagedReadout, forceUpdate: true);
+            });
         }
     }
 
     private void RequestFCUAltitudeWithStatus(SimConnect.SimConnectManager simConnectMgr)
     {
-        if (simConnectMgr.IsConnected)
+        if (CanPair(simConnectMgr, "A32NX_FCU_AFS_DISPLAY_ALT_VALUE", AltitudeManagedReadout))
         {
             // Set flag to indicate we're actively requesting altitude
             isRequestingAltitude = true;
@@ -9704,14 +9718,17 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // The value and the managed flag's on-request twin ([A320-42]);
             // ProcessSimVarUpdate combines them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_ALT_VALUE", forceUpdate: true);
-            simConnectMgr.RequestVariable(AltitudeManagedReadout, forceUpdate: true);
+            RequestFcuReadoutValues(() =>
+            {
+                simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_ALT_VALUE", forceUpdate: true);
+                simConnectMgr.RequestVariable(AltitudeManagedReadout, forceUpdate: true);
+            });
         }
     }
 
     private void RequestFCUVerticalSpeedFPA(SimConnect.SimConnectManager simConnectMgr)
     {
-        if (simConnectMgr.IsConnected)
+        if (CanPair(simConnectMgr, "A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE", "A32NX_TRK_FPA_MODE_ACTIVE"))
         {
             // Set flag to indicate we're actively requesting VS/FPA
             isRequestingVSFPA = true;
@@ -9722,8 +9739,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // Both are read on request already;
             // ProcessSimVarUpdate combines them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE", forceUpdate: true);
-            simConnectMgr.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
+            RequestFcuReadoutValues(() =>
+            {
+                simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE", forceUpdate: true);
+                simConnectMgr.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
+            });
         }
     }
 
@@ -9875,8 +9895,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         ArmFcuEchoFor(evt, readback ? FcuConfirmation.ValueReadout : FcuConfirmation.None);
         s.SendEvent(evt);
         if (!readback) return;
-        // Defer the read-out so the FBW FCU has processed the push/pull before we read the
-        // managed/selected status + value (otherwise it speaks the pre-push state — see DeferReadback).
+        // The read-out must not read before the FBW FCU has processed the push/pull, or it speaks
+        // the pre-push state. The arm above is what holds it: RequestFcuReadoutValues sends the
+        // reads once the FCU has acted and the batches have delivered. (This was DeferReadback's
+        // fixed 300 ms, off the UI thread; that left the readout's dashes-or-value word to the
+        // once-a-second batch, usually not yet delivered.)
         Action? readbackAction = evt switch
         {
             "A32NX.FCU_HDG_PUSH" or "A32NX.FCU_HDG_PULL" or "A32NX.FCU_TRK_FPA_TOGGLE_PUSH" => () => RequestFCUHeadingWithStatus(s),
@@ -9885,7 +9908,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX.FCU_VS_PUSH" or "A32NX.FCU_VS_PULL" => () => RequestFCUVerticalSpeedFPA(s),
             _ => null
         };
-        if (readbackAction != null) DeferReadback(readbackAction);
+        readbackAction?.Invoke();
     }
 
     // FCU/AP annunciator state-var keys read by the Ctrl+P Autopilot window. Virtual so a

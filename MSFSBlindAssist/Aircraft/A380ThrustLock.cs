@@ -29,14 +29,22 @@ public static class A380ThrustLock
     /// <summary>THR LK in the autothrust message enum (FBW's AutoThrustModeMessage.ThrustLock).</summary>
     public const int ThrustLockMessage = 1;
 
-    /// <summary>The L:var, and the definition key, of one engine's ECU maintenance word 6.</summary>
-    public static string WordKey(int engine) => $"A32NX_ECU_{engine}_MAINTENANCE_WORD_6";
+    // Built once: TryEngine runs for nearly every variable delivery (IsMuteWrapExempt and
+    // ProcessSimVarUpdate), and composing the four names per call allocated on that path.
+    private static readonly string[] WordKeys =
+    {
+        "A32NX_ECU_1_MAINTENANCE_WORD_6", "A32NX_ECU_2_MAINTENANCE_WORD_6",
+        "A32NX_ECU_3_MAINTENANCE_WORD_6", "A32NX_ECU_4_MAINTENANCE_WORD_6",
+    };
+
+    /// <summary>The L:var, and the definition key, of one engine's ECU maintenance word 6 (engine 1 to 4).</summary>
+    public static string WordKey(int engine) => WordKeys[engine - 1];
 
     /// <summary>Whether <paramref name="key"/> is one of the four words, and which engine's.</summary>
     public static bool TryEngine(string key, out int engine)
     {
         for (engine = 1; engine <= EngineCount; engine++)
-            if (key == WordKey(engine)) return true;
+            if (key == WordKeys[engine - 1]) return true;
         engine = 0;
         return false;
     }

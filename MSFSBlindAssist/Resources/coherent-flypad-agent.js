@@ -1811,6 +1811,9 @@
       var it = A.textItem(text);
       it.top = 0; it.left = 0; it._axis = 0; it.navRail = false; it._selRoot = null; it._selOpt = false;
       it._card = cardNo; it._dom = node.__msfsbaDom || 0;
+      // One line per result, even when two read alike (the same altitude published twice):
+      // A.dedupe drops a text line equal to the one before it.
+      it._result = true;
       out.push(it);
     }
     for (var c = 0; c < cards.length; c++) {
@@ -2587,7 +2590,8 @@
         // axis, or a "Set" button repeated per row) are SEPARATE controls — keep
         // both. The shell disambiguates identical labels with an occurrence index.
         if (prev.idx === 0 && it.idx > 0) { out[out.length - 1] = it; continue; }
-        if (it.idx === 0) continue;
+        // A composed Performance result line is one row of a table: keep each (A.performanceResults).
+        if (it.idx === 0 && !it._result) continue;
         // both interactive with identical label → fall through, keep both
       }
       out.push(it);
