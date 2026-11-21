@@ -543,6 +543,9 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
     // EFIS panel, instead of a raw "29.92".
     public override bool TryGetDisplayOverride(string varKey, double value, out string text)
     {
+        // Flight Data navigation rows: "7372.1 nautical miles", "245 degrees", "-850 feet per minute".
+        if (HS787FlightData.TryFormat(varKey, value, out text))
+            return true;
         if (varKey == "HS787_BaroSetting")
         {
             int hpa = (int)Math.Round(value * 33.8639);
@@ -3527,12 +3530,14 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
             // Real-aircraft behaviour: momentary push. Press once → engage STD (altimeter
             // jumps to 29.92 inHg / 1013.25 hPa, "STD" indicator lights). Press again →
             // return to QNH (the altimeter restores to whatever value was set before STD
-            // was engaged; WT cockpit logic handles the restore via the L-var transition).
+            // was engaged). The state is L:XMLVAR_Baro1_ForcedToSTD, the flag the PFD reads,
+            // which K:BAROMETRIC_STD_PRESSURE with parameter 1 toggles (HandleUIVariableSet);
+            // L:XMLVAR_Baro_Selector_STD_1, read here before, is read by nothing in the avionics.
             // Rendered as a button (RenderAsButton=true) — click toggles. ValueDescriptions
             // give the button its state-suffixed label ("Baro STD: QNH" / "Baro STD: STD").
             ["HS787_BaroSTD"] = new SimConnect.SimVarDefinition
             {
-                Name = "XMLVAR_Baro_Selector_STD_1",
+                Name = "XMLVAR_Baro1_ForcedToSTD",
                 DisplayName = "Baro STD",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -4479,6 +4484,13 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
         // the fleet-wide AllAircraft tests fail in CI - the same form as the A380's stamp loop.
         foreach (var key in CacheOnlyVariables)
             variables[key].ExcludeFromMonitorManager = true;
+
+        // Flight Data navigation rows are read in the unit the avionics WRITE them in — read as
+        // the default "number" an L:var returns the sim's base unit (metres, radians, metres per
+        // second), which is how a destination distance read "13653434". The table and its
+        // reasons live in HS787FlightData; indexed so a stale key throws in the AllAircraft tests.
+        foreach (var key in HS787FlightData.Keys)
+            variables[key].Units = HS787FlightData.ReadUnit(key)!;
 
         return variables;
     }

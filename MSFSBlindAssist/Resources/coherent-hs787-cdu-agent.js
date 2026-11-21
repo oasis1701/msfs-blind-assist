@@ -73,16 +73,21 @@
       return true;
     };
 
-    // Page buttons outside the LSK columns, DOM order (from the WT render source):
+    // Page buttons outside the LSK columns, DOM order (captured live on the HorizonSim 787-9,
+    // 2026-11-19):
     // 0 INIT/REF 1 RTE 2 DEP/ARR 3 ALTN 4 VNAV 5 EXEC 6 FIX 7 LEGS 8 HOLD
-    // 9 FMC/COMM 10 PROG 11 NAV/RAD 12 OFST* 13 RTA* 14 PREV PAGE 15 NEXT PAGE
+    // 9 FMC/COMM 10 PROG 11 NAV/RAD 12 OFST* 13 RTA* 14 PREV PAGE 15 NEXT PAGE 16 CLR MSG
     // The named pages 0..11 are stable absolute indices (always rendered, ahead of the optional
-    // ones). PREV/NEXT PAGE, however, are the LAST two buttons in DOM order — resolve them relative
-    // to the END of the list, NOT by a fixed 14/15, because the OFST*/RTA* buttons (12/13) are
-    // conditional: when WT omits them the absolute 14/15 fall off the end and PREV/NEXT silently
-    // no-op (the user can't page multi-page screens like LEGS/FIX).
+    // ones). PREV/NEXT PAGE are found by their LABEL, never by position: a fixed 14/15 breaks when
+    // the conditional OFST*/RTA* are omitted, and "the last two buttons" (the previous rule) is
+    // wrong because CLR MSG (in .wt787-cdu-message-controls) comes after NEXT PAGE — PageUp
+    // pressed NEXT PAGE and PageDown pressed CLR MSG, so PageDown did nothing.
     A.PAGE = { INIT_REF: 0, RTE: 1, DEP_ARR: 2, ALTN: 3, VNAV: 4, EXEC: 5, FIX: 6, LEGS: 7,
                HOLD: 8, FMC_COMM: 9, PROG: 10, NAV_RAD: 11 };
+    A.PAGE_LABEL = { PREV_PAGE: 'PREVPAGE', NEXT_PAGE: 'NEXTPAGE' };
+    A.buttonLabel = function (b) {
+      return (b.textContent || '').toUpperCase().replace(/[^A-Z]/g, '');
+    };
     A.clickPage = function (key) {
       var cdu = A.cduRoot(); if (!cdu) return false;
       var all = cdu.querySelectorAll('.wt787-cdu-button'), page = [];
@@ -90,10 +95,14 @@
         var b = all[i];
         if (!(b.closest('.wt787-cdu-lsk-column-left') || b.closest('.wt787-cdu-lsk-column-right'))) page.push(b);
       }
-      var idx;
-      if (key === 'PREV_PAGE') idx = page.length - 2;
-      else if (key === 'NEXT_PAGE') idx = page.length - 1;
-      else idx = A.PAGE[key];
+      var label = A.PAGE_LABEL[key];
+      if (label) {
+        for (var j = 0; j < page.length; j++) {
+          if (A.buttonLabel(page[j]) === label) { A.clickElement(page[j]); return true; }
+        }
+        return false;
+      }
+      var idx = A.PAGE[key];
       if (idx === undefined || idx < 0 || page.length <= idx) return false;
       A.clickElement(page[idx]); return true;
     };

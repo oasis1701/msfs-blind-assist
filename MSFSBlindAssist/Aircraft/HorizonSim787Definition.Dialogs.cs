@@ -330,35 +330,38 @@ public partial class HorizonSim787Definition
             return;
         }
 
+        // STD is the aircraft's own captain-altimeter STD switch: K:BAROMETRIC_STD_PRESSURE with
+        // parameter 1 TOGGLES it, and L:XMLVAR_Baro1_ForcedToSTD (HS787_BaroSTD) is its state —
+        // the flag the PFD reads to show "STD". Switching it off restores the QNH that was set
+        // before (measured live 2026-11-19). The old button sent a wrong KOHLSMAN_SET and judged
+        // "set" by the altimeter reading 29.92, so it always said "Not set".
+        bool StdOn() => (simConnect.GetCachedVariableValue("HS787_BaroSTD") ?? 0) >= 0.5;
+
         var toggles = new List<ToggleButtonDef>
         {
-            new("&Standard (STD)", () =>
+            new("&Standard (STD)", () => StdOn() ? "On" : "Off",
+                () => simConnect.SendEvent("BAROMETRIC_STD_PRESSURE", 1))
             {
-                double? v = simConnect.GetCachedVariableValue("HS787_Altimeter");
-                return v != null && Math.Abs(v.Value - 29.92) < 0.005 ? "Set" : "Not set";
-            }, () =>
-            {
-                // Standard pressure = 1013 HPA = 29.92 inHg
-                simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(29.92 * 16));
-            })
+                // The STD change is announced by the HS787_BaroSTD monitor ("Baro Standard" /
+                // "Baro QNH"); the dialog's own post-press announce would say it twice.
+                SuppressStateAnnounce = () => true
+            }
         };
 
         var dialog = new ValueInputForm(
-            "Altimeter", "QNH", "HPA (e.g. 1013)", announcer,
-            input =>
-            {
-                if (int.TryParse(input, out int val) && val >= 900 && val <= 1100)
-                    return (true, "");
-                return (false, "Enter QNH in HPA between 900 and 1100");
-            },
+            "Altimeter", "Altimeter setting", HS787Altimeter.RangeText, announcer,
+            input => HS787Altimeter.TryParseHpa(input, out _)
+                ? (true, "")
+                : (false, $"Enter {HS787Altimeter.RangeText}"),
             toggles,
             input =>
             {
-                if (int.TryParse(input, out int hpa))
-                {
-                    double inHg = hpa / 33.8639;
-                    simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(inHg * 16));
-                }
+                if (!HS787Altimeter.TryParseHpa(input, out double hpa)) return;
+                // A QNH typed while STD is on means "leave STD": switch it off first, then set.
+                // Sent back to back the set wins over STD's own restore (measured live).
+                if (StdOn())
+                    simConnect.SendEvent("BAROMETRIC_STD_PRESSURE", 1);
+                simConnect.SendEvent("KOHLSMAN_SET", HS787Altimeter.KohlsmanSetParameter(hpa));
             });
 
         dialog.ShowCancelButton = false;

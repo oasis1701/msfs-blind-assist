@@ -164,6 +164,12 @@ MCP Set Values:
   Ctrl+S     Set Speed (opens dialog with IAS/Mach Mode, FLCH, Speed INTV toggles)
   Ctrl+A     Set Altitude (opens dialog with VNAV, Level Change, ALT HOLD, Alt INTV toggles)
   Ctrl+V     Set Vertical Speed (opens dialog with V/S Engage, V/S/FPA Mode, Approach toggles)
+  Ctrl+B     Set Altimeter. Type the setting in hectopascals (for example 1013) or
+             in inches (29.92, or 2992 as written in a METAR) and press Enter.
+             The Standard (STD) button switches standard pressure on and off;
+             you hear "Baro Standard" or "Baro QNH". Switching it off returns
+             the altimeter to the setting you had before. Typing a setting
+             while standard is on switches standard off.
 
 Autopilot Panel:
   Ctrl+P     Open Autopilot Panel (A/P, A/T, LNAV, VNAV, Approach, Level Change, ALT Hold, HDG Hold, V/S, A/P Disconnect)
