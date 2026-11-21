@@ -158,6 +158,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         [1.00] = "100%"
     };
 
+    /// <summary>The MobiFlight calc-path probe target MainForm's timer looks for ([SIM-8]).</summary>
+    public const string BridgeProbeKey = "MSFSBA_BRIDGE_PROBE";
+
     protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
         // Start with common base variables (e.g., SIM ON GROUND)
@@ -166,6 +169,15 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         // Add aircraft-specific variables
         var aircraftVariables = new Dictionary<string, SimConnect.SimVarDefinition>
         {
+            // End-to-end MobiFlight probe target, as the FBW defs, the MD-11 and the 757 register it.
+            // Every knob and push/pull step is a calculator write ([FNX-5]), so with no WASM module
+            // they all go nowhere: registering this opts the Fenix into the probe, its verdict
+            // (CalcWriteCanLand) and the spoken warning ([SIM-8]). OnRequest, in no panel, never announced.
+            [BridgeProbeKey] = new SimConnect.SimVarDefinition
+            {
+                Name = BridgeProbeKey, DisplayName = "Bridge Probe",
+                Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            },
             // ========== ADIRS (13 variables) ==========
             ["I_OH_NAV_IR3_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
@@ -13227,6 +13239,15 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     private async Task<FenixFcuSetEnd?> SetFcuKnobAsync(FenixFcuKnob knob, double target,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
+        // The knob turns only through the calculator ([FNX-5]): once the probe says nothing lands there,
+        // say so before writing, never a miss on a knob that could not have moved.
+        if (!simConnect.CalcWriteCanLand)
+        {
+            Log.Warn("Fenix", FormattableString.Invariant($"{knob.Name} set to {target} refused: calc path not available (no MobiFlight WASM module)"));
+            announcer.AnnounceImmediate(FenixA320FcuKnobSet.NoModule(knob));
+            return null;
+        }
+
         int turn = _fcuSetTurns.Begin(knob, target);
         bool StillWanted() => _fcuSetTurns.IsLatest(knob.CounterVar, turn) && simConnect.IsConnected;
         try

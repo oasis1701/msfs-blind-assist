@@ -21,7 +21,7 @@ public static class CalcPathVerdict
     /// not whether writes land once one has been.
     ///
     /// So the negative verdict is the one that must not be inherited: a profile registering no
-    /// probe target (PMDG 737/777, HS787, iFly, Fenix) concludes UNVERIFIED and silently, and that
+    /// probe target (PMDG 737/777, HS787, iFly) concludes UNVERIFIED and silently, and that
     /// standing made every write on the aircraft picked next refuse "unavailable" with a healthy
     /// path. Clearing a POSITIVE verdict as well cost a guaranteed degraded window on every switch
     /// — at least two probe ticks of FBW <c>SetLVar</c> falling back to the data-def write that

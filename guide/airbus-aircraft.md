@@ -297,7 +297,7 @@ In each window, type the value and press Enter; in the altimeter window, only En
 
 The altimeter window sets both sides. A typed value always ends in QNH, and choosing QNH or STD in its Mode list pushes or pulls both baro knobs. When the setting is done, BA reads both sides back: *"Both altimeters set: 1015, 29.97."* when both are set to the same QNH, or each side by name otherwise (a side still in STD included), for example *"Captain altimeter 1015, 29.97. First officer altimeter still in STD."*
 
-The FCU and baro knobs and their push and pull all go through the MobiFlight WASM module, so they need it installed. The push and pull keys and the Output FCU readouts work as on the FlyByWire aircraft.
+The FCU and baro knobs and their push and pull all go through the MobiFlight WASM module, so they need it installed. If it is missing, BA says *"MobiFlight calculator path unavailable. Some cockpit controls may not respond."* about a minute after connecting, and after that a typed FCU value answers, for example, *"Altitude not set: MobiFlight module not responding."* The push and pull keys and the Output FCU readouts work as on the FlyByWire aircraft.
 
 ### MCDU {#mcdu-2}
 

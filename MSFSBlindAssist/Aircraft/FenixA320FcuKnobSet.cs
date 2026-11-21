@@ -130,6 +130,13 @@ internal static class FenixA320FcuKnobSet
     /// <summary>"Already at vertical speed -1000": invariant, so a Swedish Windows never writes a U+2212 minus.</summary>
     internal static string AlreadyAt(string what, int value) => FormattableString.Invariant($"Already at {what} {value}");
 
+    /// <summary>
+    /// Said in place of a set when the calc-path probe has concluded unverified (no MobiFlight WASM module):
+    /// the knob clicks would go nowhere, and the loop would report the unmoved knob as a miss
+    /// ("Altitude set to 100, not 25000.").
+    /// </summary>
+    internal static string NoModule(FenixFcuKnob knob) => $"{knob.Name} not set: MobiFlight module not responding.";
+
     /// <summary>The shortest heading change, -180 to +180: 340 to 20 is +40, 20 to 340 is -40.</summary>
     internal static int HeadingDelta(int currentHeading, int targetHeading)
     {

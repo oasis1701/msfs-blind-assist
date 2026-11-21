@@ -116,7 +116,7 @@ Screen readers already announce every UI control interaction, so the app never r
 ## Quick Reference
 
 - Adding a panel control, background monitoring, an H-variable, a hotkey, an aircraft or a feature: follow its workflow in [adding-features.md](docs/adding-features.md); the short forms are in [QUICK-REFERENCE.md](docs/QUICK-REFERENCE.md). The rules for aircraft code load when you Read it.
-- **`SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06):** A `SetLVar` write takes the calculator path only once `CalcPathVerified` is set, which only an aircraft registering `MSFSBA_BRIDGE_PROBE` reaches (FBW A320/A380, Headwind A330, MD-11); a VERIFIED verdict then holds for any aircraft switched to ([MD11-16]). Otherwise, and for a name with a space or colon ([SIM-12]), it takes the native data-def write. Full routing rules, the H:/dotted event queue, and the RPN invariant-formatting rule: [docs/architecture.md](docs/architecture.md).
+- **`SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06):** A `SetLVar` write takes the calculator path only once `CalcPathVerified` is set, which only an aircraft registering `MSFSBA_BRIDGE_PROBE` reaches (FBW A320/A380, Headwind A330, MD-11, BlueBird 757, Fenix); a VERIFIED verdict then holds for any aircraft switched to ([MD11-16]). Otherwise, and for a name with a space or colon ([SIM-12]), it takes the native data-def write. Full routing rules, the H:/dotted event queue, and the RPN invariant-formatting rule: [docs/architecture.md](docs/architecture.md).
 
 ## Where things live
 

@@ -29,6 +29,9 @@ public class CalcPathProbeOptInTests
         yield return new object[] { new HeadwindA330Definition() };   // inherits the A320's set via base.BuildVariables()
         yield return new object[] { new TFDiMD11Definition() };       // every control write is a calculator-path CEVENT
         yield return new object[] { new BBS757Definition() };         // every control write replays its click RPN through the calculator
+        // Every knob and push/pull step is a calculator write ([FNX-5]). Outside the probe, a pilot with
+        // no module typed an altitude and heard "Altitude set to 100, not 25000." (2026-11-19).
+        yield return new object[] { new FenixA320Definition() };
     }
 
     // An aircraft not on this list does not register the probe var today — opting an aircraft in
@@ -36,7 +39,6 @@ public class CalcPathProbeOptInTests
     // otherwise healthy is not something this test measures.
     public static IEnumerable<object[]> AircraftWithTheirOwnTransport()
     {
-        yield return new object[] { new FenixA320Definition() };
         yield return new object[] { new PMDG737Definition() };
         yield return new object[] { new PMDG777Definition() };
         yield return new object[] { new HorizonSim787Definition() };
@@ -70,5 +72,17 @@ public class CalcPathProbeOptInTests
         Assert.Equal(SimVarType.LVar, md11.Type);
         Assert.Equal(UpdateFrequency.OnRequest, md11.UpdateFrequency);
         Assert.False(md11.IsAnnounced);
+    }
+
+    [Fact]
+    public void The_fenix_probe_target_is_the_same_quiet_on_request_lvar()
+    {
+        var a320 = new FlyByWireA320Definition().GetVariables()[ProbeVar];
+        var fenix = new FenixA320Definition().GetVariables()[ProbeVar];
+
+        Assert.Equal(a320.Name, fenix.Name);
+        Assert.Equal(SimVarType.LVar, fenix.Type);
+        Assert.Equal(UpdateFrequency.OnRequest, fenix.UpdateFrequency);
+        Assert.False(fenix.IsAnnounced);
     }
 }

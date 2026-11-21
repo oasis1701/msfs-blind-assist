@@ -27,7 +27,7 @@ public partial class MainForm
     /// detection) and <see cref="SwitchAircraft"/> (a mid-session profile change from the Aircraft
     /// menu, which never disconnects). Split across the two, they drifted: only the timer path
     /// existed, so a session that began on a profile registering no probe target — the PMDG 737/777,
-    /// HS787, iFly or Fenix — concluded UNVERIFIED and silently, and that verdict then stood for an
+    /// HS787 or iFly — concluded UNVERIFIED and silently, and that verdict then stood for an
     /// MD-11 selected afterwards. Every MD-11 write was refused "unavailable" for the rest of the
     /// connection with a perfectly healthy calc path, and no warning was ever spoken because the
     /// conclusion had been reached on the previous profile. It also closes the older, quieter half
@@ -96,7 +96,8 @@ public partial class MainForm
             if (simConnectManager.CalcPathVerified || simConnectManager.CalcPathProbeConcluded) return;
             // Only an aircraft whose definition registers the probe target can ever verify —
             // the registration is the opt-in (the FBW defs, the Headwind A330 through the A320's
-            // set, and the TFDi MD-11, whose every control write is a calculator-path CEVENT).
+            // set, the TFDi MD-11, whose every control write is a calculator-path CEVENT, the
+            // BlueBird 757, and the Fenix, whose knob steps are calculator writes).
             // Anything else concludes immediately and silently so dotted events route via the
             // legacy transport. GetVariables() is cached, so this is a dictionary lookup.
             if (currentAircraft?.GetVariables().ContainsKey("MSFSBA_BRIDGE_PROBE") != true)
@@ -885,7 +886,7 @@ public partial class MainForm
 
         // Re-arm the calc-path probe for the aircraft now loaded. The verdict is per CONNECTION and
         // a switch never disconnects, so without this the PREVIOUS profile's conclusion stands: a
-        // session begun on any aircraft that registers no probe target (PMDG, HS787, iFly, Fenix)
+        // session begun on any aircraft that registers no probe target (PMDG, HS787, iFly)
         // concludes unverified and silently, and an MD-11 picked afterwards then refused every
         // write as "unavailable" with the module installed and the path healthy. Placed with the
         // re-registration below, beside the CurrentAircraft assignment the probe's own
