@@ -141,6 +141,17 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
+    public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
+    {
+        CockpitCameraTarget.MCDU => 0,
+        CockpitCameraTarget.Glareshield => 1,
+        CockpitCameraTarget.Overhead => 2,
+        CockpitCameraTarget.Pedestal => 3,
+        CockpitCameraTarget.MainPanel => 4,
+        CockpitCameraTarget.EFB => 5,
+        _ => base.GetCameraViewForTarget(target)
+    };
+
     // Visual-guidance profile — FlyByWire A320. Declared explicitly (not inherited from the
     // base default) so the math is unambiguously keyed to this airframe and the glidepath
     // biases can be calibrated for FBW independently of Fenix. Approach AoA / Vref / rate

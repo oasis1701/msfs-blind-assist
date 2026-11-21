@@ -20,6 +20,17 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     public override FCUControlType GetSpeedControlType() => FCUControlType.IncrementDecrement;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.IncrementDecrement;
 
+    public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
+    {
+        CockpitCameraTarget.MCDU => 0,
+        CockpitCameraTarget.EFB => 2,
+        CockpitCameraTarget.Overhead => 4,
+        CockpitCameraTarget.Pedestal => 5,
+        CockpitCameraTarget.Glareshield => 6,
+        CockpitCameraTarget.MainPanel => 7,
+        _ => base.GetCameraViewForTarget(target)
+    };
+
     // Visual-guidance profile — Fenix A320. Declared explicitly so the math is keyed to this
     // specific profile rather than inherited from the base default. Approach AoA / Vref /
     // rate caps are the A320 numbers validated in earlier flight testing on the Fenix and

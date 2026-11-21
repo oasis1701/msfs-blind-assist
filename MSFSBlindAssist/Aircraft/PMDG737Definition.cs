@@ -218,6 +218,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
+    public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
+    {
+        CockpitCameraTarget.Glareshield => 0,
+        CockpitCameraTarget.MainPanel => 1,
+        CockpitCameraTarget.Overhead => 2,
+        CockpitCameraTarget.Pedestal => 4,
+        CockpitCameraTarget.MCDU => 5,
+        _ => base.GetCameraViewForTarget(target)
+    };
+
     // MEASURED 2026-06-11 (KATL, B738, 2 turns): the 0.8 s prior over-led —
     // both rollouts stopped consistently 8.7° SHORT of the new heading (the
     // pilot already anticipates 737 rollouts themselves, so tone lead stacks

@@ -175,6 +175,12 @@ public interface IAircraftDefinition
     Dictionary<string, string> GetButtonStateMapping();
 
     /// <summary>
+    /// Gets the 0-based instrument camera view index for the requested cockpit camera target,
+    /// or null if this aircraft has no mapped instrument view for it.
+    /// </summary>
+    int? GetCameraViewForTarget(CockpitCameraTarget target);
+
+    /// <summary>
     /// Gets the control type for altitude input in the FCU.
     /// </summary>
     FCUControlType GetAltitudeControlType();

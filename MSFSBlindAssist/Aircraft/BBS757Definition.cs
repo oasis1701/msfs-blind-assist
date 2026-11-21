@@ -101,6 +101,15 @@ public partial class BBS757Definition : BaseAircraftDefinition
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
+    public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
+    {
+        CockpitCameraTarget.MainPanel => 0,
+        CockpitCameraTarget.Overhead => 2,
+        CockpitCameraTarget.Pedestal => 4,
+        CockpitCameraTarget.MCDU => 5,
+        _ => base.GetCameraViewForTarget(target)
+    };
+
     public override Dictionary<string, string> GetButtonStateMapping() => new();
 
     /// <summary>

@@ -35,6 +35,16 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
+    public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
+    {
+        CockpitCameraTarget.Glareshield => 0,
+        CockpitCameraTarget.MainPanel => 1,
+        CockpitCameraTarget.Overhead => 2,
+        CockpitCameraTarget.Pedestal => 4,
+        CockpitCameraTarget.MCDU => 5,
+        _ => base.GetCameraViewForTarget(target)
+    };
+
     // Heavy widebody — lower approach AoA, slightly higher Vref, slower pitch authority than
     // A320. All values measured against the PMDG 777's coupled ILS autoland:
     // - GlideslopeAltitudeBiasFt = 80: a correctly-flown glideslope reads near-zero on VG (the

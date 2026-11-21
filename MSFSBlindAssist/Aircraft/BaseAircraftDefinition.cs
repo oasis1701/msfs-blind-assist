@@ -325,6 +325,25 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public abstract FCUControlType GetVerticalSpeedControlType();
 
     /// <summary>
+    /// Gets the 0-based instrument camera view index for the requested cockpit camera target,
+    /// or null if this aircraft has no mapped instrument view for it.
+    /// Override in aircraft implementations to supply aircraft-specific camera indices.
+    /// </summary>
+    public virtual int? GetCameraViewForTarget(CockpitCameraTarget target)
+    {
+        return target switch
+        {
+            CockpitCameraTarget.MainPanel => 0,
+            CockpitCameraTarget.Glareshield => 1,
+            CockpitCameraTarget.Overhead => 2,
+            CockpitCameraTarget.Pedestal => 3,
+            CockpitCameraTarget.MCDU => 0,
+            CockpitCameraTarget.EFB => 2,
+            _ => null
+        };
+    }
+
+    /// <summary>
     /// Maps hotkey actions to their corresponding SimConnect event names.
     /// Override this to provide simple variable mappings for your aircraft.
     /// </summary>
