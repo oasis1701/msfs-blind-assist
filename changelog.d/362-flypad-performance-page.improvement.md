@@ -1,0 +1,3 @@
+flyPad (FlyByWire A32NX and A380, Headwind A330): the Performance page's Top of Descent and Temperature Correction tabs now read one box after another, and every field says what it is. They were read across the page, mixing the boxes together, with three buttons all called "SYNC" and one called "X".
+
+On Top of Descent you now hear "Current Altitude: SYNC", which reads "Current Altitude: DESYNC" while the field follows the aircraft, and "Angle: Clear" to empty the angle. Pressing the SYNC button keeps you on it. The result is one sentence, such as "Start your descent about 100 NM before target", and a temperature correction gives one line per altitude, such as "Published 3000, Corrected 3130". The A32NX's Takeoff and Landing calculators on the same page are unchanged.
