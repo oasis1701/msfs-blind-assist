@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Forms.FenixA320;
@@ -20,6 +22,7 @@ public class FenixMCDUForm : Form
     private TextBox scratchpadInput = null!;
     private Label connectionStatus = null!;
     private ComboBox mcduSelector = null!;
+    private CheckBox _focusCameraCheck = null!;
 
     // Page buttons
     private Button btnInit = null!;
@@ -73,10 +76,12 @@ public class FenixMCDUForm : Form
         {
             Text = "MCDU: Disconnected",
             Location = new Point(10, y),
-            Size = new Size(400, 20),
+            Size = new Size(240, 20),
             AccessibleName = "Connection status",
             AccessibleDescription = "Shows whether the MCDU is connected"
         };
+
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.MCDU, new Point(255, y - 2));
 
         // MCDU selector
         mcduSelector = new ComboBox
@@ -156,7 +161,7 @@ public class FenixMCDUForm : Form
         // Add all controls
         this.Controls.AddRange(new Control[]
         {
-            connectionStatus, mcduSelector, mcduDisplay, scratchpadInput,
+            connectionStatus, mcduSelector, _focusCameraCheck, mcduDisplay, scratchpadInput,
             btnInit, btnDir, btnProg, btnFpln, btnPerf,
             btnRadNav, btnSecFpln, btnFuelPred, btnAtcCom, btnMenu,
             btnAirport, btnData, btnOverfly
@@ -333,6 +338,13 @@ public class FenixMCDUForm : Form
 
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (StreamerCameraFocusHelper.HandleShortcut(e.KeyData, _focusCameraCheck))
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
+        }
+
         // Ctrl+Shift+L / Ctrl+Shift+R: switch MCDU from anywhere in the window, the side selector
         // included (MD-11 precedent). Setting the selector runs its change handler, which says the
         // side. Choosing the side already shown fires no change event, so confirm it here instead

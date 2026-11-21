@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.SimConnect.BBS757;
 
 namespace MSFSBlindAssist.Forms.BBS757;
@@ -73,6 +74,13 @@ public partial class BBS757EfbForm : Form
 
         KeyDown += (_, e) =>
         {
+            if (StreamerCameraFocusHelper.HandleShortcut(e.KeyData, _focusCameraCheck))
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             // Escape closes an open list first (a choice list's), then the window.
             if (e.KeyCode == Keys.Escape && !e.Alt && !e.Control && !e.Shift
                 && ActiveControl is not ComboBox { DroppedDown: true })
@@ -130,6 +138,13 @@ public partial class BBS757EfbForm : Form
         if (_disposed) return;
         if (Visible) _guardTimer.Start();
         else _guardTimer.Stop();
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (StreamerCameraFocusHelper.HandleShortcut(keyData, _focusCameraCheck))
+            return true;
+        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     protected override void Dispose(bool disposing)

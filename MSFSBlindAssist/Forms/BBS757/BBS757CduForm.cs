@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect.BBS757;
 using MSFSBlindAssist.Utils.Logging;
@@ -491,6 +492,8 @@ public partial class BBS757CduForm : Form
     // Ctrl+Tab is a dialog key: it never reaches KeyDown, so it is caught here.
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (StreamerCameraFocusHelper.HandleShortcut(keyData, _focusCameraCheck))
+            return true;
         if ((keyData & Keys.KeyCode) == Keys.Tab && (keyData & Keys.Control) != 0 && (keyData & Keys.Alt) == 0)
         {
             bool repeat = ((long)msg.LParam & 0x40000000) != 0;

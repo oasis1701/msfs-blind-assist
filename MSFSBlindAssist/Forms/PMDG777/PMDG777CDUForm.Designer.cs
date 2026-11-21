@@ -1,3 +1,6 @@
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
+
 namespace MSFSBlindAssist.Forms.PMDG777;
 
 public partial class PMDG777CDUForm
@@ -6,6 +9,7 @@ public partial class PMDG777CDUForm
     private ListBox cduDisplay = null!;
     private TextBox scratchpadInput = null!;
     private ComboBox cduSelector = null!;
+    private CheckBox _focusCameraCheck = null!;
 
     // Page buttons
     private Button btnInitRef = null!;
@@ -47,10 +51,12 @@ public partial class PMDG777CDUForm
         {
             Text = "CDU Not Connected",
             Location = new Point(10, y),
-            Size = new Size(400, 20),
+            Size = new Size(240, 20),
             AccessibleName = "CDU status",
             TabStop = false
         };
+
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.MCDU, new Point(255, y - 2));
 
         // CDU selector
         cduSelector = new ComboBox
@@ -140,7 +146,7 @@ public partial class PMDG777CDUForm
         // Add all controls
         this.Controls.AddRange(new Control[]
         {
-            statusLabel, cduSelector, cduDisplay, scratchpadInput,
+            statusLabel, cduSelector, _focusCameraCheck, cduDisplay, scratchpadInput,
             btnInitRef, btnRte, btnDepArr, btnAltn, btnVnav, btnFix, btnLegs,
             btnHold, btnFmcComm, btnProg, btnMenu, btnNavRad, btnPrevPage, btnNextPage,
             btnExec, btnClr

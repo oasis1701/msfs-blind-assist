@@ -2,6 +2,8 @@ using System.Runtime.InteropServices;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Forms.IFly737;
@@ -261,6 +263,12 @@ public class IFlyEfbForm : Form
               if (home) { home.click(); e.preventDefault(); }
               return;
             }
+            // Alt+Shift+C = Streamer mode focus camera here
+            if (e.altKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+              window.chrome.webview.postMessage('msfsba-streamer-focus');
+              e.preventDefault();
+              return;
+            }
             // Enter/Space activate the div-buttons and radio options we stamped.
             if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.getAttribute &&
                 (e.target.getAttribute('data-msfsba-btn') || e.target.getAttribute('data-msfsba-radio'))) {
@@ -281,6 +289,8 @@ public class IFlyEfbForm : Form
 
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly WebView2 _webView;
+    private readonly Panel _topBar;
+    private readonly CheckBox _focusCameraCheck;
     private readonly Panel _errorPanel;
     private readonly TextBox _errorBox;
     private readonly Button _retryButton;
@@ -296,6 +306,16 @@ public class IFlyEfbForm : Form
         Size = new Size(1100, 850);
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
+
+        _topBar = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 32,
+            AccessibleName = "EFB controls",
+        };
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.EFB, new Point(12, 4));
+        _topBar.Controls.Add(_focusCameraCheck);
+        Controls.Add(_topBar);
 
         _webView = new WebView2
         {
@@ -336,6 +356,7 @@ public class IFlyEfbForm : Form
         _errorPanel.Controls.Add(_errorBox);
         _errorPanel.Controls.Add(_retryButton);
         Controls.Add(_errorPanel);
+        _topBar.BringToFront();
 
         // Covers Escape/F5 when WinForms chrome (the error panel / Retry button) has
         // focus. When the webview's page content has focus, keystrokes are owned by
@@ -344,6 +365,11 @@ public class IFlyEfbForm : Form
         // OnWebMessageReceived instead.
         KeyDown += (s, e) =>
         {
+            if (StreamerCameraFocusHelper.HandleShortcut(e.KeyData, _focusCameraCheck))
+            {
+                e.Handled = true;
+                return;
+            }
             if (e.KeyCode == Keys.F5)
             {
                 if (_errorPanel.Visible)
@@ -443,6 +469,20 @@ public class IFlyEfbForm : Form
         {
             try { _webView.CoreWebView2.Reload(); } catch { }
         }
+        else if (message == "msfsba-streamer-focus")
+        {
+            if (_focusCameraCheck != null && _focusCameraCheck.Visible)
+            {
+                _focusCameraCheck.Checked = !_focusCameraCheck.Checked;
+            }
+        }
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (StreamerCameraFocusHelper.HandleShortcut(keyData, _focusCameraCheck))
+            return true;
+        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     private async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)

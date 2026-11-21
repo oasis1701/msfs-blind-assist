@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.PMDG777;
@@ -293,6 +294,13 @@ public partial class PMDG777CDUForm : Form
 
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (StreamerCameraFocusHelper.HandleShortcut(e.KeyData, _focusCameraCheck))
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
+        }
+
         // Line-select keys — two layouts, switchable in FMC Settings:
         //   Default: Ctrl+1..6 = L1..L6, Alt+1..6 = R1..R6
         //   Alternate: F1..F6 = L1..L6, F7..F12 = R1..R6

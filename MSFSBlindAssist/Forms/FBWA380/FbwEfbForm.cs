@@ -4,6 +4,8 @@ using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Utils.Logging;
 
@@ -1382,6 +1384,7 @@ public class FbwEfbForm : Form
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'F5') { e.preventDefault(); post({ type: 'refresh' }); }
+    if (e.altKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) { e.preventDefault(); post({ type: 'streamer_focus' }); }
   });
 </script>
 </body>

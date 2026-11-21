@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.MD11;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.SimConnect.MD11;
 using MSFSBlindAssist.Utils.Logging;
@@ -44,6 +45,7 @@ public class Md11McduForm : Form
     private IntPtr previousWindow = IntPtr.Zero;
 
     private ComboBox unitSelector = null!;
+    private CheckBox _focusCameraCheck = null!;
     private DisplayListBox mcduDisplay = null!;
     private TextBox scratchpadInput = null!;
 
@@ -135,7 +137,7 @@ public class Md11McduForm : Form
         unitSelector = new ComboBox
         {
             Location = new Point(10, y),
-            Size = new Size(220, 25),
+            Size = new Size(200, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "MCDU unit",
             AccessibleDescription = "Which of the three MD-11 MCDUs to display and control."
@@ -146,14 +148,16 @@ public class Md11McduForm : Form
         statusBox = new TextBox
         {
             Text = "MCDU: waiting for data",
-            Location = new Point(240, y),
-            Size = new Size(370, 25),
+            Location = new Point(220, y),
+            Size = new Size(230, 25),
             ReadOnly = true,
             TabStop = true,
             BorderStyle = BorderStyle.FixedSingle,
             AccessibleName = "MCDU status",
             AccessibleDescription = "Connection state and lit MCDU annunciators."
         };
+
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.MCDU, new Point(460, y - 2));
         y += 32;
 
         // The shared read-only display list every live display window uses (one configuration,
@@ -200,6 +204,7 @@ public class Md11McduForm : Form
 
         this.Controls.Add(unitSelector);
         this.Controls.Add(statusBox);
+        this.Controls.Add(_focusCameraCheck);
         this.Controls.Add(mcduDisplay);
         this.Controls.Add(scratchpadInput);
         foreach (var b in buttons) this.Controls.Add(b);
@@ -463,6 +468,11 @@ public class Md11McduForm : Form
     /// </summary>
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (StreamerCameraFocusHelper.HandleShortcut(e.KeyData, _focusCameraCheck))
+        {
+            e.Handled = true; e.SuppressKeyPress = true; return;
+        }
+
         var combo = ActiveControl as ComboBox;
         var focus = combo == null ? KeyRouting.ComboFocus.None
                   : combo.DroppedDown ? KeyRouting.ComboFocus.Dropped

@@ -2,6 +2,8 @@ using System.Runtime.InteropServices;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms.Fenix;
@@ -37,6 +39,8 @@ public class FenixEFBForm : Form
     private readonly FenixEfbDeadEndGate _deadEndGate = new();
 
     private WebView2 _webView = null!;
+    private Panel _topBar = null!;
+    private CheckBox _focusCameraCheck = null!;
     private Panel _errorPanel = null!;
     private TextBox _errorBox = null!;
     private Button _retryButton = null!;
@@ -80,6 +84,16 @@ public class FenixEFBForm : Form
 
     private void BuildUi()
     {
+        _topBar = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 32,
+            AccessibleName = "EFB controls",
+        };
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.EFB, new System.Drawing.Point(12, 4));
+        _topBar.Controls.Add(_focusCameraCheck);
+        Controls.Add(_topBar);
+
         _webView = new WebView2
         {
             Dock = DockStyle.Fill,
@@ -120,6 +134,7 @@ public class FenixEFBForm : Form
         _errorPanel.Controls.Add(_errorBox);
         _errorPanel.Controls.Add(_retryButton);
         Controls.Add(_errorPanel);
+        _topBar.BringToFront();
     }
 
     // Names the address the window tried, so the failure text says where it looked.
@@ -151,8 +166,9 @@ public class FenixEFBForm : Form
             // ProcessCmdKey still covers Escape on the error panel.
             await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.addEventListener('keydown',function(e){" +
-                "if(e.key==='Escape'&&!document.querySelector('.cdk-overlay-pane > *')){window.chrome.webview.postMessage('msfsba-efb-close');}}," +
-                "true);");
+                "if(e.key==='Escape'&&!document.querySelector('.cdk-overlay-pane > *')){window.chrome.webview.postMessage('msfsba-efb-close');}" +
+                "else if(e.altKey&&e.shiftKey&&(e.key==='c'||e.key==='C')){e.preventDefault();window.chrome.webview.postMessage('msfsba-streamer-focus');}" +
+                "},true);");
             // The accessibility layer: registered with the document-created injection, so it
             // is in place before the first page script runs and again for every new document. Read once,
             // here; a missing file only costs the layer, never the page.
@@ -207,9 +223,17 @@ public class FenixEFBForm : Form
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         // Fired on the UI thread. Close() runs the hide-and-restore FormClosing path.
-        if (e.TryGetWebMessageAsString() == "msfsba-efb-close")
+        var msg = e.TryGetWebMessageAsString();
+        if (msg == "msfsba-efb-close")
         {
             Close();
+        }
+        else if (msg == "msfsba-streamer-focus")
+        {
+            if (_focusCameraCheck != null && _focusCameraCheck.Visible)
+            {
+                _focusCameraCheck.Checked = !_focusCameraCheck.Checked;
+            }
         }
     }
 
@@ -278,6 +302,8 @@ public class FenixEFBForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (StreamerCameraFocusHelper.HandleShortcut(keyData, _focusCameraCheck))
+            return true;
         if (keyData == Keys.Escape)
         {
             Close();
