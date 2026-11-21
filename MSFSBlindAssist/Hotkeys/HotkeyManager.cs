@@ -58,6 +58,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_VATSIM_MUTE = 9252;      // Alt+V (Toggle VATSIM announcements) — output mode
         private const int HOTKEY_VOLANTA = 9253;          // Shift+O (Volanta live map window) — output mode
         private const int HOTKEY_SHOW_AIRCRAFT_WINDOWS = 9254; // Ctrl+Shift+F (the aircraft's own window list: Fenix windows) — input mode
+        private const int HOTKEY_SHOW_COCKPIT_VIEWS = 9255;    // Shift+V (Cockpit camera views window) — input mode
         private const int HOTKEY_ND_WAYPOINT = 9243;      // Ctrl+W (FBW ND TO-waypoint: name/distance/bearing) — output mode
 
         // FCU push/pull hotkey IDs
@@ -653,6 +654,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_SHOW_AIRCRAFT_WINDOWS:
                             TriggerHotkey(HotkeyAction.ShowAircraftWindows);
                             break;
+                        case HOTKEY_SHOW_COCKPIT_VIEWS:
+                            TriggerHotkey(HotkeyAction.ShowCockpitViews);
+                            break;
                         case HOTKEY_TAXI_FORM:
                             TriggerHotkey(HotkeyAction.TaxiAssistForm);
                             break;
@@ -982,6 +986,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_SHOW_RMP, MOD_CONTROL | MOD_SHIFT, 0x52);  // Ctrl+Shift+R (A380 Radio Management Panel)
             RegisterHotKey(windowHandle, HOTKEY_SHOW_DCDU, MOD_CONTROL | MOD_SHIFT, 0x44); // Ctrl+Shift+D (A32NX DCDU / CPDLC window)
             RegisterHotKey(windowHandle, HOTKEY_SHOW_AIRCRAFT_WINDOWS, MOD_CONTROL | MOD_SHIFT, 0x46); // Ctrl+Shift+F (Fenix windows list)
+            RegisterHotKey(windowHandle, HOTKEY_SHOW_COCKPIT_VIEWS, MOD_SHIFT, 0x56);      // Shift+V (Cockpit views window)
 
             // Taxi guidance hotkeys (Input mode)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_FORM, MOD_SHIFT, 0x59);            // Shift+Y (Open Taxi Form)
@@ -1043,6 +1048,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_SHOW_RMP);
             UnregisterHotKey(windowHandle, HOTKEY_SHOW_DCDU);
             UnregisterHotKey(windowHandle, HOTKEY_SHOW_AIRCRAFT_WINDOWS);
+            UnregisterHotKey(windowHandle, HOTKEY_SHOW_COCKPIT_VIEWS);
 
             // Taxi guidance hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_FORM);
@@ -1419,4 +1425,5 @@ public class HotkeyManager : IDisposable
         SayIntentionsAssignedStatus,
         SayIntentionsBuildTaxiRoute,
         ShowAircraftWindows,   // Ctrl+Shift+F (input) — the aircraft's own window list (the Fenix windows)
+        ShowCockpitViews,      // Shift+V (input) — cockpit camera views window (Streamer Mode)
     }

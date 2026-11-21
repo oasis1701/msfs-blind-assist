@@ -1002,4 +1002,32 @@ public partial class MainForm
         // Show the form
         trackFixForm.ShowForm();
     }
+
+    private Forms.CockpitViewsForm? _cockpitViewsForm;
+
+    /// <summary>
+    /// Open (or bring to front) the Cockpit Views window for stream viewers.
+    /// Gated on Streamer Mode being enabled in settings.
+    /// </summary>
+    private void ShowCockpitViewsDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        if (!SettingsManager.Current.StreamerModeEnabled)
+        {
+            announcer.Announce("Streamer mode is disabled. Enable it in Settings to access cockpit views.");
+            return;
+        }
+
+        if (_cockpitViewsForm == null || _cockpitViewsForm.IsDisposed)
+        {
+            _cockpitViewsForm = new Forms.CockpitViewsForm(
+                StreamerModeService.Instance,
+                announcer,
+                () => currentAircraft);
+        }
+
+        _cockpitViewsForm.ShowForm();
+    }
 }

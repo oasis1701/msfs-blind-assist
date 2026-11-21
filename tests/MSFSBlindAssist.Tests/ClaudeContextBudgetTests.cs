@@ -745,6 +745,7 @@ public class ClaudeContextBudgetTests
             "MSFSBlindAssist/Navigation/WaypointTracker.cs", "MSFSBlindAssist/Forms/TrackFixForm.cs",
             "MSFSBlindAssist/Forms/TrackFixForm.Designer.cs", "MSFSBlindAssist/Services/LandingRateAnnouncer.cs",
             "MSFSBlindAssist/Services/StreamerModeService.cs",
+            "MSFSBlindAssist/Forms/CockpitViewsForm.cs",
         },
         ["retired-install cleanup that no rule names"] = new[]
         {

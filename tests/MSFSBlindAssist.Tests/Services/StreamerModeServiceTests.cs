@@ -230,5 +230,70 @@ public class StreamerModeServiceTests
         Assert.Equal(CockpitCameraTarget.CockpitDoor, service.CurrentTarget);
         Assert.Equal((2, 12), io.SetCalls[^1]);
     }
+
+    [Fact]
+    public async Task SelectView_WhenDisabled_ReturnsFalse()
+    {
+        var io = new FakeCameraIo();
+        var settings = new UserSettings { StreamerModeEnabled = false };
+        var service = new StreamerModeService(io, () => settings, delay: _ => Task.CompletedTask);
+        var aircraft = new FakeAircraft();
+
+        bool result = await service.SelectViewAsync(CockpitCameraTarget.Overhead, hold: true, aircraft);
+        Assert.False(result);
+        Assert.Empty(io.SetCalls);
+    }
+
+    [Fact]
+    public async Task SelectView_Forward_ReturnsToForward()
+    {
+        var io = new FakeCameraIo();
+        var settings = new UserSettings { StreamerModeEnabled = true };
+        var service = new StreamerModeService(io, () => settings, delay: _ => Task.CompletedTask);
+        var aircraft = new FakeAircraft();
+
+        // Put camera on Overhead first
+        await service.SelectViewAsync(CockpitCameraTarget.Overhead, hold: true, aircraft);
+        Assert.Equal(CockpitCameraTarget.Overhead, service.CurrentTarget);
+        Assert.True(service.IsFocused);
+
+        // Select Forward
+        bool result = await service.SelectViewAsync(CockpitCameraTarget.Forward, hold: false, aircraft);
+        Assert.True(result);
+        Assert.Equal(CockpitCameraTarget.Forward, service.CurrentTarget);
+        Assert.False(service.IsFocused);
+    }
+
+    [Fact]
+    public async Task SelectView_TargetWithHold_SetsFocusAndMovesCamera()
+    {
+        var io = new FakeCameraIo();
+        var settings = new UserSettings { StreamerModeEnabled = true };
+        var service = new StreamerModeService(io, () => settings, delay: _ => Task.CompletedTask);
+        var aircraft = new FakeAircraft();
+
+        bool result = await service.SelectViewAsync(CockpitCameraTarget.Pedestal, hold: true, aircraft);
+        Assert.True(result);
+        Assert.Equal(CockpitCameraTarget.Pedestal, service.CurrentTarget);
+        Assert.True(service.IsFocused);
+        Assert.Equal(CockpitCameraTarget.Pedestal, service.FocusedTarget);
+        Assert.Equal((2, 5), io.SetCalls[^1]);
+    }
+
+    [Fact]
+    public async Task SelectView_TargetWithoutHold_MovesCameraAndDoesNotHold()
+    {
+        var io = new FakeCameraIo();
+        var settings = new UserSettings { StreamerModeEnabled = true };
+        var service = new StreamerModeService(io, () => settings, delay: _ => Task.CompletedTask);
+        var aircraft = new FakeAircraft();
+
+        bool result = await service.SelectViewAsync(CockpitCameraTarget.Overhead, hold: false, aircraft);
+        Assert.True(result);
+        Assert.Equal(CockpitCameraTarget.Overhead, service.CurrentTarget);
+        Assert.False(service.IsFocused);
+        Assert.Null(service.FocusedTarget);
+        Assert.Equal((2, 4), io.SetCalls[^1]);
+    }
 }
 

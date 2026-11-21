@@ -272,6 +272,84 @@ public class StreamerModeService
     }
 
     /// <summary>
+    /// Explicitly selects a cockpit camera target (e.g. from the Cockpit Views window).
+    /// If <paramref name="hold"/> is true, holds the camera on that view indefinitely.
+    /// If false, moves to the view and schedules the 2-second return timer.
+    /// </summary>
+    public async Task<bool> SelectViewAsync(CockpitCameraTarget target, bool hold = true, IAircraftDefinition? aircraft = null)
+    {
+        if (!_getSettings().StreamerModeEnabled) return false;
+
+        CancelReturnTimer();
+
+        if (target == CockpitCameraTarget.Forward)
+        {
+            lock (_lock)
+            {
+                IsFocused = false;
+                FocusedTarget = null;
+            }
+            await ReturnToForwardAsync();
+            _announcer?.Announce("Camera returned forward");
+            return true;
+        }
+
+        var effectiveAircraft = aircraft ?? _getAircraft?.Invoke();
+
+        if (target == CockpitCameraTarget.MainPanel)
+        {
+            await ReturnToForwardAsync();
+            lock (_lock)
+            {
+                IsFocused = hold;
+                FocusedTarget = hold ? CockpitCameraTarget.MainPanel : null;
+            }
+
+            if (!hold)
+            {
+                ScheduleReturnTimer();
+            }
+
+            _announcer?.Announce("Camera set to Main Instrument Panel");
+            return true;
+        }
+
+        int? viewIndex = effectiveAircraft?.GetCameraViewForTarget(target);
+        if (viewIndex.HasValue && _io != null)
+        {
+            await EnsureForwardReadingCapturedAsync();
+            Log.Debug("StreamerMode", $"Explicitly selecting view {target} (index {viewIndex.Value}), hold: {hold}");
+            try
+            {
+                _io.Set(2, viewIndex.Value);
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("StreamerMode", $"Camera set failed: {ex.Message}");
+            }
+
+            await _delay(HumanHeadTurnDelayMs);
+            CurrentTarget = target;
+
+            lock (_lock)
+            {
+                IsFocused = hold;
+                FocusedTarget = hold ? target : null;
+            }
+
+            if (!hold)
+            {
+                ScheduleReturnTimer();
+            }
+
+            _announcer?.Announce($"Camera set to {target}");
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Smoothly restores the cockpit camera to forward-looking pilot eye level.
     /// </summary>
     public async Task<bool> ReturnToForwardAsync()

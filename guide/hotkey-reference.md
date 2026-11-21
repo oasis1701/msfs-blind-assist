@@ -176,6 +176,7 @@ Each opens a window where you type a value, with the related mode buttons. The b
 
 - **Input Shift+M** — Open this aircraft's MCDU, CDU or FMC window.
 - **Input Shift+T** — Open this aircraft's EFB (see [Aircraft EFBs](planning-your-flight.md#aircraft-efb)). Not on: HorizonSim 787.
+- **Input Shift+V** — Open the Cockpit Views window (available when Streamer Mode is enabled).
 
 ### Input: taxi, GSX and SayIntentions {#input-taxi-gsx-and-sayintentions}
 
