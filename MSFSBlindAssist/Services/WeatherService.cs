@@ -637,11 +637,20 @@ public static class WeatherService
     // Both go into a web address: a decimal point whatever the PC's regional settings. Under a comma-decimal
     // culture the box was eight numbers ("11,25,48,10,…") and the winds address "latitude=48,3538", which the
     // services refuse or misread.
+    // The box is latitude first, as the Data API defines it: "lat0, lon0, lat1, lon1"
+    // (aviationweather.gov/data/schema/openapi.yaml, example 40,-90,45,-85). Longitude first asked Munich's
+    // reports from the Arabian Sea. Past a pole or the date line it is clamped to the edge, never sent out of
+    // range; a box that reaches a pole (or whose cos(lat) makes it wider than the globe) takes every longitude.
     internal static string BuildBbox(double lat, double lon, double rangeNm)
     {
         double dLat = rangeNm / 60.0;
-        double dLon = rangeNm / (60.0 * Math.Cos(lat * Math.PI / 180.0));
-        return FormattableString.Invariant($"{lon - dLon:F2},{lat - dLat:F2},{lon + dLon:F2},{lat + dLat:F2}");
+        double cosLat = Math.Cos(lat * Math.PI / 180.0);
+        double dLon = cosLat > 0 ? rangeNm / (60.0 * cosLat) : 180.0;
+        bool everyLongitude = dLon >= 180.0 || lat + dLat >= 90.0 || lat - dLat <= -90.0;
+        double south = Math.Max(-90.0, lat - dLat), north = Math.Min(90.0, lat + dLat);
+        double west = everyLongitude ? -180.0 : Math.Max(-180.0, lon - dLon);
+        double east = everyLongitude ? 180.0 : Math.Min(180.0, lon + dLon);
+        return FormattableString.Invariant($"{south:F2},{west:F2},{north:F2},{east:F2}");
     }
 
     internal static string BuildWindsUrl(double lat, double lon)

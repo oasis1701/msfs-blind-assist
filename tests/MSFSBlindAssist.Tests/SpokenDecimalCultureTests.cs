@@ -87,15 +87,15 @@ public class SpokenDecimalCultureTests
     [MemberData(nameof(Aircraft))]
     public void An_announcement_has_no_decimal_comma_under_a_comma_culture(string aircraft)
     {
-        // Sanity first: under en-US nothing the aircraft says has a digit, a comma and a digit, so the same pattern
-        // under de-DE can only be a decimal comma.
-        Assert.DoesNotContain(Spoken(aircraft, "en-US"), line => CommaDecimal.IsMatch(line));
+        // A digit, a comma and a digit that en-US says too is an invariant group separator ("12,345", as CORE-21
+        // asks), never a decimal comma: only a line en-US never said can carry one.
+        var plain = Spoken(aircraft, "en-US").ToHashSet(StringComparer.Ordinal);
         var spoken = Spoken(aircraft, "de-DE");
         // A floor: Spoken swallows a handler's exception, so an aircraft whose handlers all threw before they spoke
         // would say nothing and pass with nothing checked.
         Assert.True(spoken.Count > 0, $"{aircraft} said nothing, so nothing was checked");
         // One line a phrase, whatever the sample: the first of each wording with its numbers taken out.
-        var wrong = spoken.Where(line => CommaDecimal.IsMatch(line))
+        var wrong = spoken.Where(line => CommaDecimal.IsMatch(line) && !plain.Contains(line))
             .DistinctBy(line => Numbers.Replace(line, "#")).ToList();
         Assert.True(wrong.Count == 0, Fail(wrong));
     }

@@ -1548,7 +1548,8 @@ public class VisualGuidanceManager : IDisposable
             announcer.Announce($"{distanceText} behind threshold");
             lastExtendingProgressAnnouncement = now;
         }
-        else if (roundedDistance < 0.5 && roundedDistance >= 0.1)
+        // The distance itself, not roundedDistance: a multiple of 0.5, that is 0 here, so it was never 0.1 or more.
+        else if (distanceNM >= 0.1)
         {
             announcer.Announce("Approaching threshold");
             lastExtendingProgressAnnouncement = now;

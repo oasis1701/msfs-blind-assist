@@ -13,9 +13,9 @@ public partial class TaxiGuidanceManager
     /// Long distances (over ~6000 ft) switch to the big unit MATCHING the ground
     /// distance setting: kilometres in metres mode, nautical miles in feet mode
     /// (route summaries and status readouts — a metric user should never hear NM
-    /// for a taxi distance).
+    /// for a taxi distance). Internal for its comma-culture test.
     /// </summary>
-    private static string FormatDistance(double meters)
+    internal static string FormatDistance(double meters)
     {
         double feet = meters * METERS_TO_FEET;
         if (feet > 6000)

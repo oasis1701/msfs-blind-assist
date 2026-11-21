@@ -296,6 +296,11 @@ internal static class Sweep
         private SortedSet<string> Context(SyntaxNode candidate)
         {
             var context = new SortedSet<string>(StringComparer.Ordinal);
+            // Once the number is text in the PC's culture, no call or string further out can make it invariant: a
+            // ToString(), a concatenation or a sink makes it text itself, and a hole's string does when it is
+            // converted to a plain string (FormattableString.Invariant($"{(m ? $"{x}" : "")}") formats x first).
+            // Only the innermost string's own conversion counts. A log call further out still does.
+            bool formattedAlready = candidate is not InterpolationSyntax, innermostStringSeen = false;
             foreach (SyntaxNode ancestor in candidate.AncestorsAndSelf())
             {
                 switch (ancestor)
@@ -304,7 +309,8 @@ internal static class Sweep
                     {
                         IMethodSymbol? method = Method(call);
                         string name = method?.Name ?? (call.Expression as MemberAccessExpressionSyntax)?.Name.Identifier.Text ?? call.Expression.ToString();
-                        if (name is "Invariant" or "Inv" || (method?.Parameters.Any(p => p.Type.Name is "IFormatProvider" or "CultureInfo") ?? false))
+                        if (!formattedAlready
+                            && (name is "Invariant" or "Inv" || (method?.Parameters.Any(p => p.Type.Name is "IFormatProvider" or "CultureInfo") ?? false)))
                             context.Add("invariant");
                         if (LogHelpers.Contains(name) || LoggerType.IsMatch(method?.ContainingType?.Name ?? "")
                             || (method?.MethodKind == MethodKind.DelegateInvoke && LoggerDelegate.IsMatch(call.Expression.ToString())))
@@ -319,9 +325,14 @@ internal static class Sweep
                     case InterpolatedStringExpressionSyntax text:
                     {
                         // Handed to FormattableString.Invariant and the like, or to a handler that formats by itself.
-                        string? convertedTo = model.GetTypeInfo(text).ConvertedType?.Name;
-                        if (convertedTo is "FormattableString" or "IFormattable") context.Add("invariant");
-                        else if (convertedTo is not (null or "String" or "Object")) context.Add("handler " + convertedTo);
+                        if (!formattedAlready && !innermostStringSeen)
+                        {
+                            string? convertedTo = model.GetTypeInfo(text).ConvertedType?.Name;
+                            if (convertedTo is "FormattableString" or "IFormattable") context.Add("invariant");
+                            else if (convertedTo is not (null or "String" or "Object")) context.Add("handler " + convertedTo);
+                            else if (convertedTo != null) formattedAlready = true;
+                        }
+                        innermostStringSeen = true;
                         if (IsCalculatorCode(text.ToString())) context.Add("calculator code");
                         break;
                     }

@@ -77,6 +77,8 @@ public class DecimalFormatSourceTests
     [InlineData("var s = $\"{value:F} and {ratio:P}\";")]
     [InlineData("var s = value.ToString(\"N\");")]
     [InlineData("var s = $\"{tolerance:G3} degrees\";")]
+    // A string inside a hole is formatted before the invariant call around the outer string sees it.
+    [InlineData("var s = FormattableString.Invariant($\"Speed {(isMach ? $\"Mach {m:0.00}\" : \"250 knots\")}\");")]
     public void A_decimal_formatted_in_the_pcs_culture_is_found(string code) => Assert.Single(Scan(code));
 
     [Theory]
@@ -100,6 +102,9 @@ public class DecimalFormatSourceTests
     [InlineData("_taxiFormLog.Error($\"gap {gap:F1} m\");")]
     [InlineData("var s = $\"{startTime:F} {sessionGuid:N}\";")]
     [InlineData("var s = Guid.NewGuid().ToString(\"N\");")]
+    // Inside a hole: an invariant call of its own, or a log call around the whole.
+    [InlineData("var s = FormattableString.Invariant($\"Speed {(isMach ? FormattableString.Invariant($\"Mach {m:0.00}\") : \"250 knots\")}\");")]
+    [InlineData("Log.Debug(\"Fcu\", $\"speed {(isMach ? $\"Mach {m:0.00}\" : \"knots\")}\");")]
     public void An_invariant_or_logged_or_whole_number_format_is_left_alone(string code) => Assert.Empty(Scan(code));
 
     [Fact]
@@ -196,6 +201,8 @@ internal static class DecimalFormatScan
         private readonly string _s;
         private int _i;
         private readonly List<(string Name, int Open)> _calls = new();
+        // How many of _calls were open when each enclosing interpolation hole opened, innermost last.
+        private readonly List<int> _holeFloors = new();
         public List<Hit> Hits { get; } = new();
 
         public Scanner(string source) => _s = source;
@@ -331,7 +338,9 @@ internal static class DecimalFormatScan
         {
             _i++;
             int from = _i;
+            _holeFloors.Add(_calls.Count);
             Code(inHole: true);
+            _holeFloors.RemoveAt(_holeFloors.Count - 1);
             string hole = _s.Substring(from, Math.Min(_i, _s.Length) - from);
             if (At(_i) == '}') _i++;
             int colon = hole.LastIndexOf(':');
@@ -342,10 +351,18 @@ internal static class DecimalFormatScan
         /// <summary>Reports the literal at <paramref name="start"/> unless a call around it formats invariantly or logs.</summary>
         private void Report(int start, int at = -1)
         {
-            foreach (var (name, open) in _calls)
+            // A call opened outside the innermost hole around this literal is handed that hole's string, already
+            // formatted in the PC's culture, so it cannot make this one invariant:
+            // FormattableString.Invariant($"{(m ? $"{x:F2}" : "")}") formats x before Invariant runs. A log call can:
+            // whatever it is handed ends in the log.
+            int floor = _holeFloors.Count > 0 ? _holeFloors[^1] : 0;
+            for (int k = 0; k < _calls.Count; k++)
             {
+                var (name, open) = _calls[k];
                 string last = name.Contains('.') ? name[(name.LastIndexOf('.') + 1)..] : name;
-                if (IsLogCall(name, last) || InvariantCallees.Contains(name) || InvariantCallees.Contains(last)) return;
+                if (IsLogCall(name, last)) return;
+                if (k < floor) continue;
+                if (InvariantCallees.Contains(name) || InvariantCallees.Contains(last)) return;
                 // A formatting call handed the invariant culture before the string. Only a formatting call: any other
                 // call around the string may mention the culture for a reason of its own (a parse two lines up).
                 if (!CultureTakingCallees.Contains(last)) continue;

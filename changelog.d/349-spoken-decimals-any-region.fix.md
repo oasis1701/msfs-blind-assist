@@ -7,7 +7,9 @@ path angle, the altimeter in inches, distances, the system display rows and the 
 planning windows, on every aircraft.
 
 On such a PC the Weather Radar window should also now load its pilot reports and winds
-aloft: the addresses it asked for them with were built with decimal commas.
+aloft: the addresses it asked for them with were built with decimal commas. On every PC
+the pilot reports should now load at all: they were asked for with latitude and longitude
+the wrong way round, so they came from another part of the world, or from nowhere.
 
 On a PC set to Swedish, Norwegian or Finnish, a descent rate or a negative flight path
 angle typed into the vertical speed window of the FlyByWire A32NX or A380 or the Headwind
