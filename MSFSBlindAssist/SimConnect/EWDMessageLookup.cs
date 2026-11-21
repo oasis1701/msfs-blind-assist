@@ -354,8 +354,12 @@ public static class EWDMessageLookup
         ["270046002"] = "\x1b<4m     DISAGREE",
         ["270046501"] = "\x1b<4m\x1b4mF/CTL\x1bm FLAP/MCDU DISAGREE",
         ["270050201"] = "\x1b<4m\x1b4mF/CTL\x1bm SPD BRK STILL OUT",
+        // Wing tip brake faults (FBW #10933, 2026-11). Level 1 in PseudoFWC, like the FCDC faults:
+        // no chime and no master caution, so the E/WD line is the only cue the aircraft gives.
+        ["270055001"] = "\x1b<4m\x1b4mF/CTL\x1bm SLAT TIP BRK FAULT",
         ["270055501"] = "\x1b<4m\x1b4mF/CTL\x1bm FCDC 1 FAULT",
         ["270055701"] = "\x1b<4m\x1b4mF/CTL\x1bm FCDC 2 FAULT",
+        ["270056001"] = "\x1b<4m\x1b4mF/CTL\x1bm FLAP TIP BRK FAULT",
         ["270087001"] = "\x1b<4m\x1b4mF/CTL\x1bm GND SPLR NOT ARMED",
         ["280013001"] = "\x1b<4m\x1b4mFUEL\x1bm L WING TK LO LVL",
         ["280013002"] = "\x1b<5m -FUEL MODE SEL......MAN",

@@ -28,6 +28,20 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
 
     private static readonly FcuSources Fcu = FcuSources.A32nx;
 
+    // Hotkey-readout twins ([A320-42], FcuReadoutTwins): the Shift+H/S/A readouts pair a display
+    // value (on request) with a managed flag, and the three flags stream on their own once-a-second
+    // subscriptions, so a forced read of one waited for its next delivery, 0-1 s. The readouts read
+    // these on-request twins instead; never point one back at an original.
+    internal static readonly IReadOnlyList<string> FcuReadoutOriginals = new[]
+    {
+        "A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED",
+        "A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED",
+        "A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED",
+    };
+    private const string HeadingManagedReadout = "A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED" + FcuReadoutTwins.Suffix;
+    private const string SpeedManagedReadout = "A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED" + FcuReadoutTwins.Suffix;
+    private const string AltitudeManagedReadout = "A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED" + FcuReadoutTwins.Suffix;
+
     /// <summary>Arm the FCU echo for the value vars <paramref name="evt"/> moves (FcuEchoKeys.For),
     /// given how the write is confirmed. Call BEFORE the event is sent.</summary>
     private void ArmFcuEchoFor(string evt, FcuConfirmation confirmation) =>
@@ -3573,10 +3587,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
-            // Keep an individual data def. The FCU readout force-reads this status leg via
-            // RequestVariable(forceUpdate), which NO-OPS for batch-covered vars (the SimConnect-
-            // ceiling strengthening skips their individual def). Without this the HDG readout's
-            // managed-status leg never arrives and the readout goes silent. (Regression fix.)
+            // An individual data def, on its own once-a-second subscription, kept from the time the
+            // FCU readout force-read this status leg (a batch-covered var's forced read then did
+            // nothing, and the readout went silent). The readout now reads the _READOUT twin
+            // ([A320-42]), since a forced read of this one waits for its next delivery; the
+            // push/pull state read-back (GetButtonStateMapping) still reads this key.
             ExcludeFromBatch = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Select heading mode", [1] = "Managed heading mode" }
         },
@@ -3594,7 +3609,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ExcludeFromBatch = true,   // see HDG_TRK_MANAGED — keep individual def for the forced readout
+            ExcludeFromBatch = true,   // see HDG_TRK_MANAGED; the readout reads the _READOUT twin ([A320-42])
             ValueDescriptions = new Dictionary<double, string> { [0] = "Selected speed", [1] = "Managed speed" }
         },
         ["A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED"] = new SimConnect.SimVarDefinition
@@ -3603,7 +3618,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ExcludeFromBatch = true,   // see HDG_TRK_MANAGED — keep individual def for the forced readout
+            ExcludeFromBatch = true,   // see HDG_TRK_MANAGED; the readout reads the _READOUT twin ([A320-42])
             ValueDescriptions = new Dictionary<double, string> { [0] = "Selected Altitude", [1] = "Managed altitude" }
         },
         ["A32NX_FCU_EXPED_LIGHT_ON"] = new SimConnect.SimVarDefinition
@@ -5716,6 +5731,9 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
                 }
             }
         }
+
+        // The readout twins ([A320-42]).
+        FcuReadoutTwins.Register(variables, FcuReadoutOriginals);
 
         return variables;
     }
@@ -8695,11 +8713,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             return true; // Processed as part of FCU readout
         }
-        else if (varName == "A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED")
+        else if (varName == HeadingManagedReadout)
         {
-            // Only intercept if we're actively requesting heading
+            // The twin is read by the readout alone: one answering no pending readout says nothing
             if (!isRequestingHeading)
-                return false; // Not part of a readout request
+                return true;
 
             pendingHeadingStatus = value;
             if (pendingHeadingValue.HasValue)
@@ -8729,11 +8747,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             return true;
         }
-        else if (varName == "A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED")
+        else if (varName == SpeedManagedReadout)
         {
-            // Only intercept if we're actively requesting speed
+            // The twin is read by the readout alone: one answering no pending readout says nothing
             if (!isRequestingSpeed)
-                return false;
+                return true;
 
             pendingSpeedStatus = value;
             if (pendingSpeedValue.HasValue)
@@ -8764,11 +8782,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             return true;
         }
-        else if (varName == "A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED")
+        else if (varName == AltitudeManagedReadout)
         {
-            // Only intercept if we're actively requesting altitude
+            // The twin is read by the readout alone: one answering no pending readout says nothing
             if (!isRequestingAltitude)
-                return false;
+                return true;
 
             pendingAltitudeStatus = value;
             if (pendingAltitudeValue.HasValue)
@@ -9648,10 +9666,10 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingHeadingValue = null;
             pendingHeadingStatus = null;
 
-            // Request both variables using existing registrations
-            // ProcessSimVarUpdate will combine them when both arrive
+            // The value and the managed flag's on-request twin ([A320-42]);
+            // ProcessSimVarUpdate combines them when both arrive
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", forceUpdate: true);
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED", forceUpdate: true);
+            simConnectMgr.RequestVariable(HeadingManagedReadout, forceUpdate: true);
         }
     }
 
@@ -9666,10 +9684,10 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingSpeedValue = null;
             pendingSpeedStatus = null;
 
-            // Request both variables using existing registrations
-            // ProcessSimVarUpdate will combine them when both arrive
+            // The value and the managed flag's on-request twin ([A320-42]);
+            // ProcessSimVarUpdate combines them when both arrive
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", forceUpdate: true);
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", forceUpdate: true);
+            simConnectMgr.RequestVariable(SpeedManagedReadout, forceUpdate: true);
         }
     }
 
@@ -9684,10 +9702,10 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingAltitudeValue = null;
             pendingAltitudeStatus = null;
 
-            // Request both variables using existing registrations
-            // ProcessSimVarUpdate will combine them when both arrive
+            // The value and the managed flag's on-request twin ([A320-42]);
+            // ProcessSimVarUpdate combines them when both arrive
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_ALT_VALUE", forceUpdate: true);
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED", forceUpdate: true);
+            simConnectMgr.RequestVariable(AltitudeManagedReadout, forceUpdate: true);
         }
     }
 
@@ -9702,8 +9720,8 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingVSFPAValue = null;
             pendingVSFPAMode = null;
 
-            // Request both variables using existing registrations
-            // ProcessSimVarUpdate will combine them when both arrive
+            // Both are read on request already;
+            // ProcessSimVarUpdate combines them when both arrive
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE", forceUpdate: true);
             simConnectMgr.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
         }

@@ -229,16 +229,16 @@ public partial class FlyByWireA380Definition
     {
         if (!s.IsConnected) return;
         _reqHdg = true; _pHdgVal = _pHdgMgd = null;
-        s.RequestVariable("A32NX_AUTOPILOT_HEADING_SELECTED", forceUpdate: true);
-        s.RequestVariable("A32NX_FCU_HDG_MANAGED_DASHES", forceUpdate: true);
+        s.RequestVariable(HeadingReadout, forceUpdate: true);
+        s.RequestVariable(HeadingManagedReadout, forceUpdate: true);
     }
 
     public void RequestFCUSpeedWithStatus(SimConnectManager s)
     {
         if (!s.IsConnected) return;
         _reqSpd = true; _pSpdVal = _pSpdMgd = null;
-        s.RequestVariable("A32NX_AUTOPILOT_SPEED_SELECTED", forceUpdate: true);
-        s.RequestVariable("A32NX_FCU_SPD_MANAGED_DOT", forceUpdate: true);
+        s.RequestVariable(SpeedReadout, forceUpdate: true);
+        s.RequestVariable(SpeedManagedReadout, forceUpdate: true);
     }
 
     public void RequestFCUAltitudeWithStatus(SimConnectManager s)
@@ -252,8 +252,9 @@ public partial class FlyByWireA380Definition
         // those three genuinely await a SECOND sim delivery to pair up, but altitude's other half
         // is read straight off the derived tracker at emit time (see the FCU_ALT_VALUE branch in
         // .SimVarUpdate.cs) — _reqAlt alone is enough. Don't add one back for symmetry.
+        // The value is read through its on-request twin ([A320-42]).
         _reqAlt = true;
-        s.RequestVariable("FCU_ALT_VALUE", forceUpdate: true);
+        s.RequestVariable(AltitudeReadout, forceUpdate: true);
     }
 
     /// <summary>Mark a Shift+V readout pending (the three halves it pairs up start empty). Split out of
@@ -273,7 +274,7 @@ public partial class FlyByWireA380Definition
         // artifact, and routing VS through MobiFlight ReadLedVariable regressed the
         // read-out to silence: its numeric response was being consumed by the
         // shared ECAM string-read channel before the LED-value handler saw it.)
-        s.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
+        s.RequestVariable(TrkFpaModeReadout, forceUpdate: true);
         s.RequestVariable("A32NX_AUTOPILOT_VS_SELECTED", forceUpdate: true);
         s.RequestVariable("A32NX_AUTOPILOT_FPA_SELECTED", forceUpdate: true);
     }
