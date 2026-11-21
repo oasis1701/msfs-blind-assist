@@ -143,12 +143,14 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
 
     public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
     {
+        CockpitCameraTarget.Forward => null,
+        CockpitCameraTarget.MainPanel => null,
         CockpitCameraTarget.MCDU => 0,
         CockpitCameraTarget.Glareshield => 1,
         CockpitCameraTarget.Overhead => 2,
         CockpitCameraTarget.Pedestal => 3,
-        CockpitCameraTarget.MainPanel => 4,
         CockpitCameraTarget.EFB => 5,
+        CockpitCameraTarget.CockpitDoor => 6,
         _ => base.GetCameraViewForTarget(target)
     };
 

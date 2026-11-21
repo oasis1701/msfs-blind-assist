@@ -31,6 +31,9 @@ public class CockpitCameraTargetTests
     [InlineData("Flaps: 1", CockpitCameraTarget.Pedestal)]
     [InlineData("Autobrake: RTO", CockpitCameraTarget.MainPanel)]
     [InlineData("Landing Gear: DOWN", CockpitCameraTarget.MainPanel)]
+    [InlineData("Cockpit Door", CockpitCameraTarget.CockpitDoor)]
+    [InlineData("S_COCKPIT_DOOR", CockpitCameraTarget.CockpitDoor)]
+    [InlineData("Cabin Door", CockpitCameraTarget.CockpitDoor)]
     public void ResolveSection_ResolvesKnownKeywords(string sectionName, CockpitCameraTarget expected)
     {
         var resolved = CockpitCameraTargetExtensions.ResolveSection(sectionName);
@@ -64,7 +67,8 @@ public class CockpitCameraTargetTests
         Assert.Equal(4, def.GetCameraViewForTarget(CockpitCameraTarget.Overhead));
         Assert.Equal(5, def.GetCameraViewForTarget(CockpitCameraTarget.Pedestal));
         Assert.Equal(6, def.GetCameraViewForTarget(CockpitCameraTarget.Glareshield));
-        Assert.Equal(7, def.GetCameraViewForTarget(CockpitCameraTarget.MainPanel));
+        Assert.Null(def.GetCameraViewForTarget(CockpitCameraTarget.MainPanel));
+        Assert.Equal(12, def.GetCameraViewForTarget(CockpitCameraTarget.CockpitDoor));
     }
 
     [Fact]
@@ -72,10 +76,11 @@ public class CockpitCameraTargetTests
     {
         var def = new PMDG737Definition();
         Assert.Equal(0, def.GetCameraViewForTarget(CockpitCameraTarget.Glareshield));
-        Assert.Equal(1, def.GetCameraViewForTarget(CockpitCameraTarget.MainPanel));
+        Assert.Null(def.GetCameraViewForTarget(CockpitCameraTarget.MainPanel));
         Assert.Equal(2, def.GetCameraViewForTarget(CockpitCameraTarget.Overhead));
         Assert.Equal(4, def.GetCameraViewForTarget(CockpitCameraTarget.Pedestal));
         Assert.Equal(5, def.GetCameraViewForTarget(CockpitCameraTarget.MCDU));
+        Assert.Equal(8, def.GetCameraViewForTarget(CockpitCameraTarget.CockpitDoor));
     }
 }
 

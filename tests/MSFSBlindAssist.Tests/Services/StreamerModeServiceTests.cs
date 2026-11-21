@@ -14,24 +14,28 @@ public class StreamerModeServiceTests
         public List<(int Type, int Index)> SetCalls { get; } = new();
         public List<int> SetTypeCalls { get; } = new();
         public List<int> SetIndexCalls { get; } = new();
+        public List<string> OperationLog { get; } = new();
 
         public Task<CameraViewReading?> ReadAsync(int timeoutMs) => Task.FromResult<CameraViewReading?>(null);
 
         public bool Set(int viewType, int viewIndex)
         {
             SetCalls.Add((viewType, viewIndex));
+            OperationLog.Add($"Set({viewType},{viewIndex})");
             return true;
         }
 
         public bool SetViewType(int viewType)
         {
             SetTypeCalls.Add(viewType);
+            OperationLog.Add($"SetType({viewType})");
             return true;
         }
 
         public bool SetViewIndex(int viewIndex)
         {
             SetIndexCalls.Add(viewIndex);
+            OperationLog.Add($"SetIndex({viewIndex})");
             return true;
         }
     }
@@ -56,9 +60,10 @@ public class StreamerModeServiceTests
             CockpitCameraTarget.Overhead => 4,
             CockpitCameraTarget.Pedestal => 5,
             CockpitCameraTarget.Glareshield => 6,
-            CockpitCameraTarget.MainPanel => 7,
+            CockpitCameraTarget.MainPanel => null,
             CockpitCameraTarget.MCDU => 0,
             CockpitCameraTarget.EFB => 2,
+            CockpitCameraTarget.CockpitDoor => 12,
             _ => null
         };
     }
@@ -165,6 +170,65 @@ public class StreamerModeServiceTests
         Assert.True(result);
         Assert.Single(io.SetCalls);
         Assert.Equal((2, 4), io.SetCalls[0]);
+    }
+
+    [Fact]
+    public async Task ReturnToForward_SetsViewTypeBeforeIndex_NeverSetsIndex0First()
+    {
+        var io = new FakeCameraIo();
+        var settings = new UserSettings { StreamerModeEnabled = true };
+        var service = new StreamerModeService(io, () => settings, delay: _ => Task.CompletedTask);
+        var aircraft = new FakeAircraft();
+
+        // First move camera to Overhead (ViewType 2, Index 4)
+        await service.PrepareManualActionAsync("Overhead", aircraft);
+        Assert.Equal(CockpitCameraTarget.Overhead, service.CurrentTarget);
+
+        io.OperationLog.Clear();
+
+        // Restore to Forward
+        await service.ReturnToForwardAsync();
+
+        Assert.Equal(CockpitCameraTarget.Forward, service.CurrentTarget);
+        // Ensure SetType(1) was called before SetIndex(0), and SetIndex was NOT called while in Type 2
+        Assert.Equal(2, io.OperationLog.Count);
+        Assert.Equal("SetType(1)", io.OperationLog[0]);
+        Assert.Equal("SetIndex(0)", io.OperationLog[1]);
+    }
+
+    [Fact]
+    public async Task MainPanelAction_ReturnsOrKeepsForwardView_WithoutInstrumentZoom()
+    {
+        var io = new FakeCameraIo();
+        var settings = new UserSettings { StreamerModeEnabled = true };
+        var service = new StreamerModeService(io, () => settings, delay: _ => Task.CompletedTask);
+        var aircraft = new FakeAircraft();
+
+        // From Overhead, manual action on Main Panel returns to forward
+        await service.PrepareManualActionAsync("Overhead", aircraft);
+        Assert.Equal(CockpitCameraTarget.Overhead, service.CurrentTarget);
+
+        await service.PrepareManualActionAsync("Landing Gear", aircraft);
+        Assert.Equal(CockpitCameraTarget.Forward, service.CurrentTarget);
+
+        // Grouped flow step on Main Panel also keeps forward
+        service.BeginFlow();
+        await service.PrepareFlowStepAsync("Displays", aircraft);
+        Assert.Equal(CockpitCameraTarget.Forward, service.CurrentTarget);
+    }
+
+    [Fact]
+    public async Task CockpitDoorAction_MovesCameraToDoor()
+    {
+        var io = new FakeCameraIo();
+        var settings = new UserSettings { StreamerModeEnabled = true };
+        var service = new StreamerModeService(io, () => settings, delay: _ => Task.CompletedTask);
+        var aircraft = new FakeAircraft();
+
+        bool result = await service.PrepareManualActionAsync("Cockpit Door", aircraft);
+        Assert.True(result);
+        Assert.Equal(CockpitCameraTarget.CockpitDoor, service.CurrentTarget);
+        Assert.Equal((2, 12), io.SetCalls[^1]);
     }
 }
 

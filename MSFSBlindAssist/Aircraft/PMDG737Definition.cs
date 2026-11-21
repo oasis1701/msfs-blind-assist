@@ -220,11 +220,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
     public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
     {
+        CockpitCameraTarget.Forward => null,
+        CockpitCameraTarget.MainPanel => null,
         CockpitCameraTarget.Glareshield => 0,
-        CockpitCameraTarget.MainPanel => 1,
         CockpitCameraTarget.Overhead => 2,
         CockpitCameraTarget.Pedestal => 4,
         CockpitCameraTarget.MCDU => 5,
+        CockpitCameraTarget.CockpitDoor => 8,
         _ => base.GetCameraViewForTarget(target)
     };
 

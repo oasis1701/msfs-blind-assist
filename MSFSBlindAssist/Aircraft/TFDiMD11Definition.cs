@@ -186,10 +186,12 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
 
     public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
     {
-        CockpitCameraTarget.MainPanel => 0,
+        CockpitCameraTarget.Forward => null,
+        CockpitCameraTarget.MainPanel => null,
         CockpitCameraTarget.Glareshield => 1,
         CockpitCameraTarget.MCDU => 3,
         CockpitCameraTarget.Pedestal => 4,
+        CockpitCameraTarget.CockpitDoor => 7,
         CockpitCameraTarget.Overhead => 8,
         _ => base.GetCameraViewForTarget(target)
     };

@@ -26,7 +26,10 @@ public enum CockpitCameraTarget
     MCDU,
 
     /// <summary>Electronic Flight Bag / tablet (flyPad, EFB).</summary>
-    EFB
+    EFB,
+
+    /// <summary>Cockpit door / cabin view (close-up on door / cabin entry).</summary>
+    CockpitDoor
 }
 
 /// <summary>
@@ -43,6 +46,12 @@ public static class CockpitCameraTargetExtensions
         foreach (var candidate in candidates)
         {
             if (string.IsNullOrWhiteSpace(candidate)) continue;
+
+            if (candidate.Contains("Cockpit Door", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Cabin Door", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Door", StringComparison.OrdinalIgnoreCase) ||
+                candidate.Contains("Jumpseat", StringComparison.OrdinalIgnoreCase))
+                return CockpitCameraTarget.CockpitDoor;
 
             if (candidate.Contains("Overhead", StringComparison.OrdinalIgnoreCase) ||
                 candidate.Contains("_OH_", StringComparison.OrdinalIgnoreCase) ||

@@ -103,7 +103,9 @@ public partial class BBS757Definition : BaseAircraftDefinition
 
     public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
     {
-        CockpitCameraTarget.MainPanel => 0,
+        CockpitCameraTarget.Forward => null,
+        CockpitCameraTarget.MainPanel => null,
+        CockpitCameraTarget.Glareshield => 1,
         CockpitCameraTarget.Overhead => 2,
         CockpitCameraTarget.Pedestal => 4,
         CockpitCameraTarget.MCDU => 5,

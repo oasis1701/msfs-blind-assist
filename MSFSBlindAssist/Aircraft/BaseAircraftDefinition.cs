@@ -333,12 +333,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     {
         return target switch
         {
-            CockpitCameraTarget.MainPanel => 0,
+            CockpitCameraTarget.Forward => null,
+            CockpitCameraTarget.MainPanel => null,
             CockpitCameraTarget.Glareshield => 1,
             CockpitCameraTarget.Overhead => 2,
             CockpitCameraTarget.Pedestal => 3,
             CockpitCameraTarget.MCDU => 0,
             CockpitCameraTarget.EFB => 2,
+            CockpitCameraTarget.CockpitDoor => 4,
             _ => null
         };
     }

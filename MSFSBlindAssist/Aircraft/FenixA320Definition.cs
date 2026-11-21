@@ -22,12 +22,14 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
     public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
     {
+        CockpitCameraTarget.Forward => null,
+        CockpitCameraTarget.MainPanel => null,
         CockpitCameraTarget.MCDU => 0,
         CockpitCameraTarget.EFB => 2,
         CockpitCameraTarget.Overhead => 4,
         CockpitCameraTarget.Pedestal => 5,
         CockpitCameraTarget.Glareshield => 6,
-        CockpitCameraTarget.MainPanel => 7,
+        CockpitCameraTarget.CockpitDoor => 12,
         _ => base.GetCameraViewForTarget(target)
     };
 

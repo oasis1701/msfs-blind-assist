@@ -16,9 +16,10 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public class StreamerModeService
 {
-    public const int DefaultHumanHeadTurnDelayMs = 600;
+    public const int DefaultHumanHeadTurnDelayMs = 250;
     public const int DefaultManualReturnDelayMs = 2000;
-    public const int SpacedWriteGapMs = 100;
+    public const int DefaultWriteGapMs = 250;
+    public const int SpacedWriteGapMs = DefaultWriteGapMs;
 
     private static StreamerModeService? _instance;
 
@@ -45,6 +46,7 @@ public class StreamerModeService
 
     private readonly object _lock = new();
     private CancellationTokenSource? _returnTimerCts;
+    private CameraViewReading? _forwardReading;
 
     public CockpitCameraTarget CurrentTarget { get; private set; } = CockpitCameraTarget.Forward;
     public bool IsInFlow { get; private set; }
@@ -66,6 +68,26 @@ public class StreamerModeService
         _announcer = announcer;
         _delay = delay ?? (ms => Task.Delay(ms));
         _getAircraft = getAircraft;
+    }
+
+    private async Task EnsureForwardReadingCapturedAsync()
+    {
+        if (_forwardReading == null && _io != null && CurrentTarget == CockpitCameraTarget.Forward)
+        {
+            try
+            {
+                var reading = await _io.ReadAsync(200);
+                if (reading is { } r && r.ViewType == 1)
+                {
+                    _forwardReading = reading;
+                    Log.Debug("StreamerMode", $"Captured baseline forward view: type {r.ViewType}, index {r.ViewIndex}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("StreamerMode", $"Failed to capture baseline forward view: {ex.Message}");
+            }
+        }
     }
 
     /// <summary>
@@ -93,6 +115,7 @@ public class StreamerModeService
             int? viewIndex = effectiveAircraft?.GetCameraViewForTarget(target.Value);
             if (viewIndex.HasValue && _io != null)
             {
+                await EnsureForwardReadingCapturedAsync();
                 Log.Debug("StreamerMode", $"Moving camera to {target.Value} (index {viewIndex.Value}) for manual action");
                 try
                 {
@@ -105,6 +128,10 @@ public class StreamerModeService
 
                 await _delay(HumanHeadTurnDelayMs);
                 CurrentTarget = target.Value;
+            }
+            else if (target.Value == CockpitCameraTarget.Forward || target.Value == CockpitCameraTarget.MainPanel)
+            {
+                await ReturnToForwardAsync();
             }
         }
 
@@ -138,6 +165,7 @@ public class StreamerModeService
         int? viewIndex = effectiveAircraft?.GetCameraViewForTarget(target.Value);
         if (viewIndex.HasValue && _io != null)
         {
+            await EnsureForwardReadingCapturedAsync();
             Log.Debug("StreamerMode", $"Moving camera to {target.Value} (index {viewIndex.Value}) for flow step");
             try
             {
@@ -150,6 +178,15 @@ public class StreamerModeService
 
             await _delay(HumanHeadTurnDelayMs);
             CurrentTarget = target.Value;
+            return true;
+        }
+        else if (target.Value == CockpitCameraTarget.Forward || target.Value == CockpitCameraTarget.MainPanel)
+        {
+            if (CurrentTarget != CockpitCameraTarget.Forward)
+            {
+                await ReturnToForwardAsync();
+                await _delay(HumanHeadTurnDelayMs);
+            }
             return true;
         }
 
@@ -202,6 +239,7 @@ public class StreamerModeService
             int? viewIndex = effectiveAircraft?.GetCameraViewForTarget(target);
             if (viewIndex.HasValue && _io != null)
             {
+                await EnsureForwardReadingCapturedAsync();
                 Log.Debug("StreamerMode", $"Focusing camera close-up on {target} (index {viewIndex.Value})");
                 try
                 {
@@ -248,14 +286,37 @@ public class StreamerModeService
         if (_io != null)
         {
             Log.Debug("StreamerMode", "Returning camera to forward view");
+            int targetType = _forwardReading?.ViewType ?? 1;
+            int targetIndex = _forwardReading?.ViewIndex ?? 0;
+
             try
             {
-                // Reset index to neutral 0, switch view type to 1 (pilot view), then set index 0
-                _io.SetViewIndex(0);
-                await _delay(SpacedWriteGapMs);
-                _io.SetViewType(1);
-                await _delay(SpacedWriteGapMs);
-                _io.SetViewIndex(0);
+                // Switch view type to Cockpit (Type 1) directly first.
+                // Writing SetViewIndex(0) while in Type 2 switches to Instrument 0 (MCDU close-up).
+                // Switching ViewType first cleanly moves back to Cockpit view.
+                bool typeSent = _io.SetViewType(targetType);
+                if (typeSent)
+                {
+                    await _delay(DefaultWriteGapMs);
+                    _io.SetViewIndex(targetIndex);
+                }
+
+                // Verify that the view type transitioned
+                var reading = await _io.ReadAsync(250);
+                if (reading is { } r && r.ViewType != targetType)
+                {
+                    // Fallback for aircraft (such as PMDG 737) where MSFS refuses a type write
+                    // when the current instrument index is high:
+                    // Drop index to neutral 0, space with 250ms, switch type, space, then restore index.
+                    Log.Debug("StreamerMode", $"Direct type return not confirmed (read {r.ViewType}/{r.ViewIndex}), using neutral index fallback");
+                    _io.SetViewIndex(0);
+                    await _delay(DefaultWriteGapMs);
+                    if (_io.SetViewType(targetType))
+                    {
+                        await _delay(DefaultWriteGapMs);
+                        _io.SetViewIndex(targetIndex);
+                    }
+                }
             }
             catch (Exception ex)
             {
