@@ -480,9 +480,10 @@ public partial class MainForm
                     int pct = (int)Math.Round((currentSimVarValues[varKey] - smin) / span * 100.0);
                     tb.Value = Math.Max(0, Math.Min(100, pct));
                 }
-                tb.ValueChanged += (s2, e2) =>
+                tb.ValueChanged += async (s2, e2) =>
                 {
                     if (updatingFromSim) return;   // change came from the sim, don't write back
+                    await StreamerModeService.Instance.PrepareManualActionAsync(currentSection, currentAircraft);
                     double mapped = smin + (tb.Value / 100.0) * span;
                     bool handled = currentAircraft.HandleUIVariableSet(varKey, mapped, varDef, simConnectManager!, announcer);
                     if (!handled) simConnectManager?.SetLVar(varDef.Name, mapped);
@@ -529,8 +530,9 @@ public partial class MainForm
                 controlButton.Name = varKey;
                 controlButton.AccessibleName = buttonText;
 
-                controlButton.Click += (s2, e2) =>
+                controlButton.Click += async (s2, e2) =>
                 {
+                    await StreamerModeService.Instance.PrepareManualActionAsync(currentSection, currentAircraft);
                     // A button that flips its own light (the Fenix EFIS FD, LS and map options): the reader says the new label,
                     // so the light is marked before the press goes out and does not repeat it (CORE-7).
                     MarkStateLightEchoForPress(varDef);
@@ -646,8 +648,9 @@ public partial class MainForm
                     controlButton.AccessibleDescription = varDef.HelpText ?? $"Press {varDef.DisplayName}";
 
                     // Handle button click - send value 1 which triggers HandleUIVariableSet
-                    controlButton.Click += (s2, e2) =>
+                    controlButton.Click += async (s2, e2) =>
                     {
+                        await StreamerModeService.Instance.PrepareManualActionAsync(currentSection, currentAircraft);
                         // Let aircraft handle special cases first (custom button logic, transitions, etc.)
                         bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager!, announcer);
                         if (handled)
@@ -704,10 +707,11 @@ public partial class MainForm
                     // parented and its native handle is created — which was firing phantom user-
                     // action writes during panel build, toggling state-sensing SimVars (battery,
                     // generator, ext-pwr, avionics master) and cascading the WT 787 electrical bus.
-                    combo.SelectionChangeCommitted += (s2, e2) =>
+                    combo.SelectionChangeCommitted += async (s2, e2) =>
                     {
                         if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
+                            await StreamerModeService.Instance.PrepareManualActionAsync(currentSection, currentAircraft);
                             uint mode = (uint)combo.SelectedIndex;
                             // Set both engines to the same mode. The combo reads back the
                             // stock ignition simvar (TURB ENG IGNITION SWITCH EX1:1), which
@@ -804,10 +808,11 @@ public partial class MainForm
                     // parented and its native handle is created — which was firing phantom user-
                     // action writes during panel build, toggling state-sensing SimVars (battery,
                     // generator, ext-pwr, avionics master) and cascading the WT 787 electrical bus.
-                    combo.SelectionChangeCommitted += (s2, e2) =>
+                    combo.SelectionChangeCommitted += async (s2, e2) =>
                     {
                         if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
+                            await StreamerModeService.Instance.PrepareManualActionAsync(currentSection, currentAircraft);
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
                             // Suppress the echo under the SAME identifier the monitor uses:
                             // SimVarUpdated carries VarName = varKey (the dict key), NOT
@@ -989,10 +994,11 @@ public partial class MainForm
                     // parented and its native handle is created — which was firing phantom user-
                     // action writes during panel build, toggling state-sensing SimVars (battery,
                     // generator, ext-pwr, avionics master) and cascading the WT 787 electrical bus.
-                    combo.SelectionChangeCommitted += (s2, e2) =>
+                    combo.SelectionChangeCommitted += async (s2, e2) =>
                     {
                         if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
+                            await StreamerModeService.Instance.PrepareManualActionAsync(currentSection, currentAircraft);
                             // Items are per-LABEL (duplicates collapsed at add time), so the
                             // item index cannot index sortedValues; resolve the selected label
                             // to its first key in display order. Identical to the old
@@ -1253,8 +1259,9 @@ public partial class MainForm
                 button.Size = new Size(240, 25);
                 button.AccessibleName = varDef.DisplayName;
                 
-                button.Click += (s2, e2) =>
+                button.Click += async (s2, e2) =>
                 {
+                    await StreamerModeService.Instance.PrepareManualActionAsync(currentSection, currentAircraft);
                     if (varDef.Type == SimVarType.Event)
                     {
                         // Before the send, so an echo armed here can never lose the race to the sim.
