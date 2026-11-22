@@ -491,6 +491,8 @@ BA keeps the window up to date by itself, several times a second, and changes va
 
 If BA cannot reach the tablet, F6 says, for example, *"flyPad not connected. Make sure the aircraft is loaded and the tablet is powered on."* Wait until the aircraft has fully loaded and try again.
 
+If another program is connected to the MD-11 tablet, the simulator does not let BA read it. After about 10 seconds of trying, BA says *"EFB not connected. The simulator keeps closing the connection; another program may be using it."* if the window is open; if you open the window before the tablet has loaded, its page says *"Waiting for the EFB. The simulator keeps closing the connection; another program may be using it."* instead. F6 says it too. Close the other program and BA connects within about 10 seconds while the window is open; while the window is closed BA stops trying, and tries again as soon as you open it. The PMDG tablet window reconnects by itself too, but cannot tell this case apart, so F6 gives the usual sentence.
+
 <div class="callout note" role="note" markdown="1">
 
 **Note:** The web view these windows use is Microsoft's free Edge WebView2 Runtime, which comes with Windows 11 and most Windows 10 installations. On a computer where it cannot start, these windows fall back to a plain list of controls: press Tab and Shift+Tab to move between them, and type in a field and press Enter to send it (BA says, for example, *"Set Passengers to 150"*). Installing or repairing the WebView2 Runtime from Microsoft's website restores the normal window.
@@ -561,7 +563,8 @@ You need your SimBrief username in BA's settings first: see [Setting your SimBri
 ### If something goes wrong {#in-sim-tablet-problems}
 
 - ***"The in-sim tablet is only in MSFS 2024."*** You are flying MSFS 2020, which has no such tablet.
-- **F6 says the tablet is not connected.** MSFS 2024 is not running or is still loading the flight. The window connects by itself once the flight has loaded.
+- ***"In-sim tablet not connected. Make sure MSFS 2024 is running and a flight is loaded."*** (from F6) MSFS 2024 is not running or is still loading the flight. The window connects by itself once the flight has loaded.
+- ***"In-sim tablet not connected. The simulator keeps closing the connection; another program may be using it."*** Another program is connected to the tablet, and the simulator lets only one program at a time read it: whichever connected first keeps it. Cockpit2Ground is one: it connects to the tablet when it starts, for its GSX message suppression. After about 10 seconds of trying, BA says this if the window is open; if you open the window before the tablet has loaded, the page says it instead, and F6 says it too. Close the other program and BA connects within about 10 seconds while the window is open; while the window is closed BA stops trying, and tries again as soon as you open it. If you open BA's In-Sim Tablet before you start the other program, BA keeps the tablet and the other program cannot use it: Cockpit2Ground's GSX message suppression then stops working.
 - ***"Add your SimBrief username in Settings, SimBrief, to load a plan."*** See [Setting your SimBrief username](#setting-your-simbrief-username).
 - ***"Could not fetch your SimBrief plan: …"*** BA could not get a plan from SimBrief, for example with no internet connection or no plan generated yet for your username. Check both and press the button again.
 - ***"The sim tablet's flight plan is locked, so a route cannot be entered now."*** The tablet is not taking a new route at the moment. Try again later.
