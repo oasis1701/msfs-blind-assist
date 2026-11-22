@@ -36,7 +36,7 @@ namespace MSFSBlindAssist.SimConnect
     /// (get_display_elements / set_element_value / click_display_element),
     /// translating each into an agent call.
     /// </summary>
-    public sealed class CoherentPmdgEfbClient : IMcduBridge, IDisposable
+    public sealed class CoherentPmdgEfbClient : IMcduBridge, IConnectionRefusalSource, IDisposable
     {
         private const string DebuggerBase = "http://127.0.0.1:19999";
         // Background scrape cadence. Kept moderate: a user click forces an immediate
@@ -103,9 +103,14 @@ namespace MSFSBlindAssist.SimConnect
         // without needing a full scrape.
         private Dictionary<string, string>? _lastElementsData;
         private bool _disposed;
+        // Counts connections the sim closes before the reader installs (another program holding the view).
+        private readonly CoherentConnectionHealth _health = new();
 
         public bool IsBridgeConnected =>
             _connected && (DateTime.UtcNow - _lastGoodScrapeUtc).TotalSeconds < 5;
+
+        /// <inheritdoc/>
+        public bool SimKeepsRefusing => _health.SimKeepsRefusing;
 
         private CoherentPmdgEfbClient(string titleNeedle, string agentFile, string agentGlobal, string? side)
         {
@@ -274,7 +279,9 @@ namespace MSFSBlindAssist.SimConnect
                     if (_active) await PollOnce(ct);
                     await Task.Delay(_active ? PollIntervalMs : IdleIntervalMs, ct);
                 }
-                catch (OperationCanceledException) { break; }
+                // Only BA's own shutdown ends the loop (COH-1): a send on a socket the sim closed throws
+                // OperationCanceledException too, and stopping on it left the tablet unreachable until restart.
+                catch (Exception ex) when (CoherentConnectionHealth.IsShutdown(ex, ct.IsCancellationRequested)) { break; }
                 catch (Exception ex)
                 {
                     Log.Debug("SimConnect", $"CoherentPmdgEfbClient loop: {ex.Message}");
@@ -316,7 +323,7 @@ namespace MSFSBlindAssist.SimConnect
             }
 
             int? pageId = await ResolveEfbPageId(ct);
-            if (pageId == null) { _connected = false; return false; }
+            if (pageId == null) { _health.ViewNotListed(); _connected = false; return false; }
 
             var ws = new ClientWebSocket();
             var url = new Uri($"ws://127.0.0.1:19999/devtools/inspector/{pageId.Value}");
@@ -342,8 +349,18 @@ namespace MSFSBlindAssist.SimConnect
             _pending.Clear();
             _ = Task.Run(() => ReceiveLoop(ws, ct));
 
-            string install = await EvalAsync(_agentJs, ct);
+            // The sim closes a connection to a view another inspector already holds, within a second,
+            // and the install's send then fails (as a WebSocketException, or as an
+            // OperationCanceledException once the socket is aborted): both are a refusal, not shutdown.
+            // A failed send counts even while the socket still reads Open: the receive side may not
+            // have seen the close yet.
+            string install = "";
+            bool sendFailed = false;
+            try { install = await EvalAsync(_agentJs, ct); }
+            catch (Exception) when (!ct.IsCancellationRequested) { sendFailed = true; }
             _agentInstalled = install.IndexOf(_installMarker, StringComparison.Ordinal) >= 0;
+            if (_agentInstalled) _health.Installed();
+            else if (sendFailed || ws.State != WebSocketState.Open) _health.ClosedBeforeInstall();
             _connected = _agentInstalled;
             return _agentInstalled;
         }
