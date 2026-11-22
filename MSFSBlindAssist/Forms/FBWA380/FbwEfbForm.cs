@@ -62,6 +62,9 @@ public class FbwEfbForm : Form
     private readonly string _deviceLabel; // human name of the tablet shown in the in-page heading /
                                           // accessible names ("flyPad" for FBW, "Universal Flight
                                           // Tablet" for PMDG). Keeps FlyByWire wording off other aircraft.
+    private readonly string _notConnectedHint; // what to check while not connected (F6, status line)
+    private bool _wasRefused;                  // the bridge's "keeps refusing" at the last status tick
+    private string? _waitingLineSent;          // the page's waiting line as last pushed (null: page's own)
 
     private Label _statusLabel = null!;
     private Label _pageLabel = null!;
@@ -98,7 +101,8 @@ public class FbwEfbForm : Form
     private System.Windows.Forms.Timer _statusTimer = null!;
 
     public FbwEfbForm(IMcduBridge bridgeServer, ScreenReaderAnnouncer announcer,
-                          string? windowTitle = null, string? deviceNoun = null, string? pageLabel = null)
+                          string? windowTitle = null, string? deviceNoun = null, string? pageLabel = null,
+                          string? notConnectedHint = null)
     {
         _bridgeServer = bridgeServer;
         _announcer = announcer;
@@ -107,6 +111,8 @@ public class FbwEfbForm : Form
         // In-page heading / accessible-name noun. Defaults to "flyPad" so the FBW flyPad and the
         // A380 OANS reuse are byte-identical; PMDG passes "Universal Flight Tablet".
         _deviceLabel = pageLabel ?? "flyPad";
+        // The in-sim tablet passes its own (it depends on no aircraft); every other tablet the general one.
+        _notConnectedHint = notConnectedHint ?? DefaultNotConnectedHint;
 
         InitializeComponent();
         WireEvents();
@@ -240,9 +246,36 @@ public class FbwEfbForm : Form
         else if (reallyConnected)
             msg = $"{_deviceNoun} connected, waiting for content.";
         else
-            msg = $"{_deviceNoun} not connected. Make sure the aircraft is loaded and the tablet is powered on.";
+            msg = NotConnectedText(_deviceNoun, _notConnectedHint, Refused);
         _announcer.Announce(msg);
     }
+
+    // The bridge reports that the sim keeps closing its connection (another program holds the view).
+    private bool Refused => _bridgeServer is IConnectionRefusalSource s && s.SimKeepsRefusing;
+
+    /// <summary>What to check while a tablet window is not connected, for every tablet but the in-sim one.</summary>
+    internal const string DefaultNotConnectedHint = "Make sure the aircraft is loaded and the tablet is powered on.";
+
+    /// <summary>Why the window cannot connect when the sim keeps closing the connection.</summary>
+    internal const string RefusedReason = "The simulator keeps closing the connection; another program may be using it.";
+
+    /// <summary>F6's and the status line's not-connected sentence. Internal for the tests.</summary>
+    internal static string NotConnectedText(string noun, string hint, bool refused) =>
+        $"{noun} not connected. {(refused ? RefusedReason : hint)}";
+
+    /// <summary>The page's line before any content has loaded: its own "Waiting for the …" text, or that
+    /// with the refusal reason. Null once content has loaded, as the page then shows the tablet.
+    /// Internal for the tests.</summary>
+    internal static string? WaitingLine(string label, bool contentLoaded, bool refused) =>
+        contentLoaded ? null
+        : refused ? $"Waiting for the {label}. {RefusedReason}"
+        : $"Waiting for the {label}…";
+
+    /// <summary>Speak the refusal once, when it starts while the window is open (CORE-7: a change the
+    /// pilot did not trigger). Not again while it lasts; not when it started while hidden, as the
+    /// page's waiting line then says it on opening. Internal for the tests.</summary>
+    internal static bool ShouldAnnounceRefusal(bool refused, bool wasRefused, bool visible) =>
+        refused && !wasRefused && visible;
 
     // ---- WebView2 setup ---------------------------------------------------
 
@@ -356,8 +389,34 @@ public class FbwEfbForm : Form
         else if (reallyConnected)
             desired = $"{_deviceNoun} connected — waiting for content…";
         else
-            desired = $"{_deviceNoun} not connected. Make sure MSFS is running, the A380X is loaded, and the displays are powered up.";
+            desired = NotConnectedText(_deviceNoun, _notConnectedHint, Refused);
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
+
+        bool refused = !reallyConnected && Refused;
+        if (ShouldAnnounceRefusal(refused, _wasRefused, Visible))
+            _announcer.Announce(NotConnectedText(_deviceNoun, _notConnectedHint, refused: true));
+        _wasRefused = refused;
+
+        string? line = WaitingLine(_deviceLabel, _initialPushReceived, refused);
+        if (line != null && line != _waitingLineSent) PushWaitingLine(line);
+    }
+
+    // Puts the page's waiting line in place (window.__setWaiting, which acts only before the first
+    // render). Retried on the next status tick while the WebView is not ready.
+    private async void PushWaitingLine(string line)
+    {
+        if (!_useBrowser || _webViewFailed || !_webViewReady || IsDisposed || Disposing
+            || _webView == null || _webView.IsDisposed || _webView.CoreWebView2 == null)
+            return;
+        _waitingLineSent = line;
+        try
+        {
+            await _webView.CoreWebView2.ExecuteScriptAsync("window.__setWaiting(" + JsonSerializer.Serialize(line) + ")");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Forms", $"waiting line push failed: {ex.Message}");
+        }
     }
 
     private void ApplyElements()
@@ -522,6 +581,7 @@ public class FbwEfbForm : Form
     {
         if (IsDisposed) return;
         _webViewReady = true;
+        _waitingLineSent = null;   // a (re)loaded page has its own line again: the next status tick re-sends ours
         if (_pendingRenderJson != null) { PushToBrowser(_pendingRenderJson); _pendingRenderJson = null; }
     }
 
@@ -1063,6 +1123,13 @@ public class FbwEfbForm : Form
     setTimeout(function () { l.textContent = msg; }, 30);
   }
   function setText(node, t) { t = t || ''; if (node.textContent !== t) node.textContent = t; }
+  // The waiting line, until the first render replaces it (the window's status tick sends it: the
+  // sim keeps refusing the connection, or the plain line again once it stops).
+  window.__setWaiting = function (t) {
+    if (renderedPage !== null) return;
+    var p = document.querySelector('#list p.txt');
+    if (p) setText(p, t);
+  };
 
   // Classify an element to its rendered node TYPE — used to build AND to key.
   function rk(it) {
