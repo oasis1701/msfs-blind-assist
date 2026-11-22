@@ -10,6 +10,8 @@ The tablet is ONE Coherent view, titled **"Electronic Flight Bag"** (`coui://htm
 
 Measured live on 2026-10-19 (C172 G1000): the view keeps running, about 30 frames a second with steady timers, with the toolbar tablet closed and the camera outside the aircraft, so the window works without the tablet on screen. Not measured: the pause menu and the main menu.
 
+One program at a time: the sim keeps the first inspector connected to the view and closes any later one within a second (DBG-9). Measured on 2026-11-22: Cockpit2Ground 1.0.8's GSX message suppression connects to the "Electronic Flight Bag" view when it starts and keeps it, even with its suppression settings off (it connects to remove its earlier patch), and whichever of it and BA connects first keeps the view. The client then retries every 2 s (COH-1); two connections in a row closed before the reader installs make `SimKeepsRefusing` true (`CoherentConnectionHealth`), and the window says *"The simulator keeps closing the connection; another program may be using it."* on its waiting line, in F6 and in its status line, spoken once when it starts while the window is open.
+
 The tablet is built on the MSFS SDK's FSComponent framework (`msfssdk-iife.js`, `efb_os.js`, one script per app under `html_ui/efb_ui/efb_apps/`). `window.EFB_API._installedApps.array` lists the installed apps; an app's `name` is a translation key that `Utils.Translate` resolves when given whole ("@fs-base-efb,TT:EFB.COMMON.AIRCRAFT" gives "aircraft").
 
 ## Reading
