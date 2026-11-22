@@ -55,12 +55,39 @@ public class FbwEfbFormStatusTests
     }
 
     [Fact]
-    public void A_refusal_speaks_once_while_visible()
+    public void A_refusal_that_starts_while_open_is_spoken()
     {
-        Assert.True(FbwEfbForm.ShouldAnnounceRefusal(refused: true, wasRefused: false, visible: true));
-        Assert.False(FbwEfbForm.ShouldAnnounceRefusal(refused: true, wasRefused: true, visible: true));    // not repeated
-        Assert.False(FbwEfbForm.ShouldAnnounceRefusal(refused: true, wasRefused: false, visible: false));  // hidden: the page carries it
-        Assert.False(FbwEfbForm.ShouldAnnounceRefusal(refused: false, wasRefused: true, visible: true));   // recovered
+        Assert.Equal(FbwEfbForm.RefusalCue.Speak,
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: true, contentLoaded: false));
+        Assert.Equal(FbwEfbForm.RefusalCue.Speak,
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: true, contentLoaded: true));
+    }
+
+    [Fact]
+    public void A_refusal_is_not_repeated_nor_spoken_while_hidden_or_after_recovery()
+    {
+        Assert.Equal(FbwEfbForm.RefusalCue.None,
+            FbwEfbForm.RefusalCueFor(refused: true, announced: true, visible: true, wasVisible: true, contentLoaded: false));
+        Assert.Equal(FbwEfbForm.RefusalCue.None,
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: false, wasVisible: false, contentLoaded: true));
+        Assert.Equal(FbwEfbForm.RefusalCue.None,
+            FbwEfbForm.RefusalCueFor(refused: false, announced: false, visible: true, wasVisible: true, contentLoaded: false));
+    }
+
+    [Fact]
+    public void Opening_onto_a_refusal_before_content_loaded_leaves_it_to_the_page()
+    {
+        // The waiting line already says it, and the screen reader reads it on opening (CORE-7).
+        Assert.Equal(FbwEfbForm.RefusalCue.PageSaysIt,
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: false, contentLoaded: false));
+    }
+
+    [Fact]
+    public void Opening_onto_a_refusal_after_content_loaded_is_spoken()
+    {
+        // Review of the branch: the page then shows the old tablet as if live, so only speech says why.
+        Assert.Equal(FbwEfbForm.RefusalCue.Speak,
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: false, contentLoaded: true));
     }
 
     [Fact]

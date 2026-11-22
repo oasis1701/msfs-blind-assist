@@ -63,7 +63,8 @@ public class FbwEfbForm : Form
                                           // accessible names ("flyPad" for FBW, "Universal Flight
                                           // Tablet" for PMDG). Keeps FlyByWire wording off other aircraft.
     private readonly string _notConnectedHint; // what to check while not connected (F6, status line)
-    private bool _wasRefused;                  // the bridge's "keeps refusing" at the last status tick
+    private bool _refusalAnnounced;            // this refusal has been spoken (or left to the page's line)
+    private bool _wasVisible;                  // the window's visibility at the last status tick
     private string? _waitingLineSent;          // the page's waiting line as last pushed (null: page's own)
 
     private Label _statusLabel = null!;
@@ -271,11 +272,27 @@ public class FbwEfbForm : Form
         : refused ? $"Waiting for the {label}. {RefusedReason}"
         : $"Waiting for the {label}…";
 
-    /// <summary>Speak the refusal once, when it starts while the window is open (CORE-7: a change the
-    /// pilot did not trigger). Not again while it lasts; not when it started while hidden, as the
-    /// page's waiting line then says it on opening. Internal for the tests.</summary>
-    internal static bool ShouldAnnounceRefusal(bool refused, bool wasRefused, bool visible) =>
-        refused && !wasRefused && visible;
+    /// <summary>What the window does about a refusal at a status tick.</summary>
+    internal enum RefusalCue
+    {
+        /// <summary>Nothing: no refusal, already said, or the window is hidden.</summary>
+        None,
+        /// <summary>Speak the not-connected sentence once.</summary>
+        Speak,
+        /// <summary>Say nothing and count it as said: the window just opened onto the page's waiting
+        /// line, which carries the reason and which the screen reader reads (CORE-7).</summary>
+        PageSaysIt,
+    }
+
+    /// <summary>The refusal is said once per episode while the window is open (CORE-7: a change the pilot
+    /// did not trigger): spoken when it starts while open, and when the window opens onto it after the
+    /// tablet's content had loaded (the page then shows the old tablet as if live); left to the page when
+    /// the window opens onto it before content loaded. Internal for the tests.</summary>
+    internal static RefusalCue RefusalCueFor(bool refused, bool announced, bool visible, bool wasVisible, bool contentLoaded)
+    {
+        if (!refused || announced || !visible) return RefusalCue.None;
+        return !wasVisible && !contentLoaded ? RefusalCue.PageSaysIt : RefusalCue.Speak;
+    }
 
     // ---- WebView2 setup ---------------------------------------------------
 
@@ -383,19 +400,22 @@ public class FbwEfbForm : Form
     private void UpdateStatusLabel()
     {
         bool reallyConnected = _bridgeConnected && _bridgeServer.IsBridgeConnected;
+        bool refused = !reallyConnected && Refused;   // read once: the label and the cue agree
         string desired;
         if (reallyConnected && _initialPushReceived)
             desired = $"{_deviceNoun} connected ({_elements.Count} elements)";
         else if (reallyConnected)
             desired = $"{_deviceNoun} connected — waiting for content…";
         else
-            desired = NotConnectedText(_deviceNoun, _notConnectedHint, Refused);
+            desired = NotConnectedText(_deviceNoun, _notConnectedHint, refused);
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
 
-        bool refused = !reallyConnected && Refused;
-        if (ShouldAnnounceRefusal(refused, _wasRefused, Visible))
+        if (!refused) _refusalAnnounced = false;
+        var cue = RefusalCueFor(refused, _refusalAnnounced, Visible, _wasVisible, _initialPushReceived);
+        if (cue == RefusalCue.Speak)
             _announcer.Announce(NotConnectedText(_deviceNoun, _notConnectedHint, refused: true));
-        _wasRefused = refused;
+        if (cue != RefusalCue.None) _refusalAnnounced = true;
+        _wasVisible = Visible;
 
         string? line = WaitingLine(_deviceLabel, _initialPushReceived, refused);
         if (line != null && line != _waitingLineSent) PushWaitingLine(line);

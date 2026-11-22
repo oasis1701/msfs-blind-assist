@@ -73,6 +73,44 @@ public class CoherentConnectionHealthTests
     }
 
     [Fact]
+    public void A_reinstall_on_an_open_socket_clears_a_close()
+    {
+        // Review of the branch: an aircraft load closed one connection, the next reached the rebuilt page
+        // too early (no marker, socket open), and the third reinstalled on that socket. The count must
+        // reset there, or the next load's single drop is reported as a refusal.
+        var health = new CoherentConnectionHealth();
+        health.ClosedBeforeInstall();
+        health.RecordInstall(installed: false, sendFailed: false, socketOpen: true);
+        health.RecordInstall(installed: true, sendFailed: false, socketOpen: true);
+        health.ClosedBeforeInstall();
+        Assert.False(health.SimKeepsRefusing);
+    }
+
+    [Fact]
+    public void An_install_that_failed_on_a_closed_or_failed_socket_is_a_refusal()
+    {
+        var closed = new CoherentConnectionHealth();
+        closed.RecordInstall(installed: false, sendFailed: false, socketOpen: false);
+        closed.RecordInstall(installed: false, sendFailed: false, socketOpen: false);
+        Assert.True(closed.SimKeepsRefusing);
+
+        var failedSend = new CoherentConnectionHealth();
+        failedSend.RecordInstall(installed: false, sendFailed: true, socketOpen: true);
+        failedSend.RecordInstall(installed: false, sendFailed: true, socketOpen: true);
+        Assert.True(failedSend.SimKeepsRefusing);
+    }
+
+    [Fact]
+    public void An_install_without_its_marker_on_an_open_socket_is_not_a_refusal()
+    {
+        // The page answered but its script was not ready (or the eval timed out): not the sim refusing.
+        var health = new CoherentConnectionHealth();
+        health.ClosedBeforeInstall();
+        health.RecordInstall(installed: false, sendFailed: false, socketOpen: true);
+        Assert.False(health.SimKeepsRefusing);
+    }
+
+    [Fact]
     public void A_drop_then_an_install_never_reports()
     {
         // An aircraft load: the sim rebuilds the view and drops the connection once, then BA reconnects.

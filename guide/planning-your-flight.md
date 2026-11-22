@@ -491,7 +491,7 @@ BA keeps the window up to date by itself, several times a second, and changes va
 
 If BA cannot reach the tablet, F6 says, for example, *"flyPad not connected. Make sure the aircraft is loaded and the tablet is powered on."* Wait until the aircraft has fully loaded and try again.
 
-If another program is connected to the PMDG or MD-11 tablet, the simulator does not let BA read it: BA says *"EFB not connected. The simulator keeps closing the connection; another program may be using it."* once, and F6 says it too. Close the other program and BA connects within a few seconds.
+If another program is connected to the MD-11 tablet, the simulator does not let BA read it: BA says *"EFB not connected. The simulator keeps closing the connection; another program may be using it."* once, and F6 says it too. Close the other program and BA connects within a few seconds. The PMDG tablet window reconnects by itself too, but cannot tell this case apart, so F6 gives the usual sentence.
 
 <div class="callout note" role="note" markdown="1">
 

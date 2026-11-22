@@ -45,6 +45,19 @@ namespace MSFSBlindAssist.SimConnect
         /// <summary>The reader installed: the connection works.</summary>
         internal void Installed() => _closedBeforeInstall = 0;
 
+        /// <summary>
+        /// The outcome of installing the reader on a fresh connection: installed clears the count; a
+        /// failed send, or a socket no longer open, is the sim closing it (a failed send counts even
+        /// while the socket still reads open, as the receive side may not have seen the close yet); an
+        /// answer without the marker on an open socket (the page's script not ready, an eval timeout)
+        /// is neither.
+        /// </summary>
+        internal void RecordInstall(bool installed, bool sendFailed, bool socketOpen)
+        {
+            if (installed) Installed();
+            else if (sendFailed || !socketOpen) ClosedBeforeInstall();
+        }
+
         /// <summary>The sim does not list the view (not running, still loading, MSFS 2020): not a refusal.</summary>
         internal void ViewNotListed() => _closedBeforeInstall = 0;
 

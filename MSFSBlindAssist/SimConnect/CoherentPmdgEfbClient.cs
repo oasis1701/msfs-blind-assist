@@ -308,7 +308,8 @@ namespace MSFSBlindAssist.SimConnect
             {
                 string reinstall = await EvalAsync(_agentJs, ct);
                 _agentInstalled = reinstall.IndexOf(_installMarker, StringComparison.Ordinal) >= 0;
-                if (_agentInstalled) { _connected = true; return true; }
+                // A working connection clears any earlier close, or one later drop would read as a refusal.
+                if (_agentInstalled) { _health.Installed(); _connected = true; return true; }
             }
 
             // CRITICAL: tear down any existing socket BEFORE opening a new one. Coherent GT
@@ -352,15 +353,12 @@ namespace MSFSBlindAssist.SimConnect
             // The sim closes a connection to a view another inspector already holds, within a second,
             // and the install's send then fails (as a WebSocketException, or as an
             // OperationCanceledException once the socket is aborted): both are a refusal, not shutdown.
-            // A failed send counts even while the socket still reads Open: the receive side may not
-            // have seen the close yet.
             string install = "";
             bool sendFailed = false;
             try { install = await EvalAsync(_agentJs, ct); }
             catch (Exception) when (!ct.IsCancellationRequested) { sendFailed = true; }
             _agentInstalled = install.IndexOf(_installMarker, StringComparison.Ordinal) >= 0;
-            if (_agentInstalled) _health.Installed();
-            else if (sendFailed || ws.State != WebSocketState.Open) _health.ClosedBeforeInstall();
+            _health.RecordInstall(_agentInstalled, sendFailed, socketOpen: ws.State == WebSocketState.Open);
             _connected = _agentInstalled;
             return _agentInstalled;
         }
