@@ -47,6 +47,9 @@ namespace MSFSBlindAssist.SimConnect
         private const int PollIntervalMs = 600;
         private const int IdleIntervalMs = 1500;
         private const int ReconnectDelayMs = 2000;
+        // While the sim keeps refusing the view (COH-1), the window open: each try is an inspector
+        // socket and the 58 KB reader, so they are spaced out; with the window hidden none is made.
+        private const int RefusedRetryDelayMs = 10000;
         private const int EvalTimeoutMs = 5000;
         private const int ConnectTimeoutMs = 4000;
         // Unit-separator used to join a <select>'s option labels into one state value.
@@ -272,7 +275,7 @@ namespace MSFSBlindAssist.SimConnect
                 {
                     if (!await EnsureConnected(ct))
                     {
-                        await Task.Delay(ReconnectDelayMs, ct);
+                        await WaitBeforeRetry(ct);
                         continue;
                     }
                     // Idle = connection + agent stay warm, but the heavy DOM scrape is paused.
@@ -293,14 +296,41 @@ namespace MSFSBlindAssist.SimConnect
                     // them hang until their per-call timeout (the socket is dead).
                     foreach (var kv in _pending) kv.Value.TrySetCanceled();
                     _pending.Clear();
-                    try { await Task.Delay(ReconnectDelayMs, ct); } catch { break; }
+                    try { await WaitBeforeRetry(ct); } catch { break; }
                 }
             }
+        }
+
+        // The pause before the next connection attempt. While the sim keeps refusing (COH-1) it is
+        // RefusedRetryDelayMs with the window open, and with the window hidden no attempt is made until
+        // it opens again: a try at a view rebuild could take the view from the program holding it.
+        private async Task WaitBeforeRetry(CancellationToken ct)
+        {
+            if (!_health.SimKeepsRefusing) { await Task.Delay(ReconnectDelayMs, ct); return; }
+            bool wasHidden = !_active;
+            var until = DateTime.UtcNow.AddMilliseconds(RefusedRetryDelayMs);
+            while (true)
+            {
+                await Task.Delay(500, ct);
+                if (!_active) { wasHidden = true; continue; }
+                if (wasHidden || DateTime.UtcNow >= until) return;   // the window opened again, or the pause is over
+            }
+        }
+
+        // debug.log gets one line each time SimKeepsRefusing changes, so it shows when the window was told.
+        private void LogRefusalChange(bool wasRefusing)
+        {
+            bool refusing = _health.SimKeepsRefusing;
+            if (refusing == wasRefusing) return;
+            Log.Info("SimConnect", refusing
+                ? $"CoherentPmdgEfbClient ({_titleNeedle}): the sim keeps closing the connection; another program may hold the view."
+                : $"CoherentPmdgEfbClient ({_titleNeedle}): the sim no longer refuses the connection.");
         }
 
         private async Task<bool> EnsureConnected(CancellationToken ct)
         {
             if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
+            bool wasRefusing = _health.SimKeepsRefusing;
 
             // Socket still OPEN but the agent went missing (an eval timed out / the page
             // re-evaluated) — re-install the agent on the SAME socket instead of reconnecting.
@@ -309,7 +339,7 @@ namespace MSFSBlindAssist.SimConnect
                 string reinstall = await EvalAsync(_agentJs, ct);
                 _agentInstalled = reinstall.IndexOf(_installMarker, StringComparison.Ordinal) >= 0;
                 // A working connection clears any earlier close, or one later drop would read as a refusal.
-                if (_agentInstalled) { _health.Installed(); _connected = true; return true; }
+                if (_agentInstalled) { _health.Installed(); LogRefusalChange(wasRefusing); _connected = true; return true; }
             }
 
             // CRITICAL: tear down any existing socket BEFORE opening a new one. Coherent GT
@@ -323,8 +353,15 @@ namespace MSFSBlindAssist.SimConnect
                 _agentInstalled = false;
             }
 
-            int? pageId = await ResolveEfbPageId(ct);
-            if (pageId == null) { _health.ViewNotListed(); _connected = false; return false; }
+            var (pageId, listRead) = await ResolveEfbPageId(ct);
+            if (pageId == null)
+            {
+                // Only a page list that was read and lacks the view clears a refusal; a slow or failed
+                // request says nothing either way, and clearing on it would restart the episode.
+                if (listRead) { _health.ViewNotListed(); LogRefusalChange(wasRefusing); }
+                _connected = false;
+                return false;
+            }
 
             var ws = new ClientWebSocket();
             var url = new Uri($"ws://127.0.0.1:19999/devtools/inspector/{pageId.Value}");
@@ -339,8 +376,8 @@ namespace MSFSBlindAssist.SimConnect
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                // Timeout, NOT shutdown — must not surface as OperationCanceledException,
-                // which the RunLoop catch treats as "stop": that would kill the loop forever.
+                // Timeout, NOT shutdown: returned as a plain failed attempt, so the loop waits and
+                // tries again (RunLoop stops only on its own token, COH-1).
                 try { ws.Dispose(); } catch { }
                 _connected = false;
                 return false;
@@ -356,14 +393,21 @@ namespace MSFSBlindAssist.SimConnect
             string install = "";
             bool sendFailed = false;
             try { install = await EvalAsync(_agentJs, ct); }
-            catch (Exception) when (!ct.IsCancellationRequested) { sendFailed = true; }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                sendFailed = true;
+                Log.Debug("SimConnect", $"CoherentPmdgEfbClient install: {ex.Message}");
+            }
             _agentInstalled = install.IndexOf(_installMarker, StringComparison.Ordinal) >= 0;
             _health.RecordInstall(_agentInstalled, sendFailed, socketOpen: ws.State == WebSocketState.Open);
+            LogRefusalChange(wasRefusing);
             _connected = _agentInstalled;
             return _agentInstalled;
         }
 
-        private async Task<int?> ResolveEfbPageId(CancellationToken ct)
+        // The view's page id, or null; listRead says whether the sim's page list was read at all, so a
+        // failed request is not taken for a view that is not listed.
+        private async Task<(int? id, bool listRead)> ResolveEfbPageId(CancellationToken ct)
         {
             try
             {
@@ -381,7 +425,7 @@ namespace MSFSBlindAssist.SimConnect
                 // One-view EFB (MD-11): nothing to disambiguate, so skip the probe. It would open a
                 // second inspector socket on the very page we are about to connect to — Coherent
                 // allows only one per page — for an answer we already have.
-                if (_side == null) return candidates.Count > 0 ? candidates[0] : null;
+                if (_side == null) return (candidates.Count > 0 ? candidates[0] : null, true);
 
                 foreach (var id in candidates)
                 {
@@ -391,12 +435,13 @@ namespace MSFSBlindAssist.SimConnect
                         // Let the probe socket's close fully release the page before the main
                         // socket connects to the SAME id (Coherent allows ONE inspector per page).
                         try { await Task.Delay(200, ct); } catch (OperationCanceledException) { }
-                        return id;
+                        return (id, true);
                     }
                 }
+                return (null, true);
             }
             catch (Exception ex) { Log.Debug("SimConnect", $"ResolvePmdgTablet: {ex.Message}"); }
-            return null;
+            return (null, false);
         }
 
         // One-shot WS eval of getTabletSide() on a candidate page (separate from the main socket).
@@ -656,6 +701,11 @@ namespace MSFSBlindAssist.SimConnect
             finally
             {
                 _connected = false; _agentInstalled = false;
+                // No answer can come on a closed socket: fail its waiting evals now (the reader's
+                // install among them), not at their 5 s timeout. Only while it is still the client's
+                // socket, so an old socket's late end never fails the evals of the one after it.
+                if (ReferenceEquals(_ws, ws))
+                    foreach (var kv in _pending) kv.Value.TrySetCanceled();
             }
         }
 

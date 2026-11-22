@@ -11,7 +11,8 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class FbwEfbFormStatusTests
 {
-    private const string InSimHint = "Make sure MSFS 2024 is running and a flight is loaded.";
+    // The hint MainForm passes to the in-sim tablet's window, so these tests pin what that window says.
+    private const string InSimHint = FbwEfbForm.SimTabletNotConnectedHint;
     private const string Refused = "The simulator keeps closing the connection; another program may be using it.";
 
     [Fact]
@@ -58,20 +59,20 @@ public class FbwEfbFormStatusTests
     public void A_refusal_that_starts_while_open_is_spoken()
     {
         Assert.Equal(FbwEfbForm.RefusalCue.Speak,
-            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: true, contentLoaded: false));
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: true, contentLoaded: false, pageShowsReason: false));
         Assert.Equal(FbwEfbForm.RefusalCue.Speak,
-            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: true, contentLoaded: true));
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: true, contentLoaded: true, pageShowsReason: false));
     }
 
     [Fact]
     public void A_refusal_is_not_repeated_nor_spoken_while_hidden_or_after_recovery()
     {
         Assert.Equal(FbwEfbForm.RefusalCue.None,
-            FbwEfbForm.RefusalCueFor(refused: true, announced: true, visible: true, wasVisible: true, contentLoaded: false));
+            FbwEfbForm.RefusalCueFor(refused: true, announced: true, visible: true, wasVisible: true, contentLoaded: false, pageShowsReason: true));
         Assert.Equal(FbwEfbForm.RefusalCue.None,
-            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: false, wasVisible: false, contentLoaded: true));
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: false, wasVisible: false, contentLoaded: true, pageShowsReason: false));
         Assert.Equal(FbwEfbForm.RefusalCue.None,
-            FbwEfbForm.RefusalCueFor(refused: false, announced: false, visible: true, wasVisible: true, contentLoaded: false));
+            FbwEfbForm.RefusalCueFor(refused: false, announced: false, visible: true, wasVisible: true, contentLoaded: false, pageShowsReason: false));
     }
 
     [Fact]
@@ -79,7 +80,16 @@ public class FbwEfbFormStatusTests
     {
         // The waiting line already says it, and the screen reader reads it on opening (CORE-7).
         Assert.Equal(FbwEfbForm.RefusalCue.PageSaysIt,
-            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: false, contentLoaded: false));
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: false, contentLoaded: false, pageShowsReason: true));
+    }
+
+    [Fact]
+    public void Opening_onto_a_refusal_the_page_does_not_show_is_spoken()
+    {
+        // Review of PR 364: list mode (no page line), a failed push, or a refusal first seen on the tick
+        // after the window opened: the screen reader read no reason, so the window speaks it.
+        Assert.Equal(FbwEfbForm.RefusalCue.Speak,
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: false, contentLoaded: false, pageShowsReason: false));
     }
 
     [Fact]
@@ -87,7 +97,7 @@ public class FbwEfbFormStatusTests
     {
         // Review of the branch: the page then shows the old tablet as if live, so only speech says why.
         Assert.Equal(FbwEfbForm.RefusalCue.Speak,
-            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: false, contentLoaded: true));
+            FbwEfbForm.RefusalCueFor(refused: true, announced: false, visible: true, wasVisible: false, contentLoaded: true, pageShowsReason: false));
     }
 
     [Fact]

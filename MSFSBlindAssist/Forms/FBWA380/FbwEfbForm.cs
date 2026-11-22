@@ -257,6 +257,9 @@ public class FbwEfbForm : Form
     /// <summary>What to check while a tablet window is not connected, for every tablet but the in-sim one.</summary>
     internal const string DefaultNotConnectedHint = "Make sure the aircraft is loaded and the tablet is powered on.";
 
+    /// <summary>The in-sim tablet's hint (MainForm passes it): that tablet depends on no aircraft.</summary>
+    internal const string SimTabletNotConnectedHint = "Make sure MSFS 2024 is running and a flight is loaded.";
+
     /// <summary>Why the window cannot connect when the sim keeps closing the connection.</summary>
     internal const string RefusedReason = "The simulator keeps closing the connection; another program may be using it.";
 
@@ -284,14 +287,18 @@ public class FbwEfbForm : Form
         PageSaysIt,
     }
 
-    /// <summary>The refusal is said once per episode while the window is open (CORE-7: a change the pilot
-    /// did not trigger): spoken when it starts while open, and when the window opens onto it after the
-    /// tablet's content had loaded (the page then shows the old tablet as if live); left to the page when
-    /// the window opens onto it before content loaded. Internal for the tests.</summary>
-    internal static RefusalCue RefusalCueFor(bool refused, bool announced, bool visible, bool wasVisible, bool contentLoaded)
+    /// <summary>The refusal is said once each time the window is open (CORE-7: a change the pilot did not
+    /// trigger): spoken when it starts while open, and when the window opens onto it after the tablet's
+    /// content had loaded (the page then shows the old tablet as if live); left to the page only when the
+    /// window opens onto it before content loaded AND the page already showed the reason
+    /// (<paramref name="pageShowsReason"/>: browser mode, the refused line pushed before the window
+    /// opened). Without that line on the page (list mode, a failed push, a refusal first seen just after
+    /// opening) it is spoken. Internal for the tests.</summary>
+    internal static RefusalCue RefusalCueFor(bool refused, bool announced, bool visible, bool wasVisible, bool contentLoaded,
+                                             bool pageShowsReason)
     {
         if (!refused || announced || !visible) return RefusalCue.None;
-        return !wasVisible && !contentLoaded ? RefusalCue.PageSaysIt : RefusalCue.Speak;
+        return !wasVisible && !contentLoaded && pageShowsReason ? RefusalCue.PageSaysIt : RefusalCue.Speak;
     }
 
     // ---- WebView2 setup ---------------------------------------------------
@@ -410,8 +417,12 @@ public class FbwEfbForm : Form
             desired = NotConnectedText(_deviceNoun, _notConnectedHint, refused);
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
 
-        if (!refused) _refusalAnnounced = false;
-        var cue = RefusalCueFor(refused, _refusalAnnounced, Visible, _wasVisible, _initialPushReceived);
+        // Hidden or no longer refused: the next time the window is open onto a refusal, it is said again.
+        if (!refused || !Visible) _refusalAnnounced = false;
+        // What the page showed before this tick's push: the refused line, put there while the window was hidden.
+        bool pageShowsReason = _useBrowser && !_webViewFailed && _webViewReady
+            && _waitingLineSent == WaitingLine(_deviceLabel, contentLoaded: false, refused: true);
+        var cue = RefusalCueFor(refused, _refusalAnnounced, Visible, _wasVisible, _initialPushReceived, pageShowsReason);
         if (cue == RefusalCue.Speak)
             _announcer.Announce(NotConnectedText(_deviceNoun, _notConnectedHint, refused: true));
         if (cue != RefusalCue.None) _refusalAnnounced = true;
@@ -422,7 +433,7 @@ public class FbwEfbForm : Form
     }
 
     // Puts the page's waiting line in place (window.__setWaiting, which acts only before the first
-    // render). Retried on the next status tick while the WebView is not ready.
+    // render). Retried on the next status tick while the WebView is not ready, or after a failed push.
     private async void PushWaitingLine(string line)
     {
         if (!_useBrowser || _webViewFailed || !_webViewReady || IsDisposed || Disposing
@@ -436,6 +447,8 @@ public class FbwEfbForm : Form
         catch (Exception ex)
         {
             Log.Debug("Forms", $"waiting line push failed: {ex.Message}");
+            // Not on the page: forget it, so the next tick sends it again and the cue does not count on it.
+            if (_waitingLineSent == line) _waitingLineSent = null;
         }
     }
 
