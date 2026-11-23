@@ -515,3 +515,19 @@ test('Enter_with_the_text_unchanged_posts_and_says_nothing', async (t) => {
   assert.strictEqual(sets(s).length, 0);
   assert.strictEqual(await s.spoken(), 'EFB page: Fuel', 'only the page announce, nothing about the box');
 });
+
+// Review of PR 364: window.__setWaiting puts the window's waiting line (with the sim's refusal reason)
+// in place before the tablet's first content, and must never touch the page once content has rendered,
+// or a late push would overwrite the first text line of the real tablet.
+test('the waiting line changes before the first render and never after it', (t) => {
+  const s = loadShell(t);
+  const first = () => s.window.document.querySelector('#list p.txt');
+  assert.strictEqual(first().textContent, 'Waiting for the EFB…', 'the page\'s own initial line');
+  s.window.__setWaiting('Waiting for the EFB. The simulator keeps closing the connection; another program may be using it.');
+  assert.strictEqual(first().textContent, 'Waiting for the EFB. The simulator keeps closing the connection; another program may be using it.');
+  s.render('Dashboard', [{ idx: 1, kind: 'text', controlType: '', text: 'Flight plan loaded', clickable: false, level: 0, live: '', disabled: false }]);
+  assert.strictEqual(first().textContent, 'Flight plan loaded');
+  s.window.__setWaiting('Waiting for the EFB…');
+  assert.strictEqual(first().textContent, 'Flight plan loaded', 'a waiting line pushed after the render changed the content');
+  assert.strictEqual(s.window.document.querySelectorAll('#list p.txt').length, 1);
+});

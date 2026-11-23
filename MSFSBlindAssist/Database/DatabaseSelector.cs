@@ -100,7 +100,7 @@ public static class DatabaseSelector
 
         var settings2 = SettingsManager.Current;
         string simVer = settings2.SimulatorVersion ?? "FS2020";
-        string message = $"{simVer} - {airportCount:N0} airports";
+        string message = FormattableString.Invariant($"{simVer} - {airportCount:N0} airports");
         return (true, provider.DatabaseType, message);
     }
 }

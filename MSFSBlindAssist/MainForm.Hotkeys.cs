@@ -133,7 +133,7 @@ public partial class MainForm
                 double? g = landingRateAnnouncer.LastPeakG;
                 if (g.HasValue)
                 {
-                    announcer.AnnounceImmediate($"Landing g-force {g.Value:F2} g.");
+                    announcer.AnnounceImmediate(FormattableString.Invariant($"Landing g-force {g.Value:F2} g."));
                 }
                 else
                 {

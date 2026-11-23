@@ -45,6 +45,12 @@ Static research notes mined from FBW source (var names, page-index maps): `a380-
 
 `probe-coherent-debugger.ps1`, `test-coherent-ws.ps1`, `prove-coherent-scrape.ps1`, `probe-efb-frames.ps1`, `probe-flypad-elements.ps1` — the first scripts that discovered the Coherent architecture. Superseded by `coherent-eval.ps1` + `_probe/`; their "Developer Mode ON" headers are **obsolete** (Dev Mode is **not** required). Kept as historical record / quick "is the port up" smoke tests. Prefer `coherent-eval.ps1` for new work.
 
+## Source sweeps (no simulator)
+
+| Tool | Job |
+|---|---|
+| [`DecimalSweep/`](DecimalSweep/README.md) | Finds numbers the shipped code turns into text in the PC's culture with no format specifier (`$"{value}"`, `value.ToString()`), which the CI text scan cannot see: it reads the source with the C# compiler's types. Run it after adding spoken or shown numbers; a clean tree prints "0 to review". Rule: CORE-21. |
+
 ## Pre-existing — do NOT modify
 
 `PMDGDispatchTester/` and `CDUTest/` predate the FBW work and are independent PMDG console apps (not Coherent tooling). See [`../docs/development.md`](../docs/development.md#build-output-and-traps) → Build output and traps. Leave them untouched.

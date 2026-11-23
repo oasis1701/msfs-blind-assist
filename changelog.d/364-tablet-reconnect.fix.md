@@ -1,0 +1,1 @@
+In-Sim Tablet, PMDG and MD-11 tablets: the window now reconnects by itself after the simulator drops its connection, instead of waiting until BA restarts. When another program is using the tablet, the In-Sim Tablet and MD-11 windows say so.
