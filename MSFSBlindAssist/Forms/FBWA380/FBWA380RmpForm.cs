@@ -567,7 +567,7 @@ public sealed class FBWA380RmpForm : Form
             {
                 double act = _sim.GetCachedVariableValue($"COM_ACTIVE_{i}") ?? 0;
                 bool tx = (_sim.GetCachedVariableValue($"A380X_RMP_{_rmp}_VHF_TX_{i}") ?? 0) > 0.5;
-                string line = $"VHF {i}: active {act:0.000}";
+                string line = FormattableString.Invariant($"VHF {i}: active {act:0.000}");
                 if (tx) line += ", transmit";
                 if (i - 1 == _selectedRowIndex) line += ", selected";
                 sb.AppendLine(line);

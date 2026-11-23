@@ -890,9 +890,9 @@ public class SimBriefPlannerForm : Form
 
                 string altDisplay;
                 if (isSid && transAlt > 0 && altFt < transAlt)
-                    altDisplay = $"{altFt:N0} ft";
+                    altDisplay = FormattableString.Invariant($"{altFt:N0} ft");
                 else if (isStar && transLevel > 0 && altFt < transLevel)
-                    altDisplay = $"{altFt:N0} ft";
+                    altDisplay = FormattableString.Invariant($"{altFt:N0} ft");
                 else
                     altDisplay = altRaw >= 1000 ? $"FL{altRaw / 100:D3}" : $"FL{altRaw:D3}";
                 parts.Add(altDisplay);
@@ -1011,15 +1011,15 @@ public class SimBriefPlannerForm : Form
         string fobRaw = !string.IsNullOrEmpty(fix.Efob) ? fix.Efob : fix.FuelPlanOnboard;
         if (!string.IsNullOrEmpty(fobRaw) && fobRaw != "0" &&
             int.TryParse(fobRaw, out int fobVal) && fobVal > 0)
-            parent.Nodes.Add($"EFOB: {fobVal:N0} {units}");
+            parent.Nodes.Add(FormattableString.Invariant($"EFOB: {fobVal:N0} {units}"));
 
         if (!string.IsNullOrEmpty(fix.FuelLeg) && fix.FuelLeg != "0" &&
             int.TryParse(fix.FuelLeg, out int fuelLeg) && fuelLeg > 0)
-            parent.Nodes.Add($"Leg fuel: {fuelLeg:N0} {units}");
+            parent.Nodes.Add(FormattableString.Invariant($"Leg fuel: {fuelLeg:N0} {units}"));
 
         if (!string.IsNullOrEmpty(fix.FuelTotalUsed) && fix.FuelTotalUsed != "0" &&
             int.TryParse(fix.FuelTotalUsed, out int fuelUsed) && fuelUsed > 0)
-            parent.Nodes.Add($"Total fuel used: {fuelUsed:N0} {units}");
+            parent.Nodes.Add(FormattableString.Invariant($"Total fuel used: {fuelUsed:N0} {units}"));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1693,7 +1693,7 @@ public class SimBriefPlannerForm : Form
         if (string.IsNullOrEmpty(rawWt)) return "";
         if (!int.TryParse(rawWt, out int v) || v <= 0) return $"{rawWt} {units}";
         long displayed = v < 10_000 ? (long)v * 100 : v;
-        return $"{displayed:N0} {units}";
+        return FormattableString.Invariant($"{displayed:N0} {units}");
     }
 
     // TLR QNH is in the airport's own unit: one plan's TLR had "1011" at YPDN and "29.88" at
@@ -1715,7 +1715,7 @@ public class SimBriefPlannerForm : Form
     {
         if (string.IsNullOrEmpty(rawFt)) return "";
         if (!int.TryParse(rawFt, out int v)) return $"{rawFt} ft";
-        return $"{v:N0} ft";
+        return FormattableString.Invariant($"{v:N0} ft");
     }
 
     private static string BuildWeatherStationText(string heading, string icao, string metar, string taf)
@@ -1805,7 +1805,7 @@ public class SimBriefPlannerForm : Form
         if (string.IsNullOrEmpty(raw)) return "";
         // In the plan's own weight unit (SimBriefOFP.Units); format with thousands separator
         if (int.TryParse(raw, out int v))
-            return $"{v:N0} {units}";
+            return FormattableString.Invariant($"{v:N0} {units}");
         return $"{raw} {units}";
     }
 
@@ -1827,7 +1827,7 @@ public class SimBriefPlannerForm : Form
     private static string FormatTransFt(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return "";
-        return int.TryParse(raw, out int v) && v > 0 ? $"{v:N0} ft" : "";
+        return int.TryParse(raw, out int v) && v > 0 ? FormattableString.Invariant($"{v:N0} ft") : "";
     }
 
     // Trans Level: raw feet value (e.g. "06000") → "FL060"  (divide by 100)
@@ -1857,7 +1857,7 @@ public class SimBriefPlannerForm : Form
     {
         if (string.IsNullOrEmpty(metres)) return "";
         return int.TryParse(metres, out int m) && m > 0
-            ? $"{(int)Math.Round(m * 3.28084):N0} ft"
+            ? FormattableString.Invariant($"{(int)Math.Round(m * 3.28084):N0} ft")
             : "";
     }
 

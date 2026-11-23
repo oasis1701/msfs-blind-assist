@@ -396,13 +396,13 @@ public class ActiveSkyWeatherMonitor : IDisposable
         {
             int hpa = decoded.QnhMb.Value;
             double inHg = hpa * 0.0295299830714;
-            parts.Add($"Altimeter: {hpa} ({inHg:F2} inches).");
+            parts.Add(FormattableString.Invariant($"Altimeter: {hpa} ({inHg:F2} inches)."));
         }
         else if (conditions.QnhMb > 0)
         {
             int hpa = (int)Math.Round(conditions.QnhMb);
             double inHg = hpa * 0.0295299830714;
-            parts.Add($"Altimeter: {hpa} ({inHg:F2} inches).");
+            parts.Add(FormattableString.Invariant($"Altimeter: {hpa} ({inHg:F2} inches)."));
         }
 
         return string.Join(" ", parts);

@@ -2170,7 +2170,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // the FCU writes them as -1 while the window shows dashes, so a dashed window is silent
         // by construction (and 0 while the FCU is off — every output zeroed). Batch-covered so each
         // sample is judged together with A32NX_FCU_AFS_CP_ACTIVE at the batch end; the Shift+H/S
-        // readouts' force-read of a batch-covered var is honoured by the next batch delivery.
+        // readouts read their on-request twins ([A320-42]), since a forced read of a batch-covered
+        // var is answered only by the next batch delivery.
         //
         // V/S and FPA are NOT the shims: both read 0 while the window shows dashes and in the
         // other mode, so a level-off spoke "Vertical speed 0 feet per minute", and 0 is also a
@@ -2225,17 +2226,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // Settable toggle combo — SetTrkFpaMode fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH when the pick differs.
         Sel("A32NX_TRK_FPA_MODE_ACTIVE", "Track FPA Mode",
             new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
-        // Keep an individual data def for the three managed-status legs the OUTPUT-mode FCU
-        // readouts (Shift+H/S/V) force-read via RequestVariable(forceUpdate). This is no longer
-        // load-bearing the way it once looked: 929be066 fixed RequestVariable(forceUpdate) to
-        // also re-fire an unchanged batch-covered var (DataRequests.cs/VarCache.cs), so dropping
-        // ExcludeFromBatch here would NOT silence Shift+H/S/V. Nor does it buy an immediate
+        // An individual data def for the three managed-status legs, kept from the time the
+        // OUTPUT-mode FCU readouts (Shift+H/S/V) force-read them. It never bought an immediate
         // answer: with ExcludeFromBatch each has its own PERIOD.SECOND subscription, and a
         // force-read of that is honoured by its NEXT delivery (SimConnectManager.RequestVariable
-        // never re-issues a subscription's own request id), so either way the value+managed
-        // pair-gate in ProcessSimVarUpdate closes within about a second. Mirrors the A320 fix
-        // (FlyByWireA320Definition's *_MANAGED vars). 3 extra defs, well within the A380's
-        // data-def headroom.
+        // never re-issues a subscription's own request id), so the readouts waited up to a
+        // second. They now read on-request twins ([A320-42], FcuReadoutOriginals); these three
+        // keep their subscriptions for the mode call-outs and the panel. Mirrors the A320
+        // (FlyByWireA320Definition's *_MANAGED vars).
         // (A32NX_FCU_VS_MANAGED is not force-read by any readout — VS keys on
         // TRK_FPA_MODE_ACTIVE — so it intentionally stays batch-covered.)
         //
@@ -2254,10 +2252,12 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // — two keys meant two pollers for one number and, worse, two different spoken names for it
         // ("Selected Altitude" in Ctrl+M vs "FCU selected altitude" in the PFD panel). This key is
         // the one that carries the metric-altitude (MTRS) display override in .Displays.cs.
+        // (FCU_ALT_VALUE_READOUT is its on-request twin for the Shift+A readout, [A320-42]: read
+        // once per press, never streamed, no Ctrl+M row, in no panel, so neither a poller nor a name.)
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
         // Streamed for the hardware-dial announcer like heading and speed above, batch-covered so
-        // each sample is judged with A32NX_FCU_AFS_CP_ACTIVE at the batch end (the Shift+A readout's
-        // force-read is answered by the next batch delivery). The altitude window never shows
+        // each sample is judged with A32NX_FCU_AFS_CP_ACTIVE at the batch end (the Shift+A readout
+        // reads the on-request twin, [A320-42]). The altitude window never shows
         // dashes, so the stock value is enough; it reads 0 while the FCU is off.
         vars["FCU_ALT_VALUE"].UpdateFrequency = UpdateFrequency.Continuous;
         vars["FCU_ALT_VALUE"].IsAnnounced = true;
@@ -2307,6 +2307,19 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             [0] = "None", [1] = "Thrust Lock", [2] = "Levers TOGA", [3] = "Levers Climb",
             [4] = "Levers MCT", [5] = "Levers Asymmetric"
         });
+        // THR LK is NOT in that var on the A380: its FG shim only ever writes 0/3/4/5. The lock is
+        // bit 12 of each engine's ECU maintenance word 6 (FBW #10940, see A380ThrustLock). The four
+        // words are live but silent and Ctrl+M-hidden: ProcessSimVarUpdate derives the one lock
+        // from them and speaks it as an "Autothrust Message", on that row's mute.
+        for (int engine = 1; engine <= A380ThrustLock.EngineCount; engine++)
+        {
+            vars[A380ThrustLock.WordKey(engine)] = new SimVarDefinition
+            {
+                Name = A380ThrustLock.WordKey(engine), DisplayName = $"Engine {engine} ECU Maintenance Word 6",
+                Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true, ExcludeFromMonitorManager = true
+            };
+        }
         // Thrust limit (rating) shown top-right on the E/WD — the active thrust
         // ceiling the levers command at the TO/GA detent. Enum from the FBW EWD
         // N1Limit component: ['', CLB, MCT, FLX, TOGA, MREV]. Announced on change.
@@ -3175,6 +3188,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // The First Officer's MSFS 2020 build names (A380BuildNames): OnRequest, never announced.
         RegisterFirstOfficerBuildVariables(vars);
 
+        // The FCU readout twins ([A320-42]).
+        FcuReadoutTwins.Register(vars, FcuReadoutOriginals);
+
         return vars;
     }
 
@@ -3296,6 +3312,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool? _antiskidOn;
     private string? _lastAutolandCap; // last decoded LAND capability ("none"/"LAND 2"/...)
     private int _fmgcPhaseA380 = -1; // numeric FMGC flight phase; gates the capability announce (taxi flicker spam)
+    // Thrust lock, derived from the four ECU maintenance words (A380ThrustLock), and the FG shim's
+    // autothrust message, kept so the lock's release can name what the FMA cell shows next.
+    private readonly A380ThrustLock.Tracker _thrustLock = new();
+    private int _athrShimMessage;
 
     // Take-off roll "V1" / "Rotate" / "V2" (A380TakeoffCallouts, on the shared TakeoffVSpeedCallouts
     // machine). Its ARM is dropped on every context reset and on a reconnect — never the speeds —
@@ -3475,6 +3495,26 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // and announce via the pairing in ProcessSimVarUpdate.
     // ===================================================================
     private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pVsVal, _pFpaVal, _pVsMode;
+
+    // Hotkey-readout twins ([A320-42], FcuReadoutTwins). Shift+H/S/A/V force-read values that
+    // stream once a second (heading, speed and altitude ride the continuous batch for the dial
+    // callouts; the two managed flags and the TRK/FPA mode have their own subscriptions), so each
+    // readout waited for the next delivery of every one of them, 0-1 s. The readouts read these
+    // on-request twins instead; never point one back at an original. The V/S and FPA shims are
+    // on request already.
+    internal static readonly IReadOnlyList<string> FcuReadoutOriginals = new[]
+    {
+        "A32NX_AUTOPILOT_HEADING_SELECTED", "A32NX_FCU_HDG_MANAGED_DASHES",
+        "A32NX_AUTOPILOT_SPEED_SELECTED", "A32NX_FCU_SPD_MANAGED_DOT",
+        "FCU_ALT_VALUE",
+        "A32NX_TRK_FPA_MODE_ACTIVE",
+    };
+    private const string HeadingReadout = "A32NX_AUTOPILOT_HEADING_SELECTED" + FcuReadoutTwins.Suffix;
+    private const string HeadingManagedReadout = "A32NX_FCU_HDG_MANAGED_DASHES" + FcuReadoutTwins.Suffix;
+    private const string SpeedReadout = "A32NX_AUTOPILOT_SPEED_SELECTED" + FcuReadoutTwins.Suffix;
+    private const string SpeedManagedReadout = "A32NX_FCU_SPD_MANAGED_DOT" + FcuReadoutTwins.Suffix;
+    private const string AltitudeReadout = "FCU_ALT_VALUE" + FcuReadoutTwins.Suffix;
+    private const string TrkFpaModeReadout = "A32NX_TRK_FPA_MODE_ACTIVE" + FcuReadoutTwins.Suffix;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro;
     private double _gwCgMac = -1;   // gross-weight CG %MAC (FBW L-var, cached)

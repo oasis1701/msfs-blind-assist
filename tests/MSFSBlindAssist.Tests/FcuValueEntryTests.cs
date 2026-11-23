@@ -116,4 +116,24 @@ public class FcuValueEntryUnparseableTests
         Assert.True(new FlyByWireA320Definition().GetVariables()[key].UnparseableTextAsNaN);
         Assert.True(new HeadwindA330Definition().GetVariables()[key].UnparseableTextAsNaN);
     }
+
+    // The V/S calculator code keeps an ASCII minus whatever the PC's region. sv-SE (as nb-NO and fi-FI) writes
+    // a negative whole number with U+2212, which the RPN parser rejects: a descent rate or a negative FPA
+    // typed in the V/S window was never set.
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void The_vertical_speed_code_keeps_an_ascii_minus_in_any_culture(string culture)
+    {
+        Assert.Equal("-1500 (>K:A32NX.FCU_VS_SET)", TestCulture.Run(culture, () => FcuValueEntry.VerticalSpeedSetCode(-1500)));
+        Assert.Equal("-25 (>K:A32NX.FCU_VS_SET)", TestCulture.Run(culture, () => FcuValueEntry.VerticalSpeedSetCode(-25)));   // FPA -2.5, sent x10
+        Assert.Equal("800 (>K:A32NX.FCU_VS_SET)", TestCulture.Run(culture, () => FcuValueEntry.VerticalSpeedSetCode(800)));
+    }
+
+    [Fact]
+    public void A_plain_interpolation_writes_the_swedish_minus_the_code_must_not_carry() =>
+        // What the code was before: the reason the test above exists. If .NET ever stops writing U+2212 here,
+        // this fails and the comment on VerticalSpeedSetCode can go.
+        Assert.StartsWith("−", TestCulture.Run("sv-SE", () => $"{-1500}"));
 }

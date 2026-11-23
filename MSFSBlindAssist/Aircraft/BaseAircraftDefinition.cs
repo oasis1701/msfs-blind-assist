@@ -560,7 +560,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             {
                 uint valueToSend = valueConverter != null ? valueConverter(value) : (uint)value;
                 simConnect.SendEvent(eventName, valueToSend);
-                announcer.AnnounceImmediate($"{parameterType} set to {value}");
+                announcer.AnnounceImmediate(FormattableString.Invariant($"{parameterType} set to {value}"));
                 return true;
             }
             // The validator accepted what TryParseTyped refuses: say so rather than send nothing silently.
@@ -746,6 +746,22 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <summary>A flight load, reconnect or FCU power-up is still settling: the values arriving now
     /// describe a new situation, not a change anyone made.</summary>
     protected bool IsFcuValueSettling => _fcuValues.IsSettling;
+
+    /// <summary>The reads of readouts held for MSFSBA's last FCU event; run by the batch that settles it.</summary>
+    private Action? _heldFcuReadouts;
+
+    /// <summary>
+    /// Issue an FCU readout's on-request reads: now, or, when MSFSBA has just sent an FCU event (a
+    /// push, pull, toggle or set), once the FCU has acted and every continuous batch has delivered
+    /// after it (<see cref="FcuValueAnnouncer.IsWriteUnsettled"/>). Read at once, a readout spoke
+    /// the state from before the press ([A320-42]). The caller sets its pending latch BEFORE calling,
+    /// so the window's dial callout stays muted while the reads are held. UI thread only.
+    /// </summary>
+    protected void RequestFcuReadoutValues(Action reads)
+    {
+        if (_fcuValues.IsWriteUnsettled(Environment.TickCount64)) _heldFcuReadouts += reads;
+        else reads();
+    }
 
     // Variable Update Processing
 
@@ -992,7 +1008,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <inheritdoc />
     /// <remarks>The base starts the FCU value announcer's settle: an override on an aircraft that uses
     /// <see cref="AnnounceFcuValue"/> must call base.</remarks>
-    public virtual void OnSimContextReset() => _fcuValues.BeginSettle();
+    public virtual void OnSimContextReset()
+    {
+        _fcuValues.BeginSettle();
+        // A readout held for an FCU event of the old context is dropped with it (its pending latch is
+        // the definition's own, cleared in its override).
+        _fcuValues.ForgetWrite();
+        _heldFcuReadouts = null;
+    }
 
     /// <inheritdoc />
     /// <remarks>The base upgrades the FCU settle so the reconnect's re-fire counts as the aircraft
@@ -1004,6 +1027,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// completed: an override on an aircraft that uses <see cref="AnnounceFcuValue"/> must call base.</remarks>
     public virtual void OnContinuousBatchDelivered(int batchNum)
     {
+        if (_fcuValues.OnBatchAfterWrite(batchNum, Environment.TickCount64))
+        {
+            Action? held = _heldFcuReadouts;
+            _heldFcuReadouts = null;
+            held?.Invoke();
+        }
         IReadOnlyList<string> due = _fcuValues.OnBatchDelivered(batchNum);
         if (due.Count == 0 || _fcuAnnouncer is not { } announcer) return;
         foreach (string phrase in due)
@@ -1368,7 +1397,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // breaks or says "CG 0". Takes the cached %MAC value as a parameter since each
     // aircraft caches its own _gwCgMac field.
     protected static string CgMacPhrase(double gwCgMac) =>
-        (gwCgMac > 5 && gwCgMac < 60) ? $", center of gravity {gwCgMac:0.0} percent MAC" : "";
+        (gwCgMac > 5 && gwCgMac < 60) ? FormattableString.Invariant($", center of gravity {gwCgMac:0.0} percent MAC") : "";
 
     // Set the FCU altitude increment (100 or 1000 ft) — FBW A320/A380 parity. Kept as an
     // instance method (not static) because it's invoked externally via an aircraft-typed

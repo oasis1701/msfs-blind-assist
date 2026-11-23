@@ -137,7 +137,7 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
             return;
         }
         aircraft.SetEfisBaroPressureHpa(hpa, simConnect);   // both sides; airframe-specific mechanism
-        announcer.AnnounceImmediate(inHg ? $"Altimeter set to {v:F2} inches, both sides" : $"Altimeter set to {hpa:F0} hectopascals, both sides");
+        announcer.AnnounceImmediate(inHg ? FormattableString.Invariant($"Altimeter set to {v:F2} inches, both sides") : $"Altimeter set to {hpa:F0} hectopascals, both sides");
         valueTextBox.SelectAll();
     }
 }

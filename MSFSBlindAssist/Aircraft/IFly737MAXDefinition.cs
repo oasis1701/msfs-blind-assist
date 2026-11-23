@@ -1791,14 +1791,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         }
     }
 
-    /// <summary>Altimeter announce phrase — 29.92 inHg reads as "Altimeter standard";
-    /// otherwise dual-unit (hPa, inHg). Shared by the background ALTIMETER_SETTING
-    /// change announce and the B hotkey readout so a set and a read sound alike.</summary>
-    private static string AltimeterPhrase(double inHg) =>
-        Math.Abs(inHg - 29.92) < 0.005
-            ? "Altimeter standard"
-            : $"Altimeter: {(int)Math.Round(inHg * 33.8639)}, {inHg:0.00}";
-
     // COM1/COM2 active/standby announce baselines (key = var key). Absent key =
     // baseline not yet seen; the first read after launch/reconnect stays silent.
     private readonly Dictionary<string, double> _lastComFreq = new();
@@ -2330,7 +2322,8 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             if (Math.Abs(value - _lastAnnouncedAltimeter) < 0.005)
                 return true;
             _lastAnnouncedAltimeter = value;
-            announcer.Announce(AltimeterPhrase(value));
+            // The shared phrase, so the change announce and the B readout sound alike: "Altimeter standard" at 29.92.
+            announcer.Announce(AltimeterPhrase.Sentence(value));
             return true;
         }
 
@@ -2356,7 +2349,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 "COM2_ACTIVE_FREQ" => "COM2 active",
                 _ => "COM2 standby",
             };
-            announcer.Announce($"{comLabel} {value:F3}");
+            announcer.Announce(FormattableString.Invariant($"{comLabel} {value:F3}"));
             return true;
         }
 
@@ -2419,7 +2412,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 else
                     AnnounceWindow(varName, value == IFlySdkClient.SyntheticBlank
                         ? "MCP speed blank, FMC managed"
-                        : value < 10 ? $"MCP speed Mach {value:F2}" : $"MCP speed {value:F0}", announcer);
+                        : value < 10 ? FormattableString.Invariant($"MCP speed Mach {value:F2}") : $"MCP speed {value:F0}", announcer);
                 return true;
             case "SYN_MCP_HEADING":
                 if (value != IFlySdkClient.SyntheticBlank)
@@ -2756,7 +2749,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                     return true;
                 }
                 double inHg = inHgRaw.Value;
-                announcer.AnnounceImmediate(AltimeterPhrase(inHg));
+                announcer.AnnounceImmediate(AltimeterPhrase.Sentence(inHg));
                 return true;
             }
 

@@ -6915,7 +6915,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varName == "MCP_IASMach")
         {
             if (value < 10)
-                announcer.Announce($"MCP Mach {value:F2}");
+                announcer.Announce(FormattableString.Invariant($"MCP Mach {value:F2}"));
             else
                 announcer.Announce($"MCP speed {(int)Math.Round(value)} knots");
             return true;
@@ -6954,7 +6954,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varName == "MCP_FPA")
         {
             float fpa = (float)value;
-            announcer.Announce($"FPA {fpa:F1} degrees");
+            announcer.Announce(FormattableString.Invariant($"FPA {fpa:F1} degrees"));
             return true;
         }
 
@@ -7090,28 +7090,28 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varName == "COM1_ActiveFreq")
         {
             if (_lastComActiveFreq1 > 0 && Math.Abs(value - _lastComActiveFreq1) > 0.001)
-                announcer.Announce($"COM1 active {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM1 active {value:F3}"));
             _lastComActiveFreq1 = value;
             return true;
         }
         if (varName == "COM_STANDBY_FREQUENCY_SET:1")
         {
             if (_lastComStandbyFreq1 > 0 && Math.Abs(value - _lastComStandbyFreq1) > 0.001)
-                announcer.Announce($"COM1 standby {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM1 standby {value:F3}"));
             _lastComStandbyFreq1 = value;
             return true;
         }
         if (varName == "COM2_ActiveFreq")
         {
             if (_lastComActiveFreq2 > 0 && Math.Abs(value - _lastComActiveFreq2) > 0.001)
-                announcer.Announce($"COM2 active {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM2 active {value:F3}"));
             _lastComActiveFreq2 = value;
             return true;
         }
         if (varName == "COM_STANDBY_FREQUENCY_SET:2")
         {
             if (_lastComStandbyFreq2 > 0 && Math.Abs(value - _lastComStandbyFreq2) > 0.001)
-                announcer.Announce($"COM2 standby {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM2 standby {value:F3}"));
             _lastComStandbyFreq2 = value;
             return true;
         }
@@ -7197,7 +7197,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 {
                     float speed = (float)dm.GetFieldValue("MCP_IASMach");
                     string speedText = speed < 10f
-                        ? $"Mach {speed:F2}"
+                        ? FormattableString.Invariant($"Mach {speed:F2}")
                         : $"Speed {(int)Math.Round(speed)} knots";
                     string speedMode = "";
                     if ((int)dm.GetFieldValue("MCP_annunFLCH") > 0) speedMode = ", FLCH";
@@ -7228,7 +7228,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (vsMode == 1)
                 {
                     float fpa = (float)dm.GetFieldValue("MCP_FPA");
-                    announcer.AnnounceImmediate($"FPA {fpa:+0.0;-0.0;0.0} degrees{vsEngaged}");
+                    announcer.AnnounceImmediate(FormattableString.Invariant($"FPA {fpa:+0.0;-0.0;0.0} degrees{vsEngaged}"));
                 }
                 else
                 {
@@ -7405,7 +7405,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                                         .ToString(System.Globalization.CultureInfo.InvariantCulture);
                                     string etaStr = !string.IsNullOrEmpty(prog.ETAToDest) ? $" {prog.ETAToDest}" : "";
                                     string fuelStr = prog.LandingFuel >= 0
-                                        ? $", landing fuel {prog.LandingFuel:F1}"
+                                        ? FormattableString.Invariant($", landing fuel {prog.LandingFuel:F1}")
                                         : "";
                                     announcer.AnnounceImmediate(
                                         $"Distance to destination: {distStr}{etaStr}{fuelStr}");
@@ -7558,7 +7558,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (dm == null) return;
         float speed = (float)dm.GetFieldValue("MCP_IASMach");
         string speedText = speed < 10f
-            ? $"Mach {speed:F2}"
+            ? FormattableString.Invariant($"Mach {speed:F2}")
             : $"Speed {(int)Math.Round(speed)} knots";
         announcer.AnnounceImmediate(speedText);
     }
@@ -7579,7 +7579,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         if (vsMode == 1)
         {
             float fpa = (float)dm.GetFieldValue("MCP_FPA");
-            announcer.AnnounceImmediate($"FPA {fpa:+0.0;-0.0;0.0} degrees");
+            announcer.AnnounceImmediate(FormattableString.Invariant($"FPA {fpa:+0.0;-0.0;0.0} degrees"));
         }
         else
         {

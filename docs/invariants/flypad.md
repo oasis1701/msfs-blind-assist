@@ -67,6 +67,13 @@ Added 2026-10-23 after a live session on the A320 and A380 flyPads (takeoff-weig
 
 Added 2026-10-23 with FPD-11; the exclamation icon is used nowhere else in the flyPad bundle.
 
+## FPD-13
+
+- The flyPad Performance tabs Top of Descent and Temperature Correction (shared by the A32NX and the A380) are read card by card. Both lay FBW `Card`s side by side, and the row-wise read zippered them. `A.enumerate` tags every item on those two tabs with its card (`_card`, from `A.performanceCards`: an `<h1>` followed by the bordered body) and its document position (`_dom`), and `A.orderPerformance` reads everything outside a card first, then each card in document order, then the nav rail. The generic passes still do the work, so dropdowns and their open option lists keep working; `A.performanceResults` alone owns its nodes (the result card's blocks and the results table) and emits one line per result.
+- `A.performanceLabel` names an input from its own label (the nearest ancestor whose first child is a `<p>`), from its column title where a row of bare cells sits under a row of titles (the manual ground speed table, whose first title alone carries the row number), or from the card's title and a number (the published altitudes, which have no label), and names a SYNC, DESYNC or X button for its field ("Current Altitude: SYNC", "Angle: Clear") with a stable `key` (`perf:sync:<field>`, `perf:clear:<field>`). The key is the point: FBW flips the altitude button's text SYNC to DESYNC (#10981), up to three buttons on the page read SYNC, and the shell keys an item on its label unless the agent stamps a key ([FPD-5], [MD11-13]), so a press rebuilt the button under the pilot's focus and could land the focus on another SYNC. A calculation row's SYNC shows that it is on by its fill alone (`bg-theme-highlight` with no hover swap) and reads "(active)".
+- Match structure and the router href (`/performance/top-of-descent`, `/performance/temperature-correction`), never FBW's wording, which is translated; only SYNC, DESYNC and X are matched as text, because FBW hard-codes them in English. The Takeoff and Landing calculators (A32NX only) are left to the generic passes: `A.performanceCards` is not run for them.
+- Captured live on the A380X, FBW `8a1532f93`, 2026-11-20 (six fixtures, `tools/flypad-settings-test`, `performance.test.js`); the calculation row's SYNC, a second ground speed row and a two-result card show only in states the ground capture could not reach, and are built from FBW's source in the tests. → [flypad.md](../flypad.md)
+
 ## A380C-12
 
 - Never widen the flyPad Dashboard's column-first read order to other EFB pages without evidence a specific page is jumbled — a blind global split would break single-column pages. → [a380x.md](../a380x.md)

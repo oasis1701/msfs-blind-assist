@@ -82,7 +82,7 @@ public sealed partial class Bbs757EhsiReader
     private static string?[] LayoutProblems(Bbs757EhsiLayout l)
     {
         var problems = new string?[PartCount];
-        static string NotAbove(string name, double v, double floor) => v > floor ? "" : $"layout value {name} not above {floor}";
+        static string NotAbove(string name, double v, double floor) => v > floor ? "" : $"layout value {name} not above {floor.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
         static string Below(string name, int v) => v >= 0 ? "" : $"layout value {name} below 0";
         static string Inside(string name, int offset, int size, int block) =>
             offset >= 0 && (long)offset + size <= block ? "" : $"layout value {name} outside its block";
