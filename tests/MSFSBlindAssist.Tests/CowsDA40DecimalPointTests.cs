@@ -51,4 +51,17 @@ public class CowsDA40DecimalPointTests
 
         if (shown is not null) Assert.DoesNotMatch(DecimalComma, shown);
     }
+
+    [Theory]
+    [InlineData(4.5, "4.5 miles")]
+    [InlineData(9.94, "9.9 miles")]
+    [InlineData(14.2, "14 miles")]
+    public void TheDistanceToAWaypointShowsADecimalPoint(double nm, string expected)
+    {
+        foreach (string culture in new[] { "sv-SE", "de-DE" })
+        {
+            Assert.Equal(expected,
+                TestCulture.Run(culture, () => MSFSBlindAssist.Aircraft.G1000.G1000Waypoints.NauticalMilesText(nm)));
+        }
+    }
 }

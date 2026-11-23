@@ -130,7 +130,9 @@ internal sealed class G1000Waypoints
     }
 
     /// <summary>A distance in nautical miles, as the G1000 shows it by default ("4.5 miles", "14 miles").</summary>
-    internal static string NauticalMilesText(double nm) => nm < 10 ? $"{nm:0.0} miles" : $"{nm:0} miles";
+    internal static string NauticalMilesText(double nm) => nm < 10
+        ? FormattableString.Invariant($"{nm:0.0} miles")
+        : FormattableString.Invariant($"{nm:0} miles");
 
     /// <summary>
     /// The active leg's name and the one before it, read from the FLIGHT PLAN rather than from
