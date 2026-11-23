@@ -589,7 +589,19 @@ Multi-method screen reader communication. Each message goes to the first output 
 - Fallback SAPI TTS when screen readers unavailable
 
 Also: configurable announcement modes (ScreenReader vs SAPI) and settings persistence for the mode.
-`ActiveScreenReaderName` gives the same order for the Settings status box.
+`ActiveScreenReaderName` gives the same order for the Settings status box, and `DetectionStatusText` its
+two lines.
+
+**What SAPI mode means, per reader.** NVDA and Tolk's readers speak in SAPI mode too: the reader branch is
+entered when the mode is ScreenReader *or* `IsAnyScreenReaderRunning()`. That is older behaviour, left as
+it is. ZDSR is deliberately not counted there and is tried only when `ZdsrAllowed(mode)` (ScreenReader
+mode): until ZDSR support a ZDSR user always heard SAPI, and choosing SAPI is how they keep it.
+
+**TolkWrapper counts its users.** Tolk's load state is process-wide and not reference counted (measured
+2026-11-23 on the bundled `Tolk.dll`: `Tolk_Load` twice, `Tolk_Unload` once, `Tolk_IsLoaded` false). The
+Settings status check creates and disposes a `TolkWrapper` of its own, which used to unload the
+announcer's session: JAWS users fell back to SAPI after opening Settings. `SharedLoadCount` (in
+`TolkWrapper.cs`) loads Tolk for the first wrapper and unloads it only when the last one is disposed.
 
 ### ZdsrWrapper (ZDSR speech and braille)
 **File:** `Accessibility/ZdsrWrapper.cs`
@@ -603,14 +615,27 @@ ZDSR's client API is `ZDSRAPI_x64.dll` (exports `InitTTS`, `Speak`, `GetSpeakSta
   this: copies older than ZDSR 26.6 stop working, and ZDSR reads its `ZDSRAPI.ini` overrides from the DLL's
   folder. Until ZDSRMain.exe has been seen, nothing is loaded and the process list is checked at most every
   5 s; NVDA users with ZDSR installed never load it.
+- **Where it may be loaded from.** Not elevated: from the running ZDSRMain.exe's folder, wherever that is
+  (a portable copy). Elevated (`Environment.IsPrivilegedProcess`): only from under the Program Files
+  folders (`ZdsrWrapper.MayLoadFrom`), which only an administrator can write to. The process is matched by
+  name alone, so without this a non-elevated program could name itself ZDSRMain.exe, put its own
+  `ZDSRAPI_x64.dll` beside it and have an elevated BA load it. A refused folder is named in the load
+  warning in the log.
 - **Loaded once, never freed.** The DLL starts its own thread (it reconnects to ZDSR by itself after a
   ZDSR restart), so freeing it could pull code out from under that thread. `ScreenReaderAnnouncer.Dispose`
   releases nothing for ZDSR.
 - **Detection.** Running means `GetSpeakState` answers 3 (speaking) or 4 (not speaking); 2 is "not running
   or not licensed". A fresh process gets 2 until `InitTTS` has been called, so the wrapper calls
-  `InitTTS(0, null, true)` before the state query whenever ZDSR is not known to be up (first check, and
-  after ZDSR closed or restarted). A verdict is reused for 1 s; a failed `Speak` marks ZDSR down at once,
-  so that message falls through to Tolk or SAPI.
+  `InitTTS(0, null, true)` before the state query whenever ZDSR may have been restarted: when it is not
+  known to be up (first check, and after ZDSR was seen closed), and when it has not answered for 3 s
+  (`ReinitAfterIdleMs`). The second case is a restart nobody saw: the check only runs when something is
+  announced, so ZDSR can close and come back in a quiet stretch. `ZDSRAPI.txt` allows it ("can be called
+  repeatedly"); whether a restarted ZDSR loses the settings without it has not been measured. The
+  `InitTTS` result is logged when it changes, not on every check. A verdict is reused for 1 s; a failed
+  `Speak` marks ZDSR down at once, so that message falls through to Tolk or SAPI.
+- **Status box.** `UnavailableReason` gives the Settings status box a sentence when ZDSRMain.exe is running
+  but cannot be spoken through (API not loaded, version mismatch, "not running or not licensed"), so an
+  unlicensed or too-old ZDSR is never reported as "No screen reader detected".
 - **Channel and interrupts.** Channel 0 is ZDSR's own channel (the reader's voice, like the NVDA
   controller). `keyDownInterrupt` is true, so a key press stops BA's speech as it stops a screen reader's
   own. `AnnounceImmediate` passes `bInterrupt` true (clear ZDSR's queue, speak now); `Announce` passes
@@ -620,7 +645,9 @@ ZDSR's client API is `ZDSRAPI_x64.dll` (exports `InitTTS`, `Speak`, `GetSpeakSta
   brailles for JAWS. Return 3 (no display) is ignored.
 - **Cost.** Measured live (2026-11-23, medium-integrity caller, ZDSR at high integrity): first detection
   with the load about 40 ms; `InitTTS` 8 ms; `GetSpeakState` 0.02 ms; `Speak` 0.3 to 2 ms. With ZDSR
-  closed, every call returns 2 in under 1 ms.
+  closed, every call returns 2 in under 1 ms. The look at the process list that JAWS and SAPI users pay at
+  most every 5 s (`Process.GetProcessesByName`) took 3 ms with 306 processes (2026-11-23, MSFS not
+  running), which is why it stays on the announcing thread.
 - **Tests.** `ZdsrWrapperTests` drive the wrapper through a fake `IZdsrApi`; the real DLL is exercised only
   live, with ZDSR running.
 

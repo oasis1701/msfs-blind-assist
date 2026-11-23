@@ -53,12 +53,13 @@ public class ZdsrWrapperTests
         public long Now = 100_000;
         public readonly FakeApi Api = new();
         public bool Found = true;
+        public bool ProcessRunning = true;
         public int Locates;
         public readonly ZdsrWrapper Zdsr;
 
         public Rig()
         {
-            Zdsr = new ZdsrWrapper(() => { Locates++; return Found ? Api : null; }, () => Now);
+            Zdsr = new ZdsrWrapper(() => { Locates++; return Found ? Api : null; }, () => Now, () => ProcessRunning);
         }
 
         public void Advance(long ms) => Now += ms;
@@ -235,6 +236,160 @@ public class ZdsrWrapperTests
         Assert.True(rig.Zdsr.IsRunning);
         Assert.False(rig.Zdsr.Speak("", false));
         Assert.Empty(rig.Api.Spoken);
+    }
+
+    [Fact]
+    public void A_restart_nobody_saw_gets_the_channel_settings_again()
+    {
+        // The check only runs when something is announced: ZDSR can close and come back in a quiet stretch
+        // with the wrapper still believing it is up.
+        var rig = new Rig();
+        Assert.True(rig.Zdsr.IsRunning);
+        Assert.Single(rig.Api.Inits);
+
+        rig.Advance(ZdsrWrapper.ReinitAfterIdleMs);
+        Assert.True(rig.Zdsr.IsRunning);
+
+        Assert.Equal(2, rig.Api.Inits.Count);
+    }
+
+    [Fact]
+    public void While_ZDSR_keeps_answering_the_channel_settings_are_not_sent_again()
+    {
+        var rig = new Rig();
+        Assert.True(rig.Zdsr.IsRunning);
+
+        // A busy stretch: a check each second.
+        for (int i = 0; i < 6; i++)
+        {
+            rig.Advance(ZdsrWrapper.VerdictCacheMs);
+            Assert.True(rig.Zdsr.IsRunning);
+        }
+        // A spoken message counts as an answer too: 4 s since the last check, 2 s since the message.
+        rig.Advance(2000);
+        Assert.True(rig.Zdsr.Speak("Flaps 2", false));
+        rig.Advance(2000);
+        Assert.True(rig.Zdsr.IsRunning);
+
+        Assert.Single(rig.Api.Inits);
+    }
+
+    [Theory]
+    [InlineData(false, @"D:\Portable\ZDSR", true)]                       // not elevated: anywhere
+    [InlineData(true, @"C:\Program Files (x86)\zdsr\zdsr", true)]
+    [InlineData(true, @"c:\program files\ZDSR", true)]
+    [InlineData(true, @"D:\Portable\ZDSR", false)]
+    [InlineData(true, @"C:\Users\pilot\AppData\Local\Temp", false)]
+    [InlineData(true, @"C:\Program Files (x86)\..\Users\pilot\zdsr", false)] // ".." resolved first
+    [InlineData(true, @"C:\Program Files (x86) evil\zdsr", false)]          // a prefix, not a parent
+    [InlineData(true, @"C:\Program Files (x86)", false)]                    // the root itself holds no ZDSR
+    public void An_elevated_BA_loads_ZDSRs_API_only_from_under_Program_Files(bool elevated, string folder, bool allowed)
+    {
+        string?[] roots = { @"C:\Program Files", @"C:\Program Files (x86)\", null, "" };
+        Assert.Equal(allowed, ZdsrWrapper.MayLoadFrom(folder, elevated, roots));
+    }
+
+    [Fact]
+    public void A_running_ZDSR_that_cannot_be_used_is_named_with_its_reason()
+    {
+        // No process: nothing to say, whatever the rest.
+        Assert.Null(ZdsrWrapper.DescribeUnavailable(false, false, int.MinValue));
+        Assert.Null(ZdsrWrapper.DescribeUnavailable(false, true, ZdsrWrapper.ResultNotRunning));
+        // Loaded but never asked: nothing known yet.
+        Assert.Null(ZdsrWrapper.DescribeUnavailable(true, true, int.MinValue));
+
+        Assert.Contains("ZDSRAPI_x64.dll", ZdsrWrapper.DescribeUnavailable(true, false, int.MinValue));
+        Assert.Contains("not licensed", ZdsrWrapper.DescribeUnavailable(true, true, ZdsrWrapper.ResultNotRunning));
+        Assert.Contains("different versions", ZdsrWrapper.DescribeUnavailable(true, true, 1));
+        Assert.Contains("8 (command not delivered)", ZdsrWrapper.DescribeUnavailable(true, true, 8));
+    }
+
+    [Fact]
+    public void The_wrapper_gives_the_reason_only_while_ZDSR_runs_and_does_not_speak()
+    {
+        // Running but unlicensed.
+        var rig = new Rig();
+        rig.Api.SpeakState = ZdsrWrapper.ResultNotRunning;
+        Assert.False(rig.Zdsr.IsRunning);
+        Assert.Contains("not licensed", rig.Zdsr.UnavailableReason);
+
+        // Its API was loaded earlier, and ZDSR has since been closed.
+        rig.ProcessRunning = false;
+        Assert.Null(rig.Zdsr.UnavailableReason);
+
+        // Running, and its API cannot be loaded.
+        var noApi = new Rig { Found = false };
+        Assert.False(noApi.Zdsr.IsRunning);
+        Assert.Contains("could not be loaded", noApi.Zdsr.UnavailableReason);
+
+        // Speaking: no reason.
+        var fine = new Rig();
+        Assert.True(fine.Zdsr.IsRunning);
+        Assert.Null(fine.Zdsr.UnavailableReason);
+    }
+
+    [Fact]
+    public void ZDSR_speaks_in_Screen_Reader_mode_only_so_SAPI_mode_keeps_the_Windows_voice()
+    {
+        Assert.True(ScreenReaderAnnouncer.ZdsrAllowed(AnnouncementMode.ScreenReader));
+        Assert.False(ScreenReaderAnnouncer.ZdsrAllowed(AnnouncementMode.SAPI));
+    }
+
+    [Fact]
+    public void The_status_box_says_why_a_running_ZDSR_is_not_used_instead_of_no_screen_reader()
+    {
+        string nl = Environment.NewLine;
+        Assert.Equal($"Screen reader detected: ZDSR{nl}Choose 'Screen Reader' for best experience.",
+            ScreenReaderAnnouncer.DetectionStatusText("ZDSR", null, true));
+        // A detected reader wins over a ZDSR problem (JAWS running beside an unlicensed ZDSR).
+        Assert.StartsWith("Screen reader detected: JAWS",
+            ScreenReaderAnnouncer.DetectionStatusText("JAWS", "ZDSR is running but ...", true));
+        Assert.Equal($"ZDSR is running but not accepting speech.{nl}Windows speech (SAPI) is used instead.",
+            ScreenReaderAnnouncer.DetectionStatusText(null, "ZDSR is running but not accepting speech.", true));
+        Assert.Equal($"No screen reader detected.{nl}SAPI mode recommended for speech feedback.",
+            ScreenReaderAnnouncer.DetectionStatusText(null, null, true));
+        Assert.Equal($"Unable to initialize screen reader detection.{nl}SAPI mode will be used as fallback.",
+            ScreenReaderAnnouncer.DetectionStatusText(null, null, false));
+    }
+
+    [Fact]
+    public void A_second_Tolk_wrapper_joins_the_session_and_only_the_last_one_unloads_it()
+    {
+        var count = new SharedLoadCount();
+        int loads = 0, unloads = 0;
+        bool loaded = false;
+        void Load() { loads++; loaded = true; }
+        void Unload() { unloads++; loaded = false; }
+
+        Assert.True(count.Acquire(Load, () => loaded));   // the announcer
+        Assert.True(count.Acquire(Load, () => loaded));   // the Settings status check
+        Assert.Equal(1, loads);
+
+        count.Release(Unload);                            // Settings closes
+        Assert.Equal(0, unloads);
+        Assert.True(loaded);
+
+        count.Release(Unload);                            // the app exits
+        Assert.Equal(1, unloads);
+        count.Release(Unload);                            // a release nobody acquired
+        Assert.Equal(1, unloads);
+
+        Assert.True(count.Acquire(Load, () => loaded));   // loads again after a full unload
+        Assert.Equal(2, loads);
+    }
+
+    [Fact]
+    public void A_Tolk_load_that_fails_is_not_counted_so_the_next_wrapper_tries_again()
+    {
+        var count = new SharedLoadCount();
+        int loads = 0, unloads = 0;
+
+        Assert.False(count.Acquire(() => loads++, () => false));
+        Assert.False(count.Acquire(() => loads++, () => false));
+        Assert.Equal(2, loads);
+
+        count.Release(() => unloads++);
+        Assert.Equal(0, unloads);
     }
 
     [Theory]

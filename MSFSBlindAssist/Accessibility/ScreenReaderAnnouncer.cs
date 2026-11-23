@@ -20,7 +20,8 @@ public class ScreenReaderAnnouncer : IDisposable
     /// </summary>
     public bool Suppressed { get; set; } = false;
 
-    // Screen reader integration components, tried in this order: NVDA, ZDSR, Tolk (JAWS and the rest), then SAPI.
+    // Screen reader integration components, tried in this order: NVDA, ZDSR (Screen Reader mode only, see
+    // ZdsrAllowed), Tolk (JAWS and the rest), then SAPI.
     private TolkWrapper? tolkWrapper;
     private NvdaControllerWrapper? nvdaWrapper;
     private ZdsrWrapper? zdsrWrapper;
@@ -150,8 +151,26 @@ public class ScreenReaderAnnouncer : IDisposable
         {
             bool nvdaRunning = nvdaWrapper?.IsRunning == true;
             bool tolkRunning = tolkWrapper?.IsScreenReaderRunning() == true;
-            // ZDSR last and only when needed: until ZDSR is found its check looks at the process list.
-            return nvdaRunning || tolkRunning || zdsrWrapper?.IsRunning == true;
+            // ZDSR is deliberately NOT counted: this is what lets a reader override SAPI mode, and a ZDSR user who
+            // chose SAPI keeps the Windows voice they had before ZDSR support (ZdsrAllowed).
+            return nvdaRunning || tolkRunning;
+        }
+
+        /// <summary>Whether announcements may go to ZDSR: only in Screen Reader mode. NVDA and Tolk's readers
+        /// speak in SAPI mode too (IsAnyScreenReaderRunning, older behaviour, left as it is); ZDSR does not,
+        /// so choosing SAPI is how a ZDSR user keeps BA in the Windows voice.</summary>
+        internal static bool ZdsrAllowed(AnnouncementMode mode) => mode == AnnouncementMode.ScreenReader;
+
+        /// <summary>The two lines of the Settings status box. <paramref name="detected"/> is
+        /// <see cref="ActiveScreenReaderName"/>'s answer; <paramref name="zdsrProblem"/> is
+        /// ZdsrWrapper.UnavailableReason, a sentence saying why a running ZDSR cannot be used, or null.</summary>
+        internal static string DetectionStatusText(string? detected, string? zdsrProblem, bool tolkLoaded)
+        {
+            string nl = Environment.NewLine;
+            if (detected != null) return $"Screen reader detected: {detected}{nl}Choose 'Screen Reader' for best experience.";
+            if (zdsrProblem != null) return $"{zdsrProblem}{nl}Windows speech (SAPI) is used instead.";
+            if (tolkLoaded) return $"No screen reader detected.{nl}SAPI mode recommended for speech feedback.";
+            return $"Unable to initialize screen reader detection.{nl}SAPI mode will be used as fallback.";
         }
 
         /// <summary>The screen reader announcements go to, in the order Announce tries them (NVDA, ZDSR, then
@@ -195,7 +214,8 @@ public class ScreenReaderAnnouncer : IDisposable
             if (zdsrWrapper != null)
             {
                 bool zdsrRunning = zdsrWrapper.IsRunning;
-                Log.Debug("Accessibility", $"ZDSR running: {zdsrRunning}, API: {zdsrWrapper.Location ?? "not loaded"}");
+                Log.Debug("Accessibility", $"ZDSR running: {zdsrRunning}, used in this mode: {ZdsrAllowed(currentMode)}, "
+                    + $"API: {zdsrWrapper.Location ?? "not loaded"}");
             }
 
             // Test Tolk
@@ -267,7 +287,7 @@ public class ScreenReaderAnnouncer : IDisposable
                     }
 
                     // Second priority: ZDSR through its own API (queued: spoken when ZDSR is idle)
-                    if (!success && zdsrWrapper?.IsRunning == true)
+                    if (!success && ZdsrAllowed(currentMode) && zdsrWrapper?.IsRunning == true)
                     {
                         success = zdsrWrapper.Speak(message, false);
                     }
@@ -331,7 +351,7 @@ public class ScreenReaderAnnouncer : IDisposable
                     }
 
                     // Second priority: ZDSR through its own API (interrupt clears ZDSR's queue and current speech)
-                    if (!success && zdsrWrapper?.IsRunning == true)
+                    if (!success && ZdsrAllowed(currentMode) && zdsrWrapper?.IsRunning == true)
                     {
                         success = zdsrWrapper.Speak(message, true);
                     }

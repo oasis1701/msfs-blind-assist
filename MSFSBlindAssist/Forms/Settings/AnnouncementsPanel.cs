@@ -42,7 +42,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         {
             Text = "General",
             Location = new System.Drawing.Point(12, 12),
-            Size = new System.Drawing.Size(460, 300),
+            Size = new System.Drawing.Size(460, 316),
             AccessibleName = "General",
             AccessibleDescription = "Announcement mode and location announcement settings",
         };
@@ -78,9 +78,13 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         _statusBox = new TextBox
         {
             Location = new System.Drawing.Point(12, 112),
-            Size = new System.Drawing.Size(420, 40),
+            // Three lines: the "ZDSR is running, but ..." status wraps onto a third.
+            Size = new System.Drawing.Size(420, 56),
             Multiline = true,
             ReadOnly = true,
+            // Explicit on purpose: a read-only TextBox ignores ForeColor until BackColor is set (WinForms
+            // leaves WM_CTLCOLORSTATIC to the edit control otherwise), and the status colour below is lost.
+            BackColor = SystemColors.Control,
             AccessibleName = "Screen Reader Status",
             Text = "Checking screen reader status..."
         };
@@ -88,14 +92,14 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         var intervalLabel = new Label
         {
             Text = "Announce nearest city automatically:",
-            Location = new System.Drawing.Point(12, 167),
+            Location = new System.Drawing.Point(12, 183),
             Size = new System.Drawing.Size(250, 20),
             AccessibleName = "Announce nearest city automatically label"
         };
 
         _nearestCityIntervalCombo = new ComboBox
         {
-            Location = new System.Drawing.Point(270, 164),
+            Location = new System.Drawing.Point(270, 180),
             Size = new System.Drawing.Size(170, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Nearest city announcement interval",
@@ -116,7 +120,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         _timeWithSecondsCheck = new CheckBox
         {
             Text = "Include seconds in time announcements (Output Z / Shift+Z)",
-            Location = new System.Drawing.Point(12, 207),
+            Location = new System.Drawing.Point(12, 223),
             Size = new System.Drawing.Size(420, 25),
             AccessibleName = "Include seconds in time announcements",
             AccessibleDescription = "When checked, the local-time and Zulu-time hotkeys speak hours, minutes, and seconds. Default is hours and minutes only."
@@ -127,7 +131,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         _gsxBackgroundMonitoring = new CheckBox
         {
             Text = "Announce GSX tooltips when Access GSX window is closed",
-            Location = new System.Drawing.Point(12, 235),
+            Location = new System.Drawing.Point(12, 251),
             Size = new System.Drawing.Size(440, 30),
             AutoSize = false,
             AccessibleName = "Announce GSX tooltips in background",
@@ -140,7 +144,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         _altitudeCalloutsCheck = new CheckBox
         {
             Text = "Announce 1,000-foot altitude crossings",
-            Location = new System.Drawing.Point(12, 267),
+            Location = new System.Drawing.Point(12, 283),
             Size = new System.Drawing.Size(440, 25),
             AccessibleName = "Announce 1,000-foot altitude crossings",
             AccessibleDescription = "When checked, each thousand feet crossed in a climb or descent is spoken. Default is on."
@@ -160,7 +164,6 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
 
     private void UpdateScreenReaderStatus()
     {
-        string nl = Environment.NewLine;
         try
         {
             // The order the announcer tries them: NVDA, ZDSR, then what Tolk detects (JAWS and the rest).
@@ -169,33 +172,29 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
             {
                 nvdaRunning = nvdaTest.IsRunning;
             }
-            bool zdsrRunning = !nvdaRunning && new ZdsrWrapper().IsRunning;
+            var zdsr = new ZdsrWrapper();
+            bool zdsrRunning = !nvdaRunning && zdsr.IsRunning;
 
+            // A wrapper of its own is safe: TolkWrapper counts its users, so disposing this one does not
+            // unload the Tolk session the announcer speaks through.
             using (var tolkTest = new TolkWrapper())
             {
                 bool tolkLoaded = tolkTest.Initialize();
                 string? tolkReader = tolkLoaded && tolkTest.IsScreenReaderRunning() ? tolkTest.DetectedScreenReader : null;
                 string? detected = ScreenReaderAnnouncer.ActiveScreenReaderName(nvdaRunning, zdsrRunning, tolkReader);
-                if (detected != null)
-                {
-                    _statusBox.Text = $"Screen reader detected: {detected}{nl}Choose 'Screen Reader' for best experience.";
-                    _statusBox.ForeColor = Color.DarkGreen;
-                }
-                else if (tolkLoaded)
-                {
-                    _statusBox.Text = $"No screen reader detected.{nl}SAPI mode recommended for speech feedback.";
-                    _statusBox.ForeColor = Color.DarkOrange;
-                }
-                else
-                {
-                    _statusBox.Text = $"Unable to initialize screen reader detection.{nl}SAPI mode will be used as fallback.";
-                    _statusBox.ForeColor = Color.Red;
-                }
+                // A ZDSR that is running but cannot be spoken through (not licensed, too old, its API refused)
+                // is named with its reason, never reported as "No screen reader detected".
+                string? zdsrProblem = detected == null && !nvdaRunning ? zdsr.UnavailableReason : null;
+
+                _statusBox.Text = ScreenReaderAnnouncer.DetectionStatusText(detected, zdsrProblem, tolkLoaded);
+                _statusBox.ForeColor = detected != null ? Color.DarkGreen
+                    : zdsrProblem != null || tolkLoaded ? Color.DarkOrange
+                    : Color.Red;
             }
         }
         catch (Exception ex)
         {
-            _statusBox.Text = $"Error checking screen reader: {ex.Message}{nl}SAPI mode recommended.";
+            _statusBox.Text = $"Error checking screen reader: {ex.Message}{Environment.NewLine}SAPI mode recommended.";
             _statusBox.ForeColor = Color.Red;
         }
     }

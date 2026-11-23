@@ -97,9 +97,11 @@ The first group asks you to *"Choose how announcements are delivered"*:
 - **Screen Reader (NVDA, JAWS, etc.) - Recommended.** BA sends its announcements to your screen reader, so they come out in your normal voice, at your normal speed, and on your braille display if you use one. This is the right choice for almost everyone.
 - **SAPI (Windows Speech) - Fallback.** BA speaks with the built-in Windows voice instead. Use this only if you have no screen reader running, or if your screen reader is not working with BA.
 
-Below the two choices is a read-only status box, which you can reach with Tab, that tells you whether BA found a screen reader, for example *"Screen reader detected: NVDA"* or *"Screen reader detected: ZDSR"*. If it says no screen reader was detected, BA recommends SAPI mode so that you still hear speech.
+Below the two choices is a read-only status box, which you can reach with Tab, that tells you whether BA found a screen reader, for example *"Screen reader detected: NVDA"* or *"Screen reader detected: ZDSR"*. If it says no screen reader was detected, BA recommends SAPI mode so that you still hear speech. If ZDSR is running but BA cannot speak through it, the box says so and gives the reason, for example that ZDSR reports it is not licensed.
 
 BA looks for a screen reader in this order: NVDA, then ZDSR (Zhengdu Screen Reader, 争渡读屏), then JAWS and the other readers it reaches through a helper library. It uses the first one it finds that is running. With ZDSR, BA's announcements come out in ZDSR's own voice and also show on your braille display for a moment, and a key press stops them just as it stops ZDSR's own speech. If ZDSR closes while you fly, BA switches to the next reader, or to Windows speech, within about a second, and goes back to ZDSR when it is running again.
+
+If ZDSR is your screen reader and you would rather keep BA in the Windows voice, as it was before BA could speak through ZDSR, choose SAPI: BA speaks through ZDSR only when Screen Reader is chosen. NVDA and JAWS are different: while one of them is running, BA speaks through it whichever of the two you choose.
 
 ### Other announcement options {#other-announcement-options}
 

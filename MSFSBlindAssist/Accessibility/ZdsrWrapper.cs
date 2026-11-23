@@ -18,11 +18,13 @@ internal interface IZdsrApi
 
 /// <summary>
 /// ZDSR (争渡读屏, Zhengdu Screen Reader) through its own client API, ZDSRAPI_x64.dll. Tolk has no ZDSR driver, so
-/// before this a ZDSR user heard SAPI. ScreenReaderAnnouncer tries this after NVDA and before Tolk.
+/// before this a ZDSR user heard SAPI. ScreenReaderAnnouncer tries this after NVDA and before Tolk, in Screen
+/// Reader mode only (ScreenReaderAnnouncer.ZdsrAllowed).
 ///
 /// <para>The DLL is never shipped or copied: it is loaded from the folder of the running ZDSRMain.exe (ZDSR's docs
 /// ask for that; older copies stop working when ZDSR updates, and ZDSR reads its ZDSRAPI.ini overrides from the
-/// DLL's folder). It is loaded once per process, only after ZDSRMain.exe has been seen running, and never freed: it
+/// DLL's folder); an elevated BA accepts that folder only under Program Files (<see cref="MayLoadFrom"/>). It is
+/// loaded once per process, only after ZDSRMain.exe has been seen running, and never freed: it
 /// runs a thread of its own. Speech goes to ZDSR's own channel (InitTTS type 0, the reader's own voice, like the
 /// NVDA controller), key presses interrupt it as they do a screen reader's own speech, and the interrupt flag of
 /// each message is passed through unchanged. Every spoken message is also brailled as a flash message, as Tolk
@@ -48,23 +50,32 @@ public sealed class ZdsrWrapper
     internal const long VerdictCacheMs = 1000;
     /// <summary>How often, until ZDSR has been found once, the process list is checked for ZDSRMain.exe.</summary>
     internal const long LocateIntervalMs = 5000;
+    /// <summary>After this long without an answer from ZDSR, the next check applies the channel settings again.
+    /// The check only runs when something is announced, so ZDSR can close and come back between two announcements
+    /// without ever being seen down; far shorter than a ZDSR restart, far longer than the gap between the checks
+    /// of a busy stretch (one a second).</summary>
+    internal const long ReinitAfterIdleMs = 3000;
 
     private readonly object _gate = new();
     private readonly Func<IZdsrApi?> _locate;
     private readonly Func<long> _clockMs;
+    private readonly Func<bool> _processRunning;
 
     private IZdsrApi? _api;
     private long _nextLocateMs;
     private long _verdictUntilMs;
+    private long _lastContactMs;
     private bool _running;
     private int _lastResult = int.MinValue;
+    private int _lastInitResult = int.MinValue;
 
-    public ZdsrWrapper() : this(ZdsrNativeApi.TryLocate, () => Environment.TickCount64) { }
+    public ZdsrWrapper() : this(ZdsrNativeApi.TryLocate, () => Environment.TickCount64, ZdsrNativeApi.IsZdsrProcessRunning) { }
 
-    internal ZdsrWrapper(Func<IZdsrApi?> locate, Func<long> clockMs)
+    internal ZdsrWrapper(Func<IZdsrApi?> locate, Func<long> clockMs, Func<bool> processRunning)
     {
         _locate = locate;
         _clockMs = clockMs;
+        _processRunning = processRunning;
     }
 
     /// <summary>True while ZDSR is running, licensed and answering its API.</summary>
@@ -88,17 +99,49 @@ public sealed class ZdsrWrapper
                 }
                 _verdictUntilMs = now + VerdictCacheMs;
 
-                // (Re)apply the channel settings whenever ZDSR is not known to be up: on the first check, and after
-                // ZDSR was closed or restarted. InitTTS may be called any number of times.
-                if (!_running)
+                // (Re)apply the channel settings whenever ZDSR may have been restarted: when it is not known to be
+                // up (the first check, and after it was seen closed), and when it has not answered for
+                // ReinitAfterIdleMs (a restart nobody saw). ZDSRAPI.txt: InitTTS "can be called repeatedly".
+                if (!_running || now - _lastContactMs >= ReinitAfterIdleMs)
                 {
                     int init = Call(api => api.InitTTS(ZdsrChannel, null, true));
-                    if (init != ResultSuccess) Log.Debug("Accessibility", $"ZDSR InitTTS returned {Describe(init)}");
+                    // Logged when it changes, not on every check: with ZDSR closed this runs once a second.
+                    if (init != ResultSuccess && init != _lastInitResult)
+                    {
+                        Log.Debug("Accessibility", $"ZDSR InitTTS returned {Describe(init)}");
+                    }
+                    _lastInitResult = init;
                 }
 
                 int state = Call(api => api.GetSpeakState());
                 Record(IsRunningState(state), state);
+                if (_running) _lastContactMs = now;
                 return _running;
+            }
+        }
+    }
+
+    /// <summary>Why ZDSR, although ZDSRMain.exe is running, is not being spoken through, as a sentence for the
+    /// Settings status box; null when ZDSR speaks, is not running at all, or has not been checked yet (read
+    /// <see cref="IsRunning"/> first).</summary>
+    public string? UnavailableReason
+    {
+        get
+        {
+            lock (_gate)
+            {
+                if (_running) return null;
+                bool processRunning;
+                try
+                {
+                    processRunning = _processRunning();
+                }
+                catch (Exception ex)
+                {
+                    Log.Debug("Accessibility", $"ZDSR process check failed: {ex.GetType().Name}: {ex.Message}");
+                    processRunning = false;
+                }
+                return DescribeUnavailable(processRunning, _api != null, _lastResult);
             }
         }
     }
@@ -127,6 +170,7 @@ public sealed class ZdsrWrapper
                 _verdictUntilMs = _clockMs() + VerdictCacheMs;
                 return false;
             }
+            _lastContactMs = _clockMs();
             // 3 means no braille display is connected; the speech still counts.
             Call(api => api.Braille(text, true));
             return true;
@@ -161,6 +205,60 @@ public sealed class ZdsrWrapper
         if (!string.IsNullOrWhiteSpace(runningExePath)) Add(Path.GetDirectoryName(runningExePath));
         if (!string.IsNullOrWhiteSpace(programFilesX86)) Add(Path.Combine(programFilesX86, "zdsr", "zdsr"));
         return folders;
+    }
+
+    /// <summary>Whether ZDSR's API may be loaded from <paramref name="folder"/>. Not elevated: from anywhere (a
+    /// program that can start a process named ZDSRMain can already do whatever BA can). Elevated: only from under
+    /// <paramref name="protectedRoots"/> (the Program Files folders, which only an administrator can write to), so
+    /// a non-elevated program cannot get its own DLL loaded into an elevated BA by naming itself ZDSRMain.exe.</summary>
+    internal static bool MayLoadFrom(string folder, bool elevated, IEnumerable<string?> protectedRoots)
+        => !elevated || IsUnderProtectedRoot(folder, protectedRoots);
+
+    /// <summary>True when <paramref name="folder"/>, with any ".." resolved, lies below one of the roots.</summary>
+    internal static bool IsUnderProtectedRoot(string folder, IEnumerable<string?> protectedRoots)
+    {
+        string full;
+        try
+        {
+            full = Path.GetFullPath(folder).TrimEnd('\\', '/');
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+        foreach (string? root in protectedRoots)
+        {
+            if (string.IsNullOrWhiteSpace(root)) continue;
+            string rootFull;
+            try
+            {
+                rootFull = Path.GetFullPath(root).TrimEnd('\\', '/');
+            }
+            catch (Exception)
+            {
+                continue;
+            }
+            if (full.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>The sentence behind <see cref="UnavailableReason"/>. <paramref name="lastResult"/> is the last
+    /// code ZDSR answered a state query or a Speak with, int.MinValue when it was never asked.</summary>
+    internal static string? DescribeUnavailable(bool processRunning, bool apiLoaded, int lastResult)
+    {
+        if (!processRunning) return null;
+        if (!apiLoaded)
+        {
+            return $"ZDSR is running, but its speech interface ({DllName}) could not be loaded. See Troubleshooting in the guide.";
+        }
+        return lastResult switch
+        {
+            int.MinValue => null,
+            1 => "ZDSR is running, but it and its speech interface are different versions. Update ZDSR.",
+            ResultNotRunning => "ZDSR is running but not accepting speech: it reports that it is not licensed, or it is still starting.",
+            _ => $"ZDSR is running but did not accept speech: code {Describe(lastResult)}.",
+        };
     }
 
     /// <summary>A ZDSR return code in words, for the log.</summary>
@@ -290,9 +388,22 @@ internal sealed class ZdsrNativeApi : IZdsrApi
             }
 
             var problems = new List<string>();
+            bool elevated = Environment.IsPrivilegedProcess;
+            string?[] protectedRoots =
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                Environment.GetEnvironmentVariable("ProgramW6432"),
+            };
             foreach (string folder in ZdsrWrapper.CandidateFolders(exePath,
                          Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)))
             {
+                if (!ZdsrWrapper.MayLoadFrom(folder, elevated, protectedRoots))
+                {
+                    problems.Add($"{folder} refused: MSFS Blind Assist is running as administrator, "
+                                 + "and then loads ZDSR's API only from under Program Files");
+                    continue;
+                }
                 string dll = Path.Combine(folder, ZdsrWrapper.DllName);
                 if (!File.Exists(dll))
                 {
@@ -323,6 +434,21 @@ internal sealed class ZdsrNativeApi : IZdsrApi
                 Log.Warn("Accessibility", problem);
             }
             return null;
+        }
+    }
+
+    /// <summary>Whether a ZDSRMain.exe is in the process list right now. A full process enumeration (about 3 ms
+    /// with 300 processes, measured 2026-11-23): for the Settings status box, never the announce path.</summary>
+    internal static bool IsZdsrProcessRunning()
+    {
+        Process[] processes = Process.GetProcessesByName(ZdsrWrapper.ProcessName);
+        try
+        {
+            return processes.Length > 0;
+        }
+        finally
+        {
+            foreach (Process process in processes) process.Dispose();
         }
     }
 
