@@ -25,10 +25,7 @@ The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Pr
 Pure-logic code is covered by an xUnit characterization suite at `tests/MSFSBlindAssist.Tests`
 (run: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`).
 CI (`.github/workflows/tests.yml`) runs it on every PR and on pushes to main.
-Sim-facing behavior cannot be unit-tested: when changing SimConnect/UI paths, build, then
-describe an in-sim test plan in the PR — the human owner of the repo runs it. New pure logic
-(formatters, parsers, geometry, classifiers) should get characterization tests; don't add
-speculative tests for sim-driven paths.
+The repo's owner runs a PR's in-sim test plan; don't add speculative tests for sim-driven paths.
 
 - [CORE-5] Sim-facing paths are verified only in a live sim: a PR touching them describes an in-sim test plan. Pure logic gets characterization tests in `tests/MSFSBlindAssist.Tests` (CI-enforced). Full: docs/invariants/core.md#core-5
 
@@ -143,7 +140,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [volanta.md](docs/volanta.md) | Extras, Volanta: Volanta's public web map read in a hidden WebView2, the traffic, friends and ATC tabs, logging in | volanta |
 | [updates.md](docs/updates.md) | Release and preview channels, the updater, release workflows, the startup data check | updates |
 | [visual-guidance.md](docs/visual-guidance.md) | Visual landing guidance (dual tone), hand fly, the liftoff handoff | visual-guidance |
-| [waypoint-flight-director.md](docs/waypoint-flight-director.md) | The en-route audio flight director to the tracked waypoint slots: dual tone, crossing-altitude constraints, per-aircraft tuning | waypoint-flight-director |
+| [waypoint-flight-director.md](docs/waypoint-flight-director.md) | The en-route audio flight director to the tracked waypoint slots | waypoint-flight-director |
 | [audio.md](docs/audio.md) | Which Windows audio endpoint guidance tones play on | audio-output |
 | [fenix-increment-decrement.md](docs/fenix-increment-decrement.md) | Fenix knob and push/pull counters (FCU, EFIS and ISIS baro) | — |
 | [a32nx.md](docs/a32nx.md) | FlyByWire A32NX, Fenix A320, Headwind A330: panels, MCDU, DCDU, cockpit controls | a32nx-fenix, fenix-data, fenix-channel, fenix-channel-displays, fenix-windows, fcu-callouts, tcas-ra, a32nx-mcdu, fbw-arinc |
