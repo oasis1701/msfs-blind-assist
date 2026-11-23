@@ -18,17 +18,14 @@ The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Pr
 - [CORE-1] Always build the `.sln` or pass `-p:Platform=x64`; never the bare `.csproj`, which defaults to AnyCPU and writes to `bin\Debug\…`, so the x64 exe the app runs from never updates. Full: docs/invariants/core.md#core-1
 - [CORE-2] Keep `RuntimeIdentifier=win-x64` (else the build ships every platform's SQLite binaries) and `AppendRuntimeIdentifierToOutputPath=false` (else it writes to a `win-x64\` folder the app, release.yml and PostBuild never use) in the csproj. `dotnet publish` writes `win-x64\publish\`; other `win-x64\` build output predates 2026-08-25: stale. Full: docs/invariants/core.md#core-2
 - [CORE-3] The exe is file-locked while MSFSBA runs (MSB3021): close the app before building an exe the user will run. Full: docs/invariants/core.md#core-3
-- [CORE-4] `dotnet build MSFSBlindAssist.sln` builds only `tools/PMDGDispatchTester`, `tools/ChangelogBuilder`, `tools/GuideBuilder` and `tools/LayoutBundle`; the other 16 `tools/*` projects (`CDUTest`, the probes and the sweeps, listed in docs/development.md) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
+- [CORE-4] `dotnet build MSFSBlindAssist.sln` builds only `tools/PMDGDispatchTester`, `tools/ChangelogBuilder`, `tools/GuideBuilder` and `tools/LayoutBundle`; the other 17 `tools/*` projects (`CDUTest`, the probes and the sweeps, listed in docs/development.md) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
 
 ## Testing
 
 Pure-logic code is covered by an xUnit characterization suite at `tests/MSFSBlindAssist.Tests`
 (run: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`).
 CI (`.github/workflows/tests.yml`) runs it on every PR and on pushes to main.
-Sim-facing behavior cannot be unit-tested: when changing SimConnect/UI paths, build, then
-describe an in-sim test plan in the PR — the human owner of the repo runs it. New pure logic
-(formatters, parsers, geometry, classifiers) should get characterization tests; don't add
-speculative tests for sim-driven paths.
+The repo's owner runs a PR's in-sim test plan; don't add speculative tests for sim-driven paths.
 
 - [CORE-5] Sim-facing paths are verified only in a live sim: a PR touching them describes an in-sim test plan. Pure logic gets characterization tests in `tests/MSFSBlindAssist.Tests` (CI-enforced). Full: docs/invariants/core.md#core-5
 
@@ -96,6 +93,7 @@ Screen readers already announce every UI control interaction, so the app never r
 - [CORE-14] Every diagnostic log path resolves through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs`; never hand-build one (exempt, as in [CORE-15]: the vPilot plugin and the updater). Full: docs/invariants/core.md#core-14
 - [CORE-15] Never hand-build a log write (`File.AppendAllText`, a raw path): use `Log.Debug/Info/Warn/Error(category, msg)` for debug.log, or `Log.Channel(name)` for a named log. Exempt, as they cannot reference the app: the vPilot plugin's log ([VAT-6]) and the updater's own `%TEMP%` args log (`MSFSBlindAssistUpdater/Program.cs`). Full: docs/invariants/core.md#core-15
 - [CORE-17] Parse a number the pilot types with `NumberParsing.TryParseTyped`, one another program writes with `TryParseExternal`; never a bare `double.TryParse(s, out v)` (the PC's culture: "29.92" fails under sv-SE, reads 2992 under de-DE) or `NumberStyles.Any` with the invariant culture ("0,82" reads 82). Full: docs/invariants/core.md#core-17
+- [CORE-21] Format a decimal or grouped number for the pilot (speech, a window, a web address) with the invariant culture (`FormattableString.Invariant`), never a plain `{x:F1}`: "118,300" on a German Windows. Logs are exempt; `DecimalFormatSourceTests` scans. Full: docs/invariants/core.md#core-21
 - [VAT-13] Status/diagnostic text in any settings panel is a read-only `TextBox`, never a `Label`: a `Label` is not in the tab order, so a screen-reader user has to hunt for it with the review cursor. Full: docs/invariants/vatsim.md#vat-13
 - [A380C-6] Every form marshaling a background bridge push to the UI thread must wrap `BeginInvoke` in try/catch(InvalidOperationException) (`SafeBeginInvoke`); an `IsHandleCreated` check alone races handle destruction. Full: docs/invariants/a380-coherent.md#a380c-6
 
@@ -155,8 +153,8 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [hs787.md](docs/hs787.md) | HorizonSim 787-9: CDU, IRS, EICAS over the Coherent debugger | hs787 |
 | [md11.md](docs/md11.md) | TFDi MD-11: CEVENT transport, control state, layout, the control-map generator | md11, md11-controls |
 | [b757.md](docs/b757.md) | BlueBird 757-200: generated control map, calculator writes, CDU over the Comm Bus, the tablet and displays read from WASM memory | b757, b757-controls, b757-radios, b757-readouts, b757-cdu, b757-first-officer, b757-ehsi, b757-adi |
-| [da40.md](docs/da40.md) | COWS DA40 NG and XLS: panels, gauges, the FADEC lever, the G1000 window | da40, da40-airframe, da40-ng-engine, da40-xls-engine, da40-g1000, da40-avionics, da40-shared-code |
-| [first-officer.md](docs/first-officer.md) | The screen-reader First Officer: flows, checklists, auto managers, the per-aircraft profiles (listed in its first line); a package's own checklist: [checklists.md](docs/checklists.md) | first-officer, first-officer-automation, first-officer-boeing, first-officer-airbus, first-officer-da40, checklists |
+| [da40.md](docs/da40.md) | COWS DA40 NG and XLS | da40, da40-airframe, da40-ng-engine, da40-xls-engine, da40-g1000, da40-avionics, da40-shared-code |
+| [first-officer.md](docs/first-officer.md) | The screen-reader First Officer: flows, checklists, auto managers, per-aircraft profiles; package checklists: [checklists.md](docs/checklists.md) | first-officer, first-officer-automation, first-officer-boeing, first-officer-airbus, first-officer-da40, checklists |
 | [gemini.md](docs/gemini.md) | AI providers (Gemini or Claude): display reads, scene and route description, route briefing | ai-display, route-briefing |
 | [location-data.md](docs/location-data.md) | Output C and Location Info (Shift+L): the offline GeoNames + Natural Earth download, its database and lookups | location-data |
 | [user-guide.md](docs/user-guide.md) | The pilot's user guide in `guide/`: writing it, how the website and the Help menu publish it, the one-page build, the PR line (CORE-19) | user-guide |

@@ -886,8 +886,8 @@ public class VisualGuidanceManager : IDisposable
             {
                 // Format distance to final (1 decimal place)
                 string distanceText = crossTrackError < 1.0
-                    ? $"{crossTrackError:F1} mile"
-                    : $"{crossTrackError:F1} miles";
+                    ? FormattableString.Invariant($"{crossTrackError:F1} mile")
+                    : FormattableString.Invariant($"{crossTrackError:F1} miles");
 
                 AnnouncePhaseChange($"Intercepting final, {distanceText} to final");
             }
@@ -1516,7 +1516,7 @@ public class VisualGuidanceManager : IDisposable
         {
             if (distanceNM <= calloutDist && lastAnnouncedDistance > calloutDist)
             {
-                announcer.Announce($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}");
+                announcer.Announce(FormattableString.Invariant($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}"));
                 lastAnnouncedDistance = calloutDist;
                 lastDistanceAnnouncement = now;
                 break;
@@ -1544,11 +1544,12 @@ public class VisualGuidanceManager : IDisposable
 
         if (roundedDistance >= 0.5)
         {
-            string distanceText = roundedDistance == 1.0 ? "1 mile" : $"{roundedDistance} miles";
+            string distanceText = roundedDistance == 1.0 ? "1 mile" : FormattableString.Invariant($"{roundedDistance} miles");
             announcer.Announce($"{distanceText} behind threshold");
             lastExtendingProgressAnnouncement = now;
         }
-        else if (roundedDistance < 0.5 && roundedDistance >= 0.1)
+        // The distance itself, not roundedDistance: a multiple of 0.5, that is 0 here, so it was never 0.1 or more.
+        else if (distanceNM >= 0.1)
         {
             announcer.Announce("Approaching threshold");
             lastExtendingProgressAnnouncement = now;
@@ -1669,7 +1670,7 @@ public class VisualGuidanceManager : IDisposable
             // Determine direction (positive = right, negative = left)
             string direction = signedCrossTrack > 0 ? "right" : "left";
 
-            announcement = $"{roundedDistance:F1} nm {direction} of center";
+            announcement = FormattableString.Invariant($"{roundedDistance:F1} nm {direction} of center");
         }
 
         // Only announce if changed from last announcement

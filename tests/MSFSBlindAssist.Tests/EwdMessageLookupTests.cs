@@ -168,6 +168,21 @@ public class EwdMessageLookupTests
         Assert.Equal(expected, EWDMessageLookup.GetRawMessage(code));
     }
 
+    // --- Wing tip brake faults, synced from FBW in 2026-11 (#10933) ---
+    // Level 1 cautions: the aircraft gives no chime and no master caution for them, so a code the
+    // table lacks is a fault the pilot never hears of at all. Same transcription caveat as above.
+
+    [Theory]
+    [InlineData(270055001L, "\x1b<4m\x1b4mF/CTL\x1bm SLAT TIP BRK FAULT", "F/CTL SLAT TIP BRK FAULT")]
+    [InlineData(270056001L, "\x1b<4m\x1b4mF/CTL\x1bm FLAP TIP BRK FAULT", "F/CTL FLAP TIP BRK FAULT")]
+    public void A320_wing_tip_brake_faults_are_amber_cautions_that_read_clean(long code, string expectedRaw, string expectedSpoken)
+    {
+        string raw = EWDMessageLookup.GetRawMessage(code);
+        Assert.Equal(expectedRaw, raw);
+        Assert.Equal("Amber", EWDMessageLookup.GetMessagePriority(raw));
+        Assert.Equal(expectedSpoken, EWDMessageLookup.CleanANSICodes(raw));
+    }
+
     [Theory]
     [InlineData(310011001L)]
     [InlineData(310012001L)]

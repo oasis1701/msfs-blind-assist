@@ -50,6 +50,11 @@ Static research notes mined from FBW source (var names, page-index maps): `a380-
 | Tool | Job |
 |---|---|
 | [`DA40Probe/`](DA40Probe/README.md) | Presses every COWS DA40 panel control through MSFSBA's real `SimConnectManager` and `CowsDA40Definition` and reads it back; also typed entries, hotkeys, input events and held inputs. Read its README before running it: a full pass stops the engine and pops breakers. |
+## Source sweeps (no simulator)
+
+| Tool | Job |
+|---|---|
+| [`DecimalSweep/`](DecimalSweep/README.md) | Finds numbers the shipped code turns into text in the PC's culture with no format specifier (`$"{value}"`, `value.ToString()`), which the CI text scan cannot see: it reads the source with the C# compiler's types. Run it after adding spoken or shown numbers; a clean tree prints "0 to review". Rule: CORE-21. |
 
 ## Pre-existing — do NOT modify
 

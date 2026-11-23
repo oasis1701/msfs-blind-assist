@@ -1186,13 +1186,13 @@ public partial class MainForm
                                     simConnectManager?.SendEvent(setEvent, frequencyHz);
                                     System.Threading.Thread.Sleep(100); // Small delay for sim to process
                                     simConnectManager?.SendEvent(swapEvent);
-                                    announcer.Announce($"Active frequency set to {value:F3}");
+                                    announcer.Announce(FormattableString.Invariant($"Active frequency set to {value:F3}"));
                                 }
                                 // For standby frequency: just set it
                                 else
                                 {
                                     simConnectManager?.SendEvent(setEvent, frequencyHz);
-                                    announcer.Announce($"Standby frequency set to {value:F3}");
+                                    announcer.Announce(FormattableString.Invariant($"Standby frequency set to {value:F3}"));
                                 }
                             }
                             else
@@ -1244,7 +1244,7 @@ public partial class MainForm
                         else
                         {
                             simConnectManager?.SendEvent(varKey, (uint)value);
-                            announcer.Announce($"{varDef.DisplayName} set to {value}");
+                            announcer.Announce(FormattableString.Invariant($"{varDef.DisplayName} set to {value}"));
                         }
                     }
                     else

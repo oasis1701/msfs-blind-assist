@@ -621,7 +621,8 @@ public partial class MainForm
         }
         if (simTabletForm == null || simTabletForm.IsDisposed)
         {
-            simTabletForm = new Forms.FBWA380.FbwEfbForm(coherentSimTablet, announcer, "In-Sim Tablet", "In-sim tablet", "In-sim tablet");
+            simTabletForm = new Forms.FBWA380.FbwEfbForm(coherentSimTablet, announcer, "In-Sim Tablet", "In-sim tablet", "In-sim tablet",
+                notConnectedHint: Forms.FBWA380.FbwEfbForm.SimTabletNotConnectedHint);
             // Idle-gate the scrape to the window's visibility; the socket and reader stay warm.
             var f = simTabletForm;
             f.VisibleChanged += (_, _) => coherentSimTablet?.SetActive(!f.IsDisposed && f.Visible);

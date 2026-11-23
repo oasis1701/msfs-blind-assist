@@ -335,28 +335,28 @@ public partial class HorizonSim787Definition
         if (variableKey == "COM1_ActiveFreq")
         {
             if (_lastComActive1 > 0 && System.Math.Abs(value - _lastComActive1) > 0.001)
-                announcer.Announce($"COM1 active {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM1 active {value:F3}"));
             _lastComActive1 = value;
             return true;
         }
         if (variableKey == "COM_STANDBY_FREQUENCY_SET:1")
         {
             if (_lastComStandby1 > 0 && System.Math.Abs(value - _lastComStandby1) > 0.001)
-                announcer.Announce($"COM1 standby {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM1 standby {value:F3}"));
             _lastComStandby1 = value;
             return true;
         }
         if (variableKey == "COM2_ActiveFreq")
         {
             if (_lastComActive2 > 0 && System.Math.Abs(value - _lastComActive2) > 0.001)
-                announcer.Announce($"COM2 active {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM2 active {value:F3}"));
             _lastComActive2 = value;
             return true;
         }
         if (variableKey == "COM_STANDBY_FREQUENCY_SET:2")
         {
             if (_lastComStandby2 > 0 && System.Math.Abs(value - _lastComStandby2) > 0.001)
-                announcer.Announce($"COM2 standby {value:F3}");
+                announcer.Announce(FormattableString.Invariant($"COM2 standby {value:F3}"));
             _lastComStandby2 = value;
             return true;
         }
@@ -1660,7 +1660,7 @@ public partial class HorizonSim787Definition
         if (variableKey == "HS787_MCP_Mach")
         {
             if (_prevMcpMach >= 0 && Math.Abs(value - _prevMcpMach) >= 0.005 && _mcpSpdManual && _mcpIsMach)
-                announcer.Announce($"Mach {value:0.00}");
+                announcer.Announce(FormattableString.Invariant($"Mach {value:0.00}"));
             _prevMcpMach = value;
             return true;
         }
