@@ -20,9 +20,10 @@ public class ScreenReaderAnnouncer : IDisposable
     /// </summary>
     public bool Suppressed { get; set; } = false;
 
-    // Screen reader integration components
+    // Screen reader integration components, tried in this order: NVDA, ZDSR, Tolk (JAWS and the rest), then SAPI.
     private TolkWrapper? tolkWrapper;
     private NvdaControllerWrapper? nvdaWrapper;
+    private ZdsrWrapper? zdsrWrapper;
     private AnnouncementMode currentMode;
 
     // Speech queue for sequential announcements
@@ -55,6 +56,9 @@ public class ScreenReaderAnnouncer : IDisposable
                 nvdaWrapper = new NvdaControllerWrapper();
                 bool nvdaRunning = nvdaWrapper.IsRunning;
                 // Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] NVDA Controller initialized, NVDA running: {nvdaRunning}");
+
+                // ZDSR through its own API (Tolk has no ZDSR driver). Loads nothing until ZDSR is seen running.
+                zdsrWrapper = new ZdsrWrapper();
 
                 // Initialize Tolk for other screen readers (JAWS, Window-Eyes, etc.)
                 tolkWrapper = new TolkWrapper();
@@ -146,7 +150,18 @@ public class ScreenReaderAnnouncer : IDisposable
         {
             bool nvdaRunning = nvdaWrapper?.IsRunning == true;
             bool tolkRunning = tolkWrapper?.IsScreenReaderRunning() == true;
-            return nvdaRunning || tolkRunning;
+            // ZDSR last and only when needed: until ZDSR is found its check looks at the process list.
+            return nvdaRunning || tolkRunning || zdsrWrapper?.IsRunning == true;
+        }
+
+        /// <summary>The screen reader announcements go to, in the order Announce tries them (NVDA, ZDSR, then
+        /// what Tolk detected), or null when none is running. <paramref name="tolkReader"/> is Tolk's detected
+        /// reader, null when Tolk found none.</summary>
+        internal static string? ActiveScreenReaderName(bool nvdaRunning, bool zdsrRunning, string? tolkReader)
+        {
+            if (nvdaRunning) return "NVDA";
+            if (zdsrRunning) return "ZDSR";
+            return string.IsNullOrEmpty(tolkReader) ? null : tolkReader;
         }
 
         public void TestScreenReaderConnection()
@@ -174,6 +189,13 @@ public class ScreenReaderAnnouncer : IDisposable
             else
             {
                 Log.Debug("Accessibility", "NVDA Controller wrapper is null");
+            }
+
+            // Test ZDSR
+            if (zdsrWrapper != null)
+            {
+                bool zdsrRunning = zdsrWrapper.IsRunning;
+                Log.Debug("Accessibility", $"ZDSR running: {zdsrRunning}, API: {zdsrWrapper.Location ?? "not loaded"}");
             }
 
             // Test Tolk
@@ -244,7 +266,13 @@ public class ScreenReaderAnnouncer : IDisposable
                         // Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] NVDA Controller speech result: {success}");
                     }
 
-                    // Second priority: Try Tolk for other screen readers if NVDA failed or not running
+                    // Second priority: ZDSR through its own API (queued: spoken when ZDSR is idle)
+                    if (!success && zdsrWrapper?.IsRunning == true)
+                    {
+                        success = zdsrWrapper.Speak(message, false);
+                    }
+
+                    // Third priority: Try Tolk for other screen readers if NVDA and ZDSR failed or are not running
                     if (!success && tolkWrapper?.IsScreenReaderRunning() == true)
                     {
                         // Log.Debug("Accessibility", "[ScreenReaderAnnouncer] Attempting Tolk speech...");
@@ -302,7 +330,13 @@ public class ScreenReaderAnnouncer : IDisposable
                         // Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Immediate NVDA Controller speech result: {success}");
                     }
 
-                    // Second priority: Try Tolk for other screen readers if NVDA failed or not running
+                    // Second priority: ZDSR through its own API (interrupt clears ZDSR's queue and current speech)
+                    if (!success && zdsrWrapper?.IsRunning == true)
+                    {
+                        success = zdsrWrapper.Speak(message, true);
+                    }
+
+                    // Third priority: Try Tolk for other screen readers if NVDA and ZDSR failed or are not running
                     if (!success && tolkWrapper?.IsScreenReaderRunning() == true)
                     {
                         // Log.Debug("Accessibility", "[ScreenReaderAnnouncer] Attempting immediate Tolk speech with interrupt...");
@@ -461,6 +495,9 @@ public class ScreenReaderAnnouncer : IDisposable
                     catch { }
                     nvdaWrapper = null;
                 }
+
+                // Nothing to release: ZDSR's API library stays loaded for the life of the process (ZdsrWrapper).
+                zdsrWrapper = null;
 
                 disposed = true;
             }

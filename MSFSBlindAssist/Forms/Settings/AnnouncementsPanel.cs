@@ -13,7 +13,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
     // ── General group ────────────────────────────────────────────────────────
     private RadioButton _screenReaderRadio = null!;
     private RadioButton _sapiRadio = null!;
-    private Label _statusLabel = null!;
+    private TextBox _statusBox = null!;
     private ComboBox _nearestCityIntervalCombo = null!;
     private CheckBox _timeWithSecondsCheck = null!;
     private CheckBox _gsxBackgroundMonitoring = null!;
@@ -73,10 +73,14 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Use Windows built-in speech synthesis for announcements",
         };
 
-        _statusLabel = new Label
+        // A read-only TextBox, deliberately NOT a Label: a Label is not in the tab order,
+        // so with a screen reader it has to be hunted for with the review cursor.
+        _statusBox = new TextBox
         {
             Location = new System.Drawing.Point(12, 112),
             Size = new System.Drawing.Size(420, 40),
+            Multiline = true,
+            ReadOnly = true,
             AccessibleName = "Screen Reader Status",
             Text = "Checking screen reader status..."
         };
@@ -144,7 +148,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
 
         group.Controls.AddRange(new Control[]
         {
-            modeLabel, _screenReaderRadio, _sapiRadio, _statusLabel,
+            modeLabel, _screenReaderRadio, _sapiRadio, _statusBox,
             intervalLabel, _nearestCityIntervalCombo,
             _timeWithSecondsCheck,
             _gsxBackgroundMonitoring,
@@ -156,35 +160,43 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
 
     private void UpdateScreenReaderStatus()
     {
+        string nl = Environment.NewLine;
         try
         {
+            // The order the announcer tries them: NVDA, ZDSR, then what Tolk detects (JAWS and the rest).
+            bool nvdaRunning;
+            using (var nvdaTest = new NvdaControllerWrapper())
+            {
+                nvdaRunning = nvdaTest.IsRunning;
+            }
+            bool zdsrRunning = !nvdaRunning && new ZdsrWrapper().IsRunning;
+
             using (var tolkTest = new TolkWrapper())
             {
-                if (tolkTest.Initialize())
+                bool tolkLoaded = tolkTest.Initialize();
+                string? tolkReader = tolkLoaded && tolkTest.IsScreenReaderRunning() ? tolkTest.DetectedScreenReader : null;
+                string? detected = ScreenReaderAnnouncer.ActiveScreenReaderName(nvdaRunning, zdsrRunning, tolkReader);
+                if (detected != null)
                 {
-                    if (tolkTest.IsScreenReaderRunning())
-                    {
-                        string detected = tolkTest.DetectedScreenReader;
-                        _statusLabel.Text = $"Screen reader detected: {detected}\nChoose 'Screen Reader' for best experience.";
-                        _statusLabel.ForeColor = Color.DarkGreen;
-                    }
-                    else
-                    {
-                        _statusLabel.Text = "No screen reader detected.\nSAPI mode recommended for speech feedback.";
-                        _statusLabel.ForeColor = Color.DarkOrange;
-                    }
+                    _statusBox.Text = $"Screen reader detected: {detected}{nl}Choose 'Screen Reader' for best experience.";
+                    _statusBox.ForeColor = Color.DarkGreen;
+                }
+                else if (tolkLoaded)
+                {
+                    _statusBox.Text = $"No screen reader detected.{nl}SAPI mode recommended for speech feedback.";
+                    _statusBox.ForeColor = Color.DarkOrange;
                 }
                 else
                 {
-                    _statusLabel.Text = "Unable to initialize screen reader detection.\nSAPI mode will be used as fallback.";
-                    _statusLabel.ForeColor = Color.Red;
+                    _statusBox.Text = $"Unable to initialize screen reader detection.{nl}SAPI mode will be used as fallback.";
+                    _statusBox.ForeColor = Color.Red;
                 }
             }
         }
         catch (Exception ex)
         {
-            _statusLabel.Text = $"Error checking screen reader: {ex.Message}\nSAPI mode recommended.";
-            _statusLabel.ForeColor = Color.Red;
+            _statusBox.Text = $"Error checking screen reader: {ex.Message}{nl}SAPI mode recommended.";
+            _statusBox.ForeColor = Color.Red;
         }
     }
 

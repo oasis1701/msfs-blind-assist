@@ -40,6 +40,8 @@ Once installed, the app checks GitHub for updates at startup and installs them f
 
 Windows 10 or 11 (64-bit) with the **.NET 10 Desktop Runtime (x64)**; see [Download](#download).
 
+A screen reader: announcements go to NVDA, ZDSR (Zhengdu Screen Reader, through ZDSR's own API, with braille), or JAWS and other readers through Tolk, in that order. With none running, MSFS Blind Assist speaks with Windows' built-in voice (SAPI).
+
 ### MobiFlight WASM module
 
 To operate cockpit switches and knobs on the **FlyByWire (A32NX and A380X)** and **Fenix A320** aircraft, MSFS Blind Assist needs the free **MobiFlight WASM module** installed. The app uses it to reliably set the aircraft's internal variables; without it, many controls on these aircraft will not respond (reading and announcements still work). PMDG and HorizonSim aircraft do not require it.

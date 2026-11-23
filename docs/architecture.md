@@ -582,12 +582,47 @@ git mv MSFSBlindAssist/Forms/SomeForm.cs MSFSBlindAssist/Forms/B737/SomeForm.cs
 ### ScreenReaderAnnouncer
 **File:** `Accessibility/ScreenReaderAnnouncer.cs`
 
-Multi-method screen reader communication with dual approach:
+Multi-method screen reader communication. Each message goes to the first output that takes it, in this order:
 - NVDA direct support via NvdaControllerWrapper
+- ZDSR (Zhengdu Screen Reader, 争渡读屏) via ZdsrWrapper (below); Tolk has no ZDSR driver
 - Universal screen reader support via TolkWrapper (JAWS, Window-Eyes, etc.)
-- Configurable announcement modes (ScreenReader vs SAPI)
-- Settings persistence for announcement preferences
 - Fallback SAPI TTS when screen readers unavailable
+
+Also: configurable announcement modes (ScreenReader vs SAPI) and settings persistence for the mode.
+`ActiveScreenReaderName` gives the same order for the Settings status box.
+
+### ZdsrWrapper (ZDSR speech and braille)
+**File:** `Accessibility/ZdsrWrapper.cs`
+
+ZDSR's client API is `ZDSRAPI_x64.dll` (exports `InitTTS`, `Speak`, `GetSpeakState`, `StopSpeak`,
+`Braille`; documented in `ZDSRAPI.txt` in ZDSR's folder). How MSFSBA uses it:
+
+- **Never shipped or copied.** `ZdsrNativeApi.TryLocate` loads the DLL from the folder of the running
+  `ZDSRMain.exe` (path read with `QueryFullProcessImageName`, since ZDSRMain runs elevated with UI access
+  and `Process.MainModule` is refused), falling back to `%ProgramFiles(x86)%\zdsr\zdsr`. ZDSR asks for
+  this: copies older than ZDSR 26.6 stop working, and ZDSR reads its `ZDSRAPI.ini` overrides from the DLL's
+  folder. Until ZDSRMain.exe has been seen, nothing is loaded and the process list is checked at most every
+  5 s; NVDA users with ZDSR installed never load it.
+- **Loaded once, never freed.** The DLL starts its own thread (it reconnects to ZDSR by itself after a
+  ZDSR restart), so freeing it could pull code out from under that thread. `ScreenReaderAnnouncer.Dispose`
+  releases nothing for ZDSR.
+- **Detection.** Running means `GetSpeakState` answers 3 (speaking) or 4 (not speaking); 2 is "not running
+  or not licensed". A fresh process gets 2 until `InitTTS` has been called, so the wrapper calls
+  `InitTTS(0, null, true)` before the state query whenever ZDSR is not known to be up (first check, and
+  after ZDSR closed or restarted). A verdict is reused for 1 s; a failed `Speak` marks ZDSR down at once,
+  so that message falls through to Tolk or SAPI.
+- **Channel and interrupts.** Channel 0 is ZDSR's own channel (the reader's voice, like the NVDA
+  controller). `keyDownInterrupt` is true, so a key press stops BA's speech as it stops a screen reader's
+  own. `AnnounceImmediate` passes `bInterrupt` true (clear ZDSR's queue, speak now); `Announce` passes
+  false (spoken when ZDSR is idle). `ZDSRAPI.ini` in ZDSR's folder (`type`, `channelName`,
+  `keyDownInterrupt`, `alwaysInterrupt`) overrides all of these for every API client.
+- **Braille.** Every spoken message is also sent to `Braille(text, flash: true)`, as Tolk's output
+  brailles for JAWS. Return 3 (no display) is ignored.
+- **Cost.** Measured live (2026-11-23, medium-integrity caller, ZDSR at high integrity): first detection
+  with the load about 40 ms; `InitTTS` 8 ms; `GetSpeakState` 0.02 ms; `Speak` 0.3 to 2 ms. With ZDSR
+  closed, every call returns 2 in under 1 ms.
+- **Tests.** `ZdsrWrapperTests` drive the wrapper through a fake `IZdsrApi`; the real DLL is exercised only
+  live, with ZDSR running.
 
 ### HotkeyManager
 **File:** `Hotkeys/HotkeyManager.cs`
@@ -671,9 +706,10 @@ See [Taxi Guidance — Taxi-Data Augmentation Pipeline](taxi-guidance.md#taxi-da
 
 4. **Button State Mapping**: Unified mapping system tracks button events to their corresponding state variables for automatic announcements
 
-5. **Dual Screen Reader Support**:
+5. **Multiple Screen Reader Support**:
    - Primary: Direct NVDA integration via controller client
-   - Secondary: Universal support through Tolk wrapper
+   - Secondary: ZDSR through its own API (`ZDSRAPI_x64.dll`, loaded from ZDSR's folder)
+   - Third: Universal support through Tolk wrapper
    - Fallback: SAPI text-to-speech
 
 6. **Configurable Accessibility**: User-selectable announcement modes with persistent settings

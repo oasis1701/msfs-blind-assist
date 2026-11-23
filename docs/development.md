@@ -41,6 +41,7 @@ This document contains development notes, key files, and dependencies for MSFS B
 
 - **`Accessibility/ScreenReaderAnnouncer.cs`**: Multi-method screen reader integration
 - **`Accessibility/NvdaControllerWrapper.cs`**: Direct NVDA integration
+- **`Accessibility/ZdsrWrapper.cs`**: ZDSR (Zhengdu Screen Reader) speech and braille through ZDSR's own API (see [architecture.md](architecture.md#zdsrwrapper-zdsr-speech-and-braille))
 - **`Accessibility/TolkWrapper.cs`**: Universal screen reader support
 
 ### Database System
@@ -150,6 +151,7 @@ Application for the faulting module. Full procedure in [tooling.md §8](tooling.
 - **Microsoft.Extensions.Configuration.Json** (version 10.0.x) - JSON configuration provider
 - **Microsoft.Extensions.Configuration.Binder** (version 10.0.x) - Configuration binding
 - **NVDA Controller Client** (included) - Direct NVDA integration
+- **ZDSRAPI** (NOT included) - ZDSR's `ZDSRAPI_x64.dll`, loaded at run time from the running ZDSR's own folder; never copy it into the repository or the build output
 - **Tolk wrapper** (included) - Universal screen reader support
 
 ## Settings System
