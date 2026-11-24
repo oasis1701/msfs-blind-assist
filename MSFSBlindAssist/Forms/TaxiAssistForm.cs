@@ -4603,12 +4603,13 @@ public class TaxiAssistForm : Form
     }
 
     /// <summary>
-    /// The named holding points a ROW's "Hold short of" combo offers: the painted ones.
-    /// A point read off an X-Plane sign has only an approximate position and stays a
-    /// fallback for the Progressive Taxi list alone ([HLD-18]).
+    /// The named holding points a ROW's "Hold short of" combo offers: every one, a point
+    /// read off an X-Plane sign included ([HLD-18]; OMDB "taxi via K, hold short of KK" on
+    /// an ordinary route). A sign point's position is approximate, and its label says so
+    /// (HoldShortTargetList.HoldingPointLabel). Runway entries and cross-at points still
+    /// leave sign points out (GetHoldingPointsCrossingRunway).
     /// </summary>
-    private IEnumerable<NamedHoldingPoint> RowHoldingPoints() =>
-        _namedHoldingPoints.Where(p => !p.IsFromSign);
+    private IEnumerable<NamedHoldingPoint> RowHoldingPoints() => _namedHoldingPoints;
 
     /// <summary>
     /// Brings a row's "Hold short of" combo up to date when focus reaches it: the named

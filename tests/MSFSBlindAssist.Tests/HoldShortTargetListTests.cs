@@ -95,6 +95,34 @@ public class HoldShortTargetListTests
             HoldShortTargetList.HoldingPointLabel(Point("KK", NamedHoldingPointResolver.SignKind)));
     }
 
+    // OMDB: "taxi via K, hold short of KK". KK is a red sign beside K, in no painted-line
+    // source. A route row offers it among the taxiways like any holding point, the caveat in
+    // its label, and the pick stops on the segment that ends at its node like a painted one.
+    [Fact]
+    public void Merge_OffersASignReadPointAmongTheTaxiways_AndItsPickPlacesAStop()
+    {
+        var kk = Point("KK", NamedHoldingPointResolver.SignKind, node: 77);
+        var merged = HoldShortTargetList.Merge(new[] { "K", "K7" }, new[] { kk });
+
+        Assert.Equal(
+            new[] { "K", "K7", "KK (holding point, from sign, approximate)" }, Labels(merged));
+        Assert.Same(kk, merged[2].HoldingPoint);
+
+        var route = new List<MSFSBlindAssist.Database.Models.TaxiRouteSegment>();
+        foreach (var (from, to) in new[] { (1, 2), (2, 77), (77, 3) })
+            route.Add(new MSFSBlindAssist.Database.Models.TaxiRouteSegment
+            {
+                FromNode = new MSFSBlindAssist.Database.Models.TaxiNode { NodeId = from },
+                ToNode = new MSFSBlindAssist.Database.Models.TaxiNode { NodeId = to },
+                TaxiwayName = "K",
+            });
+        var pick = new HoldingPointHoldShort(merged[2].Name, merged[2].HoldingPoint!.NodeId);
+
+        Assert.True(pick.Place(route));
+        Assert.Equal(new[] { false, true, false }, route.Select(s => s.IsHoldShortPoint).ToArray());
+        Assert.Equal("holding point KK", route[1].HoldShortRunway);
+    }
+
     [Fact]
     public void Merge_ListsAHoldingPointNameOnce()
     {
