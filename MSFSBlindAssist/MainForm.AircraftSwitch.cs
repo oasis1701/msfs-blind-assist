@@ -157,6 +157,7 @@ public partial class MainForm
             "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
             "TFDI_MD11" => new TFDiMD11Definition(),
+            "BBS_757" => new BBS757Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -202,6 +203,7 @@ public partial class MainForm
         _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
         RestartPmdg737DisplaysIfSimulatorChanged();
+        RestartBbs757DisplaysIfSimulatorChanged();
         // The First Officer window outlives a flight load (only an aircraft switch disposes it):
         // the last flight's SimBrief plan and phase latches are dropped here, and so are the
         // universal automation's legs (a flight loaded in the air is no takeoff it watched).
@@ -747,7 +749,7 @@ public partial class MainForm
         sb.AppendLine($"Engine 2 Oil Pressure: {C("HS787_EicasOilP_2")} psi");
         sb.AppendLine($"Engine 2 Oil Temp: {C("HS787_EicasOilT_2")} C");
         sb.AppendLine($"Total Fuel: {C("HS787_EicasFuelKg")} kg");
-        sb.AppendLine($"Gross Weight: {Math.Round(GV("HS787_EicasGwKg") / 1000.0, 1)} t");
+        sb.AppendLine(FormattableString.Invariant($"Gross Weight: {Math.Round(GV("HS787_EicasGwKg") / 1000.0, 1)} t"));
         sb.AppendLine($"TAT: {C("HS787_EicasTat")} C");
         sb.AppendLine();
         sb.Append(hs787CasClient?.GetAlertsText() ?? "");
@@ -852,6 +854,9 @@ public partial class MainForm
         // every button shows a bare label (Attach used to run only from a press or a hotkey).
         if (newAircraft is TFDiMD11Definition newMd11)
             newMd11.Attach(simConnectManager);
+        // The 757 reads the loaded aircraft's title through it, for the engine type its section lists follow.
+        if (newAircraft is BBS757Definition newBbs757)
+            newBbs757.Attach(simConnectManager);
 
         taxiGuidanceManager.TurnLeadSeconds = newAircraft.TaxiTurnLeadSeconds;
         taxiGuidanceManager.SharpTurnLeadSeconds = newAircraft.TaxiSharpTurnLeadSeconds;
@@ -1044,6 +1049,10 @@ public partial class MainForm
             coherentMd11Efb = null;
         }
 
+        // The in-sim tablet (Extras) is left open: its view is the sim's, not the aircraft's, the
+        // window serves every aircraft, and its client reconnects by itself if the sim rebuilds the
+        // view. It is closed only on exit (MainForm.cs).
+
         // Dispose FBW A380 MCDU + EFB forms on swap; disposing the forms clears
         // their state-update wiring so the next aircraft doesn't get cross-talk.
         if (fbwA380MCDUForm != null && !fbwA380MCDUForm.IsDisposed)
@@ -1201,8 +1210,14 @@ public partial class MainForm
         // Starting the SDK bridge is a no-op unless the new aircraft is the iFly.
         StartIFlySdkBridge();
 
+        // The 757's windows, on every switch: the monitor manager lists the definition it was
+        // built for, so the next Ctrl+M rebuilds it from the live one. Before the readers start, as
+        // StartBbs757Displays makes the hidden CDU window the closed-window message watch needs.
+        DisposeBBS757Forms();
+
         // Likewise the PMDG 737 display readers unless it is the PMDG 737 (a reader already running restarts).
         StartPmdg737Displays();
+        StartBbs757Displays();   // and the BlueBird 757's (with its CDU message watch) unless it is the 757
 
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
@@ -1303,6 +1318,7 @@ public partial class MainForm
         headwindA330MenuItem.Checked = false;
         ifly737MaxMenuItem.Checked = false;
         tfdiMd11MenuItem.Checked = false;
+        bbs757MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -1342,6 +1358,10 @@ public partial class MainForm
         else if (currentAircraft is IFly737MAXDefinition)
         {
             ifly737MaxMenuItem.Checked = true;
+        }
+        else if (currentAircraft is BBS757Definition)
+        {
+            bbs757MenuItem.Checked = true;
         }
     }
 

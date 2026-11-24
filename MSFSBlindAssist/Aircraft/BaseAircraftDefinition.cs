@@ -53,6 +53,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Glideslope alive/lost tracking
     private bool _previousGlideSlopeAlive = false;
 
+    /// <summary>
+    /// True when the aircraft's VOR and ILS receivers are the sim's own NAV radios, so the stock
+    /// NAV variables say what the cockpit shows. False for an aircraft whose own receivers leave
+    /// the sim's NAV radios untouched: it registers no glideslope row (and so no Ctrl+M row) and the
+    /// shared "Glideslope alive / lost" call-out never speaks, since NAV 1 would be wrong there.
+    /// </summary>
+    public virtual bool UsesStockNavReceivers => true;
+
     // Abstract members from IAircraftDefinition that must be implemented
     public abstract string AircraftName { get; }
     public abstract string AircraftCode { get; }
@@ -74,7 +82,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     protected virtual Dictionary<string, SimConnect.SimVarDefinition> GetBaseVariables()
     {
-        return new Dictionary<string, SimConnect.SimVarDefinition>
+        var vars = new Dictionary<string, SimConnect.SimVarDefinition>
         {
             // Ground state - universal SimConnect variable that works with all aircraft
             ["SIM_ON_GROUND"] = new SimConnect.SimVarDefinition
@@ -283,6 +291,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Units = "degrees"
             }
         };
+
+        // NAV 1's glideslope is wrong on an aircraft whose own receivers leave the sim's NAV radios
+        // untouched (the BlueBird 757, [B757-5]): no row, so no Ctrl+M row either.
+        if (!UsesStockNavReceivers) vars.Remove("MON_GlideSlopeAlive");
+        return vars;
     }
 
     /// <summary>
@@ -524,7 +537,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             {
                 uint valueToSend = valueConverter != null ? valueConverter(value) : (uint)value;
                 simConnect.SendEvent(eventName, valueToSend);
-                announcer.AnnounceImmediate($"{parameterType} set to {value}");
+                announcer.AnnounceImmediate(FormattableString.Invariant($"{parameterType} set to {value}"));
                 return true;
             }
             // The validator accepted what TryParseTyped refuses: say so rather than send nothing silently.
@@ -711,6 +724,22 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// describe a new situation, not a change anyone made.</summary>
     protected bool IsFcuValueSettling => _fcuValues.IsSettling;
 
+    /// <summary>The reads of readouts held for MSFSBA's last FCU event; run by the batch that settles it.</summary>
+    private Action? _heldFcuReadouts;
+
+    /// <summary>
+    /// Issue an FCU readout's on-request reads: now, or, when MSFSBA has just sent an FCU event (a
+    /// push, pull, toggle or set), once the FCU has acted and every continuous batch has delivered
+    /// after it (<see cref="FcuValueAnnouncer.IsWriteUnsettled"/>). Read at once, a readout spoke
+    /// the state from before the press ([A320-42]). The caller sets its pending latch BEFORE calling,
+    /// so the window's dial callout stays muted while the reads are held. UI thread only.
+    /// </summary>
+    protected void RequestFcuReadoutValues(Action reads)
+    {
+        if (_fcuValues.IsWriteUnsettled(Environment.TickCount64)) _heldFcuReadouts += reads;
+        else reads();
+    }
+
     // Variable Update Processing
 
     /// <summary>
@@ -831,6 +860,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
         if (varName == "MON_GlideSlopeAlive")
         {
+            // NAV 1 is not this aircraft's receiver: never registered, and silent should it arrive.
+            if (!UsesStockNavReceivers) return true;
             bool alive = value > 0;
             if (alive && !_previousGlideSlopeAlive)
                 announcer.Announce("Glideslope alive");
@@ -873,6 +904,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         // Default: not handled - let MainForm use generic logic
         return false;
     }
+
+    /// <summary>Default: the raw text is not handled, and MainForm parses it for <see cref="HandleUIVariableSet"/> as always.</summary>
+    public virtual bool HandleUITypedText(string varKey, string text, SimConnect.SimVarDefinition varDef,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer) => false;
 
     /// <summary>
     /// Default autopilot engage: the stock <c>AUTOPILOT_ON</c> event (idempotent in the stock
@@ -950,7 +985,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <inheritdoc />
     /// <remarks>The base starts the FCU value announcer's settle: an override on an aircraft that uses
     /// <see cref="AnnounceFcuValue"/> must call base.</remarks>
-    public virtual void OnSimContextReset() => _fcuValues.BeginSettle();
+    public virtual void OnSimContextReset()
+    {
+        _fcuValues.BeginSettle();
+        // A readout held for an FCU event of the old context is dropped with it (its pending latch is
+        // the definition's own, cleared in its override).
+        _fcuValues.ForgetWrite();
+        _heldFcuReadouts = null;
+    }
 
     /// <inheritdoc />
     /// <remarks>The base upgrades the FCU settle so the reconnect's re-fire counts as the aircraft
@@ -962,6 +1004,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// completed: an override on an aircraft that uses <see cref="AnnounceFcuValue"/> must call base.</remarks>
     public virtual void OnContinuousBatchDelivered(int batchNum)
     {
+        if (_fcuValues.OnBatchAfterWrite(batchNum, Environment.TickCount64))
+        {
+            Action? held = _heldFcuReadouts;
+            _heldFcuReadouts = null;
+            held?.Invoke();
+        }
         IReadOnlyList<string> due = _fcuValues.OnBatchDelivered(batchNum);
         if (due.Count == 0 || _fcuAnnouncer is not { } announcer) return;
         foreach (string phrase in due)
@@ -1009,6 +1057,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual double TaxiTurnLeadMaxDegrees => 30.0;
 
     public virtual bool HasOwnIcingAnnouncer => false;
+
+    /// <inheritdoc />
+    public virtual bool PlaysOwnTakeoffSpeedCallouts => false;
 
     public virtual string? StockComTuningRefusal => null;
 
@@ -1315,7 +1366,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // breaks or says "CG 0". Takes the cached %MAC value as a parameter since each
     // aircraft caches its own _gwCgMac field.
     protected static string CgMacPhrase(double gwCgMac) =>
-        (gwCgMac > 5 && gwCgMac < 60) ? $", center of gravity {gwCgMac:0.0} percent MAC" : "";
+        (gwCgMac > 5 && gwCgMac < 60) ? FormattableString.Invariant($", center of gravity {gwCgMac:0.0} percent MAC") : "";
 
     // Set the FCU altitude increment (100 or 1000 ft) — FBW A320/A380 parity. Kept as an
     // instance method (not static) because it's invoked externally via an aircraft-typed

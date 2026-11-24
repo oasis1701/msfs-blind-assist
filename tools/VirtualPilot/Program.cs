@@ -15,13 +15,16 @@ using MSFSBlindAssist.Settings;
 // entered with no hold short, route changes while following the tone, and so on.
 //
 //   dotnet run --project tools/VirtualPilot -p:Platform=x64 -c Release -- <mode> [options]
-//     mode: landings | taxi | all
+//     mode: landings | taxi | all | wrongturn | departures | traffic | turnpicks | fetchosm
 //     --airports N          busiest N airports by taxi-path count (default 100)
 //     --icao A,B,C          explicit airport list (overrides --airports)
 //     --shard i/n           run only airports i, i+n, i+2n … (for parallel processes)
 //     --taxi-per-airport K  gate→runway and exit→gate routes per airport (default 6)
 //     --out file            findings (default virtualpilot_<mode>.txt)
 //     --trace ICAO:RWY:EXIT[:straight]  or  ICAO:taxi:N   one scenario, frame-by-frame
+//     --sim fs2020|fs2024   which simulator's navdata database to fly (or VP_SIM); default: the
+//                           MSFS 2020 one when it is installed, else the MSFS 2024 one
+//     --db file             a navdata database file by path (or VP_DB); overrides --sim's choice
 //
 // Nothing is written to the pilot's log folder (Log.Redirect), no audio device is opened
 // (TaxiSteeringTone.Headless) and time is simulated (SimClock.Override), so a landing runs
@@ -36,15 +39,21 @@ TaxiSteeringTone.Headless = true;
 #if !MAINAPP
 if (Environment.GetEnvironmentVariable("VP_LEGACY_ANCHOR") == "1") TaxiGuidanceManager.LegacyExitAnchorForHarness = true;
 if (Environment.GetEnvironmentVariable("VP_LEGACY_REVENTRY") == "1") TaxiGuidanceManager.LegacyReversedEntryForHarness = true;
+if (Environment.GetEnvironmentVariable("VP_LEGACY_RWYSTART") == "1") TaxiGuidanceManager.LegacyRunwayStartForHarness = true;
+if (Environment.GetEnvironmentVariable("VP_LEGACY_TURNSIDE") == "1") TaxiGuidanceManager.LegacyTurnSideForHarness = true;
 #endif
 var logSink = new List<string>();
 bool captureLog = false;
 MSFSBlindAssist.Utils.Logging.Log.Redirect = (file, msg) => { if (captureLog) logSink.Add($"[{file}] {msg}"); };
 
-string db = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-    "MSFSBlindAssist", "databases", "fs2020.sqlite");
-if (!File.Exists(db)) { Console.WriteLine($"DB not found: {db}"); return 2; }
-var baseProvider = new LittleNavMapProvider(db, "FS2020");
+// The navdata flown: the pilot's own database for one simulator, found where the app finds it.
+// A before/after pair only compares when both runs fly the SAME database, so the choice is printed
+// and written into the findings header.
+if (NavdataChoice.Resolve(opt.Db ?? Environment.GetEnvironmentVariable("VP_DB"),
+                          opt.Sim ?? Environment.GetEnvironmentVariable("VP_SIM")) is not { } nav) return 2;
+string db = nav.Path;
+Console.WriteLine($"Navdata: {nav.Sim} ({db})");
+var baseProvider = new LittleNavMapProvider(db, nav.Sim);
 // The app's own provider stack: navdata + the OSM names/holding points, from a per-airport
 // snapshot of the raw Overpass answer (runs/_osm, filled by `fetchosm`). The app fetches OSM
 // live and keeps it in memory only; the snapshot pins the data so before/after runs compare
@@ -76,7 +85,7 @@ if (opt.Trace != null) { captureLog = true; RunTrace(opt.Trace); return 0; }
 outWriter = new StreamWriter(opt.Out) { AutoFlush = true };
 resultsWriter = new StreamWriter(Path.ChangeExtension(opt.Out, ".results.txt")) { AutoFlush = false };
 var outFile = outWriter;
-outFile.WriteLine($"# VirtualPilot {opt.Mode} — {airports.Count} airports — {DateTime.Now:yyyy-MM-dd HH:mm}");
+outFile.WriteLine($"# VirtualPilot {opt.Mode} — {airports.Count} airports — {nav.Sim} navdata — {DateTime.Now:yyyy-MM-dd HH:mm}");
 int ai = 0;
 foreach (var icao in airports)
 {
@@ -90,9 +99,12 @@ foreach (var icao in airports)
         if (opt.Mode is "landings" or "all") RunLandings(w);
         if (opt.Mode is "taxi" or "all") RunTaxis(w);
         if (opt.Mode is "wrongturn") RunWrongTurns(w);
+        if (opt.Mode is "rwystop") RunRunwayStops(w);
+        if (opt.Mode is "missedexit") RunMissedExits(w);
         if (opt.Mode is "departures" or "taxi2") RunDepartures(w);
 #if !OLDAPP
         if (opt.Mode is "traffic") RunTraffic(w);
+        if (opt.Mode is "turnpicks") RunTurnPicks(w);
 #endif
     }
     catch (Exception ex) { Add(new Finding(icao, "HARNESS_EXCEPTION", "", ex.ToString().Split('\n')[0])); }
@@ -182,6 +194,82 @@ List<Finding> RunWrongTurnsCollect(World w)
     foreach (var (plan, kind) in PlanTaxis(w))
         if (kind == "out") all.AddRange(FlyWrongTurn(w, plan));
     return all;
+}
+
+// A route loaded while stopped on a runway, midway between two exits (RJAA 34L, 2026-11-06).
+void RunRunwayStops(World w)
+{
+    int seed = 23; foreach (char ch in w.Icao) seed = seed * 31 + ch;
+    var rnd = new Random(seed);
+    var gates = w.Parking.Where(p => w.NodeNear(p.Latitude, p.Longitude, 100) != null)
+                         .OrderBy(p => p.ToString(), StringComparer.Ordinal).ToList();
+    if (gates.Count == 0) return;
+    foreach (var rwy in w.Runways.Where(r => !r.IsClosed).OrderBy(r => r.RunwayID, StringComparer.Ordinal))
+    {
+        List<LandingExit> exits;
+        try { exits = w.Graph.GetLandingExits(rwy); } catch { continue; }
+        var plan = TaxiPlan.RunwayStopToGate(w, rwy, exits, gates[rnd.Next(gates.Count)]);
+        if (plan == null) continue;
+        Codes("RWYSTOP", w.Icao, plan.Describe, FlyTaxi(w, plan, withClearance: false, trace: false));
+        Codes("RWYSTOP_CLR", w.Icao, plan.Describe, FlyTaxi(w, plan, withClearance: true, trace: false));
+        taxis += 2;
+    }
+}
+
+// The pilot rolled past the planned exit, vacated at the next one, and loaded the gate route with the
+// clearance given for the planned exit. The flight behind it (VTBS 02R, 2026-11-18: cleared E7,
+// vacated one exit EARLY at E10) is the other way round and is replayed with --trace ICAO:from:.
+void RunMissedExits(World w)
+{
+    int seed = 31; foreach (char ch in w.Icao) seed = seed * 31 + ch;
+    var rnd = new Random(seed);
+    var gates = w.Parking.Where(p => w.NodeNear(p.Latitude, p.Longitude, 100) != null)
+                         .OrderBy(p => p.ToString(), StringComparer.Ordinal).ToList();
+    if (gates.Count == 0) return;
+    foreach (var rwy in w.Runways.Where(r => !r.IsClosed).OrderBy(r => r.RunwayID, StringComparer.Ordinal))
+    {
+        List<LandingExit> exits;
+        try { exits = w.Graph.GetLandingExits(rwy).OrderBy(e => e.DistanceFromThresholdFeet).ToList(); } catch { continue; }
+        for (int k = 0; k < 2 && exits.Count >= 2; k++)
+        {
+            int i = rnd.Next(exits.Count - 1);
+            var gate = gates[rnd.Next(gates.Count)];
+            var planned = TaxiPlan.ExitToGate(w, rwy, exits, exits[i], gate);
+            var taken = TaxiPlan.ExitToGate(w, rwy, exits, exits[i + 1], gate);
+            if (planned == null || taken == null) continue;
+            var clearance = ClearanceOf(w, planned);
+            if (clearance == null) continue;
+            var plan = TaxiPlan.FromPosition(w, taken.StartLat, taken.StartLon, taken.StartHeading, gate, clearance);
+            plan.Describe = $"Rwy {rwy.RunwayID} cleared {exits[i].TaxiwayName} vacated {exits[i + 1].TaxiwayName} n{exits[i + 1].NodeId} -> {gate} via {string.Join(",", clearance)}";
+            Codes("MISSEDEXIT", w.Icao, plan.Describe, FlyTaxi(w, plan, withClearance: false, trace: false));
+            taxis++;
+
+            // The same clearance loaded before vacating: still on the runway, 150 m past the planned exit.
+            double gapM = (exits[i + 1].DistanceFromThresholdFeet - exits[i].DistanceFromThresholdFeet) * 0.3048;
+            if (gapM < 300) continue;
+            double along = TaxiPlan.Bearing(exits[i].Latitude, exits[i].Longitude, exits[i + 1].Latitude, exits[i + 1].Longitude);
+            var (rlat, rlon) = Geo.Move(exits[i].Latitude, exits[i].Longitude, along, 150);
+            var rolling = TaxiPlan.FromPosition(w, rlat, rlon, along, gate, clearance);
+            rolling.Describe = $"Rwy {rwy.RunwayID} cleared {exits[i].TaxiwayName} on the runway 150 m past it n{exits[i].NodeId} -> {gate} via {string.Join(",", clearance)}";
+            Codes("MISSEDEXIT_RWY", w.Icao, rolling.Describe, FlyTaxi(w, rolling, withClearance: false, trace: false));
+            taxis++;
+        }
+    }
+}
+
+// What ATC would say for a plan: the taxiway names of its shortest route, in order.
+List<string>? ClearanceOf(World w, TaxiPlan plan)
+{
+    var probe = new TaxiGuidanceManager(new Cap(() => simNow));
+    try
+    {
+        if (plan.Load(probe, provider, w, null) != null || probe.RouteForHarness is not { } route) return null;
+        var seq = new List<string>();
+        foreach (var s in route.Segments)
+            if (!string.IsNullOrEmpty(s.TaxiwayName) && (seq.Count == 0 || seq[^1] != s.TaxiwayName)) seq.Add(s.TaxiwayName);
+        return seq.Count == 0 ? null : seq;
+    }
+    finally { probe.Dispose(); }
 }
 
 void RunWrongTurns(World w)
@@ -333,6 +421,182 @@ void RunTaxis(World w)
 }
 
 #if !OLDAPP
+// ── Turn picks ───────────────────────────────────────────────────────────────
+// Per taxi plan: the clearance a controller would give (the shortest route's taxiway names), then,
+// for every row and both sides, the Turn pick a pilot could set on that row. Each pick is loaded as
+// the planner loads it and what became of it is written out (a TURN| line): a pick is honored or
+// SAID, never dropped in silence, and the route really turns the way it reports. A pick that
+// changes the route is flown following the tone (TURN_CHARTED / TURN_OFFCHART, beside TURN_BASE:
+// the same clearance with no pick), then flown once more with the pilot taking the charted way at
+// the junction instead (TURN_MISS). turn_report.py reads the results.
+void RunTurnPicks(World w)
+{
+    foreach (var (plan, _) in PlanTaxis(w))
+    {
+        plan.TurnPicks = null; plan.FixedSeq = null; plan.DivertPath = null;
+        var r0 = LoadProbe(w, plan, null, out _, out _);
+        if (r0 == null) continue;
+        var seq = new List<string>();
+        foreach (var s in r0.Segments)
+            if (!string.IsNullOrEmpty(s.TaxiwayName) && (seq.Count == 0 || seq[^1] != s.TaxiwayName)) seq.Add(s.TaxiwayName);
+        if (seq.Count == 0) continue;
+        plan.FixedSeq = seq;
+        var baseRoute = LoadProbe(w, plan, seq, out _, out _);
+        if (baseRoute == null) { plan.FixedSeq = null; continue; }   // the clearance itself is refused: nothing to compare a pick with
+        string key = plan.Describe + " via " + string.Join(",", seq);
+        Codes("TURN_BASE", w.Icao, key, FlyTaxi(w, plan, withClearance: false, trace: false)); taxis++;
+        for (int row = 0; row < seq.Count; row++)
+        {
+            int met = 0;
+            foreach (var side in new[] { TurnSide.Left, TurnSide.Right })
+            {
+                plan.TurnPicks = new Dictionary<int, TurnSide> { [row] = side }; plan.DivertPath = null;
+                string pk = $"{key} ## row {row + 1} {seq[row]} {side}";
+                string where = plan.Describe + plan.PickSuffix();
+                var route = LoadProbe(w, plan, seq, out string said, out string? err);
+                var applied = route?.TurnPicks.FirstOrDefault(p => p.RowIndex == row);
+                string sideWord = side == TurnSide.Left ? "left" : "right";
+                string outcome =
+                    route == null ? "LOAD_FAILED"
+                    : said.Contains($"no {sideWord} turn onto taxiway", StringComparison.OrdinalIgnoreCase) ? "NO_TURN"
+                    : said.Contains("does not lead to", StringComparison.OrdinalIgnoreCase) ? "NO_LEAD"
+                    : said.Contains("would be a long detour", StringComparison.OrdinalIgnoreCase) ? "DETOUR"
+                    : said.Contains($"onto taxiway {seq[row]} does not pass", StringComparison.OrdinalIgnoreCase) ? "NO_PIN"
+                    : applied == null ? "SILENT"
+                    : applied.IsOffChart ? "OFFCHART" : applied.ChangedRoute ? "CHARTED" : "MET";
+                if (outcome == "MET") met++;
+                counts["~pick " + outcome] = counts.TryGetValue("~pick " + outcome, out int oc) ? oc + 1 : 1;
+                var fs = new List<Finding>();
+                double? turned = route != null && applied != null ? TurnOnto(route, applied, plan.StartHeading) : null;
+                if (depTraceFilter != null && where.Contains(depTraceFilter, StringComparison.OrdinalIgnoreCase))
+                    Console.WriteLine($"=== {where}\nPICK {outcome}: {said}\n     " + (applied == null ? "no applied pick" :
+                        $"departure n{applied.DepartureNodeId}, join n{applied.JoinNodeId}, segments {applied.FirstSegmentAfterDeparture}..{applied.FirstTaxiwaySegment}, "
+                        + $"start heading {plan.StartHeading:F0}, measured turn {turned:F0} (negative is left), {route!.TotalDistanceMeters:F0} m against {baseRoute.TotalDistanceMeters:F0} m"));
+                if (outcome == "LOAD_FAILED") fs.Add(new Finding(w.Icao, "TURN_PICK_BROKE_THE_LOAD", where, err ?? "no route"));
+                if (outcome == "SILENT") fs.Add(new Finding(w.Icao, "TURN_PICK_SILENT", where, $"neither applied nor said: {said}"));
+                if (outcome == "OFFCHART" && !said.Contains("off-chart", StringComparison.OrdinalIgnoreCase))
+                    fs.Add(new Finding(w.Icao, "OFFCHART_NOTE_MISSING", where, said));
+                if (outcome == "CHARTED" && !said.Contains("as picked", StringComparison.OrdinalIgnoreCase))
+                    fs.Add(new Finding(w.Icao, "TURN_CHARTED_NOT_CONFIRMED", where, said));
+                if (route != null && applied is { ChangedRoute: true } && BackOnTheOtherArm(w.Graph, route, applied) is { } backOn)
+                    fs.Add(new Finding(w.Icao, backOn.travels ? "TURN_TRAVELS_THE_OTHER_ARM" : "TURN_CROSSES_THE_OTHER_ARM", where, backOn.what));
+                if (turned is double dTurn && (side == TurnSide.Left ? dTurn > 25 : dTurn < -25))
+                    fs.Add(new Finding(w.Icao, outcome == "MET" ? "TURN_MET_WRONG_SIDE" : "TURN_HONORED_WRONG_SIDE", where,
+                        $"the route turns {Math.Abs(dTurn):F0}° {(dTurn > 0 ? "right" : "left")} onto {seq[row]}"));
+                resultsWriter?.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                    $"TURN|{w.Icao}|{pk}|{outcome}|{route?.TotalDistanceMeters ?? 0:F0}|{baseRoute.TotalDistanceMeters:F0}|{(applied?.IsOffChart == true ? applied.OffChartLengthMeters : 0):F0}|{turned:F0}"));
+
+                if (outcome is "CHARTED" or "OFFCHART")
+                {
+                    fs.AddRange(FlyTaxi(w, plan, withClearance: false, trace: false)); taxis++;
+                    Codes("TURN_" + outcome, w.Icao, pk, fs);
+                    if (ChartedWayAt(route!, baseRoute, applied!) is { } dv)
+                    {
+                        plan.DivertPath = dv.path; plan.DivertAt = dv.at;
+                        Codes("TURN_MISS", w.Icao, pk, FlyTaxi(w, plan, withClearance: false, trace: false)); taxis++;
+                        plan.DivertPath = null;
+                    }
+                }
+                else Codes("TURN_" + outcome, w.Icao, pk, fs);
+            }
+            if (met == 2) Add(new Finding(w.Icao, "TURN_BOTH_SIDES_MET", $"{key} ## row {row + 1} {seq[row]}", "Left and Right are both reported as the turn the route already makes"));
+        }
+        plan.TurnPicks = null; plan.FixedSeq = null;
+    }
+}
+
+/// <summary>Loads a plan as the planner would and returns its route with everything the pilot is told about it.</summary>
+TaxiRoute? LoadProbe(World w, TaxiPlan plan, List<string>? seq, out string said, out string? err)
+{
+    var m = new TaxiGuidanceManager(new Cap(() => simNow));
+    try
+    {
+        err = plan.Load(m, provider, w, seq == null ? null : new List<string>(seq));
+        said = ((m.LastRouteSummary ?? "") + " " + (StartWarning(m) ?? "")).Trim();
+        return err == null ? m.RouteForHarness : null;
+    }
+    finally { try { m.StopGuidance(); m.Dispose(); } catch { } }
+}
+
+/// <summary>
+/// Which way a route turns onto a picked row's taxiway, measured HERE and not by the app: every
+/// change of heading added up, from the heading the aircraft reaches the junction with, through the
+/// connection, and along the taxiway for 60 m or until the route leaves it (the turn onto the next
+/// taxiway is the next row's). Added up and not the net difference, because a turn of more than 180
+/// degrees (out of a stand and back along the taxiway) reads the wrong way round as a net figure.
+/// Negative is left. A second opinion on the app's own turn test, so only a clear contradiction counts.
+/// </summary>
+static double? TurnOnto(TaxiRoute route, AppliedTurnPick p, double startHeading)
+{
+    int a = p.FirstSegmentAfterDeparture, j = p.FirstTaxiwaySegment;
+    if (a < 0 || j < a || j >= route.Segments.Count) return null;
+    double heading = a > 0 ? route.Segments[a - 1].BearingDegrees : startHeading, total = 0, past = 0;
+    for (int k = a; k < route.Segments.Count; k++)
+    {
+        if (k > j && !string.Equals(route.Segments[k].TaxiwayName, p.TaxiwayName, StringComparison.OrdinalIgnoreCase)) break;
+        total += Geo.Norm(route.Segments[k].BearingDegrees - heading);
+        heading = route.Segments[k].BearingDegrees;
+        if (k >= j && (past += route.Segments[k].DistanceMeters) >= 60) break;
+    }
+    return total;
+}
+
+/// <summary>
+/// Does a route that honored a pick come back onto the arm of the taxiway the pick turned AWAY from?
+/// Worked out HERE from the graph: the arm is every node reached along the taxiway's own edges from
+/// the join's other neighbours and not also from the node the route went to (a ring has no other arm).
+/// TRAVELS: a later segment named for the taxiway runs between two nodes of that arm. CROSSES: the
+/// route only passes a node of it, on another taxiway (a junction; the route's last node, its
+/// destination, does not count).
+/// </summary>
+static (bool travels, string what)? BackOnTheOtherArm(TaxiGraph graph, TaxiRoute route, AppliedTurnPick p)
+{
+    int j = p.FirstTaxiwaySegment;
+    if (j < 0 || j >= route.Segments.Count) return null;
+    int u = route.Segments[j].FromNode.NodeId, v = route.Segments[j].ToNode.NodeId;
+    bool OnTaxiway(TaxiEdge e) => string.Equals(e.TaxiwayName, p.TaxiwayName, StringComparison.OrdinalIgnoreCase);
+    HashSet<int> Reach(IEnumerable<int> from)
+    {
+        var seen = new HashSet<int>(); var queue = new Queue<int>();
+        foreach (int id in from) if (id != u && seen.Add(id)) queue.Enqueue(id);
+        while (queue.Count > 0)
+            if (graph.Adjacency.TryGetValue(queue.Dequeue(), out var edges))
+                foreach (var e in edges)
+                    if (OnTaxiway(e) && e.ToNodeId != u && seen.Add(e.ToNodeId)) queue.Enqueue(e.ToNodeId);
+        return seen;
+    }
+    var arm = Reach(graph.Adjacency.TryGetValue(u, out var fromU) ? fromU.Where(e => OnTaxiway(e) && e.ToNodeId != v).Select(e => e.ToNodeId) : Enumerable.Empty<int>());
+    arm.ExceptWith(Reach(new[] { v }));
+    for (int k = j + 1; k < route.Segments.Count; k++)
+    {
+        var s = route.Segments[k];
+        if (string.Equals(s.TaxiwayName, p.TaxiwayName, StringComparison.OrdinalIgnoreCase)
+            && arm.Contains(s.FromNode.NodeId) && arm.Contains(s.ToNode.NodeId))
+            return (true, $"segment {k} of {route.Segments.Count} runs along {p.TaxiwayName} from n{s.FromNode.NodeId} to n{s.ToNode.NodeId}, the other way from the join n{u}");
+    }
+    for (int k = j + 1; k < route.Segments.Count - 1; k++)
+        if (arm.Contains(route.Segments[k].ToNode.NodeId))
+            return (false, $"segment {k} of {route.Segments.Count} ({route.Segments[k].TaxiwayName}) passes n{route.Segments[k].ToNode.NodeId}, on {p.TaxiwayName} the other way from the join n{u}");
+    return null;
+}
+
+/// <summary>Where the picked route leaves the charted one at or after the pick's junction, and the charted way on from there.</summary>
+static (List<TaxiNode> path, (double lat, double lon) at)? ChartedWayAt(TaxiRoute picked, TaxiRoute charted, AppliedTurnPick p)
+{
+    var chartedFrom = new Dictionary<int, int>();   // node -> the charted segment leaving it (first visit)
+    for (int i = 0; i < charted.Segments.Count; i++) chartedFrom.TryAdd(charted.Segments[i].FromNode.NodeId, i);
+    for (int i = Math.Max(1, p.FirstSegmentAfterDeparture); i < picked.Segments.Count; i++)
+    {
+        var sg = picked.Segments[i];
+        if (!chartedFrom.TryGetValue(sg.FromNode.NodeId, out int ci)) return null;   // the charted route never comes here
+        if (charted.Segments[ci].ToNode.NodeId == sg.ToNode.NodeId) continue;         // still the same way
+        var path = new List<TaxiNode>(); double len = 0;
+        for (int k = ci; k < charted.Segments.Count && len < 250; k++) { path.Add(charted.Segments[k].ToNode); len += charted.Segments[k].DistanceMeters; }
+        return (path, (sg.FromNode.Latitude, sg.FromNode.Longitude));
+    }
+    return null;
+}
+
 // ── Ground traffic (GroundTrafficMonitor driven headlessly through IGroundTrafficSimSource) ──
 // Simulated AI aircraft placed around real taxi routes; the monitor is wired exactly as MainForm
 // wires it (SuppressCheck, RouteContextProvider = the manager's GetGroundTrafficContext) and ticked
@@ -626,12 +890,81 @@ void RunTrace(string spec)
             }
         return;
     }
+    if (parts.Length >= 5 && parts[1].Equals("pick", StringComparison.OrdinalIgnoreCase))
+    {
+        // --trace ICAO:pick:<lat>,<lon>,<heading>:<runway>:<clearance>[:miss]
+        //   one clearance from a position to a runway; a Turn pick is =L or =R after its taxiway,
+        //   e.g. KBOS:pick:42.363953,-71.006981,170:33L:H,C=L   (":miss": the pilot takes the charted
+        //   way at the junction instead of the picked turn)
+        var pos = parts[2].Split(',').Select(x => double.Parse(x, CultureInfo.InvariantCulture)).ToArray();
+        var rwy = w.Runways.First(r => r.RunwayID.Equals(parts[3], StringComparison.OrdinalIgnoreCase));
+        var seq = new List<string>(); var picks = new Dictionary<int, TurnSide>();
+        foreach (var item in parts[4].Split(','))
+        {
+            var kv = item.Split('=');
+            if (kv.Length > 1) picks[seq.Count] = kv[1].StartsWith("L", StringComparison.OrdinalIgnoreCase) ? TurnSide.Left : TurnSide.Right;
+            seq.Add(kv[0].Trim());
+        }
+        var tp = TaxiPlan.GateToRunway(w, new ParkingSpot { Latitude = pos[0], Longitude = pos[1] }, rwy, pos[2]);
+        if (tp == null) { Console.WriteLine("no entry onto that runway found"); return; }
+        tp.Describe = $"{parts[2]} -> Runway {rwy.RunwayID}"; tp.FixedSeq = seq; tp.TurnPicks = null;
+        if (parts.Length > 5 && parts[5].Equals("miss", StringComparison.OrdinalIgnoreCase) && picks.Count > 0)
+        {
+            var charted = LoadProbe(w, tp, seq, out _, out _);
+            tp.TurnPicks = picks;
+            var picked = LoadProbe(w, tp, seq, out _, out _);
+            var changed = picked?.TurnPicks.FirstOrDefault(p => p.ChangedRoute);
+            if (charted == null || picked == null || changed == null || ChartedWayAt(picked, charted, changed) is not { } dv)
+            { Console.WriteLine("no pick changes this route, or the charted way does not part from it: nothing to miss"); return; }
+            tp.DivertPath = dv.path; tp.DivertAt = dv.at;
+        }
+        tp.TurnPicks = picks.Count > 0 ? picks : null;
+        foreach (var f in FlyTaxi(w, tp, withClearance: false, trace: true)) Console.WriteLine("FINDING " + f);
+        if (Environment.GetEnvironmentVariable("VP_ALLLOG") == "1") foreach (var l in logSink) Console.WriteLine("LOG " + l);
+        return;
+    }
+    if (parts.Length >= 3 && parts[1].Equals("turn", StringComparison.OrdinalIgnoreCase))
+    {
+        // --trace ICAO:turn:<text in the scenario description>  (e.g. "turn Left onto C")
+        depTraceFilter = string.Join(":", parts.Skip(2));
+        RunTurnPicks(w);
+        if (Environment.GetEnvironmentVariable("VP_ALLLOG") == "1") foreach (var l in logSink) Console.WriteLine("LOG " + l);
+        return;
+    }
 #endif
     if (parts.Length >= 3 && parts[1].Equals("any", StringComparison.OrdinalIgnoreCase))
     {
         // --trace ICAO:any:<text in the scenario description> — every taxi and departure scenario
         depTraceFilter = string.Join(":", parts.Skip(2));
         RunTaxis(w); RunDepartures(w);
+        if (Environment.GetEnvironmentVariable("VP_ALLLOG") == "1") foreach (var l in logSink) Console.WriteLine("LOG " + l);
+        return;
+    }
+    if (parts.Length >= 3 && parts[1].Equals("rwystop", StringComparison.OrdinalIgnoreCase))
+    {
+        // --trace ICAO:rwystop:<text in the scenario description>
+        depTraceFilter = string.Join(":", parts.Skip(2));
+        RunRunwayStops(w);
+        return;
+    }
+    if (parts.Length >= 3 && parts[1].Equals("missedexit", StringComparison.OrdinalIgnoreCase))
+    {
+        // --trace ICAO:missedexit:<text in the scenario description>
+        depTraceFilter = string.Join(":", parts.Skip(2));
+        RunMissedExits(w);
+        return;
+    }
+    if (parts.Length >= 4 && parts[1].Equals("from", StringComparison.OrdinalIgnoreCase))
+    {
+        // --trace ICAO:from:<lat>,<lon>,<heading>:<text in the gate's name>[:A,B,C]
+        // A route loaded where a real flight loaded it, with the clearance it had (from the taxi log).
+        var pos = parts[2].Split(',').Select(v => double.Parse(v, CultureInfo.InvariantCulture)).ToArray();
+        var seq = parts.Length > 4 ? parts[4].Split(',').ToList() : null;
+        var gate = w.Parking.FirstOrDefault(p => p.ToString().Contains(parts[3], StringComparison.OrdinalIgnoreCase)
+                                                 && w.NodeNear(p.Latitude, p.Longitude, 100) != null);
+        if (gate == null) { Console.WriteLine($"no gate matching \"{parts[3]}\""); return; }
+        foreach (var f in FlyTaxi(w, TaxiPlan.FromPosition(w, pos[0], pos[1], pos[2], gate, seq), withClearance: false, trace: true))
+            Console.WriteLine("FINDING " + f);
         if (Environment.GetEnvironmentVariable("VP_ALLLOG") == "1") foreach (var l in logSink) Console.WriteLine("LOG " + l);
         return;
     }
@@ -1018,6 +1351,9 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
     var found = new List<Finding>();
     if (plan == null) return found;
     string where = plan.Describe + (withClearance ? " [clearance]" : "");
+#if !OLDAPP
+    if (plan.FixedSeq != null) where += plan.PickSuffix();
+#endif
     if (depTraceFilter != null)
     {
         if (!where.Contains(depTraceFilter, StringComparison.OrdinalIgnoreCase)) return found;
@@ -1029,6 +1365,11 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
     {
         List<string>? seq = null;
         double shortestM = 0;
+#if !OLDAPP
+        // A clearance given outright (the Turn pick flights, --trace ICAO:pick): LoadRoute edits the
+        // list it is handed, so each load gets its own copy.
+        if (plan.FixedSeq != null) seq = new List<string>(plan.FixedSeq);
+#endif
         if (withClearance)
         {
             // What ATC would say: the taxiway names of the shortest route, in order.
@@ -1149,6 +1490,23 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
         if (prev == TaxiGuidanceState.HoldShort) stops.Add(new HoldStop(0, plan.StartLat, plan.StartLon, cue ?? "", 0));
         bool lineupChecked = false, reachedLineup = false;
         var paintCross = new List<(double odo, double lat, double lon)>();   // each painted runway-hold line crossed
+#if !OLDAPP
+        // Turn pick flights: what was said about the pick and the off-chart leg, and (the miss flight)
+        // the charted way the pilot takes at the junction instead of the picked turn.
+        bool pickSaidMissed = false, pickSaidNotKept = false, legSaid = false, legReached = false, routeChangedSaid = false;
+        double legMaxOff = 0, legLengthM = 0, legNearestM = double.MaxValue;
+        string legOffWhere = ""; bool legOpensTheRoute = false; (double lat, double lon) legMid = default;
+        if (route.TurnPicks.FirstOrDefault(p => p.IsOffChart) is { } legPick && legPick.FirstSegmentAfterDeparture < route.Segments.Count)
+        {
+            // The leg itself, from the route as loaded: its length, its midpoint (did the pilot, following
+            // the tone, actually taxi along it?) and whether it is the route's very first segment (the
+            // start utterance then says it, and the on-leg sentence waits out the start grace window).
+            var legSeg = route.Segments[legPick.FirstSegmentAfterDeparture];
+            legLengthM = legPick.OffChartLengthMeters; legOpensTheRoute = legPick.FirstSegmentAfterDeparture == 0;
+            legMid = ((legSeg.FromNode.Latitude + legSeg.ToNode.Latitude) / 2, (legSeg.FromNode.Longitude + legSeg.ToNode.Longitude) / 2);
+        }
+        var divert = plan.DivertPath; int divertIdx = 0; double divertStartOdo = -1; bool diverting = false, diverted = false;
+#endif
         while (t < budget)
         {
             simNow = simNow.AddMilliseconds(100); t += 0.1;
@@ -1186,6 +1544,12 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
                 if (a.Contains("Hold short", StringComparison.OrdinalIgnoreCase) || a.Contains("Hold position", StringComparison.OrdinalIgnoreCase)) lastHoldSpeech = a;
                 if (trace) Console.WriteLine($"  {t,6:F1}s SPEAK {a}");
                 if (a.Contains("Route changed", StringComparison.OrdinalIgnoreCase) || a.Contains("Off route.", StringComparison.Ordinal)) recalcs++;
+#if !OLDAPP
+                if (a.Contains("Route changed", StringComparison.OrdinalIgnoreCase)) routeChangedSaid = true;
+                if (a.Contains("was missed", StringComparison.OrdinalIgnoreCase)) pickSaidMissed = true;
+                if (a.Contains("could not be kept", StringComparison.OrdinalIgnoreCase)) pickSaidNotKept = true;
+                if (a.Contains("Off-chart leg", StringComparison.OrdinalIgnoreCase)) legSaid = true;
+#endif
                 if (a.Contains("Lined up", StringComparison.OrdinalIgnoreCase)) linedUp = true;
                 if (a.Contains("off route", StringComparison.OrdinalIgnoreCase) && a.Contains("Warning", StringComparison.OrdinalIgnoreCase) && route != null)
                 {
@@ -1239,6 +1603,22 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
                 _ => pilot.TaxiTarget(pan, cap),
             };
             pilot.Precision = st == TaxiGuidanceState.LiningUp;
+#if !OLDAPP
+            // The miss flight: at the junction the pilot takes the charted way (as FlyWrongTurn drives a
+            // branch), until guidance answers with a new route or 150 m have gone by; then the tone again.
+            if (divert != null && !diverted && !diverting && st == TaxiGuidanceState.Taxiing
+                && Geo.Dist(lat, lon, plan.DivertAt.lat, plan.DivertAt.lon) < 5) { diverting = true; divertStartOdo = odo; }
+            if (diverting && (routeChangedSaid || odo - divertStartOdo > 150 || divertIdx >= divert!.Count || st != TaxiGuidanceState.Taxiing))
+            { diverting = false; diverted = true; pilot = new PilotModel(hdg, gs); }
+            if (diverting)
+            {
+                while (divertIdx < divert!.Count - 1 && Geo.Dist(lat, lon, divert[divertIdx].Latitude, divert[divertIdx].Longitude) < 6) divertIdx++;
+                double dErr = Geo.Norm(TaxiPlanBearing(lat, lon, divert[divertIdx]) - hdg);
+                hdg = (hdg + Math.Clamp(dErr, -12 * 0.1, 12 * 0.1) + 360) % 360;
+                gs += Math.Clamp(10 - gs, -0.4, 0.15);
+            }
+            else
+#endif
             pilot.Step(ref hdg, ref gs, pan, target, 0.1, holdHeading: null);
             double stepM = gs * 0.5144 * 0.1;
             double pLat = lat, pLon = lon;
@@ -1319,6 +1699,15 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
             if (off > 12) { if (offSince < 0) offSince = t; } else offSince = -1;
             if (st == TaxiGuidanceState.LiningUp) { if (off > maxOffLineup) { maxOffLineup = off; lineupWhere = $"t={t:F0}s ({lat:F6},{lon:F6})"; } }
             else if (off > maxOff) { maxOff = off; offWhere = $"t={t:F0}s ({lat:F6},{lon:F6}) state={st} seg={mgr.SegmentIndexForHarness}"; }
+#if !OLDAPP
+            if (legLengthM > 0) legNearestM = Math.Min(legNearestM, Geo.Dist(lat, lon, legMid.lat, legMid.lon));
+            if (legLengthM > 0 && mgr.RouteForHarness is { } rNow && mgr.SegmentIndexForHarness is int sNow
+                && sNow >= 0 && sNow < rNow.Segments.Count && rNow.Segments[sNow].IsOffChartTurn)
+            {
+                legReached = true;
+                if (off > legMaxOff) { legMaxOff = off; legOffWhere = $"t={t:F0}s ({lat:F6},{lon:F6})"; }
+            }
+#endif
             if (trace && ((int)(t * 10)) % 10 == 0)
                 Console.WriteLine($"  {t,6:F1}s {st,-12} seg={mgr.SegmentIndexForHarness} ({lat:F6},{lon:F6}) hdg={hdg:F0} gs={gs:F1} pan={pan:F2} off={off:F0}"
                     + (plan.Rwy is { } pr ? $" rwy[{new LandingGeometry(pr).Describe(lat, lon, 0)}] halfW={new LandingGeometry(pr).HalfWidthM:F0}" : ""));
@@ -1329,7 +1718,31 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
         if (!done) found.Add(new Finding(w.Icao, "TAXI_NOT_ARRIVED", where, $"after {t:F0}s ({odo:F0} m of {route.TotalDistanceMeters:F0} m) state={mgr.State} seg={mgr.SegmentIndexForHarness}/{route.Segments.Count} [{string.Join(", ", stateLog.TakeLast(3))}]"));
         if (maxOff > 12) found.Add(new Finding(w.Icao, "TAXI_OFF_PAVEMENT", where, $"{maxOff:F0} m off the pavement following the tone, {offWhere}"));
         if (maxOffLineup > 12) found.Add(new Finding(w.Icao, "LINEUP_LEAVES_MAPPED_PAVEMENT", where, $"{maxOffLineup:F0} m from any mapped taxi edge or runway while following the lineup tone, {lineupWhere}"));
+#if !OLDAPP
+        if (plan.DivertPath != null) recalcs = 0;   // a deliberate miss is ANSWERED with a route change
+#endif
         if (recalcs > 0) found.Add(new Finding(w.Icao, "TAXI_RECALC_WHILE_FOLLOWING", where, $"{recalcs} route change(s) while following the tone"));
+#if !OLDAPP
+        if (plan.TurnPicks is { Count: > 0 } && plan.DivertPath == null)
+        {
+            if (pickSaidMissed || pickSaidNotKept)
+                found.Add(new Finding(w.Icao, "TURN_PICK_LOST_WHILE_FOLLOWING", where, $"\"{(pickSaidMissed ? "was missed" : "could not be kept")}\" said while the pilot followed the tone"));
+            if (legLengthM >= 40 && legReached && !legSaid && !legOpensTheRoute)
+                found.Add(new Finding(w.Icao, "OFFCHART_LEG_NOT_ANNOUNCED", where, $"a {legLengthM:F0} m off-chart leg was taxied with no \"Off-chart leg\" sentence"));
+            // 25 m: a pilot rounds the corner of a 20 to 30 m leg by 13 to 19 m and has still taxied it.
+            // Not judged when the route itself begins well away from the aircraft (an apron start).
+            if (legLengthM >= 20 && done && legNearestM > 25
+                && Geo.Dist(plan.StartLat, plan.StartLon, route.Segments[0].FromNode.Latitude, route.Segments[0].FromNode.Longitude) < 50)
+                found.Add(new Finding(w.Icao, "OFFCHART_LEG_NOT_TAXIED", where, $"arrived, but never came closer than {legNearestM:F0} m to the middle of the {legLengthM:F0} m off-chart leg"));
+            if (legMaxOff > 12)
+                found.Add(new Finding(w.Icao, "OFFCHART_LEG_OFF_PAVEMENT", where, $"{legMaxOff:F0} m beyond the nearest taxi edge on the off-chart leg, {legOffWhere}"));
+        }
+        else if (plan.DivertPath != null)
+            found.Add(!diverted && !diverting ? new Finding(w.Icao, "TURN_MISS_NOT_FLOWN", where, "the pilot never came to the junction to take the charted way")
+                : !routeChangedSaid ? new Finding(w.Icao, "TURN_MISS_NO_REROUTE", where, "took the charted way; guidance never changed the route")
+                : !pickSaidMissed && !pickSaidNotKept ? new Finding(w.Icao, "TURN_MISS_NOT_SAID", where, "took the charted way; the route changed with no word about the picked turn")
+                : new Finding(w.Icao, pickSaidMissed ? "TURN_MISS_SAID_MISSED" : "TURN_MISS_SAID_NOT_KEPT", where, "took the charted way; the route change said so"));
+#endif
     }
     catch (Exception ex) { found.Add(new Finding(w.Icao, "TAXI_EXCEPTION", where, ex.GetType().Name + ": " + ex.Message)); }
     finally { try { mgr.StopGuidance(); mgr.Dispose(); } catch { } }
@@ -1435,6 +1848,7 @@ sealed class Options
 {
     public string Mode = "all"; public int Airports = 100; public List<string>? Icaos;
     public (int i, int n)? Shard; public int TaxiPerAirport = 6; public string Out = ""; public string? Trace;
+    public string? Sim, Db;
     public static Options? Parse(string[] a)
     {
         if (a.Length == 0) { Console.WriteLine("usage: VirtualPilot landings|taxi|all [options] (see source header)"); return null; }
@@ -1449,11 +1863,53 @@ sealed class Options
                 case "--taxi-per-airport": o.TaxiPerAirport = int.Parse(a[++i]); break;
                 case "--out": o.Out = a[++i]; break;
                 case "--trace": o.Trace = a[++i]; break;
+                case "--sim": o.Sim = a[++i]; break;
+                case "--db": o.Db = a[++i]; break;
                 default: Console.WriteLine($"unknown option {a[i]}"); return null;
             }
         }
         if (o.Out == "") o.Out = $"virtualpilot_{o.Mode}{(o.Shard is { } s ? $"_{s.i}of{s.n}" : "")}.txt";
         return o;
+    }
+}
+
+/// <summary>
+/// Which navdata database a run flies. A file given by path wins; else the named simulator's
+/// database; else the MSFS 2020 one when it is installed (the rounds recorded in
+/// docs/virtual-pilot.md flew it) and the MSFS 2024 one when it is not. The databases are found
+/// through <see cref="DatabasePathResolver"/>, as the app finds them ([CORE-13]).
+/// </summary>
+static class NavdataChoice
+{
+    public static (string Path, string Sim)? Resolve(string? dbArg, string? simArg)
+    {
+        string? sim = null;
+        if (!string.IsNullOrWhiteSpace(simArg))
+        {
+            sim = simArg.Trim().ToUpperInvariant() switch
+            {
+                "FS2020" or "MSFS2020" or "2020" => "FS2020",
+                "FS2024" or "MSFS2024" or "2024" => "FS2024",
+                _ => null,
+            };
+            if (sim == null) { Console.WriteLine($"unknown simulator '{simArg}': use fs2020 or fs2024"); return null; }
+        }
+        if (!string.IsNullOrWhiteSpace(dbArg))
+        {
+            string file = Path.GetFullPath(dbArg);
+            if (!File.Exists(file)) { Console.WriteLine($"DB not found: {file}"); return null; }
+            // The simulator name only labels the run; with no --sim the file's own name decides it.
+            return (file, sim ?? (Path.GetFileName(file).Contains("2024", StringComparison.Ordinal) ? "FS2024" : "FS2020"));
+        }
+        sim ??= DatabasePathResolver.ExistsAnywhere("FS2020") || !DatabasePathResolver.ExistsAnywhere("FS2024") ? "FS2020" : "FS2024";
+        string path = DatabasePathResolver.ResolveExistingDatabasePath(sim);
+        if (!File.Exists(path))
+        {
+            Console.WriteLine($"DB not found: {path}" + (DatabasePathResolver.ExistsAnywhere(sim == "FS2020" ? "FS2024" : "FS2020")
+                ? $" (the other simulator's database is installed: pass --sim {(sim == "FS2020" ? "fs2024" : "fs2020")})" : ""));
+            return null;
+        }
+        return (path, sim);
     }
 }
 
@@ -1736,6 +2192,18 @@ sealed class TaxiPlan
     public Dictionary<int, string>? HoldPicks;
     public Func<TaxiGuidanceManager, IAirportDataProvider, World, List<string>?, string?> LoadFn = null!;
     public string? Load(TaxiGuidanceManager m, IAirportDataProvider p, World w, List<string>? seq) => LoadFn(m, p, w, seq);
+#if !OLDAPP
+    // Turn picks (row -> side) as the planner's Turn lists hand them to LoadRoute; a clearance given
+    // outright instead of derived from the shortest route; and, for the miss flight, the charted way
+    // the pilot takes at DivertAt instead of the picked turn.
+    public Dictionary<int, TurnSide>? TurnPicks;
+    public List<string>? FixedSeq;
+    public List<TaxiNode>? DivertPath; public (double lat, double lon) DivertAt;
+    public string PickSuffix() => " via " + string.Join(",", FixedSeq ?? new())
+        + (TurnPicks is { Count: > 0 } tp && FixedSeq != null
+            ? " turn " + string.Join(",", tp.OrderBy(kv => kv.Key).Select(kv => $"{kv.Value} onto {(kv.Key < FixedSeq.Count ? FixedSeq[kv.Key] : "?")}")) : "")
+        + (DivertPath != null ? " [takes the charted way]" : "");
+#endif
 
     /// <summary>A departure from a named (OSM) holding point ("HP") or a runway intersection ("IX"), as the form loads it.</summary>
     public static TaxiPlan? Departure(World w, ParkingSpot gate, Runway rwy, string kind, TaxiGraph.RunwayIntersection e, bool partway, string osmKind)
@@ -1809,7 +2277,8 @@ sealed class TaxiPlan
         };
     }
 
-    public static TaxiPlan? GateToRunway(World w, ParkingSpot gate, Runway rwy)
+    /// <param name="heading">The aircraft's own heading; without one it faces its nearest taxi node.</param>
+    public static TaxiPlan? GateToRunway(World w, ParkingSpot gate, Runway rwy, double? heading = null)
     {
         var (lineupLat, lineupLon) = DepartureRig.Lineup(w, rwy);   // TaxiAssistForm.PopulateDestinations
         double halfWidthM = (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
@@ -1817,7 +2286,7 @@ sealed class TaxiPlan
             halfWidthM, TaxiGuidanceManager.RUNWAY_REACH_MAX_CROSS_M, gate.Latitude, gate.Longitude);
         if (entry == null) return null;
         var first = w.Graph.FindNearestNode(gate.Latitude, gate.Longitude);
-        double hdg = first == null ? 0 : Bearing(gate.Latitude, gate.Longitude, first.Latitude, first.Longitude);
+        double hdg = heading ?? (first == null ? 0 : Bearing(gate.Latitude, gate.Longitude, first.Latitude, first.Longitude));
         int dest = entry.NodeId;
         var tp = new TaxiPlan
         {
@@ -1826,8 +2295,51 @@ sealed class TaxiPlan
         };
         tp.LoadFn = (m, p, wo, seq) => m.LoadRoute(p, wo.Icao, gate.Latitude, gate.Longitude, hdg, dest, $"Runway {rwy.RunwayID}",
                 seq, userRunwayHoldShorts: tp.HoldPicks, destinationHeading: rwy.HeadingMag, destinationThresholdLat: lineupLat, destinationThresholdLon: lineupLon,
+#if OLDAPP
                 destinationHeadingTrue: rwy.Heading, isRunwayDestination: true, prebuiltGraph: wo.Graph, announceSummary: true);
+#else
+                destinationHeadingTrue: rwy.Heading, isRunwayDestination: true, prebuiltGraph: wo.Graph, announceSummary: true,
+                userTurnPicks: tp.TurnPicks);
+#endif
         return tp;
+    }
+
+    /// <summary>Stopped on the centreline midway across the widest gap between two exits, facing the rollout direction.</summary>
+    public static TaxiPlan? RunwayStopToGate(World w, Runway rwy, List<LandingExit> exits, ParkingSpot gate)
+    {
+        var ordered = exits.OrderBy(e => e.DistanceFromThresholdFeet).ToList();
+        LandingExit? from = null, to = null;
+        double widest = 300.0 / 0.3048;
+        for (int i = 0; i + 1 < ordered.Count; i++)
+        {
+            double gap = ordered[i + 1].DistanceFromThresholdFeet - ordered[i].DistanceFromThresholdFeet;
+            if (gap >= widest) { widest = gap; from = ordered[i]; to = ordered[i + 1]; }
+        }
+        var gateNode = w.NodeNear(gate.Latitude, gate.Longitude, 100);
+        if (from == null || to == null || gateNode == null) return null;
+        double lat = (from.Latitude + to.Latitude) / 2.0, lon = (from.Longitude + to.Longitude) / 2.0;
+        double hdg = Bearing(from.Latitude, from.Longitude, to.Latitude, to.Longitude);
+        int dest = gateNode.NodeId;
+        return new TaxiPlan
+        {
+            Describe = $"Rwy {rwy.RunwayID} stop {from.TaxiwayName}..{to.TaxiwayName} -> {gate}",
+            StartLat = lat, StartLon = lon, StartHeading = hdg,
+            LoadFn = (m, p, wo, seq) => m.LoadRoute(p, wo.Icao, lat, lon, hdg, dest, gate.ToString(),
+                seq, prebuiltGraph: wo.Graph, announceSummary: true),
+        };
+    }
+
+    /// <summary>A route loaded at a given position and heading, with the clearance given (or none).</summary>
+    public static TaxiPlan FromPosition(World w, double lat, double lon, double hdg, ParkingSpot gate, List<string>? clearance)
+    {
+        int dest = w.NodeNear(gate.Latitude, gate.Longitude, 100)!.NodeId;
+        return new TaxiPlan
+        {
+            Describe = $"From {lat:F6},{lon:F6} hdg {hdg:F0} -> {gate}" + (clearance == null ? "" : " via " + string.Join(",", clearance)),
+            StartLat = lat, StartLon = lon, StartHeading = hdg,
+            LoadFn = (m, p, wo, _) => m.LoadRoute(p, wo.Icao, lat, lon, hdg, dest, gate.ToString(),
+                clearance == null ? null : new List<string>(clearance), prebuiltGraph: wo.Graph, announceSummary: true),
+        };
     }
 
     public static TaxiPlan? ExitToGate(World w, Runway rwy, List<LandingExit> exits, LandingExit exit, ParkingSpot gate)
@@ -1839,16 +2351,21 @@ sealed class TaxiPlan
         // Face away from the runway: the heading from the exit junction to where the vacate ends.
         double hdg = Bearing(exit.Latitude, exit.Longitude, sn.Latitude, sn.Longitude);
         int dest = gateNode.NodeId;
-        return new TaxiPlan
+        var tp = new TaxiPlan
         {
             Describe = $"Rwy {rwy.RunwayID} exit {exit.TaxiwayName} -> {gate}",
             StartLat = sn.Latitude, StartLon = sn.Longitude, StartHeading = hdg,
-            LoadFn = (m, p, wo, seq) => m.LoadRoute(p, wo.Icao, sn.Latitude, sn.Longitude, hdg, dest, gate.ToString(),
-                seq, prebuiltGraph: wo.Graph, announceSummary: true),
         };
+        tp.LoadFn = (m, p, wo, seq) => m.LoadRoute(p, wo.Icao, sn.Latitude, sn.Longitude, hdg, dest, gate.ToString(),
+#if OLDAPP
+                seq, prebuiltGraph: wo.Graph, announceSummary: true);
+#else
+                seq, prebuiltGraph: wo.Graph, announceSummary: true, userTurnPicks: tp.TurnPicks);
+#endif
+        return tp;
     }
 
-    static double Bearing(double la1, double lo1, double la2, double lo2)
+    public static double Bearing(double la1, double lo1, double la2, double lo2)
         => (Math.Atan2((lo2 - lo1) * Math.Cos(la1 * Math.PI / 180), la2 - la1) * 180 / Math.PI + 360) % 360;
 }
 

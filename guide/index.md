@@ -65,6 +65,7 @@ If you would rather read straight through or search the whole guide at once, [th
    - [The Flight Planning Window](planning-your-flight.md#flight-planning-efb)
    - [The AI Route Briefing](planning-your-flight.md#planning-route-briefing)
    - [Aircraft EFBs](planning-your-flight.md#aircraft-efb)
+   - [The In-Sim Tablet (MSFS 2024)](planning-your-flight.md#in-sim-tablet)
    - [Flows and Checklists](planning-your-flight.md#checklists)
    - [Tracking Waypoints](planning-your-flight.md#fix-tracking)
    - [NAV Radios](planning-your-flight.md#planning-nav-radios)
@@ -184,6 +185,7 @@ These guides do not teach you to fly the aircraft itself. For engine starts, flo
    - [PMDG 777](boeing-aircraft-and-the-md-11.md#boeing-pmdg777)
    - [HorizonSim 787-9](boeing-aircraft-and-the-md-11.md#boeing-hs787)
    - [iFly 737 MAX8](boeing-aircraft-and-the-md-11.md#boeing-ifly737)
+   - [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-bbs757)
    - [TFDi MD-11](boeing-aircraft-and-the-md-11.md#boeing-md11)
 
 ## Part 9: General Flying Concepts {#part-8-general-flying-concepts}
@@ -227,4 +229,5 @@ These guides do not teach you to fly the aircraft itself. For engine starts, flo
    - [PMDG 777](hotkey-reference.md#hk-pmdg777)
    - [HorizonSim 787-9](hotkey-reference.md#hk-hs787)
    - [iFly 737 MAX8](hotkey-reference.md#hk-ifly)
+   - [BlueBird 757-200](hotkey-reference.md#hk-bbs757)
    - [TFDi MD-11](hotkey-reference.md#hk-md11)

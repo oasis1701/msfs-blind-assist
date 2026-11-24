@@ -1100,6 +1100,11 @@ public partial class MainForm
 
                 void ApplyTyped()
                 {
+                    // The raw text first, for a field whose words depend on what was typed (the 757's
+                    // squawk: an empty box and letters both parse to NaN below). Default: not handled.
+                    if (currentAircraft.HandleUITypedText(varKey, textBox.Text, varDef, simConnectManager!, announcer))
+                        return;
+
                     // Aircraft delegation: let the loaded aircraft claim _SET keys
                     // (e.g., PMDG 737's EFIS_MinsValueFt_*_SET vars need RST-then-rotate
                     // dispatch). We pass the double value when parseable, else 0 -- or NaN
@@ -1169,13 +1174,13 @@ public partial class MainForm
                                     simConnectManager?.SendEvent(setEvent, frequencyHz);
                                     System.Threading.Thread.Sleep(100); // Small delay for sim to process
                                     simConnectManager?.SendEvent(swapEvent);
-                                    announcer.Announce($"Active frequency set to {value:F3}");
+                                    announcer.Announce(FormattableString.Invariant($"Active frequency set to {value:F3}"));
                                 }
                                 // For standby frequency: just set it
                                 else
                                 {
                                     simConnectManager?.SendEvent(setEvent, frequencyHz);
-                                    announcer.Announce($"Standby frequency set to {value:F3}");
+                                    announcer.Announce(FormattableString.Invariant($"Standby frequency set to {value:F3}"));
                                 }
                             }
                             else
@@ -1227,7 +1232,7 @@ public partial class MainForm
                         else
                         {
                             simConnectManager?.SendEvent(varKey, (uint)value);
-                            announcer.Announce($"{varDef.DisplayName} set to {value}");
+                            announcer.Announce(FormattableString.Invariant($"{varDef.DisplayName} set to {value}"));
                         }
                     }
                     else

@@ -6,6 +6,7 @@ using B737 = MSFSBlindAssist.FirstOfficer.PMDG737;
 using IFly737 = MSFSBlindAssist.FirstOfficer.IFly737;
 using B777 = MSFSBlindAssist.FirstOfficer;
 using Md11 = MSFSBlindAssist.FirstOfficer.MD11;
+using B757 = MSFSBlindAssist.FirstOfficer.BBS757;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
@@ -95,6 +96,15 @@ public class EngineStartSelectorLatchTests
     /// Boeing selector's physics — so its item latches on the engine RUNNING, never on the switch.
     /// Three engines, started 3, 1, 2.
     /// </summary>
+    [Fact]
+    public void Bbs757StartSelectorsLatchOnEngineRunning()
+    {
+        var groups = B757.Bbs757FoChecklistDefinitions.Build();
+        var n2 = B757.Bbs757FoStateEvaluator.EngineRunningN2;
+        AssertLatchesOnEngineRunning(Item(groups, "ES_E1_GND"), "FO_ENG1_N2", n2);
+        AssertLatchesOnEngineRunning(Item(groups, "ES_E2_GND"), "FO_ENG2_N2", n2);
+    }
+
     [Fact]
     public void Md11StartSwitchesLatchOnEngineRunning()
     {

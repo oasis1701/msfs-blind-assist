@@ -51,20 +51,58 @@ public static class TaxiLeadIn
     /// </summary>
     public static LeadInInfo Extract(TaxiRoute route, string firstClearedTaxiway)
     {
+        int end = route.Segments.FindIndex(s => s.TaxiwayName.Equals(firstClearedTaxiway, StringComparison.OrdinalIgnoreCase));
+        if (end < 0) end = SegmentsBeforeJunction(route, firstClearedTaxiway);
+
         var names = new List<string>();
         double dist = 0;
-        bool any = false;
-        foreach (var seg in route.Segments)
+        for (int i = 0; i < end; i++)
         {
-            if (seg.TaxiwayName.Equals(firstClearedTaxiway, StringComparison.OrdinalIgnoreCase))
-                break;
-            any = true;
+            var seg = route.Segments[i];
             dist += seg.DistanceMeters;
             if (!string.IsNullOrEmpty(seg.TaxiwayName) &&
                 (names.Count == 0 || !names[^1].Equals(seg.TaxiwayName, StringComparison.OrdinalIgnoreCase)))
                 names.Add(seg.TaxiwayName);
         }
-        return new LeadInInfo { HasLeadIn = any, Taxiways = names, DistanceMeters = dist };
+        return new LeadInInfo { HasLeadIn = end > 0, Taxiways = names, DistanceMeters = dist };
+    }
+
+    // The router can join the cleared taxiway exactly where the next one leaves it. No segment then
+    // carries its name, and the lead-in ends at the first node that does (VTBS 02R, 2026-11-18: the
+    // whole 2.2 km route was measured as lead-in, rejected, and the route started 550 m away).
+    private static int SegmentsBeforeJunction(TaxiRoute route, string taxiway)
+    {
+        if (route.Segments.Count == 0 || route.Segments[0].FromNode.TaxiwayNames.Contains(taxiway)) return 0;
+        int arrival = route.Segments.FindIndex(s => s.ToNode.TaxiwayNames.Contains(taxiway));
+        return arrival < 0 ? route.Segments.Count : arrival + 1;
+    }
+
+    /// <summary>A turn at one node sharper than this is a reversal no aircraft can make there.
+    /// VHHH 07L C8 onto C is a real 122 degree turn.</summary>
+    public const double DoubleBackTurnDegrees = 150.0;
+
+    /// <summary>
+    /// True when the route never drives the first cleared taxiway and turns straight back at the
+    /// junction where it meets it: out along the next taxiway and back the same way. Read from the two
+    /// edges that meet at that node, however short: the route comes back over the edge it arrived by,
+    /// so the turn is 180 degrees whatever the edge's length. A reading smoothed over the route either
+    /// side lost the KDEN 07 shape (a 3.3 m spur from WA out to the B4 node and back read as a 119
+    /// degree turn; VirtualPilot, 2026-11-19). A route that starts on the taxiway has met it there, as
+    /// <see cref="Extract"/> reads it; a later node carrying the same name (navdata repeats names on
+    /// separate pieces, and merged path ends carry them onto junctions) is not where it meets it.
+    /// </summary>
+    public static bool DoublesBackAtUndrivenStart(TaxiRoute route, string firstClearedTaxiway)
+    {
+        var segments = route.Segments;
+        if (segments.Count == 0 || segments[0].FromNode.TaxiwayNames.Contains(firstClearedTaxiway)) return false;
+        if (segments.Any(s => s.TaxiwayName.Equals(firstClearedTaxiway, StringComparison.OrdinalIgnoreCase))) return false;
+
+        int arrival = segments.FindIndex(s => s.ToNode.TaxiwayNames.Contains(firstClearedTaxiway));
+        if (arrival < 0 || arrival + 1 >= segments.Count) return false;
+
+        double turn = Math.Abs(segments[arrival + 1].BearingDegrees - segments[arrival].BearingDegrees) % 360.0;
+        if (turn > 180.0) turn = 360.0 - turn;
+        return turn >= DoubleBackTurnDegrees;
     }
 
     /// <summary>

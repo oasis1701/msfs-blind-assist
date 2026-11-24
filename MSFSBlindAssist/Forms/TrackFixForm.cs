@@ -172,7 +172,7 @@ public partial class TrackFixForm : Form
         foreach (var waypoint in _duplicateWaypoints)
         {
             string distanceText = waypoint.DistanceFromAircraft.HasValue
-                ? $"{waypoint.DistanceFromAircraft.Value:F1} NM"
+                ? FormattableString.Invariant($"{waypoint.DistanceFromAircraft.Value:F1} NM")
                 : "Unknown";
 
             // Combine all information into single readable string for screen readers

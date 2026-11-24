@@ -10,6 +10,7 @@ using HwA330 = MSFSBlindAssist.FirstOfficer.HWA330;
 using B737 = MSFSBlindAssist.FirstOfficer.PMDG737;
 using IFly737 = MSFSBlindAssist.FirstOfficer.IFly737;
 using Md11 = MSFSBlindAssist.FirstOfficer.MD11;
+using B757 = MSFSBlindAssist.FirstOfficer.BBS757;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
@@ -28,6 +29,7 @@ public class BeforeStartAcarsReadbackTests
         new object[] { "iFly 737 MAX8", "BSC_ACARS" }, new object[] { "Fenix A320", "BSC_ACARS" },
         new object[] { "FBW A32NX", "BSC_ACARS" }, new object[] { "Headwind A330", "BSC_ACARS" },
         new object[] { "FBW A380", "BSC_ACARS" }, new object[] { "TFDi MD-11", "BSC_ACARS" },
+        new object[] { "BlueBird 757", "BSC_ACARS" },
     };
 
     private static (string Id, string Label, ChecklistItemType Type, bool HasAction)[] BeforeStartCl(string profile) =>
@@ -41,6 +43,7 @@ public class BeforeStartAcarsReadbackTests
             "Headwind A330" => Project(HwA330.HwA330ChecklistDefinitions.Build()),
             "FBW A380" => Project(A380.FbwA380ChecklistDefinitions.Build()),
             "TFDi MD-11" => Project(Md11.Md11FoChecklistDefinitions.Build()),
+            "BlueBird 757" => Project(B757.Bbs757FoChecklistDefinitions.Build()),
             _ => throw new System.ArgumentException(profile),
         };
 
