@@ -73,6 +73,18 @@ internal static class PlaceTree
 /// with only Major cities ticked).</summary>
 internal sealed record MajorCityFilter(int MinPopulation);
 
+/// <summary>The window's kinds and direction filters as a whole-world search applies them, BEFORE it keeps its
+/// nearest few: cut first and filtered after, a search for "san" with only Airports ticked kept the 2,000
+/// nearest towns and streams and lost every airport beyond them (2026-11-24). <see cref="HiddenTypes"/>,
+/// <see cref="MajorCities"/> and <see cref="Direction"/> mean what they do in <see cref="PlaceFilter.Apply"/>.</summary>
+internal sealed record WorldSearchFilter(IReadOnlySet<string> HiddenTypes, MajorCityFilter? MajorCities, string? Direction)
+{
+    /// <summary>The same text for the same filter, whatever sets hold it: the window searches again when it changes.</summary>
+    internal string Signature => string.Join(",", HiddenTypes.OrderBy(k => k, StringComparer.Ordinal))
+        + "|" + (MajorCities is { } m ? m.MinPopulation.ToString(System.Globalization.CultureInfo.InvariantCulture) : "")
+        + "|" + Direction;
+}
+
 /// <summary>The window's filters, applied in memory to the loaded places (pure, unit-tested).</summary>
 internal static class PlaceFilter
 {
@@ -89,7 +101,22 @@ internal static class PlaceFilter
     /// <summary>A major city, as the Volanta list and the first box count one: a town of at least the minimum
     /// population that is not a neighborhood (the owner's choice, 2026-10-15).</summary>
     internal static bool IsMajorCity(PlaceResult p, int minPopulation) =>
-        p.Category == LocationCategory.Town && p.Kind != LocationFeatureCatalog.Neighborhood.Key && p.Population >= minPopulation;
+        IsMajorCity(p.Category, p.Kind, p.Population, minPopulation);
+
+    internal static bool IsMajorCity(LocationCategory category, string kind, int population, int minPopulation) =>
+        category == LocationCategory.Town && kind != LocationFeatureCatalog.Neighborhood.Key && population >= minPopulation;
+
+    /// <summary>Whether the kinds tree lets a place through: its type is ticked, or Major cities is ticked and it
+    /// is one. Shared by <see cref="Apply"/> and the whole-world search, which filters before its cap.</summary>
+    internal static bool KindShown(LocationCategory category, string kind, int population,
+        IReadOnlySet<string> hiddenTypes, MajorCityFilter? majorCities) =>
+        !hiddenTypes.Contains(PlaceType.KeyOf(category, kind))
+        || (majorCities is { } m && IsMajorCity(category, kind, population, m.MinPopulation));
+
+    /// <summary>Whether a place lies in the direction filter's direction (null: every direction). A place at
+    /// the map position itself has no direction, so a direction filter leaves it out.</summary>
+    internal static bool DirectionMatches(string? direction, double nm, double bearingTrue) =>
+        direction is null || (nm >= 0.01 && LocationPhrases.Direction(bearingTrue) == direction);
 
     /// <summary>
     /// The places that pass every filter, nearest to the map position first. <paramref name="hiddenTypes"/>
@@ -107,14 +134,12 @@ internal static class PlaceFilter
         for (int i = 0; i < places.Count; i++)
         {
             var p = places[i];
-            bool typeShown = !hiddenTypes.Contains(p.TypeKey);
-            if (!typeShown && !(majorCities is { } m && IsMajorCity(p, m.MinPopulation))) continue;
+            if (!KindShown(p.Category, p.Kind, p.Population, hiddenTypes, majorCities)) continue;
             if (foldedQuery.Length > 0 && !p.FoldedName.Contains(foldedQuery, StringComparison.Ordinal)) continue;
             double nm = LocationGeometry.GreatCircleNm(mapLat, mapLon, p.Lat, p.Lon);
             if (maxNm is { } max && nm > max) continue;
-            // A place at the map position itself has no direction, so a direction filter leaves it out.
-            if (direction is not null && (nm < 0.01
-                || LocationPhrases.Direction(LocationGeometry.BearingTrue(mapLat, mapLon, p.Lat, p.Lon)) != direction)) continue;
+            if (direction is not null
+                && !DirectionMatches(direction, nm, LocationGeometry.BearingTrue(mapLat, mapLon, p.Lat, p.Lon))) continue;
             kept.Add((i, nm));
         }
         kept.Sort((a, b) => a.Nm.CompareTo(b.Nm));

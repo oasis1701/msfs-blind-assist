@@ -139,10 +139,12 @@ public partial class MainForm
                         announcer.AnnounceImmediate(LocationDataUnavailableText());
                         return;
                     }
-                    // One window at a time: a second Shift+L opens it afresh from where the aircraft is now.
-                    if (locationInfoForm is { IsDisposed: false }) locationInfoForm.Close();
+                    // One window at a time: a second Shift+L opens it afresh from where the aircraft is now. The
+                    // open window closes without handing the foreground back, and the new one inherits the window
+                    // it would have gone back to (CloseForReplacement says why).
+                    IntPtr returnTo = locationInfoForm is { IsDisposed: false } open ? open.CloseForReplacement() : IntPtr.Zero;
                     locationInfoForm = new Forms.LocationInfoForm(offlineLocationService, simConnectManager, announcer,
-                        waypointTracker, report, position.Latitude, position.Longitude);
+                        waypointTracker, report, position.Latitude, position.Longitude, returnTo);
                     locationInfoForm.Show();
                 }
                 catch (Exception ex)

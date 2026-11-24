@@ -443,13 +443,18 @@ internal sealed class OfflineLocationService
     /// 5.7 s for a name of two letters or more however many match, 7.5 to 8.7 s for one common letter. A
     /// trigram FTS5 name index was measured and declined: 22 ms for a rare name but 3 to 12 s for a common
     /// piece ("berg", "san"), and the database grew from 341 to 798 MB. Null when no usable database is installed.
+    /// <paramref name="filter"/> (the window's kinds and direction) is applied before the cut to
+    /// <paramref name="max"/>, and <see cref="WorldSearchOutcome.TotalMatches"/> counts only what passes it.
     /// </summary>
-    internal WorldSearchOutcome? SearchWorld(string foldedQuery, double lat, double lon, int max, CancellationToken ct) =>
+    internal WorldSearchOutcome? SearchWorld(string foldedQuery, double lat, double lon, int max, CancellationToken ct,
+        WorldSearchFilter? filter = null) =>
         _store.IsAvailable && foldedQuery.Length > 0
             ? _store.Read(c =>
             {
                 var admins = AdminNames.Load(c);
                 var kinds = PlaceKinds.Load(c);
+                // Whether a (category, kind) pair is ticked, worked out once per pair, not per row.
+                var typeShown = new Dictionary<(int Cat, int Kind), bool>();
                 // The nearest max kept in a max-heap on distance, so a common word never holds millions.
                 var nearest = new PriorityQueue<FoundPlaceWithId, double>(Comparer<double>.Create((a, b) => b.CompareTo(a)));
                 int total = 0;
@@ -463,12 +468,23 @@ internal sealed class OfflineLocationService
                     if ((++n & 0xFFFF) == 0) ct.ThrowIfCancellationRequested();
                     string name = r.GetString(5);
                     if (!NameMatches(name, foldedQuery)) continue;
-                    total++;
+                    int population = r.GetInt32(3), kindId = r.GetInt32(6), cat = r.GetInt32(8);
+                    if (filter is not null)
+                    {
+                        if (!typeShown.TryGetValue((cat, kindId), out bool shown))
+                            typeShown[(cat, kindId)] = shown =
+                                !filter.HiddenTypes.Contains(PlaceType.KeyOf((LocationCategory)cat, kinds.Of(kindId).Key));
+                        if (!shown && !(filter.MajorCities is { } major && PlaceFilter.IsMajorCity(
+                                (LocationCategory)cat, kinds.Of(kindId).Key, population, major.MinPopulation))) continue;
+                    }
                     var (pLat, pLon) = LocationGrid.Decode(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2));
                     double nm = LocationGeometry.GreatCircleNm(lat, lon, pLat, pLon);
+                    if (filter?.Direction is { } direction
+                        && !PlaceFilter.DirectionMatches(direction, nm, LocationGeometry.BearingTrue(lat, lon, pLat, pLon))) continue;
+                    total++;
                     if (nearest.Count >= max && nearest.TryPeek(out _, out double worst) && nm >= worst) continue;
-                    nearest.Enqueue(new FoundPlaceWithId(new FoundPlace(name, pLat, pLon, r.GetInt32(3), r.GetInt32(4), nm, 0, r.GetInt32(6)),
-                        r.GetInt32(7), (LocationCategory)r.GetInt32(8)), nm);
+                    nearest.Enqueue(new FoundPlaceWithId(new FoundPlace(name, pLat, pLon, population, r.GetInt32(4), nm, 0, kindId),
+                        r.GetInt32(7), (LocationCategory)cat), nm);
                     if (nearest.Count > max) nearest.Dequeue();
                 }
                 var found = new List<PlaceResult>();

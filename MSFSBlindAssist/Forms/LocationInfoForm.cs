@@ -48,6 +48,7 @@ public partial class LocationInfoForm : Form
     private double _loadedLat, _loadedLon, _loadedRadiusKm = -1;
     private bool _loadedWorld;
     private string _loadedWorldQuery = "";
+    private string _loadedWorldSignature = "";
     private int _worldTotal;
     private bool _loading;
     private CancellationTokenSource? _loadCts;
@@ -78,9 +79,12 @@ public partial class LocationInfoForm : Form
     private readonly System.Windows.Forms.Timer _rangeDebounce = new() { Interval = 400 };
 
     internal LocationInfoForm(OfflineLocationService service, SimConnectManager sim, ScreenReaderAnnouncer announcer,
-        WaypointTracker tracker, LocationReport aircraftReport, double aircraftLat, double aircraftLon)
+        WaypointTracker tracker, LocationReport aircraftReport, double aircraftLat, double aircraftLon,
+        IntPtr returnTo = default)
     {
-        _previousWindow = GetForegroundWindow();
+        // The window to go back to on closing: the one in front now (the simulator), or, when this window
+        // replaces an open one, the window that one would have gone back to (CloseForReplacement).
+        _previousWindow = returnTo != IntPtr.Zero ? returnTo : GetForegroundWindow();
         _service = service;
         _sim = sim;
         _announcer = announcer;
@@ -158,6 +162,7 @@ public partial class LocationInfoForm : Form
         _typeTree = new NativeAccessibleTreeView { CheckboxStateImages = true, Dock = DockStyle.Fill, AccessibleName = "Places to show", TabIndex = 1 };
         _typeTree.KeyDown += TypeTree_KeyDown;
         _typeTree.NodeMouseClick += TypeTree_NodeMouseClick;
+        _typeTree.MouseDown += TypeTree_MouseDown;
         _typeTree.ContextMenuStrip = BuildTypeMenu();
 
         _filtersButton = new Button { AutoSize = true, TabIndex = 2 };
@@ -240,7 +245,7 @@ public partial class LocationInfoForm : Form
         _directionCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
         _directionCombo.Items.Add("All directions");
         foreach (var d in PlaceFilter.Directions) _directionCombo.Items.Add(d);
-        _directionCombo.SelectedIndexChanged += (_, _) => { if (!_updatingControls) ApplyFilters(); };
+        _directionCombo.SelectedIndexChanged += (_, _) => { if (!_updatingControls) FiltersChanged(); };
         Row("Direction from the map position:", _directionCombo);
 
         return panel;
@@ -350,11 +355,23 @@ public partial class LocationInfoForm : Form
     }
 
     /// <summary>Typing settled: a whole-world search runs again; around a point the loaded places are filtered.</summary>
-    private void OnSearchSettled()
+    private void OnSearchSettled() => FiltersChanged();
+
+    /// <summary>The search text, a kind of place or the direction changed. Around a point every place in range
+    /// is loaded, so the change only filters them. A whole-world search keeps its nearest
+    /// <see cref="WorldSearchMax"/> AFTER the kinds and the direction (<see cref="WorldSearchFilter"/>), so it
+    /// searches again: filtered in memory, the places a newly ticked kind adds were never loaded.</summary>
+    private void FiltersChanged()
     {
         if (WholeWorld) Reload();
         else ApplyFilters();
     }
+
+    private string? SelectedDirection =>
+        _directionCombo.SelectedIndex > 0 ? PlaceFilter.Directions[_directionCombo.SelectedIndex - 1] : null;
+
+    private WorldSearchFilter WorldFilter() =>
+        new(HiddenTypes().ToHashSet(StringComparer.Ordinal), MajorCities(), SelectedDirection);
 
     private void SearchBox_KeyDown(object? sender, KeyEventArgs e)
     {
@@ -441,7 +458,7 @@ public partial class LocationInfoForm : Form
         foreach (var child in Descendants(node)) child.Checked = node.Checked;
         for (var parent = node.Parent; parent is not null; parent = parent.Parent)
             parent.Checked = parent.Nodes.Cast<TreeNode>().All(n => n.Checked);
-        ApplyFilters();
+        FiltersChanged();
     }
 
     /// <summary>Space toggles the selected item: without TVS_CHECKBOXES the native control no longer does.</summary>
@@ -459,6 +476,13 @@ public partial class LocationInfoForm : Form
         if (e.Button != MouseButtons.Left || e.Node is null) return;
         if (_typeTree.HitTest(e.Location).Location != TreeViewHitTestLocations.StateImage) return;
         Toggle(e.Node);
+    }
+
+    /// <summary>A right click selects the item under the pointer before its menu opens: a tree view leaves the
+    /// selection where it was, and "Use for Output C" acts on the selected item.</summary>
+    private void TypeTree_MouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Right && _typeTree.GetNodeAt(e.Location) is { } node) _typeTree.SelectedNode = node;
     }
 
     private ContextMenuStrip BuildTypeMenu()
@@ -604,7 +628,12 @@ public partial class LocationInfoForm : Form
             ApplyFilters();
             return;
         }
-        if (world && _loadedWorld && samePoint && folded == _loadedWorldQuery)
+        // The kinds and the direction are part of a whole-world search (they are applied before its cut), so a
+        // change to either searches again; with nothing typed there is nothing to search either way.
+        var filter = WorldFilter();
+        string signature = filter.Signature;
+        if (world && _loadedWorld && samePoint && folded == _loadedWorldQuery
+            && (folded.Length == 0 || signature == _loadedWorldSignature))
         {
             ApplyFilters();
             return;
@@ -624,12 +653,13 @@ public partial class LocationInfoForm : Form
             }
             else if (world)
             {
-                var outcome = await Task.Run(() => _service.SearchWorld(folded, lat, lon, WorldSearchMax, cts.Token));
+                var outcome = await Task.Run(() => _service.SearchWorld(folded, lat, lon, WorldSearchMax, cts.Token, filter));
                 if (cts.IsCancellationRequested || IsDisposed) return;
                 SetPlaces(outcome?.Places ?? Array.Empty<PlaceResult>());
                 _worldTotal = outcome?.TotalMatches ?? 0;
                 _loadedWorld = true;
                 _loadedWorldQuery = folded;
+                _loadedWorldSignature = signature;
             }
             else
             {
@@ -680,7 +710,10 @@ public partial class LocationInfoForm : Form
         try
         {
             var airports = await Task.Run(() => AirportNameSearch.ReadAirports(path));
-            _airports = new AirportMatcher(airports);
+            // No navigation database (ReadAirports returns none for a missing file): no matcher, so Details
+            // stays empty for airports instead of saying "Not found in simulator" on every one.
+            if (airports.Count > 0) _airports = new AirportMatcher(airports);
+            else Log.Warn("LocationInfo", $"No airports read from the navigation database ({path}); airport idents are not shown.");
         }
         catch (Exception ex)
         {
@@ -708,10 +741,9 @@ public partial class LocationInfoForm : Form
         SaveFilterSettings();
         var selectedId = SelectedPlace?.Id ?? _keepSelectedId;
         _keepSelectedId = null;
-        string? direction = _directionCombo.SelectedIndex > 0 ? PlaceFilter.Directions[_directionCombo.SelectedIndex - 1] : null;
         double? maxNm = WholeWorld ? null : RangeKm / LocationPhrases.KmPerNm;
         _shown = PlaceFilter.Apply(_places, MapLat, MapLon, HiddenTypes().ToHashSet(StringComparer.Ordinal),
-            SearchText.Fold(_searchBox.Text), direction, maxNm, MajorCities());
+            SearchText.Fold(_searchBox.Text), SelectedDirection, maxNm, MajorCities());
 
         _rows.Clear();
         _results.BeginUpdate();
@@ -833,6 +865,8 @@ public partial class LocationInfoForm : Form
     {
         if (e.KeyCode == Keys.Escape)
         {
+            // Escape on an open list only closes the list: the form sees the key first (KeyPreview).
+            if (_scopeCombo.DroppedDown || _directionCombo.DroppedDown) return;
             e.SuppressKeyPress = true;
             Close();
         }
@@ -851,6 +885,19 @@ public partial class LocationInfoForm : Form
         _rangeDebounce.Dispose();
         SaveFilterSettings();
         SettingsManager.Save();
-        if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
+        if (!_replaced && _previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
+    }
+
+    private bool _replaced;
+
+    /// <summary>Closes this window because a second Shift+L opens a new one, and returns the window the new one
+    /// goes back to. The foreground is not handed to the simulator here: the new window is about to take it, and
+    /// an app that has just given the foreground away can be refused it (Windows' foreground lock), which would
+    /// leave the new window behind the simulator, unread.</summary>
+    internal IntPtr CloseForReplacement()
+    {
+        _replaced = true;
+        Close();
+        return _previousWindow;
     }
 }

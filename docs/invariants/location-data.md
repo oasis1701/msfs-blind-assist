@@ -16,9 +16,11 @@ Why. SQLite on Windows opens its file without delete sharing, so a pooled connec
 
 ## LOC-3
 
-- Every number read from a download parses with the invariant culture (`GeoNamesDumpLine`, `LocationDataStore.ReadInfo`), and everything spoken or shown is invariant (`LocationPhrases`, `LocationDataStatusText`, the model `ToString`s). → [location-data.md](../location-data.md)
+- Every number read from a download parses with the invariant culture (`GeoNamesDumpLine`, `LocationDataStore.ReadInfo`), and everything spoken or shown is invariant (`LocationPhrases`, `LocationDataStatusText`, `LocationInfoForm`'s count and tree). → [location-data.md](../location-data.md)
 
 Why. The GeoNames dump writes "38.55179" whatever the pilot's region is; parsed with a comma-decimal culture it fails or misplaces every row. On the output side, a sentence formatted with the current culture says "5,4 miles" on a German or Swedish Windows. The tests run every spoken string and the dump parser under de-DE and sv-SE, because CI runs under en-US and would not catch a culture leak otherwise.
+
+History. Until 2026-11 the rule named "the model `ToString`s" (`Models/LocationData.cs`: the old window's list lines). The Location Info redesign deleted them; the window's own numbers are now the table's count (`LocationInfoForm.StatusText`: "1,380 places within …") and the tree's Major cities item ("Major cities, 50,000 or more"), with every cell's text from `LocationPhrases`.
 
 ## LOC-4
 

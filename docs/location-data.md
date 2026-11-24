@@ -73,7 +73,7 @@ data is missing, from the startup data check's `StartupDataDialog`, UPD-9):
 1. Checks free disk space (the peak is about 1.5 GB: the 400 MB download, a 370 MB staging file
    and the 330 MB result; an update's old database is already on disk). Says "Downloading location
    data, about N megabytes to download."
-2. Fetches the three GeoNames name files and the five Natural Earth files whole (SHA-256 checked,
+2. Fetches the two GeoNames name files and the five Natural Earth files whole (SHA-256 checked,
    3 attempts each), then the dump into `location-data-download\allCountries.zip.part`, resuming
    with `Range` + `If-Range` from the validator in `.part.json` (LOC-4). Speaks 25, 50 and 75
    percent. A watchdog speaks a stall at 20 s without data and abandons the attempt at 60 s; up to
@@ -145,9 +145,13 @@ then sea (inside a named marine polygon) (LOC-6):
   cell by cell, CORE-20), filtered in memory
   (`PlaceFilter`: kinds of place, folded name, compass direction, range) and sorted from the map
   position. "Whole world, by name" reads the whole table (`SearchWorld`, no name index; ASCII names
-  are compared as they are and only hits folded) and keeps the nearest 2,000. Airports show the
-  navigation database's ident when `AirportMatcher` finds them: a GeoNames-listed ident within 5 km,
-  else the nearest within 5 km sharing a name word (0.55% wrong when measured, 2026-11-05). The
+  are compared as they are and only hits folded) and keeps the nearest 2,000 of the places the
+  kinds tree and the direction filter let through (`WorldSearchFilter`, applied before the cut:
+  cut first, "san" with only Airports ticked lost every airport beyond the 2,000 nearest towns and
+  streams), so in that scope a tick or a new direction searches again; its count is of those too.
+  Airports show the navigation database's ident when `AirportMatcher` finds them: a GeoNames-listed
+  ident within 5 km, else the nearest within 5 km sharing a name word (0.55% wrong when measured,
+  2026-11-05); with no navigation database built the Details cell stays empty. The
   window's filters, range and map position live in `UserSettings.LocationInfo*`, never its search,
   which opens empty around the map position (owner, 2026-11-06); "Use for Output C" (on a heading: only its ticked kinds)
   sets `OutputCPlaceTypes`, which only a C press passes (`LocationQuerySettings.PlaceTypes`), never

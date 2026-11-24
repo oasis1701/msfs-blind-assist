@@ -61,6 +61,30 @@ public class PlaceSearchTests
         Assert.Equal(new[] { 2, 4, 3 }, near.Select(i => Places[i].Id));
     }
 
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("de-DE")]
+    public void A_world_search_filter_reads_the_same_however_its_kinds_are_held(string culture)
+    {
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            var a = new WorldSearchFilter(new HashSet<string> { "Town:town", "Terrain:island" }, new MajorCityFilter(50000), "north");
+            var b = new WorldSearchFilter(new HashSet<string> { "Terrain:island", "Town:town" }, new MajorCityFilter(50000), "north");
+            // The window searches the world again only when this text changes.
+            Assert.Equal("Terrain:island,Town:town|50000|north", a.Signature);
+            Assert.Equal(a.Signature, b.Signature);
+            Assert.NotEqual(a.Signature, (a with { Direction = null }).Signature);
+            Assert.NotEqual(a.Signature, (a with { MajorCities = null }).Signature);
+            Assert.NotEqual(a.Signature, (a with { HiddenTypes = new HashSet<string> { "Town:town" } }).Signature);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
     [Fact]
     public void The_tree_never_names_a_heading_after_its_own_item_or_lists_a_kind_twice()
     {

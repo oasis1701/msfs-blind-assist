@@ -254,6 +254,37 @@ public sealed class OfflineLocationServiceTests : IDisposable
         Assert.Equal(new[] { "Bay Museum", "Bayside" }, outcome.Places.Select(p => p.Name));
     }
 
+    [Fact]
+    public void A_whole_world_search_filters_before_it_keeps_the_nearest()
+    {
+        // From (38.5, -76.5) the museum and the town are nearer than the airport. Cut to the nearest one and
+        // filtered afterwards, a search with only airports ticked found nothing; filtered first, it finds the
+        // airport, and counts only what the filter lets through.
+        var onlyAirports = new WorldSearchFilter(new HashSet<string> { "Town:town", "Landmark:museum" }, null, null);
+        var outcome = Built().SearchWorld("bay", 38.5, -76.5, 1, CancellationToken.None, onlyAirports)!;
+        Assert.Equal(1, outcome.TotalMatches);
+        Assert.Equal(new[] { "Bayside Airport" }, outcome.Places.Select(p => p.Name));
+
+        // The direction too: the museum is at the point itself (no direction), Bayside north of it, the
+        // airport southwest.
+        var north = new WorldSearchFilter(new HashSet<string>(), null, "north");
+        outcome = Built().SearchWorld("bay", 38.5, -76.5, 1, CancellationToken.None, north)!;
+        Assert.Equal(1, outcome.TotalMatches);
+        Assert.Equal(new[] { "Bayside" }, outcome.Places.Select(p => p.Name));
+    }
+
+    [Fact]
+    public void A_whole_world_search_keeps_a_major_city_with_towns_unticked_but_never_a_neighborhood()
+    {
+        var townsUnticked = new HashSet<string> { "Town:town", "Town:neighborhood" };
+        var cities = new WorldSearchFilter(townsUnticked, new MajorCityFilter(50000), null);
+        Assert.Equal(new[] { "Bigtown" }, Built().SearchWorld("big", 38.5, -76.5, 5, CancellationToken.None, cities)!.Places.Select(p => p.Name));
+        Assert.Empty(Built().SearchWorld("harbor", 38.5, -76.5, 5, CancellationToken.None, cities)!.Places); // PPLX, 90,000
+        // Major cities unticked as well: nothing of theirs gets past unticked Towns.
+        var none = new WorldSearchFilter(townsUnticked, null, null);
+        Assert.Empty(Built().SearchWorld("big", 38.5, -76.5, 5, CancellationToken.None, none)!.Places);
+    }
+
     [Theory]
     [InlineData("Göteborg", "goteborg", true)]
     [InlineData("Trollhättan", "trollhatt", true)]
