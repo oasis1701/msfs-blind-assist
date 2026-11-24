@@ -108,7 +108,10 @@ public partial class TaxiGuidanceManager
                 !StartWarningChatterGate.ShouldHold(
                     MSFSBlindAssist.Utils.SimClock.UtcNow, _startChatterSuppressUntil, distToTargetM, arrivalRadius, _lastGroundSpeedKts))
             {
-                AnnounceInstruction($"{_route.DestinationName} ahead.");
+                // Not "Runway 20L ahead" 1,500 m from the runway (_routeEndsFarFromRunway).
+                AnnounceInstruction(_routeEndsFarFromRunway
+                    ? "End of route ahead."
+                    : $"{_route.DestinationName} ahead.");
                 _approachAnnounced = true;
             }
             return;

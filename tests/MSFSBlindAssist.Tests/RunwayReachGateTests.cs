@@ -220,4 +220,36 @@ public class RunwayReachGateTests
         Assert.DoesNotContain("∞", s);
         Assert.Contains("no path", s, StringComparison.OrdinalIgnoreCase);
     }
+
+    // ---- EndsFarFromRunway: when the end of the route is not the runway's hold at all ----
+    //
+    // WSSS, 2026-11-24: the new scenery's taxiways stop 1,500 m from runway 02R/20L. The load
+    // warning said so, and the route's end was still spoken as "Runway 20L ahead", "Stop. Hold
+    // short of Runway 20L" and, after Continue, "Entering Runway 20L, heading 203. Turn right."
+
+    [Fact]
+    public void ARouteEndingFarAsideIsNotSpokenAsTheRunwaysHold()
+    {
+        var wsss20L = new RunwayReachResult(RunwayReachVerdict.EndsAsideOfRunway, 1503.0, 0.0);
+
+        Assert.True(RunwayReachGate.EndsFarFromRunway(wsss20L));
+        Assert.Equal(
+            "Stop. End of this route. It does not reach Runway 20L. Reprogram the taxi route, " +
+            "including the taxiway that connects to the runway.",
+            RunwayReachGate.DescribeRouteEnd("Runway 20L"));
+    }
+
+    [Theory]
+    // A parallel taxiway beside the runway: the runway may be one unmapped connector away, so the
+    // route keeps its hold, its Continue and the lineup tone.
+    [InlineData(RunwayReachVerdict.EndsAsideOfRunway, 121.0, false)]
+    [InlineData(RunwayReachVerdict.EndsAsideOfRunway, 400.0, false)]
+    [InlineData(RunwayReachVerdict.EndsAsideOfRunway, 401.0, true)]
+    // Only the aside verdict carries a distance to judge.
+    [InlineData(RunwayReachVerdict.StopsShortOfRunway, 3.2, false)]
+    [InlineData(RunwayReachVerdict.Reaches, 6.8, false)]
+    public void OnlyAnAsideVerdictBeyondTheReachEndsTheRouteAsItsOwnEnd(
+        RunwayReachVerdict verdict, double crossMetres, bool far)
+        => Assert.Equal(far, RunwayReachGate.EndsFarFromRunway(
+            new RunwayReachResult(verdict, crossMetres, 655.0)));
 }

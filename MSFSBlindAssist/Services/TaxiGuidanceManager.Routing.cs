@@ -1194,6 +1194,7 @@ public partial class TaxiGuidanceManager
             // DestinationCrossTrackMeters.
             string? runwayReachWarning = null;
             _routeReachesRunway = true;
+            _routeEndsFarFromRunway = false;
             if (isRunwayDestination && _hasLineupTarget)
             {
                 var reach = RunwayReachGate.Evaluate(
@@ -1207,6 +1208,7 @@ public partial class TaxiGuidanceManager
                     RUNWAY_REACH_MAX_WALK_M);
 
                 _routeReachesRunway = reach.Verdict == RunwayReachVerdict.Reaches;
+                _routeEndsFarFromRunway = RunwayReachGate.EndsFarFromRunway(reach);
                 runwayReachWarning = RunwayReachGate.DescribeFailure(
                     reach, destinationName, FormatDistance);
             }
@@ -2553,11 +2555,13 @@ public partial class TaxiGuidanceManager
                 () => RouteEndWalkToRunwayMeters(recalcEndNode!, _destinationName),
                 RUNWAY_REACH_MAX_WALK_M);
             _routeReachesRunway = reach.Verdict == RunwayReachVerdict.Reaches;
+            _routeEndsFarFromRunway = RunwayReachGate.EndsFarFromRunway(reach);
         }
         else
         {
             // Gate destinations leave the runway-only safety net disarmed.
             _routeReachesRunway = true;
+            _routeEndsFarFromRunway = false;
         }
 
         _currentSegmentIndex = 0;

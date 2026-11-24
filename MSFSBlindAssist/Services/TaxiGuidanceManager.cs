@@ -1075,6 +1075,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // non-runway destinations (and any unset state) never arm the safety net.
     private bool _routeReachesRunway = true;
 
+    // The route fails the reach check by so much (RunwayReachGate.EndsFarFromRunway) that its end
+    // is not this runway's hold: the approach, the stop and Continue then speak of the end of the
+    // route, never of holding short of or entering the runway, and guidance ends there. Set with
+    // _routeReachesRunway, from the same verdict.
+    private bool _routeEndsFarFromRunway;
+
     // When true, we are currently holding short AT the destination runway
     // (FAA/ICAO: ATC taxi-to clearance never authorizes entering the assigned
     // takeoff runway — pilot must wait for "line up and wait" or "cleared for
@@ -3131,6 +3137,23 @@ public partial class TaxiGuidanceManager : IDisposable
             return;
         }
 
+        // A hold-short passed BESIDE its node (Navigation.HoldShortAbeam): outside the 25 m circle
+        // above, so nothing latched it, the index stayed on the hold segment for good and the tone
+        // went on steering at the route beyond the line. Never the final segment: the destination
+        // hold has its own captures, and LiningUp owns that approach.
+        if (_currentSegmentIndex < _route.Segments.Count - 1 && currentSeg.IsHoldShortPoint)
+        {
+            AlongTrackToSegmentEnd(lat, lon, currentSeg, out double holdAlongRemM, out double holdCrossM);
+            if (Navigation.HoldShortAbeam.IsReached(
+                    holdAlongRemM, holdCrossM, NormalizeAngle(headingTrue - currentSeg.BearingDegrees)))
+            {
+                _guidanceLog.Info($"Hold-short reached abeam: {currentSeg.HoldShortRunway} seg={_currentSegmentIndex} " +
+                                  $"past={-holdAlongRemM:F0}m cross={holdCrossM:F0}m hdg={headingTrue:F0} segBrg={currentSeg.BearingDegrees:F0}");
+                AdvanceSegment();
+                return;
+            }
+        }
+
         // Off-route deviation — perpendicular (cross-track) distance from the segment
         // centerline. Robust version uses **MIN(currentSeg, nextSeg)** so the normal
         // turn arc (aircraft swings outside the current segment's centerline while
@@ -3557,6 +3580,11 @@ public partial class TaxiGuidanceManager : IDisposable
         string what = !string.IsNullOrEmpty(currentSeg.HoldShortRunway)
             ? currentSeg.HoldShortRunway
             : "hold short";
+        // The end of a route that stops far aside of its runway is not that runway's hold
+        // (_routeEndsFarFromRunway): count down to the end of the route, in the same three steps.
+        string lead = _routeEndsFarFromRunway && _route != null && _currentSegmentIndex == _route.Segments.Count - 1
+            ? "End of route"
+            : $"Hold short {what}";
 
         // Speed-based thresholds with fixed minimums and caps. Each tier gives the
         // pilot a fixed lead time (in seconds at current speed), floored so slow/
@@ -3586,19 +3614,19 @@ public partial class TaxiGuidanceManager : IDisposable
         else if (distFeet < slowDownDistFt) _holdShortOuterAnnounced = true;
         if (distFeet < outerDistFt && !_holdShortOuterAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}.");
+            AnnounceInstruction($"{lead} in {DistanceFormatter.FromFeet(distFeet)}.");
             _holdShortOuterAnnounced = true;
             return;
         }
         if (distFeet < slowDownDistFt && !_holdShortSlowDownAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}. Slow down.");
+            AnnounceInstruction($"{lead} in {DistanceFormatter.FromFeet(distFeet)}. Slow down.");
             _holdShortSlowDownAnnounced = true;
             return;
         }
         if (distFeet < stopDistFt && !_holdShortStopAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}. Stop.");
+            AnnounceInstruction($"{lead} in {DistanceFormatter.FromFeet(distFeet)}. Stop.");
             _holdShortStopAnnounced = true;
             return;
         }
@@ -3608,7 +3636,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // knows to hold position and await clearance.
         if (_holdShortSlowDownAnnounced && !_holdShortStopAnnounced && _lastGroundSpeedKts < 1.0)
         {
-            AnnounceInstruction($"Hold short {what}. Stop.");
+            AnnounceInstruction($"{lead}. Stop.");
             _holdShortStopAnnounced = true;
         }
     }
@@ -4374,6 +4402,18 @@ public partial class TaxiGuidanceManager : IDisposable
         // For safety we default to HOLD SHORT at any runway destination and require
         // an explicit Continue (pilot's confirmation they have the clearance) before
         // we transition into the lineup phase.
+        // The route ends far aside of its runway (RunwayReachGate.EndsFarFromRunway): there is no
+        // runway here to hold short of, and a Continue could only start a lineup tone at a
+        // centreline the aircraft cannot taxi to. Say where the route ended and end guidance; the
+        // tone stops first, as on every path that ends with nothing left to steer at.
+        if (_hasLineupTarget && _isRunwayLineup && _routeEndsFarFromRunway)
+        {
+            _steeringTone.Stop();
+            SetState(TaxiGuidanceState.Arrived);
+            AnnounceInstruction(Navigation.RunwayReachGate.DescribeRouteEnd(_destinationName));
+            return;
+        }
+
         if (_hasLineupTarget && _isRunwayLineup)
         {
             _holdShortAtDestination = true;
@@ -4598,6 +4638,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _lineupHugeCrossTrackSince = DateTime.MinValue;
         _runwayLineupUnreachableWarned = false;
         _routeReachesRunway = true;
+        _routeEndsFarFromRunway = false;
         _autoActivateFired = false;
         // Reset all announcement latches — defense in depth; LoadRoute resets them too
         // but StopGuidance can be called independently (hotkey, takeoff-assist takeover).

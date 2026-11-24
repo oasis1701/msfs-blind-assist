@@ -98,4 +98,27 @@ public static class RunwayReachGate
                 return null;
         }
     }
+
+    /// <summary>
+    /// How far aside of the runway centreline a route's destination node must sit before the end
+    /// of the route stops being treated as that runway's hold. Up to here a route that fails the
+    /// reach check keeps its hold, its Continue and the lineup tone: the runway may be one unmapped
+    /// connector away, and the conservative stop before it is worth having. Beyond it the runway is
+    /// not there to hold short of or to enter: at WSSS, 2026-11-24, the scenery's taxiways stop
+    /// 1,500 m from runway 02R/20L, and the route's end was spoken as "Runway 20L ahead",
+    /// "Hold short of Runway 20L" and "Entering Runway 20L, heading 203. Turn right."
+    /// </summary>
+    public const double FarFromRunwayCrossMeters = 400.0;
+
+    /// <summary>Whether the route ends too far aside of its runway to be spoken as that runway's
+    /// hold (<see cref="FarFromRunwayCrossMeters"/>). Only the aside verdict carries a measured
+    /// distance to judge; a route that stops short keeps the hold it has.</summary>
+    public static bool EndsFarFromRunway(RunwayReachResult result)
+        => result.Verdict == RunwayReachVerdict.EndsAsideOfRunway
+           && result.CrossMeters > FarFromRunwayCrossMeters;
+
+    /// <summary>What is said where such a route ends, in place of the runway hold.</summary>
+    public static string DescribeRouteEnd(string destinationName)
+        => $"Stop. End of this route. It does not reach {destinationName}. Reprogram the taxi " +
+           "route, including the taxiway that connects to the runway.";
 }
