@@ -5,10 +5,14 @@ namespace MSFSBlindAssist.Accessibility;
 /// <summary>A screen reader Prism can talk to: its registry id, name and priority (higher is tried first).</summary>
 internal sealed record ScreenReaderCandidate(ulong Id, string Name, int Priority);
 
-/// <summary>One live connection to a screen reader. Every member throws when the reader did not take the call.</summary>
+/// <summary>One live connection to a screen reader. Speak and Braille throw when the reader did not take the call;
+/// they are called only when the reader says it can (<see cref="CanSpeak"/>, <see cref="CanBraille"/>, from Prism's
+/// own feature flags for that reader).</summary>
 internal interface IScreenReaderBackend : IDisposable
 {
     string Name { get; }
+    bool CanSpeak { get; }
+    bool CanBraille { get; }
     void Speak(string text, bool interrupt);
     void Braille(string text);
 }
@@ -168,6 +172,13 @@ public sealed class ScreenReaderOutput
                 started = null;
             }
             if (started == null) continue;
+            if (!started.CanSpeak)
+            {
+                // Prism's feature flags say this reader takes no speech: never ours, whatever else it does.
+                Log.Debug("Accessibility", $"{candidate.Name} is running but takes no speech; skipped");
+                try { started.Dispose(); } catch (Exception ex) { Log.Debug("Accessibility", $"Closing {candidate.Name}: {ex.Message}"); }
+                continue;
+            }
 
             if (_activeCandidate != null) Log.Info("Accessibility", $"{candidate.Name} started; announcements move to it from {_activeCandidate.Name}");
             else Log.Info("Accessibility", $"Announcements go to {candidate.Name}");
@@ -187,6 +198,7 @@ public sealed class ScreenReaderOutput
 
     private void Braille(string text)
     {
+        if (!_active!.CanBraille) return;   // the reader says it has no braille: nothing to send
         try
         {
             _active!.Braille(text);

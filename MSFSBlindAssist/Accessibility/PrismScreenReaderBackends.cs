@@ -81,9 +81,16 @@ internal sealed class PrismScreenReaderBackends : IScreenReaderBackends
         {
             Name = name;
             _backend = backend;
+            // What this reader's backend says it can do, read once (Prism computes it at creation): NVDA, ZDSR and
+            // JAWS all speak and braille; a reader without braille is never sent any.
+            var features = backend.Features;
+            CanSpeak = features.HasFlag(PrismBackendFeature.SupportsSpeak);
+            CanBraille = features.HasFlag(PrismBackendFeature.SupportsBraille);
         }
 
         public string Name { get; }
+        public bool CanSpeak { get; }
+        public bool CanBraille { get; }
 
         public void Speak(string text, bool interrupt) => _backend.Speak(text, interrupt);
 

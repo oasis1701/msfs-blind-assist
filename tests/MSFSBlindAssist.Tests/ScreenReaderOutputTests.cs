@@ -15,6 +15,8 @@ public class ScreenReaderOutputTests
         public FakeSource Source { get; }
         public ScreenReaderCandidate Candidate { get; }
         public string Name => Candidate.Name;
+        public bool CanSpeak => !Source.Mute.Contains(Name);
+        public bool CanBraille => !Source.NoBrailleSupport.Contains(Name);
         public bool Disposed;
         public void Speak(string text, bool interrupt)
         {
@@ -28,6 +30,7 @@ public class ScreenReaderOutputTests
         {
             lock (Source)
             {
+                Source.BrailleCalls++;
                 if (Source.NoBraille.Contains(Name)) throw new InvalidOperationException("no braille display");
                 Source.Brailled.Add((Name, text));
             }
@@ -44,6 +47,11 @@ public class ScreenReaderOutputTests
         public readonly HashSet<string> Running = new();
         public readonly HashSet<string> Dead = new();
         public readonly HashSet<string> NoBraille = new();
+        public int BrailleCalls;
+        /// <summary>Readers whose Prism backend says it cannot braille (no SupportsBraille feature).</summary>
+        public readonly HashSet<string> NoBrailleSupport = new();
+        /// <summary>Readers whose Prism backend says it cannot speak (no SupportsSpeak feature).</summary>
+        public readonly HashSet<string> Mute = new();
         public readonly Dictionary<string, int> Creates = new();
         public readonly List<FakeReader> Made = new();
         public readonly List<(string Reader, string Text, bool Interrupt)> Spoken = new();
@@ -214,6 +222,34 @@ public class ScreenReaderOutputTests
         Assert.Equal("ZDSR", rig.Output.ActiveReaderName);
         Assert.Equal(2, rig.Source.Spoken.Count);
         Assert.Equal(1, rig.Source.Creates["ZDSR"]);
+    }
+
+    [Fact]
+    public void A_reader_that_cannot_braille_is_never_sent_braille()
+    {
+        var rig = new Rig();
+        rig.Source.Running.Add("JAWS");
+        rig.Source.NoBrailleSupport.Add("JAWS");
+        rig.Source.NoBraille.Add("JAWS");   // would throw if it were called
+
+        Assert.True(rig.Output.TrySpeak("Flaps three", false));
+
+        Assert.Equal(0, rig.Source.BrailleCalls);
+        Assert.Equal(("JAWS", "Flaps three", false), rig.Source.Spoken[^1]);
+    }
+
+    [Fact]
+    public void A_reader_that_cannot_speak_is_skipped_for_the_next_one()
+    {
+        var rig = new Rig();
+        rig.Source.Running.UnionWith(new[] { "NVDA", "ZDSR" });
+        rig.Source.Mute.Add("NVDA");
+
+        Assert.True(rig.Output.TrySpeak("Gear up", false));
+
+        Assert.Equal("ZDSR", rig.Output.ActiveReaderName);
+        Assert.DoesNotContain(rig.Source.Spoken, s => s.Reader == "NVDA");
+        Assert.True(rig.Source.Made.Single(r => r.Name == "NVDA").Disposed);
     }
 
     [Theory]
