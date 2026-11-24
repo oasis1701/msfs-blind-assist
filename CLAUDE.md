@@ -172,4 +172,4 @@ One mechanism per ID: an independent never, must or exemption gets its own line,
 
 ## Technology Stack
 
-.NET 10 (C# 13), Windows Forms, SimConnect SDK (MSFS), SQLite, NVDA/Tolk (screen readers)
+.NET 10 (C# 13), Windows Forms, SimConnect SDK (MSFS), SQLite, Prism (screen readers)

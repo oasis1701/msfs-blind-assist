@@ -31,8 +31,10 @@ Most problems have a simple cause. Work through the matching section below. If n
 
 ## BA Is Silent, or Speech Sounds Wrong {#trouble-speech}
 
-- **Check the announcement method** on the **Announcements** tab of Settings (see [Announcement Settings](core-concepts.md#core-announcement-settings)). If it says *"No screen reader detected"*, check that NVDA or JAWS is actually running.
-- **Speech in an unexpected voice.** Hearing the Windows voice usually means BA could not reach your screen reader for that message.
+- **Check the announcement method** on the **Announcements** tab of Settings (see [Announcement Settings](core-concepts.md#core-announcement-settings)). If it says *"No screen reader detected"*, check that your screen reader (NVDA, JAWS, ZDSR or another) is actually running.
+- **Speech in an unexpected voice.** Hearing the Windows voice usually means BA could not reach your screen reader for that message, or that **SAPI (Windows Speech)** is chosen on the Announcements tab: BA then uses the Windows voice even while a screen reader runs.
+- **Two screen readers running.** BA speaks through the first in its order (NVDA first; see [How announcements are delivered](core-concepts.md#how-announcements-are-delivered)), not necessarily the one you are using.
+- **ZDSR users.** BA needs a licensed ZDSR recent enough to include its speech interface (ZDSRAPI_x64.dll in ZDSR's folder); while ZDSR reports that it is not licensed, BA uses Windows speech. ZDSR's own ZDSRAPI.ini, in ZDSR's folder, can change how programs like BA speak through it, for example whether a key press stops their speech.
 - **BA does not repeat your own key presses, and many controls work with no sound at all.** Silence after you change a control does not mean it failed; read the control or panel row again after a second or two.
 - **You may have muted the announcement.** Open the [Monitor Manager](core-concepts.md#monitor-manager) (Output Ctrl+M) and check that the item you expect is not switched off.
 - **VATSIM announcements specifically:** press Output Alt+V in case you muted them for the flight, and check the VATSIM tab of Settings. After BA installs its vPilot plugin, you must restart vPilot once.

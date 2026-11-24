@@ -582,12 +582,43 @@ git mv MSFSBlindAssist/Forms/SomeForm.cs MSFSBlindAssist/Forms/B737/SomeForm.cs
 ### ScreenReaderAnnouncer
 **File:** `Accessibility/ScreenReaderAnnouncer.cs`
 
-Multi-method screen reader communication with dual approach:
-- NVDA direct support via NvdaControllerWrapper
-- Universal screen reader support via TolkWrapper (JAWS, Window-Eyes, etc.)
-- Configurable announcement modes (ScreenReader vs SAPI)
-- Settings persistence for announcement preferences
-- Fallback SAPI TTS when screen readers unavailable
+Every announcement goes to the running screen reader through Prism (`ScreenReaderOutput`, below), spoken and
+brailled, or else to System.Speech (SAPI). `Announce` queues (`interrupt: false`), `AnnounceImmediate` cuts off what
+the reader is saying (`interrupt: true`). Screen readers are used only in Screen Reader mode
+(`ScreenReaderAnnouncer.UsesScreenReader`): SAPI mode keeps the Windows voice whatever reader is running, as the guide
+promises for a reader not working with BA. (Before Prism, a running NVDA or JAWS overrode a saved SAPI choice.)
+
+### ScreenReaderOutput and PrismScreenReaderBackends (every screen reader through Prism)
+**Files:** `Accessibility/ScreenReaderOutput.cs`, `Accessibility/PrismScreenReaderBackends.cs`
+
+Prism ([github.com/ethindp/prism](https://github.com/ethindp/prism)) through its .NET package Prismatoid
+(NuGet `Prismatoid` 0.4.0, MPL-2.0; its native `prism.dll` comes from the package's `runtimes\win-x64` folder). It
+replaced Tolk and the NVDA controller client (2026-11, after PR #365's reviewer asked for ZDSR this way); neither
+DLL ships any more, and `RuntimeChecker.RequiredDlls` asks for `prism.dll` and `Prismatoid.dll` instead.
+
+- **Which readers.** Everything Prism registers except its speech engines (SAPI, OneCore) and its UI Automation
+  backend, in Prism's priority order: NVDA (103), then PC-Talker, ZDSR and Boy PC Reader (101), then JAWS, ZoomText,
+  Sense Reader, System Access and Window-Eyes (100). Each reader's own library comes from its installation: ZDSR's
+  `ZDSRAPI_x64.dll` through ZDSR's registry path, NVDA over its own RPC endpoint, JAWS over COM.
+- **Keeping a reader.** The first reader that starts is kept while it takes messages. `ScreenReaderOutput.Shared` is
+  the one instance; Prism itself starts on the first announcement, so the test doubles that subclass the announcer
+  never load `prism.dll`.
+- **A reader that closes.** Its next `Speak` throws (measured for NVDA and ZDSR), and that same message goes to the
+  next reader, or to SAPI. Every backend is created fresh (`CreateBackend`, never Prism's cached `Acquire`): Prism's
+  NVDA connection does not reconnect after NVDA restarts.
+- **A reader that starts later.** Readers are looked for again at most every 5 s (`RescanIntervalMs`): all of them
+  while none is in use, only those above the one in use otherwise (NVDA started after ZDSR takes over, after NVDA's
+  own ~8 s start-up). Prism's availability callback is not used: measured 2026-11-24, it reported NVDA's comings and
+  goings but never ZDSR's.
+- **Braille.** Every spoken message is also sent to `Braille`, separately: never Prism's `Output`, which fails as a
+  whole when braille does. ZDSR with no braille display fails every braille call (its API returns 3, Prism reports
+  `PRISM_ERROR_INTERNAL`); that is logged once per reader and the message still counts as spoken.
+- **Settings.** The Announcements tab's status box calls `DetectNow()` on the same instance, so it names the reader
+  the announcer uses, in the same order.
+- **Cost.** Measured live: Prism's start plus the first selection 35 to 105 ms (once); a message 0.2 to 0.5 ms; a
+  rescan with no reader running about 10 ms, at most every 5 s.
+- **Tests.** `ScreenReaderOutputTests` drive the selection through a fake `IScreenReaderBackends`; the real Prism
+  is exercised only live (NVDA, ZDSR, SAPI). JAWS was not available to test live.
 
 ### HotkeyManager
 **File:** `Hotkeys/HotkeyManager.cs`
@@ -671,9 +702,8 @@ See [Taxi Guidance — Taxi-Data Augmentation Pipeline](taxi-guidance.md#taxi-da
 
 4. **Button State Mapping**: Unified mapping system tracks button events to their corresponding state variables for automatic announcements
 
-5. **Dual Screen Reader Support**:
-   - Primary: Direct NVDA integration via controller client
-   - Secondary: Universal support through Tolk wrapper
+5. **Screen Reader Support**:
+   - Every screen reader (NVDA, JAWS, ZDSR and the rest) through Prism, spoken and brailled
    - Fallback: SAPI text-to-speech
 
 6. **Configurable Accessibility**: User-selectable announcement modes with persistent settings

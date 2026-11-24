@@ -260,7 +260,7 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
     public void SetDefinition(IFly737MAXDefinition def) => _def = def;
 
-    // The REAL app announcer (ScreenReaderAnnouncer is heavyweight — inits NVDA/Tolk — and
+    // The REAL app announcer (ScreenReaderAnnouncer is heavyweight — starts Prism and SAPI — and
     // has no parameterless ctor; NEVER construct a second instance). Writes wrap
     // ApplyUIVariable in a Suppressed toggle so the def's own set-path Announce() calls are
     // dropped and the FO's step callouts stay the single voice.

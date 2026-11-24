@@ -61,7 +61,7 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
     /// held, while the sim still listens (on app exit MainForm disconnects right after).</summary>
     public void ReleaseHeldPresses() => _held.ReleaseAll();
     public void SetDefinition(FlyByWireA380Definition def) => _def = def;
-    // The REAL app announcer (ScreenReaderAnnouncer is heavyweight — inits NVDA/Tolk —
+    // The REAL app announcer (ScreenReaderAnnouncer is heavyweight — starts Prism and SAPI —
     // and has no parameterless ctor; NEVER construct a second instance). Writes wrap
     // ApplyUIVariable in a Suppressed toggle (the HS787/monitor pattern) so any
     // set-path Announce() the def makes ("<name> pressed", "Rudder trim reset") is

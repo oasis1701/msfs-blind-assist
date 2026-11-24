@@ -1001,7 +1001,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             // within the 250 ms would be overwritten by the stale queued value, so
             // the delayed send is latest-wins gated per key. Plain async local
             // function on the UI thread (not Task.Run): keeps the supersede check
-            // race-free and any failure announcement on the Tolk thread.
+            // race-free and any failure announcement on the announcer's (UI) thread.
             if (w.DoubleSend)
             {
                 int gen = _doubleSendGen.TryGetValue(varKey, out var g) ? g + 1 : 1;
@@ -1172,7 +1172,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
 
     /// <summary>Fire-and-forget write verify: after ~800 ms (plugin action + poll
     /// refresh), if the check still fails against the live snapshot, speaks the
-    /// hint on the UI thread (Tolk thread affinity — the A380 RMP lesson).</summary>
+    /// hint on the UI thread (the announcer's thread — the A380 RMP lesson).</summary>
     private void VerifyWriteAfterDelay(ScreenReaderAnnouncer announcer,
         Func<IFlySdkSnapshot, bool> writeFailed, string hint)
     {
