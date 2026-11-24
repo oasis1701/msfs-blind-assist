@@ -212,6 +212,13 @@ public class Md11TrimTests
         => Assert.Equal("Stabilizer Trim: Trim up 2.5",
             Md11TrimButtons.StabTrimReadBackSentence(Control(LongTrim), "Trim up 2.5"));
 
+    [Fact]
+    public void ADroppedPress_AndAnUnsettledReadBack_SayTheTrimIsStillMoving_NamedByItsRow()
+    {
+        Assert.Equal("Aileron Trim still moving", Md11TrimButtons.StillMoving(Control(Aileron)));
+        Assert.Equal("Stabilizer Trim still moving", Md11TrimButtons.StillMoving(Control(LongTrim)));
+    }
+
     // ---- the settle loop, over scripted reads -----------------------------------------------
 
     /// <summary>Runs the settle loop over <paramref name="reads"/>, the clock moving <paramref name="stepMs"/> per wait.</summary>

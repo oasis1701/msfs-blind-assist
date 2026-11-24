@@ -131,4 +131,11 @@ public static class Md11TrimButtons
 
     /// <summary>The Long Trim read-back, spoken only while trim announcements are off: the row's label and the stabiliser trim in the trim announcement's words, "Stabilizer Trim: Trim up 3.0".</summary>
     public static string StabTrimReadBackSentence(Md11Control c, string trimPhrase) => $"{c.DisplayLabel}: {trimPhrase}";
+
+    /// <summary>
+    /// "Aileron Trim still moving": said once when a press is dropped because the trim is still moving
+    /// from the last one (a pilot's own press is refused aloud, [MD11-16]), and when the read-back
+    /// reaches <see cref="SettleCeilingMs"/> with the trim still moving, in place of a mid-move value.
+    /// </summary>
+    public static string StillMoving(Md11Control c) => $"{c.DisplayLabel} still moving";
 }

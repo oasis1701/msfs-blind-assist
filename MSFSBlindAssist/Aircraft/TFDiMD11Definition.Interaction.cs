@@ -1083,10 +1083,17 @@ public partial class TFDiMD11Definition
     private readonly HashSet<string> _trimBusy = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// The busy knobs whose dropped press has already said "still moving": said once per busy spell,
+    /// so key repeat (about 30 presses a second) is one sentence, not a stream. Cleared with the busy mark.
+    /// </summary>
+    private readonly HashSet<string> _trimDropSpoken = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// One trim button press (<see cref="Md11TrimButtons"/>): the knob held or clicked through its own
     /// CEVENTs, then the trim read back once it settles, in TFDi's words ("Rudder Trim: 0.3 degrees Nose
-    /// Left"). A press while that knob is still moving is dropped. Refused aloud when nothing would land
-    /// ([MD11-16]). UI thread.
+    /// Left"). A press while that knob is still moving is dropped, aloud once ("Aileron Trim still
+    /// moving"): the pilot's own press is refused aloud like every MD-11 write ([MD11-16]). Refused
+    /// aloud when nothing would land. UI thread.
     /// </summary>
     private void PressTrim(Md11TrimButton trim, SimConnectManager sim, ScreenReaderAnnouncer announcer)
     {
@@ -1103,6 +1110,7 @@ public partial class TFDiMD11Definition
             if (!_trimBusy.Add(control.NodeId))
             {
                 Log.Debug("MD11", $"{trim.Key}: dropped — {control.NodeId} is still moving.");
+                if (_trimDropSpoken.Add(control.NodeId)) announcer.Announce(Md11TrimButtons.StillMoving(control));
                 return;
             }
         }
@@ -1163,7 +1171,11 @@ public partial class TFDiMD11Definition
         }
         finally
         {
-            lock (_trimBusy) _trimBusy.Remove(control.NodeId);
+            lock (_trimBusy)
+            {
+                _trimBusy.Remove(control.NodeId);
+                _trimDropSpoken.Remove(control.NodeId);
+            }
         }
     }
 
@@ -1177,7 +1189,9 @@ public partial class TFDiMD11Definition
     private Task ReadBackTrimAsync(Md11Control control, int delayMs, SimConnectManager sim, ScreenReaderAnnouncer announcer)
         => DeferToUiThreadAsync(delayMs, async () =>
         {
-            if (await ReadSettledAsync(control.NodeId, control.StateVar, Md11TrimButtons.TrimVarTolerance, sim).ConfigureAwait(false) is not double value) return null;
+            var (settled, moving) = await ReadSettledAsync(control.NodeId, control.StateVar, Md11TrimButtons.TrimVarTolerance, sim).ConfigureAwait(false);
+            if (moving) return () => announcer.Announce(Md11TrimButtons.StillMoving(control));
+            if (settled is not double value) return null;
             var sentence = Md11TrimButtons.ReadBackSentence(control,
                 name => string.Equals(name, control.StateVar, StringComparison.OrdinalIgnoreCase) ? value : ReadStateVar(name));
             if (sentence == null) return null;
@@ -1196,8 +1210,11 @@ public partial class TFDiMD11Definition
     private Task ReadBackStabTrimAsync(Md11Control control, int delayMs, SimConnectManager sim, ScreenReaderAnnouncer announcer)
         => DeferToUiThreadAsync(delayMs, async () =>
         {
-            if (await ReadSettledAsync(ElevatorTrimKey, ElevatorTrimKey, TrimHysteresis, sim).ConfigureAwait(false) is not double value) return null;
-            var sentence = Md11TrimButtons.StabTrimReadBackSentence(control, DescribeElevatorTrim(value).Phrase);
+            var (settled, moving) = await ReadSettledAsync(ElevatorTrimKey, ElevatorTrimKey, TrimHysteresis, sim).ConfigureAwait(false);
+            if (settled is not double value && !moving) return null;
+            var sentence = moving
+                ? Md11TrimButtons.StillMoving(control)   // the autopilot still trimming, say: never a mid-move value
+                : Md11TrimButtons.StabTrimReadBackSentence(control, DescribeElevatorTrim(settled!.Value).Phrase);
             return () =>
             {
                 if (_trimAnnouncementsEnabled) return;   // on: the stock trim announcement says it
@@ -1211,10 +1228,12 @@ public partial class TFDiMD11Definition
     /// <paramref name="tolerance"/> (<see cref="Md11TrimButtons.ReadUntilSettledAsync"/>). The trim
     /// GLIDES to its new value (an aileron click takes about a second), and one read after a fixed wait
     /// caught it mid-move: 25.457 on its way to 26 was spoken "0.2 degrees Right Wing Down" (live,
-    /// 2026-11-06). Null when a read delivered nothing or the trim was still moving at
-    /// <see cref="Md11TrimButtons.SettleCeilingMs"/>.
+    /// 2026-11-06). <c>Settled</c> is null unless two reads agreed; <c>StillMoving</c> is true when
+    /// every read delivered but the trim was still moving at <see cref="Md11TrimButtons.SettleCeilingMs"/>
+    /// (a pilot's press is then answered "still moving", [CORE-7]); a read that delivered nothing is
+    /// neither, and no evidence ([MD11-9]).
     /// </summary>
-    private static async Task<double?> ReadSettledAsync(string key, string logName, double tolerance, SimConnectManager sim)
+    private static async Task<(double? Settled, bool StillMoving)> ReadSettledAsync(string key, string logName, double tolerance, SimConnectManager sim)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var (value, last, reads) = await Md11TrimButtons.ReadUntilSettledAsync(
@@ -1222,7 +1241,7 @@ public partial class TFDiMD11Definition
             () => sw.ElapsedMilliseconds, () => Task.Delay(Md11TrimButtons.SettlePollMs)).ConfigureAwait(false);
         Log.Debug("MD11", $"Trim read-back: {logName}={last?.ToString("0.###", CultureInfo.InvariantCulture) ?? "null"} "
             + $"({(value != null ? "settled" : "not settled")}, {reads} reads, {sw.ElapsedMilliseconds} ms).");
-        return value;
+        return (value, value == null && last != null);
     }
 
     /// <summary>
