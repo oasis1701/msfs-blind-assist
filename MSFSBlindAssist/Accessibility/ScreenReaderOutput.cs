@@ -65,6 +65,13 @@ public sealed class ScreenReaderOutput
         _clockMs = clockMs;
     }
 
+    /// <summary>Whether Prism has started (it starts on first use); false before that, and for good when it could
+    /// not (prism.dll missing or broken), so Settings can tell "no reader" from "could not look".</summary>
+    public bool Started
+    {
+        get { lock (_gate) { return _source != null; } }
+    }
+
     /// <summary>The reader in use, or null when none is.</summary>
     public string? ActiveReaderName
     {

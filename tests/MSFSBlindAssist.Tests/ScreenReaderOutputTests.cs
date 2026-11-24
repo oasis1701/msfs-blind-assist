@@ -240,6 +240,18 @@ public class ScreenReaderOutputTests
         Assert.False(output.TrySpeak("Two", false));
         Assert.Equal(1, attempts);
         Assert.Null(output.DetectNow());
+        Assert.False(output.Started);
+    }
+
+    [Fact]
+    public void Started_is_true_once_Prism_answered_even_with_no_reader_running()
+    {
+        var rig = new Rig();
+        Assert.False(rig.Output.Started);
+
+        Assert.Null(rig.Output.DetectNow());
+
+        Assert.True(rig.Output.Started);
     }
 
     [Fact]

@@ -13,7 +13,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
     // ── General group ────────────────────────────────────────────────────────
     private RadioButton _screenReaderRadio = null!;
     private RadioButton _sapiRadio = null!;
-    private Label _statusLabel = null!;
+    private TextBox _statusBox = null!;
     private ComboBox _nearestCityIntervalCombo = null!;
     private CheckBox _timeWithSecondsCheck = null!;
     private CheckBox _gsxBackgroundMonitoring = null!;
@@ -57,7 +57,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
 
         _screenReaderRadio = new RadioButton
         {
-            Text = "Screen Reader (NVDA, JAWS, etc.) - Recommended",
+            Text = "Screen Reader (NVDA, JAWS, ZDSR, etc.) - Recommended",
             Location = new System.Drawing.Point(12, 52),
             Size = new System.Drawing.Size(420, 25),
             AccessibleName = "Screen Reader Mode",
@@ -73,10 +73,16 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Use Windows built-in speech synthesis for announcements",
         };
 
-        _statusLabel = new Label
+        // A read-only TextBox, never a Label (VAT-13): a Label is not in the tab order, so with a screen
+        // reader it has to be hunted for with the review cursor. BackColor is set on purpose: a read-only
+        // TextBox ignores ForeColor until it is, and the status colour below would not show.
+        _statusBox = new TextBox
         {
             Location = new System.Drawing.Point(12, 112),
             Size = new System.Drawing.Size(420, 40),
+            Multiline = true,
+            ReadOnly = true,
+            BackColor = SystemColors.Control,
             AccessibleName = "Screen Reader Status",
             Text = "Checking screen reader status..."
         };
@@ -144,7 +150,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
 
         group.Controls.AddRange(new Control[]
         {
-            modeLabel, _screenReaderRadio, _sapiRadio, _statusLabel,
+            modeLabel, _screenReaderRadio, _sapiRadio, _statusBox,
             intervalLabel, _nearestCityIntervalCombo,
             _timeWithSecondsCheck,
             _gsxBackgroundMonitoring,
@@ -158,33 +164,17 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
     {
         try
         {
-            using (var tolkTest = new TolkWrapper())
-            {
-                if (tolkTest.Initialize())
-                {
-                    if (tolkTest.IsScreenReaderRunning())
-                    {
-                        string detected = tolkTest.DetectedScreenReader;
-                        _statusLabel.Text = $"Screen reader detected: {detected}\nChoose 'Screen Reader' for best experience.";
-                        _statusLabel.ForeColor = Color.DarkGreen;
-                    }
-                    else
-                    {
-                        _statusLabel.Text = "No screen reader detected.\nSAPI mode recommended for speech feedback.";
-                        _statusLabel.ForeColor = Color.DarkOrange;
-                    }
-                }
-                else
-                {
-                    _statusLabel.Text = "Unable to initialize screen reader detection.\nSAPI mode will be used as fallback.";
-                    _statusLabel.ForeColor = Color.Red;
-                }
-            }
+            // The announcer's own reader, looked for again now: the same instance it speaks through, in the
+            // same order (NVDA, then ZDSR, PC-Talker and Boy PC Reader, then JAWS and the rest).
+            var readers = ScreenReaderOutput.Shared;
+            string? detected = readers.DetectNow();
+            _statusBox.Text = ScreenReaderAnnouncer.DetectionStatusText(detected, readers.Started);
+            _statusBox.ForeColor = detected != null ? Color.DarkGreen : readers.Started ? Color.DarkOrange : Color.Red;
         }
         catch (Exception ex)
         {
-            _statusLabel.Text = $"Error checking screen reader: {ex.Message}\nSAPI mode recommended.";
-            _statusLabel.ForeColor = Color.Red;
+            _statusBox.Text = $"Error checking screen reader: {ex.Message}{Environment.NewLine}SAPI mode recommended.";
+            _statusBox.ForeColor = Color.Red;
         }
     }
 
