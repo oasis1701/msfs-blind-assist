@@ -597,7 +597,9 @@ When System.Speech cannot start, or a `SpeakAsync` throws, the screen reader is 
 Prism ([github.com/ethindp/prism](https://github.com/ethindp/prism)) through its .NET package Prismatoid
 (NuGet `Prismatoid` 0.4.0, MPL-2.0; its native `prism.dll` comes from the package's `runtimes\win-x64` folder). It
 replaced Tolk and the NVDA controller client (2026-11, after PR #365's reviewer asked for ZDSR this way); neither
-DLL ships any more, and `RuntimeChecker.RequiredDlls` asks for `prism.dll` and `Prismatoid.dll` instead.
+DLL ships any more, and `RuntimeChecker.RequiredDlls` asks for `prism.dll` and `Prismatoid.dll` instead. The updater
+only overlays, so an install updated in place kept both; `Patching/RetiredScreenReaderLibrariesCleanup` removes them
+at start-up, only where `prism.dll` sits beside the exe, and only those two files.
 
 - **Which readers.** Everything Prism registers except its speech engines (SAPI, OneCore) and its UI Automation
   backend, in Prism's priority order: NVDA (103), then PC-Talker, ZDSR and Boy PC Reader (101), then JAWS, ZoomText,

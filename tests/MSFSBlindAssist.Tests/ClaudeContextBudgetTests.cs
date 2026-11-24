@@ -748,6 +748,7 @@ public class ClaudeContextBudgetTests
         ["retired-install cleanup that no rule names"] = new[]
         {
             "MSFSBlindAssist/Patching/StaleRuntimesCleanup.cs",
+            "MSFSBlindAssist/Patching/RetiredScreenReaderLibrariesCleanup.cs",
         },
     };
 

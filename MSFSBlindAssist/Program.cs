@@ -50,6 +50,13 @@ static class Program
                 if (removedRuntimeDirs > 0)
                     Startup.Info($"Removed {removedRuntimeDirs} stale runtime asset folder(s) left by an older build");
 
+                // One-time, best-effort removal of Tolk.dll and nvdaControllerClient.dll, which Prism replaced: the
+                // updater overlays and deletes nothing, so an updated install keeps them. Only in a Prism build's
+                // folder, only those two files. Never throws; a no-op once they are gone.
+                int removedRetiredLibraries = RetiredScreenReaderLibrariesCleanup.RemoveRetiredLibraries();
+                if (removedRetiredLibraries > 0)
+                    Startup.Info($"Removed {removedRetiredLibraries} screen reader librar{(removedRetiredLibraries == 1 ? "y" : "ies")} Prism replaced (Tolk, NVDA controller client)");
+
                 // Phase 1: Perform runtime requirements check
                 Startup.Info("Starting runtime requirements check...");
                 var runtimeCheck = RuntimeChecker.PerformRuntimeCheck();
