@@ -228,6 +228,75 @@ public class TaxiRouterCrossingClearanceTests
         Assert.Equal(NodeAt(g, 0.0037, 0.005), route!.Segments[0].ToNode.NodeId);
     }
 
+    // OMDB "K4" to 30R, 2026-11-24, live. The online names carry K4 on south of K to the apron
+    // taxiway Z (15 nodes carry the name; navdata's own names give it 9, starting at K). The route
+    // then JOINS K4 at its apron end and drives it up to K, K is still K4's node nearest the
+    // destination, and the way on left it there: "via K4, then K, K9 ... crossing runway 12R at K9".
+    private static TaxiPath[] ApronArmFromZ() => new[]
+    {
+        P(0.002, 0.005, -0.001, 0.005, "K4"),
+        P(-0.001, 0.000, -0.001, 0.005, "Z"), P(-0.001, 0.005, -0.001, 0.010, "Z"),
+    };
+
+    [Fact]
+    public void A_single_cleared_taxiway_joined_at_its_apron_end_is_driven_over_the_runway_too()
+    {
+        var g = Build(ApronArmFromZ());
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, -0.001, 0.000), NodeAt(g, DestLat, DestLon),
+            new List<string> { "K4" }, destinationIsRunway: true);
+        AssertDrivesThenReaches(g, route, "K4", "M7");
+        Assert.DoesNotContain("K", route!.Segments.Select(s => s.TaxiwayName));
+    }
+
+    [Fact]
+    public void A_single_cleared_taxiway_is_driven_over_the_runway_from_a_start_on_its_apron_arm()
+    {
+        var g = Build(ApronArmFromZ());
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, -0.001, 0.005), NodeAt(g, DestLat, DestLon),
+            new List<string> { "K4" }, destinationIsRunway: true);
+        AssertDrivesThenReaches(g, route, "K4", "M7");
+        Assert.DoesNotContain("K", route!.Segments.Select(s => s.TaxiwayName));
+    }
+
+    [Fact]
+    public void A_single_cleared_taxiway_left_for_a_way_on_over_no_runway_of_its_own_keeps_its_route()
+    {
+        // T is joined at its apron end and left at K, and the way on runs east along K to a runway
+        // at the far end of the field without crossing anything. T itself goes on north over 09/27,
+        // and from its far end there IS a way round to the destination over new ground (N, P), so
+        // the onward-leg test alone would accept it: the pilot would be taken over a runway the
+        // route had no reason to cross. Only a runway the way on crosses as well names the crossing.
+        var paths = new List<TaxiPath>
+        {
+            P(-0.001, 0.000, -0.001, 0.005, "Z"),
+            P(-0.001, 0.005, 0.002, 0.005, "T"), P(0.002, 0.005, 0.0037, 0.005, "T"),
+            P(0.0037, 0.005, 0.0043, 0.005, ""), P(0.0043, 0.005, 0.006, 0.005, "T"),
+            P(0.002, 0.000, 0.002, 0.005, "K"), P(0.002, 0.005, 0.002, 0.038, "K"), P(0.002, 0.038, 0.002, 0.039, "K"),
+            P(0.002, 0.039, 0.001, 0.040, "E1"),
+            P(0.006, 0.005, 0.006, 0.038, "N"), P(0.006, 0.038, 0.002, 0.038, "P"),
+        };
+        var runways = new List<Runway>
+        {
+            R("09", 0.004, 0.000, 0.004, 0.030), R("27", 0.004, 0.030, 0.004, 0.000),
+            new() { AirportICAO = "TEST", RunwayID = "36", StartLat = 0.000, StartLon = 0.040, EndLat = 0.010, EndLon = 0.040, Length = 3646, Width = 197, Heading = 360 },
+            new() { AirportICAO = "TEST", RunwayID = "18", StartLat = 0.010, StartLon = 0.040, EndLat = 0.000, EndLon = 0.040, Length = 3646, Width = 197, Heading = 180 },
+        };
+        var g = BuildField(paths, runways);
+        int dest = NodeAt(g, 0.001, 0.040);
+
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, -0.001, 0.000), dest,
+            new List<string> { "T" }, destinationIsRunway: true);
+
+        Assert.NotNull(route);
+        Assert.Null(route!.ConstrainedFallbackReason);
+        var names = route.Segments.Select(s => s.TaxiwayName).ToList();
+        Assert.Contains("T", names);
+        Assert.Contains("K", names);
+        Assert.DoesNotContain("N", names);
+        Assert.DoesNotContain("P", names);
+        Assert.Equal(dest, route.Segments[^1].ToNode.NodeId);
+    }
+
     [Fact]
     public void A_gate_destination_is_not_changed()
     {

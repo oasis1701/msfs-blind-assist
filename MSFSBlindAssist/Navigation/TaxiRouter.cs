@@ -314,6 +314,42 @@ public class TaxiRouter
                     }
                 }
             }
+
+            // The same taxiway JOINED SHORT of that junction and driven up to it. Where its name
+            // runs on past the junction to the apron, the route joins it at the apron end, the
+            // junction is still its node nearest the destination, and the way on leaves it there
+            // for another crossing of the very runway it goes on over: the pilot was cleared over
+            // that runway on THIS taxiway. (OMDB "K4" to 30R, 2026-11-24, live: the online names
+            // carry K4 down to Z, and the route read "via K4, then K, K9 ... crossing runway 12R
+            // at K9"; with navdata's own names K4 starts at K and the case above drove it.)
+            // Only when the way on meets a runway this taxiway also goes on to meet: a taxiway
+            // left for a way on that crosses nothing of its own keeps the route it had.
+            if (currentNode != endNodeId
+                && secondTaxiway == null && destinationIsRunway && !lastTaxiwayTerminal
+                && entryNode != firstTarget
+                && !IsOnDestinationRunway(firstTarget, endNodeId))
+            {
+                int far = FarEndOfLastTaxiway(taxiwaySequence[0], firstTarget, endNodeId);
+                var along = far != -1 ? AStarSearchWithGapChaining(firstTarget, far, taxiwaySequence[0]) : null;
+                var driven = new HashSet<int>(fullPath);
+                if (along != null && along.Count >= 2 && !along.Skip(1).Any(driven.Contains))
+                {
+                    var wayOn = AStarSearch(firstTarget, endNodeId, null);
+                    if (wayOn != null)
+                    {
+                        var judged = fullPath.Concat(along.Skip(1)).ToList();
+                        var onward = OnwardLegOverAnotherRunway(judged, fullPath.LastIndexOf(entryNode), endNodeId);
+                        if (onward != null && LeadsOverARunwayTheWayOnCrosses(along, onward, wayOn, endNodeId))
+                        {
+                            fullPath.AddRange(along.Skip(1));
+                            for (int j = 1; j < onward.Count; j++) fullPath.Add(onward[j]);
+                            currentNode = endNodeId;
+                            Log($"Single taxiway '{taxiwaySequence[0]}' goes on from {firstTarget} over a runway the way on " +
+                                $"crossed elsewhere: driven to {far}, then on to the destination ({onward.Count} nodes)");
+                        }
+                    }
+                }
+            }
             break;
         }
 
@@ -803,6 +839,31 @@ public class TaxiRouter
         return walkedMeters <= OTHER_RUNWAY_MAX_WALK_M
             ? onward
             : Refuse($"the first other runway is {walkedMeters:F0} m on, past the {OTHER_RUNWAY_MAX_WALK_M:F0} m bound");
+    }
+
+    /// <summary>
+    /// Whether the runway a cleared taxiway leads over is one the plain way on crosses as well,
+    /// somewhere else. <paramref name="along"/> is the taxiway from the node the way on leaves it
+    /// by to its far end, <paramref name="onward"/> the way on from that far end, and the runway it
+    /// leads over is any other than the destination's own that the two meet up to
+    /// <see cref="OTHER_RUNWAY_MAX_WALK_M"/> past the far end, the same reach
+    /// <see cref="OnwardLegOverAnotherRunway"/> accepts a far end by. <paramref name="wayOn"/> is the
+    /// route's own way to the destination from the node it would leave the taxiway by.
+    /// </summary>
+    private bool LeadsOverARunwayTheWayOnCrosses(
+        IReadOnlyList<int> along, IReadOnlyList<int> onward, IReadOnlyList<int> wayOn, int endNodeId)
+    {
+        if (!_graph.Nodes.TryGetValue(endNodeId, out var dest)) return false;
+        var walked = along.Concat(onward.Skip(1)).ToList();
+        var met = RunwaysMet(walked, along.Count - 1, out double farMeters);
+        var onWayOn = RunwaysMet(wayOn, 0, out _);
+        foreach (var m in met)
+        {
+            if (m.FromMeters > farMeters + OTHER_RUNWAY_MAX_WALK_M) continue;
+            if (RunwayShape.For(m.Runway).Contains(dest.Latitude, dest.Longitude, 0.0)) continue;
+            if (onWayOn.Any(w => ReferenceEquals(w.Runway, m.Runway))) return true;
+        }
+        return false;
     }
 
     // How far past its last node a taxiway may still be said to lead onto a runway. The ONE
