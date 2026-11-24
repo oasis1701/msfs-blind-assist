@@ -120,6 +120,17 @@ public class SignHoldingPointTests
         Assert.Contains("K", g.Nodes[p.NodeId].TaxiwayNames);
     }
 
+    // Where Am I says "near holding point KK on taxiway K" from another taxiway, so the point
+    // carries the taxiway its sign names.
+    [Fact]
+    public void ResolveSigns_records_the_taxiway_the_sign_names()
+    {
+        var p = Assert.Single(NamedHoldingPointResolver.ResolveSigns(
+            Graph(), new[] { Sign("KK", 285, 700, "K") }, new HashSet<string>()));
+
+        Assert.Equal(new[] { "K" }, p.Taxiways);
+    }
+
     [Fact]
     public void ResolveSigns_never_overrides_a_name_a_painted_line_carries()
     {

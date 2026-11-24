@@ -123,6 +123,19 @@ public class HoldShortTargetListTests
         Assert.Equal("holding point KK", route[1].HoldShortRunway);
     }
 
+    // Which points a route ROW's "Hold short of" list offers is decided here, not in the form:
+    // every one, sign-read points included ([HLD-18] since 2026-11-24). Until then the row list
+    // left them out, and KK could only be reached through Progressive Taxi.
+    [Fact]
+    public void RowPoints_OffersSignReadPointsBesideThePaintedOnes()
+    {
+        var l2 = Point("L2");
+        var kk = Point("KK", NamedHoldingPointResolver.SignKind);
+
+        Assert.Equal(new[] { l2, kk }, HoldShortTargetList.RowPoints(new[] { l2, kk }));
+        Assert.Empty(HoldShortTargetList.RowPoints(null));
+    }
+
     [Fact]
     public void Merge_ListsAHoldingPointNameOnce()
     {

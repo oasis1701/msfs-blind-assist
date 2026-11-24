@@ -40,6 +40,17 @@ public static class HoldShortTargetList
         public override string ToString() => Label;
     }
 
+    /// <summary>
+    /// The named holding points a route ROW's "Hold short of" list offers: every one, a point
+    /// read off an X-Plane sign included ([HLD-18] since 2026-11-24; OMDB "taxi via K, hold
+    /// short of KK" on an ordinary route). Until then this left sign points out. The choice
+    /// lives here, not in the form, so a test pins it. A sign point's label says its position
+    /// is approximate (<see cref="HoldingPointLabel"/>); runway entries and cross-at points
+    /// still leave sign points out.
+    /// </summary>
+    public static IEnumerable<NamedHoldingPoint> RowPoints(IEnumerable<NamedHoldingPoint>? holdingPoints)
+        => holdingPoints ?? Enumerable.Empty<NamedHoldingPoint>();
+
     public static string HoldingPointLabel(NamedHoldingPoint point)
         => point.Name + (point.IsFromSign ? SignHoldingPointSuffix : HoldingPointSuffix);
 

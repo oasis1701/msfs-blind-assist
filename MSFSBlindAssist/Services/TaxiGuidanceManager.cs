@@ -1775,10 +1775,13 @@ public partial class TaxiGuidanceManager : IDisposable
     // a graph carrying the older names.
     private long _whereAmICacheEpoch;
 
-    // The named holding points the taxi planner last resolved, with the airport they belong to.
-    // Positions only: Where Am I reads them and never touches a graph for them.
-    private string _whereAmIHoldingPointsIcao = "";
-    private IReadOnlyList<NamedHoldingPoint> _whereAmIHoldingPoints = Array.Empty<NamedHoldingPoint>();
+    // The named holding points held for one airport (the taxi planner's list, else Where Am I's own
+    // background resolve) and the airport last asked about. Positions only: Where Am I reads them
+    // and never touches a graph for them. Under _stateLock.
+    private readonly WhereAmIHoldingPoints _whereAmIHoldingPoints = new();
+    // The provider of the last press that asked with online names on: what a resolve started by
+    // arriving data reads through. Dropped with the store on a database switch. Under _stateLock.
+    private IAirportDataProvider? _whereAmIHoldingPointsProvider;
 
     /// <summary>
     /// Hands Where Am I the airport's named holding points as the taxi planner resolved them
@@ -1790,22 +1793,22 @@ public partial class TaxiGuidanceManager : IDisposable
     {
         var copy = points.ToArray();
         lock (_stateLock)
-        {
-            _whereAmIHoldingPointsIcao = icao ?? "";
-            _whereAmIHoldingPoints = copy;
-        }
+            _whereAmIHoldingPoints.Publish(icao, copy);
     }
 
-    // The airport whose points a background resolve is working on, so one press starts one resolve.
+    // The airport whose points a background resolve is working on, and the cache epoch it started
+    // under, so one press starts one resolve but data that landed since may start a newer one.
     private string _whereAmIHoldingPointsResolving = "";
+    private long _whereAmIHoldingPointsResolvingEpoch;
 
     /// <summary>
     /// Resolves the airport's named holding points for Where Am I when the taxi planner has not
     /// published its own. On a PRIVATE graph, built for this alone and thrown away: the resolver
     /// inserts nodes, and neither the active graph nor the cached Where Am I graph may be changed
-    /// off the UI thread ([RTE-30]). Runs on the pool: the press that starts it answers with the
+    /// off the UI thread ([RTE-30]). Runs on the pool: a press that starts it answers with the
     /// taxiway alone, the next one has the point. Nothing is stored while the online data has not
-    /// arrived, so a later press tries again.
+    /// arrived; when it lands for the airport last asked about, <see cref="OnAirportDataUpdated"/>
+    /// starts this again, so the press after that has the point.
     /// </summary>
     private void StartHoldingPointResolve(IAirportDataProvider dataProvider, string icao)
     {
@@ -1814,9 +1817,12 @@ public partial class TaxiGuidanceManager : IDisposable
         long epoch;
         lock (_stateLock)
         {
-            if (string.Equals(_whereAmIHoldingPointsResolving, icao, StringComparison.OrdinalIgnoreCase)) return;
-            _whereAmIHoldingPointsResolving = icao;
             epoch = _whereAmICacheEpoch;
+            if (string.Equals(_whereAmIHoldingPointsResolving, icao, StringComparison.OrdinalIgnoreCase)
+                && _whereAmIHoldingPointsResolvingEpoch == epoch)
+                return;
+            _whereAmIHoldingPointsResolving = icao;
+            _whereAmIHoldingPointsResolvingEpoch = epoch;
         }
 
         _ = Task.Run(() =>
@@ -1839,14 +1845,11 @@ public partial class TaxiGuidanceManager : IDisposable
 
                 lock (_stateLock)
                 {
-                    // The planner's own list wins if it arrived meanwhile, and positions read from a
-                    // database that has since been switched away from are dropped (the epoch moved).
-                    if (epoch == _whereAmICacheEpoch
-                        && !string.Equals(_whereAmIHoldingPointsIcao, icao, StringComparison.OrdinalIgnoreCase))
-                    {
-                        _whereAmIHoldingPointsIcao = icao;
-                        _whereAmIHoldingPoints = points.ToArray();
-                    }
+                    // The planner's own list wins if it arrived meanwhile (PublishIfAbsent), and
+                    // positions read from a database that has since been switched away from, or
+                    // from online data that has since been fetched again, are dropped (the epoch moved).
+                    if (epoch == _whereAmICacheEpoch)
+                        _whereAmIHoldingPoints.PublishIfAbsent(icao, points);
                 }
             }
             catch (Exception ex)
@@ -1857,7 +1860,9 @@ public partial class TaxiGuidanceManager : IDisposable
             {
                 lock (_stateLock)
                 {
-                    if (string.Equals(_whereAmIHoldingPointsResolving, icao, StringComparison.OrdinalIgnoreCase))
+                    // Only this resolve's own latch: a newer one for the same airport may have taken it.
+                    if (string.Equals(_whereAmIHoldingPointsResolving, icao, StringComparison.OrdinalIgnoreCase)
+                        && _whereAmIHoldingPointsResolvingEpoch == epoch)
                         _whereAmIHoldingPointsResolving = "";
                 }
             }
@@ -1999,11 +2004,18 @@ public partial class TaxiGuidanceManager : IDisposable
         if (string.IsNullOrEmpty(description))
             return $"Not on a known taxiway or ramp at {icao}.";
 
-        IReadOnlyList<NamedHoldingPoint>? holdingPoints;
+        // Holding points are online data: none is named, and none resolved, while the online names
+        // setting is off, whatever was resolved while it was on.
+        bool onlineNamesOn = dataProvider
+            is MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider { Enabled: true };
+        IReadOnlyList<NamedHoldingPoint> holdingPoints;
+        bool resolveHoldingPoints;
         lock (_stateLock)
-            holdingPoints = string.Equals(_whereAmIHoldingPointsIcao, icao, StringComparison.OrdinalIgnoreCase)
-                ? _whereAmIHoldingPoints : null;
-        if (holdingPoints == null)
+        {
+            (holdingPoints, resolveHoldingPoints) = _whereAmIHoldingPoints.Ask(icao, onlineNamesOn);
+            if (onlineNamesOn) _whereAmIHoldingPointsProvider = dataProvider;
+        }
+        if (resolveHoldingPoints)
             StartHoldingPointResolve(dataProvider, icao);
         description = NamedHoldingPointNearby.Describe(
             description, NamedHoldingPointNearby.Find(holdingPoints, lat, lon));
@@ -2116,9 +2128,10 @@ public partial class TaxiGuidanceManager : IDisposable
             _whereAmICachedIcao = "";
             _whereAmICachedToken = "";
             _whereAmICacheEpoch++;
-            // Holding-point positions are navdata positions too: resolved again on the next press.
-            _whereAmIHoldingPointsIcao = "";
-            _whereAmIHoldingPoints = Array.Empty<NamedHoldingPoint>();
+            // Holding-point positions are navdata positions too: resolved again on the next press,
+            // through that press's provider.
+            _whereAmIHoldingPoints.Clear();
+            _whereAmIHoldingPointsProvider = null;
             _runwayShapeMemo = null;
             Interlocked.Increment(ref _databaseGeneration);
         }
@@ -2128,10 +2141,15 @@ public partial class TaxiGuidanceManager : IDisposable
     /// Online taxiway-name augmentation for <paramref name="icao"/> was just (re)fetched: drop the
     /// cached Where-Am-I graph so the next query picks up the new names. Called from the fetch
     /// thread, so it takes _stateLock like every other user of the cached graph pair.
+    /// <para>The airport's named holding points go with it: they were resolved from the data this
+    /// fetch replaced (a first fetch that lost one source left the list short for the session).
+    /// When Where Am I last asked about this airport they are resolved again now, on the pool,
+    /// so a first press made before the data arrived is followed by a press that has the point.</para>
     /// </summary>
     public void OnAirportDataUpdated(string icao)
     {
         if (string.IsNullOrEmpty(icao)) return;
+        IAirportDataProvider? resolveThrough = null;
         lock (_stateLock)
         {
             // Moved whatever the cache holds: a build of THIS airport in flight (which the cache
@@ -2143,7 +2161,12 @@ public partial class TaxiGuidanceManager : IDisposable
                 _whereAmICachedIcao = "";
                 _whereAmICachedToken = "";
             }
+            if (_whereAmIHoldingPoints.Drop(icao))
+                resolveThrough = _whereAmIHoldingPointsProvider;
         }
+        // Outside the lock, after the epoch moved: the resolve reads the data that just landed.
+        if (resolveThrough != null)
+            StartHoldingPointResolve(resolveThrough, icao);
     }
 
     /// <summary>

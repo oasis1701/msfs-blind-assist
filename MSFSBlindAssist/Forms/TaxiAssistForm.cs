@@ -4513,8 +4513,9 @@ public class TaxiAssistForm : Form
         else
         {
             // Hold short of taxiway or named holding point: every airport taxiway, the
-            // named holding points among them. This list is NOT filtered ([ENT-3]) and is
-            // the one place sign-read points are offered ([HLD-18]).
+            // named holding points among them. This list is NOT filtered ([ENT-3]). It and
+            // a route row's "Hold short of" list are the two places sign-read points are
+            // offered ([HLD-18]).
             if (!_namedHoldingPointsResolved)
                 ResolveNamedHoldingPoints();
             foreach (var entry in HoldShortTargetList.Merge(_graph.GetAllTaxiwayNames(), _namedHoldingPoints))
@@ -4606,13 +4607,14 @@ public class TaxiAssistForm : Form
     }
 
     /// <summary>
-    /// The named holding points a ROW's "Hold short of" combo offers: every one, a point
-    /// read off an X-Plane sign included ([HLD-18]; OMDB "taxi via K, hold short of KK" on
-    /// an ordinary route). A sign point's position is approximate, and its label says so
-    /// (HoldShortTargetList.HoldingPointLabel). Runway entries and cross-at points still
-    /// leave sign points out (GetHoldingPointsCrossingRunway).
+    /// The named holding points a ROW's "Hold short of" combo offers. Which ones is
+    /// HoldShortTargetList.RowPoints' call, pinned by a test: every one, a point read off an
+    /// X-Plane sign included ([HLD-18]; OMDB "taxi via K, hold short of KK" on an ordinary
+    /// route). Runway entries and cross-at points still leave sign points out
+    /// (GetHoldingPointsCrossingRunway).
     /// </summary>
-    private IEnumerable<NamedHoldingPoint> RowHoldingPoints() => _namedHoldingPoints;
+    private IEnumerable<NamedHoldingPoint> RowHoldingPoints() =>
+        HoldShortTargetList.RowPoints(_namedHoldingPoints);
 
     /// <summary>
     /// Brings a row's "Hold short of" combo up to date when focus reaches it: the named
