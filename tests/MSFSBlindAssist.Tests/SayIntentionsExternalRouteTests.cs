@@ -279,6 +279,27 @@ public class SayIntentionsExternalRouteTests
         Assert.Equal(-1, TaxiAssistForm.FindRunwayItemIndex(new[] { "(none)" }, "22"));
     }
 
+    // The same combo lists taxiways and named holding points after the runways, and their
+    // names carry digits too. A runway the airport does not list (SayIntentions and the
+    // scenery often disagree by one renumbering: 12 against 11) must be reported as not
+    // found, never matched to taxiway A12 or holding point B12 and set as that stop. The
+    // combo holds runways as text and the others as entries; only the text is searched.
+    [Fact]
+    public void A_runway_the_airport_lacks_never_matches_a_taxiway_or_holding_point()
+    {
+        var items = new object[] { "(none)", "11", "29" }
+            .Concat(MSFSBlindAssist.Navigation.HoldShortTargetList.Merge(
+                new[] { "A12" },
+                new[] { new MSFSBlindAssist.Navigation.NamedHoldingPoint { Name = "B12", NodeId = 1 } }))
+            .ToList();
+
+        var texts = TaxiAssistForm.RunwayItemTexts(items);
+
+        Assert.Equal(items.Count, texts.Count);   // indices still line up with the combo
+        Assert.Equal(-1, TaxiAssistForm.FindRunwayItemIndex(texts, "12"));
+        Assert.Equal(1, TaxiAssistForm.FindRunwayItemIndex(texts, "11"));
+    }
+
     // --- MatchDestinationLabel --------------------------------------------------------
 
     [Fact]

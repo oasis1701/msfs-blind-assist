@@ -43,8 +43,11 @@ tools/VirtualPilot/bin/x64/Release/net10.0-windows/VirtualPilot.exe <mode> [opti
 | `landings` | every listed exit of every runway: once **following the tone**, once **rolling straight past** (skipped for End exits / exits < 600 m from the runway end) |
 | `taxi` | per airport, K plans: gate → runway (lineup) and landing-exit vacate point → gate; each flown on the **shortest path** and again on an **ATC-style clearance** (the shortest route's taxiway names in order) |
 | `wrongturn` | follows a gate → runway route, then deliberately turns into a branch that leads to a runway hold line not on the route; the app must say "off route" first |
+| `rwystop` | a route loaded while stopped on a runway, midway across the widest gap between two exits, to a random gate, with and without a clearance. `VP_LEGACY_RWYSTART=1` and `VP_LEGACY_TURNSIDE=1` restore the older route start and opening turn for an A/B |
+| `missedexit` | per runway, two flights where the pilot rolled past the planned exit and vacated at the next one, then loaded the gate route with the clearance given for the planned exit. The flight that prompted it (VTBS 02R, 2026-11-18) vacated one exit EARLY, which this mode does not fly; that one is replayed with `--trace ICAO:from:…`. Where the two exits are 300 m or more apart, the same clearance is also loaded while still on the runway, 150 m past the planned exit (`MISSEDEXIT_RWY`) |
 | `all` | landings + taxi |
 | `departures` | per runway end: named (OSM) holding-point departures (`HP`, flown free and on a clearance), intersection departures (`IX`), full-length backtracks where the runway list would say "(backtrack required)" (`BT`); per airport: gate → gate taxis across the field (`G2G`) and ATC clearances with explicit "hold short of runway X" instructions (`HSCLR`) — each also voiced as a written and a spoken-NATO clearance and fed to the SayIntentions import's own parser (`CLR_*`) |
+| `turnpicks` | per taxi plan, the clearance a controller would give, then, for every row and both sides, the Turn pick a pilot could set on that row: each is loaded as the planner loads it and what became of it is recorded (already made, charted, off-chart leg, or refused and why); a pick that changes the route is flown following the tone, and flown once more with the pilot taking the charted way at the junction instead. `turn_report.py runs/NAME` summarises it |
 | `fetchosm` | downloads the raw Overpass answer for each airport into `runs/_osm/ICAO.json` (one polite request at a time — Overpass rate-limits hard, expect ~1 airport a minute). Every mode then builds the app's OWN OSM-augmented graph from that snapshot (names, holding points); `VP_NOOSM=1` flies plain navdata, `VP_OSMDIR` points elsewhere. The snapshot pins the data so a before/after run measures the code, not OSM churn |
 
 Options: `--airports N` (busiest by taxi-path count, default 100), `--icao A,B`, `--shard i/n`
@@ -53,6 +56,17 @@ thread), `--taxi-per-airport K`, `--out file`, and
 `--trace ICAO:RWY:EXIT[:straight]` / `--trace ICAO:taxi:N[:clearance]` for one scenario frame by
 frame (speech, state changes, routes, the harness's view of the runway frame).
 
+`--trace ICAO:from:<lat>,<lon>,<heading>:<text in the gate's name>[:A,B,C]` loads a route where a real
+flight loaded it, with the clearance it had, taken from the taxi and router logs.
+
+**Which navdata.** `--sim fs2020|fs2024` (or `VP_SIM`) picks the simulator whose database is flown,
+found where the app finds it (`DatabasePathResolver`); `--db file` (or `VP_DB`) names a database by
+path. With neither, the MSFS 2020 database is flown when it is installed (the rounds below up to the
+fifth flew it) and the MSFS 2024 one when it is not. The run prints the choice and writes it into the
+findings header. **A before/after pair only compares when both runs fly the same database**: the
+airports, the plans drawn and every finding differ between the two. The two simulators draw the same
+airport differently, so measure a routing or guidance change on both.
+
 Every run writes `<out>` (findings) and `<out>.results.txt` (one outcome line per landing).
 `tools/VirtualPilot/compare.py BEFORE.results.txt AFTER.results.txt` diffs two runs landing by
 landing — **run it before and after any change to rollout / exit logic; "no degrades" means the
@@ -60,7 +74,12 @@ WORSE column is explained case by case.** Run outputs go under `tools/VirtualPil
 
 Trace forms: `ICAO:RWY:EXIT[:straight]` (a landing), `ICAO:taxi:N[:clearance]` (the Nth taxi
 plan), `ICAO:dep:<text>` / `ICAO:any:<text>` (every departures / every taxi-or-departures scenario
-whose description contains the text — e.g. `KORD:dep:IX Y4 L 5`). `VP_SHOWCLR=1` prints the voiced
+whose description contains the text — e.g. `KORD:dep:IX Y4 L 5`), `ICAO:turn:<text>` (the same for
+`turnpicks`, e.g. `LTFM:turn:turn Right onto N1`), and
+`ICAO:pick:<lat>,<lon>,<heading>:<runway>:<clearance>[:miss]`: one clearance from a position to a
+runway, a Turn pick written `=L` or `=R` after its taxiway, `:miss` to take the charted way at the
+junction instead. The KBOS incident of 2026-11-14 is
+`KBOS:pick:42.363953,-71.006981,170:33L:H,C=L`. `VP_SHOWCLR=1` prints the voiced
 clearances, `VP_STUBSTATS=1` the destination entry-stub length and hold label of every departure.
 
 ### A/B against a frozen build
@@ -119,6 +138,13 @@ decelerating speed (Normal/End exits 18 kt at the junction, High-speed 35 kt).
 | `HP_HELD_AWAY_FROM_POINT` / `HP_HOLD_NOT_NAMED` / `HP_ROUTE_MISSES_POINT[_WARNED]` | a named-holding-point departure held > 30 m from the painted line picked / held there without naming it / the route never passes it (`_WARNED`: the app said so) | medium — hold placement stays navdata-authoritative by design, and a painted line BEYOND the navdata hold is correctly never reached |
 | `CLR_{WRITTEN,SPOKEN}_{TAXIWAYS,HOLDS,RUNWAY}_WRONG` | the voiced clearance parsed to different taxiways / hold shorts / runway | high for spellable names; navdata names ATC would never say ("N-North") are noise |
 | `LINEUP_LEAVES_MAPPED_PAVEMENT`, `LINEUP_NEVER_ALIGNED` | the lineup intercept leaves every mapped edge; never "Lined up" in 400 m | **low** — many sceneries stop the entry taxiway at the hold line (KIAH SA), so the ground between hold line and runway is unmapped |
+| `TURN_PICK_SILENT`, `TURN_PICK_BROKE_THE_LOAD` | a Turn pick was neither applied nor said; a clearance that loads without the pick fails with it | high |
+| `TURN_HONORED_WRONG_SIDE`, `TURN_MET_WRONG_SIDE`, `TURN_BOTH_SIDES_MET` | the route turns the other way onto the row's taxiway than the pick it honored or called already made (the harness's own sum of heading changes along that taxiway, a contradiction of more than 25°); both sides read as already made | high for the first two; the third is a straight-on join onto a taxiway that then bends both ways |
+| `TURN_TRAVELS_THE_OTHER_ARM`, `TURN_CROSSES_THE_OTHER_ARM` | a route that honored a pick later runs along, or passes a node of, the arm of that taxiway the pick turned away from (worked out by the harness from the graph; the destination node does not count) | high — refused by the app since the sixth round, so either is a regression |
+| `OFFCHART_NOTE_MISSING`, `TURN_CHARTED_NOT_CONFIRMED` | an off-chart leg, or a charted pick that changed the route, with no word of it at load | high |
+| `TURN_PICK_LOST_WHILE_FOLLOWING` | "was missed" or "could not be kept" while the pilot followed the tone | medium — exit→gate plans start facing away from their route, and a first-row pick at a stand is judged from the harness's arbitrary start heading |
+| `OFFCHART_LEG_NOT_TAXIED`, `OFFCHART_LEG_NOT_ANNOUNCED`, `OFFCHART_LEG_OFF_PAVEMENT` | arrived without coming within 25 m of the middle of the leg; a leg of 40 m or more that is not the route's first segment taxied with no "Off-chart leg" sentence; more than 12 m beyond the nearest taxi edge while on the leg | medium; the last is **low**, as `TAXI_OFF_PAVEMENT` (the app's own pavement map has the aprons this index lacks) |
+| `TURN_MISS_SAID_MISSED` / `_SAID_NOT_KEPT` / `_NOT_SAID` / `_NO_REROUTE` / `_NOT_FLOWN` | the miss flight: the route change said so; changed with no word about the pick; never changed in 150 m (the pilot then follows the tone again); the pilot never came within 5 m of the junction | information; `_NOT_SAID` is the known limit (a pick counts as made once the segment index passes its join) |
 
 ## Findings of the first run (2026-09-18, 100 busiest fs2020 airports)
 
@@ -340,6 +366,123 @@ Follow-up the same evening (A/B against the round's end, 0 new findings, wrong t
     `RetargetLandingExit` tries it last when every further exit fails to route (KEDW 23L past C).
     314 straight-roll retargets now name an exit a median 100 m ahead instead of 35 m.
 
+## Sixth round — route starts off the pavement (2026-11-08, same 100 airports, plain navdata)
+
+A/B with both legacy switches on and off, 6,893 scenarios. `TAXI_OFF_PAVEMENT` went away on 610 scenarios and appeared on 22. In `rwystop` alone, 843 of 1,124 flights were flagged before and 265 after, `TAXI_NOT_ARRIVED` went from 12 to 1 and stops on runway pavement from 9 to 4. Silent wrong turns stayed at 14.
+
+The first attempt took the nearest exit whatever the route did next, which added 10 stops short of the runway just left (KFLL 10L Q); an exit whose route comes back onto the runway is now skipped. The walk target also aimed the roll beside the runway where the first segment leaves at an angle, so the tone now aims at the start node until the aircraft arrives.
+
+Accepted: 13 new `TAXI_RECALC_WHILE_FOLLOWING` against 32 gone. `RUNWAY_ENTERED_UNHELD` in `rwystop` rose from 17 flights to 25, but 22 of the 25 name the runway the flight started on, which the check reads as an entry after drifting to the edge, not a real entry.
+
+## Seventh round — a clearance that starts behind the aircraft (2026-11-19, 100 busiest airports of each navdata, plain navdata)
+
+Two flights on 2026-11-18 left the pavement following the tone: VTBS 02R (cleared E7, vacated one exit early at E10 after the rollout switched to it at 20 kt) and VHHH 07L (cleared C8, stopped on the runway 600 m before it). Both replay exactly with `--trace ICAO:from:…` on the 2024 navdata. `missedexit` flies the other way round, past the planned exit and off at the next; the early case rests on the VTBS replay alone. The sixth round's runway start already covers VHHH; VTBS needed RTE-38 and RTE-39 ([route-runway-start.md](invariants/route-runway-start.md)).
+
+A/B against a frozen build, modes `missedexit taxi rwystop departures wrongturn`, on both navdata sets:
+
+| | 2024 | 2020 |
+|---|---|---|
+| scenarios | 7,974 | 8,013 |
+| `TAXI_OFF_PAVEMENT` gone / appeared | 196 / 4 | 165 / 4 |
+| `RUNWAY_ENTERED_UNHELD` gone / appeared | 38 / 1 | 36 / 1 |
+| `HOLD_FAR_BEFORE_RUNWAY` gone | 37 | 35 |
+| `missedexit` flights more than 40 m off the pavement, before / after | 135 / 30 | 144 / 46 |
+| scenarios changed outside `missedexit` | 24 of 6,868 | 18 of 6,893 |
+
+Leaving out every cleared taxiway the route does not drive was measured first and rejected: at VTBS it dropped the cleared D6 and took D7.
+
+A review of that change found the same out-and-back on a route loaded while still on the runway past the cleared exit, where the runway start (RTE-37) had kept RTE-39 from running. `MISSEDEXIT_RWY` flies it: 603 flights on 2024 and 640 on 2020. With the check run from the runway start too, `TAXI_OFF_PAVEMENT` went away on 8 and 7 of them, and no code appeared in any of the 8,577 and 8,653 scenarios.
+
+Accepted: 21 (2024) and 20 (2020) new `TAXI_RECALC_WHILE_FOLLOWING` against 10 and 8 gone, and the four new `TAXI_OFF_PAVEMENT` on each. In the cases traced (KIAD 19R U3, LTFM 35R C14, KATL 27R L, ZBAD 17L C4, VTBS 20R F3) the lead-in is now kept and starts behind the aircraft, so the flight opens with "Taxiway X is behind you" and a turn the pilot model swings wide on, where it used to be sent 180 to 380 m in a straight line. At ZBAD the route change during that turn has no stop left for the runway just vacated, and says so. Three 2020 `rwystop` flights gained `RUNWAY_ENTERED_UNHELD_WARNED`; the one traced, VTBS 20R, now loads a route that leaves by the exit behind it and announces that the runway it stands on has no hold short point. The other new codes were not traced one by one.
+
+## Eighth round — review fixes to the route start (2026-11-19, 100 busiest airports of each navdata, plain navdata)
+
+A/B of the review fixes against a frozen build of the seventh round's end, the same harness, modes `missedexit taxi rwystop departures wrongturn`: every scenario matched, 8,579 on fs2024 and 8,516 on fs2020. Kept, with no finding new on either database:
+
+| | 2024 | 2020 |
+|---|---|---|
+| `TAXI_OFF_PAVEMENT` gone | 4 | 6 |
+| `HOLD_WITHOUT_RUNWAY` gone | 0 | 2 |
+| `RUNWAY_ENTERED_UNHELD` gone | 0 | 1 |
+| `TAXI_RECALC_WHILE_FOLLOWING` gone | 0 | 1 |
+
+The traced gains come from the near-cleared test ([RTE-37](invariants/route-runway-start.md#rte-37)): a first cleared taxiway within 75 m cancels the runway start only when it is on the runway or at its edge. KIAH 15L (WM, 43 m off the pavement before, 0 after) and KBNA 31 (K, 99 m before, 2 after) now start at an exit along the runway instead of a node across the grass.
+
+With the OSM snapshot loaded (fs2024, modes `missedexit taxi rwystop departures`, the 37 busiest airports fetched, 3,425 scenarios), measured because RTE-38 and RTE-39 find the junction by the names on its nodes and online names add more: the review fixes against the seventh round's end, `TAXI_OFF_PAVEMENT` gone on 1, nothing new. The route-start work as a whole against the build before it (that harness compiled against the older app), `TAXI_OFF_PAVEMENT` gone on 396 and new on 13. None of the three new ones traced reads a junction wrongly from an online name: KORD 04L E is a runway start, KMSP 04 M6 flies the same route with a different opening turn, and LTFM 35R B12B leaves out a taxiway at a real out-and-back.
+
+Measured and rejected along the way, each with its own A/B:
+
+- Reading the turn-back over 30 m of route either side of the junction ([RTE-39](invariants/route-runway-start.md#rte-39)): 4 scenarios better and 3 worse. KDEN 07 B4 reaches the cleared taxiway by a 3.3 m spur and back, which the smoothed reading missed, and EDDB 24R K1 gained three findings. Every reversal the per-node test flagged in those flights was a real out-and-back over one edge, 3.3 to 56 m long.
+- The opening turn's stand evidence from the stand rows instead of the graph's Parking nodes ([STR-24](invariants/taxi-steering.md#str-24)): more opening turns flipped, at gate departures (KMCI gates 25 and 26 on fs2020) and after an exit vacate (KPIT 28C exit C, both databases), and those flights left the pavement or were re-routed where before they had not.
+- Preferring a start that follows the clearance over every start ahead: KLSV 21L took an exit behind and turned round on the runway, 99 m off the pavement. The preference now applies only among the exits one way.
+- Splitting the exits by bank with the six-place cap unchanged: the two halves of a crossing took two places and KBNA 02L (fs2020) lost the only exit whose route stayed off the runway. A twin on the other bank no longer takes a place.
+
 **Open:** OSM hold names like "C@10/28" (KTPA, KDFW, KONT, KABQ) are read out verbatim. EGLL 09R S6
 → Gate 223 routes back up S6 onto the runway and along it (the known "runway used as a taxiway"
 residual).
+
+## Sixth round — Turn picks, on MSFS 2024 navdata (2026-11-15, 100 busiest fs2024 airports)
+
+The first round flown on `fs2024.sqlite` (`--sim fs2024`; the harness could only open the MSFS 2020
+database before). Plain navdata (`VP_NOOSM=1`), 12 processes, under two minutes a run.
+
+**No pick, before and after the Turn pick branch** (`all wrongturn departures`, the harness of the
+branch's database change against base `6684fab3a`, then the final harness against the final app):
+11,963 scenarios (3,705 landings, 5,835 taxis), the same in both; 18,225 result lines and 20,970
+finding lines, not one different. A clearance with every Turn on Automatic routes and is guided
+exactly as before.
+
+**Every pick** (`turnpicks`): 10,008 picks on 931 clearances, 2,805 flights. No pick was dropped in
+silence, none broke a load, none is honored or called already made with the route turning the other
+way, and no honored route touches the arm of the taxiway it turned away from. What became of them:
+already made 3,033; no such turn 3,907; does not lead there 2,029; long detour 31; honored on a
+charted link 482; honored with an off-chart leg 526 (median 59 m, 90 % under 115 m, 391 of them 40 m
+or longer). The sweep tries BOTH sides of every row, so most picks point away from the destination by
+construction; the refusal rate says nothing about a pilot's own picks. In the 1,004 flights of
+honored picks, a pick adds no runway entered without a hold, no stop on runway pavement and no
+flight that fails to arrive.
+
+**Found and fixed, each flown first:**
+
+1. **The KBOS incident route was refused.** `KBOS:pick:…:33L:H,C=L` on the whole airport: "turning
+   left onto taxiway C does not lead to Runway 33L". Taxiway C has 400 m with no name 900 m east of
+   the junction, and a blocked node switched gap chaining off for its whole taxiway. The unit-test
+   replica of the junction had no gap. Now only a hop over the block is refused ([TURN-5]); the route
+   flies: the note, the hold short of 04R at H, "Off-chart leg. No taxi line for the next 95 metres…",
+   the left turn, 33L. 30 of 396 "does not lead" refusals were this.
+2. **A turn onto the next taxiway counted as this row's.** "Already made" walked 80 m along the
+   route: a straight-on join followed by a left onto the next row read as "left, already made", and
+   the pick vanished without a word. It now walks the row's own taxiway only.
+3. **Picks "honored" by loops**, about 1,500 of the 2,515 the first cut honored ([TURN-4],
+   [TURN-6]): a 153° reversal 55 m after the turn (LTFM "right onto N1"); a loop back through a node
+   the route had passed (WMKK "left onto G"); a trip back up the stand's own lead-in (ZJHK "right
+   onto C", where guidance then skipped the loop altogether and steered onto the charted way with the
+   pick still reading as made); 116 m out along a taxiway and straight back over the same nodes (ZBAD
+   "right onto L2", and 486 others); a turn and straight back past the junction on other nodes.
+4. **The long way round onto the same taxiway's other arm**, which the first design allowed. Of the
+   1,013 picks still honored after 3, 379 travelled along the other arm and 169 more crossed it. One
+   never arrived: KCLE "left onto G7" at a runway exit went back across the runway just vacated and
+   round to G7's other arm, and a recalculation on that lap began it again. By the owner's ruling the
+   rest of a picked route no longer touches that arm ([TURN-6]); the pick gets "does not lead to".
+5. **A pick honored along a runway.** OMDB "left onto N": onto runway 12L/30R at N8 with "Passing
+   the hold line", 370 m along it, unheld and unwarned. A pick no longer adds a stretch along a
+   runway ([TURN-7]); the same pick now gets a 70 m off-chart leg and flies clean.
+
+**Measured, left as it is:**
+
+- **What an honored pick costs.** A charted pick adds a median 204 m to the route (a quarter add
+  over 610 m, 68 of 482 over 1 km); an off-chart pick a median 32 m, and 298 of 526 leave the route
+  within 50 m of its charted length. The bound is twice the charted route plus 500 m.
+- **A missed turn is not always called missed.** Of 512 flights where the pilot took the charted way
+  at the junction, 209 heard "was missed", 142 heard "Route changed" with no word about the pick (it
+  counts as made once the segment index passes its join, about 25 m before a crossing node), and in
+  161 the route never changed within 150 m and the pilot followed the tone again. KBOS, taking the
+  connector as on the day: the tone hard left throughout, and after 60 m "Route changed… The left
+  turn onto taxiway C was missed."
+- **Three rows where both sides read as already made** (RPLL G2, MMMX L): a straight-on join onto a
+  taxiway that bends slightly one way and, 140 m on, the other. Nothing changes and nothing is said.
+- **Three picks lost while following the tone** ("was missed" or "could not be kept"): each a
+  first-row pick or an exit-to-gate plan that the harness starts facing away from its route.
+- In the miss flights, three runway entries with no hold: the pilot, deliberately off the route, drove
+  on at a runway the charted way leads to (KATL M6: "Warning: approaching runway 09L at M6, off
+  route." was spoken, and the recalculated route said "with no hold short point").

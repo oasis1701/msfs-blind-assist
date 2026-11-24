@@ -1,0 +1,120 @@
+# PanelSweep denylist: the 757 controls the sweep NEVER writes.
+#
+# One map node name per line: the "node" of a control in MSFSBlindAssist/Resources/bbs757_control_map.json
+# (plan 12, Task 2; docs/b757.md, "PanelSweep"). Matching ignores case. '#' starts a
+# comment. A line naming a node the map does not have is stale (a renamed node has lost its protection):
+# --dry-run warns about it, and a live run refuses to start.
+#
+# This file is checked before ANY write to a control, and again by the writer itself. The sweep also
+# denies, on top of this list: the guard a denied control names in the map, any control whose map guard
+# is a denied node, and any control sharing a state var with a denied one. Add a line to keep a control
+# out of the sweep; remove one only on purpose. The tool reads the copy next to its exe (the build copies
+# this file there).
+
+# Fire handles: unlock buttons, handles, and the rotation that discharges a bottle
+BBS757_FIREUNLOCK1                          # Engine 1 Fire Handle Unlock
+BBS757_FIREUNLOCK2                          # Engine 2 Fire Handle Unlock
+B757_FIREUNLOCK3                            # APU Fire Handle Unlock
+BBS757_FIREHANDLE1_CLICK                    # Engine 1 Fire Handle
+BBS757_FIREHANDLE1_CLICK2                   # Engine 2 Fire Handle
+BBS757_FIREHANDLE1_CLICK3                   # APU Fire Handle
+B757_PED_Fire_DISCH_1                       # Engine 1 Fire Handle Rotation
+B757_PED_Fire_DISCH_2                       # Engine 2 Fire Handle Rotation
+B757_PED_Fire_DISCH_3                       # APU Fire Handle Rotation
+
+# Cargo fire: arm switches, bottle buttons and their guards
+B757_PED_FWD_CARGOFIRE_BUTTON               # FWD Cargo Fire
+B757_PED_AFT_CARGOFIRE_BUTTON               # AFT Cargo Fire
+B757_GAURD_11_SWITCH                        # 1 BTL Cargo Fire Guard
+B757_PED_1BTL_CARGOFIRE_BUTTON              # 1 BTL Cargo Fire
+B757_GAURD_12_SWITCH                        # 2 BTL Cargo Fire Guard
+B757_PED_2BTL_CARGOFIRE_BUTTON              # 2 BTL Cargo Fire
+
+# Stabilizer trim cutouts and their guards
+B757_Stab_trim_C_toggle_switch_CLICK        # Stab Trim C Cutout
+B757_Stab_trim_R_toggle_switch_CLICK        # Stab Trim R Cutout
+B757_AISLE_STAND_STAB_1_GAURD_SWITCH        # Stab Trim C Guard
+B757_AISLE_STAND_STAB_2_GAURD_SWITCH        # Stab Trim R Guard
+
+# Battery and its guard
+B757_OVHD_BATTERY_BUTTON                    # Battery
+B757_GAURD_3_SWITCH                         # Battery Guard
+
+# Electrical sources: switching a power source off on ground power can drop the buses (measured on the
+# Fenix, a bus-tie press broke ground power). Added in plan 12's final review.
+B757_OVHD_STBY_POWER_SWITCH                 # STBY Power
+B757_OVHD_L_BUS_TIE_BUTTON                  # L Bus Tie
+B757_OVHD_R_BUS_TIE_BUTTON                  # R Bus Tie
+B757_OVHD_L_GEN_CONT_BUTTON                 # L Gen Cont
+B757_OVHD_R_GEN_CONT_BUTTON                 # R Gen Cont
+B757_OVHD_APU_GEN_BUTTON                    # APU Gen
+
+# APU selector
+B757_OVHD_APU_SWITCH                        # APU Selector
+
+# IRS selectors
+B757_IRS_L_SWITCH                           # IRS L
+B757_IRS_C_SWITCH                           # IRS C
+B757_IRS_R_SWITCH                           # IRS R
+
+# Fuel control switches (cutoff)
+BBS_fuelcut_PW1                             # L Fuel Control (PW)
+BBS_fuelcut_PW2                             # R Fuel Control (PW)
+BBS_fuelcut_RR1                             # L Fuel Control (RR)
+BBS_fuelcut_RR2                             # R Fuel Control (RR)
+
+# Engine start selectors (and the ignition selector)
+B757_OVHD_ENG_START_SWITCH                  # Ignition
+B757_OVHD_L_ENG_START_SWITCH                # L ENG Start
+B757_OVHD_R_ENG_START_SWITCH                # R ENG Start
+
+# Generator drive disconnects and their guards
+B757_OVHD_L_GEN_DRIVE_BUTTON                # L Gen Drive
+B757_OVHD_R_GEN_DRIVE_BUTTON                # R Gen Drive
+B757_GAURD_4_SWITCH                         # Left Generator Drive Disconnect Guard
+B757_GAURD_5_SWITCH                         # Right Generator Drive Disconnect Guard
+
+# Ram air turbine and its guard
+B757_OVHD_RAT_BUTTON                        # RAT
+B757_GAURD_7_SWITCH                         # Ram Air Turbine Guard
+
+# Passenger oxygen and its guard
+B757_OVHD_PASS_OXY_BUTTON                   # Passenger Oxygen
+B757_GAURD_6_SWITCH                         # Passenger Oxygen Guard
+
+# Emergency lights and its guard
+B757_OVHD_PASS_OXY_Toggle_Switch_CLICK      # Emergency Lights
+B757_OVHD_SWITCH_GAURD                      # Emergency Lights Guard
+
+# Gear lever, flap lever, parking brake
+B757_MAIN_Landing_Gear_Y                    # Gear Lever
+BBS757_lever_flaps                          # Flap Lever
+BBS757_PEDESTAL_Park_Brake_Lever            # Parking Brake
+
+# Alternate flaps: the selector and its arm switches drive the flaps electrically, so they are the flap
+# lever by another route (added in fix round 1 of plan 12, Task 2)
+B757_MAIN_knob_gears_altn_flaps             # Alternate Flaps Selector
+B757_MAIN_L_LEADINGEDGE_BUTTON              # L Leading Edge (alternate flaps arm)
+B757_MAIN_L_TRAILINGEDGE_BUTTON             # L Trailing Edge (alternate flaps arm)
+
+# Gear lock override: it frees the gear lever, which is denied
+B757_MAIN_LOCK_OVRD_SWITCH                  # Gear Lock Override
+
+# Switches under a cover the map does not link to them (their map entry has no "guard"). Sweeping one
+# with the cover shut would only report a false "no change", so each is denied with its cover.
+B757_OVHD_L_ELEC-ENG-CONT_BUTTON            # L ELEC ENG Cont (RR)
+B757_OVHD_R_ELEC-ENG-CONT_BUTTON            # R ELEC ENG Cont (RR)
+B757_GAURD_1_SWITCH                         # Elec Eng Cont 1 Guard (RR)
+B757_GAURD_2_SWITCH                         # Elec Eng Cont 2 Guard (RR)
+B757_MAIN_L_FLAPOVRD_BUTTON                 # L Flap Ovrd
+B757_MAIN_L_GEAROVRD_BUTTON                 # L Gear Ovrd
+B757_MAIN_L_TERROVRD_BUTTON                 # L Terr Ovrd
+B757_GAURD_8_SWITCH                         # Flap Override Guard
+B757_GAURD_9_SWITCH                         # Gear Override Guard
+B757_GAURD_10_SWITCH                        # Terrain Override Guard
+B757_P61_PRESS_MAIN_BUTTON_L                # P61 Press Main Button L
+B757_P61_PRESS_MAIN_BUTTON_C                # P61 Press Main Button C
+B757_P61_PRESS_MAIN_BUTTON_R                # P61 Press Main Button R
+BBS_B757_P61_GLASS_GAURD_1                  # P61 Glass Guard 1
+BBS_B757_P61_GLASS_GAURD_2                  # P61 Glass Guard 2
+BBS_B757_P61_GLASS_GAURD_3                  # P61 Glass Guard 3

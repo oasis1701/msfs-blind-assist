@@ -19,6 +19,14 @@ public sealed class NamedHoldingPoint
     /// </summary>
     public string Kind { get; init; } = "";
 
+    /// <summary>
+    /// The point was read off an X-Plane sign (<see cref="NamedHoldingPointResolver.SignKind"/>),
+    /// so its position is approximate ([HLD-18]). The ONE test for it: the row hold-short list
+    /// and the cross-at list leave such a point out, and its label keeps saying so.
+    /// </summary>
+    public bool IsFromSign => string.Equals(
+        Kind?.Trim(), NamedHoldingPointResolver.SignKind, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Resolved navdata graph node — the Progressive Taxi route destination.</summary>
     public int NodeId { get; init; }
 
@@ -344,7 +352,7 @@ public static class NamedHoldingPointResolver
                 SnappedToDesignatedNode = designated != null,
                 InsertedOnEdge = designated == null && graph.IsHoldingPointProjectionNode(node.NodeId),
             });
-            log?.Invoke($"sign {name}: on {taxiway}, node {node.NodeId}, {dist:F1} m from sign" +
+            log?.Invoke(FormattableString.Invariant($"sign {name}: on {taxiway}, node {node.NodeId}, {dist:F1} m from sign") +
                         (designated != null ? " (scenery hold node)" : ""));
         }
         return result.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();

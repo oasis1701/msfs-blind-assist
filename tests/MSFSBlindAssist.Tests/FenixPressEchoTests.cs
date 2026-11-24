@@ -5,8 +5,10 @@
 //   after NVDA said "On". Each switch names its light as UiEchoVariable; MainForm's value-matched UI-set echo
 //   gate then swallows that one change and still speaks a change from anywhere else;
 // - the EFIS FD and LS buttons: the lamps are the buttons' own "on" lights, never a fault. They are named as
-//   the button the pilot presses, and the four buttons (only those) opt in to PressTogglesStateVariable, so a
-//   panel press marks the lamp with the value the press leaves, through the same gate.
+//   the button the pilot presses, and the four buttons opt in to PressTogglesStateVariable, so a panel press
+//   marks the lamp with the value the press leaves, through the same gate;
+// - the EFIS map option buttons (CSTR, WPT, VOR.D, NDB, ARPT, both sides): their lamps are their own "on" lights
+//   too, and they opt in the same way since a CSTR press from the ND window was heard twice (2026-11-05).
 //
 // MainForm itself is sim-facing and has no seam: the gate's value match is pinned by the pure
 // SimVarDefinition.StateVariableAfterPress and by source scans of the two MainForm call sites.
@@ -104,13 +106,35 @@ public class FenixPressEchoTests
             Assert.True(Vars.ContainsKey(lamp), lamp);
     }
 
+    // The EFIS map option buttons: each lamp is its button's own "on" light too (a CSTR press from the ND window was
+    // heard twice on 2026-11-05, the lamp's announcement after the reader's new label, as LS was).
+    private static readonly (string Button, string Lamp)[] OptionButtons =
+        new[] { "1", "2" }.SelectMany(side => new[] { "CSTR", "WPT", "VORD", "NDB", "ARPT" }
+            .Select(option => ($"S_FCU_EFIS{side}_{option}", $"I_FCU_EFIS{side}_{option}"))).ToArray();
+
+    public static IEnumerable<object[]> Options() => OptionButtons.Select(b => new object[] { b.Button, b.Lamp });
+
     [Fact]
-    public void Exactly_the_four_FD_and_LS_buttons_opt_in_to_the_press_echo()
+    public void Exactly_the_efis_buttons_with_their_own_lamp_opt_in_to_the_press_echo()
     {
         var optedIn = Vars.Where(kv => kv.Value.PressTogglesStateVariable).Select(kv => kv.Key).OrderBy(k => k).ToList();
-        Assert.Equal(EfisButtons.Select(b => b.Button).OrderBy(k => k), optedIn);
+        Assert.Equal(EfisButtons.Select(b => b.Button).Concat(OptionButtons.Select(b => b.Button)).OrderBy(k => k), optedIn);
         // Bus Tie's double announcement (the reader's new label, then its OFF light) stays: the owner's choice, 2026-10-22.
         Assert.False(Vars["S_OH_ELEC_BUS_TIE"].PressTogglesStateVariable);
+    }
+
+    [Theory, MemberData(nameof(Options))]
+    public void An_option_press_marks_the_value_its_own_lamp_will_read(string button, string lamp)
+    {
+        var def = Vars[button];
+        Assert.Equal(lamp, def.StateVariable);
+        Assert.Equal(1.0, def.StateVariableAfterPress(0));
+        Assert.Equal(0.0, def.StateVariableAfterPress(1));
+        Assert.Equal("On", Vars[lamp].ValueDescriptions[def.StateVariableAfterPress(0)!.Value]);
+        Assert.Equal("Off", Vars[lamp].ValueDescriptions[def.StateVariableAfterPress(1)!.Value]);
+        // Value-matched (CORE-9): the other option's lamp going dark, and any change the press did not make, still speak.
+        Assert.False(Vars[lamp].UiEchoMatchesAnyValue, lamp);
+        Assert.Null(def.UiEchoVariable);
     }
 
     [Theory, MemberData(nameof(Efis))]
@@ -184,11 +208,26 @@ public class FenixPressEchoTests
     public void The_mark_goes_through_the_shared_value_matched_gate()
     {
         string main = Src("MainForm.cs");
-        int at = main.IndexOf("private void MarkStateLightEchoForPress", StringComparison.Ordinal);
+        // Internal since 2026-11-05: the Fenix ND window's press marks through it too.
+        int at = main.IndexOf("internal void MarkStateLightEchoForPress", StringComparison.Ordinal);
         Assert.True(at > 0);
         string body = main[at..main.IndexOf("/// <summary>", at, StringComparison.Ordinal)];
         Assert.Contains("MarkUiSet(buttonDef.StateVariable, expected)", body);
         Assert.Contains("StateVariableAfterPress(cached)", body);
         Assert.DoesNotContain("_uiSetEcho[", body);   // never a second, differently matched record
+    }
+
+    [Fact]
+    public void The_nd_window_press_marks_through_the_panel_s_own_method()
+    {
+        // The flight of 2026-11-05 heard an LS press from the ND window twice. Both ways into the window hand its writer the
+        // panel's mark, and the mark is the panel's method, never a second copy of its logic.
+        string nd = Src("Aircraft", "FenixA320Definition.ChannelNd.cs");
+        Assert.Contains("(owner as MainForm)?.MarkStateLightEchoForPress(definition)", nd);
+        Assert.Contains("PanelPressEcho(ctx.ParentForm)", nd);
+        Assert.DoesNotContain("MarkUiSet", nd);
+        Assert.DoesNotContain("SuppressUiEcho", nd);
+
+        Assert.Contains("FenixA320Definition.PanelPressEcho(ctx.Owner)", Src("Forms", "Fenix", "FenixWindowRegistry.ChannelNd.cs"));
     }
 }

@@ -1,0 +1,676 @@
+BLUEBIRD 757-200 HOTKEY REFERENCE
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+  F5         Refresh the current panel's Status Display now (it also updates itself live)
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+The BlueBird 757-200 needs two things running besides the simulator:
+  - BBS Nest, BlueBird's companion app. Without it the cockpit takes every
+    switch but no system responds. The app says "BBS Nest is not running"
+    once after connecting when it is missing; start it and reload the flight.
+  - The MobiFlight WASM module. Every switch is set by replaying the
+    cockpit's own click through it; without it each control says
+    "unavailable" and nothing is sent.
+
+The sections (Overhead, Glareshield, Forward panel, Pedestal, Other) carry
+every regular cockpit switch, knob and button, named as on the aircraft;
+the Status section is read only. Each panel is one panel of the real
+cockpit, and each guard sits right beside its switch. A section's panels
+follow BlueBird's preflight flow: the Overhead starts with Electrical, APU
+and IRS, the Forward panel with Brakes, and the Pedestal with the Control
+stand, Engines, TCAS and transponder and COM radios. Inside a panel the
+controls you use most come first (Electrical starts with the Battery, its
+guard and EXT PWR; the MCP panel with the two flight directors and A/T
+Arm). The Other section has the P61 panel, Oxygen, Flight deck door,
+Forward attendant panel, Windows and sun visors, and Seats and stowage.
+A switch's combo moves back to where the switch really is if the
+aircraft did not take the change, and the app says "<name> did not move".
+For the Emergency Lights and the two Stab Trim Cutout switches the app
+opens and closes the guard for you. Buttons say "pressed" when pressed,
+except the ones whose result can be read: an MCP mode or CMD button says
+its light about two seconds later ("CMD R on", "LNAV off"), a speedbrake
+button says the lever ("Speedbrake armed"), and EXT PWR says "EXT PWR on"
+or "EXT PWR off". The cockpit's test buttons are held for you, 3 seconds
+as in the cockpit. The rudder, aileron and alternate stabilizer trim
+buttons and the manual cabin altitude buttons each hold their switch for
+one second (their names end in "1 s").
+The Electrical panel's status display shows external power (on, available)
+and ground power.
+The Pressurization panel starts with a Landing Altitude field: type the
+destination's elevation in feet and press Enter; the app reads it back
+("Landing altitude 1030 feet"). The 757 has no cruise altitude selector:
+the cruise level is on the CDU's PERF INIT page.
+The Forward panel's Landing gear panel has the Gear Lever (UP, OFF, DOWN):
+OFF is a position the simulator's gear keys cannot select.
+The Pedestal's Control stand panel has the Parking Brake, the Flap Lever
+(UP, 1, 5, 15, 20, 25, 30), Speedbrake Armed, Down and Up, TO/GA and A/T
+Disconnect. Its Engines panel has the Ignition selector, then each
+engine's start selector and fuel control switch, in start order: Ignition,
+L ENG Start, L Fuel Control, R ENG Start, R Fuel Control. Only the fuel
+control switches of the engine type the aircraft has (PW or RR) are
+listed. Its status display shows N1, N2, EGT, fuel flow and EPR for each
+engine (read only, never announced), so an engine start happens in one
+panel: Ctrl+3 jumps to the values, which update live while you read them;
+while you are on a switch they pause until F5 or Ctrl+3.
+The TCAS and transponder panel starts with TCAS Mode, then
+has a Squawk Code field: type the four digits and press Enter; the app
+reads the transponder back and says "Squawk 4743". An empty box says "Type
+a four-digit squawk first."; letters or a digit 8 or 9 say "Squawk must be
+four digits, each 0 to 7."
+The COM radios panel comes next. COM1 is VHF L, COM2 is VHF C and COM3 is
+VHF R. Each radio has a standby frequency field and a transfer button:
+type the frequency (121.5, 124.85) and press Enter, and the app says what
+the radio took ("COM1 standby 121.500"); the transfer button says both
+("COM1 active 121.500, standby 124.850"). The status display shows the six
+frequencies. A frequency outside the band says "Frequency must be 118.000
+to 136.990, on a 25 or 8.33 kilohertz channel."
+The Status section's Status panel shows the APU state, master warning and
+caution, the AC bus power sources, the APU speed, the cabin altitude, the
+chocks (In place or Removed), the autoland status, and the flaps (lever
+and surface angle), gear, speedbrake and parking brake.
+The MCP panel's status display lists the button lights.
+
+Spoken on change (each can be muted with Ctrl+M):
+  - Flaps ("Flaps 5"), gear ("Gear in transit", "Gear down", "Gear up"),
+    speedbrake ("Speedbrake armed", "Speedbrake up 50 percent") and
+    parking brake ("Parking brake set").
+  - The MCP button lights ("CMD L on", "VNAV off") and the MCP values once
+    they stop changing ("MCP heading 090", "MCP altitude 12000", "MCP speed
+    250", "MCP Mach 0.78", "MCP vertical speed minus 1500"), "A/T armed"
+    and "A/T disarmed", "Autopilot disconnect" and "Autothrottle
+    disconnect".
+  - The flight mode annunciations, starting with "FMA:" ("FMA: Roll: LOC",
+    "FMA: Pitch: VNAV PTH, Pitch armed: none"). The Ctrl+M row is "Flight
+    Mode Annunciator".
+  - The ADI's flags as they appear and go: "ADI flag: ATT", "ADI flag
+    gone: G/S" (also SPD, LOC and RA). The Ctrl+M row is "ADI messages".
+  - The EICAS messages as they appear and go: "EICAS warning: L ENGINE
+    FIRE", "EICAS caution: ...", "EICAS: ..." for an advisory, and "EICAS
+    gone: ..."; after CANC "EICAS: 3 messages cancelled", after RECALL
+    "EICAS recall: ..." and the messages it brought back, or "EICAS recall:
+    no cancelled messages". The thrust reference ("Thrust reference: CLB")
+    and an N1 or EGT changing color ("EICAS: L EGT amber"). The advisory
+    FMC MESSAGE is not spoken: the CDU's message is (see the CDU section).
+    Ctrl+M rows: "EICAS messages", "Thrust reference", "Engine gauge
+    colors".
+  - The lower EICAS changing page ("Lower EICAS: STATUS page") and its
+    status messages while STATUS shows (Ctrl+M row "EICAS status
+    messages"), and the EHSI's messages (row "EHSI messages").
+  - The CDU's EXEC light ("EXEC light on" when a change waits for EXEC,
+    "EXEC light off" once it is executed) and a message the FMC puts on
+    the captain's CDU while the CDU window is closed ("CDU: TAKEOFF DATA
+    UPLINK").
+  - Every COM frequency ("COM1 active 124.850"), the squawk ("Squawk
+    4743"), the TCAS mode ("TCAS TA/RA") and the captain's altimeter once
+    the knob stops ("Altimeter: 1020, 30.12", "Altimeter standard").
+  - External power ("EXT PWR on", "External power available") and ground
+    power ("Ground power connected", "Ground power disconnected").
+  - The autoland status, the altitude alert ("Altitude alert"), the
+    configuration warning ("Configuration warning"), each IRS when it is
+    aligned, the engine start valves closing ("Left start valve closed")
+    and the doors opening and closing.
+  - Every annunciator light ("<name> light on", "<name> light off"), and
+    any switch moved by something other than your own pick in the app (a
+    cockpit preset, BlueBird's own automation, a hardware panel, the
+    mouse), as the switch's name and its new position. Many switches
+    moving at once, as when a preset loads, are summed up in one line
+    ("Panel state changed: 24 switches"), and a flood of lights likewise
+    ("9 lights on, 3 off").
+A change you make yourself in the app is not said twice. The flood of
+changes while a flight loads is not spoken.
+The 757 does not say "glideslope alive": BlueBird's ILS receiver is its
+own, and the simulator's nav radio does not follow it.
+The stabilizer trim is spoken while it moves, about once a second, in the
+units BlueBird's trim indicator shows ("Trim 5.3", as on the 737s);
+Shift+T in output mode turns it off and on.
+
+OUTPUT MODE - Press right bracket to activate
+
+MCP Readouts:
+  Shift+H    Read MCP Heading
+  Shift+S    Read MCP Speed (knots, or Mach in Mach mode)
+  Shift+A    Read MCP Altitude
+  Shift+V    Read MCP Vertical Speed
+  Each reads the value the MCP window shows, never the simulator's own
+  autopilot values (they disagree with BlueBird's MCP), and then names the
+  MCP mode buttons that are lit: "Heading 090, LNAV", "Speed 250, SPD",
+  "Altitude 12000, ALT HOLD". They are the button lights, so an armed mode
+  whose button is lit is named too; HDG SEL has no light, so heading
+  select names nothing. In Mach mode Shift+S reads the Mach ("MCP Mach
+  0.78"); while VNAV blanks the speed window it says "MCP speed window
+  blank. Speed Intervene opens it."
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Navigation:
+  N          Read the nav radios as BlueBird has them: each VOR as the CDU
+             shows it ("VOR L 116.90 auto, GSU.", "VOR R not tuned."), a
+             hand-tuned VOR with its course ("VOR L 113.90 remote, course
+             095."), then the ILS course and what the ILS control panel
+             shows ("ILS course 095. ILS 110.50." or "ILS parked."). The
+             VORs are read from the first officer's CDU's NAV RADIO page.
+             If the ILS panel cannot be read, the app says the frequency
+             it set itself, marked as a count ("ILS 110.50 by count.").
+  Ctrl+W     Read the active waypoint as the EHSI shows it: name, distance
+             and time ("KOLM, 37.5 NM, 1533.3z"). In VOR or ILS mode it
+             says so ("KOLM, EHSI in VOR mode"); with the display dark,
+             "EHSI waypoint unavailable: display dark".
+
+Fuel:
+  F          Read fuel in pounds, total and each tank ("Fuel 25480 pounds:
+             left 12740, right 12740, center 0")
+  Shift+F    The same in kilograms
+
+Weight:
+  W          Read gross weight in pounds
+  Shift+W    Read gross weight in kilograms
+
+Flaps:
+  L          Read the flap lever ("Flaps 5"). When the flaps are not at
+             the lever's position yet it adds where they are: "Flaps 5,
+             moving, 3 degrees", or "Flaps 1, surfaces at 0 degrees" when
+             they stay there (no hydraulic pressure).
+
+Flap Maneuver Speeds (the FMC's own once PERF INIT is done, calculated
+before):
+  Shift+1    Flaps up maneuver speed
+  Shift+2    Flaps 1 maneuver speed
+  Shift+3    Flaps 5 maneuver speed
+  Shift+4    Flaps 15 maneuver speed
+  Shift+5    Flaps 20 maneuver speed
+  Shift+6    VREF 30 and VREF 25
+  Once the CDU's PERF INIT page has the fuel and the zero fuel weight,
+  they come from the FMC's own VREF, the numbers its APPROACH REF page
+  shows ("Flaps 5 maneuver speed 161 knots", "VREF 30 121 knots, VREF 25
+  123 knots"). Before that, or while the app cannot read the FMC's VREF
+  from the aircraft, they are calculated from BlueBird's VREF figures at
+  your gross weight and end in "calculated" ("Flaps 5 maneuver speed 164
+  knots, calculated", "VREF 30 124 knots, VREF 25 126 knots,
+  calculated"); below 140,000 or above 250,000 pounds the calculated
+  speeds say "Flap speeds unavailable."
+
+Landing Gear:
+  Shift+G    Read the gear and the lever, UP, OFF or DOWN
+             ("Gear up, lever off", "Gear down, lever down")
+
+Altimeter:
+  B          Read the three altimeters and the radio minimums ("Altimeter:
+             1018, 30.05. DH 200"). When the altimeters differ, each is
+             read: "Altimeter 1: ..., Altimeter 2: ..., Altimeter 3: ...".
+
+Squawk:
+  X          Read Squawk Code
+
+Distance:
+  D          Read the distance and arrival time to the destination from
+             the CDU's PROGRESS page ("568 miles to destination KMIA, ETA
+             03:32 Zulu")
+  Shift+D    Read the distance and time to the top of climb or the top of
+             descent ("Top of climb in 56 miles, 02:18 Zulu"), or to a
+             step climb while one is ahead ("Step climb in 1219 miles,
+             17:40 Zulu, top of descent after it")
+  Both read the first officer's CDU and leave it on PROGRESS page 1. When
+  it cannot be read they say "The first officer's CDU did not answer."
+
+Trim:
+  Shift+T    Toggle Trim Announcements On/Off
+
+Vertical:
+  V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Time:
+  Z          Read Local Time at aircraft position
+  Shift+Z    Read Zulu / UTC Time
+
+Position:
+  C          Read Nearest City
+  Ctrl+Shift+T  Cold Temperature Altitude Correction calculator
+
+Tools:
+  Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+V     Activate/deactivate Visual Guidance mode (requires Hand Fly mode)
+  Ctrl+T     Activate/deactivate Takeoff Assistance
+  Ctrl+D     Read Distance to Selected Runway
+  Ctrl+I     Read ILS Guidance System Report
+
+Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
+                In its Frequencies list, Enter tunes the selected frequency into COM 1 standby
+                and Shift+Enter tunes it straight into COM 1 active; COM 1 is read back to confirm.
+  (Open the form with Input mode > Shift+Y)
+
+Waypoint Tracking (use Fix Track window to add):
+  1          Track Slot 1
+  2          Track Slot 2
+  3          Track Slot 3
+  4          Track Slot 4
+  5          Track Slot 5
+
+Displays (no AI key needed):
+  Alt+P      Open the ADI window: a live list of the flight mode
+             annunciator ("A/T: SPD", "Roll: LNAV, armed LOC"), then the
+             rest of the Captain's ADI, each line starting with where it
+             sits: the speed tape on the left ("Left: airspeed 250",
+             target speed, V1, VR, flap maneuvering speed, Mach, ground
+             speed), the attitude and the flight director bars in the
+             center ("Center: pitch 2.5 up, bank 10 left"), the
+             glideslope, ALT, DH and radio altitude on the right ("Right:
+             glideslope, pointer 0.5 dots up", "Right: radio altitude
+             150"), and the localizer at the bottom ("Bottom: localizer,
+             pointer 1.2 dots right"). A flag stands in its instrument's
+             place ("Center: ATT flag") and is spoken as it appears and
+             goes ("ADI flag: ATT", "ADI flag gone: ATT"; also SPD, LOC,
+             G/S and RA). Nothing else on the ADI is spoken by itself. The
+             window has no controls.
+  Alt+E      Open the Upper EICAS window: a live list of the engine
+             indications (EPR, N1, EGT), the thrust reference and every
+             message, then the buttons Cancel (Alt+C), Recall (Alt+R) and
+             Max Ind (Alt+M). A button says "Cancel pressed", and the
+             display's own change follows ("EICAS: 3 messages cancelled").
+  Alt+S      Open the Lower EICAS window: a live list of the page the
+             screen shows and its values (the engine page: N2, fuel flow,
+             oil pressure, temperature and quantity, vibration; STATUS:
+             hydraulic quantity and pressure, APU, oxygen pressure, the
+             control positions in words, the status messages and the brake
+             temperatures by wheel), then the buttons Engine and Status,
+             which press the two display keys; the page change is spoken
+             ("Lower EICAS: STATUS page").
+  Alt+N      Open the EHSI window: the Captain's EHSI as a live list (in
+             MAP the route, the active waypoint and the VNAV points with
+             distances and bearings, the wind, TCAS traffic and what the
+             map switches show; in VOR and ILS the course, deviation and
+             bearing pointers), then the Captain's EFIS controls, which
+             show the cockpit's state and set it:
+               Mode (Alt+M) and Range (Alt+R), two choice lists
+               CTR (Alt+C) and TFC (Alt+T), buttons
+               WXR (Alt+W), TERR (Alt+E), NAV AID (Alt+N), APRT (Alt+A),
+               DATA (Alt+D) and WPT (Alt+P), check boxes
+  In each window Tab moves from the list to the controls, the list
+  rewrites only the rows that change, and Escape closes it. If a display
+  cannot be read from the aircraft, its key describes it with AI instead
+  (below).
+
+AI Display Reading (needs an AI provider configured in Settings > AI tab):
+  Alt+D      Describe outside scene
+  Alt+P, Alt+E, Alt+S and Alt+N describe their display this way only when
+  it cannot be read from the aircraft. Alt+P's AI read describes the ADI
+  (attitude and flight mode annunciations) and the AUTOLAND STATUS
+  annunciator beside it (LAND 3, LAND 2, NO LAND 3, NO AUTOLAND) when it
+  shows one. The app moves the simulator camera to the display it is
+  reading and puts your own view back afterwards; from an outside or
+  drone view it says "Switch to a cockpit view first".
+  The display is read as it presents itself: abbreviations such as EPR, N1
+  and EGT and the units are not changed.
+  The flight mode annunciations need no AI: they are spoken as they change
+  and listed at the top of the ADI window (Alt+P) and of the 757 Autopilot
+  window (input mode, Ctrl+P).
+
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
+  Shift+R    Open Weather Radar Window
+  Alt+G      Announce nearest ground traffic (up to 3 aircraft on ground with
+             direction and distance)
+
+Displays and Windows:
+  Ctrl+M     757 Monitor Manager. Lists everything the app announces by
+             itself; uncheck a row to stop it speaking when it changes.
+             Persists across sessions. The first rows mute whole groups:
+             "All Annunciator Lights", "All Switches From Any Source", and
+             one "Switches: <panel>" row for each panel's switches. Then
+             come one "Light: <name>" row for each annunciator light and
+             one "Switch: <panel>, <name>" row for each switch; type
+             "Light:", "Switch:" or a panel's name in the search box to
+             find them. The other rows include flaps, gear, speedbrake,
+             parking brake, each MCP button light and value, the EXEC
+             light, CDU Messages While Closed, the COM frequencies,
+             squawk, TCAS mode, altimeter, trim, Flight Mode Annunciator,
+             EICAS messages, Thrust reference, Engine gauge colors, EICAS
+             status messages, EHSI messages and ADI messages.
+  Shift+E    Open Flight Planning EFB (route viewer, procedure planner and
+             airport lookup)
+  Shift+L    Location Info
+  Shift+M    Show METAR Report
+  Shift+B    SimBrief Briefing
+  Shift+C    First Officer window (see First Officer below)
+
+Hand Fly Mode Hotkeys:
+  A          Read MSL
+  S          Read IAS
+  D          Read Distance to Destination Runway
+  H          Read Magnetic Heading
+  P          Read Aircraft Pitch
+  B          Read Aircraft Bank
+  Q          Read AGL
+  V          Read VS
+
+Visual Guidance Mode Hotkeys:
+  F          Read Target VS
+
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Open SayIntentions flight information. Assigned arrival gate,
+                departure runway, which runways are landing and departing, the
+                field flow and the altimeter. Read-only: arrow keys move line by
+                line, Escape closes.
+
+VATSIM:
+  Alt+V      Mute or unmute VATSIM announcements (vPilot)
+
+INPUT MODE - Press left bracket to activate
+
+Teleport:
+  Shift+R    Runway Teleport
+  Shift+G    Gate Teleport
+
+Flight Planning:
+  Shift+F    Fix/Waypoint Tracking Window
+  Shift+D    Select Destination Runway
+
+MCP Value Windows:
+  Ctrl+H     Set MCP Heading (0-360, 360 is north)
+  Ctrl+S     Set MCP Speed: knots (100 to 399) or a Mach number (0.40 to
+             0.86, typed as 0.78, .78 or M.78). When you type a Mach while
+             the MCP shows knots, or knots while it shows Mach, the app
+             presses IAS/MACH for you first; when the aircraft does not
+             take that (on the ground, for one) it says "IAS/MACH
+             changeover is not available now". While VNAV blanks the MCP's
+             speed window the box is closed: press Speed Intervene to open
+             the window. Anything else says "Enter a speed from 100 to 399
+             knots, or a Mach number from 0.40 to 0.86."
+  Ctrl+A     Set MCP Altitude (100 to 49000, rounded to 100 feet)
+  Ctrl+V     Set MCP Vertical Speed (-8000 to 6000, rounded to 100)
+  Each window stays open for the next value; Escape closes it. Press Enter
+  to set. About a second later the app reads the value back from the MCP
+  ("Heading 090", "Speed 250", "Mach 0.78", "Altitude 12000", "Vertical
+  speed minus 1500"), so you hear what the MCP took, not what you typed. A
+  speed is set by turning the MCP's speed knob for you in quick bursts,
+  allowing for the way BlueBird's knob speeds up when turned fast; it
+  takes about one to two seconds, and the app checks and corrects it
+  before it speaks.
+  Each window also has the MCP buttons that go with its value, each showing
+  its light ("LNAV: On"); Alt and the underlined letter presses one:
+    Heading:           HDG SEL (Alt+S), HDG HOLD (Alt+H), LNAV (Alt+L)
+    Speed:             Speed Intervene (Alt+I), IAS/MACH (Alt+M),
+                       SPD (Alt+S), THR (Alt+T), FLCH (Alt+L)
+    Altitude:          ALT HOLD (Alt+H), VNAV (Alt+V), FLCH (Alt+L)
+    Vertical Speed:    V/S (Alt+V)
+  A press is the same as on the MCP panel: about two seconds later the app
+  says the light ("LNAV on"), or "HDG SEL pressed" for a button with no
+  light (HDG SEL, IAS/MACH, Speed Intervene). Speed Intervene's button
+  shows the speed window: "Window open" or "Window blank".
+  There is no altitude intervene: on BlueBird's 757 the ALT SEL Push on
+  the MCP panel does nothing. Enter a step climb on the CDU's CRZ page.
+
+  Ctrl+B     Altimeter and minimums window:
+             Altimeter box: type inches (29.92) or hectopascals (1013) and
+             press Enter. All three altimeters are set together; a few
+             seconds later the app reads them back ("Altimeter: 1018,
+             30.05", "Altimeter standard"). Typing 29.92 or 1013 sets
+             standard, the same as the Standard button.
+             Standard, 29.92 button: sets all three to standard.
+             Radio minimums box: type the decision height in feet (0 to
+             2500, rounded to 10) and press Enter. The app steps the
+             minimums and reads back what the ADI shows ("DH 200").
+             The Status box shows the values when the window opens and the
+             last result. Escape closes the window.
+  Ctrl+P     757 Autopilot window. It opens on a list of the flight mode
+             annunciations, four rows ("A/T: SPD", "Roll: LNAV, armed
+             LOC", "Pitch: VNAV PTH, armed G/S", "AFDS: CMD"). Tab moves
+             on to the buttons, each showing its state ("CMD L: On") and
+             each with its own Alt key, which your screen reader says with
+             the button:
+               CMD L (Alt+L), CMD C (Alt+C), CMD R (Alt+R)
+               A/T Arm (Alt+A), Captain F/D (Alt+F), F/O F/D (Alt+O)
+               THR (Alt+T), SPD (Alt+S)
+               LNAV (Alt+N), VNAV (Alt+V), FLCH (Alt+H)
+               HDG HOLD (Alt+D), ALT HOLD (Alt+E), V/S (Alt+Y)
+               LOC (Alt+G), APP (Alt+P)
+               Speed Intervene (Alt+I), A/T Disconnect (Alt+X),
+               A/P Disconnect (Alt+B)
+             A/T Arm shows whether the autothrottle is armed, as BlueBird
+             holds it. Speed Intervene shows "Window open" or "Window
+             blank". A/P Disconnect is the captain's yoke button: press it
+             again to silence the warning. The MCP's disengage bar is on
+             the MCP panel only.
+             Each press is the cockpit's own click; the button then shows
+             the new state. When the aircraft does not take a press, the
+             app says so about two seconds later: "CMD L did not engage"
+             (or "did not disengage"), and for A/T Arm "A/T Arm did not
+             arm" (or "did not disarm"): press it again. Speed Intervene,
+             A/T Disconnect and A/P Disconnect say "pressed". Escape
+             closes the window.
+
+Radios:
+  Ctrl+N     757 Nav Radios window, for the ILS control panel on the aft
+             pedestal. It has:
+             Status box: what N reads, and the FMC's runway ILS for
+             reference ("FMC runway ILS KATL 09L, 110.50, IHZK, front
+             course 095"; it names the airport because, on the ground, the
+             CDU shows the departure runway's ILS). It is spoken once,
+             when it has been read.
+             ILS course box (Alt+I): type the course, 0 to 360, and press
+             Enter. The app reads it back ("ILS course 095").
+             ILS frequency box (Alt+F): type the frequency, 108.10 to
+             111.95 (110.5, or 110,5), and press Enter. The app turns the
+             panel's knobs for you, one click at a time, and says what the
+             panel shows afterwards: "ILS 110.50 set", "ILS already
+             110.50" or "ILS shows 110.55, not 110.50".
+             ILS park button (Alt+P): turns the panel to PARK ("ILS
+             parked").
+             Enter applies only the box you are in. Escape closes the
+             window.
+             To fill the Status box the app pages the first officer's CDU
+             to APPROACH REF and leaves it on NAV RADIO.
+             The VORs are not in this window: the FMC tunes them, and a
+             particular station and its course are entered on the CDU's
+             NAV RADIO page (Shift+M, Alt+N), as on the aircraft.
+
+Taxi Guidance:
+  Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
+  Y          Continue past current hold-short point
+  Ctrl+Y     Stop Taxi Guidance
+  Shift+X    Open Landing Exit Planner (pick a runway exit taxiway before
+             touchdown; guidance auto-starts when you land)
+
+SayIntentions:
+  Ctrl+Shift+Y Build a taxi route from the last SayIntentions taxi clearance.
+               Fills the Taxi Assist form with the destination, taxiways and
+               hold-short runways ATC gave, and names anything it could not
+               apply. Review the fields and press Calculate Route to start
+               guidance, or turn on auto-start in the SayIntentions section
+               of Settings > Taxi Guidance.
+
+General:
+  Escape     Exit active hotkey mode
+
+CDU (Shift+M):
+  Opens the accessible CDU window for both CDUs, read as text from the
+  aircraft. The list reads like the other Boeings' CDU windows: "Title:"
+  and the page name with its page number ("Title: ACT RTE 1 LEGS   1/7"),
+  then for each line select key its label and its numbered line ("3:" is
+  line 3), and "Scratchpad:" last. A screen with nothing on it says so
+  ("Captain CDU screen blank"). The window's title names the side you are
+  on. Ctrl+Tab switches between the Captain and First Officer CDU and says
+  which one you are on; Ctrl+Shift+L goes straight to the captain's and
+  Ctrl+Shift+R to the first officer's. The two CDUs are independent, as on
+  the aircraft. The first officer's CDU shows once its screen changes: if
+  its list shows it waiting, press a page key such as Alt+R.
+  Ctrl+1 to Ctrl+6    Left line select keys 1-6
+  Alt+1 to Alt+6      Right line select keys 1-6
+  (F1-F6 / F7-F12 when the alternate LSK setting is on)
+  Alt+I  INIT REF     Alt+R  RTE        Alt+D  DEP ARR
+  Alt+T  ATC          Alt+V  VNAV       Alt+F  FIX
+  Alt+G  LEGS         Alt+H  HOLD       Alt+O  FMC COMM
+  Alt+P  PROG         Alt+M  MENU       Alt+N  NAV RAD
+  PageUp / PageDown   PREV / NEXT page (also Alt+Up / Alt+Down)
+  Ctrl+Enter or Alt+E EXEC
+  Alt+S               Scratchpad box: type, then Enter sends it to the CDU
+  Alt+C               Clear the whole scratchpad
+  Alt+Home            Back to the CDU display
+  Backspace / Delete  CLR / DEL (on the display, or in an empty scratchpad box)
+  Escape              Close the window
+  A new page says its title and puts you on line 1. When the page changes
+  around you but stays the same page (an entry that turns ACT into MOD,
+  for one), the new title is said and the cursor stays on your line.
+  What you type in the scratchpad box goes in at about 0.4 seconds a
+  character, and the scratchpad is then read back, so you hear what the
+  CDU took ("KATL"). If the CDU missed a key the window says what is there
+  instead: "Scratchpad shows KAT" or "Scratchpad is empty". Holding a key
+  down presses it once. CLR deletes one character or clears a message.
+  Typing "-" presses the +/- key once and "+" presses it twice.
+  If the link to the aircraft drops while keys are still going in, the rest
+  are not sent and the app says "CDU connection lost, keys not sent".
+  The check box "Speak CDU messages when closed" is the Ctrl+M row "CDU
+  Messages While Closed": with it on, a message the FMC puts on the
+  captain's scratchpad is spoken while the window is closed ("CDU: TAKEOFF
+  DATA UPLINK"). This works from the moment the 757 is the aircraft: the
+  window does not have to be opened first.
+  Flight data (SimBrief flight, route, winds, performance) comes in on the
+  CDU's ACARS and FMC COMM pages: MENU, ACARS, INIT FLT.
+
+757 EFB (Shift+T):
+  With the simulator running, Shift+T opens BlueBird's tablet itself as a
+  page you read with your screen reader, in a window titled "757 EFB".
+  Every page is read with its section and every value with its label, and
+  every control is named by the tablet's own words. You use the tablet as
+  a sighted pilot does: press its buttons, switches, check boxes and
+  sliders, choose from its drop-downs, and type into its text fields.
+    - A press says what came of it only where your screen reader cannot:
+      a button's new words, a two-choice setting's new choice ("EHSI up
+      reference: TRK"), or that nothing happened ("<name>: no change on
+      the tablet.", "<name> did not change."). The app scrolls the tablet
+      to a control before pressing it.
+    - A text field is an edit box: type, then press Enter. The app types
+      it on the tablet's own keyboard and reads the field back. Leaving
+      the box without Enter changes nothing.
+    - BlueBird's notifications and questions are spoken while the window
+      is open.
+    - Home goes back to the tablet's home page.
+    - F5 reads the tablet again. F6 says whether the tablet is connected
+      and which page it shows.
+    - Alt+F4 closes the window (Escape is left to your screen reader).
+  If a page does not come up it says "The tablet did not show <page>. Try
+  again, or press F5 to read the tablet again."; if the tablet cannot be
+  reached, "The tablet cannot be reached, so nothing was tapped."
+  What the app adds to the tablet:
+    - On the Settings, AIRAC data page, while you are not signed in, a
+      "Sign in to Navigraph" button. It reads out the Navigraph sign-in
+      code, then opens the sign-in page in your browser (only ever a
+      Navigraph address). Signed in already, it says "Already signed in
+      to Navigraph".
+    - After the AIRAC page's UPDATE the app watches BlueBird's nav data and
+      says "Nav data cycle 2611 installed. Reload the flight to use it."
+      Reload before you fly. If BlueBird removed the nav data instead, or
+      the update did not finish, it says so.
+    - After FETCH SIMBRIEF OFP (with BlueBird's automatic loading on),
+      IMPORT FROM SIMBRIEF on the Fuel page or START BOARDING, the app
+      watches the load and says once each, in the aircraft's weight
+      units: "Fueling complete. Fuel 16340 pounds: left 8170, right 8170,
+      center 0." and "Boarding complete. Passengers 21090 pounds. Cargo
+      3990 pounds: forward 3990, aft 0." BlueBird fuels in a few minutes
+      and boards at its realistic pace, which can take half an hour. If
+      BlueBird has not started after three minutes it says so ("BlueBird
+      has not started loading. Is BBS Nest running? Check the fuel with F
+      and the weight with W."), and likewise if the load has not finished
+      after an hour. When your SimBrief plan cannot be read, it says it
+      will not report fueling and boarding. The tablet needs your SimBrief
+      ID, on its Settings pages or in the settings window below.
+  With the simulator closed, Shift+T opens "757 EFB settings" instead:
+  BlueBird's tablet settings, read from its files and changed in them,
+  which is possible only while no simulator runs. Choose a section, change
+  its settings, and they apply the next time the 757 loads. The Status box
+  at the top says what was read and saved. Escape closes the window.
+
+First Officer (output mode, Shift+C):
+  Opens the BlueBird 757 First Officer window: flows the First Officer
+  carries out for you, and BlueBird's Normal Checklist, whose lines tick
+  themselves from the cockpit.
+  Flows: Power Up, Preflight, Before Start, Engine Start, After Start,
+  Before Takeoff, After Takeoff, Descent, Before Landing, After Landing,
+  Shutdown and Final Securing.
+  Checklists: Before Start, After Start, Before Takeoff, After Takeoff,
+  Descent and Approach, Before Landing, After Landing and Shutdown.
+    - Preflight finishes with BlueBird's tests, shortest first, each saying
+      what to listen for: both stall warnings (the stick shaker), CVR,
+      takeoff config (the configuration warning), the wheel well, engine,
+      and engine, APU and cargo fire tests (the fire bell), the captain's
+      and first officer's oxygen (each held 10 seconds), TCAS, and ground
+      proximity last. The lights the tests raise are announced while they
+      run.
+    - Before Start turns the electric hydraulic pumps on before it sets
+      the parking brake. Without hydraulic pressure the brake is left
+      alone: "Parking brake left released: no hydraulic pressure. Turn on
+      the electric hydraulic pumps first."
+    - Engine Start starts the right engine first: start selector GND,
+      fuel control to RUN, light-off, starter released. A start with no
+      light-off is aborted.
+    - Before Takeoff ends with a cabin call for takeoff; Descent makes
+      the cabin call for landing preparation and reminds you to set the
+      ILS frequency and course (input mode, Ctrl+N); Before Landing
+      reminds you of the missed approach altitude.
+    - Final Securing switches the APU off, waits two minutes for it to
+      cool down, then switches the battery off.
+  What stays yours is said as a reminder: the MCP, the CDU and ACARS, the
+  flaps, the trims, the landing altitude and the gear.
+  With the matching First Officer settings on, it also acts by itself:
+    - At the transition altitude: "Transition altitude. Altimeters
+      standard."
+    - Passing 10,000 feet: "Above ten thousand. Landing lights off." and
+      "Below ten thousand. Landing lights on."
+    - Auto-engage autopilot on climbout: at 400 feet it presses LNAV and
+      VNAV if their lights are not on ("400 feet. LNAV and VNAV on.").
+    - Auto-manage center fuel pumps: on during ground setup when the
+      center tank has fuel ("Center fuel pumps on."), off when it runs
+      dry ("Center tank low. Center fuel pumps off.").
+
+Notes:
+  - The aircraft loads in its own panel state (cold and dark) wherever you
+    start; the app assumes no power or engines at load.
+  - The 757 plays its own 80 knots, V1 and rotate calls and its altitude
+    callouts. So on this aircraft Takeoff Assist (output mode, Ctrl+T)
+    does not call "80 knots"; its "100 knots", centerline tone and pitch
+    calls work as on every other aircraft.
+  - The flaps, speedbrake and gear also work with the simulator's own keys
+    and controls; the app says where they ended up. The simulator's gear
+    key can leave the gear lever at OFF: Shift+G says the lever.
+  - The engine values on the Engines panel come from the simulator's
+    engine variables: compare them with the upper EICAS (Alt+E) at your
+    first engine start.
+  - The thrust levers move with the simulator's throttle keys, a
+    controller or a hardware throttle. For takeoff, check the A/T is armed
+    (Ctrl+P: "A/T Arm: On"), hold the brakes, press THR and listen for
+    "THR on" (the MCP panel or Ctrl+S; in Ctrl+P its caption reads "THR:
+    On") before you release them. "THR off" or "THR did not engage":
+    keep the brakes held and check A/T Arm.
+  - The simulator's trim keys move the stabilizer trim, and the app says
+    the setting while it moves: trim to the CDU's TAKEOFF REF figure
+    before takeoff.

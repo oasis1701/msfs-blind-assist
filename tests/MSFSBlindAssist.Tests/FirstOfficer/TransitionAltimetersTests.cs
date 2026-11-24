@@ -65,7 +65,7 @@ public class TransitionAltimetersTests
             TransitionAltimeters.ReminderInstead(X.DescendToQnh, autoAltimetersEnabled: false));
 
     /// <summary>Every First Officer phase monitor reads the setting (beyond declaring it) and
-    /// speaks the no-plan reminder through the shared helper, so the setting reaches all eight
+    /// speaks the no-plan reminder through the shared helper, so the setting reaches all nine
     /// aircraft and any new one. Fails when a monitor declares the property but never reads it.</summary>
     [Fact]
     public void EveryPhaseMonitor_GatesItsAltimeterWritesOnTheSetting()
@@ -77,7 +77,7 @@ public class TransitionAltimetersTests
             .Where(f => Regex.IsMatch(File.ReadAllText(f), @":\s*IFoPhaseMonitor\b"))
             .ToArray();
 
-        Assert.Equal(8, monitorTypes.Count);
+        Assert.Equal(9, monitorTypes.Count);
         Assert.Equal(monitorTypes.Count, files.Length);
         foreach (string file in files)
         {

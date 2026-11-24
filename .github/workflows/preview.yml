@@ -143,8 +143,12 @@ jobs:
           dotnet run --project tools/ChangelogBuilder -- --out fragment-notes.md --from-file fragments.txt --contributors contributors.txt
 
           SINCE="${PREV:-the start of the project}"
+          # The build date is stated here because the release page's date cannot show it: this
+          # release is updated in place, so it keeps the date of the first preview after the last
+          # stable release (release.yml deletes the preview).
+          BUILT_ON=$(date -u '+%B %-d, %Y')
           {
-            echo "**Preview build \`${{ steps.version.outputs.VERSION }}\`**, built from \`${GITHUB_SHA:0:7}\`."
+            echo "**Preview build \`${{ steps.version.outputs.VERSION }}\`**, built on ${BUILT_ON} from \`${GITHUB_SHA:0:7}\`."
             echo
             echo "This is a rolling preview: it is replaced every time a change lands on main."
             echo "It contains everything merged since ${SINCE}."

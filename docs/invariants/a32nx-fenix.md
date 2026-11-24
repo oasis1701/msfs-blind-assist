@@ -63,7 +63,7 @@ Corrected 2026-10-09: "two separate calc calls" was not enough; two calls issued
 
 ## A320-15
 
-- The A32NX DCDU display must be a ListBox, not a multiline TextBox — a right-aligned key label read on a separate braille line from its leading key number in a TextBox. → [a32nx.md](../a32nx.md)
+- A DCDU display (the A32NX's and, since 2026-11, the Fenix's, `FenixChannelDcduForm`) must be a ListBox, not a multiline TextBox — a right-aligned key label read on a separate braille line from its leading key number in a TextBox. → [a32nx.md](../a32nx.md)
 
 ## A320-16
 
@@ -75,7 +75,7 @@ Corrected 2026-10-09: "two separate calc calls" was not enough; two calls issued
 
 ## A320-18
 
-- Unmodified PageUp/PageDown must scroll WITHIN the displayed DCDU message (`POEMINUS`/`POEPLUS`), with Ctrl+PageUp/Down stepping between messages — never the reverse: every other CDU window (A320/A380 MCDU, PMDG 737/777, HS787, iFly 737) binds plain PageUp/Down to scrolling the content being read, and within-message paging is the load-bearing one (it unlocks the answer keys), so it must not sit behind a modifier. → [a32nx.md](../a32nx.md)
+- Unmodified PageUp/PageDown must scroll WITHIN the displayed DCDU message (FBW `POEMINUS`/`POEPLUS`, Fenix `S_DCDU1_PGUP`/`S_DCDU1_PGDN`), with Ctrl+PageUp/Down stepping between messages — never the reverse: every other CDU window (A320/A380 MCDU, PMDG 737/777, HS787, iFly 737) binds plain PageUp/Down to scrolling the content being read, and within-message paging is the load-bearing one (it unlocks the answer keys), so it must not sit behind a modifier. → [a32nx.md](../a32nx.md)
 
 ## A320-19
 
@@ -136,7 +136,7 @@ Corrected 2026-10-09: "two separate calc calls" was not enough; two calls issued
 - Fenix hotkey readouts (output mode Shift+H/S/A/V for the FCU, B for the altimeter) force-read the on-request `_READOUT` twins listed in `FenixA320Definition.FcuReadoutVariables`, never the continuous originals. Each original is Continuous + IsAnnounced + ExcludeFromBatch, so it streams on its own PERIOD.SECOND subscription, and `FreshReadPolicy.RouteRequest` answers a forced read of one with `AwaitNextDelivery`: nothing is requested, and the readout waits for the next 1 Hz delivery, 0-1 s (the pilot's "about half a second on the Shift keys, not the plain ones", 2026-10-11). A twin is the same L:var, OnRequest, so its forced read is a PERIOD.ONCE on its own definition, answered within a frame, as the plain keys' requests are.
 - History: `f500915db` (2026-06-03) set ExcludeFromBatch on the originals so the readouts kept an individual definition after the SimConnect-ceiling work (a batch-covered var's forced read then did nothing, and the readouts went silent). `c5c624a84` (2026-09-05) stopped `RequestVariable` issuing a PERIOD.ONCE on an own subscription's request id, which replaced the subscription and froze the var for the session, and made it wait for the next delivery instead. Both stay; the twins step around them.
 - The originals keep their subscriptions: their changes reach the generic announce path (their Ctrl+M rows), and the FCU set windows' entry checks ("Already at …") read them from the cache. The typed FCU sets themselves read the heading, speed, altitude and V/S twins fresh after every write ([FNX-20]; a twin answering no pending readout is consumed silently). A readout no longer swallows one of their deliveries. Cost: ten definitions (the Fenix registers about 490 of the ~1000 allowed).
-- Pinned by `FenixFcuReadoutTests`. Also seen, not changed: the FBW A320's FCU readouts force-read its managed flags (`A32NX_FCU_AFS_DISPLAY_*_MANAGED`), which are the same kind, so they likely wait too. → [a32nx.md](../a32nx.md)
+- Pinned by `FenixFcuReadoutTests`. The FBW A320's and A380's FCU readouts waited the same way (the A320's on its managed flags, `A32NX_FCU_AFS_DISPLAY_*_MANAGED`); they read twins of their own since 2026-11-20 ([A320-42]). → [a32nx.md](../a32nx.md)
 
 ## A380-8
 

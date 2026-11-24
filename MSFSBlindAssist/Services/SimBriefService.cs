@@ -658,6 +658,84 @@ public class SimBriefService
     }
 
     /// <summary>
+    /// The latest OFP's raw XML for a SimBrief pilot ID (<c>userid=</c>, used when given) or a
+    /// username, or a friendly error to speak instead. Neither the ID nor the username is ever in
+    /// the error (the ID is the pilot's own), and nothing here logs. Shares the 30 s client; a
+    /// cancel through <paramref name="ct"/> throws <see cref="OperationCanceledException"/>, and the
+    /// client's own timeout comes back as an error.
+    /// </summary>
+    public static async Task<(string? Xml, string? Error)> FetchLatestOfpXmlAsync(long? userId, string? username,
+        CancellationToken ct = default)
+    {
+        bool byId = userId is > 0;
+        string query = OfpQuery(userId, username);
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{SIMBRIEF_API_URL}?{query}");
+            request.Headers.UserAgent.ParseAdd("MSFSBlindAssist/1.0");
+            using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
+            if (FailureForStatus(response.StatusCode) is OfpFetchFailure failure)
+                return (null, OfpFetchErrorText(failure, byId, (int)response.StatusCode));
+            return (await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false), null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return (null, OfpFetchErrorText(OfpFetchFailure.TimedOut, byId));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException)
+        {
+            return (null, OfpFetchErrorText(OfpFetchFailure.Unreachable, byId));
+        }
+    }
+
+    /// <summary>Why <see cref="FetchLatestOfpXmlAsync"/> got no plan.</summary>
+    public enum OfpFetchFailure
+    {
+        /// <summary>HTTP 400: SimBrief knows no such pilot, or the pilot has no plan.</summary>
+        NoPlan,
+        /// <summary>Any other unsuccessful HTTP status.</summary>
+        HttpError,
+        /// <summary>The shared client's 30 s timeout.</summary>
+        TimedOut,
+        /// <summary>No answer at all: no network, DNS, a dropped connection.</summary>
+        Unreachable,
+    }
+
+    /// <summary>
+    /// The query naming the pilot: <c>userid=</c> for an ID above zero (BlueBird stores -1 for none),
+    /// else <c>username=</c>, escaped and trimmed. The only place either value goes. Throws when
+    /// there is neither. Internal for its tests.
+    /// </summary>
+    internal static string OfpQuery(long? userId, string? username)
+    {
+        if (userId is long id && id > 0)
+            return $"userid={id.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ArgumentException("A SimBrief ID or username is needed.");
+        return $"username={Uri.EscapeDataString(username.Trim())}";
+    }
+
+    /// <summary>The failure an HTTP status means, or null for a success. Internal for its tests.</summary>
+    internal static OfpFetchFailure? FailureForStatus(HttpStatusCode status) =>
+        status == HttpStatusCode.BadRequest ? OfpFetchFailure.NoPlan
+        : (int)status is >= 200 and <= 299 ? null
+        : OfpFetchFailure.HttpError;
+
+    /// <summary>
+    /// The words said for a failed fetch. It is given neither the ID nor the username, only which of
+    /// the two was asked for, so it cannot say them. Internal for its tests.
+    /// </summary>
+    internal static string OfpFetchErrorText(OfpFetchFailure failure, bool byId, int httpStatus = 0) => failure switch
+    {
+        OfpFetchFailure.NoPlan => $"SimBrief found no flight plan for your SimBrief {(byId ? "ID" : "username")}.",
+        OfpFetchFailure.HttpError =>
+            $"SimBrief returned an error, HTTP {httpStatus.ToString(System.Globalization.CultureInfo.InvariantCulture)}. Try again later.",
+        OfpFetchFailure.TimedOut => "Timed out contacting SimBrief. Check your internet connection and try again.",
+        _ => "SimBrief could not be reached. Check your internet connection and try again.",
+    };
+
+    /// <summary>
     /// Fetches the list of available SimBrief aircraft types.
     /// Returns list of (Id, DisplayName) tuples, sorted by name.
     /// </summary>
@@ -739,6 +817,11 @@ public class SimBriefService
             ofp.AvgWindComp     = V(gen, "avg_wind_comp");
             ofp.AvgIsaDev       = V(gen, "avg_temp_dev");
             ofp.StepClimbString = V(gen, "stepclimb_string");
+            // The plan's SID and STAR as SimBrief names them in <general>; the sim tablet's route
+            // import writes them where its parser looks for them. OriginSid/DestStar keep their own
+            // sources for the planner window.
+            ofp.SidIdent        = V(gen, "sid_ident");
+            ofp.StarIdent       = V(gen, "star_ident");
         }
 
         // ── Aircraft ─────────────────────────────────────────────────────────

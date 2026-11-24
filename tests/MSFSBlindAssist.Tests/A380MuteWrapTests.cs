@@ -145,6 +145,7 @@ public class A380MuteWrapTests : IDisposable
         "A32NX_FCU_EFIS_L_VORD_LIGHT_ON", "A32NX_FCU_EFIS_R_VORD_LIGHT_ON",
         "A32NX_FCU_EFIS_L_NDB_LIGHT_ON", "A32NX_FCU_EFIS_R_NDB_LIGHT_ON",
         "A32NX_EWD_LOWER_LEFT_LINE_1", "A32NX_EWD_LOWER_RIGHT_LINE_10",
+        "A32NX_ECU_1_MAINTENANCE_WORD_6", "A32NX_ECU_4_MAINTENANCE_WORD_6",
     };
 
     // Their call-outs are their own rows' — including the rows those exempt branches speak FOR.

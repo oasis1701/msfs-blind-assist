@@ -47,4 +47,11 @@ internal static class FcuValueEntry
         feet = value;
         return true;
     }
+
+    /// <summary>
+    /// The calculator code that sets the FCU V/S or FPA window (A32NX, A330 and A380; a negative value
+    /// overflows SendEvent's uint). Invariant, so a descent keeps its ASCII minus: sv-SE, nb-NO and fi-FI
+    /// write a negative number with U+2212, which the RPN parser rejects.
+    /// </summary>
+    public static string VerticalSpeedSetCode(int toSend) => FormattableString.Invariant($"{toSend} (>K:A32NX.FCU_VS_SET)");
 }
