@@ -50,7 +50,7 @@ RTE-31 to RTE-33, RTE-35 and RTE-36 came with the taxi/landing port (`feat/taxi-
 
 ## RTE-18
 
-- The post-recalc sanity gate needs BOTH the length-blowup indicator AND the backwards-bearing indicator, OR'd (not AND'd) — either alone misses real dead-end-backtrack recalcs. → [taxi-guidance.md](../taxi-guidance.md)
+- The post-recalc sanity gate needs BOTH the length-blowup indicator AND the backwards-bearing indicator, OR'd (not AND'd) — either alone misses real dead-end-backtrack recalcs. One exception: a recalculation in which a Turn pick was missed (the aircraft left the route in the turn, not by a corner cut onto the picked taxiway) waives the backwards-bearing indicator only, because the route being replaced is one the pilot has already left at the turn; the length indicator still rejects. Without a pick in play the gate is unchanged. See [TURN-3](taxi-turn-picks.md#turn-3). → [taxi-guidance.md](../taxi-guidance.md)
 
 ## RTE-19
 
@@ -66,7 +66,7 @@ RTE-31 to RTE-33, RTE-35 and RTE-36 came with the taxi/landing port (`feat/taxi-
 
 ## RTE-22
 
-- No-op recalc suppression: a recalculated route identical to the current remaining sequence must skip the "Route changed" callout, latch resets, and tone re-slew entirely — otherwise a sharp corner-cut trips a spurious "Route changed" on an unchanged route (LFPG case). → [taxi-guidance.md](../taxi-guidance.md)
+- No-op recalc suppression: a recalculated route identical to the current remaining sequence must skip the "Route changed" callout, latch resets, and tone re-slew entirely — otherwise a sharp corner-cut trips a spurious "Route changed" on an unchanged route (LFPG case). One exception: a recalculation in which a Turn pick was missed, or a pick still ahead is not kept, is never discarded as a no-op, because the route being replaced is wrong in a way its taxiway names cannot show; a corner cut onto the picked taxiway counts as the turn made (`TurnPickCarryOver.MadeByCut`), so it stays a no-op. See [TURN-3](taxi-turn-picks.md#turn-3). → [taxi-guidance.md](../taxi-guidance.md)
 
 ## RTE-23
 
@@ -122,4 +122,4 @@ Split from RTE-12 on 2026-10-09: one mechanism per ID.
 
 - And a landing-exit handoff route that DETOURS (> 3× and > 500 m over the straight-line distance, `RouteDetoursFromExit`) is retried from every exit-taxiway candidate, keeping the shortest that is not itself a detour (KSLC 17 K4: 2,862 m → 156 m). → [taxi-guidance.md](../taxi-guidance.md) (Split 2026-10 from ROL-40's bullet, words unchanged; the VirtualPilot figure there covered both.)
 
-RTE-37 lives in [taxi-reroute.md](taxi-reroute.md): this area's rule file was full.
+RTE-40 lives in [taxi-reroute.md](taxi-reroute.md): this area's rule file was full.

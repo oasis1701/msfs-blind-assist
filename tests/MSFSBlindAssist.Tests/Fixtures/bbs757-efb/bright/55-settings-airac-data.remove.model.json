@@ -1,0 +1,391 @@
+{
+  "app": "SETTINGS",
+  "section": "AIRAC DATA",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "General",
+      "box": [
+        43,
+        155,
+        102,
+        31
+      ],
+      "hit": [
+        130,
+        170
+      ],
+      "clickable": true,
+      "key": "menu:GENERAL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Aircraft",
+      "box": [
+        40,
+        211,
+        113,
+        37
+      ],
+      "hit": [
+        130,
+        229
+      ],
+      "clickable": true,
+      "key": "menu:AIRCRAFT",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Livery options",
+      "box": [
+        39,
+        276,
+        176,
+        30
+      ],
+      "hit": [
+        130,
+        291
+      ],
+      "clickable": true,
+      "key": "menu:LIVERY OPTIONS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Callouts",
+      "box": [
+        42,
+        335,
+        116,
+        31
+      ],
+      "hit": [
+        130,
+        350
+      ],
+      "clickable": true,
+      "key": "menu:CALLOUTS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin audio",
+      "box": [
+        40,
+        393,
+        141,
+        33
+      ],
+      "hit": [
+        130,
+        409
+      ],
+      "clickable": true,
+      "key": "menu:CABIN AUDIO",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "AIRAC data",
+      "box": [
+        37,
+        452,
+        138,
+        35
+      ],
+      "hit": [
+        130,
+        469
+      ],
+      "clickable": true,
+      "key": "menu:AIRAC DATA",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Row",
+      "text": "SIMBRIEF ID number",
+      "box": [
+        275,
+        100,
+        248,
+        30
+      ],
+      "hit": [
+        399,
+        115
+      ],
+      "clickable": false,
+      "key": "row:SIMBRIEF ID NUMBER",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "not set",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Logout, SIMBRIEF ID number",
+      "box": [
+        1197,
+        89,
+        197,
+        58
+      ],
+      "hit": [
+        1295,
+        118
+      ],
+      "clickable": true,
+      "key": "btn:SIMBRIEF ID NUMBER|LOGOUT@59,4",
+      "tint": "Other",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Hoppie logon code",
+      "box": [
+        274,
+        171,
+        249,
+        29
+      ],
+      "hit": [
+        398,
+        185
+      ],
+      "clickable": false,
+      "key": "row:HOPPIE LOGON CODE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "not set",
+      "slider": null
+    },
+    {
+      "kind": "Row",
+      "text": "Sayintentions ACARS key",
+      "box": [
+        274,
+        239,
+        328,
+        33
+      ],
+      "hit": [
+        438,
+        255
+      ],
+      "clickable": false,
+      "key": "row:SAYINTENTIONS ACARS KEY",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "not set",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "Latest cycle: 2611, Update available!",
+      "box": [
+        274,
+        292,
+        697,
+        35
+      ],
+      "hit": [
+        622,
+        309
+      ],
+      "clickable": false,
+      "key": "txt:LATEST CYCLE: 2611 UPDATE AVAILABLE!",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Remove, Latest cycle",
+      "box": [
+        1197,
+        299,
+        197,
+        58
+      ],
+      "hit": [
+        1295,
+        328
+      ],
+      "clickable": true,
+      "key": "btn:LATEST CYCLE|REMOVE@59,14",
+      "tint": "Green",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "Installed cycle: 2610 | exp: 2026-10-28",
+      "box": [
+        275,
+        325,
+        484,
+        29
+      ],
+      "hit": [
+        517,
+        339
+      ],
+      "clickable": false,
+      "key": "txt:INSTALLED CYCLE: 2610 | EXP: 2026-10-28",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "Successfully signed in to navigraph!",
+      "box": [
+        276,
+        379,
+        487,
+        30
+      ],
+      "hit": [
+        519,
+        394
+      ],
+      "clickable": false,
+      "key": "txt:SUCCESSFULLY SIGNED IN TO NAVIGRAPH!",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Logout, Successfully signed in to navigraph!",
+      "box": [
+        1197,
+        368,
+        197,
+        58
+      ],
+      "hit": [
+        1295,
+        397
+      ],
+      "clickable": true,
+      "key": "btn:SUCCESSFULLY SIGNED IN TO NAVIGRAPH!|LOGOUT@59,18",
+      "tint": "Other",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Text",
+      "text": "DEP 00:16",
+      "box": [
+        1038,
+        0,
+        98,
+        28
+      ],
+      "hit": [
+        1087,
+        14
+      ],
+      "clickable": false,
+      "key": "top:dep",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "0G..2 H",
+      "box": [
+        1142,
+        2,
+        180,
+        29
+      ],
+      "hit": [
+        1232,
+        16
+      ],
+      "clickable": false,
+      "key": "top:boarding",
+      "tint": "Green",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Notifications: 10",
+      "box": [
+        1329,
+        6,
+        54,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "Red",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

@@ -40,6 +40,27 @@ public partial class TaxiGuidanceManager
             AnnounceInstruction("Back on charted taxiways.");
         }
 
+        // A Turn pick's off-chart leg: said once on entering it, so the pilot knows the tone is about
+        // to leave the taxi line on purpose and which way the turn at its end goes. Same length floor
+        // as the apron crossing; nothing is said on leaving it (the turn and taxiway callouts cover that).
+        // A leg that is segment 0 is reached on the first taxiing frame, right after the start utterance
+        // (the off-chart note, any runway-with-no-hold warning): held through the start grace window like
+        // the advance notice, the latch left unset, unless the gate projects it would be lost. It is lost
+        // once AdvanceSegment leaves the leg, WAYPOINT_CAPTURE_RADIUS_M short of its end node, which is
+        // what distToTargetM measures to here.
+        if (currentSeg.IsOffChartTurn
+            && _offChartLegAnnouncedIdx != _currentSegmentIndex
+            && currentSeg.DistanceMeters >= UNCHARTED_ANNOUNCE_MIN_M
+            && _route.TurnPicks.FirstOrDefault(p => p.FirstSegmentAfterDeparture == _currentSegmentIndex) is { } legPick
+            && !StartWarningChatterGate.ShouldHold(
+                MSFSBlindAssist.Utils.SimClock.UtcNow, _startChatterSuppressUntil,
+                distToTargetM, WAYPOINT_CAPTURE_RADIUS_M, _lastGroundSpeedKts))
+        {
+            _offChartLegAnnouncedIdx = _currentSegmentIndex;
+            AnnounceInstruction(TurnPickMessages.EnteringLeg(
+                legPick.Side, legPick.TaxiwayName, FormatDistance(currentSeg.DistanceMeters)));
+        }
+
         int nextIdx = _currentSegmentIndex + 1;
         if (nextIdx >= _route.Segments.Count)
         {
@@ -710,7 +731,8 @@ public partial class TaxiGuidanceManager
             return $"Arrived at {_route.DestinationName}.";
 
         var seg = _route.Segments[_currentSegmentIndex];
-        string taxiway = !string.IsNullOrEmpty(seg.TaxiwayName) ? $"Taxiway {seg.TaxiwayName}" : "Connector";
+        string taxiway = !string.IsNullOrEmpty(seg.TaxiwayName) ? $"Taxiway {seg.TaxiwayName}"
+            : seg.IsOffChartTurn ? "Off-chart leg" : "Connector";
 
         // Calculate remaining distance using live aircraft position (if we have one).
         // Use the explicit _positionInitialized flag instead of (lat!=0 || lon!=0) — the
@@ -795,13 +817,17 @@ public partial class TaxiGuidanceManager
     {
         string distStr = FormatDistance(route.TotalDistanceMeters);
 
-        // If the user specified a taxiway sequence, use that for the announcement
-        // (the actual route segments include approach/exit connectors the user doesn't care about)
+        // If the user specified a taxiway sequence, that part is announced as entered (the
+        // route's segments carry connectors between cleared taxiways the pilot never read
+        // back). What the route uses AFTER the last entered taxiway is named too, behind
+        // "then": the router finds its own way from there to the destination, and "via L"
+        // for a route that ran L, W, EX23, E, EX33, D told the pilot half of it (LOWW,
+        // 2026-11-14).
         string taxiwayStr;
         if (route.TaxiwaySequence != null && route.TaxiwaySequence.Count > 0 &&
             string.IsNullOrEmpty(route.ConstrainedFallbackReason))
         {
-            taxiwayStr = $" via {string.Join(", ", route.TaxiwaySequence)}";
+            taxiwayStr = $" via {RouteTaxiwaySequence.ViaClause(route.TaxiwaySequence, route.Segments)}";
         }
         else
         {

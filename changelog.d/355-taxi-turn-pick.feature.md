@@ -1,0 +1,1 @@
+Every taxiway row in the taxi planner has a Turn list (Automatic, Left, Right), for when ATC names the direction of a turn, such as "left on C". Where the airport's taxi data has no link that way, guidance builds a short announced off-chart leg and then calls the turn.

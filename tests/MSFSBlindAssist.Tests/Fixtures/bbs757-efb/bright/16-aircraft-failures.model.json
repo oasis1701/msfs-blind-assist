@@ -1,0 +1,916 @@
+{
+  "app": "AIRCRAFT",
+  "section": "FAILURES",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "Cockpit presets",
+      "box": [
+        42,
+        153,
+        191,
+        32
+      ],
+      "hit": [
+        130,
+        169
+      ],
+      "clickable": true,
+      "key": "menu:COCKPIT PRESETS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Fuel",
+      "box": [
+        38,
+        212,
+        65,
+        34
+      ],
+      "hit": [
+        130,
+        229
+      ],
+      "clickable": true,
+      "key": "menu:FUEL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Weight \u0026 balance",
+      "box": [
+        42,
+        275,
+        204,
+        30
+      ],
+      "hit": [
+        130,
+        290
+      ],
+      "clickable": true,
+      "key": "menu:WEIGHT \u0026 BALANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Ground services",
+      "box": [
+        44,
+        336,
+        192,
+        27
+      ],
+      "hit": [
+        130,
+        349
+      ],
+      "clickable": true,
+      "key": "menu:GROUND SERVICES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin \u0026 doors",
+      "box": [
+        43,
+        395,
+        163,
+        30
+      ],
+      "hit": [
+        130,
+        410
+      ],
+      "clickable": true,
+      "key": "menu:CABIN \u0026 DOORS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Maintenance",
+      "box": [
+        41,
+        453,
+        158,
+        32
+      ],
+      "hit": [
+        130,
+        469
+      ],
+      "clickable": true,
+      "key": "menu:MAINTENANCE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Failures",
+      "box": [
+        40,
+        515,
+        108,
+        31
+      ],
+      "hit": [
+        130,
+        530
+      ],
+      "clickable": true,
+      "key": "menu:FAILURES",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Heading",
+      "text": "Failures",
+      "box": [
+        271,
+        90,
+        127,
+        37
+      ],
+      "hit": [
+        334,
+        108
+      ],
+      "clickable": false,
+      "key": "h:FAILURES",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "Active 0 armed 0",
+      "box": [
+        963,
+        91,
+        174,
+        27
+      ],
+      "hit": [
+        1050,
+        104
+      ],
+      "clickable": false,
+      "key": "txt:ACTIVE 0 ARMED 0",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Catalog",
+      "box": [
+        283,
+        155,
+        215,
+        39
+      ],
+      "hit": [
+        390,
+        174
+      ],
+      "clickable": true,
+      "key": "btn:|CATALOG@14,7",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Active / armed",
+      "box": [
+        510,
+        153,
+        220,
+        43
+      ],
+      "hit": [
+        620,
+        174
+      ],
+      "clickable": true,
+      "key": "btn:|ACTIVE / ARMED@25,7",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Random",
+      "box": [
+        740,
+        153,
+        220,
+        43
+      ],
+      "hit": [
+        850,
+        174
+      ],
+      "clickable": true,
+      "key": "btn:|RANDOM@37,7",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Fires",
+      "box": [
+        283,
+        224,
+        159,
+        36
+      ],
+      "hit": [
+        362,
+        242
+      ],
+      "clickable": true,
+      "key": "btn:|FIRES@14,11",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Detection",
+      "box": [
+        455,
+        223,
+        164,
+        39
+      ],
+      "hit": [
+        537,
+        242
+      ],
+      "clickable": true,
+      "key": "btn:|DETECTION@22,11",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Engines / APU",
+      "box": [
+        631,
+        223,
+        164,
+        39
+      ],
+      "hit": [
+        713,
+        242
+      ],
+      "clickable": true,
+      "key": "btn:|ENGINES / APU@31,11",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Automation",
+      "box": [
+        806,
+        223,
+        164,
+        39
+      ],
+      "hit": [
+        888,
+        242
+      ],
+      "clickable": true,
+      "key": "btn:|AUTOMATION@40,11",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Electrical",
+      "box": [
+        980,
+        223,
+        164,
+        39
+      ],
+      "hit": [
+        1062,
+        242
+      ],
+      "clickable": true,
+      "key": "btn:|ELECTRICAL@49,11",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Avionics",
+      "box": [
+        1155,
+        223,
+        164,
+        39
+      ],
+      "hit": [
+        1237,
+        242
+      ],
+      "clickable": true,
+      "key": "btn:|AVIONICS@57,11",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Ice / rain",
+      "box": [
+        280,
+        268,
+        164,
+        39
+      ],
+      "hit": [
+        362,
+        287
+      ],
+      "clickable": true,
+      "key": "btn:|ICE / RAIN@14,13",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Doors",
+      "box": [
+        455,
+        268,
+        164,
+        39
+      ],
+      "hit": [
+        537,
+        287
+      ],
+      "clickable": true,
+      "key": "btn:|DOORS@22,13",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Air conditioning",
+      "box": [
+        631,
+        268,
+        164,
+        39
+      ],
+      "hit": [
+        713,
+        287
+      ],
+      "clickable": true,
+      "key": "btn:|AIR CONDITIONING@31,13",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Flight controls",
+      "box": [
+        806,
+        268,
+        164,
+        39
+      ],
+      "hit": [
+        888,
+        287
+      ],
+      "clickable": true,
+      "key": "btn:|FLIGHT CONTROLS@40,13",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Hydraulics",
+      "box": [
+        980,
+        268,
+        164,
+        39
+      ],
+      "hit": [
+        1062,
+        287
+      ],
+      "clickable": true,
+      "key": "btn:|HYDRAULICS@49,13",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Lights",
+      "box": [
+        1155,
+        268,
+        164,
+        39
+      ],
+      "hit": [
+        1237,
+        287
+      ],
+      "clickable": true,
+      "key": "btn:|LIGHTS@57,13",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "Failure, status, actions",
+      "box": [
+        290,
+        336,
+        703,
+        29
+      ],
+      "hit": [
+        641,
+        350
+      ],
+      "clickable": false,
+      "key": "txt:FAILURE, STATUS, ACTIONS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "L engine fire, ready",
+      "box": [
+        288,
+        383,
+        507,
+        28
+      ],
+      "hit": [
+        541,
+        397
+      ],
+      "clickable": false,
+      "key": "txt:L ENGINE FIRE, READY",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Fail now, L engine fire",
+      "box": [
+        925,
+        380,
+        180,
+        44
+      ],
+      "hit": [
+        1015,
+        402
+      ],
+      "clickable": true,
+      "key": "btn:L ENGINE FIRE|FAIL NOW@46,19",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Set UP, L engine fire",
+      "box": [
+        1125,
+        380,
+        180,
+        44
+      ],
+      "hit": [
+        1215,
+        402
+      ],
+      "clickable": true,
+      "key": "btn:L ENGINE FIRE|SET UP@56,19",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "R engine fire, ready",
+      "box": [
+        290,
+        435,
+        505,
+        27
+      ],
+      "hit": [
+        542,
+        448
+      ],
+      "clickable": false,
+      "key": "txt:R ENGINE FIRE, READY",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Fail now, R engine fire",
+      "box": [
+        925,
+        433,
+        180,
+        43
+      ],
+      "hit": [
+        1015,
+        454
+      ],
+      "clickable": true,
+      "key": "btn:R ENGINE FIRE|FAIL NOW@46,21",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Set UP, R engine fire",
+      "box": [
+        1125,
+        433,
+        180,
+        43
+      ],
+      "hit": [
+        1215,
+        454
+      ],
+      "clickable": true,
+      "key": "btn:R ENGINE FIRE|SET UP@56,21",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "APU fire, ready",
+      "box": [
+        288,
+        486,
+        507,
+        31
+      ],
+      "hit": [
+        541,
+        501
+      ],
+      "clickable": false,
+      "key": "txt:APU FIRE, READY",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Fail now, APU fire",
+      "box": [
+        925,
+        485,
+        180,
+        43
+      ],
+      "hit": [
+        1015,
+        506
+      ],
+      "clickable": true,
+      "key": "btn:APU FIRE|FAIL NOW@46,24",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Set UP, APU fire",
+      "box": [
+        1125,
+        485,
+        180,
+        43
+      ],
+      "hit": [
+        1215,
+        506
+      ],
+      "clickable": true,
+      "key": "btn:APU FIRE|SET UP@56,24",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "FWD cargo fire, ready",
+      "box": [
+        289,
+        539,
+        507,
+        29
+      ],
+      "hit": [
+        542,
+        553
+      ],
+      "clickable": false,
+      "key": "txt:FWD CARGO FIRE, READY",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Fail now, FWD cargo fire",
+      "box": [
+        925,
+        536,
+        180,
+        43
+      ],
+      "hit": [
+        1015,
+        557
+      ],
+      "clickable": true,
+      "key": "btn:FWD CARGO FIRE|FAIL NOW@46,26",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Set UP, FWD cargo fire",
+      "box": [
+        1125,
+        536,
+        180,
+        43
+      ],
+      "hit": [
+        1215,
+        557
+      ],
+      "clickable": true,
+      "key": "btn:FWD CARGO FIRE|SET UP@56,26",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "AFT cargo fire, ready",
+      "box": [
+        288,
+        590,
+        507,
+        29
+      ],
+      "hit": [
+        541,
+        604
+      ],
+      "clickable": false,
+      "key": "txt:AFT CARGO FIRE, READY",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Fail now, AFT cargo fire",
+      "box": [
+        925,
+        588,
+        180,
+        43
+      ],
+      "hit": [
+        1015,
+        609
+      ],
+      "clickable": true,
+      "key": "btn:AFT CARGO FIRE|FAIL NOW@46,29",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Set UP, AFT cargo fire",
+      "box": [
+        1125,
+        588,
+        180,
+        43
+      ],
+      "hit": [
+        1215,
+        609
+      ],
+      "clickable": true,
+      "key": "btn:AFT CARGO FIRE|SET UP@56,29",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Random failures: off",
+      "box": [
+        280,
+        987,
+        360,
+        39
+      ],
+      "hit": [
+        460,
+        1006
+      ],
+      "clickable": true,
+      "key": "btn:|RANDOM FAILURES:@14,49",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Button",
+      "text": "Notifications: off",
+      "box": [
+        661,
+        987,
+        358,
+        39
+      ],
+      "hit": [
+        840,
+        1006
+      ],
+      "clickable": true,
+      "key": "btn:|NOTIFICATIONS:@33,49",
+      "tint": "Blue",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications",
+      "box": [
+        1364,
+        6,
+        19,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

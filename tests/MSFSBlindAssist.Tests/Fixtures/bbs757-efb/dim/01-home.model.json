@@ -1,0 +1,159 @@
+{
+  "app": "HOME",
+  "section": "",
+  "scrollable": false,
+  "menu": [],
+  "items": [
+    {
+      "kind": "Menu",
+      "text": "Aircraft",
+      "box": [
+        282,
+        244,
+        93,
+        32
+      ],
+      "hit": [
+        328,
+        174
+      ],
+      "clickable": true,
+      "key": "app:AIRCRAFT",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Navigation",
+      "box": [
+        446,
+        242,
+        130,
+        39
+      ],
+      "hit": [
+        511,
+        172
+      ],
+      "clickable": true,
+      "key": "app:NAVIGATION",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Systems",
+      "box": [
+        646,
+        245,
+        104,
+        35
+      ],
+      "hit": [
+        698,
+        175
+      ],
+      "clickable": true,
+      "key": "app:SYSTEMS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Checklist",
+      "box": [
+        826,
+        242,
+        114,
+        37
+      ],
+      "hit": [
+        883,
+        172
+      ],
+      "clickable": true,
+      "key": "app:CHECKLIST",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Settings",
+      "box": [
+        1015,
+        241,
+        105,
+        42
+      ],
+      "hit": [
+        1067,
+        171
+      ],
+      "clickable": true,
+      "key": "app:SETTINGS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Text",
+      "text": "Aircraft: BBS752-PW2037",
+      "box": [
+        13,
+        1002,
+        176,
+        32
+      ],
+      "hit": [
+        101,
+        1018
+      ],
+      "clickable": false,
+      "key": "txt:variant",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications",
+      "box": [
+        1364,
+        6,
+        19,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

@@ -1,7 +1,7 @@
 // The "Fenix windows" list on Ctrl+Shift+F in input mode. Each kind of window registers into
-// FenixWindowRegistry from its own partial file (engines, cabin, failures, documents, options), so none
-// of them edits another's. With no partial present the registry is empty, and these facts pass
-// trivially; they keep the windows honest.
+// FenixWindowRegistry from its own partial file (engines, cabin, failures, documents, options, and the six
+// displays of the display channel: PFD, ND, E/WD, SD, ISIS, DCDU), so none of them edits another's. With
+// no partial present the registry is empty, and these facts pass trivially; they keep the windows honest.
 
 using MSFSBlindAssist.Forms.Fenix;
 

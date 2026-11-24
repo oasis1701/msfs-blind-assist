@@ -132,6 +132,11 @@
     if (node.matches && node.matches("[data-idx]")) return node;
     return node.querySelector ? node.querySelector("[data-idx]") : null;
   }
+  // The control a node holds that can take the focus, or null.
+  function focusableIn(node){
+    var bc = node.matches("button, a, input, select") ? node : node.querySelector("button, a, input, select");
+    return (bc && !bc.disabled) ? bc : null;
+  }
 
   // Update an existing node's mutable bits in place (never recreate it). Skips
   // value writes to the control the user is currently editing.
@@ -190,26 +195,62 @@
 
     if (page !== _renderedPage){ root.innerHTML = ""; _renderedPage = page; }  // page change → clean rebuild
 
+    var focused = document.activeElement;                  // given back below if a move takes it
+    var before = Array.prototype.slice.call(root.children);
     var existing = {};
-    for (var j = 0; j < root.children.length; j++){
-      var ck = root.children[j].getAttribute("data-key");
-      if (ck) existing[ck] = root.children[j];
+    for (var j = 0; j < before.length; j++){
+      var ck = before[j].getAttribute("data-key");
+      if (ck) existing[ck] = before[j];
     }
 
-    var used = {}, seen = {}, prev = null;
+    // Every element's key first, so the nodes leaving are known before anything moves.
+    var keys = [], used = {}, seen = {};
     for (var n = 0; n < els.length; n++){
-      var e = els[n], base = keyOf(e);
+      var base = keyOf(els[n]);
       var occ = (seen[base] = (seen[base] || 0) + 1);
-      var key = base + "#" + occ;          // disambiguate duplicate static texts
+      keys.push(base + "#" + occ);         // disambiguate duplicate static texts
+      used[keys[n]] = true;
+    }
+    // A removed node that held focus: remember where it stood (between the nearest nodes before and
+    // after it that stay) and the idx a control rebuilt in its place keeps.
+    var holder = null, anchor = null, right = null, holderIdx = null;
+    for (var gone in existing){ if (!used[gone] && existing[gone].contains(focused)){ holder = existing[gone]; break; } }
+    if (holder){
+      var h = before.indexOf(holder), hc = ctrlOf(holder);
+      for (var b = h - 1; b >= 0 && !anchor; b--){ if (used[before[b].getAttribute("data-key")]) anchor = before[b]; }
+      for (var a = h + 1; a < before.length && !right; a++){ if (used[before[a].getAttribute("data-key")]) right = before[a]; }
+      holderIdx = hc ? hc.getAttribute("data-idx") : null;
+    }
+    // Leaving nodes go BEFORE the rest is placed: a node moved by insertBefore loses the focus.
+    for (var gone2 in existing){ if (!used[gone2]) root.removeChild(existing[gone2]); }
+
+    var prev = null;
+    for (var m = 0; m < els.length; m++){
+      var e = els[m], key = keys[m];
       var node = existing[key];
       if (node){ patchEl(node, e); }
       else { node = buildEl(e); if (!node) continue; node.setAttribute("data-key", key); }
-      used[key] = true;
       var ref = prev ? prev.nextSibling : root.firstChild;
       if (node !== ref) root.insertBefore(node, ref);    // move only if needed (preserves the node)
       prev = node;
     }
-    for (var gone in existing){ if (!used[gone]) root.removeChild(existing[gone]); }
+    // The focus rescue of the shipping shell (FbwEfbForm.cs), which has a page heading to fall back on.
+    var target = null, c, p;
+    if (holder && anchor){
+      for (c = anchor.nextSibling; c && !target; c = c.nextSibling) target = focusableIn(c);
+      for (p = anchor; p && !target; p = p.previousSibling) target = focusableIn(p);
+    } else if (holder){
+      if (holderIdx && holderIdx !== "0"){
+        for (c = root.firstChild; c && c !== right && !target; c = c.nextSibling){
+          var f = focusableIn(c);
+          if (f && f.getAttribute("data-idx") === holderIdx && before.indexOf(c) < 0) target = f;
+        }
+      }
+      for (c = right || root.firstChild; c && !target; c = c.nextSibling) target = focusableIn(c);
+      for (p = right ? right.previousSibling : null; p && !target; p = p.previousSibling) target = focusableIn(p);
+    }
+    if (target) target.focus();
+    else if (!holder && focused && focused !== document.activeElement && root.contains(focused)) focused.focus();
   }
 
   window.chrome.webview.addEventListener("message", function(ev){

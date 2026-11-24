@@ -248,6 +248,13 @@ public partial class TaxiGuidanceManager : IDisposable
     private List<int>? _userHoldShortIndices;
     private Dictionary<int, string>? _userRunwayHoldShorts;
     private Dictionary<int, string>? _userTaxiwayHoldShorts;
+    // The holding-point flavour of the same per-row picks ("hold short of holding point L2"):
+    // sequence index -> the point. Kept so a recalculation can put a stop that is still ahead
+    // back onto the new route (HoldingPointHoldShort.IsStillAhead).
+    private Dictionary<int, Navigation.HoldingPointHoldShort>? _userHoldingPointHoldShorts;
+    // Junction nodes a made Turn pick keeps out of later recalculations of this route, so none
+    // can route back through the junction the pilot turned away from. Empty for a fresh route.
+    private HashSet<int> _turnBlockedNodes = new();
 
     // Paired-runway crossing double-Continue (VATSIM gap analysis 2026-08-31, P7):
     // set when a Continue past a crossing found ANOTHER runway-crossing hold-short
@@ -605,6 +612,8 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _initialTurnPending = false;
     // The side (+1 right, -1 left) the opening turn cue named; 0 when there is no cue.
     private int _initialTurnSign;
+    // Straight-line metres from the aircraft to a route start picked on its runway; 0 for every other route.
+    private double _routeStartGapMeters;
     private const double INITIAL_TURN_DONE_DEG = 45.0;
     // After a route-reach warning OR an unmapped-start warning (either "start warning"),
     // briefly hold the INFORMATIONAL taxiway-crossing, taxiway-change, curve and
@@ -779,6 +788,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // fired (-1 = none). Also drives the one-shot "back on charted taxiways" when
     // the index advances past it. Reset on LoadRoute.
     private int _unchartedAnnouncedIdx = -1;
+    // Segment index whose off-chart Turn-pick leg sentence has been spoken (-1 = none), so it is
+    // said once per leg. Reset on LoadRoute.
+    private int _offChartLegAnnouncedIdx = -1;
     // Route-joined latch. Off-route detection (and thus auto-recalc) is suppressed
     // until the aircraft has actually reached the route line at least once. The
     // post-pushback taxi from the gate ONTO the first taxiway is legitimately off
@@ -2282,7 +2294,10 @@ public partial class TaxiGuidanceManager : IDisposable
         // we find a segment with a real name and announce that, along with an
         // estimated distance to join it. If the whole route is unnamed (tiny
         // airport), fall back to the "steering guidance active" message.
-        double distanceToFirstNamed = 0;
+        // A route started from a runway begins at an exit further along it, so the roll to that
+        // exit counts too: "Join taxiway A2 in 10 metres" with the exit 400 m ahead told the pilot
+        // to turn off at once (VirtualPilot, RJAA 34L).
+        double distanceToFirstNamed = _routeStartGapMeters;
         string firstNamedTaxiway = "";
         foreach (var seg in _route.Segments)
         {
@@ -3359,6 +3374,13 @@ public partial class TaxiGuidanceManager : IDisposable
         double lookAhead = Math.Clamp(
             _lastGroundSpeedKts * 0.5144 * GUIDANCE_LOOK_AHEAD_SEC,
             GUIDANCE_LOOK_AHEAD_MIN_M, GUIDANCE_LOOK_AHEAD_MAX_M);
+
+        // On the roll down a runway to a route's first node, aim at the node itself [RTE-37].
+        var start = _route.Segments[0].FromNode;
+        if (RouteRunwayStart.AimsAtStartNode(_routeStartGapMeters > 0.0, _hasJoinedRoute, _currentSegmentIndex,
+                TaxiGraph.FastDistanceMeters(aircraftLat, aircraftLon, start.Latitude, start.Longitude), lookAhead))
+            return (start.Latitude, start.Longitude);
+
         return GuidanceGeometry.WalkTarget(
             lats, lons, _currentSegmentIndex, aircraftLat, aircraftLon, lookAhead);
     }
@@ -3408,12 +3430,17 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <para>The taxiway is the first NAMED leg at or after the cursor — the first leg
     /// actually ahead, which for a re-anchored cursor is not <c>Segments[0]</c>.</para>
     /// </summary>
-    private void ComposeInitialTurnCue(double lat, double lon, double headingTrue)
+    private void ComposeInitialTurnCue(double lat, double lon, double headingTrue, bool preferRampSide = false)
     {
         LastRouteInitialTurnCue = null;
         if (_route == null || _route.Segments.Count == 0) return;
 
         double initialErr = ComputeSteeringHeadingError(lat, lon, headingTrue);
+        if (preferRampSide && _graph != null)
+            initialErr = Navigation.RouteStartTurnCue.PreferRampSide(initialErr, lat, lon, headingTrue,
+                _graph.Nodes.Values
+                    .Where(n => n.Type == Database.Models.TaxiNodeType.Parking)
+                    .Select(n => (n.Latitude, n.Longitude)));
         string? firstNamed = null;
         for (int i = Math.Max(0, _currentSegmentIndex); i < _route.Segments.Count; i++)
         {
