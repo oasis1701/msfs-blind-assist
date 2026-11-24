@@ -272,9 +272,30 @@ public partial class TaxiGuidanceManager : IDisposable
     // is the setting, refreshed every frame; _rerouteOffered is true while an offer the pilot has
     // not taken stands. It is withdrawn, unspoken, when the aircraft is back on the route line,
     // and cleared by any adopted route and by StopGuidance. While it stands, later recalculations
-    // stay silent so the offer is not repeated every RECALCULATION_COOLDOWN_SEC.
+    // stay silent so the offer is not repeated every RECALCULATION_COOLDOWN_SEC. Every place
+    // that ends an offer goes through EndRerouteOffer, which also takes the offer back out of
+    // the Repeat-last buffer (_rerouteOfferText is the sentence spoken, _instructionBeforeRerouteOffer
+    // what the buffer held before it).
     private bool _confirmReroutes;
     private bool _rerouteOffered;
+    private string? _rerouteOfferText;
+    private string _instructionBeforeRerouteOffer = "";
+
+    /// <summary>
+    /// Ends a standing reroute offer (taken, withdrawn, or made moot by a new route, a hold or a
+    /// stop). Repeat-last (Ctrl+Y) goes back to the instruction the offer replaced when it still
+    /// holds the offer: "Press left bracket, Y to accept." must not be replayed for an offer the
+    /// key no longer takes. Cheap when no offer stands: it runs every frame on the route line.
+    /// </summary>
+    private void EndRerouteOffer()
+    {
+        if (!_rerouteOffered) return;
+        _rerouteOffered = false;
+        _lastInstruction = Navigation.RerouteOffer.InstructionAfterOffer(
+            _lastInstruction, _rerouteOfferText, _instructionBeforeRerouteOffer);
+        _rerouteOfferText = null;
+        _instructionBeforeRerouteOffer = "";
+    }
 
     // LAHSO — land and hold short (VATSIM gap analysis 2026-08-31, P5). Set by
     // BeginLandingRollout(NoGraph) from the landing exit planner, cleared at
@@ -3274,10 +3295,15 @@ public partial class TaxiGuidanceManager : IDisposable
             // OTHER legitimate way an off-route episode ends, and is unaffected by this fix.
             _lastReachabilityRefusalKey = null;
 
-            // Same signal, same reason: back on the route line, a standing reroute offer is
-            // moot. Withdrawn silently — the pilot hears nothing more about a route they did not
-            // take — and a later excursion offers afresh.
-            _rerouteOffered = false;
+            // Back on the route line, a standing reroute offer is moot. Withdrawn silently — the
+            // pilot hears nothing more about a route they did not take — and a later excursion
+            // offers afresh. NOT on this test alone, unlike the latch above: the detector also
+            // fires on farBehindStart and goingBackward, and goingBackward does so from 10 m
+            // behind the segment's start (OFF_ROUTE_BEHIND_START_M), inside this tolerance. An
+            // offer raised by a slow wrong-way roll was withdrawn on the next frame, so the key
+            // did nothing and the offer was spoken again after the cooldown.
+            if (Navigation.RerouteOffer.BackOnRoute(true, farBehindStart, goingBackward))
+                EndRerouteOffer();
         }
 
         // NEVER-JOINED ESCAPE. The latch above correctly stops a stand-to-first-taxiway taxi
@@ -4174,15 +4200,18 @@ public partial class TaxiGuidanceManager : IDisposable
         }
 
         // Taking a standing reroute offer (Navigation.RerouteOffer). Never while a paired-crossing
-        // offer is still open: that one is a runway clearance and keeps the key until its window
-        // closes. The route is recalculated from where the aircraft is NOW, not the offer's
-        // position, and adopted with the usual "Route changed" callout, which names its crossings.
-        // Its own refusals ("Off route. Unable to recalculate.") speak as ever; when nothing at all
-        // is said, the press still gets an answer.
+        // offer still STANDS: that one is a runway clearance and keeps the key until its window
+        // closes. Once the pilot has taken it (_pairedCrossingSegIdx is -1 again) the key is free
+        // at once, not when the window would have closed (RerouteOffer.KeyIsFree). The route is
+        // recalculated from where the aircraft is NOW, not the offer's position, and adopted with
+        // the usual "Route changed" callout, which names its crossings. Its own refusals ("Off
+        // route. Unable to recalculate.") speak as ever; when nothing at all is said, the press
+        // still gets an answer.
         if (_state == TaxiGuidanceState.Taxiing && _route != null && _rerouteOffered
-            && MSFSBlindAssist.Utils.SimClock.UtcNow > _pairedCrossingWindowUntil)
+            && Navigation.RerouteOffer.KeyIsFree(
+                _pairedCrossingSegIdx >= 0, MSFSBlindAssist.Utils.SimClock.UtcNow, _pairedCrossingWindowUntil))
         {
-            _rerouteOffered = false;
+            EndRerouteOffer();
             if (!_positionInitialized) return;
             _lastRecalculationTime = DateTime.MinValue;
             // Collected like a position frame's speech (STR-22): a refusal and the fallback
@@ -4666,7 +4695,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // refusal, not stay silent because a prior route already spoke an
         // identically-keyed one (ReachabilityRefusalGate).
         _lastReachabilityRefusalKey = null;
-        _rerouteOffered = false;
+        EndRerouteOffer();
         _lastSpeedWarningTime = DateTime.MinValue;
         _lastIncursionWarningTime = DateTime.MinValue;
         _offRouteSince = DateTime.MinValue;
@@ -4749,7 +4778,7 @@ public partial class TaxiGuidanceManager : IDisposable
             _pendingTaxiwayAnnouncement = null;
             // A reroute offer is a Taxiing-only thing too: at a hold the same key means "cross",
             // and one left standing would be taken by the first press after the hold.
-            _rerouteOffered = false;
+            EndRerouteOffer();
         }
 
         // Lineup must never end in silence. The lineup tone is the pilot's only

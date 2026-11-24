@@ -2505,10 +2505,21 @@ public partial class TaxiGuidanceManager
         // passes, no latch resets, no tone re-slew — so the route being flown is untouched and
         // the tone keeps steering to it. Spoken once per offer; while it stands, the next
         // recalculations end here silently.
+        //
+        // A Turn pick the aircraft has MISSED is said with the offer (turnPickRecalcNote holds
+        // only those here; "could not be kept" is added at adoption, as it describes the route
+        // taken). It is a fact whether or not the offer is taken, the offer can name the very
+        // taxiways of the route being flown (a missed pick is never a no-op, TURN-3), and the tone
+        // keeps steering to the leg the pilot has left: without the sentence nothing says why.
         if (_confirmReroutes && !pilotAccepted)
         {
             if (!_rerouteOffered)
             {
+                string offerText = Navigation.RerouteOffer.Compose(
+                    viaNames, FormatDistance(newRoute.TotalDistanceMeters), _destinationName, turnPickRecalcNote);
+                // Kept so the end of the offer can take it back out of Repeat-last (EndRerouteOffer).
+                _instructionBeforeRerouteOffer = _lastInstruction;
+                _rerouteOfferText = offerText;
                 _rerouteOffered = true;
                 try
                 {
@@ -2517,8 +2528,7 @@ public partial class TaxiGuidanceManager
                                       $"firstBrg={newRoute.Segments[0].BearingDegrees:F1} ac={lat:F6},{lon:F6} hdg={headingTrue:F1}");
                 }
                 catch { /* diagnostic only */ }
-                AnnounceInstruction(Navigation.RerouteOffer.Compose(
-                    viaNames, FormatDistance(newRoute.TotalDistanceMeters), _destinationName));
+                AnnounceInstruction(offerText);
             }
             return false;
         }
@@ -3412,7 +3422,7 @@ public partial class TaxiGuidanceManager
         _pairedCrossingWindowFrom = DateTime.MinValue;
         _pairedCrossingWindowUntil = DateTime.MinValue;
         // And a reroute offer: it was made against the route being replaced.
-        _rerouteOffered = false;
+        EndRerouteOffer();
         _route = route;
     }
 

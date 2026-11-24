@@ -16,7 +16,9 @@ namespace MSFSBlindAssist.Navigation;
 /// those are only known once the route is adopted (its crossing holds are placed then), and the
 /// "Route changed" callout spoken on acceptance names them (<see cref="RouteChangedCallout"/>).</para>
 ///
-/// <para>Pure (strings in, one sentence out) so the wording is pinned by unit tests.</para>
+/// <para>Pure (values in, one sentence or verdict out) so the wording and the three decisions the
+/// manager takes about a standing offer (withdraw it, let the key take it, what Repeat-last says
+/// once it is gone) are pinned by unit tests.</para>
 /// </summary>
 public static class RerouteOffer
 {
@@ -37,15 +39,52 @@ public static class RerouteOffer
     /// <param name="viaNames">Distinct consecutive taxiway names of the offered route, in order.
     /// Empty yields the form with no "via" clause.</param>
     /// <param name="distanceText">Already formatted in the pilot's active unit by the caller.</param>
-    public static string Compose(IReadOnlyList<string> viaNames, string distanceText, string destinationName)
+    /// <param name="notes">Whole sentences that are true NOW, whether or not the offer is taken: a
+    /// Turn pick the aircraft has missed (<c>TurnPickMessages.Missed</c>). They go before the key
+    /// hint, so the hint stays the last thing heard. Never a sentence about the offered route
+    /// alone (a pick it "could not keep"): that is said by "Route changed" if it is taken.</param>
+    public static string Compose(IReadOnlyList<string> viaNames, string distanceText, string destinationName,
+        IReadOnlyList<string>? notes = null)
     {
         string lead = viaNames.Count > 0
             ? $"Off route. New route available via {string.Join(", ", viaNames)}"
             : "Off route. New route available";
-        return $"{lead}. {distanceText} to {destinationName}. {AcceptHint}";
+        string noteText = notes is { Count: > 0 } ? string.Join(" ", notes) + " " : "";
+        return $"{lead}. {distanceText} to {destinationName}. {noteText}{AcceptHint}";
     }
 
     /// <summary>Appended to the taxi status (] Y) while an offer stands, so an offer the pilot
     /// missed can still be found.</summary>
     public static string StatusSuffix => $" New route offered. {AcceptHint}";
+
+    /// <summary>
+    /// True when the excursion that raised an offer is over, so the offer is withdrawn: the aircraft
+    /// is back within the route's own tolerance AND neither of the off-route detector's other two
+    /// triggers still holds. Being inside the tolerance is not enough on its own: the detector also
+    /// fires on a wrong-way roll from only 10 m behind the segment's start
+    /// (<c>OFF_ROUTE_BEHIND_START_M</c>), well inside the 25 m tolerance, so an offer raised there
+    /// was withdrawn on the very next frame, the key did nothing, and the offer was spoken again
+    /// after the cooldown.
+    /// </summary>
+    public static bool BackOnRoute(bool withinRouteTolerance, bool farBehindStart, bool goingBackward)
+        => withinRouteTolerance && !farBehindStart && !goingBackward;
+
+    /// <summary>
+    /// True when Continue may take a standing reroute offer. A paired-runway crossing offer that
+    /// still stands keeps the key until its window closes (it is a runway clearance); once the
+    /// pilot has taken it, or none was made, the key is free at once. Testing the window's end
+    /// alone left a press unanswered for the rest of the window after the paired offer was taken.
+    /// </summary>
+    public static bool KeyIsFree(bool pairedCrossingOfferStands, DateTime now, DateTime pairedCrossingWindowUntil)
+        => !pairedCrossingOfferStands || now > pairedCrossingWindowUntil;
+
+    /// <summary>
+    /// What Repeat-last (Ctrl+Y) holds once an offer is gone: if it still holds the offer, the
+    /// instruction it replaced, so the pilot is never told to press a key for an offer that no
+    /// longer stands; anything spoken since the offer is kept.
+    /// </summary>
+    public static string InstructionAfterOffer(string lastInstruction, string? offerText, string instructionBeforeOffer)
+        => offerText != null && string.Equals(lastInstruction, offerText, StringComparison.Ordinal)
+            ? instructionBeforeOffer
+            : lastInstruction;
 }
