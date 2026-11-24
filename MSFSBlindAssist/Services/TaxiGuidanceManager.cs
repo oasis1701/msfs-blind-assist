@@ -1775,6 +1775,26 @@ public partial class TaxiGuidanceManager : IDisposable
     // a graph carrying the older names.
     private long _whereAmICacheEpoch;
 
+    // The named holding points the taxi planner last resolved, with the airport they belong to.
+    // Positions only: Where Am I reads them and never touches a graph for them.
+    private string _whereAmIHoldingPointsIcao = "";
+    private IReadOnlyList<NamedHoldingPoint> _whereAmIHoldingPoints = Array.Empty<NamedHoldingPoint>();
+
+    /// <summary>
+    /// Hands Where Am I the airport's named holding points as the taxi planner resolved them
+    /// (painted ones and sign-read ones), so its answer on a taxiway can add "near holding
+    /// point KK". Until the planner has loaded the airport there are none and nothing is added.
+    /// </summary>
+    public void SetNamedHoldingPoints(string icao, IEnumerable<NamedHoldingPoint> points)
+    {
+        var copy = points.ToArray();
+        lock (_stateLock)
+        {
+            _whereAmIHoldingPointsIcao = icao ?? "";
+            _whereAmIHoldingPoints = copy;
+        }
+    }
+
     /// <summary>
     /// Which database the runway geometry came from, as a number: moved by every database switch
     /// (<see cref="ClearWhereAmICache"/>). Anything read through a provider is stored only while
@@ -1909,6 +1929,13 @@ public partial class TaxiGuidanceManager : IDisposable
         string description = graph.DescribeLocation(lat, lon);
         if (string.IsNullOrEmpty(description))
             return $"Not on a known taxiway or ramp at {icao}.";
+
+        IReadOnlyList<NamedHoldingPoint>? holdingPoints;
+        lock (_stateLock)
+            holdingPoints = string.Equals(_whereAmIHoldingPointsIcao, icao, StringComparison.OrdinalIgnoreCase)
+                ? _whereAmIHoldingPoints : null;
+        description = NamedHoldingPointNearby.Describe(
+            description, NamedHoldingPointNearby.Find(holdingPoints, lat, lon));
 
         return $"{description} at {icao}.";
     }

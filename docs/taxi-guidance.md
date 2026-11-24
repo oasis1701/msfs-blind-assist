@@ -749,6 +749,8 @@ See `MSFSBlindAssist/Hotkeys/HotkeyManager.cs`:
 
 ### Where Am I implementation
 
+**Named holding points (2026-11-24).** On a taxiway answer ("Taxiway K", "Near taxiway K") Where Am I adds ", near holding point KK" when the aircraft is within `NamedHoldingPointNearby.MaxMetres` (60 m) of a named holding point. The points are the ones `TaxiAssistForm.ResolveNamedHoldingPoints` placed on the navdata taxiways, painted and sign-read ([HLD-18]), handed over by position through `TaxiGuidanceManager.SetNamedHoldingPoints`. Where Am I resolves nothing itself and changes no graph, so [RTE-12] and [RTE-30] are untouched. Until the taxi planner has loaded that airport's points nothing is added, and a stand or runway answer is never extended.
+
 `HotkeyAction.TaxiWhereAmI` routes to `MainForm.AnnounceWhereAmI()`, which:
 
 1. **Air/ground gate.** Reads the cached `MainForm._lastOnGround` (kept fresh by the `SIM_ON_GROUND` event handler). If airborne, announces `"In flight."` and returns — Where Am I is ground-only by design (the LocationInfo hotkey covers airborne city/terrain queries).

@@ -40,6 +40,9 @@ Where Am I tells you, in one short sentence, what is under your aircraft right n
    - *"Gate A25 at KJFK."*
    - *"Runway 22L at KJFK."*
    - *"Near taxiway K at EGLL."*
+   - *"Taxiway K, near holding point KK at OMDB."*
+
+On a taxiway, BA adds a named holding point when you are within about 60 metres of one. It knows an airport's holding points once the Taxi Assist window has loaded that airport with the online names setting switched on; before that, you hear the taxiway alone.
 
 ### What you will hear {#where-am-i-hear}
 

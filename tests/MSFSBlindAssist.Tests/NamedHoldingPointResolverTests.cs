@@ -395,4 +395,31 @@ public class NamedHoldingPointResolverTests
     {
         Assert.Equal(expected, new NamedHoldingPoint { Name = "KK", Kind = kind }.IsFromSign);
     }
+
+    // Where Am I: "Taxiway K, near holding point KK". Equator: 0.0001 degrees is 11.1 m.
+    private static NamedHoldingPoint At(string name, double lat, double lon)
+        => new() { Name = name, Kind = "sign", Latitude = lat, Longitude = lon };
+
+    [Fact]
+    public void Nearby_names_the_nearest_point_within_reach_and_none_beyond_it()
+    {
+        var points = new[] { At("KK", 0.0, 0.0010), At("KG", 0.0, 0.0030) };
+
+        Assert.Equal("KK", NamedHoldingPointNearby.Find(points, 0.0, 0.0012)!.Name);   // 22 m from KK
+        Assert.Equal("KG", NamedHoldingPointNearby.Find(points, 0.0, 0.0027)!.Name);   // 33 m from KG
+        Assert.Null(NamedHoldingPointNearby.Find(points, 0.0, 0.0020));                // 111 m from both
+        Assert.Null(NamedHoldingPointNearby.Find(null, 0.0, 0.0010));
+        Assert.Null(NamedHoldingPointNearby.Find(Array.Empty<NamedHoldingPoint>(), 0.0, 0.0010));
+    }
+
+    [Theory]
+    [InlineData("Taxiway K", "Taxiway K, near holding point KK")]
+    [InlineData("Near taxiway K", "Near taxiway K, near holding point KK")]
+    [InlineData("Gate A25", "Gate A25")]
+    [InlineData("Runway 30R", "Runway 30R")]
+    public void Nearby_adds_the_point_to_a_taxiway_answer_only(string description, string expected)
+    {
+        Assert.Equal(expected, NamedHoldingPointNearby.Describe(description, At("KK", 0, 0)));
+        Assert.Equal(description, NamedHoldingPointNearby.Describe(description, null));
+    }
 }

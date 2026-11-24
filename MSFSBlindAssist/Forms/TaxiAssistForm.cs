@@ -4600,6 +4600,9 @@ public class TaxiAssistForm : Form
                 $"  {hp.Name} -> node {hp.NodeId}, {hp.SnapDistanceMeters:F1} m, " +
                 $"designated={hp.SnappedToDesignatedNode}, projected={hp.InsertedOnEdge}, " +
                 $"kind={(hp.Kind.Length > 0 ? hp.Kind : "-")}");
+
+        // Where Am I names the point the aircraft is near; it has no resolver of its own.
+        _guidanceManager.SetNamedHoldingPoints(_currentIcao, _namedHoldingPoints);
     }
 
     /// <summary>

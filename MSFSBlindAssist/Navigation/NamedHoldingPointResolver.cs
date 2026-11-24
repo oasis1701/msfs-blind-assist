@@ -380,3 +380,42 @@ public static class NamedHoldingPointResolver
         return a.SnapDistanceMeters < b.SnapDistanceMeters;
     }
 }
+
+/// <summary>
+/// Which named holding point an aircraft position is near, for Where Am I ("Taxiway K, near
+/// holding point KK"). Pure: it reads the positions the resolver already placed on the navdata
+/// taxiways and changes no graph, so it is safe on Where Am I's pool thread.
+/// </summary>
+public static class NamedHoldingPointNearby
+{
+    /// <summary>
+    /// How close the aircraft must be to a point for the point to be named. The aircraft's
+    /// position is its centre, tens of metres behind the nose that stops at the line, and
+    /// OMDB's sign-read points along K are about 200 m apart, so 60 m names the point being
+    /// held at and never its neighbour.
+    /// </summary>
+    public const double MaxMetres = 60.0;
+
+    /// <summary>The nearest point within <see cref="MaxMetres"/>, or null.</summary>
+    public static NamedHoldingPoint? Find(IEnumerable<NamedHoldingPoint>? points, double lat, double lon)
+    {
+        NamedHoldingPoint? best = null;
+        double bestMetres = MaxMetres;
+        foreach (var point in points ?? Array.Empty<NamedHoldingPoint>())
+        {
+            double metres = TaxiGraph.FastDistanceMeters(lat, lon, point.Latitude, point.Longitude);
+            if (metres <= bestMetres) { bestMetres = metres; best = point; }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// A taxiway answer with the point added; any other answer (a stand, a runway, nothing)
+    /// comes back unchanged, because a stand or a runway is the more exact thing to say.
+    /// </summary>
+    public static string Describe(string description, NamedHoldingPoint? point)
+        => point != null && (description.StartsWith("Taxiway ", StringComparison.Ordinal)
+                             || description.StartsWith("Near taxiway ", StringComparison.Ordinal))
+            ? $"{description}, near holding point {point.Name}"
+            : description;
+}
