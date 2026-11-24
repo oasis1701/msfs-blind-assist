@@ -7,21 +7,31 @@ namespace MSFSBlindAssist.Accessibility;
 /// The screen readers Prism (the Prismatoid package, its native prism.dll) can reach, for
 /// <see cref="ScreenReaderOutput"/>. One Prism context for the life of the process, created on first use.
 ///
-/// <para>Prism's speech engines (SAPI, OneCore) and its UI Automation backend are left out: the announcer keeps its
-/// own System.Speech voice for SAPI, and UIA needs explicit selection and a window, and cannot tell whether anything
-/// is listening. Everything else Prism registers is a screen reader (NVDA, JAWS, ZDSR, PC-Talker, Boy PC Reader,
-/// ZoomText, Sense Reader, System Access, Window-Eyes) and is tried in Prism's priority order.</para>
+/// <para>Only the screen readers are used (<see cref="IsScreenReader"/>: NVDA, JAWS, ZDSR, PC-Talker, Boy PC Reader,
+/// ZoomText, Sense Reader, System Access, Window-Eyes), in Prism's priority order. Prism's speech engines (SAPI,
+/// OneCore) and its UI Automation backend are not: the announcer keeps its own System.Speech voice for SAPI, and UIA
+/// needs explicit selection and a window, and cannot tell whether anything is listening. The readers are named one
+/// by one, so a backend a later Prism adds is used only once it is added here: a speech engine always starts, and
+/// taken for a screen reader it would be "detected" on every PC.</para>
 ///
 /// <para>Readers load what they need from their own installation: ZDSR's ZDSRAPI_x64.dll is found through ZDSR's
 /// registry path, NVDA is reached over its own RPC endpoint (no nvdaControllerClient.dll), JAWS over COM. Nothing of
 /// theirs is shipped.</para>
+///
+/// <para>Not safe to call from several threads as it stands (JAWS's COM connection belongs to the thread that made
+/// it): <see cref="ScreenReaderOutput.Shared"/> wraps it in <see cref="SingleThreadScreenReaderBackends"/>.</para>
 /// </summary>
 internal sealed class PrismScreenReaderBackends : IScreenReaderBackends
 {
-    private static readonly HashSet<PrismBackendId> NotScreenReaders = new()
+    private static readonly HashSet<PrismBackendId> ScreenReaders = new()
     {
-        PrismBackendId.Sapi, PrismBackendId.OneCore, PrismBackendId.Uia,
+        PrismBackendId.Nvda, PrismBackendId.PcTalker, PrismBackendId.Zdsr, PrismBackendId.BoyPcReader,
+        PrismBackendId.Jaws, PrismBackendId.ZoomText, PrismBackendId.SenseReader, PrismBackendId.SystemAccess,
+        PrismBackendId.WindowEyes,
     };
+
+    /// <summary>Whether a Prism backend is a screen reader MSFS Blind Assist speaks through.</summary>
+    internal static bool IsScreenReader(PrismBackendId id) => ScreenReaders.Contains(id);
 
     private readonly PrismContext _context;
 
@@ -30,7 +40,7 @@ internal sealed class PrismScreenReaderBackends : IScreenReaderBackends
         RouteLog();
         _context = new PrismContext();
         Candidates = _context.AvailableBackends
-            .Where(info => !NotScreenReaders.Contains(info.Id))
+            .Where(info => IsScreenReader(info.Id))
             .OrderByDescending(info => info.Priority)
             .Select(info => new ScreenReaderCandidate(info.Id.Value, info.Name, info.Priority))
             .ToList();

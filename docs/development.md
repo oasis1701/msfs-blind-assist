@@ -42,6 +42,7 @@ This document contains development notes, key files, and dependencies for MSFS B
 - **`Accessibility/ScreenReaderAnnouncer.cs`**: Announcements to the screen reader, else SAPI
 - **`Accessibility/ScreenReaderOutput.cs`**: Which screen reader announcements go to, speech and braille (see [architecture.md](architecture.md#screenreaderoutput-and-prismscreenreaderbackends-every-screen-reader-through-prism))
 - **`Accessibility/PrismScreenReaderBackends.cs`**: The screen readers Prism reaches
+- **`Accessibility/SingleThreadScreenReaderBackends.cs`**: Runs every call to them on one thread
 
 ### Database System
 

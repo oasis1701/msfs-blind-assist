@@ -18,10 +18,13 @@ public class ScreenReaderOutputTests
         public bool CanSpeak => !Source.Mute.Contains(Name);
         public bool CanBraille => !Source.NoBrailleSupport.Contains(Name);
         public bool Disposed;
+        /// <summary>The reader restarted since this connection was made: Prism's NVDA connection does not reconnect.</summary>
+        public bool Stale;
         public void Speak(string text, bool interrupt)
         {
             lock (Source)
             {
+                if (Stale) throw new InvalidOperationException($"{Name} restarted; this connection is gone");
                 if (Source.Dead.Contains(Name)) throw new InvalidOperationException($"{Name} closed");
                 if (Source.WarmingUp.Contains(Name)) throw new InvalidOperationException($"{Name} still starting");
                 Source.Spoken.Add((Name, text, interrupt));
@@ -79,6 +82,13 @@ public class ScreenReaderOutputTests
 
         /// <summary>A reader starts (again).</summary>
         public void Open(string name) { Running.Add(name); Dead.Remove(name); }
+
+        /// <summary>A reader closes and starts again between two messages: it runs, but every connection made
+        /// before is gone for good.</summary>
+        public void Restart(string name)
+        {
+            lock (this) { foreach (var reader in Made.Where(r => r.Name == name)) reader.Stale = true; }
+        }
     }
 
     private sealed class Rig
@@ -390,6 +400,194 @@ public class ScreenReaderOutputTests
         Assert.False(rig.Output.TrySpeak("", false));
 
         Assert.Empty(rig.Source.Spoken);
+    }
+
+    [Fact]
+    public void A_reader_that_restarted_takes_the_same_message_over_a_fresh_connection()
+    {
+        var rig = new Rig();
+        rig.Source.Running.Add("NVDA");
+        Assert.True(rig.Output.TrySpeak("Before", false));
+        var old = rig.Source.Made.Single();
+
+        rig.Source.Restart("NVDA");
+
+        // Not SAPI for this message and the next five seconds: NVDA is running, only the old connection is gone.
+        Assert.True(rig.Output.TrySpeak("After", true));
+        Assert.Equal(("NVDA", "After", true), rig.Source.Spoken[^1]);
+        Assert.Equal("NVDA", rig.Output.ActiveReaderName);
+        Assert.True(old.Disposed);
+    }
+
+    [Fact]
+    public void A_restarted_reader_that_is_not_speaking_yet_gives_the_message_to_the_next_reader()
+    {
+        var rig = new Rig();
+        rig.Source.Running.UnionWith(new[] { "NVDA", "ZDSR" });
+        Assert.True(rig.Output.TrySpeak("Before", false));
+
+        rig.Source.Restart("NVDA");
+        rig.Source.WarmingUp.Add("NVDA");
+
+        Assert.True(rig.Output.TrySpeak("After", false));
+        Assert.Equal(("ZDSR", "After", false), rig.Source.Spoken[^1]);
+    }
+
+    [Fact]
+    public void A_reader_that_never_spoke_is_connected_once_per_message()
+    {
+        var rig = new Rig();
+        rig.Source.Running.Add("NVDA");
+        rig.Source.WarmingUp.Add("NVDA");
+
+        Assert.False(rig.Output.TrySpeak("One", false));
+
+        // The fresh connection is for a reader that spoke before; one that has not spoken yet is not tried twice.
+        Assert.Equal(1, rig.Source.Creates["NVDA"]);
+    }
+
+    [Fact]
+    public void The_reader_in_use_is_kept_while_a_better_one_is_not_speaking_yet()
+    {
+        var rig = new Rig();
+        rig.Source.Running.Add("ZDSR");
+        Assert.True(rig.Output.TrySpeak("One", false));
+        var inUse = rig.Source.Made.Single(r => r.Name == "ZDSR");
+
+        rig.Source.Open("NVDA");
+        rig.Source.WarmingUp.Add("NVDA");
+        rig.Advance(ScreenReaderOutput.RescanIntervalMs);
+        Assert.True(rig.Output.TrySpeak("Two", false));
+
+        // Closing ZDSR's connection can drop what it has queued, so it stays open until NVDA has spoken.
+        Assert.Equal(("ZDSR", "Two", false), rig.Source.Spoken[^1]);
+        Assert.False(inUse.Disposed);
+        Assert.Equal(1, rig.Source.Creates["ZDSR"]);
+        Assert.True(rig.Source.Made.Single(r => r.Name == "NVDA").Disposed);
+    }
+
+    [Fact]
+    public void A_better_reader_that_keeps_failing_is_tried_less_and_less_often()
+    {
+        var rig = new Rig();
+        rig.Source.Running.Add("ZDSR");
+        Assert.True(rig.Output.TrySpeak("Zero", false));
+        rig.Source.Open("NVDA");
+        rig.Source.WarmingUp.Add("NVDA");
+        int Tried() => rig.Source.Made.Count(r => r.Name == "NVDA");
+
+        // Tried at 5 s and 10 s, then after 10 s more (20 s), then after 20 s more (40 s).
+        var triedAt = new List<int>();
+        for (int seconds = 5; seconds <= 40; seconds += 5)
+        {
+            int before = Tried();
+            rig.Advance(5000);
+            Assert.True(rig.Output.TrySpeak($"At {seconds}", false));
+            if (Tried() > before) triedAt.Add(seconds);
+        }
+
+        Assert.Equal(new[] { 5, 10, 20, 40 }, triedAt);
+        Assert.All(rig.Source.Spoken, s => Assert.Equal("ZDSR", s.Reader));
+    }
+
+    [Fact]
+    public void A_better_reader_that_failed_before_takes_over_once_it_speaks()
+    {
+        var rig = new Rig();
+        rig.Source.Running.Add("ZDSR");
+        Assert.True(rig.Output.TrySpeak("One", false));
+        rig.Source.Open("NVDA");
+        rig.Source.WarmingUp.Add("NVDA");
+        rig.Advance(5000);
+        Assert.True(rig.Output.TrySpeak("Two", false));
+        rig.Advance(5000);
+        Assert.True(rig.Output.TrySpeak("Three", false));
+
+        rig.Source.WarmingUp.Remove("NVDA");
+        rig.Advance(10_000);
+        Assert.True(rig.Output.TrySpeak("Four", true));
+
+        Assert.Equal(("NVDA", "Four", true), rig.Source.Spoken[^1]);
+        Assert.Equal("NVDA", rig.Output.ActiveReaderName);
+        Assert.True(rig.Source.Made.Single(r => r.Name == "ZDSR").Disposed);
+        Assert.Equal(("NVDA", "Four"), rig.Source.Brailled[^1]);
+    }
+
+    [Fact]
+    public void DetectNow_keeps_the_reader_in_use_when_a_better_one_has_only_just_started()
+    {
+        var rig = new Rig();
+        rig.Source.Running.Add("ZDSR");
+        Assert.True(rig.Output.TrySpeak("One", false));
+        var inUse = rig.Source.Made.Single(r => r.Name == "ZDSR");
+        rig.Source.Open("NVDA");
+        rig.Source.WarmingUp.Add("NVDA");
+
+        // Settings names the reader BA speaks through now; NVDA is given the next message, whatever the throttle.
+        Assert.Equal("ZDSR", rig.Output.DetectNow());
+        Assert.False(inUse.Disposed);
+        int nvdaConnections = rig.Source.Made.Count(r => r.Name == "NVDA");
+
+        Assert.True(rig.Output.TrySpeak("Two", false));
+        Assert.Equal(("ZDSR", "Two", false), rig.Source.Spoken[^1]);
+        Assert.Equal(nvdaConnections + 1, rig.Source.Made.Count(r => r.Name == "NVDA"));
+    }
+
+    [Fact]
+    public void With_no_reader_for_two_minutes_readers_are_looked_for_every_thirty_seconds()
+    {
+        var rig = new Rig();
+        Assert.False(rig.Output.TrySpeak("At 0", false));
+        for (int seconds = 5; seconds <= 120; seconds += 5)
+        {
+            rig.Advance(5000);
+            Assert.False(rig.Output.TrySpeak($"At {seconds}", false));
+        }
+        Assert.Equal(25, rig.Source.Creates["NVDA"]);   // every 5 s, 0 to 120 s
+
+        rig.Advance(5000);
+        Assert.False(rig.Output.TrySpeak("At 125", false));
+        Assert.Equal(25, rig.Source.Creates["NVDA"]);
+
+        rig.Advance(25_000);
+        rig.Source.Open("JAWS");
+        Assert.True(rig.Output.TrySpeak("At 150", false));
+        Assert.Equal(26, rig.Source.Creates["NVDA"]);
+        Assert.Equal(("JAWS", "At 150", false), rig.Source.Spoken[^1]);
+    }
+
+    [Fact]
+    public void A_reader_that_ran_and_closed_is_looked_for_every_five_seconds_again()
+    {
+        var rig = new Rig();
+        Assert.False(rig.Output.TrySpeak("At 0", false));
+        rig.Advance(200_000);
+        rig.Source.Open("ZDSR");
+        Assert.True(rig.Output.TrySpeak("Found", false));
+
+        rig.Source.Close("ZDSR");
+        Assert.False(rig.Output.TrySpeak("Closed", false));
+        int looks = rig.Source.Creates["NVDA"];
+
+        rig.Advance(5000);
+        Assert.False(rig.Output.TrySpeak("Five seconds on", false));
+        Assert.Equal(looks + 1, rig.Source.Creates["NVDA"]);
+    }
+
+    [Fact]
+    public void Opening_Settings_brings_the_five_second_look_back()
+    {
+        var rig = new Rig();
+        Assert.False(rig.Output.TrySpeak("At 0", false));
+        rig.Advance(200_000);
+        Assert.False(rig.Output.TrySpeak("Slow by now", false));
+
+        Assert.Null(rig.Output.DetectNow());
+        int looks = rig.Source.Creates["NVDA"];
+
+        rig.Advance(5000);
+        Assert.False(rig.Output.TrySpeak("Five seconds on", false));
+        Assert.Equal(looks + 1, rig.Source.Creates["NVDA"]);
     }
 
     [Fact]
