@@ -1,0 +1,1225 @@
+[
+  {
+    "key": 6,
+    "class": "HOME",
+    "controls": []
+  },
+  {
+    "key": 8,
+    "class": "NAVIGATION",
+    "controls": []
+  },
+  {
+    "key": 10,
+    "class": "CHECKLIST",
+    "controls": []
+  },
+  {
+    "key": 12,
+    "class": "SETTINGS",
+    "controls": []
+  },
+  {
+    "key": 9,
+    "class": "SYSTEMS",
+    "controls": []
+  },
+  {
+    "key": 7,
+    "class": "AIRCRAFT",
+    "controls": [
+      {
+        "kind": "grid",
+        "name": "main_grid",
+        "text": "",
+        "x": 0,
+        "y": 32,
+        "w": 1397,
+        "h": 1016,
+        "children": [
+          {
+            "kind": "other",
+            "name": "gradbox_tl",
+            "text": "",
+            "x": 0,
+            "y": 32,
+            "w": 250,
+            "h": 50,
+            "children": [
+              {
+                "kind": "other",
+                "name": "btn_stack",
+                "text": "",
+                "x": 0,
+                "y": 32,
+                "w": 250,
+                "h": 50,
+                "children": [
+                  {
+                    "kind": "button",
+                    "name": "home_btn",
+                    "text": "",
+                    "x": 0,
+                    "y": 32,
+                    "w": 50,
+                    "h": 50,
+                    "children": []
+                  },
+                  {
+                    "kind": "label",
+                    "name": "page_title_label",
+                    "text": "AIRCRAFT",
+                    "x": 60,
+                    "y": 41.5,
+                    "w": 148,
+                    "h": 36,
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "other",
+            "name": "gradbox_tr",
+            "text": "",
+            "x": 250,
+            "y": 32,
+            "w": 1147,
+            "h": 50,
+            "children": []
+          },
+          {
+            "kind": "other",
+            "name": "gradbox_br",
+            "text": "",
+            "x": 0,
+            "y": 82,
+            "w": 250,
+            "h": 966,
+            "children": [
+              {
+                "kind": "grid",
+                "name": "control_grid",
+                "text": "",
+                "x": 0,
+                "y": 82,
+                "w": 250,
+                "h": 966,
+                "children": [
+                  {
+                    "kind": "other",
+                    "name": "btn_stack",
+                    "text": "",
+                    "x": 0,
+                    "y": 142,
+                    "w": 250,
+                    "h": 716,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "btn_quick",
+                        "text": "COCKPIT PRESETS",
+                        "x": 0,
+                        "y": 142,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_fuel",
+                        "text": "FUEL",
+                        "x": 0,
+                        "y": 202,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_weight_balance",
+                        "text": "WEIGHT \u0026 BALANCE",
+                        "x": 0,
+                        "y": 262,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_ground_services",
+                        "text": "GROUND SERVICES",
+                        "x": 0,
+                        "y": 322,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_cabin_door",
+                        "text": "CABIN \u0026 DOORS",
+                        "x": 0,
+                        "y": 382,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_maintenance",
+                        "text": "MAINTENANCE",
+                        "x": 0,
+                        "y": 442,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_failures",
+                        "text": "FAILURES",
+                        "x": 0,
+                        "y": 502,
+                        "w": 250,
+                        "h": 60,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "other",
+                    "name": "label_bbs_img",
+                    "text": "./data/efb/bbs_logo_light.png",
+                    "x": 0,
+                    "y": 798,
+                    "w": 250,
+                    "h": 250,
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "kind": "grid",
+        "name": "page_main_grid",
+        "text": "",
+        "x": 0,
+        "y": 32,
+        "w": 1397,
+        "h": 1016,
+        "children": [
+          {
+            "kind": "grid",
+            "name": "page_control_grid",
+            "text": "",
+            "x": 0,
+            "y": 82,
+            "w": 1397,
+            "h": 966,
+            "children": [
+              {
+                "kind": "other",
+                "name": "page_colorbox",
+                "text": "",
+                "x": 250,
+                "y": 82,
+                "w": 1147,
+                "h": 966,
+                "children": [
+                  {
+                    "kind": "other",
+                    "name": "canvas_aircraft",
+                    "text": "",
+                    "x": 250,
+                    "y": 82,
+                    "w": 1147,
+                    "h": 966,
+                    "children": [
+                      {
+                        "kind": "other",
+                        "name": "fuel_left_tank",
+                        "text": "",
+                        "x": 335,
+                        "y": 522,
+                        "w": 285,
+                        "h": 200,
+                        "children": []
+                      },
+                      {
+                        "kind": "other",
+                        "name": "fuel_center_tank",
+                        "text": "",
+                        "x": 625,
+                        "y": 447,
+                        "w": 395,
+                        "h": 204,
+                        "children": []
+                      },
+                      {
+                        "kind": "other",
+                        "name": "fuel_right_tank",
+                        "text": "",
+                        "x": 1025,
+                        "y": 522,
+                        "w": 285,
+                        "h": 200,
+                        "children": []
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_left_tank_label",
+                        "text": "70%",
+                        "x": 474,
+                        "y": 410,
+                        "w": 49,
+                        "h": 30,
+                        "children": []
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_center_tank_label",
+                        "text": "0%",
+                        "x": 806.5,
+                        "y": 330,
+                        "w": 34,
+                        "h": 30,
+                        "children": []
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_right_tank_label",
+                        "text": "70%",
+                        "x": 1124,
+                        "y": 410,
+                        "w": 49,
+                        "h": 30,
+                        "children": []
+                      },
+                      {
+                        "kind": "other",
+                        "name": "label_bg_img",
+                        "text": "./data/efb/aircraft/757fuel.png",
+                        "x": 268.5,
+                        "y": 82,
+                        "w": 1110,
+                        "h": 600,
+                        "children": []
+                      },
+                      {
+                        "kind": "other",
+                        "name": "fuel_slider_section",
+                        "text": "",
+                        "x": 268.5,
+                        "y": 692,
+                        "w": 1110,
+                        "h": 340,
+                        "children": []
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_left_slider_title",
+                        "text": "LEFT",
+                        "x": 453,
+                        "y": 723,
+                        "w": 48,
+                        "h": 24,
+                        "children": []
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_center_slider_title",
+                        "text": "CENTER",
+                        "x": 785,
+                        "y": 723,
+                        "w": 77,
+                        "h": 24,
+                        "children": []
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_right_slider_title",
+                        "text": "RIGHT",
+                        "x": 1143,
+                        "y": 723,
+                        "w": 61,
+                        "h": 24,
+                        "children": []
+                      },
+                      {
+                        "kind": "slider",
+                        "name": "fuel_slider_left",
+                        "text": "",
+                        "x": 377,
+                        "y": 755,
+                        "w": 200,
+                        "h": 20,
+                        "children": []
+                      },
+                      {
+                        "kind": "slider",
+                        "name": "fuel_slider_center",
+                        "text": "",
+                        "x": 722,
+                        "y": 755,
+                        "w": 200,
+                        "h": 20,
+                        "children": []
+                      },
+                      {
+                        "kind": "slider",
+                        "name": "fuel_slider_right",
+                        "text": "",
+                        "x": 1067,
+                        "y": 755,
+                        "w": 200,
+                        "h": 20,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "fuel_left_qty_box",
+                        "text": "",
+                        "x": 377,
+                        "y": 780,
+                        "w": 150,
+                        "h": 34,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "fuel_left_qty",
+                            "text": "1539",
+                            "x": 422,
+                            "y": 782,
+                            "w": 60,
+                            "h": 30,
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_left_qty_unit",
+                        "text": "Gal",
+                        "x": 537,
+                        "y": 785,
+                        "w": 31,
+                        "h": 24,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "fuel_left_weight_box",
+                        "text": "",
+                        "x": 377,
+                        "y": 820,
+                        "w": 150,
+                        "h": 34,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "fuel_left_weight",
+                            "text": "10308",
+                            "x": 414.5,
+                            "y": 822,
+                            "w": 75,
+                            "h": 30,
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_left_weight_unit",
+                        "text": "Lbs",
+                        "x": 537,
+                        "y": 825,
+                        "w": 34,
+                        "h": 24,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "fuel_center_qty_box",
+                        "text": "",
+                        "x": 722,
+                        "y": 780,
+                        "w": 150,
+                        "h": 34,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "fuel_center_qty",
+                            "text": "0",
+                            "x": 789.5,
+                            "y": 782,
+                            "w": 15,
+                            "h": 30,
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_center_qty_unit",
+                        "text": "Gal",
+                        "x": 882,
+                        "y": 785,
+                        "w": 31,
+                        "h": 24,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "fuel_center_weight_box",
+                        "text": "",
+                        "x": 722,
+                        "y": 820,
+                        "w": 150,
+                        "h": 34,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "fuel_center_weight",
+                            "text": "0",
+                            "x": 789.5,
+                            "y": 822,
+                            "w": 15,
+                            "h": 30,
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_center_weight_unit",
+                        "text": "Lbs",
+                        "x": 882,
+                        "y": 825,
+                        "w": 34,
+                        "h": 24,
+                        "children": []
+                      },
+                      {
+                        "kind": "label",
+                        "name": "total_fuel_label",
+                        "text": "TOTAL FUEL",
+                        "x": 542,
+                        "y": 884,
+                        "w": 147,
+                        "h": 30,
+                        "children": []
+                      },
+                      {
+                        "kind": "slider",
+                        "name": "fuel_slider_total",
+                        "text": "",
+                        "x": 722,
+                        "y": 889,
+                        "w": 200,
+                        "h": 20,
+                        "children": []
+                      },
+                      {
+                        "kind": "label",
+                        "name": "total_fuel_perc_label",
+                        "text": "27%",
+                        "x": 942,
+                        "y": 884,
+                        "w": 49,
+                        "h": 30,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "total_fuel_qty_box",
+                        "text": "",
+                        "x": 722,
+                        "y": 914,
+                        "w": 150,
+                        "h": 34,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "total_fuel_qty",
+                            "text": "3077",
+                            "x": 766.5,
+                            "y": 916,
+                            "w": 61,
+                            "h": 30,
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "label",
+                        "name": "total_fuel_qty_unit",
+                        "text": "Gal",
+                        "x": 882,
+                        "y": 919,
+                        "w": 31,
+                        "h": 24,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "total_fuel_weight_box",
+                        "text": "",
+                        "x": 722,
+                        "y": 954,
+                        "w": 150,
+                        "h": 34,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "total_fuel_weight",
+                            "text": "20617",
+                            "x": 759,
+                            "y": 956,
+                            "w": 76,
+                            "h": 30,
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "label",
+                        "name": "total_fuel_weight_unit",
+                        "text": "Lbs",
+                        "x": 882,
+                        "y": 959,
+                        "w": 34,
+                        "h": 24,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "fuel_right_qty_box",
+                        "text": "",
+                        "x": 1067,
+                        "y": 780,
+                        "w": 150,
+                        "h": 34,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "fuel_right_qty",
+                            "text": "1539",
+                            "x": 1112,
+                            "y": 782,
+                            "w": 60,
+                            "h": 30,
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_right_qty_unit",
+                        "text": "Gal",
+                        "x": 1227,
+                        "y": 785,
+                        "w": 31,
+                        "h": 24,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "fuel_right_weight_box",
+                        "text": "",
+                        "x": 1067,
+                        "y": 820,
+                        "w": 150,
+                        "h": 34,
+                        "children": [
+                          {
+                            "kind": "label",
+                            "name": "fuel_right_weight",
+                            "text": "10308",
+                            "x": 1104.5,
+                            "y": 822,
+                            "w": 75,
+                            "h": 30,
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "label",
+                        "name": "fuel_right_weight_unit",
+                        "text": "Lbs",
+                        "x": 1227,
+                        "y": 825,
+                        "w": 34,
+                        "h": 24,
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "key": 5,
+    "class": "SIGN IN",
+    "controls": []
+  },
+  {
+    "key": 2,
+    "class": "app",
+    "controls": [
+      {
+        "kind": "grid",
+        "name": "kb_grid",
+        "text": "",
+        "x": 0,
+        "y": 648,
+        "w": 1397,
+        "h": 400,
+        "children": [
+          {
+            "kind": "grid",
+            "name": "keyboard_grid_container",
+            "text": "",
+            "x": 0,
+            "y": 708,
+            "w": 1396.9999,
+            "h": 340,
+            "children": [
+              {
+                "kind": "grid",
+                "name": "row_1",
+                "text": "",
+                "x": 0,
+                "y": 708,
+                "w": 1396.9999,
+                "h": 85,
+                "children": [
+                  {
+                    "kind": "button",
+                    "name": "btn_delete",
+                    "text": "COMMAND_DELETE",
+                    "x": 5,
+                    "y": 713,
+                    "w": 138.49994,
+                    "h": 75,
+                    "children": []
+                  },
+                  {
+                    "kind": "grid",
+                    "name": "row_1_keys",
+                    "text": "",
+                    "x": 148.49994,
+                    "y": 708,
+                    "w": 1100,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "char_btn_q|Q|1",
+                        "text": "q|Q|1",
+                        "x": 153.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_w|W|2",
+                        "text": "w|W|2",
+                        "x": 263.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_e|E|3",
+                        "text": "e|E|3",
+                        "x": 373.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_r|R|4",
+                        "text": "r|R|4",
+                        "x": 483.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_t|T|5",
+                        "text": "t|T|5",
+                        "x": 593.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_y|Y|6",
+                        "text": "y|Y|6",
+                        "x": 703.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_u|U|7",
+                        "text": "u|U|7",
+                        "x": 813.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_i|I|8",
+                        "text": "i|I|8",
+                        "x": 923.49994,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_o|O|9",
+                        "text": "o|O|9",
+                        "x": 1033.5,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_p|P|0",
+                        "text": "p|P|0",
+                        "x": 1143.5,
+                        "y": 713,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "button",
+                    "name": "btn_backspace",
+                    "text": "COMMAND_BACKSPACE",
+                    "x": 1253.5,
+                    "y": 713,
+                    "w": 138.49994,
+                    "h": 75,
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "grid",
+                "name": "row_2",
+                "text": "",
+                "x": 0,
+                "y": 793,
+                "w": 1396.9999,
+                "h": 85,
+                "children": [
+                  {
+                    "kind": "button",
+                    "name": "btn_tab",
+                    "text": "COMMAND_TAB",
+                    "x": 5,
+                    "y": 798,
+                    "w": 193.49994,
+                    "h": 75,
+                    "children": []
+                  },
+                  {
+                    "kind": "grid",
+                    "name": "row_2_keys",
+                    "text": "",
+                    "x": 203.49994,
+                    "y": 793,
+                    "w": 990,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "char_btn_a|A|@",
+                        "text": "a|A|@",
+                        "x": 208.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_s|S|#",
+                        "text": "s|S|#",
+                        "x": 318.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_d|D|$",
+                        "text": "d|D|$",
+                        "x": 428.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_f|F|\u0026",
+                        "text": "f|F|\u0026",
+                        "x": 538.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_g|G|*",
+                        "text": "g|G|*",
+                        "x": 648.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_h|H|(",
+                        "text": "h|H|(",
+                        "x": 758.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_j|J|)",
+                        "text": "j|J|)",
+                        "x": 868.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_k|K|\u0027",
+                        "text": "k|K|\u0027",
+                        "x": 978.49994,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_l|L|\u0022",
+                        "text": "l|L|\u0022",
+                        "x": 1088.5,
+                        "y": 798,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "button",
+                    "name": "btn_enter",
+                    "text": "COMMAND_ENTER",
+                    "x": 1198.5,
+                    "y": 798,
+                    "w": 193.49994,
+                    "h": 75,
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "grid",
+                "name": "row_3",
+                "text": "",
+                "x": 0,
+                "y": 878,
+                "w": 1396.9999,
+                "h": 85,
+                "children": [
+                  {
+                    "kind": "grid",
+                    "name": "row_3_left_grid",
+                    "text": "",
+                    "x": 0,
+                    "y": 878,
+                    "w": 260,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "btn_double_shift",
+                        "text": "COMMAND_DOUBLE_SHIFT",
+                        "x": 5,
+                        "y": 883,
+                        "w": 120,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_shift2",
+                        "text": "COMMAND_SHIFT",
+                        "x": 135,
+                        "y": 883,
+                        "w": 120,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "grid",
+                    "name": "row_3_keys",
+                    "text": "",
+                    "x": 260,
+                    "y": 878,
+                    "w": 770,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "char_btn_z|Z|%",
+                        "text": "z|Z|%",
+                        "x": 265,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_x|X|-",
+                        "text": "x|X|-",
+                        "x": 375,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_c|C|\u002B",
+                        "text": "c|C|\u002B",
+                        "x": 485,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_v|V|=",
+                        "text": "v|V|=",
+                        "x": 595,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_b|B|/",
+                        "text": "b|B|/",
+                        "x": 705,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_n|N|;",
+                        "text": "n|N|;",
+                        "x": 815,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "char_btn_m|M|:",
+                        "text": "m|M|:",
+                        "x": 925,
+                        "y": 883,
+                        "w": 100,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "grid",
+                    "name": "row_3_right_grid",
+                    "text": "",
+                    "x": 1030,
+                    "y": 878,
+                    "w": 366.99988,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "btn_exclamation",
+                        "text": ",|,|!",
+                        "x": 1035,
+                        "y": 883,
+                        "w": 96.42996,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_question",
+                        "text": ".|.|?",
+                        "x": 1141.4299,
+                        "y": 883,
+                        "w": 96.42996,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_shift",
+                        "text": "COMMAND_SHIFT",
+                        "x": 1247.8599,
+                        "y": 883,
+                        "w": 144.13994,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "grid",
+                "name": "row_4",
+                "text": "",
+                "x": 0,
+                "y": 963,
+                "w": 1396.9999,
+                "h": 85,
+                "children": [
+                  {
+                    "kind": "grid",
+                    "name": "row_4_left_grid",
+                    "text": "",
+                    "x": 0,
+                    "y": 963,
+                    "w": 348.49994,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "btn_home",
+                        "text": "COMMAND_HOME",
+                        "x": 5,
+                        "y": 968,
+                        "w": 164.24997,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_numeric_switch2",
+                        "text": "COMMAND_NUMERIC_SWITCH",
+                        "x": 179.24997,
+                        "y": 968,
+                        "w": 164.24997,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "button",
+                    "name": "btn_space",
+                    "text": "COMMAND_SPACE",
+                    "x": 353.49994,
+                    "y": 968,
+                    "w": 690,
+                    "h": 75,
+                    "children": []
+                  },
+                  {
+                    "kind": "grid",
+                    "name": "row_4_right_grid",
+                    "text": "",
+                    "x": 1048.5,
+                    "y": 963,
+                    "w": 348.49994,
+                    "h": 85,
+                    "children": [
+                      {
+                        "kind": "button",
+                        "name": "btn_numeric_switch",
+                        "text": "COMMAND_NUMERIC_SWITCH",
+                        "x": 1053.5,
+                        "y": 968,
+                        "w": 164.24997,
+                        "h": 75,
+                        "children": []
+                      },
+                      {
+                        "kind": "button",
+                        "name": "btn_keyboard_down",
+                        "text": "COMMAND_KEYBOARD_DOWN",
+                        "x": 1227.75,
+                        "y": 968,
+                        "w": 164.24997,
+                        "h": 75,
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -121,14 +121,71 @@ internal sealed class FcuValueAnnouncer
         string[] list = keys.ToArray();
         long until = nowMs + EchoWindowMs;
         foreach (string key in list) _echoUntilMs[key] = until;
-        if (forEvent != null) _echoKeysByEvent[forEvent] = list;
+        if (forEvent != null)
+        {
+            _echoKeysByEvent[forEvent] = list;
+            NoteWrite(nowMs);
+        }
     }
 
     /// <summary>A queued event has just been sent: restart the echo window it was armed with.</summary>
     public void RearmEcho(string evt, long nowMs)
     {
-        if (_echoKeysByEvent.TryGetValue(evt, out string[]? keys)) SuppressEcho(keys, nowMs);
+        if (!_echoKeysByEvent.TryGetValue(evt, out string[]? keys)) return;
+        SuppressEcho(keys, nowMs);
+        NoteWrite(nowMs);
     }
+
+    // ---- A readout that follows an MSFSBA FCU event ([A320-42]) ----
+    // A readout's numbers are read on request and answer within a frame, but its WORDS still come
+    // from what the once-a-second batches last delivered (StateOf: dashes or a value; the A380's
+    // derived altitude mode), and the FCU needs a frame or two to act on an event at all. Read
+    // straight after a push or pull, a readout spoke the state from before the press. So after an
+    // MSFSBA event the readout's reads are held until the FCU has had WriteSettleMs and every
+    // continuous batch has then delivered once: the state is then as new as the numbers.
+
+    /// <summary>How long the FCU is given to act on an MSFSBA event before a batch counts as carrying
+    /// its result (the A32NX's old fixed read-back delay).</summary>
+    internal const long WriteSettleMs = 300;
+
+    /// <summary>After this long an event holds no readout, whatever was delivered: batches arrive
+    /// once a second, so three seconds without them is a stream that has stopped.</summary>
+    internal const long WriteHoldMaxMs = 3000;
+
+    private long _writeAtMs;
+    private bool _writePending;
+    private int _batchesKnown;        // bit n: continuous batch n has ever been delivered
+    private int _batchesSinceWrite;   // bit n: batch n has been delivered since the event settled
+
+    /// <summary>MSFSBA has just sent an FCU event. Holds nothing before the first batch of the
+    /// session: there is no stream yet to wait for.</summary>
+    private void NoteWrite(long nowMs)
+    {
+        _writeAtMs = nowMs;
+        _batchesSinceWrite = 0;
+        _writePending = _batchesKnown != 0;
+    }
+
+    /// <summary>True while a readout would speak the state from before MSFSBA's last FCU event.</summary>
+    public bool IsWriteUnsettled(long nowMs) => _writePending && nowMs - _writeAtMs < WriteHoldMaxMs;
+
+    /// <summary>A continuous batch was delivered. True when it is the one that completes the settle
+    /// of MSFSBA's last FCU event: the held readouts may read now.</summary>
+    public bool OnBatchAfterWrite(int batchNum, long nowMs)
+    {
+        if (batchNum is < 1 or > 30) return false;
+        _batchesKnown |= 1 << batchNum;
+        if (!_writePending) return false;
+        long since = nowMs - _writeAtMs;
+        if (since < WriteSettleMs) return false;
+        _batchesSinceWrite |= 1 << batchNum;
+        if (_batchesSinceWrite != _batchesKnown && since < WriteHoldMaxMs) return false;
+        _writePending = false;
+        return true;
+    }
+
+    /// <summary>A flight load or a dropped connection: nothing is waiting on an event any more.</summary>
+    public void ForgetWrite() => _writePending = false;
 
     /// <summary>Record a phrase silently (the words changed but the value did not — MTRS).</summary>
     public void Rebaseline(string key, string? phrase)
@@ -259,7 +316,7 @@ internal static class FcuValuePhrases
     /// less) is the FCU publishing nothing — never "mach 0.00".</summary>
     public static string SpeedReadout(double value, string status) =>
         value <= 0 ? NotAvailableReadout("speed")
-        : value < 10 ? $"FCU speed mach {value:0.00}, {status}"
+        : value < 10 ? FormattableString.Invariant($"FCU speed mach {value:0.00}, {status}")
         : $"FCU speed {value:000} knots, {status}";
 
     /// <summary>The Shift+V readout while the V/S (or FPA) window shows dashes.</summary>
@@ -276,7 +333,7 @@ internal static class FcuValuePhrases
     {
         if (shim < 0) return null;
         if (shim == 0) return Unavailable;
-        return shim < 10 ? $"Mach {shim:F2}" : $"Speed {Math.Round(shim):0} knots";
+        return shim < 10 ? FormattableString.Invariant($"Mach {shim:F2}") : $"Speed {Math.Round(shim):0} knots";
     }
 
     /// <summary>The FCU altitude, already in the unit the pilot reads it in.</summary>
@@ -313,7 +370,7 @@ internal static class FcuValuePhrases
         if (!word.IsNormalOperation) return WordWithoutSelection(word);
         double degrees = Math.Round(word.Value, 1);
         if (degrees == 0) degrees = 0;   // -0.0 would otherwise format as "-0.0"
-        return $"FPA {degrees:0.0} degrees";
+        return FormattableString.Invariant($"FPA {degrees:0.0} degrees");
     }
 
     /// <summary>A word that is not Normal Operation: No Computed Data is the window showing no

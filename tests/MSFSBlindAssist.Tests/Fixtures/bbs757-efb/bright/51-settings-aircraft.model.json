@@ -1,0 +1,483 @@
+{
+  "app": "SETTINGS",
+  "section": "AIRCRAFT",
+  "scrollable": false,
+  "menu": [
+    {
+      "kind": "Menu",
+      "text": "General",
+      "box": [
+        41,
+        152,
+        105,
+        34
+      ],
+      "hit": [
+        130,
+        169
+      ],
+      "clickable": true,
+      "key": "menu:GENERAL",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Aircraft",
+      "box": [
+        38,
+        208,
+        117,
+        41
+      ],
+      "hit": [
+        130,
+        228
+      ],
+      "clickable": true,
+      "key": "menu:AIRCRAFT",
+      "tint": "None",
+      "on": null,
+      "selected": true,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Livery options",
+      "box": [
+        39,
+        271,
+        178,
+        35
+      ],
+      "hit": [
+        130,
+        288
+      ],
+      "clickable": true,
+      "key": "menu:LIVERY OPTIONS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Callouts",
+      "box": [
+        39,
+        329,
+        121,
+        38
+      ],
+      "hit": [
+        130,
+        348
+      ],
+      "clickable": true,
+      "key": "menu:CALLOUTS",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "Cabin audio",
+      "box": [
+        43,
+        394,
+        139,
+        31
+      ],
+      "hit": [
+        130,
+        409
+      ],
+      "clickable": true,
+      "key": "menu:CABIN AUDIO",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Menu",
+      "text": "AIRAC data",
+      "box": [
+        39,
+        451,
+        135,
+        35
+      ],
+      "hit": [
+        130,
+        468
+      ],
+      "clickable": true,
+      "key": "menu:AIRAC DATA",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "items": [
+    {
+      "kind": "Toggle",
+      "text": "Adaptive cockpit lighting",
+      "box": [
+        272,
+        91,
+        347,
+        35
+      ],
+      "hit": [
+        1166,
+        108
+      ],
+      "clickable": true,
+      "key": "tgl:ADAPTIVE COCKPIT LIGHTING",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "Automatic",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "TOD pause distance (NM)",
+      "box": [
+        271,
+        151,
+        323,
+        39
+      ],
+      "hit": [
+        1166,
+        170
+      ],
+      "clickable": true,
+      "key": "tgl:TOD PAUSE DISTANCE (NM)",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Nosewheel steering",
+      "box": [
+        271,
+        211,
+        272,
+        35
+      ],
+      "hit": [
+        1166,
+        228
+      ],
+      "clickable": true,
+      "key": "tgl:NOSEWHEEL STEERING",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "Realistic",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Displays bootup speed",
+      "box": [
+        273,
+        273,
+        304,
+        33
+      ],
+      "hit": [
+        1166,
+        289
+      ],
+      "clickable": true,
+      "key": "tgl:DISPLAYS BOOTUP SPEED",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "Realistic",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Sync barometers",
+      "box": [
+        273,
+        333,
+        237,
+        33
+      ],
+      "hit": [
+        1166,
+        349
+      ],
+      "clickable": true,
+      "key": "tgl:SYNC BAROMETERS",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "Off",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Initial cockpit door",
+      "box": [
+        271,
+        390,
+        274,
+        38
+      ],
+      "hit": [
+        1166,
+        409
+      ],
+      "clickable": true,
+      "key": "tgl:INITIAL COCKPIT DOOR",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "Open",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Parking brake mode",
+      "box": [
+        273,
+        454,
+        270,
+        32
+      ],
+      "hit": [
+        1166,
+        470
+      ],
+      "clickable": true,
+      "key": "tgl:PARKING BRAKE MODE",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "Realistic",
+      "slider": null
+    },
+    {
+      "kind": "Slider",
+      "text": "IRS alignment time",
+      "box": [
+        273,
+        513,
+        255,
+        33
+      ],
+      "hit": [
+        1191,
+        529
+      ],
+      "clickable": true,
+      "key": "sld:IRS ALIGNMENT TIME",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "FULL (7 MIN\u002B)",
+      "slider": [
+        895,
+        1191,
+        1191
+      ]
+    },
+    {
+      "kind": "Slider",
+      "text": "Boarding \u0026 load rate",
+      "box": [
+        273,
+        574,
+        287,
+        32
+      ],
+      "hit": [
+        906,
+        590
+      ],
+      "clickable": true,
+      "key": "sld:BOARDING \u0026 LOAD RATE",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "REALISTIC",
+      "slider": [
+        895,
+        1190,
+        906
+      ]
+    },
+    {
+      "kind": "Toggle",
+      "text": "Automatic boarding",
+      "box": [
+        273,
+        634,
+        275,
+        33
+      ],
+      "hit": [
+        1166,
+        650
+      ],
+      "clickable": true,
+      "key": "tgl:AUTOMATIC BOARDING",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "Off",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Automatic gpu/jetway",
+      "box": [
+        273,
+        694,
+        307,
+        32
+      ],
+      "hit": [
+        1166,
+        710
+      ],
+      "clickable": true,
+      "key": "tgl:AUTOMATIC GPU/JETWAY",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Hoppie ACARS",
+      "box": [
+        271,
+        751,
+        184,
+        37
+      ],
+      "hit": [
+        1166,
+        769
+      ],
+      "clickable": true,
+      "key": "tgl:HOPPIE ACARS",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "Off",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "CPDLC network",
+      "box": [
+        274,
+        812,
+        208,
+        34
+      ],
+      "hit": [
+        1166,
+        829
+      ],
+      "clickable": true,
+      "key": "tgl:CPDLC NETWORK",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "Hoppie",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Initial chocks in place",
+      "box": [
+        272,
+        871,
+        306,
+        36
+      ],
+      "hit": [
+        1166,
+        889
+      ],
+      "clickable": true,
+      "key": "tgl:INITIAL CHOCKS IN PLACE",
+      "tint": "None",
+      "on": true,
+      "selected": false,
+      "value": "On",
+      "slider": null
+    },
+    {
+      "kind": "Toggle",
+      "text": "Dirty panel states",
+      "box": [
+        272,
+        932,
+        259,
+        36
+      ],
+      "hit": [
+        1166,
+        950
+      ],
+      "clickable": true,
+      "key": "tgl:DIRTY PANEL STATES",
+      "tint": "None",
+      "on": false,
+      "selected": false,
+      "value": "Off",
+      "slider": null
+    }
+  ],
+  "topBar": [
+    {
+      "kind": "Button",
+      "text": "Notifications",
+      "box": [
+        1364,
+        6,
+        19,
+        19
+      ],
+      "hit": [
+        1373,
+        15
+      ],
+      "clickable": true,
+      "key": "top:notifications",
+      "tint": "None",
+      "on": null,
+      "selected": false,
+      "value": "",
+      "slider": null
+    }
+  ],
+  "notices": [],
+  "question": null
+}

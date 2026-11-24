@@ -191,6 +191,14 @@ public partial class MainForm : Form
     private CoherentPmdgEfbClient? coherentMd11Efb;
     private Forms.FBWA380.FbwEfbForm? md11EfbForm;
 
+    // MSFS 2024's own tablet (Extras, In-Sim Tablet, for every aircraft): the same shared form and
+    // client, pointed at the sim's "Electronic Flight Bag" view. simTabletImportBusy keeps the
+    // SimBrief import to one run at a time; exit cancels a running one through simTabletImportCts.
+    private CoherentPmdgEfbClient? coherentSimTablet;
+    private Forms.FBWA380.FbwEfbForm? simTabletForm;
+    private bool simTabletImportBusy;
+    private CancellationTokenSource? simTabletImportCts;
+
     // MD-11 monitor manager (Ctrl+M) — the aircraft announces 532 annunciator lamps, so muting
     // them individually is not a nicety here.
     private Forms.MD11.Md11MonitorManagerForm? md11MonitorManagerForm;
@@ -551,6 +559,7 @@ public partial class MainForm : Form
 
         // PMDG 737: the display readers wait for the PMDG SDK themselves, so they start with the aircraft.
         StartPmdg737Displays();
+        StartBbs757Displays();   // likewise the BlueBird 757's, which wait for the simulator themselves
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
@@ -579,8 +588,8 @@ public partial class MainForm : Form
 
         if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
 
-        // A location download started from that dialog may still run: an update accepted now
-        // restarts the app and Shutdown cancels the download without a word. Skip this launch's
+        // A location data download started from those dialogs may still run: an update
+        // accepted now restarts the app and Shutdown cancels the download without a word. Skip this launch's
         // check; the next launch asks again (UPD-9).
         if (locationDataDownloader.IsRunning)
         {
@@ -705,6 +714,8 @@ public partial class MainForm : Form
         // to happen here as well — otherwise every panel row opens without a state, and nothing
         // is described until the pilot's first press. Idempotent: a later switch re-attaches.
         if (currentAircraft is TFDiMD11Definition startupMd11) startupMd11.Attach(simConnectManager);
+        // Likewise the 757's, for the engine type its first section list follows.
+        if (currentAircraft is BBS757Definition startupBbs757) startupBbs757.Attach(simConnectManager);
         simConnectManager.ConnectionStatusChanged += OnConnectionStatusChanged;
         // A calc path that never came up is a DEGRADED session on FBW aircraft — overhead
         // switches can silently revert and the FCU can ignore commands. Say so once, rather
@@ -1289,12 +1300,13 @@ public partial class MainForm : Form
 
     /// <summary>
     /// A panel press of a button that flips its own state light (SimVarDefinition.PressTogglesStateVariable:
-    /// the Fenix EFIS FD and LS buttons): marks the light with the value the press should leave, so the light's
+    /// the Fenix EFIS FD, LS and map option buttons): marks the light with the value the press should leave, so the light's
     /// change is not spoken after the screen reader read the button's new label (CORE-7). It rides the same
     /// value-matched gate as a combo pick (CORE-8, CORE-9), so a change the pilot did not cause with this press
-    /// still speaks. Nothing is marked while disconnected (no press is sent) or while the light is unread.
+    /// still speaks. Nothing is marked while disconnected (no press is sent) or while the light is unread. The Fenix
+    /// ND window's EFIS buttons use it too (FenixA320Definition.PanelPressEcho), so a press there is heard once.
     /// </summary>
-    private void MarkStateLightEchoForPress(SimVarDefinition buttonDef)
+    internal void MarkStateLightEchoForPress(SimVarDefinition buttonDef)
     {
         if (simConnectManager is not { IsConnected: true } || string.IsNullOrEmpty(buttonDef.StateVariable)) return;
         double? cached = currentSimVarValues.TryGetValue(buttonDef.StateVariable, out double lit) ? lit : null;
@@ -1465,6 +1477,18 @@ public partial class MainForm : Form
         if (md11MonitorManagerForm != null && !md11MonitorManagerForm.IsDisposed) md11MonitorManagerForm.Dispose();
         md11MonitorManagerForm = null;
         coherentMd11Efb?.Dispose();
+
+        // The in-sim tablet's window and client: no aircraft swap closes them (the view is the
+        // sim's), so exit is their one teardown. The window first, then the client, as above.
+        // A SimBrief import still running is cancelled first, so it stops and says nothing.
+        simTabletImportCts?.Cancel();
+        if (simTabletForm != null && !simTabletForm.IsDisposed) simTabletForm.Dispose();
+        coherentSimTablet?.Dispose();
+
+        // The 757's windows and the EFB client and bridge they share (same leak class: the CDU
+        // window's timer and the client's poll loop and socket), as on the swap path. The CDU's
+        // tablet client is the definition's own, disposed in its OnSwitchedAway.
+        DisposeBBS757Forms();
 
         // Clean up 787 forms + the IRS / CAS Coherent clients
         hs787FMCForm?.Dispose();

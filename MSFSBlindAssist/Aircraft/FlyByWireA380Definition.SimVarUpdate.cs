@@ -224,7 +224,7 @@ public partial class FlyByWireA380Definition
             _comActiveFreq[ch] = value;
             if (plausible && changed && prev > 0
                 && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
-                announcer.Announce($"VHF {ch} active {value:0.000}");
+                announcer.Announce(FormattableString.Invariant($"VHF {ch} active {value:0.000}"));
             return true;
         }
         if (varName.StartsWith("COM_STANDBY_", StringComparison.Ordinal))
@@ -235,7 +235,7 @@ public partial class FlyByWireA380Definition
             _comStandbyFreq[ch] = value;
             if (plausible && changed && prev > 0
                 && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
-                announcer.Announce($"VHF {ch} standby {value:0.000}");
+                announcer.Announce(FormattableString.Invariant($"VHF {ch} standby {value:0.000}"));
             return true;
         }
         // Transponder squawk auto-announce: TRANSPONDER CODE:1 reads a BCD16 word; decode (same as
@@ -263,7 +263,7 @@ public partial class FlyByWireA380Definition
             _rmpActiveFreq[ch] = value;
             if (plausible && changed && prev != 0
                 && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
-                announcer.Announce($"VHF {ch} active {mhz:0.000}");
+                announcer.Announce(FormattableString.Invariant($"VHF {ch} active {mhz:0.000}"));
             return true;
         }
 
@@ -549,6 +549,33 @@ public partial class FlyByWireA380Definition
             return true;
         }
 
+        // Thrust lock (A380ThrustLock): the FMA's THR LK, which the autothrust message var never
+        // carries on the A380. Spoken as that row's message, so on that row's mute (checked here:
+        // these four words have no row of their own). On release, name what the cell shows next.
+        if (A380ThrustLock.TryEngine(varName, out int ecuEngine))
+        {
+            bool? lockEdge = _thrustLock.Observe(ecuEngine, value);
+            if (lockEdge.HasValue
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(A380ThrustLock.MessageRow)
+                && GetVariables().TryGetValue(A380ThrustLock.MessageRow, out var athrMessageDef)
+                && athrMessageDef.ValueDescriptions.TryGetValue(
+                       A380ThrustLock.EffectiveMessage(lockEdge.Value, _athrShimMessage), out string? athrMessageText))
+            {
+                announcer.Announce($"{athrMessageDef.DisplayName}: {athrMessageText}");
+            }
+            return true;
+        }
+        // The FG shim's own message (LVR CLB / LVR MCT / LVR ASYM): kept for the release above,
+        // and left to the generic monitor to speak, except under the lock. There the FMA cell
+        // shows THR LK whatever the shim says, so a change is kept silently (consumed) and the
+        // release speaks what the cell then shows, once: spoken here as well, the pilot heard
+        // "None" while the thrust was still locked, or the same lever message twice.
+        if (varName == A380ThrustLock.MessageRow)
+        {
+            _athrShimMessage = (int)Math.Round(value);
+            if (_thrustLock.Locked) return true;
+        }
+
         // ---- TCAS resolution-advisory guidance (cache + composed announce) ----
         // The detail vars cache silently; during an RA each update recomposes the
         // spoken guidance and announces only when the sentence changes. The state
@@ -741,7 +768,7 @@ public partial class FlyByWireA380Definition
             _reqFlaps = false;
             string[] detents = { "Up", "1", "2", "3", "Full" };
             int i = (int)Math.Round(value);
-            announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : value.ToString()));
+            announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             return true;
         }
         if (_reqGear && varName == "A32NX_GEAR_HANDLE_POSITION")
@@ -854,7 +881,7 @@ public partial class FlyByWireA380Definition
         if (_reqBaro && varName == "KOHLSMAN_HG")
         {
             _reqBaro = false;
-            announcer.AnnounceImmediate($"Altimeter {value * 33.8639:0} hectopascals, {value:0.00} inches");
+            announcer.AnnounceImmediate(FormattableString.Invariant($"Altimeter {value * 33.8639:0} hectopascals, {value:0.00} inches"));
             return true;
         }
         // Weight-unit selection (kg/lb) mirror of the EFB "US Units" toggle. Seed
@@ -917,19 +944,21 @@ public partial class FlyByWireA380Definition
         }
 
         // ---- FCU readouts: value + managed-indicator pairs ----
-        // Each Read* hotkey requests the value var(s) and the managed indicator
-        // and force-updates them; we announce once the pair (or, for VS, the
-        // mode + matching value) has arrived. The _req* guards ensure these are
-        // only intercepted during an active readout — otherwise they fall
-        // through so the FCU panel's display readouts work normally.
-        if (_reqHdg && (varName == "A32NX_AUTOPILOT_HEADING_SELECTED" || varName == "A32NX_FCU_HDG_MANAGED_DASHES"))
+        // Each Read* hotkey force-reads the on-request TWINS of its value and its managed
+        // indicator ([A320-42], FcuReadoutTwins), answered within a frame; we announce once the
+        // pair (or, for VS, the mode + matching value) has arrived. Only a readout reads a twin,
+        // so one answering no pending readout is consumed without a word. The continuous
+        // originals are never intercepted here: they keep feeding the dial callouts, the mode
+        // call-outs and the panel.
+        if (varName == HeadingReadout || varName == HeadingManagedReadout)
         {
+            if (!_reqHdg) return true;
             // ⚠️ FBW #10855 turned the FCU value L:vars into display-unit shims
             // (idFcuShimHdgValue2 <- selectedFcuAfs.hdg_trk_value), so this arrives in
             // DEGREES, not the radians older builds wrote. Verified live: FCU 345 reads
             // 345.0. Do NOT re-add a "looks like radians" guess — it would mangle any
             // selected heading of 006° or less. Requires the A380X build in docs/a380x.md.
-            if (varName.EndsWith("HEADING_SELECTED")) _pHdgVal = value;
+            if (varName == HeadingReadout) _pHdgVal = value;
             else _pHdgMgd = value;
             if (_pHdgVal.HasValue && _pHdgMgd.HasValue)
             {
@@ -943,9 +972,10 @@ public partial class FlyByWireA380Definition
             }
             return true;
         }
-        if (_reqSpd && (varName == "A32NX_AUTOPILOT_SPEED_SELECTED" || varName == "A32NX_FCU_SPD_MANAGED_DOT"))
+        if (varName == SpeedReadout || varName == SpeedManagedReadout)
         {
-            if (varName.EndsWith("SPEED_SELECTED")) _pSpdVal = value; else _pSpdMgd = value;
+            if (!_reqSpd) return true;
+            if (varName == SpeedReadout) _pSpdVal = value; else _pSpdMgd = value;
             if (_pSpdVal.HasValue && _pSpdMgd.HasValue)
             {
                 // Managed speed parks SPEED_SELECTED at -1 (dashes on the FCU). Don't
@@ -971,8 +1001,9 @@ public partial class FlyByWireA380Definition
         // a second half: it is a cached field, so there was never a reason to round-trip to the
         // sim for it. Awaiting it left _reqAlt latched when that half was lost, and the latch
         // then fired on an unrelated FMA transition minutes later with a stale altitude.
-        if (_reqAlt && varName == "FCU_ALT_VALUE")
+        if (varName == AltitudeReadout)
         {
+            if (!_reqAlt) return true;
             var (av, au) = AltUser(value);
             string st = !_altMode.IsKnown ? "mode not yet known" : _altMode.IsManaged ? "managed" : "selected";
             SuppressFcuValueChangeEcho(Fcu.Altitude);
@@ -982,8 +1013,11 @@ public partial class FlyByWireA380Definition
             _reqAlt = false;
             return true;
         }
+        // The mode is the twin; the V/S and FPA shims are on request themselves, and fall through
+        // to the panel's own reads when no readout is pending.
+        if (varName == TrkFpaModeReadout && !_reqVs) return true;
         if (_reqVs && (varName == "A32NX_AUTOPILOT_VS_SELECTED" || varName == "A32NX_AUTOPILOT_FPA_SELECTED" ||
-                       varName == "A32NX_TRK_FPA_MODE_ACTIVE"))
+                       varName == TrkFpaModeReadout))
         {
             // ⚠️ Same #10855 shim as heading: both come from selectedFcuAfs.vs_fpa_value,
             // so V/S is already FEET PER MINUTE and FPA already DEGREES. Verified live:
@@ -1003,7 +1037,7 @@ public partial class FlyByWireA380Definition
                     FcuWindowState.Unavailable => FcuValuePhrases.NotAvailableReadout("vertical speed"),
                     FcuWindowState.Dashes => FcuValuePhrases.ManagedVerticalReadout(fpaMode),
                     _ => fpaMode
-                        ? $"FCU flight path angle {_pFpaVal!.Value:0.0} degrees"
+                        ? FormattableString.Invariant($"FCU flight path angle {_pFpaVal!.Value:0.0} degrees")
                         : $"FCU vertical speed {_pVsVal!.Value:0} feet per minute",
                 };
                 announcer.AnnounceImmediate(spoken);
@@ -1031,7 +1065,8 @@ public partial class FlyByWireA380Definition
     /// which checks theirs after the return, and "… armed" checks its row inline;</item>
     /// <item>the take-off airspeed feed speaks V1, Rotate and V2, whose rows are the V-speeds';</item>
     /// <item>the VOR/DME and NDB lights speak the ND filter, whose row is the WPT light's;</item>
-    /// <item>the E/WD lines speak ECAM messages, whose row is "ECAM memos".</item>
+    /// <item>the E/WD lines speak ECAM messages, whose row is "ECAM memos";</item>
+    /// <item>the four ECU maintenance words speak the thrust lock, whose row is "Autothrust Message".</item>
     /// </list>
     /// Wrapped instead, muting "Vertical Mode" (or "Armed Vertical Modes") silenced "Altitude Mode"
     /// too. A new branch of this shape belongs here, pinned by A380MuteWrapTests.
@@ -1041,7 +1076,8 @@ public partial class FlyByWireA380Definition
             or A380TakeoffCallouts.IasKey
             or "A32NX_FCU_EFIS_L_VORD_LIGHT_ON" or "A32NX_FCU_EFIS_R_VORD_LIGHT_ON"
             or "A32NX_FCU_EFIS_L_NDB_LIGHT_ON" or "A32NX_FCU_EFIS_R_NDB_LIGHT_ON"
-        || varName.StartsWith("A32NX_EWD_LOWER_", StringComparison.Ordinal);
+        || varName.StartsWith("A32NX_EWD_LOWER_", StringComparison.Ordinal)
+        || A380ThrustLock.TryEngine(varName, out _);
 
     /// <summary>
     /// Speak a phrase the tracker decided is worth speaking, honouring the pilot's Ctrl+M mute.
@@ -1139,6 +1175,18 @@ public partial class FlyByWireA380Definition
         _takeoffCallouts.Reset();
     }
 
+    /// <inheritdoc />
+    /// <remarks>The thrust-lock tracker (A380ThrustLock) re-gathers its baseline here and nowhere
+    /// else: the cache has been cleared, so the reconnect re-fires all four ECU words. Wiped on a
+    /// flight load (which clears nothing, so only a CHANGED word arrives) or in
+    /// <see cref="ResetAnnouncementBaselines"/> (which runs after the reconnect's first batch), it
+    /// would take the next lock for its baseline and never speak it.</remarks>
+    public override void OnVariableCacheCleared()
+    {
+        base.OnVariableCacheCleared();
+        _thrustLock.Reset();
+    }
+
     public override void ResetAnnouncementBaselines()
     {
         // The roll callouts' ARM goes on the reconnect too (as on the MD-11 and the iFly): nothing
@@ -1165,6 +1213,7 @@ public partial class FlyByWireA380Definition
         _baroInHgR = null;
         // Autoland capability (PFD_AUTOLAND): gate is _lastAutolandCap != null.
         _lastAutolandCap = null;
+        // (The thrust-lock tracker is NOT reset here: see OnVariableCacheCleared.)
         // RMP + stock VHF active/standby (FBW_RMP_FREQUENCY_ACTIVE_*, COM_ACTIVE_*/
         // COM_STANDBY_*): gate is "key absent from the dictionary" (TryGetValue defaults prev
         // to 0, and the announce requires prev != 0 / prev > 0).

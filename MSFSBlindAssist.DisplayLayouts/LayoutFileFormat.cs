@@ -38,8 +38,9 @@ public static class LayoutFileFormat
 
     /// <summary>How layouts are saved and loaded. Computed properties are not saved, and every other member of every
     /// layout record is, nulls included. Loading refuses a layout that lacks any member (a struct's such as a
-    /// <c>GlassField</c>'s offset, an optional part's null included) or holds null where its record does not allow one,
-    /// so a damaged file never loads as offsets of 0.</summary>
+    /// <c>GlassField</c>'s offset, an optional constructor argument's null included) or holds null where its record does not allow one,
+    /// so a damaged file never loads as offsets of 0; only a member marked <see cref="LayoutFileOptionalAttribute"/> may
+    /// be absent.</summary>
     private static readonly JsonSerializerOptions LayoutOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -259,12 +260,15 @@ public static class LayoutFileFormat
 
     /// <summary>Makes every settable member of every layout record required, those of the structs (loaded through their
     /// default constructor) and the optional constructor arguments included: Write saves them all, so only a damaged or
-    /// hand-edited file lacks one.</summary>
+    /// hand-edited file lacks one. The one exception is a property marked <see cref="LayoutFileOptionalAttribute"/>,
+    /// added after files without it were written: such a file loads with the property's initial value.</summary>
     private static void EveryMemberRequired(JsonTypeInfo info)
     {
         if (info.Kind != JsonTypeInfoKind.Object || info.Type.Assembly != typeof(LayoutFileFormat).Assembly) return;
         foreach (var property in info.Properties)
         {
+            if (property.AssociatedParameter is null
+                && property.AttributeProvider?.IsDefined(typeof(LayoutFileOptionalAttribute), false) == true) continue;
             if (property.Set is not null || property.AssociatedParameter is not null) property.IsRequired = true;
         }
     }

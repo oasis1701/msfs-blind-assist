@@ -316,19 +316,28 @@ public class FbwFcuDialAnnounceTests : IDisposable
     }
 
     [Fact]
-    public void A380_registers_the_selected_altitude_simvar_under_exactly_one_key()
+    public void A380_streams_and_names_the_selected_altitude_simvar_under_exactly_one_key()
     {
         // FCU_ALT_VALUE and FCU_SEL_ALT were two keys on AUTOPILOT ALTITUDE LOCK VAR:3 — one number
         // with two 1 Hz pollers and, worse, two spoken names ("Selected Altitude" in Ctrl+M vs "FCU
         // selected altitude" in the PFD panel). VarNameCollisionTests cannot catch this class: it
         // filters to batched vars (!ExcludeFromBatch) because the hazard it guards is batch struct
         // drift, and both of these carried their own data def at the time.
-        var keys = new FlyByWireA380Definition().GetVariables()
+        var vars = new FlyByWireA380Definition().GetVariables();
+        var keys = vars
             .Where(kv => kv.Value.Name == "AUTOPILOT ALTITUDE LOCK VAR:3")
             .Select(kv => kv.Key)
             .OrderBy(k => k, StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(new[] { "FCU_ALT_VALUE" }, keys);
+        // The second key is the Shift+A readout's on-request twin ([A320-42]): read once per press,
+        // never streamed, with no Ctrl+M row and in no panel, so it is neither a second poller nor
+        // a second spoken name. Any other key on this simvar is the old hazard back.
+        Assert.Equal(new[] { "FCU_ALT_VALUE", "FCU_ALT_VALUE_READOUT" }, keys);
+        var twin = vars["FCU_ALT_VALUE_READOUT"];
+        Assert.Equal(UpdateFrequency.OnRequest, twin.UpdateFrequency);
+        Assert.False(twin.IsAnnounced);
+        Assert.True(twin.ExcludeFromMonitorManager);
+        Assert.DoesNotContain(new FlyByWireA380Definition().GetPanelControls().Values, list => list.Contains("FCU_ALT_VALUE_READOUT"));
     }
 }

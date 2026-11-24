@@ -248,7 +248,7 @@ public static class GsxNavdataGeometryFiller
         string summary =
             $"navdata geometry: {headingsNeeded} stand(s) had no GSX heading and {sizesNeeded} no GSX size; " +
             $"filled {headingsFilled} heading(s), {sizesFilled} size(s) and {jetwaysFilled} jet-bridge flag(s) " +
-            $"from the same-numbered (or lone unnumbered) navdata stand within {MatchRadiusMetres:0.#} m " +
+            FormattableString.Invariant($"from the same-numbered (or lone unnumbered) navdata stand within {MatchRadiusMetres:0.#} m ") +
             $"({donorCount} candidate stand(s)).";
 
         if (refused > 0)

@@ -178,9 +178,9 @@ public class Pmdg737McpAnnouncementTests
         Assert.False(DefAnnounceMuteSets.ShouldWrap(def, varName, new UserSettings()));
     }
 
-    // Integers are spoken without a group separator in every culture. The numbers keep the current
-    // culture, as before and as the key readouts say them: the Mach number's F2 reads "0,78" under de-DE
-    // and sv-SE, and sv-SE writes a negative V/S with its own minus sign (U+2212), as Shift+V does.
+    // Integers are spoken without a group separator in every culture, and the Mach number with a decimal
+    // point ("0.78", never the "0,78" a German or Swedish Windows wrote), as Shift+S says it. A whole number's
+    // sign is still the culture's: sv-SE writes a negative V/S with its own minus sign (U+2212), as Shift+V does.
     [Theory]
     [InlineData("de-DE", "-")]
     [InlineData("sv-SE", "−")]
@@ -188,7 +188,7 @@ public class Pmdg737McpAnnouncementTests
     {
         Speaks("MCP_Altitude", 10000, "MCP: altitude 10000 feet");
         Speaks("MCP_IASMach", 250, "MCP: speed 250 knots");
-        Speaks("MCP_IASMach", 0.78, "MCP: Mach 0,78");
+        Speaks("MCP_IASMach", 0.78, "MCP: Mach 0.78");
         Speaks("MCP_Heading", 5, "MCP: heading 5");
         Speaks("MCP_VertSpeed", -1500, $"MCP: VS {minus}1500 feet per minute");
         Speaks("MCP_Course_0", 223, "MCP: Course Captain: 223");
