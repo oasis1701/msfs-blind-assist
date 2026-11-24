@@ -212,12 +212,46 @@ public class Md11TrimTests
         => Assert.Equal("Stabilizer Trim: Trim up 2.5",
             Md11TrimButtons.StabTrimReadBackSentence(Control(LongTrim), "Trim up 2.5"));
 
-    [Fact]
-    public void TheSettleCeiling_IsFarPastOnePressesTravel()
+    // ---- the settle loop, over scripted reads -----------------------------------------------
+
+    /// <summary>Runs the settle loop over <paramref name="reads"/>, the clock moving <paramref name="stepMs"/> per wait.</summary>
+    private static (double? Value, double? LastRead, int Reads) Settle(double tolerance, int stepMs, params double?[] reads)
     {
-        // One aileron click glides about a second, a rudder hold about as long: the ceiling is a safety
-        // bound, never the thing that ends a normal read-back (the old 4 s spoke a mid-move 3.5°).
-        Assert.True(Md11TrimButtons.SettleCeilingMs >= 5 * 1000);
-        Assert.True(Md11TrimButtons.SettlePollMs < Md11TrimButtons.SettleCeilingMs / 20);
+        var queue = new Queue<double?>(reads);
+        long clock = 0;
+        return Md11TrimButtons.ReadUntilSettledAsync(
+            () => Task.FromResult(queue.Count > 0 ? queue.Dequeue() : reads[^1]), tolerance,
+            () => clock, () => { clock += stepMs; return Task.CompletedTask; }).GetAwaiter().GetResult();
+    }
+
+    [Fact]
+    public void AGlidingTrim_IsReadOnceTwoReadsAgree_NeverMidMove()
+    {
+        var r = Settle(Md11TrimButtons.TrimVarTolerance, 150, 25.2, 25.457, 25.8, 26.0, 26.0);
+        Assert.Equal(26.0, r.Value);
+        Assert.Equal(5, r.Reads);
+    }
+
+    [Fact]
+    public void ATrimStillMovingAtTheCeiling_SpeaksNothing_NotItsLastValue()
+    {
+        // Queued clicks ran the aileron trim on to its stop while the old 4 s ceiling spoke 3.5° (review of #346).
+        var moving = Enumerable.Range(0, 200).Select(i => (double?)(25.0 + i * 0.1)).ToArray();
+        var r = Settle(Md11TrimButtons.TrimVarTolerance, 150, moving);
+        Assert.Null(r.Value);
+        Assert.NotNull(r.LastRead);
+    }
+
+    [Fact]
+    public void AReadThatDeliversNothing_EndsTheLoop_WithNoValue()
+        => Assert.Null(Settle(Md11TrimButtons.TrimVarTolerance, 150, 25.0, null, 25.0).Value);
+
+    [Fact]
+    public void TheStabiliserTrimsHydraulicJitter_StillSettles_WithinTheTrimAnnouncementsBand()
+    {
+        // ELEVATOR TRIM POSITION jitters about 0.01°: never two reads within 0.001, always within 0.03.
+        double?[] jitter = { 2.50, 2.51, 2.50, 2.51, 2.50, 2.51 };
+        Assert.Null(Settle(Md11TrimButtons.TrimVarTolerance, 2000, jitter).Value);
+        Assert.Equal(2.51, Settle(0.03, 150, jitter).Value);
     }
 }

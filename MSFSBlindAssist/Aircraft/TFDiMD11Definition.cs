@@ -516,6 +516,10 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Never,
                 RenderAsButton = true,
+                // The button's accessible description (MainForm's panel builder), read on focus.
+                HelpText = trim.IsHold
+                    ? $"Holds {trim.Control.ButtonName} {trim.Word.ToLowerInvariant()} briefly"
+                    : $"Turns the {trim.Control.ButtonName} knob one click {trim.Word.ToLowerInvariant()}",
             };
 
         AddFirstOfficerReadVariables(vars);

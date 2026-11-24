@@ -55,8 +55,33 @@ public static class Md11TrimButtons
     /// </summary>
     public const int SettleCeilingMs = 10000;
 
-    /// <summary>Two successive reads agree: far below the readout's 0.1° (0.25 units) resolution.</summary>
-    public static bool HasSettled(double previous, double current) => Math.Abs(current - previous) < 0.001;
+    /// <summary>How close two reads of a TFDi trim var must be to count as settled: far below the readout's 0.1° (0.25 units) resolution.</summary>
+    public const double TrimVarTolerance = 0.001;
+
+    /// <summary>Two successive reads agree within <paramref name="tolerance"/>.</summary>
+    public static bool HasSettled(double previous, double current, double tolerance) => Math.Abs(current - previous) < tolerance;
+
+    /// <summary>
+    /// Reads through <paramref name="read"/> until two reads in a row agree within
+    /// <paramref name="tolerance"/>, waiting <paramref name="wait"/> between them, for at most
+    /// <see cref="SettleCeilingMs"/> after the first read (<paramref name="elapsedMs"/>). The value is
+    /// the settled read; null when a read delivered nothing or the trim was still moving at the
+    /// ceiling, never a mid-move value. Pure, so the decision is tested over scripted reads.
+    /// </summary>
+    public static async Task<(double? Value, double? LastRead, int Reads)> ReadUntilSettledAsync(
+        Func<Task<double?>> read, double tolerance, Func<long> elapsedMs, Func<Task> wait)
+    {
+        double? last = await read().ConfigureAwait(false);
+        int reads = 1;
+        while (last is double previous && elapsedMs() < SettleCeilingMs)
+        {
+            await wait().ConfigureAwait(false);
+            last = await read().ConfigureAwait(false);
+            reads++;
+            if (last is double now && HasSettled(previous, now, tolerance)) return (now, last, reads);
+        }
+        return (null, last, reads);
+    }
 
     /// <summary>The trim buttons the map's controls call for, in each control's own order (Left before Right).</summary>
     public static IReadOnlyList<Md11TrimButton> From(IEnumerable<Md11Control> controls)

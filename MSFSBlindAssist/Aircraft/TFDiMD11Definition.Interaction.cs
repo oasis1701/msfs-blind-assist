@@ -1177,7 +1177,7 @@ public partial class TFDiMD11Definition
     private Task ReadBackTrimAsync(Md11Control control, int delayMs, SimConnectManager sim, ScreenReaderAnnouncer announcer)
         => DeferToUiThreadAsync(delayMs, async () =>
         {
-            if (await ReadSettledAsync(control.NodeId, control.StateVar, sim).ConfigureAwait(false) is not double value) return null;
+            if (await ReadSettledAsync(control.NodeId, control.StateVar, Md11TrimButtons.TrimVarTolerance, sim).ConfigureAwait(false) is not double value) return null;
             var sentence = Md11TrimButtons.ReadBackSentence(control,
                 name => string.Equals(name, control.StateVar, StringComparison.OrdinalIgnoreCase) ? value : ReadStateVar(name));
             if (sentence == null) return null;
@@ -1188,45 +1188,41 @@ public partial class TFDiMD11Definition
     /// The Long Trim read-back: the stabiliser trim once it settles, "Stabilizer Trim: Trim up 3.0".
     /// Spoken only while trim announcements are off: with them on, the stock trim announcement already
     /// says where it ended up, and a read-back would say it twice ([CORE-7]). With them off, a press
-    /// that was taken and one that was dropped sounded the same (review of #346).
+    /// that was taken and one that was dropped sounded the same (review of #346). The stock trim jitters
+    /// about 0.01° on hydraulics, so it settles within <see cref="BaseAircraftDefinition.TrimHysteresis"/>,
+    /// the trim announcement's own band, never the TFDi trim vars' 0.001. Both on/off checks and the
+    /// Ctrl+M mute of the trim row ([MD11-18]) are made on the UI thread, where the toggle is written.
     /// </summary>
     private Task ReadBackStabTrimAsync(Md11Control control, int delayMs, SimConnectManager sim, ScreenReaderAnnouncer announcer)
         => DeferToUiThreadAsync(delayMs, async () =>
         {
-            if (_trimAnnouncementsEnabled) return null;
-            if (await ReadSettledAsync(ElevatorTrimKey, ElevatorTrimKey, sim).ConfigureAwait(false) is not double value) return null;
+            if (await ReadSettledAsync(ElevatorTrimKey, ElevatorTrimKey, TrimHysteresis, sim).ConfigureAwait(false) is not double value) return null;
             var sentence = Md11TrimButtons.StabTrimReadBackSentence(control, DescribeElevatorTrim(value).Phrase);
             return () =>
             {
-                if (_trimAnnouncementsEnabled) return;   // turned back on during the settle: the stock announcement speaks
+                if (_trimAnnouncementsEnabled) return;   // on: the stock trim announcement says it
+                if (Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(ElevatorTrimKey)) return;
                 announcer.Announce(sentence);
             };
         }, "Long Trim read-back threw", "Long Trim read-back (UI-thread tail) threw", guardGeneration: true);
 
     /// <summary>
-    /// Reads <paramref name="key"/> fresh until two deliveries in a row agree
-    /// (<see cref="Md11TrimButtons.HasSettled"/>). The trim GLIDES to its new value (an aileron click
-    /// takes about a second), and one read after a fixed wait caught it mid-move: 25.457 on its way to
-    /// 26 was spoken "0.2 degrees Right Wing Down" (live, 2026-11-06). Null when a read delivered
-    /// nothing or the trim was still moving at <see cref="Md11TrimButtons.SettleCeilingMs"/>.
+    /// Reads <paramref name="key"/> fresh until two deliveries in a row agree within
+    /// <paramref name="tolerance"/> (<see cref="Md11TrimButtons.ReadUntilSettledAsync"/>). The trim
+    /// GLIDES to its new value (an aileron click takes about a second), and one read after a fixed wait
+    /// caught it mid-move: 25.457 on its way to 26 was spoken "0.2 degrees Right Wing Down" (live,
+    /// 2026-11-06). Null when a read delivered nothing or the trim was still moving at
+    /// <see cref="Md11TrimButtons.SettleCeilingMs"/>.
     /// </summary>
-    private static async Task<double?> ReadSettledAsync(string key, string logName, SimConnectManager sim)
+    private static async Task<double?> ReadSettledAsync(string key, string logName, double tolerance, SimConnectManager sim)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        double? read = await sim.ReadFreshAsync(key, BatchReadBackTimeoutMs).ConfigureAwait(false);
-        int reads = 1;
-        bool settled = false;
-        while (read is double previous && sw.ElapsedMilliseconds < Md11TrimButtons.SettleCeilingMs)
-        {
-            await Task.Delay(Md11TrimButtons.SettlePollMs).ConfigureAwait(false);
-            var next = await sim.ReadFreshAsync(key, BatchReadBackTimeoutMs).ConfigureAwait(false);
-            reads++;
-            read = next;
-            if (next is double now && Md11TrimButtons.HasSettled(previous, now)) { settled = true; break; }
-        }
-        Log.Debug("MD11", $"Trim read-back: {logName}={read?.ToString("0.###", CultureInfo.InvariantCulture) ?? "null"} "
-            + $"({(settled ? "settled" : "not settled")}, {reads} reads, {sw.ElapsedMilliseconds} ms).");
-        return settled ? read : null;
+        var (value, last, reads) = await Md11TrimButtons.ReadUntilSettledAsync(
+            () => sim.ReadFreshAsync(key, BatchReadBackTimeoutMs), tolerance,
+            () => sw.ElapsedMilliseconds, () => Task.Delay(Md11TrimButtons.SettlePollMs)).ConfigureAwait(false);
+        Log.Debug("MD11", $"Trim read-back: {logName}={last?.ToString("0.###", CultureInfo.InvariantCulture) ?? "null"} "
+            + $"({(value != null ? "settled" : "not settled")}, {reads} reads, {sw.ElapsedMilliseconds} ms).");
+        return value;
     }
 
     /// <summary>
