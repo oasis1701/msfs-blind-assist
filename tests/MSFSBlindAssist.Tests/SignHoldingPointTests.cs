@@ -26,6 +26,8 @@ public class SignHoldingPointTests
     [InlineData("{@R}RWY11", new string[0])]
     [InlineData("{@R}O5L", new string[0])]                                         // letter-O typo for 05L
     [InlineData("{@R}NO_ENTRY", new string[0])]
+    [InlineData("{@R}N8033F", new string[0])]                                      // KGBG: an aircraft registration on a sign
+    [InlineData("{@R}HP12", new[] { "HP12" })]                                     // ZSAM: two digits is a real name
     public void RedSignNames_keeps_only_holding_point_designators(string markup, string[] expected)
     {
         Assert.Equal(expected, SignHoldingPointExtractor.RedSignNames(markup));

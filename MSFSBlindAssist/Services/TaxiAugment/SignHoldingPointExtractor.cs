@@ -88,6 +88,10 @@ public static class SignHoldingPointExtractor
             if (!char.IsLetterOrDigit(c) || c > 'z') return false;
         if (NonNameWords.Contains(t)) return false;
         if (TaxiGraph.IsDescriptiveHoldLabel(t)) return false;
+        // No holding point is named with three or more digits. Across every airport with a named
+        // taxiway in the fs2024 navdata (7,346, audited 2026-11-24) the one such red sign was
+        // KGBG's "N8033F", an aircraft registration; the rule drops it and nothing else.
+        if (t.Count(char.IsDigit) >= 3) return false;
         return true;
     }
 
