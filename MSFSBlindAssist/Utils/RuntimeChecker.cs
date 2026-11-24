@@ -166,21 +166,24 @@ public static class RuntimeChecker
         }
     }
 
+    /// <summary>The files a complete install has beside the exe. prism.dll and Prismatoid.dll carry every screen
+    /// reader's speech and braille (ScreenReaderOutput); Tolk.dll and nvdaControllerClient.dll, which they replaced,
+    /// are no longer shipped and must not be asked for.</summary>
+    internal static readonly string[] RequiredDlls =
+    {
+        "SimConnect_msfs_2020.dll",
+        "SimConnect_msfs_2024.dll",
+        "prism.dll",
+        "Prismatoid.dll",
+        "Microsoft.FlightSimulator.SimConnect.dll"
+    };
+
     private static void CheckRequiredDlls(CheckResult result)
     {
         string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
         Startup.Info($"Checking for required DLLs in: {appDirectory}");
 
-        var requiredDlls = new[]
-        {
-            "SimConnect_msfs_2020.dll",
-            "SimConnect_msfs_2024.dll",
-            "Tolk.dll",
-            "nvdaControllerClient.dll",
-            "Microsoft.FlightSimulator.SimConnect.dll"
-        };
-
-        foreach (var dll in requiredDlls)
+        foreach (var dll in RequiredDlls)
         {
             string dllPath = Path.Combine(appDirectory, dll);
             if (File.Exists(dllPath))
