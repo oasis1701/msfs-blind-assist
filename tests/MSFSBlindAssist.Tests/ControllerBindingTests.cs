@@ -53,9 +53,25 @@ public class ControllerBindingTests
     [InlineData(3, 0, 3, ControllerBinding.HatLeft)]     // 4 positions
     [InlineData(270, 0, 359, ControllerBinding.HatLeft)] // the angle itself, in degrees
     [InlineData(45, 0, 315, 0)]
+    [InlineData(180, 0, 270, ControllerBinding.HatDown)] // degrees, four directions only
+    [InlineData(2, 0, 8, ControllerBinding.HatRight)]    // 8 directions, the centre INSIDE the range
+    [InlineData(6, 0, 8, ControllerBinding.HatLeft)]
+    [InlineData(8, 0, 8, 0)]
+    [InlineData(4, 0, 15, ControllerBinding.HatDown)]    // the whole 4 bits declared, 15 = centred
+    [InlineData(15, 0, 15, 0)]
     public void Hid_hat_values_map_to_the_four_directions(int value, int min, int max, int expected)
     {
         Assert.Equal(expected, ControllerButtonEdges.HatDirectionFromHid(value, min, max));
+    }
+
+    [Fact]
+    public void A_first_report_fires_one_button_but_never_picks_among_several()
+    {
+        // Raw Input sends no initial state: a first report holds the latched switches too.
+        Assert.Equal(new[] { 12 }, ControllerButtonEdges.FromFirstReport(new[] { 12 }));
+        Assert.Empty(ControllerButtonEdges.FromFirstReport(new[] { 3, 12 }));
+        Assert.Empty(ControllerButtonEdges.FromFirstReport(new[] { 3, ControllerBinding.HatUp }));
+        Assert.Empty(ControllerButtonEdges.FromFirstReport(Array.Empty<int>()));
     }
 
     [Theory]

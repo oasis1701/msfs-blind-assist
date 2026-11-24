@@ -76,6 +76,7 @@ public sealed class JoystickButtonMonitor : IDisposable
     private const uint RIDEV_REMOVE = 0x00000001;
     private const uint RIDEV_INPUTSINK = 0x00000100;
     private const uint RIDEV_DEVNOTIFY = 0x00002000;
+    private const int GIDC_ARRIVAL = 1;
     private const int GIDC_REMOVAL = 2;
 
     // Generic Desktop page: joystick, gamepad, multi-axis controller. Keyboards and mice are
@@ -132,6 +133,10 @@ public sealed class JoystickButtonMonitor : IDisposable
         public int HatMin, HatMax;
         public HashSet<int> Buttons = new();
         public int Hat;
+        // Buttons held, per report ID (a report's first byte; 0 on a device that uses none), and
+        // the IDs a report has been read for: see ProcessReport.
+        public Dictionary<byte, HashSet<int>> ButtonsByReport = new();
+        public HashSet<byte> SeenReports = new();
 
         public void Dispose()
         {
@@ -157,6 +162,7 @@ public sealed class JoystickButtonMonitor : IDisposable
             try
             {
                 if (m.Msg == WM_INPUT) _owner.OnRawInput(m.LParam);
+                else if (m.Msg == WM_INPUT_DEVICE_CHANGE && m.WParam.ToInt32() == GIDC_ARRIVAL) _owner.OnDeviceArrived(m.LParam);
                 else if (m.Msg == WM_INPUT_DEVICE_CHANGE && m.WParam.ToInt32() == GIDC_REMOVAL) _owner.OnDeviceRemoved(m.LParam);
             }
             finally { _owner._dispatchDepth--; }
@@ -179,13 +185,17 @@ public sealed class JoystickButtonMonitor : IDisposable
     private int _dispatchDepth;
     private long _startedAtMs;
     private readonly Dictionary<IntPtr, Device?> _devices = new();
+    // When each device arrived (GIDC_ARRIVAL: at registration for those already plugged in,
+    // later for one plugged in while running), for its own settle window.
+    private readonly Dictionary<IntPtr, long> _arrivedAtMs = new();
 
-    /// <summary>How long after <see cref="Start"/> reports only set each device's state and fire
-    /// nothing. Raw Input sends no initial state, and throttle quadrants hold buttons down all
-    /// the time (a lever resting in its idle or reverse detent, a latched switch) while their
-    /// axes report continuously: without this, the first report after Start fired such a
-    /// button at once (found on a Thrustmaster Boeing and a WinCTRL Airbus quadrant). Shorter
-    /// than the capture dialog's spoken prompt, so no deliberate press is lost.</summary>
+    /// <summary>How long after <see cref="Start"/>, and after a device is plugged in, reports
+    /// only set that device's state and fire nothing. Raw Input sends no initial state, and
+    /// throttle quadrants hold buttons down all the time (a lever resting in its idle or
+    /// reverse detent, a latched switch) while their axes report continuously: without this,
+    /// the first report after Start, or after replugging, fired such a button at once (found
+    /// on a Thrustmaster Boeing and a WinCTRL Airbus quadrant). Shorter than the capture
+    /// dialog's spoken prompt, so no deliberate press is lost.</summary>
     private const long SettleMs = 500;
     private byte[] _buffer = new byte[256];
     private bool _disposed;
@@ -235,6 +245,7 @@ public sealed class JoystickButtonMonitor : IDisposable
         if (s_started == this) s_started = null;
         foreach (var device in _devices.Values) device?.Dispose();
         _devices.Clear(); // a restart starts every device from "nothing pressed"
+        _arrivedAtMs.Clear();
     }
 
     private static bool Register(IntPtr hwnd, uint flags)
@@ -271,7 +282,10 @@ public sealed class JoystickButtonMonitor : IDisposable
             if (_buffer.Length < size) _buffer = new byte[size];
 
             List<int>? pressed = null;
-            bool settling = Environment.TickCount64 - _startedAtMs < SettleMs;
+            long since = _arrivedAtMs.TryGetValue(header.hDevice, out long arrived) && arrived > _startedAtMs
+                ? arrived
+                : _startedAtMs;
+            bool settling = Environment.TickCount64 - since < SettleMs;
             unsafe
             {
                 fixed (byte* p = _buffer)
@@ -298,13 +312,23 @@ public sealed class JoystickButtonMonitor : IDisposable
             foreach (int button in pressed)
             {
                 if (!IsRunning) return; // a handler stopped the monitor: the rest belongs to nobody
-                ButtonPressed?.Invoke(this, new ControllerButtonPressedEventArgs
+                try
                 {
-                    VendorId = device.VendorId,
-                    ProductId = device.ProductId,
-                    DeviceName = device.Name,
-                    Button = button,
-                });
+                    ButtonPressed?.Invoke(this, new ControllerButtonPressedEventArgs
+                    {
+                        VendorId = device.VendorId,
+                        ProductId = device.ProductId,
+                        DeviceName = device.Name,
+                        Button = button,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    // The command's own failure, not a bad report: reported as the same command
+                    // run from the keyboard is (Application.ThreadException), never swallowed
+                    // below as a skipped report.
+                    Application.OnThreadException(ex);
+                }
             }
         }
         catch (Exception ex)
@@ -319,6 +343,13 @@ public sealed class JoystickButtonMonitor : IDisposable
     /// report while taxiing) returns at once without allocating.</summary>
     private static IReadOnlyList<int> ProcessReport(Device device, IntPtr report, uint length)
     {
+        // A report speaks only for the buttons of its own report ID (its first byte; 0 on a
+        // device that uses none). A device that spreads its buttons over several IDs would
+        // otherwise release one report's buttons at every report of another, and a held button
+        // would fire again and again.
+        byte reportId = length > 0 ? Marshal.ReadByte(report) : (byte)0;
+        bool first = device.SeenReports.Add(reportId);
+
         var buttons = device.Buttons;
         if (device.UsageBuffer.Length > 0)
         {
@@ -326,13 +357,27 @@ public sealed class JoystickButtonMonitor : IDisposable
             int status = HidP_GetUsages(HidP_Input, UsagePageButton, 0, device.UsageBuffer, ref usageCount,
                 device.Preparsed, report, length);
             // Any other status (a report ID without buttons) leaves the buttons as they were.
-            if (status == HIDP_STATUS_SUCCESS && !SameButtons(device, usageCount))
+            if (status == HIDP_STATUS_SUCCESS)
             {
-                buttons = new HashSet<int>();
-                for (int i = 0; i < usageCount; i++)
+                device.ButtonsByReport.TryGetValue(reportId, out var held);
+                if (!SameButtons(device, held, usageCount))
                 {
-                    int b = device.UsageBuffer[i];
-                    if (b >= 1 && b <= MaxButton) buttons.Add(b);
+                    held = new HashSet<int>();
+                    for (int i = 0; i < usageCount; i++)
+                    {
+                        int b = device.UsageBuffer[i];
+                        if (b >= 1 && b <= MaxButton) held.Add(b);
+                    }
+                    device.ButtonsByReport[reportId] = held;
+                    if (device.ButtonsByReport.Count == 1)
+                    {
+                        buttons = held;
+                    }
+                    else
+                    {
+                        buttons = new HashSet<int>();
+                        foreach (var set in device.ButtonsByReport.Values) buttons.UnionWith(set);
+                    }
                 }
             }
         }
@@ -349,25 +394,30 @@ public sealed class JoystickButtonMonitor : IDisposable
         var pressed = ControllerButtonEdges.NewlyPressed(device.Buttons, device.Hat, buttons, hat);
         device.Buttons = buttons;
         device.Hat = hat;
-        return pressed;
+        // The first report read for a report ID also carries what the device already held.
+        return first ? ControllerButtonEdges.FromFirstReport(pressed) : pressed;
     }
 
-    /// <summary>Whether the usages just read are exactly the buttons already held.</summary>
-    private static bool SameButtons(Device device, uint usageCount)
+    /// <summary>Whether the usages just read are exactly the buttons this report ID already
+    /// held (<paramref name="held"/>; null when it held none).</summary>
+    private static bool SameButtons(Device device, HashSet<int>? held, uint usageCount)
     {
         int counted = 0;
         for (int i = 0; i < usageCount; i++)
         {
             int b = device.UsageBuffer[i];
             if (b < 1 || b > MaxButton) continue;
-            if (!device.Buttons.Contains(b)) return false;
+            if (held == null || !held.Contains(b)) return false;
             counted++;
         }
-        return counted == device.Buttons.Count;
+        return counted == (held?.Count ?? 0);
     }
+
+    private void OnDeviceArrived(IntPtr hDevice) => _arrivedAtMs[hDevice] = Environment.TickCount64;
 
     private void OnDeviceRemoved(IntPtr hDevice)
     {
+        _arrivedAtMs.Remove(hDevice);
         if (_devices.Remove(hDevice, out var device)) device?.Dispose();
     }
 

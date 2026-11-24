@@ -38,12 +38,14 @@ public static class ControllerActionCatalog
         [HotkeyAction.ReadApproachCapability] = "Approach capability (] Ctrl+0)",
         [HotkeyAction.ReadLastLandingRate] = "Last landing rate (] Ctrl+Shift+R)",
         [HotkeyAction.ReadLastLandingPeakG] = "Last landing g-force (] Ctrl+Shift+G)",
-        [HotkeyAction.ReadSpeedGD] = "Green dot speed (] Shift+1)",
-        [HotkeyAction.ReadSpeedS] = "S speed (] Shift+2)",
-        [HotkeyAction.ReadSpeedF] = "F speed (] Shift+3)",
-        [HotkeyAction.ReadSpeedVLS] = "Minimum selectable speed, VLS (] Shift+4)",
-        [HotkeyAction.ReadSpeedVS] = "Stall speed (] Shift+5)",
-        [HotkeyAction.ReadSpeedVFE] = "Maximum flap speed, VFE (] Shift+6)",
+        // Shift+1 to Shift+6 read the Airbus characteristic speeds; the Boeings and the MD-11
+        // answer the same actions with their own speed-tape speeds, so each name says both.
+        [HotkeyAction.ReadSpeedGD] = "Green dot speed; speed tape 1 on a Boeing or MD-11 (] Shift+1)",
+        [HotkeyAction.ReadSpeedS] = "S speed; speed tape 2 on a Boeing or MD-11 (] Shift+2)",
+        [HotkeyAction.ReadSpeedF] = "F speed; speed tape 3 on a Boeing (] Shift+3)",
+        [HotkeyAction.ReadSpeedVLS] = "Minimum selectable speed, VLS; speed tape 4 on a Boeing (] Shift+4)",
+        [HotkeyAction.ReadSpeedVS] = "Stall speed; speed tape 5 on a Boeing (] Shift+5)",
+        [HotkeyAction.ReadSpeedVFE] = "Maximum flap speed, VFE; speed tape 6 on a Boeing (] Shift+6)",
         [HotkeyAction.ShowFirstOfficer] = "First Officer window (] Shift+C)",
         [HotkeyAction.ShowChecklistECL] = "Electronic checklist window (] Ctrl+Shift+C)",
         [HotkeyAction.ReadFuelQuantity] = "Fuel quantity (] F)",
@@ -118,8 +120,10 @@ public static class ControllerActionCatalog
         [HotkeyAction.SetNavRadios] = "Set NAV radios ([ Ctrl+N)",
         [HotkeyAction.ToggleAutopilot2] = "Autopilot 2 ([ Ctrl+O)",
         [HotkeyAction.ShowTrackFixWindow] = "Track fix window ([ Shift+F)",
-        [HotkeyAction.ShowFenixMCDU] = "Fenix MCDU ([ Shift+M)",
-        [HotkeyAction.ShowPMDGEFB] = "PMDG EFB ([ Shift+T)",
+        // Named for what every aircraft opens on the chord, not for the aircraft the enum
+        // member was first added for.
+        [HotkeyAction.ShowFenixMCDU] = "MCDU or CDU window ([ Shift+M)",
+        [HotkeyAction.ShowPMDGEFB] = "Aircraft tablet, EFB or flyPad ([ Shift+T)",
         [HotkeyAction.ShowPMDGEFBFirstOfficer] = "PMDG EFB, First Officer side ([ Ctrl+Shift+T)",
         [HotkeyAction.ShowRMP] = "Radio management panel ([ Ctrl+Shift+R)",
         [HotkeyAction.ShowDCDU] = "DCDU and CPDLC window ([ Ctrl+Shift+D)",

@@ -105,6 +105,9 @@ public class ControllerBindingDialog : Form
     private void StartCapture()
     {
         StopCapture();
+        // A new capture replaces the last one: if it times out or is cancelled, OK must not
+        // bind the earlier button while the status says none was pressed.
+        _captured = null;
         _capture = new JoystickButtonMonitor();
         _capture.ButtonPressed += OnCaptured;
         _capture.Start();
