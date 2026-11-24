@@ -244,6 +244,16 @@ public class RunwayReachGateTests
             RunwayReachGate.RouteEndStatus("Runway 20L"));
     }
 
+    // While still taxiing such a route the status key said "..., 450 metres to Runway 20L" for a
+    // distance measured to the route's end, 1,500 m from that runway.
+    [Fact]
+    public void TheTaxiingStatusMeasuresToTheEndOfTheRouteNotToARunwayItNeverReaches()
+    {
+        Assert.Equal("the end of the route", RunwayReachGate.StatusDistanceTarget("Runway 20L", endsFarFromRunway: true));
+        Assert.Equal("Runway 20L", RunwayReachGate.StatusDistanceTarget("Runway 20L", endsFarFromRunway: false));
+        Assert.Equal("Gate B 12", RunwayReachGate.StatusDistanceTarget("Gate B 12", endsFarFromRunway: false));
+    }
+
     [Theory]
     // A parallel taxiway beside the runway: the runway may be one unmapped connector away, so the
     // route keeps its hold, its Continue and the lineup tone.

@@ -39,6 +39,57 @@ public static class HoldShortAbeam
     /// </summary>
     public const double MaxHeadingOffDegrees = 60.0;
 
+    /// <summary>
+    /// The shortest segment that still has a direction to measure along. A sub-metre segment is a
+    /// point (<c>GuidanceGeometry</c> skips them the same way): projected onto, it reads "level with
+    /// the node, on the line" from anywhere on the airport.
+    /// </summary>
+    public const double MinAxisMetres = 1.0;
+
+    /// <summary>
+    /// How many segments back from the hold segment a direction is looked for when the hold segment
+    /// itself is a sub-metre point: itself and the two before it.
+    /// </summary>
+    public const int AxisLookBackSegments = 3;
+
+    /// <summary>
+    /// Where the aircraft is relative to the hold node, along and across the axis
+    /// <paramref name="axisFromLat"/>/<paramref name="axisFromLon"/> to
+    /// <paramref name="axisToLat"/>/<paramref name="axisToLon"/>: the hold segment itself, or the
+    /// segment before it when the hold segment is too short to have a direction. False, with nothing
+    /// measured, when the axis is shorter than <see cref="MinAxisMetres"/>.
+    /// </summary>
+    /// <param name="alongRemainingMetres">As <see cref="IsReached"/> takes it: positive while the node
+    /// is ahead along the axis, zero level with it, negative past it.</param>
+    /// <param name="crossMetres">Perpendicular offset from the line through the node, either sign.</param>
+    /// <param name="axisBearingDegrees">The axis's true bearing, 0 to 360.</param>
+    public static bool TryMeasure(
+        double lat, double lon,
+        double axisFromLat, double axisFromLon, double axisToLat, double axisToLon,
+        double nodeLat, double nodeLon,
+        out double alongRemainingMetres, out double crossMetres, out double axisBearingDegrees)
+    {
+        const double MetresPerDegree = 111132.0;
+        alongRemainingMetres = 0.0;
+        crossMetres = 0.0;
+        axisBearingDegrees = 0.0;
+
+        double metresPerDegreeLon =
+            MetresPerDegree * Math.Cos((axisFromLat + axisToLat) * 0.5 * Math.PI / 180.0);
+        double dx = (axisToLon - axisFromLon) * metresPerDegreeLon;
+        double dy = (axisToLat - axisFromLat) * MetresPerDegree;
+        double length = Math.Sqrt(dx * dx + dy * dy);
+        if (length < MinAxisMetres) return false;
+
+        double ux = dx / length, uy = dy / length;
+        double ex = (nodeLon - lon) * metresPerDegreeLon;   // aircraft to hold node
+        double ey = (nodeLat - lat) * MetresPerDegree;
+        alongRemainingMetres = ex * ux + ey * uy;
+        crossMetres = ey * ux - ex * uy;
+        axisBearingDegrees = (Math.Atan2(dx, dy) * 180.0 / Math.PI + 360.0) % 360.0;
+        return true;
+    }
+
     /// <param name="alongRemainingMetres">Along the hold segment to its end node: positive while the
     /// node is ahead, zero level with it, negative past it.</param>
     /// <param name="crossMetres">Perpendicular offset from the hold segment's line, either sign.</param>

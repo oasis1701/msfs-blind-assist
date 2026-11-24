@@ -121,6 +121,12 @@ public static class RunwayReachGate
     public static string DescribeRouteEnd(string destinationName)
         => "Stop. " + RouteEndStatus(destinationName);
 
+    /// <summary>What the taxiing status readout's remaining distance runs to: the destination, or,
+    /// on a route that ends far from its runway, the end of the route (the distance is measured to
+    /// the route's last node either way).</summary>
+    public static string StatusDistanceTarget(string destinationName, bool endsFarFromRunway)
+        => endsFarFromRunway ? "the end of the route" : destinationName;
+
     /// <summary>The status readout there afterwards, in place of "Arrived at Runway X".</summary>
     public static string RouteEndStatus(string destinationName)
         => $"End of this route. It does not reach {destinationName}. Reprogram the taxi " +

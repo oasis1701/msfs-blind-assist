@@ -166,6 +166,36 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// The aircraft's offsets from the hold node ending segment <paramref name="holdIndex"/>, for
+    /// <see cref="Navigation.HoldShortAbeam.IsReached"/>: along and across the hold segment's own
+    /// direction, or, when that segment is a sub-metre point with no direction, the nearest
+    /// segment before it that has one (<see cref="Navigation.HoldShortAbeam.AxisLookBackSegments"/>).
+    /// False when none has: the hold is then left to the capture circle round its node.
+    /// </summary>
+    private static bool TryMeasureHoldAbeam(
+        IReadOnlyList<TaxiRouteSegment> segments, int holdIndex, double lat, double lon,
+        out double alongRemainingM, out double crossM, out double axisBearingDeg)
+    {
+        var holdNode = segments[holdIndex].ToNode;
+        for (int i = holdIndex;
+             i >= 0 && i > holdIndex - Navigation.HoldShortAbeam.AxisLookBackSegments; i--)
+        {
+            var axis = segments[i];
+            if (Navigation.HoldShortAbeam.TryMeasure(
+                    lat, lon,
+                    axis.FromNode.Latitude, axis.FromNode.Longitude,
+                    axis.ToNode.Latitude, axis.ToNode.Longitude,
+                    holdNode.Latitude, holdNode.Longitude,
+                    out alongRemainingM, out crossM, out axisBearingDeg))
+                return true;
+        }
+        alongRemainingM = 0.0;
+        crossM = 0.0;
+        axisBearingDeg = 0.0;
+        return false;
+    }
+
+    /// <summary>
     /// Absolute lateral (cross-runway) offset in meters of <paramref name="pointLat/Lon"/>
     /// from the runway centerline. The centerline passes through
     /// <paramref name="refLat/Lon"/> in direction <paramref name="runwayHeadingTrueDeg"/>.

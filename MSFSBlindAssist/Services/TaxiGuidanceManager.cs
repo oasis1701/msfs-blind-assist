@@ -2074,6 +2074,11 @@ public partial class TaxiGuidanceManager : IDisposable
             if (!_hasLineupTarget) return false;
             if (!_isRunwayLineup) return false;
             if (_state != TaxiGuidanceState.LiningUp && _state != TaxiGuidanceState.Arrived) return false;
+            // Arrived at the end of a route that never reached its runway (HandleArrival's
+            // _routeEndsFarFromRunway branch) is not "lined up": takeoff assist must not be
+            // handed the centreline of a runway the aircraft is more than 400 m from. It then
+            // looks under the aircraft, as it does with no taxi route at all.
+            if (_routeEndsFarFromRunway) return false;
 
             thresholdLat = _lineupTargetLat;
             thresholdLon = _lineupTargetLon;
@@ -3141,17 +3146,21 @@ public partial class TaxiGuidanceManager : IDisposable
         // above, so nothing latched it, the index stayed on the hold segment for good and the tone
         // went on steering at the route beyond the line. Never the final segment: the destination
         // hold has its own captures, and LiningUp owns that approach.
-        if (_currentSegmentIndex < _route.Segments.Count - 1 && currentSeg.IsHoldShortPoint)
+        //
+        // Measured by TryMeasureHoldAbeam, never by AlongTrackToSegmentEnd on the hold segment
+        // alone: that reads a sub-metre hold segment as "level with the node, on the line" from
+        // anywhere, and AdvanceToNearestSegment parks the index on a hold segment it has just
+        // judged too far away to call reached.
+        if (_currentSegmentIndex < _route.Segments.Count - 1 && currentSeg.IsHoldShortPoint
+            && TryMeasureHoldAbeam(_route.Segments, _currentSegmentIndex, lat, lon,
+                   out double holdAlongRemM, out double holdCrossM, out double holdAxisBrg)
+            && Navigation.HoldShortAbeam.IsReached(
+                   holdAlongRemM, holdCrossM, NormalizeAngle(headingTrue - holdAxisBrg)))
         {
-            AlongTrackToSegmentEnd(lat, lon, currentSeg, out double holdAlongRemM, out double holdCrossM);
-            if (Navigation.HoldShortAbeam.IsReached(
-                    holdAlongRemM, holdCrossM, NormalizeAngle(headingTrue - currentSeg.BearingDegrees)))
-            {
-                _guidanceLog.Info($"Hold-short reached abeam: {currentSeg.HoldShortRunway} seg={_currentSegmentIndex} " +
-                                  $"past={-holdAlongRemM:F0}m cross={holdCrossM:F0}m hdg={headingTrue:F0} segBrg={currentSeg.BearingDegrees:F0}");
-                AdvanceSegment();
-                return;
-            }
+            _guidanceLog.Info($"Hold-short reached abeam: {currentSeg.HoldShortRunway} seg={_currentSegmentIndex} " +
+                              $"past={-holdAlongRemM:F0}m cross={holdCrossM:F0}m hdg={headingTrue:F0} segBrg={holdAxisBrg:F0}");
+            AdvanceSegment();
+            return;
         }
 
         // Off-route deviation — perpendicular (cross-track) distance from the segment

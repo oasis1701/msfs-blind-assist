@@ -811,7 +811,11 @@ public partial class TaxiGuidanceManager
             }
         }
 
-        return $"{taxiway}{nextTurn}, {distStr} to {_destinationName}.";
+        // The distance runs to the end of the route, which on a route ending far aside of its
+        // runway is not the runway (_routeEndsFarFromRunway): "450 metres to Runway 20L" there
+        // was 450 m to a point 1,500 m from it.
+        string distanceTo = Navigation.RunwayReachGate.StatusDistanceTarget(_destinationName, _routeEndsFarFromRunway);
+        return $"{taxiway}{nextTurn}, {distStr} to {distanceTo}.";
         } // end lock(_stateLock)
     }
 
