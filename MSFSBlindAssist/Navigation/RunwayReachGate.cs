@@ -18,6 +18,13 @@ public readonly record struct RunwayReachResult(
 public static class RunwayReachGate
 {
     /// <summary>
+    /// How far of taxiing from a runway's pavement still counts as leading onto it: the ONE figure
+    /// behind <c>TaxiGuidanceManager.RUNWAY_REACH_MAX_WALK_M</c> (where its measurement is written
+    /// up) and <c>TaxiRouter.OTHER_RUNWAY_MAX_WALK_M</c>, so a re-measurement moves both.
+    /// </summary>
+    public const double MaxWalkMeters = 400.0;
+
+    /// <summary>
     /// Pure decision core for "does this route reach the runway?", used by BOTH
     /// TaxiGuidanceManager.LoadRoute (which speaks a warning) and TryRecalculateRoute
     /// (which arms the during-lineup bailout). It exists because the rule was previously

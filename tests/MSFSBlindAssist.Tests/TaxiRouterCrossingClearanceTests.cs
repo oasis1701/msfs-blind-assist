@@ -34,7 +34,8 @@ public class TaxiRouterCrossingClearanceTests
 
     private const double DestLat = 0.008, DestLon = 0.029;
 
-    private static List<TaxiPath> TwoRunwayField() => new()
+    /// <param name="k4Crossing">The name of the edge that carries K4 over the south runway.</param>
+    private static List<TaxiPath> TwoRunwayField(string k4Crossing = "") => new()
     {
         // K, south of both runways.
         P(0.002, 0.000, 0.002, 0.005, "K"), P(0.002, 0.005, 0.002, 0.025, "K"), P(0.002, 0.025, 0.002, 0.030, "K"),
@@ -42,7 +43,7 @@ public class TaxiRouterCrossingClearanceTests
         P(0.006, 0.000, 0.006, 0.002, "M"), P(0.006, 0.002, 0.006, 0.010, "M"), P(0.006, 0.010, 0.006, 0.020, "M"),
         P(0.006, 0.020, 0.006, 0.025, "M"), P(0.006, 0.025, 0.006, 0.029, "M"), P(0.006, 0.029, 0.006, 0.030, "M"),
         // K4: K to the south runway's edge; an unnamed edge over the pavement (no node on it); M7 on to M.
-        P(0.002, 0.005, 0.0037, 0.005, "K4"), P(0.0037, 0.005, 0.0043, 0.005, ""), P(0.0043, 0.005, 0.006, 0.002, "M7"),
+        P(0.002, 0.005, 0.0037, 0.005, "K4"), P(0.0037, 0.005, 0.0043, 0.005, k4Crossing), P(0.0043, 0.005, 0.006, 0.002, "M7"),
         // K9: the same further east, straight over.
         P(0.002, 0.025, 0.0037, 0.025, "K9"), P(0.0037, 0.025, 0.0043, 0.025, ""), P(0.0043, 0.025, 0.006, 0.025, "M13"),
         // M15 onto the north runway: the destination.
@@ -59,13 +60,18 @@ public class TaxiRouterCrossingClearanceTests
     {
         var paths = TwoRunwayField();
         paths.AddRange(extra);
+        return BuildField(paths, Runways());
+    }
+
+    private static TaxiGraph BuildField(List<TaxiPath> paths, List<Runway> runways)
+    {
         // The graph pairs runway START rows into centrelines; the runway rows give them their pavement.
-        var starts = Runways().Select(r => new StartPosition
+        var starts = runways.Select(r => new StartPosition
         {
             RunwayName = r.RunwayID, Latitude = r.StartLat, Longitude = r.StartLon, Heading = r.Heading,
         }).ToList();
-        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), starts, Runways());
-        Assert.Equal(2, g.RunwayCenterlines.Count);
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), starts, runways);
+        Assert.Equal(runways.Count / 2, g.RunwayCenterlines.Count);
         return g;
     }
 
@@ -158,6 +164,68 @@ public class TaxiRouterCrossingClearanceTests
         Assert.NotNull(route);
         Assert.Null(route!.ConstrainedFallbackReason);
         Assert.Equal(NodeAt(g, 0.0043, 0.026), route.Segments[^1].ToNode.NodeId);
+    }
+
+    [Fact]
+    public void A_last_taxiway_to_another_runways_hold_is_not_sent_over_that_runway_and_back()
+    {
+        // The destination is on a third runway SOUTH of K, reached along K with no crossing at all.
+        // K4 is then a stub to the south runway's hold. The only way on from that hold is over the
+        // runway, along M and back over it at K9: all new ground, and the runway is met within a
+        // few metres, so nothing but the "same runway met twice" refusal keeps the terminus.
+        var runways = Runways();
+        runways.Add(R("09C", 0.000, 0.000, 0.000, 0.030));
+        runways.Add(R("27C", 0.000, 0.030, 0.000, 0.000));
+        var paths = TwoRunwayField();
+        paths.Add(P(0.002, 0.030, 0.000, 0.029, "S"));
+        var g = BuildField(paths, runways);
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, 0.002, 0.000), NodeAt(g, 0.000, 0.029),
+            new List<string> { "K", "K4" }, destinationIsRunway: true);
+        Assert.NotNull(route);
+        Assert.Null(route!.ConstrainedFallbackReason);
+        Assert.Equal(NodeAt(g, 0.0037, 0.005), route.Segments[^1].ToNode.NodeId);
+    }
+
+    [Fact]
+    public void A_last_taxiway_that_keeps_its_name_over_the_other_runway_is_routed_on_too()
+    {
+        // The crossing edge carries the taxiway's own name, so its far end is already past the
+        // runway and the way on meets no other runway: the crossing is inside the cleared leg.
+        var g = BuildField(TwoRunwayField(k4Crossing: "K4"), Runways());
+        var dist = new TaxiRouter(g).ComputeGraphDistancesFrom(NodeAt(g, DestLat, DestLon));
+        Assert.True(dist[NodeAt(g, 0.002, 0.005)] < dist[NodeAt(g, 0.0043, 0.005)]);
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, 0.002, 0.000), NodeAt(g, DestLat, DestLon),
+            new List<string> { "K", "K4" }, destinationIsRunway: true);
+        AssertDrivesThenReaches(g, route, "K4", "M7");
+    }
+
+    [Fact]
+    public void A_single_cleared_taxiway_over_another_runway_is_not_driven_backwards_from_its_far_end()
+    {
+        // The aircraft is already at K4's hold. The route goes on over the runway from there; it
+        // does not run back down K4 to K and cross at K9.
+        var g = Build();
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, 0.0037, 0.005), NodeAt(g, DestLat, DestLon),
+            new List<string> { "K4" }, destinationIsRunway: true);
+        Assert.NotNull(route);
+        Assert.Null(route!.ConstrainedFallbackReason);
+        var names = route.Segments.Select(s => s.TaxiwayName).ToList();
+        Assert.Contains("M7", names);
+        Assert.DoesNotContain("K", names);
+        Assert.DoesNotContain("K9", names);
+        Assert.Equal(NodeAt(g, DestLat, DestLon), route.Segments[^1].ToNode.NodeId);
+    }
+
+    [Fact]
+    public void A_single_cleared_taxiway_is_driven_towards_the_runway_not_down_its_longer_apron_arm()
+    {
+        // K4 also runs south of K to the apron, and that arm is the longer one. From the junction
+        // the taxiway is driven to the end nearest the destination, as a last taxiway of several is.
+        var g = Build(P(0.002, 0.005, -0.001, 0.005, "K4"));
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, 0.002, 0.005), NodeAt(g, DestLat, DestLon),
+            new List<string> { "K4" }, destinationIsRunway: true);
+        AssertDrivesThenReaches(g, route, "K4", "M7");
+        Assert.Equal(NodeAt(g, 0.0037, 0.005), route!.Segments[0].ToNode.NodeId);
     }
 
     [Fact]
