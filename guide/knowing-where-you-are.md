@@ -42,7 +42,7 @@ Where Am I tells you, in one short sentence, what is under your aircraft right n
    - *"Near taxiway K at EGLL."*
    - *"Taxiway K, near holding point KK at OMDB."*
 
-On a taxiway, BA adds a named holding point when you are within about 60 metres of one. It knows an airport's holding points once the Taxi Assist window has loaded that airport with the online names setting switched on; before that, you hear the taxiway alone.
+On a taxiway, BA adds a named holding point when you are within about 60 metres of one. This needs the online names setting switched on. BA works out an airport's holding points the first time you ask there, so the first press at a new airport may give the taxiway alone; press again a moment later.
 
 ### What you will hear {#where-am-i-hear}
 

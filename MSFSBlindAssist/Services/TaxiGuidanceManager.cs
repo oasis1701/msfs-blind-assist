@@ -1783,7 +1783,8 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <summary>
     /// Hands Where Am I the airport's named holding points as the taxi planner resolved them
     /// (painted ones and sign-read ones), so its answer on a taxiway can add "near holding
-    /// point KK". Until the planner has loaded the airport there are none and nothing is added.
+    /// point KK". When the planner has not loaded the airport, Where Am I resolves them itself
+    /// (<see cref="StartHoldingPointResolve"/>).
     /// </summary>
     public void SetNamedHoldingPoints(string icao, IEnumerable<NamedHoldingPoint> points)
     {
@@ -1793,6 +1794,74 @@ public partial class TaxiGuidanceManager : IDisposable
             _whereAmIHoldingPointsIcao = icao ?? "";
             _whereAmIHoldingPoints = copy;
         }
+    }
+
+    // The airport whose points a background resolve is working on, so one press starts one resolve.
+    private string _whereAmIHoldingPointsResolving = "";
+
+    /// <summary>
+    /// Resolves the airport's named holding points for Where Am I when the taxi planner has not
+    /// published its own. On a PRIVATE graph, built for this alone and thrown away: the resolver
+    /// inserts nodes, and neither the active graph nor the cached Where Am I graph may be changed
+    /// off the UI thread ([RTE-30]). Runs on the pool: the press that starts it answers with the
+    /// taxiway alone, the next one has the point. Nothing is stored while the online data has not
+    /// arrived, so a later press tries again.
+    /// </summary>
+    private void StartHoldingPointResolve(IAirportDataProvider dataProvider, string icao)
+    {
+        if (dataProvider is not MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider { Enabled: true } aug)
+            return;
+        long epoch;
+        lock (_stateLock)
+        {
+            if (string.Equals(_whereAmIHoldingPointsResolving, icao, StringComparison.OrdinalIgnoreCase)) return;
+            _whereAmIHoldingPointsResolving = icao;
+            epoch = _whereAmICacheEpoch;
+        }
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var raw = aug.GetNamedHoldingPoints(icao);
+                var signs = aug.GetSignHoldingPoints(icao);
+                if (raw.Count == 0 && signs.Count == 0) return;   // not fetched yet, or none
+                var paths = aug.GetTaxiPaths(icao);
+                if (paths == null || paths.Count == 0) return;
+
+                var graph = TaxiGraph.Build(paths, ResolveParkingSpots(aug, icao),
+                    aug.GetRunwayStarts(icao) ?? new List<StartPosition>(), aug.GetRunways(icao));
+                // The planner's two steps (TaxiAssistForm.ResolveNamedHoldingPoints): painted
+                // points first, then signs for the names no painted line carries.
+                var points = NamedHoldingPointResolver.Resolve(graph, raw);
+                var taken = new HashSet<string>(points.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+                points.AddRange(NamedHoldingPointResolver.ResolveSigns(graph, signs, taken));
+
+                lock (_stateLock)
+                {
+                    // The planner's own list wins if it arrived meanwhile, and positions read from a
+                    // database that has since been switched away from are dropped (the epoch moved).
+                    if (epoch == _whereAmICacheEpoch
+                        && !string.Equals(_whereAmIHoldingPointsIcao, icao, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _whereAmIHoldingPointsIcao = icao;
+                        _whereAmIHoldingPoints = points.ToArray();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("Taxi", $"Where-Am-I holding points for {icao} not resolved: {ex.Message}");
+            }
+            finally
+            {
+                lock (_stateLock)
+                {
+                    if (string.Equals(_whereAmIHoldingPointsResolving, icao, StringComparison.OrdinalIgnoreCase))
+                        _whereAmIHoldingPointsResolving = "";
+                }
+            }
+        });
     }
 
     /// <summary>
@@ -1934,6 +2003,8 @@ public partial class TaxiGuidanceManager : IDisposable
         lock (_stateLock)
             holdingPoints = string.Equals(_whereAmIHoldingPointsIcao, icao, StringComparison.OrdinalIgnoreCase)
                 ? _whereAmIHoldingPoints : null;
+        if (holdingPoints == null)
+            StartHoldingPointResolve(dataProvider, icao);
         description = NamedHoldingPointNearby.Describe(
             description, NamedHoldingPointNearby.Find(holdingPoints, lat, lon));
 
@@ -2045,6 +2116,9 @@ public partial class TaxiGuidanceManager : IDisposable
             _whereAmICachedIcao = "";
             _whereAmICachedToken = "";
             _whereAmICacheEpoch++;
+            // Holding-point positions are navdata positions too: resolved again on the next press.
+            _whereAmIHoldingPointsIcao = "";
+            _whereAmIHoldingPoints = Array.Empty<NamedHoldingPoint>();
             _runwayShapeMemo = null;
             Interlocked.Increment(ref _databaseGeneration);
         }
