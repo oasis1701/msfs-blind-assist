@@ -237,6 +237,11 @@ public class RunwayReachGateTests
             "Stop. End of this route. It does not reach Runway 20L. Reprogram the taxi route, " +
             "including the taxiway that connects to the runway.",
             RunwayReachGate.DescribeRouteEnd("Runway 20L"));
+        // The status key there afterwards said "Arrived at Runway 20L."
+        Assert.Equal(
+            "End of this route. It does not reach Runway 20L. Reprogram the taxi route, " +
+            "including the taxiway that connects to the runway.",
+            RunwayReachGate.RouteEndStatus("Runway 20L"));
     }
 
     [Theory]

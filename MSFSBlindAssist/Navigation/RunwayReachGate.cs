@@ -119,6 +119,10 @@ public static class RunwayReachGate
 
     /// <summary>What is said where such a route ends, in place of the runway hold.</summary>
     public static string DescribeRouteEnd(string destinationName)
-        => $"Stop. End of this route. It does not reach {destinationName}. Reprogram the taxi " +
+        => "Stop. " + RouteEndStatus(destinationName);
+
+    /// <summary>The status readout there afterwards, in place of "Arrived at Runway X".</summary>
+    public static string RouteEndStatus(string destinationName)
+        => $"End of this route. It does not reach {destinationName}. Reprogram the taxi " +
            "route, including the taxiway that connects to the runway.";
 }

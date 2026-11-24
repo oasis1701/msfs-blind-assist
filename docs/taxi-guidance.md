@@ -4456,7 +4456,8 @@ with the lineup tone, 1.4 km from the runway. When the aside verdict's distance 
 `FarFromRunwayCrossMeters` (400 m) the destination-ahead callout is "End of route ahead.", the
 countdown reads "End of route in N", and `HandleArrival` stops the tone, says
 `DescribeRouteEnd` ("Stop. End of this route. It does not reach Runway 20L. Reprogram …") and
-goes to `Arrived`: no `HoldShort`, so Continue has nothing to enter. Up to 400 m aside nothing
+goes to `Arrived`: no `HoldShort`, so Continue has nothing to enter, and the status readout
+there is `RouteEndStatus`, never "Arrived at Runway 20L" (heard in the first live check). Up to 400 m aside nothing
 changes: the runway may be one unmapped connector away (the PHNL shape), where the stop before
 it, Continue and the lineup tone are worth keeping. A stops-short verdict carries no distance
 to the runway and keeps its hold as well.

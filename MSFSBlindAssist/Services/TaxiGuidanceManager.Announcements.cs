@@ -727,6 +727,10 @@ public partial class TaxiGuidanceManager
             return $"Lining up {_destinationName}, {what} heading {hdg}. Follow the tone.{lineupDistStr}";
         }
 
+        // Not "Arrived at Runway 20L" where the route ended 1,500 m from it (heard live at WSSS).
+        if (_state == TaxiGuidanceState.Arrived && _routeEndsFarFromRunway)
+            return Navigation.RunwayReachGate.RouteEndStatus(_destinationName);
+
         if (_state == TaxiGuidanceState.Arrived)
             return $"Arrived at {_route.DestinationName}.";
 
