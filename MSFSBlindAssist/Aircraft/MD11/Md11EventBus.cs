@@ -370,23 +370,16 @@ public sealed class Md11EventBus : IDisposable
     /// dropped test done (the First Officer).
     /// </summary>
     public Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs)
-        => TryPressAndHoldAsync(control, holdMs, "LEFT_BUTTON_DOWN", "LEFT_BUTTON_UP");
+        => TryPressAndHoldAsync(control, holdMs, "LEFT_BUTTON_DOWN", new[] { "LEFT_BUTTON_UP" });
 
     /// <summary>
-    /// <see cref="TryPressAndHoldAsync(Md11Control, int)"/> on a named DOWN/UP pair — the rudder trim
-    /// knob is held right with RIGHT_BUTTON_DOWN and released, as TFDi's template releases it either
-    /// way, with LEFT_BUTTON_UP (<see cref="Md11TrimButtons"/>). The same guarantees: an UP only for
-    /// a DOWN that was taken, never before it.
-    /// </summary>
-    public Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs, string downField, string upField)
-        => TryPressAndHoldAsync(control, holdMs, downField, new[] { upField });
-
-    /// <summary>
-    /// <see cref="TryPressAndHoldAsync(Md11Control, int)"/> released by SEVERAL UP fields, written in
-    /// order — the Long Trim handles' template lets go with RIGHT_BUTTON_UP then LEFT_BUTTON_UP. One
-    /// hold owes all of them: queued together as its release, and written first by
-    /// <see cref="Dispose"/> when the pump wrote its DOWN. A field the control lacks is skipped; with
-    /// none left it is a press with nothing owed, as before.
+    /// <see cref="TryPressAndHoldAsync(Md11Control, int)"/> on a named DOWN, released by the UP fields
+    /// given, written in order: the rudder trim knob is held right with RIGHT_BUTTON_DOWN and let go,
+    /// as TFDi's template releases it either way, with LEFT_BUTTON_UP; the Long Trim handles' template
+    /// lets go with RIGHT_BUTTON_UP then LEFT_BUTTON_UP (<see cref="Md11TrimButtons"/>). One hold owes
+    /// all of them: queued together as its release, and written first by <see cref="Dispose"/> when
+    /// the pump wrote its DOWN. A field the control lacks is skipped; with none left it is a press with
+    /// nothing owed, as before. The same guarantees: an UP only for a DOWN that was taken, never before it.
     /// </summary>
     public async Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs, string downField, IReadOnlyList<string> upFields)
     {

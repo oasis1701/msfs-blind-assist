@@ -200,10 +200,6 @@ public sealed class Md11Control
     [JsonPropertyName("continuous")]
     public bool Continuous { get; set; }
 
-    /// <summary>The ModelBehaviorDefs template the control was generated from (<c>TFDi_Design_MD11_3Pos_Knob_Hold</c>, …).</summary>
-    [JsonPropertyName("template")]
-    public string Template { get; set; } = string.Empty;
-
     /// <summary>
     /// Present only where TFDi's tooltip COMPUTES the state text from the state var and names no
     /// positions — the rudder and aileron trims (generator: <c>readout_expression</c>). The

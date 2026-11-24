@@ -206,4 +206,18 @@ public class Md11TrimTests
         Assert.Equal("Aileron Trim: 0.4 degrees Right Wing Down",
             Md11TrimButtons.ReadBackSentence(c, name => name == c.StateVar ? 26 : null));
     }
+
+    [Fact]
+    public void LongTrim_WithTrimAnnouncementsOff_ReadsBackTheRowAndTheTrimAnnouncementsWords()
+        => Assert.Equal("Stabilizer Trim: Trim up 2.5",
+            Md11TrimButtons.StabTrimReadBackSentence(Control(LongTrim), "Trim up 2.5"));
+
+    [Fact]
+    public void TheSettleCeiling_IsFarPastOnePressesTravel()
+    {
+        // One aileron click glides about a second, a rudder hold about as long: the ceiling is a safety
+        // bound, never the thing that ends a normal read-back (the old 4 s spoke a mid-move 3.5°).
+        Assert.True(Md11TrimButtons.SettleCeilingMs >= 5 * 1000);
+        Assert.True(Md11TrimButtons.SettlePollMs < Md11TrimButtons.SettleCeilingMs / 20);
+    }
 }

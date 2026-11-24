@@ -42,13 +42,18 @@ public static class Md11TrimButtons
     /// <summary>
     /// The trim GLIDES to its new value — an aileron click took about a second live, read mid-move at
     /// 25.457 on its way to 26 — so the read-back re-reads every <see cref="SettlePollMs"/> until two
-    /// reads agree (<see cref="HasSettled"/>), and gives up at <see cref="SettleCeilingMs"/> after the
-    /// first read, speaking the last value it got.
+    /// reads agree (<see cref="HasSettled"/>). A press while its trim is still moving is dropped, so one
+    /// press's travel is all there is to wait for.
     /// </summary>
     public const int SettlePollMs = 150;
 
-    /// <inheritdoc cref="SettlePollMs"/>
-    public const int SettleCeilingMs = 4000;
+    /// <summary>
+    /// A safety bound only, far past one press's travel (about a second): a trim still moving this
+    /// long after the first read is not speaking a settled value, so nothing is spoken and the trim
+    /// is free for the next press. The old 4 s ceiling spoke a mid-move 3.5° while queued clicks ran
+    /// the aileron trim on to its 10° stop (review of #346, MSFS 2024).
+    /// </summary>
+    public const int SettleCeilingMs = 10000;
 
     /// <summary>Two successive reads agree: far below the readout's 0.1° (0.25 units) resolution.</summary>
     public static bool HasSettled(double previous, double current) => Math.Abs(current - previous) < 0.001;
@@ -98,4 +103,7 @@ public static class Md11TrimButtons
     /// <summary>The read-back after a press: the control's label and its readout, "Rudder Trim: 0.3 degrees Nose Left". Null with no readout.</summary>
     public static string? ReadBackSentence(Md11Control c, Func<string, double?> readLVar)
         => Md11TooltipReadout.Evaluate(c.Readout, readLVar) is string text ? $"{c.DisplayLabel}: {text}" : null;
+
+    /// <summary>The Long Trim read-back, spoken only while trim announcements are off: the row's label and the stabiliser trim in the trim announcement's words, "Stabilizer Trim: Trim up 3.0".</summary>
+    public static string StabTrimReadBackSentence(Md11Control c, string trimPhrase) => $"{c.DisplayLabel}: {trimPhrase}";
 }

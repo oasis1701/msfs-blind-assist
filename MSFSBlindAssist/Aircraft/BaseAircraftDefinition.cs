@@ -67,14 +67,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     protected abstract Dictionary<string, SimConnect.SimVarDefinition> BuildVariables();
     public abstract Dictionary<string, List<string>> GetPanelStructure();
 
+    /// <summary>The key of the shared stabiliser/elevator trim read-out (<c>ELEVATOR TRIM POSITION</c>), spoken through <see cref="DescribeElevatorTrim"/>.</summary>
+    protected const string ElevatorTrimKey = "MON_ElevatorTrim";
+
     /// <summary>
     /// Returns common variables shared by all aircraft.
     /// Override to add additional base variables if needed.
     /// Aircraft implementations should call this and merge with their aircraft-specific variables.
     /// </summary>
-    /// <summary>The key of the shared stabiliser/elevator trim read-out (<c>ELEVATOR TRIM POSITION</c>), spoken through <see cref="DescribeElevatorTrim"/>.</summary>
-    protected const string ElevatorTrimKey = "MON_ElevatorTrim";
-
     protected virtual Dictionary<string, SimConnect.SimVarDefinition> GetBaseVariables()
     {
         return new Dictionary<string, SimConnect.SimVarDefinition>

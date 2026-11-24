@@ -151,11 +151,19 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
         _flaps = new Md11FlapSystem(_map);
         _trimButtons = Md11TrimButtons.From(_map.Controls);
         foreach (var trim in _trimButtons) _trimByKey[trim.Key] = trim;
+        // Matched on the base definition's own Name, so a renamed base var drops the rows back to what they were.
+        var stabTrimName = GetBaseVariables().TryGetValue(ElevatorTrimKey, out var stabTrim) ? stabTrim.Name : null;
+        foreach (var c in _map.Controls)
+            if (c.StockReadout != null && string.Equals(stabTrimName, c.StockReadout, StringComparison.OrdinalIgnoreCase))
+                _stabTrimRows.Add(c.NodeId);
     }
 
     /// <summary>The trim buttons the map calls for (<see cref="Md11TrimButtons"/>), and the same by row key.</summary>
     private readonly IReadOnlyList<Md11TrimButton> _trimButtons;
     private readonly Dictionary<string, Md11TrimButton> _trimByKey = new(StringComparer.Ordinal);
+
+    /// <summary>The controls whose rows show the stabiliser trim (<see cref="ShowsStabTrim"/>), resolved once here.</summary>
+    private readonly HashSet<string> _stabTrimRows = new(StringComparer.Ordinal);
 
     private string KeyFor(string stateVar) => _keyByStateVar.TryGetValue(stateVar, out var k) ? k : stateVar;
 
@@ -170,13 +178,9 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
     /// <summary>
     /// True when the control's row shows the stabiliser trim instead of its own var: its curated
     /// <see cref="Md11Control.StockReadout"/> names the shared trim read-out's SimVar (the Long Trim
-    /// handles, whose own var only ever reads their spring-back centre). Matched on the base
-    /// definition's own Name, so a renamed base var drops the row back to what it was.
+    /// handles, whose own var only ever reads their spring-back centre).
     /// </summary>
-    private bool ShowsStabTrim(Md11Control c)
-        => c.StockReadout != null
-           && GetBaseVariables().TryGetValue(ElevatorTrimKey, out var trim)
-           && string.Equals(trim.Name, c.StockReadout, StringComparison.OrdinalIgnoreCase);
+    private bool ShowsStabTrim(Md11Control c) => _stabTrimRows.Contains(c.NodeId);
 
     /// <summary>The keys a readout row reads and watches: every L:var its readout names, by its key.</summary>
     private string[] ReadoutDependencies(Md11Control c)
@@ -512,9 +516,6 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Never,
                 RenderAsButton = true,
-                HelpText = trim.IsHold
-                    ? $"Holds {trim.Control.ButtonName} {trim.Word.ToLowerInvariant()} briefly"
-                    : $"Turns the {trim.Control.ButtonName} knob one click {trim.Word.ToLowerInvariant()}",
             };
 
         AddFirstOfficerReadVariables(vars);
