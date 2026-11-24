@@ -67,7 +67,7 @@ internal sealed class PrismScreenReaderBackends : IScreenReaderBackends
             string line = $"Prism {level} {source}: {message}";
             lock (seen)
             {
-                if (!seen.Add(line)) return;
+                if (seen.Count >= 200 || !seen.Add(line)) return;   // capped, in case Prism's wording ever varies
             }
             Log.Debug("Accessibility", line);
         });

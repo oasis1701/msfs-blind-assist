@@ -25,6 +25,9 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
     {
         InitializeComponent();
         UpdateScreenReaderStatus();
+        // The box says whether the reader found is used, so it follows the radios (no new look, no speech).
+        _screenReaderRadio.CheckedChanged += (_, _) => ShowScreenReaderStatus();
+        _sapiRadio.CheckedChanged += (_, _) => ShowScreenReaderStatus();
     }
 
     private void InitializeComponent()
@@ -160,22 +163,39 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         return group;
     }
 
+    // What the last look found, so a mode change can reword the box without looking again.
+    private string? _detectedReader;
+    private bool _prismStarted;
+    private bool _detectionFailed;
+
     private void UpdateScreenReaderStatus()
     {
         try
         {
             // The announcer's own reader, looked for again now: the same instance it speaks through, in the
-            // same order (NVDA, then ZDSR, PC-Talker and Boy PC Reader, then JAWS and the rest).
+            // same order (NVDA, then PC-Talker, ZDSR and Boy PC Reader, then JAWS and the rest).
             var readers = ScreenReaderOutput.Shared;
-            string? detected = readers.DetectNow();
-            _statusBox.Text = ScreenReaderAnnouncer.DetectionStatusText(detected, readers.Started);
-            _statusBox.ForeColor = detected != null ? Color.DarkGreen : readers.Started ? Color.DarkOrange : Color.Red;
+            _detectedReader = readers.DetectNow();
+            _prismStarted = readers.Started;
+            ShowScreenReaderStatus();
         }
         catch (Exception ex)
         {
+            _detectionFailed = true;
             _statusBox.Text = $"Error checking screen reader: {ex.Message}{Environment.NewLine}SAPI mode recommended.";
             _statusBox.ForeColor = Color.Red;
         }
+    }
+
+    // The status for the mode now chosen in this panel (the saved one until a radio changes it).
+    private void ShowScreenReaderStatus()
+    {
+        if (_detectionFailed) return;
+        bool sapiChosen = _sapiRadio.Checked
+            || (!_screenReaderRadio.Checked && SettingsManager.Current.AnnouncementMode == nameof(AnnouncementMode.SAPI));
+        _statusBox.Text = ScreenReaderAnnouncer.DetectionStatusText(_detectedReader, _prismStarted, sapiChosen);
+        _statusBox.ForeColor = _detectedReader != null ? (sapiChosen ? Color.DarkOrange : Color.DarkGreen)
+            : _prismStarted ? Color.DarkOrange : Color.Red;
     }
 
     private static int IntervalToIndex(int seconds) => seconds switch

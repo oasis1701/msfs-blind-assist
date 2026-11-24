@@ -23,6 +23,7 @@ public class ScreenReaderOutputTests
             lock (Source)
             {
                 if (Source.Dead.Contains(Name)) throw new InvalidOperationException($"{Name} closed");
+                if (Source.WarmingUp.Contains(Name)) throw new InvalidOperationException($"{Name} still starting");
                 Source.Spoken.Add((Name, text, interrupt));
             }
         }
@@ -48,6 +49,8 @@ public class ScreenReaderOutputTests
         public readonly HashSet<string> Dead = new();
         public readonly HashSet<string> NoBraille = new();
         public int BrailleCalls;
+        /// <summary>Readers that start (Prism creates them) but do not take speech yet: NVDA's first seconds.</summary>
+        public readonly HashSet<string> WarmingUp = new();
         /// <summary>Readers whose Prism backend says it cannot braille (no SupportsBraille feature).</summary>
         public readonly HashSet<string> NoBrailleSupport = new();
         /// <summary>Readers whose Prism backend says it cannot speak (no SupportsSpeak feature).</summary>
@@ -182,6 +185,82 @@ public class ScreenReaderOutputTests
         Assert.Equal(zdsrCreates, rig.Source.Creates["ZDSR"]);
         Assert.Equal(jawsCreates, rig.Source.Creates.GetValueOrDefault("JAWS"));
         Assert.True(rig.Source.Made.Single(r => r.Name == "ZDSR").Disposed);
+    }
+
+    [Fact]
+    public void A_reader_still_starting_gives_the_message_back_to_the_one_in_use_and_takes_over_once_it_speaks()
+    {
+        var rig = new Rig();
+        rig.Source.Running.Add("ZDSR");
+        Assert.True(rig.Output.TrySpeak("One", false));
+
+        rig.Source.Open("NVDA");
+        rig.Source.WarmingUp.Add("NVDA");
+        rig.Advance(ScreenReaderOutput.RescanIntervalMs);
+        Assert.True(rig.Output.TrySpeak("Two", false));
+        Assert.Equal(("ZDSR", "Two", false), rig.Source.Spoken[^1]);
+        Assert.Equal("ZDSR", rig.Output.ActiveReaderName);
+
+        rig.Source.WarmingUp.Remove("NVDA");
+        rig.Advance(ScreenReaderOutput.RescanIntervalMs);
+        Assert.True(rig.Output.TrySpeak("Three", false));
+        Assert.Equal(("NVDA", "Three", false), rig.Source.Spoken[^1]);
+    }
+
+    [Fact]
+    public void Every_reader_that_fails_is_skipped_until_one_takes_the_message()
+    {
+        var rig = new Rig();
+        rig.Source.Running.UnionWith(new[] { "NVDA", "ZDSR", "JAWS" });
+        Assert.True(rig.Output.TrySpeak("One", false));
+
+        rig.Source.Close("NVDA");
+        rig.Source.WarmingUp.Add("ZDSR");
+
+        Assert.True(rig.Output.TrySpeak("Two", false));
+        Assert.Equal(("JAWS", "Two", false), rig.Source.Spoken[^1]);
+    }
+
+    [Fact]
+    public void When_every_running_reader_fails_the_message_goes_to_SAPI()
+    {
+        var rig = new Rig();
+        rig.Source.Running.UnionWith(new[] { "NVDA", "ZDSR" });
+        Assert.True(rig.Output.TrySpeak("One", false));
+
+        rig.Source.WarmingUp.UnionWith(new[] { "NVDA", "ZDSR" });
+
+        Assert.False(rig.Output.TrySpeak("Two", false));
+    }
+
+    [Fact]
+    public void DetectNow_notices_a_reader_that_closed()
+    {
+        var rig = new Rig();
+        rig.Source.Running.Add("NVDA");
+        Assert.True(rig.Output.TrySpeak("One", false));
+
+        rig.Source.Close("NVDA");
+
+        Assert.Null(rig.Output.DetectNow());
+        Assert.Null(rig.Output.ActiveReaderName);
+    }
+
+    [Fact]
+    public void DetectNow_keeps_the_reader_in_use_when_it_is_still_the_best()
+    {
+        var rig = new Rig();
+        rig.Source.Running.UnionWith(new[] { "ZDSR", "JAWS" });
+        Assert.True(rig.Output.TrySpeak("One", false));
+        var inUse = rig.Source.Made.Single(r => r.Name == "ZDSR");
+
+        Assert.Equal("ZDSR", rig.Output.DetectNow());
+
+        // The instance speaking is kept (freeing it can drop its queued speech); the probe's copy is closed.
+        Assert.False(inUse.Disposed);
+        Assert.True(rig.Output.TrySpeak("Two", false));
+        Assert.Equal(2, rig.Source.Made.Count(r => r.Name == "ZDSR"));
+        Assert.True(rig.Source.Made.Last(r => r.Name == "ZDSR").Disposed);
     }
 
     [Fact]

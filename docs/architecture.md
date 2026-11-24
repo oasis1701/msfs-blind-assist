@@ -586,7 +586,10 @@ Every announcement goes to the running screen reader through Prism (`ScreenReade
 brailled, or else to System.Speech (SAPI). `Announce` queues (`interrupt: false`), `AnnounceImmediate` cuts off what
 the reader is saying (`interrupt: true`). Screen readers are used only in Screen Reader mode
 (`ScreenReaderAnnouncer.UsesScreenReader`): SAPI mode keeps the Windows voice whatever reader is running, as the guide
-promises for a reader not working with BA. (Before Prism, a running NVDA or JAWS overrode a saved SAPI choice.)
+promises for a reader not working with BA. (Before Prism, a running NVDA or JAWS overrode a saved SAPI choice; the
+Settings status box says "SAPI is chosen" beside a found reader, so a pilot updating with SAPI saved learns why.)
+When System.Speech cannot start, or a `SpeakAsync` throws, the screen reader is used whatever the mode
+(`TriesScreenReader`): a broken SAPI never silences a pilot whose reader works.
 
 ### ScreenReaderOutput and PrismScreenReaderBackends (every screen reader through Prism)
 **Files:** `Accessibility/ScreenReaderOutput.cs`, `Accessibility/PrismScreenReaderBackends.cs`
@@ -600,12 +603,16 @@ DLL ships any more, and `RuntimeChecker.RequiredDlls` asks for `prism.dll` and `
   backend, in Prism's priority order: NVDA (103), then PC-Talker, ZDSR and Boy PC Reader (101), then JAWS, ZoomText,
   Sense Reader, System Access and Window-Eyes (100). Each reader's own library comes from its installation: ZDSR's
   `ZDSRAPI_x64.dll` through ZDSR's registry path, NVDA over its own RPC endpoint, JAWS over COM.
+- **What each reader is asked.** Only what its Prism backend says it supports, read from its feature flags: a reader
+  without `SupportsSpeak` is skipped, one without `SupportsBraille` is never sent braille. The interrupt is each
+  reader's own: NVDA cancels its speech then speaks, ZDSR takes its `bInterrupt` flag, JAWS `SayString`'s flush.
 - **Keeping a reader.** The first reader that starts is kept while it takes messages. `ScreenReaderOutput.Shared` is
   the one instance; Prism itself starts on the first announcement, so the test doubles that subclass the announcer
   never load `prism.dll`.
-- **A reader that closes.** Its next `Speak` throws (measured for NVDA and ZDSR), and that same message goes to the
-  next reader, or to SAPI. Every backend is created fresh (`CreateBackend`, never Prism's cached `Acquire`): Prism's
-  NVDA connection does not reconnect after NVDA restarts.
+- **A reader that closes, or one not speaking yet.** Its next `Speak` throws (measured for NVDA and ZDSR closing,
+  and for NVDA in its first seconds), and that same message goes to the other readers, each failing one left out,
+  then to SAPI. Every backend is created fresh (`CreateBackend`, never Prism's cached `Acquire`): Prism's NVDA
+  connection does not reconnect after NVDA restarts. A failing reader is logged once per run of failures.
 - **A reader that starts later.** Readers are looked for again at most every 5 s (`RescanIntervalMs`): all of them
   while none is in use, only those above the one in use otherwise (NVDA started after ZDSR takes over, after NVDA's
   own ~8 s start-up). Prism's availability callback is not used: measured 2026-11-24, it reported NVDA's comings and
@@ -614,9 +621,14 @@ DLL ships any more, and `RuntimeChecker.RequiredDlls` asks for `prism.dll` and `
   whole when braille does. ZDSR with no braille display fails every braille call (its API returns 3, Prism reports
   `PRISM_ERROR_INTERNAL`); that is logged once per reader and the message still counts as spoken.
 - **Settings.** The Announcements tab's status box calls `DetectNow()` on the same instance, so it names the reader
-  the announcer uses, in the same order.
+  the announcer uses, in the same order. `DetectNow` walks from the top and checks the reader in use is still running
+  (it keeps that instance, closing its own probe copy), so a reader that closed since the last message is not named.
 - **Cost.** Measured live: Prism's start plus the first selection 35 to 105 ms (once); a message 0.2 to 0.5 ms; a
-  rescan with no reader running about 10 ms, at most every 5 s.
+  rescan with no reader running about 10 ms, at most every 5 s. Prismatoid 0.4.0 leaks about 1 KB of native memory
+  per failed `CreateBackend` (its `PrismBackend` constructor throws without freeing the native object; measured by
+  the review: 16,000 failed creates, 15.6 MB, no handle or thread growth). With no reader running in Screen Reader
+  mode that is at most about 6 MB an hour; with a reader in use only the readers above it are probed (NVDA alone
+  probes none). Worth an upstream report.
 - **Tests.** `ScreenReaderOutputTests` drive the selection through a fake `IScreenReaderBackends`; the real Prism
   is exercised only live (NVDA, ZDSR, SAPI). JAWS was not available to test live.
 

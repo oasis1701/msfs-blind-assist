@@ -28,12 +28,13 @@ internal interface IScreenReaderBackends
 
 /// <summary>
 /// Which screen reader MSFS Blind Assist's announcements go to, and the speaking and brailling of each one, through
-/// Prism (<see cref="PrismScreenReaderBackends"/>). Readers are tried in Prism's priority order (NVDA, then ZDSR,
-/// PC-Talker and Boy PC Reader, then JAWS and the rest); speech engines are never used here, so SAPI stays the
+/// Prism (<see cref="PrismScreenReaderBackends"/>). Readers are tried in Prism's priority order (NVDA, then PC-Talker,
+/// ZDSR and Boy PC Reader, then JAWS and the rest); speech engines are never used here, so SAPI stays the
 /// announcer's own System.Speech voice.
 ///
-/// <para>A reader is kept while it takes messages. When a message fails (the reader closed), the next reader is
-/// tried for that same message, so it is not lost. Otherwise readers are looked for again at most every
+/// <para>A reader is kept while it takes messages. When a message fails (the reader closed, or one just started is
+/// not taking speech yet, as NVDA in its first seconds), the other readers are tried for that same message, each
+/// failing one left out, so it is not lost. Otherwise readers are looked for again at most every
 /// <see cref="RescanIntervalMs"/>: all of them while none is in use, and only those above the one in use while one is
 /// (NVDA started after ZDSR takes over). Prism's own availability watcher is not used: measured 2026-11-24, it
 /// reported NVDA closing and starting but never ZDSR.</para>
@@ -50,6 +51,7 @@ public sealed class ScreenReaderOutput
     private readonly Func<IScreenReaderBackends> _sourceFactory;
     private readonly Func<long> _clockMs;
     private readonly HashSet<string> _brailleFailuresLogged = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _speechFailuresLogged = new(StringComparer.Ordinal);
 
     private IScreenReaderBackends? _source;
     private bool _sourceFailed;
@@ -96,7 +98,9 @@ public sealed class ScreenReaderOutput
             long now = _clockMs();
             if (now >= _nextRescanMs) Rescan(source, now);
 
-            ScreenReaderCandidate? failed = null;
+            // Every reader that fails this message is left out of the next try, so a third running reader still
+            // takes it before SAPI does; the list grows each pass, so the loop ends.
+            HashSet<ScreenReaderCandidate>? failed = null;
             while (_active != null)
             {
                 try
@@ -105,18 +109,16 @@ public sealed class ScreenReaderOutput
                 }
                 catch (Exception ex)
                 {
-                    Log.Info("Accessibility", $"{_activeCandidate!.Name} did not take speech ({ex.Message}); trying the next screen reader");
-                    if (failed != null)
-                    {
-                        // A second failure in one message: give it to SAPI, look again at the next rescan.
-                        Drop();
-                        return false;
-                    }
-                    failed = _activeCandidate;
+                    // Once per run of failures for a reader: one that keeps starting but not speaking would
+                    // otherwise log at every rescan.
+                    if (_speechFailuresLogged.Add(_activeCandidate!.Name))
+                        Log.Info("Accessibility", $"{_activeCandidate.Name} did not take speech ({ex.Message}); trying the next screen reader");
+                    (failed ??= new()).Add(_activeCandidate);
                     Drop();
-                    Rescan(source, now, skip: failed);
+                    Rescan(source, now, failed);
                     continue;
                 }
+                _speechFailuresLogged.Remove(_activeCandidate!.Name);
                 Braille(text);
                 return true;
             }
@@ -125,15 +127,33 @@ public sealed class ScreenReaderOutput
     }
 
     /// <summary>Looks for readers now, whatever the throttle says, and names the one in use (null when none):
-    /// for the Settings status box.</summary>
+    /// for the Settings status box. Unlike the rescan before a message, it checks the reader in use is still
+    /// running, from the top of the list: a reader that closed since the last message is not named.</summary>
     public string? DetectNow()
     {
         lock (_gate)
         {
             var source = Source();
             if (source == null) return null;
-            Rescan(source, _clockMs());
-            return _activeCandidate?.Name;
+            _nextRescanMs = _clockMs() + RescanIntervalMs;
+            foreach (var candidate in source.Candidates)
+            {
+                var started = Start(source, candidate);
+                if (started == null) continue;
+                if (candidate == _activeCandidate)
+                {
+                    // Still the best: keep the instance in use (freeing it can drop its queued speech), close the probe.
+                    Close(started, candidate.Name);
+                }
+                else
+                {
+                    Adopt(started, candidate);
+                }
+                return _activeCandidate!.Name;
+            }
+            if (_activeCandidate != null) Log.Info("Accessibility", $"{_activeCandidate.Name} is no longer running");
+            Drop();
+            return null;
         }
     }
 
@@ -154,39 +174,56 @@ public sealed class ScreenReaderOutput
     }
 
     // Starts the best reader above the one in use (any, when none is), replacing it; then trusts that for a while.
-    private void Rescan(IScreenReaderBackends source, long now, ScreenReaderCandidate? skip = null)
+    private void Rescan(IScreenReaderBackends source, long now, HashSet<ScreenReaderCandidate>? skip = null)
     {
         _nextRescanMs = now + RescanIntervalMs;
         foreach (var candidate in source.Candidates)
         {
             if (_activeCandidate != null && candidate.Priority <= _activeCandidate.Priority) break;
-            if (candidate == skip) continue;
-            IScreenReaderBackend? started;
-            try
-            {
-                started = source.TryCreate(candidate);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("Accessibility", $"{candidate.Name} could not be started: {ex.Message}");
-                started = null;
-            }
+            if (skip != null && skip.Contains(candidate)) continue;
+            var started = Start(source, candidate);
             if (started == null) continue;
-            if (!started.CanSpeak)
-            {
-                // Prism's feature flags say this reader takes no speech: never ours, whatever else it does.
-                Log.Debug("Accessibility", $"{candidate.Name} is running but takes no speech; skipped");
-                try { started.Dispose(); } catch (Exception ex) { Log.Debug("Accessibility", $"Closing {candidate.Name}: {ex.Message}"); }
-                continue;
-            }
-
-            if (_activeCandidate != null) Log.Info("Accessibility", $"{candidate.Name} started; announcements move to it from {_activeCandidate.Name}");
-            else Log.Info("Accessibility", $"Announcements go to {candidate.Name}");
-            Drop();
-            _active = started;
-            _activeCandidate = candidate;
+            Adopt(started, candidate);
             return;
         }
+    }
+
+    // A fresh connection to a reader that is running and takes speech, or null.
+    private static IScreenReaderBackend? Start(IScreenReaderBackends source, ScreenReaderCandidate candidate)
+    {
+        IScreenReaderBackend? started;
+        try
+        {
+            started = source.TryCreate(candidate);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Accessibility", $"{candidate.Name} could not be started: {ex.Message}");
+            return null;
+        }
+        if (started == null) return null;
+        if (!started.CanSpeak)
+        {
+            // Prism's feature flags say this reader takes no speech: never ours, whatever else it does.
+            Log.Debug("Accessibility", $"{candidate.Name} is running but takes no speech; skipped");
+            Close(started, candidate.Name);
+            return null;
+        }
+        return started;
+    }
+
+    private void Adopt(IScreenReaderBackend started, ScreenReaderCandidate candidate)
+    {
+        if (_activeCandidate != null) Log.Info("Accessibility", $"{candidate.Name} started; announcements move to it from {_activeCandidate.Name}");
+        else Log.Info("Accessibility", $"Announcements go to {candidate.Name}");
+        Drop();
+        _active = started;
+        _activeCandidate = candidate;
+    }
+
+    private static void Close(IScreenReaderBackend backend, string name)
+    {
+        try { backend.Dispose(); } catch (Exception ex) { Log.Debug("Accessibility", $"Closing {name}: {ex.Message}"); }
     }
 
     private void Drop()

@@ -62,9 +62,10 @@ public class ScreenReaderAnnouncer : IDisposable
             }
             catch (Exception ex)
             {
-                // Fallback to SAPI only
-                Log.Debug("Accessibility", $"Initialization error: {ex.Message}, falling back to SAPI");
-                currentMode = AnnouncementMode.SAPI;
+                // Windows speech is unavailable: the screen reader is then used whatever the mode (TriesScreenReader),
+                // so a broken SAPI never means silence. The mode itself is left as the pilot set it.
+                Log.Warn("Accessibility", $"Windows speech (SAPI) could not start, so only a screen reader speaks: {ex.Message}");
+                speechSynthesizer = null;
             }
         }
 
@@ -112,11 +113,20 @@ public class ScreenReaderAnnouncer : IDisposable
         /// not working with BA (before Prism, a running NVDA or JAWS overrode it).</summary>
         internal static bool UsesScreenReader(AnnouncementMode mode) => mode == AnnouncementMode.ScreenReader;
 
+        /// <summary>Whether a message is offered to the screen reader first: in Screen Reader mode, and in SAPI mode
+        /// too when Windows speech is unavailable (<paramref name="sapiAvailable"/> false), so that a broken SAPI never
+        /// silences a pilot whose screen reader works.</summary>
+        internal static bool TriesScreenReader(AnnouncementMode mode, bool sapiAvailable) => UsesScreenReader(mode) || !sapiAvailable;
+
         /// <summary>The two lines of the Settings status box: the reader <see cref="ScreenReaderOutput"/> found
-        /// (<paramref name="reader"/>, null for none), or why there is none.</summary>
-        internal static string DetectionStatusText(string? reader, bool prismStarted)
+        /// (<paramref name="reader"/>, null for none), or why there is none. With SAPI chosen
+        /// (<paramref name="sapiChosen"/>) a found reader is named with why the Windows voice still speaks: before Prism a
+        /// running reader overrode a saved SAPI choice, so a pilot updating with SAPI saved learns it here.</summary>
+        internal static string DetectionStatusText(string? reader, bool prismStarted, bool sapiChosen)
         {
             string nl = Environment.NewLine;
+            if (reader != null && sapiChosen)
+                return $"Screen reader detected: {reader}{nl}SAPI is chosen, so BA speaks with Windows speech. Choose 'Screen Reader' to use {reader}.";
             if (reader != null) return $"Screen reader detected: {reader}{nl}Choose 'Screen Reader' for best experience.";
             if (prismStarted) return $"No screen reader detected.{nl}SAPI mode recommended for speech feedback.";
             return $"Unable to start screen reader detection.{nl}SAPI mode will be used as fallback.";
@@ -144,28 +154,49 @@ public class ScreenReaderAnnouncer : IDisposable
 
             // Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Announce called - Mode: {currentMode}, Message: {message}");
 
+            // Queued: the reader speaks it when idle.
+            Deliver(message, interrupt: false);
+        }
+
+        // The screen reader (spoken and brailled) when the mode, or a missing SAPI, says so; else Windows speech; and the
+        // screen reader after all when Windows speech throws. Never throws.
+        private void Deliver(string message, bool interrupt)
+        {
+            bool sapiAvailable = speechSynthesizer != null;
+            bool readerTried = TriesScreenReader(currentMode, sapiAvailable);
             try
             {
-                // The screen reader (queued: spoken when it is idle), and brailled; else SAPI below.
-                bool success = UsesScreenReader(currentMode) && screenReaders.TrySpeak(message, interrupt: false);
-
-                // If screen reader failed or SAPI mode selected, use System.Speech
-                if (!success && speechSynthesizer != null)
-                {
-                    // Debug.WriteLine("[ScreenReaderAnnouncer] Using System.Speech TTS");
-                    speechSynthesizer.SpeakAsync(message);
-                    success = true;
-                }
-
-                if (!success)
-                {
-                    Log.Debug("Accessibility", "Warning: All speech methods failed");
-                }
+                if (readerTried && screenReaders.TrySpeak(message, interrupt)) return;
             }
             catch (Exception ex)
             {
-                Log.Debug("Accessibility", $"Error announcing: {ex.Message}");
+                Log.Debug("Accessibility", $"Error announcing through the screen reader: {ex.Message}");
             }
+
+            var synth = speechSynthesizer;
+            if (synth != null)
+            {
+                try
+                {
+                    if (interrupt) synth.SpeakAsyncCancelAll();
+                    synth.SpeakAsync(message);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Log.Debug("Accessibility", $"Windows speech failed ({ex.Message}); trying the screen reader");
+                }
+            }
+
+            try
+            {
+                if (!readerTried && screenReaders.TrySpeak(message, interrupt)) return;
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("Accessibility", $"Error announcing through the screen reader: {ex.Message}");
+            }
+            Log.Debug("Accessibility", "Warning: All speech methods failed");
         }
 
         public virtual void AnnounceImmediate(string message)
@@ -175,29 +206,8 @@ public class ScreenReaderAnnouncer : IDisposable
 
             // Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] AnnounceImmediate called - Mode: {currentMode}, Message: {message}");
 
-            try
-            {
-                // The screen reader, cutting off what it is saying, and brailled; else SAPI below.
-                bool success = UsesScreenReader(currentMode) && screenReaders.TrySpeak(message, interrupt: true);
-
-                // If screen reader failed or SAPI mode selected, use System.Speech with interrupt
-                if (!success && speechSynthesizer != null)
-                {
-                    // Debug.WriteLine("[ScreenReaderAnnouncer] Using immediate System.Speech with interrupt");
-                    speechSynthesizer.SpeakAsyncCancelAll(); // Cancel current speech
-                    speechSynthesizer.SpeakAsync(message);     // Speak new message
-                    success = true;
-                }
-
-                if (!success)
-                {
-                    Log.Debug("Accessibility", "Warning: All immediate speech methods failed");
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("Accessibility", $"Error in immediate announce: {ex.Message}");
-            }
+            // Cutting off what is being said, on the reader and on Windows speech alike.
+            Deliver(message, interrupt: true);
         }
 
         public virtual void AnnounceQueued(string message)
