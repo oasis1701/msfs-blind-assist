@@ -174,6 +174,7 @@ public class Md11TrimTests
                 Assert.Equal(Md11TrimButtons.KeyFor(c, buttons[i].DownEvent), key);
                 Assert.Equal($"{buttons[i].Word} {c.ButtonName}", vars[key].DisplayName);
                 Assert.True(vars[key].RenderAsButton);
+                Assert.True(vars[key].PressOncePerKey);   // a held Enter is one trim step (review of #346)
                 Assert.Equal(UpdateFrequency.Never, vars[key].UpdateFrequency);
             }
         }

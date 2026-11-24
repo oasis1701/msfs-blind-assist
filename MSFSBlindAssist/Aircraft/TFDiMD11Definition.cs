@@ -516,6 +516,7 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Never,
                 RenderAsButton = true,
+                PressOncePerKey = true,   // a held Enter is one trim step, never a run to the stop
                 // The button's accessible description (MainForm's panel builder), read on focus.
                 HelpText = trim.IsHold
                     ? $"Holds {trim.Control.ButtonName} {trim.Word.ToLowerInvariant()} briefly"
