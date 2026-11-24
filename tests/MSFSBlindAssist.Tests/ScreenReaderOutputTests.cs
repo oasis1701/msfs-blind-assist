@@ -18,13 +18,14 @@ public class ScreenReaderOutputTests
         public bool CanSpeak => !Source.Mute.Contains(Name);
         public bool CanBraille => !Source.NoBrailleSupport.Contains(Name);
         public bool Disposed;
-        /// <summary>The reader restarted since this connection was made: Prism's NVDA connection does not reconnect.</summary>
+        /// <summary>This connection stopped working although its reader runs. Measured 2026-11-24, NVDA's and ZDSR's
+        /// connections keep speaking across a restart; this stands for a reader, or a later Prism, whose does not.</summary>
         public bool Stale;
         public void Speak(string text, bool interrupt)
         {
             lock (Source)
             {
-                if (Stale) throw new InvalidOperationException($"{Name} restarted; this connection is gone");
+                if (Stale) throw new InvalidOperationException($"this connection to {Name} is gone");
                 if (Source.Dead.Contains(Name)) throw new InvalidOperationException($"{Name} closed");
                 if (Source.WarmingUp.Contains(Name)) throw new InvalidOperationException($"{Name} still starting");
                 Source.Spoken.Add((Name, text, interrupt));
@@ -83,9 +84,9 @@ public class ScreenReaderOutputTests
         /// <summary>A reader starts (again).</summary>
         public void Open(string name) { Running.Add(name); Dead.Remove(name); }
 
-        /// <summary>A reader closes and starts again between two messages: it runs, but every connection made
-        /// before is gone for good.</summary>
-        public void Restart(string name)
+        /// <summary>Every connection made to a reader so far stops working, while the reader itself runs: a fresh
+        /// connection speaks.</summary>
+        public void BreakConnections(string name)
         {
             lock (this) { foreach (var reader in Made.Where(r => r.Name == name)) reader.Stale = true; }
         }
@@ -403,14 +404,14 @@ public class ScreenReaderOutputTests
     }
 
     [Fact]
-    public void A_reader_that_restarted_takes_the_same_message_over_a_fresh_connection()
+    public void A_reader_whose_connection_broke_takes_the_same_message_over_a_fresh_one()
     {
         var rig = new Rig();
         rig.Source.Running.Add("NVDA");
         Assert.True(rig.Output.TrySpeak("Before", false));
         var old = rig.Source.Made.Single();
 
-        rig.Source.Restart("NVDA");
+        rig.Source.BreakConnections("NVDA");
 
         // Not SAPI for this message and the next five seconds: NVDA is running, only the old connection is gone.
         Assert.True(rig.Output.TrySpeak("After", true));
@@ -420,13 +421,13 @@ public class ScreenReaderOutputTests
     }
 
     [Fact]
-    public void A_restarted_reader_that_is_not_speaking_yet_gives_the_message_to_the_next_reader()
+    public void A_reader_whose_fresh_connection_fails_too_gives_the_message_to_the_next_reader()
     {
         var rig = new Rig();
         rig.Source.Running.UnionWith(new[] { "NVDA", "ZDSR" });
         Assert.True(rig.Output.TrySpeak("Before", false));
 
-        rig.Source.Restart("NVDA");
+        rig.Source.BreakConnections("NVDA");
         rig.Source.WarmingUp.Add("NVDA");
 
         Assert.True(rig.Output.TrySpeak("After", false));

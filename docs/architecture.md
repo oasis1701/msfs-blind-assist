@@ -626,13 +626,24 @@ at start-up, only where `prism.dll` sits beside the exe, and only those two file
 - **Keeping a reader.** The first reader that starts is kept while it takes messages. `ScreenReaderOutput.Shared` is
   the one instance; Prism itself starts on the first announcement, so the test doubles that subclass the announcer
   never load `prism.dll`.
-- **A reader that restarted, closed, or is not speaking yet.** Its next `Speak` throws (measured for NVDA and ZDSR
-  closing, and for NVDA in its first seconds). Every backend is created fresh (`CreateBackend`, never Prism's cached
-  `Acquire`), because Prism's NVDA connection does not reconnect after NVDA restarts; so when a connection that
-  spoke before fails, one fresh connection to the same reader is given that same message, and a reader restarted
-  between two messages is not heard as the Windows voice. When that fails too, or the connection never spoke, the
-  message goes to the other readers, each failing one left out, then to SAPI. A failing reader is logged once per
-  run of failures.
+- **A reader that closed, or is not speaking yet.** Its next `Speak` throws (measured for NVDA and ZDSR closing,
+  and for NVDA in its first seconds). When the connection spoke before, one fresh connection to the same reader is
+  given that same message first: if the reader runs, only the connection was at fault. When that fails too, or the
+  connection never spoke, the message goes to the other readers, each failing one left out, then to SAPI. A failing
+  reader is logged once per run of failures.
+- **A reader that restarted.** Measured 2026-11-24 (Prismatoid 0.4.0, NVDA and ZDSR): one connection keeps speaking
+  across a restart of its reader (`nvda -r`; NVDA quit and started 10 s later; ZDSR stopped and started), and a
+  connection whose `Speak` failed while NVDA was closed speaks again once NVDA is back. So with these two the fresh
+  connection above is a safety net, for a reader or a later Prism whose connection does not come back.
+- **Fresh connections.** Every backend is created with `CreateBackend`, never Prism's cached `AcquireBackend`: each
+  connection is closed by whoever asked for it (`DetectNow`'s probe, a reader given one message to try), and closing
+  a shared cached instance would close it under the reader in use.
+- **Measured live, 2026-11-24** (the real Prism on one thread, NVDA and ZDSR, one at a time unless said): speech
+  from the UI thread, pool threads and extra STA and MTA threads, 30 of 30 from six threads at once; a reader
+  started later picked up at the next look; with no reader for two minutes the looks came 30 s apart and ZDSR,
+  started then, was used from the next one; NVDA started while ZDSR was in use had one message refused (ZDSR kept
+  its connection and spoke it), took over 5 s later, and ZDSR took the first message after NVDA closed; with three
+  long messages queued in System.Speech, the first interrupting announcement ZDSR took silenced it.
 - **A reader that starts later.** Readers are looked for again at most every 5 s (`RescanIntervalMs`). While none is
   in use, all of them, and the first that starts is used. While one is in use, only those above it (NVDA started
   after ZDSR): a reader that has started is given the message first, and the one in use is closed only once that

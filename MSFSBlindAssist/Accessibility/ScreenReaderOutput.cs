@@ -32,11 +32,13 @@ internal interface IScreenReaderBackends
 /// Readers are tried in Prism's priority order (NVDA, then PC-Talker, ZDSR and Boy PC Reader, then JAWS and the
 /// rest); speech engines are never used here, so SAPI stays the announcer's own System.Speech voice.
 ///
-/// <para>A reader is kept while it takes messages. When a message fails on a connection that spoke before, the
-/// reader has usually restarted (Prism's NVDA connection does not reconnect), so one fresh connection to that same
-/// reader is given the message. When that fails too, or the reader has not spoken yet (one just started, as NVDA in
-/// its first seconds), the other readers are tried for that same message, each failing one left out, so it is not
-/// lost.</para>
+/// <para>A reader is kept while it takes messages. When a message fails on a connection that spoke before, one
+/// fresh connection to that same reader is given the message: if the reader runs, only the connection was at
+/// fault. (Measured 2026-11-24, Prismatoid 0.4.0: NVDA's and ZDSR's connections keep speaking across a restart of
+/// the reader, also after a message failed while it was closed, so with those two this is a safety net; it costs
+/// one failed connection when the reader has closed.) When that fails too, or the reader has not spoken yet (one
+/// just started, as NVDA in its first seconds), the other readers are tried for that same message, each failing
+/// one left out, so it is not lost.</para>
 ///
 /// <para>Otherwise readers are looked for again at most every <see cref="RescanIntervalMs"/>. While none is in use,
 /// all of them (every <see cref="SlowRescanIntervalMs"/> once none has run for <see cref="NoReaderSlowAfterMs"/>:
@@ -77,7 +79,7 @@ public sealed class ScreenReaderOutput
     private bool _sourceFailed;
     private IScreenReaderBackend? _active;
     private ScreenReaderCandidate? _activeCandidate;
-    // Whether the connection in use has spoken: only then is a failure a reader that restarted, worth a fresh connection.
+    // Whether the connection in use has spoken: only then may a failure be the connection's, worth a fresh one.
     private bool _activeSpoke;
     private long _nextRescanMs = long.MinValue;
     // When a look first found no reader running, null while one is in use.
@@ -146,7 +148,7 @@ public sealed class ScreenReaderOutput
                     Drop();
                     if (spokeBefore)
                     {
-                        // It spoke before, so the reader most likely restarted and only this connection is gone.
+                        // It spoke before: when the reader still runs, only this connection was at fault.
                         var fresh = Start(source, candidate);
                         if (fresh != null)
                         {

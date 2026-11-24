@@ -53,8 +53,10 @@ internal sealed class PrismScreenReaderBackends : IScreenReaderBackends
     {
         try
         {
-            // A fresh instance every time, never the context's cached one: Prism's NVDA connection does not
-            // reconnect, so after NVDA restarts only a new instance speaks.
+            // A fresh instance every time, never the context's cached one (AcquireBackend): each connection made
+            // here is closed by whoever asked for it (DetectNow's probe, a reader given one message to try), and
+            // closing a shared cached instance would close it under the reader in use. Measured 2026-11-24
+            // (Prismatoid 0.4.0): one connection to NVDA or ZDSR keeps speaking across a restart of the reader.
             return new Reader(candidate.Name, _context.CreateBackend(new PrismBackendId(candidate.Id)));
         }
         catch (PrismException ex)
