@@ -167,6 +167,8 @@ public class TaxiRouter
         // can't bypass the cleared taxiway. Declared here because a SINGLE-taxiway sequence is itself
         // the last taxiway and sets this in the step-1 path below.
         bool lastTaxiwayTerminal = false;
+        // The junction that terminal leg is entered by (see OnwardLegOverAnotherRunway).
+        int terminalEntryNode = -1;
 
         // Determine the target for the first taxiway
         string? secondTaxiway = taxiwaySequence.Count > 1 ? taxiwaySequence[1] : null;
@@ -274,7 +276,32 @@ public class TaxiRouter
 
             currentNode = firstTarget;
             entryFound = true;
+            if (lastTaxiwayTerminal) terminalEntryNode = entryNode;
             Log($"Step 1 OK: '{taxiwaySequence[0]}' via node {entryNode} -> {firstTarget}");
+
+            // A SINGLE cleared taxiway joined at the very node the route would leave it by is not
+            // driven at all: the final leg goes on from the junction another way ("K4 is not on the
+            // way from here"). When that taxiway is a link over ANOTHER runway towards the
+            // destination, the clearance means that crossing: drive it and go on from its far end
+            // (OMDB "K4" to 30R, 2026-11-23). Anything else keeps the route it had.
+            if (secondTaxiway == null && destinationIsRunway && !lastTaxiwayTerminal
+                && entryNode == firstTarget && !IsOnDestinationRunway(firstTarget, endNodeId))
+            {
+                int far = FarEndOfLastTaxiway(taxiwaySequence[0], firstTarget, endNodeId);
+                var along = far != -1 ? AStarSearchWithGapChaining(firstTarget, far, taxiwaySequence[0]) : null;
+                var driven = along != null ? fullPath.Concat(along.Skip(fullPath.Count > 0 ? 1 : 0)).ToList() : null;
+                var onward = driven != null
+                    ? OnwardLegOverAnotherRunway(driven, driven.Count - along!.Count, endNodeId) : null;
+                if (driven != null && onward != null)
+                {
+                    fullPath.Clear();
+                    fullPath.AddRange(driven);
+                    for (int j = 1; j < onward.Count; j++) fullPath.Add(onward[j]);
+                    currentNode = endNodeId;
+                    Log($"Single taxiway '{taxiwaySequence[0]}' leads over another runway: driven to {far}, " +
+                        $"then on to the destination ({onward.Count} nodes)");
+                }
+            }
             break;
         }
 
@@ -387,23 +414,12 @@ public class TaxiRouter
                 if (destinationIsRunway && targetNode == currentNode && taxiwaySequence.Count > 1
                     && !IsOnDestinationRunway(currentNode, endNodeId))
                 {
-                    int comp = _graph.Nodes[currentNode].ComponentId;
-                    var destNode = _graph.Nodes[endNodeId];
-                    // First try the node nearest the destination POSITION — correct when the last
-                    // taxiway ends AT the runway (EIDW "…N, N2" to 28R → N2's hold-short end).
-                    int holdEnd = FindNodeOnTaxiwayNearestPosition(
-                        currentTaxiway, destNode.Latitude, destNode.Longitude, comp);
-                    // If that is STILL the entry, the destination node sits back near the entry rather
-                    // than at the taxiway's far end (LFPG "…R, R1" to 26R: the 26R node is closer to the
-                    // R/R1 junction than to R1's far end). Fall back to the node FARTHEST along the
-                    // cleared taxiway from the entry so it is still traversed — otherwise the step
-                    // no-ops and the unconstrained final leg deviates off the clearance.
-                    if (holdEnd == currentNode || holdEnd == -1)
-                        holdEnd = FindNodeOnTaxiwayFarthestFromNode(currentTaxiway, currentNode, comp);
-                    if (holdEnd != -1 && holdEnd != currentNode)
+                    int holdEnd = FarEndOfLastTaxiway(currentTaxiway, currentNode, endNodeId);
+                    if (holdEnd != -1)
                     {
                         targetNode = holdEnd;
                         lastTaxiwayTerminal = true;
+                        terminalEntryNode = currentNode;
                         Log($"Last taxiway '{currentTaxiway}' branches off the destination — " +
                             $"routing along it to {holdEnd} (no bypass leg)");
                     }
@@ -456,6 +472,26 @@ public class TaxiRouter
         // Step 3: Route from last taxiway to destination — UNLESS the last cleared taxiway was
         // honored as the terminus (it holds short of the runway; appending an unconstrained leg
         // here would bypass it onto the runway — see the last-taxiway branch above).
+        //
+        // A terminus is only right where the clearance really ends: at the destination runway, or on
+        // a taxiway with no way on. When the last cleared taxiway instead leads over ANOTHER runway
+        // towards the destination (OMDB "K, K7" to 30R, 2026-11-23: K7 crosses 12R/30L, and a
+        // crossing further east is the shorter way, so K7 read as a branch), the route goes on from
+        // its far end. Ending it there held the pilot at the wrong runway's line under the
+        // destination's name.
+        if (lastTaxiwayTerminal && currentNode != endNodeId)
+        {
+            int legStart = terminalEntryNode == -1 ? -1 : fullPath.LastIndexOf(terminalEntryNode);
+            var onward = legStart == -1 ? null : OnwardLegOverAnotherRunway(fullPath, legStart, endNodeId);
+            if (onward != null)
+            {
+                for (int j = 1; j < onward.Count; j++) fullPath.Add(onward[j]);
+                Log($"Last taxiway leads over another runway: on from {currentNode} to the destination ({onward.Count} nodes)");
+                currentNode = endNodeId;
+                lastTaxiwayTerminal = false;
+            }
+        }
+
         if (currentNode != endNodeId && !lastTaxiwayTerminal)
         {
             var finalLeg = AStarSearch(currentNode, endNodeId, null);
@@ -661,6 +697,95 @@ public class TaxiRouter
         => _graph.Nodes.TryGetValue(fromNodeId, out var from)
             ? FindExtremeNodeOnTaxiway(taxiwayName, from.Latitude, from.Longitude, requiredComponent, farthest: true)
             : -1;
+
+    /// <summary>
+    /// Where a last cleared taxiway that branches off the destination is driven TO from
+    /// <paramref name="entryNodeId"/>, or -1 when it has no other node.
+    /// First the node nearest the destination POSITION: correct when the taxiway ends AT the runway
+    /// (EIDW "…N, N2" to 28R → N2's hold-short end). If that is still the entry, the destination node
+    /// sits back near the entry rather than at the taxiway's far end (LFPG "…R, R1" to 26R: the 26R
+    /// node is closer to the R/R1 junction than to R1's far end), so the node FARTHEST along the
+    /// taxiway from the entry is taken and the taxiway is still traversed.
+    /// </summary>
+    private int FarEndOfLastTaxiway(string taxiwayName, int entryNodeId, int endNodeId)
+    {
+        int comp = _graph.Nodes[entryNodeId].ComponentId;
+        var destNode = _graph.Nodes[endNodeId];
+        int far = FindNodeOnTaxiwayNearestPosition(taxiwayName, destNode.Latitude, destNode.Longitude, comp);
+        if (far == entryNodeId || far == -1)
+            far = FindNodeOnTaxiwayFarthestFromNode(taxiwayName, entryNodeId, comp);
+        return far == entryNodeId ? -1 : far;
+    }
+
+    /// <summary>
+    /// The way on to the destination from the far end of a last cleared taxiway, when that taxiway
+    /// leads over ANOTHER runway: the shortest path from the last node of
+    /// <paramref name="drivenSoFar"/> (the route up to that far end) that does not come back along
+    /// the last taxiway's own leg (from <paramref name="lastLegStart"/>), accepted only when it is
+    /// all NEW ground, through no node the route has already used, and meets another runway's
+    /// pavement before the destination's own, within <see cref="OTHER_RUNWAY_MAX_WALK_M"/> of that
+    /// far end.
+    /// Null in every other case, which keeps the taxiway the route's terminus: no way on but back
+    /// (EIDW N2), a way on over no other runway or only the long way round to one (PHNL 04L, warned
+    /// by RunwayReachGate), a far end at the destination runway itself, or a destination node off
+    /// every runway's pavement.
+    /// Both halves of the new-ground test were measured (VirtualPilot A/B, 100 airports,
+    /// 2026-11-24). Without it, EGKK "…J, G" to 08R: the route comes OVER 08L onto G, G's far end is
+    /// back at 08L, and the way on went over 08L twice more. CLOSING the whole route so far to the
+    /// search instead of refusing forces a way round: RKTP "E, C" to 03R grew from 4.2 to 7.5 km.
+    /// </summary>
+    private List<int>? OnwardLegOverAnotherRunway(IReadOnlyList<int> drivenSoFar, int lastLegStart, int endNodeId)
+    {
+        if (drivenSoFar.Count < 2 || lastLegStart < 0 || lastLegStart >= drivenSoFar.Count - 1) return null;
+        if (!_graph.Nodes.TryGetValue(endNodeId, out var dest)) return null;
+        var destRunway = RouteRunwayCrossings.RunwayUnder(_graph.RunwayCenterlines, dest.Latitude, dest.Longitude);
+        if (destRunway == null) return null;
+        var lastLeg = new HashSet<int>(drivenSoFar.Skip(lastLegStart).Take(drivenSoFar.Count - 1 - lastLegStart));
+        var onward = AStarSearch(drivenSoFar[^1], endNodeId, null, lastLeg);
+        if (onward == null || onward.Count < 2) return null;
+        var used = new HashSet<int>(drivenSoFar);
+        for (int i = 1; i < onward.Count; i++)
+            if (used.Contains(onward[i])) return null;
+        var first = FirstRunwayMet(onward, out double walkedMeters);
+        return first != null && !ReferenceEquals(first, destRunway) && walkedMeters <= OTHER_RUNWAY_MAX_WALK_M
+            ? onward : null;
+    }
+
+    // How far past its last node a taxiway may still be said to lead onto a runway. The same
+    // measured figure as TaxiGuidanceManager.RUNWAY_REACH_MAX_WALK_M: 99.16 % of the runway-owned
+    // hold nodes in the fs2020 navdata are within 400 m of taxiing from their runway's pavement
+    // (p50 54 m, p90 130 m). Beyond it the other runway is somewhere the route wanders to once its
+    // way back is closed, not where the cleared taxiway goes.
+    private const double OTHER_RUNWAY_MAX_WALK_M = 400.0;
+
+    /// <summary>
+    /// The first runway whose pavement the path is on, sampled along every edge: a navdata crossing
+    /// is often ONE edge from hold side to hold side with no node on the pavement.
+    /// </summary>
+    private TaxiGraph.RunwayCenterline? FirstRunwayMet(IReadOnlyList<int> path, out double walkedMeters)
+    {
+        const double SAMPLE_METERS = 10.0;
+        walkedMeters = 0.0;
+        for (int i = 0; i < path.Count; i++)
+        {
+            var a = _graph.Nodes[path[i]];
+            var under = RouteRunwayCrossings.RunwayUnder(_graph.RunwayCenterlines, a.Latitude, a.Longitude);
+            if (under != null) return under;
+            if (i + 1 == path.Count) break;
+            var b = _graph.Nodes[path[i + 1]];
+            double edgeMeters = TaxiGraph.CalculateDistanceMeters(a.Latitude, a.Longitude, b.Latitude, b.Longitude);
+            int steps = (int)(edgeMeters / SAMPLE_METERS);
+            for (int k = 1; k <= steps; k++)
+            {
+                double t = (double)k / (steps + 1);
+                under = RouteRunwayCrossings.RunwayUnder(_graph.RunwayCenterlines,
+                    a.Latitude + (b.Latitude - a.Latitude) * t, a.Longitude + (b.Longitude - a.Longitude) * t);
+                if (under != null) { walkedMeters += edgeMeters * t; return under; }
+            }
+            walkedMeters += edgeMeters;
+        }
+        return null;
+    }
 
     private int FindNearestNodeOnTaxiwayToTarget(
         int targetNodeId, string taxiwayName,
@@ -1346,7 +1471,7 @@ public class TaxiRouter
     /// A* search with optional taxiway preference (soft constraint).
     /// When preferredTaxiway is set, non-preferred edges cost 10x more.
     /// </summary>
-    private List<int>? AStarSearch(int startId, int goalId, string? preferredTaxiway)
+    private List<int>? AStarSearch(int startId, int goalId, string? preferredTaxiway, HashSet<int>? alsoBlocked = null)
     {
         if (!_graph.Nodes.ContainsKey(startId) || !_graph.Nodes.ContainsKey(goalId))
             return null;
@@ -1386,6 +1511,8 @@ public class TaxiRouter
                 if (closedSet.Contains(edge.ToNodeId))
                     continue;
                 if (BlockedNodes.Count > 0 && BlockedNodes.Contains(edge.ToNodeId))
+                    continue;
+                if (alsoBlocked != null && alsoBlocked.Contains(edge.ToNodeId))
                     continue;
 
                 double cost = edge.DistanceMeters;
