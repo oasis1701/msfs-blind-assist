@@ -163,6 +163,47 @@ public class SignHoldingPointTests
         Assert.Equal(before, g.Nodes.Count);
     }
 
+    // The same graph with taxiway C passing behind the runway's 27 end, 60 m beyond it.
+    private static TaxiGraph GraphWithTaxiwayBehindTheRunwayEnd()
+    {
+        var paths = new List<TaxiPath>
+        {
+            new() { Name = "K", StartLat = LatN(250), StartLon = LonE(0), EndLat = LatN(250), EndLon = LonE(3060), Width = 75 },
+            new() { Name = "C", StartLat = LatN(250), StartLon = LonE(3060), EndLat = LatN(-250), EndLon = LonE(3060), Width = 75 },
+        };
+        var starts = new List<StartPosition>
+        {
+            new() { RunwayName = "09", Latitude = LatN(0), Longitude = LonE(0), Heading = 90 },
+            new() { RunwayName = "27", Latitude = LatN(0), Longitude = LonE(3000), Heading = 270 },
+        };
+        return TaxiGraph.Build(paths, new List<ParkingSpot>(), starts);
+    }
+
+    // The clearance is measured to the nearest point of the centreline, its ENDS included. Measured
+    // only beside the runway, a point just past the end was kept: the 2026-11-25 audit found five
+    // (EGTB A2 67 m beyond the end of 24L/06R and 15 m off its line, EGTB A3, LFLH A1 and A2,
+    // LIRF DL1), all runway holding positions.
+    [Fact]
+    public void ResolveSigns_refuses_a_point_just_beyond_a_runway_end()
+    {
+        var g = GraphWithTaxiwayBehindTheRunwayEnd();
+        int before = g.Nodes.Count;
+        // On C, 60 m beyond the 27 end and 15 m off the extended centreline: 62 m from the end.
+        var result = NamedHoldingPointResolver.ResolveSigns(
+            g, new[] { Sign("CE", 15, 3090, "C") }, new HashSet<string>());
+        Assert.Empty(result);
+        Assert.Equal(before, g.Nodes.Count);
+    }
+
+    // 200 m to the side and 60 m beyond the end is 209 m from the end: clear of the runway.
+    [Fact]
+    public void ResolveSigns_keeps_a_point_beyond_a_runway_end_that_is_clear_of_it()
+    {
+        var p = Assert.Single(NamedHoldingPointResolver.ResolveSigns(
+            GraphWithTaxiwayBehindTheRunwayEnd(), new[] { Sign("CF", 200, 3090, "C") }, new HashSet<string>()));
+        Assert.Equal(new[] { "C" }, p.Taxiways);
+    }
+
     [Fact]
     public void ResolveSigns_refuses_a_name_that_is_also_a_taxiway()
     {

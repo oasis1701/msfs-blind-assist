@@ -270,9 +270,11 @@ public static class NamedHoldingPointResolver
     public const double SIGN_DESIGNATED_SNAP_M = 40.0;
 
     /// <summary>
-    /// A sign-sourced point must be at least this far from every runway centreline (within the
-    /// runway's length). Where a pilot holds before a runway is never taken from a sign, and a
-    /// red name sign that close to a runway is a runway holding position, not an intermediate one.
+    /// A sign-sourced point must be at least this far from the nearest point of every runway
+    /// centreline, the runway's ends included (a point just past an end is as much a runway
+    /// holding position as one beside it). Where a pilot holds before a runway is never taken
+    /// from a sign, and a red name sign that close to a runway is a runway holding position, not
+    /// an intermediate one.
     /// </summary>
     public const double SIGN_RUNWAY_CLEARANCE_M = 150.0;
 
@@ -344,11 +346,13 @@ public static class NamedHoldingPointResolver
                 pLat = p.Lat; pLon = p.Lon; dist = p.PerpMeters;
             }
 
+            // To the nearest point of the centreline, its ENDS included: measured only beside the
+            // runway, a point just past an end was kept (EGTB A2, 67 m beyond the end of 24L/06R).
             var tooClose = shapes.FirstOrDefault(s =>
             {
                 var (along, lateral) = s.Project(pLat, pLon);
-                return along >= s.ExtentMinMeters && along <= s.ExtentMaxMeters
-                    && Math.Abs(lateral) < SIGN_RUNWAY_CLEARANCE_M;
+                double beyondEnd = Math.Max(0.0, Math.Max(s.ExtentMinMeters - along, along - s.ExtentMaxMeters));
+                return Math.Sqrt(lateral * lateral + beyondEnd * beyondEnd) < SIGN_RUNWAY_CLEARANCE_M;
             });
             if (tooClose != null)
             {
