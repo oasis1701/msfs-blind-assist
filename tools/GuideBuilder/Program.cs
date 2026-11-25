@@ -12,12 +12,17 @@ using GuideBuilder;
 //       Checks the links in a built copy of the website (SiteLinkChecker).
 //   GuideBuilder check-pr   --body <file> --added <list> --changed <list>
 //       The advisory "User guide" PR check (PullRequestCheck). --added and --changed are git diff --name-only lists.
+//   GuideBuilder check-scope --body <file> --base <branch> --added <list> --diff <file> --tree <list>
+//                            --test-classes <list> --switch-before <file> --switch-after <file>
+//                            --stacked <list> --pr-commits <list> --base-names <list>
+//       The advisory PR scope check (ScopeCheck, CORE-22 to CORE-25 and CORE-5). A list file holds one item per
+//       line, an empty file means none; --diff is a git diff -U0. Every option is required.
 //
 // Exit codes: 0 pass, 1 problems found, 2 usage error.
 
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
-    Console.WriteLine("Usage: GuideBuilder check|contents|one-page|check-site|check-pr [options]; see Program.cs.");
+    Console.WriteLine("Usage: GuideBuilder check|contents|one-page|check-site|check-pr|check-scope [options]; see Program.cs.");
     return args.Length == 0 ? 2 : 0;
 }
 
@@ -101,6 +106,59 @@ switch (args[0])
         }
 
         (bool pass, string message) = PullRequestCheck.Evaluate(File.ReadAllText(body), File.ReadAllLines(added), File.ReadAllLines(changed));
+        Console.WriteLine(message);
+        return pass ? 0 : 1;
+    }
+
+    case "check-scope":
+    {
+        string[] fileOptions =
+        [
+            "--body", "--added", "--diff", "--tree", "--test-classes", "--switch-before", "--switch-after",
+            "--stacked", "--pr-commits", "--base-names",
+        ];
+        foreach (string name in fileOptions)
+        {
+            if (Need(name) is not { } file) return 2;
+            if (!File.Exists(file))
+            {
+                Console.Error.WriteLine($"Not found: {file}");
+                return 2;
+            }
+        }
+
+        if (Need("--base") is not { } baseBranch) return 2;
+
+        static string[] ListOf(string path)
+            => File.ReadAllLines(path).Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+
+        var stacked = new List<int>();
+        foreach (string item in ListOf(options["--stacked"]))
+        {
+            if (!int.TryParse(item.TrimStart('#'), System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out int number))
+            {
+                Console.Error.WriteLine($"Not a PR number in --stacked: {item}");
+                return 2;
+            }
+
+            stacked.Add(number);
+        }
+
+        var input = new ScopeCheckInput(
+            File.ReadAllText(options["--body"]),
+            baseBranch,
+            ListOf(options["--added"]),
+            UnifiedDiff.AddedLines(File.ReadAllText(options["--diff"])),
+            ListOf(options["--tree"]),
+            ListOf(options["--test-classes"]),
+            File.ReadAllText(options["--switch-before"]),
+            File.ReadAllText(options["--switch-after"]),
+            stacked,
+            ListOf(options["--pr-commits"]),
+            ListOf(options["--base-names"]));
+
+        (bool pass, string message) = ScopeCheck.Evaluate(input);
         Console.WriteLine(message);
         return pass ? 0 : 1;
     }
