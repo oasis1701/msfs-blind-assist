@@ -13,7 +13,7 @@ dotnet build MSFSBlindAssist.sln -c Debug
 dotnet build MSFSBlindAssist.sln -c Release
 ```
 
-The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds nine projects, the vPilot plugin and `MSFSBlindAssist.DisplayLayouts` among them; [CORE-4] says which `tools/*` projects build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
+The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
 
 - [CORE-1] Always build the `.sln` or pass `-p:Platform=x64`; never the bare `.csproj`, which defaults to AnyCPU and writes to `bin\Debug\…`, so the x64 exe the app runs from never updates. Full: docs/invariants/core.md#core-1
 - [CORE-2] Keep `RuntimeIdentifier=win-x64` (else the build ships every platform's SQLite binaries) and `AppendRuntimeIdentifierToOutputPath=false` (else it writes to a `win-x64\` folder the app, release.yml and PostBuild never use) in the csproj. `dotnet publish` writes `win-x64\publish\`; other `win-x64\` build output predates 2026-08-25: stale. Full: docs/invariants/core.md#core-2
@@ -25,12 +25,11 @@ The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Pr
 Pure-logic code is covered by an xUnit characterization suite at `tests/MSFSBlindAssist.Tests`
 (run: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`).
 CI (`.github/workflows/tests.yml`) runs it on every PR and on pushes to main.
-Sim-facing behavior cannot be unit-tested: when changing SimConnect/UI paths, build, then
-describe an in-sim test plan in the PR — the human owner of the repo runs it. New pure logic
+New pure logic
 (formatters, parsers, geometry, classifiers) should get characterization tests; don't add
 speculative tests for sim-driven paths.
 
-- [CORE-5] Sim-facing paths are verified only in a live sim: a PR touching them describes an in-sim test plan. Pure logic gets characterization tests in `tests/MSFSBlindAssist.Tests` (CI-enforced). Full: docs/invariants/core.md#core-5
+- [CORE-5] Sim-facing paths are verified only in a live sim: a PR touching them describes an in-sim test plan, and its own sim results come from its own build (its branch, main merged in allowed; never other open PRs merged in), named on its `Sim-tested on:` line. Pure logic gets characterization tests in `tests/MSFSBlindAssist.Tests` (CI-enforced). Full: docs/invariants/core.md#core-5
 
 ## Before changing behaviour
 
@@ -70,16 +69,20 @@ not set one cannot catch it.
 
 ## Git workflow and release notes
 
-The `main` branch is protected. Always create a new branch for changes and open a pull request — never commit directly to main. Every PR adds `changelog.d/<pr>-<slug>.<category>.md`, written for a pilot, not a reviewer; a required CI check fails without it. `<pr>` is READ, never guessed (issues and PRs share one number sequence): commit and push, open the PR (`gh pr create` prints its number), then add the fragment, commit and push. Categories: `aircraft`, `feature`, `improvement`, `fix`, `internal` (never published). A released fragment is never deleted; before merging, a long-running PR's own fragments may be condensed to what a pilot sees changed. Full convention: [changelog.d/README.md](changelog.d/README.md).
+Every PR adds `changelog.d/<pr>-<slug>.<category>.md`, written for a pilot, not a reviewer; a required CI check fails without it. `<pr>` is READ, never guessed (issues and PRs share one number sequence): commit and push, open the PR (`gh pr create` prints its number), then add the fragment, commit and push. Categories: `aircraft`, `feature`, `improvement`, `fix`, `internal` (never published). A released fragment is never deleted; before merging, a long-running PR's own fragments may be condensed to what a pilot sees changed. Full convention: [changelog.d/README.md](changelog.d/README.md).
 
 - [CORE-6] `main` is protected: never commit to it directly; always branch and open a PR. Full: docs/invariants/core.md#core-6
+- [CORE-22] One aircraft or one feature per branch and PR. Variants share one only when they are one maker's models of one family (the PMDG 737 series) or an add-on built from another's code with identical L:vars and methods (the Headwind A330 on the FBW A32NX). Full: docs/invariants/core.md#core-22
+- [CORE-23] A follow-up (work its parent's plan or PR description does not list) starts from main only after the parent merges; a PR into any branch but main says where that plan is on a `Planned in:` line. Full: docs/invariants/core.md#core-23
+- [CORE-24] Start every branch from a freshly fetched main, never from a local experiment, another feature branch or uncommitted work; push commits as the work happens, never as bulk drops from a private copy (work built in the project's private repo, whose history stays there, excepted). Full: docs/invariants/core.md#core-24
+- [CORE-25] What a branch adds is reachable: each file, tool, type or test its code depends on or cites as proof is in this repo or the project's private repo (never named or linked in public text), and each generated or trained file rebuilds from committed tools and data, its source named. Full: docs/invariants/core.md#core-25
 - [CORE-19] A PR that changes what a pilot presses, sees or hears (a hotkey, window, setting, spoken text, tone, aircraft) updates the pilot's guide in `guide/` in the same PR; if it cannot, its description says `User guide: needed: <chapter>`, and if the guide is still right, `User guide: none, because <reason>`. Full: docs/invariants/core.md#core-19
 
 ## Rules for any file
 
 ### Screen reader announcements
 
-Screen readers already announce every UI control interaction, so the app never repeats one: it confirms a direct interaction once, and only with what the reader cannot say, and it always speaks numeric input confirmations, validation errors and background state changes the user did not trigger. Today's cases: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]); the EFB shell's `announceChange` opt-in ([MD11-26]); the FBW A320, Headwind A330 and FBW A380 button read-back (`GetButtonStateMapping`, `HandleButtonStateAnnouncement`); the value-dialog toggle read-back (`ValueInputForm`, about 1.2 s after a press); the Fenix DCDU window's read-back (the status after an answer key, an info line after a press, the Bright and Dim level); "<name> pressed" for a momentary button or an Idle/Activate action combo with no readable state (`PulseMomentaryLVar`, the A380's `PulseEcpKey`, MainForm's unhandled-button fallback), and for the Fenix's press buttons with no light (`ExecuteButtonTransition`'s `confirmPress`: GCS, Service Interphone Override, Avionics Compartment Light, CALLS Mech/All/Fwd/Aft/Mid/Exit, the clock's Chronometer Start/Stop, Chronometer Reset and Date, ISIS Baro Push, ISIS Reset, ECAM ALL, Pedestal Video); the A380 FCU push/pull value read-out (`OnPanelButtonFired`); the FBW E/WD pop-out's and the panel status display's F5 refresh; the BlueBird 757 tablet window's press, tab, set and typed-field read-backs (`Bbs757EfbPressRunner`), and the menu's hotkey suspend and resume confirmations.
+Screen readers already announce every UI control interaction, so the app never repeats one: it confirms a direct interaction once, and only with what the reader cannot say, and it always speaks numeric input confirmations, validation errors and background state changes the user did not trigger.
 
 - [CORE-7] Never repeat what the screen reader just said (a panel control's press, label or new combo value). Confirm a direct interaction once, only with what the reader cannot say: a state read back after the press, or "<name> pressed" for an action with no readable state. Numeric confirmations, validation errors and background changes always speak. Full: docs/invariants/core.md#core-7
 - [CORE-8] Combo double-announce suppression is GLOBAL, never aircraft-gated: `_uiSetEcho`/`MarkUiSet` plus a wrap that sets `announcer.Suppressed` around `ProcessSimVarUpdate` for any var inside the echo window. Full: docs/invariants/core.md#core-8

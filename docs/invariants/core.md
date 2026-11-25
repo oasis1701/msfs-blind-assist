@@ -40,13 +40,35 @@ Corrected 2026-11-14: the BlueBird 757 work added two projects that build on the
 
 Corrected 2026-11-19: PR #349 added `tools/DecimalSweep` ([CORE-21]), which builds on its own, 17 in all. Evidence: `git ls-files 'tools/**/*.csproj'` lists 21 projects, 4 of them in `MSFSBlindAssist.sln`.
 
+Moved from CLAUDE.md, 2026-11-25, unchanged: "The solution builds nine projects, the vPilot plugin and `MSFSBlindAssist.DisplayLayouts` among them; [CORE-4] says which `tools/*` projects build on their own."
+
 ## CORE-5
 
 - Sim-facing paths are verified only against a live sim — describe an in-sim test plan in the PR; pure logic belongs in `tests/MSFSBlindAssist.Tests` (CI-enforced). → CLAUDE.md
 
+Moved from CLAUDE.md, 2026-11-25, unchanged: "Sim-facing behavior cannot be unit-tested: when changing SimConnect/UI paths, build, then describe an in-sim test plan in the PR — the human owner of the repo runs it."
+
+Extended 2026-11-25 (owner, 2026-11-25): sim results come from the PR's own build. Every sim result a PR reports for itself comes from that PR's own build: a commit pushed to its branch (its head, an earlier commit, or a merge of main into it), never a build with another open PR merged in, and never main alone. The PR names that build on its `Sim-tested on:` line. CLAUDE.md's line says "its own sim results", not "any sim result it reports", so a labelled "before" result on main stays allowed (below).
+
+Why. Combined builds are fine to use. The owner, 2026-11-25: "It's certainly okay to produce combined builds as I know people want access to all the fixes and features before they ship". The problem is the write-up. The owner, the same day: "if someone runs a combined build, tests, and then writes something up evidence of this runs into the test results, which [skews] them and widens scope" (the owner's message had a typo there; the brackets mark the correction). Skews: the results show behaviour that comes from other PRs, so they do not show what this PR does on its own. Widens scope: the write-up ends up describing other PRs' work. The pattern, in general terms: a PR's live check quotes spoken text from a combined build that reads that way only because another open PR fixes the same output; built alone, the PR says something else.
+
+Combined builds. A combined build is any build with another unmerged PR's commits merged in. Combined builds are allowed, for flying with every fix and feature before they ship and for hunting bugs, but their results are never any PR's evidence. Nobody polices what anyone runs on their own computer: the rule governs what a PR reports for itself.
+
+The PR's own build. It is built from a commit pushed to the PR's branch. Merging main in first is allowed, as long as that merge is pushed. A build with uncommitted edits reports the commit it started from, which does not hold those edits, so test a committed, pushed state. A build of main alone is not this PR's result. A "before" result on main (the problem reproduced on main, then gone on the PR's build) is welcome in the test plan's text, labelled as main's; it is not this PR's result and never goes on the `Sim-tested on:` line. A merge of main that cannot be pushed (a reviewer testing someone else's fork) cannot be told from a combined build, so the check flags it. That is acceptable for an advisory check: the line then says what the build was ("a1b2c3d, the PR's head with main merged in locally"), the check still flags the hash, and the words tell the reviewer what was flown. Testing the PR's head as it is avoids the flag.
+
+Work from the project's private repo. Work built there may land on main as one squashed PR (CORE-24's route). Its private builds' hashes are never on the public branch, and a private hash written in public text would point at the private repo. So such a PR re-tests on a build of its public branch, names that build on the line, and never writes a private build's hash there.
+
+Evidence versus context. Other PRs may be named for context or coordination: to coordinate when both PRs edit the same paragraph, to say that something seen here was fixed elsewhere, to name a PR this one replaces, or to say where a regression came from. Their builds are never this PR's evidence. That is why the check never flags PR numbers in the text: naming another PR is often right, and flagging it would make the check noisy. A bug found on a combined build is reported on the PR (or a new issue) whose code is at fault, and checked again on that PR's own build before that PR cites it.
+
+The `Sim-tested on:` line. The PR template's Test plan carries it, visible, under a comment that says what goes there. Read the build from Help, About, which shows it as "v0.0.0 (build a1b2c3d)": every build carries its commit, which SourceLink appends to the informational version, and `AppVersion.Describe` shows its first 7 characters. Measured 2026-11-25: a Debug build's exe carries the informational version `0.0.0+` followed by the commit's full 40 characters. `AppVersionTests.The_build_carries_its_commit` pins it, so a project-file change cannot quietly break the line. Copy the short hash, or the whole About text, onto the line. Several builds are allowed, one per line or comma-separated, each a build of this PR. Leave the line empty when nothing was tested in the sim; words with no hash ("not tested in the sim") say the same.
+
+The check. The PR scope check (CORE-22 describes it) reads every `Sim-tested on:` line outside HTML comments, so the template's own example never counts; the label is also read when written "Sim tested on". Every token of 7 to 40 hexadecimal characters on those lines that holds at least one digit and at least one letter a-f, in either case, must be the start of a commit in `git rev-list origin/<base>..<PR head>`. The workflow takes the head from the pull request event through its environment, and fetches it when the checkout lacks it rather than flag every hash. A commit only on main is outside that range, so a build of main alone is flagged like a combined one. A value with no such token checks nothing. Otherwise the check names the token: not a commit on this PR's branch, so a combined build with other open PRs merged in, a merge that was not pushed, a build of main alone, or a commit a rebase replaced. Its message says to report this PR's results from its own build, to put a "before" result on main in the test plan's text, or to say on the line which build it was. It is advisory: not a required check, as its message says. Its limits: it cannot prove which build was really flown (someone who tests a combined build and writes the PR's own commit on the line is not caught; review covers that), and a short hash of only digits or only letters goes unchecked, since dates such as 20261125 and hex-only words such as "defaced" are not hashes.
+
 ## CORE-6
 
 - `main` is protected — never commit directly to main; always branch + PR. → CLAUDE.md
+
+Moved from CLAUDE.md, 2026-11-25, unchanged: "The `main` branch is protected. Always create a new branch for changes and open a pull request — never commit directly to main."
 
 ## CORE-7
 
@@ -88,6 +110,8 @@ Not a press at all:
 Counter-example. The thrust-lever detent press confirmations ("All thrust levers Idle", "Thrust lever 1 Climb") repeated the value of the combo the pilot had just set, which the screen reader had just read. They sat in the thrust-detent branch of `FlyByWireA320Definition.HandleUIVariableSet` (the Headwind A330 inherits it) and in `FlyByWireA380Definition.UiVariableSet.cs`, and were removed. The A380's background detent announcement in `FlyByWireA380Definition.SimVarUpdate.cs` stays: a combo pick only sends the axis command, so the announcement reads back that the levers actually reached the detent (a state read back after the press, which the reader cannot say), and it also covers a lever moved by other means (a sim key binding or a hardware throttle).
 
 Changed 2026-10-09: the closed list ruled on 2026-10-08 missed four kinds of case within a day; the owner replaced it with this principle, and ruled the thrust-lever detent press confirmations a repeat (removed).
+
+Moved from CLAUDE.md, 2026-11-25, unchanged: "Today's cases: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]); the EFB shell's `announceChange` opt-in ([MD11-26]); the FBW A320, Headwind A330 and FBW A380 button read-back (`GetButtonStateMapping`, `HandleButtonStateAnnouncement`); the value-dialog toggle read-back (`ValueInputForm`, about 1.2 s after a press); the Fenix DCDU window's read-back (the status after an answer key, an info line after a press, the Bright and Dim level); "<name> pressed" for a momentary button or an Idle/Activate action combo with no readable state (`PulseMomentaryLVar`, the A380's `PulseEcpKey`, MainForm's unhandled-button fallback), and for the Fenix's press buttons with no light (`ExecuteButtonTransition`'s `confirmPress`: GCS, Service Interphone Override, Avionics Compartment Light, CALLS Mech/All/Fwd/Aft/Mid/Exit, the clock's Chronometer Start/Stop, Chronometer Reset and Date, ISIS Baro Push, ISIS Reset, ECAM ALL, Pedestal Video); the A380 FCU push/pull value read-out (`OnPanelButtonFired`); the FBW E/WD pop-out's and the panel status display's F5 refresh; the BlueBird 757 tablet window's press, tab, set and typed-field read-backs (`Bbs757EfbPressRunner`), and the menu's hotkey suspend and resume confirmations."
 
 ## CORE-8
 
@@ -162,6 +186,10 @@ Why a line to fill in, not a checkbox: most PRs here are written with Claude Cod
 
 History. The first draft of this rule (2026-10-19, same PR) asked for a link to a pull request in the website's repo, where the guide then lived; the guide moved into this repo before it merged.
 
+## CORE-20 (retired: never used on main; kept unused because a closed pull request claimed it and a commit message on main cites it for the rule now numbered CORE-21)
+
+CORE-20 was never a rule on main and stays unused, because a pull request closed unmerged on 2026-11-24 claimed it and a commit message on main cites it for the decimal-format rule now numbered CORE-21, so reusing it would make that citation point at a different rule; the PR scope rules therefore start at CORE-22.
+
 ## CORE-21
 
 Added 2026-11-13 (PR #349). A plain interpolated string formats in the PC's culture, so `$"COM1 active {value:F3}"` reads "COM1 active 118,300" on a German or Swedish Windows, `{mach:0.00}` "Mach 0,78", and `{feet:N0}` "12.345 ft", which a screen reader says as twelve point three four five. The app's text is English and CI runs under en-US, so nothing showed it: the sweep that added this rule found about 290 such phrases, in every aircraft's announcements, display values and system-display rows, in MainForm, the SimConnect readouts, the weather radar, the SimBrief planner and the EFB. Two were not speech at all: `WeatherService.BuildBbox` and `BuildWindsUrl` put coordinates into web addresses, so under a comma-decimal culture the bounding box became eight numbers and the winds address `latitude=48,3538`, and the radar got no PIREPs or winds aloft (SIGMETs come from two fixed addresses and were never affected). The PIREP box also had a fault of its own, in every culture: it was longitude first, while the aviationweather.gov Data API reads `bbox` latitude first ("lat0, lon0, lat1, lon1"), so it asked for another part of the globe; it is latitude first now and clamped at the poles and the date line (`WeatherServiceAddressCultureTests`).
@@ -173,6 +201,170 @@ Two tests hold it. `DecimalFormatSourceTests` walks every source file of the fou
 Not covered, on purpose: the minus sign of a phrase with only whole numbers. Under sv-SE a negative whole number is written with U+2212 ("−1500"), which screen readers say as minus, so such a phrase is left in the PC's culture; `Pmdg737McpAnnouncementTests` pins that for the 737's V/S. A phrase wrapped for its decimals writes every number in it with an ASCII minus, whole ones too (MainForm's generic "<name>: <value>" and "<name> set to <value>", the 737's generic announcements), which screen readers say the same way: under sv-SE both forms are heard. That holds for speech only: a negative number written into calculator code is formatted with the invariant culture even when it is whole (`FcuValueEntry.VerticalSpeedSetCode` for the FBW V/S window, the A32NX landing-elevation knob, the FBW catch-all L:var writes), because the RPN parser rejects U+2212; [VAR-5] covers the doubles.
 
 A semantic sweep of the four shipped projects on 2026-11-19 (every interpolation hole, `ToString()` and string concatenation of a `double`, `float` or `decimal` with no format, read with the compiler's types) found thirteen such numbers the scan cannot see and the culture tests do not reach, in MainForm, the HS787 EICAS window, the visual-guidance callouts, the MD-11 V/S dialog and the FBW flaps and temperature read-backs; they are wrapped. The sweep is `tools/DecimalSweep` (docs/tooling.md, section 7): run by hand after adding a spoken or shown number, never by CI, since it reads types from the app's build output. It leaves out a log call, an invariant call and a hole that can only hold a whole number (`{Math.Round(nm)}`), and the tree is kept at "0 to review", so any line it prints is a new number. The parsing twin of this rule is [CORE-17].
+
+## CORE-22
+
+- One aircraft or one feature per branch and PR. Variants share one only when they are one maker's models of one family (the PMDG 737 series) or an add-on built from another's code with identical L:vars and methods (the Headwind A330 on the FBW A32NX). → CLAUDE.md
+
+Added 2026-11-25, the first of the PR scope rules (CORE-22 to CORE-25, with CORE-5's own-build clause). The owner approved their design on 2026-11-18 and its amendment on 2026-11-25; each decision below carries its date.
+
+Why. An aircraft branch can carry two aircraft of different families plus an unrelated sim-wide feature. Then none of its parts can be reviewed, flown or merged without the others: review and in-sim tests of one piece are blocked by the others, and a fault in any piece holds back all of them.
+
+How to apply. Before starting a branch, name the one aircraft or the one feature it delivers, and keep everything else off it. The tests below decide what counts as one. The PR template's Scope section asks what the PR delivers, and carries the `Variants:` line as an example inside a comment.
+
+Variants (owner, 2026-11-18). The owner's test: "the methodologies like L:vars and support have to be identical". Variants may share one branch and PR only when they are either:
+
+- one maker's models of one aircraft family: the whole PMDG 737 series, or the Fenix A320 series; or
+- an add-on built from another add-on's code whose L:vars and control methods are identical: the Headwind A330 on the FBW A32NX, "an exact replica".
+
+A PR that carries variants says so in its description, on a line of its own: `Variants: <family>`.
+
+Subclassing does not make a variant. One aircraft definition built as a subclass of another, of a different family, fails both tests when it drives the sim differently: for example, one aircraft through the sim's input events and the other through direct L:var writes, with a display reader of its own. The base class shares code, not the way each aircraft is driven, so each still needs its own review and its own in-sim test.
+
+One feature. One feature is what a pilot would read as one changelog entry. A PR that needs fragments for two different things (two aircraft, or an aircraft plus an unrelated sim-wide feature) is two PRs. A feature that works across aircraft is one feature.
+
+What aircraft support includes. An aircraft's definition, panels, hotkeys, hotkey guide, its own First Officer profile, docs, guide chapter, tests and tools: all of it is one aircraft, and it belongs on that aircraft's branch. A feature that is part of the aircraft's support is described in the aircraft's changelog fragment, not in a feature fragment of its own.
+
+Fixes (owner, 2026-11-18). Fixes may share a PR when they are on one aircraft or one feature, so one review and one in-sim test covers them. Unrelated fixes across aircraft are separate PRs. A fix in code several aircraft share is one fix; CLAUDE.md's "Fix the aircraft the request is about" says when it covers the other aircraft in the same PR. Docs and tooling PRs are their own kind, separate from aircraft, feature and fix PRs.
+
+Branches, not only PRs (owner, 2026-11-18). This rule, like CORE-23 to CORE-25, governs a feature branch of this repo from the moment it is created, whether or not a PR is open for it. The PR scope check sees only PRs; before one is opened, CLAUDE.md and the branch-creation warning (CCT-8) are what reach a contributor, and `CONTRIBUTING.md` and these full texts say so. The rules govern pull requests to this public repo. The project's private repo cuts its branches from public main and takes main in, so they carry CLAUDE.md and these lines; it keeps its own hub-and-branch model, and how these rules apply there is set in that repo.
+
+The PR scope check. `.github/workflows/pr-scope.yml` runs `GuideBuilder check-scope` (`tools/GuideBuilder/ScopeCheck.cs` and `ScopeLines.cs`, covered by `PrScopeCheckTests` and `PrScopeWorkflowTests`) when a PR is opened, pushed to, reopened or its description edited. It uses the plain `pull_request` trigger only (UPD-10's full text forbids `pull_request_target`), and the description reaches its script only through the environment. It reads the `Variants:`, `Planned in:` and `Sim-tested on:` lines outside HTML comments, so the PR template's own examples never count, with or without a list marker or bold around the label; an empty value or a lone `<placeholder>` is no answer. It checks CORE-22, CORE-23, CORE-25 and CORE-5's build line, and when nothing is flagged it passes and says what it checked. It is advisory: not a required check, as its message says; a GitHub admin can make it required later. For this rule it flags a PR that:
+
+- adds more than one aircraft code to the factory switch in `MSFSBlindAssist/MainForm.AircraftSwitch.cs` (arms of the form `"CODE" => new SomeDefinition(),`) with no `Variants:` line; reordered or reformatted arms add no aircraft;
+- adds an `aircraft` changelog fragment together with a `feature` fragment, even with a `Variants:` line: a variant family explains several aircraft, not an aircraft plus a feature, so the message says to describe a feature that is part of the aircraft's support in the aircraft's fragment, or to split the PR;
+- adds two `aircraft` fragments with no `Variants:` line.
+
+The rule reaches further than the check: a second aircraft that adds no switch arm, or one fragment that describes two features, is still two PRs, and review applies the rule there.
+
+## CORE-23
+
+- A follow-up (work its parent's plan or PR description does not list) starts from main only after the parent merges; a PR into any branch but main says where that plan is on a `Planned in:` line. → CLAUDE.md
+
+Added 2026-11-25 with CORE-22 (the PR scope rules).
+
+Why. A new feature opened as a PR into another feature's unmerged branch (a stacked follow-up) cannot land before its parent does, and every change to the parent under review can break it.
+
+How to apply. Work goes onto an unmerged branch only when that branch's plan or its PR description already lists it (planned scope). Anything else is a follow-up: it waits until its parent is in main, then starts from a freshly fetched main (CORE-24) as a PR into main.
+
+Planned scope (owner, 2026-11-18). The owner chose planned scope over a strict main-only rule, which would have ended the planned multi-person branch: contributors pushing planned pieces straight to one unmerged branch, as for large aircraft rework. Such a branch stays allowed, and so does a PR into it, because its pieces are in its plan.
+
+Where a plan lives (owner, 2026-11-18). A plan counts only where a reviewer, CI or another contributor can read it:
+
+- a short scope list committed on the branch, `docs/<topic>/scope.md`: the stages the branch will deliver, a few lines, deleted before the final merge;
+- the PR description;
+- a plan kept in the project's private repo, cited as "the private repo's plan", never by name or link (CORE-25).
+
+A staged branch whose stage plans live only in git-ignored files on one computer, with no PR yet, shows nobody that its later stages were planned: commit the scope list, or open the PR, before building later stages on it.
+
+Who may add to a plan (owner, 2026-11-18). Once the branch is under way, a maintainer approves each addition to its plan, and the plan records it.
+
+Not a follow-up: a fix or review change to an open PR's own scope. It goes to that PR, through its author, never as a PR stacked on it.
+
+The `Planned in:` line. A PR whose base is not main says where its plan is, on a line of its own in the description: `Planned in: <link>`, or `Planned in: the private repo's plan`, never naming that repo. The PR template carries the line as an example inside a comment.
+
+The check (CORE-22 describes the workflow). For this rule it flags:
+
+- a PR whose base is not `main` and whose description has no `Planned in:` line (a lone `<placeholder>` is no answer; a `<https://…>` link is one);
+- a PR into main stacked on another open PR into main: the two share commits that are not on main (a merge base of the two heads is not on main), as when a follow-up is retargeted to main while still carrying its parent's unmerged commits. The message says to rebase on fresh main, so the PR carries only its own commits, or to retarget it at the other PR's branch and add a `Planned in:` line.
+
+What the stacked check compares: only other open PRs into main, and of those only the ones with a lower number, using each PR's head rather than its merge commit, and every merge base of the two heads. So only the newer PR of a stacked pair is flagged (a follow-up is opened after its parent), and the parent is not flagged, even after review fixes move its head on. A planned child PR into this PR's branch has another base, so it is never compared.
+
+The check's reach, accepted when the check was designed. A `pull_request` workflow runs only when the PR's merge commit holds it. A PR between two branches cut before the check landed gets no check until one side takes in main; review covers it meanwhile.
+
+Branches, not only PRs (owner, 2026-11-18). Like CORE-22, this rule governs a feature branch of this repo from the moment it is created, whether or not a PR is open for it. The project's private repo keeps its own branch model; how these rules apply there is set in that repo.
+
+## CORE-24
+
+- Start every branch from a freshly fetched main, never from a local experiment, another feature branch or uncommitted work; push commits as the work happens, never as bulk drops from a private copy (work built in the project's private repo, whose history stays there, excepted). → CLAUDE.md
+
+Added 2026-11-25 with CORE-22 (the PR scope rules).
+
+Why. The habit behind bundled branches, in the owner's words (2026-11-18): a contributor makes a local build to experiment, then branches and builds on that local build instead of switching to main first to start a new feature. The new branch then carries the experiment's other aircraft, tools and half-finished pieces. When the work was built in a larger private copy (which held still more aircraft) and moved over as a few bulk commits, the branch ends up citing files, tools and tests that are not there (CORE-25), and none of its parts can be reviewed, flown or merged without the others (CORE-22).
+
+How to apply. Start from a freshly fetched main. In a clone of this repository:
+
+```bash
+git fetch origin
+git switch -c <branch> origin/main
+git push -u origin <branch>
+```
+
+In a clone of your own fork, add this repository once as `upstream`, start each branch from its main, and push the branch to your fork:
+
+```bash
+git remote add upstream https://github.com/oasis1701/msfs-blind-assist.git
+git fetch upstream
+git switch -c <branch> upstream/main
+git push -u origin <branch>
+```
+
+A plain `git switch -c <branch>` starts from wherever the checkout stands, a local experiment or another feature branch, and carries its commits; uncommitted edits travel with it too. Commit or set aside other work first, and name the start point. Planned work on an unmerged branch starts from that branch instead (CORE-23).
+
+Push as you go. Commit and push as the work happens, never as a few bulk commits dropped in from a private copy.
+
+The private-repo route (owner, 2026-11-18). Work built on a branch of the project's private repo may land on public main as one squashed PR, because its history lives there and cannot be published. The PR says so, on the PR template's line asking where the work was built. A contributor's own local copy never qualifies. Such a PR re-tests on a build of its public branch and never writes a private build's hash (CORE-5).
+
+Re-landing a bulk drop. When a branch already holds a bulk drop, re-land each piece from main as a series of small commits that each build and pass the tests, keeping the original author's credit (as the commit's author, or in a `Co-authored-by:` trailer) and not back-dating them. Rebuild from scratch only the parts that fail CORE-25 or a provenance check.
+
+Why not from scratch. Rebuilding the work from scratch is not more ethical or secure in itself: review of the final code is what makes it safe, a rewrite made while reading the original is still the original's work, and it throws away in-sim measurement already done on the original.
+
+The PR template and the warning. The PR template's Scope section asks where the work was built: on this branch from a freshly fetched main, or in the project's private repo. It is a line to fill in, not a checkbox: CORE-19's full text found that a checkbox records no decision. In a Claude Code session, the rules hook's `branch-check` mode (CCT-8, docs/invariants/claude-tooling.md) warns, and never blocks or asks, when a git command creates a branch that does not start at the main repository's main or when main has not been fetched recently, and tells a clone of a fork to add this repository as `upstream`.
+
+How the rules reach a contributor. CLAUDE.md and the hook load from a contributor's own checkout, so contributors pull main once after the rules land. A session working from a stale local copy or a private experiment does not see them; only the PR-time layers reach it: `CONTRIBUTING.md` on the new-pull-request page, the PR template and the check.
+
+Branches, not only PRs (owner, 2026-11-18). Like CORE-22, this rule governs a feature branch of this repo from the moment it is created, whether or not a PR is open for it. The project's private repo keeps its own branch model; how these rules apply there is set in that repo.
+
+## CORE-25
+
+- What a branch adds is reachable: each file, tool, type or test its code depends on or cites as proof is in this repo or the project's private repo (never named or linked in public text), and each generated or trained file rebuilds from committed tools and data, its source named. → CLAUDE.md
+
+Added 2026-11-25 with CORE-22 (the PR scope rules).
+
+Why. The pattern it stops, in general terms: a trained file whose training captures were never committed, and code citing capture tools, training tools and tests that do not exist, such as a README naming a capture tool and a test class that were never committed. Nobody can rebuild such a file, check where its data came from or run the tests it cites, so nobody can review it.
+
+How to apply. Everything a branch adds can be rebuilt and checked: generated or trained files rebuild from tools and data committed to this repo or the project's private repo; each data source is named; and every file, tool, type or test the code depends on or cites as proof exists in one of the two.
+
+Cited as proof, or one-off. These must exist:
+
+- a test a comment says pins the code;
+- a tool a README says regenerates a shipped file;
+- a type or file the code uses.
+
+A measurement script named only as the source of a recorded result is fine when the text marks it as one-off and not kept: the line says "one-off" and "not kept", for example "measured with a one-off sweep, not kept". That is the owner's practice since the lean CLAUDE.md work: one-off scripts stay out of the tree, and their output is cited.
+
+It applies to what a branch adds. Main already holds things this rule would not allow for new work, and they stay; they are named here so no session "fixes" them in passing:
+
+- about 20 one-off tools cited but deliberately never kept, among them `tools/AmdbExitSweep`, `LandingExitSideSweep`, `UnchartedCrossingProbe`, `LineupPointSweep` and `SignHoldProbe`, in the taxi code and in the runway-holds and runway-entry full texts;
+- `EWDMessageLookupA380.cs`, generated by the git-ignored `tools/_fbw_ecam/` workspace (docs/development.md).
+
+Vendored binaries. Third-party binaries vendored into the repo (the SimConnect and Tolk DLLs) are not "generated or trained": they name their source, and nothing rebuilds them.
+
+Provenance: name where each data file came from. Reading a running add-on read-only (its module memory, its data channel, its files on disk) is established practice: the PMDG 737 and BlueBird 757 display readers and the Fenix channel work do it, with their sensitive details in the private repo. The line is never breaking a protection the add-on deliberately puts in place, such as encrypted files or blocked inspection (the line the project already holds where an add-on protects itself). Owner, 2026-11-18: the first wording, "never use anything that requires getting around an add-on's protection", was too strong for those cases.
+
+Checkable. "Checkable" means checkable by maintainers: in this repo, or in the private repo for what is kept there, never only on one contributor's computer.
+
+The project's private repo. It holds what the owner keeps out of public: add-on internals such as WASM module layouts and addresses, the layout generator, and closed-channel captures and tools. It counts as part of the project, unlike one contributor's private build, because:
+
+- the owner controls who can read it;
+- work there has its own pushed history that maintainers can review;
+- public code reaches it only through a documented contract that it checks (the layout file format in `MSFSBlindAssist.DisplayLayouts`, `LayoutBundler` at release, `LayoutStore` at run time), and falls back out loud when the files are missing;
+- public docs describe it without naming it.
+
+What goes there is the owner's decision. The default: anything read from inside an add-on (memory, closed channels, its package files) is a candidate; what any pilot can see from outside (SimConnect, L:vars, input events, screenshots of a display) is public.
+
+How public text refers to it: never by its name or a link, and its contents only as far as the public code's contract needs, as UPD-10 does. UPD-10 and the release workflows name the store's `layouts` branch, one full text cites "the recipe in the private repo", and the PMDG 737 work names `LayoutGenerator.exe`; that stays the line. Knowing the name would not let anyone in (GitHub shows a private repo as not found), but there is no reason to advertise it. The release workflows reach it only through the `LAYOUTS_REPO` secret (UPD-10). A commit hash from it is never written in public text either: it would point at the private repo (CORE-5). Public text says "the project's private repo", "the private repo" or "the layouts store".
+
+The sanctioned private-repo work already on main (the PMDG 737 and BlueBird 757 memory readers' layout files, and the Fenix channel tools) is what this rule allows: it is never flagged as a violation, and sensitive material is never pushed public to satisfy this rule.
+
+The check (CORE-22 describes the workflow). For this rule it reads the lines a PR adds under `MSFSBlindAssist/`, under `tests/`, or in a tool's README (`tools/<name>/README.md`), and flags:
+
+- a `tools/<name>` path the PR's tree does not hold;
+- a `<Name>Tests` name that no code line of a `.cs` file in the PR's tree holds (a type, a method, a property or field, a call). A comment does not count, so a dangling "pinned by …Tests" comment never vouches for itself.
+
+A name the base branch's tree already mentions passes: a moved or split file shows its old lines as added, and main keeps citing one-off tools it never kept. A line that says "one-off" and "not kept", or names the "private repo" or the "layouts store", is not scanned. Docs outside a tool's README are not scanned; the rule still applies to them, and review covers them.
+
+Branches, not only PRs (owner, 2026-11-18). Like CORE-22, this rule governs a feature branch of this repo from the moment it is created, whether or not a PR is open for it. The project's private repo keeps its own branch model; how these rules apply there is set in that repo.
 
 ## Background: the former CLAUDE.md core sections
 
