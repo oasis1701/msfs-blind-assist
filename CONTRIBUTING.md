@@ -1,6 +1,6 @@
 # Contributing to MSFS Blind Assist
 
-Thank you for helping. MSFS Blind Assist is used by blind pilots, and it is built by sighted and blind developers, many of them working through Claude Code. This page is for anyone who starts a branch or opens a pull request (PR) here. It says how to scope a branch, how to start it, what everything it adds must have behind it, and how to report a test in the simulator.
+Thank you for helping. This page is for anyone who starts a branch or opens a pull request (PR) here. It says how to scope a branch, how to start it, what everything it adds must have behind it, and how to report a test in the simulator.
 
 It covers five of the project's rules: CORE-5 and CORE-22 to CORE-25. Each has a one-line form in [CLAUDE.md](CLAUDE.md), which Claude Code loads, and a full text in [docs/invariants/core.md](docs/invariants/core.md). This page is written from the full texts; where the two differ, the full text governs. Each rule's section ends with a link to its full text.
 
