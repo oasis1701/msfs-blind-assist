@@ -30,10 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        # Full history: the merge-base diff and the commit lists below need it.
+        # Full history: the merge-base diff and the commit lists below need it. No token
+        # left in git's config while the PR's own code builds: the later fetches read this
+        # public repo, its branches and its pull/<n>/head refs, without credentials.
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v5
@@ -82,8 +85,12 @@ jobs:
               "origin/$GITHUB_BASE_REF" \
               | sort -u; } > base-names.txt || true
 
-          git show "$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)":MSFSBlindAssist/MainForm.AircraftSwitch.cs > switch-before.txt
-          git show HEAD:MSFSBlindAssist/MainForm.AircraftSwitch.cs > switch-after.txt
+          # A side where the switch file is missing (a PR that renames or deletes it) reads
+          # as an empty switch rather than failing the step.
+          git show "$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)":MSFSBlindAssist/MainForm.AircraftSwitch.cs \
+            > switch-before.txt 2>/dev/null || : > switch-before.txt
+          git show HEAD:MSFSBlindAssist/MainForm.AircraftSwitch.cs \
+            > switch-after.txt 2>/dev/null || : > switch-after.txt
 
           # The checkout is the PR's merge commit, whose second parent is the PR head, so
           # the head and its history are normally present, a fork's PR too. If not, fetch
@@ -95,11 +102,12 @@ jobs:
           # flagged like a combined one.
           git rev-list "origin/$GITHUB_BASE_REF..$PR_HEAD" > pr-commits.txt
 
-          # stacked.txt: the open PRs this one stacks on. Always written, empty when the base is not main or nothing is found: the check
-          # requires the file. Only an older open PR into main is compared, so only the
-          # newer PR of a stacked pair is flagged (a follow-up is opened after its parent),
-          # and the parent stays unflagged even after review fixes move its head on. A child
-          # PR planned into this PR's branch has another base, so it is never compared.
+          # stacked.txt: the open PRs this one stacks on. Always written, empty when the base
+          # is not main or nothing is found: the check requires the file. Only an older open
+          # PR into main is compared, so only the newer PR of a stacked pair is flagged (a
+          # follow-up is opened after its parent), and the parent stays unflagged even after
+          # review fixes move its head on. A child PR planned into this PR's branch has
+          # another base, so it is never compared.
           : > stacked.txt
           if [ "$GITHUB_BASE_REF" = "main" ]; then
             gh pr list --state open --base main --json number,baseRefName --limit 200 \
@@ -133,7 +141,9 @@ jobs:
             --added added.txt --diff diff.txt --tree tree.txt --test-classes test-classes.txt \
             --switch-before switch-before.txt --switch-after switch-after.txt \
             --stacked stacked.txt --pr-commits pr-commits.txt --base-names base-names.txt \
-            > result.txt || status=$?
+            > result.txt 2>&1 || status=$?
+          # stderr joins result.txt above, so a usage error still reaches the summary and
+          # the annotation below.
           cat result.txt
           # A code block: as Markdown, the message's <angle brackets> would vanish as tags.
           {

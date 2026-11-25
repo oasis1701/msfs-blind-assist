@@ -164,6 +164,9 @@ public class PrScopeCheckTests
         (bool pass, string message) = ScopeCheck.Evaluate(Input(baseBranch: "feature/parent"));
         Assert.False(pass);
         Assert.Contains("CORE-23", message);
+        // A follow-up waits for its parent to merge; it is never sent into main while the parent is unmerged.
+        Assert.Contains("the plan that lists this work", message);
+        Assert.Contains("wait until the parent merges", message);
 
         (bool ok, _) = ScopeCheck.Evaluate(Input(
             description: "Planned in: docs/parent/scope.md", baseBranch: "feature/parent"));
@@ -179,6 +182,8 @@ public class PrScopeCheckTests
         (bool pass, string message) = ScopeCheck.Evaluate(Input(switchBefore: before, switchAfter: after));
         Assert.False(pass);
         Assert.Contains("CORE-22", message);
+        Assert.Contains("one maker's models of one family", message);
+        Assert.Contains("identical L:vars and methods", message);
 
         (bool ok, _) = ScopeCheck.Evaluate(Input(
             description: "Variants: Gamma family", switchBefore: before, switchAfter: after));
@@ -217,6 +222,7 @@ public class PrScopeCheckTests
         (bool pass, string message) = ScopeCheck.Evaluate(Input(addedPaths: added));
         Assert.False(pass);
         Assert.Contains("CORE-22", message);
+        Assert.Contains("identical L:vars and methods", message);
 
         (bool ok, _) = ScopeCheck.Evaluate(Input(description: "Variants: Alpha family", addedPaths: added));
         Assert.True(ok);
@@ -286,6 +292,8 @@ public class PrScopeCheckTests
         Assert.False(pass);
         Assert.Contains("CORE-23", message);
         Assert.Contains("12", message);
+        // A takeover PR built on an older open PR's head is flagged until that PR closes.
+        Assert.Contains("close the PR this one replaces", message);
 
         (bool ok, _) = ScopeCheck.Evaluate(Input(
             description: "Planned in: docs/parent/scope.md", baseBranch: "feature/parent", stackedWith: [12]));

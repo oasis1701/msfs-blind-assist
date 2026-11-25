@@ -38,6 +38,16 @@ public class PrScopeWorkflowTests
         Assert.Contains("pull-requests: read", yml);
         Assert.Contains("check-scope", yml);
 
+        // No token stays in git's config while the PR's own code builds.
+        Assert.Contains("persist-credentials: false", yml);
+
+        // A PR that renames or deletes the switch file reads as an empty switch, not a failed step.
+        Assert.Contains("> switch-before.txt 2>/dev/null || : > switch-before.txt", yml);
+        Assert.Contains("> switch-after.txt 2>/dev/null || : > switch-after.txt", yml);
+
+        // The CLI's own errors reach the summary and the annotation too.
+        Assert.Contains("> result.txt 2>&1 || status=$?", yml);
+
         // main's own commits stay out of the list, so a build of main alone is flagged.
         Assert.Contains("git rev-list \"origin/$GITHUB_BASE_REF..$PR_HEAD\"", yml);
         Assert.Contains("--pr-commits", yml);

@@ -3,7 +3,8 @@ using System.Text.RegularExpressions;
 namespace GuideBuilder;
 
 /// <summary>Everything <see cref="ScopeCheck.Evaluate"/> looks at; the workflow reads it from git and GitHub.</summary>
-/// <param name="TestClasses">Every "&lt;Name&gt;Tests" the PR's tree declares as a type or a method, in any .cs file.</param>
+/// <param name="TestClasses">Every "&lt;Name&gt;Tests" token on a code line of a .cs file in the PR's tree (a type, a
+/// method, a property or field, a call); comment lines and // comments after code are left out.</param>
 /// <param name="PrCommits">Full hashes of the commits on the PR's own branch and not on its base.</param>
 /// <param name="BaseNames">Every tools/&lt;name&gt; and &lt;Name&gt;Tests the base branch's tree already mentions.</param>
 public sealed record ScopeCheckInput(
@@ -53,8 +54,9 @@ public static class ScopeCheck
         if (!baseIsMain && lines.PlannedIn is null)
         {
             problems.Add($"CORE-23: this PR's base is {input.BaseBranch}, not main, and the description has no " +
-                "\"Planned in: <where the plan is written>\" line. Add it, naming the document that says what the " +
-                "follow-ups are, or retarget the PR at main.");
+                "\"Planned in:\" line. Add one naming where the plan that lists this work is written (\"Planned in: " +
+                "<link>\", or \"Planned in: the private repo's plan\"). If this is a follow-up the plan does not " +
+                "list, wait until the parent merges, then rebase it on fresh main and target main.");
         }
 
         IReadOnlyList<string> before = AircraftCodes(input.SwitchBefore);
@@ -62,8 +64,9 @@ public static class ScopeCheck
         if (newCodes.Count > 1 && lines.Variants is null)
         {
             problems.Add($"CORE-22: this PR adds {newCodes.Count} aircraft ({string.Join(", ", newCodes)}) with no " +
-                "\"Variants: <the family they share>\" line. One aircraft per PR; a family of variants of one " +
-                "add-on may share one, and the line says so.");
+                "\"Variants: <the family they share>\" line. One aircraft per PR; variants may share one, and the " +
+                "line says so: one maker's models of one family, or an add-on built from another's code with " +
+                "identical L:vars and methods.");
         }
 
         int aircraftFragments = 0;
@@ -86,7 +89,8 @@ public static class ScopeCheck
         else if (aircraftFragments >= 2 && lines.Variants is null)
         {
             problems.Add($"CORE-22: this PR adds {aircraftFragments} aircraft fragments with no \"Variants: <the " +
-                "family they share>\" line. One aircraft per PR, unless they are variants of one add-on.");
+                "family they share>\" line. One aircraft per PR, unless they are variants: one maker's models of one " +
+                "family, or an add-on built from another's code with identical L:vars and methods.");
         }
 
         problems.AddRange(DanglingNames(input));
@@ -95,8 +99,8 @@ public static class ScopeCheck
         {
             string others = string.Join(", ", input.StackedWith.Select(n => $"#{n}"));
             problems.Add($"CORE-23: this PR into main is stacked with another open PR ({others}): it shares commits " +
-                "with it. Rebase on fresh main so it carries only its own commits, or retarget it at the other " +
-                "PR's branch and add a \"Planned in:\" line.");
+                "with it. Rebase on fresh main so it carries only its own commits, retarget it at the other PR's " +
+                "branch and add a \"Planned in:\" line, or close the PR this one replaces.");
         }
 
         problems.AddRange(UnknownBuilds(lines, input.PrCommits));
