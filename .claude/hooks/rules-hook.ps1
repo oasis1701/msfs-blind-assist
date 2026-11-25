@@ -1078,6 +1078,7 @@ $MainRepoPattern = 'github\.com[:/]oasis1701/msfs-blind-assist(\.git)?/?$'
 $ForkRepoPattern = '/msfs-blind-assist(\.git)?/?$'
 $BranchNamePattern = '^[A-Za-z0-9][A-Za-z0-9._/@+-]*$'
 $FetchMaxAgeHours = 24
+$BranchCreatedWithinSeconds = 120
 
 $BranchReviewCopy = 'If this is planned work on an unmerged branch, say so and cite CORE-23 (its Planned in: line). ' +
     'If it is a review copy of someone''s PR, ignore this. Otherwise tell the user before building on it.'
@@ -1201,6 +1202,26 @@ function Invoke-BranchCheck($HookInput) {
         }
         $remote = $main.Name
         $branchSha = Invoke-GitText $dir @('rev-parse', '--verify', '-q', "refs/heads/$name")
+        if ([string]::IsNullOrEmpty($branchSha)) { continue }
+        # Where the branch started, not its tip: the same command may have committed since. The newest reflog entry
+        # "branch: Created from" or "branch: Reset to" gives the start point; one older than two minutes means this
+        # command did not create the branch, so say nothing. No such entry: the tip stands in for it.
+        $log = Invoke-GitText $dir @('reflog', 'show', '--format=%H%x09%gd%x09%gs', '--date=unix', "refs/heads/$name")
+        if (-not [string]::IsNullOrEmpty($log)) {
+            foreach ($entry in $log.Replace("`r`n", "`n").Split("`n")) {
+                $fields = $entry.Split("`t")
+                if ($fields.Count -lt 3) { continue }
+                if (-not ($fields[2].StartsWith('branch: Created from ', [StringComparison]::Ordinal) -or
+                        $fields[2].StartsWith('branch: Reset to ', [StringComparison]::Ordinal))) { continue }
+                $stamp = [regex]::Match($fields[1], '@\{(\d+)\}')
+                if ($stamp.Success) {
+                    $age = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - [long]$stamp.Groups[1].Value
+                    if ($age -gt $BranchCreatedWithinSeconds) { $branchSha = $null }
+                    else { $branchSha = $fields[0] }
+                }
+                break
+            }
+        }
         if ([string]::IsNullOrEmpty($branchSha)) { continue }
         $mainSha = Invoke-GitText $dir @('rev-parse', '--verify', '-q', "refs/remotes/$remote/main")
         if ($branchSha -ne $mainSha) {

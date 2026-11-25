@@ -1020,12 +1020,16 @@ public class ClaudeRulesHookTests : IDisposable
         return new BranchRepo(dir, main, Git(dir, "rev-parse", "HEAD"));
     }
 
-    private static string Git(string dir, params string[] args)
+    private static string Git(string dir, params string[] args) => GitOn(dir, null, args);
+
+    /// <summary>Git with GIT_COMMITTER_DATE set, which dates the reflog entry a command writes.</summary>
+    private static string GitOn(string dir, string? committerDate, params string[] args)
     {
         var psi = new ProcessStartInfo("git")
         {
             RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
         };
+        if (committerDate != null) psi.Environment["GIT_COMMITTER_DATE"] = committerDate;
         foreach (string a in new[] { "-C", dir, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false" })
             psi.ArgumentList.Add(a);
         foreach (string a in args) psi.ArgumentList.Add(a);
@@ -1069,6 +1073,43 @@ public class ClaudeRulesHookTests : IDisposable
         Assert.Contains("CORE-23", context);
         Assert.Contains(repo.Experiment[..7], context);
         Assert.Contains(repo.Main[..7], context);
+    }
+
+    [Fact]
+    public void Branch_check_is_silent_when_the_same_command_commits_after_branching_from_main()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Git(repo.Dir, "switch", "-q", "-c", "feat", "upstream/main");
+        Git(repo.Dir, "commit", "-q", "--allow-empty", "-m", "x");
+        Assert.Null(HookOutput(BranchCheck(repo.Dir, "git switch -c feat upstream/main && git commit --allow-empty -m x")));
+    }
+
+    [Fact]
+    public void Branch_check_still_warns_when_the_same_command_commits_after_branching_from_an_experiment()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Git(repo.Dir, "switch", "-q", "-c", "feat9");
+        Git(repo.Dir, "commit", "-q", "--allow-empty", "-m", "x");
+        string context = Context(BranchCheck(repo.Dir, "git switch -c feat9 && git commit --allow-empty -m x"));
+        Assert.Contains("CORE-24", context);
+        Assert.Contains(repo.Experiment[..7], context);
+    }
+
+    [Fact]
+    public void Branch_check_is_silent_for_a_branch_this_command_did_not_create()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        // The branch was created long ago (its reflog entry dated 2020), so a later failing "switch -c" of it creates nothing.
+        GitOn(repo.Dir, "2020-01-01T00:00:00 +0000", "branch", "feat10", "experiment");
+        Assert.Null(HookOutput(BranchCheck(repo.Dir, "git switch -c feat10 && git status")));
+    }
+
+    [Fact]
+    public void Branch_check_falls_back_to_the_tip_when_the_branch_has_no_reflog()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Git(repo.Dir, "update-ref", "--no-create-reflog", "refs/heads/feat11", repo.Experiment);
+        Assert.Contains("feat11", Context(BranchCheck(repo.Dir, "git branch feat11")));
     }
 
     [Fact]
