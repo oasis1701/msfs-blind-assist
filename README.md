@@ -183,6 +183,8 @@ Navdata Reader command-line tool by Alexander Barthel to build the airport and n
 See [Download](#download) above for the current release and preview builds. The complete user guide is online at [msfsblindassist.com/guide](https://msfsblindassist.com/guide/), with a separate edition for the preview build, and comes with the app as one page: Help, User Guide. Its source is the [guide](guide/) folder, which changes together with the app (see [docs/user-guide.md](docs/user-guide.md)). The app also lists every hotkey under File, Hotkey List.
 
 ## Contributing
+Before you start a branch or open a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md): one aircraft or one feature per branch, a fresh start from main, and how to report a test in the sim.
+
 Pure-logic changes should come with characterization tests in tests/MSFSBlindAssist.Tests (CI runs them on every PR).
 
 To add an aircraft or a feature, follow the walkthroughs in [docs/adding-features.md](docs/adding-features.md), with the short forms in [docs/QUICK-REFERENCE.md](docs/QUICK-REFERENCE.md). Their code examples compile as part of the test suite.

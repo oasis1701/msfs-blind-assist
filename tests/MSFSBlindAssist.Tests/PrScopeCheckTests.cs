@@ -88,6 +88,24 @@ public class PrScopeCheckTests
         Assert.Empty(none.SimTestedOn);
     }
 
+    [Fact]
+    public void Pr_template_answers_nothing_by_itself()
+    {
+        // The template carries all three labels, but its examples sit inside comments and its visible
+        // "Sim-tested on:" line is empty, so a PR opened from it unchanged has answered none of them.
+        string template = File.ReadAllText(
+            Path.Combine(ClaudeContextBudgetTests.RepoRoot(), ".github", "pull_request_template.md"));
+
+        ScopeLinesResult result = ScopeLines.Parse(template);
+
+        Assert.Null(result.Variants);
+        Assert.Null(result.PlannedIn);
+        Assert.Empty(result.SimTestedOn);
+        Assert.Contains(ScopeLines.VariantsLabel + ":", template);
+        Assert.Contains(ScopeLines.PlannedInLabel + ":", template);
+        Assert.Contains(ScopeLines.SimTestedOnLabel + ":", template);
+    }
+
     // ---- UnifiedDiff ------------------------------------------------------------------------------------------
 
     [Fact]

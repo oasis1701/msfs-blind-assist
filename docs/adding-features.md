@@ -203,6 +203,21 @@ case HotkeyAction.ReadOutsideTemperature:
 
 > **If the new aircraft's MCDU / EFB / glass-cockpit displays are rendered in Coherent GT** (FBW, WT/Asobo, most modern study sims), you can read and drive them live via the Coherent debugger — and the existing scrapers may be reusable. See **[Developer Tooling Guide](tooling.md)** for the transport, and **[§9 "Adaptability to other aircraft"](tooling.md#9-adaptability-to-other-aircraft-pmdg--fenix--wt--future-add-ons)** for a per-tool verdict (transport + generic scrape core are universal; the aircraft-specific selector/navigation/input layer must be re-derived) plus a step-by-step recipe ([§9.3](tooling.md#93-recipe--adapt-the-mfdcdu-scraper-to-a-new-aircraft)) for adapting the MFD/CDU scraper to a new aircraft. For closed add-ons with their own SDK surface (PMDG, Fenix), use that SDK instead of scraping.
 
+**Step 0:** Start from a freshly fetched main, one aircraft (one feature) per branch (CORE-22, CORE-23 and CORE-24).
+
+```bash
+git fetch origin
+git switch -c <branch> origin/main
+```
+
+In a clone of your own fork, add this repository once as `upstream` and start from its main:
+
+```bash
+git remote add upstream https://github.com/oasis1701/msfs-blind-assist.git
+git fetch upstream
+git switch -c <branch> upstream/main
+```
+
 **Step 1:** Create the aircraft definition class
 
 **File:** `MSFSBlindAssist/Aircraft/<Name>Definition.cs`
@@ -415,7 +430,22 @@ public override bool HandleHotkeyAction(
 
 ## Workflow 7: Adding a New Feature
 
-A feature here is a subsystem that is not an aircraft (taxi guidance, GSX docking, the SayIntentions taxi import); its code usually lives under `Services/`, `Navigation/` or a folder of its own. Pure logic (formatters, parsers, geometry, classifiers) gets characterization tests in `tests/MSFSBlindAssist.Tests`; a sim-facing part gets an in-sim test plan in the PR (CORE-5).
+A feature here is a subsystem that is not an aircraft (taxi guidance, GSX docking, the SayIntentions taxi import); its code usually lives under `Services/`, `Navigation/` or a folder of its own. Pure logic (formatters, parsers, geometry, classifiers) gets characterization tests in `tests/MSFSBlindAssist.Tests`; a sim-facing part gets an in-sim test plan in the PR, and the PR's own sim results come from the PR's own build, named on its `Sim-tested on:` line (CORE-5).
+
+**Step 0:** Start from a freshly fetched main, one aircraft (one feature) per branch (CORE-22, CORE-23 and CORE-24).
+
+```bash
+git fetch origin
+git switch -c <branch> origin/main
+```
+
+In a clone of your own fork, add this repository once as `upstream` and start from its main:
+
+```bash
+git remote add upstream https://github.com/oasis1701/msfs-blind-assist.git
+git fetch upstream
+git switch -c <branch> upstream/main
+```
 
 **A small feature in an existing area** (a file or two whose rules belong to an area that already has a rule file and a doc): skip Steps 1 to 3. Add a glob for each of its files to that area's rule file, describe it in that area's doc, and put any rule in that area's files as Step 4 says; then Step 5.
 
