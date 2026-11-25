@@ -131,6 +131,17 @@ public class SignHoldingPointTests
         Assert.Equal(new[] { "K" }, p.Taxiways);
     }
 
+    // X-Plane may spell the taxiway "k" where navdata says "K". The point keeps the graph's
+    // spelling, the one every other answer speaks ([RTE-25]).
+    [Fact]
+    public void ResolveSigns_records_the_taxiway_in_the_graphs_spelling()
+    {
+        var p = Assert.Single(NamedHoldingPointResolver.ResolveSigns(
+            Graph(), new[] { Sign("KK", 285, 700, "k") }, new HashSet<string>()));
+
+        Assert.Equal(new[] { "K" }, p.Taxiways);
+    }
+
     [Fact]
     public void ResolveSigns_never_overrides_a_name_a_painted_line_carries()
     {

@@ -37,8 +37,11 @@ public sealed class NamedHoldingPoint
     /// <summary>
     /// The taxiways the resolved node is on, by the graph's own names: one for a point along a
     /// taxiway, several at a junction, none on unnamed pavement. A sign-read point's first entry
-    /// is the taxiway its sign names. Where Am I reads it to say "near holding point L2 on
-    /// taxiway L" from another taxiway (<see cref="NamedHoldingPointNearby.Describe"/>).
+    /// is the taxiway its sign names, in the graph's spelling. A painted point records them only
+    /// when its node is AT the paint (within <see cref="NamedHoldingPointResolver.EDGE_PROJECTION_MAX_M"/>,
+    /// or placed on the edge under it): a node snapped up to 30 m away can be a bend vertex of a
+    /// connecting taxiway, whose name is not the paint's. Where Am I reads it to say "near holding
+    /// point L2 on taxiway L" from another taxiway (<see cref="NamedHoldingPointNearby.Describe"/>).
     /// </summary>
     public IReadOnlyList<string> Taxiways { get; init; } = Array.Empty<string>();
 
@@ -230,7 +233,10 @@ public static class NamedHoldingPointResolver
                 NodeId = chosen.NodeId,
                 Latitude = chosen.Latitude,
                 Longitude = chosen.Longitude,
-                Taxiways = TaxiwaysOf(chosen),
+                // Only a node at the paint says which taxiway the paint is on (see Taxiways).
+                Taxiways = snap.InsertedOnEdge || snap.DistanceMeters <= EDGE_PROJECTION_MAX_M
+                    ? TaxiwaysOf(chosen)
+                    : Array.Empty<string>(),
                 SnapDistanceMeters = snap.DistanceMeters,
                 SnappedToDesignatedNode = chosen.Type == TaxiNodeType.HoldShort
                                        || chosen.Type == TaxiNodeType.ILSHoldShort,
@@ -371,6 +377,8 @@ public static class NamedHoldingPointResolver
 
     // NamedHoldingPoint.Taxiways for a resolved node: its taxiway names in name order, the sign's
     // own taxiway (when given) first. A copy, so a later subdivision of the graph cannot change it.
+    // The sign's taxiway keeps the GRAPH's spelling ([RTE-25], [AUG-1]): ResolveTaxiwayName hands
+    // X-Plane's back unchanged when it differs only in case ("k" for navdata's "K").
     private static IReadOnlyList<string> TaxiwaysOf(TaxiNode node, string? first = null)
     {
         var names = node.TaxiwayNames
@@ -379,8 +387,10 @@ public static class NamedHoldingPointResolver
             .ToList();
         if (!string.IsNullOrWhiteSpace(first))
         {
+            string own = names.FirstOrDefault(n => string.Equals(n, first, StringComparison.OrdinalIgnoreCase))
+                         ?? first;
             names.RemoveAll(n => string.Equals(n, first, StringComparison.OrdinalIgnoreCase));
-            names.Insert(0, first);
+            names.Insert(0, own);
         }
         return names;
     }
@@ -423,13 +433,20 @@ public static class NamedHoldingPointNearby
     /// </summary>
     public const double MaxMetres = 60.0;
 
-    /// <summary>The nearest point within <see cref="MaxMetres"/>, or null.</summary>
+    /// <summary>
+    /// The nearest point within <see cref="MaxMetres"/>, or null. A label that is a runway
+    /// designator ("08L/26R", EHAM's "36C-18C") or describes a kind of hold ("CAT III",
+    /// KORD's "28C APCH") names no holding point, so it is skipped, exactly as the departure-entry
+    /// picker skips it ([ENT-3]), and never hides a real name farther off.
+    /// </summary>
     public static NamedHoldingPoint? Find(IEnumerable<NamedHoldingPoint>? points, double lat, double lon)
     {
         NamedHoldingPoint? best = null;
         double bestMetres = MaxMetres;
         foreach (var point in points ?? Array.Empty<NamedHoldingPoint>())
         {
+            if (TaxiGraph.IsRunwayDesignatorLabel(point.Name) || TaxiGraph.IsDescriptiveHoldLabel(point.Name))
+                continue;
             double metres = TaxiGraph.FastDistanceMeters(lat, lon, point.Latitude, point.Longitude);
             if (metres <= bestMetres) { bestMetres = metres; best = point; }
         }
@@ -471,12 +488,14 @@ public static class NamedHoldingPointNearby
 /// about. Positions only, never a graph. Pure and not thread-safe: <c>TaxiGuidanceManager</c>
 /// calls it under its state lock.
 ///
-/// <para>Three things it decides, each pinned by a test because each was once wrong: the points
+/// <para>Things it decides, each pinned by a test because each was once wrong: the points
 /// are online data, so none is named while the online names setting is off (<see cref="Ask"/>);
 /// a list is dropped when that airport's online data is fetched again, or a list resolved from
-/// a partial first fetch would stand for the session (<see cref="Drop"/>); and data landing for
-/// the airport last asked about is the moment to resolve, so the press after it has the point
-/// (<see cref="Drop"/>'s result).</para>
+/// a partial first fetch would stand for the session (<see cref="Drop"/>); data landing for
+/// the airport last asked about, or for one whose list was just dropped, is the moment to
+/// resolve, so the press after it has the point (<see cref="Drop"/>'s result); and a list is
+/// taken only while it was read from that airport's current data (<see cref="DataVersion"/>),
+/// which another airport's data never moves.</para>
 /// </summary>
 public sealed class WhereAmIHoldingPoints
 {
@@ -484,10 +503,24 @@ public sealed class WhereAmIHoldingPoints
     private IReadOnlyList<NamedHoldingPoint> _points = Array.Empty<NamedHoldingPoint>();
     private string _askedIcao = "";
 
+    // DataVersion's clock: each Drop stamps its airport, each Clear stamps them all.
+    private readonly Dictionary<string, long> _droppedAt = new(StringComparer.OrdinalIgnoreCase);
+    private long _clearedAt;
+    private long _clock;
+
     private bool Holds(string icao)
         => _icao.Length > 0 && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The taxi planner's own list for the airport it loaded: always taken.</summary>
+    /// <summary>
+    /// Which online data for <paramref name="icao"/> is current: moved by that airport's own
+    /// <see cref="Drop"/> and by <see cref="Clear"/>, never by another airport's data. Read it
+    /// BEFORE reading the data a list is resolved from, and hand it back on publishing.
+    /// </summary>
+    public long DataVersion(string icao)
+        => Math.Max(_droppedAt.TryGetValue(icao ?? "", out long dropped) ? dropped : 0, _clearedAt);
+
+    /// <summary>Takes the list unconditionally. Callers holding a data version use
+    /// <see cref="PublishIfCurrent"/> or <see cref="PublishIfAbsent"/>.</summary>
     public void Publish(string icao, IEnumerable<NamedHoldingPoint> points)
     {
         _icao = icao ?? "";
@@ -495,12 +528,26 @@ public sealed class WhereAmIHoldingPoints
     }
 
     /// <summary>
-    /// A background resolve's list: taken only when nothing is held for the airport, so the
-    /// planner's list wins if it arrived meanwhile. True when it was taken.
+    /// The taxi planner's own list: replaces whatever is held, but only when the planner's
+    /// graph was built from the airport's current data. A graph built before the online data
+    /// landed lacks the online taxiway names and would drop sign points the fuller list has.
+    /// True when it was taken.
     /// </summary>
-    public bool PublishIfAbsent(string icao, IEnumerable<NamedHoldingPoint> points)
+    public bool PublishIfCurrent(string icao, long dataVersion, IEnumerable<NamedHoldingPoint> points)
     {
-        if (Holds(icao)) return false;
+        if (dataVersion != DataVersion(icao)) return false;
+        Publish(icao, points);
+        return true;
+    }
+
+    /// <summary>
+    /// A background resolve's list: taken only when nothing is held for the airport, so the
+    /// planner's list wins if it arrived meanwhile, and only while it was read from the
+    /// airport's current data. True when it was taken.
+    /// </summary>
+    public bool PublishIfAbsent(string icao, long dataVersion, IEnumerable<NamedHoldingPoint> points)
+    {
+        if (Holds(icao) || dataVersion != DataVersion(icao)) return false;
         Publish(icao, points);
         return true;
     }
@@ -519,16 +566,21 @@ public sealed class WhereAmIHoldingPoints
 
     /// <summary>
     /// Online data for <paramref name="icao"/> was fetched (again): whatever is held for it is
-    /// forgotten. True when that is the airport last asked about, so the caller resolves now.
+    /// forgotten and its <see cref="DataVersion"/> moves. True when that is the airport last
+    /// asked about, or a list was held for it (the planner's, which will not publish again), so
+    /// the caller resolves now.
     /// </summary>
     public bool Drop(string icao)
     {
-        if (Holds(icao))
+        bool held = Holds(icao);
+        if (held)
         {
             _icao = "";
             _points = Array.Empty<NamedHoldingPoint>();
         }
-        return _askedIcao.Length > 0 && string.Equals(_askedIcao, icao, StringComparison.OrdinalIgnoreCase);
+        _droppedAt[icao ?? ""] = ++_clock;
+        return held
+            || (_askedIcao.Length > 0 && string.Equals(_askedIcao, icao, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>A database switch: the positions are navdata positions, and the ask named the old database's airport.</summary>
@@ -537,5 +589,7 @@ public sealed class WhereAmIHoldingPoints
         _icao = "";
         _points = Array.Empty<NamedHoldingPoint>();
         _askedIcao = "";
+        _droppedAt.Clear();
+        _clearedAt = ++_clock;
     }
 }

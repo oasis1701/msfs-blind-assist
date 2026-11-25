@@ -412,6 +412,23 @@ public class NamedHoldingPointResolverTests
         Assert.Null(NamedHoldingPointNearby.Find(Array.Empty<NamedHoldingPoint>(), 0.0, 0.0010));
     }
 
+    // OSM labels some hold lines with the runway they guard or the kind of hold (KORD "28C APCH",
+    // EHAM "36C-18C"). Those name no holding point: Where Am I skips them, as the departure-entry
+    // picker does ([ENT-3]), and they never hide a real name a little farther off.
+    [Theory]
+    [InlineData("28C APCH")]
+    [InlineData("CAT III")]
+    [InlineData("ILS")]
+    [InlineData("08L/26R")]
+    [InlineData("36C-18C")]
+    public void Nearby_skips_runway_and_descriptive_hold_labels(string label)
+    {
+        var points = new[] { At(label, 0.0, 0.0010), At("A1", 0.0, 0.0014) };
+
+        Assert.Equal("A1", NamedHoldingPointNearby.Find(points, 0.0, 0.0010)!.Name);    // 44 m from A1
+        Assert.Null(NamedHoldingPointNearby.Find(new[] { At(label, 0.0, 0.0010) }, 0.0, 0.0010));
+    }
+
     [Theory]
     [InlineData("Taxiway K", "Taxiway K, near holding point KK")]
     [InlineData("Near taxiway K", "Near taxiway K, near holding point KK")]
@@ -461,6 +478,24 @@ public class NamedHoldingPointResolverTests
 
         Assert.Equal(new[] { "L" }, result.Single(p => p.Name == "L2").Taxiways);
         Assert.Equal(new[] { "L", "M" }, result.Single(p => p.Name == "X1").Taxiways);
+    }
+
+    // L2 is painted on L, 40 m from L's nearest vertex; the nearest vertex within the 30 m snap is
+    // a bend of the connecting taxiway M, 25 m off. That node's names are not the paint's, so the
+    // point records none and Where Am I on L names it plainly, never "on taxiway M".
+    [Fact]
+    public void Resolve_records_no_taxiway_when_the_node_is_away_from_the_paint()
+    {
+        var graph = BuildGraph(
+            Edge(0, 0, "", 100, 0, "", name: "L"),
+            Edge(0, 0, "", 40, 25, "", name: "M"));
+        var points = new[] { ("L2", LatN(40), LonE(0), "intermediate") };
+
+        var l2 = Assert.Single(NamedHoldingPointResolver.Resolve(graph, points));
+
+        Assert.Equal(25.0, l2.SnapDistanceMeters, 1.0);          // snapped to M's bend vertex
+        Assert.Empty(l2.Taxiways);
+        Assert.Equal("Taxiway L, near holding point L2", NamedHoldingPointNearby.Describe("Taxiway L", l2));
     }
 
     // --- Where Am I's store of an airport's points -----------------------------------------
@@ -554,11 +589,63 @@ public class NamedHoldingPointResolverTests
     {
         var store = Holding("OMDB", At("KK", 0, 0));
 
-        Assert.False(store.PublishIfAbsent("OMDB", new[] { At("KG", 0, 0) }));
+        Assert.False(store.PublishIfAbsent("OMDB", store.DataVersion("OMDB"), new[] { At("KG", 0, 0) }));
         Assert.Equal("KK", Assert.Single(store.Ask("OMDB", onlineNamesOn: true).Points).Name);
 
-        Assert.True(store.PublishIfAbsent("EGLL", new[] { At("VIKAS", 0, 0) }));
+        Assert.True(store.PublishIfAbsent("EGLL", store.DataVersion("EGLL"), new[] { At("VIKAS", 0, 0) }));
         Assert.Equal("VIKAS", Assert.Single(store.Ask("EGLL", onlineNamesOn: true).Points).Name);
+    }
+
+    // At flight start the departure and destination are refreshed together. A resolve for OMDB
+    // must survive VABB's data landing meanwhile; only OMDB's own data, or a database switch,
+    // makes it stale.
+    [Fact]
+    public void Store_data_version_moves_only_for_that_airport()
+    {
+        var store = new WhereAmIHoldingPoints();
+        long omdb = store.DataVersion("OMDB");
+
+        store.Drop("VABB");
+        Assert.Equal(omdb, store.DataVersion("omdb"));
+        Assert.True(store.PublishIfAbsent("OMDB", omdb, new[] { At("KK", 0, 0) }));
+
+        store.Drop("OMDB");
+        Assert.NotEqual(omdb, store.DataVersion("OMDB"));
+        Assert.False(store.PublishIfAbsent("OMDB", omdb, new[] { At("KK", 0, 0) }));   // read from the old data
+
+        long vabb = store.DataVersion("VABB");
+        store.Clear();
+        Assert.NotEqual(vabb, store.DataVersion("VABB"));
+    }
+
+    // The planner builds its graph once. Built before the online data landed, it lacks the online
+    // taxiway names and drops sign points placed on them, so its list is refused and Where Am I
+    // resolves its own; built from the current data, its list replaces a background one.
+    [Fact]
+    public void Store_takes_the_planners_list_only_from_current_data()
+    {
+        var store = new WhereAmIHoldingPoints();
+        long builtUnder = store.DataVersion("OMDB");
+        store.Drop("OMDB");                                    // the data landed after the build
+
+        Assert.False(store.PublishIfCurrent("OMDB", builtUnder, new[] { At("KG", 0, 0) }));
+        Assert.True(store.Ask("OMDB", onlineNamesOn: true).Resolve);
+
+        long current = store.DataVersion("OMDB");
+        Assert.True(store.PublishIfAbsent("OMDB", current, new[] { At("KK", 0, 0) }));
+        Assert.True(store.PublishIfCurrent("OMDB", current, new[] { At("KG", 0, 0) }));
+        Assert.Equal("KG", Assert.Single(store.Ask("OMDB", onlineNamesOn: true).Points).Name);
+    }
+
+    // The planner publishes once per airport load. When that airport's data is fetched again the
+    // list is dropped, and a resolve is asked for though Where Am I was never pressed there.
+    [Fact]
+    public void Store_asks_for_a_resolve_when_it_drops_a_held_list()
+    {
+        var store = Holding("OMDB", At("KK", 0, 0));
+
+        Assert.True(store.Drop("OMDB"));
+        Assert.False(store.Drop("OMDB"));                       // nothing held now, nobody asked
     }
 
     [Fact]

@@ -324,6 +324,10 @@ public class TaxiAssistForm : Form
     /// </para>
     /// </summary>
     private string _graphSourceToken = "";
+    // The airport's online-data version (TaxiGuidanceManager.HoldingPointDataVersion) read just
+    // before the taxi paths _graph was built from: Where Am I takes this form's holding points only
+    // while it is current, since a graph built before the online data landed lacks its names.
+    private long _graphHoldingPointDataVersion;
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
     // Per-ICAO memo of GetRunways for the intersection picker, which re-lists on
     // every checkbox toggle / runway change. GetRunways opens a fresh SQLite
@@ -2259,6 +2263,10 @@ public class TaxiAssistForm : Form
             catch { /* offline / fetch failed — fall back to navdata names */ }
         }
 
+        // Read BEFORE the paths: online data landing after this moves it, so Where Am I never
+        // takes holding points resolved on a graph that lacks that data's taxiway names.
+        long holdingPointDataVersion = _guidanceManager.HoldingPointDataVersion(icao);
+
         // Build graph (off the UI thread to avoid stalls at large airports)
         var paths = _dataProvider.GetTaxiPaths(icao);
         if (paths.Count == 0)
@@ -2302,6 +2310,7 @@ public class TaxiAssistForm : Form
         // Stamped with the graph, for the same reason and at the same moment: these names are
         // now frozen into the nodes, and this records which source they came from.
         _graphSourceToken = graphToken;
+        _graphHoldingPointDataVersion = holdingPointDataVersion;
 
         lblStatus.Text = $"{icao}: {_graph.Nodes.Count} nodes, {paths.Count} paths.";
 
@@ -4602,8 +4611,10 @@ public class TaxiAssistForm : Form
                 $"designated={hp.SnappedToDesignatedNode}, projected={hp.InsertedOnEdge}, " +
                 $"kind={(hp.Kind.Length > 0 ? hp.Kind : "-")}");
 
-        // Where Am I names the point the aircraft is near; it has no resolver of its own.
-        _guidanceManager.SetNamedHoldingPoints(_currentIcao, _namedHoldingPoints);
+        // Where Am I names the point the aircraft is near. It takes this list only while the graph
+        // was built from the airport's current online data, and resolves its own otherwise.
+        _guidanceManager.SetNamedHoldingPoints(
+            _currentIcao, _namedHoldingPoints, _graphHoldingPointDataVersion, _dataProvider);
     }
 
     /// <summary>
