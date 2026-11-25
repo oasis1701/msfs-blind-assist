@@ -1073,6 +1073,10 @@ public class ClaudeRulesHookTests : IDisposable
         Assert.Contains("CORE-23", context);
         Assert.Contains(repo.Experiment[..7], context);
         Assert.Contains(repo.Main[..7], context);
+        // The branch already exists, so only -C can recreate it, and the context says what -C drops.
+        Assert.Contains("git switch -C feat2 upstream/main", context);
+        Assert.Contains("-C drops any commits already on the branch", context);
+        Assert.DoesNotContain("git switch -c", context);
     }
 
     [Fact]
@@ -1144,7 +1148,9 @@ public class ClaudeRulesHookTests : IDisposable
         string context = Context(BranchCheck(repo.Dir, "git switch -c feat6"));
         Assert.Contains("git remote add upstream " + MainRepoUrl, context);
         Assert.Contains("git fetch upstream", context);
-        Assert.Contains("git switch -c feat6 upstream/main", context);
+        Assert.Contains("git rebase upstream/main", context);
+        Assert.Contains("git switch -C feat6 upstream/main", context);
+        Assert.DoesNotContain("git switch -c", context);
         Assert.Contains("CORE-24", context);
     }
 
@@ -1182,7 +1188,29 @@ public class ClaudeRulesHookTests : IDisposable
         Git(repo.Dir, "switch", "-q", "-c", "feat4", "upstream/main");
         string context = Context(BranchCheck(repo.Dir, "git switch -c feat4 upstream/main"));
         Assert.Contains("git fetch upstream", context);
+        Assert.Contains("git rebase upstream/main", context);
         Assert.Contains("CORE-24", context);
+    }
+
+    [Fact]
+    public void Branch_check_in_a_linked_worktree_reads_the_main_checkouts_fetch_too()
+    {
+        // A fetch writes FETCH_HEAD in the worktree it runs in. A linked worktree that never fetched has no FETCH_HEAD
+        // of its own, while the main checkout's is fresh: main was fetched, so nothing is said.
+        BranchRepo repo = CreateBranchRepo();
+        string worktree = Path.Combine(NewTempDir(), "wt");
+        Git(repo.Dir, "worktree", "add", "-q", "--detach", worktree, "upstream/main");
+        Assert.False(File.Exists(Git(worktree, "rev-parse", "--path-format=absolute", "--git-path", "FETCH_HEAD")));
+
+        Git(worktree, "switch", "-q", "-c", "feat12", "upstream/main");
+        Assert.Null(HookOutput(BranchCheck(worktree, "git switch -c feat12 upstream/main")));
+
+        // Both old or missing: the warning still comes.
+        File.SetLastWriteTime(Path.Combine(repo.Dir, ".git", "FETCH_HEAD"), new DateTime(2020, 1, 1));
+        Git(worktree, "switch", "-q", "-c", "feat13", "upstream/main");
+        string context = Context(BranchCheck(worktree, "git switch -c feat13 upstream/main"));
+        Assert.Contains("git fetch upstream", context);
+        Assert.Contains("feat13", context);
     }
 
     [Fact]

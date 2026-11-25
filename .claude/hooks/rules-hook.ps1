@@ -1082,20 +1082,22 @@ $BranchCreatedWithinSeconds = 120
 
 $BranchReviewCopy = 'If this is planned work on an unmerged branch, say so and cite CORE-23 (its Planned in: line). ' +
     'If it is a review copy of someone''s PR, ignore this. Otherwise tell the user before building on it.'
-$BranchOffMain = 'CORE-24 (docs/invariants/core.md): branch ''{0}'' does not start at {1}/main (the branch is at {2}, ' +
+$BranchOffMain = 'CORE-24 (docs/invariants/core.md): branch ''{0}'' does not start at {1}/main (it started at {2}, ' +
     '{1}/main is at {3}). Start every branch from a freshly fetched main, never from a local experiment or another ' +
-    'feature branch: run git fetch {1}, then git switch -c {0} {1}/main (recreate the branch there before ' +
-    'committing). ' + $BranchReviewCopy
+    'feature branch. If the branch has no commits of its own yet, run git fetch {1}, then git switch -C {0} ' +
+    '{1}/main to recreate it there; -C drops any commits already on the branch, so if it has some, tell the user ' +
+    'instead. ' + $BranchReviewCopy
 $BranchStaleMain = 'CORE-24 (docs/invariants/core.md): branch ''{0}'' starts at {1}/main, but main was {2}. Run git ' +
-    'fetch {1} and check that the branch still starts at {1}/main; if main moved, recreate the branch with git ' +
-    'switch -c {0} {1}/main before committing.'
+    'fetch {1}, then, on branch ''{0}'', git rebase {1}/main, so the branch starts from the fresh main.'
 $BranchNoMainRemote = 'CORE-24 (docs/invariants/core.md): the main repository is not a remote in this clone (it looks ' +
-    'like a clone of a fork), so branch ''{0}'' cannot start from its main. Run: git remote add upstream {1}, then ' +
-    'git fetch upstream, then git switch -c {0} upstream/main (push the branch to your fork afterwards). ' +
-    $BranchReviewCopy
+    'like a clone of a fork), so branch ''{0}'' cannot start from its main. Run git remote add upstream {1}, then ' +
+    'git fetch upstream, then, on branch ''{0}'', git rebase upstream/main; or, if the branch has no commits of its ' +
+    'own yet, recreate it with git switch -C {0} upstream/main (-C drops any commits already on the branch). Then ' +
+    'push the branch to your fork. ' + $BranchReviewCopy
 
-# The output of git in $Dir, trimmed, or $null when it fails, takes over five seconds or cannot start (CCT-1). Names
-# and paths reach git quoted; no shell is involved.
+# The output of git in $Dir, trimmed, or $null when it fails or cannot start (CCT-1). Names and paths reach git
+# quoted; no shell is involved. ReadToEnd returns only once git closes its output, so the five-second WaitForExit
+# below bounds only the exit after that: a git that hangs holds the hook until its timeout in .claude/settings.json.
 function Invoke-GitText([string]$Dir, [string[]]$GitArgs) {
     try {
         $quoted = New-Object System.Collections.Generic.List[string]
@@ -1165,15 +1167,28 @@ function Get-RemoteUrls([string]$Dir) {
     return ,$list.ToArray()
 }
 
-# The path of FETCH_HEAD for the repository (per worktree), absolute, or $null. Without --path-format=absolute (git 2.31
-# and later) git prints a path relative to $Dir, which is joined to $Dir here.
-function Get-FetchHeadPath([string]$Dir) {
-    $path = Invoke-GitText $Dir @('rev-parse', '--path-format=absolute', '--git-path', 'FETCH_HEAD')
+# A path git rev-parse prints for $Query, absolute, or $null. Without --path-format=absolute (git 2.31 and later) git
+# prints a path relative to $Dir, which is joined to $Dir here.
+function Get-GitAbsolutePath([string]$Dir, [string[]]$Query) {
+    $path = Invoke-GitText $Dir (@('rev-parse', '--path-format=absolute') + $Query)
     if ([string]::IsNullOrEmpty($path)) {
-        $path = Invoke-GitText $Dir @('rev-parse', '--git-path', 'FETCH_HEAD')
+        $path = Invoke-GitText $Dir (@('rev-parse') + $Query)
         if ([string]::IsNullOrEmpty($path)) { return $null }
     }
     return Resolve-FullPath $path $Dir
+}
+
+# The FETCH_HEAD files that can show a recent fetch, absolute: the worktree's own (--git-path FETCH_HEAD) and the main
+# checkout's (<git-common-dir>\FETCH_HEAD). A fetch writes FETCH_HEAD in the worktree it runs in, so in a linked
+# worktree a fetch made in the main checkout leaves the worktree's own file untouched; in the main checkout the two
+# are one file.
+function Get-FetchHeadPaths([string]$Dir) {
+    $paths = New-Object System.Collections.Generic.List[string]
+    $own = Get-GitAbsolutePath $Dir @('--git-path', 'FETCH_HEAD')
+    if ($own) { $paths.Add($own) }
+    $common = Get-GitAbsolutePath $Dir @('--git-common-dir')
+    if ($common) { $paths.Add([IO.Path]::Combine($common, 'FETCH_HEAD')) }
+    return ,$paths.ToArray()
 }
 
 # PostToolUse on a git command that creates a branch: warn (never block or ask) when the branch does not start at
@@ -1231,14 +1246,18 @@ function Invoke-BranchCheck($HookInput) {
             $messages.Add(($BranchOffMain -f $name, $remote, $branchShort, $mainShort))
             continue
         }
-        $fetchHead = Get-FetchHeadPath $dir
-        if (-not $fetchHead) { continue }
-        $age = $null
-        if ([IO.File]::Exists($fetchHead)) {
+        # The newer of the worktree's own FETCH_HEAD and the main checkout's: warn only when both are old or missing.
+        $fetchHeads = Get-FetchHeadPaths $dir
+        if ($fetchHeads.Count -eq 0) { continue }
+        $newest = $null
+        foreach ($fetchHead in $fetchHeads) {
+            if (-not [IO.File]::Exists($fetchHead)) { continue }
             $written = [IO.File]::GetLastWriteTime($fetchHead)
-            if ($written -lt (Get-Date).AddHours(-$FetchMaxAgeHours)) { $age = 'last fetched more than 24 hours ago' }
+            if ($null -eq $newest -or $written -gt $newest) { $newest = $written }
         }
-        else { $age = 'never fetched in this clone' }
+        $age = $null
+        if ($null -eq $newest) { $age = 'never fetched in this clone' }
+        elseif ($newest -lt (Get-Date).AddHours(-$FetchMaxAgeHours)) { $age = 'last fetched more than 24 hours ago' }
         if ($null -ne $age) { $messages.Add(($BranchStaleMain -f $name, $remote, $age)) }
     }
     if ($messages.Count -eq 0) { return }
