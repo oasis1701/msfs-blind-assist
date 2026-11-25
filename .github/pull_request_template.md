@@ -8,8 +8,8 @@
 One aircraft or one feature per branch and PR (CORE-22). Variants share one only when they
 are one maker's models of one family (the PMDG 737 series, the Fenix A320 series) or an
 add-on built from another's code with identical L:vars and control methods (the Headwind
-A330 on the FBW A32NX). A subclass of another family's definition is not a variant. A PR
-that carries variants says so on a line of its own:
+A330 on the FBW A32NX). A subclass of another family's definition that drives the sim
+differently is not a variant. A PR that carries variants says so on a line of its own:
   Variants: <family>
 Fixes may share a PR when they are on one aircraft or one feature; unrelated fixes across
 aircraft are separate PRs.
