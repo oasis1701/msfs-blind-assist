@@ -208,14 +208,16 @@ case HotkeyAction.ReadOutsideTemperature:
 ```bash
 git fetch origin
 git switch -c <branch> origin/main
+git push -u origin <branch>
 ```
 
-In a clone of your own fork, add this repository once as `upstream` and start from its main:
+In a clone of your own fork, add this repository once as `upstream`, start each branch from its main, and push the branch to your fork:
 
 ```bash
 git remote add upstream https://github.com/oasis1701/msfs-blind-assist.git
 git fetch upstream
 git switch -c <branch> upstream/main
+git push -u origin <branch>
 ```
 
 **Step 1:** Create the aircraft definition class
@@ -437,14 +439,16 @@ A feature here is a subsystem that is not an aircraft (taxi guidance, GSX dockin
 ```bash
 git fetch origin
 git switch -c <branch> origin/main
+git push -u origin <branch>
 ```
 
-In a clone of your own fork, add this repository once as `upstream` and start from its main:
+In a clone of your own fork, add this repository once as `upstream`, start each branch from its main, and push the branch to your fork:
 
 ```bash
 git remote add upstream https://github.com/oasis1701/msfs-blind-assist.git
 git fetch upstream
 git switch -c <branch> upstream/main
+git push -u origin <branch>
 ```
 
 **A small feature in an existing area** (a file or two whose rules belong to an area that already has a rule file and a doc): skip Steps 1 to 3. Add a glob for each of its files to that area's rule file, describe it in that area's doc, and put any rule in that area's files as Step 4 says; then Step 5.

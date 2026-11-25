@@ -2,7 +2,7 @@
 
 Thank you for helping. MSFS Blind Assist is used by blind pilots, and it is built by sighted and blind developers, many of them working through Claude Code. This page is for anyone who starts a branch or opens a pull request (PR) here. It says how to scope a branch, how to start it, what everything it adds must have behind it, and how to report a test in the simulator.
 
-It covers five of the project's rules: CORE-5 and CORE-22 to CORE-25. Each has a one-line form in [CLAUDE.md](CLAUDE.md), which Claude Code loads, and a full text in [docs/invariants/core.md](docs/invariants/core.md). This page is written from the full texts; where the two differ, the full text governs. Each section ends with a link to its full text.
+It covers five of the project's rules: CORE-5 and CORE-22 to CORE-25. Each has a one-line form in [CLAUDE.md](CLAUDE.md), which Claude Code loads, and a full text in [docs/invariants/core.md](docs/invariants/core.md). This page is written from the full texts; where the two differ, the full text governs. Each rule's section ends with a link to its full text.
 
 ## The rules cover your branch, not only your pull request
 
@@ -10,7 +10,7 @@ These rules govern every feature branch of this repository from the moment it is
 
 The PR scope check (see [The PR scope check](#the-pr-scope-check) below) sees only pull requests. Before one is opened, what reaches you is CLAUDE.md and, in a Claude Code session, a warning when a branch is created from somewhere other than main.
 
-The rules govern pull requests to this public repository. The project's private repo cuts its branches from public main and takes main in, so its branches carry CLAUDE.md and these rules too; it keeps its own hub-and-branch model, and how these rules apply there is set in that repo.
+The rules govern pull requests to this public repository. The project's private repo cuts its branches from public main and takes main in, so its branches carry CLAUDE.md and these rules too; it keeps its own hub-and-branch model, and how these rules apply there is for that repo to set.
 
 ## Before you start: a fresh branch from main
 
@@ -136,7 +136,14 @@ Rebuilding the work from scratch is not more ethical or secure in itself: review
 
 ### The Built line
 
-The PR template's Scope section asks where the work was built, on its `Built:` line: on this branch from a freshly fetched main, or in the project's private repo. Keep the answer that is true. It is a line to fill in, not a checkbox, because a checkbox can be ticked, or left in as boilerplate, without anyone deciding anything.
+The PR template's Scope section asks where the work was built, on its `Built:` line. Fill it in with one of the two answers the template's comment lists:
+
+```text
+Built: on this branch from a freshly fetched main
+Built: in the project's private repo
+```
+
+It is a line to fill in, not a checkbox, because a checkbox can be ticked, or left in as boilerplate, without anyone deciding anything.
 
 Full text: [CORE-24](docs/invariants/core.md#core-24).
 
@@ -193,18 +200,17 @@ Every sim result a PR reports for itself comes from that PR's own build: a commi
 
 ### Build your own branch
 
-1. Switch to your branch. If you want main's latest changes in your test, merge main in and push the merge:
+1. Switch to your branch (`git switch <branch>`), then commit and push everything you want to test. A build with uncommitted edits reports the commit it started from, which does not hold those edits.
+
+2. If you want main's latest changes in your test, merge main in and push the merge:
 
    ```bash
-   git switch <branch>
    git fetch origin
    git merge origin/main
    git push
    ```
 
    In a clone of your fork, fetch and merge from `upstream` instead: `git fetch upstream`, then `git merge upstream/main`.
-
-2. Commit and push everything you want to test. A build with uncommitted edits reports the commit it started from, which does not hold those edits.
 
 3. Close MSFS Blind Assist, since the running app locks its exe, then build the solution:
 
@@ -222,7 +228,7 @@ Fly the test plan. Then open Help, About in the app. It shows the build, for exa
 Sim-tested on: v0.0.0 (build a1b2c3d)
 ```
 
-You can name several builds, one per line or separated by commas, as long as each is a build of this PR. Leave the line empty when nothing was tested in the sim; words with no hash, such as "not tested in the sim", say the same.
+You can name several builds, as long as each is a build of this PR: one `Sim-tested on:` line per build, or several builds on one line separated by commas. The check reads only labelled lines, so a build on a bare line of its own goes unchecked. Leave the line empty when nothing was tested in the sim; words with no hash, such as "not tested in the sim", say the same.
 
 ### Combined builds
 
@@ -268,9 +274,9 @@ It flags a PR that:
 - adds an `aircraft` changelog fragment together with a `feature` fragment, even with a `Variants:` line: describe a feature that is part of the aircraft's support in the aircraft's fragment, or split the PR (CORE-22);
 - adds two `aircraft` fragments with no `Variants:` line (CORE-22);
 - targets a branch other than main with no `Planned in:` line (CORE-23);
-- targets main while stacked on an older open PR into main, so the two share commits that are not on main: rebase on a fresh main so the PR carries only its own commits, or retarget it at the other PR's branch and add a `Planned in:` line. Only the newer PR of a stacked pair is flagged (CORE-23);
-- adds a line under `MSFSBlindAssist/`, under `tests/` or in a tool's README (`tools/<name>/README.md`) that names a `tools/<name>` path the PR's tree does not hold, or a `<Name>Tests` name that no code line holds; a comment does not count (CORE-25). A name the base branch already mentions passes, and a line that says "one-off" and "not kept", or names the "private repo" or the "layouts store", is not scanned;
-- has a `Sim-tested on:` line naming a build that is not a commit on this PR's branch (CORE-5). Every token of 7 to 40 hexadecimal characters on those lines that holds at least one digit and at least one letter from a to f must be the start of a commit between the base branch and the PR's head. A build of main alone, a combined build, a merge that was not pushed, or a commit a rebase replaced is flagged. A line with no such token checks nothing.
+- targets main while stacked on an older open PR into main, so the two share commits that are not on main: rebase on a fresh main so the PR carries only its own commits, retarget it at the other PR's branch and add a `Planned in:` line, or close the PR this one replaces. Only the newer PR of a stacked pair is flagged (CORE-23);
+- adds a line under `MSFSBlindAssist/`, under `tests/` or in a tool's README (`tools/<name>/README.md`) that names a `tools/<name>` path the PR's tree does not hold, or a `<Name>Tests` name that no code line holds; a comment line, or a `//` comment after code, does not count (CORE-25). A name the base branch already mentions passes, and a line that says "one-off" and "not kept", or names the "private repo" or the "layouts store", is not scanned;
+- has a `Sim-tested on:` line naming a build that is not a commit on this PR's branch (CORE-5). Every token of 7 to 40 hexadecimal characters on those lines that holds at least one digit and at least one letter from a to f, in either case, must be the start of a commit between the base branch and the PR's head. A build of main alone, a combined build, a merge that was not pushed, or a commit a rebase replaced is flagged. A line with no such token checks nothing.
 
 Its limits. It cannot prove which build was really flown: someone who tests a combined build and writes the PR's own commit on the line is not caught, and review covers that. A short hash of only digits or only letters goes unchecked, since dates such as 20261125 and words such as "defaced" are not hashes. Docs outside a tool's README are not scanned for CORE-25; the rule still applies to them, and review covers them. The rules reach further than the check: a second aircraft that adds no switch arm, or one fragment that describes two features, is still two PRs, and review applies the rule there. A PR between two branches cut before the check landed gets no check until one side takes in main.
 
@@ -287,7 +293,7 @@ Each rule's full text holds its reasons, its history and the owner's decisions:
 ## What else every PR needs
 
 - A changelog fragment, `changelog.d/<pr>-<slug>.<category>.md`, written for a pilot; a required check fails without it. [changelog.d/README.md](changelog.d/README.md) says how.
-- A PR that changes what a pilot presses, sees or hears updates the user guide in `guide/` in the same PR, or fills in its `User guide:` line ([CORE-19](docs/invariants/core.md#core-19)).
+- A PR that changes what a pilot presses, sees or hears updates the user guide in `guide/` in the same PR; if it cannot, or the guide is still right, its `User guide:` line says so ([CORE-19](docs/invariants/core.md#core-19)).
 - `main` is protected: always work on a branch and open a PR.
 - To add an aircraft or a feature, follow the walkthroughs in [docs/adding-features.md](docs/adding-features.md).
 

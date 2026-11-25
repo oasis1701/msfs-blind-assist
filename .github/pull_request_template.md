@@ -25,13 +25,16 @@ each generated or trained file rebuilds from committed tools and data, its sourc
 (CORE-25).
 
 Fill in the two lines below: what this PR delivers (the one aircraft or the one feature),
-and where the work was built (keep the answer that is true). The PR scope check reads the
-Variants, Planned in and Sim-tested on lines; it is advisory. See CONTRIBUTING.md.
+and where the work was built, written as one of these two:
+  Built: on this branch from a freshly fetched main
+  Built: in the project's private repo
+The PR scope check reads the Variants, Planned in and Sim-tested on lines; it is advisory.
+See CONTRIBUTING.md.
 -->
 
 Delivers:
 
-Built: <on this branch from a freshly fetched main | in the project's private repo>
+Built:
 
 ## Changelog
 
