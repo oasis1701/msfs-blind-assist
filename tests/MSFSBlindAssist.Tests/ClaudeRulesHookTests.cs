@@ -939,7 +939,9 @@ public class ClaudeRulesHookTests : IDisposable
             "PostToolUse @ Read @ read @ Read(//**/.claude/worktrees/agent-*/**)",
             "PostToolUse @ Write|NotebookEdit @ read @ ",
             "PostToolUse @ Bash @ diff @ Bash(git *)", "PostToolUse @ Bash @ diff @ Bash(gh *)",
+            "PostToolUse @ Bash @ branch-check @ Bash(git *)",
             "PostToolUse @ PowerShell @ diff @ PowerShell(git *)", "PostToolUse @ PowerShell @ diff @ PowerShell(gh *)",
+            "PostToolUse @ PowerShell @ branch-check @ PowerShell(git *)",
             "PreToolUse @ Bash @ shell-guard @ Bash(sed *)", "PreToolUse @ Bash @ shell-guard @ Bash(perl *)",
             "PreToolUse @ Bash @ shell-guard @ Bash(tee *)", "PreToolUse @ Bash @ shell-guard @ Bash(cat *)",
             "PreToolUse @ Bash @ shell-guard @ Bash(echo *)", "PreToolUse @ Bash @ shell-guard @ Bash(printf *)",
@@ -969,6 +971,7 @@ public class ClaudeRulesHookTests : IDisposable
                 ("PostToolUse", "read") => HookOutput(RunHook(new[] { mode },
                     ReadInput(CreateFile(CreateAgentWorktree(NewTempDir()), Pmdg737), agentId: "a1"))) != null,
                 ("PostToolUse", "diff") => HookOutput(RunHook(new[] { mode }, DiffInput("git diff", BashResponse(ShownInFullDiff)))) != null,
+                ("PostToolUse", "branch-check") => BranchCheckWarns(),
                 ("PreToolUse", "shell-guard") => HookOutput(RunHook(new[] { mode },
                     ShellInput("Bash", $"sed -i 's/a/b/' {Pmdg737}"))) != null,
                 ("SubagentStart", "subagent-start") => HookOutput(RunHook(new[] { mode }, SubagentInput("Plan", root), env: env)) != null,
@@ -986,6 +989,192 @@ public class ClaudeRulesHookTests : IDisposable
         RunHook(new[] { "diff" }, diff, env: env);
         RunHook(new[] { mode }, HookInput(new { session_id = "s1", hook_event_name = "SessionStart", source = "compact" }), env: env);
         return HookOutput(RunHook(new[] { "diff" }, diff, env: env)) != null;
+    }
+
+    // ---- branch-check (CCT-8, CORE-24) ----
+
+    private const string MainRepoUrl = "https://github.com/oasis1701/msfs-blind-assist.git";
+
+    private sealed record BranchRepo(string Dir, string Main, string Experiment);
+
+    private static bool BranchCheckWarns()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Git(repo.Dir, "switch", "-q", "-c", "feat2");
+        return HookOutput(BranchCheck(repo.Dir, "git switch -c feat2")) != null;
+    }
+
+    /// <summary>A repository with commit A on main, a remote whose main points at A, and the checked-out local branch
+    /// experiment one commit further; FETCH_HEAD is written just now.</summary>
+    private static BranchRepo CreateBranchRepo(string remote = "upstream", string url = MainRepoUrl)
+    {
+        string dir = NewTempDir();
+        Git(dir, "init", "-q", "-b", "main");
+        Git(dir, "commit", "-q", "--allow-empty", "-m", "a");
+        string main = Git(dir, "rev-parse", "HEAD");
+        Git(dir, "remote", "add", remote, url);
+        Git(dir, "update-ref", $"refs/remotes/{remote}/main", main);
+        Git(dir, "switch", "-q", "-c", "experiment");
+        Git(dir, "commit", "-q", "--allow-empty", "-m", "b");
+        File.WriteAllText(Path.Combine(dir, ".git", "FETCH_HEAD"), "");
+        return new BranchRepo(dir, main, Git(dir, "rev-parse", "HEAD"));
+    }
+
+    private static string Git(string dir, params string[] args)
+    {
+        var psi = new ProcessStartInfo("git")
+        {
+            RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
+        };
+        foreach (string a in new[] { "-C", dir, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false" })
+            psi.ArgumentList.Add(a);
+        foreach (string a in args) psi.ArgumentList.Add(a);
+        using Process process = Process.Start(psi)!;
+        Task<string> stderr = process.StandardError.ReadToEndAsync();
+        string stdout = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        Assert.True(process.ExitCode == 0, $"git {string.Join(' ', args)} failed: {stderr.Result}");
+        return stdout.Trim();
+    }
+
+    /// <summary>Runs branch-check for a command already run in <paramref name="cwd"/>, from a working folder that is
+    /// not the repository.</summary>
+    private static HookRun BranchCheck(string cwd, string command, string tool = "Bash") => RunHook(new[] { "branch-check" },
+        HookInput(new
+        {
+            session_id = "s1", hook_event_name = "PostToolUse", tool_name = tool, tool_input = new { command },
+            tool_response = BashResponse(""), cwd,
+        }), workingDirectory: NewTempDir());
+
+    private static string Context(HookRun run) => HookOutput(run)!.Value.GetProperty("additionalContext").GetString()!;
+
+    [Fact]
+    public void Branch_check_is_silent_for_a_branch_from_the_main_remote()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Git(repo.Dir, "switch", "-q", "-c", "feat", "upstream/main");
+        Assert.Null(HookOutput(BranchCheck(repo.Dir, "git switch -c feat upstream/main")));
+    }
+
+    [Fact]
+    public void Branch_check_warns_for_a_branch_from_a_local_experiment()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Git(repo.Dir, "switch", "-q", "-c", "feat2");
+        string context = Context(BranchCheck(repo.Dir, "git switch -c feat2"));
+        Assert.Contains("CORE-24", context);
+        Assert.Contains("feat2", context);
+        Assert.Contains("upstream/main", context);
+        Assert.Contains("git fetch upstream", context);
+        Assert.Contains("CORE-23", context);
+        Assert.Contains(repo.Experiment[..7], context);
+        Assert.Contains(repo.Main[..7], context);
+    }
+
+    [Fact]
+    public void Branch_check_warns_for_checkout_b_from_another_branch()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Git(repo.Dir, "checkout", "-q", "-b", "feat3", "experiment");
+        Assert.Contains("CORE-24", Context(BranchCheck(repo.Dir, "git checkout -b feat3 experiment")));
+    }
+
+    [Fact]
+    public void Branch_check_finds_the_main_repo_by_url_not_remote_name()
+    {
+        BranchRepo repo = CreateBranchRepo(remote: "kinfolk");
+        Git(repo.Dir, "switch", "-q", "-c", "feat2");
+        Assert.Contains("kinfolk/main", Context(BranchCheck(repo.Dir, "git switch -c feat2")));
+    }
+
+    [Fact]
+    public void Branch_check_is_silent_when_no_remote_is_the_main_repo()
+    {
+        BranchRepo repo = CreateBranchRepo(remote: "origin", url: "https://github.com/someone/other-project.git");
+        Git(repo.Dir, "switch", "-q", "-c", "feat2");
+        Assert.Null(HookOutput(BranchCheck(repo.Dir, "git switch -c feat2")));
+    }
+
+    [Fact]
+    public void Branch_check_tells_a_fork_only_clone_to_add_the_main_repo()
+    {
+        BranchRepo repo = CreateBranchRepo(remote: "origin", url: "https://github.com/someone/msfs-blind-assist.git");
+        Git(repo.Dir, "switch", "-q", "-c", "feat6");
+        string context = Context(BranchCheck(repo.Dir, "git switch -c feat6"));
+        Assert.Contains("git remote add upstream " + MainRepoUrl, context);
+        Assert.Contains("git fetch upstream", context);
+        Assert.Contains("git switch -c feat6 upstream/main", context);
+        Assert.Contains("CORE-24", context);
+    }
+
+    [Theory]
+    [InlineData("git branch -d x")]
+    [InlineData("git branch --list")]
+    [InlineData("git branch")]
+    [InlineData("git switch experiment")]
+    [InlineData("git status && git log -1")]
+    public void Branch_check_ignores_commands_that_create_no_branch(string command)
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Assert.Null(HookOutput(BranchCheck(repo.Dir, command)));
+    }
+
+    [Fact]
+    public void Branch_check_reads_a_branch_name_after_git_branch_and_worktree_add()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Git(repo.Dir, "branch", "feat7");
+        Assert.Contains("feat7", Context(BranchCheck(repo.Dir, "git branch feat7")));
+        Git(repo.Dir, "branch", "feat8");
+        Assert.Contains("feat8", Context(BranchCheck(repo.Dir, "git worktree add -b feat8 ../w1")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Branch_check_says_fetch_when_main_was_fetched_long_ago(bool never)
+    {
+        BranchRepo repo = CreateBranchRepo();
+        string fetchHead = Path.Combine(repo.Dir, ".git", "FETCH_HEAD");
+        if (never) File.Delete(fetchHead);
+        else File.SetLastWriteTime(fetchHead, new DateTime(2020, 1, 1));
+        Git(repo.Dir, "switch", "-q", "-c", "feat4", "upstream/main");
+        string context = Context(BranchCheck(repo.Dir, "git switch -c feat4 upstream/main"));
+        Assert.Contains("git fetch upstream", context);
+        Assert.Contains("CORE-24", context);
+    }
+
+    [Fact]
+    public void Branch_check_runs_for_powershell_and_git_C()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Git(repo.Dir, "switch", "-q", "-c", "feat5");
+        Assert.Contains("CORE-24", Context(BranchCheck(repo.Dir, "git switch -c feat5", tool: "PowerShell")));
+        string outside = NewTempDir();
+        Assert.Contains("feat5", Context(BranchCheck(outside, $"git -C \"{repo.Dir}\" switch -c feat5")));
+    }
+
+    [Fact]
+    public void Branch_check_is_silent_when_switched_off()
+    {
+        BranchRepo repo = CreateBranchRepo();
+        Git(repo.Dir, "switch", "-q", "-c", "feat2");
+        HookRun run = RunHook(new[] { "branch-check" }, HookInput(new
+        {
+            session_id = "s1", hook_event_name = "PostToolUse", tool_name = "Bash",
+            tool_input = new { command = "git switch -c feat2" }, tool_response = BashResponse(""), cwd = repo.Dir,
+        }), env: new Dictionary<string, string?> { ["MSFSBA_RULES_HOOK"] = "off" });
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("", run.Stdout);
+    }
+
+    [Fact]
+    public void Branch_check_fails_open_outside_a_repository()
+    {
+        string folder = NewTempDir();
+        HookRun run = BranchCheck(folder, "git switch -c feat2");
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("", run.Stdout);
     }
 
     private sealed record RegisteredHook(string Event, string Matcher, string Type, string Command, string[] Args, int Timeout,

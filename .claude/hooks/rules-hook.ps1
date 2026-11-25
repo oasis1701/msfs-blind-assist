@@ -17,6 +17,10 @@ Modes (first argument):
                                      and the Python that python, python3 and py run, found from literals: CCT-7)
   diff                               PostToolUse (git diff, git show, gh pr diff): add the rule files for the
                                      changed paths
+  branch-check                       PostToolUse (git checkout -b, switch -c, branch <name>, worktree add -b): warn when
+                                     the new branch does not start at the main repository's main, when main was not
+                                     fetched in the last 24 hours, or when a clone of a fork has no remote for the
+                                     main repository (CORE-24, CCT-8); it only warns
   subagent-start                     SubagentStart: give the built-in Plan agent the rules sections of the CLAUDE.md in
                                      its own checkout; tell a subagent in a worktree the read mode cannot see, and
                                      that is not the session's own (by its transcript folder, CCT-6), to load its
@@ -1067,6 +1071,159 @@ function Invoke-Diff($HookInput) {
     Write-Context 'PostToolUse' $context.Text
 }
 
+# ---- branch-check: a new branch should start from a freshly fetched main (CORE-24, CCT-8) ----
+
+$MainRepoUrl = 'https://github.com/oasis1701/msfs-blind-assist.git'
+$MainRepoPattern = 'github\.com[:/]oasis1701/msfs-blind-assist(\.git)?/?$'
+$ForkRepoPattern = '/msfs-blind-assist(\.git)?/?$'
+$BranchNamePattern = '^[A-Za-z0-9][A-Za-z0-9._/@+-]*$'
+$FetchMaxAgeHours = 24
+
+$BranchReviewCopy = 'If this is planned work on an unmerged branch, say so and cite CORE-23 (its Planned in: line). ' +
+    'If it is a review copy of someone''s PR, ignore this. Otherwise tell the user before building on it.'
+$BranchOffMain = 'CORE-24 (docs/invariants/core.md): branch ''{0}'' does not start at {1}/main (the branch is at {2}, ' +
+    '{1}/main is at {3}). Start every branch from a freshly fetched main, never from a local experiment or another ' +
+    'feature branch: run git fetch {1}, then git switch -c {0} {1}/main (recreate the branch there before ' +
+    'committing). ' + $BranchReviewCopy
+$BranchStaleMain = 'CORE-24 (docs/invariants/core.md): branch ''{0}'' starts at {1}/main, but main was {2}. Run git ' +
+    'fetch {1} and check that the branch still starts at {1}/main; if main moved, recreate the branch with git ' +
+    'switch -c {0} {1}/main before committing.'
+$BranchNoMainRemote = 'CORE-24 (docs/invariants/core.md): the main repository is not a remote in this clone (it looks ' +
+    'like a clone of a fork), so branch ''{0}'' cannot start from its main. Run: git remote add upstream {1}, then ' +
+    'git fetch upstream, then git switch -c {0} upstream/main (push the branch to your fork afterwards). ' +
+    $BranchReviewCopy
+
+# The output of git in $Dir, trimmed, or $null when it fails, takes over five seconds or cannot start (CCT-1). Names
+# and paths reach git quoted; no shell is involved.
+function Invoke-GitText([string]$Dir, [string[]]$GitArgs) {
+    try {
+        $quoted = New-Object System.Collections.Generic.List[string]
+        $quoted.Add('-C'); $quoted.Add('"' + $Dir.TrimEnd('\') + '"')
+        foreach ($a in $GitArgs) { $quoted.Add('"' + $a.Replace('"', '\"') + '"') }
+        $psi = New-Object System.Diagnostics.ProcessStartInfo('git', ($quoted -join ' '))
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $process = [System.Diagnostics.Process]::Start($psi)
+        $errors = $process.StandardError.ReadToEndAsync()
+        $text = $process.StandardOutput.ReadToEnd()
+        if (-not $process.WaitForExit(5000)) { try { $process.Kill() } catch { }; return $null }
+        if ($process.ExitCode -ne 0) { return $null }
+        return $text.Trim()
+    }
+    catch { return $null }
+}
+
+# The names of the branches the git commands in $Command create: checkout -b/-B, switch -c/-C/--create/--force-create,
+# branch <name> (with no option), worktree add -b/-B.
+function Get-CreatedBranches([string]$Command, [string]$Shell) {
+    $names = New-Object System.Collections.Generic.List[string]
+    foreach ($segment in (Split-ShellCommands $Command $Shell)) {
+        $w = @(foreach ($x in (Get-ShellWords $segment $Shell)) { $x.Text })
+        $k = 0
+        while ($k -lt $w.Count -and $w[$k] -match '^[A-Za-z_][A-Za-z0-9_]*=') { $k++ }
+        if ($k -ge $w.Count -or $w[$k] -cne 'git') { continue }
+        $k++
+        while ($k -lt $w.Count -and $w[$k].StartsWith('-')) {
+            if ($w[$k] -ceq '-C' -or $w[$k] -ceq '-c') { $k++ }
+            $k++
+        }
+        if ($k -ge $w.Count) { continue }
+        $sub = $w[$k]
+        $rest = @($w | Select-Object -Skip ($k + 1))
+        $flags = @()
+        if ($sub -ceq 'checkout') { $flags = @('-b', '-B') }
+        elseif ($sub -ceq 'switch') { $flags = @('-c', '-C', '--create', '--force-create') }
+        elseif ($sub -ceq 'worktree') {
+            if ($rest.Count -eq 0 -or $rest[0] -cne 'add') { continue }
+            $flags = @('-b', '-B')
+        }
+        elseif ($sub -ceq 'branch') {
+            $positional = @($rest | Where-Object { $_.StartsWith('-') })
+            if ($positional.Count -eq 0 -and $rest.Count -gt 0) { $names.Add($rest[0]) }
+            continue
+        }
+        else { continue }
+        for ($i = 0; $i + 1 -lt $rest.Count; $i++) {
+            if ($flags -ccontains $rest[$i]) { $names.Add($rest[$i + 1]); break }
+        }
+    }
+    return ,@($names.ToArray() | Where-Object { $_ -match $BranchNamePattern })
+}
+
+# The fetch URLs of the repository's remotes as @{ Name; Url }.
+function Get-RemoteUrls([string]$Dir) {
+    $list = New-Object System.Collections.Generic.List[object]
+    $text = Invoke-GitText $Dir @('config', '--get-regexp', '^remote\..*\.url$')
+    if ([string]::IsNullOrEmpty($text)) { return ,$list.ToArray() }
+    foreach ($line in $text.Replace("`r`n", "`n").Split("`n")) {
+        $m = [regex]::Match($line, '^remote\.(.+)\.url (.+)$')
+        if ($m.Success) { $list.Add([pscustomobject]@{ Name = $m.Groups[1].Value; Url = $m.Groups[2].Value.Trim() }) }
+    }
+    return ,$list.ToArray()
+}
+
+# The path of FETCH_HEAD for the repository (per worktree), absolute, or $null. Without --path-format=absolute (git 2.31
+# and later) git prints a path relative to $Dir, which is joined to $Dir here.
+function Get-FetchHeadPath([string]$Dir) {
+    $path = Invoke-GitText $Dir @('rev-parse', '--path-format=absolute', '--git-path', 'FETCH_HEAD')
+    if ([string]::IsNullOrEmpty($path)) {
+        $path = Invoke-GitText $Dir @('rev-parse', '--git-path', 'FETCH_HEAD')
+        if ([string]::IsNullOrEmpty($path)) { return $null }
+    }
+    return Resolve-FullPath $path $Dir
+}
+
+# PostToolUse on a git command that creates a branch: warn (never block or ask) when the branch does not start at
+# <main remote>/main, when main was not fetched in the last 24 hours, or when no remote is the main repository.
+function Invoke-BranchCheck($HookInput) {
+    if ($null -eq $HookInput -or $null -eq $HookInput.tool_input) { return }
+    $command = [string]$HookInput.tool_input.command
+    if ($command -eq '') { return }
+    $shell = 'Bash'
+    if ([string]$HookInput.tool_name -eq 'PowerShell') { $shell = 'PowerShell' }
+    $branches = Get-CreatedBranches $command $shell
+    if ($branches.Count -eq 0) { return }
+    $cwd = [string]$HookInput.cwd
+    if ($cwd -eq '') { $cwd = (Get-Location).Path }
+    $dir = Get-GitDirectory $command $cwd $shell
+    $remotes = Get-RemoteUrls $dir
+    if ($remotes.Count -eq 0) { return }
+    $main = $remotes | Where-Object { $_.Url -match $MainRepoPattern } | Select-Object -First 1
+    $messages = New-Object System.Collections.Generic.List[string]
+    foreach ($name in $branches) {
+        if ($null -eq $main) {
+            if ($null -ne ($remotes | Where-Object { $_.Url -match $ForkRepoPattern } | Select-Object -First 1)) {
+                $messages.Add(($BranchNoMainRemote -f $name, $MainRepoUrl))
+            }
+            continue
+        }
+        $remote = $main.Name
+        $branchSha = Invoke-GitText $dir @('rev-parse', '--verify', '-q', "refs/heads/$name")
+        if ([string]::IsNullOrEmpty($branchSha)) { continue }
+        $mainSha = Invoke-GitText $dir @('rev-parse', '--verify', '-q', "refs/remotes/$remote/main")
+        if ($branchSha -ne $mainSha) {
+            $mainShort = 'not fetched'
+            if (-not [string]::IsNullOrEmpty($mainSha)) { $mainShort = $mainSha.Substring(0, [Math]::Min(7, $mainSha.Length)) }
+            $branchShort = $branchSha.Substring(0, [Math]::Min(7, $branchSha.Length))
+            $messages.Add(($BranchOffMain -f $name, $remote, $branchShort, $mainShort))
+            continue
+        }
+        $fetchHead = Get-FetchHeadPath $dir
+        if (-not $fetchHead) { continue }
+        $age = $null
+        if ([IO.File]::Exists($fetchHead)) {
+            $written = [IO.File]::GetLastWriteTime($fetchHead)
+            if ($written -lt (Get-Date).AddHours(-$FetchMaxAgeHours)) { $age = 'last fetched more than 24 hours ago' }
+        }
+        else { $age = 'never fetched in this clone' }
+        if ($null -ne $age) { $messages.Add(($BranchStaleMain -f $name, $remote, $age)) }
+    }
+    if ($messages.Count -eq 0) { return }
+    Write-Context 'PostToolUse' ($messages.ToArray() -join "`n`n")
+}
+
 # ---- subagent-start and session-start ----
 
 $PlanHeader = 'CLAUDE.md (the built-in Plan agent skips it; .claude/hooks/rules-hook.ps1 added the parts below). ' +
@@ -1188,6 +1345,7 @@ try {
         'read' { Invoke-Read (Read-HookInput) }
         'shell-guard' { Invoke-ShellGuard (Read-HookInput) }
         'diff' { Invoke-Diff (Read-HookInput) }
+        'branch-check' { Invoke-BranchCheck (Read-HookInput) }
         'subagent-start' { Invoke-SubagentStart (Read-HookInput) }
         'session-start' { Invoke-SessionStart (Read-HookInput) }
         default { }
