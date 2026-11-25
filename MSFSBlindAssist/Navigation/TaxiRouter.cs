@@ -289,28 +289,46 @@ public class TaxiRouter
             // the start node, between the junction and the far end): the route would run back down
             // the taxiway to the junction. The leg is judged whole, from the junction, and driven
             // from where the aircraft is.
+            // The router is not told which way the aircraft faces, and "past the junction" is every
+            // aircraft on the taxiway that is not at its exit, an aircraft heading FOR that exit
+            // included. So the way on is taken only while the route it makes stays near the plain
+            // one (OnwardLegKeepsTheRouteShort): a far end behind such an aircraft, with a link
+            // there over the same runway, made 4.7 km of 2.8 (review of 2026-11-25).
+            bool judgedFromTheAircraft = false;
             if (secondTaxiway == null && destinationIsRunway && !lastTaxiwayTerminal
                 && (entryNode == firstTarget || entryNode == startNodeId)
                 && !IsOnDestinationRunway(firstTarget, endNodeId))
             {
+                string who = $"Single taxiway '{taxiwaySequence[0]}' " +
+                    (entryNode == firstTarget ? $"(joined at {firstTarget}, the node the way on leaves it by)"
+                                              : $"(the aircraft is on it at {entryNode}, the way on leaves it at {firstTarget})");
                 int far = FarEndOfLastTaxiway(taxiwaySequence[0], firstTarget, endNodeId);
                 var along = far != -1 ? AStarSearchWithGapChaining(firstTarget, far, taxiwaySequence[0]) : null;
                 int from = along == null ? -1 : entryNode == firstTarget ? 0 : along.IndexOf(entryNode);
-                if (from != -1)
+                if (far == -1 || along == null)
+                    Log($"{who}: not driven on, it has no leg from {firstTarget} to a far end");
+                else if (from == -1)
+                    Log($"{who}: not judged from the aircraft, which is not between {firstTarget} and the far end {far}");
+                else if (PassesANodeTwice(along.Skip(from)))
+                    Log($"{who}: not driven on, its leg to the far end {far} passes a node twice (a gap in the taxiway chained through its own nodes)");
+                else
                 {
+                    judgedFromTheAircraft = entryNode != firstTarget;
                     // The approach to the junction, when the route has one.
                     var approach = entryNode == firstTarget ? fullPath.ToList() : new List<int>();
-                    var judged = approach.Concat(along!.Skip(approach.Count > 0 ? 1 : 0)).ToList();
-                    var onward = OnwardLegOverAnotherRunway(judged, judged.Count - along.Count, endNodeId);
+                    var judged = approach.Concat(along.Skip(approach.Count > 0 ? 1 : 0)).ToList();
+                    var onward = OnwardLegOverAnotherRunway(judged, judged.Count - along.Count, endNodeId, who);
                     if (onward != null)
                     {
-                        fullPath.Clear();
-                        fullPath.AddRange(approach);
-                        fullPath.AddRange(along.Skip(approach.Count > 0 ? 1 : from));
-                        for (int j = 1; j < onward.Count; j++) fullPath.Add(onward[j]);
-                        currentNode = endNodeId;
-                        Log($"Single taxiway '{taxiwaySequence[0]}' leads over another runway: driven to {far}, " +
-                            $"then on to the destination ({onward.Count} nodes)");
+                        var made = approach.Concat(along.Skip(approach.Count > 0 ? 1 : from)).Concat(onward.Skip(1)).ToList();
+                        if (OnwardLegKeepsTheRouteShort(made, PlainWayOn(fullPath, firstTarget, endNodeId), who))
+                        {
+                            fullPath.Clear();
+                            fullPath.AddRange(made);
+                            currentNode = endNodeId;
+                            Log($"{who} leads over another runway: driven to {far}, " +
+                                $"then on to the destination ({onward.Count} nodes)");
+                        }
                     }
                 }
             }
@@ -324,28 +342,57 @@ public class TaxiRouter
             // at K9"; with navdata's own names K4 starts at K and the case above drove it.)
             // Only when the way on meets a runway this taxiway also goes on to meet: a taxiway
             // left for a way on that crosses nothing of its own keeps the route it had.
-            if (currentNode != endNodeId
+            // And the taxiway joined BEYOND that junction, on the far end's side: a fillet from the
+            // crossing taxiway meets its line past the junction, the step then drives it back DOWN
+            // to the junction, and the leg from there to the far end runs over ground just driven
+            // (OMDB "K4" from the west apron on navdata's own names, replayed 2026-11-25: left for
+            // K and K9 without a word in the log). The route is cut where it first touches that leg
+            // and goes on up it from there.
+            if (currentNode != endNodeId && !judgedFromTheAircraft
                 && secondTaxiway == null && destinationIsRunway && !lastTaxiwayTerminal
                 && entryNode != firstTarget
                 && !IsOnDestinationRunway(firstTarget, endNodeId))
             {
+                string who = $"Single taxiway '{taxiwaySequence[0]}' (joined at {entryNode}, the way on leaves it at {firstTarget})";
                 int far = FarEndOfLastTaxiway(taxiwaySequence[0], firstTarget, endNodeId);
                 var along = far != -1 ? AStarSearchWithGapChaining(firstTarget, far, taxiwaySequence[0]) : null;
-                var driven = new HashSet<int>(fullPath);
-                if (along != null && along.Count >= 2 && !along.Skip(1).Any(driven.Contains))
+                var wayOn = AStarSearch(firstTarget, endNodeId, null);
+                if (far == -1 || along == null || along.Count < 2)
+                    Log($"{who}: not driven on, it has no leg from {firstTarget} to a far end");
+                else if (wayOn == null)
+                    Log($"{who}: not driven on, no way on from {firstTarget} to compare it with");
+                else
                 {
-                    var wayOn = AStarSearch(firstTarget, endNodeId, null);
-                    if (wayOn != null)
+                    var legIndex = new Dictionary<int, int>();
+                    for (int j = 0; j < along.Count; j++) legIndex[along[j]] = j;
+                    // Where the route so far first touches the leg: the junction when the taxiway was
+                    // joined short of it, a node past it when it was joined on the far end's side.
+                    int touch = fullPath.FindIndex(legIndex.ContainsKey);
+                    var soFar = fullPath.Take(touch + 1).ToList();
+                    var rest = along.Skip(legIndex[fullPath[touch]] + 1).ToList();
+                    var driven = new HashSet<int>(soFar);
+                    if (rest.Any(driven.Contains))
+                        Log($"{who}: not driven on, its leg to the far end {far} runs over ground the route has driven");
+                    else if (PassesANodeTwice(rest))
+                        Log($"{who}: not driven on, its leg to the far end {far} passes a node twice (a gap in the taxiway chained through its own nodes)");
+                    else
                     {
-                        var judged = fullPath.Concat(along.Skip(1)).ToList();
-                        var onward = OnwardLegOverAnotherRunway(judged, fullPath.LastIndexOf(entryNode), endNodeId);
-                        if (onward != null && LeadsOverARunwayTheWayOnCrosses(along, onward, wayOn, endNodeId))
+                        var judged = soFar.Concat(rest).ToList();
+                        int legStart = soFar.LastIndexOf(entryNode);
+                        var onward = OnwardLegOverAnotherRunway(judged, legStart == -1 ? touch : legStart, endNodeId, who);
+                        if (onward != null && !LeadsOverARunwayTheWayOnCrosses(along, onward, wayOn, endNodeId))
+                            Log($"{who}: not driven on, the way on from {firstTarget} crosses no runway this taxiway leads over");
+                        else if (onward != null)
                         {
-                            fullPath.AddRange(along.Skip(1));
-                            for (int j = 1; j < onward.Count; j++) fullPath.Add(onward[j]);
-                            currentNode = endNodeId;
-                            Log($"Single taxiway '{taxiwaySequence[0]}' goes on from {firstTarget} over a runway the way on " +
-                                $"crossed elsewhere: driven to {far}, then on to the destination ({onward.Count} nodes)");
+                            var made = judged.Concat(onward.Skip(1)).ToList();
+                            if (OnwardLegKeepsTheRouteShort(made, PlainWayOn(fullPath, firstTarget, endNodeId), who))
+                            {
+                                fullPath.Clear();
+                                fullPath.AddRange(made);
+                                currentNode = endNodeId;
+                                Log($"{who} goes on over a runway the way on crossed elsewhere: driven to {far}, " +
+                                    $"then on to the destination ({onward.Count} nodes)");
+                            }
                         }
                     }
                 }
@@ -529,12 +576,16 @@ public class TaxiRouter
         // destination's name.
         if (lastTaxiwayTerminal && currentNode != endNodeId)
         {
+            string who = $"Last taxiway '{taxiwaySequence[^1]}'";
             int legStart = terminalEntryNode == -1 ? -1 : fullPath.LastIndexOf(terminalEntryNode);
-            var onward = legStart == -1 ? null : OnwardLegOverAnotherRunway(fullPath, legStart, endNodeId);
-            if (onward != null)
+            if (legStart == -1) Log($"{who}: stays the end of the route, the junction it was entered by is not on the route");
+            var onward = legStart == -1 ? null : OnwardLegOverAnotherRunway(fullPath, legStart, endNodeId, who);
+            // The plain way to the destination: the route as far as that junction, then the shortest way on.
+            if (onward != null && OnwardLegKeepsTheRouteShort(fullPath.Concat(onward.Skip(1)).ToList(),
+                    PlainWayOn(fullPath.Take(legStart + 1).ToList(), fullPath[legStart], endNodeId), who))
             {
                 for (int j = 1; j < onward.Count; j++) fullPath.Add(onward[j]);
-                Log($"Last taxiway leads over another runway: on from {currentNode} to the destination ({onward.Count} nodes)");
+                Log($"{who} leads over another runway: on from {currentNode} to the destination ({onward.Count} nodes)");
                 currentNode = endNodeId;
                 lastTaxiwayTerminal = false;
             }
@@ -790,11 +841,15 @@ public class TaxiRouter
     /// back at 08L, and the way on went over 08L twice more. CLOSING the whole route so far to the
     /// search instead of refusing forces a way round: RKTP "E, C" to 03R grew from 4.2 to 7.5 km.
     /// </summary>
-    private List<int>? OnwardLegOverAnotherRunway(IReadOnlyList<int> drivenSoFar, int lastLegStart, int endNodeId)
+    private List<int>? OnwardLegOverAnotherRunway(
+        IReadOnlyList<int> drivenSoFar, int lastLegStart, int endNodeId, string context)
     {
+        // The caller says which taxiway and which case this is: the same refusals are written for a
+        // last taxiway of several, which then stays the end of the route, and for a single one,
+        // which is then left the plain way.
         List<int>? Refuse(string why)
         {
-            Log($"No way on over another runway, the last taxiway stays the terminus: {why}");
+            Log($"{context}: no way on over another runway, {why}");
             return null;
         }
 
@@ -804,8 +859,22 @@ public class TaxiRouter
             return Refuse($"destination node {endNodeId} is not in the graph");
         var destRunways = _graph.RunwayCenterlines
             .Where(r => r != null && RunwayShape.For(r).Contains(dest.Latitude, dest.Longitude, 0.0)).ToList();
+        // An entry stub may end on the centreline up to 100 m PAST the end the navdata records
+        // ([STR-20], Taxi2Gate LFPG 26R): that node is on no pavement, and its runway is found the
+        // way TaxiGuidanceManager.RunwaysOnEntryStub finds it.
         if (destRunways.Count == 0)
-            return Refuse($"destination node {endNodeId} is on no runway's pavement");
+            destRunways = _graph.RunwayCenterlines.Where(r =>
+            {
+                if (r == null) return false;
+                var shape = RunwayShape.For(r);
+                if (shape.IsDegenerate) return false;
+                var (along, lateral) = shape.Project(dest.Latitude, dest.Longitude);
+                return Math.Abs(lateral) <= shape.HalfWidthMeters
+                    && along >= shape.ExtentMinMeters - DESTINATION_BEYOND_END_M
+                    && along <= shape.ExtentMaxMeters + DESTINATION_BEYOND_END_M;
+            }).ToList();
+        if (destRunways.Count == 0)
+            return Refuse($"destination node {endNodeId} is on no runway's pavement, nor on a centreline just past its end");
         bool IsDestination(TaxiGraph.RunwayCenterline r) => destRunways.Any(d => ReferenceEquals(d, r));
 
         var lastLeg = new HashSet<int>(drivenSoFar.Skip(lastLegStart).Take(drivenSoFar.Count - 1 - lastLegStart));
@@ -829,6 +898,26 @@ public class TaxiRouter
                 if (ReferenceEquals(others[i].Runway, others[j].Runway))
                     return Refuse($"it meets one other runway twice, {others[i].FromMeters - farMeters:F0} m " +
                                   $"and {others[j].FromMeters - farMeters:F0} m from the far end (over it and back)");
+
+        // The first other runway must be CROSSED. RunwaysMet merges one continuous stretch of
+        // pavement into a single meeting, so a way on that goes onto another runway at a node on
+        // it and leaves on the SAME side (two stubs meeting on the runway, a pair of holding-bay
+        // links at a threshold) is one meeting, inside the walk bound, and was taken: "K, K4"
+        // over the next runway's edge and back by K5 (review of 2026-11-25). The classifier
+        // separates an entry from a crossing, and merges the two centrelines of an airport whose
+        // navdata carries two scenery layers (KBOS).
+        // Every other runway on the way, not only the first: a way on that crosses the runway the
+        // taxiway leads over and then runs onto a third one and back off it is no better (KMSP
+        // "W" to 22, lone-clearance sweep of 2026-11-25). And the destination's own runway is met
+        // once, at the end.
+        var passages = RunwayRouteClassifier.ClassifyAll(
+            walked.Select(id => (TaxiNode?)_graph.Nodes[id]).ToList(), _graph.RunwayCenterlines.Where(r => r != null));
+        var entered = passages.FirstOrDefault(p => !IsDestination(p.Runway) && p.Kind != RunwayEventKind.Crossing);
+        if (entered != null)
+            return Refuse($"it goes onto runway {entered.Runway.Name1}/{entered.Runway.Name2} and leaves it on the side it came from (an entry, not a crossing)");
+        var early = passages.Where(p => IsDestination(p.Runway)).GroupBy(p => p.Runway).FirstOrDefault(g => g.Count() > 1);
+        if (early != null)
+            return Refuse($"it meets the destination runway {early.Key.Name1}/{early.Key.Name2} before its end");
 
         bool legLeadsOver = others.Any(m => m.FromMeters < farMeters && farMeters - m.ToMeters <= OTHER_RUNWAY_MAX_WALK_M);
         if (legLeadsOver) return onward;
@@ -872,6 +961,84 @@ public class TaxiRouter
     // (p50 54 m, p90 130 m). Beyond it the other runway is somewhere the route wanders to once its
     // way back is closed, not where the cleared taxiway goes.
     private const double OTHER_RUNWAY_MAX_WALK_M = RunwayReachGate.MaxWalkMeters;
+
+    // How far past a runway's recorded end a destination node on its centreline still belongs to
+    // it: TaxiGuidanceManager.ENTRY_STUB_BEYOND_END_M's figure ([STR-20]).
+    private const double DESTINATION_BEYOND_END_M = 100.0;
+
+    /// <summary>
+    /// The route as it stands, then the shortest way on from <paramref name="fromNodeId"/>: what the
+    /// pilot would be given without an onward leg. Null when there is no such way.
+    /// </summary>
+    private List<int>? PlainWayOn(IReadOnlyList<int> routeSoFar, int fromNodeId, int endNodeId)
+    {
+        var wayOn = AStarSearch(fromNodeId, endNodeId, null);
+        if (wayOn == null) return null;
+        var plain = new List<int>(routeSoFar);
+        plain.AddRange(wayOn.Skip(plain.Count > 0 && plain[^1] == wayOn[0] ? 1 : 0));
+        return plain;
+    }
+
+    /// <summary>
+    /// Whether an accepted onward leg leaves the route near the length of the plain one: at most
+    /// <see cref="REPEAT_HONOUR_MAX_RATIO"/> times it plus <see cref="REPEAT_HONOUR_MAX_PAD_M"/>, the
+    /// limit a repeated taxiway is honoured within, and for the same reason (a clearance is
+    /// followed where that costs a little, never where it makes a loop). Without it a taxiway that
+    /// runs on past its best exit to a link over the same runway was driven there however far
+    /// (6.2 km for 2.8 on the review's field), and a lone taxiway the aircraft is on was driven
+    /// AWAY from its exit (4.7 km for 2.8): the router does not know which way the aircraft faces.
+    /// It also refuses a way on whose route makes a runway ENTRY the plain route does not.
+    /// With no plain way at all there is nothing to compare, and the leg stands.
+    /// </summary>
+    private bool OnwardLegKeepsTheRouteShort(IReadOnlyList<int> withOnwardLeg, IReadOnlyList<int>? plain, string context)
+    {
+        if (plain == null) return true;
+        double made = PathMeters(withOnwardLeg), shortest = PathMeters(plain);
+        if (made > shortest * REPEAT_HONOUR_MAX_RATIO + REPEAT_HONOUR_MAX_PAD_M)
+        {
+            Log($"{context}: way on over another runway not taken, it makes the route {made:F0} m against {shortest:F0} m " +
+                $"the plain way (limit {REPEAT_HONOUR_MAX_RATIO:F2} x + {REPEAT_HONOUR_MAX_PAD_M:F0} m)");
+            return false;
+        }
+        // Nor may it add a runway ENTRY (onto a runway and back off the same side) the plain route
+        // does not make. OnwardLegOverAnotherRunway judges the last leg and the way on by
+        // themselves, and a leg that STARTS on a runway's pavement shows it no passage there;
+        // over the whole route it is one (OMDB "N5" to 12R, LEBL "UB" to 24R: lone-clearance
+        // sweep of 2026-11-25).
+        int madeEntries = RunwayEntries(withOnwardLeg), plainEntries = RunwayEntries(plain);
+        if (madeEntries > plainEntries)
+        {
+            Log($"{context}: way on over another runway not taken, the route it makes goes onto a runway and back off " +
+                $"the same side {madeEntries} time(s) against {plainEntries} the plain way");
+            return false;
+        }
+        return true;
+    }
+
+    private int RunwayEntries(IReadOnlyList<int> path)
+        => RunwayRouteClassifier.ClassifyAll(
+                path.Select(id => (TaxiNode?)_graph.Nodes[id]).ToList(), _graph.RunwayCenterlines.Where(r => r != null))
+            .Count(p => p.Kind == RunwayEventKind.Entry);
+
+    // AStarSearchWithGapChaining may bridge a gap in a taxiway through nodes it then comes back to
+    // (LEMD "LA": LA, A13, LA, M13, LB, LA). A leg like that is a loop, not a taxiway driven on.
+    private static bool PassesANodeTwice(IEnumerable<int> path)
+    {
+        var seen = new HashSet<int>();
+        return path.Any(n => !seen.Add(n));
+    }
+
+    private double PathMeters(IReadOnlyList<int> path)
+    {
+        double metres = 0.0;
+        for (int i = 0; i + 1 < path.Count; i++)
+        {
+            var a = _graph.Nodes[path[i]];
+            var b = _graph.Nodes[path[i + 1]];
+            metres += TaxiGraph.CalculateDistanceMeters(a.Latitude, a.Longitude, b.Latitude, b.Longitude);
+        }
+        return metres;
+    }
 
     /// <summary>
     /// Every meeting of the path with a runway's pavement, in the order met, as metres walked from
