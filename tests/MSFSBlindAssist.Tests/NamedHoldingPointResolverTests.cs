@@ -431,7 +431,7 @@ public class NamedHoldingPointResolverTests
 
     [Theory]
     [InlineData("Taxiway K", "Taxiway K, near holding point KK")]
-    [InlineData("Near taxiway K", "Near taxiway K, near holding point KK")]
+    [InlineData("Near taxiway K", "Near taxiway K and holding point KK")]           // one "near", never two
     [InlineData("Gate A25", "Gate A25")]
     [InlineData("Runway 30R", "Runway 30R")]
     public void Nearby_adds_the_point_to_a_taxiway_answer_only(string description, string expected)
@@ -445,7 +445,8 @@ public class NamedHoldingPointResolverTests
     // on L2's taxiway", so the answer then says which taxiway the point is on.
     [Theory]
     [InlineData("Taxiway M", "L", "Taxiway M, near holding point L2 on taxiway L")]
-    [InlineData("Near taxiway M", "L", "Near taxiway M, near holding point L2 on taxiway L")]
+    [InlineData("Near taxiway M", "L", "Near taxiway M and holding point L2 on taxiway L")]
+    [InlineData("Near taxiway L", "L", "Near taxiway L and holding point L2")]
     [InlineData("Taxiway L", "L", "Taxiway L, near holding point L2")]
     [InlineData("Taxiway l", "L", "Taxiway l, near holding point L2")]
     [InlineData("Taxiway M", "L,M", "Taxiway M, near holding point L2")]            // the point is at the L/M junction

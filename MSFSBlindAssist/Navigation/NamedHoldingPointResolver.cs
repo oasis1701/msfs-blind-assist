@@ -461,25 +461,31 @@ public static class NamedHoldingPointNearby
     /// "you are on L2's taxiway", so the answer names the point's own: "Taxiway M, near holding
     /// point L2 on taxiway L". A point at a junction with the answered taxiway, or whose taxiway
     /// is not known, is named plainly.</para>
+    /// <para>An answer that already starts with "Near" ("Near taxiway K", a few metres off the
+    /// centreline) takes the point with "and", so "near" is said once: "Near taxiway K and
+    /// holding point KK", never "Near taxiway K, near holding point KK".</para>
     /// </summary>
     public static string Describe(string description, NamedHoldingPoint? point)
     {
-        if (point == null || AnsweredTaxiway(description) is not { } answered) return description;
+        if (point == null || AnsweredTaxiway(description, out bool alreadyNear) is not { } answered)
+            return description;
 
         bool onAnotherTaxiway = point.Taxiways.Count > 0
             && !point.Taxiways.Contains(answered, StringComparer.OrdinalIgnoreCase);
-        return onAnotherTaxiway
-            ? $"{description}, near holding point {point.Name} on taxiway {point.Taxiways[0]}"
+        string joined = alreadyNear
+            ? $"{description} and holding point {point.Name}"
             : $"{description}, near holding point {point.Name}";
+        return onAnotherTaxiway ? $"{joined} on taxiway {point.Taxiways[0]}" : joined;
     }
 
-    // The taxiway TaxiGraph.DescribeLocation answered with ("Taxiway K", "Near taxiway K"), or null.
-    private static string? AnsweredTaxiway(string description)
+    // The taxiway TaxiGraph.DescribeLocation answered with ("Taxiway K", "Near taxiway K"), or
+    // null; alreadyNear says the answer was the "Near taxiway" one.
+    private static string? AnsweredTaxiway(string description, out bool alreadyNear)
     {
-        foreach (string prefix in new[] { "Taxiway ", "Near taxiway " })
-            if (description.StartsWith(prefix, StringComparison.Ordinal))
-                return description[prefix.Length..].Trim();
-        return null;
+        const string on = "Taxiway ", near = "Near taxiway ";
+        alreadyNear = description.StartsWith(near, StringComparison.Ordinal);
+        if (alreadyNear) return description[near.Length..].Trim();
+        return description.StartsWith(on, StringComparison.Ordinal) ? description[on.Length..].Trim() : null;
     }
 }
 
