@@ -21,8 +21,9 @@ public sealed class NamedHoldingPoint
 
     /// <summary>
     /// The point was read off an X-Plane sign (<see cref="NamedHoldingPointResolver.SignKind"/>),
-    /// so its position is approximate ([HLD-18]). The ONE test for it: the row hold-short list
-    /// and the cross-at list leave such a point out, and its label keeps saying so.
+    /// so its position is approximate ([HLD-18]). The ONE test for it: the cross-at list and
+    /// the runway entries leave such a point out, and its label keeps saying so in the two
+    /// hold-short lists that offer it (Progressive Taxi's and a route row's).
     /// </summary>
     public bool IsFromSign => string.Equals(
         Kind?.Trim(), NamedHoldingPointResolver.SignKind, StringComparison.OrdinalIgnoreCase);
@@ -32,6 +33,17 @@ public sealed class NamedHoldingPoint
 
     public double Latitude { get; init; }
     public double Longitude { get; init; }
+
+    /// <summary>
+    /// The taxiways the resolved node is on, by the graph's own names: one for a point along a
+    /// taxiway, several at a junction, none on unnamed pavement. A sign-read point's first entry
+    /// is the taxiway its sign names, in the graph's spelling. A painted point records them only
+    /// when its node is AT the paint (within <see cref="NamedHoldingPointResolver.EDGE_PROJECTION_MAX_M"/>,
+    /// or placed on the edge under it): a node snapped up to 30 m away can be a bend vertex of a
+    /// connecting taxiway, whose name is not the paint's. Where Am I reads it to say "near holding
+    /// point L2 on taxiway L" from another taxiway (<see cref="NamedHoldingPointNearby.Describe"/>).
+    /// </summary>
+    public IReadOnlyList<string> Taxiways { get; init; } = Array.Empty<string>();
 
     /// <summary>Metres between the online point and the resolved node (diagnostics).</summary>
     public double SnapDistanceMeters { get; init; }
@@ -221,6 +233,10 @@ public static class NamedHoldingPointResolver
                 NodeId = chosen.NodeId,
                 Latitude = chosen.Latitude,
                 Longitude = chosen.Longitude,
+                // Only a node at the paint says which taxiway the paint is on (see Taxiways).
+                Taxiways = snap.InsertedOnEdge || snap.DistanceMeters <= EDGE_PROJECTION_MAX_M
+                    ? TaxiwaysOf(chosen)
+                    : Array.Empty<string>(),
                 SnapDistanceMeters = snap.DistanceMeters,
                 SnappedToDesignatedNode = chosen.Type == TaxiNodeType.HoldShort
                                        || chosen.Type == TaxiNodeType.ILSHoldShort,
@@ -254,9 +270,11 @@ public static class NamedHoldingPointResolver
     public const double SIGN_DESIGNATED_SNAP_M = 40.0;
 
     /// <summary>
-    /// A sign-sourced point must be at least this far from every runway centreline (within the
-    /// runway's length). Where a pilot holds before a runway is never taken from a sign, and a
-    /// red name sign that close to a runway is a runway holding position, not an intermediate one.
+    /// A sign-sourced point must be at least this far from the nearest point of every runway
+    /// centreline, the runway's ends included (a point just past an end is as much a runway
+    /// holding position as one beside it). Where a pilot holds before a runway is never taken
+    /// from a sign, and a red name sign that close to a runway is a runway holding position, not
+    /// an intermediate one.
     /// </summary>
     public const double SIGN_RUNWAY_CLEARANCE_M = 150.0;
 
@@ -328,11 +346,13 @@ public static class NamedHoldingPointResolver
                 pLat = p.Lat; pLon = p.Lon; dist = p.PerpMeters;
             }
 
+            // To the nearest point of the centreline, its ENDS included: measured only beside the
+            // runway, a point just past an end was kept (EGTB A2, 67 m beyond the end of 24L/06R).
             var tooClose = shapes.FirstOrDefault(s =>
             {
                 var (along, lateral) = s.Project(pLat, pLon);
-                return along >= s.ExtentMinMeters && along <= s.ExtentMaxMeters
-                    && Math.Abs(lateral) < SIGN_RUNWAY_CLEARANCE_M;
+                double beyondEnd = Math.Max(0.0, Math.Max(s.ExtentMinMeters - along, along - s.ExtentMaxMeters));
+                return Math.Sqrt(lateral * lateral + beyondEnd * beyondEnd) < SIGN_RUNWAY_CLEARANCE_M;
             });
             if (tooClose != null)
             {
@@ -348,6 +368,7 @@ public static class NamedHoldingPointResolver
                 NodeId = node.NodeId,
                 Latitude = node.Latitude,
                 Longitude = node.Longitude,
+                Taxiways = TaxiwaysOf(node, first: taxiway),
                 SnapDistanceMeters = dist,
                 SnappedToDesignatedNode = designated != null,
                 InsertedOnEdge = designated == null && graph.IsHoldingPointProjectionNode(node.NodeId),
@@ -356,6 +377,26 @@ public static class NamedHoldingPointResolver
                         (designated != null ? " (scenery hold node)" : ""));
         }
         return result.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    // NamedHoldingPoint.Taxiways for a resolved node: its taxiway names in name order, the sign's
+    // own taxiway (when given) first. A copy, so a later subdivision of the graph cannot change it.
+    // The sign's taxiway keeps the GRAPH's spelling ([RTE-25], [AUG-1]): ResolveTaxiwayName hands
+    // X-Plane's back unchanged when it differs only in case ("k" for navdata's "K").
+    private static IReadOnlyList<string> TaxiwaysOf(TaxiNode node, string? first = null)
+    {
+        var names = node.TaxiwayNames
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(first))
+        {
+            string own = names.FirstOrDefault(n => string.Equals(n, first, StringComparison.OrdinalIgnoreCase))
+                         ?? first;
+            names.RemoveAll(n => string.Equals(n, first, StringComparison.OrdinalIgnoreCase));
+            names.Insert(0, own);
+        }
+        return names;
     }
 
     // Duplicate-name ranking, in tiers: winning the ≤DESIGNATED_SNAP_M preference always beats
@@ -378,5 +419,187 @@ public static class NamedHoldingPointResolver
         if (a.InsertedOnEdge != b.InsertedOnEdge)
             return !a.InsertedOnEdge;
         return a.SnapDistanceMeters < b.SnapDistanceMeters;
+    }
+}
+
+/// <summary>
+/// Which named holding point an aircraft position is near, for Where Am I ("Taxiway K, near
+/// holding point KK"). Pure: it reads the positions the resolver already placed on the navdata
+/// taxiways and changes no graph, so it is safe on Where Am I's pool thread.
+/// </summary>
+public static class NamedHoldingPointNearby
+{
+    /// <summary>
+    /// How close the aircraft must be to a point for the point to be named. The aircraft's
+    /// position is its centre, tens of metres behind the nose that stops at the line, and
+    /// OMDB's sign-read points along K are about 200 m apart, so 60 m names the point being
+    /// held at and never its neighbour.
+    /// </summary>
+    public const double MaxMetres = 60.0;
+
+    /// <summary>
+    /// The nearest point within <see cref="MaxMetres"/>, or null. A label that is a runway
+    /// designator ("08L/26R", EHAM's "36C-18C") or describes a kind of hold ("CAT III",
+    /// KORD's "28C APCH") names no holding point, so it is skipped, exactly as the departure-entry
+    /// picker skips it ([ENT-3]), and never hides a real name farther off.
+    /// </summary>
+    public static NamedHoldingPoint? Find(IEnumerable<NamedHoldingPoint>? points, double lat, double lon)
+    {
+        NamedHoldingPoint? best = null;
+        double bestMetres = MaxMetres;
+        foreach (var point in points ?? Array.Empty<NamedHoldingPoint>())
+        {
+            if (TaxiGraph.IsRunwayDesignatorLabel(point.Name) || TaxiGraph.IsDescriptiveHoldLabel(point.Name))
+                continue;
+            double metres = TaxiGraph.FastDistanceMeters(lat, lon, point.Latitude, point.Longitude);
+            if (metres <= bestMetres) { bestMetres = metres; best = point; }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// A taxiway answer with the point added; any other answer (a stand, a runway, nothing)
+    /// comes back unchanged, because a stand or a runway is the more exact thing to say.
+    /// <para>The nearest point can stand on ANOTHER taxiway than the one answered (a crossing
+    /// taxiway 45 m from L2's node on L). "Taxiway M, near holding point L2" would then read as
+    /// "you are on L2's taxiway", so the answer names the point's own: "Taxiway M, near holding
+    /// point L2 on taxiway L". A point at a junction with the answered taxiway, or whose taxiway
+    /// is not known, is named plainly.</para>
+    /// <para>An answer that already starts with "Near" ("Near taxiway K", a few metres off the
+    /// centreline) takes the point with "and", so "near" is said once: "Near taxiway K and
+    /// holding point KK", never "Near taxiway K, near holding point KK".</para>
+    /// </summary>
+    public static string Describe(string description, NamedHoldingPoint? point)
+    {
+        if (point == null || AnsweredTaxiway(description, out bool alreadyNear) is not { } answered)
+            return description;
+
+        bool onAnotherTaxiway = point.Taxiways.Count > 0
+            && !point.Taxiways.Contains(answered, StringComparer.OrdinalIgnoreCase);
+        string joined = alreadyNear
+            ? $"{description} and holding point {point.Name}"
+            : $"{description}, near holding point {point.Name}";
+        return onAnotherTaxiway ? $"{joined} on taxiway {point.Taxiways[0]}" : joined;
+    }
+
+    // The taxiway TaxiGraph.DescribeLocation answered with ("Taxiway K", "Near taxiway K"), or
+    // null; alreadyNear says the answer was the "Near taxiway" one.
+    private static string? AnsweredTaxiway(string description, out bool alreadyNear)
+    {
+        const string on = "Taxiway ", near = "Near taxiway ";
+        alreadyNear = description.StartsWith(near, StringComparison.Ordinal);
+        if (alreadyNear) return description[near.Length..].Trim();
+        return description.StartsWith(on, StringComparison.Ordinal) ? description[on.Length..].Trim() : null;
+    }
+}
+
+/// <summary>
+/// The named holding points Where Am I holds for ONE airport, and the airport it last asked
+/// about. Positions only, never a graph. Pure and not thread-safe: <c>TaxiGuidanceManager</c>
+/// calls it under its state lock.
+///
+/// <para>Things it decides, each pinned by a test because each was once wrong: the points
+/// are online data, so none is named while the online names setting is off (<see cref="Ask"/>);
+/// a list is dropped when that airport's online data is fetched again, or a list resolved from
+/// a partial first fetch would stand for the session (<see cref="Drop"/>); data landing for
+/// the airport last asked about, or for one whose list was just dropped, is the moment to
+/// resolve, so the press after it has the point (<see cref="Drop"/>'s result); and a list is
+/// taken only while it was read from that airport's current data (<see cref="DataVersion"/>),
+/// which another airport's data never moves.</para>
+/// </summary>
+public sealed class WhereAmIHoldingPoints
+{
+    private string _icao = "";
+    private IReadOnlyList<NamedHoldingPoint> _points = Array.Empty<NamedHoldingPoint>();
+    private string _askedIcao = "";
+
+    // DataVersion's clock: each Drop stamps its airport, each Clear stamps them all.
+    private readonly Dictionary<string, long> _droppedAt = new(StringComparer.OrdinalIgnoreCase);
+    private long _clearedAt;
+    private long _clock;
+
+    private bool Holds(string icao)
+        => _icao.Length > 0 && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Which online data for <paramref name="icao"/> is current: moved by that airport's own
+    /// <see cref="Drop"/> and by <see cref="Clear"/>, never by another airport's data. Read it
+    /// BEFORE reading the data a list is resolved from, and hand it back on publishing.
+    /// </summary>
+    public long DataVersion(string icao)
+        => Math.Max(_droppedAt.TryGetValue(icao ?? "", out long dropped) ? dropped : 0, _clearedAt);
+
+    /// <summary>Takes the list unconditionally. Callers holding a data version use
+    /// <see cref="PublishIfCurrent"/> or <see cref="PublishIfAbsent"/>.</summary>
+    public void Publish(string icao, IEnumerable<NamedHoldingPoint> points)
+    {
+        _icao = icao ?? "";
+        _points = points.ToArray();
+    }
+
+    /// <summary>
+    /// The taxi planner's own list: replaces whatever is held, but only when the planner's
+    /// graph was built from the airport's current data. A graph built before the online data
+    /// landed lacks the online taxiway names and would drop sign points the fuller list has.
+    /// True when it was taken.
+    /// </summary>
+    public bool PublishIfCurrent(string icao, long dataVersion, IEnumerable<NamedHoldingPoint> points)
+    {
+        if (dataVersion != DataVersion(icao)) return false;
+        Publish(icao, points);
+        return true;
+    }
+
+    /// <summary>
+    /// A background resolve's list: taken only when nothing is held for the airport, so the
+    /// planner's list wins if it arrived meanwhile, and only while it was read from the
+    /// airport's current data. True when it was taken.
+    /// </summary>
+    public bool PublishIfAbsent(string icao, long dataVersion, IEnumerable<NamedHoldingPoint> points)
+    {
+        if (Holds(icao) || dataVersion != DataVersion(icao)) return false;
+        Publish(icao, points);
+        return true;
+    }
+
+    /// <summary>
+    /// The points to look among for a press at <paramref name="icao"/>, and whether the caller
+    /// should resolve them now (none are held for that airport). With online names off: no
+    /// points, no resolve, and the press is not remembered.
+    /// </summary>
+    public (IReadOnlyList<NamedHoldingPoint> Points, bool Resolve) Ask(string icao, bool onlineNamesOn)
+    {
+        if (!onlineNamesOn) return (Array.Empty<NamedHoldingPoint>(), false);
+        _askedIcao = icao ?? "";
+        return Holds(icao) ? (_points, false) : (Array.Empty<NamedHoldingPoint>(), true);
+    }
+
+    /// <summary>
+    /// Online data for <paramref name="icao"/> was fetched (again): whatever is held for it is
+    /// forgotten and its <see cref="DataVersion"/> moves. True when that is the airport last
+    /// asked about, or a list was held for it (the planner's, which will not publish again), so
+    /// the caller resolves now.
+    /// </summary>
+    public bool Drop(string icao)
+    {
+        bool held = Holds(icao);
+        if (held)
+        {
+            _icao = "";
+            _points = Array.Empty<NamedHoldingPoint>();
+        }
+        _droppedAt[icao ?? ""] = ++_clock;
+        return held
+            || (_askedIcao.Length > 0 && string.Equals(_askedIcao, icao, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>A database switch: the positions are navdata positions, and the ask named the old database's airport.</summary>
+    public void Clear()
+    {
+        _icao = "";
+        _points = Array.Empty<NamedHoldingPoint>();
+        _askedIcao = "";
+        _droppedAt.Clear();
+        _clearedAt = ++_clock;
     }
 }

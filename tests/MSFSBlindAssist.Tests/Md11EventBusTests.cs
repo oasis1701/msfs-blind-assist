@@ -115,6 +115,40 @@ public class Md11EventBusTests
         Assert.Equal(new[] { 11, 12, 13 }, rec.Ids);
     }
 
+    /// <summary>The Long Trim handles' shape: held right, let go with RIGHT_BUTTON_UP then LEFT_BUTTON_UP.</summary>
+    private static Md11Control LongTrimHandle() => new()
+    {
+        NodeId = "TEST_LONG_TRIM", Kind = Md11Kinds.Switch,
+        Events = new Dictionary<string, int> { ["RIGHT_BUTTON_DOWN"] = 700, ["RIGHT_BUTTON_UP"] = 701, ["LEFT_BUTTON_UP"] = 702 },
+    };
+
+    [Fact]
+    public async Task AHoldWithTwoUps_WritesTheDown_ThenBothUpsInOrder()
+    {
+        var rec = new Recorder();
+        using var bus = new Md11EventBus(rec.Write);
+
+        Assert.True(await bus.TryPressAndHoldAsync(LongTrimHandle(), 50, "RIGHT_BUTTON_DOWN", new[] { "RIGHT_BUTTON_UP", "LEFT_BUTTON_UP" }));
+        Assert.True(await rec.WaitFor(702));
+
+        Assert.Equal(new[] { 700, 701, 702 }, rec.Ids);
+    }
+
+    [Fact]
+    public async Task Dispose_ReleasesAHoldWithTwoUps_WithBoth_Once()
+    {
+        var rec = new Recorder();
+        var bus = new Md11EventBus(rec.Write);
+        var hold = bus.TryPressAndHoldAsync(LongTrimHandle(), 400, "RIGHT_BUTTON_DOWN", new[] { "RIGHT_BUTTON_UP", "LEFT_BUTTON_UP" });
+        Assert.True(await rec.WaitFor(700));      // the DOWN is on the aircraft, the hold still running
+
+        bus.Dispose();
+
+        Assert.Equal(new[] { 700, 701, 702 }, rec.Ids);   // both owed UPs, in order, by Dispose
+        await hold;
+        Assert.Equal(new[] { 700, 701, 702 }, rec.Ids);   // and the late hold writes neither again
+    }
+
     [Fact]
     public async Task Dispose_ReleasesAHeldButton_AndTheLateHoldDoesNotReleaseItAgain()
     {
