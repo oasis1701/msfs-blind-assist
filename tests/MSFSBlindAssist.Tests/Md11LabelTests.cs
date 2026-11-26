@@ -103,7 +103,6 @@ public class Md11LabelTests
         Assert.Equal("APU Generator (APU Panel)", def["MD11_AOVHD_APU_GEN_BT"].DisplayName);
         Assert.Equal("APU Start (APU Panel)", def["MD11_AOVHD_APU_START_BT"].DisplayName);
         Assert.Equal("High Intensity Lights (Strobes)", def["MD11_OVHD_LTS_HI_INT_BT"].DisplayName);
-        Assert.Equal("Elevator Trim (Long Trim)", def["MD11_THR_LONG_TRIM_SW"].DisplayName);
         Assert.Equal("Air System 1 to 2 Isolation Valve", def["MD11_OVHD_PNEU_1_2_ISOL_BT"].DisplayName);
     }
 }

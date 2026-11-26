@@ -324,6 +324,10 @@ public class TaxiAssistForm : Form
     /// </para>
     /// </summary>
     private string _graphSourceToken = "";
+    // The airport's online-data version (TaxiGuidanceManager.HoldingPointDataVersion) read just
+    // before the taxi paths _graph was built from: Where Am I takes this form's holding points only
+    // while it is current, since a graph built before the online data landed lacks its names.
+    private long _graphHoldingPointDataVersion;
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
     // Per-ICAO memo of GetRunways for the intersection picker, which re-lists on
     // every checkbox toggle / runway change. GetRunways opens a fresh SQLite
@@ -2259,6 +2263,10 @@ public class TaxiAssistForm : Form
             catch { /* offline / fetch failed — fall back to navdata names */ }
         }
 
+        // Read BEFORE the paths: online data landing after this moves it, so Where Am I never
+        // takes holding points resolved on a graph that lacks that data's taxiway names.
+        long holdingPointDataVersion = _guidanceManager.HoldingPointDataVersion(icao);
+
         // Build graph (off the UI thread to avoid stalls at large airports)
         var paths = _dataProvider.GetTaxiPaths(icao);
         if (paths.Count == 0)
@@ -2302,6 +2310,7 @@ public class TaxiAssistForm : Form
         // Stamped with the graph, for the same reason and at the same moment: these names are
         // now frozen into the nodes, and this records which source they came from.
         _graphSourceToken = graphToken;
+        _graphHoldingPointDataVersion = holdingPointDataVersion;
 
         lblStatus.Text = $"{icao}: {_graph.Nodes.Count} nodes, {paths.Count} paths.";
 
@@ -4513,8 +4522,9 @@ public class TaxiAssistForm : Form
         else
         {
             // Hold short of taxiway or named holding point: every airport taxiway, the
-            // named holding points among them. This list is NOT filtered ([ENT-3]) and is
-            // the one place sign-read points are offered ([HLD-18]).
+            // named holding points among them. This list is NOT filtered ([ENT-3]). It and
+            // a route row's "Hold short of" list are the two places sign-read points are
+            // offered ([HLD-18]).
             if (!_namedHoldingPointsResolved)
                 ResolveNamedHoldingPoints();
             foreach (var entry in HoldShortTargetList.Merge(_graph.GetAllTaxiwayNames(), _namedHoldingPoints))
@@ -4600,15 +4610,22 @@ public class TaxiAssistForm : Form
                 $"  {hp.Name} -> node {hp.NodeId}, {hp.SnapDistanceMeters:F1} m, " +
                 $"designated={hp.SnappedToDesignatedNode}, projected={hp.InsertedOnEdge}, " +
                 $"kind={(hp.Kind.Length > 0 ? hp.Kind : "-")}");
+
+        // Where Am I names the point the aircraft is near. It takes this list only while the graph
+        // was built from the airport's current online data, and resolves its own otherwise.
+        _guidanceManager.SetNamedHoldingPoints(
+            _currentIcao, _namedHoldingPoints, _graphHoldingPointDataVersion, _dataProvider);
     }
 
     /// <summary>
-    /// The named holding points a ROW's "Hold short of" combo offers: the painted ones.
-    /// A point read off an X-Plane sign has only an approximate position and stays a
-    /// fallback for the Progressive Taxi list alone ([HLD-18]).
+    /// The named holding points a ROW's "Hold short of" combo offers. Which ones is
+    /// HoldShortTargetList.RowPoints' call, pinned by a test: every one, a point read off an
+    /// X-Plane sign included ([HLD-18]; OMDB "taxi via K, hold short of KK" on an ordinary
+    /// route). Runway entries and cross-at points still leave sign points out
+    /// (GetHoldingPointsCrossingRunway).
     /// </summary>
     private IEnumerable<NamedHoldingPoint> RowHoldingPoints() =>
-        _namedHoldingPoints.Where(p => !p.IsFromSign);
+        HoldShortTargetList.RowPoints(_namedHoldingPoints);
 
     /// <summary>
     /// Brings a row's "Hold short of" combo up to date when focus reaches it: the named
