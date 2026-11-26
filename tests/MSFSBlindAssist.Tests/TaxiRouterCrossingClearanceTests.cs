@@ -937,4 +937,189 @@ public class TaxiRouterCrossingClearanceTests
         Assert.DoesNotContain("Y", route.Segments.Select(s => s.TaxiwayName));
         Assert.Equal(NodeAt(g, 0.0037, 0.0295), route.Segments[^1].ToNode.NodeId);
     }
+
+    // --- A way on must CROSS the runway, not wander on it (2026-11-26) ---------------------------
+    //
+    // OMDB "K, K7" to 30R on navdata's own names. K7's name runs on round the curve it turns onto
+    // runway 12R/30L by, so its far end is the tip of that curve, on the pavement. From there the
+    // only way on follows the curve onto the centerline, turns back and leaves by the curve of
+    // the taxiway opposite: 430 m and a reversal on the runway, where straight over from the node
+    // the curves part at is 117 m. K7 below is that shape at lon 0.015: the split node S, the
+    // curve's tip T, the centerline nodes C1 and C2, the far taxiway's curve D and its split F.
+
+    private const double SLat = 0.0035, TLat = 0.0038, VeeTLat = 0.0039, TLon = 0.0153, C2Lon = 0.0166, FLat = 0.0045;
+
+    /// <summary>K and M, K7 from K up to its split node S, and (unless told not to) K9 further
+    /// east, the shorter way to the destination. The crossing itself is added by the test.</summary>
+    private static List<TaxiPath> FieldWithK7(bool k9 = true)
+    {
+        var paths = new List<TaxiPath>
+        {
+            P(0.002, 0.000, 0.002, 0.015, "K"), P(0.002, 0.015, 0.002, 0.025, "K"), P(0.002, 0.025, 0.002, 0.030, "K"),
+            P(0.006, 0.000, 0.006, 0.012, "M"), P(0.006, 0.012, 0.006, 0.015, "M"), P(0.006, 0.015, 0.006, 0.016, "M"),
+            P(0.006, 0.016, 0.006, 0.025, "M"), P(0.006, 0.025, 0.006, 0.029, "M"), P(0.006, 0.029, 0.006, 0.030, "M"),
+            P(0.006, 0.029, DestLat, DestLon, "M15"),
+            P(0.002, 0.015, SLat, 0.015, "K7"),
+        };
+        if (k9)
+            paths.AddRange(new[]
+            {
+                P(0.002, 0.025, 0.0037, 0.025, "K9"), P(0.0037, 0.025, 0.0043, 0.025, ""), P(0.0043, 0.025, 0.006, 0.025, "M13"),
+            });
+        return paths;
+    }
+
+    /// <summary>K7 on round its curve to the tip T on the pavement, the curve on to the centerline,
+    /// 89 m along it, a turn of 169 degrees, and off by the far taxiway's curve to its split F:
+    /// 262 m on the pavement. M9 runs from F to M, west of F so that K9 stays the shorter way.</summary>
+    private static TaxiPath[] Curves(double farJoinsMAt = 0.012) => new[]
+    {
+        P(SLat, 0.015, TLat, TLon, "K7"),
+        P(TLat, TLon, 0.004, 0.0158, ""), P(0.004, 0.0158, 0.004, C2Lon, ""),
+        P(0.004, C2Lon, 0.0042, 0.0158, ""), P(0.0042, 0.0158, FLat, 0.015, ""),
+        P(FLat, 0.015, 0.006, farJoinsMAt, "M9"),
+    };
+
+    /// <summary>The two curves as a tight V meeting on the centerline: 70 m on the pavement, and a
+    /// turn of 144 degrees. The tip of K7's curve is (VeeTLat, TLon).</summary>
+    private static TaxiPath[] VeeCurves() => new[]
+    {
+        P(SLat, 0.015, VeeTLat, TLon, "K7"), P(VeeTLat, TLon, 0.004, 0.0156, ""),
+        P(0.004, 0.0156, 0.0041, TLon, ""), P(0.0041, TLon, FLat, 0.015, ""),
+        P(FLat, 0.015, 0.006, 0.012, "M9"),
+    };
+
+    /// <summary>K7's curve onto the centerline, 244 m along it, and off AHEAD by a curve to a far
+    /// taxiway further east (no turn back): 364 m on the pavement. M9 also runs from F, opposite
+    /// K7, to M.</summary>
+    private static TaxiPath[] CurvesToAnExitFurtherOn() => new[]
+    {
+        P(SLat, 0.015, TLat, TLon, "K7"),
+        P(TLat, TLon, 0.004, 0.0158, ""), P(0.004, 0.0158, 0.004, 0.018, ""),
+        P(0.004, 0.018, 0.0042, 0.0185, ""), P(0.0042, 0.0185, FLat, 0.019, ""),
+        P(FLat, 0.019, 0.006, 0.016, "M9"), P(FLat, 0.015, 0.006, 0.012, "M9"),
+    };
+
+    /// <summary>The link straight over the runway, from K7's split S to the far split F.</summary>
+    private static TaxiPath Link(string name) => P(SLat, 0.015, FLat, 0.015, name);
+
+    private static TaxiGraph K7Graph(IEnumerable<TaxiPath> crossing, bool k9 = true)
+    {
+        var paths = FieldWithK7(k9);
+        paths.AddRange(crossing);
+        return BuildField(paths, Runways());
+    }
+
+    private static void AssertGoesStraightOverFromTheSplit(TaxiGraph g, TaxiRoute? route, double tipLat)
+    {
+        AssertDrivesThenReaches(g, route, "K7", "M9");
+        var ids = NodeIds(route!);
+        int split = ids.IndexOf(NodeAt(g, SLat, 0.015));
+        Assert.True(split >= 0, "K7 is driven to the node its curves part at");
+        Assert.Equal(NodeAt(g, FLat, 0.015), ids[split + 1]);
+        Assert.DoesNotContain(NodeAt(g, tipLat, TLon), ids);
+    }
+
+    private static List<int> NodeIds(TaxiRoute route)
+        => new[] { route.Segments[0].FromNode.NodeId }.Concat(route.Segments.Select(s => s.ToNode.NodeId)).ToList();
+
+    [Fact]
+    public void The_curve_fixture_makes_K7_a_branch_whose_far_end_is_the_tip_of_its_curve()
+    {
+        // The premise of the tests below: the K junction is K7's node nearest the destination by
+        // taxi distance (the terminal rule fires), and the curve's tip its nearest by position.
+        var g = K7Graph(Curves().Append(Link("")));
+        var dist = new TaxiRouter(g).ComputeGraphDistancesFrom(NodeAt(g, DestLat, DestLon));
+        Assert.True(dist[NodeAt(g, 0.002, 0.015)] < dist[NodeAt(g, SLat, 0.015)]);
+        Assert.True(dist[NodeAt(g, 0.002, 0.015)] < dist[NodeAt(g, TLat, TLon)]);
+        var south = g.RunwayCenterlines.Single(r => r.Name1 is "09R" or "27L");
+        Assert.True(RunwayShape.For(south).Contains(TLat, TLon, 0.0));
+        Assert.False(RunwayShape.For(south).Contains(SLat, 0.015, 0.0));
+        Assert.False(RunwayShape.For(south).Contains(FLat, 0.015, 0.0));
+    }
+
+    [Theory]
+    [InlineData("")]     // OMDB K7: the link over the runway has no name
+    [InlineData("M9")]   // EDDF M14: it carries the name of the taxiway on the far side
+    public void A_last_taxiway_whose_name_runs_round_its_curve_is_left_where_the_straight_link_starts(string link)
+    {
+        var g = K7Graph(Curves().Append(Link(link)));
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, 0.002, 0.000), NodeAt(g, DestLat, DestLon),
+            new List<string> { "K", "K7" }, destinationIsRunway: true);
+
+        AssertGoesStraightOverFromTheSplit(g, route, TLat);
+        Assert.DoesNotContain(NodeAt(g, 0.004, C2Lon), NodeIds(route!));
+    }
+
+    [Fact]
+    public void A_turn_back_on_the_runway_is_enough_to_look_for_the_straight_link()
+    {
+        // The two curves meet on the centerline: onto it, a turn of 144 degrees, and off again,
+        // 70 m on the pavement in all, less than many a straight crossing puts there. So the
+        // length on the pavement says nothing here, and the turn alone has to.
+        var g = K7Graph(VeeCurves().Append(Link("")));
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, 0.002, 0.000), NodeAt(g, DestLat, DestLon),
+            new List<string> { "K", "K7" }, destinationIsRunway: true);
+
+        AssertGoesStraightOverFromTheSplit(g, route, VeeTLat);
+    }
+
+    [Fact]
+    public void Driving_along_the_runway_is_enough_to_look_for_the_straight_link()
+    {
+        // No turn back: the way on from the tip of K7's curve runs 244 m along the centerline and
+        // leaves ahead, by a taxiway further east (KATL "L10" to 28 and KDTW "U8" to 22R do this
+        // on two exits). 364 m of it lie on the pavement, where a crossing puts 45 to 60
+        // ([TURN-7]). The link is taken although the route it makes is 79 m LONGER: the way along
+        // the runway is the shortcut.
+        var g = K7Graph(CurvesToAnExitFurtherOn().Append(Link("")));
+        var router = new TaxiRouter(g);
+        var dist = router.ComputeGraphDistancesFrom(NodeAt(g, DestLat, DestLon));
+        Assert.True(dist[NodeAt(g, 0.002, 0.015)] < dist[NodeAt(g, SLat, 0.015)], "K7 is still a branch off the destination");
+        var route = router.FindConstrainedPath(NodeAt(g, 0.002, 0.000), NodeAt(g, DestLat, DestLon),
+            new List<string> { "K", "K7" }, destinationIsRunway: true);
+
+        AssertGoesStraightOverFromTheSplit(g, route, TLat);
+        Assert.DoesNotContain(NodeAt(g, 0.004, 0.018), NodeIds(route!));
+    }
+
+    [Fact]
+    public void A_lone_taxiway_the_aircraft_stands_at_the_end_of_goes_straight_over()
+    {
+        // OMDB "K14" to 30R from K14's own last straight node: the crossing is straight ahead, and
+        // the node the leg starts at is itself the place to leave it. Routed "along it" first, the
+        // route took the curve 29 m to its tip and 204 m along the runway from there. No K9 here,
+        // so the split node is K7's nearest to the destination and the route starts on it.
+        var g = K7Graph(Curves(farJoinsMAt: 0.015).Append(Link("")), k9: false);
+        int split = NodeAt(g, SLat, 0.015);
+        var route = new TaxiRouter(g).FindConstrainedPath(split, NodeAt(g, DestLat, DestLon),
+            new List<string> { "K7" }, destinationIsRunway: true);
+
+        Assert.NotNull(route);
+        Assert.Null(route!.ConstrainedFallbackReason);
+        var ids = NodeIds(route);
+        Assert.Equal(split, ids[0]);
+        Assert.Equal(NodeAt(g, FLat, 0.015), ids[1]);
+        Assert.DoesNotContain(NodeAt(g, TLat, TLon), ids);
+        Assert.Equal(NodeAt(g, DestLat, DestLon), ids[^1]);
+    }
+
+    [Fact]
+    public void A_taxiway_is_not_left_short_of_its_far_end_for_another_taxiway_that_crosses_elsewhere()
+    {
+        // No straight link, and a taxiway X off the split node that crosses the same runway 220 m
+        // west, 224 m shorter than the way round K7's curve. Leaving K7 for it is a crossing by
+        // every other test, and it is not K7's: the pilot was cleared over the runway on K7. With
+        // nothing better on K7 itself the way on from its far end stands, as before.
+        var g = K7Graph(Curves().Concat(new[]
+        {
+            P(SLat, 0.015, SLat, 0.013, "X"), P(SLat, 0.013, FLat, 0.013, ""), P(FLat, 0.013, 0.006, 0.012, "X"),
+        }));
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, 0.002, 0.000), NodeAt(g, DestLat, DestLon),
+            new List<string> { "K", "K7" }, destinationIsRunway: true);
+
+        AssertDrivesThenReaches(g, route, "K7", "M9");
+        Assert.DoesNotContain("X", route!.Segments.Select(s => s.TaxiwayName));
+        Assert.Contains(NodeAt(g, TLat, TLon), NodeIds(route));
+    }
 }
