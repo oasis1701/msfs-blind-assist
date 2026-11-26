@@ -383,8 +383,8 @@ public class NamedHoldingPointResolverTests
         Assert.Equal(expected, hp.DisplayLabel);
     }
 
-    // ONE test for "was this point read off a sign" ([HLD-18]): the row hold-short list, the
-    // cross-at list and both labels ask it, and it must not depend on how the kind was typed.
+    // ONE test for "was this point read off a sign" ([HLD-18]): the cross-at list, which leaves
+    // such a point out, and both labels ask it, and it must not depend on how the kind was typed.
     [Theory]
     [InlineData("sign", true)]
     [InlineData("  SIGN ", true)]
@@ -394,5 +394,270 @@ public class NamedHoldingPointResolverTests
     public void IsFromSign_reads_the_sign_kind_whatever_its_casing(string kind, bool expected)
     {
         Assert.Equal(expected, new NamedHoldingPoint { Name = "KK", Kind = kind }.IsFromSign);
+    }
+
+    // Where Am I: "Taxiway K, near holding point KK". Equator: 0.0001 degrees is 11.1 m.
+    private static NamedHoldingPoint At(string name, double lat, double lon)
+        => new() { Name = name, Kind = "sign", Latitude = lat, Longitude = lon };
+
+    [Fact]
+    public void Nearby_names_the_nearest_point_within_reach_and_none_beyond_it()
+    {
+        var points = new[] { At("KK", 0.0, 0.0010), At("KG", 0.0, 0.0030) };
+
+        Assert.Equal("KK", NamedHoldingPointNearby.Find(points, 0.0, 0.0012)!.Name);   // 22 m from KK
+        Assert.Equal("KG", NamedHoldingPointNearby.Find(points, 0.0, 0.0027)!.Name);   // 33 m from KG
+        Assert.Null(NamedHoldingPointNearby.Find(points, 0.0, 0.0020));                // 111 m from both
+        Assert.Null(NamedHoldingPointNearby.Find(null, 0.0, 0.0010));
+        Assert.Null(NamedHoldingPointNearby.Find(Array.Empty<NamedHoldingPoint>(), 0.0, 0.0010));
+    }
+
+    // OSM labels some hold lines with the runway they guard or the kind of hold (KORD "28C APCH",
+    // EHAM "36C-18C"). Those name no holding point: Where Am I skips them, as the departure-entry
+    // picker does ([ENT-3]), and they never hide a real name a little farther off.
+    [Theory]
+    [InlineData("28C APCH")]
+    [InlineData("CAT III")]
+    [InlineData("ILS")]
+    [InlineData("08L/26R")]
+    [InlineData("36C-18C")]
+    public void Nearby_skips_runway_and_descriptive_hold_labels(string label)
+    {
+        var points = new[] { At(label, 0.0, 0.0010), At("A1", 0.0, 0.0014) };
+
+        Assert.Equal("A1", NamedHoldingPointNearby.Find(points, 0.0, 0.0010)!.Name);    // 44 m from A1
+        Assert.Null(NamedHoldingPointNearby.Find(new[] { At(label, 0.0, 0.0010) }, 0.0, 0.0010));
+    }
+
+    [Theory]
+    [InlineData("Taxiway K", "Taxiway K, near holding point KK")]
+    [InlineData("Near taxiway K", "Near taxiway K and holding point KK")]           // one "near", never two
+    [InlineData("Gate A25", "Gate A25")]
+    [InlineData("Runway 30R", "Runway 30R")]
+    public void Nearby_adds_the_point_to_a_taxiway_answer_only(string description, string expected)
+    {
+        Assert.Equal(expected, NamedHoldingPointNearby.Describe(description, At("KK", 0, 0)));
+        Assert.Equal(description, NamedHoldingPointNearby.Describe(description, null));
+    }
+
+    // The nearest point can stand on another taxiway than the one the aircraft is on (a crossing
+    // taxiway 45 m from L2's node on L). "Taxiway M, near holding point L2" would read as "you are
+    // on L2's taxiway", so the answer then says which taxiway the point is on.
+    [Theory]
+    [InlineData("Taxiway M", "L", "Taxiway M, near holding point L2 on taxiway L")]
+    [InlineData("Near taxiway M", "L", "Near taxiway M and holding point L2 on taxiway L")]
+    [InlineData("Near taxiway L", "L", "Near taxiway L and holding point L2")]
+    [InlineData("Taxiway L", "L", "Taxiway L, near holding point L2")]
+    [InlineData("Taxiway l", "L", "Taxiway l, near holding point L2")]
+    [InlineData("Taxiway M", "L,M", "Taxiway M, near holding point L2")]            // the point is at the L/M junction
+    [InlineData("Taxiway M", "", "Taxiway M, near holding point L2")]               // its taxiway is not known
+    public void Nearby_says_which_taxiway_a_point_on_another_taxiway_is_on(
+        string description, string pointTaxiways, string expected)
+    {
+        var point = new NamedHoldingPoint
+        {
+            Name = "L2",
+            Taxiways = pointTaxiways.Split(',', StringSplitOptions.RemoveEmptyEntries),
+        };
+        Assert.Equal(expected, NamedHoldingPointNearby.Describe(description, point));
+    }
+
+    [Fact]
+    public void Resolve_records_the_taxiways_the_point_stands_on()
+    {
+        // L runs north from the origin, M east from it: the node at the origin is on both.
+        var graph = BuildGraph(
+            Edge(0, 0, "", 100, 0, "", name: "L"),
+            Edge(0, 0, "", 0, 100, "", name: "M"));
+        var points = new[]
+        {
+            ("L2", LatN(95), LonE(0), "intermediate"),
+            ("X1", LatN(2), LonE(2), "intermediate"),
+        };
+
+        var result = NamedHoldingPointResolver.Resolve(graph, points);
+
+        Assert.Equal(new[] { "L" }, result.Single(p => p.Name == "L2").Taxiways);
+        Assert.Equal(new[] { "L", "M" }, result.Single(p => p.Name == "X1").Taxiways);
+    }
+
+    // L2 is painted on L, 40 m from L's nearest vertex; the nearest vertex within the 30 m snap is
+    // a bend of the connecting taxiway M, 25 m off. That node's names are not the paint's, so the
+    // point records none and Where Am I on L names it plainly, never "on taxiway M".
+    [Fact]
+    public void Resolve_records_no_taxiway_when_the_node_is_away_from_the_paint()
+    {
+        var graph = BuildGraph(
+            Edge(0, 0, "", 100, 0, "", name: "L"),
+            Edge(0, 0, "", 40, 25, "", name: "M"));
+        var points = new[] { ("L2", LatN(40), LonE(0), "intermediate") };
+
+        var l2 = Assert.Single(NamedHoldingPointResolver.Resolve(graph, points));
+
+        Assert.Equal(25.0, l2.SnapDistanceMeters, 1.0);          // snapped to M's bend vertex
+        Assert.Empty(l2.Taxiways);
+        Assert.Equal("Taxiway L, near holding point L2", NamedHoldingPointNearby.Describe("Taxiway L", l2));
+    }
+
+    // --- Where Am I's store of an airport's points -----------------------------------------
+
+    private static WhereAmIHoldingPoints Holding(string icao, params NamedHoldingPoint[] points)
+    {
+        var store = new WhereAmIHoldingPoints();
+        store.Publish(icao, points);
+        return store;
+    }
+
+    [Fact]
+    public void Store_hands_back_the_airports_points_and_asks_for_a_resolve_when_it_has_none()
+    {
+        var store = Holding("OMDB", At("KK", 0, 0));
+
+        var (points, resolve) = store.Ask("omdb", onlineNamesOn: true);
+        Assert.Equal("KK", Assert.Single(points).Name);
+        Assert.False(resolve);
+
+        (points, resolve) = store.Ask("EGLL", onlineNamesOn: true);
+        Assert.Empty(points);
+        Assert.True(resolve);
+    }
+
+    // The points are online data. With the online names setting off Where Am I names none, even
+    // ones it resolved while the setting was on, and starts no resolve.
+    [Fact]
+    public void Store_names_no_point_and_resolves_nothing_while_online_names_are_off()
+    {
+        var store = Holding("OMDB", At("KK", 0, 0));
+
+        var (points, resolve) = store.Ask("OMDB", onlineNamesOn: false);
+        Assert.Empty(points);
+        Assert.False(resolve);
+
+        (points, resolve) = store.Ask("EGLL", onlineNamesOn: false);
+        Assert.Empty(points);
+        Assert.False(resolve);
+
+        Assert.Single(store.Ask("OMDB", onlineNamesOn: true).Points);   // switched back on: still held
+    }
+
+    // EGLL: OpenStreetMap answered, X-Plane Gateway timed out, the list was resolved without the
+    // sign points. A later fetch brings them; a list kept by ICAO alone would never show them.
+    [Fact]
+    public void Store_forgets_an_airports_points_when_its_online_data_is_fetched_again()
+    {
+        var store = Holding("EGLL", At("VIKAS", 0, 0));
+
+        store.Drop("egll");
+
+        var (points, resolve) = store.Ask("EGLL", onlineNamesOn: true);
+        Assert.Empty(points);
+        Assert.True(resolve);
+    }
+
+    [Fact]
+    public void Store_keeps_an_airports_points_when_another_airports_data_arrives()
+    {
+        var store = Holding("EGLL", At("VIKAS", 0, 0));
+
+        Assert.False(store.Drop("OMDB"));
+
+        var (points, resolve) = store.Ask("EGLL", onlineNamesOn: true);
+        Assert.Single(points);
+        Assert.False(resolve);
+    }
+
+    // A first press before the online data has arrived resolves nothing. When the data lands for
+    // the airport that press asked about, the points are resolved then, so the NEXT press has them.
+    [Fact]
+    public void Store_asks_for_a_resolve_when_data_lands_for_the_airport_last_asked_about()
+    {
+        var store = new WhereAmIHoldingPoints();
+        Assert.False(store.Drop("OMDB"));                       // nobody has asked yet
+
+        store.Ask("EGLL", onlineNamesOn: false);
+        Assert.False(store.Drop("EGLL"));                       // asked with online names off
+
+        store.Ask("OMDB", onlineNamesOn: true);
+        Assert.False(store.Drop("EGLL"));
+        Assert.True(store.Drop("omdb"));
+
+        store.Clear();
+        Assert.False(store.Drop("OMDB"));                       // a database switch forgets the ask too
+    }
+
+    [Fact]
+    public void Store_keeps_the_planners_list_over_a_background_resolve()
+    {
+        var store = Holding("OMDB", At("KK", 0, 0));
+
+        Assert.False(store.PublishIfAbsent("OMDB", store.DataVersion("OMDB"), new[] { At("KG", 0, 0) }));
+        Assert.Equal("KK", Assert.Single(store.Ask("OMDB", onlineNamesOn: true).Points).Name);
+
+        Assert.True(store.PublishIfAbsent("EGLL", store.DataVersion("EGLL"), new[] { At("VIKAS", 0, 0) }));
+        Assert.Equal("VIKAS", Assert.Single(store.Ask("EGLL", onlineNamesOn: true).Points).Name);
+    }
+
+    // At flight start the departure and destination are refreshed together. A resolve for OMDB
+    // must survive VABB's data landing meanwhile; only OMDB's own data, or a database switch,
+    // makes it stale.
+    [Fact]
+    public void Store_data_version_moves_only_for_that_airport()
+    {
+        var store = new WhereAmIHoldingPoints();
+        long omdb = store.DataVersion("OMDB");
+
+        store.Drop("VABB");
+        Assert.Equal(omdb, store.DataVersion("omdb"));
+        Assert.True(store.PublishIfAbsent("OMDB", omdb, new[] { At("KK", 0, 0) }));
+
+        store.Drop("OMDB");
+        Assert.NotEqual(omdb, store.DataVersion("OMDB"));
+        Assert.False(store.PublishIfAbsent("OMDB", omdb, new[] { At("KK", 0, 0) }));   // read from the old data
+
+        long vabb = store.DataVersion("VABB");
+        store.Clear();
+        Assert.NotEqual(vabb, store.DataVersion("VABB"));
+    }
+
+    // The planner builds its graph once. Built before the online data landed, it lacks the online
+    // taxiway names and drops sign points placed on them, so its list is refused and Where Am I
+    // resolves its own; built from the current data, its list replaces a background one.
+    [Fact]
+    public void Store_takes_the_planners_list_only_from_current_data()
+    {
+        var store = new WhereAmIHoldingPoints();
+        long builtUnder = store.DataVersion("OMDB");
+        store.Drop("OMDB");                                    // the data landed after the build
+
+        Assert.False(store.PublishIfCurrent("OMDB", builtUnder, new[] { At("KG", 0, 0) }));
+        Assert.True(store.Ask("OMDB", onlineNamesOn: true).Resolve);
+
+        long current = store.DataVersion("OMDB");
+        Assert.True(store.PublishIfAbsent("OMDB", current, new[] { At("KK", 0, 0) }));
+        Assert.True(store.PublishIfCurrent("OMDB", current, new[] { At("KG", 0, 0) }));
+        Assert.Equal("KG", Assert.Single(store.Ask("OMDB", onlineNamesOn: true).Points).Name);
+    }
+
+    // The planner publishes once per airport load. When that airport's data is fetched again the
+    // list is dropped, and a resolve is asked for though Where Am I was never pressed there.
+    [Fact]
+    public void Store_asks_for_a_resolve_when_it_drops_a_held_list()
+    {
+        var store = Holding("OMDB", At("KK", 0, 0));
+
+        Assert.True(store.Drop("OMDB"));
+        Assert.False(store.Drop("OMDB"));                       // nothing held now, nobody asked
+    }
+
+    [Fact]
+    public void Store_clear_forgets_the_points()
+    {
+        var store = Holding("OMDB", At("KK", 0, 0));
+
+        store.Clear();
+
+        var (points, resolve) = store.Ask("OMDB", onlineNamesOn: true);
+        Assert.Empty(points);
+        Assert.True(resolve);
     }
 }
