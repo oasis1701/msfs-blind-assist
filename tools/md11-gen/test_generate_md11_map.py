@@ -75,6 +75,9 @@ class ParenthesisTests(unittest.TestCase):
     def test_balanced_trailing_parenthetical_is_kept(self):
         label, _, _ = g.parse_tooltip("APU Generator (APU Panel)")
         self.assertEqual("APU Generator (APU Panel)", label)
+        # The Long Trim tooltip is the same shape (its shipped row is curated to "Stabilizer Trim").
+        label, _, _ = g.parse_tooltip("Elevator Trim (Long Trim)")
+        self.assertEqual("Elevator Trim (Long Trim)", label)
 
     def test_wrapping_parens_are_stripped_as_a_pair(self):
         self.assertEqual("Strobes", g.strip_outer_parens("(Strobes)"))
@@ -347,6 +350,98 @@ class CuratedGuardTests(unittest.TestCase):
             },
             g.CURATED_GUARDS,
         )
+
+
+class TemplateReleaseTests(unittest.TestCase):
+    """A spring-loaded control is let go by its TEMPLATE's REL_CODE, so the generator copies those
+    fields onto the control as `release` and the app releases a hold exactly as the cockpit does.
+    The rudder knob's template sends LEFT_BUTTON_UP whichever way it was held; the Long Trim
+    handles' sends RIGHT_BUTTON_UP then LEFT_BUTTON_UP."""
+
+    TEMPLATES = (
+        '<Template Name="TFDi_Design_MD11_3Pos_Knob_Hold"><Parameters Type="Default">'
+        '<INC_CODE>#RIGHT_BUTTON_DOWN# (&gt;L:CEVENT)</INC_CODE>'
+        '<REL_CODE>#LEFT_BUTTON_UP# (&gt;L:CEVENT)</REL_CODE></Parameters></Template>'
+        '<Template Name="MD11_Long_Trim_Switch"><Parameters Type="Default">'
+        '<REL_CODE>#RIGHT_BUTTON_UP# (&gt;L:CEVENT) #LEFT_BUTTON_UP# (&gt;L:CEVENT)</REL_CODE>'
+        '</Parameters></Template>'
+        '<Template Name="TFDi_Design_MD11_Knob_Template"><Parameters Type="Default">'
+        '<INC_CODE>#WHEEL_UP# (&gt;L:CEVENT)</INC_CODE></Parameters></Template>'
+    )
+
+    def test_each_hold_template_names_its_release_fields_in_order(self):
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "Templates"))
+            with open(os.path.join(root, "Templates", "FlightDeck.xml"), "w", encoding="utf-8") as fh:
+                fh.write("<ModelBehaviors>" + self.TEMPLATES + "</ModelBehaviors>")
+            self.assertEqual({"TFDi_Design_MD11_3Pos_Knob_Hold": ["LEFT_BUTTON_UP"],
+                              "MD11_Long_Trim_Switch": ["RIGHT_BUTTON_UP", "LEFT_BUTTON_UP"]},
+                             g.template_releases(root))
+
+    def test_no_templates_folder_means_no_releases(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual({}, g.template_releases(root))
+
+    def test_long_trims_measured_directions_are_curated(self):
+        self.assertEqual({"RIGHT_BUTTON_DOWN": "Nose Up", "LEFT_BUTTON_DOWN": "Nose Down"},
+                         g.CURATED["MD11_THR_LONG_TRIM_SW"]["directions"])
+
+
+class ReadoutTests(unittest.TestCase):
+    """D17: a tooltip that COMPUTES the control's whole state text from its own var ships that
+    expression as `readout`, for the app to evaluate live (Md11TooltipReadout). The trims are the
+    casualty: their scale (25 = neutral, 2.5 units a degree) is stated nowhere but the tooltip, and
+    the rows read a bare "25" while TFDi's cockpit said "Neutral"."""
+
+    # Verbatim from AftFootPedestal.xml, entities and degree sign as read_xml returns them.
+    RUDDER = ("Rudder Trim (%((L:MD11_PED_RUD_TRIM_IND) 25 - abs 0.1 &lt;)%{if}Neutral%{else}"
+              "%((L:MD11_PED_RUD_TRIM_IND) 25 &lt;)%{if}%(25 (L:MD11_PED_RUD_TRIM_IND) - 2.5 /)"
+              "%!1.1f!\u00b0 Nose Left%{else}%((L:MD11_PED_RUD_TRIM_IND) 25 - 2.5 /)%!1.1f!\u00b0 "
+              "Nose Right%{end}%{end})")
+    MINIMUMS = ("Captain Minimums Setting (%((L:MD11_CAP_MINIMUMS))%!d! "
+                "%((L:MD11_LECP_MINIMUMS_KB))%{if}Baro%{else}Radio%{end})")
+
+    def test_the_rudder_trims_expression_is_shipped_decoded_with_degrees_spelt_out(self):
+        readout = {}
+        label, var, value_map = g.parse_tooltip(self.RUDDER, node_id="MD11_PED_RUD_TRIM_SW",
+                                                readout=readout)
+        self.assertEqual("Rudder Trim", label)
+        self.assertEqual("MD11_PED_RUD_TRIM_IND", var)
+        self.assertEqual({}, value_map)
+        self.assertEqual(
+            "%((L:MD11_PED_RUD_TRIM_IND) 25 - abs 0.1 <)%{if}Neutral%{else}"
+            "%((L:MD11_PED_RUD_TRIM_IND) 25 <)%{if}%(25 (L:MD11_PED_RUD_TRIM_IND) - 2.5 /)"
+            "%!1.1f! degrees Nose Left%{else}%((L:MD11_PED_RUD_TRIM_IND) 25 - 2.5 /)%!1.1f! degrees "
+            "Nose Right%{end}%{end}", readout["expr"])
+
+    def test_an_expression_reading_a_second_var_ships_no_readout(self):
+        # The minimums caps: a companion's words (the mode switch) are not this control's state.
+        readout = {}
+        g.parse_tooltip(self.MINIMUMS, node_id="MD11_LECP_MINIMUMS_CAP", readout=readout)
+        self.assertEqual({}, readout)
+
+    def test_a_control_with_positions_ships_no_readout(self):
+        readout = {}
+        _, _, value_map = g.parse_tooltip(ComputedHeadTests.WXR_GAIN, node_id="MD11_PED_WXR_GAIN_KB",
+                                          readout=readout)
+        self.assertTrue(value_map)
+        self.assertEqual({}, readout)
+
+    def test_a_plain_label_ships_no_readout(self):
+        readout = {}
+        g.parse_tooltip("Elevator Trim (Long Trim)", node_id="MD11_THR_LONG_TRIM_SW", readout=readout)
+        self.assertEqual({}, readout)
+
+    def test_an_export_backed_control_loses_its_readout(self):
+        # The altimeter knobs compute their setting from TFDi's documented exports, which the app
+        # already reads and words itself; a second wording would only compete.
+        knob = ctl("MD11_LECP_BAROSET_CAP", kind="knob_push", state_var="MD11_CAP_ALTIMETER")
+        knob["readout"] = "%((L:MD11_CAP_ALTIMETER))%!1.2f!"
+        trim = ctl("MD11_PED_RUD_TRIM_SW", kind="switch", state_var="MD11_PED_RUD_TRIM_IND")
+        trim["readout"] = "x"
+        g.drop_export_readouts([knob, trim], ["MD11_CAP_ALTIMETER"])
+        self.assertNotIn("readout", knob)
+        self.assertEqual("x", trim["readout"])
 
 
 class ComputedHeadTests(unittest.TestCase):
