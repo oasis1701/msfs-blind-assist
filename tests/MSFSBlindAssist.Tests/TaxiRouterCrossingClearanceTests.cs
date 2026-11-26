@@ -736,4 +736,205 @@ public class TaxiRouterCrossingClearanceTests
 
         AssertDrivesThenReaches(g, route, "K4", "M7");
     }
+
+    // --- Second review of 2026-11-26 --------------------------------------------------------
+
+    [Fact]
+    public void A_single_cleared_taxiway_is_not_driven_over_a_runway_the_way_on_only_cuts_a_corner_of()
+    {
+        // The shared-runway gate, for the way on: T is joined at its apron end and left at K, and T
+        // goes on north over 09/27. The way on runs east along K and bends up round 09/27's east
+        // end, where one edge cuts a corner of the pavement with both its ends clear of it on the
+        // south side: no crossing, and no node on the runway. Counted as a runway the way on
+        // crosses, it sent the pilot over 09/27 on T and round by N and P (5.7 km for 5.0), where
+        // the plain route crosses no runway at all.
+        var paths = new List<TaxiPath>
+        {
+            P(-0.001, 0.000, -0.001, 0.005, "Z"),
+            P(-0.001, 0.005, 0.002, 0.005, "T"), P(0.002, 0.005, 0.0037, 0.005, "T"),
+            P(0.0037, 0.005, 0.0043, 0.005, ""), P(0.0043, 0.005, 0.006, 0.005, "T"),
+            P(0.002, 0.000, 0.002, 0.005, "K"), P(0.002, 0.005, 0.002, 0.018, "K"),
+            P(0.002, 0.018, 0.00365, 0.0190, "K"), P(0.00365, 0.0190, 0.0039, 0.0202, "K"),      // the corner
+            P(0.0039, 0.0202, 0.002, 0.0215, "K"),
+            P(0.002, 0.0215, 0.002, 0.038, "K"), P(0.002, 0.038, 0.002, 0.039, "K"),
+            P(0.002, 0.039, 0.001, 0.040, "E1"),
+            P(0.006, 0.005, 0.006, 0.038, "N"), P(0.006, 0.038, 0.002, 0.038, "P"),
+        };
+        var runways = new List<Runway>
+        {
+            R("09", 0.004, 0.000, 0.004, 0.020), R("27", 0.004, 0.020, 0.004, 0.000),
+            new() { AirportICAO = "TEST", RunwayID = "36", StartLat = 0.000, StartLon = 0.040, EndLat = 0.010, EndLon = 0.040, Length = 3646, Width = 197, Heading = 360 },
+            new() { AirportICAO = "TEST", RunwayID = "18", StartLat = 0.010, StartLon = 0.040, EndLat = 0.000, EndLon = 0.040, Length = 3646, Width = 197, Heading = 180 },
+        };
+        var g = BuildField(paths, runways);
+        // The premise: neither end of the corner edge is on 09/27, and the edge between them is.
+        var south = g.RunwayCenterlines.Single(r => r.Name1 is "09" or "27");
+        Assert.False(RunwayShape.For(south).Contains(0.00365, 0.0190, 0.0));
+        Assert.False(RunwayShape.For(south).Contains(0.0039, 0.0202, 0.0));
+        Assert.True(RunwayShape.For(south).Contains(0.003775, 0.0196, 0.0));
+        int dest = NodeAt(g, 0.001, 0.040);
+
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, -0.001, 0.000), dest,
+            new List<string> { "T" }, destinationIsRunway: true);
+
+        Assert.NotNull(route);
+        Assert.Null(route!.ConstrainedFallbackReason);
+        var names = route.Segments.Select(s => s.TaxiwayName).ToList();
+        Assert.Contains("T", names);
+        Assert.Contains("K", names);
+        Assert.DoesNotContain("N", names);
+        Assert.DoesNotContain("P", names);
+        Assert.Equal(dest, route.Segments[^1].ToNode.NodeId);
+    }
+
+    [Fact]
+    public void A_fillet_is_not_skipped_for_a_node_more_than_a_kilometer_down_the_taxiway()
+    {
+        // The 1 km bound, when skipping the fillet leaves a node that is NOT the junction. R1's
+        // nearest node to the destination is the fillet beside the junction; its next nearest is
+        // R1's far end, 1.1 km away, which is still 27 m nearer the destination than the junction
+        // is. The bound was read only when the skip left the junction itself, so the route drove
+        // R1 to that far end. The fillet pick stands, as for the long R1 above.
+        var paths = new List<TaxiPath>
+        {
+            P(0.002, 0.000, 0.002, 0.010, "R"), P(0.002, 0.010, 0.002, 0.0105, "R"), P(0.002, 0.0105, 0.002, 0.020, "R"),
+            P(0.002, 0.010, 0.0015, 0.010, "R1"), P(0.0015, 0.010, -0.0075, 0.01295, "R1"),
+            P(0.002, 0.0105, 0.0015, 0.010, "R1"),                                           // the fillet
+            P(0.002, 0.000, 0.003, 0.000, "W"), P(0.003, 0.000, 0.003, 0.030, "P"), P(0.003, 0.030, 0.0025, 0.030, "Y"),
+        };
+        var g = BuildField(paths, new List<Runway>());
+        int junction = NodeAt(g, 0.002, 0.010), farEnd = NodeAt(g, -0.0075, 0.01295), dest = NodeAt(g, 0.0025, 0.030);
+        // The premise: the far end is nearer the destination than the junction, and over 1 km from it.
+        double ToDest(int id) => TaxiGraph.CalculateDistanceMeters(g.Nodes[id].Latitude, g.Nodes[id].Longitude, 0.0025, 0.030);
+        Assert.True(ToDest(farEnd) < ToDest(junction));
+        Assert.True(ToDest(NodeAt(g, 0.002, 0.0105)) < ToDest(farEnd));
+        Assert.True(TaxiGraph.CalculateDistanceMeters(0.002, 0.010, -0.0075, 0.01295) > 1000.0);
+
+        var route = new TaxiRouter(g).FindConstrainedPath(junction, dest, new List<string> { "R1" }, destinationIsRunway: true);
+
+        Assert.NotNull(route);
+        Assert.Equal(NodeAt(g, 0.002, 0.0105), route!.Segments[^1].ToNode.NodeId);
+    }
+
+    [Fact]
+    public void A_lone_taxiway_routed_from_a_node_on_the_destination_runway_is_not_driven_away_from_it()
+    {
+        // [RTE-33] for the lone taxiway: A meets the runway at a node on its pavement, and the route
+        // is loaded from that node with only "A" cleared. The node is A's nearest to the destination,
+        // so the branch-off rule read A as a stub and drove it 222 m away from the runway the
+        // aircraft stands on, ending there. The route has reached its runway: it goes on to the
+        // destination.
+        var paths = new List<TaxiPath>
+        {
+            P(0.006, 0.010, 0.008, 0.010, "A"), P(0.008, 0.010, 0.010, 0.010, "A"),
+            P(0.008, 0.010, DestLat, DestLon, ""),                                           // along the runway
+        };
+        var runways = new List<Runway> { R("09L", 0.008, 0.000, 0.008, 0.030), R("27R", 0.008, 0.030, 0.008, 0.000) };
+        var g = BuildField(paths, runways);
+        Assert.Contains(g.RunwayCenterlines, r => RunwayShape.For(r).Contains(0.008, 0.010, 0.0));
+        int dest = NodeAt(g, DestLat, DestLon);
+
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, 0.008, 0.010), dest,
+            new List<string> { "A" }, destinationIsRunway: true);
+
+        Assert.NotNull(route);
+        Assert.Null(route!.ConstrainedFallbackReason);
+        Assert.DoesNotContain("A", route.Segments.Select(s => s.TaxiwayName));
+        Assert.Equal(dest, route.Segments[^1].ToNode.NodeId);
+    }
+
+    [Fact]
+    public void The_shared_runway_gate_does_not_count_the_runway_of_a_destination_past_its_recorded_end()
+    {
+        // Rule (13), on the gate itself: no route through FindConstrainedPath reaches it with a
+        // destination past its runway's end and that runway met inside the walk bound (a far end
+        // that near the destination runway is the taxiway's nearest node to it, and no stub).
+        // The destination is on the north runway's centerline 56 m past its recorded end, on no
+        // pavement. The taxiway going on and the way on both stand on that runway's pavement, and
+        // on no other. That is the destination's own runway, not one the taxiway leads over.
+        var runways = Runways();
+        var paths = new List<TaxiPath>
+        {
+            P(0.006, 0.027, 0.007, 0.028, "T"),
+            P(0.007, 0.028, 0.008, 0.0295, ""), P(0.008, 0.0295, 0.008, 0.0305, ""),
+            P(0.006, 0.027, 0.008, 0.029, ""), P(0.008, 0.029, 0.008, 0.0295, ""),
+            P(0.004, 0.010, 0.004, 0.011, ""),                                               // on the south runway
+        };
+        var g = BuildField(paths, runways);
+        int a = NodeAt(g, 0.006, 0.027), b = NodeAt(g, 0.007, 0.028), c = NodeAt(g, 0.008, 0.0295),
+            e = NodeAt(g, 0.008, 0.029), dest = NodeAt(g, 0.008, 0.0305);
+        Assert.DoesNotContain(g.RunwayCenterlines, r => RunwayShape.For(r).Contains(0.008, 0.0305, 0.0));
+        var router = new TaxiRouter(g);
+        var along = new List<int> { a, b };
+        var onward = new List<int> { b, c, dest };
+        var wayOn = new List<int> { a, e, c, dest };
+
+        Assert.False(router.LeadsOverARunwayTheWayOnCrosses(along, onward, wayOn, dest));
+        // The same paths to a destination on the OTHER runway: the north runway is then one the
+        // taxiway leads over and the way on stands on too.
+        Assert.True(router.LeadsOverARunwayTheWayOnCrosses(along, onward, wayOn, NodeAt(g, 0.004, 0.010)));
+    }
+
+    [Fact]
+    public void A_second_centerline_of_the_destination_runway_is_not_another_runway()
+    {
+        // KBOS shape: the navdata carries two sets of start rows for the runway, so the graph has two
+        // centerlines named 09L/27R. With a runway-table row for that name the graph snaps both
+        // sets onto one line and the two copies are one shape; here the table has no such row, the
+        // second set lies 60 m south of the first, and the destination node stands on the first
+        // copy only. N2 is a stub off M whose way on reaches the destination over the second
+        // copy's pavement. That copy is the destination's own runway under another row, not a
+        // runway N2 leads over: matched by reference, it was, and the stub was routed on (the EIDW
+        // shape, lost).
+        var paths = new List<TaxiPath>
+        {
+            P(0.006, 0.010, 0.006, 0.020, "M"), P(0.006, 0.020, 0.006, 0.029, "M"),
+            P(0.006, 0.029, DestLat, DestLon, "M15"),
+            P(0.006, 0.020, 0.0070, 0.020, "N2"),
+            P(0.0070, 0.020, 0.0070, 0.0175, ""), P(0.0070, 0.0175, 0.0074, 0.0185, ""), P(0.0074, 0.0185, DestLat, DestLon, ""),
+        };
+        var starts = new List<StartPosition>
+        {
+            new() { RunwayName = "09L", Latitude = 0.008, Longitude = 0.000, Heading = 90 },
+            new() { RunwayName = "27R", Latitude = 0.008, Longitude = 0.030, Heading = 270 },
+            new() { RunwayName = "09L", Latitude = 0.00746, Longitude = 0.000, Heading = 90 },
+            new() { RunwayName = "27R", Latitude = 0.00746, Longitude = 0.030, Heading = 270 },
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), starts, new List<Runway>());
+        Assert.Equal(2, g.RunwayCenterlines.Count(r => r.Name1 is "09L" or "27R"));
+        Assert.Equal(1, g.RunwayCenterlines.Count(r => RunwayShape.For(r).Contains(DestLat, DestLon, 0.0)));
+        Assert.Equal(1, g.RunwayCenterlines.Count(r => RunwayShape.For(r).Contains(0.0074, 0.0185, 0.0)));
+        var router = new TaxiRouter(g);
+        var dist = router.ComputeGraphDistancesFrom(NodeAt(g, DestLat, DestLon));
+        Assert.True(dist[NodeAt(g, 0.006, 0.020)] < dist[NodeAt(g, 0.0070, 0.020)]);
+
+        var route = router.FindConstrainedPath(NodeAt(g, 0.006, 0.010), NodeAt(g, DestLat, DestLon),
+            new List<string> { "M", "N2" }, destinationIsRunway: true);
+
+        Assert.NotNull(route);
+        Assert.Null(route!.ConstrainedFallbackReason);
+        Assert.Equal(NodeAt(g, 0.0070, 0.020), route.Segments[^1].ToNode.NodeId);
+    }
+
+    [Fact]
+    public void A_last_taxiway_whose_way_on_makes_the_route_much_longer_still_ends_the_route()
+    {
+        // The length limit at the last-taxiway call site, alone. X is a stub off K to the south
+        // runway's hold, past K's best exit (K9). Over the runway from there the only way on is
+        // Y, a 3.4 km loop round to M's east end: one crossing, all new ground, so the onward-leg
+        // test accepts it, and it makes 7.3 km of 4.9. A last cleared taxiway is never dropped
+        // ([RTE-17]), so X stays the end of the route; it is not carried round the loop.
+        var paths = FieldWithoutK4(
+            P(0.002, 0.000, 0.002, 0.010, "K"), P(0.002, 0.010, 0.002, 0.025, "K"), P(0.002, 0.025, 0.002, 0.0295, "K"),
+            P(0.002, 0.0295, 0.0037, 0.0295, "X"), P(0.0037, 0.0295, 0.0043, 0.0295, ""),
+            P(0.0043, 0.0295, 0.005, 0.045, "Y"), P(0.005, 0.045, 0.006, 0.030, "Y"));
+        var g = BuildField(paths, Runways());
+        var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, 0.002, 0.000), NodeAt(g, DestLat, DestLon),
+            new List<string> { "K", "X" }, destinationIsRunway: true);
+
+        Assert.NotNull(route);
+        Assert.Null(route!.ConstrainedFallbackReason);
+        Assert.DoesNotContain("Y", route.Segments.Select(s => s.TaxiwayName));
+        Assert.Equal(NodeAt(g, 0.0037, 0.0295), route.Segments[^1].ToNode.NodeId);
+    }
 }
