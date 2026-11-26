@@ -25,6 +25,14 @@ public static class RunwayReachGate
     public const double MaxWalkMeters = 400.0;
 
     /// <summary>
+    /// How far past a runway's recorded end a point on its centreline still reaches that runway
+    /// ([STR-20]: Taxi2Gate LFPG records 26R from its displaced threshold, and T12 meets the real
+    /// pavement 47 m before it). The ONE figure behind <c>TaxiGuidanceManager.ENTRY_STUB_BEYOND_END_M</c>
+    /// and <c>TaxiRouter.DESTINATION_BEYOND_END_M</c>, so a re-measurement moves both.
+    /// </summary>
+    public const double StubBeyondEndMeters = 100.0;
+
+    /// <summary>
     /// Pure decision core for "does this route reach the runway?", used by BOTH
     /// TaxiGuidanceManager.LoadRoute (which speaks a warning) and TryRecalculateRoute
     /// (which arms the during-lineup bailout). It exists because the rule was previously

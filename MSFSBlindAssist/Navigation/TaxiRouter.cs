@@ -772,7 +772,7 @@ public class TaxiRouter
     /// lead onto the destination in the graph, so graph distance degenerately picks the entry.
     /// </summary>
     private int FindExtremeNodeOnTaxiway(string taxiwayName, double refLat, double refLon,
-        int requiredComponent, bool farthest)
+        int requiredComponent, bool farthest, Func<TaxiNode, bool>? skip = null)
     {
         int best = -1;
         double bestM = farthest ? -1 : double.MaxValue;
@@ -781,6 +781,7 @@ public class TaxiRouter
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != requiredComponent) continue;
             if (BlockedNodes.Count > 0 && BlockedNodes.Contains(nodeId)) continue;
+            if (skip != null && skip(node)) continue;
             double d = TaxiGraph.CalculateDistanceMeters(node.Latitude, node.Longitude, refLat, refLon);
             if (farthest ? d > bestM : d < bestM) { bestM = d; best = nodeId; }
         }
@@ -788,8 +789,9 @@ public class TaxiRouter
     }
 
     /// <summary>Node on the taxiway geographically NEAREST the given position (-1 if none).</summary>
-    private int FindNodeOnTaxiwayNearestPosition(string taxiwayName, double lat, double lon, int requiredComponent)
-        => FindExtremeNodeOnTaxiway(taxiwayName, lat, lon, requiredComponent, farthest: false);
+    private int FindNodeOnTaxiwayNearestPosition(string taxiwayName, double lat, double lon, int requiredComponent,
+        Func<TaxiNode, bool>? skip = null)
+        => FindExtremeNodeOnTaxiway(taxiwayName, lat, lon, requiredComponent, farthest: false, skip);
 
     /// <summary>Node on the taxiway geographically FARTHEST from the given node (-1 if none / node unknown).</summary>
     private int FindNodeOnTaxiwayFarthestFromNode(string taxiwayName, int fromNodeId, int requiredComponent)
@@ -805,16 +807,49 @@ public class TaxiRouter
     /// sits back near the entry rather than at the taxiway's far end (LFPG "…R, R1" to 26R: the 26R
     /// node is closer to the R/R1 junction than to R1's far end), so the node FARTHEST along the
     /// taxiway from the entry is taken and the taxiway is still traversed.
+    /// The nearest pick skips the end of a fillet beside the junction: a node where this taxiway's
+    /// name ENDS (one edge of it) on another taxiway the entry is on, the one the route came along.
+    /// Taking it ended the route a few metres along that other taxiway, and the cleared one was never
+    /// driven (the LFPG R1 failure the farthest-node fallback exists for). Only where the name ends: a
+    /// node this taxiway runs on through stays a pick (LFPG "B" and KORD "A", where a link meets the
+    /// taxiway twice). And only while the far end that leaves is a connector's, within
+    /// <see cref="FILLET_SKIP_MAX_FAR_END_M"/> of the entry: past it the taxiway is a long one, and
+    /// its farthest node is the far side of the airport (OMDB "M" from M4: 4.6 km), so the fillet
+    /// pick stands as it was.
     /// </summary>
     private int FarEndOfLastTaxiway(string taxiwayName, int entryNodeId, int endNodeId)
     {
-        int comp = _graph.Nodes[entryNodeId].ComponentId;
+        var entry = _graph.Nodes[entryNodeId];
+        int comp = entry.ComponentId;
         var destNode = _graph.Nodes[endNodeId];
-        int far = FindNodeOnTaxiwayNearestPosition(taxiwayName, destNode.Latitude, destNode.Longitude, comp);
+        bool BesideTheEntry(TaxiNode n) => n.NodeId != entryNodeId
+            && TaxiGraph.CalculateDistanceMeters(entry.Latitude, entry.Longitude, n.Latitude, n.Longitude) <= FILLET_END_MAX_M
+            && _graph.Adjacency.TryGetValue(n.NodeId, out var edges)
+            && edges.Count(e => e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase)) == 1
+            && n.TaxiwayNames.Any(t => !t.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase) && entry.TaxiwayNames.Contains(t));
+        int far = FindNodeOnTaxiwayNearestPosition(taxiwayName, destNode.Latitude, destNode.Longitude, comp, BesideTheEntry);
         if (far == entryNodeId || far == -1)
+        {
             far = FindNodeOnTaxiwayFarthestFromNode(taxiwayName, entryNodeId, comp);
+            int unskipped = FindNodeOnTaxiwayNearestPosition(taxiwayName, destNode.Latitude, destNode.Longitude, comp);
+            if (far != -1 && unskipped != entryNodeId && unskipped != -1
+                && TaxiGraph.CalculateDistanceMeters(entry.Latitude, entry.Longitude,
+                       _graph.Nodes[far].Latitude, _graph.Nodes[far].Longitude) > FILLET_SKIP_MAX_FAR_END_M)
+                far = unskipped;
+        }
         return far == entryNodeId ? -1 : far;
     }
+
+    // How far from the junction the far end of a last cleared taxiway may be for a fillet beside the
+    // junction to be skipped (FarEndOfLastTaxiway). Measured over the 100 busiest fs2024 airports,
+    // lone and two-taxiway clearances, plain navdata (2026-11-26): unbounded, the skip made 69 routes
+    // 0.5 to 4.4 km longer, each driving a long taxiway to its far side; bounded, none.
+    private const double FILLET_SKIP_MAX_FAR_END_M = 1000.0;
+
+    // How far from the junction a node may be to count as the end of a fillet beside it. Farther, a
+    // node where the taxiway's name ends on a taxiway the junction is also on is the taxiway's real
+    // far end (WSSS "D5": 371 m, which the skip cut to 19 m).
+    private const double FILLET_END_MAX_M = 150.0;
 
     /// <summary>
     /// The way on to the destination from the far end of a last cleared taxiway, when that taxiway
@@ -822,10 +857,10 @@ public class TaxiRouter
     /// <paramref name="drivenSoFar"/> (the route up to that far end) that does not come back along
     /// the last taxiway's own leg (from <paramref name="lastLegStart"/>), accepted only when it is
     /// all NEW ground, through no node the route has already used, and the taxiway leads over
-    /// another runway: either the way on meets another runway's pavement before the destination's
-    /// own, within <see cref="OTHER_RUNWAY_MAX_WALK_M"/> of that far end, or the last leg ITSELF
-    /// crossed one that close to its far end (a taxiway that keeps its name over the runway: its
-    /// far end is already on the other side).
+    /// another runway: either the way on crosses another runway before it meets the destination's
+    /// own, its pavement within <see cref="OTHER_RUNWAY_MAX_WALK_M"/> of that far end, or the last
+    /// leg ITSELF crossed one that close to its far end (a taxiway that keeps its name over the
+    /// runway: its far end is already on the other side).
     /// Null in every other case, which keeps the taxiway the route's terminus and says why in the
     /// log: no way on but back (EIDW N2), a way on over no other runway or only the long way round
     /// to one (PHNL 04L, warned by RunwayReachGate), a far end on the destination runway itself, a
@@ -857,22 +892,7 @@ public class TaxiRouter
             return Refuse($"no last leg to judge ({drivenSoFar.Count} nodes, leg from index {lastLegStart})");
         if (!_graph.Nodes.TryGetValue(endNodeId, out var dest))
             return Refuse($"destination node {endNodeId} is not in the graph");
-        var destRunways = _graph.RunwayCenterlines
-            .Where(r => r != null && RunwayShape.For(r).Contains(dest.Latitude, dest.Longitude, 0.0)).ToList();
-        // An entry stub may end on the centreline up to 100 m PAST the end the navdata records
-        // ([STR-20], Taxi2Gate LFPG 26R): that node is on no pavement, and its runway is found the
-        // way TaxiGuidanceManager.RunwaysOnEntryStub finds it.
-        if (destRunways.Count == 0)
-            destRunways = _graph.RunwayCenterlines.Where(r =>
-            {
-                if (r == null) return false;
-                var shape = RunwayShape.For(r);
-                if (shape.IsDegenerate) return false;
-                var (along, lateral) = shape.Project(dest.Latitude, dest.Longitude);
-                return Math.Abs(lateral) <= shape.HalfWidthMeters
-                    && along >= shape.ExtentMinMeters - DESTINATION_BEYOND_END_M
-                    && along <= shape.ExtentMaxMeters + DESTINATION_BEYOND_END_M;
-            }).ToList();
+        var destRunways = DestinationRunways(dest);
         if (destRunways.Count == 0)
             return Refuse($"destination node {endNodeId} is on no runway's pavement, nor on a centreline just past its end");
         bool IsDestination(TaxiGraph.RunwayCenterline r) => destRunways.Any(d => ReferenceEquals(d, r));
@@ -919,10 +939,25 @@ public class TaxiRouter
         if (early != null)
             return Refuse($"it meets the destination runway {early.Key.Name1}/{early.Key.Name2} before its end");
 
-        bool legLeadsOver = others.Any(m => m.FromMeters < farMeters && farMeters - m.ToMeters <= OTHER_RUNWAY_MAX_WALK_M);
+        // And a runway the taxiway leads over is one the path CROSSES, or stands on at a node and then
+        // leaves (a last leg that starts on it, as at EBBR B8/B9 and EDDF L3: the classifier gives a
+        // path that starts on a runway no passage, and an entry was refused above). RunwaysMet also
+        // sees pavement the path never stands on or crosses: an edge cutting a corner of it with both
+        // ends clear on one side, a path that changes side only beyond the runway's end. The
+        // classifier gives those no passage either, so the refusal above never saw them, and they are
+        // no runway the taxiway leads over.
+        bool GoesOver(TaxiGraph.RunwayCenterline r)
+        {
+            if (passages.Any(p => p.Kind == RunwayEventKind.Crossing && RunwayRouteClassifier.SameRunway(p.Runway, r)))
+                return true;
+            var shape = RunwayShape.For(r);
+            return walked.Any(id => shape.Contains(_graph.Nodes[id].Latitude, _graph.Nodes[id].Longitude, 0.0));
+        }
+        bool legLeadsOver = others.Any(m => m.FromMeters < farMeters && farMeters - m.ToMeters <= OTHER_RUNWAY_MAX_WALK_M
+                                            && GoesOver(m.Runway));
         if (legLeadsOver) return onward;
-        int next = met.FindIndex(m => m.ToMeters >= farMeters);
-        if (next == -1) return Refuse("the way on meets no runway");
+        int next = met.FindIndex(m => m.ToMeters >= farMeters && (IsDestination(m.Runway) || GoesOver(m.Runway)));
+        if (next == -1) return Refuse("the way on crosses no runway");
         if (IsDestination(met[next].Runway)) return Refuse("the way on meets the destination's own runway first");
         double walkedMeters = Math.Max(0.0, met[next].FromMeters - farMeters);
         return walkedMeters <= OTHER_RUNWAY_MAX_WALK_M
@@ -943,13 +978,14 @@ public class TaxiRouter
         IReadOnlyList<int> along, IReadOnlyList<int> onward, IReadOnlyList<int> wayOn, int endNodeId)
     {
         if (!_graph.Nodes.TryGetValue(endNodeId, out var dest)) return false;
+        var destRunways = DestinationRunways(dest);
         var walked = along.Concat(onward.Skip(1)).ToList();
         var met = RunwaysMet(walked, along.Count - 1, out double farMeters);
         var onWayOn = RunwaysMet(wayOn, 0, out _);
         foreach (var m in met)
         {
             if (m.FromMeters > farMeters + OTHER_RUNWAY_MAX_WALK_M) continue;
-            if (RunwayShape.For(m.Runway).Contains(dest.Latitude, dest.Longitude, 0.0)) continue;
+            if (destRunways.Any(d => ReferenceEquals(d, m.Runway))) continue;
             if (onWayOn.Any(w => ReferenceEquals(w.Runway, m.Runway))) return true;
         }
         return false;
@@ -963,8 +999,34 @@ public class TaxiRouter
     private const double OTHER_RUNWAY_MAX_WALK_M = RunwayReachGate.MaxWalkMeters;
 
     // How far past a runway's recorded end a destination node on its centreline still belongs to
-    // it: TaxiGuidanceManager.ENTRY_STUB_BEYOND_END_M's figure ([STR-20]).
-    private const double DESTINATION_BEYOND_END_M = 100.0;
+    // it: the ONE figure TaxiGuidanceManager.ENTRY_STUB_BEYOND_END_M also reads ([STR-20]).
+    private const double DESTINATION_BEYOND_END_M = RunwayReachGate.StubBeyondEndMeters;
+
+    /// <summary>
+    /// The runways a destination node belongs to: every one whose pavement it stands on (a threshold
+    /// at an intersection is on two, and both count), else every one whose centreline it lies on up
+    /// to <see cref="DESTINATION_BEYOND_END_M"/> past the recorded end: an entry stub may end there
+    /// ([STR-20], Taxi2Gate LFPG 26R), on no pavement, and its runway is found the way
+    /// TaxiGuidanceManager.RunwaysOnEntryStub finds it. The ONE answer
+    /// <see cref="OnwardLegOverAnotherRunway"/> and <see cref="LeadsOverARunwayTheWayOnCrosses"/>
+    /// both read, so neither counts the destination's own runway as another.
+    /// </summary>
+    private List<TaxiGraph.RunwayCenterline> DestinationRunways(TaxiNode dest)
+    {
+        var onPavement = _graph.RunwayCenterlines
+            .Where(r => r != null && RunwayShape.For(r).Contains(dest.Latitude, dest.Longitude, 0.0)).ToList();
+        if (onPavement.Count > 0) return onPavement;
+        return _graph.RunwayCenterlines.Where(r =>
+        {
+            if (r == null) return false;
+            var shape = RunwayShape.For(r);
+            if (shape.IsDegenerate) return false;
+            var (along, lateral) = shape.Project(dest.Latitude, dest.Longitude);
+            return Math.Abs(lateral) <= shape.HalfWidthMeters
+                && along >= shape.ExtentMinMeters - DESTINATION_BEYOND_END_M
+                && along <= shape.ExtentMaxMeters + DESTINATION_BEYOND_END_M;
+        }).ToList();
+    }
 
     /// <summary>
     /// The route as it stands, then the shortest way on from <paramref name="fromNodeId"/>: what the
