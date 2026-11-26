@@ -323,8 +323,8 @@ public class SayIntentionsExternalRouteTests
     // carry the route on over that runway ([RTE-17]) and whether the stop there is ATC's own:
     // the two taxiways in order, the hold short on K7's row under the name ATC gave, and 30R
     // (never the runway to hold short of) as the destination. Three ways to say it: as
-    // SayIntentions writes a clearance (its KBOS and LSZH captures), with the side spelled
-    // out, and spoken throughout.
+    // SayIntentions writes a clearance (the Frankfurt and Boston captures in
+    // SayIntentionsLiveClearanceTests), with the side spelled out, and spoken throughout.
     [Theory]
     [InlineData("Runway 30R taxi via Kilo, Kilo-7, hold short of runway 30L.")]
     [InlineData("Taxi to runway 30 Right via K, K7, hold short of runway 30 Left.")]
