@@ -149,9 +149,42 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
             }
         }
         _flaps = new Md11FlapSystem(_map);
+        _trimButtons = Md11TrimButtons.From(_map.Controls);
+        foreach (var trim in _trimButtons) _trimByKey[trim.Key] = trim;
+        // Matched on the base definition's own Name, so a renamed base var drops the rows back to what they were.
+        var stabTrimName = GetBaseVariables().TryGetValue(ElevatorTrimKey, out var stabTrim) ? stabTrim.Name : null;
+        foreach (var c in _map.Controls)
+            if (c.StockReadout != null && string.Equals(stabTrimName, c.StockReadout, StringComparison.OrdinalIgnoreCase))
+                _stabTrimRows.Add(c.NodeId);
     }
 
+    /// <summary>The trim buttons the map calls for (<see cref="Md11TrimButtons"/>), and the same by row key.</summary>
+    private readonly IReadOnlyList<Md11TrimButton> _trimButtons;
+    private readonly Dictionary<string, Md11TrimButton> _trimByKey = new(StringComparer.Ordinal);
+
+    /// <summary>The controls whose rows show the stabiliser trim (<see cref="ShowsStabTrim"/>), resolved once here.</summary>
+    private readonly HashSet<string> _stabTrimRows = new(StringComparer.Ordinal);
+
     private string KeyFor(string stateVar) => _keyByStateVar.TryGetValue(stateVar, out var k) ? k : stateVar;
+
+    /// <summary>
+    /// True when the control's row reads TFDi's tooltip readout (<see cref="Md11TooltipReadout"/>): it
+    /// carries one, of a shape the evaluator understands, and nothing else describes its state. A
+    /// shape it refuses (the weather radar tilt's integer format) leaves the row exactly as before.
+    /// </summary>
+    private static bool HasReadout(Md11Control c)
+        => c.Composite == null && c.ValueMap.Count == 0 && Md11TooltipReadout.CanEvaluate(c.Readout);
+
+    /// <summary>
+    /// True when the control's row shows the stabiliser trim instead of its own var: its curated
+    /// <see cref="Md11Control.StockReadout"/> names the shared trim read-out's SimVar (the Long Trim
+    /// handles, whose own var only ever reads their spring-back centre).
+    /// </summary>
+    private bool ShowsStabTrim(Md11Control c) => _stabTrimRows.Contains(c.NodeId);
+
+    /// <summary>The keys a readout row reads and watches: every L:var its readout names, by its key.</summary>
+    private string[] ReadoutDependencies(Md11Control c)
+        => Md11TooltipReadout.Vars(c.Readout).Select(KeyFor).Distinct(StringComparer.Ordinal).ToArray();
 
     /// <summary>The keys MainForm must watch to keep this control's label current.</summary>
     private IReadOnlyList<string>? StateDependencies(Md11Control c)
@@ -490,6 +523,23 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
         foreach (var kvp in BuildExportVariables())
             if (!vars.ContainsKey(kvp.Key)) vars[kvp.Key] = kvp.Value;
 
+        // The trim buttons (Md11TrimButtons): rows of this app's own, like the STD toggles. LVar +
+        // Never: SetControl claims every key, so nothing reads them and nothing writes them generically.
+        foreach (var trim in _trimButtons)
+            vars[trim.Key] = new SimVarDefinition
+            {
+                Name = trim.Key,
+                DisplayName = trim.Label,
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.Never,
+                RenderAsButton = true,
+                PressOncePerKey = true,   // a held Enter is one trim step, never a run to the stop
+                // The button's accessible description (MainForm's panel builder), read on focus.
+                HelpText = trim.IsHold
+                    ? $"Holds {trim.Control.ButtonName} {trim.Word.ToLowerInvariant()} briefly"
+                    : $"Turns the {trim.Control.ButtonName} knob one click {trim.Word.ToLowerInvariant()}",
+            };
+
         AddFirstOfficerReadVariables(vars);
 
         vars[DcPowerKey] = new SimVarDefinition
@@ -685,8 +735,14 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
                     // Utils.PanelRowRules).
                     RenderAsReadOnlyStatus = values.Count == 0 || c.Composite != null
                                              || Md11ExportBacked.IsReadOnly(c, _exportVars),
+                    // A READOUT row (the trims, Md11TooltipReadout) is read-only too — its value map
+                    // is empty — and its words are TFDi's tooltip evaluated over its own var, which
+                    // TryDescribeControlState composes; listing that key is what makes MainForm read
+                    // the row through it and relabel it on every delivery.
                     StateVariables = c.Composite != null
                         ? new[] { c.NodeId, Md11CompositeState.InnerKeyFor(c.NodeId) }
+                        : HasReadout(c) ? ReadoutDependencies(c)
+                        : ShowsStabTrim(c) ? new[] { ElevatorTrimKey }
                         : null,
                 };
                 // The gear lever's var is its 0-25 TRAVEL against the map's {0 Up, 1 Down}, and
