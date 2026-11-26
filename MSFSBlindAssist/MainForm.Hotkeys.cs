@@ -785,6 +785,18 @@ public partial class MainForm
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        // A held Enter presses a PressOncePerKey panel button once: its auto-repeats are swallowed
+        // here, before the button takes them (the MD-11's trim buttons, one trim step per press).
+        if (keyData == Keys.Enter
+            && (msg.LParam.ToInt64() & 0x40000000) != 0   // WM_KEYDOWN bit 30: the key was already down
+            && Control.FromHandle(msg.HWnd) is Button heldButton
+            && currentAircraft != null
+            && currentAircraft.GetVariables().TryGetValue(heldButton.Name, out var heldDef)
+            && heldDef.PressOncePerKey)
+        {
+            return true;
+        }
+
         // Handle local navigation hotkeys first (only work when app is in focus)
         if (keyData == (Keys.Control | Keys.D1))
         {
