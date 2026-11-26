@@ -556,19 +556,16 @@ public partial class HorizonSim787Definition
         }
 
         // ===== Baro STD pushbutton =====
-        // Momentary push: toggle STD ↔ QNH. MainForm's button-click path always passes
-        // value=1, so we compute the new state ourselves by inverting the current cached
-        // state. Going to STD: write the L-var flag AND fire K:BAROMETRIC_STD_PRESSURE
-        // (jumps the altimeter to 29.92). Going to QNH: just clear the L-var flag; the
-        // WT cockpit's panel logic restores the previously-set baro value when the flag
-        // drops to 0. K event is NOT fired on QNH return — it only sets 29.92, never QNH.
+        // Momentary push: toggle STD ↔ QNH. K:BAROMETRIC_STD_PRESSURE with parameter 1 is the
+        // captain altimeter's own STD toggle (the WT AltimeterBaroKeyEventHandler): it sets
+        // L:XMLVAR_Baro1_ForcedToSTD — the flag the PFD shows "STD" from and HS787_BaroSTD
+        // reads — and switching back restores the QNH set before (measured live 2026-11-19).
+        // The old path wrote L:XMLVAR_Baro_Selector_STD_1, which nothing in the avionics reads,
+        // and fired the event with no index, which jumps to 1013.25 without engaging STD, so a
+        // press "back to QNH" left the altimeter on 1013.
         if (varKey == "HS787_BaroSTD")
         {
-            double? cur = simConnect.GetCachedVariableValue("HS787_BaroSTD");
-            int newState = (cur.HasValue && (int)cur.Value == 1) ? 0 : 1;
-            simConnect.SetLVar("XMLVAR_Baro_Selector_STD_1", newState);
-            if (newState == 1)
-                simConnect.SendEvent("BAROMETRIC_STD_PRESSURE");
+            simConnect.SendEvent("BAROMETRIC_STD_PRESSURE", 1);
             return true;
         }
 

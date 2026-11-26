@@ -418,7 +418,7 @@ Some highlights:
 - **Transponder** has the mode, a squawk field and an **Ident** button.
 - **Landing** has the parking brake, autobrake (Off, RTO, 1, 2, 3, 4 and MAX), anti-skid, flap handle and gear handle.
 - **Options** has the SATCOM, V-Bar and EFB power switches; **Doors** has every door, both cargo doors and the flight deck door power; **Services** has the refuel door and the GPU.
-- The **Flight Data** panels are read-only status displays — VNAV and LNAV data, glidepath, engine data, timers and more. Press Ctrl+3 on any of them to read the values.
+- The **Flight Data** panels are read-only status displays — VNAV and LNAV data, glidepath, engine data, timers and more. Press Ctrl+3 on any of them to read the values. The navigation values are read with their units: distances in nautical miles, courses and path angles in degrees, speeds in knots, altitudes and deviations in feet, and vertical speeds in feet per minute.
 
 ### Autopilot: the MCP windows {#boeing-787-mcp}
 
@@ -428,7 +428,7 @@ All in input mode:
 - **Input Ctrl+S** opens **MCP Speed** (knots 100 to 399, or Mach 0.40 to 0.99), with **Mode** (IAS or Mach), **FLCH** and **Speed INTV** (shows *Manual* or *FMC*).
 - **Input Ctrl+A** opens **MCP Altitude** (0 to 45000 feet), with **VNAV**, **Level Change**, **Altitude Hold** and **Alt INTV**.
 - **Input Ctrl+V** opens **MCP Vertical Speed**, taking vertical speed (-6000 to 6000 feet per minute) or flight path angle (-9.9 to 9.9 degrees), with **Engage V/S**, **V/S FPA** (the mode) and **Approach**, which shows *GS Active*, *LOC Active*, *Armed* or *Off*. In V/S mode, a tiny number such as -2.5 is refused with *"V/S must be 0 or at least 50 fpm; for an angle, switch the mode to FPA"*.
-- **Input Ctrl+B** opens the **Altimeter** window. Type the QNH in hectopascals (900 to 1100); a **Standard (STD)** button sets 29.92.
+- **Input Ctrl+B** opens the **Altimeter** window. Type the setting in hectopascals (900 to 1100, for example 1013) or in inches (26.00 to 32.00, for example 29.92, or 2992 as a METAR writes it) and press Enter. The **Standard (STD)** button switches standard pressure on and off, and you hear *"Baro Standard"* or *"Baro QNH"*. Switching it off puts back the setting you had before. Typing a setting while standard is on switches standard off.
 - **Input Ctrl+P** opens the **787 Autopilot** window: A/P, Autothrottle, LNAV, VNAV, Approach, Level Change, ALT Hold, HDG Hold, V/S and A/P Disconnect. A/P Disconnect always disconnects, unlike the A/P button, which toggles. BA announces *"Approach armed"* and *"Approach disengaged"*.
 
 Turning an MCP knob on your own hardware speaks the new selected value, so you get the same confirmation whether you use BA's windows or a physical panel.
