@@ -99,6 +99,14 @@ public class SimVarDefinition
 
     // UI customization properties (aircraft-specific)
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
+
+    /// <summary>
+    /// A panel button a held Enter presses ONCE: the key's auto-repeats (WM_KEYDOWN bit 30, the key
+    /// was already down) are swallowed by MainForm's ProcessCmdKey, as a held F5 refreshes once.
+    /// Opt-in, set by the TFDi MD-11's trim buttons, where each press is one step of the trim and
+    /// key repeat ran the aileron trim on to its stop (review of #346). Every other button is unchanged.
+    /// </summary>
+    public bool PressOncePerKey { get; set; }
     /// <summary>
     /// When true (opt-in, set by the momentary-button definitions of the FBW A320/A380, the
     /// iFly 737 and the TFDi MD-11), the panel label
