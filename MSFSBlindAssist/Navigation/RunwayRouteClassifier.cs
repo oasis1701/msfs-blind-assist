@@ -144,7 +144,7 @@ public static class RunwayRouteClassifier
         return kept;
     }
 
-    private static bool SameRunway(TaxiGraph.RunwayCenterline a, TaxiGraph.RunwayCenterline b)
+    internal static bool SameRunway(TaxiGraph.RunwayCenterline a, TaxiGraph.RunwayCenterline b)
     {
         if (ReferenceEquals(a, b)) return true;
         string a1 = Norm(a.Name1), a2 = Norm(a.Name2), b1 = Norm(b.Name1), b2 = Norm(b.Name2);

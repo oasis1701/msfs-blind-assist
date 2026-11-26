@@ -895,19 +895,28 @@ void RunTrace(string spec)
         // --trace ICAO:pick:<lat>,<lon>,<heading>:<runway>:<clearance>[:miss]
         //   one clearance from a position to a runway; a Turn pick is =L or =R after its taxiway,
         //   e.g. KBOS:pick:42.363953,-71.006981,170:33L:H,C=L   (":miss": the pilot takes the charted
-        //   way at the junction instead of the picked turn)
+        //   way at the junction instead of the picked turn). ATC's "hold short of runway X" after a
+        //   taxiway is @X, e.g. OMDB:pick:25.251047,55.363293,120:30R:K,K7@30L: the pick is loaded as
+        //   the form's row pick, and the clearance is voiced through the SayIntentions parser too.
         var pos = parts[2].Split(',').Select(x => double.Parse(x, CultureInfo.InvariantCulture)).ToArray();
         var rwy = w.Runways.First(r => r.RunwayID.Equals(parts[3], StringComparison.OrdinalIgnoreCase));
-        var seq = new List<string>(); var picks = new Dictionary<int, TurnSide>();
+        var seq = new List<string>(); var picks = new Dictionary<int, TurnSide>(); var holds = new Dictionary<int, string>();
         foreach (var item in parts[4].Split(','))
         {
-            var kv = item.Split('=');
+            var at = item.Split('@');
+            var kv = at[0].Split('=');
             if (kv.Length > 1) picks[seq.Count] = kv[1].StartsWith("L", StringComparison.OrdinalIgnoreCase) ? TurnSide.Left : TurnSide.Right;
+            if (at.Length > 1) holds[seq.Count] = at[1].Trim();
             seq.Add(kv[0].Trim());
         }
         var tp = TaxiPlan.GateToRunway(w, new ParkingSpot { Latitude = pos[0], Longitude = pos[1] }, rwy, pos[2]);
         if (tp == null) { Console.WriteLine("no entry onto that runway found"); return; }
         tp.Describe = $"{parts[2]} -> Runway {rwy.RunwayID}"; tp.FixedSeq = seq; tp.TurnPicks = null;
+        if (holds.Count > 0)
+        {
+            tp.HoldPicks = holds;
+            foreach (var f in SpokenClearance.Check(w, tp.Describe, seq, holds, rwy.RunwayID)) Console.WriteLine("FINDING " + f);
+        }
         if (parts.Length > 5 && parts[5].Equals("miss", StringComparison.OrdinalIgnoreCase) && picks.Count > 0)
         {
             var charted = LoadProbe(w, tp, seq, out _, out _);

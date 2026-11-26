@@ -79,7 +79,10 @@ whose description contains the text — e.g. `KORD:dep:IX Y4 L 5`), `ICAO:turn:<
 `ICAO:pick:<lat>,<lon>,<heading>:<runway>:<clearance>[:miss]`: one clearance from a position to a
 runway, a Turn pick written `=L` or `=R` after its taxiway, `:miss` to take the charted way at the
 junction instead. The KBOS incident of 2026-11-14 is
-`KBOS:pick:42.363953,-71.006981,170:33L:H,C=L`. `VP_SHOWCLR=1` prints the voiced
+`KBOS:pick:42.363953,-71.006981,170:33L:H,C=L`. ATC's "hold short of runway X" after a taxiway is
+written `@X` (`OMDB:pick:25.251047,55.363293,120:30R:K,K7@30L`): it is loaded as that row's
+hold-short pick, as the SayIntentions import seats it, and the clearance is voiced through the
+import's own parser. `VP_SHOWCLR=1` prints the voiced
 clearances, `VP_STUBSTATS=1` the destination entry-stub length and hold label of every departure.
 
 ### A/B against a frozen build

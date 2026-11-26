@@ -3305,7 +3305,7 @@ public partial class TaxiGuidanceManager
         return found;
     }
 
-    private const double ENTRY_STUB_BEYOND_END_M = 100.0;
+    private const double ENTRY_STUB_BEYOND_END_M = RunwayReachGate.StubBeyondEndMeters;
 
     /// <summary>
     /// The automatic hold-short passes that must run on EVERY route the manager adopts —

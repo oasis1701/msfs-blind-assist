@@ -1070,7 +1070,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // p90 130 m). The remaining 1.85 % are almost all tiny GA strips with sparse networks, and
     // they are caught by the SEPARATE hold-name signal (RouteEndIsRunwayHold) rather than this
     // number — the two guards are independent, and the warning needs BOTH to fail.
-    internal const double RUNWAY_REACH_MAX_WALK_M = 400.0;
+    internal const double RUNWAY_REACH_MAX_WALK_M = RunwayReachGate.MaxWalkMeters;
 
     // Search bound for that walk. Comfortably past the threshold so the answer is never a
     // truncation artefact, and small enough that an end disconnected from the runway cannot walk
