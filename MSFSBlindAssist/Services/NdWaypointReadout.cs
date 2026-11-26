@@ -16,7 +16,9 @@ namespace MSFSBlindAssist.Services;
 /// therefore cannot conflict with viewing the ND via the live ND panel. The same
 /// vars exist + are registered (OnRequest) on both the A380X and the A32NX, so one
 /// implementation serves both. Bearing follows the ND reference: TRUE when TRUE REF
-/// is selected, else magnetic (the FBW var is radians for magnetic, degrees for true).
+/// is selected, else magnetic. FBW writes both bearings in "Degrees", which the sim
+/// stores as radians, and an on-request L:var is read raw, so both arrive in radians
+/// (read live 2026-11-04 on the A380: true 5.1505 raw = 295.1 degrees).
 /// </summary>
 public static class NdWaypointReadout
 {
@@ -54,7 +56,7 @@ public static class NdWaypointReadout
 
             double R(string v) => raw.TryGetValue(v, out double d) ? d : 0;
 
-            string ident = UnpackIdent(R("A32NX_EFIS_L_TO_WPT_IDENT_0"), R("A32NX_EFIS_L_TO_WPT_IDENT_1"));
+            string ident = UnpackSixBit(R("A32NX_EFIS_L_TO_WPT_IDENT_0"), R("A32NX_EFIS_L_TO_WPT_IDENT_1"));
             if (string.IsNullOrWhiteSpace(ident))
             {
                 announcer.AnnounceImmediate("No active waypoint");
@@ -62,11 +64,8 @@ public static class NdWaypointReadout
             }
 
             bool trueRef = R("A32NX_FMGC_TRUE_REF") > 0.5 || R("A32NX_PUSH_TRUE_REF") > 0.5;
-            double trueBrg = R("A32NX_EFIS_L_TO_WPT_TRUE_BEARING");
-            double brg; string brgRef;
-            if (trueRef && trueBrg >= 0) { brg = trueBrg; brgRef = "true"; }
-            else { brg = R("A32NX_EFIS_L_TO_WPT_BEARING") * 180.0 / Math.PI; brgRef = "magnetic"; }
-            if (brg < 0) brg += 360;
+            var (brg, brgRef) = Bearing(trueRef,
+                R("A32NX_EFIS_L_TO_WPT_TRUE_BEARING"), R("A32NX_EFIS_L_TO_WPT_BEARING"));
 
             double dist = R("A32NX_EFIS_L_TO_WPT_DISTANCE");
             announcer.AnnounceImmediate(
@@ -78,17 +77,35 @@ public static class NdWaypointReadout
         }
     }
 
-    // 6-bit-per-char packed ident (two doubles, 8 chars each) — same encoding the
-    // ND form and approach-capability message use.
-    private static string UnpackIdent(double ident0, double ident1)
+    /// <summary>
+    /// The bearing to speak, in degrees, from the two stored (radian) bearings: TRUE when
+    /// TRUE REF is selected and the true bearing is valid, else magnetic.
+    /// </summary>
+    internal static (double degrees, string reference) Bearing(bool trueRef, double storedTrue, double storedMagnetic)
     {
-        double[] values = { ident0, ident1 };
+        bool useTrue = trueRef && storedTrue >= 0;
+        double deg = (useTrue ? storedTrue : storedMagnetic) * 180.0 / Math.PI;
+        if (deg < 0) deg += 360;
+        return (deg, useTrue ? "true" : "magnetic");
+    }
+
+    /// <summary>
+    /// The one decoder for FBW's 6-bit text (ND TO-waypoint idents, the A32NX approach
+    /// message): 8 chars per double, low bits first, char = code + 31. A word holding
+    /// 6+ chars passes 2^31, so each word is read as a long: an int cast saturates
+    /// there and the first two chars read "^^" (61N020W read "^^1W020").
+    /// </summary>
+    internal static string UnpackSixBit(double word0, double word1)
+    {
         var sb = new System.Text.StringBuilder();
-        for (int i = 0; i < values.Length * 8; i++)
+        foreach (double word in new[] { word0, word1 })
         {
-            int word = i / 8, charPos = i % 8;
-            int code = (int)(values[word] / Math.Pow(2, charPos * 6)) & 0x3F;
-            if (code > 0) sb.Append((char)(code + 31));
+            long bits = (long)word;
+            for (int charPos = 0; charPos < 8; charPos++)
+            {
+                int code = (int)((bits >> (charPos * 6)) & 0x3F);
+                if (code > 0) sb.Append((char)(code + 31));
+            }
         }
         return sb.ToString().Trim();
     }
