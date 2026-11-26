@@ -300,6 +300,51 @@ public class SayIntentionsExternalRouteTests
         Assert.Equal(1, TaxiAssistForm.FindRunwayItemIndex(texts, "11"));
     }
 
+    // --- A clearance whose last taxiway crosses the OTHER runway (OMDB, PR 367) ---------
+
+    // Every taxiway name the MSFS 2024 navdata holds for Dubai (read 2026-11-26). The traps
+    // for this clearance are in it: taxiways L and R beside "30 Left" and "30 Right", and
+    // K17 beside "Kilo, Kilo-7".
+    private static readonly string[] DubaiTaxiways =
+    {
+        "A", "F", "J", "J1", "J2", "J3", "J4", "J5", "K", "K1", "K10", "K11", "K13", "K14", "K15",
+        "K15A", "K16", "K17", "K18", "K2", "K3", "K4", "K5", "K6", "K7", "K8", "K9", "L", "L1", "L2B",
+        "L3", "L4", "M", "M1", "M10A", "M10B", "M11", "M12A", "M12B", "M13", "M13A", "M13B", "M14A",
+        "M14B", "M15", "M15A", "M15B", "M16", "M17", "M18", "M18A", "M19", "M1A", "M1B", "M1C", "M2",
+        "M20", "M21", "M3", "M3A", "M4", "M5A", "M5B", "M6", "M7A", "M7B", "M8", "M9", "N", "N1", "N10",
+        "N11", "N12", "N1A", "N1B", "N1C", "N2", "N3", "N3A", "N4", "N5", "N5A", "N6", "N7", "N8", "N8A",
+        "N9", "P", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "Q", "R", "R1", "S", "T", "U",
+        "U1", "U3", "U4", "U5", "U6", "V", "V1", "V2", "V3", "V4", "W", "W1", "Y", "Y1", "Z", "Z1", "Z10",
+        "Z11", "Z15", "Z16", "Z17", "Z2", "Z3", "Z4", "Z5", "Z6", "Z7"
+    };
+
+    // "Taxi to Runway 30 Right via K, K7, hold short of Runway 30 Left": K7 crosses 12R/30L on
+    // the way to 30R. What the import hands the Taxi window decides whether the router can
+    // carry the route on over that runway ([RTE-17]) and whether the stop there is ATC's own:
+    // the two taxiways in order, the hold short on K7's row under the name ATC gave, and 30R
+    // (never the runway to hold short of) as the destination. Three ways to say it: as
+    // SayIntentions writes a clearance (its KBOS and LSZH captures), with the side spelled
+    // out, and spoken throughout.
+    [Theory]
+    [InlineData("Runway 30R taxi via Kilo, Kilo-7, hold short of runway 30L.")]
+    [InlineData("Taxi to runway 30 Right via K, K7, hold short of runway 30 Left.")]
+    [InlineData("Runway three zero right, taxi via Kilo, Kilo Seven, hold short of runway three zero left.")]
+    public void A_clearance_over_the_other_runway_keeps_its_hold_short_on_the_crossing_taxiway(string clearance)
+    {
+        var (taxiways, holdShorts, unknown) = MainForm.ParseClearanceTaxiPlan(clearance, DubaiTaxiways);
+
+        Assert.Equal(new[] { "K", "K7" }, taxiways);
+        Assert.Empty(unknown);
+        Assert.Equal(new MainForm.ClearanceHoldShort("K7", "30L"), Assert.Single(holdShorts));
+        Assert.Equal("30R", SayIntentionsClearanceParser.ParseDestinationRunway(clearance));
+
+        // The second row of the Taxi window, and the runway as its "Hold short of" list has it.
+        var mapped = Assert.Single(MainForm.MapHoldShortsToTaxiways(holdShorts, taxiways));
+        Assert.Equal(new TaxiAssistForm.ExternalHoldShort(1, "30L"), mapped);
+        Assert.Equal(3, TaxiAssistForm.FindRunwayItemIndex(
+            new[] { "(none)", "12L", "12R", "30L", "30R" }, mapped.Runway));
+    }
+
     // --- MatchDestinationLabel --------------------------------------------------------
 
     [Fact]
