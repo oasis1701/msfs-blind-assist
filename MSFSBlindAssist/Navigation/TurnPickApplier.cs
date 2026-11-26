@@ -578,7 +578,7 @@ internal static class TurnPickApplier
     /// the hold passes have no good stop for such a route (OMDB "left onto N": onto 12L/30R at N8 with
     /// "Passing the hold line" and 370 m along it, unheld and unwarned). The charted route may already
     /// do it; the pick may not make it more than 50 m worse.
-    private const double AlongRunwayLimitMeters = 100.0, AlongRunwayMoreThanChartedMeters = 50.0;
+    internal const double AlongRunwayLimitMeters = 100.0, AlongRunwayMoreThanChartedMeters = 50.0;
 
     /// The longest stretch of the route whose segments lie on one runway's pavement at both ends. A
     /// runway the destination node stands on is not counted: the route ends there by design.
