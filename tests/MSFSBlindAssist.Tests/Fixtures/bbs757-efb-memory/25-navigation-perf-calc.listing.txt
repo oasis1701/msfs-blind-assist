@@ -1,0 +1,47 @@
+title: Navigation
+button  Take off
+button  Landing
+text  Airport
+text  Runway
+text  Length Type
+text  Length (FT)
+heading 2  Units
+button  Feet
+button  Pounds
+button  inHg
+text  Takeoff Weight (LB)
+text  Flap Setting
+text  Thrust Setting
+text  Bleed Setting
+text  Anti-ice Setting
+text  Wind
+text  Temperature
+text  Pressure (inHg)
+text  Surface Condition
+heading 2  Weather Source
+text  METAR: KSEA Nov 06, 06:56 L
+button  Refresh
+text  Flex/Assumed Temperature
+text  Improved Climb Calculations
+button  Calculate
+text  V1: ---
+text  VR: ---
+text  V2: ---
+text  Flap: ---
+text  N1: ---
+text  FLX TMP: ---
+text  Trim: ---
+text  TODA: ---
+text  TORA: ---
+text  ASDA: ---
+text  LDA: ---
+pre
+    RW16L
+heading 2  Sections
+button  ACARS dashboard
+button  Operating FP
+button  Weather & NOTAM
+button  Charts
+button  Map
+button  PERF calc
+button  Home

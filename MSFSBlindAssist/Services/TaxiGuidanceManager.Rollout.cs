@@ -581,6 +581,21 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// The pavement map of the installed graph, built lazily once per graph and dropped with it. Shared by
+    /// the off-pavement alert and the Turn picks' off-chart leg test, so both judge the same pavement.
+    /// Callers ensure <c>_graph</c> is set.
+    /// </summary>
+    private Navigation.PavementMap PavementMapForGraph()
+    {
+        if (!ReferenceEquals(_pavementMapGraph, _graph) || _pavementMap == null)
+        {
+            _pavementMap = Navigation.PavementMap.Build(_graph!);
+            _pavementMapGraph = _graph;
+        }
+        return _pavementMap;
+    }
+
+    /// <summary>
     /// "Off pavement." while the aircraft is off every mapped runway and taxiway during the landing roll
     /// or the exit (Navigation.PavementMap / OffPavementAlert), and off the runway being landed on
     /// (<see cref="IsOnRolloutRunwayPavement"/>). Spoken with AnnounceImmediate directly —
@@ -591,14 +606,10 @@ public partial class TaxiGuidanceManager
     private void CheckOffPavement(double lat, double lon, double groundSpeedKts)
     {
         if (_graph == null) return;
-        if (!ReferenceEquals(_pavementMapGraph, _graph))
-        {
-            _pavementMap = Navigation.PavementMap.Build(_graph);
-            _pavementMapGraph = _graph;
-        }
+        var pavementMap = PavementMapForGraph();
         bool onGround = OnGroundProvider?.Invoke() ?? true;
         bool off = Navigation.OffPavementAlert.IsOffPavement(
-            onGround, IsOnRolloutRunwayPavement(lat, lon), _pavementMap!.IsOnMappedPavement(lat, lon));
+            onGround, IsOnRolloutRunwayPavement(lat, lon), pavementMap.IsOnMappedPavement(lat, lon));
         if (off != _offPavementLogged)
         {
             _offPavementLogged = off;
@@ -1157,7 +1168,8 @@ public partial class TaxiGuidanceManager
                     exitPathNodeIds: _rolloutExit.TaxiwayName.Length > 0
                                      && distToExitFeet <= ROLLOUT_STOPPED_HANDOFF_MAX_DIST_FT
                         ? GetRolloutExitPathNodeIds() : null,
-                    // A log label only (phase=touchdown). Whether the route may start held is the
+                    // Labels the log line (phase=touchdown) and keeps the plain-route start rules
+                    // (RTE-37, STR-24) off this landing route. Whether the route may start held is the
                     // pass's own call, from the aircraft's position: none while it stands within
                     // the clear margin of any runway, none once it has rolled 10 m along the route.
                     landingRolloutRoute: true);
@@ -2096,7 +2108,7 @@ public partial class TaxiGuidanceManager
         {
             _rolloutToneLogUtc = toneLogNowUtc;
             string toneDiag = toneLive
-                ? $"desired={toneDesiredHeading:F1} raw={toneRawError:+0.0;-0.0} smooth={_smoothedHeadingError:+0.0;-0.0}"
+                ? FormattableString.Invariant($"desired={toneDesiredHeading:F1} raw={toneRawError:+0.0;-0.0} smooth={_smoothedHeadingError:+0.0;-0.0}")
                 : "desired=- raw=- smooth=-";
             double lateralSignedM = SignedLateralFromRunwayMeters(
                 lat, lon, _rolloutRunway!.StartLat, _rolloutRunway.StartLon, _rolloutRunwayHeadingTrue);
@@ -2241,7 +2253,8 @@ public partial class TaxiGuidanceManager
             announceSummary: false,
             startTaxiwayName: startTwy,
             exitPathNodeIds: startTwy != null ? GetRolloutExitPathNodeIds() : null,
-            // A log label only (phase=touchdown), as at UpdateLandingRollout's handoff. The pass
+            // Labels the log line (phase=touchdown) and keeps the plain-route start rules off this
+            // landing route, as at UpdateLandingRollout's handoff. The pass
             // itself refuses a start hold while the aircraft stands within the clear margin of any
             // runway, so nothing here has to say whether it is on the pavement.
             landingRolloutRoute: true);
@@ -4046,6 +4059,7 @@ public partial class TaxiGuidanceManager
         _userHoldShortIndices = null;
         _userRunwayHoldShorts = null;
         _userTaxiwayHoldShorts = null;
+        _userHoldingPointHoldShorts = null;
         _rolloutExit = null;
         _isLandingExitRoute = false; // no exit route — runway-end countdown
         _landingExitOffPavement = true;

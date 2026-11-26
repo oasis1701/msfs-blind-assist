@@ -82,4 +82,57 @@ public class RouteStartTurnCueTests
         Assert.Equal("Sharp turn left.", RouteStartTurnCue.Compose(-110.0, "  "));
         Assert.Equal("Make a U-turn to the left.", RouteStartTurnCue.Compose(-175.78, null));
     }
+
+    // ── PreferRampSide: PHNL taxiway C, 2026-11-06. Pushed back facing away from the route, the short
+    // way round was left, onto the grass; every stand lay to the right, across the ramp.
+
+    private const double AcLat = 21.0, AcLon = -157.0, AcHeading = 35.0;
+
+    private static (double Lat, double Lon) Stand(double forwardM, double rightM)
+    {
+        double h = AcHeading * Math.PI / 180.0;
+        double north = forwardM * Math.Cos(h) - rightM * Math.Sin(h);
+        double east = forwardM * Math.Sin(h) + rightM * Math.Cos(h);
+        return (AcLat + north / 111132.0, AcLon + east / (111132.0 * Math.Cos(AcLat * Math.PI / 180.0)));
+    }
+
+    private static double Prefer(double error, params (double Lat, double Lon)[] stands)
+        => RouteStartTurnCue.PreferRampSide(error, AcLat, AcLon, AcHeading, stands);
+
+    [Fact]
+    public void Ramp_side_flips_a_near_reversal_toward_the_only_stands()
+        => Assert.Equal(179.0, Prefer(-171.2, Stand(20, 100), Stand(-40, 100)));
+
+    [Fact]
+    public void Ramp_side_flips_a_right_turn_toward_stands_on_the_left()
+        => Assert.Equal(-179.0, Prefer(171.2, Stand(20, -100)));
+
+    [Fact]
+    public void Stands_on_both_sides_change_nothing()
+        => Assert.Equal(-171.2, Prefer(-171.2, Stand(20, 100), Stand(20, -100)));
+
+    [Fact]
+    public void No_stands_change_nothing()
+        => Assert.Equal(-171.2, Prefer(-171.2));
+
+    [Fact]
+    public void Stands_on_the_short_side_change_nothing()
+        => Assert.Equal(-171.2, Prefer(-171.2, Stand(20, -100)));
+
+    [Fact]
+    public void Stands_on_the_axis_do_not_count()
+        => Assert.Equal(-171.2, Prefer(-171.2, Stand(100, 10)));
+
+    [Fact]
+    public void Below_the_threshold_changes_nothing()
+        => Assert.Equal(-149.0, Prefer(-149.0, Stand(20, 100)));
+
+    [Fact]
+    public void A_stand_beyond_the_search_radius_does_not_count()
+        => Assert.Equal(-171.2, Prefer(-171.2, Stand(0, 250)));
+
+    [Fact]
+    public void The_flipped_error_still_composes_a_turnaround_cue_saying_right()
+        => Assert.Equal("Taxiway C is behind you. Turn right to come around.",
+            RouteStartTurnCue.Compose(Prefer(-171.2, Stand(20, 100)), "C"));
 }

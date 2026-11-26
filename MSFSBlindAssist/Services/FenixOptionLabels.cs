@@ -1,5 +1,5 @@
 // The Fenix EFB's own words for its settings: label, description, control hint and, for the options that
-// list their values, a label per value (EFB bundle 3.0.0.7426, the chunk that defines the humanizeKey
+// list their values, a label per value (EFB bundle 3.0.0.7852, the chunk that defines the humanizeKey
 // pipe). The rows below are that table, one per line as `key|value|label|description|control`; an empty
 // `value` is the option's own row, any other is a value label of the option above it.
 //
@@ -27,7 +27,15 @@ public sealed record FenixOptionText(string Label, string Description, string? C
 public static class FenixOptionLabels
 {
     /// <summary>The Fenix software version whose EFB bundle the table was taken from.</summary>
-    public const string SourceVersion = "3.0.0.7426";
+    public const string SourceVersion = "3.0.0.7852";
+
+    /// <summary>
+    /// True when the running Fenix, spelled as <c>FenixDataService.GetSoftwareVersionAsync</c> gives it, is known and
+    /// is not the build the table was taken from, so a few labels may differ from that Fenix's own EFB. An unknown
+    /// version is no mismatch: there is nothing to compare.
+    /// </summary>
+    public static bool IsFromAnotherBuild(string? runningVersion)
+        => !string.IsNullOrWhiteSpace(runningVersion) && !string.Equals(runningVersion, SourceVersion, StringComparison.Ordinal);
 
     private static readonly Lazy<IReadOnlyDictionary<string, FenixOptionText>> Loaded = new(() => Parse(Table));
 
@@ -91,6 +99,7 @@ act_count||Additional Centre Tanks (ACT)|The number of Additional Centre Tanks i
 adirs_type||Air Data Inertial Reference System (ADIRS)|Swap between older and newer ADIRS panels.|
 adirs_type|Gnadirs|GNADIRS||
 adirs_type|Adirs|ADIRS||
+anc_in_flight_deck_only||ANC in Flight Deck Only|Whether the Active Noise Cancellation (ANC) headset effects are applied only in the flight deck.|
 atc_auto_mode_c_on_ground_enabled||ATC Auto Mode C on Ground|Whether the transponder should squawk Mode C while on the ground in AUTO.|
 acp_type||Audio Control Panel (ACP)|Swap between older and newer ACP styles.|
 acp_type|Classic|||
@@ -184,8 +193,9 @@ lateral_deviation_scales_enabled||Lateral Deviation Scales|Show lateral deviatio
 metric_standby_enabled||Metric Standby Altimeter|Shows the analog standby altimeter in metric units when the ISIS is not present. If the ISIS is present, it will show metric units instead.|
 msn||Manufacturer Serial Number (MSN)|The unique serial number of the aircraft, usually found on a sticker in the cockpit.|
 mute_cabin_audio_in_background||Mute Cabin Audio in Background|Whether audio from the cabin announcement system should be muted when MSFS is not the active window.|
-navigraph_navdata_mode||Navigraph Navdata Mode|Choose to automatically or manually update Navigraph Navdata from the A/C STATUS page.|
+navigraph_navdata_mode||Navdata Mode|Choose automatic navdata updates, manual Navigraph updates, or local database imports. Manual updates and imports use the A/C STATUS page.|
 navigraph_navdata_mode|HotStandby|Hot Standby||
+navigraph_navdata_mode|ManualImport|Manual Import||
 navigraph_refresh_token||Navigraph|Connect your Navigraph account to access Charts and FMS Data.|action-button
 noise_package_enabled||CFM56 Noise Package|Whether the noise package is installed, characterised by chevrons at the rear of the engine.|
 non_smoker_enabled||Non-Smoker Aircraft|Keep the no smoking signs in the cabin always illuminated, regardless of switch position.|
@@ -198,8 +208,8 @@ printer_font_size||Printer: Font Size|The size of the font used by the printer.|
 printer_margin_left||Printer: Left Margin|The left margin for the printer.|
 printer_margin_top||Printer: Top Margin|The top margin for the printer.|
 printer_name||Printer|Select the printer target used by the EFB.|select
-pushover_application_key||Pushover: Application Key|The application key when Pushover is selected as the active printer.|
-pushover_token||Pushover: Token|The user token when Pushover is selected as the active printer.|
+pushover_application_key||Pushover: API Token|The API Token of your Pushover application, used when Pushover is selected as the active printer.|
+pushover_token||Pushover: User Key|Your Pushover User Key, shown on the Pushover dashboard, used when Pushover is selected as the active printer.|
 refuel_rate_type||Refuel Rate|The rate at which the aircraft is refueled in kilograms per second.|
 refuel_rate_type|Realistic|Realistic (16 Kg/s)||
 refuel_rate_type|Quick|Quick (32 Kg/s)||
@@ -230,6 +240,7 @@ virtual_purser_fap_control_enabled||Virtual Purser: Flight Attendant Panel (FAP)
 virtual_purser_keep_emer_exits_armed_for_turnaround||Virtual Purser: Keep Emergency Exits Armed|Whether the purser should keep mid-cabin doors armed during turnaround.|
 virtual_purser_lavatories_locking_enabled||Virtual Purser: Lavatories Locking|Simulates the purser locking the lavatories during takeoff, landing, and when the seatbelt signs are on.|
 virtual_purser_lock_lavatories_during_refueling||Virtual Purser: Lock Lavatories During Refueling|Simulates the purser locking the lavatories when refueling is taking place.|
+window_dirt_enabled||Window Dirt|Whether the flight deck windows should have some dirt on them.|
 weather_provider_type||Weather Provider|Select the weather provider for the EFB.|
 weight_unit||Weight Unit|Select the unit for weight values throughout the aircraft.|
 wifi_antenna_type||SATCOM Antenna|Select the type of SATCOM antenna installed in the aircraft.|

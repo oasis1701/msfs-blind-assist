@@ -565,7 +565,7 @@ public class WeatherRadarForm : Form
         double visKm = c.SurfaceVisibility * 1.609344;
         string visStr = c.SurfaceVisibility >= 10
             ? "10+ statute miles (16+ km)"
-            : $"{c.SurfaceVisibility:F1} statute miles ({visKm:F1} km)";
+            : FormattableString.Invariant($"{c.SurfaceVisibility:F1} statute miles ({visKm:F1} km)");
         sb.AppendLine($"Visibility: {visStr}");
         sb.AppendLine($"Temperature (at altitude): {c.AmbientTemperature:F0}°C");
         sb.AppendLine($"Surface temperature: {c.SurfaceTemperature:F0}°C");
@@ -573,11 +573,11 @@ public class WeatherRadarForm : Form
         if (tempDew != null)
             sb.AppendLine(tempDew);
         if (c.CloudCeilingFtAgl > 0)
-            sb.AppendLine($"Cloud ceiling: {c.CloudCeilingFtAgl:N0} ft AGL");
+            sb.AppendLine(FormattableString.Invariant($"Cloud ceiling: {c.CloudCeilingFtAgl:N0} ft AGL"));
         else
             sb.AppendLine("Cloud ceiling: above 8,000 ft AGL or no broken/overcast layer");
         if (c.QnhMb > 0)
-            sb.AppendLine($"QNH: {c.QnhMb:F0} hPa / {(c.QnhMb * 0.02953):F2} inHg");
+            sb.AppendLine(FormattableString.Invariant($"QNH: {c.QnhMb:F0} hPa / {(c.QnhMb * 0.02953):F2} inHg"));
 
         // In-cloud from SimConnect (the only reliable source — AS API doesn't
         // expose it). MSFS knows where its rendered clouds are regardless of
@@ -762,7 +762,7 @@ public class WeatherRadarForm : Form
         var sigmets = await sigmetTask;
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"Position: {lat:F2}°, {lon:F2}° | Range: {displayRange} nm");
+        sb.AppendLine(FormattableString.Invariant($"Position: {lat:F2}°, {lon:F2}° | Range: {displayRange} nm"));
         sb.AppendLine(new string('─', 58));
         if (modeCaveat != null)
         {
@@ -810,7 +810,7 @@ public class WeatherRadarForm : Form
             foreach (var p in pireps)
             {
                 string hazard = decode ? WeatherService.DecodePirepHazard(p) : p.HazardSummary;
-                string alt    = decode ? $"{p.AltitudeFt:N0} ft" : $"FL{p.AltitudeFt / 100:D3}";
+                string alt    = decode ? FormattableString.Invariant($"{p.AltitudeFt:N0} ft") : $"FL{p.AltitudeFt / 100:D3}";
 
                 sb.AppendLine($"[PIREP] {hazard} — {alt}");
                 sb.AppendLine($"  {p.BearingDeg:F0}° / {p.DistanceNm:F0} nm" +
@@ -849,13 +849,13 @@ public class WeatherRadarForm : Form
             return "Winds aloft data unavailable.";
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"Aircraft: {altFt:N0} ft  |  forecast winds:");
+        sb.AppendLine(FormattableString.Invariant($"Aircraft: {altFt:N0} ft  |  forecast winds:"));
         sb.AppendLine(new string('─', 36));
 
         foreach (var w in winds)
         {
             string marker = Math.Abs(w.AltitudeFt - altFt) < 500 ? " (nearest)" : "";
-            sb.AppendLine($"{w.AltitudeFt:N0} ft:  {w.DirectionDeg:F0}° / {w.SpeedKts:F0} kts{marker}");
+            sb.AppendLine(FormattableString.Invariant($"{w.AltitudeFt:N0} ft:  {w.DirectionDeg:F0}° / {w.SpeedKts:F0} kts{marker}"));
         }
 
         sb.AppendLine("Source: Open-Meteo");

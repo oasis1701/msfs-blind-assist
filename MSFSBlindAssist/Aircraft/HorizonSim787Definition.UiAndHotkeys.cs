@@ -659,7 +659,7 @@ public partial class HorizonSim787Definition
                 if (isMach)
                 {
                     double? mach = simConnect.GetCachedVariableValue("HS787_MCP_Mach");
-                    string machStr = mach != null ? $"Mach {mach.Value:0.00}" : "Mach unavailable";
+                    string machStr = mach != null ? FormattableString.Invariant($"Mach {mach.Value:0.00}") : "Mach unavailable";
                     string mode = flchOn ? " FLCH" : "";
                     announcer.AnnounceImmediate($"{machStr}{mode}");
                 }
@@ -716,7 +716,7 @@ public partial class HorizonSim787Definition
                 {
                     double? fpa = simConnect.GetCachedVariableValue("HS787_MCP_FPA");
                     if (fpa != null)
-                        announcer.AnnounceImmediate($"FPA {fpa.Value:+0.0;-0.0} degrees");
+                        announcer.AnnounceImmediate(FormattableString.Invariant($"FPA {fpa.Value:+0.0;-0.0} degrees"));
                     else
                         announcer.AnnounceImmediate("FPA not available");
                 }
@@ -866,13 +866,7 @@ public partial class HorizonSim787Definition
                     announcer.AnnounceImmediate("Altimeter not available");
                     return true;
                 }
-                if (Math.Abs(inHg.Value - 29.92) < 0.005)
-                {
-                    announcer.AnnounceImmediate("Altimeter standard");
-                    return true;
-                }
-                int hpa = (int)Math.Round(inHg.Value * 33.8639);
-                announcer.AnnounceImmediate($"Altimeter: {hpa}, {inHg.Value:0.00}");
+                announcer.AnnounceImmediate(AltimeterPhrase.Sentence(inHg.Value));
                 return true;
             }
 

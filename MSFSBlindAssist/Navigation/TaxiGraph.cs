@@ -122,6 +122,11 @@ public partial class TaxiGraph
         public double PavementLat1, PavementLon1;
         public double PavementLat2, PavementLon2;
         public double PavementHalfWidthMeters;
+
+        // Both ends carry closed markings in the runway table (set by Build when it has one). Not a
+        // filter: every runway-pavement question still sees a closed runway; only the route start on
+        // a runway (RouteRunwayStart) treats one as a taxiway the aircraft is not rolling along.
+        public bool IsClosed;
     }
     public List<RunwayCenterline> RunwayCenterlines { get; } = new();
 
@@ -711,6 +716,13 @@ public partial class TaxiGraph
             cl.PavementLat1 = cl.Lat1; cl.PavementLon1 = cl.Lon1;
             cl.PavementLat2 = cl.Lat2; cl.PavementLon2 = cl.Lon2;
             cl.PavementHalfWidthMeters = cl.HalfWidthMeters;
+
+            // Closed markings are flagged per END: the runway is closed when every end the table
+            // has a row for is.
+            runwayByName.TryGetValue(name1?.Trim() ?? "", out var end1Row);
+            runwayByName.TryGetValue(name2?.Trim() ?? "", out var end2Row);
+            cl.IsClosed = (end1Row != null || end2Row != null)
+                          && (end1Row?.IsClosed ?? true) && (end2Row?.IsClosed ?? true);
 
             if (!runwayByName.TryGetValue(name1?.Trim() ?? "", out var rwy) &&
                 !runwayByName.TryGetValue(name2?.Trim() ?? "", out rwy))
@@ -4422,7 +4434,9 @@ public partial class TaxiGraph
 
     private static string GetSpatialHashKey(double lat, double lon)
     {
-        return $"{Math.Round(lat, SPATIAL_HASH_PRECISION)},{Math.Round(lon, SPATIAL_HASH_PRECISION)}";
+        // Invariant: under a comma-decimal culture the two numbers and their separator would share one character.
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"{Math.Round(lat, SPATIAL_HASH_PRECISION)},{Math.Round(lon, SPATIAL_HASH_PRECISION)}");
     }
 
     /// <summary>

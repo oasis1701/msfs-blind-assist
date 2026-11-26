@@ -212,3 +212,322 @@ test('without a key, "(now …)" and an after-colon tail are part of the key aga
   assert.notStrictEqual(s.buttonByLabel('Runway next'), step, 'an unkeyed "(now …)" change was patched in place');
   assert.notStrictEqual(s.buttonByLabel('GPU'), gpu, 'an unkeyed after-colon change was patched in place');
 });
+
+// The flyPad's error notices: the pilot presses an error's Dismiss button and the next scrape no
+// longer lists it. Removing the focused node would drop focus to <body> and the screen reader
+// somewhere arbitrary; the shell moves it to the control that followed it, else the page heading.
+const alertItem = (text, key) => ({ idx: 0, kind: 'alert', controlType: '', text, clickable: false, level: 0, live: 'assertive', disabled: false, key });
+test('dismissing a focused notice moves focus to the next control, or the page heading', (t) => {
+  const s = loadShell(t);
+  const notice = [alertItem('Error: OFP airport is invalid', 'notice:1'), btn(100001, 'Dismiss: OFP airport is invalid', { key: 'notice-dismiss:1' })];
+  s.render('Performance', notice.concat([btn(7, 'Calculate')]));
+  s.buttonByLabel('Dismiss').focus();
+  s.render('Performance', [btn(7, 'Calculate')]);
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('Calculate'));
+
+  s.render('Performance', notice);
+  s.buttonByLabel('Dismiss').focus();
+  s.render('Performance', []);
+  assert.strictEqual(s.window.document.activeElement.id, 'pgttl');
+});
+
+// A focused unkeyed button whose label changes is rebuilt as a new node in the same place: focus
+// goes to that rebuilt button, never to the control after it (Enter would then press the wrong one).
+test('a focused button rebuilt by a label change keeps the focus in its place', (t) => {
+  const s = loadShell(t);
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'GPU Connect'), btn(3, 'Next')]);
+  s.buttonByLabel('GPU Connect').focus();
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'GPU Disconnect'), btn(3, 'Next')]);
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('GPU Disconnect'));
+});
+
+// A notice at the top of the page going (a warning expiring, an error cleared by a retry) must not
+// move the controls below it: a node moved by insertBefore loses the focus.
+test('a notice going from above keeps the focus on the control the pilot is on', (t) => {
+  const s = loadShell(t);
+  const notice = [alertItem('Warning: Aircraft needs to be powered to load presets', 'notice:2')];
+  s.render('Performance', notice.concat([btn(6, 'Clear'), btn(7, 'Calculate')]));
+  const calc = s.buttonByLabel('Calculate');
+  calc.focus();
+  s.render('Performance', [btn(6, 'Clear'), btn(7, 'Calculate')]);
+  assert.strictEqual(s.window.document.activeElement, calc);
+});
+
+// The removed control was the last one on the page: focus stays near it, on the control before it,
+// never back at the top of the document.
+test('a focused last control going moves the focus to the control before it', (t) => {
+  const s = loadShell(t);
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'Catering'), btn(3, 'Fuel Truck')]);
+  s.buttonByLabel('Fuel Truck').focus();
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'Catering')]);
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('Catering'));
+});
+
+// With no control before it that stays, a notice listed at the top in the same render is not the
+// focused control's place: the control rebuilt there (same agent idx) keeps the focus, and a control
+// that simply went hands it to the next one, never to the new notice's Dismiss button.
+test('with nothing before it, a rebuilt first control keeps the focus over a new notice above it', (t) => {
+  const s = loadShell(t);
+  const notice = [alertItem('Error: Could not fetch airport', 'notice:3'), btn(100003, 'Dismiss: Could not fetch airport', { key: 'notice-dismiss:3' })];
+  s.render('Ground', [btn(2, 'GPU Connect'), btn(3, 'Next')]);
+  s.buttonByLabel('GPU Connect').focus();
+  s.render('Ground', notice.concat([btn(2, 'GPU Disconnect'), btn(3, 'Next')]));
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('GPU Disconnect'));
+
+  s.render('Ground', [btn(5, 'Fuel Truck'), btn(6, 'Next')]);
+  s.buttonByLabel('Fuel Truck').focus();
+  s.render('Ground', notice.concat([btn(5, 'Next')]));    // the agent re-stamps Next as idx 5
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('Next'));
+});
+
+// A control that stays but is moved by a re-sort loses the focus to insertBefore: it gets it back.
+test('a focused control moved by a re-sort keeps the focus', (t) => {
+  const s = loadShell(t);
+  s.render('Ground', [btn(1, 'Catering'), btn(2, 'Baggage'), btn(3, 'Fuel Truck')]);
+  const fuel = s.buttonByLabel('Fuel Truck');
+  fuel.focus();
+  s.render('Ground', [btn(1, 'Fuel Truck'), btn(2, 'Catering'), btn(3, 'Baggage')]);
+  assert.strictEqual(s.buttonByLabel('Fuel Truck'), fuel, 'the node was rebuilt, not moved');
+  assert.strictEqual(s.window.document.activeElement, fuel);
+});
+
+// ---- opt-in Enter-only edit box (item key commit = 'enter') ----
+const fld = (idx, text, value, extra) => Object.assign({ idx, kind: 'field', controlType: 'text', text, value, clickable: false, level: 0, live: '', disabled: false }, extra || {});
+const keydown = (win, el, k) => el.dispatchEvent(new win.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+const sets = (s) => s.posted.map((m) => JSON.parse(m)).filter((m) => m.type === 'set');
+// The pilot typing: the box's text changes and the browser fires 'input', as a keystroke does (the Enter-only box counts only
+// text typed since the shell last wrote it, so a test that sets the value without the event is no typing).
+const typeIn = (win, box, v) => { box.value = v; box.dispatchEvent(new win.Event('input', { bubbles: true })); };
+
+test('An_enter_only_box_posts_on_enter_only', (t) => {
+  const s = loadShell(t);
+  s.render('Fuel', [fld(3, 'Zero fuel weight', '100', { commit: 'enter' })]);
+  const box = s.window.document.querySelector('input.in');
+  typeIn(s.window, box, '250');
+  box.dispatchEvent(new s.window.Event('change', { bubbles: true }));
+  assert.strictEqual(sets(s).length, 0, 'change must not post');
+  keydown(s.window, box, 'Enter');
+  assert.deepStrictEqual(sets(s), [{ type: 'set', idx: '3', value: '250', controlType: 'text' }]);
+});
+
+test('Leaving_an_enter_only_box_restores_it', async (t) => {
+  const s = loadShell(t);
+  s.render('Fuel', [fld(3, 'Zero fuel weight', '100', { commit: 'enter' })]);
+  const box = s.window.document.querySelector('input.in');
+  typeIn(s.window, box, '250');
+  box.dispatchEvent(new s.window.Event('blur'));
+  assert.strictEqual(box.value, '100');
+  assert.strictEqual(sets(s).length, 0);
+  assert.strictEqual(await s.spoken(), 'Zero fuel weight not changed');
+});
+
+test('A_box_without_commit_posts_on_change_as_before', (t) => {
+  const s = loadShell(t);
+  s.render('Fuel', [fld(3, 'Zero fuel weight', '100')]);
+  const box = s.window.document.querySelector('input.in');
+  box.value = '250';
+  box.dispatchEvent(new s.window.Event('change', { bubbles: true }));
+  assert.deepStrictEqual(sets(s), [{ type: 'set', idx: '3', value: '250', controlType: 'text' }]);
+  box.value = '260';
+  box.dispatchEvent(new s.window.Event('blur'));
+  assert.strictEqual(box.value, '260', 'no restore without commit');
+});
+
+// Left after Enter, before the read-back came: the box shows what the tablet shows (D2), its text before the typing, and says
+// nothing (the set is on its way); the read-back's value then shows in it.
+test('An_enter_only_box_left_before_the_read_back_shows_the_tablets_text_until_it_arrives', async (t) => {
+  const s = loadShell(t);
+  s.render('Fuel', [fld(3, 'Zero fuel weight', '100', { commit: 'enter' })]);
+  const box = s.window.document.querySelector('input.in');
+  typeIn(s.window, box, '250');
+  keydown(s.window, box, 'Enter');
+  assert.strictEqual(sets(s).length, 1);
+  box.dispatchEvent(new s.window.Event('blur'));
+  assert.strictEqual(box.value, '100');
+  assert.strictEqual(await s.spoken(), 'EFB page: Fuel', 'only the page announce, nothing about the box');
+  s.render('Fuel', [fld(3, 'Zero fuel weight', '250', { commit: 'enter' })]);
+  assert.strictEqual(box.value, '250');
+});
+
+// The final review's I1. The read-back arrives while the pilot is still in the box (the normal case after Enter), in the tablet's
+// own text: the Airport box upper-cases "kpdx". The box keeps the pilot's text while they are in it, and leaving it shows the
+// tablet's text with nothing said: the runner said "Airport: KPDX", and "Airport not changed" after it would be wrong. A second
+// Enter on the text the pilot typed types it again (the re-review's N1): the shell cannot tell a read-back from the push of a
+// failed typing, and after a failure Enter is the pilot's retry.
+test('An_enter_only_box_left_after_the_tablet_changed_the_text_shows_it_and_says_nothing', async (t) => {
+  const s = loadShell(t);
+  s.render('PERF calc', [fld(3, 'Airport', 'KSEA', { commit: 'enter' })]);
+  const box = s.window.document.querySelector('input.in');
+  box.focus();
+  box.value = 'kpdx';
+  box.dispatchEvent(new s.window.Event('input', { bubbles: true }));
+  keydown(s.window, box, 'Enter');
+  s.render('PERF calc', [fld(3, 'Airport', 'KPDX', { commit: 'enter' })]);
+  assert.strictEqual(s.window.document.activeElement, box, 'the re-render kept the focus');
+  assert.strictEqual(box.value, 'kpdx', 'the box the pilot is in is never written');
+  keydown(s.window, box, 'Enter');
+  assert.deepStrictEqual(sets(s).map((m) => m.value), ['kpdx', 'kpdx'], 'a second Enter on the typed text types it again');
+  box.blur();
+  assert.strictEqual(box.value, 'KPDX');
+  assert.strictEqual(await s.spoken(), 'EFB page: PERF calc', 'only the page announce, nothing about the box');
+});
+
+// The tablet took none of it (Airport drops digits, so "k1" leaves KSEA): the window's next read shows the same value, so no new value
+// arrives at all. Leaving the box shows the tablet's text again, and says nothing (the runner said what the tablet reads).
+test('An_enter_only_box_whose_text_the_tablet_rejected_shows_the_tablets_text_on_leaving', async (t) => {
+  const s = loadShell(t);
+  s.render('PERF calc', [fld(3, 'Airport', 'KSEA', { commit: 'enter' })]);
+  const box = s.window.document.querySelector('input.in');
+  box.focus();
+  box.value = 'k1';
+  box.dispatchEvent(new s.window.Event('input', { bubbles: true }));
+  keydown(s.window, box, 'Enter');
+  s.render('PERF calc', [fld(3, 'Airport', 'KSEA', { commit: 'enter' })]);
+  box.blur();
+  assert.strictEqual(box.value, 'KSEA');
+  assert.strictEqual(await s.spoken(), 'EFB page: PERF calc', 'only the page announce, nothing about the box');
+  assert.strictEqual(sets(s).length, 1);
+});
+
+// A long text goes in several runs, and the window may read the box between them: a partial value arrives, then the final one (the
+// scrub's made-up key, 44 characters: two runs). In the box throughout, the pilot leaves it showing the final value with nothing
+// said; left between the two, it shows the partial one, silently, and follows the final one when it arrives.
+const acarsKey = (v) => [fld(4, 'Sayintentions ACARS key', v, { commit: 'enter' })];
+const longKey = 'MADEUPMADEUPMADEUPMADEUPMADEUPMADEUPMADEUPMA', partKey = longKey.slice(0, 40);
+
+function enterLongKey(s) {
+  s.render('AIRAC data', acarsKey(''));
+  const box = s.window.document.querySelector('input.in');
+  box.focus();
+  box.value = longKey;
+  box.dispatchEvent(new s.window.Event('input', { bubbles: true }));
+  keydown(s.window, box, 'Enter');
+  return box;
+}
+
+test('An_enter_only_box_takes_a_partial_value_then_the_final_one_while_the_pilot_is_in_it', async (t) => {
+  const s = loadShell(t);
+  const box = enterLongKey(s);
+  s.render('AIRAC data', acarsKey(partKey));
+  s.render('AIRAC data', acarsKey(longKey));
+  box.blur();
+  assert.strictEqual(box.value, longKey);
+  assert.strictEqual(sets(s).length, 1);
+  assert.strictEqual(await s.spoken(), 'EFB page: AIRAC data', 'only the page announce, nothing about the box');
+});
+
+test('An_enter_only_box_left_between_a_partial_value_and_the_final_one_follows_the_final_one', async (t) => {
+  const s = loadShell(t);
+  const box = enterLongKey(s);
+  s.render('AIRAC data', acarsKey(partKey));
+  box.blur();
+  assert.strictEqual(box.value, partKey);
+  s.render('AIRAC data', acarsKey(longKey));
+  assert.strictEqual(box.value, longKey);
+  assert.strictEqual(await s.spoken(), 'EFB page: AIRAC data', 'only the page announce, nothing about the box');
+});
+
+// Typing again after the read-back is a new edit: leaving the box without Enter then puts the tablet's text back and says so, as
+// any edit left without Enter does.
+test('Typing_again_after_the_read_back_is_a_new_edit_that_leaving_does_not_type', async (t) => {
+  const s = loadShell(t);
+  s.render('PERF calc', [fld(3, 'Airport', 'KSEA', { commit: 'enter' })]);
+  const box = s.window.document.querySelector('input.in');
+  box.focus();
+  box.value = 'kpdx';
+  box.dispatchEvent(new s.window.Event('input', { bubbles: true }));
+  keydown(s.window, box, 'Enter');
+  s.render('PERF calc', [fld(3, 'Airport', 'KPDX', { commit: 'enter' })]);
+  box.value = 'KPDXY';
+  box.dispatchEvent(new s.window.Event('input', { bubbles: true }));
+  box.blur();
+  assert.strictEqual(box.value, 'KPDX');
+  assert.strictEqual(sets(s).length, 1);
+  assert.strictEqual(await s.spoken(), 'Airport not changed');
+});
+
+// The re-review's N1. A typing that failed ("the tablet's keyboard did not come up", "not typed") leaves the item's value as it was,
+// and the pilot's natural retry is Enter again on the text they typed: it types it again.
+test('After_a_failed_typing_a_second_Enter_types_it_again', (t) => {
+  const s = loadShell(t);
+  s.render('PERF calc', [fld(3, 'Airport', 'KSEA', { commit: 'enter' })]);
+  const box = s.window.document.querySelector('input.in');
+  box.focus();
+  typeIn(s.window, box, 'KPDX');
+  keydown(s.window, box, 'Enter');
+  s.render('PERF calc', [fld(3, 'Airport', 'KSEA', { commit: 'enter' })]);   // the failure's push: the value unchanged
+  keydown(s.window, box, 'Enter');
+  assert.deepStrictEqual(sets(s).map((m) => m.value), ['KPDX', 'KPDX']);
+});
+
+// The pilot sits in a box they have not typed in while BlueBird changes its value (PERF calc fills the runway length from the
+// airport): the box shows the tablet's new value, Enter posts nothing (it would type the stale one back), and leaving says nothing.
+test('An_untouched_box_the_pilot_is_in_follows_the_tablet_and_Enter_posts_nothing', async (t) => {
+  const s = loadShell(t);
+  s.render('PERF calc', [fld(4, 'Length (FT)', '3500', { commit: 'enter' })]);
+  const box = s.window.document.querySelector('input.in');
+  box.focus();
+  s.render('PERF calc', [fld(4, 'Length (FT)', '4000', { commit: 'enter' })]);
+  assert.strictEqual(box.value, '4000');
+  keydown(s.window, box, 'Enter');
+  assert.strictEqual(sets(s).length, 0);
+  box.blur();
+  assert.strictEqual(box.value, '4000');
+  assert.strictEqual(await s.spoken(), 'EFB page: PERF calc', 'only the page announce, nothing about the box');
+});
+
+// Enter, then left before the read-back (the box shows the tablet's old text), then back in when the read-back arrives: the box shows
+// the read-back, since nothing was typed since the shell wrote it, and Enter posts nothing (it would type the old text back over it).
+test('Back_in_the_box_left_before_the_read_back_it_shows_the_read_back_and_Enter_posts_nothing', (t) => {
+  const s = loadShell(t);
+  s.render('PERF calc', [fld(3, 'Airport', 'KSEA', { commit: 'enter' })]);
+  const box = s.window.document.querySelector('input.in');
+  box.focus();
+  typeIn(s.window, box, 'kpdx');
+  keydown(s.window, box, 'Enter');
+  box.blur();
+  assert.strictEqual(box.value, 'KSEA');
+  box.focus();
+  s.render('PERF calc', [fld(3, 'Airport', 'KPDX', { commit: 'enter' })]);
+  assert.strictEqual(box.value, 'KPDX');
+  keydown(s.window, box, 'Enter');
+  assert.deepStrictEqual(sets(s).map((m) => m.value), ['kpdx']);
+});
+
+// The final review's M6: nothing on an Enter-only box said that only Enter types it. It carries that as its accessible description
+// (aria-description, which NVDA says after the box's name, role and value when it gets the focus); a box with no commit key, every
+// other EFB's, carries none.
+test('An_enter_only_box_says_that_Enter_types_it_and_another_box_says_nothing_more', (t) => {
+  const s = loadShell(t);
+  s.render('PERF calc', [fld(3, 'Airport', 'KSEA', { commit: 'enter' }), fld(4, 'Zero fuel weight', '100')]);
+  const [enterOnly, other] = s.window.document.querySelectorAll('input.in');
+  assert.strictEqual(enterOnly.getAttribute('aria-description'), 'Press Enter to type it on the tablet.');
+  assert.strictEqual(enterOnly.getAttribute('aria-label'), 'Airport', 'the name stays the label alone');
+  assert.strictEqual(other.getAttribute('aria-description'), null);
+  assert.strictEqual(other.getAttribute('aria-describedby'), null);
+});
+
+test('Enter_with_the_text_unchanged_posts_and_says_nothing', async (t) => {
+  const s = loadShell(t);
+  s.render('Fuel', [fld(3, 'Zero fuel weight', '100', { commit: 'enter' })]);
+  const box = s.window.document.querySelector('input.in');
+  keydown(s.window, box, 'Enter');
+  assert.strictEqual(sets(s).length, 0);
+  assert.strictEqual(await s.spoken(), 'EFB page: Fuel', 'only the page announce, nothing about the box');
+});
+
+// Review of PR 364: window.__setWaiting puts the window's waiting line (with the sim's refusal reason)
+// in place before the tablet's first content, and must never touch the page once content has rendered,
+// or a late push would overwrite the first text line of the real tablet.
+test('the waiting line changes before the first render and never after it', (t) => {
+  const s = loadShell(t);
+  const first = () => s.window.document.querySelector('#list p.txt');
+  assert.strictEqual(first().textContent, 'Waiting for the EFB…', 'the page\'s own initial line');
+  s.window.__setWaiting('Waiting for the EFB. The simulator keeps closing the connection; another program may be using it.');
+  assert.strictEqual(first().textContent, 'Waiting for the EFB. The simulator keeps closing the connection; another program may be using it.');
+  s.render('Dashboard', [{ idx: 1, kind: 'text', controlType: '', text: 'Flight plan loaded', clickable: false, level: 0, live: '', disabled: false }]);
+  assert.strictEqual(first().textContent, 'Flight plan loaded');
+  s.window.__setWaiting('Waiting for the EFB…');
+  assert.strictEqual(first().textContent, 'Flight plan loaded', 'a waiting line pushed after the render changed the content');
+  assert.strictEqual(s.window.document.querySelectorAll('#list p.txt').length, 1);
+});

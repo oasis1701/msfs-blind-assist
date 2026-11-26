@@ -1,0 +1,2536 @@
+{
+  "apps": [
+    {
+      "key": 6,
+      "class": "HOME",
+      "controls": []
+    },
+    {
+      "key": 8,
+      "class": "NAVIGATION",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "main_grid",
+          "text": "",
+          "x": 0,
+          "y": 32,
+          "w": 1397,
+          "h": 1016,
+          "children": [
+            {
+              "kind": "other",
+              "name": "gradbox_tl",
+              "text": "",
+              "x": 0,
+              "y": 32,
+              "w": 250,
+              "h": 50,
+              "children": [
+                {
+                  "kind": "other",
+                  "name": "title_stack",
+                  "text": "",
+                  "x": 0,
+                  "y": 32,
+                  "w": 250,
+                  "h": 50,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "home_btn",
+                      "text": "",
+                      "x": 0,
+                      "y": 32,
+                      "w": 50,
+                      "h": 50,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "label",
+                      "name": "page_title_label",
+                      "text": "NAVIGATION",
+                      "x": 60,
+                      "y": 41.5,
+                      "w": 184,
+                      "h": 36,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "other",
+              "name": "gradbox_tr",
+              "text": "",
+              "x": 250,
+              "y": 32,
+              "w": 1147,
+              "h": 50,
+              "children": []
+            },
+            {
+              "kind": "other",
+              "name": "gradbox_bl",
+              "text": "",
+              "x": 0,
+              "y": 82,
+              "w": 250,
+              "h": 966,
+              "children": [
+                {
+                  "kind": "grid",
+                  "name": "control_grid",
+                  "text": "",
+                  "x": 0,
+                  "y": 82,
+                  "w": 250,
+                  "h": 966,
+                  "children": [
+                    {
+                      "kind": "other",
+                      "name": "btn_stack",
+                      "text": "",
+                      "x": 0,
+                      "y": 142,
+                      "w": 250,
+                      "h": 716,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_acars_dashboard",
+                          "text": "ACARS DASHBOARD",
+                          "x": 0,
+                          "y": 142,
+                          "w": 250,
+                          "h": 60,
+                          "selected": true,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_operating_fp",
+                          "text": "OPERATING FP",
+                          "x": 0,
+                          "y": 202,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_weather_notam",
+                          "text": "WEATHER \u0026 NOTAM",
+                          "x": 0,
+                          "y": 262,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_charts",
+                          "text": "CHARTS",
+                          "x": 0,
+                          "y": 322,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_map",
+                          "text": "MAP",
+                          "x": 0,
+                          "y": 382,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_navigation_perf_calc",
+                          "text": "PERF CALC",
+                          "x": 0,
+                          "y": 442,
+                          "w": 250,
+                          "h": 60,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "image",
+                      "name": "label_bbs_img",
+                      "text": "./data/efb/bbs_logo_light.png",
+                      "x": 0,
+                      "y": 798,
+                      "w": 250,
+                      "h": 250,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "grid",
+          "name": "page_main_grid",
+          "text": "",
+          "x": 0,
+          "y": 32,
+          "w": 1397,
+          "h": 1016,
+          "children": [
+            {
+              "kind": "grid",
+              "name": "page_control_grid",
+              "text": "",
+              "x": 0,
+              "y": 82,
+              "w": 1397,
+              "h": 966,
+              "children": [
+                {
+                  "kind": "other",
+                  "name": "page_colorbox",
+                  "text": "",
+                  "x": 250,
+                  "y": 82,
+                  "w": 1147,
+                  "h": 966,
+                  "children": [
+                    {
+                      "kind": "other",
+                      "name": "planning_acars_dashboard_canvas",
+                      "text": "",
+                      "x": 250,
+                      "y": 82,
+                      "w": 1147,
+                      "h": 966,
+                      "children": [
+                        {
+                          "kind": "other",
+                          "name": "planning_acars_dashboard_background",
+                          "text": "",
+                          "x": 250,
+                          "y": 82,
+                          "w": 1147,
+                          "h": 966,
+                          "children": []
+                        },
+                        {
+                          "kind": "other",
+                          "name": "planning_acars_dashboard_content_card",
+                          "text": "",
+                          "x": 323.5,
+                          "y": 142,
+                          "w": 1000,
+                          "h": 798,
+                          "children": []
+                        },
+                        {
+                          "kind": "other",
+                          "name": "planning_acars_button_bar",
+                          "text": "",
+                          "x": 323.5,
+                          "y": 92,
+                          "w": 1000,
+                          "h": 56,
+                          "children": [
+                            {
+                              "kind": "other",
+                              "name": "planning_acars_button_stack",
+                              "text": "",
+                              "x": 323.5,
+                              "y": 92,
+                              "w": 370,
+                              "h": 40,
+                              "children": [
+                                {
+                                  "kind": "button",
+                                  "name": "planning_acars_fetch_button",
+                                  "text": "REFRESH SIMBRIEF OFP",
+                                  "x": 323.5,
+                                  "y": 92,
+                                  "w": 250,
+                                  "h": 40,
+                                  "selected": false,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "button",
+                                  "name": "planning_acars_remove_button",
+                                  "text": "REMOVE FP",
+                                  "x": 583.5,
+                                  "y": 92,
+                                  "w": 100,
+                                  "h": 40,
+                                  "selected": false,
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "other",
+                          "name": "planning_acars_procedures_card",
+                          "text": "",
+                          "x": 323.5,
+                          "y": 142,
+                          "w": 1000,
+                          "h": 140,
+                          "children": [
+                            {
+                              "kind": "other",
+                              "name": "planning_acars_procedures_canvas",
+                              "text": "",
+                              "x": 323.5,
+                              "y": 142,
+                              "w": 1000,
+                              "h": 140,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "planning_acars_procedures_divider",
+                                  "text": "",
+                                  "x": 821.5,
+                                  "y": 142,
+                                  "w": 4,
+                                  "h": 150,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "grid",
+                                  "name": "planning_acars_departure_grid",
+                                  "text": "",
+                                  "x": 323.5,
+                                  "y": 142,
+                                  "w": 460,
+                                  "h": 120,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "planning_acars_departure_canvas",
+                                      "text": "",
+                                      "x": 323.5,
+                                      "y": 142,
+                                      "w": 460,
+                                      "h": 38,
+                                      "children": [
+                                        {
+                                          "kind": "other",
+                                          "name": "planning_acars_departure_header",
+                                          "text": "",
+                                          "x": 323.5,
+                                          "y": 142,
+                                          "w": 500,
+                                          "h": 38,
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_departure_title",
+                                          "text": "FROM",
+                                          "x": 323.5,
+                                          "y": 142,
+                                          "w": 460,
+                                          "h": 38,
+                                          "children": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "other",
+                                      "name": "planning_acars_departure_row_0",
+                                      "text": "",
+                                      "x": 323.5,
+                                      "y": 180,
+                                      "w": 460,
+                                      "h": 38,
+                                      "children": [
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_departure_label_0",
+                                          "text": "Airport:",
+                                          "x": 348.5,
+                                          "y": 189.5,
+                                          "w": 53,
+                                          "h": 19,
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_departure_value_0",
+                                          "text": "SEATTLE-TACOMA INTL",
+                                          "x": 433.5,
+                                          "y": 188.5,
+                                          "w": 260,
+                                          "h": 21,
+                                          "children": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "other",
+                                      "name": "planning_acars_departure_row_1",
+                                      "text": "",
+                                      "x": 323.5,
+                                      "y": 218,
+                                      "w": 460,
+                                      "h": 38,
+                                      "children": [
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_departure_label_1",
+                                          "text": "Runway:",
+                                          "x": 348.5,
+                                          "y": 227.5,
+                                          "w": 61,
+                                          "h": 19,
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_departure_value_1",
+                                          "text": "16L",
+                                          "x": 433.5,
+                                          "y": 226.5,
+                                          "w": 34,
+                                          "h": 21,
+                                          "children": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "other",
+                                      "name": "planning_acars_departure_row_2",
+                                      "text": "",
+                                      "x": 323.5,
+                                      "y": 256,
+                                      "w": 460,
+                                      "h": 38,
+                                      "children": [
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_departure_label_2",
+                                          "text": "SID:",
+                                          "x": 348.5,
+                                          "y": 265.5,
+                                          "w": 30,
+                                          "h": 19,
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_departure_value_2",
+                                          "text": "BTG1",
+                                          "x": 433.5,
+                                          "y": 264.5,
+                                          "w": 138,
+                                          "h": 21,
+                                          "children": []
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "grid",
+                                  "name": "planning_acars_arrival_grid",
+                                  "text": "",
+                                  "x": 323.5,
+                                  "y": 142,
+                                  "w": 460,
+                                  "h": 120,
+                                  "children": [
+                                    {
+                                      "kind": "other",
+                                      "name": "planning_acars_arrival_canvas",
+                                      "text": "",
+                                      "x": 823.5,
+                                      "y": 142,
+                                      "w": 460,
+                                      "h": 38,
+                                      "children": [
+                                        {
+                                          "kind": "other",
+                                          "name": "planning_acars_arrival_header",
+                                          "text": "",
+                                          "x": 823.5,
+                                          "y": 142,
+                                          "w": 500,
+                                          "h": 38,
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_arrival_title",
+                                          "text": "TO",
+                                          "x": 823.5,
+                                          "y": 142,
+                                          "w": 460,
+                                          "h": 38,
+                                          "children": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "other",
+                                      "name": "planning_acars_arrival_row_0",
+                                      "text": "",
+                                      "x": 823.5,
+                                      "y": 180,
+                                      "w": 460,
+                                      "h": 38,
+                                      "children": [
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_arrival_label_0",
+                                          "text": "Airport:",
+                                          "x": 848.5,
+                                          "y": 189.5,
+                                          "w": 53,
+                                          "h": 19,
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_arrival_value_0",
+                                          "text": "PORTLAND INTL",
+                                          "x": 933.5,
+                                          "y": 188.5,
+                                          "w": 214,
+                                          "h": 21,
+                                          "children": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "other",
+                                      "name": "planning_acars_arrival_row_1",
+                                      "text": "",
+                                      "x": 823.5,
+                                      "y": 218,
+                                      "w": 460,
+                                      "h": 38,
+                                      "children": [
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_arrival_label_1",
+                                          "text": "Runway:",
+                                          "x": 848.5,
+                                          "y": 227.5,
+                                          "w": 61,
+                                          "h": 19,
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_arrival_value_1",
+                                          "text": "28R",
+                                          "x": 933.5,
+                                          "y": 226.5,
+                                          "w": 34,
+                                          "h": 21,
+                                          "children": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "other",
+                                      "name": "planning_acars_arrival_row_2",
+                                      "text": "",
+                                      "x": 823.5,
+                                      "y": 256,
+                                      "w": 460,
+                                      "h": 38,
+                                      "children": [
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_arrival_label_2",
+                                          "text": "STAR:",
+                                          "x": 848.5,
+                                          "y": 265.5,
+                                          "w": 45,
+                                          "h": 19,
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "label",
+                                          "name": "planning_acars_arrival_value_2",
+                                          "text": "BTG2",
+                                          "x": 933.5,
+                                          "y": 264.5,
+                                          "w": 136,
+                                          "h": 21,
+                                          "children": []
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "other",
+                          "name": "planning_acars_flight_info_card",
+                          "text": "",
+                          "x": 323.5,
+                          "y": 302,
+                          "w": 1000,
+                          "h": 160,
+                          "children": [
+                            {
+                              "kind": "other",
+                              "name": "planning_acars_flight_info_canvas",
+                              "text": "",
+                              "x": 323.5,
+                              "y": 302,
+                              "w": 1000,
+                              "h": 160,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "planning_acars_flight_info_header",
+                                  "text": "",
+                                  "x": 323.5,
+                                  "y": 302,
+                                  "w": 1000,
+                                  "h": 38,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "planning_acars_flight_info_title",
+                                  "text": "FLIGHT INFO",
+                                  "x": 763,
+                                  "y": 310,
+                                  "w": 121,
+                                  "h": 24,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "grid",
+                                  "name": "planning_acars_flight_info_grid",
+                                  "text": "",
+                                  "x": 343.5,
+                                  "y": 354,
+                                  "w": 1000,
+                                  "h": 90,
+                                  "children": [
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_0",
+                                      "text": "Flight Number",
+                                      "x": 347.5,
+                                      "y": 354,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_0",
+                                      "text": "MSF1",
+                                      "x": 347.5,
+                                      "y": 372,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_1",
+                                      "text": "Callsign",
+                                      "x": 514.1667,
+                                      "y": 354,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_1",
+                                      "text": "MSF1",
+                                      "x": 514.1667,
+                                      "y": 372,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_2",
+                                      "text": "Departure",
+                                      "x": 680.8334,
+                                      "y": 354,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_2",
+                                      "text": "KSEA / SEA",
+                                      "x": 680.8334,
+                                      "y": 372,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_3",
+                                      "text": "Arrival",
+                                      "x": 847.5,
+                                      "y": 354,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_3",
+                                      "text": "KPDX / PDX",
+                                      "x": 847.5,
+                                      "y": 372,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_4",
+                                      "text": "Alternate",
+                                      "x": 1014.1667,
+                                      "y": 354,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_4",
+                                      "text": "0",
+                                      "x": 1014.1667,
+                                      "y": 372,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_5",
+                                      "text": "Aircraft",
+                                      "x": 1180.8334,
+                                      "y": 354,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_5",
+                                      "text": "0",
+                                      "x": 1180.8334,
+                                      "y": 372,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_6",
+                                      "text": "Departure Date",
+                                      "x": 347.5,
+                                      "y": 402,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_6",
+                                      "text": "01 Jan 26",
+                                      "x": 347.5,
+                                      "y": 420,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_7",
+                                      "text": "Departure Time",
+                                      "x": 514.1667,
+                                      "y": 402,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_7",
+                                      "text": "12:00 UTC",
+                                      "x": 514.1667,
+                                      "y": 420,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_8",
+                                      "text": "Arrival Time",
+                                      "x": 680.8334,
+                                      "y": 402,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_8",
+                                      "text": "12:00 UTC",
+                                      "x": 680.8334,
+                                      "y": 420,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_9",
+                                      "text": "Air Time",
+                                      "x": 847.5,
+                                      "y": 402,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_9",
+                                      "text": "0",
+                                      "x": 847.5,
+                                      "y": 420,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_10",
+                                      "text": "Block Time",
+                                      "x": 1014.1667,
+                                      "y": 402,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_10",
+                                      "text": "0",
+                                      "x": 1014.1667,
+                                      "y": 420,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_label_11",
+                                      "text": "Airframe",
+                                      "x": 1180.8334,
+                                      "y": 402,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_info_value_11",
+                                      "text": "0",
+                                      "x": 1180.8334,
+                                      "y": 420,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "other",
+                          "name": "planning_acars_flight_plan_card",
+                          "text": "",
+                          "x": 323.5,
+                          "y": 462,
+                          "w": 1000,
+                          "h": 160,
+                          "children": [
+                            {
+                              "kind": "other",
+                              "name": "planning_acars_flight_plan_canvas",
+                              "text": "",
+                              "x": 323.5,
+                              "y": 462,
+                              "w": 1000,
+                              "h": 160,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "planning_acars_flight_plan_header",
+                                  "text": "",
+                                  "x": 323.5,
+                                  "y": 462,
+                                  "w": 1000,
+                                  "h": 38,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "planning_acars_flight_plan_title",
+                                  "text": "FLIGHT PLAN",
+                                  "x": 759.5,
+                                  "y": 470,
+                                  "w": 128,
+                                  "h": 24,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "grid",
+                                  "name": "planning_acars_flight_plan_grid",
+                                  "text": "",
+                                  "x": 343.5,
+                                  "y": 514,
+                                  "w": 1000,
+                                  "h": 90,
+                                  "children": [
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_0",
+                                      "text": "Initial Altitude",
+                                      "x": 347.5,
+                                      "y": 514,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_0",
+                                      "text": "0",
+                                      "x": 347.5,
+                                      "y": 532,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_1",
+                                      "text": "Cruise Profile",
+                                      "x": 514.1667,
+                                      "y": 514,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_1",
+                                      "text": "0",
+                                      "x": 514.1667,
+                                      "y": 532,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_2",
+                                      "text": "Route Distance",
+                                      "x": 680.8334,
+                                      "y": 514,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_2",
+                                      "text": "0",
+                                      "x": 680.8334,
+                                      "y": 532,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_3",
+                                      "text": "Average Wind",
+                                      "x": 847.5,
+                                      "y": 514,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_3",
+                                      "text": "0",
+                                      "x": 847.5,
+                                      "y": 532,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_4",
+                                      "text": "Wind Component",
+                                      "x": 1014.1667,
+                                      "y": 514,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_4",
+                                      "text": "0",
+                                      "x": 1014.1667,
+                                      "y": 532,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_5",
+                                      "text": "ISA Deviation",
+                                      "x": 1180.8334,
+                                      "y": 514,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_5",
+                                      "text": "0",
+                                      "x": 1180.8334,
+                                      "y": 532,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_6",
+                                      "text": "Release Number",
+                                      "x": 347.5,
+                                      "y": 562,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_6",
+                                      "text": "0",
+                                      "x": 347.5,
+                                      "y": 580,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_7",
+                                      "text": "AIRAC Cycle",
+                                      "x": 514.1667,
+                                      "y": 562,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_7",
+                                      "text": "0",
+                                      "x": 514.1667,
+                                      "y": 580,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_8",
+                                      "text": "OFP Layout",
+                                      "x": 680.8334,
+                                      "y": 562,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_8",
+                                      "text": "0",
+                                      "x": 680.8334,
+                                      "y": 580,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_9",
+                                      "text": "Units",
+                                      "x": 847.5,
+                                      "y": 562,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_9",
+                                      "text": "0",
+                                      "x": 847.5,
+                                      "y": 580,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_10",
+                                      "text": "Navlog",
+                                      "x": 1014.1667,
+                                      "y": 562,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_10",
+                                      "text": "0",
+                                      "x": 1014.1667,
+                                      "y": 580,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_label_11",
+                                      "text": "ETOPS",
+                                      "x": 1180.8334,
+                                      "y": 562,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_flight_plan_value_11",
+                                      "text": "0",
+                                      "x": 1180.8334,
+                                      "y": 580,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "other",
+                          "name": "planning_acars_load_sheet_card",
+                          "text": "",
+                          "x": 323.5,
+                          "y": 622,
+                          "w": 1000,
+                          "h": 160,
+                          "children": [
+                            {
+                              "kind": "other",
+                              "name": "planning_acars_load_sheet_canvas",
+                              "text": "",
+                              "x": 323.5,
+                              "y": 622,
+                              "w": 1000,
+                              "h": 160,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "planning_acars_load_sheet_header",
+                                  "text": "",
+                                  "x": 323.5,
+                                  "y": 622,
+                                  "w": 1000,
+                                  "h": 38,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "planning_acars_load_sheet_title",
+                                  "text": "LOAD SHEET",
+                                  "x": 763,
+                                  "y": 630,
+                                  "w": 121,
+                                  "h": 24,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "grid",
+                                  "name": "planning_acars_load_sheet_grid",
+                                  "text": "",
+                                  "x": 343.5,
+                                  "y": 674,
+                                  "w": 1000,
+                                  "h": 90,
+                                  "children": [
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_0",
+                                      "text": "Enroute Burn",
+                                      "x": 347.5,
+                                      "y": 674,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_0",
+                                      "text": "0",
+                                      "x": 347.5,
+                                      "y": 692,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_1",
+                                      "text": "Passenger Count",
+                                      "x": 514.1667,
+                                      "y": 674,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_1",
+                                      "text": "0",
+                                      "x": 514.1667,
+                                      "y": 692,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_2",
+                                      "text": "Empty Weight",
+                                      "x": 680.8334,
+                                      "y": 674,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_2",
+                                      "text": "0",
+                                      "x": 680.8334,
+                                      "y": 692,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_3",
+                                      "text": "Estimated ZFW",
+                                      "x": 847.5,
+                                      "y": 674,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_3",
+                                      "text": "0",
+                                      "x": 847.5,
+                                      "y": 692,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_4",
+                                      "text": "Estimated TOW",
+                                      "x": 1014.1667,
+                                      "y": 674,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_4",
+                                      "text": "0",
+                                      "x": 1014.1667,
+                                      "y": 692,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_5",
+                                      "text": "Estimated LW",
+                                      "x": 1180.8334,
+                                      "y": 674,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_5",
+                                      "text": "0",
+                                      "x": 1180.8334,
+                                      "y": 692,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_6",
+                                      "text": "Block Fuel",
+                                      "x": 347.5,
+                                      "y": 722,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_6",
+                                      "text": "0",
+                                      "x": 347.5,
+                                      "y": 740,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_7",
+                                      "text": "Baggage",
+                                      "x": 514.1667,
+                                      "y": 722,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_7",
+                                      "text": "0",
+                                      "x": 514.1667,
+                                      "y": 740,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_8",
+                                      "text": "Payload",
+                                      "x": 680.8334,
+                                      "y": 722,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_8",
+                                      "text": "0",
+                                      "x": 680.8334,
+                                      "y": 740,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_9",
+                                      "text": "Max ZFW",
+                                      "x": 847.5,
+                                      "y": 722,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_9",
+                                      "text": "0",
+                                      "x": 847.5,
+                                      "y": 740,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_10",
+                                      "text": "Max TOW",
+                                      "x": 1014.1667,
+                                      "y": 722,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_10",
+                                      "text": "0",
+                                      "x": 1014.1667,
+                                      "y": 740,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_label_11",
+                                      "text": "Max LW",
+                                      "x": 1180.8334,
+                                      "y": 722,
+                                      "w": 158.66667,
+                                      "h": 18,
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "label",
+                                      "name": "planning_acars_load_sheet_value_11",
+                                      "text": "0",
+                                      "x": 1180.8334,
+                                      "y": 740,
+                                      "w": 158.66667,
+                                      "h": 24,
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "other",
+                          "name": "planning_acars_route_card",
+                          "text": "",
+                          "x": 323.5,
+                          "y": 782,
+                          "w": 1000,
+                          "h": 158,
+                          "children": [
+                            {
+                              "kind": "other",
+                              "name": "planning_acars_route_canvas",
+                              "text": "",
+                              "x": 323.5,
+                              "y": 782,
+                              "w": 1000,
+                              "h": 158,
+                              "children": [
+                                {
+                                  "kind": "other",
+                                  "name": "planning_acars_route_header",
+                                  "text": "",
+                                  "x": 323.5,
+                                  "y": 782,
+                                  "w": 1000,
+                                  "h": 38,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "label",
+                                  "name": "planning_acars_route_title",
+                                  "text": "ROUTE",
+                                  "x": 790.5,
+                                  "y": 790,
+                                  "w": 66,
+                                  "h": 24,
+                                  "children": []
+                                },
+                                {
+                                  "kind": "scrollbox",
+                                  "name": "planning_acars_route_scrollbox",
+                                  "text": "",
+                                  "x": 323.5,
+                                  "y": 820,
+                                  "w": 1000,
+                                  "h": 120,
+                                  "children": [
+                                    {
+                                      "kind": "multiline",
+                                      "name": "planning_acars_route_value",
+                                      "text": "KSEA/16L DCT BTG DCT KPDX/28R",
+                                      "x": 323.5,
+                                      "y": 820,
+                                      "w": 1000,
+                                      "h": 62,
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": 10,
+      "class": "CHECKLIST",
+      "controls": []
+    },
+    {
+      "key": 12,
+      "class": "SETTINGS",
+      "controls": []
+    },
+    {
+      "key": 9,
+      "class": "SYSTEMS",
+      "controls": []
+    },
+    {
+      "key": 7,
+      "class": "AIRCRAFT",
+      "controls": []
+    },
+    {
+      "key": 5,
+      "class": "SIGN IN",
+      "controls": []
+    },
+    {
+      "key": 2,
+      "class": "app",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "kb_grid",
+          "text": "",
+          "x": 0,
+          "y": 648,
+          "w": 1397,
+          "h": 400,
+          "children": [
+            {
+              "kind": "grid",
+              "name": "keyboard_grid_container",
+              "text": "",
+              "x": 0,
+              "y": 708,
+              "w": 1396.9999,
+              "h": 340,
+              "children": [
+                {
+                  "kind": "grid",
+                  "name": "row_1",
+                  "text": "",
+                  "x": 0,
+                  "y": 708,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "btn_delete",
+                      "text": "COMMAND_DELETE",
+                      "x": 5,
+                      "y": 713,
+                      "w": 138.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_1_keys",
+                      "text": "",
+                      "x": 148.49994,
+                      "y": 708,
+                      "w": 1100,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_q|Q|1",
+                          "text": "q|Q|1",
+                          "x": 153.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_w|W|2",
+                          "text": "w|W|2",
+                          "x": 263.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_e|E|3",
+                          "text": "e|E|3",
+                          "x": 373.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_r|R|4",
+                          "text": "r|R|4",
+                          "x": 483.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_t|T|5",
+                          "text": "t|T|5",
+                          "x": 593.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_y|Y|6",
+                          "text": "y|Y|6",
+                          "x": 703.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_u|U|7",
+                          "text": "u|U|7",
+                          "x": 813.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_i|I|8",
+                          "text": "i|I|8",
+                          "x": 923.49994,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_o|O|9",
+                          "text": "o|O|9",
+                          "x": 1033.5,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_p|P|0",
+                          "text": "p|P|0",
+                          "x": 1143.5,
+                          "y": 713,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_backspace",
+                      "text": "COMMAND_BACKSPACE",
+                      "x": 1253.5,
+                      "y": 713,
+                      "w": 138.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_2",
+                  "text": "",
+                  "x": 0,
+                  "y": 793,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "button",
+                      "name": "btn_tab",
+                      "text": "COMMAND_TAB",
+                      "x": 5,
+                      "y": 798,
+                      "w": 193.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_2_keys",
+                      "text": "",
+                      "x": 203.49994,
+                      "y": 793,
+                      "w": 990,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_a|A|@",
+                          "text": "a|A|@",
+                          "x": 208.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_s|S|#",
+                          "text": "s|S|#",
+                          "x": 318.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_d|D|$",
+                          "text": "d|D|$",
+                          "x": 428.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_f|F|\u0026",
+                          "text": "f|F|\u0026",
+                          "x": 538.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_g|G|*",
+                          "text": "g|G|*",
+                          "x": 648.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_h|H|(",
+                          "text": "h|H|(",
+                          "x": 758.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_j|J|)",
+                          "text": "j|J|)",
+                          "x": 868.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_k|K|\u0027",
+                          "text": "k|K|\u0027",
+                          "x": 978.49994,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_l|L|\u0022",
+                          "text": "l|L|\u0022",
+                          "x": 1088.5,
+                          "y": 798,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_enter",
+                      "text": "COMMAND_ENTER",
+                      "x": 1198.5,
+                      "y": 798,
+                      "w": 193.49994,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_3",
+                  "text": "",
+                  "x": 0,
+                  "y": 878,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "grid",
+                      "name": "row_3_left_grid",
+                      "text": "",
+                      "x": 0,
+                      "y": 878,
+                      "w": 260,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_double_shift",
+                          "text": "COMMAND_DOUBLE_SHIFT",
+                          "x": 5,
+                          "y": 883,
+                          "w": 120,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_shift2",
+                          "text": "COMMAND_SHIFT",
+                          "x": 135,
+                          "y": 883,
+                          "w": 120,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_3_keys",
+                      "text": "",
+                      "x": 260,
+                      "y": 878,
+                      "w": 770,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "char_btn_z|Z|%",
+                          "text": "z|Z|%",
+                          "x": 265,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_x|X|-",
+                          "text": "x|X|-",
+                          "x": 375,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_c|C|\u002B",
+                          "text": "c|C|\u002B",
+                          "x": 485,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_v|V|=",
+                          "text": "v|V|=",
+                          "x": 595,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_b|B|/",
+                          "text": "b|B|/",
+                          "x": 705,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_n|N|;",
+                          "text": "n|N|;",
+                          "x": 815,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "char_btn_m|M|:",
+                          "text": "m|M|:",
+                          "x": 925,
+                          "y": 883,
+                          "w": 100,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_3_right_grid",
+                      "text": "",
+                      "x": 1030,
+                      "y": 878,
+                      "w": 366.99988,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_exclamation",
+                          "text": ",|,|!",
+                          "x": 1035,
+                          "y": 883,
+                          "w": 96.42996,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_question",
+                          "text": ".|.|?",
+                          "x": 1141.4299,
+                          "y": 883,
+                          "w": 96.42996,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_shift",
+                          "text": "COMMAND_SHIFT",
+                          "x": 1247.8599,
+                          "y": 883,
+                          "w": 144.13994,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "grid",
+                  "name": "row_4",
+                  "text": "",
+                  "x": 0,
+                  "y": 963,
+                  "w": 1396.9999,
+                  "h": 85,
+                  "children": [
+                    {
+                      "kind": "grid",
+                      "name": "row_4_left_grid",
+                      "text": "",
+                      "x": 0,
+                      "y": 963,
+                      "w": 348.49994,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_home",
+                          "text": "COMMAND_HOME",
+                          "x": 5,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_numeric_switch2",
+                          "text": "COMMAND_NUMERIC_SWITCH",
+                          "x": 179.24997,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "button",
+                      "name": "btn_space",
+                      "text": "COMMAND_SPACE",
+                      "x": 353.49994,
+                      "y": 968,
+                      "w": 690,
+                      "h": 75,
+                      "selected": false,
+                      "children": []
+                    },
+                    {
+                      "kind": "grid",
+                      "name": "row_4_right_grid",
+                      "text": "",
+                      "x": 1048.5,
+                      "y": 963,
+                      "w": 348.49994,
+                      "h": 85,
+                      "children": [
+                        {
+                          "kind": "button",
+                          "name": "btn_numeric_switch",
+                          "text": "COMMAND_NUMERIC_SWITCH",
+                          "x": 1053.5,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        },
+                        {
+                          "kind": "button",
+                          "name": "btn_keyboard_down",
+                          "text": "COMMAND_KEYBOARD_DOWN",
+                          "x": 1227.75,
+                          "y": 968,
+                          "w": 164.24997,
+                          "h": 75,
+                          "selected": false,
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": 1,
+      "class": "overlay",
+      "controls": [
+        {
+          "kind": "grid",
+          "name": "overlay_grid",
+          "text": "",
+          "x": 0,
+          "y": 0,
+          "w": 1397,
+          "h": 32,
+          "children": [
+            {
+              "kind": "label",
+              "name": "time_label",
+              "text": "Sat, 7th Nov 2026 | 23:04L | 05:04Z | OAT 4 C",
+              "x": 15,
+              "y": 0,
+              "w": 1382,
+              "h": 32,
+              "children": []
+            }
+          ]
+        },
+        {
+          "kind": "label",
+          "name": "keyboard_locked_label",
+          "text": "",
+          "x": 0,
+          "y": 0,
+          "w": 1397,
+          "h": 32,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "notices": [
+    {
+      "id": 1,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "19:34Z",
+      "unread": false
+    },
+    {
+      "id": 2,
+      "title": "",
+      "text": "SIMBRIEF OFP RECEIVED.",
+      "time": "19:35Z",
+      "unread": false
+    },
+    {
+      "id": 3,
+      "title": "",
+      "text": "DEFUELING INITIATED.",
+      "time": "19:41Z",
+      "unread": false
+    },
+    {
+      "id": 4,
+      "title": "",
+      "text": "IRS ALIGNMENT INITIATED.",
+      "time": "19:41Z",
+      "unread": false
+    },
+    {
+      "id": 5,
+      "title": "",
+      "text": "DEFUELING IS COMPLETE!",
+      "time": "19:42Z",
+      "unread": false
+    },
+    {
+      "id": 6,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 7,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 8,
+      "title": "",
+      "text": "0 PASSENGERS BOARDED!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 9,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "19:45Z",
+      "unread": false
+    },
+    {
+      "id": 10,
+      "title": "",
+      "text": "IRS ALIGNED.",
+      "time": "19:50Z",
+      "unread": false
+    },
+    {
+      "id": 11,
+      "title": "",
+      "text": "CHOCKS REMOVED.",
+      "time": "20:00Z",
+      "unread": false
+    },
+    {
+      "id": 12,
+      "title": "",
+      "text": "GPU DISCONNECTED.",
+      "time": "20:00Z",
+      "unread": false
+    },
+    {
+      "id": 15,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "21:00Z",
+      "unread": false
+    },
+    {
+      "id": 16,
+      "title": "",
+      "text": "CHOCKS ATTACHED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 17,
+      "title": "",
+      "text": "BOARDING INITIATED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 18,
+      "title": "",
+      "text": "R3 DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 19,
+      "title": "",
+      "text": "FWD CARGO DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 20,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 21,
+      "title": "",
+      "text": "L1 DOOR OPENED.",
+      "time": "21:04Z",
+      "unread": false
+    },
+    {
+      "id": 22,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 23,
+      "title": "",
+      "text": "FWD CARGO DOOR CLOSED.",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 24,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "21:07Z",
+      "unread": false
+    },
+    {
+      "id": 25,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "21:08Z",
+      "unread": false
+    },
+    {
+      "id": 26,
+      "title": "",
+      "text": "R3 DOOR CLOSED.",
+      "time": "21:12Z",
+      "unread": false
+    },
+    {
+      "id": 27,
+      "title": "",
+      "text": "176 PASSENGERS BOARDED!",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 28,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 29,
+      "title": "",
+      "text": "DEBOARDING INITIATED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 30,
+      "title": "",
+      "text": "R3 DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 31,
+      "title": "",
+      "text": "FWD CARGO DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 32,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 33,
+      "title": "",
+      "text": "L1 DOOR CLOSED.",
+      "time": "21:21Z",
+      "unread": false
+    },
+    {
+      "id": 34,
+      "title": "",
+      "text": "CARGO IS UNLOADED!",
+      "time": "21:23Z",
+      "unread": false
+    },
+    {
+      "id": 35,
+      "title": "",
+      "text": "FWD CARGO DOOR CLOSED.",
+      "time": "21:24Z",
+      "unread": false
+    },
+    {
+      "id": 36,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "21:24Z",
+      "unread": false
+    },
+    {
+      "id": 37,
+      "title": "",
+      "text": "R3 DOOR CLOSED.",
+      "time": "21:29Z",
+      "unread": false
+    },
+    {
+      "id": 38,
+      "title": "",
+      "text": "176 PASSENGERS DEBOARDED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 39,
+      "title": "",
+      "text": "DEBOARDING IS COMPLETE!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 40,
+      "title": "",
+      "text": "BOARDING INITIATED.",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 41,
+      "title": "",
+      "text": "FUEL IS SET!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 42,
+      "title": "",
+      "text": "CARGO IS LOADED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 43,
+      "title": "",
+      "text": "176 PASSENGERS BOARDED!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 44,
+      "title": "",
+      "text": "BOARDING IS COMPLETE!",
+      "time": "21:35Z",
+      "unread": false
+    },
+    {
+      "id": 45,
+      "title": "",
+      "text": "CHOCKS REMOVED.",
+      "time": "21:37Z",
+      "unread": false
+    },
+    {
+      "id": 46,
+      "title": "",
+      "text": "GPU DISCONNECTED.",
+      "time": "21:37Z",
+      "unread": false
+    },
+    {
+      "id": 47,
+      "title": "AUTOBRAKE 1",
+      "text": "TARGET 4.5 | ACTUAL 4.5 ft/s2",
+      "time": "00:58Z",
+      "unread": false
+    },
+    {
+      "id": 48,
+      "title": "BRAKE THERMAL EFFICIENCY",
+      "text": "LEFT 96.2% | RIGHT 96.2%",
+      "time": "00:58Z",
+      "unread": false
+    },
+    {
+      "id": 49,
+      "title": "",
+      "text": "GPU CONNECTED.",
+      "time": "01:16Z",
+      "unread": false
+    },
+    {
+      "id": 50,
+      "title": "",
+      "text": "AFT CARGO DOOR OPENED.",
+      "time": "03:15Z",
+      "unread": true
+    },
+    {
+      "id": 51,
+      "title": "",
+      "text": "AFT CARGO DOOR CLOSED.",
+      "time": "03:16Z",
+      "unread": true
+    }
+  ]
+}
