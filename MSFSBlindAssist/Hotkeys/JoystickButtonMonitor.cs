@@ -103,7 +103,10 @@ public sealed class JoystickButtonMonitor : IDisposable
     private static extern int HidP_GetUsageValue(int reportType, ushort usagePage, ushort linkCollection,
         ushort usage, out uint value, IntPtr preparsed, IntPtr report, uint reportLength);
 
+    // BOOLEAN, one byte: read as a four-byte BOOL, whatever the call leaves in the rest of the
+    // register would turn a failure into "true".
     [DllImport("hid.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.U1)]
     private static extern bool HidD_GetProductString(SafeFileHandle device, byte[] buffer, uint length);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -258,6 +261,10 @@ public sealed class JoystickButtonMonitor : IDisposable
 
     private void OnRawInput(IntPtr hRawInput)
     {
+        // A report still queued for a window retired inside one of its own messages (Stop) is
+        // dispatched after the devices were freed: reading it would describe its device again,
+        // for a monitor that is no longer listening.
+        if (!IsRunning) return;
         try
         {
             int headerSize = Marshal.SizeOf<RAWINPUTHEADER>();
