@@ -43,6 +43,7 @@ tools/VirtualPilot/bin/x64/Release/net10.0-windows/VirtualPilot.exe <mode> [opti
 | `landings` | every listed exit of every runway: once **following the tone**, once **rolling straight past** (skipped for End exits / exits < 600 m from the runway end) |
 | `taxi` | per airport, K plans: gate → runway (lineup) and landing-exit vacate point → gate; each flown on the **shortest path** and again on an **ATC-style clearance** (the shortest route's taxiway names in order) |
 | `wrongturn` | follows a gate → runway route, then deliberately turns into a branch that leads to a runway hold line not on the route; the app must say "off route" first |
+| `missturn` | follows a route to the junction before a hold on the way, where the taxiway it came in on carries straight on off the route, and rolls straight on (once at 10 kt, once at 20 kt): the turn onto the hold's connector missed. Only where the hold node lies 25 to 150 m to the side of that taxiway. The app must answer with the off-route recalculation, not with a hold-short stop on the taxiway. `runall.sh` flies it with 40 plans per airport |
 | `rwystop` | a route loaded while stopped on a runway, midway across the widest gap between two exits, to a random gate, with and without a clearance. `VP_LEGACY_RWYSTART=1` and `VP_LEGACY_TURNSIDE=1` restore the older route start and opening turn for an A/B |
 | `missedexit` | per runway, two flights where the pilot rolled past the planned exit and vacated at the next one, then loaded the gate route with the clearance given for the planned exit. The flight that prompted it (VTBS 02R, 2026-11-18) vacated one exit EARLY, which this mode does not fly; that one is replayed with `--trace ICAO:from:…`. Where the two exits are 300 m or more apart, the same clearance is also loaded while still on the runway, 150 m past the planned exit (`MISSEDEXIT_RWY`) |
 | `all` | landings + taxi |
@@ -75,7 +76,8 @@ WORSE column is explained case by case.** Run outputs go under `tools/VirtualPil
 Trace forms: `ICAO:RWY:EXIT[:straight]` (a landing), `ICAO:taxi:N[:clearance]` (the Nth taxi
 plan), `ICAO:dep:<text>` / `ICAO:any:<text>` (every departures / every taxi-or-departures scenario
 whose description contains the text — e.g. `KORD:dep:IX Y4 L 5`), `ICAO:turn:<text>` (the same for
-`turnpicks`, e.g. `LTFM:turn:turn Right onto N1`), and
+`turnpicks`, e.g. `LTFM:turn:turn Right onto N1`), `ICAO:missturn:<text>` (the same for `missturn`,
+e.g. `KDTW:missturn:before the hold n2753`, with `--taxi-per-airport 40` as the run flies it), and
 `ICAO:pick:<lat>,<lon>,<heading>:<runway>:<clearance>[:miss]`: one clearance from a position to a
 runway, a Turn pick written `=L` or `=R` after its taxiway, `:miss` to take the charted way at the
 junction instead. The KBOS incident of 2026-11-14 is
@@ -129,6 +131,8 @@ decelerating speed (Normal/End exits 18 kt at the junction, High-speed 35 kt).
 | `TOUCHDOWN_NAMES_OTHER_TAXIWAY` | at touchdown the first guidance line names a taxiway that is not the chosen exit ("Taxiway A. Steering guidance active." before "…exit taxiway C9") | high (every landing) |
 | `OFF_ROUTE_WARNING_ON_ROUTE` | "Warning: approaching runway X, off route" with the aircraft ≤ 15 m from its route | high |
 | `WRONG_TURN_SILENT` | a deliberate wrong turn reached a runway hold line with no warning | high |
+| `MISSED_TURN_STOPPED_BEHIND_LINE` | `missturn`: stopped for the hold short more than 26 m from its node while more than 10 m farther from the hold's runway than the node is (the harness's own sum against `RunwayIncursionWatch.GuardedRunway`): a stop on the taxiway the pilot never left | high |
+| `MISSED_TURN_STOPPED_AT_LINE` / `_HELD_IN_CIRCLE` / `_REROUTED` / `_NOTHING` | `missturn`: stopped beside the node but as near the runway as it is, or at a hold that guards no runway; stopped inside the 25 m circle; answered by the off-route recalculation ("Route changed", or "Off route." with why the route was kept); neither within 300 m | information |
 | `HOLD_STOP_ON_RUNWAY_PAVEMENT` | the pilot stopped for a hold short while standing on runway pavement (`RunwayShape`) | high |
 | `RUNWAY_ENTERED_UNHELD` / `DEST_…` | runway pavement entered > 250 m after the last hold (edge flicker and lineup onto the destination runway excluded) | medium |
 | `CLEARANCE_ROUTE_DETOUR` | the constrained router over the shortest route's own taxiway names is 1.3× + 200 m longer — usually unnamed connectors a clearance cannot name vs the `FindRunwayBridge` 200 m cap (PGUA "via A": 450 m of unnamed connector) | medium, often by design |
@@ -489,3 +493,42 @@ flight that fails to arrive.
 - In the miss flights, three runway entries with no hold: the pilot, deliberately off the route, drove
   on at a runway the charted way leads to (KATL M6: "Warning: approaching runway 09L at M6, off
   route." was spoken, and the recalculated route said "with no hold short point").
+
+## Ninth round — a hold passed beside its node, and the missed turn (2026-11-27, 100 busiest fs2024 airports, plain navdata)
+
+PR 369 (the hold taken beside its node, [HLD-24](invariants/hold-abeam.md#hld-24), and a route that ends far from its runway spoken as the end of the route) and its review fixes, against main: three frozen builds (main, the PR as authored, the final tree) with the same harness source. `VP_NOOSM=1`, as no OSM snapshot is on this machine; fs2024 only, as no fs2020 database is installed.
+
+**The standing modes** (`all wrongturn departures rwystop missedexit turnpicks`), 26,571 scenarios, every one matched, main against the final tree:
+
+| code | gone | appeared |
+|---|---|---|
+| `TAXI_NOT_ARRIVED` | 5 | 0 |
+| `HOLD_STOP_ON_RUNWAY_PAVEMENT` | 1 | 0 |
+| `LINEUP_NEVER_ALIGNED` | 11 | 0 |
+| `LINEUP_LEAVES_MAPPED_PAVEMENT` | 11 | 0 |
+| `HOLD_WITHOUT_RUNWAY` | 9 | 1 |
+| `HOLD_NAMED_OTHER_RUNWAY` | 2 | 0 |
+
+- The five flights that now arrive are the hold taken beside its node: KCLE, KSLC, KSFO and VHHH twice, all `missedexit` or `rwystop` routes that double back on a hold or start beside one. At VHHH the route runs out along a J5 spur and back to the hold node, a 180 degree turn; the pilot swings round 42 m from the node, main never latched the hold and the flight circled for 7 km. The stop gone from runway pavement is KSFO, where the aircraft comes at the 19R hold on C from the side and is now stopped level with it, 9 seconds before main stopped it on the pavement. The one code that appeared (KSLC 34R) is a stop at the route's start that main makes as well; the check only reports it once a flight completes.
+- The 11 lineups are five routes that stop short of their runway more than 400 m to the side of it (KDEN South 14 to 17L, KNYL to 35, DABO to 34, KCOS to 13, RKSI to 34R, each on a clearance or with a Turn pick). Main and the PR as authored held short of the runway there (at KDEN, more than 1,500 m from it) and ran 400 m of lineup tone across unmapped ground. They now count down to the end of the route and stop there: "Stop. End of this route. It does not reach Runway 17L. Reprogram the taxi route, including the taxiway that connects to the runway." With an end-state readout patched into the harness for this round (not committed), 7,617 taxi, departure, runway-stop and missed-exit flights: no flight that lined up before ends this way.
+- Wrong turns: 399 warned and 11 silent before and after.
+
+**Missed turns** (`missturn`, new this round). The review's question was whether the new capture stops a pilot who misses the turn onto the hold's connector and rolls on along the taxiway. It did: 1,502 missed turns, 40 plans an airport, 751 at 10 kt and 751 at 20 kt.
+
+| | main | the PR as authored | final |
+|---|---|---|---|
+| `MISSED_TURN_STOPPED_BEHIND_LINE` | 0 | 61 | 0 |
+| `MISSED_TURN_STOPPED_AT_LINE` | 0 | 7 | 7 |
+| `MISSED_TURN_HELD_IN_CIRCLE` | 11 | 11 | 11 |
+| `MISSED_TURN_REROUTED` | 1,352 | 1,288 | 1,345 |
+| `MISSED_TURN_NOTHING` | 139 | 135 | 139 |
+
+The fix is [HLD-25](invariants/hold-abeam.md#hld-25): not taken while more than 10 m farther from the hold's runway than the hold node AND with the tone at full pan. It changes none of the 26,571 standing scenarios, and the 11 stops the capture adds to those 7,617 flights are all kept at the same places.
+
+**Measured and rejected:**
+
+- Holding the capture back while the off-route clock is running, so that the recalculation answers first: it took away only 24 of the 70 stops beside a hold. In the other 46 the clock was not running when the aircraft came level with the node; why was not traced.
+- Either half of [HLD-25] alone. Behind-the-line alone loses the VHHH and KSFO stops (21 to 35 m behind, the tone leading the pilot round), which are three of the five flights that now arrive. The tone alone loses KCLE, where the tone is at full pan with the aircraft 45 m past the line.
+- A plain distance-from-the-runway test with a wider margin: the VHHH stops (22 m behind) and the nearest missed turn (26 m behind, KORD R) are 4 m apart.
+
+**Open:** at KDEN the clearance made of the shortest route's own taxiway names (SC, L, EA, M, EC, P, ED) is routed 1.9 km along ED past the 17L hold line and never reaches the runway, where the shortest route does in 6.6 km. That is the constrained router, on main as well; the route now at least ends as the end of the route. Not flown: a missed turn above 20 kt, and either database with an OSM snapshot.

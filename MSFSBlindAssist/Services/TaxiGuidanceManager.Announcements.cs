@@ -108,7 +108,10 @@ public partial class TaxiGuidanceManager
                 !StartWarningChatterGate.ShouldHold(
                     MSFSBlindAssist.Utils.SimClock.UtcNow, _startChatterSuppressUntil, distToTargetM, arrivalRadius, _lastGroundSpeedKts))
             {
-                AnnounceInstruction($"{_route.DestinationName} ahead.");
+                // Not "Runway 20L ahead" 1,500 m from the runway (_routeEndsFarFromRunway).
+                AnnounceInstruction(_routeEndsFarFromRunway
+                    ? "End of route ahead."
+                    : $"{_route.DestinationName} ahead.");
                 _approachAnnounced = true;
             }
             return;
@@ -150,8 +153,10 @@ public partial class TaxiGuidanceManager
         // corrected centerline — these can point OPPOSITE ways at the taxi->
         // lineup boundary ("turn right" spoken while the tone pans left, which
         // is exactly the reported confusion). Don't emit the segment-bearing
-        // turn/approach callout for that last hop; let the tone steer it.
-        if (_isRunwayLineup && nextIdx == _route.Segments.Count - 1)
+        // turn/approach callout for that last hop; let the tone steer it. Not on a route that
+        // ends far aside of its runway (_routeEndsFarFromRunway): it never lines up, so nothing
+        // else would call its last turn.
+        if (_isRunwayLineup && !_routeEndsFarFromRunway && nextIdx == _route.Segments.Count - 1)
             return;
 
         if (!hasTurn && !taxiwayChanging)
@@ -724,6 +729,10 @@ public partial class TaxiGuidanceManager
             return $"Lining up {_destinationName}, {what} heading {hdg}. Follow the tone.{lineupDistStr}";
         }
 
+        // Not "Arrived at Runway 20L" where the route ended 1,500 m from it (heard live at WSSS).
+        if (_state == TaxiGuidanceState.Arrived && _routeEndsFarFromRunway)
+            return Navigation.RunwayReachGate.RouteEndStatus(_destinationName, _routeEndVerdict);
+
         if (_state == TaxiGuidanceState.Arrived)
             return $"Arrived at {_route.DestinationName}.";
 
@@ -804,7 +813,11 @@ public partial class TaxiGuidanceManager
             }
         }
 
-        return $"{taxiway}{nextTurn}, {distStr} to {_destinationName}.";
+        // The distance runs to the end of the route, which on a route ending far aside of its
+        // runway is not the runway (_routeEndsFarFromRunway): "450 metres to Runway 20L" there
+        // was 450 m to a point 1,500 m from it.
+        string distanceTo = Navigation.RunwayReachGate.StatusDistanceTarget(_destinationName, _routeEndsFarFromRunway);
+        return $"{taxiway}{nextTurn}, {distStr} to {distanceTo}.";
         } // end lock(_stateLock)
     }
 

@@ -152,6 +152,46 @@ public class RouteTaxiwaySequenceTests
             RouteTaxiwaySequence.ViaClause(new[] { "L" }, Route("L", "W", "L")));
     }
 
+    private static List<TaxiRouteSegment> Measured(params (string Name, double Metres)[] parts)
+    {
+        var list = new List<TaxiRouteSegment>();
+        foreach (var (name, metres) in parts)
+            list.Add(new TaxiRouteSegment { TaxiwayName = name, DistanceMeters = metres });
+        return list;
+    }
+
+    // OMDB, 2026-11-24: K4 entered for Runway 30R and driven straight over Z and K, whose
+    // junction pieces carry the crossing taxiways' names. The summary read "via K4, then Z, K,
+    // K4, M7B, M, M13": the rest of K4 itself, announced as something the router had added.
+    [Fact]
+    public void ViaClause_DoesNotNameTheJunctionsTheLastEnteredTaxiwayCrosses()
+    {
+        Assert.Equal(
+            "K4, then M7B, M, M13",
+            RouteTaxiwaySequence.ViaClause(new[] { "K4" }, Measured(
+                ("Z", 150), ("K4", 12), ("Z", 9), ("K", 28), ("K4", 190), ("M7B", 120), ("M", 1300), ("M13", 80))));
+    }
+
+    // More than one junction on the way, and unnamed pavement inside one, are crossed the same.
+    [Fact]
+    public void ViaClause_CrossesEveryJunctionOnTheLastEnteredTaxiway()
+    {
+        Assert.Equal(
+            "L, then W",
+            RouteTaxiwaySequence.ViaClause(new[] { "L" }, Measured(
+                ("L", 400), ("EX2", 45), ("L", 300), ("", 10), ("EX3", 40), ("", 10), ("L", 250), ("W", 600))));
+    }
+
+    // A way round by another taxiway and back is not a junction: it is longer than one is wide.
+    [Theory]
+    [InlineData(120.0, "L")]
+    [InlineData(121.0, "L, then W, L")]
+    public void ViaClause_StillNamesAWayRoundAndBack(double metresOnW, string expected)
+    {
+        Assert.Equal(expected, RouteTaxiwaySequence.ViaClause(
+            new[] { "L" }, Measured(("L", 400), ("W", metresOnW), ("L", 300))));
+    }
+
     // An entered taxiway the route only touches at a junction has no segment of its own.
     // It is skipped in the walk rather than ending it, so the tail still starts after the
     // last entered taxiway the route did run along.
