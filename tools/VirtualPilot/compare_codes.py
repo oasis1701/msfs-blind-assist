@@ -9,7 +9,8 @@ def load(d):
             r[(kind,icao,key)]=set() if codes=='OK' else set(codes.split(','))
     return r
 a=load(sys.argv[1]); b=load(sys.argv[2])
-INFO={'WRONG_TURN_WARNED','WRONG_TURN_REROUTED_NO_RUNWAY','WRONG_TURN_REROUTED_HELD'}
+INFO={'WRONG_TURN_WARNED','WRONG_TURN_REROUTED_NO_RUNWAY','WRONG_TURN_REROUTED_HELD',
+      'MISSED_TURN_REROUTED','MISSED_TURN_NOTHING','MISSED_TURN_HELD_IN_CIRCLE','MISSED_TURN_STOPPED_AT_LINE'}
 gone=collections.Counter(); new=collections.Counter(); ex=collections.defaultdict(list)
 for k in a:
     if k not in b: continue

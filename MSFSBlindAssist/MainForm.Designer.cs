@@ -173,7 +173,9 @@
             this.suspendHotkeysMenuItem.AccessibleDescription = "Temporarily disable bracket key hotkeys to free them for other use";
             this.suspendHotkeysMenuItem.Name = "suspendHotkeysMenuItem";
             this.suspendHotkeysMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.suspendHotkeysMenuItem.Text = "&Suspend Hotkeys";
+            // K, not S: Settings… already has S in this menu, and two items on one letter only
+            // highlight in turn instead of opening.
+            this.suspendHotkeysMenuItem.Text = "Suspend Hot&keys";
             this.suspendHotkeysMenuItem.CheckOnClick = true;
             this.suspendHotkeysMenuItem.Click += new System.EventHandler(this.SuspendHotkeysMenuItem_Click);
             //
