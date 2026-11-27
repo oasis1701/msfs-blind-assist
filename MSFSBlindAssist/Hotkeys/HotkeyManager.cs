@@ -1087,6 +1087,21 @@ public class HotkeyManager : IDisposable
             DeactivateInputHotkeyMode();
         }
 
+        /// <summary>Runs an action bound to a controller button (see <see cref="ControllerBinding"/>)
+        /// exactly as its keyboard chord would, without the ] or [ step. A mode the pilot left open
+        /// on the keyboard is closed first, silently, as a chord inside it would have closed it;
+        /// this also keeps hand fly and visual guidance from starting while output mode holds
+        /// their quick-access keys (VG-2). Returns false, and runs nothing, while the hotkeys are
+        /// suspended from the menu: a suspended app must not answer a yoke button either.</summary>
+        public bool TriggerFromController(HotkeyAction action)
+        {
+            if (suspended || disposed) return false;
+            DeactivateOutputHotkeyMode();
+            DeactivateInputHotkeyMode();
+            TriggerHotkey(action);
+            return true;
+        }
+
         /// <summary>
         /// Internal — register every quick-access key not yet held by us. Called by both
         /// HandFly and visual-guidance Register methods. Reference-counted via
