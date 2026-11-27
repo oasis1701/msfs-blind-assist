@@ -69,6 +69,8 @@ Corrected 2026-10-08: "spatial/cross-track guidance" became "lateral (cross-trac
 
 - Verbal turn direction must be computed from the aircraft's current heading (`ComputeTurnVerbalFromHeading`), never the route's static `TurnDirection` — off-axis (post-pushback, after a wide turn) the actual turn can be the opposite direction and the static cue contradicts the (correct) tone. → [taxi-guidance.md](../taxi-guidance.md)
 
+Since 2026-11-27 the turn notices also speak about a junction BEYOND the current segment ([RTE-41](taxi-position.md#rte-41)). On the segment that ends at the junction this rule applies unchanged. For a junction further ahead, the advance notice's word comes from the route's direction into the junction over its last 20 m or more (never the per-segment `TurnDirection`), and the "… now" from the current heading carried through the route's bends up to it: from the heading alone, a notice said before a curve or from a stand named the wrong turn.
+
 ## STR-17
 
 - Runway-destination lineup must anchor on the `start` table (`GetRunwayStarts`), never `Runway.StartLat/StartLon` directly — the latter is the pavement edge, hundreds of metres off the lineup point at displaced-threshold runways, and routes the aircraft to a node off the runway. `RunwayLineupTarget.Resolve` falls back to the pavement start only when no start row is usable (`TaxiGraph.PickFullLengthStart` returns none), the one legitimate use. → [taxi-guidance.md](../taxi-guidance.md)
