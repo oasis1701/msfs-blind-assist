@@ -1236,14 +1236,45 @@ void RunTrace(string spec)
 }
 
 
-// ── OSM snapshot ────────────────────────────────────────────────────────────
+// ── Online taxi data snapshot ───────────────────────────────────────────────
+// The app's two online sources, in its own order (MainForm: OsmTaxiSource, then XplaneAptDatSource):
+// runs/_osm/ICAO.json (the raw Overpass answer) and runs/_osm/ICAO.apt.dat (the X-Plane Gateway's
+// recommended scenery for the airport). A snapshot without the .apt.dat flies OSM alone, as before.
 void PrimeOsm(string icao)
 {
     if (!useOsm) return;
+    var sources = new List<MSFSBlindAssist.Services.TaxiAugment.AirportTaxiData>();
     string f = Path.Combine(osmDir, icao + ".json");
-    if (!File.Exists(f)) return;
-    try { osmCache.Save(icao, new[] { MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource.Parse(File.ReadAllText(f)) }); }
-    catch (Exception ex) { Console.WriteLine($"  OSM parse failed {icao}: {ex.Message}"); }
+    if (File.Exists(f))
+        try { sources.Add(MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource.Parse(File.ReadAllText(f))); }
+        catch (Exception ex) { Console.WriteLine($"  OSM parse failed {icao}: {ex.Message}"); }
+    string a = Path.Combine(osmDir, icao + ".apt.dat");
+    if (File.Exists(a))
+        try { sources.Add(MSFSBlindAssist.Services.TaxiAugment.AptDatParser.Parse(File.ReadAllText(a))); }
+        catch (Exception ex) { Console.WriteLine($"  apt.dat parse failed {icao}: {ex.Message}"); }
+    if (sources.Count > 0) osmCache.Save(icao, sources);
+}
+
+// The X-Plane Gateway's apt.dat text for an airport, fetched as XplaneAptDatSource fetches it; null when
+// the Gateway has none.
+async Task<string?> FetchAptDat(HttpClient http, string icao)
+{
+    const string api = "https://gateway.x-plane.com/apiv1";
+    try
+    {
+        using var airport = System.Text.Json.JsonDocument.Parse(await http.GetStringAsync($"{api}/airport/{icao}"));
+        if (!airport.RootElement.TryGetProperty("airport", out var ap) || !ap.TryGetProperty("recommendedSceneryId", out var id)) return null;
+        using var scenery = System.Text.Json.JsonDocument.Parse(await http.GetStringAsync($"{api}/scenery/{id.GetInt64()}"));
+        if (!scenery.RootElement.TryGetProperty("scenery", out var sc) || !sc.TryGetProperty("masterZipBlob", out var blob)) return null;
+        string? b64 = blob.GetString();
+        if (string.IsNullOrEmpty(b64)) return null;
+        using var zip = new System.IO.Compression.ZipArchive(new MemoryStream(Convert.FromBase64String(b64)));
+        var dat = zip.Entries.FirstOrDefault(e => e.Name.EndsWith(".dat", StringComparison.OrdinalIgnoreCase));
+        if (dat == null) return null;
+        using var reader = new StreamReader(dat.Open());
+        return await reader.ReadToEndAsync();
+    }
+    catch (Exception ex) { Console.WriteLine($"  {icao}: apt.dat {ex.GetType().Name}"); return null; }
 }
 
 async Task FetchOsm()
@@ -1256,6 +1287,12 @@ async Task FetchOsm()
     int mi = 0;
     foreach (var icao in airports)
     {
+        string fa = Path.Combine(osmDir, icao + ".apt.dat");
+        if (!File.Exists(fa) && await FetchAptDat(http, icao) is { } text)
+        {
+            File.WriteAllText(fa, text);
+            Console.WriteLine($"  {icao}: apt.dat, {text.Length / 1024} KB");
+        }
         string f = Path.Combine(osmDir, icao + ".json");
         if (File.Exists(f)) continue;
         var ap = baseProvider.GetAirport(icao);
