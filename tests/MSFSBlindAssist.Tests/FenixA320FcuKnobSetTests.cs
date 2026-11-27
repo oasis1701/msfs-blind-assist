@@ -691,6 +691,26 @@ public class FenixA320FcuKnobSetTests
         Assert.DoesNotContain("JumpCounter(", body);
     }
 
+    // No MobiFlight module: the clicks go nowhere, so the set says so before it writes, never
+    // "Altitude set to 100, not 25000." about a knob that could not have moved (2026-11-19).
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void A_set_with_no_module_says_so(string culture)
+    {
+        Assert.Equal("Altitude not set: MobiFlight module not responding.",
+            TestCulture.Run(culture, () => FenixA320FcuKnobSet.NoModule(FenixFcuKnob.Altitude)));
+        Assert.Equal("Vertical speed not set: MobiFlight module not responding.",
+            TestCulture.Run(culture, () => FenixA320FcuKnobSet.NoModule(FenixFcuKnob.VerticalSpeed)));
+
+        string set = FoFbwUnclaimedEventKeyTests.MethodBody(DefinitionPath, "SetFcuKnobAsync");
+        int refusal = set.IndexOf("CalcWriteCanLand", StringComparison.Ordinal);
+        Assert.True(refusal >= 0, "SetFcuKnobAsync asks CalcWriteCanLand");
+        Assert.Contains("FenixA320FcuKnobSet.NoModule(", set);
+        Assert.True(refusal < set.IndexOf("_fcuSetTurns.Begin(", StringComparison.Ordinal), "asked before the turn begins");
+        Assert.True(refusal < set.IndexOf("JumpCounter(", StringComparison.Ordinal), "asked before any write");
+    }
+
     [Fact]
     public void The_set_reads_the_option_and_the_twins_and_the_batched_retry_is_gone()
     {

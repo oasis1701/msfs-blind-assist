@@ -40,7 +40,7 @@ Chapter 2 of 2 in [Part 1: Getting Started](index.md#part-1-getting-started) of 
 
 <div class="callout note" role="note" markdown="1">
 
-**Note:** On the FlyByWire A320neo, the FlyByWire A380X, the Headwind A330-900neo, the TFDi MD-11 and the BlueBird 757-200, if the module is missing, BA tells you a short while after connecting: *"MobiFlight calculator path unavailable. Some cockpit controls may not respond."* If you hear that, install or reinstall the module and restart the simulator. The Fenix A320 and the HorizonSim 787-9 do not give this warning, so on those check the module yourself if a control never responds.
+**Note:** On the FlyByWire A320neo, the FlyByWire A380X, the Headwind A330-900neo, the Fenix A320, the TFDi MD-11 and the BlueBird 757-200, if the module is missing, BA tells you a short while after connecting: *"MobiFlight calculator path unavailable. Some cockpit controls may not respond."* If you hear that, install or reinstall the module and restart the simulator. The HorizonSim 787-9 does not give this warning, so on it check the module yourself if a control never responds.
 
 </div>
 
