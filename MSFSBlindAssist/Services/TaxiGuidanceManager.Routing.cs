@@ -1194,6 +1194,8 @@ public partial class TaxiGuidanceManager
             // DestinationCrossTrackMeters.
             string? runwayReachWarning = null;
             _routeReachesRunway = true;
+            _routeEndsFarFromRunway = false;
+            _routeEndVerdict = RunwayReachVerdict.Reaches;
             if (isRunwayDestination && _hasLineupTarget)
             {
                 var reach = RunwayReachGate.Evaluate(
@@ -1207,6 +1209,9 @@ public partial class TaxiGuidanceManager
                     RUNWAY_REACH_MAX_WALK_M);
 
                 _routeReachesRunway = reach.Verdict == RunwayReachVerdict.Reaches;
+                _routeEndsFarFromRunway = RunwayReachGate.EndsFarFromRunway(
+                    reach, RouteEndCrossTrackMeters(preTruncationEndNode));
+                _routeEndVerdict = reach.Verdict;
                 runwayReachWarning = RunwayReachGate.DescribeFailure(
                     reach, destinationName, FormatDistance);
             }
@@ -2591,11 +2596,16 @@ public partial class TaxiGuidanceManager
                 () => RouteEndWalkToRunwayMeters(recalcEndNode!, _destinationName),
                 RUNWAY_REACH_MAX_WALK_M);
             _routeReachesRunway = reach.Verdict == RunwayReachVerdict.Reaches;
+            _routeEndsFarFromRunway = RunwayReachGate.EndsFarFromRunway(
+                reach, RouteEndCrossTrackMeters(recalcEndNode));
+            _routeEndVerdict = reach.Verdict;
         }
         else
         {
             // Gate destinations leave the runway-only safety net disarmed.
             _routeReachesRunway = true;
+            _routeEndsFarFromRunway = false;
+            _routeEndVerdict = RunwayReachVerdict.Reaches;
         }
 
         _currentSegmentIndex = 0;
@@ -3785,6 +3795,20 @@ public partial class TaxiGuidanceManager
             return 0.0;
         return AbsLateralFromRunwayMeters(
             destNode.Latitude, destNode.Longitude,
+            _lineupTargetLat, _lineupTargetLon, _lineupHeadingTrue);
+    }
+
+    /// <summary>
+    /// As <see cref="DestinationCrossTrackMeters"/>, for the node the route itself ends on: how far
+    /// aside of the runway centreline a route that stops short of its runway stops
+    /// (<see cref="RunwayReachGate.EndsFarFromRunway"/>). Its destination node is on the runway, so
+    /// that probe reads it as near. 0 with no end node or no lineup target.
+    /// </summary>
+    private double RouteEndCrossTrackMeters(Database.Models.TaxiNode? endNode)
+    {
+        if (!_hasLineupTarget || endNode == null) return 0.0;
+        return AbsLateralFromRunwayMeters(
+            endNode.Latitude, endNode.Longitude,
             _lineupTargetLat, _lineupTargetLon, _lineupHeadingTrue);
     }
 

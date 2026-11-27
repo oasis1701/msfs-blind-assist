@@ -15,7 +15,7 @@ using MSFSBlindAssist.Settings;
 // entered with no hold short, route changes while following the tone, and so on.
 //
 //   dotnet run --project tools/VirtualPilot -p:Platform=x64 -c Release -- <mode> [options]
-//     mode: landings | taxi | all | wrongturn | departures | traffic | turnpicks | fetchosm
+//     mode: landings | taxi | all | wrongturn | missturn | departures | traffic | turnpicks | fetchosm
 //     --airports N          busiest N airports by taxi-path count (default 100)
 //     --icao A,B,C          explicit airport list (overrides --airports)
 //     --shard i/n           run only airports i, i+n, i+2n … (for parallel processes)
@@ -108,6 +108,7 @@ foreach (var icao in airports)
 #if !OLDAPP
         if (opt.Mode is "traffic") RunTraffic(w);
         if (opt.Mode is "turnpicks") RunTurnPicks(w);
+        if (opt.Mode is "missturn") RunMissedHoldTurns(w);
 #endif
     }
     catch (Exception ex) { Add(new Finding(icao, "HARNESS_EXCEPTION", "", ex.ToString().Split('\n')[0])); }
@@ -408,6 +409,159 @@ List<Finding> FlyWrongTurn(World w, TaxiPlan plan)
     finally { try { mgr.StopGuidance(); mgr.Dispose(); } catch { } }
     return found;
 }
+
+#if !OLDAPP
+// ── Missed turns before a hold ───────────────────────────────────────────────
+// Per taxi plan: the first hold on the way that has, within 250 m of route before it, a junction
+// where the taxiway the route came in on carries straight on off the route, with the hold node 25
+// to 150 m to the side of that line. The pilot follows the tone to the junction and then rolls
+// straight on, once at 10 kt and once at 20 kt. A missed turn is answered by the off-route
+// recalculation (MISSED_TURN_REROUTED: "Route changed", or "Off route." with why the route was
+// kept). A hold-short stop while the aircraft is still farther from the hold's runway than the
+// hold node is a stop on the wrong taxiway (MISSED_TURN_STOPPED_BEHIND_LINE).
+void RunMissedHoldTurns(World w)
+{
+    foreach (var (plan, _) in PlanTaxis(w))
+        foreach (double kt in new[] { 10.0, 20.0 })
+        {
+            var fs = FlyMissedHoldTurn(w, plan, kt);
+            if (fs == null) continue;   // no such junction on this route, or the pilot never came to it
+            if (depTraceFilter != null) foreach (var f in fs) Console.WriteLine("FINDING " + f);
+            Codes("MISSTURN" + (int)kt, w.Icao, plan.Describe, fs);
+            taxis++;
+        }
+}
+
+List<Finding>? FlyMissedHoldTurn(World w, TaxiPlan plan, double missKt)
+{
+    var found = new List<Finding>();
+    var cap = new Cap(() => simNow);
+    var mgr = new TaxiGuidanceManager(cap);
+    try
+    {
+        if (plan.Load(mgr, provider, w, null) != null || mgr.RouteForHarness is not { } route) return null;
+        var segs = route.Segments;
+        var onRoute = new HashSet<int>(segs.Select(sg => sg.ToNode.NodeId)) { segs[0].FromNode.NodeId };
+        int hIdx = -1, jIdx = -1; List<TaxiNode>? straight = null; double planSide = 0, planAlong = 0;
+        for (int i = 2; i < segs.Count - 1 && straight == null; i++)   // never the last segment: that hold is the destination's own
+        {
+            if (!segs[i].IsHoldShortPoint) continue;
+            var hn = segs[i].ToNode;
+            double back = 0;
+            for (int k = i; k >= 2 && back < 250 && straight == null; k--)
+            {
+                if (k < i && segs[k].IsHoldShortPoint) break;   // an earlier hold stands between
+                back += segs[k].DistanceMeters;
+                var jn = segs[k].FromNode;
+                double inBrg = segs[k - 1].BearingDegrees;
+                double dH = Geo.Dist(jn.Latitude, jn.Longitude, hn.Latitude, hn.Longitude);
+                double rel = Geo.Norm(TaxiPlanBearingN(jn, hn) - inBrg) * Math.PI / 180;
+                double along = dH * Math.Cos(rel), side = Math.Abs(dH * Math.Sin(rel));
+                if (along <= 0 || side <= 25 || side > 150) continue;
+                if (!w.Graph.Adjacency.TryGetValue(jn.NodeId, out var edges)) continue;
+                var e = edges.Where(x => !onRoute.Contains(x.ToNodeId) && Math.Abs(Geo.Norm(x.BearingDegrees - inBrg)) <= 15)
+                             .OrderBy(x => Math.Abs(Geo.Norm(x.BearingDegrees - inBrg))).FirstOrDefault();
+                if (e == null) continue;
+                var path = new List<TaxiNode>(); int cur = e.ToNodeId, prev = jn.NodeId; double len = e.DistanceMeters, brg = e.BearingDegrees;
+                while (w.Graph.Nodes.TryGetValue(cur, out var cn))
+                {
+                    path.Add(cn);
+                    if (len >= 300 || !w.Graph.Adjacency.TryGetValue(cur, out var nx)) break;
+                    var next = nx.Where(x => x.ToNodeId != prev && Math.Abs(Geo.Norm(x.BearingDegrees - brg)) <= 30)
+                                 .OrderBy(x => Math.Abs(Geo.Norm(x.BearingDegrees - brg))).FirstOrDefault();
+                    if (next == null) break;
+                    len += next.DistanceMeters; prev = cur; cur = next.ToNodeId; brg = next.BearingDegrees;
+                }
+                if (path.Count == 0 || len < along + 20) continue;   // the taxiway ends before coming level with the hold
+                straight = path; hIdx = i; jIdx = k; planSide = side; planAlong = along;
+            }
+        }
+        if (straight == null) return null;
+        var hold = segs[hIdx].ToNode; var junction = segs[jIdx].FromNode;
+        double holdBrg = segs[hIdx].BearingDegrees;
+        string where = plan.Describe + $" — missed the turn at n{junction.NodeId} before the hold n{hold.NodeId} ({segs[hIdx].HoldShortRunway})";
+        string shape = $"hold {planSide:F0} m to the side of the taxiway, {planAlong:F0} m on, its segment {segs[hIdx].DistanceMeters:F0} m long and "
+                     + $"{Math.Abs(Geo.Norm(holdBrg - segs[jIdx - 1].BearingDegrees)):F0}° off the taxiway";
+        bool mtTrace = depTraceFilter != null && where.Contains(depTraceFilter, StringComparison.OrdinalIgnoreCase);
+        if (depTraceFilter != null && !mtTrace) return null;
+        mgr.StartGuidance(settings); mgr.ConsumeStartHoldCue();
+        double lat = plan.StartLat, lon = plan.StartLon, hdg = plan.StartHeading, gs = 0, t = 0, holdWait = 0, missOdo = 0, minHold = double.MaxValue;
+        var pilot = new PilotModel(hdg, 0);
+        bool missing = false; int bi = 0; string lastHold = "";
+        double budget = route.TotalDistanceMeters / 3 + 400;
+        while (t < budget)
+        {
+            simNow = simNow.AddMilliseconds(100); t += 0.1;
+            var st = mgr.State;
+            if (st != TaxiGuidanceState.HoldShort) mgr.UpdatePosition(lat, lon, hdg, 0.0, gs);
+            st = mgr.State;
+            float pan = mgr.SteeringToneForHarness.ObservedPan;
+            var said = cap.TakeNew();
+            double dHold = Geo.Dist(lat, lon, hold.Latitude, hold.Longitude);
+            foreach (var a in said)
+            {
+                if (a.Contains("Hold short", StringComparison.OrdinalIgnoreCase)) lastHold = a;
+                if (mtTrace) Console.WriteLine($"  {t,6:F1}s {(missing ? "MISSED " : "")}SPEAK {a}   [ac {lat:F6},{lon:F6} hdg={hdg:F0} gs={gs:F1} pan={pan:F2} seg={mgr.SegmentIndexForHarness} dHold={dHold:F0}m]");
+            }
+            if (!missing)
+            {
+                if (st == TaxiGuidanceState.HoldShort && gs < 0.3) { holdWait += 0.1; if (holdWait > 2) { mgr.ContinuePastHoldShort(); holdWait = 0; } }
+                if (st == TaxiGuidanceState.LiningUp || st == TaxiGuidanceState.Arrived) return null;
+                if (mgr.SegmentIndexForHarness is int sNow && sNow > hIdx) return null;   // past the hold without coming to the junction
+                if (st == TaxiGuidanceState.Taxiing && Geo.Dist(lat, lon, junction.Latitude, junction.Longitude) < 15) missing = true;
+                else
+                {
+                    double target = st == TaxiGuidanceState.HoldShort ? 0 : pilot.TaxiTarget(pan, cap);
+                    pilot.Step(ref hdg, ref gs, pan, target, 0.1, holdHeading: null);
+                    (lat, lon) = Geo.Move(lat, lon, hdg, gs * 0.5144 * 0.1);
+                    continue;
+                }
+            }
+            minHold = Math.Min(minHold, dHold);
+            double? behind = MetresBehindHoldLine(w, lat, lon, hold);
+            string at = $"{missOdo:F0} m past the junction at {gs:F0} kt, {dHold:F0} m from the hold node, heading {Math.Abs(Geo.Norm(hdg - holdBrg)):F0}° off its segment, "
+                      + (behind is double bl ? $"{bl:F0} m behind the line" : "the hold guards no runway") + $" ({lat:F6},{lon:F6}); {shape}";
+            if (st == TaxiGuidanceState.HoldShort)
+            {
+                // 26, not 25: the app's capture circle is measured with its own distance function.
+                string code = dHold <= 26 ? "MISSED_TURN_HELD_IN_CIRCLE"
+                            : behind is double b && b > 10 ? "MISSED_TURN_STOPPED_BEHIND_LINE" : "MISSED_TURN_STOPPED_AT_LINE";
+                found.Add(new Finding(w.Icao, code, where, $"\"{lastHold}\" {at}"));
+                return found;
+            }
+            if (said.Any(a => a.Contains("Route changed", StringComparison.OrdinalIgnoreCase) || a.Contains("Off route.", StringComparison.Ordinal)))
+            {
+                found.Add(new Finding(w.Icao, "MISSED_TURN_REROUTED", where, at));
+                return found;
+            }
+            if (st != TaxiGuidanceState.Taxiing || missOdo > 300
+                || bi == straight.Count - 1 && Geo.Dist(lat, lon, straight[bi].Latitude, straight[bi].Longitude) < 6)
+            {
+                found.Add(new Finding(w.Icao, "MISSED_TURN_NOTHING", where, $"state {st}, nearest {minHold:F0} m; {at}"));
+                return found;
+            }
+            while (bi < straight.Count - 1 && Geo.Dist(lat, lon, straight[bi].Latitude, straight[bi].Longitude) < 6) bi++;
+            hdg = (hdg + Math.Clamp(Geo.Norm(TaxiPlanBearing(lat, lon, straight[bi]) - hdg), -12 * 0.1, 12 * 0.1) + 360) % 360;
+            gs += Math.Clamp(missKt - gs, -0.4, 0.15);
+            double stepM = gs * 0.5144 * 0.1;
+            (lat, lon) = Geo.Move(lat, lon, hdg, stepM); missOdo += stepM;
+        }
+        return null;
+    }
+    catch (Exception ex) { found.Add(new Finding(w.Icao, "MISSED_TURN_EXCEPTION", plan.Describe, ex.Message)); return found; }
+    finally { try { mgr.StopGuidance(); mgr.Dispose(); } catch { } }
+}
+
+// How much farther from the runway a hold node guards the aircraft is than the node itself
+// (negative: nearer, or across the runway); null when the node guards no runway.
+static double? MetresBehindHoldLine(World w, double lat, double lon, TaxiNode hold)
+{
+    var runway = RunwayIncursionWatch.GuardedRunway(hold.Latitude, hold.Longitude, RunwayPavement.BuildShapes(w.Graph.RunwayCenterlines));
+    if (runway == null) return null;
+    double node = runway.Project(hold.Latitude, hold.Longitude).Lateral;
+    return runway.Project(lat, lon).Lateral * Math.Sign(node) - Math.Abs(node);
+}
+#endif
 
 static double TaxiPlanBearing(double la1, double lo1, TaxiNode n)
     => (Math.Atan2((n.Longitude - lo1) * Math.Cos(la1 * Math.PI / 180), n.Latitude - la1) * 180 / Math.PI + 360) % 360;
@@ -932,6 +1086,14 @@ void RunTrace(string spec)
         }
         tp.TurnPicks = picks.Count > 0 ? picks : null;
         foreach (var f in FlyTaxi(w, tp, withClearance: false, trace: true)) Console.WriteLine("FINDING " + f);
+        if (Environment.GetEnvironmentVariable("VP_ALLLOG") == "1") foreach (var l in logSink) Console.WriteLine("LOG " + l);
+        return;
+    }
+    if (parts.Length >= 3 && parts[1].Equals("missturn", StringComparison.OrdinalIgnoreCase))
+    {
+        // --trace ICAO:missturn:<text in the scenario description>  (e.g. "before the hold n2753")
+        depTraceFilter = string.Join(":", parts.Skip(2));
+        RunMissedHoldTurns(w);
         if (Environment.GetEnvironmentVariable("VP_ALLLOG") == "1") foreach (var l in logSink) Console.WriteLine("LOG " + l);
         return;
     }

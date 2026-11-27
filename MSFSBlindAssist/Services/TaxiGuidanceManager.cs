@@ -1116,6 +1116,17 @@ public partial class TaxiGuidanceManager : IDisposable
     // non-runway destinations (and any unset state) never arm the safety net.
     private bool _routeReachesRunway = true;
 
+    // The route fails the reach check by so much (RunwayReachGate.EndsFarFromRunway) that its end
+    // is not this runway's hold: the approach, the stop and Continue then speak of the end of the
+    // route, never of holding short of or entering the runway, and guidance ends there. Set with
+    // _routeReachesRunway, from the same verdict.
+    private bool _routeEndsFarFromRunway;
+
+    // That verdict itself, for what is said at such an end (RunwayReachGate.RouteEndStatus): a
+    // route ending far aside has no taxiway to its runway in the data, one that stops short can
+    // be reprogrammed.
+    private Navigation.RunwayReachVerdict _routeEndVerdict = Navigation.RunwayReachVerdict.Reaches;
+
     // When true, we are currently holding short AT the destination runway
     // (FAA/ICAO: ATC taxi-to clearance never authorizes entering the assigned
     // takeoff runway — pilot must wait for "line up and wait" or "cleared for
@@ -2257,6 +2268,11 @@ public partial class TaxiGuidanceManager : IDisposable
             if (!_hasLineupTarget) return false;
             if (!_isRunwayLineup) return false;
             if (_state != TaxiGuidanceState.LiningUp && _state != TaxiGuidanceState.Arrived) return false;
+            // Arrived at the end of a route that never reached its runway (HandleArrival's
+            // _routeEndsFarFromRunway branch) is not "lined up": takeoff assist must not be
+            // handed the centreline of a runway the aircraft is more than 400 m from. It then
+            // looks under the aircraft, as it does with no taxi route at all.
+            if (_routeEndsFarFromRunway) return false;
 
             thresholdLat = _lineupTargetLat;
             thresholdLon = _lineupTargetLon;
@@ -3016,7 +3032,12 @@ public partial class TaxiGuidanceManager : IDisposable
             // would let a landing-exit route declare arrival while still laterally on the
             // runway — exactly what the block above withholds. See the
             // `announcementClearRadius` comment at the top of this method.
-            if (!arrived && !_isRunwayLineup)
+            //
+            // A route that ends far aside of its runway (_routeEndsFarFromRunway) is a plain
+            // endpoint too: it never enters LiningUp, and the off-route recalculation is off on a
+            // final segment, so rolled through wide of the 12 m circle it never said "Stop. End
+            // of this route" and stayed in Taxiing.
+            if (!arrived && (!_isRunwayLineup || _routeEndsFarFromRunway))
             {
                 AlongTrackToSegmentEnd(lat, lon, currentSeg,
                     out double alongRemEndM, out double crossEndM);
@@ -3319,6 +3340,37 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             AdvanceSegment();
             return;
+        }
+
+        // A hold-short passed BESIDE its node (Navigation.HoldShortAbeam): outside the 25 m circle
+        // above, so nothing latched it, the index stayed on the hold segment for good and the tone
+        // went on steering at the route beyond the line. Never the final segment: the destination
+        // hold has its own captures, and LiningUp owns that approach.
+        //
+        // Measured by TryMeasureHoldAbeam, never by AlongTrackToSegmentEnd on the hold segment
+        // alone: that reads a sub-metre hold segment as "level with the node, on the line" from
+        // anywhere, and AdvanceToNearestSegment parks the index on a hold segment it has just
+        // judged too far away to call reached.
+        //
+        // Never an aircraft that missed the turn onto the hold's connector and rolls on along the
+        // taxiway it was on (HoldShortAbeam.IsRollingOnBehindTheLine): it comes level with the node
+        // as well, 36 to 70 m from it, but it is behind the line and not steering at it, and a
+        // route from where it is, not a stop, is the answer to a missed turn.
+        if (_currentSegmentIndex < _route.Segments.Count - 1 && currentSeg.IsHoldShortPoint
+            && TryMeasureHoldAbeam(_route.Segments, _currentSegmentIndex, lat, lon,
+                   out double holdAlongRemM, out double holdCrossM, out double holdAxisBrg)
+            && Navigation.HoldShortAbeam.IsReached(
+                   holdAlongRemM, holdCrossM, NormalizeAngle(headingTrue - holdAxisBrg)))
+        {
+            double? behindLineM = MetresBehindHoldLine(currentSeg.ToNode, lat, lon);
+            if (!Navigation.HoldShortAbeam.IsRollingOnBehindTheLine(behindLineM, _smoothedHeadingError))
+            {
+                _guidanceLog.Info($"Hold-short reached abeam: {currentSeg.HoldShortRunway} seg={_currentSegmentIndex} " +
+                                  $"past={-holdAlongRemM:F0}m cross={holdCrossM:F0}m hdg={headingTrue:F0} segBrg={holdAxisBrg:F0} " +
+                                  $"behindLine={behindLineM ?? double.NaN:F0}m steer={_smoothedHeadingError:F0}");
+                AdvanceSegment();
+                return;
+            }
         }
 
         // Off-route deviation — perpendicular (cross-track) distance from the segment
@@ -3757,6 +3809,11 @@ public partial class TaxiGuidanceManager : IDisposable
         string what = !string.IsNullOrEmpty(currentSeg.HoldShortRunway)
             ? currentSeg.HoldShortRunway
             : "hold short";
+        // The end of a route that stops far aside of its runway is not that runway's hold
+        // (_routeEndsFarFromRunway): count down to the end of the route, in the same three steps.
+        string lead = _routeEndsFarFromRunway && _route != null && _currentSegmentIndex == _route.Segments.Count - 1
+            ? "End of route"
+            : $"Hold short {what}";
 
         // Speed-based thresholds with fixed minimums and caps. Each tier gives the
         // pilot a fixed lead time (in seconds at current speed), floored so slow/
@@ -3786,19 +3843,19 @@ public partial class TaxiGuidanceManager : IDisposable
         else if (distFeet < slowDownDistFt) _holdShortOuterAnnounced = true;
         if (distFeet < outerDistFt && !_holdShortOuterAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}.");
+            AnnounceInstruction($"{lead} in {DistanceFormatter.FromFeet(distFeet)}.");
             _holdShortOuterAnnounced = true;
             return;
         }
         if (distFeet < slowDownDistFt && !_holdShortSlowDownAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}. Slow down.");
+            AnnounceInstruction($"{lead} in {DistanceFormatter.FromFeet(distFeet)}. Slow down.");
             _holdShortSlowDownAnnounced = true;
             return;
         }
         if (distFeet < stopDistFt && !_holdShortStopAnnounced)
         {
-            AnnounceInstruction($"Hold short {what} in {DistanceFormatter.FromFeet(distFeet)}. Stop.");
+            AnnounceInstruction($"{lead} in {DistanceFormatter.FromFeet(distFeet)}. Stop.");
             _holdShortStopAnnounced = true;
             return;
         }
@@ -3808,7 +3865,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // knows to hold position and await clearance.
         if (_holdShortSlowDownAnnounced && !_holdShortStopAnnounced && _lastGroundSpeedKts < 1.0)
         {
-            AnnounceInstruction($"Hold short {what}. Stop.");
+            AnnounceInstruction($"{lead}. Stop.");
             _holdShortStopAnnounced = true;
         }
     }
@@ -4608,6 +4665,18 @@ public partial class TaxiGuidanceManager : IDisposable
         // For safety we default to HOLD SHORT at any runway destination and require
         // an explicit Continue (pilot's confirmation they have the clearance) before
         // we transition into the lineup phase.
+        // The route ends far aside of its runway (RunwayReachGate.EndsFarFromRunway): there is no
+        // runway here to hold short of, and a Continue could only start a lineup tone at a
+        // centreline the aircraft cannot taxi to. Say where the route ended and end guidance; the
+        // tone stops first, as on every path that ends with nothing left to steer at.
+        if (_hasLineupTarget && _isRunwayLineup && _routeEndsFarFromRunway)
+        {
+            _steeringTone.Stop();
+            SetState(TaxiGuidanceState.Arrived);
+            AnnounceInstruction(Navigation.RunwayReachGate.DescribeRouteEnd(_destinationName, _routeEndVerdict));
+            return;
+        }
+
         if (_hasLineupTarget && _isRunwayLineup)
         {
             _holdShortAtDestination = true;
@@ -4832,6 +4901,8 @@ public partial class TaxiGuidanceManager : IDisposable
         _lineupHugeCrossTrackSince = DateTime.MinValue;
         _runwayLineupUnreachableWarned = false;
         _routeReachesRunway = true;
+        _routeEndsFarFromRunway = false;
+        _routeEndVerdict = Navigation.RunwayReachVerdict.Reaches;
         _autoActivateFired = false;
         // Reset all announcement latches — defense in depth; LoadRoute resets them too
         // but StopGuidance can be called independently (hotkey, takeoff-assist takeover).
