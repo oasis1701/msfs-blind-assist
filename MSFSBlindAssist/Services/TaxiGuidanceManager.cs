@@ -268,6 +268,47 @@ public partial class TaxiGuidanceManager : IDisposable
     private DateTime _pairedCrossingWindowUntil = DateTime.MinValue;
     private const double PAIRED_CROSSING_MAX_M = 400.0;
 
+    // "Ask before switching to a recalculated route" (Navigation.RerouteOffer). _confirmReroutes
+    // is the setting, refreshed every frame; _rerouteOffered is true while an offer the pilot has
+    // not taken stands. It is withdrawn, unspoken, when the aircraft is back on the route line,
+    // and cleared by any adopted route and by StopGuidance. While it stands, later recalculations
+    // stay silent so the offer is not repeated every RECALCULATION_COOLDOWN_SEC. Every place
+    // that ends an offer goes through EndRerouteOffer, which also takes the offer back out of
+    // the Repeat-last buffer (_rerouteOfferText is the sentence spoken, _instructionBeforeRerouteOffer
+    // what the buffer held before it).
+    private bool _confirmReroutes;
+
+    /// <summary>
+    /// The settings a position frame reads, in place of <c>SettingsManager.Current</c>. For the
+    /// VirtualPilot harness only: left null (the app), every frame reads the live settings, which
+    /// in a harness process is the settings.json of whoever runs it. A run then depended on what
+    /// its developer flies with: with "ask before switching" saved as on, every route change of a
+    /// simulated flight became an offer the simulated pilot never takes (2026-11-27: 3 of 56
+    /// wrong-turn outcomes on the 40 busiest airports differed from the same code with it off),
+    /// and a saved hard pan or inverted tone changed what the simulated pilot steers by.
+    /// </summary>
+    internal static UserSettings? FrameSettingsForHarness;
+
+    private bool _rerouteOffered;
+    private string? _rerouteOfferText;
+    private string _instructionBeforeRerouteOffer = "";
+
+    /// <summary>
+    /// Ends a standing reroute offer (taken, withdrawn, or made moot by a new route, a hold or a
+    /// stop). Repeat-last (Ctrl+Y) goes back to the instruction the offer replaced when it still
+    /// holds the offer: "Press left bracket, Y to accept." must not be replayed for an offer the
+    /// key no longer takes. Cheap when no offer stands: it runs every frame on the route line.
+    /// </summary>
+    private void EndRerouteOffer()
+    {
+        if (!_rerouteOffered) return;
+        _rerouteOffered = false;
+        _lastInstruction = Navigation.RerouteOffer.InstructionAfterOffer(
+            _lastInstruction, _rerouteOfferText, _instructionBeforeRerouteOffer);
+        _rerouteOfferText = null;
+        _instructionBeforeRerouteOffer = "";
+    }
+
     // LAHSO — land and hold short (VATSIM gap analysis 2026-08-31, P5). Set by
     // BeginLandingRollout(NoGraph) from the landing exit planner, cleared at
     // StopGuidance. Milestone latches follow the four-reset-site invariant.
@@ -2542,7 +2583,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // taken just before the reset would use the pre-reset object — equal or
         // better than the old behavior, which could tear mid-frame between the two
         // reads if a save landed between them.
-        var settings = SettingsManager.Current;
+        var settings = FrameSettingsForHarness ?? SettingsManager.Current;
 
         // Refresh tone-direction settings once per frame, before any branch
         // (taxiing, lining-up, or runway-aligned hold) that can drive the
@@ -2551,6 +2592,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // Cheap — two property assignments per frame.
         _steeringTone.InvertPan = settings.TaxiGuidanceInvertSteeringTone;
         _steeringTone.HardPan   = settings.TaxiGuidanceHardPanTone;
+        _confirmReroutes = settings.TaxiGuidanceConfirmReroute;
 
         // Convert magnetic heading to true heading for bearing comparison
         // True heading = magnetic heading + magnetic variation (east positive)
@@ -3464,6 +3506,16 @@ public partial class TaxiGuidanceManager : IDisposable
             // successful-recalculation clear in TryRecalculateRoute is untouched — that is the
             // OTHER legitimate way an off-route episode ends, and is unaffected by this fix.
             _lastReachabilityRefusalKey = null;
+
+            // Back on the route line, a standing reroute offer is moot. Withdrawn silently — the
+            // pilot hears nothing more about a route they did not take — and a later excursion
+            // offers afresh. NOT on this test alone, unlike the latch above: the detector also
+            // fires on farBehindStart and goingBackward, and goingBackward does so from 10 m
+            // behind the segment's start (OFF_ROUTE_BEHIND_START_M), inside this tolerance. An
+            // offer raised by a slow wrong-way roll was withdrawn on the next frame, so the key
+            // did nothing and the offer was spoken again after the cooldown.
+            if (Navigation.RerouteOffer.BackOnRoute(true, farBehindStart, goingBackward))
+                EndRerouteOffer();
         }
 
         // NEVER-JOINED ESCAPE. The latch above correctly stops a stand-to-first-taxiway taxi
@@ -4364,6 +4416,40 @@ public partial class TaxiGuidanceManager : IDisposable
             return;
         }
 
+        // Taking a standing reroute offer (Navigation.RerouteOffer). Never while a paired-crossing
+        // offer still STANDS: that one is a runway clearance and keeps the key until its window
+        // closes. Once the pilot has taken it (_pairedCrossingSegIdx is -1 again) the key is free
+        // at once, not when the window would have closed (RerouteOffer.KeyIsFree). The route is
+        // recalculated from where the aircraft is NOW, not the offer's position, and adopted with
+        // the usual "Route changed" callout, which names its crossings. Its own refusals ("Off
+        // route. Unable to recalculate.") speak as ever; when nothing at all is said, the press
+        // still gets an answer.
+        if (_state == TaxiGuidanceState.Taxiing && _route != null && _rerouteOffered
+            && Navigation.RerouteOffer.KeyIsFree(
+                _pairedCrossingSegIdx >= 0, MSFSBlindAssist.Utils.SimClock.UtcNow, _pairedCrossingWindowUntil))
+        {
+            EndRerouteOffer();
+            if (!_positionInitialized) return;
+            _lastRecalculationTime = DateTime.MinValue;
+            // Collected like a position frame's speech (STR-22): a refusal and the fallback
+            // answer must not each cut the other off.
+            var speech = _frameSpeech = new List<string>();
+            var queued = _frameQueuedSpeech = new List<string>();
+            try
+            {
+                bool adopted = TryRecalculateRoute(_lastLat, _lastLon, _lastHeading, pilotAccepted: true);
+                if (!adopted && speech.Count == 0)
+                    AnnounceInstruction(Navigation.RerouteOffer.NothingToAccept);
+            }
+            finally
+            {
+                _frameSpeech = null;
+                _frameQueuedSpeech = null;
+                FlushFrameSpeech(speech, queued);
+            }
+            return;
+        }
+
         if (_state != TaxiGuidanceState.HoldShort || _route == null) return;
 
         // ONE CONTINUE PER RUNWAY at a stop that guards more than one (PR #238 deferred finding §6).
@@ -4840,6 +4926,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // refusal, not stay silent because a prior route already spoke an
         // identically-keyed one (ReachabilityRefusalGate).
         _lastReachabilityRefusalKey = null;
+        EndRerouteOffer();
         _lastSpeedWarningTime = DateTime.MinValue;
         _lastIncursionWarningTime = DateTime.MinValue;
         _offRouteSince = DateTime.MinValue;
@@ -4918,7 +5005,12 @@ public partial class TaxiGuidanceManager : IDisposable
         // still pending at HandleArrival is correctly, not accidentally, lost outright:
         // see FlushPendingTaxiwayAnnouncement's own remarks and Minor 2 of the same review).
         if (prev == TaxiGuidanceState.Taxiing && newState != TaxiGuidanceState.Taxiing)
+        {
             _pendingTaxiwayAnnouncement = null;
+            // A reroute offer is a Taxiing-only thing too: at a hold the same key means "cross",
+            // and one left standing would be taken by the first press after the hold.
+            EndRerouteOffer();
+        }
 
         // Lineup must never end in silence. The lineup tone is the pilot's only
         // alignment instrument; if a route reload / recalc (LiningUp ->

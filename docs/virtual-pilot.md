@@ -87,6 +87,17 @@ hold-short pick, as the SayIntentions import seats it, and the clearance is voic
 import's own parser. `VP_SHOWCLR=1` prints the voiced
 clearances, `VP_STUBSTATS=1` the destination entry-stub length and hold label of every departure.
 
+### Whose settings a run flies with
+
+Its own, never the `settings.json` of the PC it runs on. The taxi manager reads three settings
+on every position frame (the tone's direction, hard pan and "ask before switching to a new
+route"); until 2026-11-27 it read them from `SettingsManager.Current` inside the harness too,
+which is the developer's own file. With "ask before switching" saved as on, each route change of
+a simulated flight became an offer the simulated pilot never takes: on the 40 busiest airports
+3 of 56 wrong-turn outcomes differed from the same code with it off, which read as a regression
+in whichever build was being compared. The harness now sets
+`TaxiGuidanceManager.FrameSettingsForHarness` to the settings it starts guidance with.
+
 ### A/B against a frozen build
 
 Comparing two runs only means something when both fly the SAME scenarios, and a harness change

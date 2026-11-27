@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code in this repository, kept small on purpose: each area's rules load on their own when you read that area's code, and their full text lives in `docs/invariants/`. See "Where things live" and "Adding or changing a rule" below.
+Guidance for Claude Code in this repository, kept small on purpose. See "Where things live" and "Adding or changing a rule" below.
 
 ## Project Overview
 
@@ -134,7 +134,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [development.md](docs/development.md) | Dependencies, key files, build output paths and traps, and the Claude Code hooks | claude-tooling |
 | [tooling.md](docs/tooling.md) | Live debugging over the Coherent debugger (`:19999`), the probes in `tools/`, crash diagnosis | coherent-clients |
 | [troubleshooting-playbook.md](docs/troubleshooting-playbook.md) | A control "doesn't work": read this FIRST, before calling it broken or unsettable | troubleshooting |
-| [taxi-guidance.md](docs/taxi-guidance.md) | Taxi guidance, runway holds, landing exits and rollout, ground traffic, surroundings, takeoff assist | taxi-routing, route-runway-start, taxi-turn-picks, taxi-graph, taxi-position, runway-holds, hold-abeam, taxi-steering, landing-exits, exit-geometry, landing-rollout, rollout-exit-turn, landing-touchdown, rollout-geometry, runway-vacate, runway-backtrack, runway-entry, ground-traffic, surroundings, scenery-index, taxi-augmentation, takeoff-and-callouts |
+| [taxi-guidance.md](docs/taxi-guidance.md) | Taxi guidance, runway holds, landing exits and rollout, ground traffic, surroundings, takeoff assist | taxi-routing, taxi-reroute, route-runway-start, taxi-turn-picks, taxi-graph, taxi-position, runway-holds, hold-abeam, taxi-steering, landing-exits, exit-geometry, landing-rollout, rollout-exit-turn, landing-touchdown, rollout-geometry, runway-vacate, runway-backtrack, runway-entry, ground-traffic, surroundings, scenery-index, taxi-augmentation, takeoff-and-callouts |
 | [virtual-pilot.md](docs/virtual-pilot.md) | Changing landing-rollout, exit or taxi guidance behaviour: measure it first with simulated landings, taxis and wrong turns through the real guidance code | virtual-pilot |
 | [gsx.md](docs/gsx.md) | GSX gate selection and Remote API, docking guidance, the metres/feet toggle | gsx-remote, gsx-stands-docking, gsx-stands, gsx-docking |
 | [weather.md](docs/weather.md) | ActiveSky, the weather radar, METAR readouts, weather announcements | weather |
