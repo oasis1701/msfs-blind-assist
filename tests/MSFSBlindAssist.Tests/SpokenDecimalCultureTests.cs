@@ -14,7 +14,7 @@ public class SpokenDecimalCultureTests
     public static TheoryData<string> Aircraft => new()
     {
         "FlyByWireA320", "HeadwindA330", "FenixA320", "FlyByWireA380", "PMDG737", "PMDG777", "IFly737MAX", "HorizonSim787", "TFDiMD11",
-        "BBS757",
+        "BBS757", "CowsDA40NG", "CowsDA40XLS",
     };
 
     private static IAircraftDefinition Create(string name) => name switch
@@ -29,6 +29,8 @@ public class SpokenDecimalCultureTests
         "HorizonSim787" => new HorizonSim787Definition(),
         "TFDiMD11" => new TFDiMD11Definition(),
         "BBS757" => new BBS757Definition(),
+        "CowsDA40NG" => new MSFSBlindAssist.Aircraft.DA40.CowsDA40Definition(MSFSBlindAssist.Aircraft.DA40.DA40Variant.NG),
+        "CowsDA40XLS" => new MSFSBlindAssist.Aircraft.DA40.CowsDA40Definition(MSFSBlindAssist.Aircraft.DA40.DA40Variant.XLS),
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 

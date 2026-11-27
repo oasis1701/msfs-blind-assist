@@ -48,6 +48,24 @@ public class TakeoffAssistSpeedCalloutTests
         Assert.Equal(new[] { "100 knots" }, speech.All);
     }
 
+    // #242 met #358 (2026-11-19): the calls are configurable per aircraft (the DA40's "Rotate"), and the opt-out acts on the
+    // configured LOW call, whatever it says, never the high one (an automatic merge had silenced both).
+    [Theory]
+    [InlineData(false, new[] { "Rotate", "Positive" })]
+    [InlineData(true, new[] { "Positive" })]
+    public void The_opt_out_acts_on_the_configured_low_call_only(bool callsOwnSpeeds, string[] expected)
+    {
+        var (manager, speech) = ActiveManager();
+        using (manager)
+        {
+            manager.ConfigureSpeedCallouts(67, "Rotate", 90, "Positive");
+            manager.ProcessSpeedUpdate(70, aircraftCallsOwnSpeeds: callsOwnSpeeds);
+            manager.ProcessSpeedUpdate(95, aircraftCallsOwnSpeeds: callsOwnSpeeds);
+        }
+
+        Assert.Equal(expected, speech.All);
+    }
+
     [Fact]
     public void The_opt_out_leaves_the_rest_of_takeoff_assist_speaking()
     {
@@ -59,6 +77,15 @@ public class TakeoffAssistSpeedCalloutTests
         }
 
         Assert.Equal(new[] { "+8" }, speech.All);
+    }
+
+    /// <summary>A definition built with no arguments, its optional parameters at their defaults: the COWS DA40's one parameter is its
+    /// airframe (NG unless told), and <see cref="Activator.CreateInstance(Type)"/> fills no optional parameter (#242 met #358).</summary>
+    private static IAircraftDefinition Create(Type type)
+    {
+        var ctor = type.GetConstructors().Where(c => c.GetParameters().All(p => p.IsOptional))
+            .OrderBy(c => c.GetParameters().Length).First();
+        return (IAircraftDefinition)ctor.Invoke(ctor.GetParameters().Select(p => p.DefaultValue).ToArray());
     }
 
     /// <summary>Every shipped aircraft definition, found by reflection so a new one is never left out.</summary>
@@ -74,7 +101,7 @@ public class TakeoffAssistSpeedCalloutTests
     [MemberData(nameof(EveryShippedAircraft))]
     public void Only_the_bluebird_757_opts_out_of_takeoff_assist_s_speed_callouts(Type type)
     {
-        var aircraft = (IAircraftDefinition)Activator.CreateInstance(type)!;
+        var aircraft = Create(type);
         try
         {
             // The BlueBird 757 plays its own 80 knots, V1 and rotate (docs/b757.md, "Take-off callouts").

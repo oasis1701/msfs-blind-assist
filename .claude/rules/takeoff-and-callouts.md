@@ -13,6 +13,9 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*AltitudeCallout*.cs"
   - "MSFSBlindAssist/Aircraft/IFly737MAXDefinition*.cs"
   - "MSFSBlindAssist/Aircraft/TFDiMD11Definition*.cs"
+  - "MSFSBlindAssist/Services/TakeoffRollCallouts.cs"
+  - "MSFSBlindAssist/Services/UnusualAttitudeMonitor.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*UnusualAttitude*.cs"
   - "MSFSBlindAssist/Forms/RunwayTeleportForm.cs"
   - "MSFSBlindAssist/MainForm.Announcers.cs"
 ---

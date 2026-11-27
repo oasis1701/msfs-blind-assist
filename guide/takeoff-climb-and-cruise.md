@@ -98,7 +98,7 @@ If you learnt the older Takeoff Assist where you steered away from the tone, you
 
 - **Centreline position**, as the distance from the centreline changes by about 10 feet, at most twice a second. The number is in steps of 10 feet and the word is the side you are on: *"2 left"* means you are about 20 feet left of the centreline, so steer right. *"center"* means you are within 25 feet of it. You can mute these and keep just the tone.
 - **Pitch**, whenever it changes by one degree, at most twice a second: *"level"*, *"+5"*, *"+14"*, or *"-1"* for nose down.
-- **Speeds**: *"80 knots"* and *"100 knots"*. On the BlueBird 757-200, which plays its own *"80 knots"*, only *"100 knots"* (see [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-757-hotkeys)). The V-speed calls come from the aircraft itself or from BA's own V-speed callouts, whether or not Takeoff Assist is on (see [Takeoff Speed Callouts](#takeoff-vspeed-callouts)).
+- **Speeds**: *"80 knots"* and *"100 knots"*. On the BlueBird 757-200, which plays its own *"80 knots"*, only *"100 knots"* (see [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-757-hotkeys)). On the COWS DA40, *"Rotate"* at its rotation speed instead (see [Things worth knowing](diamond-da40.md#da40-quirks)). The V-speed calls come from the aircraft itself or from BA's own V-speed callouts, whether or not Takeoff Assist is on (see [Takeoff Speed Callouts](#takeoff-vspeed-callouts)).
 - **Ground speed**, if you have turned it on (see Settings below), for example *"60 knots."*.
 
 ### The handover to Hand Fly at liftoff {#takeoff-assist-handover}
@@ -128,7 +128,7 @@ These are on the **Hand Fly** tab of the Settings window (see [The Settings Wind
 - **Hard-pan centerline tone (full left or full right; speaker-friendly)**: the tone jumps fully to one side instead of moving gradually. Useful on speakers, where a slightly off-centre tone is hard to tell from a centred one. Off by default.
 - **Play steering tone**: when the tone sounds. **Always** plays it all the time (centred when on track). **At 1 degree error** (the default) up to **At 5 degrees error** keep it silent until the correction needed reaches that size.
 - **Legacy takeoff assist mode (heading-based, no tone)**: see above. Off by default.
-- **Enable takeoff assistant call outs**: the 80 knots and 100 knots calls. On by default.
+- **Enable takeoff assistant call outs**: the 80 knots and 100 knots calls (the DA40's *"Rotate"*). On by default.
 - **Auto-activate Takeoff Assist on lineup**: on by default. Takeoff Assist switches on when taxi guidance lines you up on your departure runway. This happens once per taxi route: if you switch Takeoff Assist off after it came on, it stays off until your next taxi route.
 - **Auto-activate Hand Fly on takeoff (deactivates Takeoff Assist)**: on by default. This is the liftoff handover described above.
 
@@ -167,7 +167,7 @@ How they work:
 - On the MD-11, *"N1 70 percent"* is called once when the first engine reaches 70 percent N1, where the autothrottle takes over.
 - Each call can be muted in the Monitor Manager (Output Ctrl+M) with its speed's row (V1, VR, V2). See [The Monitor Manager](core-concepts.md#monitor-manager).
 
-Takeoff Assist's *"80 knots"* and *"100 knots"* come on top of these on every aircraft. The BlueBird 757-200 plays its own *"80 knots"*, so Takeoff Assist calls only *"100 knots"* there (see [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-757-hotkeys)). Details for each aircraft are in [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
+Takeoff Assist's *"80 knots"* and *"100 knots"* come on top of these on every aircraft but two. The BlueBird 757-200 plays its own *"80 knots"*, so Takeoff Assist calls only *"100 knots"* there (see [BlueBird 757-200](boeing-aircraft-and-the-md-11.md#boeing-757-hotkeys)), and the COWS DA40 gets one *"Rotate"* at its rotation speed instead (see [Things worth knowing](diamond-da40.md#da40-quirks)). Details for each aircraft are in [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
 
 ## Autopilot Windows {#autopilot-windows}
 
@@ -397,6 +397,10 @@ BA announces stabiliser trim as it changes. On most aircraft it is spoken in deg
 On the Fenix A320 family the degrees are the Fenix's own stabiliser, the same number as the MCDU's take-off trim and the ECAM, so you can trim until BA says the value on your MCDU.
 
 On every aircraft, press Output Shift+T to turn trim announcements on or off; you hear *"Trim announcements on"* or *"Trim announcements off"*. Trim announcements can also be muted from the Monitor Manager.
+
+### Unusual attitude alert {#flying-unusual-attitude}
+
+On every aircraft, in the air, BA interrupts when the aircraft reaches an attitude that a sighted pilot would notice at once: more than 45 degrees of bank, more than 25 degrees nose up or more than 10 degrees nose down. These are the limits the FAA uses to define an upset. You hear the direction first, then the number: *"Bank right 50 degrees"*, *"Pitch down 12 degrees"*. If it gets 20 degrees worse, or the nose swings from up to down, you hear it again. You also hear the recovery, so you know you are back inside normal flight: *"Wings level"* once the bank is below 20 degrees, and *"Pitch normal"* once the nose is between 5 down and 15 up. Nothing is said on the ground.
 
 ### Thrust lever detents {#flying-thrust-detents}
 

@@ -1,0 +1,233 @@
+COWS DIAMOND DA40 HOTKEY REFERENCE
+
+DA40-NG and DA40-XLS. Explanations are in the user guide's COWS Diamond DA40 chapter.
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+  F5         Refresh the current panel's Status Display without leaving your place in it
+
+G1000 Windows (PFD and MFD):
+  Arrow keys        Read the window
+  Enter             Press the softkey on the selected row
+  Shift+Enter       FMS cursor (CRSR) on or off
+  Ctrl+Left/Right   Large FMS knob: next field with the cursor on, page group with it off
+  Ctrl+Up/Down      Small FMS knob: change the field or open its list with the cursor on,
+                    page with it off
+  Ctrl+Enter        ENT
+  Ctrl+D            Direct-To
+  Ctrl+F            Flight Plan
+  Ctrl+P            Procedures
+  Ctrl+E            Menu
+  Ctrl+L            CLR
+  Ctrl+G            List the display's pages and windows and open one
+  Ctrl+T            Type an ident into the waypoint box under the cursor
+  Ctrl+Shift+L      Close a window open over the page (CLR does not close it)
+  Ctrl+PageUp/Down  Map range out / in
+  F5                Refresh
+  Escape            Close
+
+G1000 PFD Radios:
+  Alt+Up/Down             COM megahertz
+  Alt+Left/Right          COM kilohertz
+  Ctrl+Alt+Up/Down        NAV megahertz
+  Ctrl+Alt+Left/Right     NAV kilohertz
+  Alt+Enter               Move the COM tuning box between COM 1 and COM 2
+  Ctrl+Alt+Enter          Move the NAV tuning box between NAV 1 and NAV 2
+  Alt+Shift+Enter         Swap COM standby and active
+  Ctrl+Alt+Shift+Enter    Swap NAV standby and active
+  Ctrl+Shift+Up/Down      Baro knob, one step
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+OUTPUT MODE - Press right bracket to activate
+
+Displays:
+  Alt+P      Open the G1000 PFD window
+  Alt+M      Open the G1000 MFD window
+  Alt+N      Open the G1000 MFD window
+  Alt+E      Read the CAS messages showing now
+  Alt+S      Engine window: every engine gauge with its arc, bus volts and amps
+  Alt+I      Read the standby instruments (airspeed, altitude, compass, attitude gyro)
+  Alt+D      Describe outside scene
+
+Autopilot (GFC 700):
+  Shift+A    Read Selected Altitude
+  Shift+H    Read Heading Bug
+  Shift+S    Read Selected Airspeed
+  Shift+V    Read Selected Vertical Speed
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Navigation:
+  N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
+  Ctrl+W     Read the active waypoint: ident, distance, bearing, time to go
+  D          Read distance and time to destination
+  Shift+D    Read distance to top of descent
+
+Speeds:
+  Shift+1    Best glide
+  Shift+2    Manoeuvring, never-exceed and maximum structural cruise
+  Shift+3    Take-off and landing flap limits
+  Shift+4    Approach, short-field approach and best glide
+  Shift+5    Rotate, and best rate of climb with take-off flap and clean
+  Shift+6    Flap limit for the current flap setting
+
+Engine:
+  P          RPM, with the governor target (NG) or the propeller lever (XLS)
+  E          Power. NG: load, fuel flow, power lever. XLS: manifold pressure, RPM,
+             fuel flow, throttle, mixture
+  Shift+P    Engine temperatures. NG: oil, coolant, gearbox. XLS: oil, hottest
+             cylinder head, hottest exhaust
+
+Fuel:
+  F          Fuel in each tank and total
+  Shift+F    Fuel flow, endurance at that flow, and the tank difference against its limit
+
+Weight:
+  W          Read Gross Weight (pounds), centre of gravity and maximum
+  Shift+W    Read Gross Weight (kilograms), centre of gravity and maximum
+
+Flaps:
+  L          Read Flap Position (UP, T/O, LDG)
+
+Landing Gear:
+  Shift+G    Read Gear ("Fixed gear")
+
+Altimeter:
+  B          Read both altimeter settings, G1000 and standby
+
+Vertical:
+  V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+  Shift+M    Show METAR Report
+  Shift+R    Open Weather Radar Window
+
+Time:
+  Z          Read Local Time at aircraft position, with the time-zone name
+  Shift+Z    Read Zulu / UTC Time
+
+Transponder:
+  X          Read Squawk Code and mode
+
+Location:
+  C          Read Nearest City
+  Shift+L    Location Info
+
+Trim:
+  Shift+T    Toggle Trim Announcements On/Off
+
+Checklist:
+  Shift+C    First Officer window (flows and checklists)
+
+Tools:
+  Ctrl+M     Monitor Manager (choose which background changes are spoken)
+  Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+V     Activate/deactivate Visual Guidance mode
+  Ctrl+T     Activate/deactivate Takeoff Assistance
+  Ctrl+D     Read Distance to Selected Runway
+  Ctrl+I     Read ILS Guidance System Report
+  Shift+E    Route viewer, procedure planner and airport lookup
+  Shift+B    SimBrief Briefing
+  Ctrl+Shift+T  Cold Temperature Altitude Correction
+
+Taxi Guidance:
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
+                In its Frequencies list, Enter tunes the selected frequency into COM 1 standby
+                and Shift+Enter tunes it straight into COM 1 active; COM 1 is read back to confirm.
+
+Waypoint Tracking:
+  1          Track Slot 1
+  2          Track Slot 2
+  3          Track Slot 3
+  4          Track Slot 4
+  5          Track Slot 5
+
+Traffic:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Alt+G      Announce nearest ground traffic
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
+
+Ground Services:
+  Ctrl+G     Read latest GSX tooltip
+
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Open SayIntentions flight information
+
+VATSIM:
+  Alt+V      Mute or unmute VATSIM announcements (vPilot)
+
+Hand Fly and Visual Guidance:
+  A          Read Altitude MSL
+  S          Read IAS
+  D          Read distance to destination runway
+  H          Read Magnetic Heading
+  P          Read Pitch
+  B          Read Bank
+  Q          Read Altitude AGL
+  V          Read Vertical Speed
+  F          Read target vertical speed (Visual Guidance only)
+
+INPUT MODE - Press left bracket to activate
+
+Displays:
+  Shift+M    Open the G1000 MFD window
+
+Autopilot (GFC 700):
+  Ctrl+P     Autopilot window: Autopilot, Flight Director and every mode button
+  Ctrl+A     Set Selected Altitude (nearest 100 ft), with ALT, FLC and VS buttons
+  Ctrl+S     Set Selected Airspeed, with the FLC button
+  Ctrl+H     Set Heading Bug, with HDG and NAV buttons
+  Ctrl+V     Set Selected Vertical Speed (nearest 100 ft/min), with VS and ALT buttons
+
+Radios and Altimeters:
+  Ctrl+B     Set altimeters: main and standby, in hectopascals or inches
+  Ctrl+N     Set NAV 1 and NAV 2 standby frequencies
+
+Teleport:
+  Shift+R    Runway Teleport
+  Shift+G    Gate Teleport
+
+Flight Planning:
+  Shift+F    Fix/waypoint tracking window
+  Shift+D    Select Destination Runway
+
+Taxi Guidance:
+  Shift+Y    Open Taxi Assist Form
+  Y          Continue past current hold-short point
+  Ctrl+Y     Stop Taxi Guidance
+  Shift+X    Open Landing Exit Planner
+
+Ground Services:
+  Alt+G      Open Access GSX window
+
+SayIntentions:
+  Ctrl+Shift+Y Build a taxi route from the last SayIntentions taxi clearance.
+
+General:
+  Escape     Exit active hotkey mode
