@@ -49,7 +49,7 @@ tools/VirtualPilot/bin/x64/Release/net10.0-windows/VirtualPilot.exe <mode> [opti
 | `all` | landings + taxi |
 | `departures` | per runway end: named (OSM) holding-point departures (`HP`, flown free and on a clearance), intersection departures (`IX`), full-length backtracks where the runway list would say "(backtrack required)" (`BT`); per airport: gate → gate taxis across the field (`G2G`) and ATC clearances with explicit "hold short of runway X" instructions (`HSCLR`) — each also voiced as a written and a spoken-NATO clearance and fed to the SayIntentions import's own parser (`CLR_*`) |
 | `turnpicks` | per taxi plan, the clearance a controller would give, then, for every row and both sides, the Turn pick a pilot could set on that row: each is loaded as the planner loads it and what became of it is recorded (already made, charted, off-chart leg, or refused and why); a pick that changes the route is flown following the tone, and flown once more with the pilot taking the charted way at the junction instead. `turn_report.py runs/NAME` summarises it |
-| `fetchosm` | downloads the raw Overpass answer for each airport into `runs/_osm/ICAO.json` (one polite request at a time — Overpass rate-limits hard, expect ~1 airport a minute). Every mode then builds the app's OWN OSM-augmented graph from that snapshot (names, holding points); `VP_NOOSM=1` flies plain navdata, `VP_OSMDIR` points elsewhere. The snapshot pins the data so a before/after run measures the code, not OSM churn |
+| `fetchosm` | downloads the raw Overpass answer for each airport into `runs/_osm/ICAO.json` (one polite request at a time — Overpass rate-limits hard, expect ~1 airport a minute), and the X-Plane Gateway's apt.dat for it into `runs/_osm/ICAO.apt.dat`, the app's second online source. Every mode then builds the app's OWN online-augmented graph from that snapshot, the two sources in the app's order (names, holding points); a snapshot without the `.apt.dat` flies OSM alone, `VP_NOOSM=1` flies plain navdata, `VP_OSMDIR` points elsewhere. The snapshot pins the data so a before/after run measures the code, not OSM churn |
 
 Options: `--airports N` (busiest by taxi-path count, default 100), `--icao A,B`, `--shard i/n`
 (run n processes in parallel — the hooks are process-global, so parallelise by process, never by
@@ -97,7 +97,15 @@ then build `tools/VirtualPilot/frozen` against it (its csproj header has the fou
 `VP_EXE=tools/VirtualPilot/frozen/out/VirtualPilot.exe tools/VirtualPilot/runall.sh BEFORE`.
 Scenario keys can still drift when the app's own output feeds scenario selection (the
 intersection list's order picks which intersections are flown) — `compare_codes.py` prints the
-"only before / only after" counts; read those rows as new scenarios, not regressions.
+"only before / only after" counts; read those rows as new scenarios, not regressions. A Turn pick
+whose outcome changes is flown under another kind (`TURN_NO_LEAD` is not flown at all,
+`TURN_CHARTED` and `TURN_MISS` are), so its findings land in those rows: count a code's finding
+lines in both runs as well.
+
+Each taxi scenario also writes a `ROUTE|kind|icao|key|metres|taxiway names|node hash` line beside
+its `CODES` line, and `py tools/VirtualPilot/compare_routes.py runs/BEFORE runs/AFTER [n]` lists
+every route that changed, with its length and taxiway names before and after and the findings
+that went and came on it. A run made before the ROUTE line existed has none to compare.
 
 The usual loop: `tools/VirtualPilot/runall.sh NAME` (landings + taxis + wrong turns, 100 airports,
 6 processes, ~10 min — it BUILDS the harness first, because the harness is not in the solution and
@@ -596,3 +604,35 @@ The final column adds what a review of the first version found: a junction judge
 **Measured and rejected:** skipping the next stop's node in the incursion guard (instead of latching it in silence). It freed the false off-route warnings the wrong "Passing" line's cooldown had masked, for a neighbouring line of the same runway in the countdown's last seconds (KSLC "Warning: approaching runway 16L at G, off route." between "Slow down" and "Stop" at H): `OFF_ROUTE_WARNING_ON_ROUTE` 67 → 98, and silent wrong turns 11 → 15. And the advance notice's word from the aircraft's heading alone, said up to 300 m out: "In 120 metres, continue onto taxiway L." before "Sharp left now, taxiway L." (KATL, a right-hand curve into a sharp left), and from a stand "In 110 metres, sharp right onto taxiway E2, 120 degrees." for a sharp left (KDTW D 3): opposite-side notices fell only to 303.
 
 Replayed from the pilot's own frames through the app's real provider stack (the same online data: 115 segments, 1,783 m), the 21:29 departure now hears "Hold short runway 04L at AA in 300 feet." at 299 ft, "… in 175 feet. Slow down." at 168 ft, "… in 100 feet. Stop." at 90 ft, and "In 400 feet, sharp right onto taxiway F3, 90 degrees." 10 s before F3; the 17:33 one "… in 350 feet." at 338 ft and "In 450 feet, sharp right onto taxiway F2, 90 degrees.".
+
+## Twelfth round — a bridge between cleared taxiways that never meet (2026-11-27, 100 busiest fs2024 airports, plain navdata)
+
+The pilot's KEWR 17:33 departure, "A11, A12, A, AA" to 04L: A11 and A12 share no node, the router's bridge joined A12 at the dead end of a curved branch, and the route turned onto F2 (never cleared) and went 95 m out and back ([RTE-42](invariants/taxi-bridge.md#rte-42)). `--trace KEWR:pick:40.6825084,-74.1851425,94.7:04L:A11,A12,A,AA` replays it on plain navdata, where F2 has no name: before, "In 120 metres, sharp right, 100 degrees. … Sharp right now." onto the link and "In 100 metres, sharp right, 180 degrees." for the turn back, 1,384 m to the hold; after, "Curving right." twice along A12, 1,240 m. New in the harness this round: the `ROUTE` result line and `compare_routes.py` (above); the "before" is that harness compiled against main 2a2d7d648 in a scratch worktree.
+
+`taxi wrongturn turnpicks departures`, 17,480 scenarios matched (304 only before, 496 only after, nearly all Turn-pick scenarios whose pick changed outcome). Of 6,889 routes compared, 325 changed at 65 airports: 259 shorter (median 82 m) and 66 longer (median 50 m). Outside the Turn-pick scenarios 126 changed, 121 of them shorter; the longer ones are RJTT "F9, T, U" to 22 (+992 m: it now reaches the runway, where it stopped at U's far end after going out to U's dead end and back), KSLC "1WN, A4, B, A9, A, A11" to 16R (+566 m: it fell back to the shortest path before and now follows the clearance, with the gap-chained A9/A spur the old routes also have), KEWR gate to gate (+55 m), KABQ (+41 m) and KDAL (+37 m). 208 findings went and 30 came in the matched scenarios, each on a route that changed; none is a stop on runway pavement, an unheld runway entry or a flight that no longer arrives:
+
+| finding | gone | came |
+|---|---|---|
+| `TAXI_OFF_PAVEMENT` | 50 | 0 |
+| `TURN_ADVANCE_OTHER_WAY` | 27 | 3 |
+| `TAXI_RECALC_WHILE_FOLLOWING` | 26 | 2 |
+| `HOLD_WITHOUT_RUNWAY` | 21 | 0 |
+| `LINEUP_LEAVES_MAPPED_PAVEMENT` / `LINEUP_NEVER_ALIGNED` | 16 / 9 | 0 |
+| `CLEARANCE_ROUTE_DETOUR` | 13 | 0 |
+| `RUNWAY_CROSSED_UNANNOUNCED` | 9 | 4 |
+| `HOLD_STOP_ON_RUNWAY_PAVEMENT` / `RUNWAY_ENTERED_UNHELD` | 4 / 1 | 0 |
+| `OFF_ROUTE_WARNING_ON_ROUTE` | 4 | 4 |
+| `HOLD_LINE_CALLED_BEHIND` / `HOLD_LINE_CALL_REPEATED` / `HOLD_CALLED_PASSING_BEFORE_STOP` | 0 / 3 / 4 | 4 / 3 / 1 |
+| `CROSSING_CALLED_NO_RUNWAY` / `HOLD_FAR_BEFORE_RUNWAY` | 5 / 1 | 1 / 1 |
+| `HOLDPICK_NOT_SET`, `HOLD_NAMED_OTHER_RUNWAY`, `TURN_NOW_WITHOUT_ADVANCE`, `RUNWAY_ENTERED_UNHELD_WARNED`, `TURN_PICK_LOST_WHILE_FOLLOWING` | 8 | 0 |
+| `TURN_MISS_*` (information) | 7 | 7 |
+
+The new ones, traced: the routes that lost an out-and-back show guidance's known open cases on their new shape. ORBD 30 exit D to Parking 15 and 16 (164 m shorter, a route change while following gone) now hear "Crossing D, Runway 12." about a line 20 m behind at the start, the tenth round's open case; OTBH 16R exit E (416 m shorter, its stop on 16L/34R pavement gone) and KFLL "B8, A5, A" with a pick hear one hold line drawn as two nodes called twice; OIII gate to gate "D, B" (947 m shorter, four findings gone) hears "Passing" about a second node of the line it then stops at. YPDN 29 exit C4 now drives the cleared Y2 and is warned "off route" 13 m from it, past the 12 m tolerance; WIII and KJFK the same with a pick or a deliberate miss. KMIA, KABQ and KPIT enter a runway with its call spoken outside the check's window (information, hundreds on every build); RKSI holds 221 m before 15R/33L (the check's line is 220 m); MMMX and YBBN with a pick now drive a cleared taxiway they skipped and hear a notice of the other side; EBBR with a pick says "Crossing C6." about a taxiway's hold line. KSLC's route change while following is its A9/A spur.
+
+Turn picks: 298 of 10,182 changed outcome, 250 of them picks refused before as "does not lead to", whose way on went out and back ([TURN-4]) and now does not: 120 honoured with an off-chart leg, 93 charted, 22 refused as a detour and 11 already made. Those are flown for the first time, and their flights bring 6 stops for a hold on runway pavement (LTFM "turn right onto C11" twice, MMMX B6, ZSSS H4, KLAX L twice) and 5 deliberate miss flights entering a runway unheld (KMSP, KATL), the category the Turn-pick round records; the same miss flights bring 16 of the 21 new `OFF_ROUTE_WARNING_ON_ROUTE` lines (the runway warning while the pilot drives the charted way 3 to 15 m off the loaded route, as main's 18 miss-flight lines do: KATL M6 "Warning: approaching runway 09L at M6, off route."); one counts as `TURN_PICK_SILENT` only because the pick's row moved when RTE-39 left the first taxiway out (OMAA "turn left onto K5": the off-chart note is in the summary). Wrong turns 376 warned and 12 silent, before and after.
+
+The router alone, on every clearance at those airports whose consecutive taxiways share no node (64,297 routes), is measured in [RTE-42](invariants/taxi-bridge.md#rte-42): out-and-backs in controller-style clearances 817 → 92.
+
+Measured and changed along the way, each flown: the seam's out-and-back unwinding first had no floor, and a route that went out to its first cleared taxiway and straight back lost it altogether, so route loading refused the lead-in (ZJHK gate to gate "S2, B, B10" began 430 m away in a straight line); and the route as scored was first kept only for a fallback, which left KABQ "R, Q, P, M, B" 35 m longer with Q undriven.
+
+After review (the same day, the same modes, airports and navdata): the shared-loop test, the leg's beginning read back from `AppendBridgeLeg` and the summary sentence's meeting read from the route. Flown again from that build (its `MSFSBlindAssist.dll` byte for byte the one committed): of 7,314 routes none changed against the first version, every finding line is the same, and against main it is the run above, scenario for scenario. The router alone changes 9 of about 105,000 routes, listed in [RTE-42](invariants/taxi-bridge.md#rte-42). With online names on, the pilot's KEWR departure, replayed from an OSM and X-Plane Gateway snapshot of 2026-11-27 (the harness's `fetchosm` now saves both), built the graph the pilot flew (2,628 nodes, 5,624 edges, the same bridge from A11 node 394 to A12 node 693): "Taxiway A12." … "Curving right." … "Crossing taxiway F2." … "Curving right." … "In 80 metres, continue onto taxiway A.", 1,240 m to the hold, where the pilot heard the turn onto F2 and the turn back; the 21:29 departure "A10, F3, A12, A, AA" needs no bridge and is the pilot's route, 115 segments and 1,783 m.

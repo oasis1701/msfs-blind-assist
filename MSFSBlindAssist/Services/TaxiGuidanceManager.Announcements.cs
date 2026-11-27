@@ -933,7 +933,15 @@ public partial class TaxiGuidanceManager
             ? TaxiLeadIn.Clause(leadIn, firstClearedTaxiway)
             : "";
 
-        return $"Route to {route.DestinationName}{taxiwayStr}.{leadInStr} {distStr}{holdStr}.{fallbackStr}";
+        // A named taxiway the route takes between two cleared ones it never joins at a shared node is
+        // said with the route, as the lead-in is, so the pilot never meets it first as a turn call. Not
+        // for a route that fell back: its "via" list names every taxiway already.
+        string linkStr = (route.TaxiwaySequence is { Count: > 1 }
+                          && string.IsNullOrEmpty(route.ConstrainedFallbackReason))
+            ? RouteTaxiwaySequence.LinkClause(route.TaxiwaySequence, route.Segments)
+            : "";
+
+        return $"Route to {route.DestinationName}{taxiwayStr}.{leadInStr}{linkStr} {distStr}{holdStr}.{fallbackStr}";
     }
 
 }

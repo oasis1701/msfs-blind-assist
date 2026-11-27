@@ -79,6 +79,8 @@ int landings = 0, taxis = 0;
 var settings = new UserSettings { TaxiGuidanceToneVolume = 0.0, TaxiGuidanceHardPanTone = false };
 var started = DateTime.Now;
 string? depTraceFilter = null;
+// The route the last FlyTaxi loaded, written beside its CODES line as a ROUTE line (compare_routes.py).
+string? lastRouteLine = null;
 
 if (opt.Trace != null) { captureLog = true; RunTrace(opt.Trace); return 0; }
 
@@ -128,7 +130,25 @@ void Codes(string kind, string icao, string key, List<Finding> fs)
 {
     var codes = fs.Select(f => f.Code).Distinct().OrderBy(c => c, StringComparer.Ordinal).ToList();
     resultsWriter?.WriteLine($"CODES|{kind}|{icao}|{key}|{(codes.Count == 0 ? "OK" : string.Join(",", codes))}");
+    if (lastRouteLine != null) resultsWriter?.WriteLine($"ROUTE|{kind}|{icao}|{key}|{lastRouteLine}");
+    lastRouteLine = null;
     foreach (var f in fs) Add(f);
+}
+
+// A loaded route as one results field set: metres, its taxiway names in order (unnamed pavement
+// left out, a run of one name said once) and a hash of its node ids, so two runs can be compared
+// route by route (compare_routes.py), not only by the findings each produced.
+static string RouteLine(TaxiRoute route)
+{
+    var names = new List<string>();
+    foreach (var s in route.Segments)
+        if (s.TaxiwayName.Length > 0 && (names.Count == 0 || !names[^1].Equals(s.TaxiwayName, StringComparison.OrdinalIgnoreCase)))
+            names.Add(s.TaxiwayName);
+    uint hash = 2166136261;
+    void Mix(int id) { foreach (byte b in BitConverter.GetBytes(id)) { hash ^= b; hash *= 16777619; } }
+    if (route.Segments.Count > 0) Mix(route.Segments[0].FromNode.NodeId);
+    foreach (var s in route.Segments) Mix(s.ToNode.NodeId);
+    return FormattableString.Invariant($"{route.TotalDistanceMeters:F0}|{string.Join(",", names)}|{hash:x8}");
 }
 
 void Add(Finding f)
@@ -1216,14 +1236,45 @@ void RunTrace(string spec)
 }
 
 
-// ── OSM snapshot ────────────────────────────────────────────────────────────
+// ── Online taxi data snapshot ───────────────────────────────────────────────
+// The app's two online sources, in its own order (MainForm: OsmTaxiSource, then XplaneAptDatSource):
+// runs/_osm/ICAO.json (the raw Overpass answer) and runs/_osm/ICAO.apt.dat (the X-Plane Gateway's
+// recommended scenery for the airport). A snapshot without the .apt.dat flies OSM alone, as before.
 void PrimeOsm(string icao)
 {
     if (!useOsm) return;
+    var sources = new List<MSFSBlindAssist.Services.TaxiAugment.AirportTaxiData>();
     string f = Path.Combine(osmDir, icao + ".json");
-    if (!File.Exists(f)) return;
-    try { osmCache.Save(icao, new[] { MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource.Parse(File.ReadAllText(f)) }); }
-    catch (Exception ex) { Console.WriteLine($"  OSM parse failed {icao}: {ex.Message}"); }
+    if (File.Exists(f))
+        try { sources.Add(MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource.Parse(File.ReadAllText(f))); }
+        catch (Exception ex) { Console.WriteLine($"  OSM parse failed {icao}: {ex.Message}"); }
+    string a = Path.Combine(osmDir, icao + ".apt.dat");
+    if (File.Exists(a))
+        try { sources.Add(MSFSBlindAssist.Services.TaxiAugment.AptDatParser.Parse(File.ReadAllText(a))); }
+        catch (Exception ex) { Console.WriteLine($"  apt.dat parse failed {icao}: {ex.Message}"); }
+    if (sources.Count > 0) osmCache.Save(icao, sources);
+}
+
+// The X-Plane Gateway's apt.dat text for an airport, fetched as XplaneAptDatSource fetches it; null when
+// the Gateway has none.
+async Task<string?> FetchAptDat(HttpClient http, string icao)
+{
+    const string api = "https://gateway.x-plane.com/apiv1";
+    try
+    {
+        using var airport = System.Text.Json.JsonDocument.Parse(await http.GetStringAsync($"{api}/airport/{icao}"));
+        if (!airport.RootElement.TryGetProperty("airport", out var ap) || !ap.TryGetProperty("recommendedSceneryId", out var id)) return null;
+        using var scenery = System.Text.Json.JsonDocument.Parse(await http.GetStringAsync($"{api}/scenery/{id.GetInt64()}"));
+        if (!scenery.RootElement.TryGetProperty("scenery", out var sc) || !sc.TryGetProperty("masterZipBlob", out var blob)) return null;
+        string? b64 = blob.GetString();
+        if (string.IsNullOrEmpty(b64)) return null;
+        using var zip = new System.IO.Compression.ZipArchive(new MemoryStream(Convert.FromBase64String(b64)));
+        var dat = zip.Entries.FirstOrDefault(e => e.Name.EndsWith(".dat", StringComparison.OrdinalIgnoreCase));
+        if (dat == null) return null;
+        using var reader = new StreamReader(dat.Open());
+        return await reader.ReadToEndAsync();
+    }
+    catch (Exception ex) { Console.WriteLine($"  {icao}: apt.dat {ex.GetType().Name}"); return null; }
 }
 
 async Task FetchOsm()
@@ -1236,6 +1287,12 @@ async Task FetchOsm()
     int mi = 0;
     foreach (var icao in airports)
     {
+        string fa = Path.Combine(osmDir, icao + ".apt.dat");
+        if (!File.Exists(fa) && await FetchAptDat(http, icao) is { } text)
+        {
+            File.WriteAllText(fa, text);
+            Console.WriteLine($"  {icao}: apt.dat, {text.Length / 1024} KB");
+        }
         string f = Path.Combine(osmDir, icao + ".json");
         if (File.Exists(f)) continue;
         var ap = baseProvider.GetAirport(icao);
@@ -1630,6 +1687,7 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
         if (withClearance && route.TotalDistanceMeters > shortestM * 1.3 + 200)
             found.Add(new Finding(w.Icao, "CLEARANCE_ROUTE_DETOUR", where, $"cleared route {route.TotalDistanceMeters:F0} m vs shortest {shortestM:F0} m over the same taxiways"));
         string summary = mgr.LastRouteSummary + " " + StartWarning(mgr);
+        lastRouteLine = RouteLine(route);
         double stubLenM = 0;   // the entry stub the lineup tone follows first (new app only)
         if (trace) Console.WriteLine($"ROUTE {route.Segments.Count} segs {route.TotalDistanceMeters:F0} m: {summary}");
         if (trace)

@@ -478,6 +478,7 @@ What each part means:
 - **via ...** lists the taxiways in the order you will use them.
 - **then ...** after your taxiways names the ones BA added to reach the destination. You hear it when the taxiways you entered stop short of it: enter only L for Runway 16 and you may hear *"Route to Runway 16 via L, then W, EX23, E, EX33, D. 2.0 kilometres."* Everything before "then" is what you entered; everything after it is BA's own choice of route from there. A taxiway your own taxiway only crosses on the way is not named. If ATC gave you the rest of the route, add those taxiways and calculate again. You also hear it when your last taxiway is a link across another runway on the way to yours, as in "taxi via K, K7, hold short of runway 30 Left" on the way to Runway 30 Right: BA takes you along K7, stops you at that runway's hold line, and after Continue carries on across it, for example *"Route to Runway 30R via K, K7, then M10B, M, M13. 3.5 kilometres, crossing runway 12R at K7."* BA may name that runway by its other end: 12R here is the same runway ATC called 30 Left, because the name comes from the scenery's hold line there.
 - **First taxi onto C** or **First taxi via ... to reach C** means your first cleared taxiway is some way from you, and BA has added the bit of apron or link taxiway that gets you onto it.
+- **From B, taxi via L1 to reach C** means two taxiways you entered one after the other do not meet on BA's route: in the airport's taxi data they never touch, or the place where they meet is closed by a turn you picked. BA links them by the taxiway it names, which was not in your clearance, and you will hear that taxiway called as you turn onto it. When the link has no name, nothing is added. A taxiway your route only crosses along one of your own taxiways is not named here. BA joins the next taxiway where the link first reaches it and follows it from there.
 - **The distance** is the whole route. Short distances are in metres or feet, depending on your setting; long ones switch to kilometres, or nautical miles if you use feet.
 - **crossing runway X** and **entering runway X** name every runway the route crosses or goes onto, other than your own departure runway at the end. A runway crossed twice says *"twice"*. Both ends of one runway are named together, such as *"10L/28R"*, unless the scenery labels the hold line where you cross with one end: BA then uses that label, as in *"12R at K7"* above.
 - **N hold short points** counts the other stops you asked for, such as a taxiway hold short.
@@ -769,7 +770,7 @@ Calculating a new route in the planner clears all of this.
 ### When BA cannot recalculate {#when-ba-cannot-recalculate}
 
 - *"Off route. Unable to recalculate."* BA could not find a route from where you are. Stop, check your position with Output Alt+Y, and plan a new route in the planner.
-- *"Off route. Could not follow clearance. recalculated route too long. Continuing on original route."* or *"... recalculated route heads backwards ..."* The only new route BA could find would take you far out of your way, or send you back the way you came, so it kept your original route. Get back onto it, or plan a new one. The middle part may instead give a technical reason from the route builder.
+- *"Off route. Could not follow clearance. Recalculated route too long. Continuing on original route."* or *"... Recalculated route heads backwards ..."* The only new route BA could find would take you far out of your way, or send you back the way you came, so it kept your original route. Get back onto it, or plan a new one. The middle part may instead give a technical reason from the route builder.
 - *"Off route. Unable to recalculate. The way to Gate C 9 crosses runway 13."* and similar. The only way to your destination from where you are crosses a runway over ground the airport data does not map, so BA will not steer you there.
 
 ## Arriving at a Stand {#taxi-gate-arrival}
@@ -978,7 +979,7 @@ This is a reference list of every taxi guidance callout, grouped by when you hea
 | *"Route changed. Now via C, D, crossing runway 26R. 900 metres to Runway 27L."* | A new route from where you are. | Follow it; check it agrees with ATC. |
 | *"The left turn onto taxiway C was missed."* or *"... could not be kept."* | Added to "Route changed" when a picked turn is gone. | Check the new route against ATC. |
 | *"Off route. Unable to recalculate."* | No new route could be found. | Stop and plan a route. |
-| *"Off route. Could not follow clearance. recalculated route too long. Continuing on original route."* | The new route would be a big detour, so it kept the old one. | Return to your route or plan a new one. |
+| *"Off route. Could not follow clearance. Recalculated route too long. Continuing on original route."* | The new route would be a big detour, so it kept the old one. | Return to your route or plan a new one. |
 | *"Off route. Unable to recalculate. The way to Gate C 9 crosses runway 13."* | The only way crosses an unmapped runway. | Stop and ask ATC. |
 
 </div>
