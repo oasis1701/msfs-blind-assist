@@ -138,9 +138,7 @@ public class TaxiRouter
         var asScored = FindConstrainedPathCore(startNodeId, endNodeId, taxiwaySequence, destinationIsRunway, honourRepeats,
             refineBridgeLegs: false, out _);
         if (asScored == null) return route;
-        bool keep = route.ConstrainedFallbackReason != null
-            ? asScored.ConstrainedFallbackReason == null
-            : KeepAsScored(route, asScored, taxiwaySequence, endNodeId);
+        bool keep = KeepAsScored(route, asScored, taxiwaySequence, endNodeId);
         Log($"Bridge legs refined: {route.TotalDistanceMeters:F0} m{(route.ConstrainedFallbackReason != null ? " (fell back)" : "")}, " +
             $"as scored {asScored.TotalDistanceMeters:F0} m -> {(keep ? "as scored" : "refined")}");
         return keep ? asScored : route;
@@ -148,19 +146,24 @@ public class TaxiRouter
 
     /// <summary>
     /// The route built with each bridge leg as scored stands, over the refined one, only where it
-    /// needed no refining: it follows the clearance, passes no node twice (an out-and-back or a loop,
-    /// <see cref="PassesANodeTwice"/>), and drives every cleared taxiway the refined route drives.
-    /// Driving more of them, it stands within the limit a repeated taxiway is honoured within (25 % +
-    /// 100 m longer), even where it then ends short of the destination: a last cleared taxiway leading
-    /// away is the end of the route ([RTE-17]), and the refined route had not driven it (EBBR "E4, T"
-    /// to 01: T never driven, 1.7 km of other taxiways to the runway). Driving the same ones, it stands
-    /// only if it reaches the destination whenever the refined one does (else it is shorter by
-    /// stopping short), and has no more metres of taxiways the clearance never named and no more
-    /// metres in all.
+    /// needed no refining. A refined route that fell back to the shortest path gives way to one as
+    /// scored that did not. Otherwise the route as scored must follow the clearance, pass no node more
+    /// often than the refined route does (an out-and-back or a loop, <see cref="PassesNodesMoreOften"/>:
+    /// a loop both routes have, a gap chained through its own nodes on a leg no bridge touches, is no
+    /// reason to refuse it), and drive every cleared taxiway the refined route drives. Driving more of
+    /// them, it stands within the limit a repeated taxiway is honoured within (25 % + 100 m longer),
+    /// even where it then ends short of the destination: a last cleared taxiway leading away is the end
+    /// of the route ([RTE-17]), and the refined route had not driven it (EBBR "E4, T" to 01: T never
+    /// driven, 1.7 km of other taxiways to the runway). Driving the same ones, it stands only if it
+    /// reaches the destination whenever the refined one does (else it is shorter by stopping short),
+    /// and has no more metres of taxiways the clearance never named and no more metres in all.
     /// </summary>
-    private static bool KeepAsScored(TaxiRoute refined, TaxiRoute asScored, List<string> clearance, int endNodeId)
+    internal static bool KeepAsScored(TaxiRoute refined, TaxiRoute asScored, List<string> clearance, int endNodeId)
     {
-        if (asScored.ConstrainedFallbackReason != null || PassesANodeTwice(NodeIdsOf(asScored))) return false;
+        if (refined.ConstrainedFallbackReason != null) return asScored.ConstrainedFallbackReason == null;
+        if (asScored.ConstrainedFallbackReason != null) return false;
+        if (refined.Segments.Count == 0 || asScored.Segments.Count == 0) return false;
+        if (PassesNodesMoreOften(NodeIdsOf(asScored), NodeIdsOf(refined))) return false;
         var cleared = new HashSet<string>(clearance, StringComparer.OrdinalIgnoreCase);
         HashSet<string> Driven(TaxiRoute r) =>
             new(r.Segments.Select(s => s.TaxiwayName).Where(cleared.Contains), StringComparer.OrdinalIgnoreCase);
@@ -188,7 +191,9 @@ public class TaxiRouter
         // shared LogWriter (5 MB cap, 3-file retention) rather than a hand-rolled
         // per-call truncate, so a recalc can never wipe a prior build's entry
         // (the old truncate-per-run blinded debugging of the KIAH 2026-06-10 6 km loop).
-        Log("=== Constrained Route ===");
+        // The build again with every bridge leg as scored says so: the route kept is the one the
+        // "Bridge legs refined" line after it names.
+        Log(refineBridgeLegs ? "=== Constrained Route ===" : "=== Constrained Route (again, every bridge leg as scored) ===");
 
         var startN = _graph.Nodes[startNodeId];
         var endN = _graph.Nodes[endNodeId];
@@ -614,7 +619,12 @@ public class TaxiRouter
                 Log($"Step {i + 1} OK: '{currentTaxiway}' {currentNode}->{targetNode} ({segment.Count} nodes)");
 
                 if (afterBridge)
-                    AppendBridgeLeg(fullPath, segment, refineBridgeLegs, bridgeFloor, $"Step {i + 1}", ref bridgeLegsRefined);
+                {
+                    // Taking an out-and-back or a loop out at the seam can move where this leg begins, the
+                    // junction the route enters it by included: both are read from the route as it now is.
+                    legStart = AppendBridgeLeg(fullPath, segment, refineBridgeLegs, bridgeFloor, $"Step {i + 1}", ref bridgeLegsRefined);
+                    if (lastTaxiwayTerminal) terminalEntryNode = fullPath[legStart];
+                }
                 else
                 {
                     int si = (fullPath.Count > 0 && segment.Count > 0 && fullPath[^1] == segment[0]) ? 1 : 0;
@@ -1405,6 +1415,23 @@ public class TaxiRouter
         return path.Any(n => !seen.Add(n));
     }
 
+    /// <summary>
+    /// True when <paramref name="path"/> passes some node more than once and more often than
+    /// <paramref name="other"/> does: a repeat the other route shares (the same loop on both) does not count.
+    /// </summary>
+    private static bool PassesNodesMoreOften(IEnumerable<int> path, IEnumerable<int> other)
+    {
+        var otherVisits = new Dictionary<int, int>();
+        foreach (int n in other) otherVisits[n] = otherVisits.GetValueOrDefault(n) + 1;
+        var visits = new Dictionary<int, int>();
+        foreach (int n in path)
+        {
+            int v = visits[n] = visits.GetValueOrDefault(n) + 1;
+            if (v > 1 && v > otherVisits.GetValueOrDefault(n)) return true;
+        }
+        return false;
+    }
+
     private double PathMeters(IReadOnlyList<int> path)
     {
         double metres = 0.0;
@@ -1621,10 +1648,14 @@ public class TaxiRouter
     /// and A12 meet only through an unnamed link; the bridge picked the end of a curved A12 branch,
     /// the free leg ran along A12, over F2 (never cleared) and out along the branch, and the A12
     /// leg came straight back the same way. The leg is cut only where the cleared taxiway itself
-    /// leads from that node to the scored one (<see cref="AStarSearchStrict"/>: its own edges and
-    /// the short hops onto them, never a gap chained through other taxiways, which can run out and
-    /// back; HECA "A2, A1", where A1 is drawn in two pieces). A node of the same name on another
-    /// piece is not a join, and the next node of the name is tried. True when the leg was cut.
+    /// leads from that node to the scored one (<see cref="AStarSearchStrict"/>: its own edges, and
+    /// hops of up to 50 m over any other edge onto a node of it; never a gap chained through other
+    /// taxiways, which can run out and back: HECA "A2, A1", where A1 is drawn in two pieces). A hop can
+    /// be a short piece of another name: the navdata names a junction's short pieces for the crossing
+    /// taxiway (<see cref="RouteTaxiwaySequence.JunctionCrossingMaxMetres"/>), and the leg's own search
+    /// takes the same hops, so refusing them here would refuse the joins they carry. A node of the same
+    /// name on another piece is not a join, and the next node of the name is tried. True when the leg
+    /// was cut.
     /// </summary>
     private bool JoinWhereTheBridgeFirstReaches(ref List<int> bridge, string nextTaxiway, string step)
     {
@@ -1662,17 +1693,23 @@ public class TaxiRouter
     /// ([RTE-39]) no longer saw it, and the lead-in was refused (ZJHK "S2, B, B10" from Gate 12: the
     /// route then began on S2, 430 m away in a straight line). The route still ends where the leg
     /// does, and only gets shorter.
+    /// <para>Returns the index in <paramref name="path"/> where the leg now begins: the seam, or the
+    /// node the route was taken back to. Callers read where the leg's taxiway begins from it (the floor
+    /// for the bridge that leaves it, the junction a last taxiway is entered by), never from the
+    /// path's length before the call, which no longer holds once anything was taken out.</para>
     /// </summary>
-    private void AppendBridgeLeg(List<int> path, List<int> leg, bool unwind, int floor, string step, ref int refined)
+    internal static int AppendBridgeLeg(List<int> path, List<int> leg, bool unwind, int floor, string step, ref int refined)
     {
         int k = (path.Count > 0 && leg.Count > 0 && path[^1] == leg[0]) ? 1 : 0;
         floor = Math.Min(Math.Max(0, floor), Math.Max(0, path.Count - 1));
+        int begin = k == 1 ? path.Count - 1 : path.Count;
         int unwound = 0;
         while (unwind && k == 1 + unwound && path.Count - 1 > floor && k < leg.Count && path[^2] == leg[k])
         {
             path.RemoveAt(path.Count - 1);
             k++;
             unwound++;
+            begin = path.Count - 1;
         }
         int cut = 0;
         for (int j = k; j < leg.Count; j++)
@@ -1688,6 +1725,7 @@ public class TaxiRouter
             }
             cut += path.Count - 1 - again;
             path.RemoveRange(again + 1, path.Count - 1 - again);
+            if (again < begin) begin = again;
         }
         if (unwound > 0 || cut > 0)
         {
@@ -1695,6 +1733,7 @@ public class TaxiRouter
             Log($"{step}: where the bridge leg meets the route, {unwound} edge{(unwound == 1 ? "" : "s")} of out-and-back " +
                 $"and {cut} of loop taken out");
         }
+        return Math.Min(begin, Math.Max(0, path.Count - 1));
     }
 
     /// <summary>

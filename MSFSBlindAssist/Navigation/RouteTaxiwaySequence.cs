@@ -182,22 +182,24 @@ public static class RouteTaxiwaySequence
     }
 
     /// <summary>
-    /// The named taxiways a route takes to get from one cleared taxiway to the next where the two
-    /// never meet, said after the "via" list: " From A11, taxi via F2 to reach A12." Empty when
-    /// there are none. Two cleared taxiways that share no node are linked by the router itself
-    /// (<c>TaxiRouter.FindRunwayBridge</c>), over whatever pavement joins them, and a named link the
-    /// clearance never gave was heard first as a turn call ("Sharp right now, taxiway F2", KEWR
-    /// 2026-11-26). Where the two DO meet, a piece of another taxiway crossed on the way is a
-    /// junction, and stays unsaid as <see cref="BeyondEntered"/> describes; an unnamed link has no
-    /// name to say. Worded as the lead-in clause is (<see cref="TaxiLeadIn"/>, "First taxi via L1
-    /// to reach A."), and leads with a space so it appends the same way.
+    /// The named taxiways a route takes to get from one cleared taxiway to the next where the route
+    /// never passes a node the two share, said after the "via" list: " From B, taxi via L1 to reach
+    /// C." Empty when there are none. Where two cleared taxiways share no node the router links them
+    /// itself (<c>TaxiRouter.FindRunwayBridge</c>), over whatever pavement joins them, and it does
+    /// the same where every node they share is closed to it (a Turn pick's) or out of its reach; a
+    /// named link the clearance never gave was then heard first as a turn call ("Sharp right now,
+    /// taxiway W"). So the meeting is read from the route, never from the graph: where the route
+    /// goes from the one to the other through a node carrying both names, they meet there, a piece
+    /// of another taxiway crossed on the way is a junction, and it stays unsaid as
+    /// <see cref="BeyondEntered"/> describes. An unnamed link has no name to say, and a taxiway
+    /// crossed inside one cleared taxiway's run is not a link between two of them. Worded as the
+    /// lead-in clause is (<see cref="TaxiLeadIn"/>, "First taxi via L1 to reach A."), and leads with a
+    /// space so it appends the same way.
     /// </summary>
-    /// <param name="taxiwaysMeet">Whether two taxiways share a node (<c>TaxiGraph.TaxiwaysMeet</c>).</param>
-    public static string LinkClause(
-        IReadOnlyList<string>? entered, IReadOnlyList<TaxiRouteSegment>? segments, Func<string, string, bool> taxiwaysMeet)
+    public static string LinkClause(IReadOnlyList<string>? entered, IReadOnlyList<TaxiRouteSegment>? segments)
     {
-        if (entered == null || entered.Count < 2) return "";
-        var runs = NamedRuns(segments);
+        if (entered == null || entered.Count < 2 || segments == null) return "";
+        var runs = NamedRunSpans(segments);
         var clause = new System.Text.StringBuilder();
         int next = 0, prevRun = -1;
         string? prevName = null;
@@ -208,26 +210,62 @@ public static class RouteTaxiwaySequence
                 if (runs[i].Name.Equals(name, StringComparison.OrdinalIgnoreCase)) at = i;
             // A cleared taxiway with no run of its own (touched only at a junction) pairs with nothing.
             if (at == -1) { prevRun = -1; prevName = null; continue; }
-            if (prevName != null && !taxiwaysMeet(prevName, name))
+            if (prevName != null)
             {
                 // From the last run of the previous taxiway before this one.
                 int from = prevRun;
                 for (int i = prevRun + 1; i < at; i++)
                     if (runs[i].Name.Equals(prevName, StringComparison.OrdinalIgnoreCase)) from = i;
-                var links = new List<string>();
-                for (int i = from + 1; i < at; i++)
+                if (!MeetOnTheRoute(segments, runs[from].Last, runs[at].First, prevName, name))
                 {
-                    string link = runs[i].Name;
-                    if (!links.Contains(link, StringComparer.OrdinalIgnoreCase)) links.Add(link);
+                    var links = new List<string>();
+                    for (int i = from + 1; i < at; i++)
+                    {
+                        string link = runs[i].Name;
+                        if (!links.Contains(link, StringComparer.OrdinalIgnoreCase)) links.Add(link);
+                    }
+                    if (links.Count > 0)
+                        clause.Append($" From {prevName}, taxi via {JoinNames(links)} to reach {name}.");
                 }
-                if (links.Count > 0)
-                    clause.Append($" From {prevName}, taxi via {JoinNames(links)} to reach {name}.");
             }
             prevRun = at;
             prevName = name;
             next = at + 1;
         }
         return clause.ToString();
+    }
+
+    /// <summary>
+    /// Whether the route, between the last segment of one run and the first of the next, passes a node
+    /// that carries both taxiway names: the junction it went from the one to the other by.
+    /// </summary>
+    private static bool MeetOnTheRoute(IReadOnlyList<TaxiRouteSegment> segments, int lastOfFirst, int firstOfNext,
+        string a, string b)
+    {
+        static bool Both(TaxiNode? n, string a, string b)
+            => n?.TaxiwayNames != null && n.TaxiwayNames.Contains(a) && n.TaxiwayNames.Contains(b);
+        for (int s = lastOfFirst; s < firstOfNext; s++)
+            if (Both(segments[s].ToNode, a, b)) return true;
+        return Both(segments[firstOfNext].FromNode, a, b);
+    }
+
+    /// <summary>
+    /// The same runs as <see cref="NamedRuns"/> (unnamed pavement inside one taxiway's run is part of
+    /// it), with the index of each run's first and last segment.
+    /// </summary>
+    private static List<(string Name, int First, int Last)> NamedRunSpans(IReadOnlyList<TaxiRouteSegment> segments)
+    {
+        var runs = new List<(string Name, int First, int Last)>();
+        for (int i = 0; i < segments.Count; i++)
+        {
+            string name = segments[i].TaxiwayName;
+            if (string.IsNullOrEmpty(name)) continue;
+            if (runs.Count > 0 && runs[^1].Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                runs[^1] = (runs[^1].Name, runs[^1].First, i);
+            else
+                runs.Add((name, i, i));
+        }
+        return runs;
     }
 
     private static string JoinNames(List<string> names)

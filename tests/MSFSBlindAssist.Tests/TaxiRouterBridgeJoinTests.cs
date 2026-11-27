@@ -189,7 +189,7 @@ public class TaxiRouterBridgeJoinTests
         var route = Route(g)!;
         Assert.Equal("X,X,L1,Y,Y,Y,Y,Y,Z,Z", Flown(route));
         Assert.Equal(" From X, taxi via L1 to reach Y.",
-            RouteTaxiwaySequence.LinkClause(new List<string> { "X", "Y", "Z" }, route.Segments, g.TaxiwaysMeet));
+            RouteTaxiwaySequence.LinkClause(new List<string> { "X", "Y", "Z" }, route.Segments));
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class TaxiRouterBridgeJoinTests
     {
         var g = Field();
         var route = Route(g)!;
-        Assert.Equal("", RouteTaxiwaySequence.LinkClause(new List<string> { "X", "Y", "Z" }, route.Segments, g.TaxiwaysMeet));
+        Assert.Equal("", RouteTaxiwaySequence.LinkClause(new List<string> { "X", "Y", "Z" }, route.Segments));
     }
 
     [Fact]
@@ -213,7 +213,46 @@ public class TaxiRouterBridgeJoinTests
         var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>(), new List<Runway>());
         var route = new TaxiRouter(g).FindConstrainedPath(NodeAt(g, 0, 0), NodeAt(g, 300, 0), new List<string> { "X", "Y" })!;
         Assert.Equal("X,W,X,Y", Flown(route));
-        Assert.Equal("", RouteTaxiwaySequence.LinkClause(new List<string> { "X", "Y" }, route.Segments, g.TaxiwaysMeet));
+        Assert.Equal("", RouteTaxiwaySequence.LinkClause(new List<string> { "X", "Y" }, route.Segments));
+    }
+
+    [Fact]
+    public void A_named_link_taken_because_the_junction_is_closed_is_said_too()
+    {
+        // X and Y DO meet, at J, but J is closed to the router (as a Turn pick closes the charted way), so
+        // it links them itself over W. Read from the graph alone, "they meet" kept the sentence back and
+        // the pilot met W first as a turn call; read from the route, it never passed a node of both.
+        //   X  s(0,0) - J(200,0);  Y  J - y1(400,0) - d(600,0);  W  x1(100,0) - w(100,-60) - y1, a loop round J.
+        var paths = new List<TaxiPath>
+        {
+            P(0, 0, 100, 0, "X"), P(100, 0, 200, 0, "X"),
+            P(200, 0, 400, 0, "Y"), P(400, 0, 600, 0, "Y"),
+            P(100, 0, 100, -60, "W"), P(100, -60, 400, -60, "W"), P(400, -60, 400, 0, "W"),
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>(), new List<Runway>());
+        var router = new TaxiRouter(g);
+        router.BlockedNodes.Add(NodeAt(g, 200, 0));
+        var route = router.FindConstrainedPath(NodeAt(g, 0, 0), NodeAt(g, 600, 0), new List<string> { "X", "Y" })!;
+        Assert.Null(route.ConstrainedFallbackReason);
+        Assert.DoesNotContain(NodeAt(g, 200, 0), NodeIds(route));
+        Assert.Equal(" From X, taxi via W to reach Y.",
+            RouteTaxiwaySequence.LinkClause(new List<string> { "X", "Y" }, route.Segments));
+    }
+
+    [Fact]
+    public void A_taxiway_crossed_inside_one_cleared_taxiways_run_is_not_a_link_between_two()
+    {
+        // The old KEWR route's shape: A11, an unnamed link, A12, F2, A12 again. F2 lies inside A12's
+        // leg, not between A11 and A12, so the sentence about links between cleared taxiways has
+        // nothing to say about it (the route itself no longer takes it).
+        static TaxiNode N(int id, params string[] names) => new() { NodeId = id, TaxiwayNames = new(names, StringComparer.OrdinalIgnoreCase) };
+        var nodes = new[] { N(1, "A11"), N(2, "A11"), N(3, "A12"), N(4, "A12", "F2"), N(5, "A12", "F2"), N(6, "A12") };
+        var names = new[] { "A11", "", "A12", "F2", "A12" };
+        var segments = names.Select((n, i) => new TaxiRouteSegment
+        {
+            FromNode = nodes[i], ToNode = nodes[i + 1], TaxiwayName = n, DistanceMeters = 50,
+        }).ToList();
+        Assert.Equal("", RouteTaxiwaySequence.LinkClause(new List<string> { "A11", "A12" }, segments));
     }
 
     [Fact]
@@ -245,6 +284,143 @@ public class TaxiRouterBridgeJoinTests
             new List<string> { "K14", "M17", "M18" })!;
         Assert.Null(route.ConstrainedFallbackReason);
         Assert.Equal("K14,K14,-,M17,M17,M17,M18", Flown(route));
-        Assert.Equal("", RouteTaxiwaySequence.LinkClause(new List<string> { "K14", "M17", "M18" }, route.Segments, g.TaxiwaysMeet));
+        Assert.Equal("", RouteTaxiwaySequence.LinkClause(new List<string> { "K14", "M17", "M18" }, route.Segments));
+    }
+
+    // ── Where a bridge leg meets the route (AppendBridgeLeg) ─────────────────────────────────────
+
+    [Fact]
+    public void Taking_an_out_and_back_out_moves_where_the_leg_begins_to_the_node_it_turned_back_at()
+    {
+        // The route stands at 4, having come 2, 3, 4; the leg goes straight back to 3 and on to 9. The
+        // edge 3-4 is dropped, so the leg now begins at 3, index 2: the junction a last taxiway is
+        // entered by, and the floor for a bridge leaving it, are read there, never at the old index 3.
+        var path = new List<int> { 1, 2, 3, 4 };
+        int refined = 0;
+        int begin = TaxiRouter.AppendBridgeLeg(path, new List<int> { 4, 3, 9 }, unwind: true, floor: 0, "test", ref refined);
+        Assert.Equal(new[] { 1, 2, 3, 9 }, path);
+        Assert.Equal(2, begin);
+        Assert.Equal(3, path[begin]);
+        Assert.Equal(1, refined);
+    }
+
+    [Fact]
+    public void Taking_a_loop_out_moves_where_the_leg_begins_to_the_node_the_route_was_taken_back_to()
+    {
+        // The leg leaves 5 and comes back round to 3, already driven: the loop 4, 5, 6, 7 goes, and the
+        // leg begins at 3.
+        var path = new List<int> { 1, 2, 3, 4, 5 };
+        int refined = 0;
+        int begin = TaxiRouter.AppendBridgeLeg(path, new List<int> { 5, 6, 7, 3, 8 }, unwind: true, floor: 0, "test", ref refined);
+        Assert.Equal(new[] { 1, 2, 3, 8 }, path);
+        Assert.Equal(2, begin);
+    }
+
+    [Fact]
+    public void A_leg_joined_with_nothing_taken_out_begins_at_the_seam()
+    {
+        var path = new List<int> { 1, 2, 3 };
+        int refined = 0;
+        int begin = TaxiRouter.AppendBridgeLeg(path, new List<int> { 3, 4, 5 }, unwind: true, floor: 0, "test", ref refined);
+        Assert.Equal(new[] { 1, 2, 3, 4, 5 }, path);
+        Assert.Equal(2, begin);
+        Assert.Equal(0, refined);
+    }
+
+    [Fact]
+    public void Nothing_below_the_floor_is_taken_out()
+    {
+        // The out-and-back reaches below the floor (index 2, node 3): only the edge above it goes.
+        var path = new List<int> { 1, 2, 3, 4 };
+        int refined = 0;
+        int begin = TaxiRouter.AppendBridgeLeg(path, new List<int> { 4, 3, 2, 1, 0 }, unwind: true, floor: 2, "test", ref refined);
+        Assert.Equal(new[] { 1, 2, 3, 2, 1, 0 }, path);
+        Assert.Equal(2, begin);
+    }
+
+    // ── The route as scored against the refined one (KeepAsScored) ───────────────────────────────
+
+    private static TaxiRoute Made(string? fellBack, params (int from, int to, string name, double m)[] legs)
+    {
+        var nodes = new Dictionary<int, TaxiNode>();
+        TaxiNode Node(int id) => nodes.TryGetValue(id, out var n) ? n : nodes[id] = new TaxiNode { NodeId = id };
+        var route = new TaxiRoute { ConstrainedFallbackReason = fellBack };
+        foreach (var (from, to, name, m) in legs)
+            route.Segments.Add(new TaxiRouteSegment { FromNode = Node(from), ToNode = Node(to), TaxiwayName = name, DistanceMeters = m });
+        route.TotalDistanceMeters = route.Segments.Sum(s => s.DistanceMeters);
+        return route;
+    }
+
+    private static readonly List<string> XYZ = new() { "X", "Y", "Z" };
+
+    [Fact]
+    public void A_refined_route_that_fell_back_gives_way_to_one_as_scored_that_did_not()
+    {
+        // KNZY "B2, A3, A": the early join landed on a junction from which A has no leg.
+        var refined = Made("No path on 'Z'", (1, 2, "X", 100), (2, 9, "", 100));
+        var asScored = Made(null, (1, 2, "X", 100), (2, 3, "Y", 300), (3, 9, "Z", 100));
+        Assert.True(TaxiRouter.KeepAsScored(refined, asScored, XYZ, endNodeId: 9));
+        Assert.False(TaxiRouter.KeepAsScored(refined, Made("too", (1, 9, "", 100)), XYZ, endNodeId: 9));
+    }
+
+    [Fact]
+    public void A_route_as_scored_that_fell_back_never_stands()
+    {
+        var refined = Made(null, (1, 2, "X", 100), (2, 3, "Y", 100), (3, 9, "Z", 100));
+        Assert.False(TaxiRouter.KeepAsScored(refined, Made("No intersection", (1, 9, "", 50)), XYZ, endNodeId: 9));
+    }
+
+    [Fact]
+    public void A_route_as_scored_with_an_out_and_back_the_refined_one_lacks_never_stands()
+    {
+        // KEWR: out along Y to 4 and straight back, even though it reads shorter on paper.
+        var refined = Made(null, (1, 2, "X", 100), (2, 3, "", 50), (3, 5, "Y", 300), (5, 9, "Z", 100));
+        var asScored = Made(null, (1, 2, "X", 100), (2, 3, "", 50), (3, 4, "Y", 10), (4, 3, "Y", 10), (3, 5, "Y", 200), (5, 9, "Z", 100));
+        Assert.False(TaxiRouter.KeepAsScored(refined, asScored, XYZ, endNodeId: 9));
+    }
+
+    [Fact]
+    public void A_loop_both_routes_share_is_no_reason_to_refuse_the_route_as_scored()
+    {
+        // A gap chained through its own nodes on X (7, 8, 7), a leg no bridge touches, is in both builds.
+        // The refined route left Y undriven (KABQ "R, Q, P, M, B"); the route as scored drives it.
+        var refined = Made(null, (1, 7, "X", 50), (7, 8, "X", 10), (8, 7, "X", 10), (7, 2, "X", 50), (2, 9, "Z", 400));
+        var asScored = Made(null, (1, 7, "X", 50), (7, 8, "X", 10), (8, 7, "X", 10), (7, 2, "X", 50), (2, 3, "Y", 100), (3, 9, "Z", 300));
+        Assert.True(TaxiRouter.KeepAsScored(refined, asScored, XYZ, endNodeId: 9));
+    }
+
+    [Fact]
+    public void A_route_as_scored_that_drives_more_cleared_taxiways_stands_within_the_repeat_limit()
+    {
+        // EBBR "E4, T" to 01: the refined route never drove Y. Within 25 % + 100 m it stands, even when it
+        // ends short of the destination ([RTE-17]); beyond it, it does not.
+        var refined = Made(null, (1, 2, "X", 400), (2, 9, "Z", 400));
+        var near = Made(null, (1, 2, "X", 400), (2, 3, "Y", 500), (3, 8, "Z", 100));
+        var far = Made(null, (1, 2, "X", 400), (2, 3, "Y", 900), (3, 9, "Z", 400));
+        Assert.True(TaxiRouter.KeepAsScored(refined, near, XYZ, endNodeId: 9));
+        Assert.False(TaxiRouter.KeepAsScored(refined, far, XYZ, endNodeId: 9));
+    }
+
+    [Fact]
+    public void A_route_as_scored_that_drives_fewer_cleared_taxiways_never_stands()
+    {
+        var refined = Made(null, (1, 2, "X", 100), (2, 3, "Y", 100), (3, 9, "Z", 100));
+        var asScored = Made(null, (1, 2, "X", 100), (2, 9, "Z", 50));
+        Assert.False(TaxiRouter.KeepAsScored(refined, asScored, XYZ, endNodeId: 9));
+    }
+
+    [Fact]
+    public void Driving_the_same_taxiways_the_route_as_scored_must_reach_as_far_and_be_no_longer()
+    {
+        var refined = Made(null, (1, 2, "X", 100), (2, 3, "Y", 100), (3, 9, "Z", 100));
+        // Shorter only because it stops short of the destination.
+        Assert.False(TaxiRouter.KeepAsScored(refined, Made(null, (1, 2, "X", 100), (2, 3, "Y", 100), (3, 8, "Z", 50)), XYZ, endNodeId: 9));
+        // More of a taxiway nobody cleared.
+        Assert.False(TaxiRouter.KeepAsScored(refined,
+            Made(null, (1, 2, "X", 100), (2, 4, "W", 40), (4, 3, "Y", 50), (3, 9, "Z", 100)), XYZ, endNodeId: 9));
+        // Longer.
+        Assert.False(TaxiRouter.KeepAsScored(refined, Made(null, (1, 2, "X", 100), (2, 3, "Y", 150), (3, 9, "Z", 100)), XYZ, endNodeId: 9));
+        // The same length and no more of other taxiways: it stands.
+        Assert.True(TaxiRouter.KeepAsScored(refined, Made(null, (1, 2, "X", 100), (2, 3, "Y", 100), (3, 9, "Z", 100)), XYZ, endNodeId: 9));
     }
 }

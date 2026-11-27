@@ -2061,21 +2061,6 @@ public partial class TaxiGraph
     }
 
     /// <summary>
-    /// True when some node carries both taxiway names: the two taxiways meet, so the constrained
-    /// router joins them at a shared node (<c>TaxiRouter.FindBestIntersection</c>) rather than
-    /// linking them itself (<c>FindRunwayBridge</c>). Reads <see cref="TaxiNode.TaxiwayNames"/>, as
-    /// the router's own junction search does.
-    /// </summary>
-    public bool TaxiwaysMeet(string a, string b)
-    {
-        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
-        foreach (var n in Nodes.Values)
-            if (n.TaxiwayNames.Contains(a) && n.TaxiwayNames.Contains(b))
-                return true;
-        return false;
-    }
-
-    /// <summary>
     /// Destination node for a RUNWAY departure: the node a route should end at when the
     /// lineup target is <paramref name="lineupLat"/>/<paramref name="lineupLon"/>. Normally
     /// this is simply <see cref="FindNearestNode"/> of the lineup point, and that is what is
