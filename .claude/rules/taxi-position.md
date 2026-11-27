@@ -1,7 +1,6 @@
 ---
 paths:
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.cs"
-  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Routing.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.Announcements.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
   - "MSFSBlindAssist/Navigation/TaxiGraph.cs"

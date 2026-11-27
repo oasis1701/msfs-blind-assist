@@ -564,6 +564,34 @@ static double TaxiPlanBearing(double la1, double lo1, TaxiNode n)
     => (Math.Atan2((n.Longitude - lo1) * Math.Cos(la1 * Math.PI / 180), n.Latitude - la1) * 180 / Math.PI + 360) % 360;
 static double TaxiPlanBearingN(TaxiNode a, TaxiNode b) => TaxiPlanBearing(a.Latitude, a.Longitude, b);
 
+// The hold-short nodes an incursion-guard call can be about — "Crossing <name>." or "Passing the <name> hold line.",
+// <name> being a node's HoldShortName ("runway" when it has none) — every such node within the guard's 40 m (45 m
+// here: the guard measures with its own fast distance), nearest first. Navdata often draws one line as two nodes a
+// few metres apart, so the call is about one of them, not necessarily the nearest. Null for anything else
+// ("Crossing taxiway Y6." names no hold). Every sentence of the frame's one utterance is tried, so a hold-line
+// call after another "Crossing …" ("Crossing taxiway Y6. Crossing runway 01C at Y5.") is still seen.
+static (List<TaxiNode> nodes, string call, bool crossing)? HoldLineCall(TaxiGraph g, string utterance, double lat, double lon)
+{
+    foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(
+                 utterance, @"(?<=^|\. )(?:(Crossing) (.+?)|Passing the (.+?) hold line)\.(?= |$)"))
+    {
+        bool crossing = m.Groups[1].Success;
+        string name = crossing ? m.Groups[2].Value : m.Groups[3].Value;
+        var nodes = new List<(TaxiNode n, double d)>();
+        foreach (var n in g.Nodes.Values)
+        {
+            if (n.Type != TaxiNodeType.HoldShort && n.Type != TaxiNodeType.ILSHoldShort) continue;
+            string spoken = string.IsNullOrEmpty(n.HoldShortName) ? "runway" : n.HoldShortName;
+            if (!string.Equals(spoken, name, StringComparison.Ordinal)) continue;
+            double d = TaxiGraph.CalculateDistanceMeters(lat, lon, n.Latitude, n.Longitude);
+            if (d < 45) nodes.Add((n, d));
+        }
+        if (nodes.Count > 0)
+            return (nodes.OrderBy(x => x.d).Select(x => x.n).ToList(), m.Value.TrimStart('.', ' '), crossing);
+    }
+    return null;
+}
+
 void RunTaxis(World w)
 {
     foreach (var (plan, _) in PlanTaxis(w))
@@ -1661,6 +1689,17 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
         if (prev == TaxiGuidanceState.HoldShort) stops.Add(new HoldStop(0, plan.StartLat, plan.StartLon, cue ?? "", 0));
         bool lineupChecked = false, reachedLineup = false;
         var paintCross = new List<(double odo, double lat, double lon)>();   // each painted runway-hold line crossed
+        // The incursion guard's hold-line calls ("Crossing runway X." / "Passing the X hold line."): one about a
+        // line already behind the aircraft, a "Crossing" with no runway in the next 200 m, the same line twice.
+        bool holdCallBehindReported = false, crossingNoRunwayReported = false, holdCallRepeatReported = false;
+        (double odo, string text)? pendingCrossing = null;
+        (double odo, string text, string what)? pendingBehind = null;
+        (string text, double odo, int stops)? lastHoldCall = null;
+        // ...and the other way round: a runway entered on the way (not the destination) with no "Crossing" call
+        // naming it from 150 m before the entry to 100 m after it.
+        var crossingCalls = new List<(double odo, string text)>();
+        var unannouncedCheck = new List<(double odo, TaxiGraph.RunwayCenterline rwy)>();
+        bool crossedUnannouncedReported = false;
 #if !OLDAPP
         // Turn pick flights: what was said about the pick and the off-chart leg, and (the miss flight)
         // the charted way the pilot takes at the junction instead of the picked turn.
@@ -1729,6 +1768,32 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
                 if (a.Contains("Off-chart leg", StringComparison.OrdinalIgnoreCase)) legSaid = true;
 #endif
                 if (a.Contains("Lined up", StringComparison.OrdinalIgnoreCase)) linedUp = true;
+                if (HoldLineCall(w.Graph, a, lat, lon) is { } hc)
+                {
+                    // About a line already passed: every node of that line in range is behind the pilot. A
+                    // "Crossing" about one is still right while the runway it names is ahead (stopped beside the
+                    // node by the hold capture, a route that starts held at it): judged once 150 m have gone by.
+                    var near = hc.nodes[0];
+                    double rel = Math.Abs(Geo.Norm(TaxiPlanBearing(lat, lon, near) - hdg));
+                    bool allBehind = hc.nodes.All(n => Math.Abs(Geo.Norm(TaxiPlanBearing(lat, lon, n) - hdg)) > 90);
+                    string behindWhat = $"t={t:F0}s \"{hc.call}\" with n{near.NodeId} {Geo.Dist(lat, lon, near.Latitude, near.Longitude):F0} m away, {rel:F0}° off the heading ({lat:F6},{lon:F6})";
+                    if (allBehind && !hc.crossing && !holdCallBehindReported)
+                    {
+                        holdCallBehindReported = true;
+                        found.Add(new Finding(w.Icao, "HOLD_LINE_CALLED_BEHIND", where, behindWhat));
+                    }
+                    else if (allBehind && hc.crossing && pendingBehind == null) pendingBehind = (odo, hc.call, behindWhat);
+                    if (hc.crossing && pendingCrossing == null) pendingCrossing = (odo, hc.call);
+                    if (hc.crossing) crossingCalls.Add((odo, hc.call));
+                    // The same call again with no stop between: the pilot hears one line twice.
+                    if (!holdCallRepeatReported && lastHoldCall is { } lc && lc.text == hc.call && lc.stops == stops.Count && odo - lc.odo < 150)
+                    {
+                        holdCallRepeatReported = true;
+                        found.Add(new Finding(w.Icao, "HOLD_LINE_CALL_REPEATED", where,
+                            $"t={t:F0}s \"{hc.call}\" again, {odo - lc.odo:F0} m after the first, no stop between"));
+                    }
+                    lastHoldCall = (hc.call, odo, stops.Count);
+                }
                 if (a.Contains("off route", StringComparison.OrdinalIgnoreCase) && a.Contains("Warning", StringComparison.OrdinalIgnoreCase) && route != null)
                 {
                     var rpts = new List<(double Lat, double Lon)> { (route.Segments[0].FromNode.Latitude, route.Segments[0].FromNode.Longitude) };
@@ -1806,6 +1871,25 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
 
             // Runway entered?
             var rUnder = TaxiGuidanceHarnessBridge.RunwayUnder(w.Graph, lat, lon);
+            if (pendingBehind is { } pb)
+            {
+                if (rUnder != null && DepartureRig.NamesRunway(pb.text, rUnder)) pendingBehind = null;
+                else if (odo - pb.odo > 150)
+                {
+                    if (!holdCallBehindReported) { holdCallBehindReported = true; found.Add(new Finding(w.Icao, "HOLD_LINE_CALLED_BEHIND", where, pb.what)); }
+                    pendingBehind = null;
+                }
+            }
+            if (rUnder != null) pendingCrossing = null;
+            else if (pendingCrossing is { } pc0 && odo - pc0.odo > 200)
+            {
+                if (!crossingNoRunwayReported)
+                {
+                    crossingNoRunwayReported = true;
+                    found.Add(new Finding(w.Icao, "CROSSING_CALLED_NO_RUNWAY", where, $"\"{pc0.text}\" and no runway in the next {odo - pc0.odo:F0} m"));
+                }
+                pendingCrossing = null;
+            }
             if (rUnder == null && onRunway != null) { leftRunway = onRunway; leftRunwayOdo = odo; }
             bool flicker = rUnder != null && rUnder == leftRunway && odo - leftRunwayOdo < 150;
             // An ENTRY comes from off the pavement: rolling from one runway's pavement straight onto
@@ -1814,6 +1898,7 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
             {
                 string rname = $"{rUnder.Name1}/{rUnder.Name2}";
                 bool isDest = plan.DestRunway != null && (rUnder.Name1 == plan.DestRunway || rUnder.Name2 == plan.DestRunway);
+                if (!isDest) unannouncedCheck.Add((odo, rUnder));
                 bool warned = summary.Contains(rUnder.Name1) && summary.Contains("no hold short", StringComparison.OrdinalIgnoreCase)
                               || summary.Contains(rUnder.Name2) && summary.Contains("no hold short", StringComparison.OrdinalIgnoreCase);
                 // The stop that should have been for THIS runway: the last one not yet followed by a runway.
@@ -1870,6 +1955,17 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
                         where, $"entered runway {rname} at t={t:F0}s, {odo - lastHoldOdo:F0} m after the last hold (state {st})"));
             }
             onRunway = rUnder;
+            for (int ui = unannouncedCheck.Count - 1; ui >= 0; ui--)
+            {
+                var (eOdo, eRwy) = unannouncedCheck[ui];
+                if (odo - eOdo < 100) continue;
+                unannouncedCheck.RemoveAt(ui);
+                if (!crossedUnannouncedReported && !crossingCalls.Any(c => c.odo >= eOdo - 150 && c.odo <= eOdo + 100 && DepartureRig.NamesRunway(c.text, eRwy)))
+                {
+                    crossedUnannouncedReported = true;
+                    found.Add(new Finding(w.Icao, "RUNWAY_CROSSED_UNANNOUNCED", where, $"entered runway {eRwy.Name1}/{eRwy.Name2} at {eOdo:F0} m with no \"Crossing\" naming it"));
+                }
+            }
 
             double off = w.OffPavementMetres(lat, lon);
             if (off < 3) joinedPavement = true;
@@ -1893,6 +1989,13 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
         if (done)
             foreach (var hs in stops.Where(x => !x.Used && DepartureRig.MentionsRunway(x.Text)))
                 found.Add(new Finding(w.Icao, "HOLD_WITHOUT_RUNWAY", where, $"stopped at t={hs.T:F0}s \"{hs.Text}\" and never entered a runway after it"));
+        if (done && !crossedUnannouncedReported
+            && unannouncedCheck.FirstOrDefault(e => !crossingCalls.Any(c => c.odo >= e.odo - 150 && DepartureRig.NamesRunway(c.text, e.rwy))) is { rwy: not null } eEnd)
+            found.Add(new Finding(w.Icao, "RUNWAY_CROSSED_UNANNOUNCED", where, $"entered runway {eEnd.rwy.Name1}/{eEnd.rwy.Name2} at {eEnd.odo:F0} m with no \"Crossing\" naming it"));
+        if (done && pendingBehind is { } pbEnd && !holdCallBehindReported)
+            found.Add(new Finding(w.Icao, "HOLD_LINE_CALLED_BEHIND", where, pbEnd.what));
+        if (done && pendingCrossing is { } pcEnd && !crossingNoRunwayReported)
+            found.Add(new Finding(w.Icao, "CROSSING_CALLED_NO_RUNWAY", where, $"\"{pcEnd.text}\" and no runway before the flight ended {odo - pcEnd.odo:F0} m later"));
         if (!done) found.Add(new Finding(w.Icao, "TAXI_NOT_ARRIVED", where, $"after {t:F0}s ({odo:F0} m of {route.TotalDistanceMeters:F0} m) state={mgr.State} seg={mgr.SegmentIndexForHarness}/{route.Segments.Count} [{string.Join(", ", stateLog.TakeLast(3))}]"));
         if (maxOff > 12) found.Add(new Finding(w.Icao, "TAXI_OFF_PAVEMENT", where, $"{maxOff:F0} m off the pavement following the tone, {offWhere}"));
         if (maxOffLineup > 12) found.Add(new Finding(w.Icao, "LINEUP_LEAVES_MAPPED_PAVEMENT", where, $"{maxOffLineup:F0} m from any mapped taxi edge or runway while following the lineup tone, {lineupWhere}"));
