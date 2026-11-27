@@ -64,6 +64,13 @@ public partial class TaxiGuidanceManager
         int nextIdx = _currentSegmentIndex + 1;
         if (nextIdx >= _route.Segments.Count)
         {
+            // A route that ends at a hold short whose countdown has begun: the countdown already names
+            // it, along the route, and "Runway 04L ahead." on reaching a 2.1 m last segment came 0.2 s
+            // after "… Stop." and cut it off (KEWR 04L via AA, replayed 2026-11-27).
+            if (currentSeg.IsHoldShortPoint && currentSeg.ToNode?.NodeId == _holdShortCountdownNodeId
+                && (_holdShortOuterAnnounced || _holdShortSlowDownAnnounced || _holdShortStopAnnounced))
+                _approachAnnounced = true;
+
             // Hold during the start-warning grace window (_startChatterSuppressUntil,
             // armed by StartGuidance whenever a route-reach or unmapped-start warning
             // exists): this callout would otherwise cut off a warning spoken by the
@@ -99,11 +106,11 @@ public partial class TaxiGuidanceManager
             // Don't set _approachAnnounced when holding, so it still fires normally on
             // the first frame after the window closes if it still applies.
             // TryAnnounceCurve and the advance-notice block below hold the same way;
-            // "turn now" already waits on _approachAnnounced so it needs no extra gate,
-            // but AdvanceSegment clears that latch (and _turnImminentAnnounced) as soon as
-            // the aircraft comes within WAYPOINT_CAPTURE_RADIUS_M of the junction -- 25m
-            // BEFORE it is reached, not at it -- which is how a lost advance notice used
-            // to cost "turn now" too, permanently rather than just late.
+            // "turn now" already waits on the advance notice so it needs no extra gate,
+            // but AdvanceSegment moves the cursor past a junction as soon as the aircraft
+            // comes within WAYPOINT_CAPTURE_RADIUS_M of it -- 25m BEFORE it is reached, not
+            // at it -- which is how a lost advance notice used to cost "turn now" too,
+            // permanently rather than just late.
             if (distToTargetM < APPROACH_ANNOUNCE_DISTANCE_M && !_approachAnnounced &&
                 !StartWarningChatterGate.ShouldHold(
                     MSFSBlindAssist.Utils.SimClock.UtcNow, _startChatterSuppressUntil, distToTargetM, arrivalRadius, _lastGroundSpeedKts))
@@ -146,6 +153,19 @@ public partial class TaxiGuidanceManager
         // Suppressed when a turn/taxiway change is happening (that announcement carries the info).
         TryAnnounceCrossing(distToTargetM, currentSeg, nextSeg, taxiwayChanging, hasTurn);
 
+        // The junction the turn callouts below speak about: the NEXT one along the route, however many
+        // short segments lie before it (RouteAhead.NextJunction), not only the end of the current
+        // segment. After a run of 4 to 9 m segments the cursor reached the segment before KEWR's F3
+        // junction 105 ft out, so the advance notice never came and the pilot heard only "Sharp right
+        // now, taxiway F3." (2026-11-26). Distances below are to that junction along the route.
+        if (RouteAhead.NextJunction(_route.Segments, _currentSegmentIndex, distToTargetM,
+                APPROACH_ANNOUNCE_MAX_M * SHARP_TURN_APPROACH_FACTOR, TURN_WORD_APPROACH_M) is not { } junction)
+            return;
+        // The segment the turn ends on: after every point of the junction (RouteAhead.RunEnd), so a
+        // corner the navdata draws as two kinks a few metres apart is one turn, said once.
+        int turnIdx = RouteAhead.RunEnd(_route.Segments, junction.Index) + 1;
+        double toJunctionM = junction.AlongMetres;
+
         // Final segment onto a runway: the lineup logic (intercept-to-centerline
         // tone + "Lined up" callout + the LiningUp status readout) owns guidance
         // here. The route's STATIC turn onto the runway is computed from the
@@ -156,17 +176,23 @@ public partial class TaxiGuidanceManager
         // turn/approach callout for that last hop; let the tone steer it. Not on a route that
         // ends far aside of its runway (_routeEndsFarFromRunway): it never lines up, so nothing
         // else would call its last turn.
-        if (_isRunwayLineup && !_routeEndsFarFromRunway && nextIdx == _route.Segments.Count - 1)
+        if (_isRunwayLineup && !_routeEndsFarFromRunway && turnIdx == _route.Segments.Count - 1)
             return;
 
-        if (!hasTurn && !taxiwayChanging)
-            return;
+        // The taxiway, the turn and its direction out are the route's over TURN_WORD_APPROACH_M or more
+        // either side of the junction (RouteAhead.TurnAngleAt, RouteBearingOutOf), never one navdata piece:
+        // a piece a metre or two long after the junction, drawn at any angle, set the word and the angle.
+        string turnTaxiway = RouteAhead.TaxiwayOnto(_route.Segments, junction.Index);
+        bool turnTaxiwayChanging = !string.IsNullOrEmpty(turnTaxiway) &&
+            !turnTaxiway.Equals(RouteAhead.TaxiwayBefore(_route.Segments, junction.Index), StringComparison.OrdinalIgnoreCase);
+        double turnAngle = Math.Abs(RouteAhead.TurnAngleAt(_route.Segments, junction.Index, TURN_WORD_APPROACH_M));
+        bool turnHasTurn = turnAngle >= RouteAhead.StraightDegrees;
+        double turnOutBearing = RouteAhead.RouteBearingOutOf(_route.Segments, junction.Index, TURN_WORD_APPROACH_M);
 
         // Is this a sharp turn? (>60° — ICAO Annex 14 regards >90° as requiring
         // significantly wider radius; we flag a bit earlier so slow-down margin
         // is built in.)
-        double turnAngle = Math.Abs(nextSeg.TurnAngleDegrees);
-        bool sharpTurn = hasTurn && turnAngle >= SHARP_TURN_ANGLE_DEG;
+        bool sharpTurn = turnHasTurn && turnAngle >= SHARP_TURN_ANGLE_DEG;
 
         // Advance-notice distance scales with ground speed — at 20 kt, 300 ft is
         // only 9 seconds of lead, not enough to slow down for a sharp turn.
@@ -175,7 +201,33 @@ public partial class TaxiGuidanceManager
         double approachDist = Math.Clamp(
             _lastGroundSpeedKts * StartWarningChatterGate.MetersPerSecondPerKnot * APPROACH_ANNOUNCE_SEC_LEAD,
             APPROACH_ANNOUNCE_MIN_M, APPROACH_ANNOUNCE_MAX_M);
-        if (sharpTurn) approachDist *= 1.5;
+        if (sharpTurn) approachDist *= SHARP_TURN_APPROACH_FACTOR;
+
+        // The two latches below belong to ONE junction of ONE route: the cursor now passes several
+        // short segments between the advance notice and the turn, and a latch cleared on every
+        // segment advance (as _approachAnnounced is) would say the notice again on each.
+        bool advanceSaid = ReferenceEquals(_approachJunctionRoute, _route) && _approachJunctionIndex == junction.Index;
+
+        // The heading the aircraft will have at the junction: its heading now, carried through the route's
+        // own bends before the junction (0 on the segment that ends there, so the word is exactly the
+        // heading-based one of ComputeTurnVerbalFromHeading). From before a curve the heading alone named
+        // the wrong turn: KATL L4 curves right into a sharp left onto L, and the notice said "In 120 metres,
+        // continue onto taxiway L." before "Sharp left now, taxiway L." (VirtualPilot, 2026-11-27).
+        // Carried from where the aircraft IS (distToTargetM back from the current segment's end), not
+        // from the cursor's segment: on short pieces the cursor is a segment ahead of the aircraft, and a
+        // bend before that segment was left out.
+        double headingAtJunction = _lastHeading
+            + RouteAhead.HeadingChangeTo(_route.Segments, _currentSegmentIndex, junction.Index, TURN_WORD_APPROACH_M, distToTargetM);
+        // The advance notice of a junction beyond the current segment: the aircraft will be on the route
+        // by the time it gets there, so its word comes from the route's own direction into the junction,
+        // not from wherever the aircraft points now; and it waits until the aircraft is moving. Said from
+        // a stand on the first frame, it named the turn from the parked heading ("In 110 metres, sharp
+        // right onto taxiway E2, 120 degrees." where the turn is a sharp left, KDTW D 3, VirtualPilot)
+        // and cut off "Steering guidance active. Join taxiway E2 in 90 metres.".
+        bool junctionAhead = junction.Index > _currentSegmentIndex;
+        double headingForNotice = junctionAhead
+            ? RouteAhead.RouteBearingInto(_route.Segments, junction.Index, TURN_WORD_APPROACH_M)
+            : headingAtJunction;
 
         // Advance notice (speed-scaled). Terse: direction + taxiway + angle for sharp.
         // Speed-slow warning is owned by CheckSpeedWarnings — don't duplicate it here.
@@ -186,27 +238,28 @@ public partial class TaxiGuidanceManager
         //
         // The junction itself is NOT where this callout is actually lost (PR #238
         // review finding, CRITICAL): AdvanceSegment (TaxiGuidanceManager.Routing.cs)
-        // clears _approachAnnounced/_turnImminentAnnounced as soon as distToTargetM
-        // drops under WAYPOINT_CAPTURE_RADIUS_M (25m) -- 25m BEFORE the junction, not at
-        // it. Passing the raw distToTargetM here left a 25m-wide loss band open: a
-        // junction reached inside the grace window could be farther than the true
-        // (junction - 25m) loss point yet still closer than the junction itself, so
-        // ShouldHold kept saying "hold" right up until the latch was already cleared and
-        // the callout was gone for good. Hand the gate WAYPOINT_CAPTURE_RADIUS_M as its
-        // clear radius so it measures to the point where AdvanceSegment actually fires,
+        // moves the cursor past the segment ending at the junction as soon as it is
+        // within WAYPOINT_CAPTURE_RADIUS_M (25m) of it -- 25m BEFORE the junction, not at
+        // it -- and the junction then drops out of RouteAhead.NextJunction's scan. Passing
+        // the raw distance here left a 25m-wide loss band open: a junction reached inside
+        // the grace window could be farther than the true (junction - 25m) loss point yet
+        // still closer than the junction itself, so ShouldHold kept saying "hold" right up
+        // until the callout was gone for good. Hand the gate WAYPOINT_CAPTURE_RADIUS_M as
+        // its clear radius so it measures to the point where AdvanceSegment actually fires,
         // not to the junction.
-        if (distToTargetM < approachDist && !_approachAnnounced &&
+        if (toJunctionM < approachDist && !advanceSaid
+            && !(junctionAhead && _lastGroundSpeedKts < ADVANCE_NOTICE_AHEAD_MIN_KTS) &&
             !StartWarningChatterGate.ShouldHold(
                 MSFSBlindAssist.Utils.SimClock.UtcNow, _startChatterSuppressUntil,
-                distToTargetM, WAYPOINT_CAPTURE_RADIUS_M, _lastGroundSpeedKts))
+                toJunctionM, WAYPOINT_CAPTURE_RADIUS_M, _lastGroundSpeedKts))
         {
-            string distStr = distToTargetM > 15 ? $"In {FormatDistance(distToTargetM)}, " : "";
+            string distStr = toJunctionM > 15 ? $"In {FormatDistance(toJunctionM)}, " : "";
             // Direction is computed from the aircraft's CURRENT heading toward the
-            // next segment's bearing — see ComputeTurnVerbalFromHeading. This makes
+            // turning segment's bearing — see ComputeTurnVerbalFromHeading. This makes
             // the verbal cue match the steering tone (which is also heading-based)
             // even when the aircraft is off-axis from the current route segment.
-            string turnStr = hasTurn
-                ? ComputeTurnVerbalFromHeading(nextSeg.BearingDegrees, _lastHeading)
+            string turnStr = turnHasTurn
+                ? ComputeTurnVerbalFromHeading(turnOutBearing, headingForNotice)
                 : "continue";
             // "Sharp" and the junction angle describe the ROUTE's bend; turnStr is measured from
             // the aircraft's heading. When the aircraft is not yet pointing along the route the
@@ -214,7 +267,7 @@ public partial class TaxiGuidanceManager
             // EGLL 09L A1 → gate), so the route's sharpness is only spoken with a full left/right.
             bool fullTurnWord = turnStr == "left" || turnStr == "right";
             string sharpStr = sharpTurn && fullTurnWord ? "sharp " : "";
-            string taxiStr = taxiwayChanging ? $" onto taxiway {nextTaxiway}" : "";
+            string taxiStr = turnTaxiwayChanging ? $" onto taxiway {turnTaxiway}" : "";
             // For sharp turns, speak the rounded angle so the blind pilot knows
             // 70° vs. 150° hairpin. No extra "slow to X" advice here — the speed
             // warning module handles that with its own cadence.
@@ -223,7 +276,9 @@ public partial class TaxiGuidanceManager
                 : "";
 
             AnnounceInstruction($"{distStr}{sharpStr}{turnStr}{taxiStr}{angleStr}.");
-            _approachAnnounced = true;
+            _approachJunctionRoute = _route;
+            _approachJunctionIndex = junction.Index;
+            advanceSaid = true;
         }
 
         // Imminent turn at speed-scaled distance (~4 seconds lead at current ground speed).
@@ -237,17 +292,19 @@ public partial class TaxiGuidanceManager
         // Keeps the wheels on pavement — no lawn mowing.
         if (sharpTurn) turnImminentDistance *= 1.3;
 
-        if (hasTurn && distToTargetM < turnImminentDistance && !_turnImminentAnnounced && _approachAnnounced)
+        bool nowSaid = ReferenceEquals(_turnImminentJunctionRoute, _route) && _turnImminentJunctionIndex == junction.Index;
+        if (turnHasTurn && toJunctionM < turnImminentDistance && !nowSaid && advanceSaid)
         {
-            string taxiStr = taxiwayChanging ? $", taxiway {nextTaxiway}" : "";
+            string taxiStr = turnTaxiwayChanging ? $", taxiway {turnTaxiway}" : "";
             // Same as the advance-notice cue: actual heading, not route's static turn.
-            string turnStr = ComputeTurnVerbalFromHeading(nextSeg.BearingDegrees, _lastHeading);
+            string turnStr = ComputeTurnVerbalFromHeading(turnOutBearing, headingAtJunction);
             string sharpStr = sharpTurn && (turnStr == "left" || turnStr == "right") ? "sharp " : "";
             // Already pointing along the next leg: there is no turn left to call, and
             // "continue now." is not an instruction.
             if (turnStr != "continue")
                 AnnounceInstruction($"{sharpStr}{turnStr} now{taxiStr}.");
-            _turnImminentAnnounced = true;
+            _turnImminentJunctionRoute = _route;
+            _turnImminentJunctionIndex = junction.Index;
         }
     }
 

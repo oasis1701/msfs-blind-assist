@@ -15,11 +15,11 @@ namespace MSFSBlindAssist.Services;
 /// advance turn notice, and the curve cue — each behind a raw
 /// <c>DateTime.UtcNow >= _startChatterSuppressUntil</c> check.</para>
 ///
-/// <para>Waiting is not free for those three. The advance notice is the only setter of
-/// <c>_approachAnnounced</c>, and <c>AdvanceSegment</c> clears both that latch and
-/// <c>_turnImminentAnnounced</c> the instant the aircraft comes within
-/// <c>WAYPOINT_CAPTURE_RADIUS_M</c> (25m) of the junction they describe — NOT when the
-/// junction itself is reached — so a junction reached INSIDE the window permanently
+/// <para>Waiting is not free for those three. <c>AdvanceSegment</c> moves the cursor past
+/// the segment that ends at a junction the instant the aircraft comes within
+/// <c>WAYPOINT_CAPTURE_RADIUS_M</c> (25m) of it — NOT when the junction itself is
+/// reached — and the junction then drops out of the turn notices' scan
+/// (<c>RouteAhead.NextJunction</c>), so a junction reached INSIDE the window permanently
 /// loses "turn left onto taxiway B" AND "turn left now," not merely delayed. The same
 /// mechanism silently drops the destination-ahead callout on any route shorter than
 /// <c>APPROACH_ANNOUNCE_DISTANCE_M</c> (100m) — exactly the short bridged-stand routes

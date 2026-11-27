@@ -665,6 +665,8 @@ As you approach a hold short, BA counts you down in three steps, starting earlie
 
 If you come to a stop before the last step, you hear *"Hold short runway 22R. Stop."* The runway name may include the taxiway the line is on, such as *"runway 15R at N"*. A taxiway hold reads *"Hold short end of taxiway A in 60 metres."*
 
+The distances are measured along your route to the line, so each step comes at the same distance whatever lies between you and the line: a turn, a junction, or the short pieces of taxiway some sceneries draw just before it.
+
 ### At the line {#at-the-line}
 
 When you reach the line, the tone stops and you hear *"Stop. Hold short of runway 22R. Press continue when cleared."* Bring the aircraft to a stop and set the parking brake if you are waiting. Output Y reminds you: *"Holding short of runway 22R. Press continue when cleared."*
@@ -715,6 +717,7 @@ BA watches for runway hold lines as you move, whether or not they are on your ro
 
 - *"Crossing runway 22R at B."* A reminder that the hold line just ahead is part of your route, a runway crossing you have planned.
 - *"Passing the runway 09L at F hold line."* The route passes a runway hold line but does not then go onto the runway, for example a line set back to protect an ILS beside your taxiway. You are not crossing a runway here.
+- Neither reminder is said about the hold short point BA is about to stop you at, once it is within 600 feet along your route: the countdown covers that one. A hold line the scenery draws with two hold points may still be named as you pass the first.
 - *"Warning: approaching runway 36L at M8, off route."* You are heading towards a runway hold line that is **not** on your route, for example because you turned the wrong way or missed a turn. Stop and check where you are with Output Alt+Y. This only speaks for a hold line actually ahead of you, on your heading or on the taxiway you are turning onto, not for lines beside a parallel taxiway you are correctly following. It repeats for the same line no more than every ten seconds.
 
 The two reminders are not said about a hold line you have left behind, unless you are still crossing its runway. If you stop at a runway's hold line after landing, plan the route to your gate there and taxi away from the runway, you hear nothing about that line. A runway your route still crosses is announced as before, including after you press Continue at its hold line. If you turn round and head back towards a hold line you have passed, you hear about it again.
@@ -894,7 +897,7 @@ This is a reference list of every taxi guidance callout, grouped by when you hea
 | *"Crossing taxiway K."* | You are going straight across K. | Nothing; for information. |
 | *"Slow for turn."* / *"Slow for sharp turn."* | Too fast for the coming turn. | Slow down. |
 | *"Taxi speed, 32 knots."* | Faster than 30 knots. | Slow down. |
-| *"Runway 27L ahead."* | Your destination is close. | Get ready to stop. |
+| *"Runway 27L ahead."* | Your destination is close. Not said once the countdown to its hold short has begun. | Get ready to stop. |
 | *"Crossing runway 22R at B."* | A runway crossing on your route is just ahead. | Make sure you are cleared. |
 | *"Warning: approaching runway 36L at M8, off route."* | You are heading for a runway that is not on your route. | Stop, check your position. |
 

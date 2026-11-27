@@ -5,10 +5,11 @@
 // that PR, started gating three callouts in TaxiGuidanceManager.Announcements.cs with a
 // raw `DateTime.UtcNow >= _startChatterSuppressUntil` check that WAITS rather than
 // SKIPS: the final-destination "X ahead.", the advance turn notice, and the curve cue.
-// But the advance notice is the only setter of _approachAnnounced, and AdvanceSegment
-// clears both _approachAnnounced and _turnImminentAnnounced the instant the aircraft
-// passes the junction it describes -- so a junction reached INSIDE the window loses
-// both "turn left onto taxiway B" AND "turn left now" permanently, not just late. The
+// But AdvanceSegment moves the cursor past the segment that ends at a junction the
+// instant the aircraft comes within WAYPOINT_CAPTURE_RADIUS_M (25m) of it, and the
+// junction then drops out of the turn notices' scan (RouteAhead.NextJunction) -- so a
+// junction reached INSIDE the window loses both "turn left onto taxiway B" AND "turn
+// left now" permanently, not just late. The
 // same mechanism silently drops the destination-ahead callout on any route shorter
 // than APPROACH_ANNOUNCE_DISTANCE_M (100m) -- exactly the short bridged-stand routes
 // PR #235 itself creates.
@@ -196,7 +197,7 @@ public class StartWarningChatterGateTests
             distanceToJunctionMeters: 20, clearRadiusMeters: 25, groundSpeedKts: 5));
     }
 
-    // ---- CRITICAL finding: the advance-notice / turn-imminent junction is cleared by
+    // ---- CRITICAL finding: the advance-notice / turn-imminent junction is passed by
     // AdvanceSegment 25m (WAYPOINT_CAPTURE_RADIUS_M) EARLY, not at distance zero.
 
     [Fact]
@@ -205,9 +206,9 @@ public class StartWarningChatterGateTests
         // Reviewer's worked failure (task-1 review, CRITICAL): a 45m junction, steady
         // 5kt (2.572 m/s), this class's 12.5s window. 5kt covers 32.15m by the time the
         // window closes -- comfortably under the raw 45m, so the OLD call (clearRadius
-        // 0, see the next test) said "hold". But AdvanceSegment clears
-        // _approachAnnounced/_turnImminentAnnounced 25m EARLY, at 20m, which 5kt covers
-        // in just 7.78s -- well inside the 12.5s window. The callout was gone before the
+        // 0, see the next test) said "hold". But AdvanceSegment moves the cursor past the
+        // junction 25m EARLY, at 20m, where it drops out of RouteAhead.NextJunction's scan,
+        // which 5kt covers in just 7.78s -- well inside the 12.5s window. The callout was gone before the
         // "hold" it was granted ever paid off. Feeding the gate the capture radius fixes
         // it: effective distance 45-25=20m, and 32.15m covered >= 20m, so this must say
         // "speak now" instead.

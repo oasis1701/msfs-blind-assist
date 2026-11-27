@@ -1,7 +1,6 @@
 ---
 paths:
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.cs"
-  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Routing.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.Announcements.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
   - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
@@ -43,3 +42,4 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [RTE-11] "Where Am I" is ground-only by design (gated on `_lastOnGround`); runway detection must use `TaxiGraph.RunwayCenterlines`, never rely on `taxi_path.type='R'` edges (the DB has none). Full: docs/invariants/taxi-position.md#rte-11
 - [RTE-12] `TaxiGraph.DescribeLocation` runs on pool threads: pool-reachable queries take `_structureLock` inside TaxiGraph, its lazy index is read only under it, no post-Build mutation skips it; never widen the runway-start reach without the owner, nor drop the stand's near-runway gate (pavement, runway start, `IsNavdataHoldShort`) (more: see full). Full: docs/invariants/taxi-position.md#rte-12
 - [RTE-27] The start grace window (`START_WARNING_CHATTER_GRACE_SEC`, 12.5 s) follows either start warning: turn, destination-ahead and curve callouts wait it out when safe (`StartWarningChatterGate`), the taxiway-change callout defers (`TaxiwayChangeGate`); never make any of them skip, never gate hold-short or runway-crossing callouts on it. Full: docs/invariants/taxi-position.md#rte-27
+- [RTE-41] The hold-short countdown, the turn notices and "Slow for turn" measure ALONG THE ROUTE to the next stop or junction (`RouteAhead`), never to the current segment's end alone, latched per stop or junction, never cleared on a segment advance; the incursion guard silently latches a later-segment next stop within 600 ft, never skips it. Full: docs/invariants/taxi-position.md#rte-41
