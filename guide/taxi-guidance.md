@@ -768,6 +768,7 @@ With it on, BA offers the new route instead of switching to it. You hear *"Off r
 - If you leave the route again later, BA offers a new route again. While an offer is waiting it is not repeated, but Output Y (taxi status) ends with *"New route offered. Press left bracket, Y to accept."*
 - If you press Input Y when there is no longer a better route, for example because you are already back on your original taxiways, you hear *"No new route. Continuing on original route."*
 - If you had picked a turn for the route and went past it, the offer says so before the key, for example *"The left turn onto taxiway C was missed."* The new route may then use the same taxiways as your old one, joined further along.
+- While you are away from your route, BA only calls a hold short where your original route meets a runway. If the way back takes you towards another runway, or towards the same runway at another place, there is no hold short call for it, only *"Warning: approaching runway 36L at M8, off route."* Stop when you hear that. Taking the new route gives you its hold shorts.
 
 At a hold short, Input Y still means "cross" or "line up", and an offer is dropped when you stop at one. When BA has just offered to clear you across a second, close parallel runway, that offer has the key until you take it or it ends.
 
