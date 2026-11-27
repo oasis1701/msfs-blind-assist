@@ -358,6 +358,8 @@ EGLL and EHAM their full-length holds.
 
 - Aircraft position projected onto current segment; **perpendicular cross-track distance** (equirectangular projection, clamped to segment endpoints) triggers re-routing if >50 m for >3 s with a 15 s cooldown. Using perpendicular distance rather than great-circle distance to either endpoint means the check correctly ignores along-track position — you only re-route when you're actually off the taxiway, not when you're far along a long segment.
 - Segment advancement when aircraft enters `WAYPOINT_CAPTURE_RADIUS_M` (25 m) of the segment endpoint, **except** the last segment where arrival is driven by the arrival radius so the final-approach countdown can fire below 25 m.
+- A hold-short is also latched when the aircraft passes BESIDE its node (`Navigation.HoldShortAbeam`, 2026-11-24, [HLD-24]): level with the node or up to 40 m past it along the hold segment, within 75 m to the side, heading within 60° of the segment's bearing. The capture above and the skipped-hold announcement (`HOLD_SHORT_ANNOUNCE_MAX_DIST_M`, 40 m) are circles round the node, while an aircraft counts as on its route up to 25 to 61 m either side (`PavementTolerance`) and is steered along a kept route from further out. Passed 35 m to the side at OMDB (K4, hold short of 12R) the hold latched nothing: one "Hold short runway 12R at K4. Stop.", no hold state, a silent Continue, the index pinned on the hold segment for good ([STR-5] keeps the pin-breaker off a hold segment) and the tone steering at the route beyond the line; following it back took the aircraft from the hold, 123 m from the runway centreline, to 48 m from it. The heading bound keeps an aircraft still rolling along the taxiway BEFORE a turn onto a short hold segment from being stopped early; the 75 m reach takes in a neighbouring connector, which for a runway hold is level with the same runway's holding position. Never on the final segment (the destination hold has its own captures). The offsets come from `HoldShortAbeam.TryMeasure` (via `TryMeasureHoldAbeam`), which refuses a hold segment shorter than 1 m and measures along the nearest segment before it instead, still to the hold node: projected onto a sub-metre segment an aircraft reads "level with the node, on the line" from anywhere, and `AdvanceToNearestSegment` parks the index on a hold segment it has just judged too far to call reached. The capture also runs on the first frames of a recalculated route, on purpose: a hold the new route crosses and the aircraft is level with is a stop worth making (the 25 m circle always did the same there), and one already behind the aircraft is never tagged (`RouteRunwayCrossings.IsPassed`); [HLD-10]'s "a recalculation never starts held" is about the start hold at the route's first node, which `PlaceHold` still refuses. VirtualPilot A/B (30 airports; 350 taxi, 717 departure and 90 wrong-turn scenarios, occurrence-keyed): no finding added or removed by it, since a pilot following the tone passes inside the 25 m circle; the live pass is its evidence, and `HoldShortAbeamTests` pins the numbers. A wider A/B on 2026-11-27 (100 airports, 26,571 scenarios, [virtual-pilot.md](virtual-pilot.md), ninth round) did find it at work: five flights that never arrived on main now do, their route doubling back on a hold or starting beside one (KCLE, KSLC, KSFO, VHHH twice), and a stop at KSFO moved off runway pavement.
+- That capture is NOT made for a pilot who missed the turn onto the hold's connector and rolls on along the taxiway (`HoldShortAbeam.IsRollingOnBehindTheLine`, 2026-11-27, [HLD-25]). A connector leaving a parallel taxiway at 30 to 60° puts that taxiway inside every bound above: level with the node along the connector's own direction, 36 to 70 m from it, heading 29 to 60° off it. Flown in VirtualPilot's `missturn` mode, 61 of 1,502 missed turns were stopped there, on the wrong taxiway, with "Stop. Hold short of runway …", and Continue would have announced the crossing from it; main answers a missed turn with the off-route recalculation. Two things tell that pilot from one passing beside the line, and it takes both: the aircraft is more than 10 m farther from the hold's runway than the hold node is (`MetresBehindHoldLine`, against the runway the incursion guard already says the node guards), and the tone is at full pan (a steering error of 30° or more), so it is not being steered onto the route past the line either. With both, 0 of the 1,502 are stopped behind the line, the 7 stops made as near the runway as the node are kept, and so is every stop the capture adds to ordinary flights. Either test alone loses some of those: KCLE has the tone at full pan 45 m past the line, and VHHH (21 m behind, on a 180° turn the tone is leading) and KSFO (35 m behind) are off full pan. A hold that guards no runway the guard knows (a stop the route placed itself, a named holding point) is taken as before.
 - Arrival radii:
   - Runway: 12 m (`ARRIVAL_RADIUS_M`, ≈40 ft) — tight enough that the hold-short countdown's 50 ft "Stop." fires before `HandleArrival` takes over; the earlier 30 m preempted it.
   - Gate / parking: 20 ft (~6 m) — prevents gate countdown (50/20/10 ft) from being preempted by the 25 m waypoint-capture logic.
@@ -566,6 +568,8 @@ Crossing announcements use a 45-second per-taxiway-name dedup window (`_recentCr
 ### Route summary names what the route adds beyond the entered taxiways (2026-11-14)
 
 Pinned by `RouteTaxiwaySequenceTests` (the wording, and that `BuildRouteSummary` still builds its via-list this way) rather than by a rule line. When the route honoured an entered clearance, the summary's via-list is `RouteTaxiwaySequence.ViaClause`: the entered taxiways as entered, then, behind "then", every taxiway the route goes on to use after the last entered one (`BeyondEntered`). The router's last step is "after the last taxiway: A* to the destination node", so an entered clearance that stops short of the destination is completed by the router, and until this change the summary named only what was entered. LOWW, 2026-11-14: "L" entered for Runway 16 gave *"Route to Runway 16 via L. 1.1 nautical miles."* for a route that ran L, W, EX23, E, EX33, D (L is 1,113 of its 2,001 m); the pilot learned of W from the status key while taxiing. It now reads *"Route to Runway 16 via L, then W, EX23, E, EX33, D."*, and with "L, W" entered, *"via L, W, then EX21, EX31, D."* Nothing is appended when the route ends on the entered taxiways, nor when none of the entered taxiways has a segment on the route (one entered taxiway touched only at a junction: there is no last entered taxiway to start after, and the whole route would put the lead-in behind "then" too). Names before the first entered taxiway stay with the lead-in clause, and a connector crossed between two entered taxiways stays unspoken (it is not what the pilot read back). The unconstrained and fallback summaries are unchanged: they already list the route's own names.
+
+**A junction the last entered taxiway crosses is not "beyond" it (2026-11-24).** Where a taxiway crosses another, the navdata names the junction's short pieces for the crossing taxiway, so the route's names along ONE taxiway read "K4, Z, K, K4". `BeyondEntered` matched the first K4 and returned the rest: OMDB, K4 entered for Runway 30R and driven straight over Z and K, *"via K4, then Z, K, K4, M7B, M, M13"*; LOWW the same day, *"via L, then EX2, L, W, EX23"*. The tail now starts after every return to the last matched taxiway that comes within `JunctionCrossingMaxMetres` (120 m, unnamed pavement between counted) on other names (`PastJunctionCrossings`), so those read *"via K4, then M7B, M, M13"* and *"via L, then W, EX23"*. A way round by another taxiway and back is longer than a junction is wide and is still named ("L, then W, L"). A stretch with no measured length is not judged. Not done: the unconstrained summary and the "Route changed" via-list (`DistinctConsecutive`) still name junction pieces, as in *"Route changed. Now via K4, Z, K, K4, M7B, M, M13."* With no entered taxiway to anchor on, the names alone cannot tell crossing Z on K4 from turning off Z onto K4: collapsed left to right, "Z, K4, Z, K, K4" reads "Z, K, K4". That needs the route's geometry, and is left for a follow-up.
 
 ### Start of taxi — apron look-ahead
 
@@ -4457,6 +4461,47 @@ already decided. `DescribeFailure` owns the wording, including the rule that an
 UNREACHABLE runway (`PositiveInfinity` from the walk) speaks no distance at all —
 reporting `RUNWAY_REACH_WALK_SEARCH_M` instead told the pilot "about 1500 metres of
 taxiing away" for a route with no path, a fabricated number they cannot check.
+
+**A route that ends FAR aside of its runway ends as the end of the route, not as the runway's
+hold (2026-11-24, `RunwayReachGate.EndsFarFromRunway`, `_routeEndsFarFromRunway`).** A failing
+verdict still loads the route, and its end was spoken like any runway destination's. At WSSS the
+new scenery's taxiways stop 1,500 m from runway 02R/20L: after the load warning the pilot heard
+"Runway 20L ahead", "Hold short Runway 20L in 35 metres", "Stop. Hold short of Runway 20L. Press
+continue when cleared." and, after Continue, "Entering Runway 20L, heading 203. Turn right."
+with the lineup tone, 1.4 km from the runway. When the aside verdict's distance is over
+`FarFromRunwayCrossMeters` (400 m) the destination-ahead callout is "End of route ahead.", the
+countdown reads "End of route in N", and `HandleArrival` stops the tone, says
+`DescribeRouteEnd` ("Stop. End of this route. It does not reach Runway 20L. The airport data has
+no taxiway to it from here.") and
+goes to `Arrived`: no `HoldShort`, so Continue has nothing to enter, and the status readout
+there is `RouteEndStatus`, never "Arrived at Runway 20L" (heard in the first live check). While
+still taxiing such a route the status readout's distance runs "to the end of the route", not "to
+Runway 20L" (`StatusDistanceTarget`). `TryGetRunwayLineupReference` answers false there: `Arrived`
+otherwise means "lined up", and takeoff assist would have been handed the centreline of a runway
+the aircraft is 1,500 m from; it looks under the aircraft instead. `LoadRoute` writes the flag
+before `AdoptRoute` with no return between the two, so it never describes a route that was not
+adopted. Up to 400 m aside nothing
+changes: the runway may be one unmapped connector away (the PHNL shape), where the stop before
+it, Continue and the lineup tone are worth keeping.
+
+A stops-short verdict is judged the same way on where the route itself ends (2026-11-27 review).
+Its destination node is on the runway, so the aside distance reads near, and the walk it carries
+is a taxi distance (infinite with no path), not how far away the runway is. `EndsFarFromRunway`
+takes the route's last node's distance aside of the same centreline (`RouteEndCrossTrackMeters`,
+the pre-truncation end the walk probe starts from): over 400 m the route ends as the end of the
+route, under it the hold stays. The two verdicts differ in what is said there
+(`RouteEndStatus`, `_routeEndVerdict`). Far ASIDE, no taxiway node lies within 400 m of the
+runway's start, so the first wording ("Reprogram the taxi route, including the taxiway that
+connects to the runway") asked for a taxiway the data does not have; it now says the data has
+none. A route that stops short had a way on in the data, and keeps the advice to reprogram.
+
+Two things the hold-and-lineup path owned are given back to such a route. The past-node arrival
+backstop skips runway routes because LiningUp owns that approach; this route never lines up and
+the off-route recalculation is off on a final segment, so rolled through wide of the 12 m circle
+it never said "Stop. End of this route" and stayed in `Taxiing`. The backstop now runs for it
+(level with the end node, within `ENDPOINT_ARRIVAL_BACKSTOP_CROSS_M`). And
+`CheckUpcomingAnnouncements` withholds the turn callout for a runway route's last hop, which the
+lineup tone steers; here nothing else would call that turn, so it is spoken.
 
 **`TryRecalculateRoute` writes `_routeReachesRunway` AFTER the no-op guard, never
 before.** The verdict describes the RECALCULATED route, so computing it above the

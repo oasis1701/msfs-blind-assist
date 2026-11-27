@@ -113,4 +113,50 @@ public static class RunwayReachGate
                 return null;
         }
     }
+
+    /// <summary>
+    /// How far aside of the runway centreline a route's destination node must sit before the end
+    /// of the route stops being treated as that runway's hold. Up to here a route that fails the
+    /// reach check keeps its hold, its Continue and the lineup tone: the runway may be one unmapped
+    /// connector away, and the conservative stop before it is worth having. Beyond it the runway is
+    /// not there to hold short of or to enter: at WSSS, 2026-11-24, the scenery's taxiways stop
+    /// 1,500 m from runway 02R/20L, and the route's end was spoken as "Runway 20L ahead",
+    /// "Hold short of Runway 20L" and "Entering Runway 20L, heading 203. Turn right."
+    /// </summary>
+    public const double FarFromRunwayCrossMeters = 400.0;
+
+    /// <summary>Whether the route ends too far aside of its runway to be spoken as that runway's
+    /// hold (<see cref="FarFromRunwayCrossMeters"/>). The aside verdict is judged on its own
+    /// distance, the destination node's. A route that stops short has its destination node on the
+    /// runway and carries only a taxi distance (infinite with no path), so it is judged on where
+    /// the route itself ends: <paramref name="routeEndCrossMeters"/>, its last node's distance
+    /// aside of the same centreline.</summary>
+    public static bool EndsFarFromRunway(RunwayReachResult result, double routeEndCrossMeters)
+        => result.Verdict switch
+        {
+            RunwayReachVerdict.EndsAsideOfRunway => result.CrossMeters > FarFromRunwayCrossMeters,
+            RunwayReachVerdict.StopsShortOfRunway => routeEndCrossMeters > FarFromRunwayCrossMeters,
+            _ => false,
+        };
+
+    /// <summary>What is said where such a route ends, in place of the runway hold.</summary>
+    public static string DescribeRouteEnd(string destinationName, RunwayReachVerdict verdict)
+        => "Stop. " + RouteEndStatus(destinationName, verdict);
+
+    /// <summary>What the taxiing status readout's remaining distance runs to: the destination, or,
+    /// on a route that ends far from its runway, the end of the route (the distance is measured to
+    /// the route's last node either way).</summary>
+    public static string StatusDistanceTarget(string destinationName, bool endsFarFromRunway)
+        => endsFarFromRunway ? "the end of the route" : destinationName;
+
+    /// <summary>The status readout there afterwards, in place of "Arrived at Runway X". A route
+    /// that ends far ASIDE has no taxiway node within <see cref="FarFromRunwayCrossMeters"/> of the
+    /// runway's start to route to, so no entry in the planner can add "the taxiway that connects":
+    /// it says the data has none. A route that stops short did have a way on, and keeps the
+    /// advice to reprogram.</summary>
+    public static string RouteEndStatus(string destinationName, RunwayReachVerdict verdict)
+        => $"End of this route. It does not reach {destinationName}. " +
+           (verdict == RunwayReachVerdict.EndsAsideOfRunway
+               ? "The airport data has no taxiway to it from here."
+               : "Reprogram the taxi route, including the taxiway that connects to the runway.");
 }
