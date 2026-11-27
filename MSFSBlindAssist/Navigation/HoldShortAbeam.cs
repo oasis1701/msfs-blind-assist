@@ -100,4 +100,52 @@ public static class HoldShortAbeam
            && alongRemainingMetres >= -MaxPastMetres
            && Math.Abs(crossMetres) <= MaxCrossMetres
            && Math.Abs(headingOffDegrees) <= MaxHeadingOffDegrees;
+
+    /// <summary>
+    /// How much farther from its runway than the hold node an aircraft may be and still be taken
+    /// as at the line whatever it is steering at. The intended passes with the tone at full pan
+    /// were all nearer the runway than the node (KCLE, 45 m nearer); the missed turns were 26 m or
+    /// more behind it.
+    /// </summary>
+    public const double MaxBehindLineMetres = 10.0;
+
+    /// <summary>
+    /// The steering error at which the taxi tone is at full pan
+    /// (<c>TaxiSteeringTone.MAX_PAN_THRESHOLD_DEG</c>): from there on the aircraft is not steering
+    /// where the tone leads.
+    /// </summary>
+    public const double FullPanSteeringErrorDegrees = 30.0;
+
+    /// <summary>
+    /// How much farther from the runway's centreline than the hold node the aircraft is, on the
+    /// node's side of the runway: positive behind the line, negative past it or across the runway.
+    /// Both arguments are signed offsets from the same centreline (<c>RunwayShape.Project</c>).
+    /// </summary>
+    public static double MetresBehindLine(double nodeLateralMetres, double aircraftLateralMetres)
+        => aircraftLateralMetres * Math.Sign(nodeLateralMetres) - Math.Abs(nodeLateralMetres);
+
+    /// <summary>
+    /// Whether an aircraft that reads as level with the hold node (<see cref="IsReached"/>) has in
+    /// fact missed the turn onto the hold's connector and is rolling on along the taxiway it was
+    /// on. A connector that leaves a parallel taxiway at 30 to 60 degrees puts that taxiway inside
+    /// every bound of <see cref="IsReached"/>: level with the node, 36 to 70 m from it, heading 29
+    /// to 60 degrees off the segment. Two things tell it from a pass beside the node, and it takes
+    /// both: the aircraft is still farther from the runway than the line is, and the tone is at
+    /// full pan, so it is not being steered onto the route past the line either. A stop there is a
+    /// stop on the wrong taxiway, and Continue would announce a crossing from it.
+    ///
+    /// <para>VirtualPilot <c>missturn</c>, 2026-11-27, 1,502 missed turns at 10 and 20 kt: without
+    /// this 61 were stopped on the taxiway, each 26 to 53 m behind the line with the tone at full
+    /// pan; with it none, and the 7 stops made no farther from the runway than the line are kept.
+    /// The 11 stops the capture added to 7,617 ordinary flights were all either no more than 5 m
+    /// behind the line or off full pan (VHHH J5, 21 m behind on a 180 degree turn the tone was
+    /// leading; KSFO, a hold short of 01R, 35 m behind).</para>
+    /// </summary>
+    /// <param name="metresBehindLine"><see cref="MetresBehindLine"/>, or null for a hold that guards
+    /// no known runway: there is then nothing to judge by, and the hold is taken.</param>
+    /// <param name="steeringErrorDegrees">The heading error the steering tone is playing, either sign.</param>
+    public static bool IsRollingOnBehindTheLine(double? metresBehindLine, double steeringErrorDegrees)
+        => metresBehindLine is double behind
+           && behind > MaxBehindLineMetres
+           && Math.Abs(steeringErrorDegrees) >= FullPanSteeringErrorDegrees;
 }

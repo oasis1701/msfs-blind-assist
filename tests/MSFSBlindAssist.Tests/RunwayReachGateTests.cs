@@ -232,16 +232,36 @@ public class RunwayReachGateTests
     {
         var wsss20L = new RunwayReachResult(RunwayReachVerdict.EndsAsideOfRunway, 1503.0, 0.0);
 
-        Assert.True(RunwayReachGate.EndsFarFromRunway(wsss20L));
+        Assert.True(RunwayReachGate.EndsFarFromRunway(wsss20L, routeEndCrossMeters: 1503.0));
+        // No taxiway node lies within 400 m of that runway's start, so "reprogram, including the
+        // taxiway that connects to the runway" asked for a taxiway the data does not have.
         Assert.Equal(
-            "Stop. End of this route. It does not reach Runway 20L. Reprogram the taxi route, " +
-            "including the taxiway that connects to the runway.",
-            RunwayReachGate.DescribeRouteEnd("Runway 20L"));
+            "Stop. End of this route. It does not reach Runway 20L. The airport data has no taxiway to it from here.",
+            RunwayReachGate.DescribeRouteEnd("Runway 20L", RunwayReachVerdict.EndsAsideOfRunway));
         // The status key there afterwards said "Arrived at Runway 20L."
         Assert.Equal(
-            "End of this route. It does not reach Runway 20L. Reprogram the taxi route, " +
+            "End of this route. It does not reach Runway 20L. The airport data has no taxiway to it from here.",
+            RunwayReachGate.RouteEndStatus("Runway 20L", RunwayReachVerdict.EndsAsideOfRunway));
+    }
+
+    // A route that stops short has its destination node ON the runway (the entered clearance ended
+    // on a taxiway with no way on), so the aside distance reads near whatever the route did. It is
+    // judged on where the route itself ends. There a way on exists in the data, and the advice to
+    // reprogram stays.
+    [Fact]
+    public void ARouteThatStopsShortFarAsideIsNotSpokenAsTheRunwaysHoldEither()
+    {
+        var stopsShort = new RunwayReachResult(RunwayReachVerdict.StopsShortOfRunway, 6.8, double.PositiveInfinity);
+
+        Assert.True(RunwayReachGate.EndsFarFromRunway(stopsShort, routeEndCrossMeters: 456.0));
+        Assert.Equal(
+            "Stop. End of this route. It does not reach Runway 04L. Reprogram the taxi route, " +
             "including the taxiway that connects to the runway.",
-            RunwayReachGate.RouteEndStatus("Runway 20L"));
+            RunwayReachGate.DescribeRouteEnd("Runway 04L", RunwayReachVerdict.StopsShortOfRunway));
+        Assert.Equal(
+            "End of this route. It does not reach Runway 04L. Reprogram the taxi route, " +
+            "including the taxiway that connects to the runway.",
+            RunwayReachGate.RouteEndStatus("Runway 04L", RunwayReachVerdict.StopsShortOfRunway));
     }
 
     // While still taxiing such a route the status key said "..., 450 metres to Runway 20L" for a
@@ -257,14 +277,20 @@ public class RunwayReachGateTests
     [Theory]
     // A parallel taxiway beside the runway: the runway may be one unmapped connector away, so the
     // route keeps its hold, its Continue and the lineup tone.
-    [InlineData(RunwayReachVerdict.EndsAsideOfRunway, 121.0, false)]
-    [InlineData(RunwayReachVerdict.EndsAsideOfRunway, 400.0, false)]
-    [InlineData(RunwayReachVerdict.EndsAsideOfRunway, 401.0, true)]
-    // Only the aside verdict carries a distance to judge.
-    [InlineData(RunwayReachVerdict.StopsShortOfRunway, 3.2, false)]
-    [InlineData(RunwayReachVerdict.Reaches, 6.8, false)]
-    public void OnlyAnAsideVerdictBeyondTheReachEndsTheRouteAsItsOwnEnd(
-        RunwayReachVerdict verdict, double crossMetres, bool far)
+    [InlineData(RunwayReachVerdict.EndsAsideOfRunway, 121.0, 121.0, false)]
+    [InlineData(RunwayReachVerdict.EndsAsideOfRunway, 400.0, 400.0, false)]
+    [InlineData(RunwayReachVerdict.EndsAsideOfRunway, 401.0, 401.0, true)]
+    // The aside verdict is judged on the destination node's distance, whatever the route's end reads.
+    [InlineData(RunwayReachVerdict.EndsAsideOfRunway, 121.0, 900.0, false)]
+    // A stops-short verdict is judged on the route's own end: its destination node is on the runway.
+    [InlineData(RunwayReachVerdict.StopsShortOfRunway, 3.2, 180.0, false)]
+    [InlineData(RunwayReachVerdict.StopsShortOfRunway, 3.2, 400.0, false)]
+    [InlineData(RunwayReachVerdict.StopsShortOfRunway, 3.2, 401.0, true)]
+    // A route that reaches its runway keeps its hold wherever a set-back hold line puts its end.
+    [InlineData(RunwayReachVerdict.Reaches, 6.8, 6.8, false)]
+    [InlineData(RunwayReachVerdict.Reaches, 6.8, 900.0, false)]
+    public void OnlyAFailingVerdictBeyondTheReachEndsTheRouteAsItsOwnEnd(
+        RunwayReachVerdict verdict, double crossMetres, double routeEndCrossMetres, bool far)
         => Assert.Equal(far, RunwayReachGate.EndsFarFromRunway(
-            new RunwayReachResult(verdict, crossMetres, 655.0)));
+            new RunwayReachResult(verdict, crossMetres, 655.0), routeEndCrossMetres));
 }

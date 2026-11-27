@@ -1081,6 +1081,11 @@ public partial class TaxiGuidanceManager : IDisposable
     // _routeReachesRunway, from the same verdict.
     private bool _routeEndsFarFromRunway;
 
+    // That verdict itself, for what is said at such an end (RunwayReachGate.RouteEndStatus): a
+    // route ending far aside has no taxiway to its runway in the data, one that stops short can
+    // be reprogrammed.
+    private Navigation.RunwayReachVerdict _routeEndVerdict = Navigation.RunwayReachVerdict.Reaches;
+
     // When true, we are currently holding short AT the destination runway
     // (FAA/ICAO: ATC taxi-to clearance never authorizes entering the assigned
     // takeoff runway — pilot must wait for "line up and wait" or "cleared for
@@ -2985,7 +2990,12 @@ public partial class TaxiGuidanceManager : IDisposable
             // would let a landing-exit route declare arrival while still laterally on the
             // runway — exactly what the block above withholds. See the
             // `announcementClearRadius` comment at the top of this method.
-            if (!arrived && !_isRunwayLineup)
+            //
+            // A route that ends far aside of its runway (_routeEndsFarFromRunway) is a plain
+            // endpoint too: it never enters LiningUp, and the off-route recalculation is off on a
+            // final segment, so rolled through wide of the 12 m circle it never said "Stop. End
+            // of this route" and stayed in Taxiing.
+            if (!arrived && (!_isRunwayLineup || _routeEndsFarFromRunway))
             {
                 AlongTrackToSegmentEnd(lat, lon, currentSeg,
                     out double alongRemEndM, out double crossEndM);
@@ -3299,16 +3309,26 @@ public partial class TaxiGuidanceManager : IDisposable
         // alone: that reads a sub-metre hold segment as "level with the node, on the line" from
         // anywhere, and AdvanceToNearestSegment parks the index on a hold segment it has just
         // judged too far away to call reached.
+        //
+        // Never an aircraft that missed the turn onto the hold's connector and rolls on along the
+        // taxiway it was on (HoldShortAbeam.IsRollingOnBehindTheLine): it comes level with the node
+        // as well, 36 to 70 m from it, but it is behind the line and not steering at it, and a
+        // route from where it is, not a stop, is the answer to a missed turn.
         if (_currentSegmentIndex < _route.Segments.Count - 1 && currentSeg.IsHoldShortPoint
             && TryMeasureHoldAbeam(_route.Segments, _currentSegmentIndex, lat, lon,
                    out double holdAlongRemM, out double holdCrossM, out double holdAxisBrg)
             && Navigation.HoldShortAbeam.IsReached(
                    holdAlongRemM, holdCrossM, NormalizeAngle(headingTrue - holdAxisBrg)))
         {
-            _guidanceLog.Info($"Hold-short reached abeam: {currentSeg.HoldShortRunway} seg={_currentSegmentIndex} " +
-                              $"past={-holdAlongRemM:F0}m cross={holdCrossM:F0}m hdg={headingTrue:F0} segBrg={holdAxisBrg:F0}");
-            AdvanceSegment();
-            return;
+            double? behindLineM = MetresBehindHoldLine(currentSeg.ToNode, lat, lon);
+            if (!Navigation.HoldShortAbeam.IsRollingOnBehindTheLine(behindLineM, _smoothedHeadingError))
+            {
+                _guidanceLog.Info($"Hold-short reached abeam: {currentSeg.HoldShortRunway} seg={_currentSegmentIndex} " +
+                                  $"past={-holdAlongRemM:F0}m cross={holdCrossM:F0}m hdg={headingTrue:F0} segBrg={holdAxisBrg:F0} " +
+                                  $"behindLine={behindLineM ?? double.NaN:F0}m steer={_smoothedHeadingError:F0}");
+                AdvanceSegment();
+                return;
+            }
         }
 
         // Off-route deviation — perpendicular (cross-track) distance from the segment
@@ -4567,7 +4587,7 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             _steeringTone.Stop();
             SetState(TaxiGuidanceState.Arrived);
-            AnnounceInstruction(Navigation.RunwayReachGate.DescribeRouteEnd(_destinationName));
+            AnnounceInstruction(Navigation.RunwayReachGate.DescribeRouteEnd(_destinationName, _routeEndVerdict));
             return;
         }
 
@@ -4796,6 +4816,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _runwayLineupUnreachableWarned = false;
         _routeReachesRunway = true;
         _routeEndsFarFromRunway = false;
+        _routeEndVerdict = Navigation.RunwayReachVerdict.Reaches;
         _autoActivateFired = false;
         // Reset all announcement latches — defense in depth; LoadRoute resets them too
         // but StopGuidance can be called independently (hotkey, takeoff-assist takeover).

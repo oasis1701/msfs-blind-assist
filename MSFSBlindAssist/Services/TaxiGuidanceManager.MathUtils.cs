@@ -172,7 +172,7 @@ public partial class TaxiGuidanceManager
     /// segment before it that has one (<see cref="Navigation.HoldShortAbeam.AxisLookBackSegments"/>).
     /// False when none has: the hold is then left to the capture circle round its node.
     /// </summary>
-    private static bool TryMeasureHoldAbeam(
+    internal static bool TryMeasureHoldAbeam(
         IReadOnlyList<TaxiRouteSegment> segments, int holdIndex, double lat, double lon,
         out double alongRemainingM, out double crossM, out double axisBearingDeg)
     {
@@ -193,6 +193,24 @@ public partial class TaxiGuidanceManager
         crossM = 0.0;
         axisBearingDeg = 0.0;
         return false;
+    }
+
+    /// <summary>
+    /// How much farther from its runway's centreline the aircraft is than the hold node
+    /// (<see cref="Navigation.HoldShortAbeam.MetresBehindLine"/>), or null when the node guards no
+    /// runway the incursion guard knows: a node that is not a hold-short node in the navdata (a
+    /// stop the route placed itself, a named holding point), or one too far from any centreline.
+    /// Read from the guard's per-graph cache, which <see cref="CheckRunwayIncursion"/> builds
+    /// earlier in the same position frame.
+    /// </summary>
+    private double? MetresBehindHoldLine(TaxiNode holdNode, double lat, double lon)
+    {
+        if (!_incursionNodeGeometry.TryGetValue(holdNode.NodeId, out var geometry)
+            || geometry.GuardedRunway is not { } runway)
+            return null;
+        return Navigation.HoldShortAbeam.MetresBehindLine(
+            runway.Project(holdNode.Latitude, holdNode.Longitude).Lateral,
+            runway.Project(lat, lon).Lateral);
     }
 
     /// <summary>

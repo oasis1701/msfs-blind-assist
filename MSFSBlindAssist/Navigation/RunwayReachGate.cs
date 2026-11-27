@@ -126,15 +126,22 @@ public static class RunwayReachGate
     public const double FarFromRunwayCrossMeters = 400.0;
 
     /// <summary>Whether the route ends too far aside of its runway to be spoken as that runway's
-    /// hold (<see cref="FarFromRunwayCrossMeters"/>). Only the aside verdict carries a measured
-    /// distance to judge; a route that stops short keeps the hold it has.</summary>
-    public static bool EndsFarFromRunway(RunwayReachResult result)
-        => result.Verdict == RunwayReachVerdict.EndsAsideOfRunway
-           && result.CrossMeters > FarFromRunwayCrossMeters;
+    /// hold (<see cref="FarFromRunwayCrossMeters"/>). The aside verdict is judged on its own
+    /// distance, the destination node's. A route that stops short has its destination node on the
+    /// runway and carries only a taxi distance (infinite with no path), so it is judged on where
+    /// the route itself ends: <paramref name="routeEndCrossMeters"/>, its last node's distance
+    /// aside of the same centreline.</summary>
+    public static bool EndsFarFromRunway(RunwayReachResult result, double routeEndCrossMeters)
+        => result.Verdict switch
+        {
+            RunwayReachVerdict.EndsAsideOfRunway => result.CrossMeters > FarFromRunwayCrossMeters,
+            RunwayReachVerdict.StopsShortOfRunway => routeEndCrossMeters > FarFromRunwayCrossMeters,
+            _ => false,
+        };
 
     /// <summary>What is said where such a route ends, in place of the runway hold.</summary>
-    public static string DescribeRouteEnd(string destinationName)
-        => "Stop. " + RouteEndStatus(destinationName);
+    public static string DescribeRouteEnd(string destinationName, RunwayReachVerdict verdict)
+        => "Stop. " + RouteEndStatus(destinationName, verdict);
 
     /// <summary>What the taxiing status readout's remaining distance runs to: the destination, or,
     /// on a route that ends far from its runway, the end of the route (the distance is measured to
@@ -142,8 +149,14 @@ public static class RunwayReachGate
     public static string StatusDistanceTarget(string destinationName, bool endsFarFromRunway)
         => endsFarFromRunway ? "the end of the route" : destinationName;
 
-    /// <summary>The status readout there afterwards, in place of "Arrived at Runway X".</summary>
-    public static string RouteEndStatus(string destinationName)
-        => $"End of this route. It does not reach {destinationName}. Reprogram the taxi " +
-           "route, including the taxiway that connects to the runway.";
+    /// <summary>The status readout there afterwards, in place of "Arrived at Runway X". A route
+    /// that ends far ASIDE has no taxiway node within <see cref="FarFromRunwayCrossMeters"/> of the
+    /// runway's start to route to, so no entry in the planner can add "the taxiway that connects":
+    /// it says the data has none. A route that stops short did have a way on, and keeps the
+    /// advice to reprogram.</summary>
+    public static string RouteEndStatus(string destinationName, RunwayReachVerdict verdict)
+        => $"End of this route. It does not reach {destinationName}. " +
+           (verdict == RunwayReachVerdict.EndsAsideOfRunway
+               ? "The airport data has no taxiway to it from here."
+               : "Reprogram the taxi route, including the taxiway that connects to the runway.");
 }

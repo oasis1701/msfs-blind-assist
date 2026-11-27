@@ -1,6 +1,6 @@
 #!/bin/bash
 # runall.sh <outdir> [modes] : over the 100 busiest airports, 6 processes each.
-#   modes (default "all wrongturn departures"): any of all | wrongturn | departures | turnpicks
+#   modes (default "all wrongturn departures"): any of all | wrongturn | missturn | departures | turnpicks
 #   VP_PROCS=n  number of parallel processes (default 6)
 #   VP_SIM=fs2020|fs2024  which simulator's navdata database to fly (default: MSFS 2020's when it
 #               is installed, else MSFS 2024's); a before/after pair must fly the same one
@@ -16,7 +16,7 @@ if [ -z "$VP_EXE" ]; then
 else E=$VP_EXE; fi
 export VP_OSMDIR=${VP_OSMDIR:-$(pwd)/runs/_osm}
 for m in $MODES; do
-  K=10; [ "$m" = wrongturn ] && K=20
+  K=10; [ "$m" = wrongturn ] && K=20; [ "$m" = missturn ] && K=40
   N=${VP_PROCS:-6}
   for i in $(seq 0 $((N-1))); do $E $m --airports 100 --taxi-per-airport $K --shard $i/$N --out $O/${m}_$i.txt > $O/log_${m}_$i.txt 2>&1 & done; wait
 done
