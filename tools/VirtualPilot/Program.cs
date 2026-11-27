@@ -79,6 +79,8 @@ int landings = 0, taxis = 0;
 var settings = new UserSettings { TaxiGuidanceToneVolume = 0.0, TaxiGuidanceHardPanTone = false };
 var started = DateTime.Now;
 string? depTraceFilter = null;
+// The route the last FlyTaxi loaded, written beside its CODES line as a ROUTE line (compare_routes.py).
+string? lastRouteLine = null;
 
 if (opt.Trace != null) { captureLog = true; RunTrace(opt.Trace); return 0; }
 
@@ -128,7 +130,25 @@ void Codes(string kind, string icao, string key, List<Finding> fs)
 {
     var codes = fs.Select(f => f.Code).Distinct().OrderBy(c => c, StringComparer.Ordinal).ToList();
     resultsWriter?.WriteLine($"CODES|{kind}|{icao}|{key}|{(codes.Count == 0 ? "OK" : string.Join(",", codes))}");
+    if (lastRouteLine != null) resultsWriter?.WriteLine($"ROUTE|{kind}|{icao}|{key}|{lastRouteLine}");
+    lastRouteLine = null;
     foreach (var f in fs) Add(f);
+}
+
+// A loaded route as one results field set: metres, its taxiway names in order (unnamed pavement
+// left out, a run of one name said once) and a hash of its node ids, so two runs can be compared
+// route by route (compare_routes.py), not only by the findings each produced.
+static string RouteLine(TaxiRoute route)
+{
+    var names = new List<string>();
+    foreach (var s in route.Segments)
+        if (s.TaxiwayName.Length > 0 && (names.Count == 0 || !names[^1].Equals(s.TaxiwayName, StringComparison.OrdinalIgnoreCase)))
+            names.Add(s.TaxiwayName);
+    uint hash = 2166136261;
+    void Mix(int id) { foreach (byte b in BitConverter.GetBytes(id)) { hash ^= b; hash *= 16777619; } }
+    if (route.Segments.Count > 0) Mix(route.Segments[0].FromNode.NodeId);
+    foreach (var s in route.Segments) Mix(s.ToNode.NodeId);
+    return FormattableString.Invariant($"{route.TotalDistanceMeters:F0}|{string.Join(",", names)}|{hash:x8}");
 }
 
 void Add(Finding f)
@@ -1630,6 +1650,7 @@ List<Finding> FlyTaxi(World w, TaxiPlan? plan, bool withClearance, bool trace)
         if (withClearance && route.TotalDistanceMeters > shortestM * 1.3 + 200)
             found.Add(new Finding(w.Icao, "CLEARANCE_ROUTE_DETOUR", where, $"cleared route {route.TotalDistanceMeters:F0} m vs shortest {shortestM:F0} m over the same taxiways"));
         string summary = mgr.LastRouteSummary + " " + StartWarning(mgr);
+        lastRouteLine = RouteLine(route);
         double stubLenM = 0;   // the entry stub the lineup tone follows first (new app only)
         if (trace) Console.WriteLine($"ROUTE {route.Segments.Count} segs {route.TotalDistanceMeters:F0} m: {summary}");
         if (trace)
