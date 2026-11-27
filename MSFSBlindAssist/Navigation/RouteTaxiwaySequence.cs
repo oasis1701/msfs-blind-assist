@@ -57,7 +57,8 @@ public static class RouteTaxiwaySequence
     /// <para>The entered names are walked against <see cref="DistinctConsecutive"/> in the order
     /// they were entered ("A, C, A" matches the second A second), and everything after the last
     /// one matched is returned. An entered taxiway the route only touches at a junction has no
-    /// segment of its own: it is skipped, never allowed to end the walk. Names BEFORE or BETWEEN
+    /// segment of its own: it is skipped, never allowed to end the walk. A junction the last one
+    /// crosses is not "after" it (<see cref="JunctionCrossingMaxMetres"/>). Names BEFORE or BETWEEN
     /// the entered ones are not returned: the lead-in clause (<see cref="TaxiLeadIn"/>) owns the
     /// first, and a connector crossed between two cleared taxiways is deliberately not read out
     /// against the clearance the pilot read back.</para>
@@ -71,7 +72,8 @@ public static class RouteTaxiwaySequence
     {
         if (entered == null || entered.Count == 0) return new List<string>();
 
-        var actual = DistinctConsecutive(segments);
+        var runs = NamedRuns(segments);
+        var actual = runs.ConvertAll(r => r.Name);
         int next = 0;
         bool matchedAny = false;
         foreach (string name in entered)
@@ -86,7 +88,83 @@ public static class RouteTaxiwaySequence
                 }
             }
         }
-        return matchedAny ? actual.GetRange(next, actual.Count - next) : new List<string>();
+        if (!matchedAny) return new List<string>();
+
+        next = PastJunctionCrossings(runs, next);
+        return actual.GetRange(next, actual.Count - next);
+    }
+
+    /// <summary>
+    /// The longest stretch on other names that still counts as CROSSING a junction on the last
+    /// entered taxiway rather than leaving it. Where a taxiway crosses another, the navdata names
+    /// the junction's short pieces for the crossing taxiway, and the summary then read the rest of
+    /// the very taxiway the pilot entered as something new: OMDB, 2026-11-24, "via K4, then Z, K,
+    /// K4, M7B, M, M13" for K4 driven straight over Z and K; LOWW the same day, "via L, then EX2, L,
+    /// W, EX23". A way round by another taxiway and back is longer than a junction is wide.
+    /// </summary>
+    public const double JunctionCrossingMaxMetres = 120.0;
+
+    /// <summary>
+    /// Moves the start of the tail past every junction the last matched taxiway crosses: a return
+    /// to that same taxiway after no more than <see cref="JunctionCrossingMaxMetres"/> on other
+    /// names (unnamed pavement between counted). A stretch with no measured length is not judged,
+    /// so a route built without distances reads exactly as before.
+    /// </summary>
+    private static int PastJunctionCrossings(List<(string Name, double Metres, double UnnamedBefore)> runs, int next)
+    {
+        string last = runs[next - 1].Name;
+        while (true)
+        {
+            double gap = 0.0;
+            int back = -1;
+            for (int j = next; j < runs.Count; j++)
+            {
+                gap += runs[j].UnnamedBefore;
+                if (gap > JunctionCrossingMaxMetres) break;
+                if (runs[j].Name.Equals(last, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (gap > 0.0) back = j;
+                    break;
+                }
+                gap += runs[j].Metres;
+                if (gap > JunctionCrossingMaxMetres) break;
+            }
+            if (back == -1) return next;
+            next = back + 1;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="DistinctConsecutive"/> with lengths: each run of segments sharing a name, how far
+    /// it runs, and how much unnamed pavement lies between it and the named run before it.
+    /// </summary>
+    private static List<(string Name, double Metres, double UnnamedBefore)> NamedRuns(
+        IReadOnlyList<TaxiRouteSegment>? segments)
+    {
+        var runs = new List<(string Name, double Metres, double UnnamedBefore)>();
+        if (segments == null) return runs;
+
+        double unnamed = 0.0;
+        foreach (var seg in segments)
+        {
+            string name = seg.TaxiwayName;
+            if (string.IsNullOrEmpty(name))
+            {
+                unnamed += seg.DistanceMeters;
+                continue;
+            }
+            if (runs.Count > 0 && runs[^1].Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                // Unnamed pavement inside one taxiway's run is part of that run.
+                runs[^1] = (runs[^1].Name, runs[^1].Metres + unnamed + seg.DistanceMeters, runs[^1].UnnamedBefore);
+            }
+            else
+            {
+                runs.Add((name, seg.DistanceMeters, unnamed));
+            }
+            unnamed = 0.0;
+        }
+        return runs;
     }
 
     /// <summary>
