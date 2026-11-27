@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code in this repository, kept small on purpose: each area's rules load on their own when you read that area's code, and their full text lives in `docs/invariants/`. See "Where things live" and "Adding or changing a rule" below.
+Guidance for Claude Code in this repository, kept small on purpose. See "Where things live" and "Adding or changing a rule" below.
 
 ## Project Overview
 
