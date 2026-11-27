@@ -38,7 +38,7 @@ public static class LiftoffHandoffBreadcrumb
     ///     "Airborne, hand fly."                  1.68 s
     ///     "Airborne, hand fly, quick keys off."  3.00 s
     ///
-    /// Each mute is that number plus roughly a fifth, rounded. NVDA and Tolk run at the
+    /// Each mute is that number plus roughly a fifth, rounded. Screen readers run at the
     /// pilot's own rate, which the app cannot read; Rate 0 is the honest reference because it
     /// is the one this process can produce, and a faster reader simply finishes early.
     ///

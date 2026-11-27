@@ -18,7 +18,7 @@ MSFS Blind Assist (we call it BA in this guide) is a Windows application that ma
 - **Hotkeys you can press at any time.** Global keys read out your altitude, speed, heading, fuel and much more, and other keys open windows, set the autopilot or start guidance. They work while the simulator has the focus, so you do not need to switch windows to use them.
 - **Automatic announcements and audio guidance.** BA watches the aircraft and speaks important changes — a master warning, a flight mode change, a system coming on line — and it can play steering tones that guide you along a taxiway, down a runway centreline or onto a glide path.
 
-BA speaks through your screen reader. It works with NVDA directly, and with JAWS and other screen readers through a standard helper library. If no screen reader is running, BA falls back to Windows' built-in speech (often called SAPI), so you still hear everything.
+BA speaks through your screen reader, and shows each announcement on your braille display. It works with NVDA, JAWS, ZDSR (Zhengdu Screen Reader) and other screen readers through a helper library called Prism. If no screen reader is running, BA falls back to Windows' built-in speech (often called SAPI), so you still hear everything.
 
 BA works alongside your screen reader, not instead of it: when you press a button or change a list in BA's windows, your screen reader already says what happened, so BA stays quiet. [How BA Talks to You](core-concepts.md#core-speech) explains when BA does speak.
 

@@ -582,12 +582,97 @@ git mv MSFSBlindAssist/Forms/SomeForm.cs MSFSBlindAssist/Forms/B737/SomeForm.cs
 ### ScreenReaderAnnouncer
 **File:** `Accessibility/ScreenReaderAnnouncer.cs`
 
-Multi-method screen reader communication with dual approach:
-- NVDA direct support via NvdaControllerWrapper
-- Universal screen reader support via TolkWrapper (JAWS, Window-Eyes, etc.)
-- Configurable announcement modes (ScreenReader vs SAPI)
-- Settings persistence for announcement preferences
-- Fallback SAPI TTS when screen readers unavailable
+Every announcement goes to the running screen reader through Prism (`ScreenReaderOutput`, below), spoken and
+brailled, or else to System.Speech (SAPI). `Announce` queues (`interrupt: false`), `AnnounceImmediate` cuts off what
+the reader is saying (`interrupt: true`). Screen readers are used only in Screen Reader mode
+(`ScreenReaderAnnouncer.UsesScreenReader`): SAPI mode keeps the Windows voice whatever reader is running, as the guide
+promises for a reader not working with BA. (Before Prism, a running NVDA or JAWS overrode a saved SAPI choice; the
+Settings status box says "SAPI is chosen" beside a found reader, so a pilot updating with SAPI saved learns why.)
+When System.Speech cannot start, or a `SpeakAsync` throws, the screen reader is used whatever the mode
+(`TriesScreenReader`): a broken SAPI never silences a pilot whose reader works.
+
+Where one announcement goes is the static `ScreenReaderAnnouncer.Route` (`AnnouncementDeliveryTests`). An
+interrupting announcement silences both voices: when the reader takes it, `SpeakAsyncCancelAll` still runs, because
+messages sent while the reader was away (closed, restarting) are queued in System.Speech, and that backlog would
+otherwise talk over the reader with nothing to stop it. A queued announcement cancels nothing.
+
+### ScreenReaderOutput and PrismScreenReaderBackends (every screen reader through Prism)
+**Files:** `Accessibility/ScreenReaderOutput.cs`, `Accessibility/PrismScreenReaderBackends.cs`,
+`Accessibility/SingleThreadScreenReaderBackends.cs`
+
+Prism ([github.com/ethindp/prism](https://github.com/ethindp/prism)) through its .NET package Prismatoid
+(NuGet `Prismatoid` 0.4.0, MPL-2.0; its native `prism.dll` comes from the package's `runtimes\win-x64` folder). It
+replaced Tolk and the NVDA controller client (2026-11, after PR #365's reviewer asked for ZDSR this way); neither
+DLL ships any more, and `RuntimeChecker.RequiredDlls` asks for `prism.dll` and `Prismatoid.dll` instead. The updater
+only overlays, so an install updated in place kept both; `Patching/RetiredScreenReaderLibrariesCleanup` removes them
+at start-up, only where `prism.dll` sits beside the exe, and only those two files.
+
+- **Which readers.** The nine screen readers Prism reaches on Windows, named one by one
+  (`PrismScreenReaderBackends.IsScreenReader`), in Prism's priority order: NVDA (103), then PC-Talker, ZDSR and Boy
+  PC Reader (101), then JAWS, ZoomText, Sense Reader, System Access and Window-Eyes (100). Prism's speech engines
+  (SAPI, OneCore) and its UI Automation backend are not used, and a backend a later Prism adds is used only once it
+  is added to that list: a speech engine always starts, so taken for a screen reader it would be "detected" on every
+  PC. Each reader's own library comes from its installation: ZDSR's `ZDSRAPI_x64.dll` through ZDSR's registry path,
+  NVDA over its own RPC endpoint, JAWS over COM.
+- **One thread.** Every call to Prism (its start, each connection, `Speak`, `Braille`, closing) runs on one
+  background thread of its own, a single-threaded apartment like the UI thread
+  (`SingleThreadScreenReaderBackends`, which `ScreenReaderOutput.Shared` wraps the Prism backends in). Announcements
+  come from the UI thread and from background timers (the First Officer managers) and share one connection; JAWS's
+  COM connection belongs to the thread that made it, and Tolk failed silently off the UI thread for the same reason.
+  The caller waits for its call and gets its result or its exception.
+- **What each reader is asked.** Only what its Prism backend says it supports, read from its feature flags: a reader
+  without `SupportsSpeak` is skipped, one without `SupportsBraille` is never sent braille. The interrupt is each
+  reader's own: NVDA cancels its speech then speaks, ZDSR takes its `bInterrupt` flag, JAWS `SayString`'s flush.
+- **Keeping a reader.** The first reader that starts is kept while it takes messages. `ScreenReaderOutput.Shared` is
+  the one instance; Prism itself starts on the first announcement, so the test doubles that subclass the announcer
+  never load `prism.dll`.
+- **A reader that closed, or is not speaking yet.** Its next `Speak` throws (measured for NVDA and ZDSR closing,
+  and for NVDA in its first seconds). When the connection spoke before, one fresh connection to the same reader is
+  given that same message first: if the reader runs, only the connection was at fault. When that fails too, or the
+  connection never spoke, the message goes to the other readers, each failing one left out, then to SAPI. A failing
+  reader is logged once per run of failures.
+- **A reader that restarted.** Measured 2026-11-24 (Prismatoid 0.4.0, NVDA and ZDSR): one connection keeps speaking
+  across a restart of its reader (`nvda -r`; NVDA quit and started 10 s later; ZDSR stopped and started), and a
+  connection whose `Speak` failed while NVDA was closed speaks again once NVDA is back. So with these two the fresh
+  connection above is a safety net, for a reader or a later Prism whose connection does not come back.
+- **Fresh connections.** Every backend is created with `CreateBackend`, never Prism's cached `AcquireBackend`: each
+  connection is closed by whoever asked for it (`DetectNow`'s probe, a reader given one message to try), and closing
+  a shared cached instance would close it under the reader in use.
+- **Measured live, 2026-11-24** (the real Prism on one thread, NVDA and ZDSR, one at a time unless said): speech
+  from the UI thread, pool threads and extra STA and MTA threads, 30 of 30 from six threads at once; a reader
+  started later picked up at the next look; with no reader for two minutes the looks came 30 s apart and ZDSR,
+  started then, was used from the next one; NVDA started while ZDSR was in use had one message refused (ZDSR kept
+  its connection and spoke it), took over 5 s later, and ZDSR took the first message after NVDA closed; with three
+  long messages queued in System.Speech, the first interrupting announcement ZDSR took silenced it.
+- **A reader that starts later.** Readers are looked for again at most every 5 s (`RescanIntervalMs`). While none is
+  in use, all of them, and the first that starts is used. While one is in use, only those above it (NVDA started
+  after ZDSR): a reader that has started is given the message first, and the one in use is closed only once that
+  reader has spoken, because closing a connection can drop what the reader has queued. So NVDA's own ~8 s start-up
+  costs ZDSR nothing. A better reader that starts but keeps failing is tried again after 5, 10, 20 and 40 s, then
+  every 60 s (`MaxTrialWaitMs`). Prism's availability callback is not used: measured 2026-11-24, it reported NVDA's
+  comings and goings but never ZDSR's.
+- **Braille.** Every spoken message is also sent to `Braille`, separately: never Prism's `Output`, which fails as a
+  whole when braille does. ZDSR with no braille display fails every braille call (its API returns 3, Prism reports
+  `PRISM_ERROR_INTERNAL`); that is logged once per reader and the message still counts as spoken.
+- **Settings.** The Announcements tab's status box calls `DetectNow()` on the same instance, so it names the reader
+  the announcer uses. `DetectNow` checks the reader in use is still running (it keeps that connection, closing its
+  own probe copy), so a reader that closed since the last message is not named; with none in use it takes the first
+  that starts. A reader above the one in use is not named until it has spoken: it gets the next message at once.
+  The box's text is `ScreenReaderAnnouncer.DetectionStatusText`, which says the voice the pilot hears: "BA speaks
+  through NVDA", "SAPI is chosen, so BA speaks with Windows speech", or, when System.Speech could not start
+  (`WindowsSpeechFailedToStart`), that the reader speaks although SAPI is chosen. The box is three lines high;
+  `Every_status_fits_in_the_status_box` measures every status in the real control.
+- **Cost.** Measured live: Prism's start plus the first selection 35 to 105 ms (once); a message 0.2 to 0.5 ms; a
+  rescan with no reader running about 10 ms. Prismatoid 0.4.0 leaks about 1 KB of native memory per failed
+  `CreateBackend` (its `PrismBackend` constructor throws without freeing the native object; measured by the review:
+  16,000 failed creates, 15.6 MB, no handle or thread growth). With no reader running in Screen Reader mode that was
+  about 6 MB an hour at one look every 5 s, so once no reader has run for two minutes (`NoReaderSlowAfterMs`) the
+  look comes every 30 s (`SlowRescanIntervalMs`, about 1 MB an hour); a reader started then is picked up within 30 s,
+  and opening Settings looks at once and brings the 5 s look back. With a reader in use only the readers above it
+  are probed (NVDA alone probes none). Worth an upstream report.
+- **Tests.** `ScreenReaderOutputTests` drive the selection through a fake `IScreenReaderBackends`,
+  `SingleThreadScreenReaderBackendsTests` the one thread, `PrismScreenReaderListTests` the list of readers; the real
+  Prism is exercised only live (NVDA, ZDSR, SAPI). JAWS was not available to test live.
 
 ### HotkeyManager
 **File:** `Hotkeys/HotkeyManager.cs`
@@ -671,9 +756,8 @@ See [Taxi Guidance — Taxi-Data Augmentation Pipeline](taxi-guidance.md#taxi-da
 
 4. **Button State Mapping**: Unified mapping system tracks button events to their corresponding state variables for automatic announcements
 
-5. **Dual Screen Reader Support**:
-   - Primary: Direct NVDA integration via controller client
-   - Secondary: Universal support through Tolk wrapper
+5. **Screen Reader Support**:
+   - Every screen reader (NVDA, JAWS, ZDSR and the rest) through Prism, spoken and brailled
    - Fallback: SAPI text-to-speech
 
 6. **Configurable Accessibility**: User-selectable announcement modes with persistent settings

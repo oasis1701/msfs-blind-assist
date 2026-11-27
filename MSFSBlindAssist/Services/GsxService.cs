@@ -15,7 +15,7 @@
 // the PumpSimConnectMessage pump MainForm.WndProc used to route to it.
 //
 // All speech is routed through MSFSBA's existing ScreenReaderAnnouncer; no
-// Tolk is loaded here.
+// screen reader library is loaded here.
 //
 // Ported from the AccessGSX project (https://github.com/jfayre/access-gsx)
 // with permission of the author (both projects are GPL v3); the Remote API

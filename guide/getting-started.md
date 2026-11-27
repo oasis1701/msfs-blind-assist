@@ -34,7 +34,7 @@ Chapter 2 of 2 in [Part 1: Getting Started](index.md#part-1-getting-started) of 
 
 - **Windows 10 or Windows 11, 64-bit.**
 - **Microsoft Flight Simulator 2020 or Microsoft Flight Simulator 2024.** BA works with both, and detects which one is running.
-- **A screen reader.** NVDA or JAWS is recommended. Without one, BA uses Windows speech instead.
+- **A screen reader.** NVDA or JAWS is recommended; ZDSR (Zhengdu Screen Reader), PC-Talker, ZoomText and others work too. Without one, BA uses Windows speech instead.
 - **The .NET 10 Desktop Runtime (x64)** from Microsoft. BA is built on it. Download it from Microsoft's .NET 10 download page; choose the Desktop Runtime for x64. If it is missing or too old, BA tells you when you start it, in a message box titled *"MSFS Blind Assist - Missing Requirements"*, and closes.
 - **The MobiFlight WASM module** (free), for some aircraft. BA uses it to operate cockpit controls on the FlyByWire A320neo, the FlyByWire A380X, the Headwind A330-900neo, the Fenix A320, the TFDi MD-11 and the BlueBird 757-200. Without it, many controls on those aircraft will not respond, although reading values and hearing announcements still work. On the HorizonSim 787-9 a handful of switches, such as the batteries and generators, also need it. The PMDG and iFly aircraft do not need it. Download it from the MobiFlight website's WASM module page, place it in your simulator's Community folder (the same folder your add-on aircraft live in), and restart the simulator.
 

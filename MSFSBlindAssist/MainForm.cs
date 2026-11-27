@@ -372,7 +372,7 @@ public partial class MainForm : Form
     // OnHandFlyModeActiveChanged. The liftoff auto-handoff folds the
     // quick-access-keys warning into its breadcrumb: the breadcrumb's
     // AnnounceImmediate cancels pending speech on every backend
-    // (nvdaController_cancelSpeech / Tolk interrupt / SAPI SpeakAsyncCancelAll),
+    // (the screen reader's interrupt through Prism / SAPI SpeakAsyncCancelAll),
     // which would otherwise silently swallow the handler's standalone warning.
     private bool _handFlyQuickKeysRegistered = true;
     // Generation token for the liftoff handoff's fresh-position confirm. The

@@ -49,7 +49,7 @@ public class AltitudeCalloutAnnouncer
 
     /// <summary>Announce-sink constructor — the state machine is pure apart from this
     /// sink and the settings gate, so the characterization tests inject a list-collector
-    /// here instead of constructing a real ScreenReaderAnnouncer (Tolk/NVDA/SAPI).</summary>
+    /// here instead of constructing a real ScreenReaderAnnouncer (Prism/SAPI).</summary>
     public AltitudeCalloutAnnouncer(Action<string> announceSink)
     {
         announce = announceSink;

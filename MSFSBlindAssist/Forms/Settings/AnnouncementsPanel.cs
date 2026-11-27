@@ -13,7 +13,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
     // ── General group ────────────────────────────────────────────────────────
     private RadioButton _screenReaderRadio = null!;
     private RadioButton _sapiRadio = null!;
-    private Label _statusLabel = null!;
+    private TextBox _statusBox = null!;
     private ComboBox _nearestCityIntervalCombo = null!;
     private CheckBox _timeWithSecondsCheck = null!;
     private CheckBox _gsxBackgroundMonitoring = null!;
@@ -25,6 +25,9 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
     {
         InitializeComponent();
         UpdateScreenReaderStatus();
+        // The box says whether the reader found is used, so it follows the radios (no new look, no speech).
+        _screenReaderRadio.CheckedChanged += (_, _) => ShowScreenReaderStatus();
+        _sapiRadio.CheckedChanged += (_, _) => ShowScreenReaderStatus();
     }
 
     private void InitializeComponent()
@@ -42,7 +45,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         {
             Text = "General",
             Location = new System.Drawing.Point(12, 12),
-            Size = new System.Drawing.Size(460, 300),
+            Size = new System.Drawing.Size(460, 320),
             AccessibleName = "General",
             AccessibleDescription = "Announcement mode and location announcement settings",
         };
@@ -57,7 +60,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
 
         _screenReaderRadio = new RadioButton
         {
-            Text = "Screen Reader (NVDA, JAWS, etc.) - Recommended",
+            Text = "Screen Reader (NVDA, JAWS, ZDSR, etc.) - Recommended",
             Location = new System.Drawing.Point(12, 52),
             Size = new System.Drawing.Size(420, 25),
             AccessibleName = "Screen Reader Mode",
@@ -73,25 +76,19 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Use Windows built-in speech synthesis for announcements",
         };
 
-        _statusLabel = new Label
-        {
-            Location = new System.Drawing.Point(12, 112),
-            Size = new System.Drawing.Size(420, 40),
-            AccessibleName = "Screen Reader Status",
-            Text = "Checking screen reader status..."
-        };
+        _statusBox = BuildStatusBox();
 
         var intervalLabel = new Label
         {
             Text = "Announce nearest city automatically:",
-            Location = new System.Drawing.Point(12, 167),
+            Location = new System.Drawing.Point(12, 187),
             Size = new System.Drawing.Size(250, 20),
             AccessibleName = "Announce nearest city automatically label"
         };
 
         _nearestCityIntervalCombo = new ComboBox
         {
-            Location = new System.Drawing.Point(270, 164),
+            Location = new System.Drawing.Point(270, 184),
             Size = new System.Drawing.Size(170, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Nearest city announcement interval",
@@ -112,7 +109,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         _timeWithSecondsCheck = new CheckBox
         {
             Text = "Include seconds in time announcements (Output Z / Shift+Z)",
-            Location = new System.Drawing.Point(12, 207),
+            Location = new System.Drawing.Point(12, 227),
             Size = new System.Drawing.Size(420, 25),
             AccessibleName = "Include seconds in time announcements",
             AccessibleDescription = "When checked, the local-time and Zulu-time hotkeys speak hours, minutes, and seconds. Default is hours and minutes only."
@@ -123,7 +120,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         _gsxBackgroundMonitoring = new CheckBox
         {
             Text = "Announce GSX tooltips when Access GSX window is closed",
-            Location = new System.Drawing.Point(12, 235),
+            Location = new System.Drawing.Point(12, 255),
             Size = new System.Drawing.Size(440, 30),
             AutoSize = false,
             AccessibleName = "Announce GSX tooltips in background",
@@ -136,7 +133,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         _altitudeCalloutsCheck = new CheckBox
         {
             Text = "Announce 1,000-foot altitude crossings",
-            Location = new System.Drawing.Point(12, 267),
+            Location = new System.Drawing.Point(12, 287),
             Size = new System.Drawing.Size(440, 25),
             AccessibleName = "Announce 1,000-foot altitude crossings",
             AccessibleDescription = "When checked, each thousand feet crossed in a climb or descent is spoken. Default is on."
@@ -144,7 +141,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
 
         group.Controls.AddRange(new Control[]
         {
-            modeLabel, _screenReaderRadio, _sapiRadio, _statusLabel,
+            modeLabel, _screenReaderRadio, _sapiRadio, _statusBox,
             intervalLabel, _nearestCityIntervalCombo,
             _timeWithSecondsCheck,
             _gsxBackgroundMonitoring,
@@ -154,38 +151,58 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         return group;
     }
 
+    /// <summary>The screen reader status box. A read-only TextBox, never a Label (VAT-13): a Label is not in the
+    /// tab order, so with a screen reader it has to be hunted for with the review cursor. BackColor is set on
+    /// purpose: a read-only TextBox ignores ForeColor until it is, and the status colour would not show. Three
+    /// lines high: the second sentence of a status wraps (the test Every_status_fits_in_the_status_box measures
+    /// each one). The controls under it in the General group are placed for this height.</summary>
+    internal static TextBox BuildStatusBox() => new()
+    {
+        Location = new System.Drawing.Point(12, 112),
+        Size = new System.Drawing.Size(420, 60),
+        Multiline = true,
+        ReadOnly = true,
+        BackColor = SystemColors.Control,
+        AccessibleName = "Screen Reader Status",
+        Text = "Checking screen reader status..."
+    };
+
+    // What the last look found, so a mode change can reword the box without looking again.
+    private string? _detectedReader;
+    private bool _prismStarted;
+    private bool _detectionFailed;
+
     private void UpdateScreenReaderStatus()
     {
         try
         {
-            using (var tolkTest = new TolkWrapper())
-            {
-                if (tolkTest.Initialize())
-                {
-                    if (tolkTest.IsScreenReaderRunning())
-                    {
-                        string detected = tolkTest.DetectedScreenReader;
-                        _statusLabel.Text = $"Screen reader detected: {detected}\nChoose 'Screen Reader' for best experience.";
-                        _statusLabel.ForeColor = Color.DarkGreen;
-                    }
-                    else
-                    {
-                        _statusLabel.Text = "No screen reader detected.\nSAPI mode recommended for speech feedback.";
-                        _statusLabel.ForeColor = Color.DarkOrange;
-                    }
-                }
-                else
-                {
-                    _statusLabel.Text = "Unable to initialize screen reader detection.\nSAPI mode will be used as fallback.";
-                    _statusLabel.ForeColor = Color.Red;
-                }
-            }
+            // The announcer's own reader, looked for again now: the same instance it speaks through, in the
+            // same order (NVDA, then PC-Talker, ZDSR and Boy PC Reader, then JAWS and the rest).
+            var readers = ScreenReaderOutput.Shared;
+            _detectedReader = readers.DetectNow();
+            _prismStarted = readers.Started;
+            ShowScreenReaderStatus();
         }
         catch (Exception ex)
         {
-            _statusLabel.Text = $"Error checking screen reader: {ex.Message}\nSAPI mode recommended.";
-            _statusLabel.ForeColor = Color.Red;
+            _detectionFailed = true;
+            _statusBox.Text = $"Error checking screen reader: {ex.Message}{Environment.NewLine}SAPI mode recommended.";
+            _statusBox.ForeColor = Color.Red;
         }
+    }
+
+    // The status for the mode now chosen in this panel (the saved one until a radio changes it).
+    private void ShowScreenReaderStatus()
+    {
+        if (_detectionFailed) return;
+        bool sapiChosen = _sapiRadio.Checked
+            || (!_screenReaderRadio.Checked && SettingsManager.Current.AnnouncementMode == nameof(AnnouncementMode.SAPI));
+        bool sapiAvailable = !ScreenReaderAnnouncer.WindowsSpeechFailedToStart;
+        _statusBox.Text = ScreenReaderAnnouncer.DetectionStatusText(_detectedReader, _prismStarted, sapiChosen, sapiAvailable);
+        // Green: the reader found is the voice. Orange: Windows speech is. Red: nothing can look, or nothing speaks.
+        _statusBox.ForeColor = _detectedReader != null
+            ? (ScreenReaderAnnouncer.SpeaksThroughReader(sapiChosen, sapiAvailable) ? Color.DarkGreen : Color.DarkOrange)
+            : _prismStarted && sapiAvailable ? Color.DarkOrange : Color.Red;
     }
 
     private static int IntervalToIndex(int seconds) => seconds switch

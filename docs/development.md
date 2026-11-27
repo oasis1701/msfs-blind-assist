@@ -39,9 +39,10 @@ This document contains development notes, key files, and dependencies for MSFS B
 
 ### Accessibility
 
-- **`Accessibility/ScreenReaderAnnouncer.cs`**: Multi-method screen reader integration
-- **`Accessibility/NvdaControllerWrapper.cs`**: Direct NVDA integration
-- **`Accessibility/TolkWrapper.cs`**: Universal screen reader support
+- **`Accessibility/ScreenReaderAnnouncer.cs`**: Announcements to the screen reader, else SAPI
+- **`Accessibility/ScreenReaderOutput.cs`**: Which screen reader announcements go to, speech and braille (see [architecture.md](architecture.md#screenreaderoutput-and-prismscreenreaderbackends-every-screen-reader-through-prism))
+- **`Accessibility/PrismScreenReaderBackends.cs`**: The screen readers Prism reaches
+- **`Accessibility/SingleThreadScreenReaderBackends.cs`**: Runs every call to them on one thread
 
 ### Database System
 
@@ -149,8 +150,9 @@ Application for the faulting module. Full procedure in [tooling.md §8](tooling.
 - **Microsoft.Extensions.Configuration** (version 10.0.x) - Configuration management
 - **Microsoft.Extensions.Configuration.Json** (version 10.0.x) - JSON configuration provider
 - **Microsoft.Extensions.Configuration.Binder** (version 10.0.x) - Configuration binding
-- **NVDA Controller Client** (included) - Direct NVDA integration
-- **Tolk wrapper** (included) - Universal screen reader support
+- **Prismatoid** (version 0.4.0, MPL-2.0) - Prism's .NET package: every screen reader's speech and braille; ships the
+  native `prism.dll` (win-x64). The readers' own libraries (ZDSR's `ZDSRAPI_x64.dll` and the like) load from the
+  readers' installations and are never copied into the repository or the build output
 
 ## Settings System
 
