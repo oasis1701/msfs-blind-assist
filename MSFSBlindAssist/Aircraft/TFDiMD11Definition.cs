@@ -217,6 +217,18 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
+    public override int? GetCameraViewForTarget(CockpitCameraTarget target) => target switch
+    {
+        CockpitCameraTarget.Forward => null,
+        CockpitCameraTarget.MainPanel => null,
+        CockpitCameraTarget.Glareshield => 1,
+        CockpitCameraTarget.MCDU => 3,
+        CockpitCameraTarget.Pedestal => 4,
+        CockpitCameraTarget.CockpitDoor => 7,
+        CockpitCameraTarget.Overhead => 8,
+        _ => base.GetCameraViewForTarget(target)
+    };
+
     public override Dictionary<string, string> GetButtonStateMapping() => new();
 
     /// <summary>

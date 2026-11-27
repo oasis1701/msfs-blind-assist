@@ -48,7 +48,10 @@ public partial class MainForm
             HotkeyAction.ShowVolanta,
             // The aircraft's window list opens before the sim connects, like the MCDU and EFB windows.
             // An aircraft without one must still say so rather than "Not connected to simulator".
-            HotkeyAction.ShowAircraftWindows
+            HotkeyAction.ShowAircraftWindows,
+            // Cockpit views window opens regardless of whether SimConnect is currently connected,
+            // but is gated on StreamerModeEnabled inside ShowCockpitViewsDialog.
+            HotkeyAction.ShowCockpitViews
         };
 
         // Guard clause: Block SimConnect-dependent actions if not fully connected
@@ -467,6 +470,9 @@ public partial class MainForm
                 break;
             case HotkeyAction.SayIntentionsBuildTaxiRoute:
                 _ = BuildTaxiRouteFromSayIntentionsAsync();
+                break;
+            case HotkeyAction.ShowCockpitViews:
+                ShowCockpitViewsDialog();
                 break;
             case HotkeyAction.ToggleVatsimAnnouncements:
             {

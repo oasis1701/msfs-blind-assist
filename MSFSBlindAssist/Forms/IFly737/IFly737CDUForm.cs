@@ -1,4 +1,6 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect.IFly;
 using System.Collections.Concurrent;
@@ -31,6 +33,7 @@ public class IFly737CDUForm : Form
     private readonly ScreenReaderAnnouncer _announcer;
 
     private readonly TextBox _statusBox;
+    private readonly CheckBox _focusCameraCheck;
     private readonly ListBox _display;
     private readonly TextBox _scratchpadInput;
     private readonly ComboBox _unitSelector;
@@ -74,12 +77,14 @@ public class IFly737CDUForm : Form
         {
             Text = "FMC Not Connected",
             Location = new Point(10, y),
-            Size = new Size(390, 20),
+            Size = new Size(240, 20),
             AccessibleName = "C D U status",
             ReadOnly = true,
             TabStop = true,
             BorderStyle = BorderStyle.FixedSingle,
         };
+
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.MCDU, new Point(255, y - 2));
 
         _unitSelector = new ComboBox
         {
@@ -185,6 +190,7 @@ public class IFly737CDUForm : Form
         };
 
         Controls.Add(_statusBox);
+        Controls.Add(_focusCameraCheck);
         Controls.Add(_unitSelector);
         Controls.Add(_display);
         Controls.Add(_scratchpadInput);
@@ -487,6 +493,11 @@ public class IFly737CDUForm : Form
 
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (StreamerCameraFocusHelper.HandleShortcut(e.KeyData, _focusCameraCheck))
+        {
+            e.Handled = true; e.SuppressKeyPress = true; return;
+        }
+
         bool alternate = SettingsManager.Current.MCDUUseAlternateLSKKeys;
 
         // LSK keys.

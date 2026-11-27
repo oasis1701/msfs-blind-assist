@@ -43,6 +43,7 @@ public class SettingsForm : Form
         AddPanel(new HandFlyPanel());
         AddPanel(new TaxiGuidancePanel(refreshTaxiwayNames, sceneryIndexStatus));
         AddPanel(new FirstOfficerPanel());
+        AddPanel(new StreamerModePanel());
         AddPanel(new UpdatesPanel());
 
         var ok = new Button { Text = "OK", AccessibleName = "OK", AutoSize = true };

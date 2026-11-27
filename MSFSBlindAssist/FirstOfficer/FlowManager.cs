@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.FirstOfficer.Models;
+using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.FirstOfficer;
@@ -257,6 +258,7 @@ public class FlowManager<TExec, TState>
         _unfinishedChecklistItemIds.Clear();
         _skippedStepIds.Clear();
         _sentStepIds.Clear();
+        StreamerModeService.Instance.BeginFlow();
         FlowStarted?.Invoke(flow);
         _announcer.AnnounceImmediate($"{flow.Name} flow started");
 
@@ -330,6 +332,8 @@ public class FlowManager<TExec, TState>
 
                 StepStarted?.Invoke(flow, step, i);
 
+                await StreamerModeService.Instance.PrepareFlowStepAsync(step.EventName ?? step.Label);
+
                 StepOutcome outcome = await ExecuteStepAsync(flow, step, i, ct);
 
                 // A Stop while the executor was writing (its steps are atomic; only the MD-11's
@@ -364,6 +368,7 @@ public class FlowManager<TExec, TState>
                         // step skipped and a timed-out wait after it left START pulled, fuel OFF.
                         run.Cancel();
                         await CleanUpStoppedRunAsync(flow);
+                        await StreamerModeService.Instance.EndFlowAsync();
                         FlowFailed?.Invoke(flow, $"Step '{step.Label}' failed");
                         _announcer.AnnounceImmediate($"{flow.Name} flow stopped. Unable to complete: {step.AnnounceText}");
                         return;
@@ -411,6 +416,7 @@ public class FlowManager<TExec, TState>
             // between (the MD-11's START pulled, fuel still OFF) is put back first. A detached
             // executor (the window disposed) has no aircraft to write to and does nothing.
             await CleanUpStoppedRunAsync(flow);
+            await StreamerModeService.Instance.EndFlowAsync();
             FlowCancelled?.Invoke(flow);
             // Queued, not interrupting: on an aircraft switch it follows the switch's own
             // speech instead of cutting it off, and after Stop Flow nothing else is speaking.
@@ -427,6 +433,7 @@ public class FlowManager<TExec, TState>
             Log.Error("FO", $"{flow.Id}.{failed?.Id}: flow threw", ex);
             run.Cancel();
             await CleanUpStoppedRunAsync(flow);
+            await StreamerModeService.Instance.EndFlowAsync();
             FlowFailed?.Invoke(flow, $"Step '{failed?.Label}' threw");
             _announcer.AnnounceImmediate(failed != null
                 ? $"{flow.Name} flow stopped. Unable to complete: {failed.AnnounceText}"
@@ -434,6 +441,7 @@ public class FlowManager<TExec, TState>
             return;
         }
 
+        await StreamerModeService.Instance.EndFlowAsync();
         FlowCompleted?.Invoke(flow);
         // NON-INTERRUPTING (Announce), never AnnounceImmediate (owner decision 2026-09-22).
         // This runs straight after the last step with no pause, and AnnounceImmediate

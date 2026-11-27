@@ -1,4 +1,6 @@
 using System.Text.Json;
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.SimConnect.BBS757;
 using MSFSBlindAssist.Utils.Logging;
 
@@ -79,6 +81,7 @@ public partial class BBS757EfbForm
 
     private TextBox _settingsStatusBox = null!;
     private ComboBox _sectionCombo = null!;
+    private CheckBox _focusCameraCheck = null!;
     private Panel _sectionPanel = null!;
     // The registrations line of a registration section; null in the others.
     private TextBox? _registrationsBox;
@@ -146,6 +149,10 @@ public partial class BBS757EfbForm
         _sectionCombo.SelectedIndex = 0;
         _sectionCombo.SelectedIndexChanged += (_, _) => OnSectionPicked();
         Controls.Add(_sectionCombo);
+
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.EFB, new Point(left + 300, y + 2));
+        _focusCameraCheck.TabIndex = tab++;
+        Controls.Add(_focusCameraCheck);
         y += h + gap;
 
         int panelTop = y;

@@ -1301,6 +1301,8 @@ public partial class MainForm
             firstOfficerMenuItem.AccessibleName = firstOfficerName;
         // First Officer automation settings now live in the unified Settings dialog
         // (Forms/Settings/FirstOfficerPanel.cs), always reachable regardless of aircraft.
+
+        cockpitViewsMenuItem.Visible = SettingsManager.Current.StreamerModeEnabled;
     }
 
     /// <summary>

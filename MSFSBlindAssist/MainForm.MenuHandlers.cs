@@ -294,6 +294,8 @@ public partial class MainForm
         // destination or exit plan already set; unchanged armings are left alone (RefreshRolloutCueArming).
         RefreshRolloutCueArming();
 
+        cockpitViewsMenuItem.Visible = settings.StreamerModeEnabled;
+
         // Guidance tone output device, LAST: the takeoff-assist recreate above disposes and
         // replaces its centerline tone, so requesting the sweep before that block paid a full
         // WASAPI teardown and reopen for a generator that was destroyed moments later. The
@@ -460,6 +462,9 @@ public partial class MainForm
     // Extras > In-Sim Tablet (FS2024 Native): MSFS 2024's own tablet, for every aircraft and beside
     // its own tablet, never in place of it (Input Shift+T stays the aircraft's own).
     private void SimTabletMenuItem_Click(object? sender, EventArgs e) => ShowSimTabletDialog();
+
+    // Extras > Cockpit Views (Streamer Mode): allows pilot to select viewpoints for stream viewers.
+    private void CockpitViewsMenuItem_Click(object? sender, EventArgs e) => ShowCockpitViewsDialog();
 
     private void FMCSettingsMenuItem_Click(object? sender, EventArgs e)
     {

@@ -17,6 +17,7 @@ Chapter 1 of 1 in [Part 7: Networks and Integrations](index.md#part-6-networks-a
 - [Volanta](#volanta)
 - [ActiveSky](#integrations-activesky)
 - [AI Providers](#integrations-ai)
+- [Streamer Mode](#streamer-mode)
 
 </nav>
 
@@ -31,6 +32,7 @@ MSFS Blind Assist works alongside several other programs that many pilots alread
 | Volanta | Shows Volanta's live map as text: traffic, friends, online ATC | Output Shift+O |
 | ActiveSky | Richer weather in the weather windows and announcements | (see the Weather chapter) |
 | Gemini or Claude | AI display reading, scene description, route briefing | (see Core Concepts) |
+| Streamer Mode | Cockpit camera movements, panel focus and views window for live streaming | Input Shift+V, Alt+Shift+C |
 
 </div>
 
@@ -383,6 +385,54 @@ If you use the ActiveSky weather add-on, tick **Enable ActiveSky integration** o
 ## AI Providers {#integrations-ai}
 
 BA can use Google Gemini or Anthropic Claude, with your own key, to read cockpit displays aloud, describe the scene outside, and write a route briefing. BA always uses exactly the provider and model you chose. Setting it up on the **AI** tab is described in [AI Display Reading and Scene Description](core-concepts.md#ai-display-reading); for the briefing, see [The AI Route Briefing](planning-your-flight.md#planning-route-briefing).
+
+## Streamer Mode {#streamer-mode}
+
+### What it is {#streamer-what}
+
+Streamer Mode enhances the experience for blind content creators streaming Microsoft Flight Simulator to sighted audiences on platforms like Twitch, YouTube, or Discord.
+
+When a blind pilot operates controls through MSFS Blind Assist's panels, checklists, or automated flows, a sighted viewer looking at the stream normally only sees a static cockpit view looking straight forward. Streamer Mode solves this by smoothly turning the captain's cockpit camera to face whichever panel or instrument is being operated (such as the Overhead, Pedestal, Glareshield, or Cockpit Door), pausing naturally at human head-turn speed, and automatically returning to the forward-looking pilot eye level once the action is complete.
+
+### How it works {#streamer-how}
+
+When **Enable Streamer mode** is switched on:
+
+- **MainForm panels:** When you operate any switch or knob in MSFS Blind Assist's panels, the camera smoothly turns toward that section (such as the Overhead, Glareshield, or Pedestal) before applying the control, then returns forward after a 2-second grace period.
+- **First Officer automated flows:** While running an automated flow, the camera tracks each section being worked on. If several consecutive steps are in the same section (such as toggling fuel pumps or exterior lights), the camera stays looking at that section until the group of actions is done rather than jerking back and forth.
+- **Checklists tab:** Checking off items in the First Officer's Checklists tab also pans the camera to the corresponding panel.
+- **Natural camera framing:** Wide, human-like cockpit angles are used for broad panels like the Overhead and Pedestal. Close-up framing is reserved for detailed instruments such as the MCDU and EFB.
+
+### Focusing the camera on the MCDU or EFB {#streamer-focus}
+
+When Streamer Mode is enabled, every supported MCDU, CDU, FMC, and EFB window includes a **Focus camera here** check box and the **Alt+Shift+C** shortcut.
+
+Checking this box immediately pans and zooms the cockpit camera directly onto that instrument so your viewers can watch your flight management inputs or tablet operations. Unchecking it (or pressing **Alt+Shift+C** again) returns the camera forward.
+
+### The Cockpit Views window {#streamer-views-window}
+
+To manually show your audience any part of the cockpit at any time:
+
+1. Press **Input Shift+V** (press `[` then `Shift+V`) or choose **Extras > Cockpit Views…**.
+2. Arrow through the available views:
+   - **Forward (Pilot eye level)**
+   - **Overhead Panel**
+   - **Glareshield (FCU / MCP)**
+   - **Center Pedestal**
+   - **Main Instrument Panel**
+   - **MCDU / FMC**
+   - **EFB / Tablet**
+   - **Cockpit Door**
+3. Choose whether to check **Hold camera on selected view**:
+   - **Checked (default):** Keeps the camera on the chosen view indefinitely until you select another view or return forward.
+   - **Unchecked:** Moves the camera to the view and returns forward automatically after 2 seconds.
+4. Press **Enter** or the **Select** button. Press **Return to Forward** to instantly look straight ahead, or **Escape** to close the window.
+
+### Settings {#streamer-settings}
+
+All streamer options live on the **Streamer Mode** tab of the Settings window (**File > Settings…**):
+
+- **Enable Streamer mode (cockpit camera movements for live streaming):** Master toggle for camera movements and streamer features. Off by default.
 
 <nav class="guide-nav" aria-label="Guide chapters" markdown="1">
 

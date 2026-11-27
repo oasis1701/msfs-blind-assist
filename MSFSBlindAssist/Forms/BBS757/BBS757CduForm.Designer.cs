@@ -1,9 +1,13 @@
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
+
 namespace MSFSBlindAssist.Forms.BBS757;
 
 public partial class BBS757CduForm
 {
     // Read-only TextBox, not a Label: a Label is not in the tab order ([VAT-13]).
     private TextBox statusBox = null!;
+    private CheckBox _focusCameraCheck = null!;
     // A ListBox, never a multiline TextBox, so a right-hand field stays on its key's line ([A320-15]).
     private ListBox cduDisplay = null!;
     private TextBox scratchpadInput = null!;
@@ -51,12 +55,14 @@ public partial class BBS757CduForm
         {
             Text = WaitingText,
             Location = new Point(10, y),
-            Size = new Size(605, 23),
+            Size = new Size(430, 23),
             AccessibleName = "CDU status",
             ReadOnly = true,
             TabStop = true,
             BorderStyle = BorderStyle.FixedSingle,
         };
+
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.MCDU, new Point(450, y - 2));
         y += 30;
 
         cduDisplay = new ListBox
@@ -119,7 +125,7 @@ public partial class BBS757CduForm
 
         this.Controls.AddRange(new Control[]
         {
-            statusBox, cduDisplay, scratchpadInput,
+            statusBox, _focusCameraCheck, cduDisplay, scratchpadInput,
             btnInitRef, btnRte, btnDepArr, btnAtc, btnVnav, btnFix, btnLegs,
             btnHold, btnFmcComm, btnProg, btnMenu, btnNavRad, btnPrevPage, btnNextPage,
             btnExec, btnClr, btnDel, btnSwitchCdu, chkSpeakMessages

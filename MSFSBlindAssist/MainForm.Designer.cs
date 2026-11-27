@@ -28,6 +28,7 @@
         private System.Windows.Forms.ToolStripMenuItem extrasMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem volantaMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem simTabletMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem cockpitViewsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem helpMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem userGuideMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem projectWebsiteMenuItem = null!;
@@ -72,6 +73,7 @@
             this.extrasMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.volantaMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.simTabletMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.cockpitViewsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.helpMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.userGuideMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.projectWebsiteMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -330,7 +332,8 @@
             this.extrasMenuItem.AccessibleDescription = "Tools that work alongside the simulator";
             this.extrasMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.volantaMenuItem,
-            this.simTabletMenuItem});
+            this.simTabletMenuItem,
+            this.cockpitViewsMenuItem});
             this.extrasMenuItem.Name = "extrasMenuItem";
             this.extrasMenuItem.Size = new System.Drawing.Size(65, 24);
             this.extrasMenuItem.Text = "E&xtras";
@@ -352,6 +355,16 @@
             this.simTabletMenuItem.Size = new System.Drawing.Size(220, 26);
             this.simTabletMenuItem.Text = "&In-Sim Tablet (FS2024 Native)…";
             this.simTabletMenuItem.Click += new System.EventHandler(this.SimTabletMenuItem_Click);
+            //
+            // cockpitViewsMenuItem
+            //
+            this.cockpitViewsMenuItem.AccessibleName = "Cockpit Views";
+            this.cockpitViewsMenuItem.AccessibleDescription = "Open the cockpit camera views window for stream viewers (Input Shift+V)";
+            this.cockpitViewsMenuItem.Name = "cockpitViewsMenuItem";
+            this.cockpitViewsMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.cockpitViewsMenuItem.Text = "Cockpit &Views…";
+            this.cockpitViewsMenuItem.Visible = false;
+            this.cockpitViewsMenuItem.Click += new System.EventHandler(this.CockpitViewsMenuItem_Click);
             //
             // helpMenuItem
             //

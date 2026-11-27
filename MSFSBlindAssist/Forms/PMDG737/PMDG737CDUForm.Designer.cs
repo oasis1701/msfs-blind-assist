@@ -1,3 +1,6 @@
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
+
 namespace MSFSBlindAssist.Forms.PMDG737;
 
 public partial class PMDG737CDUForm
@@ -6,6 +9,7 @@ public partial class PMDG737CDUForm
     private ListBox cduDisplay = null!;
     private TextBox scratchpadInput = null!;
     private ComboBox cduSelector = null!;
+    private CheckBox _focusCameraCheck = null!;
 
     // Page buttons (NG3 SDK: INIT_REF, RTE, CLB, CRZ, DES, MENU, LEGS,
     // DEP_ARR, HOLD, PROG, N1_LIMIT, FIX, PREV_PAGE, NEXT_PAGE)
@@ -48,10 +52,12 @@ public partial class PMDG737CDUForm
         {
             Text = "CDU Not Connected",
             Location = new Point(10, y),
-            Size = new Size(400, 20),
+            Size = new Size(240, 20),
             AccessibleName = "CDU status",
             TabStop = false
         };
+
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.MCDU, new Point(255, y - 2));
 
         // CDU selector — NG3 has two CDUs only (Captain / First Officer).
         // Dropdown index maps directly to PMDG SDK index (0=L, 1=R), no swap.
@@ -140,7 +146,7 @@ public partial class PMDG737CDUForm
         // Add all controls
         this.Controls.AddRange(new Control[]
         {
-            statusLabel, cduSelector, cduDisplay, scratchpadInput,
+            statusLabel, cduSelector, _focusCameraCheck, cduDisplay, scratchpadInput,
             btnInitRef, btnRte, btnClb, btnCrz, btnDes, btnMenu, btnLegs,
             btnDepArr, btnHold, btnProg, btnN1Limit, btnFix, btnPrevPage, btnNextPage,
             btnExec, btnClr

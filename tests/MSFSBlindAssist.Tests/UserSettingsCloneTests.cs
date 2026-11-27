@@ -95,4 +95,17 @@ public class UserSettingsCloneTests
         Assert.False(clone.VatsimAnnounceRadioMessages);
         Assert.False(clone.VatsimAnnounceSelcal);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StreamerModeEnabled_SurvivesCloneAndJsonRoundTrip(bool enabled)
+    {
+        var settings = new UserSettings { StreamerModeEnabled = enabled };
+        Assert.Equal(enabled, settings.Clone().StreamerModeEnabled);
+
+        string json = JsonSerializer.Serialize(settings, SettingsManager.JsonOptions);
+        var reloaded = JsonSerializer.Deserialize<UserSettings>(json, SettingsManager.JsonOptions)!;
+        Assert.Equal(enabled, reloaded.StreamerModeEnabled);
+    }
 }

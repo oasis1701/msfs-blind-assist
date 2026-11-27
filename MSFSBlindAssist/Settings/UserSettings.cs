@@ -42,6 +42,13 @@ public class UserSettings
         public string AnnouncementMode { get; set; } = "ScreenReader";
 
         /// <summary>
+        /// When true, activates Streamer Mode camera movement for flight simulation content creators.
+        /// Moves the cockpit camera toward panels and instruments as they are operated manually or
+        /// via First Officer flows and checklists, returning forward after actions complete.
+        /// </summary>
+        public bool StreamerModeEnabled { get; set; } = false;
+
+        /// <summary>
         /// When true, the Output Z (local time) and Output Shift+Z (Zulu
         /// time) hotkeys speak HH:MM:SS instead of the default HH:MM.
         /// Configurable in Announcement Settings.

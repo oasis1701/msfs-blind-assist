@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Forms.FlyByWireA320;
@@ -25,6 +27,7 @@ public class FlyByWireMCDUForm : Form
     private ListBox mcduDisplay = null!;
     private TextBox scratchpadInput = null!;
     private Label connectionStatus = null!;
+    private CheckBox _focusCameraCheck = null!;
 
     // What the window says: page titles only while open, FMS scratchpad messages open or closed,
     // typed entries only once they have landed (FbwMcduReadBack, pure and tested).
@@ -74,10 +77,11 @@ public class FlyByWireMCDUForm : Form
         {
             Text = "MCDU: Disconnected",
             Location = new Point(10, y),
-            Size = new Size(600, 20),
+            Size = new Size(350, 20),
             AccessibleName = "Connection status",
             AccessibleDescription = "Shows whether the MCDU is connected"
         };
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.MCDU, new Point(380, y - 2));
         y += 28;
 
         mcduDisplay = new ListBox
@@ -123,6 +127,7 @@ public class FlyByWireMCDUForm : Form
         }
 
         this.Controls.Add(connectionStatus);
+        this.Controls.Add(_focusCameraCheck);
         this.Controls.Add(mcduDisplay);
         this.Controls.Add(scratchpadInput);
         foreach (var b in buttons) { this.Controls.Add(b); }
@@ -208,6 +213,11 @@ public class FlyByWireMCDUForm : Form
 
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (StreamerCameraFocusHelper.HandleShortcut(e.KeyData, _focusCameraCheck))
+        {
+            e.Handled = true; e.SuppressKeyPress = true; return;
+        }
+
         // Line-select keys — two layouts, switchable in FMC Settings (read every keypress):
         //   Default:   Ctrl+1..6 = L1..L6, Alt+1..6 = R1..R6
         //   Alternate: F1..F6     = L1..L6, F7..F12  = R1..R6

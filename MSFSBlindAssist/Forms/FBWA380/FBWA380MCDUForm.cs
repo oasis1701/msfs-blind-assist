@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
@@ -61,6 +62,7 @@ public class FBWA380MCDUForm : Form
     private Label _statusLabel = null!;
     private ComboBox _mcduSelector = null!;
     private ComboBox _pageSelector = null!;
+    private CheckBox _focusCameraCheck = null!;
     private ListBox _display = null!;
 
     // Every MFD page, grouped by top-level tab, with its page-selector index
@@ -230,6 +232,9 @@ public class FBWA380MCDUForm : Form
         };
         foreach (var p in AllPages) _pageSelector.Items.Add(p.Label);
         Controls.Add(_pageSelector);
+
+        _focusCameraCheck = StreamerCameraFocusHelper.CreateFocusCheckBox(this, CockpitCameraTarget.MCDU, new Point(420, y + 60), () => _aircraftDefinition);
+        Controls.Add(_focusCameraCheck);
 
         _statusLabel = new Label
         {
@@ -891,6 +896,8 @@ public class FBWA380MCDUForm : Form
     // list). The window otherwise auto-updates live on every MFD state change.
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (StreamerCameraFocusHelper.HandleShortcut(keyData, _focusCameraCheck))
+            return true;
         if (keyData == Keys.F5)
         {
             _bridgeServer.EnqueueCommand("get_mcdu_elements");
