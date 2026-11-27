@@ -684,7 +684,26 @@ public class FbwEfbForm : Form
     // the in-place disabled patch can never drift on what the label without ", dimmed" is.
     private static string CheckBoxLabel(EFBElement el) => string.IsNullOrEmpty(el.Text) ? "(unnamed checkbox)" : el.Text;
     private static string FieldLabel(EFBElement el) => string.IsNullOrEmpty(el.Text) ? "(unnamed field)" : el.Text;
-    private static string FieldCaption(EFBElement el) => FieldLabel(el) + (el.ControlType == "select" ? " (choice — type a value)" : "");
+    private static string FieldCaption(EFBElement el) => FieldLabel(el) + (el.ControlType switch
+    {
+        "select" => " (choice — type a value)",
+        // A slider, in the list fallback, is typed as a number between its bounds.
+        "range" => SliderCaption(el.Min, el.Max),
+        _ => ""
+    });
+    // The bounds as the pilot writes numbers ("0,5" under sv-SE); internal for SimTabletSliderEntryTests.
+    internal static string SliderCaption(double? min, double? max) =>
+        $" (slider, {FormatBound(min, 0)} to {FormatBound(max, 100)})";
+    private static string FormatBound(double? v, double fallback) =>
+        (v ?? fallback).ToString(System.Globalization.CultureInfo.CurrentCulture);
+    // A slider takes a number in the page's own form ("0.5"): the pilot types it in theirs ("0,5"
+    // under sv-SE), read as typed input (CORE-17). False when it is no number; `sent` is then as typed.
+    internal static bool TrySliderValue(string typed, out string sent)
+    {
+        bool ok = MSFSBlindAssist.Utils.NumberParsing.TryParseTyped(typed, out double v);
+        sent = ok ? v.ToString(System.Globalization.CultureInfo.InvariantCulture) : typed;
+        return ok;
+    }
     private static string ButtonLabel(EFBElement el) => string.IsNullOrEmpty(el.Text) ? "(unnamed button)" : el.Text;
 
     private int InnerWidth()
@@ -920,7 +939,7 @@ public class FbwEfbForm : Form
             return cb;
         }
 
-        if (el.ControlType is "text" or "select")
+        if (el.ControlType is "text" or "select" or "range")
         {
             var container = new Panel { Size = new Size(width, 46), AccessibleRole = AccessibleRole.Grouping };
             string fieldText = FieldLabel(el);
@@ -955,10 +974,17 @@ public class FbwEfbForm : Form
                         e.Handled = true; e.SuppressKeyPress = true;
                         return;
                     }
+                    string sent = tb.Text;
+                    if (controlType == "range" && !TrySliderValue(tb.Text, out sent))
+                    {
+                        _announcer.Announce("Type a number");   // a validation error always speaks (CORE-7)
+                        e.Handled = true; e.SuppressKeyPress = true;
+                        return;
+                    }
                     _bridgeServer.EnqueueCommand("set_element_value", new Dictionary<string, string>
                     {
                         ["index"] = r.AgentIdx.ToString(),
-                        ["value"] = tb.Text,
+                        ["value"] = sent,
                         ["controlType"] = controlType
                     });
                     _announcer.Announce("Set " + (string.IsNullOrEmpty(fieldName) ? "field" : fieldName) + " to " + tb.Text);
