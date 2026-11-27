@@ -2341,7 +2341,7 @@ public partial class TaxiGuidanceManager
             {
                 string reasonStr = !string.IsNullOrEmpty(newRoute.ConstrainedFallbackReason)
                     ? newRoute.ConstrainedFallbackReason
-                    : (lengthBlowUp ? "recalculated route too long" : "recalculated route heads backwards");
+                    : (lengthBlowUp ? "Recalculated route too long" : "Recalculated route heads backwards");
                 SpeakNow(
                     $"Off route. Could not follow clearance. {reasonStr}. Continuing on original route.");
                 return;

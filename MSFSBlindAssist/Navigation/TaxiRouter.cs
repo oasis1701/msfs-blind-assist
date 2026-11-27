@@ -99,9 +99,9 @@ public class TaxiRouter
         if (taxiwaySequence != null)
             for (int i = 0; i + 2 < taxiwaySequence.Count && !hasRepeat; i++)
                 hasRepeat = string.Equals(taxiwaySequence[i], taxiwaySequence[i + 2], StringComparison.OrdinalIgnoreCase);
-        var plain = FindConstrainedPathCore(startNodeId, endNodeId, taxiwaySequence!, destinationIsRunway, honourRepeats: false);
+        var plain = BuildConstrainedPath(startNodeId, endNodeId, taxiwaySequence!, destinationIsRunway, honourRepeats: false);
         if (!hasRepeat) return plain;
-        var honoured = FindConstrainedPathCore(startNodeId, endNodeId, taxiwaySequence!, destinationIsRunway, honourRepeats: true);
+        var honoured = BuildConstrainedPath(startNodeId, endNodeId, taxiwaySequence!, destinationIsRunway, honourRepeats: true);
         if (honoured == null) return plain;
         if (plain == null) return honoured;
         bool plainFellBack = plain.ConstrainedFallbackReason != null, honouredFellBack = honoured.ConstrainedFallbackReason != null;
@@ -118,9 +118,72 @@ public class TaxiRouter
         return pick;
     }
 
-    private TaxiRoute? FindConstrainedPathCore(int startNodeId, int endNodeId, List<string> taxiwaySequence,
+    /// <summary>
+    /// One reading of the clearance. Each bridge leg is refined as it is joined to the route: it joins
+    /// the next cleared taxiway where it first reaches it (<see cref="JoinWhereTheBridgeFirstReaches"/>),
+    /// and an out-and-back or loop where it meets the route is taken out (<see cref="AppendBridgeLeg"/>).
+    /// When a leg was refined, the route is built again with every bridge leg as scored, and that one
+    /// is kept where the refining was not needed (<see cref="KeepAsScored"/>). An earlier join moves
+    /// every junction picked after it: where a later taxiway is drawn in pieces the new junction can
+    /// have no leg along it (KNZY "B2, A3, A": the join landed on the A3/A junction, from which A has
+    /// none, and the route fell back), and between two bridges a short taxiway can be left at the node
+    /// it was joined at (KABQ "R, Q, P, M, B": Q no longer driven, 35 m longer, over E).
+    /// </summary>
+    private TaxiRoute? BuildConstrainedPath(int startNodeId, int endNodeId, List<string> taxiwaySequence,
         bool destinationIsRunway, bool honourRepeats)
     {
+        var route = FindConstrainedPathCore(startNodeId, endNodeId, taxiwaySequence, destinationIsRunway, honourRepeats,
+            refineBridgeLegs: true, out int refined);
+        if (refined == 0 || route == null) return route;
+        var asScored = FindConstrainedPathCore(startNodeId, endNodeId, taxiwaySequence, destinationIsRunway, honourRepeats,
+            refineBridgeLegs: false, out _);
+        if (asScored == null) return route;
+        bool keep = route.ConstrainedFallbackReason != null
+            ? asScored.ConstrainedFallbackReason == null
+            : KeepAsScored(route, asScored, taxiwaySequence, endNodeId);
+        Log($"Bridge legs refined: {route.TotalDistanceMeters:F0} m{(route.ConstrainedFallbackReason != null ? " (fell back)" : "")}, " +
+            $"as scored {asScored.TotalDistanceMeters:F0} m -> {(keep ? "as scored" : "refined")}");
+        return keep ? asScored : route;
+    }
+
+    /// <summary>
+    /// The route built with each bridge leg as scored stands, over the refined one, only where it
+    /// needed no refining: it follows the clearance, passes no node twice (an out-and-back or a loop,
+    /// <see cref="PassesANodeTwice"/>), and drives every cleared taxiway the refined route drives.
+    /// Driving more of them, it stands within the limit a repeated taxiway is honoured within (25 % +
+    /// 100 m longer), even where it then ends short of the destination: a last cleared taxiway leading
+    /// away is the end of the route ([RTE-17]), and the refined route had not driven it (EBBR "E4, T"
+    /// to 01: T never driven, 1.7 km of other taxiways to the runway). Driving the same ones, it stands
+    /// only if it reaches the destination whenever the refined one does (else it is shorter by
+    /// stopping short), and has no more metres of taxiways the clearance never named and no more
+    /// metres in all.
+    /// </summary>
+    private static bool KeepAsScored(TaxiRoute refined, TaxiRoute asScored, List<string> clearance, int endNodeId)
+    {
+        if (asScored.ConstrainedFallbackReason != null || PassesANodeTwice(NodeIdsOf(asScored))) return false;
+        var cleared = new HashSet<string>(clearance, StringComparer.OrdinalIgnoreCase);
+        HashSet<string> Driven(TaxiRoute r) =>
+            new(r.Segments.Select(s => s.TaxiwayName).Where(cleared.Contains), StringComparer.OrdinalIgnoreCase);
+        double Uncleared(TaxiRoute r) =>
+            r.Segments.Where(s => s.TaxiwayName.Length > 0 && !cleared.Contains(s.TaxiwayName)).Sum(s => s.DistanceMeters);
+        var byRefined = Driven(refined);
+        var byScored = Driven(asScored);
+        if (!byScored.IsSupersetOf(byRefined)) return false;
+        if (byScored.Count > byRefined.Count)
+            return asScored.TotalDistanceMeters <= refined.TotalDistanceMeters * REPEAT_HONOUR_MAX_RATIO + REPEAT_HONOUR_MAX_PAD_M;
+        if (refined.Segments[^1].ToNode.NodeId == endNodeId && asScored.Segments[^1].ToNode.NodeId != endNodeId) return false;
+        return Uncleared(asScored) <= Uncleared(refined) + 1.0
+            && asScored.TotalDistanceMeters <= refined.TotalDistanceMeters + 1.0;
+    }
+
+    private TaxiRoute? FindConstrainedPathCore(int startNodeId, int endNodeId, List<string> taxiwaySequence,
+        bool destinationIsRunway, bool honourRepeats, bool refineBridgeLegs, out int bridgeLegsRefined)
+    {
+        bridgeLegsRefined = 0;
+        // The last leg joined to the route was a bridge: the next leg's seam is a bridge's too.
+        bool afterBridge = false;
+        // Where the leg the next bridge leaves from begins in the route (AppendBridgeLeg's floor).
+        int bridgeFloor = 0;
         // Append a session header. Size-capping/rotation is now handled by the
         // shared LogWriter (5 MB cap, 3-file retention) rather than a hand-rolled
         // per-call truncate, so a recalc can never wipe a prior build's entry
@@ -282,6 +345,8 @@ public class TaxiRouter
             currentNode = firstTarget;
             entryFound = true;
             if (lastTaxiwayTerminal) terminalEntryNode = entryNode;
+            // Where the first taxiway's own leg begins: the entry, after the approach to it.
+            bridgeFloor = approachPath != null ? approachPath.Count - 1 : 0;
             Log($"Step 1 OK: '{taxiwaySequence[0]}' via node {entryNode} -> {firstTarget}");
 
             // A SINGLE cleared taxiway joined at the very node the route would leave it by is not
@@ -430,10 +495,10 @@ public class TaxiRouter
                 Log($"FALLBACK: {reason}");
                 return FallbackShortest(startNodeId, endNodeId, reason);
             }
-            int sb = (fullPath.Count > 0 && bridge.Count > 0 && fullPath[^1] == bridge[0]) ? 1 : 0;
-            for (int j = sb; j < bridge.Count; j++)
-                fullPath.Add(bridge[j]);
-            currentNode = firstBridgeEntryOnSecond;
+            if (refineBridgeLegs && JoinWhereTheBridgeFirstReaches(ref bridge, secondTaxiway!, "Step 1")) bridgeLegsRefined++;
+            AppendBridgeLeg(fullPath, bridge, refineBridgeLegs, bridgeFloor, "Step 1", ref bridgeLegsRefined);
+            currentNode = bridge[^1];
+            afterBridge = true;
             Log($"Step 1 bridge OK: {bridge.Count} nodes across runway");
         }
 
@@ -446,6 +511,8 @@ public class TaxiRouter
             int targetNode;
             bool bridgedAcrossRunway = false;
             int bridgeEntryOnNext = -1;
+            // Where this taxiway's leg begins: the floor for a bridge leaving it.
+            int legStart = Math.Max(0, fullPath.Count - 1);
             if (nextTaxiway != null)
             {
                 // "via A, C, A": leaving C back onto the taxiway the route just came off can never be
@@ -546,9 +613,15 @@ public class TaxiRouter
 
                 Log($"Step {i + 1} OK: '{currentTaxiway}' {currentNode}->{targetNode} ({segment.Count} nodes)");
 
-                int si = (fullPath.Count > 0 && segment.Count > 0 && fullPath[^1] == segment[0]) ? 1 : 0;
-                for (int j = si; j < segment.Count; j++)
-                    fullPath.Add(segment[j]);
+                if (afterBridge)
+                    AppendBridgeLeg(fullPath, segment, refineBridgeLegs, bridgeFloor, $"Step {i + 1}", ref bridgeLegsRefined);
+                else
+                {
+                    int si = (fullPath.Count > 0 && segment.Count > 0 && fullPath[^1] == segment[0]) ? 1 : 0;
+                    for (int j = si; j < segment.Count; j++)
+                        fullPath.Add(segment[j]);
+                }
+                afterBridge = false;
 
                 currentNode = targetNode;
             }
@@ -566,10 +639,13 @@ public class TaxiRouter
                     Log($"FALLBACK: {reason}");
                     return FallbackShortest(startNodeId, endNodeId, reason);
                 }
-                int sb = (fullPath.Count > 0 && bridge.Count > 0 && fullPath[^1] == bridge[0]) ? 1 : 0;
-                for (int j = sb; j < bridge.Count; j++)
-                    fullPath.Add(bridge[j]);
-                currentNode = bridgeEntryOnNext;
+                if (refineBridgeLegs && JoinWhereTheBridgeFirstReaches(ref bridge, nextTaxiway!, $"Step {i + 1}")) bridgeLegsRefined++;
+                // A taxiway with no leg of its own between two bridges keeps the first bridge's floor:
+                // the two bridges make one seam, and the leg before them is the last one driven.
+                if (!afterBridge) bridgeFloor = legStart;
+                AppendBridgeLeg(fullPath, bridge, refineBridgeLegs, bridgeFloor, $"Step {i + 1}", ref bridgeLegsRefined);
+                currentNode = bridge[^1];
+                afterBridge = true;
                 Log($"Step {i + 1} bridge OK: {bridge.Count} nodes across runway");
             }
         }
@@ -624,9 +700,14 @@ public class TaxiRouter
                 return FallbackShortest(startNodeId, endNodeId, reason);
             }
 
-            int si = (fullPath.Count > 0 && finalLeg.Count > 0 && fullPath[^1] == finalLeg[0]) ? 1 : 0;
-            for (int j = si; j < finalLeg.Count; j++)
-                fullPath.Add(finalLeg[j]);
+            if (afterBridge)
+                AppendBridgeLeg(fullPath, finalLeg, refineBridgeLegs, bridgeFloor, "Final leg", ref bridgeLegsRefined);
+            else
+            {
+                int si = (fullPath.Count > 0 && finalLeg.Count > 0 && fullPath[^1] == finalLeg[0]) ? 1 : 0;
+                for (int j = si; j < finalLeg.Count; j++)
+                    fullPath.Add(finalLeg[j]);
+            }
         }
 
         if (fullPath.Count < 2)
@@ -1528,6 +1609,92 @@ public class TaxiRouter
         }
 
         return (bestExit, bestEntry);
+    }
+
+    /// <summary>
+    /// The free leg of a bridge (<see cref="FindRunwayBridge"/>), cut at the first node where it
+    /// reaches the next cleared taxiway, so the route joins that taxiway there and drives it on
+    /// under the clearance. The node the bridge was scored for can lie beyond: the score takes the
+    /// straight-line gap and the cost on to the destination by ANY path, so a dead end of the
+    /// taxiway with a short way on of its own wins, and the free leg then drives the cleared
+    /// taxiway, and any cross-link it likes, out to it. KEWR "A11, A12, A, AA" (2026-11-26): A11
+    /// and A12 meet only through an unnamed link; the bridge picked the end of a curved A12 branch,
+    /// the free leg ran along A12, over F2 (never cleared) and out along the branch, and the A12
+    /// leg came straight back the same way. The leg is cut only where the cleared taxiway itself
+    /// leads from that node to the scored one (<see cref="AStarSearchStrict"/>: its own edges and
+    /// the short hops onto them, never a gap chained through other taxiways, which can run out and
+    /// back; HECA "A2, A1", where A1 is drawn in two pieces). A node of the same name on another
+    /// piece is not a join, and the next node of the name is tried. True when the leg was cut.
+    /// </summary>
+    private bool JoinWhereTheBridgeFirstReaches(ref List<int> bridge, string nextTaxiway, string step)
+    {
+        int scored = bridge[^1];
+        for (int k = 1; k < bridge.Count - 1; k++)
+        {
+            if (!_graph.Nodes.TryGetValue(bridge[k], out var node) || !node.TaxiwayNames.Contains(nextTaxiway)) continue;
+            if (AStarSearchStrict(bridge[k], scored, nextTaxiway) == null)
+            {
+                Log($"{step} bridge passes '{nextTaxiway}' node {bridge[k]}, which does not lead along it to {scored}: not joined there");
+                continue;
+            }
+            Log($"{step} bridge reaches '{nextTaxiway}' at node {bridge[k]}, {bridge.Count - 1 - k} nodes before {scored}: joined there");
+            bridge = bridge.Take(k + 1).ToList();
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Joins a leg that begins where the route stands, at a seam a bridge leg makes (the bridge
+    /// itself, or the leg after it). With <paramref name="unwind"/>, the route never goes out and
+    /// back there. First, while the leg goes straight back over the edge the route arrived by, both
+    /// drop that edge: a bridge leaves from a node its score chose, and where the bridge before it
+    /// joined a short taxiway early, that node is the join itself, so the next bridge left straight
+    /// back the way the route came (RJTT "R, E3, E, E2, C2": out to E's node and back over E3, out
+    /// along a 20 m stub to E2's and back). Then, a leg that comes back to a node the route reached at
+    /// or after <paramref name="floor"/> (the start of the leg the bridge leaves from, or of the bridge
+    /// before the leg after it) cuts the loop out: the score can pick an exit beyond the turn-off with
+    /// a turning loop at the tip, and the route drove the cleared taxiway out to it and back over the
+    /// same nodes (OIII "B, D": 268 m east along B to a loop by runway 11R, and back west). Neither
+    /// reaches below the floor, so the legs of earlier cleared taxiways, and the approach to the first,
+    /// stay as they were: unwound past the first taxiway's entry, a route that went out to it and
+    /// straight back no longer touched it at all, the start check that leaves such a taxiway out
+    /// ([RTE-39]) no longer saw it, and the lead-in was refused (ZJHK "S2, B, B10" from Gate 12: the
+    /// route then began on S2, 430 m away in a straight line). The route still ends where the leg
+    /// does, and only gets shorter.
+    /// </summary>
+    private void AppendBridgeLeg(List<int> path, List<int> leg, bool unwind, int floor, string step, ref int refined)
+    {
+        int k = (path.Count > 0 && leg.Count > 0 && path[^1] == leg[0]) ? 1 : 0;
+        floor = Math.Min(Math.Max(0, floor), Math.Max(0, path.Count - 1));
+        int unwound = 0;
+        while (unwind && k == 1 + unwound && path.Count - 1 > floor && k < leg.Count && path[^2] == leg[k])
+        {
+            path.RemoveAt(path.Count - 1);
+            k++;
+            unwound++;
+        }
+        int cut = 0;
+        for (int j = k; j < leg.Count; j++)
+        {
+            int again = -1;
+            if (unwind)
+                for (int r = path.Count - 1; r >= floor; r--)
+                    if (path[r] == leg[j]) { again = r; break; }
+            if (again == -1)
+            {
+                path.Add(leg[j]);
+                continue;
+            }
+            cut += path.Count - 1 - again;
+            path.RemoveRange(again + 1, path.Count - 1 - again);
+        }
+        if (unwound > 0 || cut > 0)
+        {
+            refined++;
+            Log($"{step}: where the bridge leg meets the route, {unwound} edge{(unwound == 1 ? "" : "s")} of out-and-back " +
+                $"and {cut} of loop taken out");
+        }
     }
 
     /// <summary>

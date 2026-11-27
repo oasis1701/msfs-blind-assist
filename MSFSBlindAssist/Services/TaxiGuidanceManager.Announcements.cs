@@ -933,7 +933,16 @@ public partial class TaxiGuidanceManager
             ? TaxiLeadIn.Clause(leadIn, firstClearedTaxiway)
             : "";
 
-        return $"Route to {route.DestinationName}{taxiwayStr}.{leadInStr} {distStr}{holdStr}.{fallbackStr}";
+        // A named taxiway the route takes between two cleared ones that never meet is said with the
+        // route, as the lead-in is, so the pilot never meets it first as a turn call ("Sharp right now,
+        // taxiway F2" at KEWR, 2026-11-26). Not for a route that fell back: its "via" list names every
+        // taxiway already.
+        string linkStr = (_graph != null && route.TaxiwaySequence is { Count: > 1 }
+                          && string.IsNullOrEmpty(route.ConstrainedFallbackReason))
+            ? RouteTaxiwaySequence.LinkClause(route.TaxiwaySequence, route.Segments, _graph.TaxiwaysMeet)
+            : "";
+
+        return $"Route to {route.DestinationName}{taxiwayStr}.{leadInStr}{linkStr} {distStr}{holdStr}.{fallbackStr}";
     }
 
 }

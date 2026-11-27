@@ -180,4 +180,56 @@ public static class RouteTaxiwaySequence
         var beyond = BeyondEntered(entered, segments);
         return beyond.Count == 0 ? list : $"{list}, then {string.Join(", ", beyond)}";
     }
+
+    /// <summary>
+    /// The named taxiways a route takes to get from one cleared taxiway to the next where the two
+    /// never meet, said after the "via" list: " From A11, taxi via F2 to reach A12." Empty when
+    /// there are none. Two cleared taxiways that share no node are linked by the router itself
+    /// (<c>TaxiRouter.FindRunwayBridge</c>), over whatever pavement joins them, and a named link the
+    /// clearance never gave was heard first as a turn call ("Sharp right now, taxiway F2", KEWR
+    /// 2026-11-26). Where the two DO meet, a piece of another taxiway crossed on the way is a
+    /// junction, and stays unsaid as <see cref="BeyondEntered"/> describes; an unnamed link has no
+    /// name to say. Worded as the lead-in clause is (<see cref="TaxiLeadIn"/>, "First taxi via L1
+    /// to reach A."), and leads with a space so it appends the same way.
+    /// </summary>
+    /// <param name="taxiwaysMeet">Whether two taxiways share a node (<c>TaxiGraph.TaxiwaysMeet</c>).</param>
+    public static string LinkClause(
+        IReadOnlyList<string>? entered, IReadOnlyList<TaxiRouteSegment>? segments, Func<string, string, bool> taxiwaysMeet)
+    {
+        if (entered == null || entered.Count < 2) return "";
+        var runs = NamedRuns(segments);
+        var clause = new System.Text.StringBuilder();
+        int next = 0, prevRun = -1;
+        string? prevName = null;
+        foreach (string name in entered)
+        {
+            int at = -1;
+            for (int i = next; i < runs.Count && at == -1; i++)
+                if (runs[i].Name.Equals(name, StringComparison.OrdinalIgnoreCase)) at = i;
+            // A cleared taxiway with no run of its own (touched only at a junction) pairs with nothing.
+            if (at == -1) { prevRun = -1; prevName = null; continue; }
+            if (prevName != null && !taxiwaysMeet(prevName, name))
+            {
+                // From the last run of the previous taxiway before this one.
+                int from = prevRun;
+                for (int i = prevRun + 1; i < at; i++)
+                    if (runs[i].Name.Equals(prevName, StringComparison.OrdinalIgnoreCase)) from = i;
+                var links = new List<string>();
+                for (int i = from + 1; i < at; i++)
+                {
+                    string link = runs[i].Name;
+                    if (!links.Contains(link, StringComparer.OrdinalIgnoreCase)) links.Add(link);
+                }
+                if (links.Count > 0)
+                    clause.Append($" From {prevName}, taxi via {JoinNames(links)} to reach {name}.");
+            }
+            prevRun = at;
+            prevName = name;
+            next = at + 1;
+        }
+        return clause.ToString();
+    }
+
+    private static string JoinNames(List<string> names)
+        => names.Count == 1 ? names[0] : string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1];
 }
