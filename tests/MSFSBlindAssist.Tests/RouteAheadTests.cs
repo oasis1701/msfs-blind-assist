@@ -18,6 +18,8 @@ using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Tests;
 
+// The comma-culture theory below sets the global DistanceFormatter.UnitProvider.
+[Collection("DistanceUnitGlobalState")]
 public class RouteAheadTests
 {
     private const double CaptureRadiusM = 25.0;   // TaxiGuidanceManager.WAYPOINT_CAPTURE_RADIUS_M
@@ -366,6 +368,113 @@ public class RouteAheadTests
         Assert.InRange(RouteAhead.RouteBearingInto(route, 1, minMetres: 20.0), 0.0, 2.0);
         Assert.InRange(RouteAhead.RouteBearingInto(route, 0, minMetres: 20.0), -0.01, 0.01);
         Assert.InRange(RouteAhead.RouteBearingInto(route, 2, minMetres: 20.0), 89.0, 91.0);
+    }
+
+    [Fact]
+    public void The_bend_is_measured_from_where_the_aircraft_is_not_from_the_cursors_segment()
+    {
+        // North 100 m on A to N, 22 m at 050 to M, 10 m at 050 to J, then a 40 degree LEFT onto B (010).
+        double s50 = Math.Sin(50 * Math.PI / 180), c50 = Math.Cos(50 * Math.PI / 180);
+        double s10 = Math.Sin(10 * Math.PI / 180), c10 = Math.Cos(10 * Math.PI / 180);
+        var route = Polyline((0, 0, "A"), (0, 100, "A"), (22 * s50, 100 + 22 * c50, "A"), (32 * s50, 100 + 32 * c50, "A"),
+            (32 * s50 + 40 * s10, 100 + 32 * c50 + 40 * c10, "B"));
+        // 5 m before N on heading 000, the cursor already on N to M (it moves on 25 m before a segment's
+        // end): 25.5 m from M, a bend of 50 degrees still to make before the cursor's segment.
+        double heading = 0.0;
+        double toM = Math.Sqrt(Math.Pow(22 * s50, 2) + Math.Pow(5 + 22 * c50, 2));
+
+        double change = RouteAhead.HeadingChangeTo(route, currentIndex: 1, junctionIndex: 2, minMetres: 20.0, toCurrentEndMetres: toM);
+
+        Assert.InRange(change, 45.0, 55.0);
+        Assert.Equal("slight left", TaxiGuidanceManager.ComputeTurnVerbalFromHeading(route[3].BearingDegrees, heading + change));
+        // Measured from the cursor's segment, the bend was left out and the 40 degree left was "continue":
+        double fromCursor = RouteAhead.HeadingChangeTo(route, currentIndex: 1, junctionIndex: 2, minMetres: 20.0);
+        Assert.Equal("continue", TaxiGuidanceManager.ComputeTurnVerbalFromHeading(route[3].BearingDegrees, heading + fromCursor));
+    }
+
+    [Fact]
+    public void A_short_first_piece_after_the_junction_does_not_set_the_turn()
+    {
+        // North 80 m on A, then onto B: a 1.5 m piece drawn 45 degrees LEFT, then B runs at 030. The turn
+        // the pilot makes is a 30 degree right.
+        var route = Polyline((0, 0, "A"), (0, 80, "A"), (-1.06, 81.06, "B"),
+            (-1.06 + 40 * Math.Sin(30 * Math.PI / 180), 81.06 + 40 * Math.Cos(30 * Math.PI / 180), "B"));
+
+        var junction = RouteAhead.NextJunction(route, currentIndex: 0, toCurrentEndMetres: 50.0, lookaheadMetres: 300.0);
+
+        Assert.NotNull(junction);
+        Assert.Equal(0, junction.Value.Index);
+        Assert.InRange(RouteAhead.TurnAngleAt(route, 0, 20.0), 25.0, 35.0);
+        Assert.Equal("B", RouteAhead.TaxiwayOnto(route, 0));
+        Assert.Equal("slight right", TaxiGuidanceManager.ComputeTurnVerbalFromHeading(RouteAhead.RouteBearingOutOf(route, 0, 20.0), 0.0));
+        // From the short piece's own bearing, as it was:
+        Assert.Equal("slight left", TaxiGuidanceManager.ComputeTurnVerbalFromHeading(route[1].BearingDegrees, 0.0));
+        // The kink at the end of the short piece is part of the same junction, never a second one.
+        Assert.True(RouteAhead.ContinuesEarlierJunction(route, 1));
+    }
+
+    [Fact]
+    public void A_corner_drawn_as_two_kinks_is_one_sharp_turn_said_once()
+    {
+        // North 80 m on A, a 3 m piece of A at 045, then B at 090: a 90 degree right drawn as two 45s.
+        var route = Polyline((0, 0, "A"), (0, 80, "A"), (2.12, 82.12, "A"), (42.12, 82.12, "B"));
+
+        var junction = RouteAhead.NextJunction(route, currentIndex: 0, toCurrentEndMetres: 50.0, lookaheadMetres: 300.0);
+
+        Assert.NotNull(junction);
+        Assert.Equal(0, junction.Value.Index);
+        Assert.InRange(RouteAhead.TurnAngleAt(route, 0, 20.0), 85.0, 95.0);
+        Assert.Equal("B", RouteAhead.TaxiwayOnto(route, 0));
+        Assert.True(RouteAhead.TurnsWithin(route, currentIndex: 0, toCurrentEndMetres: 20.0, windowMetres: 56.0, sharpAngleDegrees: 60.0).Sharp);
+        // Once the cursor has moved past the first kink, the second is not a junction of its own.
+        Assert.Null(RouteAhead.NextJunction(route, currentIndex: 1, toCurrentEndMetres: 30.0, lookaheadMetres: 300.0));
+    }
+
+    [Fact]
+    public void A_piece_drawn_off_the_line_and_back_is_no_junction()
+    {
+        // North on A with a 1.5 m piece drawn 45 degrees off in the middle: raw turns of 45 right, 45 left.
+        var route = Polyline((0, 0, "A"), (0, 80, "A"), (1.06, 81.06, "A"), (1.06, 121.06, "A"));
+
+        Assert.Null(RouteAhead.NextJunction(route, currentIndex: 0, toCurrentEndMetres: 50.0, lookaheadMetres: 300.0));
+        Assert.False(RouteAhead.TurnsWithin(route, currentIndex: 0, toCurrentEndMetres: 30.0, windowMetres: 56.0, sharpAngleDegrees: 60.0).Turn);
+    }
+
+    [Fact]
+    public void An_unnamed_piece_between_two_pieces_of_a_taxiway_is_no_change_of_taxiway()
+    {
+        // A, a 2 m unnamed piece, A again, then the 90 degree turn onto B: the junction is the turn onto B,
+        // never "continue onto taxiway A" while already on A.
+        var route = new List<TaxiRouteSegment>
+        {
+            Seg("A", 100.0),
+            Seg("", 2.0),
+            Seg("A", 30.0),
+            Seg("B", 40.0, turnDeg: 90.0),
+        };
+
+        var junction = RouteAhead.NextJunction(route, currentIndex: 0, toCurrentEndMetres: 90.0, lookaheadMetres: 300.0);
+
+        Assert.NotNull(junction);
+        Assert.Equal(2, junction.Value.Index);
+        Assert.Equal(122.0, junction.Value.AlongMetres, 3);
+    }
+
+    [Fact]
+    public void A_turn_just_after_a_hold_is_never_merged_into_the_hold()
+    {
+        // After Continue at the hold, a 90 degree turn 5 m on is a junction of its own.
+        var route = new List<TaxiRouteSegment>
+        {
+            Seg("B", 20.0, hold: true, holdLabel: "runway 4R at B"),
+            Seg("B", 5.0, turnDeg: 30.0),
+            Seg("D", 15.0, turnDeg: 90.0),
+        };
+
+        Assert.False(RouteAhead.ContinuesEarlierJunction(route, 1));
+        var junction = RouteAhead.NextJunction(route, currentIndex: 1, toCurrentEndMetres: 3.0, lookaheadMetres: 300.0);
+        Assert.NotNull(junction);
+        Assert.Equal(1, junction.Value.Index);
     }
 
     // ---- TurnsWithin: "Slow for turn" ----

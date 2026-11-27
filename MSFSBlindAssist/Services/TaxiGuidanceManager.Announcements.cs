@@ -159,11 +159,12 @@ public partial class TaxiGuidanceManager
         // junction 105 ft out, so the advance notice never came and the pilot heard only "Sharp right
         // now, taxiway F3." (2026-11-26). Distances below are to that junction along the route.
         if (RouteAhead.NextJunction(_route.Segments, _currentSegmentIndex, distToTargetM,
-                APPROACH_ANNOUNCE_MAX_M * SHARP_TURN_APPROACH_FACTOR) is not { } junction)
+                APPROACH_ANNOUNCE_MAX_M * SHARP_TURN_APPROACH_FACTOR, TURN_WORD_APPROACH_M) is not { } junction)
             return;
-        int turnIdx = junction.Index + 1;
+        // The segment the turn ends on: after every point of the junction (RouteAhead.RunEnd), so a
+        // corner the navdata draws as two kinks a few metres apart is one turn, said once.
+        int turnIdx = RouteAhead.RunEnd(_route.Segments, junction.Index) + 1;
         double toJunctionM = junction.AlongMetres;
-        var turnSeg = _route.Segments[turnIdx];
 
         // Final segment onto a runway: the lineup logic (intercept-to-centerline
         // tone + "Lined up" callout + the LiningUp status readout) owns guidance
@@ -178,15 +179,19 @@ public partial class TaxiGuidanceManager
         if (_isRunwayLineup && !_routeEndsFarFromRunway && turnIdx == _route.Segments.Count - 1)
             return;
 
-        string turnTaxiway = turnSeg.TaxiwayName;
+        // The taxiway, the turn and its direction out are the route's over TURN_WORD_APPROACH_M or more
+        // either side of the junction (RouteAhead.TurnAngleAt, RouteBearingOutOf), never one navdata piece:
+        // a piece a metre or two long after the junction, drawn at any angle, set the word and the angle.
+        string turnTaxiway = RouteAhead.TaxiwayOnto(_route.Segments, junction.Index);
         bool turnTaxiwayChanging = !string.IsNullOrEmpty(turnTaxiway) &&
-            !turnTaxiway.Equals(_route.Segments[junction.Index].TaxiwayName, StringComparison.OrdinalIgnoreCase);
-        bool turnHasTurn = turnSeg.TurnDirection != "straight";
+            !turnTaxiway.Equals(RouteAhead.TaxiwayBefore(_route.Segments, junction.Index), StringComparison.OrdinalIgnoreCase);
+        double turnAngle = Math.Abs(RouteAhead.TurnAngleAt(_route.Segments, junction.Index, TURN_WORD_APPROACH_M));
+        bool turnHasTurn = turnAngle >= RouteAhead.StraightDegrees;
+        double turnOutBearing = RouteAhead.RouteBearingOutOf(_route.Segments, junction.Index, TURN_WORD_APPROACH_M);
 
         // Is this a sharp turn? (>60° — ICAO Annex 14 regards >90° as requiring
         // significantly wider radius; we flag a bit earlier so slow-down margin
         // is built in.)
-        double turnAngle = Math.Abs(turnSeg.TurnAngleDegrees);
         bool sharpTurn = turnHasTurn && turnAngle >= SHARP_TURN_ANGLE_DEG;
 
         // Advance-notice distance scales with ground speed — at 20 kt, 300 ft is
@@ -208,8 +213,11 @@ public partial class TaxiGuidanceManager
         // heading-based one of ComputeTurnVerbalFromHeading). From before a curve the heading alone named
         // the wrong turn: KATL L4 curves right into a sharp left onto L, and the notice said "In 120 metres,
         // continue onto taxiway L." before "Sharp left now, taxiway L." (VirtualPilot, 2026-11-27).
+        // Carried from where the aircraft IS (distToTargetM back from the current segment's end), not
+        // from the cursor's segment: on short pieces the cursor is a segment ahead of the aircraft, and a
+        // bend before that segment was left out.
         double headingAtJunction = _lastHeading
-            + RouteAhead.HeadingChangeTo(_route.Segments, _currentSegmentIndex, junction.Index, TURN_WORD_APPROACH_M);
+            + RouteAhead.HeadingChangeTo(_route.Segments, _currentSegmentIndex, junction.Index, TURN_WORD_APPROACH_M, distToTargetM);
         // The advance notice of a junction beyond the current segment: the aircraft will be on the route
         // by the time it gets there, so its word comes from the route's own direction into the junction,
         // not from wherever the aircraft points now; and it waits until the aircraft is moving. Said from
@@ -251,7 +259,7 @@ public partial class TaxiGuidanceManager
             // the verbal cue match the steering tone (which is also heading-based)
             // even when the aircraft is off-axis from the current route segment.
             string turnStr = turnHasTurn
-                ? ComputeTurnVerbalFromHeading(turnSeg.BearingDegrees, headingForNotice)
+                ? ComputeTurnVerbalFromHeading(turnOutBearing, headingForNotice)
                 : "continue";
             // "Sharp" and the junction angle describe the ROUTE's bend; turnStr is measured from
             // the aircraft's heading. When the aircraft is not yet pointing along the route the
@@ -289,7 +297,7 @@ public partial class TaxiGuidanceManager
         {
             string taxiStr = turnTaxiwayChanging ? $", taxiway {turnTaxiway}" : "";
             // Same as the advance-notice cue: actual heading, not route's static turn.
-            string turnStr = ComputeTurnVerbalFromHeading(turnSeg.BearingDegrees, headingAtJunction);
+            string turnStr = ComputeTurnVerbalFromHeading(turnOutBearing, headingAtJunction);
             string sharpStr = sharpTurn && (turnStr == "left" || turnStr == "right") ? "sharp " : "";
             // Already pointing along the next leg: there is no turn left to call, and
             // "continue now." is not an instruction.

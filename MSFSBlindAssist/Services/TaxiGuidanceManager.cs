@@ -440,7 +440,7 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double APPROACH_ANNOUNCE_MAX_M = 200.0;        // ceiling: ~650ft at 30 kt+
     private const double APPROACH_ANNOUNCE_SEC_LEAD = 10.0;      // desired lead time at current ground speed
     private const double SHARP_TURN_APPROACH_FACTOR = 1.5;       // a sharp turn's advance notice comes this much earlier
-    private const double TURN_WORD_APPROACH_M = 20.0;            // route taken for its direction into a junction (RouteAhead.HeadingChangeTo)
+    private const double TURN_WORD_APPROACH_M = RouteAhead.DirectionMetres;   // route taken for its direction into and out of a junction (RouteAhead)
     private const double ADVANCE_NOTICE_AHEAD_MIN_KTS = 1.0;     // a junction beyond the current segment is announced only once moving
     private const double TURN_IMMINENT_MIN_M = 20.0;             // floor: ~65ft (slow taxi, stopped)
     private const double TURN_IMMINENT_MAX_M = 75.0;             // ceiling: ~245ft (fast jet taxi)
@@ -3883,7 +3883,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // 105 ft out at 18.3 kt, 3 s before a 92 degree turn ("Sharp right now, taxiway F3. Slow for
         // sharp turn.", 2026-11-26), where the 6 s lookahead wanted it 56 m out.
         var turnsAhead = RouteAhead.TurnsWithin(
-            _route.Segments, _currentSegmentIndex, distToTargetM, turnWarnDist, SHARP_TURN_ANGLE_DEG);
+            _route.Segments, _currentSegmentIndex, distToTargetM, turnWarnDist, SHARP_TURN_ANGLE_DEG, TURN_WORD_APPROACH_M);
         bool sharpTurnComing = turnsAhead.Sharp;
         bool normalTurnComing = turnsAhead.Turn && !turnsAhead.Sharp;
 
@@ -3935,20 +3935,33 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             scheduledHsNodeId = _route.Segments[_currentSegmentIndex].ToNode.NodeId;
         }
-        // The route's next stop when it ends a LATER segment: the countdown owns it too (it counts down
-        // along the route, RouteAhead.NextStop), so the guard never says "Crossing …" or "Passing the …
-        // hold line." about it. A 2.1 m hold segment put KEWR's 04L hold on AA inside the 40 m radius while
-        // the cursor was still two segments back, and the pilot heard "Passing the runway 04L at AA hold
-        // line." two seconds before the "Stop." for that very line (2026-11-26). It stays a candidate and,
-        // picked, is latched and opens the cooldown exactly as the spoken line did, only in silence: the
-        // guard's choices are main's, and only the sentence goes (VirtualPilot: skipping the node outright
-        // freed false off-route warnings for a neighbouring line of the same runway in the countdown's
-        // last seconds, KSLC 16L at G beside H: 67 → 98 flights; RTE-41).
+        // The route's next stop when it ends a LATER segment within the countdown's reach along the route
+        // (HOLD_SHORT_COUNTDOWN_LOOKAHEAD_M), or once its countdown has begun: the countdown names it (it
+        // counts down along the route, RouteAhead.NextStop), so the guard never says "Crossing …" or
+        // "Passing the … hold line." about it. A 2.1 m hold segment put KEWR's 04L hold on AA
+        // inside the 40 m radius while the cursor was still two segments back, and the pilot heard "Passing
+        // the runway 04L at AA hold line." two seconds before the "Stop." for that very line (2026-11-26). It
+        // stays a candidate and, picked, is latched and opens the cooldown exactly as the spoken line did,
+        // only in silence: the guard's choices are main's, and only the sentence goes (VirtualPilot:
+        // skipping the node outright freed false off-route warnings for a neighbouring line of the same
+        // runway in the countdown's last seconds, KSLC 16L at G beside H: 67 → 98 flights; RTE-41). Never
+        // for a next stop near the aircraft but far along the route (a route that comes back to it): the
+        // countdown has said nothing about that one, and silenced it would be approached with nothing said
+        // at all. Not "only once a countdown line was said" either: on a curving approach the hold node
+        // comes within the 40 m radius before the outer tier (EFHK 34, 97 m along the route), and
+        // "Passing the runway 34 hold line." came 0.4 s before the countdown's first line (VirtualPilot).
         int laterStopHsNodeId = -1;
-        if (scheduledHsNodeId < 0 && _route != null
-            && RouteAhead.NextStop(_route.Segments, _currentSegmentIndex, 0.0, double.PositiveInfinity) is { } laterStop)
+        if (scheduledHsNodeId < 0 && _route != null && _currentSegmentIndex < _route.Segments.Count
+            && RouteAhead.NextStop(_route.Segments, _currentSegmentIndex, 0.0, double.PositiveInfinity) is { } laterStop
+            && _route.Segments[laterStop.Index].ToNode?.NodeId is int laterStopNodeId)
         {
-            laterStopHsNodeId = _route.Segments[laterStop.Index].ToNode?.NodeId ?? -1;
+            var curEnd = _route.Segments[_currentSegmentIndex].ToNode;
+            double alongToStopM = laterStop.AlongMetres
+                + (curEnd != null ? TaxiGraph.FastDistanceMeters(lat, lon, curEnd.Latitude, curEnd.Longitude) : 0.0);
+            bool countdownBegun = laterStopNodeId == _holdShortCountdownNodeId
+                && (_holdShortOuterAnnounced || _holdShortSlowDownAnnounced || _holdShortStopAnnounced);
+            if (countdownBegun || alongToStopM <= HOLD_SHORT_COUNTDOWN_LOOKAHEAD_M)
+                laterStopHsNodeId = laterStopNodeId;
         }
         // The cooldown is a pure TIME check. It used to also require _lastIncursionWarnedNodeId
         // != -1, which meant any path that re-armed the node id disarmed the cooldown with it —
@@ -4088,7 +4101,7 @@ public partial class TaxiGuidanceManager : IDisposable
             return;
         if (pick.Value.OnRoute && pick.Value.NodeId == laterStopHsNodeId)
         {
-            // The route's next stop, counted down already: nothing said, latched below as before.
+            // The route's next stop, in the countdown's reach: nothing said, latched below as before.
         }
         else if (pick.Value.OnRoute)
         {

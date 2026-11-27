@@ -104,7 +104,7 @@ Split from HLD-4 on 2026-10-09: one mechanism per ID.
 
 - The informational "Crossing runway X" is silenced ONLY by `IsVacatingLandedRunwayHold` — landing-exit route AND hold line named for the landed runway (either end) AND the hold line further from its centreline than the aircraft. Never widen it to normal taxi routes or other runways; those crossings are the incursion guard (LROP 08R → D spoke "Crossing runway 26L at D" while vacating). → [taxi-guidance.md](../taxi-guidance.md)
 
-Not a widening: the route's NEXT STOP is the countdown's, not a crossing, and the guard has always left it alone while it ends the current segment (`scheduledHsNodeId`). Since 2026-11-27 that holds for a next stop on a later segment too, latched in silence ([RTE-41](taxi-position.md#rte-41)). Every other on-route line keeps its "Crossing …" or "Passing …", including a second hold node of the same runway the route passes before its stop (LTFM 17R at B9B, about 60 m before the stop: still said).
+Not a widening: the route's NEXT STOP is the countdown's, not a crossing, and the guard has always left it alone while it ends the current segment (`scheduledHsNodeId`). Since 2026-11-27 that holds for a next stop on a later segment too, within the countdown's 600 ft along the route or once its countdown has begun, latched in silence ([RTE-41](taxi-position.md#rte-41)); farther along the route it is said as before. Every other on-route line keeps its "Crossing …" or "Passing …", including a second hold node of the same runway the route passes before its stop (LTFM 17R at B9B, about 60 m before the stop: still said).
 
 ## HLD-22
 

@@ -540,25 +540,27 @@ The fix is [HLD-25](invariants/hold-abeam.md#hld-25): not taken while more than 
 
 A pilot's KEWR departures to 04L via AA heard the hold-short countdown only 84 ft out ("Hold short runway 04L at AA in 75 feet. Stop."), "Passing the runway 04L at AA hold line." about the line they were to stop at, and turns with no advance notice. The FS2024 navdata splits AA into 28, 6.4 and 2.1 m pieces at the hold, and the countdown, the turn notices and "Slow for turn" measured only to the current segment's end. They now measure along the route ([RTE-41](invariants/taxi-position.md#rte-41)). New harness checks: `HOLD_COUNTDOWN_LATE`/`_MISSING`, `HOLD_CALLED_PASSING_BEFORE_STOP`, `TURN_NOW_WITHOUT_ADVANCE`, `TURN_ADVANCE_OTHER_WAY` (table above); `--trace KEWR:pick:40.6873459,-74.1859335,177.4:04L:A10,F3,A12,A,AA` replays the 21:29 departure's start (plain navdata routes it via A11, as A10 and F3 meet only in the online data, but the approach to the 04L hold is the same).
 
-Frozen main with the same harness against the branch, `taxi wrongturn turnpicks departures missturn`, 19,258 scenarios, every one matched (flights per code):
+Frozen main with the same harness against the change, `taxi wrongturn turnpicks departures missturn`, 19,258 scenarios, every one matched (flights per code):
 
-| code | main | branch |
-|---|---|---|
-| `HOLD_COUNTDOWN_LATE` | 4,063 | 0 |
-| `HOLD_COUNTDOWN_MISSING` | 5 | 0 |
-| `HOLD_CALLED_PASSING_BEFORE_STOP` | 1,586 | 354 |
-| `TURN_NOW_WITHOUT_ADVANCE` | 647 | 22 |
-| `TURN_ADVANCE_OTHER_WAY` | 951 | 460 |
-| `OFF_ROUTE_WARNING_ON_ROUTE` | 67 | 61 |
-| `SPOKEN_DIRECTION_CONTRADICTS` | 7 | 4 |
-| `WRONG_TURN_WARNED` / `_SILENT` | 384 / 11 | 375 / 12 |
-| `MISSED_TURN_REROUTED` / `_NOTHING` / `_HELD_IN_CIRCLE` / `_STOPPED_AT_LINE` | 1,308 / 151 / 12 / 7 | 1,307 / 153 / 11 / 7 |
-| `RUNWAY_ENTERED_UNHELD` / `HOLD_STOP_ON_RUNWAY_PAVEMENT` | 48 / 27 | 47 / 27 |
-| `TAXI_NOT_ARRIVED` | 1 | 3 |
+| code | main | first version | final |
+|---|---|---|---|
+| `HOLD_COUNTDOWN_LATE` | 4,063 | 0 | 0 |
+| `HOLD_COUNTDOWN_MISSING` | 5 | 0 | 0 |
+| `HOLD_CALLED_PASSING_BEFORE_STOP` | 1,586 | 354 | 355 |
+| `TURN_NOW_WITHOUT_ADVANCE` | 647 | 22 | 7 |
+| `TURN_ADVANCE_OTHER_WAY` | 951 | 460 | 403 |
+| `OFF_ROUTE_WARNING_ON_ROUTE` | 67 | 61 | 62 |
+| `SPOKEN_DIRECTION_CONTRADICTS` | 7 | 4 | 4 |
+| `WRONG_TURN_WARNED` / `_SILENT` | 384 / 11 | 375 / 12 | 376 / 12 |
+| `MISSED_TURN_REROUTED` / `_NOTHING` / `_HELD_IN_CIRCLE` / `_STOPPED_AT_LINE` | 1,308 / 151 / 12 / 7 | 1,307 / 153 / 11 / 7 | 1,307 / 153 / 11 / 7 |
+| `RUNWAY_ENTERED_UNHELD` / `HOLD_STOP_ON_RUNWAY_PAVEMENT` | 48 / 27 | 47 / 27 | 47 / 27 |
+| `TAXI_NOT_ARRIVED` | 1 | 3 | 3 |
 
-- `TURN_ADVANCE_OTHER_WAY` by kind: an advance notice on the OPPOSITE side to its "… now" 539 → 247 scenarios, "continue" before a left or right 403 → 205. The remainder is mostly two junctions close together (the notice of the first, the "… now" of the second) and turns just past the 20 degree "slight" threshold.
+The final column adds what a review of the first version found: a junction judged on the route over 20 m or more either side and junction points less than 10 m apart taken as one (a corner drawn as two kinks, a piece drawn off the line and back), the "… now" bend measured from the segment the aircraft is on rather than the cursor's, and the incursion guard silent about the next stop only within the countdown's 600 ft along the route or once its countdown has begun. Silencing it only once a countdown line had been said was flown too and dropped: on a curving approach the node comes within the guard's 40 m before the outer tier (EFHK 34, 97 m along the route), and "Passing the runway 34 hold line." came 0.4 s before the countdown's first line, 367 flights. The one more `HOLD_CALLED_PASSING_BEFORE_STOP` (KCLE 10 at E2) is a second hold node of that line, no longer hidden by the cooldown the first version's silent latch opened while the stop was still far along the route; the one more `OFF_ROUTE_WARNING_ON_ROUTE` (ZSPD 34L at F1, between "Slow down" and "Stop") comes with the turn changes, the flight running 2 s apart from the first version's, and is the same with either guard gate.
+
+- `TURN_ADVANCE_OTHER_WAY` by kind (first version): an advance notice on the OPPOSITE side to its "… now" 539 → 247 scenarios, "continue" before a left or right 403 → 205. The remainder is mostly two junctions close together (the notice of the first, the "… now" of the second) and turns just past the 20 degree "slight" threshold.
 - The 354 `HOLD_CALLED_PASSING_BEFORE_STOP` left are a different case: a second hold node of the same line that the route passes before its stop, about 60 m out (LTFM "Crossing runway 17R at B9B." before the stop at B9B's other node). Silencing those would widen the "Crossing …" silence [HLD-21] forbids: not done.
-- The wrong-turn and missed-turn changes are flights that differ in time, not in the guard: the countdown's "Slow down" and the earlier "Slow for turn" change the pilot model's speed. The new silent ones (YPDN 18 at A2, OETF 25 at D) were flown only on the branch: main's pilot passed more than 4 m from the junction and never made the wrong turn. Both are silenced by the cooldown an on-route line ("Passing the runway 18 at A2 hold line.", another node of the same line) opens, which is [HLD-19] as it stands; PHNL 26R at S is the harness driving on while guidance holds short. The two new `TAXI_NOT_ARRIVED` (OETF Parking 43 → 07) pass the 07 hold after a 150 degree hairpin 3 m wider than main's flight, outside the 12 m capture.
+- The wrong-turn and missed-turn changes are flights that differ in time, not in the guard: the countdown's "Slow down" and the earlier "Slow for turn" change the pilot model's speed. The new silent ones (YPDN 18 at A2, OETF 25 at D) were flown only with the change: main's pilot passed more than 4 m from the junction and never made the wrong turn. Both are silenced by the cooldown an on-route line ("Passing the runway 18 at A2 hold line.", another node of the same line) opens, which is [HLD-19] as it stands; PHNL 26R at S is the harness driving on while guidance holds short. The two new `TAXI_NOT_ARRIVED` (OETF Parking 43 → 07) pass the 07 hold after a 150 degree hairpin 3 m wider than main's flight, outside the 12 m capture.
 
 **Measured and rejected:** skipping the next stop's node in the incursion guard (instead of latching it in silence). It freed the false off-route warnings the wrong "Passing" line's cooldown had masked, for a neighbouring line of the same runway in the countdown's last seconds (KSLC "Warning: approaching runway 16L at G, off route." between "Slow down" and "Stop" at H): `OFF_ROUTE_WARNING_ON_ROUTE` 67 → 98, and silent wrong turns 11 → 15. And the advance notice's word from the aircraft's heading alone, said up to 300 m out: "In 120 metres, continue onto taxiway L." before "Sharp left now, taxiway L." (KATL, a right-hand curve into a sharp left), and from a stand "In 110 metres, sharp right onto taxiway E2, 120 degrees." for a sharp left (KDTW D 3): opposite-side notices fell only to 303.
 

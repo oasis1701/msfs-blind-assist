@@ -717,7 +717,7 @@ BA watches for runway hold lines as you move, whether or not they are on your ro
 
 - *"Crossing runway 22R at B."* A reminder that the hold line just ahead is part of your route, a runway crossing you have planned.
 - *"Passing the runway 09L at F hold line."* The route passes a runway hold line but does not then go onto the runway, for example a line set back to protect an ILS beside your taxiway. You are not crossing a runway here.
-- Neither reminder is said about the hold line BA is about to stop you at: the countdown covers that one.
+- Neither reminder is said about the hold short point BA is about to stop you at, once it is within 600 feet along your route: the countdown covers that one. A hold line the scenery draws with two hold points may still be named as you pass the first.
 - *"Warning: approaching runway 36L at M8, off route."* You are heading towards a runway hold line that is **not** on your route, for example because you turned the wrong way or missed a turn. Stop and check where you are with Output Alt+Y. This only speaks for a hold line actually ahead of you, on your heading or on the taxiway you are turning onto, not for lines beside a parallel taxiway you are correctly following. It repeats for the same line no more than every ten seconds.
 
 ## Lining Up on the Runway {#taxi-lineup}
